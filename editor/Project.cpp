@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "render/LayerViewCamera.h"
+#include "component/MirrorComponent.h"
+#include "script/LuaBinding.h"
+#include "subsystem/ActionSystem.h"
+#include "subsystem/AudioSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "component/ButtonComponent.h"
+#include "component/MeshPolygonComponent.h"
 #include "diag/HangWatchdog.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ScriptReloadService.h"
@@ -121,6 +129,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
 #include "input/InputActions.h"
@@ -1717,6 +1726,15 @@ void editor::Project::setHtmlUiRenderSettings(const HtmlUiRenderSettings& settin
 
 const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() const{
     return htmlUiRender;
+}
+
+void editor::Project::setDeviceSettings(const DeviceSettings& settings){
+    deviceSettings = settings;
+    Device::setProjectSettings(deviceSettings);
+}
+
+const DeviceSettings& editor::Project::getDeviceSettings() const{
+    return deviceSettings;
 }
 
 void editor::Project::setShadowTier(int platform, ShadowTier tier){
@@ -5686,6 +5704,7 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
+    setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
@@ -7460,6 +7479,7 @@ void editor::Project::configureGenerator() {
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
@@ -9538,6 +9558,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);

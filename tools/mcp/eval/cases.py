@@ -890,6 +890,34 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "guard_record_failed_write",
+        "kind": "guard",
+        "what_happened": "A record_game whose write failed leaves Play running and nothing at the output path: the agent stops "
+                         "Play, says what failed and what was kept, and does not record again before the cause is fixed.",
+        "text_at_issue": "record_game's failed result, its text: 'The output path holds nothing and Play is still running: stop it "
+                         "(play action stop), fix the cause, then record again.'",
+        "source": "docs/specs/S62-recorder-integrity.md R1, R2; no failure on record",
+        "groups_enabled": ["editor_tools"],
+        "prompt": "Record 5 seconds of the game with sound to captures/trailer.mp4.",
+        "mocks": [
+            {"tool": "record_game", "result": {
+                "text": "The recording failed: the audio write failed: disk full, 3 MB free; 41 frames were kept as "
+                        "captures/trailer.partial.mp4 (no audio). The output path holds nothing and Play is still running: stop it "
+                        "(play action stop), fix the cause, then record again.",
+                "is_error": True,
+                "real": True,
+                "structured": {"frames": 41, "fps": 30, "failed_step": "audio", "partial": "captures/trailer.partial.mp4", "partial_frames": 41,
+                               "error": "the audio write failed: disk full, 3 MB free; 41 frames were kept as captures/trailer.partial.mp4 (no audio)"}}},
+            {"tool": "play", "args": {"action": "stop"}, "result": ok("Play stopped.", {"state": "stopped"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": [{"tool": "record_game"}, {"tool": "play", "args": {"action": "stop"}}],
+                   "order": [[{"tool": "record_game"}, {"tool": "play", "args": {"action": "stop"}}]],
+                   "max_calls": {"record_game": 1},
+                   "reply_must": [r"disk|space", r"partial"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_shadow_softness",
         "kind": "guard",
         "what_happened": "The guide's Shadows digest names a light's softShadows and the scene's shadows_quality; guards it when "
@@ -911,6 +939,19 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
+    },
+    {
+        "id": "bad_ios_simulator_without_an_account",
+        "kind": "bad",
+        "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",
+        "text_at_issue": "build_project ios_simulator: 'Unsigned simulator .app.'",
+        "source": "docs/specs/S67-packaging-tests.md R4",
+        "prompt": "I don't have an Apple developer account, but I'd like to try this game in the iOS Simulator on this Mac. Build it for that.",
+        "mocks": [
+            {"tool": "build_project", "result": ok("Build succeeded.", {"status": "succeeded", "result": {"method_used": "prebuilt"}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
+        "max_turns": 8,
     },
     {
         "id": "guard_import_reports_a_leftover",
@@ -952,5 +993,55 @@ CASES = [
         "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
+        "id": "guard_device_simulation",
+        "kind": "guard",
+        "what_happened": "Seeing a game as a low-end phone renders it needs the Game view's device simulation in Play: the "
+                         "editor applies no tier by itself, and the device tools are a hidden group (S56).",
+        "text_at_issue": "Guide 'Other areas': 'device tiers (set_device_simulation, then play)'; set_device_simulation's "
+                         "description; its result's next",
+        "source": "spec S56 R5, R9; no failure on record",
+        "prompt": "Show me how the game looks on a low-end phone: take a screenshot of it running at that quality.",
+        "mocks": [
+            {"tool": "set_device_simulation", "args": {"tier": "low"}, "result": ok(
+                "Device simulation set; it applies when Play starts.",
+                {"simulation": {"tier": "low", "platform": "mobile", "thermal_state": "device"}, "playing": False,
+                 "next": "play {action: \"start\"}, then get_device_info or screenshot"})},
+            {"tool": "get_device_info", "result": ok(
+                "llvmpipe (LLVM 15.0.7, 256 bits): tier Low (simulated, 5 override(s) in effect); thermal Nominal; Mobile table.",
+                {"tier": "low", "tier_applied": True, "tier_source": "simulated", "platform": "mobile",
+                 "applied_overrides": [{"setting": "render_scale", "value": 0.5, "source": "tier"}], "playing": True})},
+            {"tool": "play", "result": ok("Play started: \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (playing).", {"view": "game", "width": 1280, "height": 720})},
+        ],
+        "checks": {"calls": [{"tool": "set_device_simulation", "args": {"tier": "low"}}, "play", "screenshot"],
+                   "must_not_call": ["set_project_settings", "set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_device_tier_settings",
+        "kind": "guard",
+        "what_happened": "A Device Tier's overrides are a project setting per platform family and tier "
+                         "(quality.device_tiers.<family>.<tier>, an object of cells), not the scene's render scale (S56).",
+        "text_at_issue": "get_device_info's description: 'Tier table: quality.device_tiers.* in set_project_settings'",
+        "source": "spec S56 R3, R9; no failure on record",
+        "prompt": "On low-end phones the game should render at 60% resolution instead of 50%. Other devices stay as they are.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "quality.device_tiers.mobile.low {render_scale 0.5, shadow_quality low, lod_bias 0.5, ssao false, "
+                "volumetrics false, the rest null} (object)",
+                {"quality.device_tiers.mobile.low": {"render_scale": 0.5, "shadow_quality": "low", "lod_bias": 0.5,
+                                                     "ssao": False, "volumetrics": False, "msaa_samples": None}})},
+            {"tool": "get_device_info", "result": ok(
+                "NVIDIA GeForce RTX 3060: tier High detected, none applied (the editor applies a simulated or set tier only); "
+                "thermal Nominal; Desktop table.",
+                {"detected_tier": "high", "tier_applied": False, "platform": "desktop",
+                 "next": "set_device_simulation {tier}, then play: the editor applies a tier only in Play"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["quality.device_tiers.mobile.low"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings",
+                              "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
+                   "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 12,
     },
 ]

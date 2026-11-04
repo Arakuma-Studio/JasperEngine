@@ -54,6 +54,8 @@ Network Trash Folder
 # .nfs files are created when an open file is removed but is still being accessed
 *.o
 *.obj
+# test fixtures are Wavefront OBJ models, not compiler objects
+!tests/**/fixtures/**/*.obj
 ### OSX ###
 *.out
 *.pch

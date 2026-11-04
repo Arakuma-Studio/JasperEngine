@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "component/OnScreenControlComponents.h"
 #include "Engine.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "shader/ShaderGlobals.h"
@@ -52,6 +53,8 @@
 #include "component/AnimationPlayerComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "pool/TexturePool.h"
+#include "device/Device.h"
+#include "device/QualityResolver.h"
 #include "pool/SoundPool.h"
 #include "pool/TextureDataPool.h"
 #include "pool/ShaderPool.h"
@@ -182,6 +185,8 @@ bool Engine::osPaused = false;
 bool Engine::nativePaused = false;
 std::atomic<bool> Engine::focused = true;
 int Engine::targetFrameRate = -1;
+int Engine::textureQuality = 0;
+uint32_t Engine::qualityRevision = 0;
 // the project's VSync setting (platformConfig().vsync, set in systemInit; the generated init()
 // may set it again)
 int Engine::vSyncCount = 1;
@@ -573,11 +578,13 @@ TextureStrategy Engine::getTextureStrategy(){
 }
 
 void Engine::setTextureQuality(int quality){
-    TextureDataPool::setTextureQuality(quality);
+    textureQuality = std::clamp(quality, 0, 3);
+    // what the pool drops: the device tier and memory pressure may drop more (QualityResolver)
+    TextureDataPool::setTextureQuality(QualityResolver::textureQuality(textureQuality));
 }
 
 int Engine::getTextureQuality(){
-    return TextureDataPool::getTextureQuality();
+    return textureQuality;
 }
 
 void Engine::setTextureMemoryBudget(int megabytes){
@@ -1410,6 +1417,8 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
 
     // Log.onMessageReceived and the console commands a released script added
     Log::onMessageReceived.removeByTagSubstring(substring);
+    Device::onThermalStateChanged.removeByTagSubstring(substring);
+    Device::onLowMemory.removeByTagSubstring(substring);
     DebugOverlay::removeCommandsByTag(substring);
 
     // a released script instance's tag is "_<address>_": the input sources it owned go too
@@ -1456,6 +1465,8 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
 
     // what scripts subscribed to the log and the console commands they added
     Log::onMessageReceived.clear();
+    Device::onThermalStateChanged.clear();
+    Device::onLowMemory.clear();
     DebugOverlay::removeOwnedCommands();
 
     if (includeLifecycle) {
@@ -1892,6 +1903,8 @@ void Engine::systemViewLoaded(){
     // gles3 player runs on an OpenGL ES context)
     Log::print("Graphics: %s; %s; %s", SystemRender::getBackendName(), SystemRender::getApiVersion().c_str(),
               SystemRender::getDeviceName().c_str());
+    // the GPU's tier (spec S56 R2), logged with its reason; a player applies it from here
+    Device::detect();
 #ifndef JASPERENGINE_EDITOR
     // what the export recorded is created before the scenes need it (spec S32 R12)
     ShaderWarmup::beginShipped();
@@ -2004,7 +2017,9 @@ bool Engine::areScenesLoaded(bool textures){
     // and no shader, pipeline or GL warm draw still being created (spec S32 R9), and no texture
     // still loading: a frame drawn meanwhile shows a stand-in for it
     bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty() &&
-                 (!textures || TextureDataPool::getLoadingCount() == 0);
+                 (!textures || TextureDataPool::getLoadingCount() == 0) &&
+                 // and every queued upload the frame budget left for later has run (spec S56 R8)
+                 SystemRender::getDeferredUploadCount() == 0;
     // a game replaying its warm-up list holds its first scene until the list is ready (spec S32 R12)
     if (ready && SystemRender::getShaderCreationSettings().holdFirstSceneForWarmup)
         ready = ShaderWarmup::isDone();
@@ -2024,6 +2039,8 @@ std::string Engine::describeNotLoaded(){
     auto add = [&out](const std::string& part){ out += (out.empty() ? "" : "; ") + part; };
     if (scenes.empty()) add("no scene");
     if (const size_t pending = ShaderPool::getPendingShaderCount()) add(std::to_string(pending) + " shader build(s) pending");
+    if (const size_t uploads = SystemRender::getDeferredUploadCount())
+        add(std::to_string(uploads) + " queued upload(s) waiting for the upload budget (Project Settings > Graphics > Upload Budget)");
     if (const size_t textures = TextureDataPool::getLoadingCount()){
         std::string list;
         for (const std::string& id : TextureDataPool::getLoadingIds(8)) list += (list.empty() ? "" : ", ") + id;
@@ -2218,6 +2235,11 @@ void Engine::runFrame(bool draw){
 
     // native SDKs' engine pause requests and native call timeouts (paused frames too)
     NativeBridge::update();
+
+    // the platform's thermal state and memory warnings since the last frame (paused frames too:
+    // a hot device recovers while the game waits), then what a new tier or step changed
+    Device::update(rawDelta);
+    applyQualityChanges();
 
     // memory the last-but-one frame allocated per frame goes back now
     memory::frameArena().beginFrame();
@@ -2745,6 +2767,8 @@ bool Engine::isOrientationPending(){
 
 void Engine::systemLowMemory(){
     Engine::onLowMemory.call();
+    // the response (caches, texture mips, Device.onLowMemory) runs at the next frame's start
+    Device::reportLowMemory();
 }
 
 void Engine::applySimulatedSafeArea(){
@@ -2772,6 +2796,8 @@ void Engine::resetApplicationState(){
     lastOrientation = 0;
     orientationPendingSince = 0.0;
     targetFrameRate = -1;
+    // no tier a script set, no Game view simulation, the thermal and memory response at rest
+    Device::resetSession();
     applyFramePacing();
     // no extra insets, and the next safe area is where the game starts (no event)
     Screen::resetSafeAreaState();
@@ -2807,10 +2833,21 @@ const FramePacing& Engine::getFramePacing(){
     return framePacing;
 }
 
+void Engine::applyQualityChanges(){
+    const uint32_t revision = QualityResolver::getRevision();
+    if (revision == qualityRevision)
+        return;
+    qualityRevision = revision;
+    applyFramePacing();
+    TextureDataPool::setTextureQuality(QualityResolver::textureQuality(textureQuality));
+    SystemRender::setUploadBudget(QualityResolver::uploadBudgetBytes());
+}
+
 void Engine::applyFramePacing(){
     if (!System::hasInstance()) return;
     System& system = System::instance();
-    framePacing = PlatformRules::computeFramePacing(getPlatform(), targetFrameRate, vSyncCount,
+    // the device tier's and the thermal response's cap on the game's rate (QualityResolver)
+    framePacing = PlatformRules::computeFramePacing(getPlatform(), QualityResolver::targetFrameRate(targetFrameRate), vSyncCount,
                                                     system.getRefreshRate(), system.getMaxSwapInterval(),
                                                     system.canDisableVSync());
     system.applyFramePacing(framePacing);

@@ -19,6 +19,7 @@
 #include "platform/AndroidPackager.h"
 #include "platform/AndroidTools.h"
 #include "platform/ExternalTools.h"
+#include "platform/IosProject.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -106,13 +107,10 @@ void ExportWindow::refreshPlayerState() {
         m_androidLibrarySizes = platform::androidLibrarySizes(m_playerRuntime->dir / "android",
                                                               platform::selectedAndroidAbis(m_project->getAndroidProjectSettings()));
     if (config.platform == ShipPlatform::Android && m_methodChoice.method == BuildMethod::Prebuilt) {
-        const bool bundle = m_project->getAndroidProjectSettings().packageFormat == "aab";
-        m_androidMissing = platform::AndroidTools::discover(m_project->getAndroidProjectSettings().targetSdk, bundle, false).missing;
-        // the bundletool jar is downloaded by the build itself
-        m_androidMissing.erase(std::remove_if(m_androidMissing.begin(), m_androidMissing.end(),
-                                              [](const std::string& item) { return item.find("bundletool") != std::string::npos; }),
-                               m_androidMissing.end());
+        // (the bundletool jar is not among them: the build itself downloads it)
+        m_androidMissing = platform::AndroidTools::discover(m_project->getAndroidProjectSettings().targetSdk).missing;
     }
+    if (config.platform == ShipPlatform::IOS) m_iosXcodeMissing = platform::findXcode().missing;
 }
 
 bool ExportWindow::playerBuildBlocked(std::string& why) const {
@@ -290,14 +288,17 @@ void ExportWindow::drawPlayerRows() {
     } else if (target == ShipPlatform::IOS) {
         beginRow("Requires");
         ImGui::AlignTextToFramePadding();
-#ifdef __APPLE__
-        if (platform::ExternalTools::xcodebuild().found())
-            ImGui::TextColored(okColor, ICON_FA_CIRCLE_CHECK " Xcode found: the build is signed and exported (Project Settings > iOS)");
+        if (!m_iosXcodeMissing.empty())
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Requires %s: this makes the Xcode project", m_iosXcodeMissing.c_str());
+        else if (m_iosSimulator)
+            ImGui::TextColored(okColor, ICON_FA_CIRCLE_CHECK " Xcode found: an unsigned .app for the simulator");
+        else if (m_project->getIOSProjectSettings().teamId.empty())
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " No Team ID (Project Settings > iOS): compiled for a device, not signed");
         else
-            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Requires a Mac with Xcode (xcodebuild not found)");
-#else
-        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Requires a Mac with Xcode: this makes the Xcode project");
-#endif
+            ImGui::TextColored(okColor, ICON_FA_CIRCLE_CHECK " Xcode found: the build is signed and exported (Project Settings > iOS)");
+        beginRow("Target");
+        ImGui::Checkbox("Simulator##ios", &m_iosSimulator);
+        ImGui::SetItemTooltip("An unsigned .app for the iOS Simulator (needs no Apple account); off: for a device.");
     } else if (target == ShipPlatform::MacOS) {
         beginRow("Signing");
         ImGui::AlignTextToFramePadding();

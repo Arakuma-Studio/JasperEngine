@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "object/FluidSimulation.h"
+#include "component/PrefabComponent.h"
 #include "util/NativePlugins.h"
 #include "Factory.h"
 #include "App.h"
@@ -2560,6 +2562,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         }
         mainContent += "    Engine::setTextureDefaults(" + groups[0] + ", " + groups[1] + ", " + groups[2] + ");\n";
     }
+
+    // the Device Tier the GPU gets and its overrides (Project Settings > Quality > Device Tiers),
+    // before any scene: what differs from the defaults, "{}" for a default project
+    mainContent += "    Device::configure(R\"JEDEVICE(" + deviceSettingsJson + ")JEDEVICE\");\n";
 
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";

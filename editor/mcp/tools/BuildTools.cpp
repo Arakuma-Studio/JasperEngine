@@ -34,6 +34,7 @@
 #include "ShippingTypes.h"
 #include "players/PlayerRuntimes.h"
 #include "platform/AndroidTools.h"
+#include "platform/IosProject.h"
 #include "platform/ExternalTools.h"
 #include "util/BuiltPlayers.h"
 #include "pool/ShaderPool.h"
@@ -1006,6 +1007,7 @@ void buildProjectTool(const CallPtr& call) {
             call->fail("android_format must be aab (Google Play: one ABI per device), apk-per-abi or apk (one universal APK).");
             return;
         }
+        config.iosSimulator = args.value("ios_simulator", false);
     } else {
         ShaderBackend backend = ShaderBackend::GLES3;
         if (mode == ExportMode::Desktop) {
@@ -1323,14 +1325,11 @@ void getBuildInfoTool(const CallPtr& call) {
         Json missingTools = Json::array();
         if (target == BuildPlatform::Android) {
             const platform::AndroidToolchain tools =
-                platform::AndroidTools::discover(project->getAndroidProjectSettings().targetSdk, false, false);
+                platform::AndroidTools::discover(project->getAndroidProjectSettings().targetSdk);
             for (const std::string& tool : tools.missing) missingTools.push_back(tool);
         } else if (target == BuildPlatform::IOS) {
-#ifdef __APPLE__
-            if (!platform::ExternalTools::xcodebuild().found()) missingTools.push_back("xcodebuild (Xcode)");
-#else
-            missingTools.push_back("a Mac with Xcode (the build is the Xcode project)");
-#endif
+            const platform::XcodeChoice xcode = platform::findXcode();
+            if (!xcode.found()) missingTools.push_back(xcode.missing + " (the build is the Xcode project)");
         }
         // what Build would do for its default graphics API (R5)
         ExportConfig config;
@@ -2299,6 +2298,7 @@ void registerBuildTools(McpRegistry& registry) {
             {"method", withDefault(stringEnum("", {"auto", "prebuilt", "compile"}), "auto")},
             {"development", withDefault(boolean(""), false)},
             {"android_format", stringEnum("Default: project's.", {"aab", "apk-per-abi", "apk"})},
+            {"ios_simulator", withDefault(boolean("Unsigned simulator .app."), false)},
             {"backends", array(stringItem, "source: opengl/opengles/d3d11/metal-macos/metal-ios/vulkan/all. Remembered.")},
             {"build_type", withDefault(stringEnum("", {"Release", "Debug", "RelWithDebInfo", "MinSizeRel"}), "Release")},
             {"build_jobs", integer("0 = auto.")},

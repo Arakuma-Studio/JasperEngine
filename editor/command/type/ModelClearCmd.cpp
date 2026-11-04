@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ModelClearCmd.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/BoneComponent.h"
 
 #include "Stream.h"
 #include "command/type/ModelLoadCmd.h"

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMapUtils.h"
+#include "component/TerrainComponent.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 

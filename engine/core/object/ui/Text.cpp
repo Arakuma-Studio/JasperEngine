@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Text.h"
+#include "component/TextComponent.h"
 #include "shader/ShaderGlobals.h"
 
 #include <algorithm>
