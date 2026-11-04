@@ -19,6 +19,11 @@
 #   PLAYER_PLATFORM=android PLAYER_ANDROID_ABIS=x86_64 PLAYER_FLAVOURS=development tools/build.sh players
 #   tools/ci/android_packaging.sh [release|development]    # default development
 #
+# ANDROID_PACKAGING_SOURCE=1 adds the source export, which compiles the engine (about half an hour):
+# the editor's export built with the project's own Gradle into a debug APK and bundle, both run and
+# compared on the emulator as well. Gradle signs them with the debug key: a source export's release key
+# is set up in Android Studio, as the Gradle project has no signing config of the project's keystore.
+#
 # ANDROID_PACKAGING_NO_EMULATOR=1 stops after step 3 (no KVM here). Results in build/android-packaging/.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -164,4 +169,25 @@ tools/android-emulator-test.sh "$OUT/debug-aab/UnifiedLighting.aab" --bundletool
 for run in emulator-apk emulator-aab; do
     grep -q "^found .*Engine presented:" "$OUT/$run/result.txt" || { echo "FAIL: $run never saw 'Engine presented:'" >&2; exit 1; }
 done
+
+# ---- the source export, when asked for: the same picture from what Gradle builds
+if [[ "${ANDROID_PACKAGING_SOURCE:-0}" == 1 ]]; then
+    tools/build.sh exec android bash -euo pipefail -c "
+        BT=\$(ls -d \$ANDROID_HOME/build-tools/* | sort -V | tail -n 1)
+        dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor export --project $OUT/debug --out $OUT/source --backend opengles \
+            > $OUT/logs/source-export.log 2>&1 || { tail -n 30 $OUT/logs/source-export.log; echo 'FAIL: the source export'; exit 1; }
+        cd $OUT/source/workspaces/androidstudio
+        JASPERENGINE_ANDROID_ABIS=x86_64 CMAKE_CXX_COMPILER_LAUNCHER=ccache sh ./gradlew --no-daemon assembleDebug bundleDebug \
+            > /src/$OUT/logs/source-gradle.log 2>&1 || { tail -n 40 /src/$OUT/logs/source-gradle.log; echo 'FAIL: Gradle on the source export'; exit 1; }
+        \$BT/apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -q 'CN=Android Debug' || { echo 'FAIL: the APK of the source export is not signed'; exit 1; }
+        jarsigner -verify app/build/outputs/bundle/debug/app-debug.aab | grep -q 'jar verified' || { echo 'FAIL: the bundle of the source export is not signed'; exit 1; }
+    "
+    echo "ok: the source export builds with Gradle: a signed APK and bundle"
+    SOURCE="$OUT/source/workspaces/androidstudio/app/build/outputs"
+    tools/android-emulator-test.sh "$SOURCE/apk/debug/app-debug.apk" --out "$OUT/emulator-source-apk" --timeout 600 --golden "$GOLDEN" "${FORBID[@]}"
+    tools/android-emulator-test.sh "$SOURCE/bundle/debug/app-debug.aab" --bundletool "$OUT/bundletool.jar" --out "$OUT/emulator-source-aab" --timeout 600 --golden "$GOLDEN" "${FORBID[@]}"
+    for run in emulator-source-apk emulator-source-aab; do
+        grep -q "^found .*Engine presented:" "$OUT/$run/result.txt" || { echo "FAIL: $run never saw 'Engine presented:'" >&2; exit 1; }
+    done
+fi
 echo "PASS: Android packaging (APK and bundle: built, signed, installed, run, compared)"
