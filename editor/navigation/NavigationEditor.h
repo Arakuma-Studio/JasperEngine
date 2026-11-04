@@ -156,6 +156,8 @@ namespace jasperengine::editor {
 
         struct InputCache {
             uint32_t sceneId = 0;
+            // a scene reloaded under the same id is another scene
+            const Scene* scene = nullptr;
             Entity surface = NULL_ENTITY;
             double checkedAt = 0.0;
             // the last time someone asked for the input itself

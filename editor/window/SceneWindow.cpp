@@ -2351,6 +2351,25 @@ void editor::SceneWindow::drawNavigationHud(SceneProject& sceneProject, ImVec2 c
                               label.text.c_str());
         }
     }
+    // the Path Tester's handles: a ring of the reach a press grabs them in, brighter under the pointer
+    NavPathTester& tester = NavPathTester::get();
+    if (tester.isActive(sceneProject.id)) {
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        auto handle = [&](bool set, const Vector3& world, ImU32 color, NavPathTester::Handle which) {
+            float sx = 0.0f, sy = 0.0f;
+            if (!set || !toScreen(world, sx, sy)) return;
+            const float reach = NavPathTester::HANDLE_PIXELS;
+            const float dx = mouse.x - sx, dy = mouse.y - sy;
+            const bool hot = tester.getDragged() == which || dx * dx + dy * dy <= reach * reach;
+            drawList->AddCircleFilled(ImVec2(sx, sy), reach * 0.45f, color);
+            drawList->AddCircle(ImVec2(sx, sy), reach, hot ? IM_COL32(255, 255, 255, 255) : (color & 0x00FFFFFF) | 0xA0000000u, 0,
+                                hot ? Theme::dpi(2.0f) : Theme::dpi(1.0f));
+        };
+        handle(tester.hasStart(), tester.getStart(), IM_COL32(60, 240, 80, 255), NavPathTester::Handle::Start);
+        if (tester.usesEnd()) handle(tester.hasEnd(), tester.getEnd(), IM_COL32(255, 60, 60, 255), NavPathTester::Handle::End);
+    }
+
     // the Path Tester's panel at the top right, under the view gizmo
     float top = canvasMin.y + Theme::dpi(8.0f);
     if (sceneProject.sceneType == SceneType::SCENE_3D) top += VIEWPORT_GIZMO_SIZE * getOverlayScale(sceneProject.id) / engineScale.y;

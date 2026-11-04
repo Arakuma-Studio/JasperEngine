@@ -416,10 +416,13 @@ const NavigationSystem::InputReport* NavigationEditor::inputReport(SceneProject&
     if (!system || sceneProject.playState != ScenePlayState::STOPPED || isBaking(sceneProject.id, surface)) return nullptr;
     const double now = nowSeconds();
     auto it = std::find_if(inputCache.begin(), inputCache.end(),
-                           [&](const InputCache& cache) { return cache.sceneId == sceneProject.id && cache.surface == surface; });
+                           [&](const InputCache& cache) {
+                               return cache.sceneId == sceneProject.id && cache.scene == sceneProject.scene && cache.surface == surface;
+                           });
     if (it == inputCache.end()) {
         InputCache cache;
         cache.sceneId = sceneProject.id;
+        cache.scene = sceneProject.scene;
         cache.surface = surface;
         inputCache.push_back(std::move(cache));
         it = inputCache.end() - 1;
