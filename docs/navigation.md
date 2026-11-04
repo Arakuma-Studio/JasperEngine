@@ -170,7 +170,7 @@ local found, hit = nav:randomPoint(filter, {sameIslandAs = p, seed = 7}) -- on p
   link). The first call on a navmesh builds an area table (8 bytes per polygon, kept until the
   navmesh changes).
 - *Around* (`center` with `radius`) picks among the polygons reachable from the centre through the
-  filter, then a point in one; points past the radius are drawn again (8 tries, then false). It is
+  filter, then a point of that polygon within the radius (8 polygon picks, then false). It is
   **not** uniform: use it for wandering, not for statistics.
 - *Same island* keeps to the part of the navmesh connected to `sameIslandAs` (false when nothing is
   under it); it combines with *around*.

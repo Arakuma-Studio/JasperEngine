@@ -162,8 +162,9 @@ TEST_F(NavIslandTest, QueriesNeverRelabel){
             const nav::NavPath path = mesh->findPath(from, to, filter, extents);
             ASSERT_EQ(path.failure, nav::PathFailure::None);
         }
-        // S19's corners vector, once per path: nothing more (no labels, no second search)
-        EXPECT_EQ(scope.count(), 1000u);
+        // per path its four vectors (S19's corners; S55's corner areas, corner flags and polygon
+        // corridor): nothing more (no labels, no second search)
+        EXPECT_EQ(scope.count(), 4000u);
     }
     for (int i = 0; i < 100; i++)
         nav->calculatePath(from, to);

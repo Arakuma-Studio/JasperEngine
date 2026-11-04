@@ -212,6 +212,27 @@ TEST_F(NavRandomTest, AroundCircleConnectedWithinRadius){
     // 8 tries per call: a miss is rare
     EXPECT_LT(misses, 10);
 
+    // a circle far smaller than the polygon it is in (one polygon over a 40 m floor) still finds
+    // its points (Detour alone puts most of them past the radius)
+    Scene open;
+    test::disableSubSystems(open);
+    open.getScheduler().setEnabled("NavigationSystem", true);
+    plane(open, Vector3(), 40.0f, 40.0f);
+    const Entity openSurface = transformEntity(open, Vector3(), NULL_ENTITY, "Surface");
+    addSurface(open, openSurface, 0.2f, 256);
+    resolveTransforms(open);
+    NavigationSystem* openNav = open.getSystem<NavigationSystem>().get();
+    ASSERT_TRUE(openNav->bakeNow(openSurface, NavBakeMode::FULL).ok);
+    nav::RandomPointQuery small;
+    small.around = true;
+    small.center = Vector3(-10.0f, 0.0f, -10.0f);
+    small.radius = 1.0f;
+    for (int i = 0; i < 200; i++) {
+        nav::NavHit hit;
+        ASSERT_TRUE(openNav->randomPoint(hit, {}, small)) << "draw " << i;
+        EXPECT_LE(Vector3(hit.position.x + 10.0f, 0.0f, hit.position.z + 10.0f).length(), 1.0f + 1e-3f);
+    }
+
     // a centre off the mesh finds nothing
     query.center = Vector3(0.0f, 0.0f, 30.0f);
     nav::NavHit none;
