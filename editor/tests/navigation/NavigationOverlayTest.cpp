@@ -22,6 +22,18 @@ using namespace jasperengine::editor;
 
 namespace {
 
+    // the world transforms the collector reads, as a frame's update leaves them (parents first)
+    void resolveOverlayTransforms(Scene& scene) {
+        auto transforms = scene.getComponentArray<Transform>();
+        for (int pass = 0; pass < 2; pass++) {
+            for (size_t i = 0; i < transforms->size(); i++) {
+                Transform& transform = transforms->getComponentFromIndex(i);
+                transform.needUpdate = true;
+                scene.getSystem<RenderSystem>()->updateTransform(transform, transforms->getEntity(i));
+            }
+        }
+    }
+
     // floors of 20 x 20 m (centres given) under one NavMesh Surface, baked, as a project's scene
     struct OverlayWorld {
         Scene scene;
@@ -40,10 +52,13 @@ namespace {
             surface = floors.front()->getEntity();
             scene.addComponent<NavMeshSurfaceComponent>(surface, NavMeshSurfaceComponent());
             camera = std::make_unique<Camera>(&scene);
-            sceneProject.id = 4343;
+            // an id of its own: the editor keeps per-scene caches (two open scenes never share one)
+            static uint32_t nextId = 4343;
+            sceneProject.id = ++nextId;
             sceneProject.scene = &scene;
             sceneProject.sceneType = SceneType::SCENE_3D;
             system = NavigationEditor::systemOf(sceneProject);
+            resolveOverlayTransforms(scene);
             const NavBakeResult result = system->bakeNow(surface, NavBakeMode::FULL);
             EXPECT_TRUE(result.ok) << result.error;
         }
@@ -107,6 +122,7 @@ TEST(NavigationOverlay, OffCostsNothing){
     ramp.createPlane(4.0f, 4.0f);
     ramp.setPosition(0.0f, 1.0f, 0.0f);
     ramp.setRotation(0.0f, 0.0f, 60.0f);
+    resolveOverlayTransforms(world.scene);
 
     NavigationOverlay overlay(&world.scene);
     NavOverlaySettings settings;

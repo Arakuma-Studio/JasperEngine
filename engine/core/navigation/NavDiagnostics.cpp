@@ -79,16 +79,17 @@ const char* nav::findingSeverityName(FindingSeverity severity) {
 }
 
 int NavIslandLabels::labelOf(unsigned int tileSlot, unsigned int poly) const {
-    if ((size_t)tileSlot + 1 >= tileBase.size())
+    if ((size_t)tileSlot + 1 >= tableSize())
         return -1;
-    const uint32_t base = tileBase[tileSlot];
-    if (poly >= tileBase[(size_t)tileSlot + 1] - base)
+    const uint32_t first = base(tileSlot);
+    if (poly >= base((size_t)tileSlot + 1) - first)
         return -1;
-    return labels[(size_t)base + poly];
+    return labels[(size_t)first + poly];
 }
 
 size_t NavIslandLabels::memoryBytes() const {
-    return tileBase.capacity() * sizeof(uint32_t) + labels.capacity() * sizeof(int32_t) + islands.capacity() * sizeof(NavIsland);
+    return tileBase16.capacity() * sizeof(uint16_t) + tileBase32.capacity() * sizeof(uint32_t) + labels.capacity() * sizeof(int32_t) +
+           islands.capacity() * sizeof(NavIsland);
 }
 
 #if JASPERENGINE_NAVIGATION
@@ -113,21 +114,28 @@ namespace {
 }
 
 void nav::labelIslands(const void* detourNavMesh, NavIslandLabels& out) {
-    out.tileBase.clear();
+    out.tileBase16.clear();
+    out.tileBase32.clear();
     out.labels.clear();
     out.islands.clear();
     out.walkableArea = 0.0f;
     const dtNavMesh* mesh = static_cast<const dtNavMesh*>(detourNavMesh);
     if (!mesh)
         return;
-    const int slots = mesh->getMaxTiles();
-    out.tileBase.assign((size_t)slots + 1, 0);
+    // the slots up to the last one in use, and where each slot's labels begin
+    int slots = 0;
+    for (int s = 0; s < mesh->getMaxTiles(); s++) {
+        const dtMeshTile* tile = mesh->getTile(s);
+        if (tile && tile->header && tile->header->polyCount > 0)
+            slots = s + 1;
+    }
+    std::vector<uint32_t> tileBase((size_t)slots + 1, 0);
     for (int s = 0; s < slots; s++) {
         const dtMeshTile* tile = mesh->getTile(s);
         const int count = tile && tile->header ? tile->header->polyCount : 0;
-        out.tileBase[(size_t)s + 1] = out.tileBase[(size_t)s] + (uint32_t)count;
+        tileBase[(size_t)s + 1] = tileBase[(size_t)s] + (uint32_t)count;
     }
-    const size_t total = out.tileBase.back();
+    const size_t total = tileBase.back();
     // union-find in the label array itself: a polygon's parent, -1 for zero flags
     std::vector<int32_t>& parent = out.labels;
     parent.assign(total, -1);
@@ -137,7 +145,7 @@ void nav::labelIslands(const void* detourNavMesh, NavIslandLabels& out) {
             continue;
         for (int p = 0; p < tile->header->polyCount; p++) {
             if (tile->polys[p].flags != 0)
-                parent[out.tileBase[(size_t)s] + (size_t)p] = (int32_t)(out.tileBase[(size_t)s] + (uint32_t)p);
+                parent[tileBase[(size_t)s] + (size_t)p] = (int32_t)(tileBase[(size_t)s] + (uint32_t)p);
         }
     }
     for (int s = 0; s < slots; s++) {
@@ -145,16 +153,16 @@ void nav::labelIslands(const void* detourNavMesh, NavIslandLabels& out) {
         if (!tile || !tile->header)
             continue;
         for (int p = 0; p < tile->header->polyCount; p++) {
-            const int32_t self = (int32_t)(out.tileBase[(size_t)s] + (uint32_t)p);
+            const int32_t self = (int32_t)(tileBase[(size_t)s] + (uint32_t)p);
             if (parent[(size_t)self] < 0)
                 continue;
             // links in either direction (off-mesh connections link both their ends)
             for (unsigned int l = tile->polys[p].firstLink; l != DT_NULL_LINK; l = tile->links[l].next) {
                 unsigned int salt = 0, it = 0, ip = 0;
                 mesh->decodePolyId(tile->links[l].ref, salt, it, ip);
-                if ((int)it >= slots || ip >= out.tileBase[(size_t)it + 1] - out.tileBase[(size_t)it])
+                if ((int)it >= slots || ip >= tileBase[(size_t)it + 1] - tileBase[(size_t)it])
                     continue;
-                const int32_t other = (int32_t)(out.tileBase[(size_t)it] + ip);
+                const int32_t other = (int32_t)(tileBase[(size_t)it] + ip);
                 if (parent[(size_t)other] < 0)
                     continue;
                 const int32_t a = islandRoot(parent, self), b = islandRoot(parent, other);
@@ -185,7 +193,7 @@ void nav::labelIslands(const void* detourNavMesh, NavIslandLabels& out) {
     constexpr float FLOAT_MAX = std::numeric_limits<float>::max();
     for (int s : order) {
         const dtMeshTile* tile = mesh->getTile(s);
-        const uint32_t base = out.tileBase[(size_t)s];
+        const uint32_t base = tileBase[(size_t)s];
         for (int p = 0; p < tile->header->polyCount; p++) {
             const dtPoly& poly = tile->polys[p];
             const int32_t root = roots[base + (size_t)p];
@@ -222,6 +230,10 @@ void nav::labelIslands(const void* detourNavMesh, NavIslandLabels& out) {
     // labels: the island of each polygon (an off-mesh connection joined to no ground: none)
     for (size_t i = 0; i < total; i++)
         parent[i] = roots[i] < 0 ? -1 : idOfRoot[(size_t)roots[i]];
+    if (total <= 0xFFFF)
+        out.tileBase16.assign(tileBase.begin(), tileBase.end());
+    else
+        out.tileBase32 = std::move(tileBase);
 }
 
 #else // JASPERENGINE_NAVIGATION

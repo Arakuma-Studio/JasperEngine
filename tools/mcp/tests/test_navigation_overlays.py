@@ -1,8 +1,9 @@
 """S54 navigation diagnostics in the editor UI (docs/specs/S54-navigation-diagnostics.md R25-R29,
 AC13-AC15), driven like a person in the harness's Xvfb and checked through MCP.
 
-Scene NavOverlays (3D): two 10 x 10 m floors 12 m apart (two islands) under one NavMesh Surface,
-a 2 m cube standing on the first (its sides are steeper than the agent's Max Slope), and a walker
+Scene NavOverlays (3D): two 10 x 10 m floors 12 m apart under one NavMesh Surface, a 2 m cube
+standing on the first (its sides are steeper than the agent's Max Slope; its top is a third
+island), and a walker
 with a NavMesh Agent far off both floors (finding agent_off_mesh).
 
 - test_path_tester_flow: navigation.pathTester (run_command) opens the Path Tester; Shift+click and
@@ -131,8 +132,8 @@ async def test_path_tester_flow(ed: Editor):
     await ed.screenshot("editor", path=evidence(ed) / "path_tester_complete.png")
     ed.check_eq(await selection(ed, sid), [], "the tester's clicks select nothing")
 
-    # the end's handle drags: the length follows
-    await ui.drag(end, view_point(ui, rect, 0.40, 0.58), steps=8)
+    # the end's handle drags: the length follows (toward the start)
+    await ui.drag(end, view_point(ui, rect, 0.38, 0.47), steps=8)
     moved = await tester_length(ed, ui)
     ed.check(moved is not None and moved != length, f"dragging the end queries again ({length} -> {moved})")
 
@@ -252,10 +253,11 @@ async def test_window_last_bake_and_problems(ed: Editor):
     walkable = await ui.find(f"##walkable{key}", window="Navigation")
     ed.check(walkable is not None, "the Walkable cell")
     area = float(walkable["label"].split(" ")[0])
-    # two 10 x 10 m floors less the agent's 0.5 m margin and the cube: about 2 x 81 - 9 m^2
+    # two 10 x 10 m floors less the agent's margin and the cube, and the cube's top
     ed.check(120.0 < area < 170.0, f"Walkable {area} m^2")
     islands = await ui.find(f"##islands{key}", window="Navigation")
-    ed.check(islands is not None and islands["label"].split("##")[0] == "2", f"two islands: {islands}")
+    # the floors and the cube's top
+    ed.check(islands is not None and islands["label"].split("##")[0] == "3", f"three islands: {islands}")
 
     problem = await ui.find(f"##navproblem.agent_off_mesh.{s['walker']}", window="Navigation")
     ed.check(problem is not None, "the walker's agent_off_mesh row in Problems")
@@ -282,7 +284,7 @@ async def test_inspector_summary_and_estimate(ed: Editor):
     await ui.frames(6)
     rows = await layout_labels(ed, sid, floor)
     ed.check(rows.get("lastBake", "").startswith("Last bake: "), f"the last bake row: {rows}")
-    ed.check(re.search(r"Walkable: [\d.]+ m², 2 islands", rows.get("walkable", "")) is not None, f"walkable and islands: {rows}")
+    ed.check(re.search(r"Walkable: [\d.]+ m², 3 islands", rows.get("walkable", "")) is not None, f"walkable and islands: {rows}")
     ed.check(re.match(r"Voxels \d+ × \d+, \d+ tiles \([\d.]+ voxels per agent radius\)", rows.get("estimate", "")) is not None,
              f"the estimate: {rows}")
     ed.check("estimateVoxels" not in rows, "the default voxel size has 3 voxels per radius")

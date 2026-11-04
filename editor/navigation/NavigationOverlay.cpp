@@ -55,10 +55,9 @@ namespace {
     }
 
     // a distinct, stable tint per id (islands, tiles): golden-ratio steps around the hue circle
+    // (in double: a float product of a large id loses its fraction)
     Vector4 idColor(uint32_t id, float alpha) {
-        uint32_t h = id * 2654435761u;
-        h ^= h >> 15;
-        const float hue = std::fmod((float)(h & 0xFFFF) / 65536.0f + (float)id * 0.618034f, 1.0f) * 6.0f;
+        const float hue = (float)std::fmod((double)id * 0.6180339887498949, 1.0) * 6.0f;
         const float s = 0.65f, v = 0.95f;
         const int sector = (int)hue % 6;
         const float f = hue - std::floor(hue);
@@ -556,11 +555,11 @@ void NavigationOverlay::updateSurface(Entity entity, SurfaceDraw& draw, ScenePro
             label.x = x;
             label.y = y;
             label.text = tileLabelText(*report);
-            // the top face's centre (corners with y max: c & 2)
+            // the bottom face's centre (corners with y min: not c & 2), on the ground it labels
             const float* c = &geometry.tileBounds[t * 24];
-            Vector3 top(0, 0, 0);
-            for (int i : {2, 3, 6, 7}) top += Vector3(c[i * 3], c[i * 3 + 1], c[i * 3 + 2]);
-            label.world = top * 0.25f;
+            Vector3 bottom(0, 0, 0);
+            for (int i : {0, 1, 4, 5}) bottom += Vector3(c[i * 3], c[i * 3 + 1], c[i * 3 + 2]);
+            label.world = bottom * 0.25f;
             label.dirty = std::find(dirty.begin(), dirty.end(), std::pair<int, int>(x, y)) != dirty.end();
             tileLabels.push_back(std::move(label));
         }

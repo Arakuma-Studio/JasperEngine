@@ -193,15 +193,19 @@ TEST(NavWalkabilityProbe, ExplainsEachReason){
     EXPECT_NEAR(reasonOf(ceiling, "low_clearance")->limit, 2.0f, 1e-3f);
 
     const NavProbeResult wall = explain(Vector3(0.4f, 0.0f, 20.0f));
+    // the three counterfactual rebuilds: each checked on its own (the red control turns them off)
     EXPECT_TRUE(hasReason(wall, "near_wall")) << reasonCodes(wall);
-    EXPECT_NEAR(reasonOf(wall, "near_wall")->limit, 0.5f, 1e-3f);
+    if (const NavProbeReason* reason = reasonOf(wall, "near_wall"))
+        EXPECT_NEAR(reason->limit, 0.5f, 1e-3f);
 
     const NavProbeResult platform = explain(Vector3(-20.0f, 1.0f, 20.0f));
     EXPECT_TRUE(hasReason(platform, "small_region")) << reasonCodes(platform);
-    EXPECT_NEAR(reasonOf(platform, "small_region")->limit, 2.0f, 1e-3f);
-    // the erosion rounds up to whole cells: under 0.81 m^2, more than nothing
-    EXPECT_GT(reasonOf(platform, "small_region")->value, 0.1f);
-    EXPECT_LT(reasonOf(platform, "small_region")->value, 1.0f);
+    if (const NavProbeReason* reason = reasonOf(platform, "small_region")) {
+        EXPECT_NEAR(reason->limit, 2.0f, 1e-3f);
+        // the erosion rounds up to whole cells: under 0.81 m^2, more than nothing
+        EXPECT_GT(reason->value, 0.1f);
+        EXPECT_LT(reason->value, 1.0f);
+    }
 
     const NavProbeResult volume = explain(Vector3(20.0f, 0.0f, 20.0f));
     ASSERT_TRUE(hasReason(volume, "not_walkable_area")) << reasonCodes(volume);
@@ -221,20 +225,21 @@ TEST(NavWalkabilityProbe, ExplainsEachReason){
 
     // the Room surface collects a 10 m volume around the origin
     const NavProbeResult outside = explain(Vector3(20.0f, 0.0f, -10.0f), nav::ALL_AREAS, level.volumeSurface);
-    EXPECT_TRUE(hasReason(outside, "outside_volume")) << reasonCodes(outside);
+    ASSERT_TRUE(hasReason(outside, "outside_volume")) << reasonCodes(outside);
 
     const NavProbeResult empty = explain(Vector3(40.0f, 0.0f, 0.0f));
-    EXPECT_TRUE(hasReason(empty, "no_geometry")) << reasonCodes(empty);
+    ASSERT_TRUE(hasReason(empty, "no_geometry")) << reasonCodes(empty);
     EXPECT_TRUE(hasReason(explain(Vector3(80.0f, 0.0f, 0.0f)), "outside_bounds"));
 
     const NavProbeResult stale = explain(Vector3(-10.0f, 0.0f, 10.0f));
-    EXPECT_TRUE(hasReason(stale, "stale_tile")) << reasonCodes(stale);
+    ASSERT_TRUE(hasReason(stale, "stale_tile")) << reasonCodes(stale);
     EXPECT_EQ(stale.reasons.front().code, "stale_tile");
 
     // on the 0.6 m platform, 0.2 m from its edge
     const NavProbeResult ledge = explain(Vector3(17.2f, 0.6f, 0.0f));
     EXPECT_TRUE(hasReason(ledge, "step_too_high")) << reasonCodes(ledge);
-    EXPECT_NEAR(reasonOf(ledge, "step_too_high")->limit, 0.4f, 1e-3f);
+    if (const NavProbeReason* reason = reasonOf(ledge, "step_too_high"))
+        EXPECT_NEAR(reason->limit, 0.4f, 1e-3f);
 
     // on the mesh: only what still applies there
     const NavProbeResult masked = explain(Vector3(-20.0f, 0.0f, 0.0f), (uint16_t)(nav::ALL_AREAS & ~(1u << nav::AREA_JUMP)));

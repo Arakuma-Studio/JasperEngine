@@ -749,3 +749,19 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   docs' "Why navigation fails". P2 switches the CLI and the export to `collectProjectFindings` /
   `logNavigationPreflight`; P3 sets `NavBakeError::SaveFailed` where the editor writes the asset
   (`NavigationEditor::finish`).
+- S54 P3 (branch `nav/s42-p3`): the interfaces (`nav: S54 P3 interfaces`, 030976793:
+  `NavOverlaySettings::colorBy/showSteepSlopes/showTileLabels`, `NavTileLabel` and
+  `getTileLabels`, `NavQueryDraw` with `setQueryDraw/clearQueryDraw/getQueryDraw` replacing
+  `setQueryPath`, `overlayOf`, `SceneWindow::frameBounds`), then R24-R29: `NavPathTester` (four
+  modes, handles, Copy Query, Locate's probe popup; toolbar toggle, More menu item, the AI
+  Navigation section's Start/Stop, `navigation.pathTester`), the overlay's Color By / Show Steep
+  Slopes / Show Tile Labels / dirty outlines, `NavigationEditor::inputReport` / `keptInput` (the
+  per-surface collection cache: dirty coordinates, the estimate's grid, the input while asked
+  for), the Navigation window's Last Bake / Walkable / Islands and Problems, the Inspector's
+  estimate and bake summary, `SaveFailed` / `NavMeshFailed` set where the editor writes the
+  asset. `NavigationEditor::checkSurfaces` stays until P2 switches the CLI and the export to
+  `collectProjectFindings`; P2 then removes it. Files of other packages touched minimally:
+  `editor/mcp/tools/NavigationTools.cpp` (two `setQueryPath` calls become the query draw),
+  `editor/render/SceneRender.h` (`getNavigationOverlay`), `editor/AppCommands.cpp` (the
+  `navigation.pathTester` binding), `editor/tests/navigation/NavigationEditorTest.cpp` (the
+  overlay settings test moved out).

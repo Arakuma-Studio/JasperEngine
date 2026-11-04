@@ -22,6 +22,18 @@ using namespace jasperengine::editor;
 
 namespace {
 
+    // the world transforms the collector reads, as a frame's update leaves them (parents first)
+    void resolveTesterTransforms(Scene& scene) {
+        auto transforms = scene.getComponentArray<Transform>();
+        for (int pass = 0; pass < 2; pass++) {
+            for (size_t i = 0; i < transforms->size(); i++) {
+                Transform& transform = transforms->getComponentFromIndex(i);
+                transform.needUpdate = true;
+                scene.getSystem<RenderSystem>()->updateTransform(transform, transforms->getEntity(i));
+            }
+        }
+    }
+
     // a 20 x 20 m floor with a baked NavMesh Surface, as one scene of a project
     struct TesterWorld {
         Scene scene;
@@ -33,10 +45,13 @@ namespace {
             floor = std::make_unique<Primitive>(&scene);
             floor->createPlane(20.0f, 20.0f);
             scene.addComponent<NavMeshSurfaceComponent>(floor->getEntity(), NavMeshSurfaceComponent());
-            sceneProject.id = 4242;
+            // an id of its own: the editor keeps per-scene caches (two open scenes never share one)
+            static uint32_t nextId = 4242;
+            sceneProject.id = ++nextId;
             sceneProject.scene = &scene;
             sceneProject.sceneType = SceneType::SCENE_3D;
             system = NavigationEditor::systemOf(sceneProject);
+            resolveTesterTransforms(scene);
             const NavBakeResult result = system->bakeNow(floor->getEntity(), NavBakeMode::FULL);
             EXPECT_TRUE(result.ok) << result.error;
         }
@@ -155,18 +170,21 @@ TEST(NavPathTester, OpsMatchTheSystem){
     const bool blocked = world.system->raycast(a, b, hit, filter);
     EXPECT_EQ(tester.getResult().blocked, blocked);
     EXPECT_EQ(tester.getResult().hit.position, hit.position);
-    // a ray off the floor's edge stops at it
+    // a ray off the floor's edge stops at it (the navmesh ends a radius in, whole voxels: 9-9.5 m)
     const Vector3 out(30.0f, 0.0f, -2.0f);
     tester.setEnd(world.sceneProject, out);
     EXPECT_TRUE(tester.getResult().blocked);
-    EXPECT_NEAR(tester.getResult().hit.position.x, 10.0f, 0.6f);
+    EXPECT_GT(tester.getResult().hit.position.x, 9.0f);
+    EXPECT_LE(tester.getResult().hit.position.x, 9.5f);
 
     tester.setMode(world.sceneProject, NavPathTester::Mode::ClosestEdge);
     EXPECT_FALSE(tester.usesEnd());
     nav::NavHit edge;
     EXPECT_EQ(tester.getResult().found, world.system->findClosestEdge(a, edge, filter));
     EXPECT_EQ(tester.getResult().hit.position, edge.position);
-    EXPECT_NEAR(tester.getResult().hit.distance, 3.0f, 0.6f) << "a is 3 m from the floor's left edge";
+    // a is 3 m from the floor's left edge, 2-2.5 m from the navmesh's
+    EXPECT_GT(tester.getResult().hit.distance, 2.0f);
+    EXPECT_LE(tester.getResult().hit.distance, 2.5f);
 
     tester.setMode(world.sceneProject, NavPathTester::Mode::Locate);
     const nav::NavLocation location = world.system->locate(a, filter);

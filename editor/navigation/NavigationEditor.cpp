@@ -294,6 +294,8 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
         if (bytes.empty()) {
             result.ok = false;
             result.error = "the bake produced no navmesh";
+            result.errorCode = nav::NavBakeError::NavMeshFailed;
+            result.hint = nav::bakeErrorHint(result.errorCode);
         } else {
             AssetRef ref;
             std::string error;
@@ -306,6 +308,8 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
             } else {
                 result.ok = false;
                 result.error = "the navmesh was baked but not saved: " + error;
+                result.errorCode = nav::NavBakeError::SaveFailed;
+                result.hint = nav::bakeErrorHint(result.errorCode);
                 Out::error("NavMeshSurface '%s': %s", sceneProject->scene->getEntityName(entry.surface).c_str(), result.error.c_str());
             }
         }
@@ -416,10 +420,13 @@ const NavigationSystem::InputReport* NavigationEditor::inputReport(SceneProject&
     if (!system || sceneProject.playState != ScenePlayState::STOPPED || isBaking(sceneProject.id, surface)) return nullptr;
     const double now = nowSeconds();
     auto it = std::find_if(inputCache.begin(), inputCache.end(),
-                           [&](const InputCache& cache) { return cache.sceneId == sceneProject.id && cache.surface == surface; });
+                           [&](const InputCache& cache) {
+                               return cache.sceneId == sceneProject.id && cache.scene == sceneProject.scene && cache.surface == surface;
+                           });
     if (it == inputCache.end()) {
         InputCache cache;
         cache.sceneId = sceneProject.id;
+        cache.scene = sceneProject.scene;
         cache.surface = surface;
         inputCache.push_back(std::move(cache));
         it = inputCache.end() - 1;
