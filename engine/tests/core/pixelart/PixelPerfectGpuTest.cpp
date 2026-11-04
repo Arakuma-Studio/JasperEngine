@@ -80,6 +80,24 @@ namespace {
         return TextureData(width, height, (unsigned int)kept.size(), ColorFormat::RGBA, 4, kept.data());
     }
 
+    // pixel art is sampled nearest (a sprite's own setting; with a texel-aligned quad linear
+    // sampling reads the same texels, a rotated one blends them)
+    void useNearestTexels(Mesh& mesh){
+        Material material = mesh.getMaterial();
+        material.baseColorTexture.setMinFilter(TextureFilter::NEAREST);
+        material.baseColorTexture.setMagFilter(TextureFilter::NEAREST);
+        mesh.setMaterial(material);
+    }
+
+    // a tileset from memory: a tilemap's tilesets are its submeshes' textures (addRect with a
+    // path adds one, as a scene lists them), and a texture set from memory goes on submesh 0
+    void tilesetFromMemory(Tilemap& tilemap, Scene& owner, const std::string& id, TextureData data){
+        tilemap.setTexture(id, data);
+        MeshComponent& mesh = owner.getComponent<MeshComponent>(tilemap.getEntity());
+        mesh.numSubmeshes = std::max(mesh.numSubmeshes, 1u);
+        useNearestTexels(tilemap);
+    }
+
     PixelColor whiteTexel(int, int, int, int){ return kWhite; }
     PixelColor checkerTexel(int x, int y, int, int){ return ((x + y) & 1) ? kBlue : kRed; }
     // a ring of one texel around a fill: the same under any flip or quarter turn
@@ -167,6 +185,7 @@ namespace {
             sprites.push_back(std::make_unique<Sprite>(&scene));
             Sprite& made = *sprites.back();
             made.setTexture(id, data);
+            useNearestTexels(made);
             made.setSize((unsigned int)width, (unsigned int)height);
             made.setPivotPreset(pivot);
             made.setPosition(x, y, 0.0f);
@@ -378,7 +397,7 @@ TEST_F(PixelPerfectGpu, ReferenceParity){
     Sprite& flipped = sprite("pixelart|reference|wide", wide, 15, 7, 260.25f, 120.75f);
     flipped.setScale(Vector3(-1.0f, 1.0f, 1.0f));
     Tilemap floor(&scene);
-    floor.setTexture("pixelart|reference|tile", tile);
+    tilesetFromMemory(floor, scene, "pixelart|reference|tile", tile);
     floor.addRect(0, "tile", Rect(0, 0, 16, 16));
     for (int i = 0; i < 10; i++)
         floor.addTile(0, Vector2(16.0f * i, 0.0f), 16, 16);
@@ -464,7 +483,7 @@ TEST_F(PixelPerfectGpu, TilemapSeams){
     JASPER_REQUIRE_GPU();
     GpuEnvironment::setView(320, 180, 320, 180, Scaling::LETTERBOX);
     Tilemap floor(&scene);
-    floor.setTexture("pixelart|seams|white", pixelArtTexture(8, 8, &whiteTexel));
+    tilesetFromMemory(floor, scene, "pixelart|seams|white", pixelArtTexture(8, 8, &whiteTexel));
     floor.addRect(0, "tile", Rect(0, 0, 8, 8));
     for (int y = 0; y < 23; y++)
         for (int x = 0; x < 40; x++)

@@ -122,6 +122,8 @@ TEST(SpritePpuTest, TilemapQuadsArePixelsOverPixelsPerUnit){
     camera.activate();
     Tilemap tilemap(&scene);
     tilemap.setTexture("pixelart|ppu|white", ppuTestTexture());
+    // its tileset is submesh 0 (a scene lists a tilemap's submeshes; addRect with a path adds one)
+    scene.getComponent<MeshComponent>(tilemap.getEntity()).numSubmeshes = 1;
     tilemap.addRect(0, "tile", Rect(0, 0, 16, 16));
     tilemap.addTile(0, Vector2(0, 0), 16, 16);
     tilemap.addTile(0, Vector2(16, 0), 16, 16);
@@ -134,6 +136,9 @@ TEST(SpritePpuTest, TilemapQuadsArePixelsOverPixelsPerUnit){
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     ASSERT_FALSE(built.needUpdateTilemap) << "the tilemap never built";
+    SCOPED_TRACE(::testing::Message() << "tiles " << built.numTiles << ", rects " << built.numTilesRect << ", rendered "
+                 << built.renderedTiles << ", vertices " << mesh.buffer.getCount() << ", submeshes " << mesh.numSubmeshes
+                 << ", texture " << mesh.submeshes[0].material.baseColorTexture.getWidth());
     EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().x, 2.0f);
     EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().y, 1.0f);
 }
