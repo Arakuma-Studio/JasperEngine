@@ -20,6 +20,7 @@
 #include "App.h"
 #include "Project.h"
 #include "render/RenderUtil.h"
+#include "subsystem/RenderSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "render/SystemRender.h"
 #include "profiler/FrameTimes.h"
@@ -217,8 +218,31 @@ void getRenderStatsTool(const CallPtr& call){
             }
         }
     }
+    // the SSR G-buffer pass's reflection probes and the composite's slots for them (the frame's
+    // view): a probe without a slot keeps its probe reflection without SSR
+    std::string ssrText;
+    if (sceneProject && sceneProject->scene && sceneProject->scene->isSSREnabled()){
+        if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>()){
+            const SSRViewStats& stats = render->getSSRStats();
+            if (stats.valid){
+                Json probes = Json::array();
+                for (const SSRViewStats::Probe& probe : stats.probes){
+                    probes.push_back({{"entity", probe.entity}, {"name", sceneProject->scene->getEntityName(probe.entity)},
+                                      {"slot", probe.slot >= 0 ? Json(probe.slot) : Json(nullptr)},
+                                      {"coverage", round3(probe.coverage)}});
+                }
+                const unsigned int withoutSlot = stats.probesWithoutSlot();
+                data["ssr"] = {{"probe_slots", SSR_PROBE_SLOTS}, {"probes_in_view", stats.probes.size()},
+                               {"probes_without_slot", withoutSlot}, {"meshes_drawn", stats.meshesDrawn}, {"probes", probes}};
+                if (!stats.probes.empty()){
+                    ssrText = ", SSR: " + std::to_string(stats.probes.size() - withoutSlot) + "/" + std::to_string(stats.probes.size()) +
+                              " probes with slots";
+                }
+            }
+        }
+    }
     std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws, " +
-        std::to_string(data["passes"].get<uint32_t>()) + " passes, CPU " + std::to_string(data["cpu_ms"].get<double>()).substr(0, 6) + " ms";
+        std::to_string(data["passes"].get<uint32_t>()) + " passes, CPU " + std::to_string(data["cpu_ms"].get<double>()).substr(0, 6) + " ms" + ssrText;
     if (!data["drawn"].get<bool>())
         text += " (this view has not drawn in a recorded frame)";
     call->ok(text + ".", data);

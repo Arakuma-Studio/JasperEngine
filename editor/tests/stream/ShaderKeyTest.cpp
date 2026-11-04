@@ -418,6 +418,9 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(17), "depth_Vab"},
         {ShaderType::GBUFFER, shaderPropertyBit(14), "gbuffer_Vat"},
         {ShaderType::GBUFFER, shaderPropertyBit(15), "gbuffer_Vab"},
+        // bits 16-17: the SSR composite's occlusion map and the second UV set
+        {ShaderType::GBUFFER, shaderPropertyBit(16), "gbuffer_Occ"},
+        {ShaderType::GBUFFER, shaderPropertyBit(1) | shaderPropertyBit(16) | shaderPropertyBit(17), "gbuffer_NorOccUv2"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
         {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVab"},
