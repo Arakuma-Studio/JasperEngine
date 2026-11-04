@@ -1319,6 +1319,8 @@ endif()
 
 # navigation (S19): its own list, so the streams adding editor files do not meet here
 include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
+# the Voxel Volume's human editor (T6 R59-R65)
+include(${EDITOR_DIR}/voxel/VoxelEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
 
