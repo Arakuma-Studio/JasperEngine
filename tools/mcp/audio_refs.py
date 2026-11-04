@@ -19,6 +19,7 @@ any arithmetic, which is then double (Python floats), as the spec's draws are.
 
 from __future__ import annotations
 
+import json
 import math
 import struct
 from dataclasses import dataclass, field
@@ -92,12 +93,12 @@ class Event:
     delay_ms: tuple[float, float] = (0.0, 0.0)
 
     @staticmethod
-    def from_yaml(data: dict) -> "Event":
-        """From a parsed .soundevent (block-style keys of section 2.2.1)."""
-        clips = [Clip(path=c["path"], weight=c.get("weight", 1.0), volume_db=c.get("volume_db", 0.0),
+    def from_file(data: dict, guid: str) -> "Event":
+        """From a parsed .soundevent and the GUID of its .meta (R1)."""
+        clips = [Clip(path=c["clip"].get("path", ""), weight=c.get("weight", 1.0), volume_db=c.get("volume_db", 0.0),
                       pitch_semitones=c.get("pitch_semitones", 0.0), delay_ms=c.get("delay_ms", 0.0))
                  for c in data.get("clips", [])]
-        return Event(guid=str(data["guid"]), mode=data.get("mode", "random"), clips=clips,
+        return Event(guid=guid, mode=data.get("mode", "random"), clips=clips,
                      avoid_repeat=data.get("avoid_repeat", True),
                      pitch_semitones=tuple(data.get("pitch_semitones", (0.0, 0.0))),
                      volume_db=tuple(data.get("volume_db", (0.0, 0.0))),
@@ -220,3 +221,28 @@ def clip_variation(seed: int, entity: int, play_index: int, pitch_random: float,
     pitch = -p + rng.uniform() * (2 * p) if p != 0 else 0.0
     volume = -v + rng.uniform() * v if v != 0 else 0.0
     return pitch, volume
+
+
+def write_tone(path, seconds: float = 0.3, frequency: float = 1000.0, amplitude: float = 0.5, rate: int = 44100) -> None:
+    """A 16-bit mono PCM WAV of a sine."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    samples = int(seconds * rate)
+    data = b"".join(struct.pack("<h", int(round(amplitude * 32767 * math.sin(2 * math.pi * frequency * i / rate))))
+                    for i in range(samples))
+    header = b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
+    path.write_bytes(header + b"data" + struct.pack("<I", len(data)) + data)
+
+
+TRACE_ENV = {"JASPERENGINE_AUDIO_TRACE": "1", "JASPERENGINE_AUDIO_BACKEND": "null"}
+TRACE_PREFIX = "[audio] "
+
+
+def voice_lines(entries: list[dict]) -> list[dict]:
+    """The voice lines of JASPERENGINE_AUDIO_TRACE=1 in read_console entries, in order."""
+    lines = []
+    for entry in entries:
+        message = entry.get("message", "")
+        at = message.find(TRACE_PREFIX)
+        if at >= 0:
+            lines.append(json.loads(message[at + len(TRACE_PREFIX):]))
+    return lines

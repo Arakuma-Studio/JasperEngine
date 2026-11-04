@@ -8,6 +8,7 @@
 
 #include "Stream.h"
 #include "StreamSchema.h"
+#include "audio/SoundEvent.h"
 #include "pool/SoundPool.h"
 #include "util/YamlNumbers.h"
 
@@ -589,6 +590,20 @@ YAML::Node LegacyCodecs::encodeAudioSourceComponent(const AudioSourceComponent& 
     if (audio.priority != defaults.priority) node["priority"] = audio.priority;
     if (audio.maxVoices != defaults.maxVoices) node["maxVoices"] = audio.maxVoices;
     if (audio.ignoreListenerPause != defaults.ignoreListenerPause) node["ignoreListenerPause"] = audio.ignoreListenerPause;
+    // Sound Events and triggers (S37 R9), the same rule
+    if (!audio.event.empty()) encodeAssetRef(node, "event", audio.event);
+    if (audio.playOn != defaults.playOn) {
+        YAML::Node names(YAML::NodeType::Sequence);
+        names.SetStyle(YAML::EmitterStyle::Flow);
+        for (uint32_t flag = 1; flag <= AudioPlayOn_Sensor3D; flag <<= 1) {
+            if (audio.playOn & flag) names.push_back(audioPlayOnName(flag));
+        }
+        node["playOn"] = names;
+    }
+    if (audio.minImpactSpeed != defaults.minImpactSpeed) encodeFinite(node, "minImpactSpeed", audio.minImpactSpeed);
+    if (audio.fullVolumeImpactSpeed != defaults.fullVolumeImpactSpeed) encodeFinite(node, "fullVolumeImpactSpeed", audio.fullVolumeImpactSpeed);
+    if (audio.pitchRandomSemitones != defaults.pitchRandomSemitones) encodeFinite(node, "pitchRandomSemitones", audio.pitchRandomSemitones);
+    if (audio.volumeRandomDb != defaults.volumeRandomDb) encodeFinite(node, "volumeRandomDb", audio.volumeRandomDb);
 
     return node;
 }
@@ -631,6 +646,15 @@ AudioSourceComponent LegacyCodecs::decodeAudioSourceComponent(const YAML::Node& 
     audio.priority = node["priority"] ? std::clamp(YamlNumbers::as<int>(node["priority"]), 0, 256) : defaults.priority;
     audio.maxVoices = node["maxVoices"] ? std::clamp(YamlNumbers::as<int>(node["maxVoices"]), 1, 64) : defaults.maxVoices;
     audio.ignoreListenerPause = node["ignoreListenerPause"] ? YamlNumbers::as<bool>(node["ignoreListenerPause"]) : defaults.ignoreListenerPause;
+    audio.event = node["event"] ? decodeAssetRef(node, "event") : defaults.event;
+    audio.playOn = defaults.playOn;
+    if (node["playOn"] && node["playOn"].IsSequence()) {
+        for (const YAML::Node& item : node["playOn"]) audio.playOn |= audioPlayOnFromName(item.Scalar());
+    }
+    audio.minImpactSpeed = node["minImpactSpeed"] ? decodeFinite(node["minImpactSpeed"], audio.minImpactSpeed) : defaults.minImpactSpeed;
+    audio.fullVolumeImpactSpeed = node["fullVolumeImpactSpeed"] ? decodeFinite(node["fullVolumeImpactSpeed"], audio.fullVolumeImpactSpeed) : defaults.fullVolumeImpactSpeed;
+    audio.pitchRandomSemitones = node["pitchRandomSemitones"] ? decodeFinite(node["pitchRandomSemitones"], audio.pitchRandomSemitones) : defaults.pitchRandomSemitones;
+    audio.volumeRandomDb = node["volumeRandomDb"] ? decodeFinite(node["volumeRandomDb"], audio.volumeRandomDb) : defaults.volumeRandomDb;
 
     bool keepLoadedSample = oldAudio && oldFilename == audio.filename && oldAudio->sample && oldAudio->loaded;
     if (!keepLoadedSample && oldAudio && !oldFilename.empty()) {

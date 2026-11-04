@@ -197,6 +197,7 @@ namespace jasperengine{
         std::vector<AudioOneShot> mainLayers;
         std::string preloadedEvent;            // the event whose clips were asked to load
         uint64_t startCount = 0;               // clip mode's starts: each one's generator index (R11)
+        uint32_t boundPlayOn = 0;              // the UI triggers it is subscribed to
     };
 
 }

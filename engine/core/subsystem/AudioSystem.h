@@ -9,6 +9,7 @@
 #include "component/AudioSourceComponent.h"
 #include "ecs/Entity.h"
 
+#include <atomic>
 #include <functional>
 #include <map>
 #include <memory>
@@ -24,6 +25,8 @@ namespace SoLoud{
 namespace jasperengine{
 
 	class Scene;
+	class SoundHandle;
+	struct PlayOptions;
 	struct SoundEventAsset;
 	struct SoundEventSpatial;
 
@@ -47,7 +50,7 @@ namespace jasperengine{
 	struct AudioVoiceLine {
 		enum class Kind { Start, Stop, Reject };
 		Kind kind = Kind::Start;
-		// stop: "stop", "stolen_instance", "stolen_source", "stolen_budget". reject: "budget",
+		// stop: "stop", "stop_all", "stolen_instance", "stolen_source", "stolen_budget". reject: "budget",
 		// "max_voices", "cooldown", "instance_limit", "missing_clip", "missing_event", "impact_gate"
 		const char* reason = "";
 		unsigned int handle = 0;
@@ -160,6 +163,25 @@ namespace jasperengine{
 		std::vector<PendingPointVoice> pendingPointVoices;
 
 		using VoiceExtras = AudioVoiceExtras;
+		// a voice the scene plays by a trigger (R12): queued by the signal, started by the update
+		struct TriggerEvent {
+			uint32_t flag = 0;
+			Entity entity = NULL_ENTITY;
+			Entity other = NULL_ENTITY;
+			// a contact's approach speed; < 0: none
+			float speed = -1.0f;
+		};
+		// what the signals' callbacks hold: copies of a component keep them, so they must not hold the system
+		struct TriggerSink {
+			AudioSystem* system = nullptr;
+		};
+
+		std::shared_ptr<TriggerSink> triggerSink;
+		std::vector<TriggerEvent> triggerQueue;
+		std::vector<TriggerEvent> contactQueue3D;
+		// the flags the sources need, and which physics signals that makes it subscribed to
+		uint32_t physicsNeeded = 0;
+		uint32_t physicsBound = 0;
 		// a play of an event, through startEvent
 		struct EventPlay {
 			enum class Owner { Main, OneShot };
@@ -173,6 +195,9 @@ namespace jasperengine{
 			float impactSpeed = -1.0f;
 			const char* cause = "event";
 			const char* trigger = "";
+			// a free voice: its name in the lines, and its group when the play asked for one
+			const char* ownerName = nullptr;
+			const std::string* group = nullptr;
 		};
 		struct StartedPlay {
 			uint64_t instance = 0;
@@ -204,6 +229,18 @@ namespace jasperengine{
 		std::string eventGroup(const SoundEventAsset& event, const std::string& fallback);
 		void clipVariation(AudioSourceComponent& audio, Entity entity, float& volumeScale, float& speedScale);
 		void preloadEvent(AudioSourceComponent& audio);
+		// ---- triggers (R12)
+		void queueTrigger(uint32_t flag, Entity entity, Entity other, float speed);
+		void syncUiTriggers(AudioSourceComponent& audio, Entity entity, uint32_t desired);
+		void syncPhysicsTriggers(uint32_t needed);
+		void removeTriggerSubscriptions();
+		void drainTriggers();
+		void playTrigger(const TriggerEvent& event, Entity entity);
+		// ---- free voices (R13)
+		bool startFree(uint32_t slot);
+		void updateFreeVoices(double scaledDt, double unscaledDt, bool hasListener, const std::function<Vector3(const Vector3&)>& heard,
+		                      bool doppler, bool& any3D);
+		void forgetFreeVoices();
 		void logReject(const char* reason, Entity entity, const std::string& clip, const SoundEventAsset* event, const std::string& eventName,
 		               const char* owner, const char* cause, const char* trigger, float impactSpeed, int priority, const std::string& group);
 		bool desiredPause(const AudioSourceComponent& audio) const;
@@ -216,6 +253,7 @@ namespace jasperengine{
 
 	public:
 		AudioSystem(Scene* scene);
+		~AudioSystem() override;
 
 		static SoLoud::Soloud& getSoloud();
 		static bool init();
@@ -248,6 +286,35 @@ namespace jasperengine{
 		static void setVoiceObserver(std::function<void(const AudioVoiceLine&)> observer);
 		// The generator's seed of this run, chosen at its first use
 		static uint64_t getSoundEventSeed();
+
+		// ---- free voices: Audio::play and SoundHandle
+		enum class FreeValue { Volume, Pitch, Pan };
+		static SoundHandle playFree(const std::string& eventOrClip, const PlayOptions& options, const char* cause);
+		// the voices of Audio.play, triggers and one-shots: all, or those on `group` or below it
+		static int stopFreeAndOneShots(const std::string& group);
+		static bool freeIsValid(uint32_t id, uint32_t generation);
+		static bool freeIsPlaying(uint32_t id, uint32_t generation);
+		static void freeStop(uint32_t id, uint32_t generation);
+		static void freePause(uint32_t id, uint32_t generation, bool paused);
+		static void freeFadeOut(uint32_t id, uint32_t generation, float seconds, bool pause, bool unscaled);
+		static void freeFadeTo(uint32_t id, uint32_t generation, float volume, float seconds, bool unscaled);
+		static float freeGet(uint32_t id, uint32_t generation, FreeValue value);
+		static void freeSet(uint32_t id, uint32_t generation, FreeValue value, float amount);
+		static Vector3 freeGetPosition(uint32_t id, uint32_t generation);
+		static void freeSetPosition(uint32_t id, uint32_t generation, const Vector3& position);
+		static double freeGetTime(uint32_t id, uint32_t generation);
+		static int freeGetVoiceCount(uint32_t id, uint32_t generation);
+
+		// While one lives on this thread (the physics system delivering its contacts), the calls of
+		// Audio and SoundHandle defer to the frame's audio update (R13); off the main thread they always do
+		class JASPERENGINE_API PhysicsCallbackScope {
+		public:
+			PhysicsCallbackScope();
+			~PhysicsCallbackScope();
+			PhysicsCallbackScope(const PhysicsCallbackScope&) = delete;
+			PhysicsCallbackScope& operator=(const PhysicsCallbackScope&) = delete;
+		};
+		static bool isDeferringCalls();
 
 		static void stopAll();
 		// the game's pause of everything (Lua AudioSystem.pauseAll / resumeAll): the Master bus (every

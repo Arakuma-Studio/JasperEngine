@@ -43,6 +43,7 @@ namespace jasperengine{
         float combinedFriction = 0.0f;
         float combinedRestitution = 0.0f;
         bool sensor = false;
+        float approachSpeed = 0.0f;
     };
 
     // A 3D contact manifold of the global events (onContactAdded3D...). Delivered after the
@@ -104,6 +105,10 @@ namespace jasperengine{
 
         bool isSensor() const;
         void setIsSensor(bool sensor);
+
+        // How fast the bodies came together along the normal before the solver, units a second:
+        // max(0, (v1 - v2) . n), at the manifold's centre
+        float getApproachSpeed() const;
     };
 }
 

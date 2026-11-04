@@ -11,12 +11,17 @@
 #include "../ScriptDataTestSupport.h"
 
 #include "Scene.h"
+#include "component/CameraComponent.h"
 #include "audio/AudioMixer.h"
 #include "audio/SoundEventIO.h"
 #include "audio/SoundEventLibrary.h"
+#include "component/ButtonComponent.h"
+#include "component/UIComponent.h"
+#include "object/sound/Audio.h"
 #include "object/sound/AudioSource.h"
 #include "pool/SoundPool.h"
 #include "subsystem/AudioSystem.h"
+#include "subsystem/PhysicsSystem.h"
 
 #include "json.hpp"
 #include "soloud.h"
@@ -381,8 +386,8 @@ TEST_F(SoundEventRuntimeTest, LayerIsOneInstanceOfMainVoices) {
     const std::string name = install(event);
     AudioSource sound = source(name);
     int started = 0, stopped = 0;
-    sound.getComponent<AudioSourceComponent>().onStart = std::function<void()>([&]() { started++; });
-    sound.getComponent<AudioSourceComponent>().onStop = std::function<void()>([&]() { stopped++; });
+    sound.getComponent<AudioSourceComponent>().onStart.add("test", std::function<void()>([&]() { started++; }));
+    sound.getComponent<AudioSourceComponent>().onStop.add("test", std::function<void()>([&]() { stopped++; }));
     sound.play();
     step();
     const auto voices = starts();
@@ -639,4 +644,400 @@ TEST_F(SoundEventRuntimeTest, PlainSourceUnchanged) {
     EXPECT_EQ(starts()[0].event, "");
     EXPECT_FLOAT_EQ(starts()[0].pitch, 1.0f);
     EXPECT_FLOAT_EQ(starts()[0].gain, 1.0f);
+}
+
+// ---------------------------------------------------------------- triggers (R12, AC6)
+
+namespace {
+
+    class SoundEventTriggerTest : public SoundEventRuntimeTest {
+    protected:
+        AudioSource uiSource(uint32_t flags) {
+            AudioSource sound = source();
+            sound.loadSound("c0.wav");
+            scene->addComponent<UIComponent>(sound.getEntity(), UIComponent());
+            scene->addComponent<ButtonComponent>(sound.getEntity(), ButtonComponent());
+            sound.setPlayOn(flags);
+            return sound;
+        }
+        UIComponent& ui(AudioSource& sound) { return scene->getComponent<UIComponent>(sound.getEntity()); }
+        ButtonComponent& button(AudioSource& sound) { return scene->getComponent<ButtonComponent>(sound.getEntity()); }
+    };
+
+}
+
+TEST_F(SoundEventTriggerTest, UiClickPressHoverEachStartAVoice) {
+    AudioSource sound = uiSource(AudioPlayOn_UIClick | AudioPlayOn_UIPress | AudioPlayOn_UIHover);
+    step();
+    EXPECT_TRUE(ui(sound).onClick.hasSubscribers());
+    ui(sound).onClick.call(1.0f, 2.0f);
+    step();
+    ASSERT_EQ(starts().size(), 1u);
+    EXPECT_STREQ(starts()[0].trigger, "ui_click");
+    EXPECT_STREQ(starts()[0].cause, "trigger");
+    EXPECT_STREQ(starts()[0].owner, "one_shot");
+    button(sound).onPress.call();
+    step();
+    ASSERT_EQ(starts().size(), 2u);
+    EXPECT_STREQ(starts()[1].trigger, "ui_press");
+    ui(sound).onPointerEnter.call(1.0f, 2.0f);
+    step();
+    ASSERT_EQ(starts().size(), 3u);
+    EXPECT_STREQ(starts()[2].trigger, "ui_hover");
+}
+
+TEST_F(SoundEventTriggerTest, ATriggerPlaysTheEventOfAnEventSource) {
+    SoundEventDef event = def(SoundEventMode::Sequence, 2);
+    const std::string name = install(event);
+    AudioSource sound = uiSource(AudioPlayOn_UIClick);
+    sound.getComponent<AudioSourceComponent>().event = name;
+    step();
+    ui(sound).onClick.call(0.0f, 0.0f);
+    step();
+    ASSERT_EQ(starts().size(), 1u);
+    EXPECT_EQ(starts()[0].eventPath, name);
+    EXPECT_STREQ(starts()[0].trigger, "ui_click");
+}
+
+TEST_F(SoundEventTriggerTest, NoFlagNoSubscription) {
+    AudioSource plain = source();
+    plain.loadSound("c0.wav");
+    scene->addComponent<UIComponent>(plain.getEntity(), UIComponent());
+    run(0.1);
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    EXPECT_FALSE(ui(plain).onClick.hasSubscribers());
+    EXPECT_FALSE(physics->beginContact2D.hasSubscribers());
+    EXPECT_FALSE(physics->hitContact2D.hasSubscribers());
+    EXPECT_FALSE(physics->beginSensorContact2D.hasSubscribers());
+    EXPECT_FALSE(physics->onContactAdded3D.hasSubscribers());
+}
+
+TEST_F(SoundEventTriggerTest, SubscribedOnlyForWhatASourceNeedsAndGoneAfter) {
+    std::shared_ptr<PhysicsSystem> physics = scene->getSystem<PhysicsSystem>();
+    AudioSource sound = source();
+    sound.loadSound("c0.wav");
+    sound.setPlayOn(AudioPlayOn_Collision3D);
+    step();
+    EXPECT_TRUE(physics->onContactAdded3D.hasSubscribers());
+    EXPECT_FALSE(physics->beginContact2D.hasSubscribers());
+
+    sound.setPlayOn(AudioPlayOn_Sensor2D);
+    step();
+    EXPECT_FALSE(physics->onContactAdded3D.hasSubscribers());
+    EXPECT_TRUE(physics->beginSensorContact2D.hasSubscribers());
+
+    sound.setEnabled(false);
+    step();
+    EXPECT_FALSE(physics->beginSensorContact2D.hasSubscribers()) << "a disabled source needs nothing";
+    sound.setEnabled(true);
+    step();
+    EXPECT_TRUE(physics->beginSensorContact2D.hasSubscribers());
+
+    scene->getSystem<AudioSystem>()->stopSceneSounds();
+    EXPECT_FALSE(physics->beginSensorContact2D.hasSubscribers()) << "Stop and teardown remove them";
+}
+
+TEST_F(SoundEventTriggerTest, UiFlagRemovedAndUsersSubscribersKept) {
+    AudioSource sound = uiSource(AudioPlayOn_UIClick);
+    int mine = 0;
+    ui(sound).onClick.add("user", std::function<void(float, float)>([&](float, float) { mine++; }));
+    step();
+    sound.setPlayOn(0);
+    step();
+    ui(sound).onClick.call(0.0f, 0.0f);
+    step();
+    EXPECT_EQ(mine, 1);
+    EXPECT_TRUE(starts().empty());
+}
+
+TEST_F(SoundEventTriggerTest, DroppedWhileTheScenesAudioIsPaused) {
+    AudioSource sound = uiSource(AudioPlayOn_UIClick);
+    step();
+    scene->getSystem<AudioSystem>()->setPaused(true);
+    ui(sound).onClick.call(0.0f, 0.0f);
+    step();
+    scene->getSystem<AudioSystem>()->setPaused(false);
+    step();
+    EXPECT_TRUE(starts().empty());
+}
+
+TEST_F(SoundEventTriggerTest, FlagsSetThroughTheLuaObject) {
+    AudioSource sound = source();
+    sound.setPlayOn(AudioPlayOn_All | 1024u);
+    EXPECT_EQ(sound.getPlayOn(), (uint32_t)AudioPlayOn_All);
+    sound.setMinImpactSpeed(-1.0f);
+    EXPECT_FLOAT_EQ(sound.getMinImpactSpeed(), 0.0f);
+    sound.setPitchRandomSemitones(30.0f);
+    EXPECT_FLOAT_EQ(sound.getPitchRandomSemitones(), 24.0f);
+    sound.setVolumeRandomDb(std::nanf(""));
+    EXPECT_FLOAT_EQ(sound.getVolumeRandomDb(), 0.0f);
+}
+
+// ---------------------------------------------------------------- Audio.play and SoundHandle (R13, AC7)
+
+TEST_F(SoundEventRuntimeTest, AudioPlayStartsAClipAndAHandleGoesInvalidAfterTheEnd) {
+    SoundHandle handle = Audio::play("c0.wav");
+    ASSERT_TRUE(handle.isValid());
+    EXPECT_TRUE(handle.isPlaying());
+    EXPECT_EQ(handle.getVoiceCount(), 1);
+    ASSERT_EQ(starts().size(), 1u);
+    EXPECT_STREQ(starts()[0].owner, "free");
+    EXPECT_STREQ(starts()[0].cause, "cpp");
+    run(0.7);
+    EXPECT_FALSE(handle.isValid());
+    EXPECT_FLOAT_EQ(handle.getVolume(), 0.0f);
+    EXPECT_EQ(handle.getVoiceCount(), 0);
+    // a setter of an invalid handle does nothing
+    handle.setVolume(0.5f);
+    handle.stop();
+}
+
+TEST_F(SoundEventRuntimeTest, AudioPlayUnknownNameIsInvalidWithOneWarning) {
+    SoundHandle clip = Audio::play("gone.wav");
+    SoundHandle again = Audio::play("gone.wav");
+    SoundHandle event = Audio::play("gone.soundevent");
+    EXPECT_FALSE(clip.isValid());
+    EXPECT_FALSE(again.isValid());
+    EXPECT_FALSE(event.isValid());
+    EXPECT_EQ(rejects("missing_clip"), 2u);
+    EXPECT_EQ(rejects("missing_event"), 1u);
+}
+
+TEST_F(SoundEventRuntimeTest, AudioPlayOptionsReachTheVoice) {
+    std::string error;
+    ASSERT_TRUE(AudioMixer::loadFromText(R"({"format": "jasperengine.mixer", "version": 1, "groups": [
+        {"id": "00000001", "name": "Master", "parent": null},
+        {"id": "5fx00001", "name": "SFX", "parent": "00000001"}]})", "m.mixer", &error)) << error;
+    PlayOptions options;
+    options.volume = 0.5f;
+    options.pitch = 2.0f;
+    options.group = "SFX";
+    SoundHandle handle = Audio::play("c1.wav", options);
+    ASSERT_TRUE(handle.isValid());
+    ASSERT_EQ(starts().size(), 1u);
+    EXPECT_FLOAT_EQ(starts()[0].gain, 0.5f);
+    EXPECT_FLOAT_EQ(starts()[0].pitch, 2.0f);
+    EXPECT_EQ(starts()[0].group, "5fx00001");
+    EXPECT_FLOAT_EQ(handle.getVolume(), 0.5f);
+    EXPECT_FLOAT_EQ(handle.getPitch(), 2.0f);
+}
+
+TEST_F(SoundEventRuntimeTest, AudioPlayGroupOverridesTheEvents) {
+    std::string error;
+    ASSERT_TRUE(AudioMixer::loadFromText(R"({"format": "jasperengine.mixer", "version": 1, "groups": [
+        {"id": "00000001", "name": "Master", "parent": null},
+        {"id": "5fx00001", "name": "SFX", "parent": "00000001"},
+        {"id": "5fx00002", "name": "UI", "parent": "00000001"}]})", "m.mixer", &error)) << error;
+    SoundEventDef event = def(SoundEventMode::Sequence, 1);
+    event.outputGroupName = "SFX";
+    const std::string name = install(event);
+    Audio::play(name);
+    PlayOptions options;
+    options.group = "UI";
+    Audio::play(name, options);
+    ASSERT_EQ(starts().size(), 2u);
+    EXPECT_EQ(starts()[0].group, "5fx00001");
+    EXPECT_EQ(starts()[1].group, "5fx00002");
+}
+
+TEST_F(SoundEventRuntimeTest, AudioPlayOfALayeredEventHasItsVoices) {
+    const std::string name = install(def(SoundEventMode::Layer, 3));
+    SoundHandle handle = Audio::play(name);
+    ASSERT_TRUE(handle.isValid());
+    EXPECT_EQ(handle.getVoiceCount(), 3);
+    handle.stop();
+    EXPECT_FALSE(handle.isValid());
+    EXPECT_EQ(AudioSystem::getVoiceCount(), 0u);
+}
+
+TEST_F(SoundEventRuntimeTest, AudioPlayRejectedByCooldownIsInvalid) {
+    SoundEventDef event = def(SoundEventMode::Sequence, 1);
+    event.cooldownMs = 1000;
+    const std::string name = install(event);
+    EXPECT_TRUE(Audio::play(name).isValid());
+    EXPECT_FALSE(Audio::play(name).isValid());
+    EXPECT_EQ(rejects("cooldown"), 1u);
+}
+
+TEST_F(SoundEventRuntimeTest, HandlePauseResume) {
+    SoundHandle handle = Audio::play("c0.wav");
+    step();
+    const unsigned int voice = starts()[0].handle;
+    handle.pause();
+    step();
+    EXPECT_FALSE(handle.isPlaying());
+    EXPECT_TRUE(handle.isValid());
+    EXPECT_TRUE(AudioSystem::getSoloud().getPause(voice));
+    const double held = handle.getTime();
+    run(0.1);
+    EXPECT_DOUBLE_EQ(handle.getTime(), held);
+    handle.resume();
+    step();
+    EXPECT_TRUE(handle.isPlaying());
+    EXPECT_FALSE(AudioSystem::getSoloud().getPause(voice));
+}
+
+TEST_F(SoundEventRuntimeTest, HandleFadeOutStopsOrPausesAndPutsTheVolumeBack) {
+    writeSoundEventTone(root / "assets" / "long.wav", 3.0);
+    SoundHandle stopped = Audio::play("long.wav");
+    step();
+    stopped.fadeOut(0.1f);
+    run(0.2);
+    EXPECT_FALSE(stopped.isValid());
+
+    SoundHandle paused = Audio::play("long.wav");
+    step();
+    paused.fadeOut(0.1f, true);
+    run(0.05);
+    EXPECT_LT(paused.getVolume(), 1.0f);
+    run(0.15);
+    EXPECT_TRUE(paused.isValid());
+    EXPECT_FALSE(paused.isPlaying());
+    EXPECT_FLOAT_EQ(paused.getVolume(), 1.0f);
+    paused.resume();
+    step();
+    EXPECT_TRUE(paused.isPlaying());
+
+    paused.fadeTo(0.25f, 0.1f);
+    run(0.2);
+    EXPECT_FLOAT_EQ(paused.getVolume(), 0.25f);
+    EXPECT_TRUE(paused.isPlaying());
+}
+
+TEST_F(SoundEventRuntimeTest, HandleFollowsItsTargetStopsWhenDestroyedAndSettingPositionUnfollows) {
+    const Entity cameraEntity = scene->createEntity();
+    scene->addComponent<Transform>(cameraEntity, Transform());
+    CameraComponent camera;
+    camera.autoResize = false;
+    scene->addComponent<CameraComponent>(cameraEntity, camera);
+    scene->setCamera(cameraEntity);
+    scene->getComponent<CameraComponent>(cameraEntity).worldTarget = Vector3(0, 0, -1);
+    scene->getComponent<CameraComponent>(cameraEntity).steadyWorldUp = Vector3(0, 1, 0);
+
+    writeSoundEventTone(root / "assets" / "long.wav", 3.0);
+    AudioSource carrier(scene, true);
+    carrier.getComponent<Transform>().worldPosition = Vector3(1, 2, 3);
+    PlayOptions options;
+    options.following(carrier);
+    SoundHandle follows = Audio::play("long.wav", options);
+    ASSERT_TRUE(follows.isValid());
+    EXPECT_EQ(follows.getPosition(), Vector3(1, 2, 3));
+    step();
+    carrier.getComponent<Transform>().worldPosition = Vector3(4, 5, 6);
+    step();
+    EXPECT_EQ(follows.getPosition(), Vector3(4, 5, 6));
+
+    // set: no longer following
+    follows.setPosition(Vector3(7, 7, 7));
+    carrier.getComponent<Transform>().worldPosition = Vector3(9, 9, 9);
+    step();
+    EXPECT_EQ(follows.getPosition(), Vector3(7, 7, 7));
+
+    AudioSource other(scene, true);
+    PlayOptions second;
+    second.following(other);
+    SoundHandle stopsWithIt = Audio::play("long.wav", second);
+    ASSERT_TRUE(stopsWithIt.isValid());
+    scene->destroyEntity(other.getEntity());
+    step();
+    EXPECT_FALSE(stopsWithIt.isValid());
+    EXPECT_TRUE(follows.isValid());
+}
+
+TEST_F(SoundEventRuntimeTest, DelayedPlayStartsLaterHandleValidMeanwhile) {
+    PlayOptions options;
+    options.delay = 0.1f;
+    SoundHandle handle = Audio::play("c0.wav", options);
+    EXPECT_TRUE(handle.isValid());
+    EXPECT_EQ(handle.getVoiceCount(), 0);
+    step(0.05);
+    EXPECT_TRUE(starts().empty());
+    run(0.1, 0.05);
+    ASSERT_EQ(starts().size(), 1u);
+    EXPECT_EQ(handle.getVoiceCount(), 1);
+}
+
+TEST_F(SoundEventRuntimeTest, NonFiniteOptionsAreRefused) {
+    PlayOptions options;
+    options.volume = std::nanf("");
+    EXPECT_FALSE(Audio::play("c0.wav", options).isValid());
+    EXPECT_TRUE(starts().empty());
+    SoundHandle handle = Audio::play("c0.wav");
+    handle.setVolume(std::nanf(""));
+    EXPECT_FLOAT_EQ(handle.getVolume(), 1.0f);
+}
+
+TEST_F(SoundEventRuntimeTest, StopAllCountsFreeAndOneShotsNotMainVoices) {
+    std::string error;
+    ASSERT_TRUE(AudioMixer::loadFromText(R"({"format": "jasperengine.mixer", "version": 1, "groups": [
+        {"id": "00000001", "name": "Master", "parent": null},
+        {"id": "5fx00001", "name": "SFX", "parent": "00000001"},
+        {"id": "5fx00011", "name": "Steps", "parent": "5fx00001"},
+        {"id": "5fx00002", "name": "UI", "parent": "00000001"}]})", "m.mixer", &error)) << error;
+    AudioSource music = source();
+    music.loadSound("c0.wav");
+    music.setOutputGroup("SFX");
+    music.play();
+    step();
+    PlayOptions steps;
+    steps.group = "Steps";
+    SoundHandle step1 = Audio::play("c1.wav", steps);
+    PlayOptions sfx;
+    sfx.group = "SFX";
+    SoundHandle sfx1 = Audio::play("c1.wav", sfx);
+    PlayOptions uiGroup;
+    uiGroup.group = "UI";
+    SoundHandle ui1 = Audio::play("c1.wav", uiGroup);
+    music.playOneShot("c2.wav");
+    step();
+    EXPECT_EQ(AudioSystem::getVoiceCount(), 5u);
+
+    EXPECT_EQ(Audio::stopAll("Nothing"), 0);
+    EXPECT_EQ(Audio::stopAll("SFX"), 3) << "free on SFX and below it, and the one-shot on SFX";
+    EXPECT_FALSE(step1.isValid());
+    EXPECT_FALSE(sfx1.isValid());
+    EXPECT_TRUE(ui1.isValid());
+    EXPECT_TRUE(music.isPlaying()) << "main voices are not its";
+    EXPECT_EQ(Audio::stopAll(), 1);
+    EXPECT_TRUE(music.isPlaying());
+}
+
+TEST_F(SoundEventRuntimeTest, CallsInsideAPhysicsCallbackDefer) {
+    SoundHandle handle;
+    SoundHandle before = Audio::play("c0.wav");
+    {
+        AudioSystem::PhysicsCallbackScope scope;
+        EXPECT_TRUE(AudioSystem::isDeferringCalls());
+        handle = Audio::play("c1.wav");
+        EXPECT_TRUE(handle.isValid()) << "valid at once";
+        EXPECT_EQ(handle.getVoiceCount(), 0);
+        EXPECT_EQ(starts().size(), 1u) << "nothing started in the callback";
+        before.stop();
+        EXPECT_TRUE(before.isValid()) << "a stop waits too";
+        EXPECT_EQ(Audio::stopAll("x"), 0);
+    }
+    EXPECT_FALSE(AudioSystem::isDeferringCalls());
+    step();
+    EXPECT_EQ(starts().size(), 2u);
+    EXPECT_EQ(handle.getVoiceCount(), 1);
+    EXPECT_FALSE(before.isValid());
+}
+
+TEST_F(SoundEventRuntimeTest, ADeferredPlayThatStartsNothingGoesInvalid) {
+    SoundHandle handle;
+    {
+        AudioSystem::PhysicsCallbackScope scope;
+        handle = Audio::play("gone.wav");
+        EXPECT_TRUE(handle.isValid());
+    }
+    step();
+    EXPECT_FALSE(handle.isValid());
+}
+
+TEST_F(SoundEventRuntimeTest, SceneTeardownEndsItsFreeVoices) {
+    SoundHandle handle = Audio::play("c0.wav");
+    ASSERT_TRUE(handle.isValid());
+    scene->getSystem<AudioSystem>()->stopSceneSounds();
+    EXPECT_FALSE(handle.isValid());
+    EXPECT_EQ(AudioSystem::getVoiceCount(), 0u);
 }

@@ -55,7 +55,8 @@ namespace {
     }
 
     std::string normalizedPath(const std::string& path) {
-        return std::filesystem::u8path(path).lexically_normal().generic_u8string();
+        const std::u8string normal = std::filesystem::path(std::u8string(path.begin(), path.end())).lexically_normal().generic_u8string();
+        return std::string(normal.begin(), normal.end());
     }
 
     bool sameClipList(const SoundEventDef& a, const SoundEventDef& b) {

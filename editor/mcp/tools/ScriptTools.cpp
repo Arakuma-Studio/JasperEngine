@@ -134,6 +134,7 @@ std::string assetType(const fs::path& path) {
     if (Util::isVertexAnimationFile(p)) return "vertex_animation";
     // Shake Presets (.shake, camera shake spec 6)
     if (Util::isShakePresetFile(p)) return "shake";
+    if (Util::isSoundEventFile(p)) return "sound_event";
     return "other";
 }
 
@@ -142,7 +143,7 @@ bool isTextFile(const fs::path& path) {
         ".lua", ".cpp", ".cc", ".cxx", ".c", ".h", ".hh", ".hpp", ".hxx", ".inl",
         ".material", ".scene", ".prefab", ".yaml", ".yml", ".json", ".txt", ".md", ".csv", ".ini", ".cfg",
         ".glsl", ".vert", ".frag", ".hlsl", ".cmake", ".xml", ".gltf", ".obj", ".mtl", ".svg", ".tsx", ".tmx",
-        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake"
+        ".html", ".htm", ".css", ".rml", ".rcss", ".anim", ".poseanim", ".vat", ".mask", ".controller", ".shake", ".soundevent"
     };
     if (path.filename() == "CMakeLists.txt" || path.filename() == "AGENTS.md") return true;
     return text.count(extensionOf(path)) > 0;
