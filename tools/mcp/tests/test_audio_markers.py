@@ -116,7 +116,7 @@ async def test_spawn_and_destroy_name_their_prefab(ed: Editor):
     scene = (await ed.call("create_scene", name="Spawn", type="2D", path="scenes/Spawn.scene"))["scene"]["id"]
     coin = (await ed.call("create_entity", scene=scene, type="empty", name="Coin"))["entity_id"]
     made = await ed.call("create_prefab", scene=scene, entity=coin, path="prefabs/Coin.prefab")
-    await ed.call("delete_entities", scene=scene, entities=[coin])
+    # (the instance stays in the scene: only prefabs of the build load by path)
     await ed.call("create_entity", scene=scene, type="empty", name="Spawner")
     await ed.call("create_script", kind="lua", name="Spawner", content=SPAWNER, entity="Spawner", scene=scene)
     await ed.call("save_scene", scene=scene)

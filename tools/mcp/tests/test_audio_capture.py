@@ -157,7 +157,8 @@ async def test_session_lines(ed: Editor):
     latency = init["latency_samples"]
     ed.check_eq(latency, session["latency_samples"], "through Master, the session's")
     onset = next(i // 2 for i, v in enumerate(samples) if v != 0.0)
-    ed.check_eq(onset, init["sample"] + latency, f"the first sound is at its stamp + latency_samples ({latency})")
+    # (a sine's first sample is 0: its second is the first that shows)
+    ed.check_eq(onset, init["sample"] + latency + 1, f"the first sound is at its stamp + latency_samples ({latency})")
 
 
 async def test_stop_says_scene(ed: Editor):
