@@ -47,6 +47,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES ${EDITOR_DIR}/mcp/tools/EditorToolsTools
 list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/hub/HubPaths.cpp
     ${EDITOR_DIR}/hub/RecentProjects.cpp
+    ${EDITOR_DIR}/hub/StagingFolders.cpp
     ${EDITOR_DIR}/hub/TemplateCatalog.cpp
     ${EDITOR_DIR}/hub/ProjectImporter.cpp
     ${EDITOR_DIR}/hub/ProjectHubWindow.cpp
