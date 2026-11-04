@@ -1419,10 +1419,11 @@ TEST(SpriteNormalsScene, SceneWarnings) {
     EXPECT_TRUE(sn::sceneWarnings(scene, hero, settings, 32, 32, still, false).empty());
 
     // frames, DirectX, a shader that does not sample the map
-    w = sn::sceneWarnings(scene, hero, settings, 32, 32, std::vector<sn::Delay>(129, sn::Delay{100, 1}), false);
+    w = sn::sceneWarnings(scene, hero, settings, 32, 32, std::vector<sn::Delay>(ARRAY_INDEX_LIMIT + 1, sn::Delay{100, 1}), false);
     ASSERT_EQ(kinds(w), std::vector<std::string>{"too_many_frames"});
-    EXPECT_EQ(w[0].message, "The animation has 129 frames; a Sprite holds at most 128.");
-    EXPECT_TRUE(sn::sceneWarnings(scene, hero, settings, 32, 32, std::vector<sn::Delay>(128, sn::Delay{100, 1}), false).empty());
+    EXPECT_EQ(w[0].message, "The animation has 65537 frames; a Sprite holds at most 65536.");
+    EXPECT_TRUE(sn::sceneWarnings(scene, hero, settings, 32, 32, std::vector<sn::Delay>(129, sn::Delay{100, 1}), false).empty())
+        << "129 frames: more than the old 128-frame capacity";
     sn::Settings dx;
     dx.directx = true;
     w = sn::sceneWarnings(scene, hero, dx, 32, 32, still, true);
