@@ -79,6 +79,10 @@ Entity EntityHandle::getEntity() const{
     return entity;
 }
 
+EntityHandle::operator bool() const{
+    return scene && entity != NULL_ENTITY && scene->isEntityCreated(entity);
+}
+
 void EntityHandle::setName(const std::string& name){
     scene->setEntityName(entity, name);
 }

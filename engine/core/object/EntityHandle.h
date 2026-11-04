@@ -43,6 +43,10 @@ namespace jasperengine{
         Scene* getScene() const;
         Entity getEntity() const;
 
+        // False for an empty handle or a destroyed GameObject (Unity's null): what
+        // GameObject::instantiate returns when the copy's init destroyed it at once
+        explicit operator bool() const;
+
         void setName(const std::string& name);
         std::string getName() const;
 
