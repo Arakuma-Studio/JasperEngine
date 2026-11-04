@@ -104,8 +104,6 @@
 #include <memory>
 #include "script/ScriptMessages.h"
 #include "object/physics/Joint3D.h"
-#include "component/MeshComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 

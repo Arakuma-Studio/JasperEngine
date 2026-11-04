@@ -16,8 +16,6 @@
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
-#include "component/MeshComponent.h"
-#include "component/ModelComponent.h"
 
 using namespace jasperengine;
 

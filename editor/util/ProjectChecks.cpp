@@ -55,10 +55,6 @@
 #include <sstream>
 #include <thread>
 #include "component/ScriptComponent.h"
-#include "component/LineRendererComponent.h"
-#include "component/SkyboxComponent.h"
-#include "component/TrailRendererComponent.h"
-#include "component/UIComponent.h"
 
 using namespace jasperengine;
 using jasperengine::editor::Util;

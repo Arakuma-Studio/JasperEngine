@@ -113,9 +113,6 @@
 #include <unordered_set>
 #include <memory>
 #include "component/LatticeFollowerComponent.h"
-#include "component/MeshComponent.h"
-#include "component/SpriteComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 

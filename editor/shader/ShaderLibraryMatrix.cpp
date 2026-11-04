@@ -13,7 +13,6 @@
 #include <set>
 #include <sstream>
 #include <tuple>
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

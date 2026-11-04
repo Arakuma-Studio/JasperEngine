@@ -23,9 +23,6 @@
 
 #include <algorithm>
 #include <unordered_map>
-#include "component/TerrainComponent.h"
-#include "component/Transform.h"
-#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

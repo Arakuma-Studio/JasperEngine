@@ -13,9 +13,6 @@
 #include "animation/VertexAnimatorRuntime.h"
 
 #include <algorithm>
-#include "component/InstancedMeshComponent.h"
-#include "component/MeshComponent.h"
-#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 

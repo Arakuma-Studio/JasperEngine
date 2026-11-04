@@ -24,7 +24,6 @@
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
 #include "action/keyframe/TranslateTracks.h"
-#include "component/ActionComponent.h"
 #include "component/TweenComponent.h"
 
 using namespace jasperengine;

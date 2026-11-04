@@ -19,7 +19,6 @@
 #include "pose/ModelRig.h"
 
 #include <algorithm>
-#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 
 using namespace jasperengine;

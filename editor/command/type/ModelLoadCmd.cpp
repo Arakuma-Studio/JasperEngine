@@ -21,7 +21,6 @@
 #include <unordered_map>
 #include <unordered_set>
 #include "component/BoneComponent.h"
-#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 

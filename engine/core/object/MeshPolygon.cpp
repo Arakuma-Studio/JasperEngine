@@ -7,7 +7,6 @@
 #include "Engine.h"
 #include "component/MeshPolygonComponent.h"
 #include "subsystem/MeshSystem.h"
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

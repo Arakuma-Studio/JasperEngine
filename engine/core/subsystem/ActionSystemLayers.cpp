@@ -34,8 +34,6 @@
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
-#include "component/MeshComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using playerdetail::completePropertyRest;

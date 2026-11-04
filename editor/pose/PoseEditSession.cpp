@@ -22,7 +22,6 @@
 #include <functional>
 #include <unordered_map>
 #include <cmath>
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

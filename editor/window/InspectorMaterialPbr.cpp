@@ -24,8 +24,6 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
-#include "component/MeshComponent.h"
-#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 

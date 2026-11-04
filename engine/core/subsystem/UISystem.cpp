@@ -30,7 +30,6 @@
 #include "component/PointsComponent.h"
 #include "component/PolygonComponent.h"
 #include "component/ProgressbarComponent.h"
-#include "component/RectTransformComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/ScrollbarComponent.h"
 #include "component/TextComponent.h"

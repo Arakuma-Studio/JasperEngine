@@ -22,7 +22,6 @@
 #include "component/CanvasGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/RagdollComponent.h"
-#include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
 
 using namespace jasperengine;

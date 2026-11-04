@@ -19,7 +19,6 @@
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/Transform.h"
-#include "component/PrefabComponent.h"
 #include "project/PrefabUnpackRecord.h"
 
 using namespace jasperengine;

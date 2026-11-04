@@ -42,7 +42,6 @@
 #include <cstdlib>
 #include <memory>
 #include <set>
-#include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"

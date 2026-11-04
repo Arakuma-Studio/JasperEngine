@@ -14,7 +14,6 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
 #include "component/TextComponent.h"
-#include "component/UIComponent.h"
 
 using namespace jasperengine;
 

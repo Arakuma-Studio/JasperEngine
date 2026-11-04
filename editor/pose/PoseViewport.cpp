@@ -51,7 +51,6 @@
 #include "component/MorphTracksComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/PanelComponent.h"
-#include "component/PolygonComponent.h"
 #include "component/PositionTweenComponent.h"
 #include "component/ProgressbarComponent.h"
 #include "component/Rigidbody2DComponent.h"
@@ -67,16 +66,6 @@
 #include "component/TranslateTracksComponent.h"
 #include "component/TweenComponent.h"
 #include "component/UIDocumentComponent.h"
-#include "component/ImageComponent.h"
-#include "component/InstancedMeshComponent.h"
-#include "component/Light2DComponent.h"
-#include "component/PointsComponent.h"
-#include "component/ReflectionProbeComponent.h"
-#include "component/SkyboxComponent.h"
-#include "component/SpriteComponent.h"
-#include "component/TerrainComponent.h"
-#include "component/TilemapComponent.h"
-#include "component/UIComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

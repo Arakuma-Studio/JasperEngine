@@ -26,9 +26,6 @@
 #include <cmath>
 #include <limits>
 #include "component/ModelComponent.h"
-#include "component/MeshComponent.h"
-#include "component/SpriteComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using playerdetail::completeRest;

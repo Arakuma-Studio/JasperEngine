@@ -21,7 +21,6 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
-#include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "subsystem/MeshSystem.h"
 #include "component/CameraComponent.h"

@@ -37,7 +37,6 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

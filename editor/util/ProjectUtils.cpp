@@ -112,7 +112,6 @@
 #include "component/RotationTweenComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
-#include "component/ShadowCaster2DComponent.h"
 #include "component/SpriteAnimationComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/TweenComponent.h"

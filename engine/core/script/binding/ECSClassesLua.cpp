@@ -53,9 +53,7 @@
 #include "component/LatticeModifierComponent.h"
 #include "component/LatticeFollowerComponent.h"
 #include "component/LatticeTracksComponent.h"
-#include "component/AnimationComponent.h"
 #include "component/PanelComponent.h"
-#include "component/PointsComponent.h"
 
 using namespace jasperengine;
 

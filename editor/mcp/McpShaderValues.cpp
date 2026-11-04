@@ -21,9 +21,6 @@
 #include <cctype>
 #include <filesystem>
 #include <type_traits>
-#include "component/MeshComponent.h"
-#include "component/PointsComponent.h"
-#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

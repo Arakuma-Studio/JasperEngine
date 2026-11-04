@@ -55,7 +55,6 @@
 #include <vector>
 #include "component/PrefabComponent.h"
 #include "component/InstancedMeshComponent.h"
-#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/Transform.h"
 

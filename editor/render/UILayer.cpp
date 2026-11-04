@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include "component/ProgressbarComponent.h"
 
 using namespace jasperengine;
 

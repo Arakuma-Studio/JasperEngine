@@ -4,7 +4,6 @@
 #include "Primitive.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

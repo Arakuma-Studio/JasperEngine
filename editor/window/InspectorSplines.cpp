@@ -27,7 +27,6 @@
 #include <algorithm>
 #include <string>
 #include "object/spline/Spline.h"
-#include "component/MeshComponent.h"
 #include "component/Transform.h"
 
 using namespace jasperengine;

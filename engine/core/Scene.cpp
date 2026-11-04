@@ -34,14 +34,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include "component/ActionComponent.h"
-#include "component/AnimationPlayerComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "component/PanelComponent.h"
 #include "component/ScrollbarComponent.h"
-#include "component/UIComponent.h"
 
 using namespace jasperengine;
 

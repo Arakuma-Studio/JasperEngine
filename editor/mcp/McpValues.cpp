@@ -84,8 +84,6 @@
 #include <mutex>
 #include <set>
 #include "component/CanvasGroupComponent.h"
-#include "component/RectTransformComponent.h"
-#include "component/SpriteComponent.h"
 
 namespace fs = std::filesystem;
 
