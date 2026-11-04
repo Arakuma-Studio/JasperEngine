@@ -1,4 +1,4 @@
-# S43 — Saved files do not depend on what was drawn or loaded
+# S63 — Saved files do not depend on what was drawn or loaded
 
 **Depends on.** BF20 (the same class of bug), S03. Touches `editor/Factory.cpp`, `engine/core/subsystem/AtmosphereRenderer.cpp`,
 serialization and reflection.

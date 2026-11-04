@@ -1,4 +1,4 @@
-# S48 — Linked folders behave like normal folders: exports ship them, and one file has one GUID
+# S68 — Linked folders behave like normal folders: exports ship them, and one file has one GUID
 
 **Depends on.** S04 (GUIDs in `.meta`, `AssetIndex`, `AssetOps`), S03, S05. Reference (read only, adapt to S04, no copying of its
 `AssetDatabase`): sound-layer `docs/superpowers/specs/2026-10-19-sound-layer-cleanup-design.md` §2.A1 and §5.A.1,

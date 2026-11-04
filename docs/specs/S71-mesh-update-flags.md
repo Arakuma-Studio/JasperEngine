@@ -1,4 +1,4 @@
-# S51 — Cheap Mesh update flags (measure first)
+# S71 — Cheap Mesh update flags (measure first)
 
 **Depends on.** S07, S08. Touches `editor/Catalog.cpp:398`, `editor/Stream.cpp:5401`. Reference: sound-layer cleanup design §5.A.4 and
 `test_cleanup_group_a.py::test_a3_stop_decodes_changed_meshes_cheaply`, in `je-wt/snd-ro`.

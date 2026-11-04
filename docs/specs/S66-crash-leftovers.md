@@ -1,4 +1,4 @@
-# S46 — Crash leftovers clean themselves up
+# S66 — Crash leftovers clean themselves up
 
 **Depends on.** S03 (file locks), S27 (Hub, templates), BF21. Touches `editor/hub/HubPaths.cpp`, `editor/hub/TemplateCatalog.cpp`.
 
