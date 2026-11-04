@@ -24,6 +24,8 @@ import harness
 from harness import REPO, Editor, TestFailure
 
 EDITOR = {"create": True, "name": "NormalsCheck"}
+CI_EXCLUDED = ("long-running (about 6 minutes on a loaded server: projects made through MCP, each checked with the binary); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 600
 
 FIXTURES = REPO / "editor" / "spritenormals" / "tests" / "fixtures" / "inputs"

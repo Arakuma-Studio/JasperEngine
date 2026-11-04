@@ -170,7 +170,7 @@ never build or run them.
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | implementing |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | implementing |
-| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | implementing |
+| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | in review |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
@@ -195,11 +195,40 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
   - It runs in the current worktree and waits for one of 2 global slots, with `JOBS=4` and
     `DOCKER_CPUS=4` each.
   - ccache is shared between worktrees, since each worktree mounts at `/src`.
+- Real Aseprite 1.3.18.6, built from source in Docker for golden files (personal use, never
+  redistributed): `/var/lib/orquester/workspaces/jaspersito/tools-aseprite/aseprite -b <args>`.
 - `build/fixture-unity` (the MCP fixture project) is not available. MCP tests that need it are
   skipped, and reports must say so.
 
+### Landing gate (from `AGENTS.md`, rewritten upstream on 2026-11-04)
+
+Before a spec is merged into `main` and pushed, the merged tree passes:
+- `WERROR=1 tools/build.sh linux` and `WERROR=1 tools/build.sh unit-tests`;
+- the MCP suite: `MCP_SUITE=all` where the fixture exists. `build/fixture-unity` (TappyPlane)
+  isn't on this host, so tests that need it skip and the report lists them;
+- `web` and `android` builds when runtime code changed;
+- the area lints (raw writes, stream keys, shortcuts, notices), plus the regenerated `TOOLS.md`
+  and `tool_budget.py --check`.
+
+There is no CI.
+
 ## Log
 
+- 2026-11-04: S44 implementation reported at `a06bf6491`, with `main` merged in.
+  - Passing: `WERROR=1` linux, unit-tests, web and android builds; 5,733 unit tests; the MCP
+    suite with `tools/fixtures/tween-curve` standing in for the missing fixture.
+  - Still open: the Sprite Preview editor test and screenshots, `aseprite_compat.py`, and
+    real-Aseprite goldens.
+  - An independent review is running. The Aseprite CLI is being built from source in Docker
+    (`/var/lib/orquester/workspaces/jaspersito/tools-aseprite/`) to author real goldens.
+- 2026-11-04: Baseline `tools/build.sh unit-tests` of `main` (87 min): core 2,808 passed and
+  1 failed (`NavBakeTest.RuntimeUpdateTiles`, failing on `main` before any pixel-art code);
+  editor 2,842 passed and 7 disabled.
+- 2026-11-04: Upstream rewrote `AGENTS.md` as the only manual (`CLAUDE.md` = `@AGENTS.md`)
+  and removed CI. It now requires `WERROR=1`, a `tools/mcp/eval` case for new MCP text, migration
+  fixtures, and the full suite before big pushes. `main` merged it and was pushed. The implementer
+  brief was updated, and the S41, S43 and S44 implementers were told to merge `main` and follow
+  the new rules.
 - 2026-11-04: The split with the Doriax catch-up program is agreed and recorded in both ledgers.
   - `dc/sprite-batching` (their program, started now) owns generic dynamic batching: sprites,
     small meshes and UI quads; 2D reordering; settled objects; buffers shared by content; and the

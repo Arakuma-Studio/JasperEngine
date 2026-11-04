@@ -64,6 +64,7 @@
 #include "reload/HotReloadService.h"
 #include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
+#include "shortcuts/PanelClaims.h"
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
@@ -73,6 +74,7 @@
 #include "diag/HangWatchdog.h"
 #include "util/FileDialogs.h"
 #include "util/ProjectUtils.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 
 #include "EditorVersion.h"
@@ -340,7 +342,7 @@ editor::PlatformMenuItem catalogItem(const char* id, std::string label = {}, boo
                        !def->enabled || def->enabled());
     if (!item.enabled && def->disabledReason) item.tooltip = def->disabledReason();
     item.command.payload = def->menuPayload;
-    item.shortcut = catalog.menuShortcutText(id);
+    item.shortcut = catalog.menuShortcutText(editor::PanelClaims::editor().shownCommand(id));
     item.checked = checked;
     return item;
 }
@@ -778,6 +780,11 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         action != AppMenuCommand::ProjectHub && action != AppMenuCommand::Exit) {
         return;
     }
+    // an Edit item picked in the menu: the focused panel's claim has it (the keys, the palette and
+    // agents come through the command, which asks the same)
+    if (const CommandDef* def = CommandCatalog::editor().findByMenuCommand(command.id, command.payload)) {
+        if (PanelClaims::editor().route(def->id)) return;
+    }
     switch (action) {
         case AppMenuCommand::NewProject: {
             if (project.isAnyScenePlaying()) return;
@@ -884,24 +891,19 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             undoRedo(false);
             break;
         case AppMenuCommand::RenameSelection:
-            // Unity's Edit menu acts on the window last focused: the Project window's assets
-            if (lastFocusedWindow == LastFocusedWindow::Resources) projectWindow->assetsRenameSelected();
-            else if (!hierarchyWindow->renameSelected()) inspectorWindow->focusNameInput();
+            if (!hierarchyWindow->renameSelected()) inspectorWindow->focusNameInput();
             break;
         case AppMenuCommand::SelectAll:
             selectAll();
             break;
         case AppMenuCommand::CutSelection:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) projectWindow->copySelection(true);
-            else copySelection(true);
+            copySelection(true);
             break;
         case AppMenuCommand::CopySelection:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) projectWindow->copySelection(false);
-            else copySelection(false);
+            copySelection(false);
             break;
         case AppMenuCommand::PasteSelection:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) projectWindow->pasteClipboard();
-            else pasteSelection(false);
+            pasteSelection(false);
             break;
         case AppMenuCommand::PasteAsChild:
             pasteSelection(true);
@@ -1263,16 +1265,11 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         }
         case AppMenuCommand::DuplicateSelection:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) projectWindow->duplicateSelection();
-            else duplicateSelection();
+            duplicateSelection();
             break;
         case AppMenuCommand::DeleteSelection:
-            if (lastFocusedWindow == LastFocusedWindow::Resources) projectWindow->assetsDeleteSelected();
-            else if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
-            // the Animator window's selected state, sub-state machine, transition or layer
-            else if (animatorWindow->canDelete()) animatorWindow->removeSelection();
             // the Draw Spline tool's last knot, the edited spline's knots
-            else if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
+            if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
@@ -1479,7 +1476,8 @@ void editor::App::recordMenuItems(const PlatformMenuModel& menu){
                 }
                 const CommandDef* def = catalog.findByMenuCommand(item.command.id, item.command.payload);
                 if (!def || !catalog.menuPath(def->id).empty()) continue;
-                catalog.setMenuItem(def->id, itemPath, item.shortcut.empty() ? Chord() : catalog.bindings(def->id).front());
+                catalog.setMenuItem(def->id, itemPath,
+                                    item.shortcut.empty() ? Chord() : catalog.bindings(PanelClaims::editor().shownCommand(def->id)).front());
             }
         };
     walk(menu.menus, "");
@@ -2685,11 +2683,13 @@ void editor::App::show(){
 
     // S27: the Project Hub alone (as the loading window above): the editor's windows wait
     updateHubCreation();
+    if (projectHub.pollSweep()) requestRedraw();
     if (projectHub.isOpen()) {
         if (isInitialized) {
             ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_KeepAliveOnly);
         }
         projectHub.show();
+        UIProbe::flush();   // the Inspector flushes it otherwise, and it is not drawn here
         if (hubCreation) {
             ImGui::OpenPopup("Creating Project##hub");
         }
@@ -2747,6 +2747,7 @@ void editor::App::show(){
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
+        PanelClaims::editor().refresh();
     }
 
     // the selection changes of one frame are one undo step
@@ -3216,6 +3217,10 @@ void editor::App::loadStartupProject() {
         requestRedraw();
         return;
     }
+
+    // S66: what an editor killed during an import or a template copy left, whatever opens now
+    hub::staging::setJournalDirectory(AppSettings::getConfigDirectory() / "hub-staging");
+    projectHub.startSweep(false);
 
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
