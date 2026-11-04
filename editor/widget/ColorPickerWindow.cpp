@@ -12,6 +12,7 @@
 #include "Theme.h"
 #include "external/IconsFontAwesome6.h"
 #include "platform/ScreenColor.h"
+#include "shortcuts/CommandCatalog.h"
 #include "texture/Framebuffer.h"
 #include "util/GraphicUtils.h"
 
@@ -304,6 +305,7 @@ void ColorPickerWindow::show() {
     // no field takes a standalone window's changes
     if (standalone) changed = false;
     if (target != 0 && pendingClose != EditPhase::None && !changed) close(pendingClose);
+    windowFocused = false;
     if (target == 0) {
         viewImages().clear();
         return;
@@ -319,6 +321,7 @@ void ColorPickerWindow::show() {
     const std::string windowTitle = title + "###" + WINDOW_NAME;
     if (ImGui::Begin(windowTitle.c_str(), &open, ImGuiWindowFlags_NoCollapse)) {
         const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+        windowFocused = focused;
         drawPicker();
         drawSliders();
         drawHexAlphaIntensity();
@@ -336,7 +339,6 @@ void ColorPickerWindow::show() {
             if (ImGui::IsKeyPressed(ImGuiKey_Enter, false) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false)) {
                 open = false;
             }
-            if (options.eyedropper && ImGui::IsKeyPressed(ImGuiKey_I, false) && !ImGui::GetIO().WantTextInput) startSampling();   // shortcut-lint: allow the eyedropper of this window, while it has focus (docs/editor/color-picker.md)
         }
     }
     ImGui::End();
@@ -387,7 +389,7 @@ void ColorPickerWindow::drawPicker() {
         ImGui::BeginDisabled(!canSample || sampling || macPicking);
         if (ImGui::Button(ICON_FA_EYE_DROPPER)) startSampling();
         ImGui::EndDisabled();
-        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("Eyedropper (I): pick a colour anywhere on the screen");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", CommandCatalog::editor().tooltip("colorPicker.eyedropper", "Eyedropper").c_str());
         ImGui::SameLine();
     }
     if (ImGui::Button(hueWheel ? "Square" : "Wheel")) hueWheel = !hueWheel;
@@ -698,6 +700,15 @@ void ColorPickerWindow::drawSwatches() {
 }
 
 // ---- the eyedropper
+
+bool ColorPickerWindow::canEyedropper() const {
+    return target != 0 && options.eyedropper && !sampling && !macPicking && !ImGui::IsAnyItemActive() &&
+           (screencolor::liveSupported() || screencolor::pickOnceSupported());
+}
+
+void ColorPickerWindow::eyedropper() {
+    if (canEyedropper()) startSampling();
+}
 
 void ColorPickerWindow::startSampling() {
     if (sampling || macPicking) return;
