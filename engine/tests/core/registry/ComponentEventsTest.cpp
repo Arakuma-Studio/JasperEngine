@@ -30,6 +30,9 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "object/VideoPlayer.h"
+#include "object/navigation/NavMeshAgent.h"
+#include "object/navigation/NavMeshSurface.h"
 #include "subsystem/PhysicsSystem.h"
 
 #include <string>
