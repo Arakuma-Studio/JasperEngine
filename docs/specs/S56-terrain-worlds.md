@@ -1,8 +1,8 @@
-# S44 — Terrain Worlds: tiles, streaming, collision paging
+# S56 — Terrain Worlds: tiles, streaming, collision paging
 
-Terrain programme (`TERRAIN_LEDGER.md`, decisions D1-D18), step 4 of 6. It lands last, after S41, S42, S43,
-S45 and S46 (programme D8; order in S41 §8). Everything under "Current state" was checked by
-reading today's code at the cited line (S41 and S43 will move some of it); nothing in this spec was
+Terrain programme (`TERRAIN-LEDGER.md`, decisions D1-D18), step 4 of 6. It lands last, after S53, S54, S55,
+S57 and S58 (programme D8; order in S53 §8). Everything under "Current state" was checked by
+reading today's code at the cited line (S53 and S55 will move some of it); nothing in this spec was
 built or run while writing it. Numbers marked *calc* are arithmetic, *assumed* are background knowledge
 that a named test or checklist item must confirm. "D" means this spec's decisions in section 6;
 "programme D" means the ledger's.
@@ -13,7 +13,7 @@ A game can have ground far larger than one map: a **Terrain World** is a grid of
 around one or more focus points, draws the distance from one low-resolution **overview** in a bounded
 number of draws, and pages Jolt collision so nothing falls through. An ordinary Terrain keeps working
 exactly as it does and a project with no world pays nothing. Brushes, MCP, Lua, spline bakes and
-generation edit across tile borders through S41's operation engine as if the world were one big map,
+generation edit across tile borders through S53's operation engine as if the world were one big map,
 in one undo step, and tiles appear where a brush goes. People get a panel with a minimap of the tiles;
 agents get three tools with a deterministic wait, so "the area is ready" and "the seam is closed" are
 testable facts.
@@ -32,7 +32,7 @@ testable facts.
   guarantee, holes, world-scale surface query and raycast.
 - `TiledMapStore`, the tiled `TerrainMapStore` of D4; automatic tile creation; heightmap import that
   slices; convert Terrain to Terrain World; seam verification and repair.
-- Navigation of a world (region bakes, follow-the-focus rebakes); the hooks S18 and S45 attach to.
+- Navigation of a world (region bakes, follow-the-focus rebakes); the hooks S18 and S57 attach to.
 - Player module `JASPERENGINE_TERRAIN_WORLD`; cook and export; web limits.
 - Editor panel, overlay, inspector; `create_terrain_world`, `edit_terrain_world`,
   `get_terrain_world_status`; the Lua `TerrainWorld` class.
@@ -44,9 +44,9 @@ testable facts.
   (programme D12).
 - Fetching tiles over HTTP on the web (R38 states what that leaves). Saving runtime edits to disk.
 - Navmesh data paged per tile (D15). Per-tile surface layers: one layer set per world.
-- New material features: S43 owns them (programme D7). S43's Macro Normal Map and Base Map macro, which are one
-  texture over one terrain, are unavailable on a World for now and the Inspector says so. Foliage placement itself: S45 (programme D9).
-- Overhangs and caves: S46.
+- New material features: S55 owns them (programme D7). S55's Macro Normal Map and Base Map macro, which are one
+  texture over one terrain, are unavailable on a World for now and the Inspector says so. Foliage placement itself: S57 (programme D9).
+- Overhangs and caves: S58.
 
 ## 3. Current state
 
@@ -170,17 +170,17 @@ implementer copies something, in which case the normal rule applies.
 - **R2 Lattice.** A world has one lattice: `tileQuads` N ∈ {64, 128, 256, 512, 1024} (default 512);
   `spacing` h, a power of two from 0.25 to 8 m (default 1); tile size S = N·h; tile `(x, z)` covers
   `[x·S, (x+1)·S]` by `[z·S, (z+1)·S]` in the entity's local XZ, x and z in [-256, 255]. `maxHeight` is
-  world-wide, heights run from 0 to it as on a Terrain (S41's `TerrainFrame`), and samples are 16-bit
+  world-wide, heights run from 0 to it as on a Terrain (S53's `TerrainFrame`), and samples are 16-bit
   normalised over it, so changing it rescales the world without touching a tile. Ground below sea level
   means moving the entity down.
-- **R3 What a tile stores, by kind of map** (S41's `MapKind`):
+- **R3 What a tile stores, by kind of map** (S53's `MapKind`):
 
   | Kind | Texels a side | Meaning of a texel | At a tile border |
   |---|---|---|---|
   | Height | N + 3 | sample at `i·h`, with a one-sample gutter | N + 1 shared samples, gutter copied from the neighbour |
   | Blend | `blendQuads` + 1 (default N/2) | filtered sample | shared; no gutter |
-  | Hole | `holeTexels` (default N) | an area, S43 R19's `floor(u·W)` | each texel belongs to one tile, nothing shared |
-  | Density | S45's size | an area, as today's nearest read | nothing shared |
+  | Hole | `holeTexels` (default N) | an area, S55 R19's `floor(u·W)` | each texel belongs to one tile, nothing shared |
+  | Density | S57's size | an area, as today's nearest read | nothing shared |
 
   So a central difference at a border reads the same heights from either side, and filtered blend agrees
   across it. Where a neighbour is absent the gutter repeats the border, and adding the neighbour rewrites
@@ -207,7 +207,7 @@ implementer copies something, in which case the normal rule applies.
 - **R9 Overview.** Beyond the near band everything draws from one overview over the bounding box of
   present tiles: a height texture with `A·tiles + 1` samples a side (A = 16 by default, 32 optional)
   holding the exact tile samples at that stride, and a macro colour texture of the same size. It costs at
-  most 2 instanced draws per view (the full and half grid), whatever the world size. It draws as S43's Low
+  most 2 instanced draws per view (the full and half grid), whatever the world size. It draws as S55's Low
   tier with no layers, casts no shadows by default (Overview Casts Shadows, off) and ignores holes.
 - **R10 Never a hole.** A present tile whose page is absent draws from the overview as a level T node,
   from the first frame the overview exists. Pool exhaustion, draw-cap overflow, read errors, corrupt
@@ -277,18 +277,18 @@ implementer copies something, in which case the normal rule applies.
 - **R23 Match.** Fine collision uses the tile's own samples, with Jolt's bits chosen by
   `CalculateBitsPerSampleForError` for 1 cm (at most 8), so at lattice points a ray agrees with the query
   and with the drawn surface at LOD 0 within 1 cm plus one quantisation step. Mesh and collider split a quad
-  along the same diagonal. Holes follow S43 R22: a sample is `cNoCollisionValue` when all its adjacent
+  along the same diagonal. Holes follow S55 R22: a sample is `cNoCollisionValue` when all its adjacent
   squares are open, which needs the adjacent squares of the next chunk or tile; a neighbour tile that is not
-  resident counts as solid, so the collider never opens under drawn ground. A runtime edit (S41) rebuilds the
+  resident counts as solid, so the collider never opens under drawn ground. A runtime edit (S53) rebuilds the
   dirty chunks on a job and swaps them in the pump. Physics Placement (`PlacementWorld.cpp:1418-1430`) builds
   fine shapes for the chunks its context touches, reading tiles synchronously; `createHeightFieldCollider` on a World refuses
   with a message that names paging.
-- **R24 Surface and rays.** One kernel (programme D5): `querySurface` (S41 R14) gets the one branch S41
-  reserves for it, finds the tile and calls S41's `sampleSurface` on a per-tile `SurfaceView` with the gutter
-  included (N+3 is odd, so `(i + 0.5)/W` over a view of size `(N+3)·h` lands exactly on `i·h`), with S43's
-  per-tile `HoleMapView`. `SurfaceSample.exact` and `.present` (S41 R16) carry the answer's standing. Waiting for a tile is allowed from a job
+- **R24 Surface and rays.** One kernel (programme D5): `querySurface` (S53 R14) gets the one branch S53
+  reserves for it, finds the tile and calls S53's `sampleSurface` on a per-tile `SurfaceView` with the gutter
+  included (N+3 is odd, so `(i + 0.5)/W` over a view of size `(N+3)·h` lands exactly on `i·h`), with S55's
+  per-tile `HoleMapView`. `SurfaceSample.exact` and `.present` (S53 R16) carry the answer's standing. Waiting for a tile is allowed from a job
   or the editor; on the game's main thread the query never waits and answers from the overview with
-  `exact = false`. S41's `Terrain:getHeightAt`, `getNormalAt`, `isHoleAt` and `raycast` so work on a World as
+  `exact = false`. S53's `Terrain:getHeightAt`, `getNormalAt`, `isHoleAt` and `raycast` so work on a World as
   they are. `raycastTerrainSurface` gets one branch to `TerrainWorldQuery::raycast`, a grid DDA over tiles
   with min/max rejection calling `raycastSurface`, so `MeshRaycast.TERRAIN`, picking, the brush cursor and
   `VatCrowd` work unchanged. Resident tile hits agree with the query within 1e-4 (S26:467).
@@ -298,45 +298,45 @@ implementer copies something, in which case the normal rule applies.
 - **R25 Navigation.** The collector takes a world's tiles overlapping the surface's bounds, one lattice
   a tile, holding each tile's CPU data by shared reference for the bake, in job-loaded form. A surface
   without a Volume on a world over 64 tiles is refused before collecting, in the wording of S19 R6. Each
-  tile's lattice applies S43 R23. A NavMesh Surface gets **Follow Terrain World Focus** (radius, default
+  tile's lattice applies S55 R23. A NavMesh Surface gets **Follow Terrain World Focus** (radius, default
   128 m), rebaking through `updateTiles` when the focus has moved S/4 and dropping tiles outside radius + S/2, with agents kept
   moving as S19 R10 says. Off by default, and off on web single-thread unless a script sets it.
-- **R26 Splines.** Bakes pass through S41's operations and so cross tiles. Conform queries from its
+- **R26 Splines.** Bakes pass through S53's operations and so cross tiles. Conform queries from its
   Background jobs, where R24 may wait, so a chunk's height never comes from the overview when the tile
   exists. S18's water fill reads the rectangle through the store rather than a heightmap
   (`SplineSystem.cpp:1005-1019`).
-- **R27 Foliage.** Per S45 F11: `TerrainWorldSystem` calls `FoliageSystem::addRegion` with one
+- **R27 Foliage.** Per S57 F11: `TerrainWorldSystem` calls `FoliageSystem::addRegion` with one
   `TileFoliageRegion` when a tile turns `Resident` and `removeRegion` when it leaves. A region's `maps()` is
-  a store over that tile, `surface()` the query, `trees()` S45's `.jetrees` file beside the tile
+  a store over that tile, `surface()` the query, `trees()` S57's `.jetrees` file beside the tile
   (`tiles/x_z.jetrees`; null while loading), `cellOffset` the tile's origin in whole 8-unit cells (S ≥ 16, so
   always whole), `regionKey` the packed coordinate. Ground that is not resident has no foliage and nothing
-  blocks on it. A world without foliage layers makes no regions. S45 owns the rest.
+  blocks on it. A world without foliage layers makes no regions. S57 owns the rest.
 
 ### Functional — editing and data flow
 
-- **R28 Tiled store.** `TiledMapStore` implements S41's `TerrainMapStore` (`read`, `write`, `readBytes`,
+- **R28 Tiled store.** `TiledMapStore` implements S53's `TerrainMapStore` (`read`, `write`, `readBytes`,
   `writeBytes`, `canWrite`, `createMap`, `takeDirty`, `format`, `frame`, `worldOfTexel`, `texelOfWorld`,
   `preferredBlock`, `beginLarge`, `takeUndoHook`) over **global texels**, which this store keeps non-negative
-  (S41's signed `TexelRect` allows it): texel 0 is the addressable minimum corner, and `format` reports the whole addressable lattice. A
+  (S53's signed `TexelRect` allows it): texel 0 is the addressable minimum corner, and `format` reports the whole addressable lattice. A
   write updates every tile holding each sample (up to 4, gutters included) in one call, so a seam can never be
   half-written, and reports dirty rectangles in global texels. Reads across tiles stitch, and a read over an
   absent tile returns `baseHeight` or zero. Brush strokes, `edit_terrain`, Lua edits, spline bakes and
-  `generate_terrain` take a World through `entity` in S41's schema, with no other change (D12).
+  `generate_terrain` take a World through `entity` in S53's schema, with no other change (D12).
 - **R29 Auto tiles.** With **Auto Add Tiles** (on for edits by brush, `edit_terrain` and generation;
   off for Lua), a write over an absent tile creates it, filled with `baseHeight` and with border samples
   copied from any neighbours. Creating is part of the same undo step. An op whose shape reaches past the
-  addressable lattice is refused whole by S41's `validateOps` (programme D15), and one that would pass R6's
-  bounding box by the store's `canWrite` (S41 R86), before anything commits.
-- **R30 Undo.** A brush or op is one undo step, whatever it crosses: S41's `OverlayMapStore` and
+  addressable lattice is refused whole by S53's `validateOps` (programme D15), and one that would pass R6's
+  bounding box by the store's `canWrite` (S53 R86), before anything commits.
+- **R30 Undo.** A brush or op is one undo step, whatever it crosses: S53's `OverlayMapStore` and
   `TerrainMapDeltaCmd` work over the tiled store unchanged, and the command also keeps the store's `takeUndoHook()`,
-  which removes and restores the tiles it created (S41 R86). World-scale writes (D11) replace the overlay: the store snapshots the affected tile files (hard
+  which removes and restores the tiles it created (S53 R86). World-scale writes (D11) replace the overlay: the store snapshots the affected tile files (hard
   link or copy under `.jasperengine/trash/`), up to 2 GiB. Past that the call fails unless
   `allow_no_undo: true`, and `dry_run` predicts which applies. Add Tile and Remove Tile are undoable.
 - **R31 Persistence.** Dirty tiles stay pinned in the editor's cache, and flush atomically through
   `writeFileAtomic` plus `ScopedExpectedWrite` (S05) on `ioWriteChannel`, at the debounce and the forced flush
-  points of S41 R30 (scene save, autosave, Play, export, close, every reader). Play reads flushed files and
+  points of S53 R30 (scene save, autosave, Play, export, close, every reader). Play reads flushed files and
   never writes one. An external change of a tile
-  (git pull) reloads it. Runtime edits (S41's Lua edits) are RAM only: an edited tile is pinned, at most
+  (git pull) reloads it. Runtime edits (S53's Lua edits) are RAM only: an edited tile is pinned, at most
   16 per world; past that the edit returns an error naming the cap. Stopping Play discards them.
 - **R32 Import.** Import Heightmap slices a 16-bit RAW or R16 file by reading bands, RAM bounded by two
   tile rows, up to the world limits; PNG up to 8,193 per side (it decodes whole). Parameters: origin
@@ -436,8 +436,8 @@ implementer copies something, in which case the normal rule applies.
   `set_streaming {freeze: true}` this is the deterministic test wait: no load, eviction or upload runs
   after it returns.
 - **R46 Existing tools.** `edit_terrain`, `sample_terrain` and `visualize_terrain` take a World through
-  `entity`, in S41's schema (S41's seam). `sample_terrain` gains `state` per point (R19); `visualize_terrain`
-  gains overlays `tiles`, `tile_state`, `lod`, `collision`. The group's limits are S41 R74's. New tools stay
+  `entity`, in S53's schema (S53's seam). `sample_terrain` gains `state` per point (R19); `visualize_terrain`
+  gains overlays `tiles`, `tile_state`, `lod`, `collision`. The group's limits are S53 R74's. New tools stay
   within the tool default of 1,500 characters, except `edit_terrain_world` (at most 2,400, a recorded
   exception). Guidance goes in
   `docs/mcp/guide/terrain.md` under a `Terrain Worlds` heading. Tests prove the tools are hidden until
@@ -446,7 +446,7 @@ implementer copies something, in which case the normal rule applies.
   `go:getTerrainWorld()` or `TerrainWorld(scene, entity)`: `addFocus`, `setFocus`, `removeFocus`,
   `getSurfaceAt` (height, normal, hole, exact, present), `getTileState`, `isAreaReady`, `waitForArea`,
   `onAreaReady`, `ensureCollisionAt`, `isReady`, `getStats`, properties `lodDistance`, `poolSize`,
-  `uploadBudget`, `collisionRadius`. Documented with Lua blocks the doc test runs. S41's `Terrain` queries and
+  `uploadBudget`, `collisionRadius`. Documented with Lua blocks the doc test runs. S53's `Terrain` queries and
   `applyOps` work on a World (R24, R31); `Terrain`'s map setters warn. Lua names are read by module detection through the bindings' conditions.
 
 ### Data & compatibility
@@ -463,7 +463,7 @@ implementer copies something, in which case the normal rule applies.
   version give identical bytes. Corrupt or truncated input yields `Error`, never a crash.
 - **R50 Version control.** `*.jtile` joins `versionControlBinaryPatterns` (`editor/Project.cpp:6592`), so
   it is binary or LFS and lockable according to the project's setting (S29 R21). `manifest.yaml` is text
-  already, and S45 adds its `.jetrees` pattern. A merge is per tile; a border edit touches both tiles.
+  already, and S57 adds its `.jetrees` pattern. A merge is per tile; a border edit touches both tiles.
 - **R51 Seams.** Loading a tile checks its borders against resident neighbours and counts mismatches in
   `seam_errors`, with one warning. **Repair Seams** resolves in favour of the tile with the lower (x, z).
   The cook repairs a copy and reports each repair, and the `check` command reports them too.
@@ -509,7 +509,7 @@ editor/terrainworld/                                 panel, overlay, import, con
 editor/cook/TerrainWorldCooker.{h,cpp}
 editor/mcp/tools/TerrainWorldTools.cpp
 ```
-`engine/core/terrain/world/` obeys S41 R1's `TerrainOpsDeps.NoEcsOrRenderIncludes` (`math/`, `jobs/`, the standard library): zstd and
+`engine/core/terrain/world/` obeys S53 R1's `TerrainOpsDeps.NoEcsOrRenderIncludes` (`math/`, `jobs/`, the standard library): zstd and
 file reads come in as injected functions, supplied by `TerrainWorldSystem`. `TileFoliageRegion` (R27) lives in
 the subsystem layer.
 
@@ -519,13 +519,13 @@ Hooks in the hot files, nothing else:
   `drawTerrainWorldItems`; `loadMesh`'s terrain buffer sizing (`:6232`, and capacity `:17421`);
   `getSubmeshShaderInputs` (`:3622`), one input.
 - `MeshSystem.cpp`: `createTerrain` (`:3671`) builds the skirted grids and no node tree for a World;
-  `raycastTerrainSurface` (`:3387`, S41's forwarder) gets one branch.
-- `engine/core/object/TerrainEdit.h`: `querySurface` gets the one branch S41 R14 reserves.
+  `raycastTerrainSurface` (`:3387`, S53's forwarder) gets one branch.
+- `engine/core/object/TerrainEdit.h`: `querySurface` gets the one branch S53 R14 reserves.
 - `Engine.cpp`: one call after the pump (`:2231`).
 - `InspectorWindow.cpp`, `TerrainEditWindow.cpp`: one call each to code in `editor/terrainworld/`.
 - `TerrainComponent.h`: a runtime-only `TerrainWorldRuntime* world = nullptr`, reset on clone.
 
-**D2 Why a World is a Terrain plus a component.** Terrain's layers, detail array, S43's material path and
+**D2 Why a World is a Terrain plus a component.** Terrain's layers, detail array, S55's material path and
 every `terrain` branch of the three draw paths already do what a World needs. A separate draw path would
 fork them all, against programme D2. Unused Terrain fields are hidden, not removed.
 
@@ -543,7 +543,7 @@ and R32F elsewhere. Reading sokol says **RG8 everywhere is better**, and it is w
 A hardware filter gives no seam guarantee: at a shared border two tiles sample different textures at
 uv computed in float, and any filter weight other than exactly 1 at a border mixes in a neighbour
 (*assumed*, filter fraction precision is not specified to be exact). `texelFetch` at integer coordinates
-with weight exactly 0 for a neighbour gives bit-identical heights. S41's `sampleSurface` is the same
+with weight exactly 0 for a neighbour gives bit-identical heights. S53's `sampleSurface` is the same
 bilinear on the same samples. Decode: `(round(rg.r·255)·256 + round(rg.g·255))/65535` in highp.
 `GpuTextureFormat::RG8` already reaches `createTextureLevels`; the shared nearest sampler is `getDataSampler`. Per vertex: 1 fetch for the
 pre-morph height (unmorphed vertices are always on the texel lattice, since vertex spacing is h·2^L), 4
@@ -583,14 +583,14 @@ LOD both sides compute the same morph from the same inputs.
 | Grids | 2 instanced per pass | near: ≤ 2 per drawn tile; overview: ≤ 2 |
 | Draws per pass, desktop D = 16 | 2 | ≤ 34; a typical view fills one grid of many tiles |
 | Draws per pass, mobile and web D = 6 | 2 | ≤ 14 |
-| Shadow pass | S43 R17's shadow cut, or the view's | the same: selection re-run with S43's shadow-camera test; near items only by default, ≤ 32 / ≤ 12 |
+| Shadow pass | S55 R17's shadow cut, or the view's | the same: selection re-run with S55's shadow-camera test; near items only by default, ≤ 32 / ≤ 12 |
 | Views | 4 | 4, same fallback to view 0 |
 | Instance buffers | sized by all nodes, 8 of them, at load | 2 x 4,096 nodes per view used |
 | Texture slots | 16 fragment when painted (`S11:87`) | **0 added in the fragment stage**; +1 vertex (macro) |
 
 The brief's "one draw" for the distance becomes at most 2 because CDLOD needs the full and half grids;
 both are instanced and both use the one texture. Variant bit (`HAS_TERRAIN_WORLD`, `Twd`): MESH 37, DEPTH 19,
-GBUFFER 19 (S43 D2's table: G-buffer 17 and 18 are S43's tier bits). It adds fields to `u_vs_terrainParams` under its define, so there is
+GBUFFER 19 (S55 D2's table: G-buffer 17 and 18 are S55's tier bits). It adds fields to `u_vs_terrainParams` under its define, so there is
 no new `UniformBlockType` and draws upload the wider block.
 
 **D5 Cracks.** Skirts, not only morph, because streaming breaks CDLOD's one-level assumption whenever a
@@ -600,7 +600,7 @@ position, height and normal of its edge vertex and drops by `skirtDepth`, but on
 a tile border (exact test: dyadic coordinates); otherwise it collapses onto the edge, a degenerate
 triangle. `skirtDepth` is the world's largest difference between a tile's edge and its overview lattice,
 stored in tile headers and maintained on edits, at least 1 m. Vertex cost +12% on the full grid, +24% on
-the half (*calc*), rasterised only on tile borders. S43 R20's hole test uses the interpolated local XZ, which
+the half (*calc*), rasterised only on tile borders. S55 R20's hole test uses the interpolated local XZ, which
 a skirt vertex shares with its edge, so a hole at a border also removes its skirt. A curtain of `skirtDepth` shows at the world's outer edge when
 seen from outside; accepted.
 
@@ -628,7 +628,7 @@ blobs, 16-byte aligned, in table order
 Sections: `HGHT` (u16 (N+3)², predictor left+up-upleft then split byte planes), `BLND`[index], `HOLE`,
 `DENS`[index], `OVRH` (u16 (A+1)²), `OVRC` (RGBA8 (A+1)²), `MNMX` (u16 min/max pyramid), `EDGE` (the
 tile's `skirtDepth`). `BLND`, `HOLE` and `DENS` carry a small lattice prefix; their meaning belongs to
-S43 and S45. zstd level 9 in the editor, 19 in the cook; players have only the decompressor, and this
+S55 and S57. zstd level 9 in the editor, 19 in the cook; players have only the decompressor, and this
 matches `engine/CMakeLists.txt:1142-1146`. Per-section checksums are what lets `Error` be per tile on
 all paths, including a loose file.
 
@@ -649,19 +649,19 @@ that selection re-runs (`RenderSystem.cpp:15100` otherwise would not).
 load-settled wait include them (*inferred* from `JobSystem.h`; AC6 checks). The initial focus's tile goes
 in `Critical`. Scene load does not wait for pages. A game wanting ground under its player waits with R18.
 
-**D11 World-scale operations.** S41's overlay holds floats per touched 64 x 64 block, which is fine for a
+**D11 World-scale operations.** S53's overlay holds floats per touched 64 x 64 block, which is fine for a
 brush and impossible for a world: 16,384² is 1 GiB of floats. So an op or generation whose rectangle exceeds
-`largeEditTexels` (default 2,048²) runs tile by tile: S41's `beginLarge(map, rect)` returns
-the undo token of R30 and `preferredBlock(map)` gives the tile rectangle; S41's `applyOps` (S41 R87) and generation apply the op per block,
-with padding as S41 and S42 already read, straight to the store. The single-map store answers the whole map and a
+`largeEditTexels` (default 2,048²) runs tile by tile: S53's `beginLarge(map, rect)` returns
+the undo token of R30 and `preferredBlock(map)` gives the tile rectangle; S53's `applyOps` (S53 R87) and generation apply the op per block,
+with padding as S53 and S54 already read, straight to the store. The single-map store answers the whole map and a
 null token, which is today's path, so single terrains see no change.
 
-**D12 Texel mapping: S41's per-map conversion.** Ops turn texels into positions only through `worldOfTexel` and
-`texelOfWorld`, per `MapId` (S41 R86). A world's height lattice has W = 2M + 1 samples, and `worldOfTexel` answers
+**D12 Texel mapping: S53's per-map conversion.** Ops turn texels into positions only through `worldOfTexel` and
+`texelOfWorld`, per `MapId` (S53 R86). A world's height lattice has W = 2M + 1 samples, and `worldOfTexel` answers
 `(i - M)·h`, the value a single map's `(i+0.5)/W` gives over a centred frame of size `W·h`: exactly the dyadic
 lattice, tile (0, 0)'s corner at local (0, 0). Global texels are `sample + M`,
-never negative by this store's choice, and S42 R23's global starts stay meaningful. The area maps fit too: `W = 2M`, size
-`W·h`, centres at half-steps. Each map's frame differs, which is why the conversion takes the `MapId`; S41's
+never negative by this store's choice, and S54 R23's global starts stay meaningful. The area maps fit too: `W = 2M`, size
+`W·h`, centres at half-steps. Each map's frame differs, which is why the conversion takes the `MapId`; S53's
 `frame()` holds only `maxHeight`, which is world-wide (R2).
 
 **D13 Precision and origin (recorded decision).** float32 ULP at distance (*calc*):
@@ -682,14 +682,14 @@ bodies, particles, navigation, audio and scripts' stored positions. A later spec
 blocks that, because worlds use one matrix and local coordinates.
 
 **D14 Near-to-far fade and UVs.** Near draws read macro colour in the vertex stage (+1 vertex texture, no
-fragment slot) and pass `v_terrainMacro` (rgb, fade), with fade rising over the last 25% of the near band. S44
-adds one line under `HAS_TERRAIN_WORLD` where S43's fragment path has resolved its layers; S43 needs no action,
-and this is the only fragment-stage change here (programme D7 keeps the rest with S43). Overview draws use the
+fragment slot) and pass `v_terrainMacro` (rgb, fade), with fade rising over the last 25% of the near band. S56
+adds one line under `HAS_TERRAIN_WORLD` where S55's fragment path has resolved its layers; S55 needs no action,
+and this is the only fragment-stage change here (programme D7 keeps the rest with S55). Overview draws use the
 existing no-layers path, with the macro texture as base colour and uv1 from the overview transform. Detail UVs
-stay world-absolute, and S43's Noise macro uses local XZ, so hex and stochastic tiling and tints show no seam at
+stay world-absolute, and S55's Noise macro uses local XZ, so hex and stochastic tiling and tints show no seam at
 borders. Blend UVs are tile-local, `((p - origin)/S · N_b + 0.5)/(N_b + 1)`, and the hole's `u` is
-`(p - origin)/S`. `Thl` is per World (`hasHoles`), not per tile as S43 suggested: a tile with no holes binds a
-shared solid texel, because a per-tile variant would double each draw's render objects for a cost S43 budgets
+`(p - origin)/S`. `Thl` is per World (`hasHoles`), not per tile as S55 suggested: a tile with no holes binds a
+shared solid texel, because a per-tile variant would double each draw's render objects for a cost S55 budgets
 at +3%.
 
 **D15 Navigation (recorded decision).** No per-tile navmesh pages in this spec. S19's Surface stores one
@@ -707,12 +707,12 @@ struct WorldLattice { int tileQuads; float spacing; int gridResolution = 32; int
 struct TileCoord { int16_t x, z; };
 enum class TileState : uint8_t { Absent, Cold, Queued, Loading, CpuReady, Uploading, Resident, Error };
 
-// S41's interface, our implementation; global texels (D12)
+// S53's interface, our implementation; global texels (D12)
 class TiledMapStore final : public TerrainMapStore {
     MapFormat format(MapId map) const override;               // the whole addressable lattice
     bool read(MapId map, TexelRect rect, std::span<float> out) const override;
     WriteResult write(MapId map, TexelRect rect, std::span<const float> in) override;  // every copy of each sample
-    // ...readBytes, writeBytes, canWrite, createMap, takeDirty, as S41
+    // ...readBytes, writeBytes, canWrite, createMap, takeDirty, as S53
     Vector2 worldOfTexel(MapId map, int x, int y) const override;             // D12
     Vector2 texelOfWorld(MapId map, float localX, float localZ) const override;
     TexelRect preferredBlock(MapId map) const override;                       // the tile rectangle
@@ -730,7 +730,7 @@ Coroutine.start(function()                       -- teleport with no fall-throug
     if ok then player.position = dest end
 end)
 local s = world:getSurfaceAt(x, z)               -- s.exact false: from the overview
-local y = Terrain(scene, self.entity):getHeightAt(x, z)  -- S41's query works on a World
+local y = Terrain(scene, self.entity):getHeightAt(x, z)  -- S53's query works on a World
 ```
 
 **Build order.** (1) Pure core: lattice, format, select, streamer. (2) Tiled store plus editor asset.
@@ -769,10 +769,10 @@ Unit suites: `jasperengine-core-tests` (`engine/tests/core/terrain/`, GPU in `en
 | AC20 | R17 | TSan: `SANITIZE=thread tools/build.sh unit-tests` with `UNIT_TEST_ARGS=--gtest_filter=TerrainWorldStreaming.*:TileStreamer.*` clean; ASan and UBSan over format and store. |
 | AC21 | R38, R39 | `tools/test-projects/terrain-world`, `GATE=terrain-world tools/build.sh web-gate` (`tools/web/gates/terrain-world.json`): WebGL2, single-thread: canvas centre is lit ground through a page; console proves a tile went `Resident` and that RG8 heights arrived; `GATE=terrain-world-threads` for mt. |
 | AC22 | R20, R22 | `TerrainWorldCollision.NoFallThrough`: tile I/O delayed 2 s by a hook; a dynamic sphere dropped 5 m over a `Cold` tile rests on the coarse collider; after arrival it rests on the fine surface within 1 cm + one quantum, no drop in between. Character Controller too. **Red: coarse colliders off, it falls past -100 m.** |
-| AC23 | R23 | `TerrainWorldCollision.MatchesQuery`: rays at 1,000 lattice points: Jolt hit, `TerrainWorldQuery::raycast` and `querySurface` agree (R23's tolerance) on both sides of a chunk and tile border; off the lattice they differ by at most the quad's twist/4. `DiagonalMatchesMesh` (red: flip the mesh's diagonal). `HolesAgree`: S43 R22's rim across a chunk border and a tile border, solid when the neighbour is not resident. `RuntimeEditRebuildsChunks`. |
+| AC23 | R23 | `TerrainWorldCollision.MatchesQuery`: rays at 1,000 lattice points: Jolt hit, `TerrainWorldQuery::raycast` and `querySurface` agree (R23's tolerance) on both sides of a chunk and tile border; off the lattice they differ by at most the quad's twist/4. `DiagonalMatchesMesh` (red: flip the mesh's diagonal). `HolesAgree`: S55 R22's rim across a chunk border and a tile border, solid when the neighbour is not resident. `RuntimeEditRebuildsChunks`. |
 | AC24 | R6, R21 | `TerrainWorldCollision.AtWorldEdge`: box at rest at (16,000, 16,000) for 10 s moves < 1 cm. `FrozenPastCap`; `BatchAddsOnly`: Jolt batch count, no `AddBody` per chunk. |
-| AC25 | R24, R19 | `TerrainWorldQuery.*`: equals S41's `sampleSurface` over the same samples, across borders; `exact` and `present` on resident, overview and absent; main-thread call never waits (time bound, hook delaying I/O); `MeshRaycast.Kinds`' terrain case passes on a World. |
-| AC26 | R28, R29 | `TiledMapStore.WritesEveryCopy`, `ReadStitches`, `RefusedWholeByValidateOps`, `DirtyRectsAndTilesReported`: 4-tile corner writes leave all copies and gutters equal. `TiledMapStore.WorldOfTexelOnLattice`: S41's `worldOfTexel` lands exactly on the lattice for each map kind (D12). S41's `TerrainOps` golden hashes pass on a `TiledMapStore` of one tile's size. Red: skipping gutter copies fails `BorderNormalsMatch` after an edit. |
+| AC25 | R24, R19 | `TerrainWorldQuery.*`: equals S53's `sampleSurface` over the same samples, across borders; `exact` and `present` on resident, overview and absent; main-thread call never waits (time bound, hook delaying I/O); `MeshRaycast.Kinds`' terrain case passes on a World. |
+| AC26 | R28, R29 | `TiledMapStore.WritesEveryCopy`, `ReadStitches`, `RefusedWholeByValidateOps`, `DirtyRectsAndTilesReported`: 4-tile corner writes leave all copies and gutters equal. `TiledMapStore.WorldOfTexelOnLattice`: S53's `worldOfTexel` lands exactly on the lattice for each map kind (D12). S53's `TerrainOps` golden hashes pass on a `TiledMapStore` of one tile's size. Red: skipping gutter copies fails `BorderNormalsMatch` after an edit. |
 | AC27 | R28-R30 | `test_terrain_world.py::test_brush_across_border`: `sculpt_terrain` and `edit_terrain` strokes over a border and off the grid: new tile, `sample_terrain` equal on both sides, one undo restores files bytes-identical and removes the tile. `TiledMapStore.LargeEditSnapshots`, `DryRunPredictsNoUndo`. |
 | AC28 | R31 | `TerrainWorldAsset.AtomicFlush` (kill between write and rename leaves the old file), `FlushesBeforePlay`, `ExternalChangeReloads`, no echo through the S05 ledger; `PlayNeverWrites`. `RuntimeEditPinnedAndCapped`. |
 | AC29 | R32, R33 | `TerrainWorldImport.SlicesExactly`: 2,049² RAW: reassembled samples equal, RAM by `AllocationCounter` bounded by two tile rows; cancel leaves the folder untouched. `TerrainWorldConvert.SurfaceMatches`: heights sampled before and after within one quantum at 1,000 points; source disabled; undo restores. |
@@ -784,14 +784,14 @@ Unit suites: `jasperengine-core-tests` (`engine/tests/core/terrain/`, GPU in `en
 | AC35 | R53, R39 | `TerrainWorldCook.DeterministicPack`, `ContainsTilesAsEntries` (read with `JPak`), `TerrainWorldGpu.PlaysFromPack`; `tools/smoke-test.sh` with the world fixture on glcore, gles3, vulkan images; shader cook collects the variant: `ShaderCook.TerrainWorldVariants`; no fallback drops the bit (`ShaderPool`'s test). |
 | AC36 | R55 | `ModuleUsage.TerrainWorld*`: component and each Lua evidence kind; empty project needs none. `PlayerModules.*` lists it. A build with `-DJASPERENGINE_TERRAIN_WORLD=OFF` links; a player without the module exits 5 on content needing it (`tools/ci/test_player_cli.py`). Sizes for R37 recorded in the spec by `player_sizes.py`. |
 | AC37 | R25 | `TerrainWorldNav.CollectsTiles`, `RefusesUnboundedSurface`, `FollowRebakes` (agents keep a path across a follow step); existing nav suites unchanged. |
-| AC38 | R26, R27 | `TerrainWorldSplines.BakeCrossesBorder`, `ConformWaitsForTile`; `TerrainWorldFoliage.RegionPerResidentTile`: a region added on `Resident`, removed on eviction, none with no foliage layers; a fixture's scatter equal to one map's across a border (S45's hash). |
+| AC38 | R26, R27 | `TerrainWorldSplines.BakeCrossesBorder`, `ConformWaitsForTile`; `TerrainWorldFoliage.RegionPerResidentTile`: a region added on `Resident`, removed on eviction, none with no foliage layers; a fixture's scatter equal to one map's across a border (S57's hash). |
 | AC39 | R43-R46 | `test_terrain_world.py`: create, status, `wait_for` plus `freeze`, then two identical `screenshot` hashes (determinism); all-or-nothing refusal leaves files unchanged; `dry_run` writes nothing; timeout lists missing tiles; tools hidden until `tool_groups` enables `terrain`; Play refusals by name; `tool_budget.py --check`, `gen_tool_docs.py --check`. |
 | AC40 | R47 | Lua doc test (`python3 -m lua_api doctest`) over the new blocks; `TerrainWorldLua.*`: focus lifetime on destroy, `waitForArea` in a coroutine, `onAreaReady`, errors on bad arguments. |
 | AC41 | R40-R42 | `TerrainWorldPanel.*` (logic: cell states, undo of Add and Remove, dialog defaults); screenshots from an isolated editor (`tools/editor-shot.sh`): panel with minimap mid-stream, overlay in each of its four modes, kept in the evidence directory. |
 | AC42 | R1, R4, R5, R54 | `TerrainWorldScene.RoundTrip` (component saved, loaded, cooked and generated by `Factory`, field by field), `TransformForcedIdentity`, `AbsentTileNoDrawNoCollision`; `TerrainHeight.*` and `test_upgrade_from_main.py` unchanged and green, proving a plain Terrain and an old project take no new path. |
-| AC43 | R34, R35 (hardware), R39 | `docs/specs/checklists/S44.md`, manual on real hardware by a person, with results recorded: Android mid-range, iPhone, Windows D3D11, macOS Metal: fly-through project, no cracks, frame graph, memory against caps; Chrome and Safari on the web export. |
+| AC43 | R34, R35 (hardware), R39 | `docs/specs/checklists/S56.md`, manual on real hardware by a person, with results recorded: Android mid-range, iPhone, Windows D3D11, macOS Metal: fly-through project, no cracks, frame graph, memory against caps; Chrome and Safari on the web export. |
 
-**What this host can verify** (8 cores, software GL, no KVM; `TERRAIN_LEDGER.md`):
+**What this host can verify** (8 cores, software GL, no KVM; `TERRAIN-LEDGER.md`):
 
 | Item | Here | Elsewhere |
 |---|---|---|
@@ -805,33 +805,33 @@ Unit suites: `jasperengine-core-tests` (`engine/tests/core/terrain/`, GPU in `en
 
 ## 8. Dependencies & conflicts
 
-**Depends on.** **S41** (hard): `TerrainOps`, `TerrainMapStore`, surface query, delta undo, `edit_terrain`,
-`visualize_terrain`, `docs/mcp/guide/terrain.md`, `groups.terrain` of `budget.json`. **S43** (hard): hole map,
-`TerrainHoles`, blend maps, tiers, shadow cut, the fragment path. **S45**: `FoliageRegion`. S42: `generate_terrain`
-works through S41. All of them land before S44, which is last (S41 §8). S03 (atomic writes, R22), S04 (type
+**Depends on.** **S53** (hard): `TerrainOps`, `TerrainMapStore`, surface query, delta undo, `edit_terrain`,
+`visualize_terrain`, `docs/mcp/guide/terrain.md`, `groups.terrain` of `budget.json`. **S55** (hard): hole map,
+`TerrainHoles`, blend maps, tiers, shadow cut, the fragment path. **S57**: `FoliageRegion`. S54: `generate_terrain`
+works through S53. All of them land before S56, which is last (S53 §8). S03 (atomic writes, R22), S04 (type
 table, GUID, typed dependencies), S05 (`ScopedExpectedWrite`), S06 (lanes, I/O, pump), S14 (tiles bypass its
 cook), S15 (profiler scopes), S19 (`updateTiles`, Volume), S24 (undo names), S26 (picking tolerance), S29
 (patterns), S30 (cook, runtime codec), S32 (variant warm-up), S34 (modules).
 
 **Seams others must know.**
-- **S41:** the store stays as S41 R86 and R87 write it: this store's global texels are never negative, and
-  per-map `worldOfTexel` and `texelOfWorld` place them (D12). What S44 uses from it: `preferredBlock` and `beginLarge`,
+- **S53:** the store stays as S53 R86 and R87 write it: this store's global texels are never negative, and
+  per-map `worldOfTexel` and `texelOfWorld` place them (D12). What S56 uses from it: `preferredBlock` and `beginLarge`,
   by ops and generation above `largeEditTexels` (D11); and `exact` on `SurfaceSample` (R24). `format` reports a lattice up to 131,073 a side,
   so no op may allocate by `format` rather than by its rectangle. `TerrainMapDeltaCmd` carries
   `takeUndoHook` (R30). `querySurface` and `raycastTerrainSurface` take the branches you reserved.
   `visualize_terrain` needs overlay extension room (R46).
-- **S43:** blend stays blend maps, with shared borders per tile (R3); hole maps are per tile, area texels, as
+- **S55:** blend stays blend maps, with shared borders per tile (R3); hole maps are per tile, area texels, as
   your seam says. One disagreement: `Thl` is **per World, not per tile** (D14). The world adds **no fragment
-  slots** and one fade line in the fragment path after yours (D14); nothing for you to do. S44 reuses R22 and R23
+  slots** and one fade line in the fragment path after yours (D14); nothing for you to do. S56 reuses R22 and R23
   across chunk and tile borders, and R17's shadow cut. Macro Normal is unavailable on a World (a terrain-wide
   map); Base Map macro likewise, because it is one texture over one terrain: Noise macro works. The overview is
   Low with no layers and ignores holes. Skirts inherit the hole test (D5). Bits MESH 37, DEPTH 19, GBUFFER 19 are
-  S44's (your D2 table).
-- **S45:** S44 implements F11 as written: `TileFoliageRegion`, one a resident tile, `tiles/x_z.jetrees` inside the
+  S56's (your D2 table).
+- **S57:** S56 implements F11 as written: `TileFoliageRegion`, one a resident tile, `tiles/x_z.jetrees` inside the
   folder (no `.meta`, because the scan does not enter it), shipped by the cook as entries. `maps()` is per tile. Tree
   capsules go with their region. Add the `*.jetrees` pattern in your own S29 change.
-- **S42:** `GridDomain` gets global texel starts from `TiledMapStore` (D12). Whole-world generation goes in blocks
-  through `beginLarge` (D11); erosion's padding is yours to request through S41's read.
+- **S54:** `GridDomain` gets global texel starts from `TiledMapStore` (D12). Whole-world generation goes in blocks
+  through `beginLarge` (D11); erosion's padding is yours to request through S53's read.
 - **S18:** `SplineSystem.cpp:1005-1019` reads a heightmap directly for water and must read the store on a World.
 - **S19:** the collector gets a tile branch; `NavMeshSurface` gets one field.
 
@@ -849,7 +849,7 @@ cook), S15 (profiler scopes), S19 (`updateTiles`, Volume), S24 (undo names), S26
 | Skirts on half grids (+24% vertices) | Accept; AC12 and the checklist watch it. Skirt indices can go in a separate range later |
 | Page pops when a tile arrives after the view wanted it | Prefetch ring plus 1.5 s prediction; `late_pages` counted. Teleports pop by nature; scripts wait with R18 |
 | R16 would have let the driver filter; RG8 forces manual bilerp | Decided, D3. Seams and one path outrank it |
-| float32 detail UVs at the world's edge with small tiles | 16,384 m at a 2 m detail tile leaves 1/1,024 of a tile (*calc*), so 2 m is the documented lower bound past ±8 km. Revisit with S43's tiers |
+| float32 detail UVs at the world's edge with small tiles | 16,384 m at a 2 m detail tile leaves 1/1,024 of a tile (*calc*), so 2 m is the documented lower bound past ±8 km. Revisit with S55's tiers |
 | The world's height range is one for all tiles: 16 bits over 8 km steps 12 cm | Warn in the dialog above 2,000 m. Documented |
 | A swap from coarse to fine collision pushes or drops a body by the overview's error | Bounded by `skirtDepth` of that tile; AC22 checks rest. Character Controllers snap to ground as usual |
 | Overview macro is stale after a Lua layer change | Macro is bake data, refreshed only by the editor. Documented |

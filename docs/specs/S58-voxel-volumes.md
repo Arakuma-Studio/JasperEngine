@@ -1,6 +1,6 @@
-# S46: Voxel Volumes
+# S58: Voxel Volumes
 
-Wave 5 (terrain programme). Binding decisions: `TERRAIN_LEDGER.md` D1-D18. Analyst reports:
+Wave 5 (terrain programme). Binding decisions: `TERRAIN-LEDGER.md` D1-D18. Analyst reports:
 `/tmp/terrain-research/reports/voxel-storage-streaming.md`, `voxel-meshing-generators.md`,
 `engine-constraints.md`, `our-terrain-runtime.md`.
 
@@ -31,15 +31,15 @@ five graphics backends and six export targets with CPU jobs, a vertex buffer and
   behaviour during rebuilds; tunnelling protection; navmesh rebuild policy.
 - Editing: one stateless deterministic operation set behind the brush, MCP and Lua; undo as
   per-block deltas; runtime destruction with budgets and debris events.
-- Generation: from a Noise Graph (S42), from a Terrain (with a blend), from a mesh; presets.
-- Terrain integration: automatic holes (S43), hidden overlap, shading parity, surface fallback.
+- Generation: from a Noise Graph (S54), from a Terrain (with a blend), from a mesh; presets.
+- Terrain integration: automatic holes (S55), hidden overlap, shading parity, surface fallback.
 - `.voxelvolume` format, GUIDs, cook and export, runtime saves of player changes.
 - Human UX (panel, brushes, materials, Slice view, stats) and agent UX (group `voxels`).
 
 **Out of scope** (decisions, not open questions)
 - Blocky (Minecraft-style) and Cubes meshers; greedy meshing (report: wanted only for that product).
 - Worlds of many volumes with streaming across them, and unbounded volumes. A world of volumes is a
-  later spec; S44 owns tiles. One volume stays below R7's limits.
+  later spec; S56 owns tiles. One volume stays below R7's limits.
 - Octree LOD (report: single viewer, legacy) and more than one LOD viewer per volume. Collision takes
   several focuses (R22), LOD one.
 - Replication and multiplayer sync (brief; report: experimental upstream).
@@ -54,7 +54,7 @@ five graphics backends and six export targets with CPU jobs, a vertex buffer and
 
 ## 3. Current state
 
-There is no voxel code in the engine (`engine/core/voxel/` does not exist). What S46 builds on:
+There is no voxel code in the engine (`engine/core/voxel/` does not exist). What S58 builds on:
 
 **Chunk pattern.** `SplineSystem` is the template.
 - Generated chunks are engine-owned entities of the scene, never saved and never in the hierarchy
@@ -102,7 +102,7 @@ replacement at `:4611`, conditional library at `engine/CMakeLists.txt:1139-1141,
 **Jobs (S06).** `jobs::submit`, `Task::cancel` (`engine/core/jobs/Task.h:65`), `postToMain`
 (`JobSystem.h:180`), single-thread mode with 0 workers where nothing runs at submit
 (`JobSystem.h:24-25`) and Background gets 4 ms per frame (`docs/specs/S06-jobs-memory.md:250-253`).
-`MainThreadQueue` does not drain while paused (`engine/core/thread/MainThreadQueue.h:16-19`), so S46
+`MainThreadQueue` does not drain while paused (`engine/core/thread/MainThreadQueue.h:16-19`), so S58
 polls tasks instead. No mesh upload budget exists anywhere (engine-constraints report).
 
 **Rendering.**
@@ -121,8 +121,8 @@ polls tasks instead. No mesh upload budget exists anywhere (engine-constraints r
   (`engine/renders/sokol/SokolPipelineRecord.cpp:131,135`).
 
 **Terrain.** One heightmap, 3 blend maps, 9 layers, `TerrainSurfaceLayer` (`TerrainComponent.h:24`,
-fields to `:110`), `MeshSystem::sampleTerrainSurface` (`MeshSystem.cpp:3942`). No holes yet: S43 adds
-them (D7), S41 adds the operation engine and the surface query (D4, D5). Terrain map undo is a rect
+fields to `:110`), `MeshSystem::sampleTerrainSurface` (`MeshSystem.cpp:3942`). No holes yet: S55 adds
+them (D7), S53 adds the operation engine and the surface query (D4, D5). Terrain map undo is a rect
 patch (`editor/window/TerrainEditWindow.cpp:1979`).
 
 **Assets and export.**
@@ -169,7 +169,7 @@ another reason not to touch it.
 | Edit shapes | `edition/voxel_tool.h:28-46` (stateful, returns void), `edition/funcs.h:262-428` | Shapes and blends as separable functions | One call, a full result, undo (D15) |
 | Block format | `doc/source/specs/block_format_v4.md`, `region_format_v3.md:166-173` | A trailing check | Explicit little-endian and a version header (its documented weakness) |
 
-**Terrain3D** contributes the editor grammar through S41 (D16), not code.
+**Terrain3D** contributes the editor grammar through S53 (D16), not code.
 
 Licences: Transvoxel MIT. Nothing from the OpenEngine do-not-copy list is touched: no compute, no
 SSBO, no GPU-driven culling, no render graph.
@@ -403,7 +403,7 @@ SSBO, no GPU-driven culling, no render graph.
   resolve on the mesh job that first needs them, and blocks that resolve uniform stay in the slot. If the
   source changed since the file's stored hash, the panel and `sample_voxels` report `base_stale` (V10).
   Regenerating keeps modified blocks by default (`keep_edits`), or replaces all.
-- **R34 From a Noise Graph (S42).** Only through `engine/core/noise/NoiseGraphRuntime.h` (S42 R69, N15; D6, D10):
+- **R34 From a Noise Graph (S54).** Only through `engine/core/noise/NoiseGraphRuntime.h` (S54 R69, N15; D6, D10):
   the main thread `compile`s the graph (`world` space, `dimensions: 3d`, no grid-only or bake-only node, else
   the panel and `generate_voxels` name the node), and workers share the immutable `CompiledGraph`, each with its
   own `EvalScratch`.
@@ -414,7 +414,7 @@ SSBO, no GPU-driven culling, no render graph.
     and R12's normals tolerate that.
   - `rangeOver` clips first: a block whose range is wholly beyond the band resolves uniform with no evaluation.
 - **R35 From a Terrain.** A pure `voxel::TerrainSource` interface supplies height, normal and top-2 layers at
-  (x, z), adapted from S41's surface query (D1, D5). Base SDF:
+  (x, z), adapted from S53's surface query (D1, D5). Base SDF:
   `(y - h + overlapDepth) * c`, with slope factor `c = 1 / sqrt(1 + |∇h|²)`, materials from the terrain's layers through R43's linked
   slots. Option `blend_width` with another base: `sdf = mix(other, terrain, b)`, `b` going from 1 at the
   footprint edge to 0 at `blend_width` inward (smoothstep). So a noise cave or overhang fades to exact terrain
@@ -423,8 +423,8 @@ SSBO, no GPU-driven culling, no render graph.
   the band from the nearest triangle (`picking/MeshBvh`), sign by majority of ray parity along the 3 axes.
   Disagreement over 1% of samples sets `non_watertight` in the result and the panel. Result is a stamp or a
   base. Runs as a job in the editor.
-- **R37 Presets.** Voxel presets are `.noisegraph` files in S42's format and ops declared in code, listed by
-  `editor::VoxelPresets` as `editor::TerrainPresets` lists S42's, deterministic by seed:
+- **R37 Presets.** Voxel presets are `.noisegraph` files in S54's format and ops declared in code, listed by
+  `editor::VoxelPresets` as `editor::TerrainPresets` lists S54's, deterministic by seed:
   - `caves`: worm tunnels at least 2.5 voxels in radius through solid under a height.
   - `overhangs`: domain-warped 3D noise in a height band, giving cliffs and arches.
   - `cave_entrance`: Terrain base plus a seeded capsule chain from the surface to a chamber; by construction
@@ -439,28 +439,28 @@ SSBO, no GPU-driven culling, no render graph.
   defaults to base Terrain, Open bounds, `terrainCut = Automatic`, one linked slot per terrain layer. The
   volume is meant to extend beyond any planned cave by at least 3 blocks' worth of flush surface.
 - **R39 The rule.** For a terrain hole-map texel inside the footprint, at its centre `(x, z)` with height `h`
-  (S41's surface query, ignoring holes), let `d = sdf(x, h, z)`, trilinear. The texel is **flush** when
+  (S53's surface query, ignoring holes), let `d = sdf(x, h, z)`, trilinear. The texel is **flush** when
   `|d - overlapDepth * c| <= cutTolerance` (`c` the slope factor of R35): the volume's surface coincides with
   the terrain there. **A non-flush texel is cut.** So the terrain stays only where the volume agrees with it:
   a dig, a cave mouth, a mound on top (no terrain poking through later digs, no foliage on it) are all cut.
   A change smaller than `cutTolerance` stays flush and has no visible effect, which the guide says. Outside the
   footprint nothing changes.
-- **R40 Cutting.** With `terrainCut = Automatic`, cuts call S41's `cut_holes` and `fill_holes` with an R8 mask (S41
-  R12, S43 R27; D4, D7), and S43 makes them hold in render, collision, navmesh, picking and foliage. Consequences:
-  - The hole map has no ownership tag (S43 D5, seams), so the volume records which texels **it** cut (file section
+- **R40 Cutting.** With `terrainCut = Automatic`, cuts call S53's `cut_holes` and `fill_holes` with an R8 mask (S53
+  R12, S55 R27; D4, D7), and S55 makes them hold in render, collision, navmesh, picking and foliage. Consequences:
+  - The hole map has no ownership tag (S55 D5, seams), so the volume records which texels **it** cut (file section
     `terrainCut`). Deleting it, disabling it or changing `terrainCut` to Off fills exactly those, and holes a
     person painted stay.
   - Incremental: only texels inside an edit's changed bounds are re-evaluated. Updates batch per change set, at most
-    one per terrain per frame (D12, S43 R28).
+    one per terrain per frame (D12, S55 R28).
   - In the editor the `TerrainMapDeltaCmd` and the `VoxelEditCmd` share one undo step (`CommandHistory::mark`,
     `groupSince`).
-  - S43 R22 keeps a collider rim of up to one collision cell inside a drawn hole, so an entrance needs to be at
-    least 3 collision cells wide. S43 R27's `warnings` come back in `EditResult` as `entrance_narrow`, and the panel
+  - S55 R22 keeps a collider rim of up to one collision cell inside a drawn hole, so an entrance needs to be at
+    least 3 collision cells wide. S55 R27's `warnings` come back in `EditResult` as `entrance_narrow`, and the panel
     shows it; `sample_terrain`'s `collision_gap` is how an agent checks.
-  - The first cut creates the map and reloads the terrain variant (S43 R29). To keep that off a first in-game dig,
-    a terrain with an attached Automatic volume is treated as holed by the collector (`Thl` ships, S43 R34), and in Play it
-    keeps its map while such a volume exists, through the non-saved `holeMapHolds` count on the component (S43 R29,
-    R49). S43 owns both; `VoxelSystemTerrain.cpp` raises and lowers the count.
+  - The first cut creates the map and reloads the terrain variant (S55 R29). To keep that off a first in-game dig,
+    a terrain with an attached Automatic volume is treated as holed by the collector (`Thl` ships, S55 R34), and in Play it
+    keeps its map while such a volume exists, through the non-saved `holeMapHolds` count on the component (S55 R29,
+    R49). S55 owns both; `VoxelSystemTerrain.cpp` raises and lowers the count.
 - **R41 Hiding the overlap: exact method.** Three parts, all applied by the mesher for an Open attached volume,
   evaluated per vertex from a `coverage` grid at voxel-column resolution:
   1. **Sunk surface.** The seed puts the voxel surface `overlapDepth` (default 0.02 voxel) under the terrain, so
@@ -470,7 +470,7 @@ SSBO, no GPU-driven culling, no render graph.
      rather than z-fighting.
   3. **Triangle cull.** A triangle is dropped from the render and collision meshes when all 3 vertices are
      within 0.75 voxel of the seed surface and in flush columns more than `ringWidth` from any cut
-     column, `ringWidth = max(2 voxels, 1 hole texel)` as S43 asks. So the volume extends a ring under the terrain
+     column, `ringWidth = max(2 voxels, 1 hole texel)` as S55 asks. So the volume extends a ring under the terrain
      past each hole and draws nothing beyond it, and a cave ceiling under flush ground is untouched because it
      fails the height test.
 
@@ -479,9 +479,9 @@ SSBO, no GPU-driven culling, no render graph.
   surface mismatch (`VoxelTerrain.SeamStep` bounds it).
 - **R42 Shading parity.** Across the seam both surfaces read the same textures with the same tiling and the same
   tier: for an attached volume the flat-projection UV uses the terrain's origin, size and detail tiling and
-  `uvScale`, plus the same tile-break, triplanar sharpness and cutoff, S43's `terrain_height_blend.glsl` over the
-  height in colour alpha (S43 R6), and the same Lit lighting code (`HAS_VOXEL` is in `mesh.frag`, V2). Hex and
-  stochastic tiling are drawn plain on voxels, as at S43's Medium and Low (Risks).
+  `uvScale`, plus the same tile-break, triplanar sharpness and cutoff, S55's `terrain_height_blend.glsl` over the
+  height in colour alpha (S55 R6), and the same Lit lighting code (`HAS_VOXEL` is in `mesh.frag`, V2). Hex and
+  stochastic tiling are drawn plain on voxels, as at S55's Medium and Low (Risks).
 - **R43 Material slots.** `VoxelMaterialSlot { name, TerrainSurfaceLayer layer, int linkedTerrainLayer = -1 }`:
   the same struct and field names as Terrain Layers, so the panels look alike. A linked slot follows that layer
   live. At most 16, array slices per R50.
@@ -490,14 +490,14 @@ SSBO, no GPU-driven culling, no render graph.
   a hole with nothing under it is not); a fill or undo closes the hole first, then removes the
   voxels. Collision: the terrain's collision hole opens only after the voxel collider of that change set is
   live (next tick at the latest), so a player at the lip always stands on one or the other.
-- **R45 Foliage and the surface query.** Foliage cannot grow on a cut texel: S45's origin test reads `hole` from S41's
-  query (S43 R26, D9), and R39's rule cuts under mounds too. S41's query stays terrain-only (D5). Above it, for callers
+- **R45 Foliage and the surface query.** Foliage cannot grow on a cut texel: S57's origin test reads `hole` from S53's
+  query (S55 R26, D9), and R39's rule cuts under mounds too. S53's query stays terrain-only (D5). Above it, for callers
   that want the ground wherever it is: `voxel::sampleGround(scene, x, z, yHint)` in
   `engine/core/object/voxel/GroundQuery.h` (always compiled) returns the terrain when not a hole, else a downward
   `raycast` on any volume over that column: height, normal, source tag (`terrain`, `voxel`, `none`). Lua
   `Terrain:getGroundAt(x, z, yHint)`, and `sample_voxels` `points` with `ground: true`. Module off, it is the plain terrain
-  query. The consumers in S43 R26's table keep their behaviour: a road bridges a cave mouth, a particle passes through.
-- **R46 Terrain edits afterwards.** S41's `TerrainEditEvents` dirty rectangles reaching an attached volume regenerate its unmodified
+  query. The consumers in S55 R26's table keep their behaviour: a road bridges a cave mouth, a particle passes through.
+- **R46 Terrain edits afterwards.** S53's `TerrainEditEvents` dirty rectangles reaching an attached volume regenerate its unmodified
   base blocks in that footprint and re-evaluate R39 there. Modified blocks stay, which simply makes more of
   them non-flush and therefore cut. Terrain undo does the reverse by the same path. `Re-seed From Terrain`
   in the panel discards modified blocks in a chosen region, one undo step.
@@ -507,38 +507,38 @@ SSBO, no GPU-driven culling, no render graph.
 - **R47 Module.** CMake option `JASPERENGINE_VOXEL` (default ON; the editor, tests and full player have it):
   `engine/core/voxel/VoxelSources.cmake` included under `if(JASPERENGINE_VOXEL)`, `VoxelSystem` registered right
   after `SplineSystem` in `Scene.cpp` under the same condition, Lua bindings under `#if`, the Transvoxel notice
-  left out. It **requires `JASPERENGINE_NOISE`** (S42's seam): a CMake error otherwise. Module name `voxel` in
+  left out. It **requires `JASPERENGINE_NOISE`** (S54's seam): a CMake error otherwise. Module name `voxel` in
   `PlayerModules`, `variants.json`, `JasperPlayerVariants.cmake`, the switch at `Exporter.cpp:3595` and the Xcode
   replacement at `:4611`, `_MODULE_MACROS` (`tools/lua_api/extract.py:48`) and `lib_size.py`'s groups, with `tools/xcode_sync_voxels.py` following the `xcode_sync_splines.py`
   convention (ids `VOXL` + sha1, `-ffp-contract=off`, `--check`). Variants `full`, `ui` and `core` contain it;
   `lite3d` and `lite2d` do not change (V13). The component header and field table stay in all builds, as
   navigation's do; a player without the module whose content needs it exits 5 (S34 R3).
 - **R48 Detection.** `ModuleUsage`: a Voxel Volume component in a scene or prefab, a Lua name under the module's
-  `#if`, a script property typed with `VoxelVolume` need `voxel`, and with it `noise` (S42 R43; D18). Component fields
+  `#if`, a script property typed with `VoxelVolume` need `voxel`, and with it `noise` (S54 R43; D18). Component fields
   add others: `collision` adds `physics3d`, `navigationUpdate = Automatic` with a surface adds `navigation`. Evidence
   strings per kind. A project without any of it needs no `voxel` and its build is unchanged.
 - **R49 Shaders.** `HAS_VOXEL` and one of `VOXEL_TIER_HIGH|MEDIUM|LOW` are `litDefines`, pushed at
-  `RenderSystem.cpp:3904-3917` and appended to `defineCodes`: 4 more, which S43 R54's 64-bit `getDefineBits` has room
-  for (34 of 64 with S43's 30). They are in `mesh.vert`, `mesh.frag` with bodies in new
-  includes `includes/voxel_vs.glsl` and `includes/voxel_fs.glsl`. Lit defines reach only colour shaders (S43 D2;
+  `RenderSystem.cpp:3904-3917` and appended to `defineCodes`: 4 more, which S55 R54's 64-bit `getDefineBits` has room
+  for (34 of 64 with S55's 30). They are in `mesh.vert`, `mesh.frag` with bodies in new
+  includes `includes/voxel_vs.glsl` and `includes/voxel_fs.glsl`. Lit defines reach only colour shaders (S55 D2;
   `RenderSystem.cpp:3395`), so in `gbuffer.vert` and `gbuffer.frag` `HAS_VOXEL` comes from the property bit `Vox`
-  (GBUFFER 23, S43 D2's table) and S43's G-buffer tier bits 17 and 18 choose the tier. Depth and shadow passes use the plain mesh
+  (GBUFFER 23, S55 D2's table) and S55's G-buffer tier bits 17 and 18 choose the tier. Depth and shadow passes use the plain mesh
   depth variant, with no voxel code. New attributes `VOXELSLOTS` (`ushort2n`, x holds four 4-bit slots, y spare)
   and `VOXELWEIGHTS` (`ubyte4n`) are appended to `AttributeType`. The vertex shader unpacks slots to floats with
   integer ops on the attribute value, not on a float's bits (D13), and passes them `flat`. Vertex size 32 bytes.
   One uniform block `u_fs_voxelLayers` (16 × 4 vec4), only in voxel variants, which never combine with `HAS_TERRAIN`.
   No compute, no SSBO, no integer texture. Chunks are not in saved scenes, so `editor/shader/ShaderVariantCollector.cpp`
-  gets one branch: a Voxel Volume component adds the Lit variants of its tiers, as S43 R34 does for terrain, so builds
+  gets one branch: a Voxel Volume component adds the Lit variants of its tiers, as S55 R34 does for terrain, so builds
   without a runtime compiler reach them.
-- **R50 Texture array.** One array per volume, through S43's `TerrainDetailBuilder`
-  (`engine/core/terrain/`, S43 moves `getTerrainDetailArray`'s CPU half there), so voxels get its formats, cooked
-  compressed slices (S43 R16, S14's exclusion lifted) and height in alpha. It keys by slice, so a volume whose slots are
+- **R50 Texture array.** One array per volume, through S55's `TerrainDetailBuilder`
+  (`engine/core/terrain/`, S55 moves `getTerrainDetailArray`'s CPU half there), so voxels get its formats, cooked
+  compressed slices (S55 R16, S14's exclusion lifted) and height in alpha. It keys by slice, so a volume whose slots are
   all linked uses the terrain's array itself. Max 48 slices (16 slots × 3 maps), which every backend allows (*inferred
   from* `sokol_gfx.h` and GLES3's minimum of 256). Static after build; a slot change rebuilds it whole (D12 is about
   streaming, which this is not). Own-array max size: High 1024 px, Medium 1024, Low 512, with no surface slices at Low.
-- **R51 Tiers and fetch budget.** The tier is S43's `TerrainQuality` (High, Medium, Low). Reads of `u_voxelDetail` per
-  pixel, worst case, fixed at compile time (no loops over fetches; counted by AC36). Medium and Low equal S43's worst
-  case (S43 R1), so an attached volume costs no more per pixel than the terrain beside it:
+- **R51 Tiers and fetch budget.** The tier is S55's `TerrainQuality` (High, Medium, Low). Reads of `u_voxelDetail` per
+  pixel, worst case, fixed at compile time (no loops over fetches; counted by AC36). Medium and Low equal S55's worst
+  case (S55 R1), so an attached volume costs no more per pixel than the terrain beside it:
 
   | Tier | Layers per pixel | Projection | Maps | Worst-case reads | Typical (flat, 2 layers) |
   |---|---|---|---|---|---|
@@ -546,9 +546,9 @@ SSBO, no GPU-driven culling, no render graph.
   | Medium | 3 | biplanar (2 dominant axes); far on flat colour | colour, normal, surface | 21 | 8 |
   | Low | 2 | biplanar; near only | colour for both, normal for the strongest; roughness from the slot | 6 | 3 |
 
-  Resolution: `quality` if not Auto; else, attached, the terrain's effective tier (S43 R2); else R7's table, which is
-  lower than S43's web default because a free-standing volume has no terrain to match. All use `textureGrad`, and all blend
-  by S43's height formula, which costs no extra read. Structural settings also come from the tier:
+  Resolution: `quality` if not Auto; else, attached, the terrain's effective tier (S55 R2); else R7's table, which is
+  lower than S55's web default because a free-standing volume has no terrain to match. All use `textureGrad`, and all blend
+  by S55's height formula, which costs no extra read. Structural settings also come from the tier:
 
   | Tier | `lodLevels` | `collisionRadius` | Upload per frame | Body cap |
   |---|---|---|---|---|
@@ -604,17 +604,17 @@ SSBO, no GPU-driven culling, no render graph.
   estimate with a warning if it exceeds a target's budget. It creates the `.voxelvolume` next to the scene's assets (S04
   GUID), one undo step.
 - **R60 Panel and brushes.** Window `Voxel Volume` (`editor/window/VoxelEditWindow.{h,cpp}`, Inspector button "Edit
-  Volume"), the grammar of S41 R55-R57 and R62 (D16):
+  Volume"), the grammar of S53 R55-R57 and R62 (D16):
   - Tools `Dig` (D), `Add` (A), `Smooth` (S), `Paint` (P), `Pick` (K); shapes Sphere, Box, Capsule (drag), Mesh, Stamp;
     `[` `]` size. Keys live in a new `ShortcutContext::VoxelBrush`, next to `TerrainBrush` in the dispatcher, rebindable
     through S25, listed in a one-line legend under the tool name.
   - `Ctrl` inverts Dig and Add, `Shift` smooths, Alt+click with no drag picks the material under the cursor and Alt+drag
-    orbits (S41 R56's drag threshold; these tools have no alternate, so `Alt Alternates While Painting` changes nothing here;
+    orbits (S53 R56's drag threshold; these tools have no alternate, so `Alt Alternates While Painting` changes nothing here;
     `Pick` is also a button and a key). Modifiers are read at stroke start and held.
-  - A decal coloured by the effective operation, changing as soon as a modifier is pressed, with S41's Table 4 colours for
+  - A decal coloured by the effective operation, changing as soon as a modifier is pressed, with S53's Table 4 colours for
     the same meanings: Add white as Raise, Dig dark grey as Lower, Smooth dark red, Paint green, Pick white. It is a draped
-    ring plus the shape's wire preview, and it fades and hides as S41's does.
-  - A stroke is stamps at arc-length multiples of `spacing = max(0.25 * radius, 0.5 voxel)` (S41's rule), not a rate, so one
+    ring plus the shape's wire preview, and it fades and hides as S53's does.
+  - A stroke is stamps at arc-length multiples of `spacing = max(0.25 * radius, 0.5 voxel)` (S53's rule), not a rate, so one
     stroke replays the same through a scripted path. Dig and Add are idempotent where stamps overlap, so holding still adds
     nothing. One stroke is one undo.
   - A live info strip like Terrain Info: position, value and material under the cursor, voxels the stamp would touch, memory.
@@ -627,7 +627,7 @@ SSBO, no GPU-driven culling, no render graph.
 - **R63 Slice view.** A dockable panel: axis X, Y, Z, position slider (and scroll), rendered on the CPU per R70: solid and
   air shading, the iso-line, slots as colour, block grid, the volume's and the terrain's outlines, the plane drawn as a gizmo
   in the Scene view. Click moves the Scene camera's pivot there.
-- **R64 Overlays and stats.** Overlays: Wireframe, LOD Colours, Blocks, Collision, Holes (S43 R30's), Dominant Material (Scene view line
+- **R64 Overlays and stats.** Overlays: Wireframe, LOD Colours, Blocks, Collision, Holes (S55 R30's), Dominant Material (Scene view line
   and tint draws; editor only). Stats: blocks total, uniform, non-uniform, hot, cold, modified; memory by kind against each
   target's budget; triangles; chunks; draws; jobs pending; collision bodies; last mesh ms; last latency.
 - **R65 Inspector.** `editor/window/InspectorVoxels.cpp` with Unity-style labels (Voxel Size read-only, Quality, LOD Levels,
@@ -824,7 +824,7 @@ namespace jasperengine::voxel {
 2. Mesher, tables, clipbox, change sets, audit, queue (R9-R17): CPU only.
 3. Chunks, `VoxelSystem`, shader, array, tiers, shadows, picking (R18-R20, R49-R54).
 4. Physics, navigation (R21-R25).
-5. Generators and presets (R33-R37): needs S42. Terrain integration (R38-R46): needs S41 and S43.
+5. Generators and presets (R33-R37): needs S54. Terrain integration (R38-R46): needs S53 and S55.
 6. Editor, MCP, Lua, cook, export, saves (R47-R48, R59-R73, R77-R80).
 
 **V15. Editing and threads.** The main thread calls `applyEdit`, which may use `jobs::parallelFor` per block (`smooth` reads pre-edit data, so output is independent of order). Base resolution inside an edit happens inline. `generate_voxels` is the only long write and it holds the volume `volume_busy`; a rule, not a lock.
@@ -866,14 +866,14 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 | AC29 | R30, R31 | `VoxelRuntime.PerCallBudget`, `.NoOpAllocatesNothing` (`AllocationCounter`), `.EventOrderAndDebrisDeterministic` (Lua), `.RevertChanges` |
 | AC30 | R37 | `test_voxels.py::test_presets`: each preset twice with one seed: hashes equal. `cave_entrance`: `sample_voxels connectivity` from sky to chamber `connected: true`; `caves` lists components; `overhangs` has an air sample under solid in a column |
 | AC31 | R32 | `VoxelSample.RaycastMatchesMesh` within 1/64 voxel vs a triangle ray cast at level 0; `getValueAt` vs analytic; `getMaterialAt` after paint; Lua binding test |
-| AC32 | R33, R34 | `VoxelGenerator.CoarseBlockWithoutFine`: a level-2 block resolves with no level-0 resolved; equals decimation of fine blocks. `VoxelGenerator.NoiseGraphGolden` (S42 golden). `.BaseStaleReported`; `keep_edits` keeps modified blocks |
+| AC32 | R33, R34 | `VoxelGenerator.CoarseBlockWithoutFine`: a level-2 block resolves with no level-0 resolved; equals decimation of fine blocks. `VoxelGenerator.NoiseGraphGolden` (S54 golden). `.BaseStaleReported`; `keep_edits` keeps modified blocks |
 | AC33 | R35, R36 | `VoxelGenerator.TerrainSeedFlush`: over a fractal terrain the seed's surface stays within `overlapDepth + cutTolerance`. `.BlendReachesTerrainAtEdge`. `VoxelVoxelize.Sphere` vs analytic; `.NonWatertightFlagged` |
-| AC34 | R38, R39, R40, R46 | `VoxelTerrain.AttachDefaults`, `VoxelTerrain.CutsOnlyNonFlush`, `.RemovalRestoresExactly` (a person's holes survive, map hash back), `.TerrainSculptRecutsIncrementally` (counted texels), `.HoleMapHeldInPlay`, `.EntranceNarrowWarns`, one undo step for voxels and holes. `VoxelExport.AttachedShipsHoleVariant`. Needs S41 and S43 |
+| AC34 | R38, R39, R40, R46 | `VoxelTerrain.AttachDefaults`, `VoxelTerrain.CutsOnlyNonFlush`, `.RemovalRestoresExactly` (a person's holes survive, map hash back), `.TerrainSculptRecutsIncrementally` (counted texels), `.HoleMapHeldInPlay`, `.EntranceNarrowWarns`, one undo step for voxels and holes. `VoxelExport.AttachedShipsHoleVariant`. Needs S53 and S55 |
 | AC35 | R41, R42, R43, R44 | `VoxelTerrain.CullKeepsCeilingAndRing`, `VoxelMaterials.LinkedSlotFollowsLayer`, `VoxelMaterials.SharesTerrainArray`, `VoxelTerrain.SeamStep` (CPU: step ≤ `overlapDepth + 0.1 voxel` around a cave mouth), `VoxelTerrain.OrderHoleAfterMesh`, `.CollisionHoleAfterCollider`: a body rolled over the lip neither falls nor stops. `VoxelTerrainGpu.CaveMouth` golden; `VoxelTerrainGpu.SeamColourStep`: across the hole edge colour difference within 3 % of the difference across a same-terrain strip, High and Low. Red: no sink plus no bias makes `CaveMouth` z-fight |
 | AC36 | R51 | `VoxelShader.FetchBudgetPerTier`: each tier's variant compiled to SPIR-V; `OpImageSample*` on `u_voxelDetail` counted: 32, 21, 6 at most. `VoxelRenderGpu.TierGoldens` per tier: sphere with 4 slots. Red: a High variant with one extra fetch fails |
 | AC37 | R45 | `VoxelTerrain.FoliageExcludedOnCut`, `.SampleGroundFallsBackToVoxels`, Lua `getGroundAt`, `GroundQuery.TerrainOnlyWithModuleOff` (compiled in the module-off build of AC44) |
 | AC38 | R47, R48 | `ModuleUsage.Voxel*` for each evidence kind and field; `PlayerModules.*` knows `voxel`; `ContentManifest.*`: a manifest needing `voxel` on `lite3d` exits 5, the payload validator refuses it; `cmake -S engine -DJASPERENGINE_NOISE=OFF -DJASPERENGINE_VOXEL=ON` exits non-zero (command and output in the report); `xcode_sync_voxels.py --check`; `tools/ci/check-notices.py` |
-| AC39 | R49, R50, R52, R53 | `VoxelShader.CrossCompilesForEveryBackend` (GLSL 410, ESSL 300, MSL, HLSL through the bundled SPIRV-Cross, no driver); `VoxelRenderGpu.LodSeamGolden`, `.ShadowsNoLeak`, glcore and Vulkan (lavapipe); `VoxelExport.CollectorListsTierVariants`; S43's `MaterialPbrDefines.BitsAreSixtyFourWide` over the 34 defines; `VoxelPicking.ClickSelectsOwner` (editor) |
+| AC39 | R49, R50, R52, R53 | `VoxelShader.CrossCompilesForEveryBackend` (GLSL 410, ESSL 300, MSL, HLSL through the bundled SPIRV-Cross, no driver); `VoxelRenderGpu.LodSeamGolden`, `.ShadowsNoLeak`, glcore and Vulkan (lavapipe); `VoxelExport.CollectorListsTierVariants`; S55's `MaterialPbrDefines.BitsAreSixtyFourWide` over the 34 defines; `VoxelPicking.ClickSelectsOwner` (editor) |
 | AC40 | R57 | `test_voxels.py::test_budgets_cave_world`: reference content (256×128×256, 1 m, Cave Entrance over a terrain) from 3 cameras: chunks, triangles and memory per tier within budget; prints `[bench]`. Reference content is generated by the test |
 | AC41 | R55 | `VoxelBench` (`je-bench-voxel`) with thresholds in `bench-thresholds.json`, gated by `tools/perf/check_bench.py` on a quiet run. Red: lowered thresholds locally show a fail |
 | AC42 | R56 | `VoxelLatencyBench`: `JE_JOB_WORKERS=7,2,0`, frames counted; thresholds per case |
@@ -903,7 +903,7 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 
 | Not verifiable here | Who |
 |---|---|
-| Draw time and fill cost on real GPUs; mobile thermal | Manual list `docs/specs/checklists/S46.md` on a device, or the owner |
+| Draw time and fill cost on real GPUs; mobile thermal | Manual list `docs/specs/checklists/S58.md` on a device, or the owner |
 | Windows, macOS, iOS builds and `CPU` suites; Android run; Metal goldens | CI on the push (`docs/testing.md:515`), and `xcode_sync_voxels.py --check` here |
 | Mobile CPU budgets | Inferred from native × a factor; recorded as such until a device measures |
 | arm64 determinism | CI; recorded as unverified here |
@@ -911,23 +911,23 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 ## 8. Dependencies & conflicts
 
 - **Depends on:** S06 (jobs), S03 (atomic), S04 (GUIDs), S30 (cook), S34 (modules), S19 (tiles), S26 (picking), S24 (undo).
-  Landing order is S41 §8's: S41's foundation first, then S41's rest, S42, S43, S45 and S46 in parallel, then S44 last.
-  **Milestones 1 and 2 need nothing new.** Milestone 3 needs S43's `TerrainDetailBuilder` and `TerrainQuality` (or, if S46 runs first, it moves them per S43's design and S43 follows). Milestone 5 needs **S42** (noise), **S41** (operations and query), **S43** (holes).
-- **What S46 takes from those specs (seams, read in their current text):**
-  - **S41:** `querySurface` and `terrain::SurfaceSample` (`hole`, height defined under a hole, S43 R26), `cut_holes` and
-    `fill_holes` with an R8 mask (S41 R12), `TerrainEditEvents` dirty rectangles (S41 R42), `TerrainMapDeltaCmd` in an undo
-    group (S41 R24), the brush grammar (R55-R57, R62, Table 4). A voxel volume does not store its data in `TerrainMapStore`.
-  - **S42:** `NoiseGraphRuntime.h` only (R69, N15), `rangeOver`, `evaluateGrid3D`, one `EvalScratch` per worker, output `sdf`;
+  Landing order is S53 §8's: S53's foundation first, then S53's rest, S54, S55, S57 and S58 in parallel, then S56 last.
+  **Milestones 1 and 2 need nothing new.** Milestone 3 needs S55's `TerrainDetailBuilder` and `TerrainQuality` (or, if S58 runs first, it moves them per S55's design and S55 follows). Milestone 5 needs **S54** (noise), **S53** (operations and query), **S55** (holes).
+- **What S58 takes from those specs (seams, read in their current text):**
+  - **S53:** `querySurface` and `terrain::SurfaceSample` (`hole`, height defined under a hole, S55 R26), `cut_holes` and
+    `fill_holes` with an R8 mask (S53 R12), `TerrainEditEvents` dirty rectangles (S53 R42), `TerrainMapDeltaCmd` in an undo
+    group (S53 R24), the brush grammar (R55-R57, R62, Table 4). A voxel volume does not store its data in `TerrainMapStore`.
+  - **S54:** `NoiseGraphRuntime.h` only (R69, N15), `rangeOver`, `evaluateGrid3D`, one `EvalScratch` per worker, output `sdf`;
     `JASPERENGINE_VOXEL` requires `JASPERENGINE_NOISE`; presets as `.noisegraph`.
-  - **S43:** `TerrainQuality`, `TerrainDetailBuilder`, `terrain_height_blend.glsl`, R22's rim and R27's result, R28's pacing.
-    S43 owns what R40 needs of it: R29 keeps the hole map while `holeMapHolds > 0`, and R34's collector ships `Thl` for a terrain
-    with an attached Automatic volume. If S43 lands first, S46 adds R34's clause in S43's form (S43 R34).
-  - **S44:** a volume over a tiled world queries through `querySurface` and cuts through its store. It is not tested until S44
-    lands. S44 owns world paging; S46 does not page, and a volume crossing a tile edge cuts on each tile's map.
-  - **S45:** reads holes through S41's query (D9); voxel foliage is out of scope on both sides (S45:41).
+  - **S55:** `TerrainQuality`, `TerrainDetailBuilder`, `terrain_height_blend.glsl`, R22's rim and R27's result, R28's pacing.
+    S55 owns what R40 needs of it: R29 keeps the hole map while `holeMapHolds > 0`, and R34's collector ships `Thl` for a terrain
+    with an attached Automatic volume. If S55 lands first, S58 adds R34's clause in S55's form (S55 R34).
+  - **S56:** a volume over a tiled world queries through `querySurface` and cuts through its store. It is not tested until S56
+    lands. S56 owns world paging; S58 does not page, and a volume crossing a tile edge cuts on each tile's map.
+  - **S57:** reads holes through S53's query (D9); voxel foliage is out of scope on both sides (S57:41).
   - **S34:** `voxel` joins the module tables, at the end of `allModules`.
   - **Provides to others:** `voxel::sampleGround` (R45), the `.voxelvolume` format, `generate_voxels`' schema.
-- **Merge hotspots:** `engine/CMakeLists.txt`, `Scene.cpp:59-60`, `RenderSystem.cpp:3904-3917` (S43 adds defines there too), `mesh.frag`, `gbuffer.frag`, `Render.h` (append only), `ModuleUsage.cpp`, `Exporter.cpp`, `budget.json`, `McpToolGroups.cpp`, `NOTICE.md`, `variants.json`, `RuntimeFields.gen.inc`, `AssetTypes.cpp`.
+- **Merge hotspots:** `engine/CMakeLists.txt`, `Scene.cpp:59-60`, `RenderSystem.cpp:3904-3917` (S55 adds defines there too), `mesh.frag`, `gbuffer.frag`, `Render.h` (append only), `ModuleUsage.cpp`, `Exporter.cpp`, `budget.json`, `McpToolGroups.cpp`, `NOTICE.md`, `variants.json`, `RuntimeFields.gen.inc`, `AssetTypes.cpp`.
 
 ## 9. Risks & defaults
 
@@ -938,16 +938,16 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 | AddBodiesPrepare during a step | Jolt documents it as background-safe (`BodyInterface.h:120-123`). Inferred from `BroadPhaseQuadTree.cpp:154-205`, it touches only its bodies' tracking. TSan in AC20 confirms; the fallback is Prepare on the main thread between steps |
 | A hidden mesh might not load (*inferred*: the loop has no `visible` test) | AC17 checks it. Fallback: chunks stay `visible` but off the camera's layer until flipped |
 | Remesh churn from mask changes on web | Hysteresis, one set, cache; `lodLevels = 1` is the escape: no transitions at all |
-| S43's collider rim leaves an invisible lip of up to one collision cell in a cave mouth | Inherited (S43 R22, R24). The ring keeps the visuals right; AC35 measures a body rolling over the lip and `entrance_narrow` warns. Accepted, not worked around |
+| S55's collider rim leaves an invisible lip of up to one collision cell in a cave mouth | Inherited (S55 R22, R24). The ring keeps the visuals right; AC35 measures a body rolling over the lip and `entrance_narrow` warns. Accepted, not worked around |
 | A hole-edge step of `overlapDepth` shows at grazing angles | Default 0.02 voxel, measured by AC35. Colour match hides most of it. Users can raise `overlapDepth` if morph pokes through |
 | Terrain layers with hex or stochastic tiling look different in the ring | Same textures and mean colour, different pattern in the ring. Accepted (Medium and Low terrain draw them plain anyway); panel notes it at High |
-| Terrain hole map gives a stair-stepped edge at texel scale (S43 D7) | The ring runs under the edge, so the steps are only a boundary between two surfaces that match. Accepted |
+| Terrain hole map gives a stair-stepped edge at texel scale (S55 D7) | The ring runs under the edge, so the steps are only a boundary between two surfaces that match. Accepted |
 | Very steep terrain makes "flush" fail on cliffs | `c` slope factor handles smooth slopes; a texel that misclassifies is simply cut, and the voxel surface stands in. Worst case costs triangles, not correctness |
 | Volumes over budget on web at the default size | Dialog warns at creation; export error for dimensions; runtime refusal for memory. No silent quality loss |
 | Noise is not a true SDF, so band collapse is weaker and raycast steps are unsafe | Generators clamp to the band and normalize by a per-graph `graphScale`; `raycast` sphere-traces at most 1 voxel per step and verifies crossing by bisection, so an inexact field is slower, not wrong |
 | A scene with many small volumes | Each costs a table, an array and chunks. Sharing arrays is not designed; a project over 8 volumes in a scene gets a panel note. Default: fine |
 | Two scenes with one asset, or two instances | One asset, two editors of the same data: edits appear in both in the editor (asset semantics, same as a material). At runtime each is its own copy |
-| Android and iOS at default quality untested on devices | Budgets stated in counts; `checklists/S46.md` lists the device checks; recorded as unverified in the report |
+| Android and iOS at default quality untested on devices | Budgets stated in counts; `checklists/S58.md` lists the device checks; recorded as unverified in the report |
 | Floating debris after a dig | Out of scope. `connectivity` reports it and scripts can respond |
 
 **Next person must know:** the reference content of AC40 is generated by tests, not checked in. The v1 fixture of AC47 is generated once by Milestone 1 and is then never regenerated: a format change gets a new fixture and a migration.
