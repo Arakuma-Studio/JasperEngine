@@ -151,6 +151,18 @@ never build or run them.
 | `editor_ux` | `configure_game_view` +60 (S41) | within 24,000 / 21 |
 | core | `set_sprite_frames` (S44 +110, S45 +70, description −120: stays ≤ its 2,075 exception), `get_asset_info` (+60 S44, +40 S45, +45 S51), `view_asset` (+35 S44, +170 S51), `write_file` +15 (S51), `get_tilemap` +400 and `edit_tilemap` ≤ its 2,523 (S50) | ≈ +830 to the default listing, each spec with a fallback |
 
+### Upstream MCP rule changes (origin/main e8142a81e, merged 2026-11-04): these override the specs
+
+- The agent guide is now ≤ 8,192 bytes, with ≥ 1,500 bytes of headroom, and the default listing
+  is ≤ 99,000 characters.
+- An area gets one entry in the guide's "Other areas" index: its key tool and
+  `jasper://docs/<area>`. It gets a digest section only for rules agents broke without one.
+- Any new guide line needs a case in `tools/mcp/eval` that fails without it. Hints agents must
+  see go in `structuredContent`.
+- So S41's planned `## Pixel art` guide section becomes an "Other areas" entry, `pixel_art`:
+  `check_pixel_art`, `jasper://docs/pixel-art`. Every other spec's guide text goes in
+  `docs/mcp/guide/<area>.md`. Record this in each spec's Deviations section.
+
 ## Specs
 
 | ID | Name | Wave | Depends on | Branch | State |
