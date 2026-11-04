@@ -537,9 +537,9 @@ players)
         "
         ;;
     android)
-        PLAYER_BACKENDS="${PLAYER_BACKENDS:-gles3 vulkan}"
+        PLAYER_BACKENDS="${PLAYER_BACKENDS:-gles3}"
         for backend in $PLAYER_BACKENDS; do
-            [[ "$backend" =~ ^(gles3|vulkan)$ ]] || { echo "PLAYER_BACKENDS lists gles3 and vulkan for android (got $backend)" >&2; exit 1; }
+            [[ "$backend" == gles3 ]] || { echo "PLAYER_BACKENDS is gles3 for android: its platform layer makes an EGL context only (got $backend)" >&2; exit 1; }
         done
         run bash -euo pipefail -c "
             for flavour in $PLAYER_FLAVOURS; do

@@ -5,13 +5,10 @@
 
 #include "App.h"
 #include "AppSettings.h"
-#include "htmlui/HttpClient.h"
-#include "io/AtomicFile.h"
 #include "util/CommandRunner.h"
-#include "util/FileUtils.h"
-#include "util/Sha256.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 
 using namespace jasperengine;
@@ -85,45 +82,22 @@ fs::path AndroidTools::jdkHome() {
     return {};
 }
 
-fs::path AndroidTools::bundletoolJar(bool download, std::string& error) {
-    const fs::path jar = App::getUserCacheBaseDir() / "jasperengine" / "tools" / (std::string("bundletool-all-") + BUNDLETOOL_VERSION + ".jar");
-    std::error_code ec;
-    if (fs::is_regular_file(jar, ec)) {
-        std::string hex;
-        if (sha256File(jar, hex, &error) && hex == BUNDLETOOL_SHA256) return jar;
-        fs::remove(jar, ec);
-    }
-    if (!download) {
-        error = std::string("bundletool ") + BUNDLETOOL_VERSION + " is not downloaded yet";
-        return {};
-    }
-    htmlui::HttpClient client;
-    client.setTimeoutSeconds(600);
-    client.setMaxFileSize(256ll * 1024 * 1024);
-    const std::string url = std::string("https://github.com/google/bundletool/releases/download/") + BUNDLETOOL_VERSION +
-                            "/bundletool-all-" + BUNDLETOOL_VERSION + ".jar";
-    const htmlui::HttpResponse response = client.get(url);
-    if (!response.ok()) {
-        error = "bundletool download failed (" + url + "): " + response.error;
-        return {};
-    }
-    std::string hex;
-    if (!sha256File(response.bodyFile, hex, &error)) return {};
-    if (hex != BUNDLETOOL_SHA256) {
-        error = "the downloaded bundletool does not match its pinned SHA-256 (" + hex + ")";
-        return {};
-    }
-    fs::create_directories(jar.parent_path(), ec);
-    io::AtomicWriteOptions cache;
-    cache.durability = io::Durability::Cache;
-    if (!FileUtils::copyFileAtomic(response.bodyFile, jar, ec, cache)) {
-        error = "cannot keep bundletool in " + jar.string() + ": " + ec.message();
-        return {};
-    }
-    return jar;
+PinnedDownload AndroidTools::bundletoolDownload() {
+    PinnedDownload download;
+    download.what = std::string("bundletool ") + BUNDLETOOL_VERSION;
+    download.url = std::string("https://github.com/google/bundletool/releases/download/") + BUNDLETOOL_VERSION + "/bundletool-all-" +
+                   BUNDLETOOL_VERSION + ".jar";
+    download.sha256 = BUNDLETOOL_SHA256;
+    download.target = App::getUserCacheBaseDir() / "jasperengine" / "tools" / (std::string("bundletool-all-") + BUNDLETOOL_VERSION + ".jar");
+    return download;
 }
 
-AndroidToolchain AndroidTools::discover(unsigned int targetSdk, bool needBundletool, bool download) {
+fs::path AndroidTools::bundletoolJar(const std::function<bool()>& cancelled, std::string& error) {
+    const PinnedDownload download = bundletoolDownload();
+    return fetchPinned(download, cancelled, error) ? download.target : fs::path();
+}
+
+AndroidToolchain AndroidTools::discover(unsigned int targetSdk) {
     AndroidToolchain tools;
     tools.sdk = sdkRoot();
     std::error_code ec;
@@ -162,16 +136,11 @@ AndroidToolchain AndroidTools::discover(unsigned int targetSdk, bool needBundlet
     tools.jarsigner = inDir(jdk / "bin", "jarsigner", "JDK", jdkHint);
     for (const ToolLocation* tool : {&tools.java, &tools.keytool, &tools.jarsigner})
         if (!tool->found()) tools.missing.push_back(tool->name + " (" + jdkHint + ")");
-    if (needBundletool) {
-        std::string error;
-        tools.bundletool = bundletoolJar(download, error);
-        if (tools.bundletool.empty()) tools.missing.push_back(std::string("bundletool ") + BUNDLETOOL_VERSION + " (" + error + ")");
-    }
     return tools;
 }
 
 bool AndroidTools::verifyApk(const fs::path& apk, std::string& output, std::string& error) {
-    const AndroidToolchain tools = discover(0, false, false);
+    const AndroidToolchain tools = discover(0);
     if (!tools.apksigner.found()) {
         error = "apksigner not found: " + tools.apksigner.hint;
         return false;
