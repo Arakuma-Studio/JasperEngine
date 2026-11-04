@@ -651,6 +651,8 @@ void AnimatorSystem::finalize(Job& job, float dt){
 void AnimatorSystem::run(double dt, bool fixedPhase){
     auto animators = scene->getComponentArray<AnimatorComponent>();
     if (animators->size() == 0) return;
+    // the profiler's Animation band: this time is not the Scripts or Physics of Update and FixedUpdate
+    JE_PROFILE_SCOPE("Animation");
     stats = Stats();
     const double start = nowMs();
     {

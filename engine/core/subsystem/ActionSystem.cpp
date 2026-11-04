@@ -9,6 +9,8 @@
 #include "util/Angle.h"
 #include "animation/AnimationPlayerRuntime.h"
 #include "animation/KeyframeSampling.h"
+#include "component/AnimationPlayerComponent.h"
+#include "profiler/Profile.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "lattice/LatticeSolver.h"
@@ -1568,11 +1570,16 @@ void ActionSystem::update(double dt){
 
 	}
 
-    // Animation Players add their states to the same blend
-    updatePlayers(dt);
-
-    // Write the blended (weighted-average) pose to each animated target.
-    flushPoseBlend();
+    // Animation Players add their states to the same blend; then write the blended
+    // (weighted-average) pose to each animated target
+    if (scene->getComponentArray<AnimationPlayerComponent>()->size() > 0){
+        // the profiler's Animation band: this time is not the Scripts of Update
+        JE_PROFILE_SCOPE("Animation");
+        updatePlayers(dt);
+        flushPoseBlend();
+    }else{
+        flushPoseBlend();
+    }
     poseBlendScope = false;
     // the writes that run onEnable / onDisable, now that a callback may sample a player
     applyDeferredPropertyWrites();

@@ -27,7 +27,9 @@ design and acceptance record is `docs/specs/S15-profiling-diagnostics.md`; agent
   included; the wheel zooms, a drag pans, a click selects the scope in the Hierarchy); the GPU
   pass table with GPU ms, CPU ms and draws; the render counters; the VRAM categories and the
   allocation table (by category or owner, sortable, filterable, with the driver's figure); the
-  monitors.
+  monitors. The **Animation** band holds the Animators and the Animation Players' clip pass, also
+  when they run under Update or FixedUpdate. Their monitors: `Animators`, `Animators sampled`,
+  `Animators culled`, `Anim Prepare ms`, `Anim Wave ms`, `Anim Finalize ms` and `Clip memory`.
 
 **Window > Analysis > Frame Debugger**: **Enable** lists the passes of the chosen view's frame in
 order (repeats folded: "shadow 2048x2048 x4"), **Freeze** holds the last one, **Draw list** adds
