@@ -16,6 +16,7 @@ std::vector<ToolGroupInfo> buildGroups() {
     std::vector<ToolGroupInfo> groups = {
         {CORE_TOOL_GROUP, "Scenes, GameObjects, components, prefabs, play, views, scripts, assets, build: always listed."},
         {"assets_pipeline", "Asset GUIDs and dependencies, file watching, texture compression and import settings."},
+        {"meshes", "Model import settings and cooks (compression, LODs), the mesh audit and render budgets (jasper://docs/meshes)."},
         {"data_safety", "Scene load reports and autosave backups."},
         {"diagnostics", "Jobs, memory, ECS, logging and crash/hang diagnostics."},
         {"editor_ux", "Undo history, command palette, layouts, search, bookmarks and Scene view tools."},

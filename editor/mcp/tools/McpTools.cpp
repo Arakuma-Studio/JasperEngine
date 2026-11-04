@@ -45,6 +45,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerMaterialsLightingTools, "Assets, materials and shaders", "rendering_fx"},   // S11
     {registerAssetIdentityTools, "Asset identity: GUIDs, references, missing assets", "assets_pipeline"},   // S04
     {registerTextureTools, "Textures: import settings and cooks", "assets_pipeline"},   // S14
+    {registerMeshTools, "Meshes: model import, cooks and render budgets", "meshes"},   // S53
     {registerDocsTools, "Docs", ""},
     {registerBuildTools, "Build and export", ""},
     {registerPublishTools, "Shipping: player runtimes and releases", "shipping"},   // S30

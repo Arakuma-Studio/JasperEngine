@@ -54,6 +54,7 @@ namespace jasperengine::editor::mcp {
     void registerAssetIdentityTools(McpRegistry& registry);
     // S14: texture import settings and cooks (in AssetTools.cpp)
     void registerTextureTools(McpRegistry& registry);
+    void registerMeshTools(McpRegistry& registry);
     void registerDocsTools(McpRegistry& registry);
     void registerBuildTools(McpRegistry& registry);
     void registerPublishTools(McpRegistry& registry);   // S30
