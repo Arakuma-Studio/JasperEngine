@@ -831,3 +831,6 @@ Recorded during implementation (branch `dc/mobile-shipping`).
    code, so the two names give the same map.
 10. **The Android template markers** are new (`{{NATIVE_MANIFEST_XML}}`, `{{NATIVE_APPLICATION_XML}}`):
     editor and runtime versions must match, so no fallback for older templates is kept.
+11. **No CI step for `tools/check_apple_privacy.py`**: `main` removed the GitHub workflows while
+    this was implemented. `tools/check-changed` runs the check for every change to engine C/C++
+    or to the engine's manifest.
