@@ -793,3 +793,41 @@ Hot spots: `editor/Exporter.cpp` (AdMob deletions, helper extraction, `writeAppl
   fixture after merging.
 - **agent-authoring**: agent guide (`McpInstructions.cpp`) budget; I add at most one short line.
 - No dependency on the rendering, water, mesh or UI features.
+
+## Deviations
+
+Recorded during implementation (branch `dc/mobile-shipping`).
+
+1. **No `AppleProjectText` / `AppleNativeXcode` modules.** The plist and pbx helpers stay in
+   `Exporter.cpp`'s anonymous namespace; `addNativePluginsToXcode` is generalized in place with an
+   `Exporter::XcodeNativeLayout` (source export: two targets; prebuilt iOS template: one target,
+   `$(SRCROOT)/plugins/native`, `$(SRCROOT)/include`). `platform::buildIosProject` is split into
+   `stageIosProject` and `buildIosProject`, and the Exporter edits the staged project in between
+   (`addNativeToIosPlayer`); `MacBundleSettings` gets `privacyManifest` and a `customizePlist`
+   hook that applies `Exporter::applyNativePlistEntries`. Same behaviour, far less code moved
+   between hot files. Only `isStaticArchive`, `frameworkBinary` and `xcframeworkBinary` moved, to
+   `editor/util/NativePlugins`, because `ApplePrivacy` needs them.
+2. **`NativeNeeds` lives in `editor/util/`** (there is no `editor/export/` folder).
+3. **C++ plugins keep their own reason.** `chooseBuildMethod` still scans `getScriptDirs()` for
+   "C++ scripts"; `plugins/native/cpp` is reported by `NativeNeeds` as "C++ native plugins (...)",
+   which says better what to change. The fix of finding 4.3 is the same: such a project compiles.
+4. **The Lua API fixture is not regenerated.** `regex_symbols.txt` is a snapshot of a deleted
+   parser; `test_lua_api.py` lists the AdMob symbols under `removed_on_purpose` like the other
+   later API changes.
+5. **A third committed manifest**: `engine/platform/apple/ios/player-template/PrivacyInfo.xcprivacy`
+   (the template is copied whole by `ios_player.sh`); `ApplePrivacyTest.CommittedManifestsMatchTheEngine`
+   keeps all three equal to `toXml(engineManifest())`.
+6. **Rule 7.2's message** ("already included by the engine") is not given: settings rows have no
+   success-message channel. Repeating an engine entry is accepted and the composed manifest holds
+   it once.
+7. **AC1's grep** also lists the tests and the Lua API test that assert AdMob's absence
+   (`test_build.py::test_no_admob`, `AppleTemplatesTest.NoAdMobLeft`, `test_lua_api.py`), the
+   glossary row pointing to the native bridge, and the native-bridge worked example.
+8. **No agent-guide line** (lead decision: only agent-authoring restructures the guide). The
+   detail is in `docs/mcp/guide/shipping.md` and `native-bridge.md`; the new tool text has the
+   eval case `bad_privacy_manifest_by_hand`.
+9. **Prebuilt macOS players use the running name `macos-cmake`** for `game.json`'s
+   `nativePlatformOnly`: a prebuilt macOS build exists only when the project has no Apple plugin
+   code, so the two names give the same map.
+10. **The Android template markers** are new (`{{NATIVE_MANIFEST_XML}}`, `{{NATIVE_APPLICATION_XML}}`):
+    editor and runtime versions must match, so no fallback for older templates is kept.
