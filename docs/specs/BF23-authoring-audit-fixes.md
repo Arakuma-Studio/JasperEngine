@@ -242,3 +242,19 @@ result changes S54's first milestone.
    is intended.
 
 ## Deviations
+
+- **F25, the check first (from reading the build and context code, 2026-11-04): no export target
+  builds for GL 3.3, so the fix stands.** The glcore backend compiles GLSL 410 only
+  (`ShaderVariantCompiler.cpp`: `args.version = 410`; `ShaderPool.cpp` includes `glsl410.h` and
+  `glsl300es.h` only), and nothing in `engine/`, `editor/` or `tools/` selects GLSL 330. Every
+  desktop context asks for 4.1 core: games on Linux (`JasperEngineLinux.cpp`), Windows
+  (`JasperEngineWin.cpp`) and macOS (`MacViewGL.mm`, `NSOpenGLProfileVersion4_1Core`), the editor's
+  `BackendLinux.cpp` and `BackendWin.cpp`, and the tests' `HeadlessContext.cpp`. Web and Android use
+  GLES3 (`glsl300es`), iOS uses Metal. The one version 3 context attribute is the Linux GLES3 3.2
+  test context. **Left as they are, outside the three files this item names:** the runtime label
+  `"OpenGL 3.3 core"` (`SokolSystem.cpp:836`), pinned by `tools/ci/test_player_cli.py:157` and
+  repeated in `docs/profiling.md:109` and a comment in `SystemRender.h:140`, still names the wrong
+  version and should change together as a small follow-up. The `GL 3.3` mentions about RGB565
+  (`engine/libs/sokol/PATCHES.md`, `TextureFallback.cpp:121`, `TextureFallbackTest.cpp:244`),
+  `docs/textures.md:177` and `TestRenderHalfFloatTargets.cpp:176`, and the requirements in S20 and
+  S21, were not re-checked or edited. No test: docs only.

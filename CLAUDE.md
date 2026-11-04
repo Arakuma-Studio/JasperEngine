@@ -2,7 +2,7 @@
 
 ## Engineering values
 
-- Every runtime feature works on all five graphics backends (GL 3.3 core, GLES3/WebGL2, Metal,
+- Every runtime feature works on all five graphics backends (GL 4.1 core, GLES3/WebGL2, Metal,
   D3D11, Vulkan, through sokol-gfx) and all export targets (Windows, Linux, macOS, Android, iOS,
   HTML5). No feature may require compute shaders, SSBOs, bindless, indirect draws or 64-bit
   atomics; a desktop-only fast path needs a fallback that gives the same result.

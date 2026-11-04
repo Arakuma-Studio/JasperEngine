@@ -8,7 +8,7 @@ paths:
 
 # Rendering
 
-- Five backends through sokol-gfx: GL 3.3 core, GLES3/WebGL2, Metal, D3D11, Vulkan. A change
+- Five backends through sokol-gfx: GL 4.1 core, GLES3/WebGL2, Metal, D3D11, Vulkan. A change
   must compile and draw the same on all of them; GLSL is cross-compiled per backend, so avoid
   constructs one of the targets lacks.
 - No compute shaders, SSBOs, bindless resources, indirect draws or 64-bit atomics. Use
