@@ -294,6 +294,8 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
         if (bytes.empty()) {
             result.ok = false;
             result.error = "the bake produced no navmesh";
+            result.errorCode = nav::NavBakeError::NavMeshFailed;
+            result.hint = nav::bakeErrorHint(result.errorCode);
         } else {
             AssetRef ref;
             std::string error;
@@ -306,6 +308,8 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
             } else {
                 result.ok = false;
                 result.error = "the navmesh was baked but not saved: " + error;
+                result.errorCode = nav::NavBakeError::SaveFailed;
+                result.hint = nav::bakeErrorHint(result.errorCode);
                 Out::error("NavMeshSurface '%s': %s", sceneProject->scene->getEntityName(entry.surface).c_str(), result.error.c_str());
             }
         }
