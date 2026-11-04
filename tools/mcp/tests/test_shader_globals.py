@@ -30,6 +30,8 @@ from harness import Editor, find_key, skip
 from htmlui_pixels import decode_png
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "shader-globals"}
+CI_EXCLUDED = ("long-running (about 50 minutes on a loaded server: a test builds and runs a real Desktop player); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "1800"))
 SCENE = "scenes/Globals.scene"
 S: dict = {}
