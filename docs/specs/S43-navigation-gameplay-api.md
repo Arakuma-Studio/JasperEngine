@@ -683,4 +683,40 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
 
 ## Deviations
 
+- S43 P1: `NavMesh::findRandomPoint` and `findRandomPointAround` take `int island` (-1: any)
+  instead of `uint32_t island` (0: any): S42's island ids start at 0. `findRandomPointAround` takes
+  the island too, so *around* combines with *same island* inside the 8 tries. Engine-internal (only
+  `NavigationSystem` calls them).
+- S43 P1: `findClosestEdge(point, out, filter, maxDistance)` and `calculatePath(from, to, filter,
+  options)` are the S19 functions with defaulted trailing parameters, not extra overloads. Added
+  next to §6: `QueryFilter` overloads of `calculatePathOn`, `raycastOn`, `findClosestEdgeOn`,
+  `moveAlongSurfaceOn` (a filter's costs on one surface; S42 R27's `calculatePathOn(surface, ...,
+  filter)` and P3's agent queries use them), `getAgentQueryFilter(agent)` (the agent's type, mask
+  and own costs, what P3's agent queries pass), `nav::clampAreaCost`, `NavCrowd::getFilterCount` /
+  `isFilterFallback` and `NavSurfaceStatus::crowdFilters` / `crowdFilterOverflow` (the tests and
+  S42's `crowd_filter_overflow` finding read them).
+- S43 P1: `NavCrowdAgentParams::areaCosts` holds the agent's own costs with 0 for "the project's"
+  rather than fully resolved costs. A crowd filter's key is (mask, these costs); `refreshFilters`
+  refills the filters with the project's current costs, so areas without an override follow project
+  edits (R9) without re-keying any agent.
+- S43 P1: `query_navigation` `random` always draws from a stream of its own (`seed`, default
+  `DEFAULT_RANDOM_SEED` = 24301): the tool is read-only and idempotent, so it never advances the
+  game's stream. The result echoes the seed.
+- S43 P1: `areaLengths` (and `area_lengths`) are in scene units like `length` (metres in 3D, points
+  on a 2D surface).
+- S43 P1: AC10's red control. A same-mask fallback cannot differ from S19, which keys filters by
+  mask alone (the 16 cost variants of one mask shared one filter there). The red run is the
+  freeing part: after the first agents leave, 15 new masks fit (S19 kept the old mask's filter, so
+  the 15th new mask fell back to every area and walked the masked strip).
+- S43 P1: AC2's red control is a run with `findRandomPoint` temporarily calling Detour's
+  `dtNavMeshQuery::findRandomPoint` (the unit tests cannot include Detour's headers); the log is
+  kept with the package's evidence.
+- S43 P1: AC4's "door closed by R11" (P2) is S42's `NavMesh::setPolyFlags(ref, 0)` on the doorway's
+  polygons, which is what R11 does underneath.
+
 ## Progress (implementation notes, keep updated)
+
+- S43 P1: interfaces (§6 P1 block) and the queries, filters, crowd filter slots, Lua and
+  `query_navigation` implemented; tests in `NavGameplayQueryTest.cpp`, `NavQueryTest.cpp`,
+  `NavCrowdTest.cpp`, `NavStubTest.cpp`, `test_navigation_gameplay.py::test_query_ops`; NavBench
+  query lines and their thresholds.
