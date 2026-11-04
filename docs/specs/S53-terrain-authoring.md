@@ -1598,8 +1598,8 @@ the sketch's names, which all still exist unless a line below says otherwise.
   and `hole_no_collision` wait for S55's collider rule, as R12 says.
 - **D-11 `registerOp` returns `bool`,** false for one of Table 1's names. `registeredOpExists` and
   `unregisterOp` are added for callers and tests. `OpValidateFn` and `OpApplyFn` take an `OpError` and
-  an `OpContext`; `OpParam` is the plain value tree that `params` arrives as, since this folder may not
-  include a JSON library (R1).
+  an `OpContext`. `Op::params` holds a registered op's own keys as `OpParam`, a plain value tree, since this
+  folder may not include a JSON library (R1); the handler copies them there from the op object (R89, R95).
 - **D-12 `Op`'s fields beyond the sketch.** `existingObjects` (spacing for `place_objects`, candidates
   for `erase_objects`) because the plan is pure; `erodeSeconds` and `droplets` so a brush can carry its
   fraction; `baseHeight`, `frequency` and `fill` for `fill_noise`. `OpOptions` gains `dryRun`, `inPlace`
@@ -1618,3 +1618,6 @@ the sketch's names, which all still exist unless a line below says otherwise.
   and R13's window use are the migration. AC8's `test_holes_warn_until_s43` and AC9's
   `test_delete_layer_keeps_paint` need `edit_terrain` and the UI. AC64's brush, spline bake, Lua and undo
   routes, AC68's `TerrainMapDeltaCmd` half and AC72's dialog half exist once those do.
+- **D-17 `import_heightmap` takes decoded heights.** The engine's op holds the normalized values, their size and
+  nothing about files: finding and decoding a file is `TerrainRawIO` and the handler (R61, R68), which come with the
+  rest of S53. A size other than the map's is refused here, naming the structural path the handler takes (R1, R61).

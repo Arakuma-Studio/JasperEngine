@@ -621,7 +621,7 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::UIComponent, "texture"}, {C::UIComponent, "customShader"}, {C::UIComponent, "shaderTextures{}"},
         {C::ButtonComponent, "textureNormal"}, {C::ButtonComponent, "textureHovered"}, {C::ButtonComponent, "texturePressed"}, {C::ButtonComponent, "textureDisabled"},
         {C::TextComponent, "font"},
-        {C::TerrainComponent, "heightMap"}, {C::TerrainComponent, "blendMaps[]"},
+        {C::TerrainComponent, "heightMap"}, {C::TerrainComponent, "holeMap"}, {C::TerrainComponent, "blendMaps[]"},
         {C::TerrainComponent, "surfaceLayers[].colorTexture"}, {C::TerrainComponent, "surfaceLayers[].normalTexture"},
         {C::TerrainComponent, "surfaceLayers[].roughnessTexture"}, {C::TerrainComponent, "surfaceLayers[].metallicTexture"},
         {C::TerrainComponent, "surfaceLayers[].occlusionTexture"}, {C::TerrainComponent, "surfaceLayers[].heightTexture"},

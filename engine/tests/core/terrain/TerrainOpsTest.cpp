@@ -382,7 +382,7 @@ TEST(TerrainOps, OpNamesRoundTrip) {
         EXPECT_EQ(static_cast<int>(back), type);
         count++;
     }
-    EXPECT_EQ(count, 24) << "Table 1's 23 public ops and fill_noise";
+    EXPECT_EQ(count, 25) << "Table 1's 24 public ops and fill_noise";
     OpType ignored;
     EXPECT_FALSE(opTypeFromName("scatter_by_rules", ignored));
 }
@@ -584,6 +584,18 @@ TEST(TerrainOps, RegisteredOpJoinsValidationResultAndUndo) {
 
     unregisterOp("test_plant");
     EXPECT_FALSE(registeredOpExists("test_plant"));
+}
+
+TEST(TerrainOps, ARegisteredOpMayDeclareItSpansFrames) {
+    RegisteredOpTraits traits;
+    traits.spansFrames = true;
+    ASSERT_TRUE(registerOp("test_bake", nullptr, [](OpContext&, const Op&, OpEntry&) {}, traits));
+    ASSERT_TRUE(registerOp("test_quick", nullptr, [](OpContext&, const Op&, OpEntry&) {}));
+    EXPECT_TRUE(registeredOpSpansFrames("test_bake"));
+    EXPECT_FALSE(registeredOpSpansFrames("test_quick"));
+    EXPECT_FALSE(registeredOpSpansFrames("no_such_op"));
+    unregisterOp("test_bake");
+    unregisterOp("test_quick");
 }
 
 TEST(TerrainOps, InPlaceKeepsTheCallersFloats) {

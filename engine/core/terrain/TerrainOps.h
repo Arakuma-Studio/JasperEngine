@@ -27,11 +27,12 @@
 
 namespace jasperengine::terrain {
 
-    // §6 Table 1: 23 public ops, then the internal one with its own type. apply_field and set_heights
+    // §6 Table 1: 24 public ops, then the internal one with its own type. apply_field and set_heights
     // are their own functions below.
     enum class OpType : uint8_t {
         Raise, Lower, SetHeight, LiftFloors, FlattenPeaks, Smooth, Sharpen, AddNoise, Terrace, Stamp, Erode, Ramp, RemapHeights,
         PaintLayer, PaintBase, PaintByRules, RemapLayers, PaintDensity, EraseDensity, CutHoles, FillHoles, PlaceObjects, EraseObjects,
+        ImportHeightmap,
         FillNoise,
         Registered
     };
@@ -105,6 +106,11 @@ namespace jasperengine::terrain {
         // carries the fraction itself
         float erodeSeconds = 1.0f;
         std::optional<int> droplets;
+
+        // import_heightmap: normalized, decoded by the caller (no file IO here), the map's own size.
+        // Another size replaces the map, which is a structural step, not an op (R1, R61).
+        std::vector<float> importedHeights;
+        int importedWidth = 0, importedHeight = 0;
 
         // fill_noise
         FillMode fill = FillMode::Flat;
@@ -234,10 +240,17 @@ namespace jasperengine::terrain {
     using OpValidateFn = bool (*)(const TerrainMapStore& store, const Op& op, OpError& error);
     using OpApplyFn = void (*)(OpContext& context, const Op& op, OpEntry& entry);
 
+    struct RegisteredOpTraits {
+        // It works over several frames (S57's bake_impostors renders a view per frame): the handler
+        // makes the call a job whatever its texel count
+        bool spansFrames = false;
+    };
+
     // R89: adds a kind from another file, which runs inside the same validation, overlay, result and
     // undo. Main thread, before any op uses it. False when the name is one of Table 1's.
-    JASPERENGINE_API bool registerOp(std::string_view name, OpValidateFn validate, OpApplyFn apply);
+    JASPERENGINE_API bool registerOp(std::string_view name, OpValidateFn validate, OpApplyFn apply, RegisteredOpTraits traits = {});
     JASPERENGINE_API bool registeredOpExists(std::string_view name);
+    JASPERENGINE_API bool registeredOpSpansFrames(std::string_view name);
     // Tests: the registry as it was, so one test's op cannot reach the next
     JASPERENGINE_API void unregisterOp(std::string_view name);
 

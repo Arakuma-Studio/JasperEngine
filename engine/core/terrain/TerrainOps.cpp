@@ -52,7 +52,7 @@ namespace {
         {OpType::RemapHeights, "remap_heights"}, {OpType::PaintLayer, "paint_layer"}, {OpType::PaintBase, "paint_base"},
         {OpType::PaintByRules, "paint_by_rules"}, {OpType::RemapLayers, "remap_layers"}, {OpType::PaintDensity, "paint_density"},
         {OpType::EraseDensity, "erase_density"}, {OpType::CutHoles, "cut_holes"}, {OpType::FillHoles, "fill_holes"},
-        {OpType::PlaceObjects, "place_objects"}, {OpType::EraseObjects, "erase_objects"}, {OpType::FillNoise, "fill_noise"},
+        {OpType::PlaceObjects, "place_objects"}, {OpType::EraseObjects, "erase_objects"}, {OpType::ImportHeightmap, "import_heightmap"}, {OpType::FillNoise, "fill_noise"},
     };
 
     // ------------------------------------------------------------------ the registry (R89)
@@ -61,6 +61,7 @@ namespace {
         std::string name;
         OpValidateFn validate = nullptr;
         OpApplyFn apply = nullptr;
+        RegisteredOpTraits traits;
     };
 
     std::mutex& registryMutex() {
@@ -94,7 +95,7 @@ namespace {
         switch (type) {
             case OpType::Raise: case OpType::Lower: case OpType::SetHeight: case OpType::LiftFloors: case OpType::FlattenPeaks:
             case OpType::Smooth: case OpType::Sharpen: case OpType::AddNoise: case OpType::Terrace: case OpType::Stamp:
-            case OpType::Erode: case OpType::Ramp: case OpType::RemapHeights: case OpType::FillNoise:
+            case OpType::Erode: case OpType::Ramp: case OpType::RemapHeights: case OpType::FillNoise: case OpType::ImportHeightmap:
                 return true;
             default:
                 return false;
@@ -308,6 +309,21 @@ namespace {
                     if (!op.outRange) return fail("out_range", "is required");
                     if (!(op.inRange->max > op.inRange->min)) return fail("in_range", "max must be above min");
                     break;
+                case OpType::ImportHeightmap: {
+                    if (!heightOpNeeds(op)) return false;
+                    if (op.shape.type != ShapeType::All) return fail("shape", "import_heightmap replaces the whole map and takes no shape");
+                    if (op.importedWidth <= 0 || op.importedHeight <= 0 ||
+                        op.importedHeights.size() != static_cast<size_t>(op.importedWidth) * op.importedHeight) {
+                        return fail("path", "the import holds no heights of its stated size");
+                    }
+                    const TexelRect bounds = store.format(HEIGHT_MAP).bounds;
+                    if (op.importedWidth != bounds.w || op.importedHeight != bounds.h) {
+                        return fail("resolution", "the import is " + std::to_string(op.importedWidth) + " x " + std::to_string(op.importedHeight) +
+                                    " and the height map " + std::to_string(bounds.w) + " x " + std::to_string(bounds.h) +
+                                    ": another size replaces the map before the op");
+                    }
+                    break;
+                }
                 case OpType::FillNoise:
                     if (!heightOpNeeds(op)) return false;
                     if (op.fill != FillMode::Flat && !op.amplitude) return fail("amplitude", "is required");
@@ -538,6 +554,7 @@ namespace {
         void applySmooth(const Op& op, OpEntry& entry);
         void applyErode(const Op& op, const Shape& shape, float seconds, float strength, OpEntry& entry);
         void applyFillNoise(const Op& op, OpEntry& entry);
+        void applyImport(const Op& op, OpEntry& entry);
         void applyPaintLayer(const Op& op, OpEntry& entry);
         void applyPaintBase(const Op& op, OpEntry& entry);
         void applyPaintByRules(const Op& op, OpEntry& entry);
@@ -1108,6 +1125,22 @@ namespace {
         finishEntry(counters, entry, op);
     }
 
+    void Run::applyImport(const Op& op, OpEntry& entry) {
+        Shape whole;
+        Op opaque;
+        const ShapeEvaluator shape(whole);
+        const float* heights = op.importedHeights.data();
+        const int width = op.importedWidth;
+        const Counters counters = forEachSample(opaque, HEIGHT_MAP, shape, 1.0f, 0, false, nullptr, [](const Block&) {},
+            [&](const Block& block, int x, int y, const ShapeSample&, float, const float*, float* next, Counters& c) {
+                const float value = heights[static_cast<size_t>(y - block.format.bounds.y) * width + (x - block.format.bounds.x)];
+                if (value < 0.0f) c.clippedLow++;
+                else if (value > 1.0f) c.clippedHigh++;
+                next[0] = detClamp01(value);
+            });
+        finishEntry(counters, entry, op);
+    }
+
     void Run::applyPaintLayer(const Op& op, OpEntry& entry) {
         const LayerChannel channel = terrainLayerChannel(*op.layer);
         const MapId map{MapKind::Blend, channel.map};
@@ -1484,6 +1517,9 @@ namespace {
             case OpType::FillNoise:
                 applyFillNoise(op, entry);
                 break;
+            case OpType::ImportHeightmap:
+                applyImport(op, entry);
+                break;
             case OpType::PaintLayer:
                 applyPaintLayer(op, entry);
                 break;
@@ -1650,7 +1686,7 @@ bool jasperengine::terrain::opTypeFromName(std::string_view name, OpType& out) {
     return false;
 }
 
-bool jasperengine::terrain::registerOp(std::string_view name, OpValidateFn validate, OpApplyFn apply) {
+bool jasperengine::terrain::registerOp(std::string_view name, OpValidateFn validate, OpApplyFn apply, RegisteredOpTraits traits) {
     OpType builtin;
     if (opTypeFromName(name, builtin)) return false;
     std::lock_guard<std::mutex> lock(registryMutex());
@@ -1658,16 +1694,22 @@ bool jasperengine::terrain::registerOp(std::string_view name, OpValidateFn valid
         if (op.name == name) {
             op.validate = validate;
             op.apply = apply;
+            op.traits = traits;
             return true;
         }
     }
-    registry().push_back(RegisteredOp{std::string(name), validate, apply});
+    registry().push_back(RegisteredOp{std::string(name), validate, apply, traits});
     return true;
 }
 
 bool jasperengine::terrain::registeredOpExists(std::string_view name) {
     RegisteredOp found;
     return findRegistered(name, found);
+}
+
+bool jasperengine::terrain::registeredOpSpansFrames(std::string_view name) {
+    RegisteredOp found;
+    return findRegistered(name, found) && found.traits.spansFrames;
 }
 
 void jasperengine::terrain::unregisterOp(std::string_view name) {

@@ -482,6 +482,36 @@ TEST(TerrainOpsKernels, EraseObjects) {
     EXPECT_EQ(result.ops[0].erasedObjects, (std::vector<int>{0, 1}));
 }
 
+TEST(TerrainOpsKernels, ImportHeightmapIsADeltaOfTheSameSize) {
+    auto store = flatStore(0.5f);
+    Op op = allOp(OpType::ImportHeightmap);
+    op.importedWidth = SIZE;
+    op.importedHeight = SIZE;
+    op.importedHeights.assign(SIZE * SIZE, 0.5f);
+    op.importedHeights[3] = 0.75f;
+    op.importedHeights[4] = 1.5f;
+    const TerrainOpResult result = apply(*store, op);
+    ASSERT_TRUE(result.ok) << result.error;
+    EXPECT_EQ(result.ops[0].changedTexels, 2) << "the texels that match keep their bytes";
+    EXPECT_EQ(result.ops[0].clippedHigh, 1);
+    const std::vector<float> after = readHeights(*store);
+    EXPECT_NEAR(heightAt(after, 3, 0), 0.75f, QUANTUM);
+    EXPECT_EQ(heightAt(after, 4, 0), 1.0f);
+
+    Op otherSize = op;
+    otherSize.importedWidth = SIZE * 2;
+    otherSize.importedHeight = SIZE / 2;
+    const TerrainOpResult refused = apply(*store, otherSize);
+    EXPECT_FALSE(refused.ok) << "another size is the structural path";
+    EXPECT_EQ(refused.errors[0].field, "ops[0].resolution");
+
+    Op shaped = circleOp(OpType::ImportHeightmap, 0.0f, 0.0f, 2.0f);
+    shaped.importedWidth = SIZE;
+    shaped.importedHeight = SIZE;
+    shaped.importedHeights = op.importedHeights;
+    EXPECT_FALSE(apply(*store, shaped).ok) << "it takes no shape";
+}
+
 TEST(TerrainOpsKernels, FlatFill) {
     auto store = flatStore(0.25f);
     Op op = allOp(OpType::FillNoise);
