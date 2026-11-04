@@ -44,6 +44,12 @@ namespace jasperengine{
     //   ADDITIVE_PREMULTIPLIED  ONE, ONE
     //   SCREEN_PREMULTIPLIED    ONE, ONE_MINUS_SRC_COLOR
     //   MULTIPLY_PREMULTIPLIED  DST_COLOR, ONE_MINUS_SRC_ALPHA
+    // and Title Art's light blends (docs/specs/S80-title-art-core.md §6.4), dynamic path only:
+    //   LIGHT_PREMULTIPLIED     colour ONE, ONE; alpha ONE, ONE_MINUS_SRC_ALPHA (light adds
+    //                           colour and unions coverage, where ADDITIVE_PREMULTIPLIED keeps
+    //                           adding alpha)
+    //   MAX_PREMULTIPLIED       MAX of source and destination, colour and alpha (all factors ONE)
+    //   ERASE_PREMULTIPLIED     ZERO, ONE_MINUS_SRC_ALPHA (dst x (1 - src alpha): knockout)
     enum class BlendMode : uint8_t {
         NONE,
         ALPHA,
@@ -55,7 +61,10 @@ namespace jasperengine{
         MULTIPLY_PREMULTIPLIED,
         // dst - src (premultiplied colour taken away; alpha kept): the atmosphere's
         // volumetric composite removes the analytic fog it replaces with it
-        SUBTRACT_PREMULTIPLIED
+        SUBTRACT_PREMULTIPLIED,
+        LIGHT_PREMULTIPLIED,
+        MAX_PREMULTIPLIED,
+        ERASE_PREMULTIPLIED
     };
 
     enum class DepthCompare{
@@ -180,7 +189,8 @@ namespace jasperengine{
         VOLUMETRIC_COMPOSITE, // volumetric fog and Screen clouds over the scene (Atmosphere/VolumetricComposite)
         PASS_PREVIEW,         // the Frame Debugger's pass output preview (S15, SokolPassPreview; editor only)
         PARTICLES,            // particle systems (docs/specs/S20-particles.md): instanced quads, meshes and trails
-        HTMLUI_PRIM           // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
+        HTMLUI_PRIM,          // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
+        TITLE_ART             // Title Art's passes (S80, titleart.frag): the program number in the property bits
     };
 
     enum class AttributeType{
@@ -467,7 +477,8 @@ namespace jasperengine{
         DST_COLOR, ONE_MINUS_DST_COLOR, DST_ALPHA, ONE_MINUS_DST_ALPHA
     };
 
-    enum class BlendOperation { ADD, SUBTRACT, REVERSE_SUBTRACT };
+    // MAX takes ONE for every factor (sokol validates it)
+    enum class BlendOperation { ADD, SUBTRACT, REVERSE_SUBTRACT, MAX };
 
     // Color blending of a render object's color pipelines (PIP_DEFAULT, PIP_DEFAULT_NODEPTH,
     // PIP_RTT, PIP_RTT_NODEPTH, PIP_RTT_INVERT). Without one, those pipelines keep their
