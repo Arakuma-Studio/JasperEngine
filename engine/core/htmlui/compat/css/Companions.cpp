@@ -5,7 +5,6 @@
 #include "htmlui/compat/LiteralCompare.h"
 
 #include "htmlui/compat/css/RewriteSession.h"
-#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 

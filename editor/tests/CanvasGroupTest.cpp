@@ -46,6 +46,9 @@
 #include <string>
 #include <vector>
 #include "reflect/Reflect.h"
+#include "component/Transform.h"
+#include "component/TweenComponent.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

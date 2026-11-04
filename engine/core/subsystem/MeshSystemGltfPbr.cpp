@@ -22,6 +22,7 @@
 #include <limits>
 #include <mutex>
 #include <set>
+#include "component/ModelComponent.h"
 
 using namespace jasperengine;
 

@@ -85,6 +85,9 @@
 #include <set>
 #include "animation/ClipBinding.h"
 #include "particles/ParticleModules.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/SpriteComponent.h"
 
 namespace fs = std::filesystem;
 

@@ -27,6 +27,7 @@
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+#include "component/CameraComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -100,6 +100,11 @@
 #include <memory>
 #include "spritenormals/SpriteNormalsField.h"
 #include "window/AnimationWindow.h"
+#include "component/MeshComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 

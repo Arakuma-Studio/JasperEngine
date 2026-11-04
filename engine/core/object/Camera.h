@@ -5,10 +5,6 @@
 #define CAMERA_H
 
 #include "GameObject.h"
-// (EntityRegistry.h has the reason)
-#ifndef JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES
-#include "component/CameraComponent.h"
-#endif
 #include "math/Ray.h"
 #include "camera/CameraType.h"
 

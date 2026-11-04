@@ -5,6 +5,7 @@
 
 #include "util/Color.h"
 #include "subsystem/RenderSystem.h"
+#include "component/Light2DComponent.h"
 
 using namespace jasperengine;
 

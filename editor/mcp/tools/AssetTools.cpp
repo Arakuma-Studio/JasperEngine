@@ -97,6 +97,11 @@
 #include "stream/UpstreamParticles.h"
 #include "util/TerrainMapFileWriter.h"
 #include "profiler/GpuMemory.h"
+#include "component/LineRendererComponent.h"
+#include "component/PointsComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "component/UIComponent.h"
 
 namespace jasperengine::editor::mcp {
 

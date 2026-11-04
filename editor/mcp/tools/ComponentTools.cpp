@@ -44,6 +44,9 @@
 #include <set>
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
+#include "component/ModelComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
 
 namespace jasperengine::editor::mcp {
 

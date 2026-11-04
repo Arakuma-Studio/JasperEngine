@@ -118,6 +118,7 @@
 #include "component/TweenComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/TrailRendererComponent.h"
+#include "component/OnScreenControlComponents.h"
 
 using namespace jasperengine;
 

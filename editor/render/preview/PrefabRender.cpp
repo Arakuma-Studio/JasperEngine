@@ -20,6 +20,7 @@
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+#include "component/LightComponent.h"
 
 using namespace jasperengine;
 

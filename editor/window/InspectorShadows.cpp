@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cmath>
 #include <string>
+#include "component/LightComponent.h"
 
 using namespace jasperengine;
 

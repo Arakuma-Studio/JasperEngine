@@ -57,6 +57,7 @@
 #include <memory>
 #include <unordered_set>
 #include "component/VolumetricCloudsComponent.h"
+#include "component/TrailRendererComponent.h"
 
 using namespace jasperengine;
 namespace fs = std::filesystem;

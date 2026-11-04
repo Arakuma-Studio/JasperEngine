@@ -14,7 +14,6 @@
 #include "htmlui/compat/css/ValueNormalizer.h"
 
 #include <map>
-#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 

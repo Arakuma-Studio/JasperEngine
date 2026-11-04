@@ -34,6 +34,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include "component/Joint3DComponent.h"
 
 
 using namespace jasperengine;

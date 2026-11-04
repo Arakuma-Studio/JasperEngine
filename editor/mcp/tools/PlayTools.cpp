@@ -82,6 +82,8 @@
 #include <unordered_set>
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
 
 namespace jasperengine::editor::mcp {
 

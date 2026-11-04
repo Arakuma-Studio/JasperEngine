@@ -20,6 +20,7 @@
 #include "stream/UpstreamParticles.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/ModelComponent.h"
 
 using namespace jasperengine;
 

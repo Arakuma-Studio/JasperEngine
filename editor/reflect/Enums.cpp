@@ -38,6 +38,10 @@
 #include "component/ScrollbarComponent.h"
 #include "component/ShadowCaster2DComponent.h"
 #include "component/UIDocumentComponent.h"
+#include "component/LightComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/SpriteComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

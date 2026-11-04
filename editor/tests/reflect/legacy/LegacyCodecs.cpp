@@ -47,6 +47,8 @@
 #include "component/VolumetricCloudsComponent.h"
 #include "particles/ParticleModules.h"
 #include "component/FluidSimulationComponent.h"
+#include "component/CameraComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

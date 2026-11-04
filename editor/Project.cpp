@@ -147,6 +147,15 @@
 #include "subsystem/AtmosphereRenderer.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "component/ButtonComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 

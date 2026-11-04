@@ -79,6 +79,13 @@
 #include "component/TextEffectComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "util/TextEffects.h"
+#include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
 
 using namespace jasperengine;
 

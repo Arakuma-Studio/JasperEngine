@@ -6,6 +6,7 @@
 #include "Configs.h"
 #include "Stream.h"
 #include "component/MeshComponent.h"
+#include "component/LightComponent.h"
 
 using namespace jasperengine;
 

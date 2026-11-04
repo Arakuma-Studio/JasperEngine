@@ -21,6 +21,7 @@
 #include <filesystem>
 #include "component/ImageComponent.h"
 #include "component/OnScreenControlComponents.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

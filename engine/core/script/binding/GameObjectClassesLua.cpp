@@ -86,6 +86,8 @@
 #include "component/ProgressbarComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/ScrollbarComponent.h"
+#include "component/MeshComponent.h"
+#include "component/UIComponent.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"

@@ -5,6 +5,7 @@
 #include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 #include "subsystem/RenderSystem.h"
+#include "component/SkyboxComponent.h"
 
 using namespace jasperengine;
 

@@ -15,7 +15,6 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
-#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 

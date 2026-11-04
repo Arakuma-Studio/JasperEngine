@@ -7,6 +7,7 @@
 #include "subsystem/ActionSystem.h"
 
 #include <algorithm>
+#include "component/ActionComponent.h"
 
 using namespace jasperengine;
 

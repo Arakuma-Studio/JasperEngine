@@ -26,6 +26,16 @@
 #include <climits>
 #include <cmath>
 #include <functional>
+#include "component/ButtonComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/TextComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 

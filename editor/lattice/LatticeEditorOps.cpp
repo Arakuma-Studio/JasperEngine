@@ -25,6 +25,7 @@
 #include <limits>
 #include <map>
 #include "component/Transform.h"
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

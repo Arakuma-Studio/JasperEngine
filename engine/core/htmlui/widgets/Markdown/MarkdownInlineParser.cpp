@@ -14,7 +14,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "object/ui/Image.h"
 
 namespace jasperengine::htmlui::markdown {
 

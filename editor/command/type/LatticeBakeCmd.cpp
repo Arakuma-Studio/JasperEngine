@@ -11,6 +11,7 @@
 #include "util/ProjectUtils.h"
 
 #include <algorithm>
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

@@ -7,7 +7,7 @@
 #include "GameObject.h"
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
-#include "component/InstancedMeshComponent.h"
+#include "render/InstanceData.h"
 #include "texture/Material.h"
 
 namespace jasperengine{

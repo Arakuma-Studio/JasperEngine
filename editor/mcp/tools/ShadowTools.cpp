@@ -18,6 +18,7 @@
 #include "Project.h"
 #include "subsystem/RenderSystem.h"
 #include "render/shadow/ShadowTiers.h"
+#include "component/LightComponent.h"
 
 namespace jasperengine::editor::mcp {
 

@@ -23,7 +23,7 @@
 #include "render/Render.h"
 
 #include "command/Command.h"
-#include "component/ModelComponent.h"
+#include "ecs/ComponentFwd.h"
 
 namespace jasperengine{
     struct LineRendererComponent;

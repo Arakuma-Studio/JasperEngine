@@ -21,7 +21,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::props;

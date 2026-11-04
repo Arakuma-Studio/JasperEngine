@@ -144,6 +144,7 @@
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
+#include "component/TilemapComponent.h"
 
 #if defined(_WIN32)
   #include <windows.h>

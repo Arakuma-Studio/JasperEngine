@@ -19,6 +19,27 @@
 #include <cmath>
 #include <functional>
 #include <unordered_set>
+#include "component/ActionComponent.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/ColorTweenComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/PositionTweenComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/ScaleTweenComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/TweenComponent.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 

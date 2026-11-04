@@ -40,7 +40,6 @@
 
 #include <memory>
 #include <vector>
-#include "object/ui/Image.h"
 
 using namespace jasperengine::htmlui::compat;
 

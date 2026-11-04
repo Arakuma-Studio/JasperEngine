@@ -12,6 +12,7 @@
 #include "object/LineRenderer.h"
 #include "physics/PhysicsDebugLines.h"
 #include "registry/PhysicsLayers.h"
+#include "component/Joint3DComponent.h"
 
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "util/JoltPhysicsAux.h"

@@ -30,7 +30,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
-#include "object/Mesh.h"
 
 #if defined(__APPLE__)
     #include <TargetConditionals.h>

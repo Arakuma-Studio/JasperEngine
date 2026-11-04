@@ -6,6 +6,7 @@
 #include "component/TextComponent.h"
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
+#include "component/ButtonComponent.h"
 #include "util/Color.h"
 
 using namespace jasperengine;

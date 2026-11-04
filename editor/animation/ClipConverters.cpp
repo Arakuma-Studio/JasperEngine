@@ -40,6 +40,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

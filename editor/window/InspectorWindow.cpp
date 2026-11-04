@@ -144,6 +144,15 @@
 #include "pool/ShaderPool.h"
 #include "subsystem/AtmosphereRenderer.h"
 #include "subsystem/RenderSystem.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/ModelComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 

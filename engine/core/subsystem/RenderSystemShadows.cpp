@@ -23,7 +23,9 @@
 #include <span>
 #include <string>
 #include <unordered_set>
-#include "object/ui/Panel.h"
+#include "component/LightComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/TilemapComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::rendershared;

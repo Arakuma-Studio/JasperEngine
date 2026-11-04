@@ -67,7 +67,16 @@
 #include "component/SplineExtrudeComponent.h"
 #include "component/TextComponent.h"
 #include "component/TextEffectComponent.h"
-#include "object/Terrain.h"
+#include "component/ImageComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PointsComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::rendershared;

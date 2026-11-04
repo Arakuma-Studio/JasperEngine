@@ -26,6 +26,7 @@
 #include "component/UIDocumentComponent.h"
 #include "object/Sprite.h"
 #include "subsystem/RenderSystem.h"
+#include "component/CharacterController2DComponent.h"
 
 
 using namespace jasperengine;

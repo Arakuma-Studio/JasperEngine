@@ -28,8 +28,6 @@
 #include "htmlui/effects/EffectCompat.h"
 
 #include <cmath>
-#include "object/ui/Image.h"
-#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::props;

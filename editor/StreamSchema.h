@@ -57,6 +57,9 @@ namespace jasperengine{
     enum class LatticeOutside;
     enum class LatticeStage;
     enum class LayoutGroupType;
+    enum class LightShading;
+    enum class LightType;
+    enum class LightUnit;
     enum class NavAgentDriver;
     enum class NavCollectObjects;
     enum class NavGridSource;

@@ -8,6 +8,7 @@
 #include "component/ImageComponent.h"
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
+#include "component/PanelComponent.h"
 #include "util/Color.h"
 
 using namespace jasperengine;

@@ -90,6 +90,20 @@
 #include "component/VertexAnimatorComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "component/CameraComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

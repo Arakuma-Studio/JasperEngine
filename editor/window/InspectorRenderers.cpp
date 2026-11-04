@@ -96,6 +96,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
+#include "component/InstancedMeshComponent.h"
 
 using namespace jasperengine;
 

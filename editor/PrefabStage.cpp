@@ -28,6 +28,8 @@
 #include <stdexcept>
 #include <unordered_set>
 #include "component/PrefabComponent.h"
+#include "component/LightComponent.h"
+#include "component/SkyboxComponent.h"
 
 using namespace jasperengine;
 

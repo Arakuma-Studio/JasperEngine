@@ -30,6 +30,7 @@
 #include <cstring>
 #include <filesystem>
 #include <map>
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

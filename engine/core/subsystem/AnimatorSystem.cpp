@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include "component/CharacterControllerComponent.h"
 
 using namespace jasperengine;
 

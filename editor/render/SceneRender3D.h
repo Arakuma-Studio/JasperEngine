@@ -13,7 +13,7 @@
 #include <functional>
 #include <unordered_set>
 #include <vector>
-#include "component/ModelComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "io/watch/FileIdentity.h"
 
 namespace jasperengine{

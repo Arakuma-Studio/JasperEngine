@@ -43,6 +43,9 @@
 - Every source file starts with `// (c) Eduardo Doria and contributors` and
   `// SPDX-License-Identifier: MIT`.
 - Match the surrounding naming and comment density. Comments say why, not what.
+- Engine and editor sources include each component and object they use (`engine/core/component/Transform.h`); a
+  header that only names one forward-declares it (`engine/core/ecs/ComponentFwd.h`). `Scene.h` and `Project.h` do not
+  bring them, and `tools/check_fanout.py` holds the limits (`docs/testing.md`, "Build speed").
 - No TODO stubs, dead code or disabled tests.
 
 ## Working discipline

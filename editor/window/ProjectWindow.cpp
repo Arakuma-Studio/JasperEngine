@@ -102,6 +102,7 @@
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
 #include "window/PoseAnimationWindow.h"
+#include "component/ModelComponent.h"
 
 using namespace jasperengine;
 

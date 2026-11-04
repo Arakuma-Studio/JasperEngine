@@ -27,6 +27,7 @@
 #include "component/UIComponent.h"
 #include "profiler/GpuMemory.h"
 #include "component/PrefabComponent.h"
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

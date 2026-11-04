@@ -21,6 +21,8 @@
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
+#include "component/MeshComponent.h"
+#include "component/RectTransformComponent.h"
 
 using namespace jasperengine;
 

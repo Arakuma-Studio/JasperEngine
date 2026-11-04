@@ -6,6 +6,7 @@
 #include "subsystem/MeshSystem.h"
 #include "util/Angle.h"
 #include "math/Sphere.h"
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

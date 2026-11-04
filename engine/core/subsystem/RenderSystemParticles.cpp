@@ -26,6 +26,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include "component/LightComponent.h"
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::particles;

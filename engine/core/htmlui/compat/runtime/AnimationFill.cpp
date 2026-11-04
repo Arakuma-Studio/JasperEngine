@@ -22,7 +22,6 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include "action/Animation.h"
 
 using namespace jasperengine::htmlui::compat;
 

@@ -3,6 +3,7 @@
 
 #include "Tilemap.h"
 #include "subsystem/MeshSystem.h"
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

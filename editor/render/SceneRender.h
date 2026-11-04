@@ -19,6 +19,7 @@
 namespace jasperengine{
     class RenderSystem;
     class Sprite;
+    struct InstancedMeshComponent;
     struct MeshComponent;
 }
 

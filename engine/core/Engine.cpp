@@ -96,6 +96,7 @@
 #include <map>
 #include <functional>
 #include <optional>
+#include "component/OnScreenControlComponents.h"
 
 using namespace jasperengine;
 

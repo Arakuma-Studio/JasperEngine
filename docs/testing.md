@@ -804,7 +804,7 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
   the others build source by source, and ccache serves them to every tree of a configuration.
 - **Header fan-out** (S52): `JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES`, defined on the engine's and
   the editor's targets (and the editor's tests, through the editor's definitions), turns off the
-  includes `registry/EntityRegistry.h`, `object/GameObject.h` and `object/Camera.h` keep for code
+  includes `registry/EntityRegistry.h` and `object/GameObject.h` keep for code
   outside the engine: a source there includes each component and object it uses
   (`component/Transform.h`, `object/Mesh.h`), and a header that only names them takes
   `ecs/ComponentFwd.h` or a forward declaration. A game's code, the exported template and the core

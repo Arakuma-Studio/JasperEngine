@@ -107,6 +107,13 @@
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "render/SceneRender.h"
+#include "component/CameraComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

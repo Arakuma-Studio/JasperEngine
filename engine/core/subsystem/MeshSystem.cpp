@@ -53,6 +53,13 @@
 #include "component/RotateTracksComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/TilemapComponent.h"
 
 using namespace jasperengine;
 

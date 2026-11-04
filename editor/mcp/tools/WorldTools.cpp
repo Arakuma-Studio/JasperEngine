@@ -118,6 +118,8 @@
 #include "navigation/NavGridBrush.h"
 #include "stream/UpstreamParticles.h"
 #include "object/physics/Ragdoll.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/OnScreenControlComponents.h"
 
 namespace jasperengine::editor::mcp {
 

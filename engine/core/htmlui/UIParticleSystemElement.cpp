@@ -39,7 +39,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include "object/Mesh.h"
 
 using namespace jasperengine;
 

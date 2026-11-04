@@ -9,7 +9,6 @@
 #include "htmlui/compat/css/Units.h"
 
 #include <algorithm>
-#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 

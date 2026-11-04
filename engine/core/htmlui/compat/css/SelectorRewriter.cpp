@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 

@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cstring>
-#include "action/Animation.h"
 
 using namespace jasperengine;
 

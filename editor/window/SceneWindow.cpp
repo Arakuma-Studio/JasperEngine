@@ -61,6 +61,11 @@
 #include "component/TranslateTracksComponent.h"
 #include "physics/PlacementSession.h"
 #include "window/PhysicsPlacementWindow.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 
