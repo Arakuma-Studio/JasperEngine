@@ -82,7 +82,7 @@ SITES = {
     ("window/ProjectWindowSearch.cpp", "labelPopup"): "not driven: a selection's context menu; edit_asset_labels does the same for agents",
     ("window/dialog/ScenesWindow.cpp", "Scenes in Build##ScenesModal"): "test_about_scenes_prefabs_preferences",
     ("window/dialog/SceneSaveDialog.cpp", "Save Scene##SaveSceneModal"): "test_save_scene_dialog_completes",
-    ("window/dialog/ProjectSaveDialog.cpp", "Save Project##SaveProjectModal"): "not driven: Save Project As in a temporary project; test_save_scene_dialog_completes covers the kind",
+    ("window/dialog/ProjectSaveDialog.cpp", "Save Project##SaveProjectModal"): "test_save_scene_dialog_completes",
     ("window/dialog/EditorSettingsWindow.cpp", "Preferences##EditorSettingsModal"): "test_about_scenes_prefabs_preferences",
     ("window/dialog/AboutWindow.cpp", "About JasperEngine##AboutModal"): "test_about_scenes_prefabs_preferences",
     ("window/dialog/DataSafetyDialogs.cpp", "title"): "not driven: Recover, Saving Would Lose Data and Project Already Open need a crash or a second editor; open_project's allow_data_loss / recovery answer them",
@@ -133,8 +133,6 @@ def clean(test):
     async def run(ed: Editor):
         await close_all(ed)
         await test(ed)
-        status = await ed.call("editor_status")
-        ed.check(not status["playing"], f"{test.__name__} left the game playing")
     return run
 
 
@@ -449,23 +447,37 @@ async def test_save_scene_dialog_completes(ed: Editor):
     ed.check_in("folder", fields(d), f"{d}")
     r = await ed.call("respond_dialog", choice="ok", values={"name": "agent_saved", "folder": "scenes"})
     ed.check("dialog" not in r, f"completed: {r}")
+    # the save is asynchronous, then a project in the temporary folder asks where it goes: reported the same way
+    d = await wait_dialog(ed, "Save Project")
+    ed.check(d, "Save All goes on to Save Project")
+    ed.check_eq(d["kind"], "save_dialog", "its kind")
+    ed.check_in("location", fields(d), f"{d}")
+    ed.check_in("ok", d.get("disabled_choices", []), f"no location yet: {d}")
+    ed.check_in("location", d.get("error", ""), f"says why: {d}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq(await dialog(ed), None, "cancelled")
     ed.check((ed.project / "scenes/agent_saved.scene").exists(), "the scene was saved there")
 
 
-@clean
 async def test_save_template_fields(ed: Editor):
-    """A dialog that says why its button is greyed out: dialog.error, and the refusal in the reply"""
-    await ed.call("save_project", untitled_scene_dir="scenes")
-    d = await open_modal(ed, "file.saveProjectAsTemplate", "Save Project as Template")
-    ed.check_in("name", fields(d), f"{d}")
-    ed.check_in("description", fields(d), f"{d}")
-    r = await ed.call_raw("respond_dialog", {"choice": "ok", "values": {"name": "!!!"}})
-    ed.check(r.is_error and "letters or digits" in r.text, f"the refusal: {r.text[:300]}")
-    d = await dialog(ed)
-    ed.check_in("ok", d.get("disabled_choices", []), f"greyed out: {d}")
-    ed.check_in("letters or digits", d.get("error", ""), f"why: {d}")
-    await ed.call("respond_dialog", choice="cancel")
-    ed.check_eq(await dialog(ed), None, "closed")
+    """A dialog that says why its button is greyed out: dialog.error, and the refusal in the reply. A
+    template is made from a saved project, and one under the system's temporary folder is not: this editor's
+    temporary folder is elsewhere."""
+    other_temp = ed.scratch.root / "other-temp"
+    other_temp.mkdir(exist_ok=True)
+    async with Editor(project=REPO / "tools/fixtures/stencil", xvfb="editor", env={"TMPDIR": str(other_temp)}) as saved:
+        await saved.call("run_command", id="file.saveProjectAsTemplate")
+        d = await wait_dialog(saved, "Save Project as Template")
+        ed.check(d, f"it opens: {await dialog(saved)}")
+        ed.check_in("name", fields(d), f"{d}")
+        ed.check_in("description", fields(d), f"{d}")
+        r = await saved.call_raw("respond_dialog", {"choice": "ok", "values": {"name": "!!!"}})
+        ed.check(r.is_error and "letters or digits" in r.text, f"the refusal: {r.text[:300]}")
+        d = await dialog(saved)
+        ed.check_in("ok", d.get("disabled_choices", []), f"greyed out: {d}")
+        ed.check_in("letters or digits", d.get("error", ""), f"why: {d}")
+        await saved.call("respond_dialog", choice="cancel")
+        ed.check_eq(await dialog(saved), None, "closed")
 
 
 @clean
@@ -619,9 +631,9 @@ async def open_new_script(helper: ui_input.Ui):
     await helper.click(helper.centre(add["rect"]))
     # its rows draw their label themselves, so they are found by id: the top level's last row, scrolled to
     for _ in range(30):
-        rows = (await helper.ed.call("find_ui_item", label="##row", window="Add Component")).get("items", [])
+        rows = (await helper.ed.call("find_ui_item", label="##row", window="##Popup")).get("items", [])
         if rows:
-            row = await helper.reveal("##row", "Add Component", index=len(rows) - 1)
+            row = await helper.reveal("##row", "##Popup", index=len(rows) - 1)
             await helper.click(helper.centre(row["rect"]))
             return
         await helper.frames(2)

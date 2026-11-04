@@ -49,3 +49,6 @@ choices or message, so an agent gets stuck on most of them.
   values whose widget edits something else (radio buttons, tree selections, custom path displays). Lists a human clicks
   (Choose Asset, Replace Prefab) are an `enum` or a `path` field naming the row.
 - **`EditorDialogInfo` moved to `EditorModal.h`** (so its unit tests need no `App.h`).
+- **A save takes a moment and can go on to another dialog.** `editor_status.playing` is true while a scene is `saving`
+  (as before S69), and in a temporary project Save All goes from Save Scene to Save Project once the save ends, so a reply
+  with no `dialog` does not mean none follows.
