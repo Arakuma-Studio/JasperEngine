@@ -65,7 +65,15 @@ slot tools/smoke-test.sh                                    # export/build/run e
 slot tools/build.sh exec linux <command>                    # any command inside the Linux image
 ```
 
-Environment variables go in front of `slot` (they are inherited). The external fixture project
+Environment variables go in front of `slot` (they are inherited).
+
+Build-queue rules (the two slots are the program's bottleneck; a cold build takes 30-50 minutes):
+- Always `WERROR=1` on `linux` and `unit-tests`: one configuration means one incremental tree shared by your
+  iterations and the gate, and shared ccache hits across worktrees (a flag change recompiles everything).
+- Red controls run in your own worktree: revert the fix temporarily, rebuild incrementally, run only the regression
+  tests, restore. Never a scratch copy of the repository (a cold build each).
+- One heavy job queued per agent at a time; chain related steps into one `slot` call.
+- Iterate with `SKIP_ENGINE=1`, `UNIT_SUITE=core|editor` and filters; full suites, web and Android once, at the gate. The external fixture project
 (`build/fixture-unity`) does not exist on this host: tests that need it skip or fail for that reason only; say so.
 Windows, macOS and iOS cannot be built here: keep that code compiling by careful reading, `#ifdef` discipline and
 existing patterns, and say in your report what was not compiled. Apple builds use the Xcode project, which lists
