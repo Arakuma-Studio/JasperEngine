@@ -278,8 +278,8 @@ keeps it complete.
 
 ## What is tested where
 
-The Linux and web prebuilt paths are built and run in CI (`tools/build.sh players`, the player
-CLI test, the web gate with and without isolation headers); Android's prebuilt APK runs in the
-emulator check. Windows, macOS and iOS runtimes build on their CI runners; Steam uploads and real
+The Linux and web prebuilt paths are built and run by `tools/build.sh players`, the player CLI test
+and the web gate; Android's prebuilt APK runs in the emulator check. `tools/build.sh players` does
+not build Windows, macOS or iOS runtimes, and nothing else in this repository does; Steam uploads and real
 Steam Deck deploys are tested with stand-ins only (a SteamCMD-shaped script, ssh to a local
 directory).
