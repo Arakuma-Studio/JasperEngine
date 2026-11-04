@@ -1,8 +1,8 @@
-# S53 — Procedural Material: node graphs baked in the editor to textures and a material
+# S90 — Procedural Material: node graphs baked in the editor to textures and a material
 
 **Wave / Depends on.** Authoring wave (spec-first). Depends on S23's graph model
 (`engine/core/graph`), S04 (GUIDs), S05 (hot reload), S14 (texture cooks) and S24 (undo), all on
-`main`, and on **BF23**, which fixes the graph tools first. Independent of S54. Owner area:
+`main`, and on **BF23**, which fixes the graph tools first. Independent of S91. Owner area:
 `editor/procmat/` (new), `editor/window/widget/GraphCanvas.*`,
 `editor/window/ProceduralMaterialWindow.*` (new), `editor/mcp/tools/ProceduralMaterialTools.cpp`
 (new), `docs/mcp/guide/procedural-materials.md` (new).
@@ -365,7 +365,7 @@ extensions +514. Core +0. Guide: at most one line in its "Other areas" index, un
   `McpToolGroups.cpp`, `tools/mcp/budget.json`, the agent guide.
 - **S35** shares the check row shape and the guide bytes. Put the row in `editor/util/QaChecks` and
   let the second to land adopt it.
-- **S54** shares only `QaChecks`, and does not touch `GraphCanvas`. Either can go first.
+- **S91** shares only `QaChecks`, and does not touch `GraphCanvas`. Either can go first.
 - **S11's** exclusion of a shader graph stands. **S23's** group table and S31's recorded groups
   change with R32.
 

@@ -14,6 +14,8 @@ from harness import Editor, skip, symlinks_permitted
 import pngdiff
 
 EDITOR = {"create": True, "name": "Trusted Roots"}
+CI_EXCLUDED = ("long-running (about 3 minutes on a loaded server: projects created and opened through MCP); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 
 S: dict = {}
 

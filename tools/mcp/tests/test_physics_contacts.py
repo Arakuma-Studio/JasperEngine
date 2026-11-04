@@ -6,6 +6,7 @@ collider's receiver."""
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Physics Contacts"}
+CI = True
 
 BALL = """local Ball = {}
 function Ball:onCollisionEnter(c)

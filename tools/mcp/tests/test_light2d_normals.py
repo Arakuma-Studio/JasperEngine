@@ -19,6 +19,7 @@ import pngdiff  # noqa: E402
 from htmlui_pixels import decode_png  # noqa: E402
 
 EDITOR = {"create": True, "name": "Light2D Normals"}
+CI = True
 TIMEOUT = 900
 
 SIZE = 64
