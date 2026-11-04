@@ -106,9 +106,11 @@ namespace jasperengine::nav {
     // flags, joined through polygon links and off-mesh connections in either direction
 
     struct JASPERENGINE_API NavIslandLabels {
-        // per tile slot of the Detour mesh, the index of its first polygon's label; slot s has
-        // tileBase[s + 1] - tileBase[s] labels (none for an empty slot)
-        std::vector<uint32_t> tileBase;
+        // per tile slot of the Detour mesh, up to the last one in use, the index of its first
+        // polygon's label: slot s has base(s + 1) - base(s) labels. 16-bit while every index fits
+        // (R21: the table stays well under a byte per polygon), else 32-bit.
+        std::vector<uint16_t> tileBase16;
+        std::vector<uint32_t> tileBase32;
         // the island of every polygon (off-mesh connection polygons included), -1 for a polygon
         // with zero flags
         std::vector<int32_t> labels;
@@ -119,6 +121,8 @@ namespace jasperengine::nav {
 
         // the label of a polygon by its tile slot and index (-1 out of range)
         int labelOf(unsigned int tileSlot, unsigned int poly) const;
+        size_t tableSize() const { return tileBase16.empty() ? tileBase32.size() : tileBase16.size(); }
+        uint32_t base(size_t entry) const { return tileBase16.empty() ? tileBase32[entry] : tileBase16[entry]; }
         size_t memoryBytes() const;
     };
 
