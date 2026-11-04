@@ -528,6 +528,21 @@ None (R29).
 
 - The squashed library commit is 21.5 MiB of files (`du -sb editor/resources/sound-library/library`: 22,538,857 bytes): 927 clips, manifest v4, analysis v1, 11 licence files (R34).
 
+AC13's measurements, in CPU seconds (`time`, over the same binary's startup, on the same files; `je-evidence/s36/mac-bench-before.log`,
+`meter-h.log`, `meter-m.log`, `it10.prof.log`). The wall times 63 ms and 6.3 s came from a loaded H and say nothing either way:
+
+| `analyze_audio`, uncached | Budget (R31) | Mac, idle (load 2 of 14 cores) | H, Ryzen 5900X (load 13 to 39 of 24 threads) |
+|---|---|---|---|
+| 1 s clip | 40 ms | 10 ms | at most 13 ms |
+| 3-minute stereo OGG | 1.2 s | 0.95 s | 3.3 s at load 13, 5.2 s at load 23 |
+| of which `AudioMeter` on `main` | | 0.51 s | 3.6 s at load 39 |
+| of which `AudioMeter` on S38's branch (70e471bf2) | | 0.24 s | 0.8 s at load 39 |
+
+No S36 code changed for these: both are inside the budget on the quiet machine. H's gap on the long file is mostly the meter's
+44 biquads per sample, which S38's branch replaces (S38's decision 13); the rest of H's 5.2 s at load 23 is decode 0.33 s, spectral
+frames 0.85 s, stereo 0.2 s and defects 0.3 s. Inferred, not measured together: with S38 merged, the Mac's 3-minute file takes
+about 0.7 s.
+
 ## Deviations
 
 - **The class is `AudioClipSource` (R10)**, in `engine/core/audio/ClipSource.{h,cpp}`: `jasperengine::ClipSource` is already an
@@ -571,6 +586,11 @@ None (R29).
   `NEAR_DUPLICATE_DISTANCE`, and its example says "none under 0.020"). A4's is 0.075 here, from an event's distinct clips.
   At 0.075, seeds 1 to 8 called 15 of the 16 families near-duplicates (`test_audio_design`, red run `je-evidence/s36/it11.mcp.log`),
   whose advice is empty: a preset's seeds are close by design.
+- **The agent guide gains a Sound section**, in place of "sound (analyze_audio)" among its other areas. On the first eval, agents
+  with only core listed made no sound tool call in 10 of 10 samples, writing a WAV by script or giving up. The section
+  took `guard_sound_slice_takes` from 0/2 to 3/4. It did not move the prompts that read as file work: placeholder, layered, fit,
+  search and "too quiet" stayed at 0 of 10 samples with the audio group hidden, even when told to enable it, and pass 10 of 10
+  once it is listed. So those five cases set `groups_enabled` and measure the tools' text; discovery remains a known gap.
 - **`edit_sound_event`'s `slice` is an open object in the schema, its keys checked in the handler.** A closed one costs about
   300 characters, and S37 §6.1 reserves 150.
 - **`preview` reports `source.licensed`, not the licence's fields.** The event's reply says what is unknown in `problems`.
