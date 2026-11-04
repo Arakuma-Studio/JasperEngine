@@ -84,6 +84,11 @@ named by undo_name). undo/redo scope "timeline" = the human's Ctrl+Z/Ctrl+Y; exp
 undoes only your own last step. Play-time edits roll back at play stop and are offered back
 (get_play_changes). More: jasper://docs/undo.
 
+## Dialogs
+A modal blocks edits until answered: editor_status.dialog (title, message, choices, fields);
+respond_dialog values fills fields, choice presses a button; a refusal comes back as an error. Headless
+file pickers take values.path. More: jasper://docs/dialogs.
+
 ## Editor search
 editor_ux group: search_editor = the Ctrl+K palette (> / : @ + asset:); run_command runs a
 list_shortcuts id or a result key; set_shortcut rebinds; get_inspector_layout reads the Inspector's
