@@ -778,3 +778,41 @@ Less contended: `editor/command/type/CopyFileCmd.{h,cpp}`, `editor/asset/AssetOp
   treat an empty id as "no texture", as `Texture::empty()` does.
 - `code-editor-git`: the Code Editor tab handling after a moved or undone file (`handleFileRename`, `closeFile`) is used
   as is.
+
+## Deviations
+
+Recorded while implementing on `dc/project-window`; each keeps the spec's intent.
+
+1. **Cut items** are dimmed with the alpha the listing already uses for files outside the build (0.4), not 50%: one
+   dimming look in the window.
+2. **HTML Document**: `HtmlUITemplates` gains no `documentFiles`; the Project window builds the two write items from
+   `documentText` / `styleSheetText` and writes them as one undo step. `createDocument` stays for the HTML UI tests
+   (it is the no-project writer).
+3. **Two catalog commands for Duplicate**, as Rename has (`assets.rename` / `project.rename`): `assets.duplicate`
+   (Assets > Duplicate, no key) and `project.duplicate` (Ctrl+D, Project context). The palette lists both, like Rename.
+4. **Save Project As** does not save the open scenes on its own: the copy is made from disk, the editor continues in
+   it, and unsaved scene edits are written into the copy by the next Save (as a saved scene's edits always are).
+5. **Protected roots** (D10): `ProjectWindow::rootRefusal` has its own check (lexical and resolved, as
+   `McpRefs::trustedRootTouched`) to word the Project Settings path the user needs; it also refuses the project folder.
+6. **Edit > Cut / Copy / Paste** route to the Project window only from the menu (its keys stay `project.*`): their key
+   gates exclude the Project window, so typing in its search box never copies assets.
+7. **Tests not written as named**: the Vertex Animation pair half of `HumanoidSidecarAndVatPairMoveWithTheirFile` (the
+   pair move reuses `vat::existingPairOf` and the planned-move path the sidecar test covers; a valid baked pair fixture
+   is VatEditorTest's), and the MCP `test_unsaved_buffer_of_a_moving_file_refuses` (no MCP tool makes a Code Editor
+   buffer dirty; the refusal is the plan's `unsavedBuffers` check).
+8. **MCP text** follows the lean rules merged after the spec (`fe3e90b97`): the agent guide is untouched; the new
+   `move_asset` `to` wording and `set_project_settings` `dry_run` parameter each have an eval case
+   (`guard_duplicate_asset_beside`, `guard_asset_root_dry_run`).
+9. **The texture slot's MCP check** (`test_texture_slot_shows_the_file_name`) is a unit test only
+   (`TextureLabelsTest`): `find_ui_item` sees items with an id, and the slot's name is plain text. Its red control is
+   the helper run with the old id-based text.
+10. **`tools/build.sh`** forwards `JASPER_UPDATE_SHORTCUT_DOCS` into the container: the documented way to regenerate
+    `docs/editor/keyboard-shortcuts.md` (the new commands are in it) did nothing through `build.sh`.
+11. **Linked folders (S68, `docs/specs/S68-linked-folders.md`)**: a linked folder is a folder of the project. In the
+    Project window a copy, paste-copy or duplicate of one copies what it holds (a real copy, new GUIDs); a cut-paste,
+    drag or rename moves the link entry itself, never its target; the into-itself guard compares both as named and
+    resolved, so a link leading back into a copied folder is refused too. The asset-root change treats containment by
+    path (a link leading out of the project is inside it, R7) and **moves the link, not its target**: a referenced file
+    reached through a linked folder relocates by moving the topmost link on its path as one entry, so the target (a
+    library shared with other projects, say) is never emptied, and every file reached through the link keeps its layout
+    under the link's new place. Test: `AssetRootChangeTest.ALinkedFolderMovesAsTheLinkAndItsTargetStays`.
