@@ -655,9 +655,10 @@ Each backend test is parameterised over `{Native, Polling}`.
   a stream started "since now" reports nothing until fseventsd registered it. AC6 takes about
   13 s on macOS (an fseventsd round trip a flush), not the inotify fraction of a second.
 - **A new stream may never be served, so `start` replaces it; the flush is `FSEventStreamFlushAsync`
-  (2026-11-04).** On macOS 26.2 about 1 new stream in 70 reports nothing for at least 20 s, while the
-  others report within about a second (a program with no engine code, 150 streams a run, with or
-  without a flush). On such a stream `FSEventStreamFlushSync`, which has no timeout, does not return:
+  (2026-11-04).** On macOS 26.2 some new streams, 1 to 9 in 100 from run to run, report nothing for at
+  least 20 s, while the others report within about a second (a program with no engine code, with or
+  without a flush; of 600 roots, a third stream on the same root made 591 of them live, and only 2
+  had none live in 6). On such a stream `FSEventStreamFlushSync`, which has no timeout, does not return:
   `start`'s barrier passed its deadline and `stop` waited on it for good
   (`FileWatcherTests.SafeSaveVimBackup/Native`, over 20 minutes). `start` now gives a stream 1.5 s and
   tries up to 3; with none live it fails and the service polls (`Degraded`). The marker is what proves

@@ -117,9 +117,9 @@ bool FsEventsBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::stri
     // A stream that starts "since now" reports nothing until fseventsd registered it, which
     // FSEventStreamStart does not wait for: a change in the first moments was lost now and
     // then (FileWatcherTests.CreateModifyDeleteRename/Native on macOS 26). Started means live.
-    // On macOS 26 about 1 stream in 70 is never served at all (any process, with or without a
-    // flush): it reports nothing, however long it runs, so it is replaced; another one on the same
-    // root is served. With none live the service polls.
+    // On macOS 26 some new streams, 1 to 9 in 100 from run to run, are not served at all (any
+    // process, with or without a flush): 20 s later they still report nothing, so they are replaced,
+    // and a later one on the same root is served. With none live the service polls.
     std::lock_guard<std::mutex> lock(flushMutex);
     for (int attempt = 0; attempt < START_ATTEMPTS; attempt++) {
         if (!openStream(error)) return false;
