@@ -134,8 +134,16 @@ namespace jasperengine::editor {
         static std::vector<Finding> checkSurfaces(Project* project, size_t* surfaces = nullptr);
 
         // Stale bake (spec R32, R42): tiles whose inputs differ from the baked ones, -1 when
-        // not collected; cached per scene revision
+        // not collected (inputReport's count)
         int dirtyTiles(Project* project, uint32_t sceneId, Entity surface);
+        // The surface's inputs collected against its navmesh (S54 R15, R24, R29): the dirty tiles
+        // and their coordinates, the tile grid and voxel size of the Inspector's estimate.
+        // Collected at most once a second (it reads the whole scene); null while it bakes or in
+        // play. keepInput: with the collected input itself and its sources (the slope overlay,
+        // the Path Tester's probe); an input nobody asked for in 2 s is let go (update()).
+        const NavigationSystem::InputReport* inputReport(SceneProject& sceneProject, Entity surface, bool keepInput = false);
+        // inputReport's input (keepInput), null when it cannot be collected
+        std::shared_ptr<const nav::NavBakeInput> keptInput(SceneProject& sceneProject, Entity surface);
 
     private:
         struct Pending {
@@ -146,14 +154,15 @@ namespace jasperengine::editor {
         };
         std::vector<Pending> pending;
 
-        struct DirtyCache {
+        struct InputCache {
             uint32_t sceneId = 0;
             Entity surface = NULL_ENTITY;
-            uint64_t revision = 0;
             double checkedAt = 0.0;
-            int dirty = -1;
+            // the last time someone asked for the input itself
+            double inputAskedAt = 0.0;
+            NavigationSystem::InputReport report;
         };
-        std::vector<DirtyCache> dirtyCache;
+        std::vector<InputCache> inputCache;
 
         std::map<uint32_t, NavQueryDraw> queryDraws;
         struct LinkDrag {

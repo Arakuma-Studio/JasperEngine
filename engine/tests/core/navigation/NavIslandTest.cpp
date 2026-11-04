@@ -55,13 +55,16 @@ TEST_F(NavIslandTest, AreaAndBounds){
     bake(surface);
     const std::vector<nav::NavIsland> islands = nav->getIslands(surface);
     ASSERT_EQ(islands.size(), 1u);
-    // 20 x 20 m eroded by r = 0.5: 19^2 m^2
-    EXPECT_NEAR(islands[0].area, 361.0f, 361.0f * 0.02f);
+    // 20 x 20 m eroded by r = 0.5, which Recast rounds up to whole 0.2 m cells: about 19^2 m^2
+    EXPECT_NEAR(islands[0].area, 361.0f, 361.0f * 0.05f);
     EXPECT_GT(islands[0].polys, 0);
-    EXPECT_NEAR(islands[0].boundsMin.x, -9.5f, 0.25f);
-    EXPECT_NEAR(islands[0].boundsMax.x, 9.5f, 0.25f);
-    EXPECT_NEAR(islands[0].boundsMin.z, -9.5f, 0.25f);
-    EXPECT_NEAR(islands[0].boundsMax.z, 9.5f, 0.25f);
+    EXPECT_NEAR(islands[0].boundsMin.x, -9.5f, 0.4f);
+    EXPECT_NEAR(islands[0].boundsMax.x, 9.5f, 0.4f);
+    EXPECT_NEAR(islands[0].boundsMin.z, -9.5f, 0.4f);
+    EXPECT_NEAR(islands[0].boundsMax.z, 9.5f, 0.4f);
+    // a square: its area is its bounds' footprint
+    const float footprint = (islands[0].boundsMax.x - islands[0].boundsMin.x) * (islands[0].boundsMax.z - islands[0].boundsMin.z);
+    EXPECT_NEAR(islands[0].area, footprint, footprint * 0.01f);
     EXPECT_NEAR(nav->getNavMesh(surface)->getWalkableArea(), islands[0].area, 1e-3f);
 }
 

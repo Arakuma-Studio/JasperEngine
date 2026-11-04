@@ -661,6 +661,26 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   current Color By returns to Areas.
 - S54 P2: `out_of_nodes` is not raised by the MCP fixture (it needs a 3,000-polygon comb);
   `NavFailureTest.OutOfNodes` (P1) covers it, `test_query_reasons` covers the other eight.
+- S54 P3: AC13's `test_path_tester_flow` drives the Scene view with the harness's real input
+  (`tools/mcp/ui_input.py`, xdotool in its Xvfb), not `send_input` (that tool sends input to the
+  running game only). The panel's answer is read through UIProbe names (`pathTester.status.<status>`,
+  `.reason.<name>`, `.length.<dm>`, `.locate.<on_mesh|near_mesh|not_found>`, `.why.<code>`):
+  `find_ui_item` only sees labelled widgets, and the panel's lines are text.
+- S54 P3: Closest Edge and Locate need one point: any click (Shift or not) sets it. While a Locate
+  handle is dragged the location follows every frame, the walkability probe (up to 3 tile
+  rebuilds) runs on the click and when the drag ends.
+- S54 P3: "More tools ▸ Path Tester": the toolbar shows a Path Tester toggle (route icon) when its
+  items fit and a "Path Tester" item in its "..." (More Scene view tools) menu when they do not,
+  both only in scenes with a NavMesh Surface or a Nav Grid.
+- S54 P3: AC14's goldens set Color By and Show Steep Slopes through the Gizmos menu with real
+  input: `visualize_navigation`'s `show.islands/slope/tile_colors/tile_labels` are P2's and land
+  after P3.
+- S54 P3: Color By Islands greys from the start of the scene's query draw, the Path Tester's or
+  `visualize_navigation`'s `path.from`, when it lies on the surface.
+- S54 P3: the Inspector's summary lines are `get_inspector_layout` rows of kind Label (paths
+  `estimate`, `estimateVoxels`, `estimateTiles`, `estimateLimit`, `estimateError`, `lastBake`,
+  `lastBakeWarnings`, `walkable`; the label is the text drawn). A collection that fails shows its
+  error and code instead of the estimate.
 - S54 P1: island labels are one flat `int32_t` array with a per-tile-slot offset table
   (`NavIslandLabels::tileBase`) instead of a vector per tile slot (D2): a vector header per slot
   alone would cost 0.6 B per polygon of `bench_nav_city` and break R21's 4 B per polygon.
@@ -698,6 +718,10 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 - S54 P1: grid answers report an end outside the grid or on a Not Walkable / masked cell as
   `*_off_mesh` / `*_filtered` also when `allowPartial` gives a Partial path to it (the reason is
   more useful than `disconnected`).
+- S54 P1: AC6 `.AreaAndBounds` (and AC8's coverage) checks the area within 5 % of 19^2, not 2 %:
+  Recast erodes whole cells (r = 0.5 m at 0.2 m cells is 3 cells plus the boundary span), so the
+  baked square is 18.6 m wide (346 m^2). The test also checks the area equals the island's
+  bounds' footprint within 1 %, which pins the labelling's arithmetic exactly.
 - S54 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
   (P3's; the two new sources) and `engine/core/navigation/NavBakeInput.cpp` (`memoryBytes` counts
   the sources).

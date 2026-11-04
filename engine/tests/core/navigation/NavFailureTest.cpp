@@ -263,10 +263,13 @@ TEST_F(NavFailureTest, PartialHasClosestPointAndGap){
     EXPECT_NEAR(path.closestPoint.x, -1.0f, FAILURE_CELL);
     EXPECT_NEAR(path.gap, 11.0f, FAILURE_CELL);
     EXPECT_NEAR(path.gap, path.closestPoint.distance(path.end), 1e-4f);
-    EXPECT_NEAR(path.startSnapDistance, 0.3f, 0.05f);
-    EXPECT_NEAR(path.start.y, 0.0f, 0.05f);
+    // the navmesh lies within a cell height (0.1 m) over the floor
+    EXPECT_NEAR(path.startSnapDistance, 0.3f, 0.12f);
+    EXPECT_NEAR(path.start.y, 0.0f, 0.12f);
     EXPECT_NEAR(path.start.x, -10.0f, 1e-3f);
-    EXPECT_NEAR(path.endSnapDistance, 0.0f, 0.05f);
+    EXPECT_NEAR(path.endSnapDistance, 0.0f, 0.12f);
+    // the start moved straight down onto the mesh
+    EXPECT_NEAR(path.start.y + path.startSnapDistance, 0.3f, 1e-3f);
     EXPECT_NEAR(path.end.x, 10.0f, 1e-3f);
 }
 

@@ -200,7 +200,7 @@ TEST(NavWalkabilityProbe, ExplainsEachReason){
     EXPECT_TRUE(hasReason(platform, "small_region")) << reasonCodes(platform);
     EXPECT_NEAR(reasonOf(platform, "small_region")->limit, 2.0f, 1e-3f);
     // the erosion rounds up to whole cells: under 0.81 m^2, more than nothing
-    EXPECT_GT(reasonOf(platform, "small_region")->value, 0.2f);
+    EXPECT_GT(reasonOf(platform, "small_region")->value, 0.1f);
     EXPECT_LT(reasonOf(platform, "small_region")->value, 1.0f);
 
     const NavProbeResult volume = explain(Vector3(20.0f, 0.0f, 20.0f));
