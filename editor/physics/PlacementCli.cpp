@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlacementCli.h"
+#include "window/widget/InputTextContextMenu.h"
 #include "util/FileUtils.h"
 
 #include "PlacementSession.h"
@@ -34,7 +35,6 @@
 #include <sstream>
 #include <thread>
 #include <vector>
-#include "window/widget/InputTextContextMenu.h"
 
 #if defined(_WIN32)
     #include <fcntl.h>

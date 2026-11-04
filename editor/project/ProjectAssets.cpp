@@ -6,6 +6,7 @@
 // materials, and the in-memory edges of documents with unsaved edits.
 
 #include "Project.h"
+#include "component/MeshComponent.h"
 
 #include "Out.h"
 #include "DocumentFile.h"
@@ -15,7 +16,6 @@
 #include "util/EntityPath.h"
 
 #include <algorithm>
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 namespace fs = std::filesystem;

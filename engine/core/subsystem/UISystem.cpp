@@ -2,21 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "UISystem.h"
-
-#include <algorithm>
-#include <cctype>
-#include <cmath>
-#include <limits>
-#include <vector>
-#include "Scene.h"
-#include "Input.h"
-#include "Engine.h"
-#include "System.h"
-#include "Screen.h"
-#include "util/STBText.h"
-#include "util/Color.h"
-#include "util/StringUtils.h"
-#include "pool/FontPool.h"
 #include "component/ActionComponent.h"
 #include "component/TweenComponent.h"
 #include "component/ButtonComponent.h"
@@ -36,6 +21,21 @@
 #include "component/TextEffectComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <limits>
+#include <vector>
+#include "Scene.h"
+#include "Input.h"
+#include "Engine.h"
+#include "System.h"
+#include "Screen.h"
+#include "util/STBText.h"
+#include "util/Color.h"
+#include "util/StringUtils.h"
+#include "pool/FontPool.h"
 
 using namespace jasperengine;
 

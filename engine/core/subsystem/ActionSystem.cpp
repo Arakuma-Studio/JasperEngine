@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ActionSystem.h"
+#include "component/CanvasGroupComponent.h"
 
 #include "Scene.h"
 #include "Engine.h"
@@ -19,7 +20,6 @@
 #include <cmath>
 #include <functional>
 #include <unordered_set>
-#include "component/CanvasGroupComponent.h"
 
 using namespace jasperengine;
 

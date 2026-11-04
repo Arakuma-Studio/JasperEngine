@@ -8,15 +8,6 @@
 // bitwise. The hand-written codecs are kept verbatim in editor/tests/reflect/legacy.
 
 #include "reflect/ReflectTestSupport.h"
-#include "reflect/legacy/LegacyCodecs.h"
-
-#include "reflect/Reflect.h"
-
-#include <gtest/gtest.h>
-#include <yaml-cpp/yaml.h>
-
-#include <functional>
-#include <string>
 #include "Stream.h"
 #include "spritenormals/SpriteNormalsField.h"
 #include "action/Action.h"
@@ -55,6 +46,15 @@
 #include "object/ui/Scrollbar.h"
 #include "object/ui/Text.h"
 #include "object/ui/UIDocument.h"
+#include "reflect/legacy/LegacyCodecs.h"
+
+#include "reflect/Reflect.h"
+
+#include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
+
+#include <functional>
+#include <string>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

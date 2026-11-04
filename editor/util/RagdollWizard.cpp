@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RagdollWizard.h"
+#include "component/Transform.h"
 
 #include "Catalog.h"
 #include "Project.h"
@@ -12,7 +13,6 @@
 #include "command/type/RemoveComponentCmd.h"
 
 #include <unordered_set>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 

@@ -6,6 +6,7 @@
 // Changes review (R26-R29, AC13).
 
 #include "UndoFakeCommand.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "command/PlayChangeReview.h"
@@ -31,7 +32,6 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
-#include "component/Transform.h"
 
 namespace fs = std::filesystem;
 using namespace jasperengine;

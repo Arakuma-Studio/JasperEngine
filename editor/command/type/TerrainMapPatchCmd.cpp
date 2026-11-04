@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMapPatchCmd.h"
+#include "component/TerrainComponent.h"
 
 #include <utility>
-#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 

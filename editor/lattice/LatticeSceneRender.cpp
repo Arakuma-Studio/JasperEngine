@@ -4,8 +4,11 @@
 // SceneRender's lattice part (spec §9.2): the cages of the selected lattices (all of them
 // with the Gizmos popup's "Lattices"), the gizmo on the selected points and its drag.
 
-#include "lattice/LatticeTypes.h"
 #include "render/SceneRender.h"
+#include "lattice/LatticeTypes.h"
+#include "component/Transform.h"
+#include "util/Angle.h"
+#include "component/CameraComponent.h"
 
 #include "AppSettings.h"
 #include "Backend.h"
@@ -21,9 +24,6 @@
 #include <cmath>
 #include <functional>
 #include <set>
-#include "component/Transform.h"
-#include "util/Angle.h"
-#include "component/CameraComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

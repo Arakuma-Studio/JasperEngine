@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "ModelRender.h"
-
-#include "Configs.h"
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
 #include "component/LightComponent.h"
+
+#include "Configs.h"
 
 using namespace jasperengine;
 

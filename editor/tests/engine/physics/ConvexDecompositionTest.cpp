@@ -6,6 +6,7 @@
 // and the background jobs (polling, cancel of a running job, retry, many threads at once).
 
 #include <gtest/gtest.h>
+#include "object/Mesh.h"
 
 #include "physics/ConvexDecomposition.h"
 
@@ -23,7 +24,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include "object/Mesh.h"
 
 #if defined(JASPERENGINE_SANITIZE_ADDRESS)
     // the ASan runtime's (sanitizer/allocator_interface.h, not installed with every compiler)

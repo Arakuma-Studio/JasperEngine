@@ -8,6 +8,7 @@
 // avatar mask and montage documents. A headless project, as AnimationClipAssetsTest runs.
 
 #include <gtest/gtest.h>
+#include "pose/PoseUiLogic.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -30,7 +31,6 @@
 #include <iterator>
 #include <memory>
 #include <string>
-#include "pose/PoseUiLogic.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

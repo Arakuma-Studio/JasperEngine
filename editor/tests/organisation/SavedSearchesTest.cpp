@@ -5,6 +5,7 @@
 // thing, and organisation.yaml / project.yaml keep them.
 
 #include "organisation/Organisation.h"
+#include "spritenormals/SpriteNormalsField.h"
 #include "organisation/SavedSearchRows.h"
 #include "search/AssetQuery.h"
 #include "search/FakeAssetIndex.h"
@@ -12,7 +13,6 @@
 #include <gtest/gtest.h>
 
 #include "yaml-cpp/yaml.h"
-#include "spritenormals/SpriteNormalsField.h"
 
 using namespace jasperengine::editor;
 using jasperengine::editor::test::FakeAssetIndex;

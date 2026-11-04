@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "component/PrefabComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "widget/ColorPickerWindow.h"
 #include "DocumentFile.h"
 #include "util/FileUtils.h"
@@ -53,10 +57,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include "component/PrefabComponent.h"
-#include "component/InstancedMeshComponent.h"
-#include "component/ModelComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

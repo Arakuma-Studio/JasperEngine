@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ClipBinding.h"
+#include "component/MeshComponent.h"
 
 #include "animation/AnimationClip.h"
 #include "component/Transform.h"
@@ -10,7 +11,6 @@
 
 #include <algorithm>
 #include <unordered_set>
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

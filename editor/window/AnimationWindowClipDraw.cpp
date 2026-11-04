@@ -8,6 +8,7 @@
 // the bottom left), the menus and popups (keys, rows, Add Property, Rebind) and the shortcuts.
 
 #include "AnimationWindowClip.h"
+#include "component/Transform.h"
 #include "util/FileUtils.h"
 #include "AnimationWindowClipUtil.h"
 #include "animation/PropertyBindings.h"
@@ -41,7 +42,6 @@
 #include <chrono>
 #include <functional>
 #include <map>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

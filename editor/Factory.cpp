@@ -2,39 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "Factory.h"
-#include "reflect/Reflect.h"
-#include "reflect/Enums.h"
-
-#include "Scene.h"
-#include "Catalog.h"
-#include "Configs.h"
-#include "Stream.h"
-#include "particles/ParticleEffectCodec.h"
-#include "util/CameraTextureLink.h"
-#include "util/FluidTextureLink.h"
-#include "util/VideoTextureLink.h"
-#include "component/FluidSimulationComponent.h"
-#include "editor/Out.h"
-#include <cmath>
-#include <sstream>
-#include <iomanip>
-#include <cctype>
-#include <array>
-#include <fstream>
-#include <unordered_set>
-#include <unordered_map>
-#include <algorithm>
-#include <filesystem>
-
-#include "util/FileUtils.h"
-#include "stream/CurveCodec.h"
-
-#include "resources/sky/Daylight_Box_Back_png.h"
-#include "resources/sky/Daylight_Box_Bottom_png.h"
-#include "resources/sky/Daylight_Box_Front_png.h"
-#include "resources/sky/Daylight_Box_Left_png.h"
-#include "resources/sky/Daylight_Box_Right_png.h"
-#include "resources/sky/Daylight_Box_Top_png.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "component/CameraComponent.h"
@@ -78,6 +45,39 @@
 #include "component/TextEffectComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "reflect/Reflect.h"
+#include "reflect/Enums.h"
+
+#include "Scene.h"
+#include "Catalog.h"
+#include "Configs.h"
+#include "Stream.h"
+#include "particles/ParticleEffectCodec.h"
+#include "util/CameraTextureLink.h"
+#include "util/FluidTextureLink.h"
+#include "util/VideoTextureLink.h"
+#include "component/FluidSimulationComponent.h"
+#include "editor/Out.h"
+#include <cmath>
+#include <sstream>
+#include <iomanip>
+#include <cctype>
+#include <array>
+#include <fstream>
+#include <unordered_set>
+#include <unordered_map>
+#include <algorithm>
+#include <filesystem>
+
+#include "util/FileUtils.h"
+#include "stream/CurveCodec.h"
+
+#include "resources/sky/Daylight_Box_Back_png.h"
+#include "resources/sky/Daylight_Box_Bottom_png.h"
+#include "resources/sky/Daylight_Box_Front_png.h"
+#include "resources/sky/Daylight_Box_Left_png.h"
+#include "resources/sky/Daylight_Box_Right_png.h"
+#include "resources/sky/Daylight_Box_Top_png.h"
 
 using namespace jasperengine;
 

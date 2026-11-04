@@ -6,6 +6,8 @@
 // stubs and for the implementations (T2b, T2d, T3a add the behaviour tests in their own files).
 
 #include <gtest/gtest.h>
+#include "unity/UnityYaml.h"
+#include "animation/UpstreamAnimFormats.h"
 
 #include "Catalog.h"
 #include "Scene.h"
@@ -22,8 +24,6 @@
 #include <string>
 #include <type_traits>
 #include <vector>
-#include "unity/UnityYaml.h"
-#include "animation/UpstreamAnimFormats.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

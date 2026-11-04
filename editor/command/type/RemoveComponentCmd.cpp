@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "RemoveComponentCmd.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/Transform.h"
 
 #include "Out.h"
 #include "command/type/DeleteEntityCmd.h"
@@ -15,9 +18,6 @@
 #include <map>
 #include <set>
 #include <utility>
-#include "component/ActionComponent.h"
-#include "component/AnimationComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 

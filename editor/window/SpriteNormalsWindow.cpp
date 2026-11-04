@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteNormalsWindow.h"
+#include "component/TilemapComponent.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -44,7 +45,6 @@
 #include <mutex>
 #include <thread>
 #include "util/FileUtils.h"
-#include "component/TilemapComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

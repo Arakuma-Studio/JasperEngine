@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ModelLoadCmd.h"
+#include "component/BoneComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "sceneview/SurfacePlacement.h"
 
 #include "Stream.h"
@@ -20,9 +23,6 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include "component/BoneComponent.h"
-#include "component/ModelComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 

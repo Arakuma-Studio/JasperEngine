@@ -5,6 +5,7 @@
 // removed branches back, prefab order placement, and the Play-mode prefab factories.
 
 #include "Project.h"
+#include "component/PrefabComponent.h"
 #include "util/FileUtils.h"
 #include "util/WorldTransforms.h"
 #include "ProjectPrefabInternal.h"
@@ -25,7 +26,6 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
-#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

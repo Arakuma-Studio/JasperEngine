@@ -12,6 +12,7 @@
 // their ages) are.
 
 #include "Stream.h"
+#include "profiler/Profiler.h"
 #include "StreamMigrations.h"
 #include "Scene.h"
 #include "component/ParticleSystemComponent.h"
@@ -33,7 +34,6 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include "profiler/Profiler.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -8,6 +8,12 @@
 // Mode saves and external edits use, with the undo snapshots built on it.
 
 #include "Project.h"
+#include "component/AnimatorComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/Transform.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/PrefabComponent.h"
 #include "command/CommandHistory.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
@@ -21,12 +27,6 @@
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
-#include "component/AnimatorComponent.h"
-#include "component/PoseAnimatorComponent.h"
-#include "component/Transform.h"
-#include "component/VertexAnimatorComponent.h"
-#include "component/AnimationPlayerComponent.h"
-#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;

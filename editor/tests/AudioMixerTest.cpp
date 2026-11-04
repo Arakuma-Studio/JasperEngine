@@ -8,6 +8,8 @@
 // (AudioSourceTest), the Lua surface (AudioLuaTest) and the exported init (GeneratorAudioTest).
 
 #include <gtest/gtest.h>
+#include "component/Transform.h"
+#include "camera/CameraType.h"
 
 #include "ScriptDataTestSupport.h"
 
@@ -36,8 +38,6 @@
 #include <fstream>
 #include <string>
 #include <vector>
-#include "component/Transform.h"
-#include "camera/CameraType.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

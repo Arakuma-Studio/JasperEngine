@@ -5,6 +5,7 @@
 // draw them: per-collider-type rows, shape previews, body-picking rows).
 
 #include "InspectorWindow.h"
+#include "object/physics/Joint3D.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "command/PlayChangeReview.h"
@@ -103,7 +104,6 @@
 #include <unordered_set>
 #include <memory>
 #include "script/ScriptMessages.h"
-#include "object/physics/Joint3D.h"
 
 using namespace jasperengine;
 

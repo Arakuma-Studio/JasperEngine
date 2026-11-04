@@ -8,6 +8,9 @@
 // follow OpenEngine's SplineSceneGizmo.cpp (MIT, NOTICE.md), drawn with our line overlays.
 
 #include "render/SceneRender.h"
+#include "component/Transform.h"
+#include "subsystem/MeshSystem.h"
+#include "component/CameraComponent.h"
 
 #include "Backend.h"
 #include "App.h"
@@ -21,9 +24,6 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
-#include "component/Transform.h"
-#include "subsystem/MeshSystem.h"
-#include "component/CameraComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

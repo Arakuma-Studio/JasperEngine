@@ -7,6 +7,7 @@
 // JasperEngine options, the grid and the performance bound.
 
 #include "spritenormals/SpriteMedia.h"
+#include "object/ui/Image.h"
 #include "spritenormals/SpriteNormals.h"
 #include "spritenormals/SpriteNormalsField.h"
 
@@ -25,7 +26,6 @@
 #include <functional>
 #include <limits>
 #include <thread>
-#include "object/ui/Image.h"
 
 using namespace jasperengine::editor::spritenormals;
 namespace fs = std::filesystem;

@@ -4,6 +4,7 @@
 // The curve editor's model layer (docs/specs/S27-editor-tools.md R8, R10, R11, AC15)
 
 #include "widget/CurveEditorOps.h"
+#include "ecs/View.h"
 #include "widget/CurvePresets.h"
 
 #include "support/TestTempDir.h"
@@ -11,7 +12,6 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
-#include "ecs/View.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

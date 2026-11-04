@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AudioSource.h"
+#include "component/Transform.h"
 #include "subsystem/AudioSystem.h"
 #include "audio/AudioMixer.h"
 #include "pool/SoundPool.h"
@@ -13,7 +14,6 @@
 
 #include <algorithm>
 #include <stdexcept>
-#include "component/Transform.h"
 
 
 using namespace jasperengine;

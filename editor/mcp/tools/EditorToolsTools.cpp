@@ -13,6 +13,7 @@
 // registered by registerHubTools), and create_project takes a template.
 
 #include "McpTools.h"
+#include "render/SceneRender.h"
 
 #include "App.h"
 #include "AppSettings.h"
@@ -46,7 +47,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include "render/SceneRender.h"
 
 namespace jasperengine::editor::mcp {
 

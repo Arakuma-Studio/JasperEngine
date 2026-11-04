@@ -7,6 +7,7 @@
 // exports generate.
 
 #include <gtest/gtest.h>
+#include "camera/CameraType.h"
 
 #include "Engine.h"
 #include "Scene.h"
@@ -27,7 +28,6 @@
 #include "mcp/McpValues.h"
 
 #include <cmath>
-#include "camera/CameraType.h"
 
 namespace jasperengine {
     // TEST-ONLY seam (System.h befriends it): detach / restore the instance

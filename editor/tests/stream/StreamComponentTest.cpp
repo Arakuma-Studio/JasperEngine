@@ -6,28 +6,6 @@
 // and changes a few fields, so a value that is written but not read back shows up.
 
 #include "Stream.h"
-#include "Scene.h"
-#include "Catalog.h"
-#include "component/BuoyancyComponent.h"
-#include "component/CharacterController2DComponent.h"
-#include "component/CharacterControllerComponent.h"
-#include "component/FluidSimulationComponent.h"
-#include "component/ForceFieldComponent.h"
-#include "component/LatticeComponent.h"
-#include "component/LatticeFollowerComponent.h"
-#include "component/LatticeModifierComponent.h"
-#include "component/LatticeTracksComponent.h"
-#include "component/WaterVolumeComponent.h"
-#include "particles/ParticleEffectCodec.h"
-#include "reflect/Reflect.h"
-
-#include "LogCapture.h"
-
-#include <gtest/gtest.h>
-#include <yaml-cpp/yaml.h>
-
-#include <functional>
-#include <string>
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -81,6 +59,28 @@
 #include "component/PrefabComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/LineRendererComponent.h"
+#include "Scene.h"
+#include "Catalog.h"
+#include "component/BuoyancyComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/FluidSimulationComponent.h"
+#include "component/ForceFieldComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeFollowerComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/WaterVolumeComponent.h"
+#include "particles/ParticleEffectCodec.h"
+#include "reflect/Reflect.h"
+
+#include "LogCapture.h"
+
+#include <gtest/gtest.h>
+#include <yaml-cpp/yaml.h>
+
+#include <functional>
+#include <string>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

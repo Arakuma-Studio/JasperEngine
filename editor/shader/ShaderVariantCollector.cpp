@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderVariantCollector.h"
+#include "component/VolumetricCloudsComponent.h"
 
 #include "Engine.h"
 #include "System.h"
@@ -56,7 +57,6 @@
 #include <map>
 #include <memory>
 #include <unordered_set>
-#include "component/VolumetricCloudsComponent.h"
 
 using namespace jasperengine;
 namespace fs = std::filesystem;

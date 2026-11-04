@@ -5,6 +5,7 @@
 // animations, animations and keyframe tracks (key lists kept aligned with their tangents).
 
 #include "InspectorWindow.h"
+#include "window/AnimationWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "command/PlayChangeReview.h"
@@ -98,7 +99,6 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
-#include "window/AnimationWindow.h"
 
 using namespace jasperengine;
 

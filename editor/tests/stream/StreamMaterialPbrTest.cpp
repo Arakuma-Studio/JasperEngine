@@ -7,6 +7,7 @@
 // away from their defaults, so a file saved before them is written again byte for byte.
 
 #include "Stream.h"
+#include "component/TerrainComponent.h"
 #include "reflect/Reflect.h"
 #include "util/LightPhotometry.h"
 
@@ -16,7 +17,6 @@
 #include <chrono>
 #include <string>
 #include <thread>
-#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

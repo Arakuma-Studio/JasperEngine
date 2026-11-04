@@ -9,6 +9,7 @@
 // in AnimationClipControllerTest.
 
 #include <gtest/gtest.h>
+#include "component/Transform.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -49,7 +50,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

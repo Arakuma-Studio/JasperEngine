@@ -4,6 +4,7 @@
 // jasperengine-texsynth-tests: the texture synthesis core (editor/texsynth) on generated images.
 
 #include "texsynth/SynthesisRecipe.h"
+#include "object/ui/Image.h"
 #include "texsynth/TextureSynthesis.h"
 #include "util/FileUtils.h"
 
@@ -22,7 +23,6 @@
 #include <fstream>
 #include <random>
 #include <thread>
-#include "object/ui/Image.h"
 
 #ifdef __linux__
 #include <sys/wait.h>

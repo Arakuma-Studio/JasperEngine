@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "util/ProjectChecks.h"
+#include "component/CanvasGroupComponent.h"
 #include "camera/ShakePresets.h"
 #include "camera/ShakePreset.h"
 #include "McpValues.h"
@@ -83,7 +84,6 @@
 #include <memory>
 #include <mutex>
 #include <set>
-#include "component/CanvasGroupComponent.h"
 
 namespace fs = std::filesystem;
 

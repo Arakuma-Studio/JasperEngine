@@ -1,8 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "animation/AnimationClipIO.h"
 #include "InspectorAnimLayers.h"
+#include "animation/AnimationClipIO.h"
 
 #include "Project.h"
 #include "Scene.h"

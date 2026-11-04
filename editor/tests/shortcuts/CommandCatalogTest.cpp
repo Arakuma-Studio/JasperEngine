@@ -5,6 +5,8 @@
 // and tooltip texts, and the generated reference that docs/editor/keyboard-shortcuts.md is.
 
 #include "shortcuts/ShortcutTestSupport.h"
+#include "shortcuts/Chord.h"
+#include "shortcuts/CommandCatalog.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -13,8 +15,6 @@
 #include <cstdlib>
 #include <fstream>
 #include <set>
-#include "shortcuts/Chord.h"
-#include "shortcuts/CommandCatalog.h"
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;

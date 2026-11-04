@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "BookmarksWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ProjectWindow.h"
 
 #include "Backend.h"
 #include "App.h"
@@ -17,8 +19,6 @@
 #include "imgui.h"
 
 #include <cstring>
-#include "window/HierarchyWindow.h"
-#include "window/ProjectWindow.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

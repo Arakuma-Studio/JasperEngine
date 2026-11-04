@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "AddComponentCmd.h"
+#include "component/SplineComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/ActionComponent.h"
 #include "component/ParticleSystemComponent.h"
 
@@ -11,8 +13,6 @@
 #include "component/Light2DComponent.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
-#include "component/SplineComponent.h"
-#include "component/TrailRendererComponent.h"
 
 using namespace jasperengine;
 

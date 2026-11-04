@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "RectTransform.h"
-
-#include "util/Color.h"
-#include "subsystem/UISystem.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
+
+#include "util/Color.h"
+#include "subsystem/UISystem.h"
 
 using namespace jasperengine;
 

@@ -2,22 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateEntityCmd.h"
-#include "spline/SplinePresets.h"
-
-#include "audio/AudioMixerDocument.h"
-
-#include "editor/Out.h"
-#include "util/PrimitiveParameters.h"
-#include "util/ProjectUtils.h"
-#include "Stream.h"
-#include "command/type/DeleteEntityCmd.h"
-#include "object/environment/Water.h"
-#include "component/FluidSimulationComponent.h"
-#include "component/VideoPlayerComponent.h"
-#include "particles/LegacyParticleConverter.h"
-
-#include <algorithm>
-#include <utility>
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -72,6 +56,22 @@
 #include "subsystem/MeshSystem.h"
 #include "subsystem/UISystem.h"
 #include "component/TrailRendererComponent.h"
+#include "spline/SplinePresets.h"
+
+#include "audio/AudioMixerDocument.h"
+
+#include "editor/Out.h"
+#include "util/PrimitiveParameters.h"
+#include "util/ProjectUtils.h"
+#include "Stream.h"
+#include "command/type/DeleteEntityCmd.h"
+#include "object/environment/Water.h"
+#include "component/FluidSimulationComponent.h"
+#include "component/VideoPlayerComponent.h"
+#include "particles/LegacyParticleConverter.h"
+
+#include <algorithm>
+#include <utility>
 
 using namespace jasperengine;
 

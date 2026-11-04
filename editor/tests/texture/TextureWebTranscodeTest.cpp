@@ -10,6 +10,7 @@
 // first. The engine's copy lives in the shared engine, the editor's in this binary.
 
 #include <gtest/gtest.h>
+#include "stream/UpstreamParticles.h"
 
 #include "support/TextureCorpus.h"
 
@@ -26,7 +27,6 @@
 #include <random>
 #include <string>
 #include <vector>
-#include "stream/UpstreamParticles.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

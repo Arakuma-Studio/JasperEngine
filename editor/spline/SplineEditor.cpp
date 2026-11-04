@@ -5,6 +5,7 @@
 // the header and NOTICE.md).
 
 #include "SplineEditor.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "command/CommandHandle.h"
@@ -19,7 +20,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

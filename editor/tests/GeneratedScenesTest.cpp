@@ -6,6 +6,10 @@
 // scenes whose names map to one identifier keep their own files.
 
 #include <gtest/gtest.h>
+#include "component/AlphaTweenComponent.h"
+#include "component/Transform.h"
+#include "component/TweenComponent.h"
+#include "script/ScriptProperty.h"
 
 #include "Factory.h"
 #include "Generator.h"
@@ -30,10 +34,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include "component/AlphaTweenComponent.h"
-#include "component/Transform.h"
-#include "component/TweenComponent.h"
-#include "script/ScriptProperty.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

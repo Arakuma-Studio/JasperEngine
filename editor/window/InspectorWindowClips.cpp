@@ -12,6 +12,7 @@
 // a button shows once its hook is set. Owner: T2c.
 
 #include "media/VideoFormats.h"
+#include "component/Transform.h"
 #include "util/NativePlugins.h"
 #include "InspectorWindow.h"
 #include "window/HumanoidConvertDialog.h"
@@ -64,7 +65,6 @@
 #include <iterator>
 #include <map>
 #include <unordered_set>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

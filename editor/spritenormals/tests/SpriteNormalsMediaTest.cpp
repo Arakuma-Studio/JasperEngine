@@ -6,6 +6,7 @@
 // timing and limit case is exact; the upstream fixtures check the atlases of real files.
 
 #include "spritenormals/SpriteMedia.h"
+#include "object/ui/Image.h"
 
 #include "json.hpp"
 #include "stb_image_write.h"
@@ -19,7 +20,6 @@
 #include <chrono>
 #include <unordered_map>
 #include <random>
-#include "object/ui/Image.h"
 
 using namespace jasperengine::editor::spritenormals;
 namespace fs = std::filesystem;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConsoleWindow.h"
+#include "window/ProjectWindow.h"
 
 #include "shortcuts/CommandCatalog.h"
 #include <cstdio>
@@ -16,7 +17,6 @@
 #include "util/ExternalCodeEditor.h"
 #include "util/FileUtils.h"
 #include <cmath>
-#include "window/ProjectWindow.h"
 
 namespace {
 

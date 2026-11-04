@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/TweenComponent.h"
 
 #include "lua.hpp"
 
@@ -24,7 +25,6 @@
 #include "action/keyframe/RotateTracks.h"
 #include "action/keyframe/ScaleTracks.h"
 #include "action/keyframe/TranslateTracks.h"
-#include "component/TweenComponent.h"
 
 using namespace jasperengine;
 

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticeSceneTools.h"
+#include "component/Transform.h"
 
 #include "LatticeEditorOps.h"
 #include "App.h"
@@ -19,7 +20,6 @@
 #include <cctype>
 #include <string>
 #include <vector>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

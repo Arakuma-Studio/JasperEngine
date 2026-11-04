@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/PanelComponent.h"
 
 #include "lua.hpp"
 
@@ -53,7 +54,6 @@
 #include "component/LatticeModifierComponent.h"
 #include "component/LatticeFollowerComponent.h"
 #include "component/LatticeTracksComponent.h"
-#include "component/PanelComponent.h"
 
 using namespace jasperengine;
 

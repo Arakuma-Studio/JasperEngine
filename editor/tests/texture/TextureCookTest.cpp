@@ -7,6 +7,7 @@
 // copy, metadata (R32) and cancellation.
 
 #include <gtest/gtest.h>
+#include "texture/TextureData.h"
 
 #include "support/EditorTestSupport.h"
 #include "support/TextureCorpus.h"
@@ -22,7 +23,6 @@
 #include <fstream>
 #include <map>
 #include <set>
-#include "texture/TextureData.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

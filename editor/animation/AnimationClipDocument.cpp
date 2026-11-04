@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipDocument.h"
+#include "component/AnimationPlayerComponent.h"
 #include "AnimatorAssetDocument.h"
 
 #include "animation/AnimatorAssetIO.h"
@@ -23,7 +24,6 @@
 #include <cstdlib>
 #include <set>
 #include <tuple>
-#include "component/AnimationPlayerComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

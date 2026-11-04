@@ -7,12 +7,12 @@
 // guid index of a project's .meta files. Synthetic inputs only.
 
 #include <gtest/gtest.h>
+#include "Project.h"
 
 #include "unity/UnityProject.h"
 #include "unity/UnityYaml.h"
 
 #include <cmath>
-#include "Project.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::unity;

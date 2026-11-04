@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "GraphicUtils.h"
+#include "component/RectTransformComponent.h"
+#include "component/TextComponent.h"
 #include "util/PngWriter.h"
 
 #include "Out.h"
@@ -17,8 +19,6 @@
 #include <vector>
 #include <thread>
 #include <utility>
-#include "component/RectTransformComponent.h"
-#include "component/TextComponent.h"
 
 #if defined(SOKOL_METAL)
     #include <TargetConditionals.h>

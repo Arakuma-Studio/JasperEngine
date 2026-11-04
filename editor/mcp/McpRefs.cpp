@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpRefs.h"
+#include "component/Transform.h"
 
 #include "util/SafeWrite.h"
 
@@ -11,7 +12,6 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
-#include "component/Transform.h"
 
 namespace fs = std::filesystem;
 

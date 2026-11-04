@@ -7,6 +7,7 @@
 // case reads them right after the decode, with no transform pass in between.
 
 #include "support/EditorTestSupport.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "TempDir.h"
@@ -15,7 +16,6 @@
 #include "util/Prefab.h"
 
 #include <gtest/gtest.h>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

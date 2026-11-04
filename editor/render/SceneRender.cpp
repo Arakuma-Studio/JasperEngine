@@ -1,13 +1,8 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "LayerViewCamera.h"
 #include "SceneRender.h"
-#include "spline/SplineEditor.h"
-#include "profiler/Profile.h"
-
-#include "resources/icons/camera-icon_png.h"
-#include "resources/icons/audio-source-icon_png.h"
+#include "LayerViewCamera.h"
 #include "component/AudioSourceComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/NavGridComponent.h"
@@ -23,6 +18,11 @@
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/UISystem.h"
 #include "object/Sprite.h"
+#include "spline/SplineEditor.h"
+#include "profiler/Profile.h"
+
+#include "resources/icons/camera-icon_png.h"
+#include "resources/icons/audio-source-icon_png.h"
 
 // defined by resources/icons/bulb-icon_png.h, included in SceneRender3D.cpp
 // (the xxd headers define non-static arrays, so they link in one TU only)

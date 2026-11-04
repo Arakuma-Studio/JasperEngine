@@ -5,6 +5,7 @@
 // interactive edits, selection steps and the off-thread release, on a recording fake command.
 
 #include "UndoFakeCommand.h"
+#include "util/BackgroundRelease.h"
 
 #include "command/CommandGroup.h"
 #include "command/CommandNames.h"
@@ -15,7 +16,6 @@
 #include <cstdlib>
 #include <memory>
 #include <type_traits>
-#include "util/BackgroundRelease.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

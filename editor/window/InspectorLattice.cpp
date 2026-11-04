@@ -5,6 +5,7 @@
 // its bindings and bake, its follower and its tracks.
 
 #include "InspectorWindow.h"
+#include "component/LatticeFollowerComponent.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
@@ -112,7 +113,6 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
-#include "component/LatticeFollowerComponent.h"
 
 using namespace jasperengine;
 

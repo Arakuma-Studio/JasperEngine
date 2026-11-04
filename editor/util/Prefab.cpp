@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Prefab.h"
+#include "component/PrefabComponent.h"
 #include "StreamPreserved.h"
 
 #include "Stream.h"
@@ -9,7 +10,6 @@
 #include "util/YamlNumbers.h"
 
 #include <unordered_set>
-#include "component/PrefabComponent.h"
 
 namespace jasperengine::editor {
 

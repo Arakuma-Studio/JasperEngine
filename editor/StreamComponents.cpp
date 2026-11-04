@@ -7,25 +7,6 @@
 // their ComponentDesc's codec (editor/reflect/components). The rest of the scene file is Stream.cpp.
 
 #include "Stream.h"
-#include "reflect/Reflect.h"
-#include "log/Logger.h"
-#include "StreamSchema.h"
-#include "Catalog.h"
-#include "util/ProjectUtils.h"
-#include "util/YamlNumbers.h"
-#include "lattice/LatticeTypes.h"
-#include "Out.h"
-#include "particles/ParticleEffectCodec.h"
-#include "stream/CurveCodec.h"
-#include "animation/AnimationClipIO.h"
-#include "animation/AnimationPlayerRuntime.h"
-#include "animation/ModelSubClips.h"
-
-#include <algorithm>
-#include <cmath>
-#include <cstring>
-#include <mutex>
-#include <set>
 #include "component/BuoyancyComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
@@ -52,6 +33,25 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/LineRendererComponent.h"
+#include "reflect/Reflect.h"
+#include "log/Logger.h"
+#include "StreamSchema.h"
+#include "Catalog.h"
+#include "util/ProjectUtils.h"
+#include "util/YamlNumbers.h"
+#include "lattice/LatticeTypes.h"
+#include "Out.h"
+#include "particles/ParticleEffectCodec.h"
+#include "stream/CurveCodec.h"
+#include "animation/AnimationClipIO.h"
+#include "animation/AnimationPlayerRuntime.h"
+#include "animation/ModelSubClips.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+#include <mutex>
+#include <set>
 
 using namespace jasperengine;
 

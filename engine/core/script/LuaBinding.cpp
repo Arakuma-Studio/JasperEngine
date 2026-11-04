@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include <cmath>
+#include "object/spline/Spline.h"
+#include "object/spline/SplineAnimate.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
 #include <unordered_map>
 #include "LuaBinding.h"
 #include "log/Logger.h"
@@ -119,10 +123,6 @@
 #include <memory>
 
 #include "profiler/Profile.h"
-#include "object/spline/Spline.h"
-#include "object/spline/SplineAnimate.h"
-#include "object/spline/SplineExtrude.h"
-#include "object/spline/SplineInstantiate.h"
 
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <execinfo.h>

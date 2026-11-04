@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "DuplicateEntityCmd.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 #include "pose/PoseEditSession.h"
 
 #include "command/PlayChangeReview.h"
@@ -16,8 +18,6 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
-#include "component/Transform.h"
-#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

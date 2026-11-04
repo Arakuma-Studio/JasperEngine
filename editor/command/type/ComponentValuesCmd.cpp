@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ComponentValuesCmd.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/ModelComponent.h"
 #include "animation/ClipRecordHooks.h"
 
 #include "Stream.h"
@@ -17,9 +20,6 @@
 #include "window/dialog/ComponentAddDialog.h"
 
 #include <initializer_list>
-#include "component/ActionComponent.h"
-#include "component/AnimationComponent.h"
-#include "component/ModelComponent.h"
 
 using namespace jasperengine;
 

@@ -13,6 +13,8 @@
 // invariants of spec 4.6.1; those tests skip with a message when the folder is absent.
 
 #include <gtest/gtest.h>
+#include "stream/UpstreamParticles.h"
+#include "object/ui/Image.h"
 
 #include "vat/VatImportFixtures.h"
 
@@ -39,8 +41,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include "stream/UpstreamParticles.h"
-#include "object/ui/Image.h"
 
 using namespace jasperengine;
 namespace fs = std::filesystem;

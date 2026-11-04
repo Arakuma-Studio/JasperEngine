@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneViewVisibility.h"
+#include "render/SceneRender.h"
 
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
 #include "picking/PickTypes.h"
-#include "render/SceneRender.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "window/ProjectWindow.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"
 #include "widget/ColorField.h"
@@ -52,7 +53,6 @@
 #include <cfloat>
 #include <cstdlib>
 #include <cstring>
-#include "window/ProjectWindow.h"
 
 namespace jasperengine::editor {
 

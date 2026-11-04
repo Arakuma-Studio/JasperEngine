@@ -5,6 +5,7 @@
 // sub-selection, frame lists, particle modules).
 
 #include "InspectorWindow.h"
+#include "component/InstancedMeshComponent.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "command/PlayChangeReview.h"
@@ -96,7 +97,6 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
-#include "component/InstancedMeshComponent.h"
 
 using namespace jasperengine;
 

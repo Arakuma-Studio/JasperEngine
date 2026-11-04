@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimatorSystem.h"
+#include "component/CharacterControllerComponent.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -28,7 +29,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include "component/CharacterControllerComponent.h"
 
 using namespace jasperengine;
 

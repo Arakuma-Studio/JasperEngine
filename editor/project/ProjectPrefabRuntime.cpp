@@ -6,6 +6,9 @@
 // properties), and Play's PrefabManager factories, which copy a template imported once.
 
 #include "Project.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
+#include "component/ScriptComponent.h"
 #include "DocumentFile.h"
 #include "Factory.h"
 #include "Out.h"
@@ -15,9 +18,6 @@
 
 #include <algorithm>
 #include <unordered_set>
-#include "component/Transform.h"
-#include "component/PrefabComponent.h"
-#include "component/ScriptComponent.h"
 
 using namespace jasperengine;
 

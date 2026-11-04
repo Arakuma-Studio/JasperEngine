@@ -13,6 +13,7 @@
 // base) and its masked-out rows.
 
 #include <gtest/gtest.h>
+#include "component/Transform.h"
 
 #include "support/EditorTestSupport.h"
 
@@ -41,7 +42,6 @@
 #include <iterator>
 #include <memory>
 #include <string>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

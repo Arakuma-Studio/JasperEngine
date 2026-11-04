@@ -2,11 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityRegistry.h"
-#include "script/AsyncOwner.h"
-
-#include <algorithm>
-#include <cassert>
-#include <unordered_set>
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -91,6 +86,11 @@
 #include "component/VideoPlayerComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/WaterVolumeComponent.h"
+#include "script/AsyncOwner.h"
+
+#include <algorithm>
+#include <cassert>
+#include <unordered_set>
 
 using namespace jasperengine;
 

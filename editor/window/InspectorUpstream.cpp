@@ -7,6 +7,9 @@
 // components have reflection tables of their own).
 
 #include "InspectorWindow.h"
+#include "component/ImageComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/Transform.h"
 
 #include "Catalog.h"
 #include "Project.h"
@@ -19,9 +22,6 @@
 
 #include <algorithm>
 #include <filesystem>
-#include "component/ImageComponent.h"
-#include "component/OnScreenControlComponents.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 

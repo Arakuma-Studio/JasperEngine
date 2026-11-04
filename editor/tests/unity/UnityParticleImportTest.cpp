@@ -12,6 +12,8 @@
 // placeholder with its own id, the report codes, numbered names, dry runs.
 
 #include <gtest/gtest.h>
+#include "component/ParticleSystemComponent.h"
+#include "component/Transform.h"
 
 #include "Catalog.h"
 #include "Stream.h"
@@ -29,8 +31,6 @@
 #include <fstream>
 #include <random>
 #include <sstream>
-#include "component/ParticleSystemComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

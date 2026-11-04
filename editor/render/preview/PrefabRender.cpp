@@ -2,14 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabRender.h"
-
-#include "Configs.h"
-#include "Project.h"
-#include "Engine.h"
-#include "util/GraphicUtils.h"
-
-#include <algorithm>
-#include <cmath>
 #include "component/MeshComponent.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/ModelComponent.h"
@@ -20,6 +12,14 @@
 #include "component/Transform.h"
 #include "component/UIComponent.h"
 #include "component/LightComponent.h"
+
+#include "Configs.h"
+#include "Project.h"
+#include "Engine.h"
+#include "util/GraphicUtils.h"
+
+#include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 

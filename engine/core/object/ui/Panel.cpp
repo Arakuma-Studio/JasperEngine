@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "Panel.h"
+#include "component/PanelComponent.h"
+#include "util/Color.h"
 
 #include "component/LayoutGroupComponent.h"
 #include "component/TextComponent.h"
 #include "component/ImageComponent.h"
 #include "component/UIComponent.h"
 #include "subsystem/UISystem.h"
-#include "component/PanelComponent.h"
-#include "util/Color.h"
 
 using namespace jasperengine;
 

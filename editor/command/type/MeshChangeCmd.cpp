@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshChangeCmd.h"
+#include "component/MeshComponent.h"
 
 #include "Stream.h"
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

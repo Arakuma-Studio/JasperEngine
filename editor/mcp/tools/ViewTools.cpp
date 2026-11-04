@@ -3,6 +3,16 @@
 
 // W3: screenshots, Scene view camera, window focus, Game view settings
 #include "Screen.h"
+#include "window/widget/InputTextContextMenu.h"
+#include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/ProjectWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "window/TerrainEditWindow.h"
+#include "window/TextureSynthesisWindow.h"
+#include "window/VertexAnimationBakerWindow.h"
 #include "registry/PhysicsLayers.h"
 #include "McpTools.h"
 #include "texture/TextureCookQueue.h"
@@ -83,16 +93,6 @@
 #include <cmath>
 #include <fstream>
 #include <memory>
-#include "window/widget/InputTextContextMenu.h"
-#include "window/AnimationWindow.h"
-#include "window/AnimatorWindow.h"
-#include "window/HierarchyWindow.h"
-#include "window/InspectorWindow.h"
-#include "window/ProjectWindow.h"
-#include "window/SpriteNormalsWindow.h"
-#include "window/TerrainEditWindow.h"
-#include "window/TextureSynthesisWindow.h"
-#include "window/VertexAnimationBakerWindow.h"
 
 namespace fs = std::filesystem;
 

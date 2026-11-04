@@ -6,11 +6,11 @@
 // the keys they must.
 
 #include "shortcuts/ShortcutTestSupport.h"
-
-#include <gtest/gtest.h>
 #include "shortcuts/Chord.h"
 #include "shortcuts/CommandCatalog.h"
 #include "shortcuts/ShortcutDispatcher.h"
+
+#include <gtest/gtest.h>
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;

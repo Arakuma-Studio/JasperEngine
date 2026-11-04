@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticeEditorOps.h"
+#include "component/Transform.h"
+#include "component/MeshComponent.h"
 
 #include "AppSettings.h"
 #include "Project.h"
@@ -24,8 +26,6 @@
 #include <cmath>
 #include <limits>
 #include <map>
-#include "component/Transform.h"
-#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -5,6 +5,10 @@
 // overrides (revert/apply) and component override apply.
 
 #include "Project.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/Transform.h"
+#include "project/PrefabUnpackRecord.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"
@@ -16,10 +20,6 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
-#include "component/ActionComponent.h"
-#include "component/AnimationComponent.h"
-#include "component/Transform.h"
-#include "project/PrefabUnpackRecord.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;

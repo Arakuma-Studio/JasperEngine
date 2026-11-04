@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Text.h"
+#include "component/TextComponent.h"
 #include "shader/ShaderGlobals.h"
 
 #include <algorithm>
@@ -13,7 +14,6 @@
 #include "util/STBText.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
-#include "component/TextComponent.h"
 
 using namespace jasperengine;
 

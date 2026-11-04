@@ -8,6 +8,7 @@
 // the test checks it loads cleanly and holds every component type.
 
 #include "support/EditorTestSupport.h"
+#include "component/TextComponent.h"
 
 #include "Catalog.h"
 #include "Stream.h"
@@ -20,7 +21,6 @@
 #include <fstream>
 #include <random>
 #include <set>
-#include "component/TextComponent.h"
 
 namespace fs = std::filesystem;
 using namespace jasperengine;

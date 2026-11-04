@@ -2,15 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender2D.h"
-
-#include "Project.h"
-#include "LineDrawUtils.h"
-#include "Joint2DAnchors.h"
-#include "physics/PolygonDecomposition2D.h"
-#include "subsystem/PhysicsSystem.h"
-
-#include <algorithm>
-#include <cmath>
 #include "component/AudioSourceComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/MeshPolygonComponent.h"
@@ -20,6 +11,15 @@
 #include "object/Sprite.h"
 #include "subsystem/RenderSystem.h"
 #include "component/CharacterController2DComponent.h"
+
+#include "Project.h"
+#include "LineDrawUtils.h"
+#include "Joint2DAnchors.h"
+#include "physics/PolygonDecomposition2D.h"
+#include "subsystem/PhysicsSystem.h"
+
+#include <algorithm>
+#include <cmath>
 
 
 using namespace jasperengine;

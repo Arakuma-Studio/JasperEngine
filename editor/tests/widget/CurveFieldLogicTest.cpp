@@ -10,6 +10,7 @@
 // own time.
 
 #include <gtest/gtest.h>
+#include "ecs/View.h"
 
 #include "util/Color.h"
 #include "widget/CurveEditorOps.h"
@@ -19,7 +20,6 @@
 
 #include <cmath>
 #include <limits>
-#include "ecs/View.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

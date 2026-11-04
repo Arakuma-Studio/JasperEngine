@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMapUtils.h"
+#include "component/TerrainComponent.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 
@@ -10,7 +11,6 @@
 
 #include <cstring>
 #include <system_error>
-#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "AudioSystem.h"
+#include "component/CameraComponent.h"
+#include "component/Transform.h"
 #include "PlatformConfig.h"
 #include "manager/SceneManager.h"
 
@@ -17,8 +19,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <set>
-#include "component/CameraComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 

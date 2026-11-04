@@ -6,15 +6,15 @@
 // by path; the components' runtime state is not exported.
 
 #include "Factory.h"
-#include "reflect/Enums.h"
-
-#include <sstream>
 #include "component/NavGridComponent.h"
 #include "component/NavMeshAgentComponent.h"
 #include "component/NavMeshLinkComponent.h"
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
+#include "reflect/Enums.h"
+
+#include <sstream>
 
 using namespace jasperengine;
 

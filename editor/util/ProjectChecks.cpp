@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectChecks.h"
+#include "component/ScriptComponent.h"
 #include "io/AtomicFile.h"
 #include "component/ActionComponent.h"
 #include "component/PointsComponent.h"
@@ -54,7 +55,6 @@
 #include <set>
 #include <sstream>
 #include <thread>
-#include "component/ScriptComponent.h"
 
 using namespace jasperengine;
 using jasperengine::editor::Util;

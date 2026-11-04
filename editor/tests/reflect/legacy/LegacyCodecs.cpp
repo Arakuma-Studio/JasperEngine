@@ -4,14 +4,6 @@
 // The codecs of editor/Stream.cpp before S08, unchanged (LegacyCodecs.h)
 
 #include "reflect/legacy/LegacyCodecs.h"
-#include "util/LightPhotometry.h"
-
-#include "Stream.h"
-#include "StreamSchema.h"
-#include "pool/SoundPool.h"
-#include "util/YamlNumbers.h"
-
-#include <algorithm>
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -49,6 +41,14 @@
 #include "component/FluidSimulationComponent.h"
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
+#include "util/LightPhotometry.h"
+
+#include "Stream.h"
+#include "StreamSchema.h"
+#include "pool/SoundPool.h"
+#include "util/YamlNumbers.h"
+
+#include <algorithm>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

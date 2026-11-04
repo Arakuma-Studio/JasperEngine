@@ -2,25 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityCloner.h"
-#include "EntityRegistry.h"
-#include "Scene.h"
-#include "subsystem/MeshSystem.h"
-#include "physics/PhysicsMaterial.h"
-#include "render/BufferRender.h"
-#include "render/ObjectRender.h"
-#include "render/CameraRender.h"
-#include "render/TextureRender.h"
-#include "texture/Framebuffer.h"
-#include "fluid/FluidSimulator.h"
-#include "media/VideoTextureConverter.h"
-#include "subsystem/VideoPlayerSystem.h"
-#include "subsystem/PhysicsSystem.h"
-#include "subsystem/AudioSystem.h"
-#include "ecs/EntityManager.h"
-#include "Log.h"
-
-#include <algorithm>
-#include <unordered_set>
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -98,6 +79,25 @@
 #include "component/SpriteComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/Transform.h"
+#include "EntityRegistry.h"
+#include "Scene.h"
+#include "subsystem/MeshSystem.h"
+#include "physics/PhysicsMaterial.h"
+#include "render/BufferRender.h"
+#include "render/ObjectRender.h"
+#include "render/CameraRender.h"
+#include "render/TextureRender.h"
+#include "texture/Framebuffer.h"
+#include "fluid/FluidSimulator.h"
+#include "media/VideoTextureConverter.h"
+#include "subsystem/VideoPlayerSystem.h"
+#include "subsystem/PhysicsSystem.h"
+#include "subsystem/AudioSystem.h"
+#include "ecs/EntityManager.h"
+#include "Log.h"
+
+#include <algorithm>
+#include <unordered_set>
 
 using namespace jasperengine;
 

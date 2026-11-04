@@ -2,6 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/AnimatorEditorHooks.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "pool/ShaderPool.h"
+#include "subsystem/RenderSystem.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/TextEffectComponent.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 #include "reflect/Reflect.h"
@@ -136,13 +143,6 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
-#include "component/ShadowCaster2DComponent.h"
-#include "pool/ShaderPool.h"
-#include "subsystem/RenderSystem.h"
-#include "component/CanvasGroupComponent.h"
-#include "component/InputFieldComponent.h"
-#include "component/LayoutGroupComponent.h"
-#include "component/TextEffectComponent.h"
 
 using namespace jasperengine;
 

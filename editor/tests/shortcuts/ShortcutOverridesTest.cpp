@@ -5,13 +5,13 @@
 // survives, [] unbinds, and a file that makes two commands share a chord resolves to the default.
 
 #include "shortcuts/ShortcutTestSupport.h"
+#include "shortcuts/ShortcutDispatcher.h"
 #include "shortcuts/ShortcutOverrides.h"
 
 #include "LogCapture.h"
 #include "TempDir.h"
 
 #include <gtest/gtest.h>
-#include "shortcuts/ShortcutDispatcher.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

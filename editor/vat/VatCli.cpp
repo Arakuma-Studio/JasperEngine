@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "vat/VatCli.h"
+#include "window/widget/InputTextContextMenu.h"
 
 #include "AppSettings.h"
 #include "EditorHost.h"
@@ -38,7 +39,6 @@
 #include <set>
 #include <sstream>
 #include <vector>
-#include "window/widget/InputTextContextMenu.h"
 
 #if defined(_WIN32)
     #include <fcntl.h>

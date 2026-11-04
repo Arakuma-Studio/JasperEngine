@@ -11,6 +11,7 @@
 // Logger's other sinks.
 
 #include <gtest/gtest.h>
+#include "jobs/JobStats.h"
 
 #include "ScriptDataTestSupport.h"
 
@@ -37,7 +38,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-#include "jobs/JobStats.h"
 
 using namespace jasperengine;
 

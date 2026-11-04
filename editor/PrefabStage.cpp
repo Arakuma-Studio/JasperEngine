@@ -8,6 +8,7 @@
 // editor/project/PREFABS.md, section 16.
 
 #include "PrefabStage.h"
+#include "component/PrefabComponent.h"
 
 #include "Project.h"
 #include "EditorHost.h"
@@ -27,7 +28,6 @@
 #include <functional>
 #include <stdexcept>
 #include <unordered_set>
-#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

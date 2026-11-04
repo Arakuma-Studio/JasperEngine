@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "RotationTween.h"
+#include "component/RotationTweenComponent.h"
 
 #include "util/Angle.h"
-#include "component/RotationTweenComponent.h"
 
 using namespace jasperengine;
 

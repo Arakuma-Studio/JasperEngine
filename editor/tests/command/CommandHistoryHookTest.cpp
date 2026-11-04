@@ -7,12 +7,12 @@
 // command added from inside the hook).
 
 #include <gtest/gtest.h>
+#include "object/Model.h"
 
 #include "command/CommandHistory.h"
 
 #include <string>
 #include <vector>
-#include "object/Model.h"
 
 using namespace jasperengine::editor;
 

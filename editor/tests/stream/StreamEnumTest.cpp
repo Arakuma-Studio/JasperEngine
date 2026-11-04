@@ -6,12 +6,6 @@
 // file falls back to).
 
 #include "StreamTestAccess.h"
-
-#include <gtest/gtest.h>
-
-#include <initializer_list>
-#include <set>
-#include <string>
 #include "component/ActionComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/FogComponent.h"
@@ -28,6 +22,12 @@
 #include "component/UIDocumentComponent.h"
 #include "camera/CameraType.h"
 #include "component/ScriptComponent.h"
+
+#include <gtest/gtest.h>
+
+#include <initializer_list>
+#include <set>
+#include <string>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/AnimatorAssetDocument.h"
+#include "window/PoseAnimationWindow.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"
@@ -101,7 +102,6 @@
 #include <unordered_set>
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
-#include "window/PoseAnimationWindow.h"
 
 using namespace jasperengine;
 

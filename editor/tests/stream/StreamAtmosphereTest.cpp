@@ -8,6 +8,10 @@
 // version change: docs/data-safety.md).
 
 #include "Stream.h"
+#include "component/FogComponent.h"
+#include "component/LightComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
 #include "reflect/Reflect.h"
 #include "StreamSchema.h"
 #include "Project.h"
@@ -19,10 +23,6 @@
 
 #include <set>
 #include <string>
-#include "component/FogComponent.h"
-#include "component/LightComponent.h"
-#include "component/LocalVolumetricFogComponent.h"
-#include "component/VolumetricCloudsComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

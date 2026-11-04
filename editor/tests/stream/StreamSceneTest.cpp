@@ -6,6 +6,8 @@
 // which must load without an engine error and save back to the same YAML.
 
 #include "Project.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
 #include "Stream.h"
 
 #include "LogCapture.h"
@@ -19,8 +21,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "component/LightComponent.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

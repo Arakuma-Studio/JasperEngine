@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityPath.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "animation/ClipBinding.h"
-#include "component/Transform.h"
 
 using namespace jasperengine;
 

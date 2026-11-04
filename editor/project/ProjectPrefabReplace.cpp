@@ -7,6 +7,9 @@
 // sections 12 to 14.
 
 #include "Project.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
+#include "render/SceneRender.h"
 #include "DocumentFile.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
@@ -23,9 +26,6 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
-#include "component/Transform.h"
-#include "component/PrefabComponent.h"
-#include "render/SceneRender.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;

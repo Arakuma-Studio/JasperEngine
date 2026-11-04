@@ -8,6 +8,10 @@
 // (JE_STREAM_CODEC), as the Vertex Animator's does.
 
 #include "Stream.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/RagdollComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "Catalog.h"
@@ -19,10 +23,6 @@
 #include <cmath>
 #include <limits>
 #include <string>
-#include "component/CanvasGroupComponent.h"
-#include "component/OnScreenControlComponents.h"
-#include "component/RagdollComponent.h"
-#include "component/TrailRendererComponent.h"
 
 using namespace jasperengine;
 

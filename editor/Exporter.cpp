@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "util/SafeWrite.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
 #include "Exporter.h"
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
@@ -73,10 +77,6 @@
 #include <set>
 #include <sstream>
 #include <vector>
-#include "component/Joint2DComponent.h"
-#include "component/Joint3DComponent.h"
-#include "component/Rigidbody2DComponent.h"
-#include "component/RigidbodyComponent.h"
 
 
 namespace {

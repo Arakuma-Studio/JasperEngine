@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "DirectionRender.h"
+#include "component/LightComponent.h"
 
 #include "Configs.h"
-#include "component/LightComponent.h"
 
 using namespace jasperengine;
 

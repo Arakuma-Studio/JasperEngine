@@ -3,13 +3,13 @@
 
 
 #include "Polygon.h"
+#include "component/PolygonComponent.h"
 #include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 
 #include "util/Color.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
-#include "component/PolygonComponent.h"
 
 using namespace jasperengine;
 

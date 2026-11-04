@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ParticlePreviewRender.h"
+#include "component/LightComponent.h"
 
 #include "Engine.h"
 #include "component/ParticleSystemComponent.h"
@@ -10,7 +11,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include "component/LightComponent.h"
 
 using namespace jasperengine;
 

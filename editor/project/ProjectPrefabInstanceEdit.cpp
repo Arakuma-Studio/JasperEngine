@@ -8,6 +8,7 @@
 // snapshot of the instances' bookkeeping.
 
 #include "Project.h"
+#include "component/Transform.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"
@@ -16,7 +17,6 @@
 #include <functional>
 #include <map>
 #include <unordered_set>
-#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;
