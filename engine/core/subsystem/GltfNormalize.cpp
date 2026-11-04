@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <limits>
 #include <map>
@@ -523,8 +524,16 @@ namespace je_gltf_normalize {
             // an authored fallback (gltfpack -cf) is already the data: nothing to decode
             if (!placeholder[view.buffer])
                 continue;
-            unsigned char* destination = model.buffers[view.buffer].data.data() + view.byteOffset;
+            unsigned char* target = model.buffers[view.buffer].data.data() + view.byteOffset;
             const unsigned char* source = model.buffers[stream.source].data.data() + stream.sourceOffset;
+            // the filters store whole elements (the quaternion one 8 bytes at a time) and a view
+            // is only 4-byte aligned in its buffer: such a view decodes in an aligned copy first
+            std::vector<unsigned char> aligned;
+            unsigned char* destination = target;
+            if (reinterpret_cast<uintptr_t>(target) % 16 != 0 && view.byteLength > 0){
+                aligned.resize(view.byteLength);
+                destination = aligned.data();
+            }
             int code = -1;
             if (stream.mode == "ATTRIBUTES")
                 code = meshopt_decodeVertexBuffer(destination, stream.count, stream.stride, source, stream.sourceLength);
@@ -543,6 +552,8 @@ namespace je_gltf_normalize {
                 meshopt_decodeFilterExp(destination, stream.count, stream.stride);
             else if (stream.filter == "COLOR")
                 meshopt_decodeFilterColor(destination, stream.count, stream.stride);
+            if (destination != target && view.byteLength > 0)
+                std::memcpy(target, destination, view.byteLength);
         }
 
         // decoded indices name vertices the primitive has (corrupt deltas could point anywhere,
