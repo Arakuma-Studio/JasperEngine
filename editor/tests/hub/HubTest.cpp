@@ -7,10 +7,12 @@
 #include "hub/HubPaths.h"
 #include "hub/ProjectImporter.h"
 #include "hub/RecentProjects.h"
+#include "hub/StagingFolders.h"
 #include "hub/TemplateCatalog.h"
 #include "io/AtomicFile.h"
 
 #include "support/TestTempDir.h"
+#include "util/FileUtils.h"
 
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "libs/miniz/miniz.h"
@@ -18,12 +20,18 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
+#include <thread>
 
 #ifndef _WIN32
     #include <signal.h>
+    #include <spawn.h>
     #include <sys/resource.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
+    extern char** environ;
 #endif
 
 using namespace jasperengine;
@@ -435,4 +443,487 @@ TEST(ProjectTemplates, CatalogAndSaveAsTemplate) {
     ASSERT_TRUE(templates::materialize(*templates::find(list, "3d"), builtInMade, error)) << error;
     EXPECT_TRUE(fs::exists(builtInMade / "project.yaml"));
     EXPECT_TRUE(fs::exists(builtInMade / "Main.scene"));
+}
+
+// ---- S66: a copy killed in the middle (docs/specs/S66-crash-leftovers.md AC1)
+
+#ifndef _WIN32
+namespace {
+
+    // Set for the process that gets killed: this test binary started again with the same test
+    // filtered, the copy held by the editor's hook JASPER_TEST_STAGING_HOLD. "<what>|<a>|<b>"
+    constexpr const char* crashChildEnv = "JE_HUB_TEST_CRASH_CHILD";
+    // the settings folder's journal in that process, as a running editor has it
+    constexpr const char* crashJournalEnv = "JE_HUB_TEST_CRASH_JOURNAL";
+
+    // In the child: runs the copy (it stops at the hold until it is killed); false in the parent
+    bool runCrashChild() {
+        const char* spec = std::getenv(crashChildEnv);
+        if (!spec) return false;
+        const std::string text = spec;
+        const size_t first = text.find('|'), second = text.find('|', first + 1);
+        const std::string what = text.substr(0, first);
+        const fs::path a = text.substr(first + 1, second - first - 1), b = text.substr(second + 1);
+        std::string error, id;
+        fs::path projectDir;
+        if (const char* journal = std::getenv(crashJournalEnv)) staging::setJournalDirectory(journal);
+        if (what == "zip") {
+            importer::importZip(a, b, ZipLimits(), nullptr, projectDir, error);
+        } else if (what == "git") {
+            importer::importGit(a.string(), b, "", nullptr, projectDir, error);
+        } else if (what == "template") {
+            const std::vector<ProjectTemplate> list = templates::all(fs::path());
+            templates::materialize(*templates::find(list, a.string()), b, error);
+        } else {
+            templates::saveProjectAsTemplate(a, b, "Saved", "", "Main", {}, id, error);
+        }
+        std::fflush(nullptr);
+        ::_exit(3);
+    }
+
+    // The other process, held in the middle of its copy until it is killed
+    class HeldCopy {
+    public:
+        HeldCopy(const char* test, const std::string& spec, const fs::path& scratch, const fs::path& journal = fs::path()) : hold(scratch / "hold") {
+            std::ofstream(hold) << "hold\n";
+            const std::string self = (FileUtils::getExecutableDir() / "jasperengine-editor-tests").string();
+            const std::string filter = std::string("--gtest_filter=") + test;
+            const std::string childEnv = std::string(crashChildEnv) + "=" + spec;
+            const std::string holdEnv = "JASPER_TEST_STAGING_HOLD=" + hold.string();
+            const std::string journalEnv = std::string(crashJournalEnv) + "=" + journal.string();
+            std::vector<char*> args = {const_cast<char*>(self.c_str()), const_cast<char*>(filter.c_str()), nullptr};
+            std::vector<char*> env;
+            for (char** entry = environ; *entry; entry++) env.push_back(*entry);
+            env.push_back(const_cast<char*>(childEnv.c_str()));
+            env.push_back(const_cast<char*>(holdEnv.c_str()));
+            if (!journal.empty()) env.push_back(const_cast<char*>(journalEnv.c_str()));
+            env.push_back(nullptr);
+            started = ::posix_spawn(&pid, self.c_str(), nullptr, nullptr, args.data(), env.data()) == 0;
+        }
+        ~HeldCopy() {
+            kill9();
+            std::error_code ec;
+            fs::remove(hold, ec);
+        }
+        // true once the copy waits at the hold, with part of its files written
+        bool reachedHold() const {
+            std::error_code ec;
+            const fs::path held = hold.string() + ".held";
+            for (int i = 0; started && i < 6000; i++) {
+                if (fs::exists(held, ec)) return true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            return false;
+        }
+        void kill9() {
+            if (!started) return;
+            started = false;
+            ::kill(pid, SIGKILL);
+            int status = 0;
+            ::waitpid(pid, &status, 0);
+        }
+
+    private:
+        fs::path hold;
+        pid_t pid = 0;
+        bool started = false;
+    };
+
+    std::vector<std::string> namesIn(const fs::path& dir) {
+        std::vector<std::string> names;
+        std::error_code ec;
+        for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec)) names.push_back(entry.path().filename().string());
+        std::sort(names.begin(), names.end());
+        return names;
+    }
+
+}
+
+TEST(CrashLeftovers, AZipImportKilledMidway) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-zip");
+    const fs::path zip = dir.path() / "Game.zip";
+    writeZip(zip, {{"Game/project.yaml", "name: Game\n"}, {"Game/scenes/Main.scene", "scene\n"}, {"Game/scenes/Other.scene", "scene\n"}});
+    const fs::path parent = dir.path() / "Projects";
+    fs::create_directories(parent);
+    {
+        HeldCopy copy("CrashLeftovers.AZipImportKilledMidway", "zip|" + zip.string() + "|" + parent.string(), dir.path());
+        ASSERT_TRUE(copy.reachedHold());
+        EXPECT_FALSE(emptyFolder(parent / "Game.importing"));
+        copy.kill9();
+    }
+    EXPECT_TRUE(fs::is_directory(parent / "Game.importing")) << "kill -9 runs no clean-up";
+    EXPECT_TRUE(fs::is_regular_file(parent / "Game.importing.lock")) << "the owner marker";
+
+    // the next import: the rest is gone before it starts, so it takes the plain names
+    bool plainStaging = true;
+    int entriesSeen = 0;
+    auto progress = [&](float, const std::string& line) {
+        // the last line comes after the folder moved to its place
+        if (line.rfind("Imported to", 0) == 0) return true;
+        entriesSeen++;
+        if (!fs::is_directory(parent / "Game.importing") || fs::exists(parent / "Game.importing2")) plainStaging = false;
+        return true;
+    };
+    fs::path projectDir;
+    std::string error;
+    ASSERT_TRUE(importer::importZip(zip, parent, ZipLimits(), progress, projectDir, error)) << error;
+    EXPECT_EQ(projectDir, parent / "Game");
+    EXPECT_GT(entriesSeen, 0);
+    EXPECT_TRUE(plainStaging) << "the next import's staging folder has a number";
+    EXPECT_EQ(namesIn(parent), std::vector<std::string>{"Game"});
+}
+
+TEST(CrashLeftovers, ATemplateCopyKilledMidway) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-template");
+    const fs::path parent = dir.path() / "Projects";
+    fs::create_directories(parent);
+    {
+        HeldCopy copy("CrashLeftovers.ATemplateCopyKilledMidway", "template|3d|" + (parent / "New").string(), dir.path());
+        ASSERT_TRUE(copy.reachedHold());
+        EXPECT_FALSE(emptyFolder(parent / "New.importing"));
+        copy.kill9();
+    }
+    const std::vector<ProjectTemplate> list = templates::all(fs::path());
+    std::string error;
+    ASSERT_TRUE(templates::materialize(*templates::find(list, "3d"), parent / "New", error)) << error;
+    EXPECT_EQ(namesIn(parent), std::vector<std::string>{"New"});
+}
+
+TEST(CrashLeftovers, ASaveAsTemplateKilledMidway) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-save");
+    const fs::path project = writeGameProject(dir.path() / "Game");
+    const fs::path user = templates::userDirectory(dir.path() / "settings");
+    {
+        HeldCopy copy("CrashLeftovers.ASaveAsTemplateKilledMidway", "save|" + project.string() + "|" + user.string(), dir.path());
+        ASSERT_TRUE(copy.reachedHold());
+        EXPECT_FALSE(emptyFolder(user / ".staging" / "saved.importing"));
+        copy.kill9();
+    }
+    std::string id, error;
+    ASSERT_TRUE(templates::saveProjectAsTemplate(project, user, "Saved", "", "Main", {}, id, error)) << error;
+    EXPECT_EQ(namesIn(user), std::vector<std::string>{"saved"}) << "the catalog's folder has nothing else";
+}
+
+// The journal finds a folder no known parent holds: the next start needs nothing but it, and removes
+// the journal's own files too
+TEST(CrashLeftovers, TheNextStartRemovesWhatTheJournalNames) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-journal");
+    const fs::path zip = dir.path() / "Game.zip";
+    writeZip(zip, {{"Game/project.yaml", "name: Game\n"}, {"Game/scenes/Main.scene", "scene\n"}});
+    const fs::path parent = dir.path() / "Anywhere";
+    fs::create_directories(parent);
+    const fs::path journal = dir.path() / "settings" / "hub-staging";
+    {
+        HeldCopy copy("CrashLeftovers.TheNextStartRemovesWhatTheJournalNames", "zip|" + zip.string() + "|" + parent.string(), dir.path(), journal);
+        ASSERT_TRUE(copy.reachedHold());
+        EXPECT_FALSE(emptyFolder(journal));
+        copy.kill9();
+    }
+    staging::setJournalDirectory(journal);
+    const staging::Sweep swept = staging::sweep({});
+    staging::setJournalDirectory(fs::path());
+    ASSERT_EQ(swept.removed.size(), 1u);
+    EXPECT_EQ(swept.removed.front(), parent / "Game.importing");
+    EXPECT_TRUE(swept.leftovers.empty());
+    EXPECT_TRUE(emptyFolder(parent)) << "the folder and its marker";
+    EXPECT_FALSE(fs::exists(journal)) << "the journal has nothing left to say";
+}
+
+// AC2: a second editor at work is never touched, while it lives; its folder goes after its death
+TEST(CrashLeftovers, ALiveOwnerInAnotherProcessIsNeverTouched) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-live");
+    const fs::path zip = dir.path() / "Game.zip";
+    writeZip(zip, {{"Game/project.yaml", "name: Game\n"}, {"Game/scenes/Main.scene", "scene\n"}});
+    const fs::path parent = dir.path() / "Projects";
+    fs::create_directories(parent);
+    HeldCopy copy("CrashLeftovers.ALiveOwnerInAnotherProcessIsNeverTouched", "zip|" + zip.string() + "|" + parent.string(), dir.path());
+    ASSERT_TRUE(copy.reachedHold());
+    const fs::path busy = parent / "Game.importing";
+
+    staging::Sweep swept = staging::sweep({{parent}, {}});
+    ASSERT_EQ(swept.live.size(), 1u);
+    EXPECT_EQ(swept.live.front(), busy);
+    EXPECT_TRUE(swept.removed.empty());
+    EXPECT_TRUE(swept.leftovers.empty()) << "a running copy is not a leftover";
+    EXPECT_FALSE(emptyFolder(busy));
+    std::string error;
+    EXPECT_FALSE(staging::removeLeftover(busy, error));
+    EXPECT_NE(error.find("in use"), std::string::npos) << error;
+    EXPECT_FALSE(emptyFolder(busy));
+
+    // this process imports beside it, under a number of its own; the import's sweep passes it by
+    fs::path projectDir;
+    ASSERT_TRUE(importer::importZip(zip, parent, ZipLimits(), nullptr, projectDir, error)) << error;
+    EXPECT_FALSE(emptyFolder(busy));
+    EXPECT_EQ(namesIn(parent), (std::vector<std::string>{"Game", "Game.importing", "Game.importing.lock"}));
+
+    copy.kill9();
+    swept = staging::sweep({{parent}, {}});
+    ASSERT_EQ(swept.removed.size(), 1u);
+    EXPECT_EQ(swept.removed.front(), busy);
+    EXPECT_EQ(namesIn(parent), std::vector<std::string>{"Game"});
+}
+
+TEST(CrashLeftovers, AGitImportKilledMidway) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-git");
+    // an https URL (what an import accepts) git itself turns into this folder
+    const fs::path repo = dir.path() / "game-repo";
+    fs::create_directories(repo);
+    std::ofstream(repo / "project.yaml") << "name: Game\n";
+    const std::string git = "git -C \"" + repo.string() + "\" -c user.name=t -c user.email=t@t ";
+    ASSERT_EQ(std::system((git + "init -q . && " + git + "add . && " + git + "commit -qm one").c_str()), 0);
+    const std::string url = "https://example.invalid/Game.git";
+    ::setenv("GIT_CONFIG_COUNT", "1", 1);
+    ::setenv("GIT_CONFIG_KEY_0", ("url.file://" + repo.string() + ".insteadOf").c_str(), 1);
+    ::setenv("GIT_CONFIG_VALUE_0", url.c_str(), 1);
+    const fs::path parent = dir.path() / "Projects";
+    fs::create_directories(parent);
+    {
+        HeldCopy copy("CrashLeftovers.AGitImportKilledMidway", "git|" + url + "|" + parent.string(), dir.path());
+        ASSERT_TRUE(copy.reachedHold());
+        EXPECT_TRUE(fs::exists(parent / "Game.importing" / "project.yaml")) << "git clones into the claimed folder";
+        copy.kill9();
+    }
+    fs::path projectDir;
+    std::string error;
+    const bool imported = importer::importGit(url, parent, "", nullptr, projectDir, error);
+    ::unsetenv("GIT_CONFIG_COUNT");
+    ::unsetenv("GIT_CONFIG_KEY_0");
+    ::unsetenv("GIT_CONFIG_VALUE_0");
+    ASSERT_TRUE(imported) << error;
+    EXPECT_EQ(projectDir, parent / "Game");
+    EXPECT_EQ(namesIn(parent), std::vector<std::string>{"Game"});
+}
+#endif
+
+// ---- S66: who owns a staging folder
+
+namespace {
+
+    void writeFolder(const fs::path& folder) {
+        fs::create_directories(folder);
+        std::ofstream(folder / "data.txt") << "someone's data\n";
+    }
+
+    bool listsLeftover(const staging::Sweep& swept, const fs::path& folder) {
+        return std::any_of(swept.leftovers.begin(), swept.leftovers.end(), [&](const staging::Leftover& l) { return l.folder == folder; });
+    }
+
+}
+
+TEST(StagingFolders, Names) {
+    EXPECT_TRUE(staging::isStagingName("Game.importing"));
+    EXPECT_TRUE(staging::isStagingName("Game.importing12"));
+    EXPECT_TRUE(staging::isStagingName("a.importing.importing"));
+    EXPECT_FALSE(staging::isStagingName(".importing"));
+    EXPECT_FALSE(staging::isStagingName("importing"));
+    EXPECT_FALSE(staging::isStagingName("Game"));
+    EXPECT_FALSE(staging::isStagingName("Game.importing.lock"));
+    EXPECT_FALSE(staging::isStagingName("Game.importing2b"));
+}
+
+// R1: the marker beside the folder (git clones into the folder), held while the copy runs; a second
+// claim takes a number, and the plain name is free again once the first has moved on
+TEST(StagingFolders, AClaimOwnsItsFolderUntilReleased) {
+    TestTempDir dir("staging-claim");
+    const fs::path parent = dir.path() / "new" / "folder";
+    {
+        staging::Claim first(parent, "Game");
+        ASSERT_TRUE(first.ok()) << first.error();
+        EXPECT_EQ(first.folder(), parent / "Game.importing");
+        EXPECT_TRUE(fs::is_directory(first.folder()));
+        EXPECT_TRUE(emptyFolder(first.folder())) << "git clones into it";
+        EXPECT_FALSE(fs::exists(first.folder() / "project.yaml"));
+        const std::string owner = io::ScopedFileLock::readOwnerInfo(parent / "Game.importing.lock");
+        EXPECT_NE(owner.find("\"pid\""), std::string::npos) << owner;
+
+        staging::Claim second(parent, "Game");
+        ASSERT_TRUE(second.ok()) << second.error();
+        EXPECT_EQ(second.folder(), parent / "Game.importing2");
+
+        const staging::Sweep swept = staging::sweep({{parent}, {}});
+        EXPECT_EQ(swept.live.size(), 2u);
+        EXPECT_TRUE(swept.removed.empty());
+        EXPECT_TRUE(swept.leftovers.empty());
+
+        // the copies are done: the folders moved
+        fs::rename(first.folder(), parent / "Game");
+        fs::remove_all(second.folder());
+    }
+    EXPECT_EQ(fs::directory_iterator(parent)->path().filename(), "Game");
+    size_t entries = 0;
+    for (const auto& entry : fs::directory_iterator(parent)) entries += entry.exists() ? 1 : 0;
+    EXPECT_EQ(entries, 1u) << "no marker stays";
+    staging::Claim again(parent, "Game");
+    EXPECT_EQ(again.folder(), parent / "Game.importing");
+}
+
+// R3, AC2: a folder without our marker may hold a user's data: kept, reported, removed only when asked
+TEST(StagingFolders, AFolderWithoutAMarkerIsKeptAndReported) {
+    TestTempDir dir("staging-old");
+    const fs::path parent = dir.path() / "Projects";
+    const fs::path old = parent / "Game.importing";
+    writeFolder(old);
+    writeFolder(parent / "Game.importing3");
+    writeFolder(parent / "Other.importing.bak");
+    writeFolder(parent / "Mine");
+    const fs::path namedLikeOne = parent / "Project.importing";
+    writeFolder(namedLikeOne);
+
+    for (int look = 0; look < 2; look++) {
+        const staging::Scope scope{{parent}, {namedLikeOne}};
+        const staging::Sweep swept = look == 0 ? staging::inspect(scope) : staging::sweep(scope);
+        EXPECT_EQ(swept.leftovers.size(), 2u);
+        EXPECT_TRUE(listsLeftover(swept, old));
+        EXPECT_TRUE(listsLeftover(swept, parent / "Game.importing3"));
+        EXPECT_FALSE(listsLeftover(swept, namedLikeOne)) << "a project of the user's with such a name";
+        EXPECT_FALSE(swept.leftovers.front().reason.empty());
+        EXPECT_TRUE(swept.removed.empty());
+        EXPECT_TRUE(fs::exists(old / "data.txt"));
+    }
+
+    // an import beside it: keeps it, and takes the next free number
+    const fs::path zip = dir.path() / "Game.zip";
+    writeZip(zip, {{"Game/project.yaml", "name: Game\n"}});
+    fs::path projectDir;
+    std::string error;
+    ASSERT_TRUE(importer::importZip(zip, parent, ZipLimits(), nullptr, projectDir, error)) << error;
+    EXPECT_EQ(projectDir, parent / "Game");
+    EXPECT_TRUE(fs::exists(old / "data.txt"));
+    EXPECT_FALSE(fs::exists(parent / "Game.importing2"));
+
+    // the user asks
+    EXPECT_TRUE(staging::removeLeftover(old, error)) << error;
+    EXPECT_FALSE(fs::exists(old));
+    EXPECT_FALSE(staging::removeLeftover(old, error)) << "gone";
+    EXPECT_FALSE(staging::removeLeftover(parent / "Mine", error)) << "not a staging folder";
+    EXPECT_TRUE(fs::exists(parent / "Mine" / "data.txt"));
+}
+
+TEST(StagingFolders, OnlyOurMarkerCounts) {
+    TestTempDir dir("staging-marker");
+    const fs::path parent = dir.path() / "Projects";
+    // a file of the user's with a marker's name: not ours, and stays
+    const fs::path mine = parent / "Mine.importing";
+    writeFolder(mine);
+    std::ofstream(parent / "Mine.importing.lock") << "my notes\n";
+    // nothing tells whose this is: the marker cannot be locked
+    const fs::path unknown = parent / "Unknown.importing";
+    writeFolder(unknown);
+    fs::create_directories(parent / "Unknown.importing.lock");
+    // a claim that died before it wrote anything, and before it made its folder
+    std::ofstream(parent / "Early.importing.lock").close();
+    // a marker left by a crash just after the folder moved to its place
+    std::ofstream(parent / "Moved.importing.lock") << "{\"kind\": \"jasperengine-staging\"}\n";
+
+    const staging::Sweep swept = staging::sweep({{parent}, {}});
+    EXPECT_TRUE(swept.removed.empty());
+    EXPECT_TRUE(listsLeftover(swept, mine));
+    EXPECT_TRUE(listsLeftover(swept, unknown));
+    EXPECT_EQ(swept.leftovers.size(), 2u);
+    EXPECT_TRUE(fs::exists(mine / "data.txt"));
+    EXPECT_TRUE(fs::exists(unknown / "data.txt"));
+    EXPECT_TRUE(fs::is_regular_file(parent / "Mine.importing.lock"));
+    EXPECT_FALSE(fs::exists(parent / "Early.importing.lock"));
+    EXPECT_FALSE(fs::exists(parent / "Moved.importing.lock"));
+}
+
+// R4: a removal that fails is logged and retried next time, never fatal, and blocks nothing
+TEST(StagingFolders, AFailedRemovalIsRetriedNextTime) {
+    TestTempDir dir("staging-retry");
+    const fs::path parent = dir.path() / "Projects";
+    const fs::path zip = dir.path() / "Game.zip";
+    writeZip(zip, {{"Game/project.yaml", "name: Game\n"}});
+    const std::error_code denied = std::make_error_code(std::errc::permission_denied);
+
+    // a copy whose own clean-up fails: the marker stays, without an owner once the claim ends
+    const fs::path stuck = parent / "Game.importing";
+    {
+        staging::Claim claim(parent, "Game");
+        ASSERT_TRUE(claim.ok());
+        std::ofstream(claim.folder() / "part.txt") << "part\n";
+    }
+    EXPECT_TRUE(fs::is_regular_file(parent / "Game.importing.lock"));
+
+    staging::setRemovalFaultInjector([denied](const fs::path&) { return denied; });
+    staging::Sweep swept = staging::sweep({{parent}, {}});
+    ASSERT_EQ(swept.failed.size(), 1u);
+    EXPECT_EQ(swept.failed.front(), stuck);
+    EXPECT_TRUE(swept.leftovers.empty());
+    EXPECT_TRUE(fs::is_regular_file(parent / "Game.importing.lock")) << "it stays ours, for the next sweep";
+    // an import still works, beside it
+    fs::path projectDir;
+    std::string error;
+    EXPECT_TRUE(importer::importZip(zip, parent, ZipLimits(), nullptr, projectDir, error)) << error;
+    EXPECT_TRUE(fs::exists(stuck / "part.txt"));
+    fs::remove_all(projectDir);
+    staging::setRemovalFaultInjector(nullptr);
+
+    swept = staging::sweep({{parent}, {}});
+    ASSERT_EQ(swept.removed.size(), 1u);
+    EXPECT_EQ(swept.removed.front(), stuck);
+    EXPECT_FALSE(fs::exists(stuck));
+    EXPECT_FALSE(fs::exists(parent / "Game.importing.lock"));
+}
+
+// R5: the given folders' children and nothing deeper or beside them
+TEST(StagingFolders, TheSweepOnlyLooksAtTheGivenFoldersChildren) {
+    TestTempDir dir("staging-shallow");
+    const fs::path parent = dir.path() / "Projects";
+    const fs::path deep = parent / "Game" / "assets" / "Deep.importing";
+    writeFolder(deep);
+    const fs::path other = dir.path() / "Other" / "Beside.importing";
+    writeFolder(other);
+    const staging::Sweep swept = staging::sweep({{parent, dir.path() / "Missing"}, {}});
+    EXPECT_TRUE(swept.leftovers.empty());
+    EXPECT_TRUE(swept.removed.empty());
+    EXPECT_TRUE(fs::exists(deep / "data.txt"));
+    EXPECT_TRUE(fs::exists(other / "data.txt"));
+#ifndef _WIN32
+    // a link with such a name is not followed
+    fs::create_directories(parent);
+    fs::create_directory_symlink(dir.path() / "Other", parent / "Link.importing");
+    std::ofstream(parent / "Link.importing.lock") << "{\"kind\": \"jasperengine-staging\"}\n";
+    EXPECT_TRUE(staging::sweep({{parent}, {}}).leftovers.empty());
+    EXPECT_TRUE(fs::exists(other / "data.txt"));
+#endif
+}
+
+// The journal notes a running copy and is gone with it; a stale line, or a folder removed by hand, goes
+TEST(StagingFolders, TheJournalFollowsTheCopies) {
+    TestTempDir dir("staging-journal");
+    const fs::path journal = dir.path() / "settings" / "hub-staging";
+    staging::setJournalDirectory(journal);
+    const fs::path parent = dir.path() / "Anywhere";
+    {
+        staging::Claim claim(parent, "Game");
+        ASSERT_TRUE(claim.ok());
+        EXPECT_FALSE(emptyFolder(journal));
+        // a sweep with no parents finds it through the journal
+        EXPECT_EQ(staging::sweep({}).live.size(), 1u);
+        fs::remove_all(claim.folder());
+    }
+    EXPECT_FALSE(fs::exists(journal));
+
+    // a folder without a marker the journal names (a volume without locks) is reported, and stays noted
+    const fs::path old = parent / "Old.importing";
+    writeFolder(old);
+    fs::create_directories(journal);
+    TestTempDir::write(journal / "a.txt", FileUtils::pathToUtf8(old) + "\n");
+    TestTempDir::write(journal / "b.txt", "not a staging folder\n");
+    staging::Sweep swept = staging::sweep({});
+    EXPECT_TRUE(listsLeftover(swept, old));
+    EXPECT_TRUE(fs::exists(journal / "a.txt"));
+    EXPECT_FALSE(fs::exists(journal / "b.txt"));
+    fs::remove_all(old);
+    swept = staging::sweep({});
+    EXPECT_TRUE(swept.leftovers.empty());
+    EXPECT_FALSE(fs::exists(journal));
+    staging::setJournalDirectory(fs::path());
 }
