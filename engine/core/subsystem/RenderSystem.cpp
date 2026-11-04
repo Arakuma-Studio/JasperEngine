@@ -968,6 +968,8 @@ void RenderSystem::destroy(){
         ShaderPool::remove(ShaderType::BLIT, 0);
     }
     sceneInputMeshes.clear();
+    waterMeshes.clear();
+    planarReflectionMeshes.clear();
     sceneInputPoints.clear();
     sceneInputUsage = 0;
     sceneDepthPrograms = false;
@@ -7152,6 +7154,18 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             customDepthOpaque = true;
     }
     mesh.sceneInputs = sceneInputs & ShaderRequire_SceneInputs;
+    // a water (layering, render/WaterLayering.h) and a planar reflection reader (the reflection
+    // passes): as its shaders resolved
+    bool water = false;
+    bool planarReflection = false;
+    for (int i = 0; i < mesh.numSubmeshes; i++){
+        const SubmeshShaderInputs& inputs = submeshLoads[i].shaderInputs;
+        if (!inputs.manifest || mesh.submeshes[i].customShaderId == 0)
+            continue;
+        water = water || (inputs.manifest->role == ShaderRole::WATER && mesh.submeshes[i].alphaBlend);
+        planarReflection = planarReflection || (inputs.manifest->resolveRequire(inputs.features) & ShaderRequire_PlanarReflection);
+    }
+    setWaterMesh(entity, water, planarReflection);
     // a mixed mesh whose blended submeshes read the scene keeps its opaque ones in the opaque
     // queue: the basin under a water surface is in the depth and colour the water reads
     mesh.splitQueues = mesh.autoTransparency && mesh.isTransparent() && hasOpaqueSubmesh && hasTransparentSubmesh &&
@@ -9419,6 +9433,115 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     ssaoPassRender.endRenderPass();
 }
 
+void RenderSystem::gatherPassWaters(const std::vector<TransparentRenderData>& queue, std::vector<WaterLayer>& waters) const{
+    waters.clear();
+    if (waterMeshes.empty())
+        return;
+    for (const TransparentRenderData& renderData : queue){
+        if (renderData.type != TransparentRenderType::MESH || !renderData.mesh || renderData.mesh->worldAABB.isNull() ||
+                !waterMeshes.count(renderData.entity))
+            continue;
+        const MeshComponent& mesh = *renderData.mesh;
+        // the waves of its water submesh: how far they leave the rest level and move it sideways
+        WaterWaveParams waves;
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            if (Water::readWaves(mesh.submeshes[s].material, waves))
+                break;
+        }
+        const AABB& bounds = mesh.worldAABB;
+        const float reach = waves.getHorizontalReach();
+        WaterLayer water;
+        water.entity = renderData.entity;
+        water.level = bounds.getMaximum().y;
+        water.band = waves.getBand();
+        water.minXZ = Vector2(bounds.getMinimum().x - reach, bounds.getMinimum().z - reach);
+        water.maxXZ = Vector2(bounds.getMaximum().x + reach, bounds.getMaximum().z + reach);
+        waters.push_back(water);
+    }
+}
+
+bool RenderSystem::drawsInHierarchyLoop(Entity entity, Signature signature, const Transform& transform, bool distanceSort){
+    if (!distanceSort)
+        return true;
+    if (signature.test(scene->getComponentId<MeshComponent>()))
+        return false;
+    if (signature.test(scene->getComponentId<PointsComponent>()))
+        return !scene->getComponent<PointsComponent>(entity).isTransparent();
+    if (signature.test(scene->getComponentId<ParticleSystemComponent>()))
+        return transform.parent != NULL_ENTITY && isUIParticle(entity);
+    return true;
+}
+
+bool RenderSystem::readsSceneColor(const TransparentRenderData& renderData, CameraComponent& camera, int instanceView){
+    switch (renderData.type){
+        case TransparentRenderType::MESH:
+            if (!renderData.mesh || !(renderData.mesh->sceneInputs & ShaderRequire_SceneColor))
+                return false;
+            break;
+        case TransparentRenderType::POINTS:
+            if (!renderData.points || !(renderData.points->sceneInputs & ShaderRequire_SceneColor))
+                return false;
+            break;
+        case TransparentRenderType::PARTICLES:
+            if (!renderData.particles || !renderData.particles->state || !(renderData.particles->state->render.sceneInputs & ShaderRequire_SceneColor))
+                return false;
+            break;
+        default:
+            return false;
+    }
+    return drawsSceneColorReader(renderData.entity, scene->getSignature(renderData.entity), *renderData.transform, camera, instanceView);
+}
+
+Vector4 RenderSystem::screenBoundsOf(const AABB& bounds, const Matrix4& viewProjection){
+    // the whole screen when the box is unknown or reaches behind the eye
+    const Vector4 whole(-1.0f, -1.0f, 1.0f, 1.0f);
+    if (bounds.isNull() || !bounds.isFinite())
+        return whole;
+    const Vector3& low = bounds.getMinimum();
+    const Vector3& high = bounds.getMaximum();
+    Vector4 rect(1.0f, 1.0f, -1.0f, -1.0f);
+    for (int corner = 0; corner < 8; corner++){
+        const Vector4 clip = viewProjection * Vector4((corner & 1) ? high.x : low.x, (corner & 2) ? high.y : low.y, (corner & 4) ? high.z : low.z, 1.0f);
+        if (clip.w <= 1e-5f)
+            return whole;
+        const float x = clip.x / clip.w;
+        const float y = clip.y / clip.w;
+        rect = Vector4(std::min(rect.x, x), std::min(rect.y, y), std::max(rect.z, x), std::max(rect.w, y));
+    }
+    return rect;
+}
+
+AABB RenderSystem::transparentBounds(const TransparentRenderData& renderData) const{
+    switch (renderData.type){
+        case TransparentRenderType::MESH:
+            return renderData.mesh ? renderData.mesh->worldAABB : AABB();
+        case TransparentRenderType::TRAIL:
+            return renderData.trail ? renderData.trail->worldAABB : AABB();
+        case TransparentRenderType::LINES:
+            return (renderData.lines && renderData.transform) ? linesWorldBounds(*renderData.lines, *renderData.transform) : AABB();
+        case TransparentRenderType::PARTICLES:
+            if (renderData.particles && renderData.particles->state && renderData.particles->state->hasBounds){
+                const particles::ParticleSystemState& state = *renderData.particles->state;
+                return AABB(Vector3(state.boundsMin[0], state.boundsMin[1], state.boundsMin[2]),
+                            Vector3(state.boundsMax[0], state.boundsMax[1], state.boundsMax[2]));
+            }
+            return AABB();
+        default:
+            return AABB();
+    }
+}
+
+void RenderSystem::setWaterMesh(Entity entity, bool water, bool planarReflection){
+    if (water)
+        waterMeshes.insert(entity);
+    else if (!waterMeshes.empty())
+        waterMeshes.erase(entity);
+    if (planarReflection)
+        planarReflectionMeshes.insert(entity);
+    else if (!planarReflectionMeshes.empty())
+        planarReflectionMeshes.erase(entity);
+}
+
 void RenderSystem::setSceneInputUser(Entity entity, bool points, uint32_t inputs){
     std::unordered_map<Entity, uint32_t>& users = points ? sceneInputPoints : sceneInputMeshes;
     inputs &= ShaderRequire_SceneInputs;
@@ -9563,6 +9686,7 @@ RenderSystem::SceneInputDetails RenderSystem::getSceneInputDetails(){
     usage.depthPrePasses = lastSceneInputStats.depthPrePasses;
     usage.sharedDepth = lastSceneInputStats.sharedDepth;
     usage.colorCopies = lastSceneInputStats.colorCopies;
+    usage.colorRecopies = lastSceneInputStats.colorRecopies;
     usage.targets = (uint32_t)primaryView.sceneInputTargets.size() + (primaryView.sceneColorRedirect.isCreated() ? 1u : 0u);
 #ifdef JASPERENGINE_EDITOR
     for (const auto& entry : secondaryViews)
@@ -16159,10 +16283,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         // drawn after (transparents) takes the analytic fog alone
         if (atmospherePlan.any())
             atmosphere.drawComposites(atmospherePlan, colorPip, passMsaa, colorPassViewport, sceneInputTargetHeight, passFlipped, camera, cameraTransform);
-        // the opaque queue and the sky are drawn
-        if (sceneColorPending){
-            takeSceneColor();
-        }
+        // the scene colour is copied right before the first draw reading it (the transparent
+        // queue below, or one drawn in place in the hierarchy loop), so the transparent
+        // objects drawn before it (those under a water) are in it
     }
 
     // SCREEN fluid simulations: a layer over the scene and under the UI, in the game's views
@@ -16252,9 +16375,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             drawScreenFluids();
         }
 
-        // a 2D pass: what was drawn before the first draw requiring the scene colour (one this
-        // pass draws: an object hidden, culled or out of view takes no copy)
-        if (sceneColorPending && drawsSceneColorReader(entity, signature, transform, camera, instanceView)){
+        // what was drawn before the first draw requiring the scene colour (one this pass draws
+        // here: an object hidden, culled or out of view takes no copy; a 3D pass draws its
+        // meshes, blended points and particles from the transparent queue, which copies below)
+        if (sceneColorPending && drawsInHierarchyLoop(entity, signature, transform, distanceSort) &&
+                drawsSceneColorReader(entity, signature, transform, camera, instanceView)){
             takeSceneColor();
         }
 
@@ -16400,8 +16525,50 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
 
     //---------Draw transparent renderers----------
+    // layered around the pass's waters (WaterLayering.h): nothing to do without one
+    std::vector<WaterLayer> passWaters;
+    gatherPassWaters(transparentRenders, passWaters);
+    if (!passWaters.empty()){
+        for (TransparentRenderData& renderData : transparentRenders)
+            renderData.waterRank = (int8_t)waterRank(transparentBounds(renderData), cameraTransform.worldPosition, passWaters, renderData.entity);
+    }
     std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
+
+    // the scene colour for the queue's readers: copied before the first one (with what the
+    // queue drew before it), and again before a reader over one of a higher rank drawn since the
+    // last copy (a refracting pool over a refracting lake sees the lake), at most
+    // MAX_SCENE_COLOR_COPIES a pass
+    const Matrix4& readerViewProjection = camera.viewProjectionMatrix;
+    struct DrawnReader{ Vector4 rect; int rank; };
+    std::vector<DrawnReader> readersSinceCopy;
+    unsigned int passColorCopies = passSceneColor ? 1u : 0u;
+    bool queueDrawnSinceCopy = false;
+    bool queueCopied = false;
     for (const TransparentRenderData& renderData : transparentRenders){
+        if (copySceneColorPending && colorTarget && readsSceneColor(renderData, camera, instanceView)){
+            const Vector4 rect = screenBoundsOf(transparentBounds(renderData), readerViewProjection);
+            bool copy = sceneColorPending || (!queueCopied && queueDrawnSinceCopy);
+            if (!copy){
+                for (const DrawnReader& drawn : readersSinceCopy){
+                    if (drawn.rank > renderData.waterRank && drawn.rect.x <= rect.z && rect.x <= drawn.rect.z &&
+                            drawn.rect.y <= rect.w && rect.y <= drawn.rect.w){
+                        copy = true;
+                        break;
+                    }
+                }
+            }
+            if (copy && passColorCopies < MAX_SCENE_COLOR_COPIES){
+                if (!sceneColorPending)
+                    sceneInputStats.colorRecopies++;
+                takeSceneColor();
+                passColorCopies++;
+                readersSinceCopy.clear();
+                queueDrawnSinceCopy = false;
+            }
+            queueCopied = true;
+            readersSinceCopy.push_back({rect, renderData.waterRank});
+        }
+        queueDrawnSinceCopy = true;
 
         if (renderData.type == TransparentRenderType::MESH){
             // a split mesh: its blended submeshes (the opaque ones were drawn in the opaque queue)
@@ -16979,6 +17146,7 @@ void RenderSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
         destroyMesh(entity, mesh);
         // (kept over reloads, which load it again)
         setSceneInputUser(entity, false, 0);
+        setWaterMesh(entity, false, false);
         setGBufferDepthMismatch(entity, false);
     } else if (componentId == scene->getComponentId<UIComponent>()) {
         UIComponent& ui = scene->getComponent<UIComponent>(entity);

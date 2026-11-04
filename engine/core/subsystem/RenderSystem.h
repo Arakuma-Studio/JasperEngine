@@ -28,6 +28,7 @@
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
+#include "render/WaterLayering.h"
 #include "render/ObjectRender.h"
 #include "render/CameraRender.h"
 #include "render/BufferRender.h"
@@ -597,6 +598,9 @@ namespace jasperengine{
 			ParticleSystemComponent* particles = nullptr;
 			LineRendererComponent* lines = nullptr;
 			TrailRendererComponent* trail = nullptr;
+			// its rank among the pass's waters (render/WaterLayering.h): what a water covers
+			// draws before it, what is in front of it after
+			int8_t waterRank = 0;
 		};
 
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
@@ -623,10 +627,14 @@ namespace jasperengine{
 
 		// draw order of the transparent queue: the lowest sort priority, then the farthest, then
 		// the submission order (a total order, so std::sort is deterministic)
+		// (Sorting Layers and Order in Layer, pixel-art S52, go before sortPriority; the water
+		// rank stays right after it)
 		struct TransparentRenderComparison{
 			bool operator()(const TransparentRenderData& lhs, const TransparentRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
+				if (lhs.waterRank != rhs.waterRank)
+					return lhs.waterRank > rhs.waterRank;
 				if (lhs.distanceToCamera != rhs.distanceToCamera)
 					return lhs.distanceToCamera > rhs.distanceToCamera;
 				return lhs.order < rhs.order;
@@ -1752,6 +1760,11 @@ namespace jasperengine{
 		// pre-pass SSAO, SSR or a post pass already ran, else its own) and, for scenecolor, one
 		// copy of its colour target after the opaque queue and the sky.
 		std::unordered_map<Entity, uint32_t> sceneInputMeshes;
+		// the meshes drawn with a water (library:water, @role water) and those reading a planar
+		// reflection (@require planarreflection), as their last load resolved them: empty in a
+		// scene without, so the passes skip the water layering and the reflection passes at once
+		std::unordered_set<Entity> waterMeshes;
+		std::unordered_set<Entity> planarReflectionMeshes;
 		std::unordered_map<Entity, uint32_t> sceneInputPoints;
 		std::unordered_map<Entity, uint32_t> sceneInputParticles;
 		uint32_t sceneInputUsage = 0;          // the bits of both maps
@@ -1787,6 +1800,7 @@ namespace jasperengine{
 			uint32_t depthPrePasses = 0;   // scene depth pre-passes run for them
 			uint32_t sharedDepth = 0;      // passes that reused the SSAO / SSR / post-process depth
 			uint32_t colorCopies = 0;
+			uint32_t colorRecopies = 0;    // copies taken again for readers over other readers
 			uint32_t targetsCreated = 0;   // since the scene started (reuse keeps it constant)
 		};
 		SceneInputStats sceneInputStats;
@@ -2303,6 +2317,24 @@ namespace jasperengine{
 		// scene inputs (phase 3)
 		// records what a loaded mesh or points component reads of the scene (0: nothing)
 		void setSceneInputUser(Entity entity, bool points, uint32_t inputs);
+		// waterMeshes and planarReflectionMeshes for a mesh as its load resolved it
+		void setWaterMesh(Entity entity, bool water, bool planarReflection);
+		// the pass's waters a transparent queue layers around (WaterLayering.h): the visible
+		// transparent meshes of waterMeshes in the queue, with their levels and wave bands
+		void gatherPassWaters(const std::vector<TransparentRenderData>& queue, std::vector<WaterLayer>& waters) const;
+		// the world box a transparent draw covers (null when it has none to tell)
+		AABB transparentBounds(const TransparentRenderData& renderData) const;
+		// whether a draw of the transparent queue samples the scene colour (and is drawn)
+		bool readsSceneColor(const TransparentRenderData& renderData, CameraComponent& camera, int instanceView);
+		// whether the hierarchy loop of a camera pass draws the entity in place (a 3D pass draws
+		// meshes, blended points and particles from its transparent queue)
+		bool drawsInHierarchyLoop(Entity entity, Signature signature, const Transform& transform, bool distanceSort);
+		// the box's extent in normalized device coordinates (xmin, ymin, xmax, ymax): the whole
+		// screen when it is unknown or reaches behind the eye
+		static Vector4 screenBoundsOf(const AABB& bounds, const Matrix4& viewProjection);
+		// the scene colour copies a camera pass may take (the first and the re-copies for readers
+		// drawn over other readers)
+		static constexpr unsigned int MAX_SCENE_COLOR_COPIES = 4;
 		// registers what the meshes and points about to load will read, before update() decides
 		// from the readers what every mesh loads with (depth programs, offscreen pipelines)
 		void predictSceneInputUsers();
@@ -2781,6 +2813,7 @@ namespace jasperengine{
 			uint32_t depthPrePasses = 0;   // last frame: scene depth pre-passes run for them
 			uint32_t sharedDepth = 0;      // last frame: passes that reused the SSAO / SSR / post depth
 			uint32_t colorCopies = 0;      // last frame: colour copies
+			uint32_t colorRecopies = 0;    // last frame: of them, taken again for readers over other readers
 			uint32_t targets = 0;          // depth and copy targets alive (the editor's views included)
 			bool depthPrograms = false;    // every mesh keeps a depth program for the scene depth
 			bool colorRedirect = false;    // the exported scene camera draws offscreen for the copy now
