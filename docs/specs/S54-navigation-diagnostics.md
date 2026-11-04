@@ -677,6 +677,10 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 - S54 P1: grid answers report an end outside the grid or on a Not Walkable / masked cell as
   `*_off_mesh` / `*_filtered` also when `allowPartial` gives a Partial path to it (the reason is
   more useful than `disconnected`).
+- S54 P1: AC6 `.AreaAndBounds` (and AC8's coverage) checks the area within 5 % of 19^2, not 2 %:
+  Recast erodes whole cells (r = 0.5 m at 0.2 m cells is 3 cells plus the boundary span), so the
+  baked square is 18.6 m wide (346 m^2). The test also checks the area equals the island's
+  bounds' footprint within 1 %, which pins the labelling's arithmetic exactly.
 - S54 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
   (P3's; the two new sources) and `engine/core/navigation/NavBakeInput.cpp` (`memoryBytes` counts
   the sources).
