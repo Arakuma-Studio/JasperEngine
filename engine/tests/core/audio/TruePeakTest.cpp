@@ -18,14 +18,14 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr double kPi = 3.14159265358979323846;
+    constexpr double kTruePeakPi = 3.14159265358979323846;
 
     // a sine of this share of the sample rate, phase in degrees, amplitude in dBFS
     std::vector<float> rateSine(double shareOfRate, double phaseDegrees, double dbfs, size_t frames) {
         const double amplitude = std::pow(10.0, dbfs / 20.0);
         std::vector<float> samples(frames);
         for (size_t i = 0; i < frames; i++) {
-            samples[i] = (float)(amplitude * std::sin(2.0 * kPi * shareOfRate * (double)i + phaseDegrees * kPi / 180.0));
+            samples[i] = (float)(amplitude * std::sin(2.0 * kTruePeakPi * shareOfRate * (double)i + phaseDegrees * kTruePeakPi / 180.0));
         }
         return samples;
     }

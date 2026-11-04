@@ -24,8 +24,8 @@ using namespace jasperengine;
 
 namespace {
 
-    constexpr double kPi = 3.14159265358979323846;
-    constexpr unsigned int kRate = 48000;
+    constexpr double kMeterPi = 3.14159265358979323846;
+    constexpr unsigned int kMeterRate = 48000;
     // EBU Tech 3341's tolerance for its loudness values, and Tech 3342's for its LRA values
     constexpr double kLufsTolerance = 0.1;
     constexpr double kLraTolerance = 1.0;
@@ -36,14 +36,14 @@ namespace {
     };
 
     // a 1 kHz sine that changes level between segments, in one phase throughout
-    std::vector<float> toneSegments(const std::vector<Segment>& segments, unsigned int rate = kRate, double frequency = 1000.0) {
+    std::vector<float> toneSegments(const std::vector<Segment>& segments, unsigned int rate = kMeterRate, double frequency = 1000.0) {
         std::vector<float> samples;
         size_t i = 0;
         for (const Segment& segment : segments) {
             const double amplitude = std::pow(10.0, segment.dbfs / 20.0);
             const size_t end = i + (size_t)std::llround(segment.seconds * rate);
             for (; i < end; i++) {
-                samples.push_back((float)(amplitude * std::sin(2.0 * kPi * frequency * (double)i / rate)));
+                samples.push_back((float)(amplitude * std::sin(2.0 * kMeterPi * frequency * (double)i / rate)));
             }
         }
         return samples;
@@ -58,12 +58,12 @@ namespace {
         return interleaved;
     }
 
-    LoudnessResult measureStereo(const std::vector<Segment>& segments, unsigned int rate = kRate) {
+    LoudnessResult measureStereo(const std::vector<Segment>& segments, unsigned int rate = kMeterRate) {
         const std::vector<float> interleaved = toStereo(toneSegments(segments, rate));
         return AudioMeter::measure(interleaved.data(), interleaved.size() / 2, rate, 2, false);
     }
 
-    std::vector<float> noise(size_t samples, double amplitude, uint32_t seed) {
+    std::vector<float> meterNoise(size_t samples, double amplitude, uint32_t seed) {
         std::mt19937 generator(seed);
         std::uniform_real_distribution<float> distribution((float)-amplitude, (float)amplitude);
         std::vector<float> values(samples);
@@ -76,12 +76,12 @@ namespace {
     // a stereo signal whose level moves, the sort of thing the two modes must agree on
     std::vector<float> movingSignal(unsigned int rate, double seconds) {
         const size_t frames = (size_t)(seconds * rate);
-        const std::vector<float> white = noise(frames * 2, 0.5, 7);
+        const std::vector<float> white = meterNoise(frames * 2, 0.5, 7);
         std::vector<float> samples(frames * 2);
         for (size_t i = 0; i < frames; i++) {
             const double t = (double)i / rate;
-            const double swell = 0.2 + 0.8 * std::fabs(std::sin(2.0 * kPi * 0.3 * t));
-            const double tone = 0.3 * std::sin(2.0 * kPi * 440.0 * t);
+            const double swell = 0.2 + 0.8 * std::fabs(std::sin(2.0 * kMeterPi * 0.3 * t));
+            const double tone = 0.3 * std::sin(2.0 * kMeterPi * 440.0 * t);
             samples[i * 2] = (float)(swell * (tone + white[i * 2]));
             samples[i * 2 + 1] = (float)(swell * (tone - white[i * 2 + 1]));
         }
@@ -135,7 +135,7 @@ TEST(AudioMeter, Ebu3341Case6FiveChannels) {
     const std::vector<float> centre = toneSegments({{20.0, -24.0}});
     const std::vector<float> surround = toneSegments({{20.0, -30.0}});
     const float* planar[5] = {front.data(), front.data(), centre.data(), surround.data(), surround.data()};
-    const LoudnessResult r = AudioMeter::measurePlanar(planar, front.size(), kRate, 5, false);
+    const LoudnessResult r = AudioMeter::measurePlanar(planar, front.size(), kMeterRate, 5, false);
     ASSERT_TRUE(r.integrated);
     EXPECT_NEAR(*r.integrated, -23.0, kLufsTolerance);
 }
@@ -148,7 +148,7 @@ TEST(AudioMeter, Ebu3341Case9ShortTermHasNoRipple) {
         segments.push_back({1.66, -30.0});
     }
     const std::vector<float> interleaved = toStereo(toneSegments(segments));
-    AudioMeter meter(kRate, 2, AudioMeterOptions{AudioMeterMode::Stream, false});
+    AudioMeter meter(kMeterRate, 2, AudioMeterOptions{AudioMeterMode::Stream, false});
     meter.process(interleaved.data(), interleaved.size() / 2);
     const std::vector<float> curve = meter.shortTermCurve();
     ASSERT_GE(curve.size(), 130u);
@@ -169,7 +169,7 @@ TEST(AudioMeter, Ebu3341Case12MomentaryHasNoRipple) {
         segments.push_back({0.22, -30.0});
     }
     const std::vector<float> interleaved = toStereo(toneSegments(segments));
-    AudioMeter meter(kRate, 2, AudioMeterOptions{AudioMeterMode::Stream, false});
+    AudioMeter meter(kMeterRate, 2, AudioMeterOptions{AudioMeterMode::Stream, false});
     meter.process(interleaved.data(), interleaved.size() / 2);
     const std::vector<float> curve = meter.momentaryCurve();
     ASSERT_GE(curve.size(), 70u);
@@ -244,8 +244,8 @@ TEST(AudioMeter, RatesAgreeOnA1kHzTone) {
 
 TEST(AudioMeter, KWeightingShapesTheSpectrum) {
     const auto lufs = [](double frequency) {
-        const std::vector<float> interleaved = toStereo(toneSegments({{2.0, -23.0}}, kRate, frequency));
-        const LoudnessResult r = AudioMeter::measure(interleaved.data(), interleaved.size() / 2, kRate, 2, false);
+        const std::vector<float> interleaved = toStereo(toneSegments({{2.0, -23.0}}, kMeterRate, frequency));
+        const LoudnessResult r = AudioMeter::measure(interleaved.data(), interleaved.size() / 2, kMeterRate, 2, false);
         return r.integrated.value_or(std::numeric_limits<double>::quiet_NaN());
     };
     // the high-pass takes low end out, the shelf lifts the top by about 4 dB
@@ -280,7 +280,7 @@ TEST(AudioMeter, TheLfeDoesNotCountAndSurroundsWeighMore) {
     const auto oneChannel = [&](unsigned int active) {
         const float* planar[6] = {none.data(), none.data(), none.data(), none.data(), none.data(), none.data()};
         planar[active] = tone.data();
-        return AudioMeter::measurePlanar(planar, tone.size(), kRate, 6, false);
+        return AudioMeter::measurePlanar(planar, tone.size(), kMeterRate, 6, false);
     };
 
     // an LFE alone has no block over the gate
@@ -293,7 +293,7 @@ TEST(AudioMeter, TheLfeDoesNotCountAndSurroundsWeighMore) {
 }
 
 TEST(AudioMeter, PlanarEqualsInterleaved) {
-    const std::vector<float> interleaved = movingSignal(kRate, 5.0);
+    const std::vector<float> interleaved = movingSignal(kMeterRate, 5.0);
     const size_t frames = interleaved.size() / 2;
     std::vector<float> left(frames);
     std::vector<float> right(frames);
@@ -302,15 +302,15 @@ TEST(AudioMeter, PlanarEqualsInterleaved) {
         right[i] = interleaved[i * 2 + 1];
     }
     const float* planar[2] = {left.data(), right.data()};
-    const LoudnessResult a = AudioMeter::measure(interleaved.data(), frames, kRate, 2);
-    const LoudnessResult b = AudioMeter::measurePlanar(planar, frames, kRate, 2);
+    const LoudnessResult a = AudioMeter::measure(interleaved.data(), frames, kMeterRate, 2);
+    const LoudnessResult b = AudioMeter::measurePlanar(planar, frames, kMeterRate, 2);
     EXPECT_EQ(*a.integrated, *b.integrated);
     EXPECT_EQ(a.truePeakDb, b.truePeakDb);
     EXPECT_EQ(a.bandsDb, b.bandsDb);
 }
 
 TEST(AudioMeter, RefusesWhatItCannotMeasure) {
-    const std::pair<unsigned int, unsigned int> refused[] = {{kRate, 0}, {kRate, 9}, {7999, 2}, {192001, 2}};
+    const std::pair<unsigned int, unsigned int> refused[] = {{kMeterRate, 0}, {kMeterRate, 9}, {7999, 2}, {192001, 2}};
     for (const auto& [rate, channels] : refused) {
         AudioMeter meter(rate, channels);
         EXPECT_FALSE(meter.isValid()) << rate << " " << channels;
@@ -332,8 +332,8 @@ TEST(AudioMeter, RefusesWhatItCannotMeasure) {
 // -- gates, empty and short signals -----------------------------------------------------------------
 
 TEST(AudioMeter, DigitalSilenceHasNoLoudness) {
-    const std::vector<float> silence(kRate * 2 * 4, 0.0f);
-    const LoudnessResult r = AudioMeter::measure(silence.data(), silence.size() / 2, kRate, 2);
+    const std::vector<float> silence(kMeterRate * 2 * 4, 0.0f);
+    const LoudnessResult r = AudioMeter::measure(silence.data(), silence.size() / 2, kMeterRate, 2);
     EXPECT_FALSE(r.integrated);
     EXPECT_FALSE(r.relativeGate);
     EXPECT_EQ(r.gatedBlocks, 0u);
@@ -355,15 +355,15 @@ TEST(AudioMeter, ASignalUnder400msHasMomentaryButNoIntegrated) {
     // the file mode's padding: a window holds all 300 ms of the 400
     ASSERT_TRUE(r.momentaryMax);
     EXPECT_NEAR(*r.momentaryMax, -23.0 + 10.0 * std::log10(0.3 / 0.4), 0.2);
-    EXPECT_EQ(r.frames, (uint64_t)std::llround(0.3 * kRate));
+    EXPECT_EQ(r.frames, (uint64_t)std::llround(0.3 * kMeterRate));
 }
 
 TEST(AudioMeter, NothingProcessed) {
-    AudioMeter meter(kRate, 2);
+    AudioMeter meter(kMeterRate, 2);
     const LoudnessResult r = meter.result();
     EXPECT_EQ(r.frames, 0u);
     EXPECT_EQ(r.channels, 2u);
-    EXPECT_EQ(r.sampleRate, kRate);
+    EXPECT_EQ(r.sampleRate, kMeterRate);
     EXPECT_FALSE(r.integrated);
     EXPECT_FALSE(r.momentaryMax);
     EXPECT_TRUE(meter.momentaryCurve().empty());
@@ -384,20 +384,20 @@ TEST(AudioMeter, GatedBlocksCountTheBlocksThatPass) {
 // -- peaks and levels -------------------------------------------------------------------------------
 
 TEST(AudioMeter, TruePeakIsThreeDecibelsOverSamplePeakAtQuarterRate45Degrees) {
-    const size_t frames = kRate;
+    const size_t frames = kMeterRate;
     const double amplitude = std::pow(10.0, -3.0 / 20.0);
     std::vector<float> samples(frames);
     for (size_t i = 0; i < frames; i++) {
-        samples[i] = (float)(amplitude * std::sin(2.0 * kPi * 0.25 * (double)i + kPi / 4.0));
+        samples[i] = (float)(amplitude * std::sin(2.0 * kMeterPi * 0.25 * (double)i + kMeterPi / 4.0));
     }
-    const LoudnessResult r = AudioMeter::measure(samples.data(), frames, kRate, 1, false);
+    const LoudnessResult r = AudioMeter::measure(samples.data(), frames, kMeterRate, 1, false);
     EXPECT_NEAR(r.samplePeakDb, -6.01, 0.01);
     EXPECT_NEAR(r.truePeakDb - r.samplePeakDb, 3.01, 0.2);
 }
 
 TEST(AudioMeter, TruePeakIsAtLeastSamplePeak) {
     const float impulse[] = {0.0f, 0.75f, 0.0f};
-    const LoudnessResult r = AudioMeter::measure(impulse, 3, kRate, 1);
+    const LoudnessResult r = AudioMeter::measure(impulse, 3, kMeterRate, 1);
     EXPECT_NEAR(r.samplePeakDb, 20.0 * std::log10(0.75), 1e-9);
     EXPECT_GE(r.truePeakDb, r.samplePeakDb);
 }
@@ -408,8 +408,8 @@ TEST(AudioMeter, FileModeFlushesTheTruePeakFilter) {
     std::vector<float> samples(24, 0.0f);
     samples.push_back(0.5f);
     samples.push_back(0.5f);
-    const LoudnessResult file = AudioMeter::measure(samples.data(), samples.size(), kRate, 1);
-    AudioMeter stream(kRate, 1);
+    const LoudnessResult file = AudioMeter::measure(samples.data(), samples.size(), kMeterRate, 1);
+    AudioMeter stream(kMeterRate, 1);
     stream.process(samples.data(), samples.size());
     stream.finish();
     const LoudnessResult live = stream.result();
@@ -421,27 +421,27 @@ TEST(AudioMeter, ClippedSamplesCountOverAllChannels) {
     const float limit = (float)AudioMeter::CLIP_LEVEL;
     const float below = std::nextafter(limit, 0.0f);
     const float samples[] = {limit, -limit, 1.5f, below, 0.0f, -1.0f};
-    const LoudnessResult r = AudioMeter::measure(samples, 3, kRate, 2);
+    const LoudnessResult r = AudioMeter::measure(samples, 3, kMeterRate, 2);
     EXPECT_EQ(r.clipped, 4u);
 }
 
 TEST(AudioMeter, RmsIsAes17) {
     const std::vector<float> full = toneSegments({{1.0, 0.0}});
-    const LoudnessResult fullScale = AudioMeter::measure(full.data(), full.size(), kRate, 1, false);
+    const LoudnessResult fullScale = AudioMeter::measure(full.data(), full.size(), kMeterRate, 1, false);
     EXPECT_NEAR(fullScale.rmsDb, 0.0, 0.01);
     EXPECT_NEAR(fullScale.meanSquare, 0.5, 0.001);
 
     const std::vector<float> quiet = toneSegments({{1.0, -20.0}});
-    EXPECT_NEAR(AudioMeter::measure(quiet.data(), quiet.size(), kRate, 1, false).rmsDb, -20.0, 0.01);
+    EXPECT_NEAR(AudioMeter::measure(quiet.data(), quiet.size(), kMeterRate, 1, false).rmsDb, -20.0, 0.01);
 }
 
 TEST(AudioMeter, DcOffsetIsTheLargestChannelMean) {
-    std::vector<float> interleaved(kRate * 2);
-    for (size_t i = 0; i < kRate; i++) {
+    std::vector<float> interleaved(kMeterRate * 2);
+    for (size_t i = 0; i < kMeterRate; i++) {
         interleaved[i * 2] = 0.1f;
         interleaved[i * 2 + 1] = -0.25f;
     }
-    const LoudnessResult r = AudioMeter::measure(interleaved.data(), kRate, kRate, 2, false);
+    const LoudnessResult r = AudioMeter::measure(interleaved.data(), kMeterRate, kMeterRate, 2, false);
     EXPECT_NEAR(r.dcOffset, 0.25, 1e-6);
 }
 
@@ -455,8 +455,8 @@ TEST(AudioMeter, NonFiniteSamplesAreCountedAndMeteredAsSilence) {
         samples[where[i]] = bad[i];
         zeroed[where[i]] = 0.0f;
     }
-    const LoudnessResult r = AudioMeter::measure(samples.data(), samples.size(), kRate, 1);
-    const LoudnessResult expected = AudioMeter::measure(zeroed.data(), zeroed.size(), kRate, 1);
+    const LoudnessResult r = AudioMeter::measure(samples.data(), samples.size(), kMeterRate, 1);
+    const LoudnessResult expected = AudioMeter::measure(zeroed.data(), zeroed.size(), kMeterRate, 1);
     EXPECT_EQ(r.nonFinite, 3u);
     EXPECT_EQ(expected.nonFinite, 0u);
     ASSERT_TRUE(r.integrated);
@@ -481,8 +481,8 @@ TEST(AudioMeter, BandCentresAndLabels) {
 }
 
 TEST(AudioMeter, A40HzSineLandsInThe31And63HzBandsAndTheSubBand) {
-    const std::vector<float> tone = toneSegments({{5.0, -6.0}}, kRate, 40.0);
-    const LoudnessResult r = AudioMeter::measure(tone.data(), tone.size(), kRate, 1);
+    const std::vector<float> tone = toneSegments({{5.0, -6.0}}, kMeterRate, 40.0);
+    const LoudnessResult r = AudioMeter::measure(tone.data(), tone.size(), kMeterRate, 1);
     const double low = std::max(r.bandsDb[0], r.bandsDb[1]);
     EXPECT_NEAR(low, -6.0, 3.0);
     for (int b = 2; b < AudioMeter::BANDS; b++) {
@@ -496,7 +496,7 @@ TEST(AudioMeter, A40HzSineLandsInThe31And63HzBandsAndTheSubBand) {
 // and fc*sqrt(2), through the bilinear transform; no low-pass from 0.45 of the rate. Both edges are
 // half an octave away, so even mid-band a tone loses about 0.53 dB.
 static double bandCentreGainDb(double centre, double rate) {
-    const auto warped = [rate](double hz) { return std::tan(kPi * hz / rate); };
+    const auto warped = [rate](double hz) { return std::tan(kMeterPi * hz / rate); };
     double attenuation = 1.0 + std::pow(warped(centre / std::sqrt(2.0)) / warped(centre), 8.0);
     if (centre * std::sqrt(2.0) < 0.45 * rate) {
         attenuation *= 1.0 + std::pow(warped(centre) / warped(centre * std::sqrt(2.0)), 8.0);
@@ -507,9 +507,9 @@ static double bandCentreGainDb(double centre, double rate) {
 TEST(AudioMeter, EachBandReadsAToneAtItsCentre) {
     for (int b = 0; b < AudioMeter::BANDS; b++) {
         const double centre = AudioMeter::bandCentre(b);
-        const std::vector<float> tone = toneSegments({{2.0, -12.0}}, kRate, centre);
-        const LoudnessResult r = AudioMeter::measure(tone.data(), tone.size(), kRate, 1);
-        EXPECT_NEAR(r.bandsDb[(size_t)b], -12.0 + bandCentreGainDb(centre, kRate), 0.1) << AudioMeter::bandLabel(b);
+        const std::vector<float> tone = toneSegments({{2.0, -12.0}}, kMeterRate, centre);
+        const LoudnessResult r = AudioMeter::measure(tone.data(), tone.size(), kMeterRate, 1);
+        EXPECT_NEAR(r.bandsDb[(size_t)b], -12.0 + bandCentreGainDb(centre, kMeterRate), 0.1) << AudioMeter::bandLabel(b);
         if (b > 0) {
             EXPECT_LT(r.bandsDb[(size_t)b - 1], -12.0 - 6.0) << AudioMeter::bandLabel(b) << " in the band below";
         }
@@ -529,12 +529,12 @@ TEST(AudioMeter, HighBandsAboveNyquistAreSilent) {
 
 TEST(AudioMeter, ANonSubToneHasAlmostNoSubShare) {
     const std::vector<float> tone = toneSegments({{2.0, -6.0}});
-    EXPECT_LT(AudioMeter::measure(tone.data(), tone.size(), kRate, 1).subShare, 0.001);
+    EXPECT_LT(AudioMeter::measure(tone.data(), tone.size(), kMeterRate, 1).subShare, 0.001);
 }
 
 TEST(AudioMeter, BandsOffLeaveTheirFieldsAtTheFloor) {
     const std::vector<float> tone = toneSegments({{1.0, -6.0}});
-    const LoudnessResult r = AudioMeter::measure(tone.data(), tone.size(), kRate, 1, false);
+    const LoudnessResult r = AudioMeter::measure(tone.data(), tone.size(), kMeterRate, 1, false);
     for (double db : r.bandsDb) {
         EXPECT_EQ(db, AudioMeter::SILENCE_DB);
     }
@@ -575,11 +575,11 @@ TEST(AudioMeter, StreamEqualsFileMode) {
 }
 
 TEST(AudioMeter, BlockSizesDoNotChangeTheResult) {
-    const std::vector<float> samples = movingSignal(kRate, 4.0);
+    const std::vector<float> samples = movingSignal(kMeterRate, 4.0);
     const size_t frames = samples.size() / 2;
-    AudioMeter whole(kRate, 2);
+    AudioMeter whole(kMeterRate, 2);
     whole.process(samples.data(), frames);
-    AudioMeter single(kRate, 2);
+    AudioMeter single(kMeterRate, 2);
     for (size_t i = 0; i < frames; i++) {
         single.process(samples.data() + i * 2, 1);
     }
@@ -594,10 +594,10 @@ TEST(AudioMeter, BlockSizesDoNotChangeTheResult) {
 
 // result() is a read: a stream goes on as if nobody had looked
 TEST(AudioMeter, ResultCanBeReadAtAnyTime) {
-    const std::vector<float> samples = movingSignal(kRate, 5.0);
+    const std::vector<float> samples = movingSignal(kMeterRate, 5.0);
     const size_t frames = samples.size() / 2;
-    AudioMeter watched(kRate, 2);
-    AudioMeter unwatched(kRate, 2);
+    AudioMeter watched(kMeterRate, 2);
+    AudioMeter unwatched(kMeterRate, 2);
     for (size_t position = 0; position < frames; position += 4800) {
         const size_t count = std::min<size_t>(4800, frames - position);
         watched.process(samples.data() + position * 2, count);
@@ -607,24 +607,24 @@ TEST(AudioMeter, ResultCanBeReadAtAnyTime) {
     EXPECT_EQ(watched.result().integrated, unwatched.result().integrated);
 
     // the short-term maximum appears at 3 s and stays
-    AudioMeter growing(kRate, 2);
-    growing.process(samples.data(), 2 * kRate);
+    AudioMeter growing(kMeterRate, 2);
+    growing.process(samples.data(), 2 * kMeterRate);
     EXPECT_FALSE(growing.result().shortTermMax);
     EXPECT_TRUE(growing.result().momentaryMax);
-    growing.process(samples.data() + 2 * kRate * 2, 2 * kRate);
+    growing.process(samples.data() + 2 * kMeterRate * 2, 2 * kMeterRate);
     EXPECT_TRUE(growing.result().shortTermMax);
 }
 
 // A stream's windows stop at the last whole 10 ms of it; a file's padding completes them. So what
 // follows the last sub-block boundary counts only in a file.
 TEST(AudioMeter, FileModePadsTheEndAndStreamModeDoesNot) {
-    std::vector<float> samples(2 * kRate / 5, 0.0f);
+    std::vector<float> samples(2 * kMeterRate / 5, 0.0f);
     const std::vector<float> burst = toneSegments({{0.005, -6.0}});
     samples.insert(samples.end(), burst.begin(), burst.end());
 
-    const LoudnessResult file = AudioMeter::measure(samples.data(), samples.size(), kRate, 1, false);
+    const LoudnessResult file = AudioMeter::measure(samples.data(), samples.size(), kMeterRate, 1, false);
 
-    AudioMeter stream(kRate, 1, AudioMeterOptions{AudioMeterMode::Stream, false});
+    AudioMeter stream(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::Stream, false});
     stream.process(samples.data(), samples.size());
     stream.finish();
     const LoudnessResult live = stream.result();
@@ -637,7 +637,7 @@ TEST(AudioMeter, FileModePadsTheEndAndStreamModeDoesNot) {
 
 TEST(AudioMeter, ProcessAfterFinishDoesNothing) {
     const std::vector<float> samples = toneSegments({{1.0, -23.0}});
-    AudioMeter meter(kRate, 1, AudioMeterOptions{AudioMeterMode::File, false});
+    AudioMeter meter(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::File, false});
     meter.process(samples.data(), samples.size());
     meter.finish();
     EXPECT_TRUE(meter.isFinished());
@@ -651,8 +651,8 @@ TEST(AudioMeter, ProcessAfterFinishDoesNothing) {
 // the padding is not signal: it changes no level
 TEST(AudioMeter, PaddingCountsInNoLevel) {
     const std::vector<float> samples = toneSegments({{1.0, -20.0}});
-    const LoudnessResult file = AudioMeter::measure(samples.data(), samples.size(), kRate, 1);
-    AudioMeter stream(kRate, 1);
+    const LoudnessResult file = AudioMeter::measure(samples.data(), samples.size(), kMeterRate, 1);
+    AudioMeter stream(kMeterRate, 1);
     stream.process(samples.data(), samples.size());
     const LoudnessResult live = stream.result();
     EXPECT_EQ(file.frames, samples.size());
@@ -673,7 +673,7 @@ TEST(AudioMeter, RatesWithoutAWholeSubBlock) {
 
 TEST(AudioMeter, CurvesHaveAPointEvery100ms) {
     const std::vector<float> samples = toneSegments({{4.05, -23.0}});
-    AudioMeter meter(kRate, 1, AudioMeterOptions{AudioMeterMode::Stream, false});
+    AudioMeter meter(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::Stream, false});
     meter.process(samples.data(), samples.size());
     const std::vector<float> momentary = meter.momentaryCurve();
     const std::vector<float> shortTerm = meter.shortTermCurve();
@@ -686,7 +686,7 @@ TEST(AudioMeter, CurvesHaveAPointEvery100ms) {
 // a long stream's quiet window is not lost to the running sums behind the windows
 TEST(AudioMeter, AQuietWindowAfterALoudStretchKeepsItsLevel) {
     const std::vector<float> interleaved = toStereo(toneSegments({{60.0, 0.0}, {5.0, -60.0}}));
-    AudioMeter meter(kRate, 2, AudioMeterOptions{AudioMeterMode::Stream, false});
+    AudioMeter meter(kMeterRate, 2, AudioMeterOptions{AudioMeterMode::Stream, false});
     meter.process(interleaved.data(), interleaved.size() / 2);
     const std::vector<float> curve = meter.momentaryCurve();
     ASSERT_GE(curve.size(), 650u);
@@ -697,10 +697,10 @@ TEST(AudioMeter, AQuietWindowAfterALoudStretchKeepsItsLevel) {
 // denormal or a limit cycle
 TEST(AudioMeter, FiltersSettleOnZeroInSilence) {
     AudioKWeighting filter;
-    filter.init(kRate);
+    filter.init(kMeterRate);
     filter.process(1.0);
     for (unsigned int block = 0; block < 6000; block++) {
-        for (unsigned int i = 0; i < kRate / 100; i++) {
+        for (unsigned int i = 0; i < kMeterRate / 100; i++) {
             filter.process(0.0);
         }
         filter.settle();
@@ -721,8 +721,8 @@ TEST(AudioMeter, SettlingChangesNoLevelOverTheFloor) {
 // and digital silence reads as silence after any amount of signal
 TEST(AudioMeter, SilenceAfterSignalIsSilence) {
     std::vector<float> samples = toneSegments({{2.0, 0.0}});
-    samples.resize(samples.size() + kRate * 2, 0.0f);
-    AudioMeter meter(kRate, 1, AudioMeterOptions{AudioMeterMode::Stream, false});
+    samples.resize(samples.size() + kMeterRate * 2, 0.0f);
+    AudioMeter meter(kMeterRate, 1, AudioMeterOptions{AudioMeterMode::Stream, false});
     meter.process(samples.data(), samples.size());
     const std::vector<float> curve = meter.momentaryCurve();
     EXPECT_EQ(curve.back(), (float)AudioMeter::SILENCE_DB);
