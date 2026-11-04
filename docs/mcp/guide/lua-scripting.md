@@ -66,3 +66,6 @@ return Player
 - Lua has no C++ default arguments: pass every argument (e.g. the wake flag).
 - Lua has no on_start, getComponent or setProperty (timers: Timer.after/every). Never put
   editor property paths (submeshes[0]...) in scripts.
+- During play a saved Lua script reloads in place and keeps its instances (the next result's
+  external_changes.script_reload; a file that fails keeps its old code running). C++ waits for
+  Stop unless set_script_settings reload_cpp_during_play.
