@@ -174,9 +174,6 @@ namespace jasperengine::editor {
         static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true, bool encodeVertexCount = true);
         static Submesh decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh = nullptr);
 
-        static YAML::Node encodeAABB(const AABB& aabb);
-        static AABB decodeAABB(const YAML::Node& node);
-
         static YAML::Node encodeSpriteFrameData(const SpriteFrameData& frameData);
         static SpriteFrameData decodeSpriteFrameData(const YAML::Node& node);
 
@@ -500,7 +497,11 @@ namespace jasperengine::editor {
             const Project* project, const SceneProject* sceneProject, bool ignoreContainingPrefab);
         // removeMissingComponents also removes the components the node does not hold, so a
         // live entity is restored exactly. Only for nodes with a full component encode.
-        static std::vector<Entity> decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, bool removeMissingComponents = false, std::unordered_map<Entity, Entity>* entityRemap = nullptr);
+        // keepSameMeshes: decodeComponents' (a Play snapshot put back on Stop)
+        static std::vector<Entity> decodeEntity(const YAML::Node& entityNode, EntityRegistry* registry, std::vector<Entity>* entities = nullptr, Project* project = nullptr, SceneProject* sceneProject = nullptr, Entity parent = NULL_ENTITY, bool createNewIfExists = true, bool removeMissingComponents = false, std::unordered_map<Entity, Entity>* entityRemap = nullptr, bool keepSameMeshes = false);
+
+        static YAML::Node encodeAABB(const AABB& aabb);
+        static AABB decodeAABB(const YAML::Node& node);
 
         static YAML::Node encodeMaterial(const Material& material, bool embedTextureData = true);
         static Material decodeMaterial(const YAML::Node& node, const Material* oldMaterial = nullptr);
@@ -510,7 +511,10 @@ namespace jasperengine::editor {
         static YAML::Node encodeComponents(const Entity entity, const EntityRegistry* registry, Signature signature);
         // The live values only
         static YAML::Node encodeComponentsLive(const Entity entity, const EntityRegistry* registry, Signature signature);
-        static void decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode);
+        // keepSameMeshes: a live Mesh that encodes as the node has it, but for the worldAABB the
+        // RenderSystem derives from the Transform, is not decoded: it gets the node's worldAABB,
+        // all the decode would change in it, without the update flags that reload it
+        static void decodeComponents(Entity entity, Entity parent, EntityRegistry* registry, const YAML::Node& compNode, bool keepSameMeshes = false);
 
         // a Transform by its reflection table (editor/reflect): the components' codecs are their
         // tables (reflect::encode / reflect::decode), these keep the Transform's short form
