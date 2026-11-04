@@ -195,6 +195,8 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
   - It runs in the current worktree and waits for one of 2 global slots, with `JOBS=4` and
     `DOCKER_CPUS=4` each.
   - ccache is shared between worktrees, since each worktree mounts at `/src`.
+- Real Aseprite 1.3.18.6, built from source in Docker for golden files (personal use, never
+  redistributed): `/var/lib/orquester/workspaces/jaspersito/tools-aseprite/aseprite -b <args>`.
 - `build/fixture-unity` (the MCP fixture project) is not available. MCP tests that need it are
   skipped, and reports must say so.
 
