@@ -86,7 +86,7 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
-BUILDS_NOTHING = ("docs/*", "*.md", "LICENSE", "NOTICE.md", ".claude/*", ".github/*")
+BUILDS_NOTHING = ("docs/*", "*.md", "LICENSE", "NOTICE.md", ".claude/*")
 # outside engine/ and editor/, compiled into the editor or embedded in it (CMakeLists.txt): the
 # vendored libraries, the MCP guide and the HTML UI example library, the Lua API tools
 EDITOR_INPUTS = ("libs/*", "docs/mcp/guide/*", "docs/unity-glossary.md", "tools/lua_api/*")

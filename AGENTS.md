@@ -5,7 +5,7 @@ project's AGENTS.md instead. The test projects under `tools` are not game projec
 
 ## Map
 
-- `docs/testing.md`: every suite, where a test goes, naming, sanitizers, CI.
+- `docs/testing.md`: every suite, where a test goes, naming, sanitizers.
 - `docs/mcp/conventions.md`: the MCP tool rules.
 - `docs/mcp/DESIGN.md`: how the MCP server works.
 - `docs/specs/README.md`: global decisions and the do-not-copy list.
@@ -141,7 +141,8 @@ Run the generator and commit its output:
   - `WERROR=1 tools/build.sh linux`
   - `WERROR=1 tools/build.sh unit-tests`
   - `MCP_SUITE=all JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/build.sh mcp-tests -j <n>`
-- CI-only lints; run the one for each area you changed, with `python3`:
+- There is no CI: nothing checks a push except what you ran.
+- Lints check-changed does not run; run the one for each area you changed, with `python3`:
   - `tools/check_raw_writes.py`, `tools/check_stream_keys.py`: file writes, decoders.
   - `tools/ci/check-hardcoded-shortcuts.py`: editor keys.
   - `tools/ci/check-notices.py`: vendored code.
@@ -150,14 +151,14 @@ Run the generator and commit its output:
 - Narrow them with `UNIT_TEST_ARGS=--gtest_filter=...` and `UNIT_SUITE=core` or `UNIT_SUITE=editor`;
   a filter matching only one binary fails the other.
 - MCP tests: `tools/build.sh mcp-tests -k <filter> -j <n>`; needs a linux build.
-- It defaults to the CI suite. `MCP_SUITE=all` includes the rest and needs the fixture project.
+- It defaults to the CI suite (the files declaring `CI = True`). `MCP_SUITE=all` includes the rest and needs the fixture project.
 - End to end: `SMOKE_METHOD=compile tools/smoke-test.sh <project-dir>`.
 - Editor screenshots: `tools/editor-shot.sh <project-dir> [name] [seconds]`.
 - Run X programs with `tools/with-xvfb.sh`, not `xvfb-run`.
 
 Writing tests (the rest is in `docs/testing.md`; read it before adding one):
 
-- Test names decide which CI lanes run a test: follow its Naming section.
+- Test names decide how a test runs: follow its Naming section.
 - Wait for the state, not for time. In Play, use game time.
 - Report wall-clock budgets through `harness.over_budget` or `perfSlack()`, never a direct assert.
 - A flaky or opt-in gtest gets a `DISABLED_` prefix, never a skip; a flaky one also gets an issue.

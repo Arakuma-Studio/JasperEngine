@@ -1,7 +1,6 @@
 # Testing JasperEngine
 
-Every change ships with tests, and every suite runs the same way on a developer machine, a build
-server and CI: inside the Docker images under `docker/`, through `tools/build.sh`. This page lists
+Every change ships with tests, and every suite runs the same way on any machine: inside the Docker images under `docker/`, through `tools/build.sh`. This page lists
 the suites, how to run them, where a new test goes, and the rules that keep a green run honest.
 The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 
@@ -46,15 +45,14 @@ tools/build.sh unit-tests                                   # both binaries
 UNIT_SUITE=core tools/build.sh unit-tests                   # one of them (core or editor)
 UNIT_TEST_ARGS='--gtest_filter=Matrix4.*' tools/build.sh unit-tests
 GRAPHIC_BACKEND=vulkan UNIT_SUITE=core tools/build.sh unit-tests   # GPU suites on lavapipe
-WERROR=1 tools/build.sh unit-tests                          # what CI runs
+WERROR=1 tools/build.sh unit-tests
 RUN=0 tools/build.sh unit-tests                             # build only
 ```
 
 The binaries also register with CTest (`ctest --preset linux-ci` in an IDE build), labelled
 `unit`, `gpu` and `slow` by suite name.
 
-Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path (CI runs
-the picking suites a second time with `scalar`); `MeshPose.MatchesGpuSkinning` is a GPU suite (the
+Picking (S26): `JASPER_PICK_SIMD=scalar|avx2|neon` forces the mesh BVH's slab test path; `MeshPose.MatchesGpuSkinning` is a GPU suite (the
 CPU pose against the skinned shaders, glcore and Vulkan). `JASPER_PICK_BUILD_DELAY_MS=<ms>` holds
 every background mesh BVH build pending that long: the MCP tests use it to see the Scene view's
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
@@ -68,7 +66,7 @@ loaded a model in the background while that file exists, so what else loads the 
 
 - `tools/build.sh htmlui-tests`: about 3,300 tests, 74 of them skipped on purpose (the gate allows
   exactly those). `HTMLUI_TEST_ARGS` filters, `JASPER_HTMLUI_PERF_SLACK` relaxes the performance
-  targets on a loaded host (CI uses 3); `MarkdownHtml.Perf20KB` is enforced only when it is set
+  targets on a loaded host; `MarkdownHtml.Perf20KB` is enforced only when it is set
   (below, Writing load-robust tests).
 - The HTML UI rendering suites of S16 (`docs/specs/S16-ui-render-text.md`): `RenderBatch.*`,
   `RenderClip.*`, `RenderPrimitive.*`, `TextSharpness.*`, `TestFontEngine.AtlasBudget*` and, in
@@ -146,7 +144,7 @@ takes about a second. So an MCP test compiles only when the compile path is what
   purpose and writes its report), `test_html_ui_export.py::test_desktop_build_runs_the_document`,
   `test_html_ui_video_export.py::test_desktop_build_plays_the_video` and
   `test_call_cli.py::test_wait_job_build` (the CLI's `--wait-job` on a build job). The runtime is
-  the one `tools/build.sh players` and CI build, from the same engine sources as the editor under
+  the one `tools/build.sh players` builds, from the same engine sources as the editor under
   test.
 
 - **(c) Shared** builds: a runtime is built once per suite run for each backend and flavour, and
@@ -173,7 +171,7 @@ The cache cannot hide a bug:
   loaded server) and changes nothing a test of the game checks. The suite keeps one LTO check:
   `test_build.py::test_desktop_build_and_run` compiles a shipped game's release link with LTO, runs
   the player and checks its compile tree was configured with `JASPERENGINE_RELEASE_LINK` and
-  `JASPERENGINE_RELEASE_LTO` on; CI's `tools/build.sh players` and `tools/build.sh linux`'s sample
+  `JASPERENGINE_RELEASE_LTO` on; `tools/build.sh players` and `tools/build.sh linux`'s sample
   project (the gate's WERROR build) link with LTO too.
 - **Shared per machine** (`JASPER_MCP_SHARED_BUILD_CACHE=<dir>`, which `tools/build.sh mcp-tests` mounts at
   `/mcp-build-cache`):
@@ -493,7 +491,7 @@ change: add it and rebuild. Test data goes in `engine/tests/core/fixtures/` or
 - A suite that needs a GPU ends in `Gpu` (`RenderGpu`) and starts each test with
   `JASPER_REQUIRE_GPU()`: without a device it fails, it never skips. GPU suites run on Linux
   (Xvfb) and on macOS (the default Metal device: `HeadlessContextMetal.mm`, `ReadbackMetal.mm`);
-  Windows and macOS CI run the CPU suites with `--gtest_filter=-*Gpu*`.
+  Run only the CPU suites where no device exists with `--gtest_filter=-*Gpu*`.
 - A suite whose tests take more than 5 s each ends in `Slow`. Any other test stays under 1 s, and
   both binaries' CPU suites together under 60 s on 4 cores.
 - CTest labels follow the names: `gpu`, `slow`, else `unit`.
@@ -580,8 +578,8 @@ it only from an editor without S13's changes.
 - `tools/ci/gtest-gate.py` reads the googletest XML of every run and fails when the file is
   missing (the binary crashed), when no test ran (a filter that matches nothing is not a pass),
   when fewer tests ran than expected, when a test failed, or when more tests were skipped than
-  allowed (0, except the HTML UI suite's recorded 74). It lists every disabled test. Every CI
-  test step goes through it; `tools/ci/test_gtest_gate.py` tests it.
+  allowed (0, except the HTML UI suite's recorded 74). It lists every disabled test. The test targets
+  go through it; `tools/ci/test_gtest_gate.py` tests it.
 - Declared tests are the tests that ran plus the disabled ones. A test that flakes twice in a week
   is quarantined with a `DISABLED_` prefix and a tracking issue; the gate's list keeps it visible.
   Opt-in tests that need what the repository does not hold (`VatImportSideFx.*`: the SideFX VAT 3
@@ -591,7 +589,7 @@ it only from an editor without S13's changes.
 - A behavioural claim needs a red control: revert the behaviour locally, show the test failing
   (paste the output into the pull request), restore it. A bug fix shows the test red before the
   fix and green after.
-- Keep the XML: CI uploads `build/test-results/` from every job.
+- The XML stays in `build/test-results/`.
 - The first tests of an area are characterization tests: they pin today's behaviour. A change
   that alters that behaviour on purpose updates those tests in the same commit and says so.
 
@@ -728,8 +726,8 @@ in wall clock is printed under a sanitizer, never enforced there: `perfSlack()`,
 `-Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-sign-compare`
 (MSVC: `/W3 /wd4244 /wd4267 /wd4305`) on `jasperengine`, the editor executables, the project
 executable and the test targets; `JASPERENGINE_WERROR` adds `-Werror -Wno-error=deprecated-declarations`
-(MSVC `/WX`). Vendored libraries keep `-w`/`/w` and `SYSTEM` includes. CI writes each job's warning
-count per target to its summary (`tools/ci/warning-summary.py`).
+(MSVC `/WX`). Vendored libraries keep `-w`/`/w` and `SYSTEM` includes. `tools/ci/warning-summary.py` counts
+a build log's warnings per target.
 
 Werror is enforced with GCC in the `unit` and `e2e` jobs (`WERROR=1`). It is never enforced on
 Emscripten, the Android NDK, the Xcode workspace or exported projects: those compilers move under
@@ -748,7 +746,7 @@ name of its own) or listed in `jasperengine_skip_unity_build(REASON ... SOURCES 
 sources that include Xlib (macros such as `None` and `Status`), and the HTML UI and MCP tool
 sources, which keep one generic helper set (`lower`, `trim`, `Target`...) per file. A new
 `namespace {}` helper in our code must not reuse a name another source of the target defines at
-file scope. The nightly workflow builds it.
+file scope.
 
 ### Build speed
 
@@ -781,31 +779,10 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
   logging, crash options) are definitions of its executable only and reach the engine through
   `PlatformConfig`, so changing them recompiles a few units.
 
-## CI
+## No CI
 
-`.github/workflows/ci.yml` runs on every push and pull request:
-
-| Job | What | Budget |
-|---|---|---|
-| `unit` | notices, the CI scripts' tests, the data-safety lints (`tools/check_raw_writes.py`, `tools/check_stream_keys.py`), presets, `WERROR=1 tools/build.sh unit-tests` | 25 min |
-| `sanitizers` | `SANITIZE=address,undefined tools/build.sh unit-tests`, GPU suites included | 35 min |
-| `htmlui` | `tools/build.sh htmlui-tests` (OpenGL) | 45 min |
-| `e2e` | `WERROR=1 tools/build.sh linux`, the install's notices, `htmlui-editor-tests`, `MCP_SUITE=ci tools/build.sh mcp-tests -j 2`, the post-processing smoke test | 60 min |
-| `web` | web presets, `tools/build.sh web`, `tools/build.sh web-gate` | 30 min |
-
-Each job builds its Docker image with the Actions layer cache and passes it to `tools/build.sh`
-as `JASPER_DOCKER_IMAGE`, so CI and a build server run the same image the same way; reproduce a
-red job with the command in its step. The Linux packaging job keeps its bare `ubuntu:22.04`
-container (the AppImage's glibc floor). Windows and macOS (on demand, pull requests, tags) build
-with `JASPERENGINE_TESTS=ON` and run both unit binaries without their GPU suites through the gate.
-The release job checks the tag first (`tools/ci/check-release-tag.sh`: `vX.Y[.Z]`, and exactly
-the built commit; `git describe` is the only version source, there is no VERSION file).
-
-`.github/workflows/nightly.yml` (daily on `main` and `oe-port`, or on demand): the HTML UI suite on
-Vulkan and under ASan + UBSan, the unit tests under TSan, the unity builds, the smoke test of every
-fixture project on OpenGL plus the GLES3 and Vulkan sets (`tools/ci/nightly-smoke.sh`), and the
-threaded web build through the gate, with and without cross-origin isolation. A failure opens or
-comments on the open issue labelled `nightly`.
+Nothing runs on a push: a check counts only when someone ran it. `tools/ci/nightly-smoke.sh` is the
+smoke test of every fixture project, and `tools/ci/check-release-tag.sh` a release tag's check.
 
 Third-party notices: `tools/ci/check-notices.py` fails when a directory under `libs/`,
 `engine/libs/` or `engine/libs/shadercompiler/libs/` lacks a `NOTICE.md` row or a licence file;
@@ -890,7 +867,7 @@ leaks (S08's reflection tests leaked about 84 MB that way).
 `UNITY=1 tools/build.sh linux` and the unity engine and test trees build. A cold build of
 `jasperengine-editor` (the editor and the shared engine) in the Linux image, `-j 8`, no ccache,
 Release, before the S01 merge: 1,361 s without unity, 1,034 s with it, **24 % faster**, under R25's
-25 %. The option stays, the nightly workflow keeps building it (so new sources stay unity-safe),
+25 %. The option stays (so new sources stay unity-safe),
 and no preset or job recommends it for speed. The server ran other builds at the same time, so
 the figure is approximate; re-measure on an idle host before deciding otherwise.
 
