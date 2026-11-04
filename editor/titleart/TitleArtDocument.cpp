@@ -211,7 +211,7 @@ void TitleArtDocument::notifyChanged(const std::vector<fs::path>& paths) {
     if (registry().changedHook && !paths.empty()) registry().changedHook(paths);
 }
 
-void TitleArtDocument::filesMoved(const fs::path& oldPath, const fs::path& newPath) {
+void TitleArtDocument::filesMoved(Project* project, const fs::path& oldPath, const fs::path& newPath) {
     Registry& reg = registry();
     const std::string oldKey = key(oldPath);
     std::vector<std::shared_ptr<TitleArtDocument>> moved;
@@ -240,7 +240,7 @@ void TitleArtDocument::filesMoved(const fs::path& oldPath, const fs::path& newPa
     }
 
     // the recipes of the derived PNGs that moved with their documents (AssetOps' pairing)
-    Project* project = reg.project;
+    if (!project) project = reg.project;
     std::vector<fs::path> documents;
     std::error_code ec;
     if (fs::is_regular_file(newPath, ec)) {

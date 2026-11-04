@@ -76,7 +76,7 @@ namespace jasperengine::editor {
         // R5: a file or directory moved (AssetOps::move): open documents at or under `oldPath`
         // follow it, and the recipes of the derived PNGs of every document now at or under
         // `newPath` name its new path (their source GUID is unchanged)
-        static void filesMoved(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        static void filesMoved(Project* project, const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
         // R5: assets moved (GUID -> new absolute path): every document naming one of them by GUID
         // (the dependency index) gets that reference's `path` hint rewritten; the rewritten files
         static std::vector<std::filesystem::path> relinkGuids(Project* project, const std::map<std::string, std::filesystem::path>& moved);

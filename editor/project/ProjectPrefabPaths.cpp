@@ -673,7 +673,7 @@ void editor::Project::remapClipFilePath(const std::filesystem::path& oldPath, co
     // open .vat documents go with their files (and reload below)
     VatDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
     // open .titleart documents too, and their baked PNGs' recipes name the new path
-    TitleArtDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
+    TitleArtDocument::filesMoved(this, oldPath.lexically_normal(), newPath.lexically_normal());
     // the database moved the clips' GUIDs with AssetOps (applyClipAssetChanges relinked their
     // references); open documents (clips, a model's sub-clips) go with their files
     AnimationClipDocument::filesMoved(oldPath.lexically_normal(), newPath.lexically_normal());
