@@ -169,6 +169,38 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_curve_keys_rebind",
+        "kind": "guard",
+        "what_happened": "Asked to rebind a Curve window key, agents read the project, then the engine source, and told the user "
+                         "to change the editor's code. The key is a catalog command: curve.frame, not the scene's Frame Selected, "
+                         "which shares the key.",
+        "text_at_issue": "Generated AGENTS.md, Source references: 'An editor key is rebound with `set_shortcut` (tool group "
+                         "`editor_ux`), not in that source.'; list_shortcuts context: 'curve', 'color_picker'",
+        "source": "docs/specs/S61-window-commands.md R5",
+        "prompt": "In the Curve window, make the key that frames the curve J instead of F.",
+        "mocks": [
+            {"tool": "list_shortcuts", "args": {"context": "curve"}, "result": ok(
+                "4 command(s); with keys:\ncurve.frame  F\ncurve.delete  Delete / Backspace\ncurve.copy  Ctrl+C\ncurve.paste  Ctrl+V",
+                {"shortcuts": [{"id": "curve.frame", "group": "Curve", "name": "Frame Curve", "context": "curve", "chords": ["F"]}]})},
+            {"tool": "list_shortcuts", "result": ok(
+                "3 command(s); with keys:\nedit.frameSelected  F\nsceneView.frameAll  Home / Alt+F\ncurve.frame  F",
+                {"shortcuts": [{"id": "edit.frameSelected", "group": "Edit", "name": "Frame Selected", "context": "editor", "chords": ["F"]},
+                               {"id": "sceneView.frameAll", "group": "Scene View", "name": "Frame All", "context": "scene_view", "chords": ["Home", "Alt+F"]},
+                               {"id": "curve.frame", "group": "Curve", "name": "Frame Curve", "context": "curve", "chords": ["F"]}]})},
+            {"tool": "set_shortcut", "args": {"id": "curve.frame"}, "result": ok(
+                "curve.frame is now J.", {"id": "curve.frame", "chords": ["J"]})},
+            # the engine source has the curve type, not the editor's windows
+            {"tool": "search_engine_source", "result": ok(
+                "2 match(es).\nmath/Curve.h:24: class Curve {\nmath/Curve.cpp:18: float Curve::evaluate(float time) const {",
+                {"count": 2, "matches": [{"line": 24, "path": "math/Curve.h", "text": "class Curve {"},
+                                         {"line": 18, "path": "math/Curve.cpp", "text": "float Curve::evaluate(float time) const {"}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_shortcut", "args": {"id": "curve.frame"}}],
+                   "must_not_call": [{"tool": "set_shortcut", "args": {"id": "edit.frameSelected"}}],
+                   "max_calls": {"set_shortcut": 1}},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_placeholder_art_path",
         "kind": "guard",
         "what_happened": "generate_placeholder_art {path: 'sprites/shield_a.png'} wrote outside assets/; the error now names the "

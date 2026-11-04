@@ -4669,12 +4669,12 @@ The Project window's saved searches (Favorites): list; save name + query (+ fold
 
 Group: `editor_ux` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-The command catalog: {id, group, name, context, chords, default_chords, overridden, read_only, menu_path, menu_shortcut, conflicts, shadowed_by}. Contexts: global, editor, scene_view, hierarchy, project, console, animation, pose_animation. Ctrl means Cmd on macOS.
+The command catalog: {id, group, name, context, chords, default_chords, overridden, read_only, menu_path, menu_shortcut, conflicts, shadowed_by}. Ctrl means Cmd on macOS.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `conflicts_only` | boolean |  |  |
-| `context` | `"global"` \| `"editor"` \| `"scene_view"` \| `"hierarchy"` \| `"project"` \| `"console"` \| `"animation"` \| `"pose_animation"` |  |  |
+| `context` | `"global"` \| `"editor"` \| `"scene_view"` \| `"hierarchy"` \| `"project"` \| `"console"` \| `"animation"` \| `"pose_animation"` \| `"curve"` \| `"color_picker"` |  |  |
 | `group` | string |  | File, Edit, Tools, Scene View... |
 
 

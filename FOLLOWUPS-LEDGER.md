@@ -26,7 +26,6 @@ Other programs push to `origin/main` at the same time, so fetch before every lan
 - Pixel art: specs S41-S52, `PIXEL-ART-LEDGER.md`, `feature/sNN-*`.
 - Doriax catch-up: `docs/doriax-catchup/LEDGER.md`, `docs/superpowers/specs/2026-11-04-*`, `dc/*`.
 - Forge/meshoptimizer: S53-S57, `docs/forge-meshopt-analysis/LEDGER.md`.
-- Engine gaps: `docs/engine-gaps/LEDGER.md`.
 
 This program's specs are S61-S73, because the pixel art specs took S41-S52 first. Worktree folders keep their old names (`je-wt/s41` holds S61, add 20).
 
@@ -55,7 +54,8 @@ S65, S67, S68, S69, S70, S72 and S35-S40. Several ready big features may share o
 |---|---|---|---|---|
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | In progress |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
-| S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | In progress |
+| S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
+| Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | In progress |
 | S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A | In progress |
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B | In progress |
@@ -102,13 +102,18 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
   `copyLua` and `copyCustomShaderSources` follow links. `test_linked_folders_export.py` fails if they stop.
 - 2026-11-04: MCP eval: agents add cases but cannot run them. The integrator runs new cases at landing, on Orquester accounts.
 
+- 2026-11-04: MCP hints on errors go in the error text. S69's eval showed that for an error result Claude Code shows the model only the text, so `next` in `structuredContent` is never read there. This narrows the AGENTS.md "MCP text" rule; S69 updates that rule, and every program adding refusals should read this.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
+- GitHub refuses this host's Orquester SSH key since about 09:30 UTC 2026-11-04, though the key is still listed on the account. Git goes over HTTPS with the `gh` login for now (`je-remote/ghgit.sh`).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
 
 ## Done
 
+- S61: a key acts on the focused panel (`PanelClaims`), and curve and eyedropper keys are rebindable. The bug was real: Delete in the Curve window deleted a selected GameObject. MCP 202-file selection 1291 passed; its 3 failures were fixed (one was S61's test; two were fixed by merging `main`); affected 10 files 132 passed; eval 2/2, and 0/2 without its text. Whole `check-changed` not green, because a root CMake line demands the whole suite; the next full pass covers it. macOS not built yet: next Mac run. Unit tests last ran before its final merges.
+- `fix/texture-synth-death-test`: root causes found with a core under gdb; test-only fix. Failures 182/840 before, 0/350 after, ASan 30/30. A 1-in-160 crash needs more runs than 350 to rule out, but `exit()` is gone, which was its cause. Inferred: the real Linux editor stops this work before exit.
 - S38 M1: `AudioMeter` and `TruePeak`. Meter tests 61 passed, 0 failed, 0 skipped; pyloudnorm agrees within 0.1 LU; WERROR build. Whole check-changed not run, on my say: a library nothing else uses cannot change the CI suite's result. Open for S38 M6: file mode took 1964 ms against a 300 ms budget on loaded H.
 - `fix/ci-suite-classify`: `--suite ci` runs again. 26 files CI = True, 20 CI_EXCLUDED with reasons, a guard in check-changed. Also fixed two tests pinning guide text origin cut. New CI files 112 passed, 0 failed, 0 skipped; both edited files whole 55 passed. Whole check-changed not run: it would select 47 MCP files, some building real players, for a change that only adds a constant to the 20 excluded files.
 
@@ -121,3 +126,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S68's red run: 4 of its tests fail on the control editor as intended; one more was fixed so it does too (not yet rerun).
 - 2026-11-04: First landing: `fix/ci-suite-classify`. S69 found a real bug: the Loading popup swallows a dialog opened once; fixing with a red test. S63's guard: 42 of 45 fixture scenes differ on the unfixed tree (somewhat inflated).
 - 2026-11-04: S38 M1 landed; S36 and S37 started. S61's red runs: Delete in the Curve window really did delete GameObjects. It waits on `fix/texture-synth-death-test` and its eval case. Other programs on `main`: also Forge/meshoptimizer S53-S57 and engine-gaps.
+- 2026-11-04: S61 and the death test landed. S63's guard is green: 45 of 45 scenes match byte for byte, after fixing 3 more draw-history bugs. S67: real iOS and Android runs pass; its work found `android-emulator-test.sh` emptying its own expectations, so earlier passes without `--scene` proved less. A's disk reached 27 GB free: removed S66's tree and the dangling images (54 GB free now).
