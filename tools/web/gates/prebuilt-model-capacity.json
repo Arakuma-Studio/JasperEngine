@@ -1,0 +1,16 @@
+{
+  "description": "S45: a script in the prebuilt web player (pthreads) loads a model of 40 nodes, a mesh of 40 primitives and an OBJ of 20 materials under Engine.startAsyncThread (tools/ci/test_player_cli.py, check model-capacity): nothing is dropped. The player runs 3 frames after ready at a fixed 60 fps and quits, so the page is still while it is captured.",
+  "isolated": true,
+  "expect": [
+    "crossOriginIsolated=true threads=true",
+    "[MC] nodes=40 root=0 mesh=40 obj=20",
+    "JasperEngine exit code 0"
+  ],
+  "query": [
+    "quit-after=3",
+    "fixed-fps=60",
+    "after-ready"
+  ],
+  "seconds": 20,
+  "capture_timeout": 300
+}

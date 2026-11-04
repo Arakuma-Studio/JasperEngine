@@ -11,7 +11,8 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
 
 - **method** `auto` (default: the project's Build Settings choice): a **prebuilt player** (no
   compiler, seconds) unless the project needs native code: C++ scripts, `ProjectBuild.cmake`,
-  capacities above the player's (`MAX_BONES`...), AdMob, or `method: compile`. Then it compiles
+  capacities above the player's (`MAX_BONES`..., not a mesh's submeshes or buffers: those have no
+  limit), AdMob, or `method: compile`. Then it compiles
   from source (minutes; this computer's platform and the web only). The result says which:
   `method_used`, `compile_reasons[]`.
 - `prebuilt` fails with the reasons when the project needs native code; `compile` always compiles.

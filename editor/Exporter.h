@@ -370,8 +370,9 @@ namespace jasperengine::editor {
         // the first scene or prefab file with a Video Player playing an http(s) url ("" for none:
         // Android exports then need no INTERNET for videos)
         std::string videoUrlScene() const;
-        // Aggregates SceneMaxValues across all project scenes into the capacities that
-        // size the engine's fixed-capacity HybridArrays (MAX_SUBMESHES, MAX_SPRITE_FRAMES, ...).
+        // Aggregates SceneMaxValues across all project scenes into the capacities that size the
+        // engine's HybridArrays (MAX_SPRITE_FRAMES, ...) and what a mesh holds inline before its
+        // SpillArrays go to the heap (MAX_SUBMESHES, MAX_EXTERNAL_BUFFERS).
         std::vector<std::pair<std::string, unsigned int>> getSceneMaxValues() const;
         static std::vector<std::pair<std::string, unsigned int>> sceneMaxValuesOf(const Project* project);
         // add_definitions() block applying them to the export.

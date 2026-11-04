@@ -160,6 +160,8 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
     if (fs::exists(proj->getProjectPath() / "ProjectBuild.cmake", ec)) choice.reasons.push_back("ProjectBuild.cmake");
     // (c) capacities above the player's (the engine defaults when no player is known)
     for (const auto& [macro, value] : sceneMaxValuesOf(proj)) {
+        // what a mesh holds inline: more go on the heap, in the player too
+        if (macro == "MAX_SUBMESHES" || macro == "MAX_EXTERNAL_BUFFERS") continue;
         unsigned int capacity = 0;
         if (playerInfo) {
             auto it = playerInfo->capacities.find(macro);
@@ -167,8 +169,8 @@ editor::BuildMethodChoice editor::Exporter::chooseBuildMethod(Project* proj, con
         }
         if (capacity == 0) {
             static const std::map<std::string, unsigned int> defaults = {
-                {"MAX_SUBMESHES", MAX_SUBMESHES}, {"MAX_TILEMAP_TILESRECT", MAX_TILEMAP_TILESRECT}, {"MAX_TILEMAP_TILES", MAX_TILEMAP_TILES},
-                {"MAX_SPRITE_FRAMES", MAX_SPRITE_FRAMES}, {"MAX_EXTERNAL_BUFFERS", MAX_EXTERNAL_BUFFERS}, {"MAX_BONES", MAX_BONES}};
+                {"MAX_TILEMAP_TILESRECT", MAX_TILEMAP_TILESRECT}, {"MAX_TILEMAP_TILES", MAX_TILEMAP_TILES},
+                {"MAX_SPRITE_FRAMES", MAX_SPRITE_FRAMES}, {"MAX_BONES", MAX_BONES}};
             // (no collider capacities since upstream's unbounded collider lists)
             auto it = defaults.find(macro);
             capacity = it != defaults.end() ? it->second : value;

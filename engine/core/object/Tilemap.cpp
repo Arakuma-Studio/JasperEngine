@@ -85,11 +85,6 @@ void Tilemap::addRect(int id, const std::string& name, const std::string& textur
         return;
     }
 
-    if (!mesh.submeshes.validIndex(static_cast<int>(mesh.numSubmeshes))){
-        Log::error("Cannot add submesh for rect id %i, max submeshes is %zu", id, mesh.submeshes.size());
-        return;
-    }
-
     if (!texture.empty()) {
         bool textureFound = false;
         for (int s = 0; s < mesh.numSubmeshes; s++){

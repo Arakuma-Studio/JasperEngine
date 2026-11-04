@@ -16,7 +16,9 @@ macOS, Android, iOS or the web. It picks one of two methods:
   the game, as before. It is needed when the project has
   - C++ scripts,
   - a `ProjectBuild.cmake`,
-  - capacities above the player's (Project Settings > Scene Limits: `MAX_BONES` above 128, ...),
+  - capacities above the player's (Project Settings > Scene Limits: `MAX_BONES` above 128, ...;
+    not `MAX_SUBMESHES` or `MAX_EXTERNAL_BUFFERS`: those size what a mesh holds inline, a mesh
+    with more keeps the rest on the heap in every player),
   - Google Mobile Ads (AdMob),
   - or when Build Settings > Build Method says Compile.
 
@@ -223,7 +225,8 @@ keeps it complete.
 ## What is tested where
 
 The Linux and web prebuilt paths are built and run in CI (`tools/build.sh players`, the player
-CLI test, the web gate with and without isolation headers); Android's prebuilt APK runs in the
+CLI test, its `model-capacity` check of models past what a mesh holds inline, the web gate with and
+without isolation headers); Android's prebuilt APK runs in the
 emulator check. Windows, macOS and iOS runtimes build on their CI runners; Steam uploads and real
 Steam Deck deploys are tested with stand-ins only (a SteamCMD-shaped script, ssh to a local
 directory).

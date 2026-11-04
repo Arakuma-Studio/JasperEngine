@@ -28,3 +28,25 @@ too many materials is cut off with an error. Users expect the model they importe
 - AC2. Screenshot comparison: same model main thread vs loading thread, within golden tolerance.
 - AC3. Vulkan and GLES checked through existing lanes. S34's size check unchanged or within budget.
 - AC4. `tools/check-changed`, smoke test, docs.
+
+## Deviations
+- D1. Design (R2's "simplest design"). A game's loading thread owns a scene the frames do not run, so it runs the main thread's
+  code on it (the same entities, no commit step). For a scene the frames do run, it only parses the file into `ModelPool`
+  and the main thread makes the tree in a coming frame (`MeshSystem::prepareLoadOnMainThread`, `MainThreadQueue`): `loadModel`
+  returns true before those entities exist. Only a thumbnail (off the main thread with `setImageDecodeMaxDimension`) still
+  bakes the nodes into one mesh, now with nothing left out, because a picture needs no entities.
+- D2. R3 by a new `SpillArray` in `util/HybridArray.h`, not a change to `HybridArray`: bones, tiles and sprite frames keep their
+  fixed arrays and their size. An index access in the inline case costs a branch more than `values[i]`: "costs nothing more"
+  holds for allocations, not for that branch (measured in the report of this stream; within S07's budget).
+- D3. A compiled export still raises `MAX_SUBMESHES` and `MAX_EXTERNAL_BUFFERS` from its scenes (the capacity table stays valid,
+  R3), which now only moves more of a mesh inline; the prebuilt players ignore those two and build method no longer takes them
+  as a reason to compile.
+- D4. R4's real limits are a skin's bones (`MAX_BONES`: not a GPU limit but a build's, it remains because the spec keeps it out
+  of R3's list and a compiled export raises it), a primitive's blend shapes (vertex inputs) and a file's vertex and index
+  buffers (the GPU buffer pool). The editor shows them in the Console when the asset database first sees or re-reads a model
+  or an FBX is converted, and agents get `model_limits` from `import_files` and `get_asset_info`. No modal dialog.
+- D5. AC1 on the players: Lua has no thread, so a script reaches this path with `Engine.startAsyncThread` on the main thread
+  (`tools/ci/test_player_cli.py --only model-capacity`). A real second thread is tested in `jasperengine-core-tests`, a build of
+  the same fixed capacities (`ModelCapacityGpuTest`). In the single-thread web player `startAsyncThread` is a warning and the
+  load is an ordinary one.
+

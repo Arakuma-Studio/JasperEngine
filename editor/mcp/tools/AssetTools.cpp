@@ -9,6 +9,7 @@
 #include "media/VideoFormats.h"
 #include "media/VideoSourceFactory.h"
 #include "McpTools.h"
+#include "asset/ModelSubAssets.h"
 #include "mcp/McpDataSafety.h"
 #include "DocumentFile.h"
 #include "util/ShaderGlobalsJson.h"
@@ -447,6 +448,23 @@ Json gltfSummary(const Json& gltf) {
     }
     info["images"] = images;
     return info;
+}
+
+// A model file's real limits (ModelContents::limits), for agents: [{message, kind, count, limit}].
+// An FBX by the glTF it converted into; nothing for what is not a model.
+Json modelLimitsJson(Project* project, const fs::path& file) {
+    Json limits = Json::array();
+    const bool fbx = FbxImporter::isFbxFile(file);
+    ModelContents contents;
+    if ((fbx && !project->isInsideAssetsPath(file)) || !scanModelFile(fbx ? project->getImportedModelPath(file) : file, contents)) {
+        return limits;
+    }
+    const std::string name = projectRelative(project, file);
+    for (const ModelLimit& limit : contents.limits) {
+        limits.push_back({{"model", name}, {"message", modelLimitMessage(name, limit)}, {"kind", limit.kind},
+                          {"count", limit.count}, {"limit", limit.limit}});
+    }
+    return limits;
 }
 
 Json modelInfo(const fs::path& file, std::string& error) {
@@ -943,6 +961,11 @@ void getAssetInfoTool(const CallPtr& call) {
         if (info.is_null()) data["error"] = error;
         else {
             data["model"] = info;
+            const Json limits = modelLimitsJson(project, file);
+            if (!limits.empty()) {
+                data["model_limits"] = limits;
+                text += ", over " + std::to_string(limits.size()) + " limit(s): see model_limits";
+            }
             if (info.contains("meshes")) {
                 text += ", " + std::to_string(info["meshes"].size()) + " mesh(es), " + std::to_string(info["materials"].size()) +
                         " material(s), " + std::to_string(info["animations"].size()) + " animation(s)";
@@ -2004,6 +2027,24 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     }
     if (!fbxImports.empty()) data["fbx_imports"] = fbxImports;
     if (!fbxFailed.empty()) data["fbx_import_failed"] = fbxFailed;
+    // what a player cannot hold of the models (the Console shows them too): a real limit, seen now
+    Json limits = Json::array();
+    auto addLimits = [&](const fs::path& modelPath) {
+        const Json found = modelLimitsJson(project, modelPath);
+        limits.insert(limits.end(), found.begin(), found.end());
+    };
+    for (const fs::path& path : changed) {
+        if (fs::is_directory(path, ec)) {
+            for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, ec), end;
+                 !ec && it != end; it.increment(ec)) {
+                if (it->is_regular_file(ec)) addLimits(it->path());
+            }
+            ec.clear();
+        } else {
+            addLimits(path);
+        }
+    }
+    if (!limits.empty()) data["model_limits"] = limits;
     Json importedGuids = Json::object();
     for (const Json& rel : imported) {
         const Guid guid = project->getAssetDatabase().getAssetGuid(rel.get<std::string>());
@@ -3920,7 +3961,7 @@ void registerAssetTools(McpRegistry& registry) {
             "the Project window (assets under the assets dir). Remote: URLs in sources, fonts [\"Inter:400,700\"] "
             "(Google Fonts -> .ttf + @font-face css), icons [\"lucide:play\"] (.svg), from_document (import every "
             "remote URL a .html/.css uses and rewrite it). Videos become AV1+Opus .webm (FFmpeg), .fbx is converted "
-            "to glTF (fbx_imports).";
+            "to glTF (fbx_imports). Models over a real limit (bones, blend shapes) are listed in model_limits.";
         tool.inputSchema = object({
             {"sources", array(string(""), "Absolute paths or http(s) URLs.")},
             {"to_dir", assetPath("e.g. \"assets/sprites\" (remote default assets/ui/imported).")},

@@ -529,7 +529,7 @@ return Slot
 | `graphicBackend` | ro | `GraphicBackend.*` |
 | `openGL` | ro | bool |
 | `asyncLoading` | rw | |
-| `isViewLoaded()`, `startAsyncThread()`, `commitThreadQueue()`, `endAsyncThread()`, `isAsyncThread()` | static fn | |
+| `isViewLoaded()`, `startAsyncThread()`, `commitThreadQueue()`, `endAsyncThread()`, `isAsyncThread()` | static fn | a model loaded under them gives the same entities and pixels as one loaded without |
 | `getQueuedResourceCount()` | static fn | asset jobs queued or running (reads included): 0 only once loading is idle |
 | `setMaxResourceLoadingThreads(n)` | static fn | the most workers asset (Background) jobs take at once, applied live; 0 = derived from the reserved frame workers |
 | `framebuffer` | rw | |

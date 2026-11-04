@@ -88,8 +88,7 @@ namespace {
 
         const uint64_t submeshes = r.varint();
         for (uint64_t s = 0; s < submeshes && !r.failed(); s++) {
-            Submesh dropped;
-            Submesh& submesh = mesh.submeshes.validIndex(static_cast<int>(s)) ? mesh.submeshes[static_cast<size_t>(s)] : dropped;
+            Submesh& submesh = mesh.submeshes[static_cast<size_t>(s)];
             submesh.vertexCount = static_cast<unsigned int>(r.varint());
             submesh.overrideFields = r.u64();
             submesh.hasSkinningNormalization = r.boolean();
@@ -104,13 +103,8 @@ namespace {
             const uint64_t external = r.varint();
             unsigned int kept = 0;
             for (uint64_t b = 0; b < external && !r.failed(); b++) {
-                if (mesh.eBuffers.validIndex(static_cast<int>(b))) {
-                    read(r, mesh.eBuffers[static_cast<size_t>(b)]);
-                    kept++;
-                } else {
-                    ExternalBuffer dropped;
-                    read(r, dropped);
-                }
+                read(r, mesh.eBuffers[static_cast<size_t>(b)]);
+                kept++;
             }
             mesh.numExternalBuffers = kept;
         }

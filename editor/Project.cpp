@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "asset/ModelSubAssets.h"
 #include "diag/HangWatchdog.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ScriptReloadService.h"
@@ -1047,6 +1048,11 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
         return state != editor::FbxImporter::State::Missing;
     }
     written = true;
+    // (the database sees the FBX, which has no contents of its own: the model is this file)
+    editor::ModelContents contents;
+    if (editor::scanModelFile(glbPath, contents)) {
+        editor::reportModelLimits(fbxName, contents);
+    }
     return true;
 }
 

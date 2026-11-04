@@ -173,3 +173,18 @@ Paths and GUIDs are interchangeable wherever a tool takes an asset. `list_assets
 `get_component` (`asset_guids`) return GUIDs. `move_asset` and the mutating tools report
 `files_written`. A locator names a field: `entity:12/MeshComponent.submeshes[0].material.baseColorTexture`,
 `settings/defaultMeshShader`, `project/scenes[3].filepath`, `text:14`.
+
+## How much of a model a player holds
+
+Nothing a model can have many of is cut off: a mesh keeps any number of submeshes and buffers, in
+every build (`MAX_SUBMESHES`, `MAX_EXTERNAL_BUFFERS` only size what it holds without an allocation),
+an OBJ any number of materials, and a game's loading thread gets the main thread's node tree. Two
+limits are real, and an import reports them by the model, the count and the limit, in the Console,
+in `import_files` and `get_asset_info` (`model_limits`), and again when a game loads the model:
+
+| Limit | Over it |
+|---|---|
+| Bones of a skin (`MAX_BONES`, 128) | a build of a scene that uses it compiles the game to hold them; a script's model does not load in a prebuilt player |
+| Blend shapes of a primitive (8; 4 when they have normals or tangents; 2 with both) | the ones over it are left out |
+| Vertex and index buffers of a file (the GPU buffer pool, 16384) | what does not fit does not draw |
+
