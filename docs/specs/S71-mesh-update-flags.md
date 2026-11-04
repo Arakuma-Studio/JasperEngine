@@ -31,6 +31,8 @@ the same editor stand in for a quiet machine, as the wave's brief allows).**
 
 **After.** 1.3 to 1.5 µs a call for a Mesh, under 2 µs for every other component. Stop, in the same conditions: 1.32 to 1.47 times
 rebuilding the boxes after a Play that changed each Mesh, 0.95 to 1.04 after one that moved each.
+Nothing depends on the Mesh's field layout or submesh capacity (`dc/mesh-memory` changes both): the walk reads the reflection
+tables and their array operations, and the tests size the slots through the same operations.
 
 **Decisions.**
 1. The spec calls the moved Mesh "BF13 C-3". BF13 did not port it: it is item 2.C3 of the sound-layer cleanup design
@@ -54,7 +56,9 @@ rebuilding the boxes after a Play that changed each Mesh, 0.95 to 1.04 after one
    instead of the decode, so Stop's CPU after a move is the same with or without it (1.0 times rebuilding; a red control with cheap flags
    and no comparison also gave 1.0). A changed Mesh pays both: 1.47 against that 1.0, about 0.6 ms a Mesh. What the comparison
    buys is no Mesh reload at the next frame. Under llvmpipe that reload did not show (the first Scene view screenshot after Stop
-   cost 0.20 s of main-thread CPU either way). It was not measured on a real GPU driver.
+   cost 0.20 s of main-thread CPU either way). It was not measured on a real GPU driver. So AC1's CPU ratio cannot see a moved
+   Mesh decoded with cheap flags (tried: a ratio of moved against changed Stops passed its red control under load). That is
+   checked exactly instead: `UndoProjectTest.StopKeepsAMeshAPlayOnlyMoved`, through `Project::restorePlaySnapshot` with a box's geometry.
 6. Decoding a Mesh over a live one no longer leaves its 16 slots with an allocated default extra pass and PBR block (reading them
    allocated them). Inferred harmless from reading the code: an unset value reads and compares as its defaults, and the Inspector's
    listing still allocates them, so nothing can depend on either state.

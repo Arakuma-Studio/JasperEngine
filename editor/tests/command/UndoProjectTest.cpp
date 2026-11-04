@@ -22,6 +22,7 @@
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/SetAssetMetaCmd.h"
 #include "Stream.h"
+#include "subsystem/MeshSystem.h"
 #include "support/EditorTestSupport.h"
 
 #include "support/TestTempDir.h"
@@ -123,11 +124,13 @@ namespace {
 
 }
 
-// S51: Stop puts back a Mesh only when Play changed it; its decode reloads it at the next frame
+// S71: Stop puts back a Mesh only when Play changed it; its decode reloads it at the next frame
 TEST_F(UndoProjectTest, StopKeepsAMeshAPlayOnlyMoved) {
     scene->scene->addComponent<MeshComponent>(GAME, MeshComponent{});
     const Vector3 edit = position(GAME);
     MeshComponent& mesh = scene->scene->getComponent<MeshComponent>(GAME);
+    // what create_entity's box holds: the geometry the encoding writes
+    scene->scene->getSystem<MeshSystem>()->createBox(mesh, 1, 1, 1);
     mesh.worldAABB = AABB(Vector3(-1, -1, -1), Vector3(1, 1, 1));
     beginPlay();
     scene->scene->getComponent<Transform>(GAME).position = edit + Vector3(5, 5, 5);

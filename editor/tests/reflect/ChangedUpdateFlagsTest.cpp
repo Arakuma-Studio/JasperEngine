@@ -1,9 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Catalog::getChangedUpdateFlags against what it is defined to answer (docs/specs/S51-mesh-update-flags.md):
+// Catalog::getChangedUpdateFlags against what it is defined to answer (docs/specs/S71-mesh-update-flags.md):
 // the flags of every property in both components' property lists whose value differs. The oracle
-// below builds those two lists, as the function itself did until S51; every property of every
+// below builds those two lists, as the function itself did until S71; every property of every
 // component is changed in turn and the two must agree, with fixed cases as a check of the oracle.
 
 #include "support/EditorTestSupport.h"
@@ -229,10 +229,16 @@ namespace changed_update_flags_test {
         EXPECT_EQ(backward, oracle(type, b, a)) << what << " (the other way)";
     }
 
-    // 16 slots list the same properties: the first two and the last stand for them
+    // the slots list the same properties: the first stands for them (RandomPairs reaches the others)
     bool swept(const std::string& name) {
-        if (name.compare(0, 10, "submeshes[") != 0) return true;
-        return name.compare(0, 13, "submeshes[0].") == 0 || name.compare(0, 13, "submeshes[1].") == 0 || name.compare(0, 14, "submeshes[15].") == 0;
+        return name.compare(0, 10, "submeshes[") != 0 || name.compare(0, 13, "submeshes[0].") == 0;
+    }
+
+    // a Mesh with this many submesh slots, whatever a default one holds
+    void setSlots(MeshComponent& mesh, size_t slots) {
+        for (const reflect::FieldDesc& field : reflect::find(ComponentType::MeshComponent)->body.fields) {
+            if (std::string(field.name) == "submeshes") field.arrayOps->resize(field.ref(&mesh), slots);
+        }
     }
 
     void sweepEveryProperty(const reflect::ComponentDesc& desc, const reflect::Value& base) {
@@ -344,8 +350,8 @@ TEST(ChangedUpdateFlags, MeshSlotCounts) {
     for (const auto& [left, right] : std::vector<std::pair<size_t, size_t>>{{0, 0}, {0, 16}, {1, 16}, {16, 20}, {20, 20}}) {
         MeshComponent a;
         MeshComponent b;
-        a.submeshes.values.resize(left);
-        b.submeshes.values.resize(right);
+        setSlots(a, left);
+        setSlots(b, right);
         if (right > 17) b.submeshes[17].material.shader = ShaderRef("past the first sixteen");
         expectAgree(ComponentType::MeshComponent, &a, &b, "slots " + std::to_string(left) + " and " + std::to_string(right));
     }
@@ -362,7 +368,7 @@ TEST(ChangedUpdateFlags, AScriptPropertyOfAnotherType) {
     expectAgree(ComponentType::ScriptComponent, &a, &b, "speed a float and a string");
 }
 
-// What the function answered before S51 (taken with the oracle, which agrees below)
+// What the function answered before S71 (taken with the oracle, which agrees below)
 TEST(ChangedUpdateFlags, FixedCases) {
     struct Case {
         const char* name;
@@ -380,11 +386,13 @@ TEST(ChangedUpdateFlags, FixedCases) {
         {"the last slot's shader", [](MeshComponent& mesh) { mesh.submeshes[15].material.shader = ShaderRef("a"); }, kMeshAlways | UpdateFlags_Shader_Reload},
         {"a slot's base color", [](MeshComponent& mesh) { mesh.submeshes[3].material.baseColorFactor.x = 0.5f; }, kMeshAlways},
         {"a slot's extra pass", [](MeshComponent& mesh) { mesh.submeshes[3].material.extraPass.edit().shader = ShaderRef("a"); }, kMeshAlways},
-        {"no slots to compare", [](MeshComponent& mesh) { mesh.submeshes.values.clear(); }, UpdateFlags_Shader_Uniforms},
+        {"no slots to compare", [](MeshComponent& mesh) { setSlots(mesh, 0); }, UpdateFlags_Shader_Uniforms},
     };
     for (const Case& fixed : cases) {
         MeshComponent a;
         MeshComponent b;
+        setSlots(a, 16);
+        setSlots(b, 16);
         fixed.change(b);
         EXPECT_EQ(Catalog::getChangedUpdateFlags(ComponentType::MeshComponent, &a, &b), fixed.expected) << fixed.name;
         EXPECT_EQ(oracle(ComponentType::MeshComponent, &a, &b), fixed.expected) << fixed.name;
@@ -409,6 +417,8 @@ TEST(ChangedUpdateFlags, FixedCases) {
 TEST(ChangedUpdateFlags, ComparingMakesNothing) {
     MeshComponent a;
     MeshComponent b;
+    setSlots(a, 16);
+    setSlots(b, 16);
     Catalog::getChangedUpdateFlags(ComponentType::MeshComponent, &a, &b);
     for (const MeshComponent* mesh : {&a, &b}) {
         for (size_t slot = 0; slot < mesh->submeshes.size(); slot++) {
@@ -423,6 +433,8 @@ TEST(ChangedUpdateFlags, ComparingMakesNothing) {
 TEST(ChangedUpdateFlagsBench, AMeshCostsMicroseconds) {
     MeshComponent a;
     MeshComponent b;
+    setSlots(a, 16);
+    setSlots(b, 16);
     uint64_t sink = 0;
     const double now = microsecondsPerCall(2000, [&]() { sink |= Catalog::getChangedUpdateFlags(ComponentType::MeshComponent, &a, &b); });
     const double lists = microsecondsPerCall(50, [&]() { sink |= oracle(ComponentType::MeshComponent, &a, &b); });

@@ -88,7 +88,7 @@ TEST(StreamScene, DecodeSceneWithoutASceneMakesOne){
     EXPECT_EQ(dumpScene(made.get()), dumpScene(&source));
 }
 
-// A Play snapshot put back (Stream::decodeEntity's keepSameMeshes, docs/specs/S51-mesh-update-flags.md)
+// A Play snapshot put back (Stream::decodeEntity's keepSameMeshes, docs/specs/S71-mesh-update-flags.md)
 namespace stream_scene_snapshot_test {
 
     struct Played {
