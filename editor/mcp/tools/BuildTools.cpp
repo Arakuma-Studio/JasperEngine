@@ -1179,7 +1179,7 @@ void buildProjectTool(const CallPtr& call) {
 // becomes a job (docs/mcp/conventions.md). A big file is one load past that by itself.
 ShaderListLimit answerLimit(const Project* project) {
     ShaderListLimit limit;
-    limit.maxMillis = 500;
+    limit.maxMillis = 800;
     limit.maxFileBytes = 4 * 1024 * 1024;
     // JASPER_SHADER_LIST_SYNC_MS: the tests' way to see the job on a scene of any size
     if (const char* env = std::getenv("JASPER_SHADER_LIST_SYNC_MS"); env && *env) {

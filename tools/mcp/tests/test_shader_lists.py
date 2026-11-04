@@ -52,16 +52,19 @@ async def stale_project() -> Path:
         await ed.call("save_scene", scene=main, path="scenes/Main")
         await ed.call("edit_build_scenes", action="add", scene=main)
 
-        # a variant's content is its base's: a material only there, in a scene with no lights of its
-        # own; the lit form of it is reached by the other scenes (a script can spawn any prefab)
+        # what a Prefab Variant overrides of a GameObject of its base is in no file's GameObjects: an
+        # instance of it is the only way to see that material. Only this scene has one, so its form
+        # under fog is reached from Foggy (a script can spawn any prefab), which does not load the
+        # variant when it is read
         spawned = (await ed.call("create_scene", name="Spawned", type="3D"))["scene"]["id"]
-        await entity(ed, spawned, "sphere", "Ball")
-        await ed.call("set_properties", scene=spawned, entity="Ball",
-                      values={"mesh": {"submeshes[0].material": {"pbr": {"sheen": {"enabled": True}}}}})
+        for light in (await ed.call("find_entities", scene=spawned, component="light"))["entities"]:
+            await ed.call("delete_entities", scene=spawned, entities=[light["id"]])
+        await entity(ed, spawned, "empty", "Ball")
+        await ed.call("create_entity", scene=spawned, type="sphere", name="Inner", parent="Ball")
         await ed.call("create_prefab", scene=spawned, entity="Ball", path="prefabs/Ball.prefab")
-        await ed.call("create_prefab_variant", base="prefabs/Ball.prefab", path="prefabs/BallVariant.prefab")
-        await ed.call("delete_entities", scene=spawned, entities=["Ball"])
-        await ed.call("instantiate_prefab", scene=spawned, prefab="prefabs/BallVariant.prefab", name="Variant")
+        await ed.call("set_properties", scene=spawned, entity="Ball/Inner",
+                      values={"mesh": {"submeshes[0].material": {"pbr": {"sheen": {"enabled": True}}}}})
+        await ed.call("create_prefab_variant", scene=spawned, entity="Ball", path="prefabs/BallVariant.prefab")
         await ed.call("save_scene", scene=spawned, path="scenes/Spawned")
         await ed.call("edit_build_scenes", action="add", scene=spawned)
 
@@ -237,6 +240,32 @@ async def test_unreadable_scene_is_named():
         info = await build_info(ed)
         paths = sorted(s["path"] for s in info["shaders_unreadable_scenes"])
         ed.check_in("scenes/Lit.scene", paths, f"{info['shaders_unreadable_scenes']}")
+
+
+async def test_reading_closed_scenes_makes_no_gpu_resources():
+    """R2: no GPU work. The closed scenes read again, the device holds what it held (the proof that
+    no device is needed at all: ProjectShaderList.ReadsClosedScenesWithoutADevice)."""
+    async with Editor(project=await stale_project(), label="gpu") as ed:
+        await build_info(ed)
+
+        async def alive() -> dict:
+            await ed.call("wait", frames=5, timeout_seconds=300)
+            return (await ed.call("get_render_stats"))["alive"]
+
+        before = await alive()
+        for name in ("Spawned", "Lit", "Foggy", "Flat"):
+            scene = ed.project / "scenes" / f"{name}.scene"
+            scene.write_text(scene.read_text() + "\n# touched\n")
+        read = 0
+        while True:
+            info = await ed.call("get_build_info")
+            read += info["shader_list_scenes_read"]
+            if info["shaders_complete"]:
+                break
+            await finish_job(ed, info["shaders_job_id"])
+            read += 1
+        ed.check(read >= 1, "the closed scenes were read again")
+        ed.check_eq(await alive(), before, "reading them made or dropped GPU resources")
 
 
 async def test_play_startup_builds_what_closed_scenes_need():

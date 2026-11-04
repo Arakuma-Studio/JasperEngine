@@ -1460,10 +1460,7 @@ namespace jasperengine::editor{
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
 
         // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
-        // and cannot compile, so a variant the editor never draws with is missing there. The
-        // keys are read from the scenes (main thread), the build runs anywhere. The same list as
-        // an export's, whichever scenes are open (S64).
-        std::set<ShaderKey> collectStandaloneShaderKeys();
+        // and cannot compile: it runs anywhere, over the keys collectStandaloneShaderKeys read.
         void buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys);
 
         // ---- S64: the cache of closed scenes' keys
@@ -1560,6 +1557,12 @@ namespace jasperengine::editor{
         // the warm-up list in, the exclusions out
         std::set<ShaderKey> finishBuildShaderKeys(const std::set<ShaderKey>& sceneKeys, const std::set<ShaderKey>& additions,
                                                   const std::set<ShaderKey>& exclusions) const;
+
+        // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
+        // and cannot compile, so a variant the editor never draws with is missing there. The
+        // keys are read from the scenes (main thread), the build runs anywhere. The same list as
+        // an export's, whichever scenes are open (S64).
+        std::set<ShaderKey> collectStandaloneShaderKeys();
 
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
