@@ -135,8 +135,67 @@ if path.status == NavMeshPathStatus.Complete then ... end   -- path.corners, pat
 local found, hit = nav:samplePosition(point, 2.0)            -- hit.position, hit.normal, hit.area, hit.distance
 local blocked, hit = nav:raycast(a, b)
 local found, edge = nav:findClosestEdge(point)
-local reachable = nav:isReachable(a, b)
+local reachable, why = nav:isReachable(a, b)                -- why: "none" when reachable
 ```
+
+## Why navigation fails
+
+Every path that is not Complete says why in `reason` (Lua, MCP; `NavPath::failure` in C++), with
+the surface that answered, the point it got closest to and the gap left to the end:
+
+| Reason | Status | What it means, what to do |
+|---|---|---|
+| `no_surface` | Invalid | No enabled NavMesh Surface of the agent type: add one (or check the Agent Type) |
+| `not_baked` | Invalid | The surfaces have no navmesh (never baked, cleared, unreadable asset): bake them |
+| `start_off_mesh` / `end_off_mesh` | Invalid | No polygon near that end: move it onto the navmesh (`locate` tells how far it is) |
+| `start_filtered` / `end_filtered` | Invalid | That end is on an area the Area Mask leaves out |
+| `disconnected` | Partial | The ends are on islands that do not connect (or only through one-way links): add a NavMesh Link |
+| `blocked_by_area` | Partial | They connect only through areas the Area Mask leaves out |
+| `out_of_nodes` | Partial | The path needs more than 2048 polygons: split the trip, or raise Voxel Size |
+
+The checks run in that order; a Partial path still leads to the reachable point closest to the end.
+With several surfaces of the agent type, the first Complete one answers, else the best failure
+(`out_of_nodes` first, `no_surface` last). Paths and `isReachable` never compute islands
+themselves: once something asked for them (the overlays, `getIslands`, the bake report),
+`isReachable` rejects two islands at once without a search.
+
+```lua
+local nav = scene:getNavigationSystem()
+local path = nav:calculatePath(a, b)
+if path.status ~= NavMeshPathStatus.Complete then
+    print(path.reason, path.surface, path.closestPoint, path.gap)   -- "disconnected", 12, Vector3, 4.2
+end
+local here = nav:locate(a)              -- onMesh, found, position, snapDistance, island, area, surface
+if not here.onMesh and here.found then print("off the mesh by", here.snapDistance) end
+local surfaceEntity = here.surface
+local coverage = nav:getCoverage(surfaceEntity)   -- walkableArea (m²), islandCount, largestIslandArea, tilesArea, fraction
+for _, island in ipairs(nav:getIslands(surfaceEntity)) do
+    print(island.id, island.area, island.polys, island.boundsMin, island.boundsMax)
+end
+local report = NavMeshSurface(scene, surfaceEntity).lastBakeResult   -- nil before a bake
+if report and not report.ok then print(report.errorCode, report.hint) end
+```
+
+- **Islands** are the parts of a navmesh that connect (NavMesh Links join them, in either
+  direction); ids follow the tiles in order, so the same bake gives the same ids.
+- **`lastBakeResult`** is the last bake's report: `ok`, `errorCode` (`nothing_collected`,
+  `too_large`, `busy`, `tile_failed`, `navmesh_failed`, `cancelled`, `save_failed`, ...) with its
+  `hint`, `sources` (meshes, instances, terrains, colliders, colliders2D, volumes, links,
+  excluded, triangles), `warnings`, `walkableArea`, `islandCount`, the 16 largest `islands` and
+  the five `slowestTiles`. Lua keys are camelCase; the MCP results carry the same values with
+  snake_case keys and the same code strings.
+- **Findings** (the Navigation window's Problems list, `get_navigation_info`, `jasperengine-editor
+  check` and the export) are one list: `not_baked`, `navmesh_unreadable`, `stale_bake`,
+  `bake_failed`, `agent_off_mesh`, `agent_no_surface`, `agent_type_missing`, `agent_type_unused`,
+  `link_unconnected`, `small_island`, `crowd_filter_overflow` and `obstacle_carve_ignored`, each
+  naming its GameObject and the fix. Errors fail `check`; the export only logs them.
+- **Why not walkable?** For a point off the navmesh the editor names the reasons, in order:
+  `stale_tile`, `outside_volume`, `outside_bounds`, `no_geometry`, `excluded` (layer, moving body,
+  agent, obstacle, Exclude modifier, inactive), `not_walkable_area`, `too_steep` (vs Max Slope),
+  `low_clearance` (vs Height), `near_wall` (vs Radius), `step_too_high` (vs Step Height),
+  `small_region` (vs Minimum Region Area); on the navmesh only `filtered`, `small_island` and
+  `stale_tile` apply. The last three are found by rebuilding only the tile under the point with
+  that one limit relaxed.
 
 ## Nav Grids
 
