@@ -180,7 +180,7 @@ namespace {
     // tools/fixtures/prefab-runtime, loaded headless: its Main Scene takes the GameObjects
     class NavigationEditorTest : public ::testing::Test {
     protected:
-        UndoStatics statics;
+        editor::test::UndoStatics statics;
         jasperengine::test::TestTempDir dir{"nav-rows"};
         std::unique_ptr<Project> project;
         SceneProject* scene = nullptr;
@@ -203,7 +203,7 @@ namespace {
             project->setSelectedSceneId(sceneId);
         }
         void TearDown() override {
-            if (project) closeProject(*project);
+            if (project) editor::test::closeProject(*project);
             project.reset();
         }
         CommandHistory* history() { return CommandHandle::get(sceneId); }
