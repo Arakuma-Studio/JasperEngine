@@ -1,7 +1,7 @@
 """tools/check-changed: the per-commit gate of a stream. Builds what the change touches and runs the
-unit and MCP tests that can see it; the full suite stays the gate of batch landings and of main.
+unit and MCP tests that can see it; the full suite is for pushes to origin main that need it.
 
-    tools/check-changed                 # on a build server: rb.sh <S> tools/check-changed
+    tools/check-changed                 # build and test what the change touches
     tools/check-changed --dry-run       # the plan only
     tools/check-changed --base oe-port  # the diff against another base (default: the merge base
                                         # with oe-port, else main, else origin/main)
@@ -67,13 +67,12 @@ CORE_TREE = ROOT / "build" / "linux" / "core-tests"
 EDITOR_TEST_TREE = ROOT / "build" / "linux" / "editor-tests"
 EDITOR_TREE = ROOT / "build" / "linux" / "editor"
 HTMLUI_TREE = ROOT / "build" / "linux" / "htmlui-tests-glcore"
-LARGE_SELECTION = 40
 COMMON_SHARE = 0.8      # of the files with an editor: a function that many execute is any editor's
 COMMON_SAMPLE = 10      # the quickest of those that a change of such a function selects
 MAP_MAX_AGE_DAYS = 14
 MAP_MAX_COMMITS = 400
 GAP = ("coverage gap: this is the change's own selection; the full gate is still the full suite "
-       "(batch landings and before main)")
+       "(before pushing to origin main, when the push needs it)")
 
 # a change here builds and runs everything
 ALL_TRIGGERS = ("CMakeLists.txt", "CMakePresets.json", "CopyEditorEngine.cmake", "docker/*", "tools/build.sh",
@@ -91,7 +90,7 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
-BUILDS_NOTHING = ("docs/*", "*.md", "LICENSE", "NOTICE.md", ".claude/*", ".github/*")
+BUILDS_NOTHING = ("docs/*", "*.md", "LICENSE", "NOTICE.md", ".claude/*")
 # outside engine/ and editor/, compiled into the editor or embedded in it (CMakeLists.txt): the
 # vendored libraries, the MCP guide and the HTML UI example library, the Lua API tools
 EDITOR_INPUTS = ("libs/*", "docs/mcp/guide/*", "docs/unity-glossary.md", "tools/lua_api/*")
@@ -220,7 +219,7 @@ def read_changes(explicit_base: str | None, cwd: Path = ROOT, rb_file: Path = RB
             return git_changes(explicit_base, cwd)
         except (LookupError, RuntimeError):
             raise LookupError(f"{rb_file} is not this checkout's diff ({len(stale)} file(s) differ, e.g. {stale[0]}): "
-                              "run tools/check-changed through rb.sh, which sends it") from None
+                              "delete it to use git's diff") from None
     return git_changes(explicit_base, cwd)
 
 
@@ -881,7 +880,7 @@ def main(argv: list[str], root: Path | None = None) -> int:
             continue
         if b in ("web", "android") and in_image():
             # (their images are not this one: the check goes on, its pass is not cached, and the summary says so)
-            runner.steps.append((f"build {b}", "SKIP (not in the Linux image: rb.sh <server> tools/check-changed builds it)", 0.0))
+            runner.steps.append((f"build {b}", "SKIP (not in the Linux image: tools/check-changed outside it builds it)", 0.0))
             runner.partial = True
             continue
         env = dict(build_env, SKIP_ENGINE="1") if b == "linux" else dict(build_env)
@@ -947,9 +946,6 @@ def main(argv: list[str], root: Path | None = None) -> int:
                     runner.failed = True
                     files = [f for f in files if f != "test_mesh_raycast.py"]
                     mcp_env["MCP_SKIP_WEB_BUILD"] = "1"
-                if len(files) > LARGE_SELECTION:
-                    print(f"[check-changed] {len(files)} files: je-remote/mcp-shard.sh --select <--list-mcp's file> runs them "
-                          "across servers (from the machine that has rb.sh)", flush=True)
                 runner.run(f"MCP tests ({len(files)} file(s))", ["tools/build.sh", "mcp-tests", "-j", str(jobs),
                            *split, *[f"tools/mcp/tests/{f}" for f in files]], mcp_env)
                 runner.mcp_results(f"MCP tests ({len(files)} file(s))")

@@ -554,7 +554,7 @@ players)
             done
         "
         ;;
-    *) echo "PLAYER_PLATFORM is linux, web or android here (Windows, macOS and iOS runtimes build in CI: .github/workflows)" >&2; exit 1 ;;
+    *) echo "PLAYER_PLATFORM is linux, web or android here (Windows, macOS and iOS runtimes have no build target)" >&2; exit 1 ;;
     esac
     ;;
 unit-tests)
