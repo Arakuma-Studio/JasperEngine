@@ -507,7 +507,9 @@ bool EditorModal::answer(const std::string& choice, const std::map<std::string, 
     for (const auto& [name, value] : values) {
         const EditorDialogField* known = findField(s.top, name);
         if (!known) {
-            error = "\"" + s.top.title + "\" has no field " + name + (names.empty() ? "." : ". Its fields: " + joined(names) + ".");
+            std::vector<std::string> choices;
+            for (const Choice& c : s.top.choices) choices.push_back(c.choice);
+            error = "\"" + s.top.title + "\" has no field " + name + (names.empty() ? ". Answer it with choice: " + joined(choices) + "." : ". Its fields: " + joined(names) + ".");
             return false;
         }
         error = valueProblem(*known, value);

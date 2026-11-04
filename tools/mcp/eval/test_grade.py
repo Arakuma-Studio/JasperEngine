@@ -136,6 +136,14 @@ class StubTest(unittest.TestCase):
         hand = self.stub([{"tool": "play", "result": {"text": "t", "structured": {"x": 1}}}]).call("play", {"action": "x"})
         self.assertNotIn("structuredContent", hand, "a hand-written result sends its text")
 
+    def test_mock_after_error(self):
+        s = self.stub([{"tool": "play", "args": {"action": "bad"}, "result": {"text": "no", "is_error": True}},
+                       {"tool": "play", "after_error": "play", "result": {"text": "after the refusal"}},
+                       {"tool": "play", "result": {"text": "before it"}}])
+        self.assertEqual(s.call("play", {"action": "start"})["content"][0]["text"], "before it")
+        self.assertTrue(s.call("play", {"action": "bad"})["isError"])
+        self.assertEqual(s.call("play", {"action": "start"})["content"][0]["text"], "after the refusal")
+
     def test_mock_regex_and_after(self):
         s = self.stub([{"tool": "play", "args": {"action": "re:^sta"}, "after": "tool_groups", "result": {"text": "late"}},
                        {"tool": "play", "args": {"action": "*"}, "result": {"text": "early"}}])

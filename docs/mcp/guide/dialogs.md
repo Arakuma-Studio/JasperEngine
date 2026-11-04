@@ -1,7 +1,7 @@
 # Dialogs: what blocks the editor and how to answer it
 
 `editor_status.dialog` reports the top-most modal; `respond_dialog` answers it. Edits are refused while one
-is open and the refusal's `next` says what to answer. Nested: the one under it comes back when it closes.
+is open and the refusal says what to answer. Nested: the one under it comes back when it closes.
 
 ## What dialog holds
 
@@ -22,7 +22,7 @@ Loading and Creating Project close by themselves: they are not reported and refu
 - `{"values": {"name": "Hero"}}` fills fields; the reply has the new `dialog`.
 - `{"choice": "ok", "values": {"name": "Hero"}}` fills them, then presses.
 
-A refusal is an error with `error` and `next`, and the dialog stays open: a box on top (answer it with `ok`, then
+A refusal is an error that says what to do, and the dialog stays open: a box on top (answer it with `ok`, then
 answer again), a reason in its body, or a button still greyed out. A box whose only choice is `ok` is dismissed by
 your next edit, which says so.
 

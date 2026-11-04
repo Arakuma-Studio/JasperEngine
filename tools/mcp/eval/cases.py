@@ -50,6 +50,8 @@ def err(text):
 RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
                  "fields": [{"name": "name", "type": "text", "value": "RenameMe.lua"}]}
 
+BOX_DIALOG = {"kind": "modal", "title": "File Already Exists", "message": "A file with this name already exists.", "choices": ["ok"]}
+
 RENAME_STATUS = {"text": "Project \"Space Dodge\". Open dialog: \"Rename File\".", "real": True,
                  "structured": {"project": {"name": "Space Dodge"}, "playing": False, "dialog": RENAME_DIALOG}}
 
@@ -856,28 +858,37 @@ CASES = [
         "id": "dialog_refusal_answers_the_box_first",
         "kind": "bad",
         "what_happened": "A taken name opens an error box on top of the prompt: the agent must answer that box, then the prompt again.",
-        "text_at_issue": "respond_dialog's refusal: error and next ('Answer this box with choice ok, then answer ... again')",
+        "text_at_issue": "respond_dialog's refusal, in the error's text: 'Answer this box with choice ok, then answer ... again'",
         "source": "docs/specs/S69-editor-modal.md R3, R4",
         "prompt": "The editor is showing a Rename File prompt for RenameMe.lua. Answer it so the file becomes Taken.lua; "
                   "if that name is in use, use Hero.lua instead.",
         "mocks": [
+            # as the editor: once the name is refused the box is the top-most, until it is answered
+            {"tool": "editor_status", "after": "respond_dialog", "result": RENAME_STATUS},
+            {"tool": "editor_status", "after_error": "respond_dialog", "result": {
+                "text": "Open dialog: \"File Already Exists\".", "real": True,
+                "structured": {"project": {"name": "Space Dodge"}, "playing": False, "dialog": BOX_DIALOG}}},
             {"tool": "editor_status", "result": RENAME_STATUS},
             {"tool": "respond_dialog", "args": {"values": {"name": "re:Taken"}}, "result": {
-                "text": "\"Rename File\" did not take it: File Already Exists: A file with this name already exists.",
+                "text": "\"Rename File\" did not take it: File Already Exists: A file with this name already exists. "
+                        "Answer this box with choice ok, then answer \"Rename File\" again with other values.",
                 "is_error": True, "real": True, "structured": {
-                    "answered": {"title": "Rename File", "choice": "ok"},
-                    "dialog": {"kind": "modal", "title": "File Already Exists", "message": "A file with this name already exists.",
-                               "choices": ["ok"]},
-                    "error": "\"Rename File\" did not take it: File Already Exists: A file with this name already exists.",
-                    "next": "Answer this box with choice ok, then answer \"Rename File\" again with other values."}}},
+                    "answered": {"title": "Rename File", "choice": "ok"}, "dialog": BOX_DIALOG}}},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "after": "respond_dialog", "result": DIALOG_ANSWERED},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "after_error": "respond_dialog", "result": {
+                "text": "\"File Already Exists\" has no field name. Answer it with choice: ok.", "is_error": True, "real": True,
+                "structured": {"dialog": BOX_DIALOG}}},
             {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "result": DIALOG_ANSWERED},
             {"tool": "respond_dialog", "args": {"choice": "ok"}, "result": {
                 "text": "Answered \"File Already Exists\" with ok.", "real": True, "structured": {
                     "answered": {"title": "File Already Exists", "choice": "ok"},
                     "dialog": RENAME_DIALOG}}},
         ],
+        # the box answered and the other name given after it (before it the mock refuses, as the editor does)
         "checks": {"min_calls": {"respond_dialog": 3},
-                   "last_call": {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}}},
+                   "calls": [{"tool": "respond_dialog", "args": {"choice": "ok"}},
+                             {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}}],
+                   "reply_must": ["Hero"]},
         "max_turns": 10,
     },
 ]

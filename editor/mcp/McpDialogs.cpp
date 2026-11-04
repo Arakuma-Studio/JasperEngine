@@ -125,7 +125,6 @@ bool jasperengine::editor::mcp::answerFilePicker(const Json& args, std::string& 
 void jasperengine::editor::mcp::reportDialogAnswer(const CallPtr& call, const std::string& title, const std::string& choice) {
     App& app = call->ctx().app();
     std::string problem = EditorModal::takeAnswerError();
-    std::string next;
     Json data = {{"answered", {{"title", title}, {"choice", choice}}}};
     std::string text = "Answered \"" + title + "\"" + (choice.empty() ? std::string() : " with " + choice) + ".";
     EditorDialogInfo open;
@@ -136,17 +135,14 @@ void jasperengine::editor::mcp::reportDialogAnswer(const CallPtr& call, const st
         // it kept its values and says why, or an error box of its own came up on top of it
         const bool sameDialog = open.title == title;
         if (problem.empty() && !choice.empty() && sameDialog && !open.error.empty()) {
-            problem = "\"" + title + "\" did not take it: " + open.error;
-            next = "Change its values and answer again, or choice cancel.";
+            problem = "\"" + title + "\" did not take it: " + open.error + " Change its values and answer again, or choice cancel.";
         } else if (problem.empty() && !choice.empty() && !sameDialog && open.kind == "modal" && EditorModal::isOpen(title) &&
                    open.choices == std::vector<std::string>{"ok"}) {
-            problem = "\"" + title + "\" did not take it: " + open.title + (open.message.empty() ? std::string() : ": " + open.message);
-            next = "Answer this box with choice ok, then answer \"" + title + "\" again with other values.";
+            problem = "\"" + title + "\" did not take it: " + open.title + (open.message.empty() ? std::string() : ": " + open.message) +
+                      " Answer this box with choice ok, then answer \"" + title + "\" again with other values.";
         }
     }
     if (!problem.empty()) {
-        data["error"] = problem;
-        if (!next.empty()) data["next"] = next;
         call->fail(problem, data);
         return;
     }
@@ -165,7 +161,7 @@ void jasperengine::editor::mcp::respondDialogTool(const CallPtr& call) {
     }
     if (dialog.kind == "file_picker") {
         if (!answerFilePicker(args, error)) {
-            call->fail(error, Json{{"dialog", dialogJson(dialog)}, {"error", error}});
+            call->fail(error, Json{{"dialog", dialogJson(dialog)}});
             return;
         }
         const std::string title = dialog.title;
@@ -174,15 +170,15 @@ void jasperengine::editor::mcp::respondDialogTool(const CallPtr& call) {
     }
     std::map<std::string, EditorDialogValue> values;
     if (!readValues(args, values, error)) {
-        call->fail(error, Json{{"dialog", dialogJson(dialog)}, {"error", error}});
+        call->fail(error, Json{{"dialog", dialogJson(dialog)}});
         return;
     }
     if (choice.empty() && values.empty()) {
-        call->fail("Give a choice, or values for the dialog's fields.", dialogRefusalJson(dialog));
+        call->fail("Give a choice, or values for the dialog's fields.", Json{{"dialog", dialogJson(dialog)}});
         return;
     }
     if (!app.answerDialog(choice, values, error)) {
-        call->fail(error, Json{{"dialog", dialogJson(dialog)}, {"error", error}});
+        call->fail(error, Json{{"dialog", dialogJson(dialog)}});
         return;
     }
     // The answer is pressed in the next frames; report what the editor shows after it. The press

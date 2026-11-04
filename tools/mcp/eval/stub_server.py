@@ -47,6 +47,7 @@ class Stub:
         self.log_path = log_path
         self.calls = 0
         self.seen: list[str] = []  # the tools called so far, for mocks with "after"
+        self.refused: list[str] = []  # the tools that returned an error, for mocks with "after_error"
 
     # -- listing ---------------------------------------------------------------------------
     def listed(self) -> list[dict]:
@@ -102,6 +103,8 @@ class Stub:
         for mock in self.mocks:
             if mock.get("tool") != name or mock.get("_used"):
                 continue
+            if mock.get("after_error") and mock["after_error"] not in self.refused:
+                continue
             if mock.get("after") and mock["after"] not in self.seen:
                 continue
             if not partial_match(mock.get("args") or {}, args):
@@ -124,6 +127,8 @@ class Stub:
             res = error(problem) if problem else self.answer(name, args)
             if not res.get("isError"):
                 self.seen.append(name)
+            else:
+                self.refused.append(name)
         self.log({"n": self.calls, "tool": name, "args": args, "is_error": res.get("isError", False),
                   "unmocked": res.pop("_unmocked", False), "text": first_text(res)})
         return res

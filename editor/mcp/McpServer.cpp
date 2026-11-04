@@ -1164,7 +1164,7 @@ void McpServer::answerDuringFilePicker(const CallPtr& call, const EditorDialogIn
     }
     std::string error;
     if (!answerFilePicker(call->args(), error)) {
-        call->fail(error, Json{{"dialog", dialogJson(picker)}, {"error", error}});
+        call->fail(error, Json{{"dialog", dialogJson(picker)}});
         return;
     }
     // what the code that opened the picker did with the answer takes the main thread's next frames
