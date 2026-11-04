@@ -3361,6 +3361,10 @@ void editor::App::setupRecorder() {
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
+    host.gameScene = [playScene]() -> Scene* {
+        const SceneProject* scene = playScene();
+        return scene ? scene->scene : nullptr;
+    };
     host.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
     host.gameViewSize = [this](int& w, int& h) {
         w = gameWindow->getWidth();

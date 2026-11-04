@@ -1335,6 +1335,7 @@ void ExportWindow::startConfiguredExport(bool overwriteTarget) {
         exportConfig.destinationDir = m_targetDir;
         exportConfig.platform = shipPlatform();
         exportConfig.graphicBackend = playerBackend();
+        exportConfig.iosSimulator = m_iosSimulator;
         exportConfig.androidFormat = AndroidFormat::Aab;
         parseAndroidFormat(android.packageFormat, exportConfig.androidFormat);
         exportConfig.keystorePassword = m_keystorePassword;

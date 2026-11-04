@@ -139,6 +139,11 @@ void RecorderWindow::show() {
     if (session.audioMuted()) {
         ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), ICON_FA_VOLUME_XMARK " The audio is being captured: you hear nothing until it stops.");
     }
+    if (locked && !session.startWarningText().empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.8f, 0.3f, 1.0f));
+        ImGui::TextWrapped(ICON_FA_TRIANGLE_EXCLAMATION " %s", session.startWarningText().c_str());
+        ImGui::PopStyleColor();
+    }
     if (!message.empty()) ImGui::TextWrapped("%s", message.c_str());
     ImGui::Separator();
 
