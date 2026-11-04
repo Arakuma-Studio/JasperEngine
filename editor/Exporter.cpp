@@ -3,6 +3,7 @@
 
 #include "util/SafeWrite.h"
 #include "Exporter.h"
+#include "titleart/TitleArtExport.h"
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
 #include "player/PlayerModules.h"
@@ -1111,6 +1112,8 @@ void editor::Exporter::runExport() {
     if (!copyLua()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!checkHtmlUIReferences()) return;
+    if (isCancelled()) { setError("Build cancelled"); return; }
+    if (!prepareTitleArt()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!cookTextures()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -2699,6 +2702,24 @@ bool editor::Exporter::writeAssetMap() {
     return true;
 }
 
+bool editor::Exporter::prepareTitleArt() {
+    TitleArtExport::Prepared prepared;
+    std::promise<void> done;
+    auto doneFuture = done.get_future();
+    editor::getEditorHost().enqueueMainThreadTask([this, &prepared, &done]() {
+        prepared = TitleArtExport::prepare(project, project->getTitleArtSettings().staleBakesOnExport);
+        done.set_value();
+    });
+    doneFuture.get();
+    for (const std::string& line : prepared.rebaked) Out::info("Rebaked Title Art %s", line.c_str());
+    for (const std::string& line : prepared.warnings) Out::warning("%s", line.c_str());
+    if (!prepared.ok) {
+        setError(prepared.error);
+        return false;
+    }
+    return true;
+}
+
 bool editor::Exporter::cookTextures() {
     setProgress("Cooking textures...", 0.33f);
     cookedTextureSources.clear();
@@ -2803,6 +2824,9 @@ bool editor::Exporter::copyAssets() {
         // Skip project support files that should not ship as assets, and the assets' metas
         if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
 
+        // A Title Art document ships only when a Realtime or Glyph Atlas title reads it (its baked
+        // PNGs are ordinary textures)
+        if (Util::isTitleArtFile(relPath.generic_string()) && !TitleArtExport::isNeeded(project, relPath.generic_string())) continue;
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
             fs::remove(assetsDst / relPath, ec);

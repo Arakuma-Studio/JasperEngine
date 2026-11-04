@@ -1933,3 +1933,43 @@ rest of S82 lands in 6B.
     same `TitleOpContext` helpers and all-or-nothing rule; `registerCreateImporter(extension, fn)`
     serves `edit_title {create: {from}}`. `add_effect`'s optional `layer` means the only top-level
     layer of a one-layer document.
+13. **Implementation (editor stream): two interface additions for the editor's readback.**
+    `TitleTarget::colorTexture()` (a virtual returning the target's colour `TextureRender*`, null
+    by default) lets the editor read a finished `TitleImage` back with `FrameReadback`, and
+    `RenderRequest::outputBitDepth` (8 or 16) asks the output pass for RGBA8 or straight
+    sRGB-encoded RGBA16F, which a 16-bit bake reads with 8 bytes per pixel. The renderer's
+    allocator overrides the first and its output pass honours the second.
+14. **Implementation: one editor seam to the renderer.** `editor/titleart/TitleArtRenderHost` owns
+    the editor's `TitleArtRenderer`, the project's `EditorTitleAssetResolver` (asset database, GUID
+    first) and the readback (straight sRGB RGBA8 or 16-bit, a premultiplied linear image converted).
+    Every bake, render, check, thumbnail and preview goes through it. The renderer's implementation
+    is wave 1 stream B's: `TitleArtEditorSources.cmake` defines `JASPERENGINE_TITLE_ART_RENDERER`
+    for that one file when `render/TitleArtRenderer.cpp` exists; without it the host answers
+    `renderer_unavailable` and the document parts of the tools, checks and CLI still work. Once the
+    renderer is merged the integrator drops the condition and the unavailable branches.
+15. **Implementation: bake details.** The shared frame's sides are rounded to the largest
+    `round_to` of the outputs (grown right and down, then left and up at the canvas edge); each
+    output renders the whole canvas at its scale (capped so the canvas fits the renderer's
+    `maxSide`) and is cut to the frame, and renders the frame region again only when `max_size`
+    reduces its scale. `mask` content is the render's alpha as a 1-channel PNG. The sidecar's
+    `alpha_bounds` are canvas pixels like `frame`, and each output entry also carries its `size`.
+    The recipe's `gpu` is `SystemRender::getDeviceName()`. A first bake writes the PNG's `.meta`
+    (texture import type `ui`, quality `high`, mipmaps, `maxSize` the next power of two) in the
+    same all-or-nothing batch. `export_title`'s format `bake` takes `options.bleed_px` (0..64).
+16. **Implementation: freshness and checks.** `bake_fresh` warns (a document may be left unbaked)
+    and its fix is the `export_title` call, not ops; `check_title {save_baseline}` takes the PNG
+    path to write. A rename of a referenced font changes the document's `path` hint and therefore
+    its source hash: its outputs are stale until rebaked (Auto Bake rebakes them).
+17. **Implementation: editor surface.** Project window thumbnails are cached at
+    `Project::getThumbnailPath` (GUID, size and modification time) and drawn again whenever the
+    document or an asset it reads changes (the document change hook); the preview queue's keys are
+    GUID, size, source hash and bake version as §6.13 says. Several selected `.titleart` files show
+    no shared Inspector: the command palette's **Title Art: Bake All** bakes every document. The
+    Inspector's Open in Title Designer stays hidden until S82 sets `InspectorWindowTitleArt::setOpenInDesigner`.
+    Missing Assets lists an output never baked as "(not baked)" with a **Bake** button.
+18. **Implementation: MCP.** `diff_images` is registered by its own module row ("Image
+    comparison", group `editor_tools`). Numeric arguments whose ranges the budget could not carry
+    (`max_width`, `columns`, the `diff_images` thresholds) are clamped by the handlers.
+    `render_title` keeps the canonical render of each revision it renders (the canvas at
+    min(1, 768 / width)) under `.jasperengine/cache/titleart/renders/<guid>/`, emptied the first time
+    a document renders in an editor session, because `rev` numbers restart with each session.

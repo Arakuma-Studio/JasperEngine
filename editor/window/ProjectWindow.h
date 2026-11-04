@@ -9,6 +9,7 @@
 #include "render/preview/ModelRender.h"
 #include "render/preview/PrefabRender.h"
 #include "pose/PoseThumbnails.h"
+#include "render/preview/TitleArtPreviewRender.h"
 #include "organisation/SavedSearchRows.h"
 
 #include <iostream>
@@ -54,7 +55,8 @@ namespace jasperengine::editor {
         ANIMATION_CLIP,     // .anim (the Animation window; an icon, no thumbnail)
         ANIMATOR_ASSET,     // .controller (the Animator window), .mask, .montage (the Inspector)
         VERTEX_ANIMATION,   // .vat (the Inspector's asset view / the baker; an icon, no thumbnail)
-        PHYSICS_MATERIAL    // .physicsmaterial (the Inspector's asset view; an icon)
+        PHYSICS_MATERIAL,   // .physicsmaterial (the Inspector's asset view; an icon)
+        TITLE_ART           // .titleart (the Inspector's summary; the Title Designer, S82): its fresh output or a render
     };
 
     struct FileEntry {
@@ -174,6 +176,9 @@ namespace jasperengine::editor {
         // and a crowd of three figures for .vat files (vertex animation spec 5.3)
         Texture vertexAnimationIcon;
         std::vector<uint8_t> vertexAnimationIconPixels;
+        // a "T" over a rim for .titleart files (S80 §6.13)
+        Texture titleArtIcon;
+        std::vector<uint8_t> titleArtIconPixels;
         // the Animator assets' icons (S21): a state graph, a figure, a sectioned strip
         Texture animatorControllerIcon;
         std::vector<uint8_t> animatorControllerIconPixels;
@@ -348,6 +353,10 @@ namespace jasperengine::editor {
         PoseAssetThumbnailer poseThumbnailer;
         std::queue<ThumbnailRequest> poseThumbnailQueue;
         void processPoseThumbnails();
+        // .titleart thumbnails: the fresh main output, else a render through TitlePreviewQueue (main thread)
+        TitleArtThumbnailer titleArtThumbnailer{0x50524f4a};
+        std::queue<ThumbnailRequest> titleArtThumbnailQueue;
+        void processTitleArtThumbnails();
         // The prefab files each prefab depends on, read again when its own file changes
         struct PrefabDependencies {
             std::filesystem::file_time_type writeTime{};

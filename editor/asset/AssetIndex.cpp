@@ -10,6 +10,9 @@
 #include "asset/TextReferences.h"
 #include "animation/AnimatorAssetIO.h"
 #include "animation/ModelSubClips.h"
+#include "titleart/TitleArtBake.h"
+#include "titleart/TitleArtIO.h"
+#include "titleart/TitleArtRefs.h"
 #include "util/Util.h"
 
 #include "json.hpp"
@@ -49,7 +52,8 @@ namespace {
         }
     }
 
-    constexpr int indexCacheVersion = 1;
+    // 2: .titleart documents are referrers (S80)
+    constexpr int indexCacheVersion = 2;
 
     std::string indexExtension(const std::string& path) {
         std::string ext = fs::path(path).extension().string();
@@ -163,6 +167,7 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::UIDocument: case AssetType::Stylesheet: case AssetType::Shader: case AssetType::Model:
         case AssetType::ParticleEffect:
         case AssetType::AnimatorController: case AssetType::AnimationMontage:
+        case AssetType::TitleArt:
             return true;
         case AssetType::Script:
             return indexExtension(relativePath) == ".lua";
@@ -336,6 +341,51 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                         const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
                         if (resolution.found()) edge.target = resolution.guid;
                     }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                }
+                break;
+            }
+            case AssetType::TitleArt: {
+                // the fonts, images, SVGs and maps it reads (assets-relative {path, guid}, the JSON
+                // path as field) and the baked PNGs of its outputs. A file of a newer version or
+                // with errors still names what its JSON holds.
+                std::string text;
+                if (!assetio::readFile(full, text)) break;
+                titleart::Json root;
+                titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
+                if (parsed.ok) {
+                    root = std::move(parsed.doc.root);
+                } else {
+                    root = titleart::Json::parse(text, nullptr, false);
+                    if (!root.is_object()) break;
+                }
+                titleart::visitTitleArtRefs(root, [&](const titleart::TitleAssetRef& ref, const std::string& field, titleart::TitleAssetKind kind) {
+                    if (ref.empty()) return true;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::TitleArtAsset;
+                    edge.field = field;
+                    edge.expected = kind == titleart::TitleAssetKind::Font ? AssetType::Font : AssetType::Texture;
+                    edge.target = Guid::parse(ref.guid);
+                    edge.targetPath = ref.path.empty() ? std::string() : toProjectRelative(roots, AssetPathBase::Assets, ref.path);
+                    if (edge.target.isNull() && !edge.targetPath.empty()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                    return true;
+                });
+                const titleart::Json outputs = root.contains("outputs") && root["outputs"].is_array() ? root["outputs"] : titleart::Json::array();
+                const std::string fileName = fs::path(relativePath).filename().string();
+                for (size_t i = 0; i < outputs.size(); i++) {
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::TitleArtOutput;
+                    edge.field = "outputs[" + std::to_string(i) + "]";
+                    edge.expected = AssetType::Texture;
+                    edge.targetPath = fs::path(besideFile(titleArtOutputFileName(fileName, outputs[i]))).lexically_normal().generic_string();
+                    const AssetDatabase::Resolution resolution = database.lookupPath(edge.targetPath);
+                    if (resolution.found()) edge.target = resolution.guid;
                     if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
                 }
                 break;

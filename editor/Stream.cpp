@@ -2947,6 +2947,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (debugNode.IsMap() && debugNode.size()) root["debug"] = debugNode;
     }
 
+    // Project Settings > Title Art: what differs from the defaults
+    {
+        const YAML::Node titleArtNode = project->getTitleArtSettings().encode();
+        if (titleArtNode.IsMap() && titleArtNode.size()) root["titleArt"] = titleArtNode;
+    }
+
     if (!project->getStandalonePrefabs().empty()) {
         YAML::Node prefabsNode;
         for (const fs::path& prefabPath : project->getStandalonePrefabs()) {
@@ -3683,6 +3689,13 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         }
         // a project without the node (older ones) gets the defaults
         project->setDebugSettings(debug);
+    }
+
+    // Project Settings > Title Art; older projects have no node and take the defaults
+    {
+        std::vector<std::string> warnings;
+        project->setTitleArtSettings(TitleArtProjectSettings::decode(node["titleArt"], &warnings));
+        for (const std::string& warning : warnings) Out::warning("Ignoring %s in project settings", warning.c_str());
     }
 
     if (node["standalonePrefabs"]) {

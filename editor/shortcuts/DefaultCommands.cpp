@@ -153,6 +153,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createAudioMixer", "Create Audio Mixer", AppMenuCommand::AssetsCreateAudioMixer);
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
     b.menu("assets.createTitleArt", "Create Title Art", AppMenuCommand::AssetsCreateTitleArt);
+    b.menu("titleArt.bakeAll", "Title Art: Bake All", AppMenuCommand::TitleArtBakeAll);
     b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
     b.menu("assets.open", "Open", AppMenuCommand::AssetsOpen);

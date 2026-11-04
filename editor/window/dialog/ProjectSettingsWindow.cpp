@@ -38,6 +38,7 @@
 #include "command/type/HtmlUiRenderSettingsCmd.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
+#include "titleart/TitleArtSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "imgui_internal.h"
@@ -189,6 +190,7 @@ enum class ProjectCategory {
     NativePlugins,
     Editor,
     Navigation,
+    TitleArt,
     Count
 };
 
@@ -1079,6 +1081,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_shaderCreation = project->getShaderCreationSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
     m_navigation = project->getNavigationSettings();
+    m_titleArt = project->getTitleArtSettings();
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
     snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
@@ -1201,6 +1204,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::NativePlugins: drawNativePluginsSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
+        case ProjectCategory::TitleArt: drawTitleArtSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -2390,6 +2394,37 @@ void ProjectSettingsWindow::drawNavigationSettings() {
             ImGui::EndTable();
         }
         drawSectionNote("Agent types and areas: Window > AI > Navigation (Agents and Areas tabs).");
+    }
+    endSettingsPanel();
+}
+
+void ProjectSettingsWindow::drawTitleArtSettings() {
+    const TitleArtProjectSettings defaults;
+    if (beginSettingsPanel("##TitleArtSettingsPanel")) {
+        if (beginSettingsTable("##SettingsTable")) {
+            if (settingsui::beginRow("title_art.auto_bake")) {
+                if (projectBeginSettingsRow("Auto Bake", m_titleArt.autoBake != defaults.autoBake)) m_titleArt.autoBake = defaults.autoBake;
+                ImGui::Checkbox("##TitleArtAutoBake", &m_titleArt.autoBake);
+                endSettingsRow("A Title Art document whose outputs exist rebakes them 500 ms after its last edit (and after an outside "
+                               "edit or a change of a font or image it uses). Bakes are not undo steps.");
+            }
+            if (settingsui::beginRow("title_art.stale_bakes_on_export")) {
+                if (projectBeginSettingsRow("Stale Bakes On Export", m_titleArt.staleBakesOnExport != defaults.staleBakesOnExport)) {
+                    m_titleArt.staleBakesOnExport = defaults.staleBakesOnExport;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::BeginCombo("##TitleArtStaleBakes", titleStaleBakesPolicyLabel(m_titleArt.staleBakesOnExport))) {
+                    for (TitleStaleBakesPolicy policy : {TitleStaleBakesPolicy::Rebake, TitleStaleBakesPolicy::Warn, TitleStaleBakesPolicy::Fail}) {
+                        if (ImGui::Selectable(titleStaleBakesPolicyLabel(policy), policy == m_titleArt.staleBakesOnExport)) m_titleArt.staleBakesOnExport = policy;
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("Outputs that are stale or were never baked when an export starts: Rebake bakes them first, Warn lists "
+                               "them in the Console, Fail stops the export naming them.");
+            }
+            ImGui::EndTable();
+        }
+        drawSectionNote("Baked PNGs ship as ordinary textures; a .titleart ships only when a Realtime or Glyph Atlas title reads it.");
     }
     endSettingsPanel();
 }
@@ -4533,6 +4568,13 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: every scene's crowds and grids read them at their next fixed tick
     if (m_navigation != m_project->getNavigationSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new NavigationSettingsCmd(m_project, m_navigation));
+    }
+
+    // Title Art: one undoable step of the project history
+    if (m_titleArt != m_project->getTitleArtSettings()) {
+        auto* command = new TitleArtSettingsCmd(m_project, m_project->getTitleArtSettings(), m_titleArt);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
     }
 
     // Debug: one undoable step of the project history

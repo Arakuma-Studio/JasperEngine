@@ -312,6 +312,8 @@ namespace jasperengine::editor {
         bool copyGenerated();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
+        // S80 R35: Title Art outputs stale or missing before the textures cook
+        bool prepareTitleArt();
         bool cookTextures();
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse

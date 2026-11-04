@@ -68,6 +68,20 @@ namespace jasperengine::editor {
         static void setFilesWrittenHook(std::function<void(const std::vector<std::filesystem::path>&)> hook);
         // the open document of an absolute path, null when none
         static std::shared_ptr<TitleArtDocument> find(const std::filesystem::path& absolute);
+        // called with every document file a commit, an undo or a redo wrote, and with every
+        // document an outside edit reloaded (Auto Bake, previews and thumbnails)
+        static void setChangedHook(std::function<void(const std::vector<std::filesystem::path>&)> hook);
+        static void notifyChanged(const std::vector<std::filesystem::path>& paths);
+
+        // R5: a file or directory moved (AssetOps::move): open documents at or under `oldPath`
+        // follow it, and the recipes of the derived PNGs of every document now at or under
+        // `newPath` name its new path (their source GUID is unchanged)
+        static void filesMoved(const std::filesystem::path& oldPath, const std::filesystem::path& newPath);
+        // R5: assets moved (GUID -> new absolute path): every document naming one of them by GUID
+        // (the dependency index) gets that reference's `path` hint rewritten; the rewritten files
+        static std::vector<std::filesystem::path> relinkGuids(Project* project, const std::map<std::string, std::filesystem::path>& moved);
+        // a baked PNG's recipe rewritten to name `documentAssetPath` (nothing when it already does)
+        static bool rewriteRecipeSource(const std::filesystem::path& png, const std::string& documentAssetPath);
 
         const std::filesystem::path& absolutePath() const { return filePath; }
         const std::string& projectPath() const { return relativePath; }

@@ -95,6 +95,10 @@
 #include "htmlui/HtmlUiAutoImport.h"
 #include "render/preview/PoseRender.h"
 #include "render/preview/VatPreviewRender.h"
+#include "titleart/TitleArtBaker.h"
+#include "util/ProjectChecks.h"
+#include "titleart/TitleArtDocument.h"
+#include "titleart/TitlePreviewQueue.h"
 #include "util/FileUtils.h"
 #include "io/UserSettings.h"
 #include "io/UserSettingsStore.h"
@@ -1134,6 +1138,14 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->assetsCreateShakePreset();
+            break;
+        case AppMenuCommand::TitleArtBakeAll:
+            // every .titleart of the assets folder (or the selected ones), in the background
+            if (!project.getProjectPath().empty()) {
+                for (const std::filesystem::path& document : ProjectChecks::findProjectFiles(project.getAssetsPath(), {titleart::TITLE_ART_EXTENSION})) {
+                    TitleArtAutoBake::get().requestBake(&project, document, {}, false);
+                }
+            }
             break;
         case AppMenuCommand::AssetsCreateTitleArt:
             projectWindow->assetsCreateTitleArt();
@@ -2336,6 +2348,17 @@ void editor::App::setup() {
 
     // a queued offscreen pose render keeps the loop drawing until processFrame serves it
     PoseRender::setFrameRequester([this]() { requestRedraw(); });
+
+    // Title Art (S80 R6, R34, R50): a changed document (commit, undo, redo, outside edit, a font
+    // or image it reads) rebakes with Auto Bake and its thumbnail is drawn again
+    TitleArtDocument::setChangedHook([this](const std::vector<std::filesystem::path>& paths) {
+        if (project.getProjectPath().empty()) return;
+        for (const std::filesystem::path& path : paths) {
+            TitleArtAutoBake::get().documentChanged(&project, path);
+            if (projectWindow) projectWindow->notifyResourceFileChanged(path);
+        }
+        requestRedraw();
+    });
 
     // Initialize application settings
     initializeSettings();
@@ -4049,6 +4072,12 @@ void editor::App::engineRender(){
     }
     // the Vertex Animation Baker's preview views (private scenes too, drawn the same way)
     VatPreviewView::processFrame();
+    // Title Art: every preview of the editor within one budget (S80 R45), then Auto Bake's slice
+    TitlePreviewQueue::editor().runFrame(4.0);
+    if (!project.getProjectPath().empty()) TitleArtAutoBake::get().tick(&project);
+    if (TitlePreviewQueue::editor().stats().queued > 0 || !TitleArtAutoBake::get().idle()) {
+        requestRedraw();
+    }
 
     if (benchmarkEnabled)
         tickBenchmark();

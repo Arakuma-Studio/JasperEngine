@@ -8,10 +8,19 @@
 #include "command/CommandNames.h"
 #include "command/type/WriteFilesCmd.h"
 #include "titleart/TitleArtIO.h"
+#include "titleart/TitleArtRefs.h"
+#include "TitleArtBake.h"
+#include "Out.h"
+#include "asset/AssetFileWrite.h"
+#include "asset/AssetIndex.h"
+#include "asset/Guid.h"
+#include "io/watch/FileWatchService.h"
 #include "util/FileUtils.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
+#include <optional>
+#include <set>
 #include <system_error>
 
 using namespace jasperengine;
@@ -25,6 +34,7 @@ namespace {
         fs::path projectPath;
         std::map<std::string, std::weak_ptr<TitleArtDocument>> documents;
         std::function<void(const std::vector<fs::path>&)> filesWrittenHook;
+        std::function<void(const std::vector<fs::path>&)> changedHook;
     };
 
     Registry& registry() {
@@ -60,6 +70,7 @@ namespace {
     void afterWrite(const std::vector<fs::path>& changed) {
         TitleArtDocument::filesChanged(changed);
         if (registry().filesWrittenHook) registry().filesWrittenHook(changed);
+        TitleArtDocument::notifyChanged(changed);
     }
 
     // the absolute path of a project-relative, asset-relative or absolute path
@@ -190,6 +201,129 @@ void TitleArtDocument::closeAll() {
 
 void TitleArtDocument::setFilesWrittenHook(std::function<void(const std::vector<fs::path>&)> hook) {
     registry().filesWrittenHook = std::move(hook);
+}
+
+void TitleArtDocument::setChangedHook(std::function<void(const std::vector<fs::path>&)> hook) {
+    registry().changedHook = std::move(hook);
+}
+
+void TitleArtDocument::notifyChanged(const std::vector<fs::path>& paths) {
+    if (registry().changedHook && !paths.empty()) registry().changedHook(paths);
+}
+
+void TitleArtDocument::filesMoved(const fs::path& oldPath, const fs::path& newPath) {
+    Registry& reg = registry();
+    const std::string oldKey = key(oldPath);
+    std::vector<std::shared_ptr<TitleArtDocument>> moved;
+    for (auto it = reg.documents.begin(); it != reg.documents.end();) {
+        std::shared_ptr<TitleArtDocument> document = it->second.lock();
+        if (!document) {
+            it = reg.documents.erase(it);
+            continue;
+        }
+        if (it->first == oldKey || it->first.compare(0, oldKey.size() + 1, oldKey + "/") == 0) {
+            moved.push_back(document);
+            it = reg.documents.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (const std::shared_ptr<TitleArtDocument>& document : moved) {
+        const fs::path rest = document->filePath.lexically_relative(oldPath.lexically_normal());
+        const fs::path absolute = (rest == "." ? newPath : newPath / rest).lexically_normal();
+        document->filePath = absolute;
+        fs::path relative;
+        if (document->project && isInside(document->project->getProjectPath(), absolute, &relative)) document->relativePath = relative.generic_string();
+        if (document->project) document->assetRelative = document->project->normalizeToAssetsRelative(absolute).generic_string();
+        reg.documents[key(absolute)] = document;
+        document->notify(TitleArtChangeOrigin::History);
+    }
+
+    // the recipes of the derived PNGs that moved with their documents (AssetOps' pairing)
+    Project* project = reg.project;
+    std::vector<fs::path> documents;
+    std::error_code ec;
+    if (fs::is_regular_file(newPath, ec)) {
+        if (Util::isTitleArtFile(newPath.string())) documents.push_back(newPath);
+    } else if (fs::is_directory(newPath, ec)) {
+        for (const fs::path& file : ProjectChecks::findProjectFiles(newPath, {titleart::TITLE_ART_EXTENSION})) documents.push_back(file);
+    }
+    std::vector<fs::path> rewritten;
+    for (const fs::path& document : documents) {
+        const std::string assetPath = project ? project->normalizeToAssetsRelative(document).generic_string() : document.filename().string();
+        for (const fs::path& file : titleArtDerivedFiles(document)) {
+            if (!Util::isImageFile(file.string())) continue;
+            if (rewriteRecipeSource(file, assetPath)) rewritten.push_back(file);
+        }
+    }
+    if (!rewritten.empty() && reg.filesWrittenHook) reg.filesWrittenHook(rewritten);
+}
+
+bool TitleArtDocument::rewriteRecipeSource(const fs::path& png, const std::string& documentAssetPath) {
+    std::string error;
+    std::optional<TitleBakeRecipe> recipe = readTitleBakeRecipe(png, &error);
+    if (!recipe || recipe->sourcePath == documentAssetPath) return false;
+    recipe->sourcePath = documentAssetPath;
+    std::string bytes;
+    if (!assetio::readFile(png, bytes)) return false;
+    std::vector<uint8_t> out;
+    if (!insertTitleBakeRecipe(std::vector<uint8_t>(bytes.begin(), bytes.end()), *recipe, out, error)) return false;
+    ScopedExpectedWrite expected(png);
+    if (!FileUtils::writeFileReplacing(png, std::string(out.begin(), out.end()))) {
+        Out::warning("Could not update the recipe of %s", png.string().c_str());
+        return false;
+    }
+    expected.reported();
+    return true;
+}
+
+std::vector<fs::path> TitleArtDocument::relinkGuids(Project* project, const std::map<std::string, fs::path>& moved) {
+    std::vector<fs::path> written;
+    if (!project || project->getProjectPath().empty() || moved.empty()) return written;
+    // the documents naming a moved GUID, from the dependency index
+    std::set<std::string> referrers;
+    for (const auto& entry : moved) {
+        const Guid guid = Guid::parse(entry.first);
+        if (guid.isNull()) continue;
+        for (const DepEdge& edge : project->getAssetIndex().referencesTo(guid, std::string(), false, 4096)) {
+            if (edge.kind != DepEdgeKind::TitleArtAsset) continue;
+            const std::string path = project->getAssetIndex().referrerPath(edge.referrer);
+            if (Util::isTitleArtFile(path)) referrers.insert(path);
+        }
+    }
+    for (const std::string& relative : referrers) {
+        const fs::path file = (project->getProjectPath() / fs::path(relative)).lexically_normal();
+        std::string text;
+        if (!ProjectChecks::readFile(file, text)) continue;
+        titleart::TitleArtParseResult parsed = titleart::parseTitleArt(text);
+        if (!parsed.ok) continue;
+        bool changed = false;
+        titleart::visitTitleArtRefs(parsed.doc.root, [&](titleart::Json& ref, const std::string&, titleart::TitleAssetKind) {
+            const titleart::TitleAssetRef current = titleart::decodeAssetRef(ref);
+            const auto found = moved.find(current.guid);
+            if (current.guid.empty() || found == moved.end()) return true;
+            const std::string form = project->normalizeToAssetsRelative(found->second).generic_string();
+            if (fs::path(current.path).lexically_normal().generic_string() == form) return true;
+            ref = titleart::encodeAssetRef({form, current.guid});
+            changed = true;
+            return true;
+        });
+        if (!changed) continue;
+        const std::string newText = titleart::writeTitleArt(parsed.doc);
+        if (newText == text) continue;
+        if (!FileUtils::writeFileReplacing(file, newText)) {
+            Out::warning("Could not update the asset paths of %s", file.string().c_str());
+            continue;
+        }
+        written.push_back(file);
+    }
+    if (!written.empty()) {
+        filesChanged(written);
+        // the MCP file sync: rewritten by the editor, not changed outside it
+        if (registry().filesWrittenHook) registry().filesWrittenHook(written);
+        notifyChanged(written);
+    }
+    return written;
 }
 
 std::shared_ptr<TitleArtDocument> TitleArtDocument::find(const fs::path& absolute) {
