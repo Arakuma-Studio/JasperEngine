@@ -13,6 +13,7 @@
 #   4. The emulator (tools/android-emulator-test.sh; needs KVM): the APK installs, runs, relaunches and
 #      its screen is compared with tools/fixtures/unified-lighting/golden/android/screen.png.
 #      The bundle goes through bundletool build-apks and install-apks and is compared the same way.
+#      A texture that fails to load fails the run: the picture would still look like a game.
 #
 #   tools/build.sh linux                                   # the editor install
 #   PLAYER_PLATFORM=android PLAYER_ANDROID_ABIS=x86_64 PLAYER_FLAVOURS=development tools/build.sh players
@@ -50,6 +51,8 @@ make_project() {
 }
 make_project debug
 python3 tools/ci/freeze_unified_lighting.py "$OUT/debug"
+# the emulator's renderer has no ASTC: without ETC2 cooks its textured objects would not draw
+printf 'texture:\n  androidEtc2Fallback: true\n' >> "$OUT/debug/project.yaml"
 make_project release '  keystore:' "    path: ../release.jks" '    alias: game'
 make_project release-ec '  keystore:' "    path: ../release-ec.p12" '    alias: ec'
 make_project wrong-alias '  keystore:' "    path: ../release.jks" '    alias: nosuchkey'
@@ -154,6 +157,7 @@ echo "ok: the packaging, signing and bundletool checks passed"
 
 # ---- 4. on the emulator: the same picture from the APK and from the bundle
 GOLDEN=tools/fixtures/unified-lighting/golden/android
-tools/android-emulator-test.sh "$OUT/debug-apk/UnifiedLighting.apk" --out "$OUT/emulator-apk" --timeout 600 --relaunch --golden "$GOLDEN"
-tools/android-emulator-test.sh "$OUT/debug-aab/UnifiedLighting.aab" --bundletool "$OUT/bundletool.jar" --out "$OUT/emulator-aab" --timeout 600 --golden "$GOLDEN"
+FORBID=(--forbid "Failed to load cooked texture")
+tools/android-emulator-test.sh "$OUT/debug-apk/UnifiedLighting.apk" --out "$OUT/emulator-apk" --timeout 600 --relaunch --golden "$GOLDEN" "${FORBID[@]}"
+tools/android-emulator-test.sh "$OUT/debug-aab/UnifiedLighting.aab" --bundletool "$OUT/bundletool.jar" --out "$OUT/emulator-aab" --timeout 600 --golden "$GOLDEN" "${FORBID[@]}"
 echo "PASS: Android packaging (APK and bundle: built, signed, installed, run, compared)"
