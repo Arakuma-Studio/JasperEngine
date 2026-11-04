@@ -41,8 +41,7 @@
 #include "LuaBridge.h"
 
 #include <chrono>
-#include <cstdlib>
-#include <thread>
+#include <cstdio>
 #include <cmath>
 #include <string>
 #include <vector>
