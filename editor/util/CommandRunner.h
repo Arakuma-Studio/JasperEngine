@@ -95,7 +95,8 @@ namespace jasperengine::editor {
         // by name case-insensitively, as a CreateProcess environment block wants.
         static Environment parseEnvironmentOutput(const std::string& bytes);
 
-        // This process's environment (Windows: without the "=C:" drive entries)
+        // This process's environment (Windows: with the "=C:" drive entries, which a cmd.exe child
+        // reads its drives' current folders from)
         static Environment currentEnvironment();
         // Sets NAME (case-insensitively on Windows, keeping the block sorted), adding it when missing
         static void setVariable(Environment& env, const std::string& name, const std::string& value);

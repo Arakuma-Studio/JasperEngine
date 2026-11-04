@@ -374,8 +374,10 @@ editor::CommandRunner::Environment editor::CommandRunner::currentEnvironment() {
     if (!block) return env;
     for (const wchar_t* entry = block; *entry; entry += std::wcslen(entry) + 1) {
         const std::string text = narrow(entry, std::wcslen(entry));
-        const size_t eq = text.find('=');
-        if (eq == std::string::npos || eq == 0) continue;   // the "=C:=C:\\..." drive entries
+        // the "=C:=C:\\..." drive entries are kept (their name starts with '='): a cmd.exe child
+        // finds each drive's current folder in them
+        const size_t eq = text.find('=', 1);
+        if (eq == std::string::npos) continue;
         setVariable(env, text.substr(0, eq), text.substr(eq + 1));
     }
     FreeEnvironmentStringsW(block);
