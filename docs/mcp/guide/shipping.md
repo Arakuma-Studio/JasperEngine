@@ -47,15 +47,6 @@ pinned; iOS: a Mac with a full Xcode). An iOS device build without a team stops 
 Before exporting: the scenes saved, the Console clean in play, the start scene right
 (`edit_build_scenes`).
 
-## The shader list
-
-`get_build_info`, `generate_shaders` without `shaders`, Play's startup, Build Settings and every
-export name the same shaders, closed scenes included.
-
-- `shaders_complete: false`: the list is not finished. Do what `next` says before you rely on it.
-- `shaders_unreadable_scenes` (a `generate_shaders` job: `result.unreadable_scenes`): scenes whose
-  file cannot be read, with why. Fix the file: until then the list holds what it last knew of them.
-
 ## Running a build
 
 `run_build` starts a desktop build. With `quit_after` (frames), `fixed_fps`, `after_ready`

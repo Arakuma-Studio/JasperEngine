@@ -1,5 +1,4 @@
-"""The project's shader list with closed scenes (docs/specs/S64-shader-lists.md, docs/mcp/guide/
-shipping.md "The shader list"): get_build_info, generate_shaders, Play's startup and an export name
+"""The project's shader list with closed scenes (docs/specs/S64-shader-lists.md): get_build_info, generate_shaders, Play's startup and an export name
 the same shaders whatever each closed scene's file saved (AC1, AC2, R5), an unchanged project answers
 from the cache by file hash, also after a restart (AC3), work past the budget is a job (R3), and a
 scene that cannot be read is named (R4)."""
@@ -196,7 +195,8 @@ async def test_past_the_budget_is_a_job():
         info = await ed.call("get_build_info", include_shaders=True)
         ed.check_eq(info["shaders_complete"], False, "no time for the closed scenes")
         ed.check(sorted(info["shaders_pending_scenes"]), f"names them: {info}")
-        ed.check(info["shaders_job_id"] in info["next"] and "get_job" in info["next"], f"how to finish: {info['next']}")
+        said = (await ed.call_raw("get_build_info")).text
+        ed.check(f"get_job {info['shaders_job_id']}" in said, f"how to finish: {said}")
         again = await ed.call("get_build_info")
         ed.check_eq(again["shaders_job_id"], info["shaders_job_id"], "one job at a time")
         job = await finish_job(ed, info["shaders_job_id"])

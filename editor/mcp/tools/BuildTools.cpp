@@ -1480,8 +1480,6 @@ void getBuildInfoTool(const CallPtr& call) {
         const JobPtr job = shaderListJob(ctx, project);
         data["shaders_pending_scenes"] = list.pendingScenes;
         data["shaders_job_id"] = job->id();
-        data["next"] = "This list is incomplete. get_job {job_id: \"" + job->id() + "\"} until it ends, then get_build_info again. "
-                       "build_project and generate_shaders finish it themselves.";
     }
 
     const ShaderOverrides& overrides = project->getShaderOverrides();
@@ -1519,7 +1517,10 @@ void getBuildInfoTool(const CallPtr& call) {
                        (missing.empty() ? "available" : "missing tools") + "; Web: " + (emsdk.found ? "available" : "no emsdk") +
                        "; source export: available. " + std::to_string(scenes.size()) + " scene(s) in the build, " +
                        std::to_string(included) + " shader(s).";
-    if (!list.complete()) text += " The shader list is incomplete: " + std::to_string(list.pendingScenes.size()) + " closed scene(s) left, see next.";
+    if (!list.complete()) {
+        text += " The shader list is incomplete, " + std::to_string(list.pendingScenes.size()) + " closed scene(s) left: get_job " +
+                data["shaders_job_id"].get<std::string>() + " until it ends, then get_build_info again.";
+    }
     for (const UnreadableScene& scene : list.unreadableScenes) text += " Cannot read scene " + scene.path + ": " + scene.error + ".";
     call->ok(text, data);
 }

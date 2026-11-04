@@ -46,6 +46,8 @@ which can be stale (63 listed instead of 71 in one test). A missing key means a 
   are refreshed before it runs (`refreshClosedSceneShaderKeys`), and `finishBuildShaderKeys` holds what a build adds and
   removes for every consumer, so export-pipeline's filter of additions and the warm-up list belongs there rather than
   in `resolveShaderKeys`. Its dead-fork drop in `collectBuildShaderKeys` also covers keys read from the cache.
-- **`next`, no new description text.** How to finish an incomplete list is in the result (`next` in
-  `structuredContent`, AGENTS.md "MCP text"); tool descriptions are unchanged.
+- **How to finish is the result's own fields.** `shaders_complete`, `shaders_pending_scenes` and `shaders_job_id` (and
+  a line in the text summary); no `next`, guide section or new description text. The eval case
+  `bad_shader_list_incomplete` passed 4/4 with and without a `next` hint, so AGENTS.md "MCP text" says to cut it; what
+  it fails without is `shaders_job_id`.
 - **The fixture half of AC2 is `test_shader_lists_fixture.py`**, outside the CI list: the fixture is not in git.
