@@ -123,16 +123,6 @@ namespace jasperengine::editor {
         // the scene's AI Navigation overlay (getTileLabels); null before its Scene view drew it
         NavigationOverlay* overlayOf(uint32_t sceneId);
 
-        // The export preflight and the CLI check (spec R42): every surface of the loaded scenes
-        // that is not baked, cannot be read or is out of date, as findings (tool "navigation")
-        struct Finding {
-            std::string scenePath;
-            std::string sceneName;
-            std::string entityName;
-            std::string message;
-        };
-        static std::vector<Finding> checkSurfaces(Project* project, size_t* surfaces = nullptr);
-
         // Stale bake (spec R32, R42): tiles whose inputs differ from the baked ones, -1 when
         // not collected (inputReport's count)
         int dirtyTiles(Project* project, uint32_t sceneId, Entity surface);

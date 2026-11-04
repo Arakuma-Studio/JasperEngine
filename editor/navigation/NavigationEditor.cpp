@@ -569,45 +569,6 @@ void NavigationEditor::endBrushStroke(Project* project) {
     if (SceneProject* sceneProject = project->getScene(done->sceneId)) sceneProject->needUpdateRender = true;
 }
 
-std::vector<NavigationEditor::Finding> NavigationEditor::checkSurfaces(Project* project, size_t* surfaces) {
-    std::vector<Finding> findings;
-    size_t count = 0;
-    for (SceneProject& sceneProject : project->getScenes()) {
-        if (!sceneProject.scene || sceneProject.filepath.empty()) continue;
-        NavigationSystem* system = systemOf(sceneProject);
-        if (!system) continue;
-        auto array = sceneProject.scene->getComponentArray<NavMeshSurfaceComponent>();
-        std::vector<Entity> entities;
-        for (size_t i = 0; i < array->size(); i++) entities.push_back(array->getEntity(i));
-        std::sort(entities.begin(), entities.end());
-        for (Entity entity : entities) {
-            const NavMeshSurfaceComponent& surface = sceneProject.scene->getComponent<NavMeshSurfaceComponent>(entity);
-            if (!surface.enabled) continue;
-            count++;
-            Finding finding;
-            finding.scenePath = sceneProject.filepath.generic_string();
-            finding.sceneName = sceneProject.name;
-            finding.entityName = sceneProject.scene->getEntityName(entity);
-            const NavSurfaceStatus status = system->getSurfaceStatus(entity);
-            if (surface.navMeshData.empty()) {
-                finding.message = "NavMesh Surface '" + finding.entityName + "' is not baked: its agents find no navmesh in the build "
-                                  "(Bake, or bake_navigation)";
-            } else if (!status.loadError.empty() || status.state == NavBakeState::NOT_BAKED) {
-                finding.message = "NavMesh Surface '" + finding.entityName + "': its navmesh '" + surface.navMeshData.path +
-                                  "' cannot be read" + (status.loadError.empty() ? std::string() : " (" + status.loadError + ")") + "; bake it again";
-            } else {
-                const int dirty = system->countDirtyTiles(entity);
-                if (dirty <= 0) continue;
-                finding.message = "NavMesh Surface '" + finding.entityName + "' is out of date: " + std::to_string(dirty) +
-                                  " tile(s) changed since its bake (Bake, or bake_navigation)";
-            }
-            findings.push_back(std::move(finding));
-        }
-    }
-    if (surfaces) *surfaces = count;
-    return findings;
-}
-
 // ---------------------------------------------------------------- link handles
 
 bool NavigationEditor::beginLinkHandleDrag(Project* project, uint32_t sceneId, Scene* scene, const Ray& ray,
