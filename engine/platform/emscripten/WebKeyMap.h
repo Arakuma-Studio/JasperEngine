@@ -100,6 +100,18 @@ namespace jasperengine::web {
         {"F10", D_KEY_F10},
         {"F11", D_KEY_F11},
         {"F12", D_KEY_F12},
+        {"F13", D_KEY_F13},
+        {"F14", D_KEY_F14},
+        {"F15", D_KEY_F15},
+        {"F16", D_KEY_F16},
+        {"F17", D_KEY_F17},
+        {"F18", D_KEY_F18},
+        {"F19", D_KEY_F19},
+        {"F20", D_KEY_F20},
+        {"F21", D_KEY_F21},
+        {"F22", D_KEY_F22},
+        {"F23", D_KEY_F23},
+        {"F24", D_KEY_F24},
         {"Numpad0", D_KEY_KP_0},
         {"Numpad1", D_KEY_KP_1},
         {"Numpad2", D_KEY_KP_2},
@@ -120,12 +132,18 @@ namespace jasperengine::web {
         {"ShiftLeft", D_KEY_LEFT_SHIFT},
         {"ControlLeft", D_KEY_LEFT_CONTROL},
         {"AltLeft", D_KEY_LEFT_ALT},
+        {"MetaLeft", D_KEY_LEFT_SUPER},
+        // the names browsers used before MetaLeft / MetaRight / ContextMenu
         {"OSLeft", D_KEY_LEFT_SUPER},
         {"ShiftRight", D_KEY_RIGHT_SHIFT},
         {"ControlRight", D_KEY_RIGHT_CONTROL},
         {"AltRight", D_KEY_RIGHT_ALT},
+        {"MetaRight", D_KEY_RIGHT_SUPER},
         {"OSRight", D_KEY_RIGHT_SUPER},
+        {"ContextMenu", D_KEY_MENU},
         {"Menu", D_KEY_MENU},
+        // the ISO key between left Shift and Z (GLFW's WORLD_2)
+        {"IntlBackslash", D_KEY_WORLD_2},
     };
 
     // 0: no engine key
@@ -137,15 +155,21 @@ namespace jasperengine::web {
     }
 
     // the legacy which/keyCode, for events without a code; location: KeyboardEvent.location
+    // the legacy which/keyCode, for events without a code (Android soft keyboards, old browsers);
+    // location: KeyboardEvent.location (2 the right-hand key, 3 the numeric keypad)
     inline int keyFromKeyCode(int keyCode, int location){
-        (void)location;
+        constexpr int LOCATION_RIGHT = 2;
+        constexpr int LOCATION_NUMPAD = 3;
+        const bool right = location == LOCATION_RIGHT;
+        // F13-F24
+        if (keyCode >= 124 && keyCode <= 135) return D_KEY_F13 + (keyCode - 124);
         switch (keyCode){
-            case 8: return D_KEY_DELETE;
+            case 8: return D_KEY_BACKSPACE;
             case 9: return D_KEY_TAB;
-            case 13: return D_KEY_ENTER;
-            case 16: return D_KEY_LEFT_SHIFT;
-            case 17: return D_KEY_LEFT_CONTROL;
-            case 18: return D_KEY_LEFT_ALT;
+            case 13: return location == LOCATION_NUMPAD ? D_KEY_KP_ENTER : D_KEY_ENTER;
+            case 16: return right ? D_KEY_RIGHT_SHIFT : D_KEY_LEFT_SHIFT;
+            case 17: return right ? D_KEY_RIGHT_CONTROL : D_KEY_LEFT_CONTROL;
+            case 18: return right ? D_KEY_RIGHT_ALT : D_KEY_LEFT_ALT;
             case 19: return D_KEY_PAUSE;
             case 20: return D_KEY_CAPS_LOCK;
             case 27: return D_KEY_ESCAPE;
@@ -158,73 +182,23 @@ namespace jasperengine::web {
             case 38: return D_KEY_UP;
             case 39: return D_KEY_RIGHT;
             case 40: return D_KEY_DOWN;
+            case 44: return D_KEY_PRINT_SCREEN;
             case 45: return D_KEY_INSERT;
             case 46: return D_KEY_DELETE;
-            case 48: return D_KEY_0;
-            case 49: return D_KEY_1;
-            case 50: return D_KEY_2;
-            case 51: return D_KEY_3;
-            case 52: return D_KEY_4;
-            case 53: return D_KEY_5;
-            case 54: return D_KEY_6;
-            case 55: return D_KEY_7;
-            case 56: return D_KEY_8;
-            case 57: return D_KEY_9;
-            case 65: return D_KEY_A;
-            case 66: return D_KEY_B;
-            case 67: return D_KEY_C;
-            case 68: return D_KEY_D;
-            case 69: return D_KEY_E;
-            case 70: return D_KEY_F;
-            case 71: return D_KEY_G;
-            case 72: return D_KEY_H;
-            case 73: return D_KEY_I;
-            case 74: return D_KEY_J;
-            case 75: return D_KEY_K;
-            case 76: return D_KEY_L;
-            case 77: return D_KEY_M;
-            case 78: return D_KEY_N;
-            case 79: return D_KEY_O;
-            case 80: return D_KEY_P;
-            case 81: return D_KEY_Q;
-            case 82: return D_KEY_R;
-            case 83: return D_KEY_S;
-            case 84: return D_KEY_T;
-            case 85: return D_KEY_U;
-            case 86: return D_KEY_V;
-            case 87: return D_KEY_W;
-            case 88: return D_KEY_X;
-            case 89: return D_KEY_Y;
-            case 90: return D_KEY_Z;
-            case 91: return D_KEY_LEFT_SUPER;
+            // Firefox's own codes for ; = -
+            case 59: return D_KEY_SEMICOLON;
+            case 61: return D_KEY_EQUAL;
+            case 173: return D_KEY_MINUS;
+            // the Windows and Command keys (224: Firefox's Meta)
+            case 91: return right ? D_KEY_RIGHT_SUPER : D_KEY_LEFT_SUPER;
             case 92: return D_KEY_RIGHT_SUPER;
-            case 96: return D_KEY_KP_0;
-            case 97: return D_KEY_KP_1;
-            case 98: return D_KEY_KP_2;
-            case 99: return D_KEY_KP_3;
-            case 100: return D_KEY_KP_4;
-            case 101: return D_KEY_KP_5;
-            case 102: return D_KEY_KP_6;
-            case 103: return D_KEY_KP_7;
-            case 104: return D_KEY_KP_8;
-            case 105: return D_KEY_KP_9;
+            case 224: return right ? D_KEY_RIGHT_SUPER : D_KEY_LEFT_SUPER;
+            case 93: return D_KEY_MENU;
             case 106: return D_KEY_KP_MULTIPLY;
             case 107: return D_KEY_KP_ADD;
             case 109: return D_KEY_KP_SUBTRACT;
             case 110: return D_KEY_KP_DECIMAL;
             case 111: return D_KEY_KP_DIVIDE;
-            case 112: return D_KEY_F1;
-            case 113: return D_KEY_F2;
-            case 114: return D_KEY_F3;
-            case 115: return D_KEY_F4;
-            case 116: return D_KEY_F5;
-            case 117: return D_KEY_F6;
-            case 118: return D_KEY_F7;
-            case 119: return D_KEY_F8;
-            case 120: return D_KEY_F9;
-            case 121: return D_KEY_F10;
-            case 122: return D_KEY_F11;
-            case 123: return D_KEY_F12;
             case 144: return D_KEY_NUM_LOCK;
             case 145: return D_KEY_SCROLL_LOCK;
             case 186: return D_KEY_SEMICOLON;
@@ -236,9 +210,18 @@ namespace jasperengine::web {
             case 192: return D_KEY_GRAVE_ACCENT;
             case 219: return D_KEY_LEFT_BRACKET;
             case 220: return D_KEY_BACKSLASH;
+            case 221: return D_KEY_RIGHT_BRACKET;
             case 222: return D_KEY_APOSTROPHE;
-            default: return 0;
+            // AltGraph (Firefox on Linux) and the ISO key between left Shift and Z
+            case 225: return D_KEY_RIGHT_ALT;
+            case 226: return D_KEY_WORLD_2;
+            default: break;
         }
+        if (keyCode >= 48 && keyCode <= 57) return D_KEY_0 + (keyCode - 48);
+        if (keyCode >= 65 && keyCode <= 90) return D_KEY_A + (keyCode - 65);
+        if (keyCode >= 96 && keyCode <= 105) return D_KEY_KP_0 + (keyCode - 96);
+        if (keyCode >= 112 && keyCode <= 123) return D_KEY_F1 + (keyCode - 112);
+        return 0;
     }
 
 }
