@@ -104,7 +104,7 @@ namespace {
         }
 
         MeshSystem* meshes(){
-            return scene.getSystem<MeshSystem>();
+            return scene.getSystem<MeshSystem>().get();
         }
 
         // frames until every chunk the view needs has its entity and mesh

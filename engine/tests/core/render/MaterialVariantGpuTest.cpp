@@ -84,7 +84,7 @@ namespace {
             const Entity entity = plane.getEntity();
             int frames = 0;
             EXPECT_TRUE(GpuEnvironment::runFrames([current, entity, expectLoadedThroughout, &frames](){
-                const RenderSystem* render = current->getSystem<RenderSystem>();
+                const auto render = current->getSystem<RenderSystem>();
                 const MeshComponent& mesh = current->getComponent<MeshComponent>(entity);
                 if (expectLoadedThroughout)
                     EXPECT_TRUE(mesh.loaded) << "the mesh did not draw on frame " << frames << " of the swap";
