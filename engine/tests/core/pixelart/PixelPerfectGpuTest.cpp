@@ -494,6 +494,8 @@ TEST_F(PixelPerfectGpu, TilemapSeams){
                 floor.addTile(0, Vector2(8.0f * x + ((x & 1) ? offset : -offset), 8.0f * y + ((y & 1) ? offset : 0.0f)), 8, 8);
     };
     lay(1e-4f);
+    // half a pixel over: every tile edge sits on a pixel centre of the (snapped) camera's grid
+    floor.setPosition(0.5f, 0.5f, 0.0f);
     PixelPerfectCamera ppc = pixelPerfect(320, 180);
 
     // sub-pixel camera positions, many of them where the edges round (the tie at k + 0.5 - 2^-7)
@@ -524,9 +526,9 @@ TEST_F(PixelPerfectGpu, TilemapSeams){
     lay(1e-2f);
     EXPECT_EQ(gaps(), 0u) << "1e-2 off";
 
-    // red control: drawn without the rule (no edge rounding, no snap), a pixel centre falls in a gap
-    // at some position of the sweep (its step, 1/64, is below the 0.02-pixel gaps). A gap of 2e-4
-    // pixels never shows: the rasterizer puts vertices on a 1/256-pixel grid.
+    // red control: drawn without the rule (no edge rounding, no vertex snap; the camera still snaps,
+    // R8) the 0.02-pixel gaps straddle pixel centres. A gap of 2e-4 pixels never shows: the
+    // rasterizer puts vertices on a 1/256-pixel grid.
     ppc.setPixelSnapping(false);
     ASSERT_TRUE(render());
     ASSERT_TRUE(render());
