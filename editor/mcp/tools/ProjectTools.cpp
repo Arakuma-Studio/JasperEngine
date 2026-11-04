@@ -873,8 +873,11 @@ void getProjectSettingsTool(const CallPtr& call) {
             if (row->mcp) match["value"] = row->get(settings);
             matches.push_back(match);
         }
-        call->ok(std::to_string(matches.size()) + " setting(s) match. The ones with a value are keys for set_project_settings.",
-                 Json{{"matches", matches}});
+        // "game view resolution" is the Game view's toolbar (configure_game_view), not a setting
+        std::string text = std::to_string(matches.size()) + " setting(s) match. The ones with a value are keys for set_project_settings.";
+        Json data = {{"matches", matches}};
+        addUnlistedTools(call, args["search"].get<std::string>(), text, data);
+        call->ok(text, data);
         return;
     }
 
