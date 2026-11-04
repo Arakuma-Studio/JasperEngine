@@ -1,5 +1,5 @@
-# The compile sweep and measurements of S53 M0 (tools/procmat/README in docs/specs/S53): a standalone
-# target, so it builds in minutes without the engine or the editor.
+# The compile sweep and measurements of S53 M0 (docs/specs/S53-procedural-material.md, Deviations): a
+# standalone target, so it builds in minutes without the engine or the editor. Linux and Mesa only.
 #
 #   tools/build.sh exec linux cmake -S tools/procmat/sweep -B build/procmat-sweep -DCMAKE_BUILD_TYPE=Release
 #   tools/build.sh exec linux cmake --build build/procmat-sweep -j4

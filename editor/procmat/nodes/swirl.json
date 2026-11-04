@@ -2,7 +2,10 @@
  "code": [],
  "description": "Applies a swirl to its input",
  "format": 1,
- "functions": [],
+ "functions": [
+  "swirl_tile_false",
+  "swirl_tile_true"
+ ],
  "id": "swirl",
  "inputs": [
   {

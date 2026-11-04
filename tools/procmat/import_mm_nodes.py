@@ -204,6 +204,12 @@ uint jp_hash_vec4(vec4 x) {
 	return jp_hash_mix(jp_hash_mix(jp_hash_vec2(x.xy), jp_quantize(x.z)), jp_quantize(x.w));
 }
 
+// NaN has no defined 8-bit or filtered value, and each tier makes up its own: a pass writes zero
+// instead, so a node's 0/0 is the same image everywhere (R12, R13)
+vec4 jp_finite(vec4 c) {
+	return vec4(c.x == c.x ? c.x : 0.0, c.y == c.y ? c.y : 0.0, c.z == c.z ? c.z : 0.0, c.w == c.w ? c.w : 0.0);
+}
+
 float rand(vec2 x) {
 	return jp_hash_float(jp_hash_vec2(x), 1u);
 }
@@ -481,6 +487,20 @@ def rename_tokens(text: str, renames: dict[str, str]) -> str:
 # Defaults naming a macro the model does not have: Material Maker expands them to an error text
 # and only works because the graph always connects the input
 INPUT_DEFAULT_FIXES = {("normal2height/normal2height_base", "h"): "0.5"}
+# An enum value naming a function its node does not have, in Material Maker too: `blend` is the old
+# node, used inside graphs, and blend2 has the function. The value is the last, so no index moves.
+ENUM_VALUE_REMOVALS = {("blend", "blend_type"): {"linear_light"}}
+
+
+
+def typed_default(default: str, port_type: str) -> str:
+    """A bare number as the default of a vector port compiles in no GLSL: those nodes only work
+    in Material Maker while connected. The compile sweep found them, the type is known here."""
+    glsl_type = PORT_TYPES.get(port_type, {}).get("type", "float")
+    if glsl_type != "float" and re.fullmatch(r"-?\d+(\.\d*)?", default.strip()):
+        return f"{glsl_type}({default.strip()})"
+    return default
+
 
 # Material Maker adds these parameters at load (gen_shader.gd, find/fix_instance_functions)
 INSTANCE_FUNCTION = re.compile(r"(\w+)\s+(\w*\$(?:\(name\)\w*|name))\s*\((.*)\)\s*\{")
@@ -549,10 +569,15 @@ class Body:
                                  "label": output.get("shortdesc", ""), "description": output.get("longdesc", ""),
                                  "group_size": output.get("group_size", 0)})
         self.parameters = [dict(p) for p in model.get("parameters", [])]
+        for parameter in self.parameters:
+            refused = ENUM_VALUE_REMOVALS.get((owner, parameter["name"]))
+            if refused:
+                parameter["values"] = [v for v in parameter["values"] if v["value"] not in refused]
         self.inputs = [dict(i) for i in model.get("inputs", [])]
         for port in self.inputs:
             if (owner, port["name"]) in INPUT_DEFAULT_FIXES:
                 port["default"] = INPUT_DEFAULT_FIXES[owner, port["name"]]
+            port["default"] = typed_default(str(port.get("default", "")), port["type"])
         self.instance, functions = add_variation_definitions(instance)
         if functions:
             self.instance = add_variation_calls(self.instance, functions)
@@ -583,10 +608,7 @@ class Body:
         names = set()
         for text in self.texts():
             names.update(identifiers(text))
-            for prefix, param, suffix in re.findall(r"(\w+)\$\(?(\w+)\)?(\w*)", strip_comments(text)):
-                names.update(_composed_names(prefix, param, suffix, self.parameters))
-            for param, suffix in re.findall(r"\$\(?(\w+)\)?(\w+)", strip_comments(text)):
-                names.update(_composed_names("", param, suffix, self.parameters))
+            names.update(_composed_names(text, self.parameters))
         return names
 
     def check_macros(self, extra_names: set[str]) -> None:
@@ -609,11 +631,34 @@ class Body:
             raise ImportFailure(f"{self.owner}: a macro in the global code cannot be resolved by id")
 
 
-def _composed_names(prefix: str, param: str, suffix: str, parameters: list[dict]):
+# A function name built from macros: `blend_$blend_type#`, `$direction_$colorspace`, `tile_$tile`
+GLUED_NAME = re.compile(r"(?<![\w$)])(?:\w+(?=\$)|\$\(\w+#?\)(?=\w|\$)|\$\w+#?(?=\$))(?:\w+|\$\(\w+#?\)|\$\w+#?)*")
+
+
+def _composed_names(text: str, parameters: list[dict]) -> set[str]:
+    """Every name such a glued token can expand to, over its enum values and booleans."""
+    choices = {}
     for parameter in parameters:
-        if parameter["name"] == param:
-            for value in parameter.get("values", []):
-                yield f"{prefix}{value['value']}{suffix}"
+        name = parameter["name"].rstrip("#")
+        if parameter["type"] == "enum":
+            choices[name] = [str(v["value"]) for v in parameter.get("values", [])]
+        elif parameter["type"] == "boolean":
+            choices[name] = ["true", "false"]
+    result = set()
+    for match in GLUED_NAME.finditer(strip_comments(text)):
+        names = [""]
+        for part in re.findall(r"\$\(\w+#?\)|\$\w+#?|\w+", match.group(0)):
+            if part.startswith("$"):
+                # a greedy word macro may hold the rest: `$a_b` is the macro a_b, as the expander reads it
+                options = choices.get(part[1:].strip("()").rstrip("#"))
+                if options is None:
+                    names = []
+                    break
+                names = [n + o for n in names for o in options]
+            else:
+                names = [n + part for n in names]
+        result.update(n for n in names if re.fullmatch(r"[A-Za-z_]\w*", n))
+    return result
 
 
 PORT_TYPES: dict = {}
@@ -867,20 +912,23 @@ class Importer:
                 taken = set()
                 for digest, owners in sorted(by_hash.items(), key=lambda item: sorted(item[1])[0]):
                     owner = re.sub(r"\W+", "_", sorted(owners)[0])
-                    candidate = f"{name}__{owner}"
+                    candidate = f"{name}_of_{owner}"  # two underscores are reserved in GLSL
                     if candidate in taken:
                         raise ImportFailure(f"{name}: two variants under {owner}")
                     taken.add(candidate)
                     final_names[name, digest] = candidate
+        # what the expander's pass wrapper itself calls
+        for decl in self.common:
+            if decl.name == "jp_finite":
+                self.functions[decl.name] = {"name": decl.name, "kind": decl.kind, "code": lines_of(decl.text.strip("\n")), "deps": [], "origin": decl.origin}
         # third pass: emit
         for (body, scope), name_hash in zip(scopes, hashes):
             renames = {n: final_names[n, h] for n, h in name_hash.items() if final_names[n, h] != n}
             ids = []
             for text in body.texts():
-                for prefix, param, suffix in re.findall(r"(\w+)\$\(?(\w+)\)?(\w*)", strip_comments(text)):
-                    for composed in _composed_names(prefix, param, suffix, body.parameters):
-                        if composed in renames:
-                            raise ImportFailure(f"{body.owner}: {composed} needs a new name but is built from a macro")
+                for composed in _composed_names(text, body.parameters):
+                    if composed in renames:
+                        raise ImportFailure(f"{body.owner}: {composed} needs a new name but is built from a macro")
             for name in body.references():
                 if name in name_hash:
                     ids.extend(self._emit(name, scope, renames, final_names, name_hash))

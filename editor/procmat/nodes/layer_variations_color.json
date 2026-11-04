@@ -8,7 +8,7 @@
  "id": "layer_variations_color",
  "inputs": [
   {
-   "default": "1.0",
+   "default": "vec4(1.0)",
    "description": "The input image",
    "function": true,
    "label": "",

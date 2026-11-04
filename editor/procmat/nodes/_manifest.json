@@ -93,7 +93,7 @@
   "voronoi_triangle": "deny-list: based on a Shadertoy with no stated licence"
  },
  "format": 1,
- "functions": 365,
+ "functions": 391,
  "not_reachable": [
   "beehive",
   "box",

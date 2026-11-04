@@ -106,7 +106,7 @@
       "type": "f"
      },
      {
-      "default": "0.0",
+      "default": "vec3(0.0)",
       "label": "",
       "name": "n",
       "type": "rgb"

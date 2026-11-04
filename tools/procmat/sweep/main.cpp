@@ -276,8 +276,13 @@ std::vector<float> floatsOf(const json& array){
     return values;
 }
 
+// The quantize pass of R12: both tiers end in this, so an out-of-range value has one meaning
+uint8_t quantize(float value){
+    const float clamped = value != value ? 0.0f : std::min(std::max(value, 0.0f), 1.0f);
+    return (uint8_t)std::floor(clamped * 255.0f + 0.5f);
+}
+
 struct InterpretResult {
-    int discarded = 0;
     int tooLong = 0;
     double seconds = 0.0;
 };
@@ -287,7 +292,7 @@ struct InterpretResult {
 InterpretResult interpret(const SpirvProgram& program, const std::vector<float>& uniforms, const SpirvImage* image,
                           int size, int threads, std::vector<uint8_t>* out){
     InterpretResult result;
-    std::atomic<int> nextRow{0}, discarded{0}, tooLong{0};
+    std::atomic<int> nextRow{0}, tooLong{0};
     if (out)
         out->resize((size_t)size * size * 4);
     const auto worker = [&](){
@@ -302,19 +307,12 @@ InterpretResult interpret(const SpirvProgram& program, const std::vector<float>&
             const float v = ((float)y + 0.5f) / (float)size;
             for (int x = 0; x < size; x++){
                 float rgba[4] = {0.0f, 0.0f, 0.0f, 0.0f};
-                const SpirvMachine::Result status = machine.shade(((float)x + 0.5f) / (float)size, v, rgba);
-                if (status == SpirvMachine::Result::Discarded){
-                    discarded++;
-                    rgba[0] = rgba[1] = rgba[2] = rgba[3] = 0.0f;
-                } else if (status == SpirvMachine::Result::TooLong) {
+                if (machine.shade(((float)x + 0.5f) / (float)size, v, rgba) == SpirvMachine::Result::TooLong)
                     tooLong++;
-                }
                 if (out){
                     uint8_t* pixel = out->data() + ((size_t)y * size + x) * 4;
-                    for (int k = 0; k < 4; k++){
-                        const float value = rgba[k] != rgba[k] ? 0.0f : std::min(std::max(rgba[k], 0.0f), 1.0f);
-                        pixel[k] = (uint8_t)std::floor(value * 255.0f + 0.5f);
-                    }
+                    for (int k = 0; k < 4; k++)
+                        pixel[k] = quantize(rgba[k]);
                 }
             }
         }
@@ -326,7 +324,6 @@ InterpretResult interpret(const SpirvProgram& program, const std::vector<float>&
     for (std::thread& thread : pool)
         thread.join();
     result.seconds = millisecondsSince(start) / 1000.0;
-    result.discarded = discarded;
     result.tooLong = tooLong;
     return result;
 }
@@ -399,7 +396,6 @@ int runInterpret(int argc, char** argv){
         row["registers"] = program->registerCount();
         row["seconds_per_mpixel"] = result.seconds / mpixels;
         row["too_long"] = result.tooLong;
-        row["discarded"] = result.discarded;
         rows.push_back(row);
         ran++;
     }
@@ -435,14 +431,18 @@ int runCrossTier(int argc, char** argv){
             rows.push_back(row);
             continue;
         }
+        std::vector<float> glFloats;
         std::vector<uint8_t> glPixels, cpuPixels;
         GlPass::Timings timings;
         const std::vector<float> uniforms = floatsOf(shader["uniforms"]);
-        if (!gl.render(compiled.vertexOutput, compiled.output, uniforms, textureSize, texture, selection.size, glPixels, timings, error)){
+        if (!gl.render(compiled.vertexOutput, compiled.output, uniforms, textureSize, texture, selection.size, glFloats, timings, error)){
             row["error"] = "gl: " + error.substr(0, 500);
             rows.push_back(row);
             continue;
         }
+        glPixels.resize(glFloats.size());
+        for (size_t i = 0; i < glFloats.size(); i++)
+            glPixels[i] = quantize(glFloats[i]);
         row["gl_compile_link_ms"] = timings.compileLinkMs;
         row["gl_first_draw_ms"] = timings.firstDrawMs;
         row["gl_draw_ms"] = timings.drawMs;
@@ -524,7 +524,7 @@ int runBench(int argc, char** argv){
                name.c_str(), compileMs, selection.threads, program->instructionCount(), best, selection.size, best / mpixels);
         if (useGl){
             GlPass gl;
-            std::vector<uint8_t> pixels;
+            std::vector<float> pixels;
             GlPass::Timings timings;
             if (!gl.create(error) || !gl.render(compiled.vertexOutput, compiled.output, uniforms, textureSize, texture, selection.size, pixels, timings, error)){
                 printf("%s: GL failed: %s\n", name.c_str(), error.c_str());

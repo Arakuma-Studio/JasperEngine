@@ -120,7 +120,7 @@ std::string GlPass::renderer() const {
 }
 
 bool GlPass::render(const std::string& vertex, const std::string& fragment, const std::vector<float>& uniforms, int textureSize,
-                    const std::vector<float>& textureRgba, int size, std::vector<uint8_t>& out, Timings& timings, std::string& error){
+                    const std::vector<float>& textureRgba, int size, std::vector<float>& out, Timings& timings, std::string& error){
     auto start = std::chrono::steady_clock::now();
     const GLuint vs = compileStage(GL_VERTEX_SHADER, vertex, error);
     if (!vs)
@@ -180,10 +180,9 @@ bool GlPass::render(const std::string& vertex, const std::string& fragment, cons
     }
     GLuint color = 0, framebuffer = 0;
     gl_glGenTextures(1, &color);
-    gl_glBindTexture(GL_TEXTURE_2D, color);
     gl_glActiveTexture(GL_TEXTURE0 + 31);
     gl_glBindTexture(GL_TEXTURE_2D, color);
-    gl_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, size, size, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    gl_glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, size, size, 0, GL_RGBA, GL_FLOAT, nullptr);
     gl_glGenFramebuffers(1, &framebuffer);
     gl_glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
     gl_glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color, 0);
@@ -202,7 +201,7 @@ bool GlPass::render(const std::string& vertex, const std::string& fragment, cons
         (pass == 0 ? timings.firstDrawMs : timings.drawMs) = since(start);
     }
     out.resize((size_t)size * size * 4);
-    gl_glReadPixels(0, 0, size, size, GL_RGBA, GL_UNSIGNED_BYTE, out.data());
+    gl_glReadPixels(0, 0, size, size, GL_RGBA, GL_FLOAT, out.data());
 
     gl_glBindFramebuffer(GL_FRAMEBUFFER, 0);
     gl_glDeleteFramebuffers(1, &framebuffer);

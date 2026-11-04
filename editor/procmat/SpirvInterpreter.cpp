@@ -20,43 +20,45 @@ namespace {
 // A runaway loop stops a pixel instead of the whole bake: a real node runs far fewer backward jumps
 const int64_t backwardJumpLimit = 1 << 22;
 
-#define FAMILY(NAME) NAME##1, NAME##2, NAME##3, NAME##4
+#define OP_FAMILY(X, NAME) X(NAME##1) X(NAME##2) X(NAME##3) X(NAME##4)
+
+// Every operation of the register code. In a family the number is the component count.
+#define OP_LIST(X) \
+    OP_FAMILY(X, Copy) X(CopyN) X(ClearN) \
+    /* float, per component */ \
+    OP_FAMILY(X, FAdd) OP_FAMILY(X, FSub) OP_FAMILY(X, FMul) OP_FAMILY(X, FDiv) OP_FAMILY(X, FMod) \
+    OP_FAMILY(X, FMin) OP_FAMILY(X, FMax) OP_FAMILY(X, Step) \
+    OP_FAMILY(X, FNeg) OP_FAMILY(X, FAbs) OP_FAMILY(X, Floor) OP_FAMILY(X, Ceil) OP_FAMILY(X, Fract) OP_FAMILY(X, Sqrt) \
+    OP_FAMILY(X, FSign) OP_FAMILY(X, Trunc) OP_FAMILY(X, Round) \
+    OP_FAMILY(X, Mix) OP_FAMILY(X, Clamp) OP_FAMILY(X, SmoothStep) \
+    /* integer, per component */ \
+    OP_FAMILY(X, IAdd) OP_FAMILY(X, ISub) OP_FAMILY(X, IMul) OP_FAMILY(X, UDiv) OP_FAMILY(X, SDiv) OP_FAMILY(X, UMod) \
+    OP_FAMILY(X, SMod) OP_FAMILY(X, And) OP_FAMILY(X, Or) OP_FAMILY(X, Xor) OP_FAMILY(X, Shl) \
+    OP_FAMILY(X, ShrL) OP_FAMILY(X, ShrA) OP_FAMILY(X, UMin) OP_FAMILY(X, UMax) OP_FAMILY(X, SMin) OP_FAMILY(X, SMax) \
+    OP_FAMILY(X, SClamp) OP_FAMILY(X, INeg) OP_FAMILY(X, Not) OP_FAMILY(X, BoolNot) \
+    OP_FAMILY(X, SAbs) OP_FAMILY(X, SSign) \
+    /* comparisons */ \
+    OP_FAMILY(X, FEq) OP_FAMILY(X, FNe) OP_FAMILY(X, FLt) OP_FAMILY(X, FLe) OP_FAMILY(X, FGt) OP_FAMILY(X, FGe) \
+    OP_FAMILY(X, FUNe) \
+    OP_FAMILY(X, IEq) OP_FAMILY(X, INe) OP_FAMILY(X, SLt) OP_FAMILY(X, SLe) OP_FAMILY(X, SGt) OP_FAMILY(X, SGe) \
+    OP_FAMILY(X, ULt) OP_FAMILY(X, ULe) OP_FAMILY(X, UGt) OP_FAMILY(X, UGe) \
+    /* conversions and selection */ \
+    OP_FAMILY(X, F2S) OP_FAMILY(X, F2U) OP_FAMILY(X, S2F) OP_FAMILY(X, U2F) \
+    OP_FAMILY(X, SelectS) OP_FAMILY(X, SelectV) X(SelectSN) OP_FAMILY(X, Any) OP_FAMILY(X, All) \
+    /* vectors and matrices: these read their sources before they write */ \
+    OP_FAMILY(X, Dot) OP_FAMILY(X, Length) OP_FAMILY(X, Normalize) X(Cross) X(Distance) \
+    OP_FAMILY(X, Vts) X(VtsN) X(MatVec) X(VecMat) X(MatMat) X(Shuffle) X(ExtractDyn) X(InsertDyn) \
+    /* pointers: a register holds a register number */ \
+    X(PtrIndex) X(PtrIndexAdd) X(LoadInd) X(StoreInd) \
+    /* the rest of GLSL.std.450, by function */ \
+    X(Math1) X(Math2) \
+    /* control */ \
+    X(Jump) X(JumpIf) X(Call) X(Ret) X(Sample)
 
 enum Op : uint32_t {
-    FAMILY(Copy), CopyN, ClearN,
-    // float, per component
-    FAMILY(FAdd), FAMILY(FSub), FAMILY(FMul), FAMILY(FDiv), FAMILY(FMod), FAMILY(FRem), FAMILY(FMin), FAMILY(FMax), FAMILY(Step),
-    FAMILY(FNeg), FAMILY(FAbs), FAMILY(Floor), FAMILY(Ceil), FAMILY(Fract), FAMILY(Sqrt), FAMILY(FSign), FAMILY(Trunc), FAMILY(Round),
-    FAMILY(Mix), FAMILY(Clamp), FAMILY(SmoothStep), FAMILY(Fma),
-    // integer, per component
-    FAMILY(IAdd), FAMILY(ISub), FAMILY(IMul), FAMILY(UDiv), FAMILY(SDiv), FAMILY(UMod), FAMILY(SMod), FAMILY(SRem),
-    FAMILY(And), FAMILY(Or), FAMILY(Xor), FAMILY(Shl), FAMILY(ShrL), FAMILY(ShrA),
-    FAMILY(UMin), FAMILY(UMax), FAMILY(SMin), FAMILY(SMax), FAMILY(UClamp), FAMILY(SClamp),
-    FAMILY(INeg), FAMILY(Not), FAMILY(BoolNot), FAMILY(SAbs), FAMILY(SSign),
-    // comparisons
-    FAMILY(FEq), FAMILY(FNe), FAMILY(FLt), FAMILY(FLe), FAMILY(FGt), FAMILY(FGe),
-    FAMILY(FUEq), FAMILY(FUNe), FAMILY(FULt), FAMILY(FULe), FAMILY(FUGt), FAMILY(FUGe),
-    FAMILY(IEq), FAMILY(INe), FAMILY(SLt), FAMILY(SLe), FAMILY(SGt), FAMILY(SGe), FAMILY(ULt), FAMILY(ULe), FAMILY(UGt), FAMILY(UGe),
-    FAMILY(IsNan), FAMILY(IsInf),
-    // conversions
-    FAMILY(F2S), FAMILY(F2U), FAMILY(S2F), FAMILY(U2F),
-    // selection
-    FAMILY(SelectS), FAMILY(SelectV), SelectSN,
-    FAMILY(Any), FAMILY(All),
-    // vectors and matrices; these read their sources before they write
-    FAMILY(Dot), FAMILY(Length), FAMILY(Normalize), Cross, Distance,
-    FAMILY(Vts), VtsN, MatVec, VecMat, MatMat, Outer, Transpose, Determinant, Inverse,
-    Reflect, Refract, FaceForward,
-    Shuffle, ExtractDyn, InsertDyn,
-    // pointers: a register holds a register number
-    PtrIndex, PtrIndexAdd, LoadInd, StoreInd,
-    // the rest of GLSL.std.450, by function
-    Math1, Math2,
-    // packing
-    PackUnorm4x8, UnpackUnorm4x8, PackSnorm4x8, UnpackSnorm4x8, PackUnorm2x16, UnpackUnorm2x16, PackSnorm2x16, UnpackSnorm2x16, PackHalf2x16, UnpackHalf2x16,
-    // control
-    Jump, JumpIf, Switch, Call, Ret, Kill,
-    Sample,
+#define OP_ENUM(NAME) NAME,
+    OP_LIST(OP_ENUM)
+#undef OP_ENUM
 };
 
 typedef float (*Math1Function)(float);
@@ -64,7 +66,6 @@ typedef float (*Math2Function)(float, float);
 
 float mathRadians(float x){ return x * 0.01745329251994f; }
 float mathDegrees(float x){ return x * 57.29577951308f; }
-float mathInverseSqrt(float x){ return 1.0f / std::sqrt(x); }
 float mathExp2(float x){ return std::exp2(x); }
 float mathLog2(float x){ return std::log2(x); }
 float mathSin(float x){ return std::sin(x); }
@@ -76,9 +77,6 @@ float mathAtan(float x){ return std::atan(x); }
 float mathSinh(float x){ return std::sinh(x); }
 float mathCosh(float x){ return std::cosh(x); }
 float mathTanh(float x){ return std::tanh(x); }
-float mathAsinh(float x){ return std::asinh(x); }
-float mathAcosh(float x){ return std::acosh(x); }
-float mathAtanh(float x){ return std::atanh(x); }
 float mathExp(float x){ return std::exp(x); }
 float mathLog(float x){ return std::log(x); }
 float mathAtan2(float y, float x){ return std::atan2(y, x); }
@@ -86,14 +84,32 @@ float mathPow(float x, float y){ return std::pow(x, y); }
 
 const Math1Function math1Functions[] = {
     mathRadians, mathDegrees, mathSin, mathCos, mathTan, mathAsin, mathAcos, mathAtan, mathSinh, mathCosh, mathTanh,
-    mathAsinh, mathAcosh, mathAtanh, mathExp, mathLog, mathExp2, mathLog2, mathInverseSqrt,
+    mathExp, mathLog, mathExp2, mathLog2,
 };
 const Math2Function math2Functions[] = {mathAtan2, mathPow};
 
-inline float floorFast(float x){ return std::floor(x); }
-inline float glslMod(float x, float y){ return x - y * std::floor(x / y); }
-inline float glslMin(float x, float y){ return y < x ? y : x; }
-inline float glslMax(float x, float y){ return x < y ? y : x; }
+// Past 2^23 a float is an integer already, and the comparison sends NaN there too. std::floor is
+// a library call on baseline x86-64, and a node's code is largely floor, fract and mod.
+inline float floorFast(float x){
+    if (!(std::fabs(x) < 8388608.0f))
+        return x;
+    const float t = (float)(int32_t)x;
+    return t > x ? t - 1.0f : t;
+}
+inline float ceilFast(float x){
+    if (!(std::fabs(x) < 8388608.0f))
+        return x;
+    const float t = (float)(int32_t)x;
+    return t < x ? t + 1.0f : t;
+}
+inline float truncFast(float x){
+    return std::fabs(x) < 8388608.0f ? (float)(int32_t)x : x;
+}
+inline float glslMod(float x, float y){ return x - y * floorFast(x / y); }
+// IEEE minNum and maxNum, as GPUs and llvmpipe implement them: a NaN operand loses. clamp() of a
+// 0/0 is undefined in GLSL but not rare in the library (a smooth minimum with k = 0).
+inline float glslMin(float x, float y){ return (y < x || x != x) ? y : x; }
+inline float glslMax(float x, float y){ return (x < y || x != x) ? y : x; }
 inline float glslClamp(float x, float lo, float hi){ return glslMin(glslMax(x, lo), hi); }
 inline float glslSign(float x){ return x > 0.0f ? 1.0f : (x < 0.0f ? -1.0f : 0.0f); }
 inline float glslSmoothStep(float e0, float e1, float x){
@@ -117,13 +133,10 @@ inline int32_t safeSDiv(int32_t x, int32_t y){
         return 0;
     return x / y;
 }
-inline int32_t safeSRem(int32_t x, int32_t y){
+inline int32_t safeSMod(int32_t x, int32_t y){
     if (y == 0 || y == -1)
         return 0;
-    return x % y;
-}
-inline int32_t safeSMod(int32_t x, int32_t y){
-    const int32_t r = safeSRem(x, y);
+    const int32_t r = x % y;
     return (r != 0 && ((r < 0) != (y < 0))) ? r + y : r;
 }
 inline uint32_t safeUDiv(uint32_t x, uint32_t y){ return y == 0 ? 0u : x / y; }
@@ -249,6 +262,8 @@ private:
                 return false;
             i += count;
         }
+        if (function != nullptr)
+            return fail("truncated module");
         if (entryFunction == 0)
             return fail("no fragment entry point");
         return true;
@@ -490,10 +505,10 @@ private:
         const uint32_t* w = raw.words;
         const uint32_t n = raw.count;
         switch (raw.op){
-            case spv::OpLabel: case spv::OpSelectionMerge: case spv::OpLoopMerge: case spv::OpBranch: case spv::OpKill:
+            case spv::OpLabel: case spv::OpSelectionMerge: case spv::OpLoopMerge: case spv::OpBranch:
             case spv::OpReturn: case spv::OpUnreachable: case spv::OpNop:
                 break;
-            case spv::OpBranchConditional: case spv::OpSwitch: case spv::OpReturnValue:
+            case spv::OpBranchConditional: case spv::OpReturnValue:
                 visit(w[1]);
                 break;
             case spv::OpStore:
@@ -539,8 +554,8 @@ private:
     // The instructions in a function body that define no value
     static bool hasResult(spv::Op op){
         switch (op){
-            case spv::OpStore: case spv::OpBranch: case spv::OpBranchConditional: case spv::OpSwitch: case spv::OpReturn:
-            case spv::OpReturnValue: case spv::OpKill: case spv::OpUnreachable: case spv::OpNop: case spv::OpLabel:
+            case spv::OpStore: case spv::OpBranch: case spv::OpBranchConditional: case spv::OpReturn:
+            case spv::OpReturnValue: case spv::OpUnreachable: case spv::OpNop: case spv::OpLabel:
                 return false;
             default:
                 return true;
@@ -638,29 +653,19 @@ private:
 
     static bool retargetable(spv::Op op){
         switch (op){
-            case spv::OpFAdd: case spv::OpFSub: case spv::OpFMul: case spv::OpFDiv: case spv::OpFMod: case spv::OpFRem:
+            case spv::OpFAdd: case spv::OpFSub: case spv::OpFMul: case spv::OpFDiv: case spv::OpFMod:
             case spv::OpFNegate: case spv::OpIAdd: case spv::OpISub: case spv::OpIMul: case spv::OpSDiv: case spv::OpUDiv:
-            case spv::OpSMod: case spv::OpSRem: case spv::OpUMod: case spv::OpShiftLeftLogical: case spv::OpShiftRightLogical:
+            case spv::OpSMod: case spv::OpUMod: case spv::OpShiftLeftLogical: case spv::OpShiftRightLogical:
             case spv::OpShiftRightArithmetic: case spv::OpBitwiseAnd: case spv::OpBitwiseOr: case spv::OpBitwiseXor: case spv::OpNot:
             case spv::OpConvertFToS: case spv::OpConvertFToU: case spv::OpConvertSToF: case spv::OpConvertUToF: case spv::OpDot:
             case spv::OpVectorTimesScalar: case spv::OpSelect: case spv::OpExtInst: case spv::OpFOrdEqual: case spv::OpFOrdLessThan:
             case spv::OpFOrdGreaterThan: case spv::OpFOrdLessThanEqual: case spv::OpFOrdGreaterThanEqual: case spv::OpSLessThan:
             case spv::OpSGreaterThan: case spv::OpSLessThanEqual: case spv::OpSGreaterThanEqual: case spv::OpIEqual: case spv::OpINotEqual:
             case spv::OpLogicalAnd: case spv::OpLogicalOr: case spv::OpLogicalNot: case spv::OpSNegate: case spv::OpLoad:
+            case spv::OpFunctionCall:
                 return true;
             default:
                 return false;
-        }
-    }
-
-    // The elementwise GLSL.std.450 functions; the rest build their value in several writes
-    static bool retargetableExt(uint32_t e){
-        switch (e){
-            case GLSLstd450Determinant: case GLSLstd450MatrixInverse: case GLSLstd450Cross: case GLSLstd450Normalize:
-            case GLSLstd450Reflect: case GLSLstd450Refract: case GLSLstd450FaceForward: case GLSLstd450Frexp: case GLSLstd450FrexpStruct:
-                return false;
-            default:
-                return true;
         }
     }
 
@@ -919,6 +924,9 @@ private:
         // access chains into such a variable were resolved against its first register
         rebaseStaticPointers(function, constantVariables);
 
+        // a temporary made only to pass a read-only argument can live in the parameter
+        std::set<uint32_t> inParameter = aliasArgumentTemporaries(function, constantVariables);
+
         // a value computed just to be stored: compute it in the variable
         std::map<uint32_t, uint32_t> retarget;           // value id -> register
         std::map<uint32_t, uint32_t> retargetedStoreAt;  // store position -> def position
@@ -936,8 +944,6 @@ private:
             const RawInstruction& definition = *def->second;
             if (!retargetable(definition.op))
                 continue;
-            if (definition.op == spv::OpExtInst && !retargetableExt(definition.words[4]))
-                continue;
             const uint32_t root = ids[pointer].root;
             bool clear = true;
             for (size_t k = definition.position + 1; k < store.position && clear; k++){
@@ -950,7 +956,7 @@ private:
                     for (uint32_t i = 4; i < between.count; i++)
                         if (ids[between.words[i]].root == root)
                             clear = false;
-                    if (isGlobalRoot(root))
+                    if (isGlobalRoot(root) || inParameter.count(root))
                         clear = false;
                 }
             }
@@ -999,7 +1005,7 @@ private:
 
         // entry: uninitialised variables start at zero so a pixel never reads its neighbour's value
         for (uint32_t variable : function.variables){
-            if (constantVariables.count(variable))
+            if (constantVariables.count(variable) || inParameter.count(variable))
                 continue;
             auto init = variableInit.find(variable);
             if (init != variableInit.end()){
@@ -1027,14 +1033,65 @@ private:
             auto label = labelPositions.find(jump.label);
             if (label == labelPositions.end())
                 return fail("a branch to an unknown block");
-            if (jump.tableIndex != UINT32_MAX)
-                program.tables[jump.tableIndex] = label->second;
-            else if (jump.operand == 0)
+            if (jump.operand == 0)
                 program.code[jump.index].a = label->second;
             else
                 program.code[jump.index].c = label->second;
         }
         return true;
+    }
+
+    // glslang stores each argument into a temporary right before the call, which the call would then
+    // copy into the parameter. A temporary used for nothing else moves into the parameter's register.
+    // No other call may run between the stores and this call: it could be to the same function.
+    std::set<uint32_t> aliasArgumentTemporaries(const FunctionInfo& function, const std::set<uint32_t>& constantVariables){
+        std::set<uint32_t> moved;
+        for (uint32_t variable : function.variables){
+            if (variableInit.count(variable) || constantVariables.count(variable))
+                continue;
+            const RawInstruction* call = nullptr;
+            uint32_t firstStore = UINT32_MAX;
+            bool usable = true;
+            uint32_t parameter = 0;
+            for (const RawInstruction& raw : function.body){
+                if (raw.op == spv::OpStore && raw.words[1] == variable){
+                    firstStore = std::min(firstStore, raw.position);
+                    continue;
+                }
+                if (raw.op == spv::OpFunctionCall){
+                    bool passed = false;
+                    for (uint32_t i = 4; i < raw.count; i++){
+                        if (raw.words[i] == variable){
+                            const FunctionInfo& callee = functions[raw.words[3]];
+                            if (passed || call != nullptr || callee.paramWritten[i - 4] || ids[callee.params[i - 4]].kind != IdKind::StaticPointer)
+                                usable = false;
+                            call = &raw;
+                            parameter = callee.params[i - 4];
+                            passed = true;
+                        }
+                    }
+                    if (passed)
+                        continue;
+                }
+                forEachOperand(raw, [&](uint32_t id){
+                    if (id == variable)
+                        usable = false;
+                });
+            }
+            if (!usable || call == nullptr || firstStore == UINT32_MAX || firstStore > call->position)
+                continue;
+            for (const RawInstruction& raw : function.body){
+                if (raw.position < firstStore || raw.position >= call->position)
+                    continue;
+                if (raw.op == spv::OpFunctionCall || raw.block != call->block)
+                    usable = false;
+            }
+            if (!usable)
+                continue;
+            ids[variable].loc = ids[parameter].loc;
+            moved.insert(variable);
+        }
+        return moved;
     }
 
     bool isGlobalRoot(uint32_t root) const {
@@ -1124,7 +1181,6 @@ private:
         size_t index;
         int operand;
         uint32_t label;
-        uint32_t tableIndex;
     };
     std::map<uint32_t, uint32_t> labelPositions;
     std::vector<PendingJump> pendingJumps;
@@ -1168,7 +1224,7 @@ private:
     void emitJumpTo(uint32_t label){
         emitPhiCopies(label);
         emit(Jump);
-        pendingJumps.push_back({program.code.size() - 1, 0, label, UINT32_MAX});
+        pendingJumps.push_back({program.code.size() - 1, 0, label});
     }
 
     bool emitInstruction(FunctionInfo& function, const RawInstruction& raw, const std::set<uint32_t>& loadAliases);
@@ -1355,7 +1411,6 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
         case OpFMul: return binary(FMul1);
         case OpFDiv: return binary(FDiv1);
         case OpFMod: return binary(FMod1);
-        case OpFRem: return binary(FRem1);
         case OpFNegate: return unary(FNeg1);
         case OpIAdd: return binary(IAdd1);
         case OpISub: return binary(ISub1);
@@ -1364,7 +1419,6 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
         case OpSDiv: return binary(SDiv1);
         case OpUMod: return binary(UMod1);
         case OpSMod: return binary(SMod1);
-        case OpSRem: return binary(SRem1);
         case OpSNegate: return unary(INeg1);
         case OpNot: return unary(Not1);
         case OpLogicalNot: return unary(BoolNot1);
@@ -1382,12 +1436,7 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
         case OpFOrdLessThanEqual: return binary(FLe1);
         case OpFOrdGreaterThan: return binary(FGt1);
         case OpFOrdGreaterThanEqual: return binary(FGe1);
-        case OpFUnordEqual: return binary(FUEq1);
         case OpFUnordNotEqual: return binary(FUNe1);
-        case OpFUnordLessThan: return binary(FULt1);
-        case OpFUnordLessThanEqual: return binary(FULe1);
-        case OpFUnordGreaterThan: return binary(FUGt1);
-        case OpFUnordGreaterThanEqual: return binary(FUGe1);
         case OpIEqual: return binary(IEq1);
         case OpINotEqual: return binary(INe1);
         case OpSLessThan: return binary(SLt1);
@@ -1398,8 +1447,6 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
         case OpULessThanEqual: return binary(ULe1);
         case OpUGreaterThan: return binary(UGt1);
         case OpUGreaterThanEqual: return binary(UGe1);
-        case OpIsNan: return unary(IsNan1);
-        case OpIsInf: return unary(IsInf1);
         case OpConvertFToS: return unary(F2S1);
         case OpConvertFToU: return unary(F2U1);
         case OpConvertSToF: return unary(S2F1);
@@ -1450,17 +1497,6 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
             emit(MatMat, ids[w[2]].loc, ids[w[3]].loc, ids[w[4]].loc, (right.count << 16) | (left.count << 8) | left.elementSize);
             return true;
         }
-        case OpOuterProduct: {
-            const uint32_t rows = componentCount(ids[w[3]].type);
-            const uint32_t cols = componentCount(ids[w[4]].type);
-            emit(Outer, ids[w[2]].loc, ids[w[3]].loc, ids[w[4]].loc, (cols << 8) | rows);
-            return true;
-        }
-        case OpTranspose: {
-            const IdType& result = types[w[1]];
-            emit(Transpose, ids[w[2]].loc, ids[w[3]].loc, (result.count << 8) | result.elementSize);
-            return true;
-        }
         case OpExtInst:
             return emitExtended(raw);
         case OpFunctionCall:
@@ -1482,32 +1518,9 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
                 currentBlock = source;
                 emitJumpTo(falseLabel);
             } else {
-                pendingJumps.push_back({index, 0, trueLabel, UINT32_MAX});
-                pendingJumps.push_back({index, 2, falseLabel, UINT32_MAX});
+                pendingJumps.push_back({index, 0, trueLabel});
+                pendingJumps.push_back({index, 2, falseLabel});
             }
-            return true;
-        }
-        case OpSwitch: {
-            const uint32_t table = (uint32_t)program.tables.size();
-            const uint32_t cases = (raw.count - 3) / 2;
-            emit(Switch, ids[w[1]].loc, table, cases);
-            const size_t index = program.code.size() - 1;
-            program.tables.resize(program.tables.size() + 2 * cases + 1);
-            const uint32_t source = currentBlock;
-            const auto edge = [&](uint32_t label, uint32_t tableIndex){
-                if (hasPhis(label)){
-                    program.tables[tableIndex] = (uint32_t)program.code.size();
-                    currentBlock = source;
-                    emitJumpTo(label);
-                } else {
-                    pendingJumps.push_back({index, 0, label, tableIndex});
-                }
-            };
-            for (uint32_t i = 0; i < cases; i++){
-                program.tables[table + 2 * i] = w[3 + 2 * i];
-                edge(w[4 + 2 * i], table + 2 * i + 1);
-            }
-            edge(w[2], table + 2 * cases);
             return true;
         }
         case OpReturn:
@@ -1516,9 +1529,6 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
         case OpReturnValue:
             emitCopy(function.returnLoc, ids[w[1]].loc, sizeOf(function.returnType));
             emit(Ret);
-            return true;
-        case OpKill:
-            emit(Kill);
             return true;
         case OpUnreachable:
             emit(Ret);
@@ -1549,7 +1559,7 @@ bool SpirvCompiler::emitExtended(const RawInstruction& raw){
     const auto math1 = [&](uint32_t index){ emit(Math1, dst, a, index, n); return true; };
     const auto math2 = [&](uint32_t index){ emit(Math2, dst, a, b, (index << 8) | n); return true; };
     switch (w[4]){
-        case GLSLstd450Round: case GLSLstd450RoundEven: return family1(Round1);
+        case GLSLstd450Round: return family1(Round1);
         case GLSLstd450Trunc: return family1(Trunc1);
         case GLSLstd450FAbs: return family1(FAbs1);
         case GLSLstd450SAbs: return family1(SAbs1);
@@ -1570,29 +1580,23 @@ bool SpirvCompiler::emitExtended(const RawInstruction& raw){
         case GLSLstd450Sinh: return math1(8);
         case GLSLstd450Cosh: return math1(9);
         case GLSLstd450Tanh: return math1(10);
-        case GLSLstd450Asinh: return math1(11);
-        case GLSLstd450Acosh: return math1(12);
-        case GLSLstd450Atanh: return math1(13);
-        case GLSLstd450Exp: return math1(14);
-        case GLSLstd450Log: return math1(15);
-        case GLSLstd450Exp2: return math1(16);
-        case GLSLstd450Log2: return math1(17);
-        case GLSLstd450InverseSqrt: return math1(18);
+        case GLSLstd450Exp: return math1(11);
+        case GLSLstd450Log: return math1(12);
+        case GLSLstd450Exp2: return math1(13);
+        case GLSLstd450Log2: return math1(14);
         case GLSLstd450Atan2: return math2(0);
         case GLSLstd450Pow: return math2(1);
-        case GLSLstd450FMin: case GLSLstd450NMin: return family2(FMin1);
-        case GLSLstd450FMax: case GLSLstd450NMax: return family2(FMax1);
+        case GLSLstd450FMin: return family2(FMin1);
+        case GLSLstd450FMax: return family2(FMax1);
         case GLSLstd450UMin: return family2(UMin1);
         case GLSLstd450UMax: return family2(UMax1);
         case GLSLstd450SMin: return family2(SMin1);
         case GLSLstd450SMax: return family2(SMax1);
-        case GLSLstd450FClamp: case GLSLstd450NClamp: return family3(Clamp1);
-        case GLSLstd450UClamp: return family3(UClamp1);
+        case GLSLstd450FClamp: return family3(Clamp1);
         case GLSLstd450SClamp: return family3(SClamp1);
         case GLSLstd450FMix: return family3(Mix1);
         case GLSLstd450Step: return family2(Step1);
         case GLSLstd450SmoothStep: return family3(SmoothStep1);
-        case GLSLstd450Fma: return family3(Fma1);
         case GLSLstd450Length:
             emit(Length1 + argumentN - 1, dst, a);
             return true;
@@ -1605,31 +1609,6 @@ bool SpirvCompiler::emitExtended(const RawInstruction& raw){
         case GLSLstd450Cross:
             emit(Cross, dst, a, b);
             return true;
-        case GLSLstd450Reflect:
-            emit(Reflect, dst, a, b, n);
-            return true;
-        case GLSLstd450Refract:
-            emit(Refract, dst, a, b, (c << 3) | n);
-            return true;
-        case GLSLstd450FaceForward:
-            emit(FaceForward, dst, a, b, (c << 3) | n);
-            return true;
-        case GLSLstd450Determinant:
-            emit(Determinant, dst, a, types[ids[w[5]].type].count);
-            return true;
-        case GLSLstd450MatrixInverse:
-            emit(Inverse, dst, a, types[w[1]].count);
-            return true;
-        case GLSLstd450PackUnorm4x8: emit(PackUnorm4x8, dst, a); return true;
-        case GLSLstd450UnpackUnorm4x8: emit(UnpackUnorm4x8, dst, a); return true;
-        case GLSLstd450PackSnorm4x8: emit(PackSnorm4x8, dst, a); return true;
-        case GLSLstd450UnpackSnorm4x8: emit(UnpackSnorm4x8, dst, a); return true;
-        case GLSLstd450PackUnorm2x16: emit(PackUnorm2x16, dst, a); return true;
-        case GLSLstd450UnpackUnorm2x16: emit(UnpackUnorm2x16, dst, a); return true;
-        case GLSLstd450PackSnorm2x16: emit(PackSnorm2x16, dst, a); return true;
-        case GLSLstd450UnpackSnorm2x16: emit(UnpackSnorm2x16, dst, a); return true;
-        case GLSLstd450PackHalf2x16: emit(PackHalf2x16, dst, a); return true;
-        case GLSLstd450UnpackHalf2x16: emit(UnpackHalf2x16, dst, a); return true;
         default:
             return fail(std::string("unsupported GLSL.std.450 instruction ") + std::to_string(w[4]));
     }
@@ -1675,54 +1654,65 @@ SpirvMachine::Result SpirvMachine::shade(float u, float v, float rgba[4]){
     return result;
 }
 
+// With GCC and Clang each operation jumps straight to the next one: the shared indirect branch of
+// a switch mispredicts on nearly every instruction, and this loop is the whole cost of tier 3.
+#if defined(__GNUC__)
+#define OP_THREADED 1
+#define OP_CASE_(NAME) case NAME: label_##NAME:
+#define OP_NEXT { I = pc++; goto *dispatch[I->op]; }
+#else
+#define OP_THREADED 0
+#define OP_CASE_(NAME) case NAME:
+#define OP_NEXT break;
+#endif
+#define OP_CASE(NAME) OP_CASE_(NAME)
+
 #define CASE_F2(NAME, F) \
-    case NAME##1: r[I.a].f = F(r[I.b].f, r[I.c].f); break; \
-    case NAME##2: r[I.a].f = F(r[I.b].f, r[I.c].f); r[I.a + 1].f = F(r[I.b + 1].f, r[I.c + 1].f); break; \
-    case NAME##3: r[I.a].f = F(r[I.b].f, r[I.c].f); r[I.a + 1].f = F(r[I.b + 1].f, r[I.c + 1].f); r[I.a + 2].f = F(r[I.b + 2].f, r[I.c + 2].f); break; \
-    case NAME##4: r[I.a].f = F(r[I.b].f, r[I.c].f); r[I.a + 1].f = F(r[I.b + 1].f, r[I.c + 1].f); r[I.a + 2].f = F(r[I.b + 2].f, r[I.c + 2].f); r[I.a + 3].f = F(r[I.b + 3].f, r[I.c + 3].f); break;
+    OP_CASE(NAME##1) r[I->a].f = F(r[I->b].f, r[I->c].f); OP_NEXT \
+    OP_CASE(NAME##2) r[I->a].f = F(r[I->b].f, r[I->c].f); r[I->a + 1].f = F(r[I->b + 1].f, r[I->c + 1].f); OP_NEXT \
+    OP_CASE(NAME##3) r[I->a].f = F(r[I->b].f, r[I->c].f); r[I->a + 1].f = F(r[I->b + 1].f, r[I->c + 1].f); r[I->a + 2].f = F(r[I->b + 2].f, r[I->c + 2].f); OP_NEXT \
+    OP_CASE(NAME##4) r[I->a].f = F(r[I->b].f, r[I->c].f); r[I->a + 1].f = F(r[I->b + 1].f, r[I->c + 1].f); r[I->a + 2].f = F(r[I->b + 2].f, r[I->c + 2].f); r[I->a + 3].f = F(r[I->b + 3].f, r[I->c + 3].f); OP_NEXT
 
 #define CASE_F1(NAME, F) \
-    case NAME##1: r[I.a].f = F(r[I.b].f); break; \
-    case NAME##2: r[I.a].f = F(r[I.b].f); r[I.a + 1].f = F(r[I.b + 1].f); break; \
-    case NAME##3: r[I.a].f = F(r[I.b].f); r[I.a + 1].f = F(r[I.b + 1].f); r[I.a + 2].f = F(r[I.b + 2].f); break; \
-    case NAME##4: r[I.a].f = F(r[I.b].f); r[I.a + 1].f = F(r[I.b + 1].f); r[I.a + 2].f = F(r[I.b + 2].f); r[I.a + 3].f = F(r[I.b + 3].f); break;
+    OP_CASE(NAME##1) r[I->a].f = F(r[I->b].f); OP_NEXT \
+    OP_CASE(NAME##2) r[I->a].f = F(r[I->b].f); r[I->a + 1].f = F(r[I->b + 1].f); OP_NEXT \
+    OP_CASE(NAME##3) r[I->a].f = F(r[I->b].f); r[I->a + 1].f = F(r[I->b + 1].f); r[I->a + 2].f = F(r[I->b + 2].f); OP_NEXT \
+    OP_CASE(NAME##4) r[I->a].f = F(r[I->b].f); r[I->a + 1].f = F(r[I->b + 1].f); r[I->a + 2].f = F(r[I->b + 2].f); r[I->a + 3].f = F(r[I->b + 3].f); OP_NEXT
 
 #define CASE_F3(NAME, F) \
-    case NAME##1: r[I.a].f = F(r[I.b].f, r[I.c].f, r[I.d].f); break; \
-    case NAME##2: r[I.a].f = F(r[I.b].f, r[I.c].f, r[I.d].f); r[I.a + 1].f = F(r[I.b + 1].f, r[I.c + 1].f, r[I.d + 1].f); break; \
-    case NAME##3: r[I.a].f = F(r[I.b].f, r[I.c].f, r[I.d].f); r[I.a + 1].f = F(r[I.b + 1].f, r[I.c + 1].f, r[I.d + 1].f); r[I.a + 2].f = F(r[I.b + 2].f, r[I.c + 2].f, r[I.d + 2].f); break; \
-    case NAME##4: r[I.a].f = F(r[I.b].f, r[I.c].f, r[I.d].f); r[I.a + 1].f = F(r[I.b + 1].f, r[I.c + 1].f, r[I.d + 1].f); r[I.a + 2].f = F(r[I.b + 2].f, r[I.c + 2].f, r[I.d + 2].f); r[I.a + 3].f = F(r[I.b + 3].f, r[I.c + 3].f, r[I.d + 3].f); break;
+    OP_CASE(NAME##1) r[I->a].f = F(r[I->b].f, r[I->c].f, r[I->d].f); OP_NEXT \
+    OP_CASE(NAME##2) r[I->a].f = F(r[I->b].f, r[I->c].f, r[I->d].f); r[I->a + 1].f = F(r[I->b + 1].f, r[I->c + 1].f, r[I->d + 1].f); OP_NEXT \
+    OP_CASE(NAME##3) r[I->a].f = F(r[I->b].f, r[I->c].f, r[I->d].f); r[I->a + 1].f = F(r[I->b + 1].f, r[I->c + 1].f, r[I->d + 1].f); r[I->a + 2].f = F(r[I->b + 2].f, r[I->c + 2].f, r[I->d + 2].f); OP_NEXT \
+    OP_CASE(NAME##4) r[I->a].f = F(r[I->b].f, r[I->c].f, r[I->d].f); r[I->a + 1].f = F(r[I->b + 1].f, r[I->c + 1].f, r[I->d + 1].f); r[I->a + 2].f = F(r[I->b + 2].f, r[I->c + 2].f, r[I->d + 2].f); r[I->a + 3].f = F(r[I->b + 3].f, r[I->c + 3].f, r[I->d + 3].f); OP_NEXT
 
-// F(x, y) on (member-typed) integer operands; R is the result's union member
+// F(x, y) on one union member; R is the result's
 #define CASE_I2(NAME, M, F, R) \
-    case NAME##1: r[I.a].R = F(r[I.b].M, r[I.c].M); break; \
-    case NAME##2: r[I.a].R = F(r[I.b].M, r[I.c].M); r[I.a + 1].R = F(r[I.b + 1].M, r[I.c + 1].M); break; \
-    case NAME##3: r[I.a].R = F(r[I.b].M, r[I.c].M); r[I.a + 1].R = F(r[I.b + 1].M, r[I.c + 1].M); r[I.a + 2].R = F(r[I.b + 2].M, r[I.c + 2].M); break; \
-    case NAME##4: r[I.a].R = F(r[I.b].M, r[I.c].M); r[I.a + 1].R = F(r[I.b + 1].M, r[I.c + 1].M); r[I.a + 2].R = F(r[I.b + 2].M, r[I.c + 2].M); r[I.a + 3].R = F(r[I.b + 3].M, r[I.c + 3].M); break;
+    OP_CASE(NAME##1) r[I->a].R = F(r[I->b].M, r[I->c].M); OP_NEXT \
+    OP_CASE(NAME##2) r[I->a].R = F(r[I->b].M, r[I->c].M); r[I->a + 1].R = F(r[I->b + 1].M, r[I->c + 1].M); OP_NEXT \
+    OP_CASE(NAME##3) r[I->a].R = F(r[I->b].M, r[I->c].M); r[I->a + 1].R = F(r[I->b + 1].M, r[I->c + 1].M); r[I->a + 2].R = F(r[I->b + 2].M, r[I->c + 2].M); OP_NEXT \
+    OP_CASE(NAME##4) r[I->a].R = F(r[I->b].M, r[I->c].M); r[I->a + 1].R = F(r[I->b + 1].M, r[I->c + 1].M); r[I->a + 2].R = F(r[I->b + 2].M, r[I->c + 2].M); r[I->a + 3].R = F(r[I->b + 3].M, r[I->c + 3].M); OP_NEXT
 
 #define CASE_U1(NAME, M, F, R) \
-    case NAME##1: r[I.a].R = F(r[I.b].M); break; \
-    case NAME##2: r[I.a].R = F(r[I.b].M); r[I.a + 1].R = F(r[I.b + 1].M); break; \
-    case NAME##3: r[I.a].R = F(r[I.b].M); r[I.a + 1].R = F(r[I.b + 1].M); r[I.a + 2].R = F(r[I.b + 2].M); break; \
-    case NAME##4: r[I.a].R = F(r[I.b].M); r[I.a + 1].R = F(r[I.b + 1].M); r[I.a + 2].R = F(r[I.b + 2].M); r[I.a + 3].R = F(r[I.b + 3].M); break;
+    OP_CASE(NAME##1) r[I->a].R = F(r[I->b].M); OP_NEXT \
+    OP_CASE(NAME##2) r[I->a].R = F(r[I->b].M); r[I->a + 1].R = F(r[I->b + 1].M); OP_NEXT \
+    OP_CASE(NAME##3) r[I->a].R = F(r[I->b].M); r[I->a + 1].R = F(r[I->b + 1].M); r[I->a + 2].R = F(r[I->b + 2].M); OP_NEXT \
+    OP_CASE(NAME##4) r[I->a].R = F(r[I->b].M); r[I->a + 1].R = F(r[I->b + 1].M); r[I->a + 2].R = F(r[I->b + 2].M); r[I->a + 3].R = F(r[I->b + 3].M); OP_NEXT
 
 namespace {
     inline float opAdd(float x, float y){ return x + y; }
     inline float opSub(float x, float y){ return x - y; }
     inline float opMul(float x, float y){ return x * y; }
     inline float opDiv(float x, float y){ return x / y; }
-    inline float opRem(float x, float y){ return std::fmod(x, y); }
     inline float opStep(float edge, float x){ return x < edge ? 0.0f : 1.0f; }
     inline float opNeg(float x){ return -x; }
     inline float opAbs(float x){ return std::fabs(x); }
-    inline float opCeil(float x){ return std::ceil(x); }
-    inline float opFract(float x){ return x - std::floor(x); }
+    inline float opCeil(float x){ return ceilFast(x); }
+    inline float opFract(float x){ return x - floorFast(x); }
     inline float opSqrt(float x){ return std::sqrt(x); }
-    inline float opTrunc(float x){ return std::trunc(x); }
+    inline float opTrunc(float x){ return truncFast(x); }
     // to nearest, ties to even: what llvmpipe, lavapipe and the common GPUs do for round()
     inline float opRound(float x){ return std::nearbyint(x); }
     inline float opMix(float x, float y, float a){ return x * (1.0f - a) + y * a; }
-    inline float opFma(float a, float b, float c){ return a * b + c; }
     inline int32_t opIAdd(int32_t x, int32_t y){ return (int32_t)((uint32_t)x + (uint32_t)y); }
     inline int32_t opISub(int32_t x, int32_t y){ return (int32_t)((uint32_t)x - (uint32_t)y); }
     inline int32_t opIMul(int32_t x, int32_t y){ return (int32_t)((uint32_t)x * (uint32_t)y); }
@@ -1747,12 +1737,7 @@ namespace {
     inline uint32_t cmpFLe(float x, float y){ return x <= y; }
     inline uint32_t cmpFGt(float x, float y){ return x > y; }
     inline uint32_t cmpFGe(float x, float y){ return x >= y; }
-    inline uint32_t cmpFUEq(float x, float y){ return !(x != y); }
     inline uint32_t cmpFUNe(float x, float y){ return x != y; }
-    inline uint32_t cmpFULt(float x, float y){ return !(x >= y); }
-    inline uint32_t cmpFULe(float x, float y){ return !(x > y); }
-    inline uint32_t cmpFUGt(float x, float y){ return !(x <= y); }
-    inline uint32_t cmpFUGe(float x, float y){ return !(x < y); }
     inline uint32_t cmpIEq(int32_t x, int32_t y){ return x == y; }
     inline uint32_t cmpINe(int32_t x, int32_t y){ return x != y; }
     inline uint32_t cmpSLt(int32_t x, int32_t y){ return x < y; }
@@ -1763,112 +1748,8 @@ namespace {
     inline uint32_t cmpULe(uint32_t x, uint32_t y){ return x <= y; }
     inline uint32_t cmpUGt(uint32_t x, uint32_t y){ return x > y; }
     inline uint32_t cmpUGe(uint32_t x, uint32_t y){ return x >= y; }
-    inline uint32_t testNan(float x){ return std::isnan(x); }
-    inline uint32_t testInf(float x){ return std::isinf(x); }
     inline float fromInt(int32_t x){ return (float)x; }
     inline float fromUint(uint32_t x){ return (float)x; }
-
-    // Half-float rounding for packHalf2x16: a Buffer's own precision follows R12's later pass
-    uint32_t floatToHalf(float value){
-        uint32_t bits;
-        std::memcpy(&bits, &value, 4);
-        const uint32_t sign = (bits >> 16) & 0x8000u;
-        const int32_t exponent = (int32_t)((bits >> 23) & 0xffu) - 127 + 15;
-        const uint32_t mantissa = bits & 0x7fffffu;
-        if (exponent >= 31)
-            return sign | 0x7c00u | (((bits >> 23) & 0xffu) == 0xffu && mantissa ? 0x200u : 0u);
-        if (exponent <= 0){
-            if (exponent < -10)
-                return sign;
-            return sign | ((mantissa | 0x800000u) >> (14 - exponent));
-        }
-        return sign | ((uint32_t)exponent << 10) | (mantissa >> 13);
-    }
-
-    float halfToFloat(uint32_t half){
-        const uint32_t sign = (half & 0x8000u) << 16;
-        const uint32_t exponent = (half >> 10) & 0x1fu;
-        const uint32_t mantissa = half & 0x3ffu;
-        uint32_t bits;
-        if (exponent == 0){
-            if (mantissa == 0){
-                bits = sign;
-            } else {
-                int shift = 0;
-                uint32_t m = mantissa;
-                while (!(m & 0x400u)){
-                    m <<= 1;
-                    shift++;
-                }
-                bits = sign | ((uint32_t)(127 - 15 + 1 - shift) << 23) | ((m & 0x3ffu) << 13);
-            }
-        } else if (exponent == 31){
-            bits = sign | 0x7f800000u | (mantissa << 13);
-        } else {
-            bits = sign | ((exponent + 127 - 15) << 23) | (mantissa << 13);
-        }
-        float value;
-        std::memcpy(&value, &bits, 4);
-        return value;
-    }
-
-    float determinantOf(const SpirvRegister* m, uint32_t n){
-        if (n == 2)
-            return m[0].f * m[3].f - m[1].f * m[2].f;
-        if (n == 3){
-            return m[0].f * (m[4].f * m[8].f - m[5].f * m[7].f)
-                 - m[3].f * (m[1].f * m[8].f - m[2].f * m[7].f)
-                 + m[6].f * (m[1].f * m[5].f - m[2].f * m[4].f);
-        }
-        float result = 0.0f;
-        for (uint32_t col = 0; col < 4; col++){
-            SpirvRegister minor[9];
-            uint32_t k = 0;
-            for (uint32_t c = 0; c < 4; c++){
-                if (c == col)
-                    continue;
-                for (uint32_t row = 1; row < 4; row++)
-                    minor[k++] = m[c * 4 + row];
-            }
-            const float d = m[col * 4].f * determinantOf(minor, 3);
-            result += (col & 1) ? -d : d;
-        }
-        return result;
-    }
-
-    // Gauss-Jordan: a shader's inverse() of a singular matrix is undefined, here it gives infinities
-    void inverseOf(const SpirvRegister* m, uint32_t n, SpirvRegister* out){
-        float a[4][8];
-        for (uint32_t row = 0; row < n; row++){
-            for (uint32_t col = 0; col < n; col++){
-                a[row][col] = m[col * n + row].f;
-                a[row][col + n] = row == col ? 1.0f : 0.0f;
-            }
-        }
-        for (uint32_t col = 0; col < n; col++){
-            uint32_t pivot = col;
-            for (uint32_t row = col + 1; row < n; row++)
-                if (std::fabs(a[row][col]) > std::fabs(a[pivot][col]))
-                    pivot = row;
-            if (pivot != col){
-                for (uint32_t k = 0; k < 2 * n; k++)
-                    std::swap(a[pivot][k], a[col][k]);
-            }
-            const float scale = 1.0f / a[col][col];
-            for (uint32_t k = 0; k < 2 * n; k++)
-                a[col][k] *= scale;
-            for (uint32_t row = 0; row < n; row++){
-                if (row == col)
-                    continue;
-                const float factor = a[row][col];
-                for (uint32_t k = 0; k < 2 * n; k++)
-                    a[row][k] -= factor * a[col][k];
-            }
-        }
-        for (uint32_t row = 0; row < n; row++)
-            for (uint32_t col = 0; col < n; col++)
-                out[col * n + row].f = a[row][col + n];
-    }
 }
 
 SpirvMachine::Result SpirvMachine::execute(){
@@ -1879,22 +1760,29 @@ SpirvMachine::Result SpirvMachine::execute(){
     const SpirvInstruction* pc = code + program.entry;
     uint32_t depth = 0;
     int64_t budget = backwardJumpLimit;
+#if OP_THREADED
+    static const void* const dispatch[] = {
+#define OP_LABEL(NAME) &&label_##NAME,
+        OP_LIST(OP_LABEL)
+#undef OP_LABEL
+    };
+#endif
+    const SpirvInstruction* I = nullptr;
     for (;;){
-        const SpirvInstruction& I = *pc++;
-        switch (I.op){
-            case Copy1: r[I.a] = r[I.b]; break;
-            case Copy2: { const SpirvRegister x = r[I.b], y = r[I.b + 1]; r[I.a] = x; r[I.a + 1] = y; break; }
-            case Copy3: { const SpirvRegister x = r[I.b], y = r[I.b + 1], z = r[I.b + 2]; r[I.a] = x; r[I.a + 1] = y; r[I.a + 2] = z; break; }
-            case Copy4: { const SpirvRegister x = r[I.b], y = r[I.b + 1], z = r[I.b + 2], w = r[I.b + 3]; r[I.a] = x; r[I.a + 1] = y; r[I.a + 2] = z; r[I.a + 3] = w; break; }
-            case CopyN: std::memmove(r + I.a, r + I.b, I.c * sizeof(SpirvRegister)); break;
-            case ClearN: std::memset(static_cast<void*>(r + I.a), 0, I.b * sizeof(SpirvRegister)); break;
+        I = pc++;
+        switch (I->op){
+            OP_CASE(Copy1) r[I->a] = r[I->b]; OP_NEXT
+            OP_CASE(Copy2) { const SpirvRegister x = r[I->b], y = r[I->b + 1]; r[I->a] = x; r[I->a + 1] = y; OP_NEXT }
+            OP_CASE(Copy3) { const SpirvRegister x = r[I->b], y = r[I->b + 1], z = r[I->b + 2]; r[I->a] = x; r[I->a + 1] = y; r[I->a + 2] = z; OP_NEXT }
+            OP_CASE(Copy4) { const SpirvRegister x = r[I->b], y = r[I->b + 1], z = r[I->b + 2], w = r[I->b + 3]; r[I->a] = x; r[I->a + 1] = y; r[I->a + 2] = z; r[I->a + 3] = w; OP_NEXT }
+            OP_CASE(CopyN) std::memmove(r + I->a, r + I->b, I->c * sizeof(SpirvRegister)); OP_NEXT
+            OP_CASE(ClearN) std::memset(static_cast<void*>(r + I->a), 0, I->b * sizeof(SpirvRegister)); OP_NEXT
 
             CASE_F2(FAdd, opAdd)
             CASE_F2(FSub, opSub)
             CASE_F2(FMul, opMul)
             CASE_F2(FDiv, opDiv)
             CASE_F2(FMod, glslMod)
-            CASE_F2(FRem, opRem)
             CASE_F2(FMin, glslMin)
             CASE_F2(FMax, glslMax)
             CASE_F2(Step, opStep)
@@ -1910,7 +1798,6 @@ SpirvMachine::Result SpirvMachine::execute(){
             CASE_F3(Mix, opMix)
             CASE_F3(Clamp, glslClamp)
             CASE_F3(SmoothStep, glslSmoothStep)
-            CASE_F3(Fma, opFma)
 
             CASE_I2(IAdd, i, opIAdd, i)
             CASE_I2(ISub, i, opISub, i)
@@ -1919,7 +1806,6 @@ SpirvMachine::Result SpirvMachine::execute(){
             CASE_I2(SDiv, i, safeSDiv, i)
             CASE_I2(UMod, u, safeUMod, u)
             CASE_I2(SMod, i, safeSMod, i)
-            CASE_I2(SRem, i, safeSRem, i)
             CASE_I2(And, u, opAnd, u)
             CASE_I2(Or, u, opOr, u)
             CASE_I2(Xor, u, opXor, u)
@@ -1929,24 +1815,18 @@ SpirvMachine::Result SpirvMachine::execute(){
             CASE_I2(UMax, u, opUMax, u)
             CASE_I2(SMin, i, opSMin, i)
             CASE_I2(SMax, i, opSMax, i)
-            case ShrA1: r[I.a].i = opShrA(r[I.b].i, r[I.c].i); break;
-            case ShrA2: case ShrA3: case ShrA4: {
-                const uint32_t n = I.op - ShrA1 + 1;
+            OP_CASE(ShrA1) r[I->a].i = opShrA(r[I->b].i, r[I->c].i); OP_NEXT
+            OP_CASE(ShrA2) OP_CASE(ShrA3) OP_CASE(ShrA4) {
+                const uint32_t n = I->op - ShrA1 + 1;
                 for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k].i = opShrA(r[I.b + k].i, r[I.c + k].i);
-                break;
+                    r[I->a + k].i = opShrA(r[I->b + k].i, r[I->c + k].i);
+                OP_NEXT
             }
-            case UClamp1: case UClamp2: case UClamp3: case UClamp4: {
-                const uint32_t n = I.op - UClamp1 + 1;
+            OP_CASE(SClamp1) OP_CASE(SClamp2) OP_CASE(SClamp3) OP_CASE(SClamp4) {
+                const uint32_t n = I->op - SClamp1 + 1;
                 for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k].u = opUMin(opUMax(r[I.b + k].u, r[I.c + k].u), r[I.d + k].u);
-                break;
-            }
-            case SClamp1: case SClamp2: case SClamp3: case SClamp4: {
-                const uint32_t n = I.op - SClamp1 + 1;
-                for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k].i = opSMin(opSMax(r[I.b + k].i, r[I.c + k].i), r[I.d + k].i);
-                break;
+                    r[I->a + k].i = opSMin(opSMax(r[I->b + k].i, r[I->c + k].i), r[I->d + k].i);
+                OP_NEXT
             }
             CASE_U1(INeg, i, opINeg, i)
             CASE_U1(Not, u, opNot, u)
@@ -1960,12 +1840,7 @@ SpirvMachine::Result SpirvMachine::execute(){
             CASE_I2(FLe, f, cmpFLe, u)
             CASE_I2(FGt, f, cmpFGt, u)
             CASE_I2(FGe, f, cmpFGe, u)
-            CASE_I2(FUEq, f, cmpFUEq, u)
             CASE_I2(FUNe, f, cmpFUNe, u)
-            CASE_I2(FULt, f, cmpFULt, u)
-            CASE_I2(FULe, f, cmpFULe, u)
-            CASE_I2(FUGt, f, cmpFUGt, u)
-            CASE_I2(FUGe, f, cmpFUGe, u)
             CASE_I2(IEq, i, cmpIEq, u)
             CASE_I2(INe, i, cmpINe, u)
             CASE_I2(SLt, i, cmpSLt, u)
@@ -1976,338 +1851,202 @@ SpirvMachine::Result SpirvMachine::execute(){
             CASE_I2(ULe, u, cmpULe, u)
             CASE_I2(UGt, u, cmpUGt, u)
             CASE_I2(UGe, u, cmpUGe, u)
-            CASE_U1(IsNan, f, testNan, u)
-            CASE_U1(IsInf, f, testInf, u)
 
             CASE_U1(F2S, f, floatToInt, i)
             CASE_U1(F2U, f, floatToUint, u)
             CASE_U1(S2F, i, fromInt, f)
             CASE_U1(U2F, u, fromUint, f)
 
-            case SelectS1: r[I.a] = r[I.b].u ? r[I.c] : r[I.d]; break;
-            case SelectS2: case SelectS3: case SelectS4: {
-                const uint32_t n = I.op - SelectS1 + 1;
-                const uint32_t from = r[I.b].u ? I.c : I.d;
+            OP_CASE(SelectS1) r[I->a] = r[I->b].u ? r[I->c] : r[I->d]; OP_NEXT
+            OP_CASE(SelectS2) OP_CASE(SelectS3) OP_CASE(SelectS4) {
+                const uint32_t n = I->op - SelectS1 + 1;
+                const uint32_t from = r[I->b].u ? I->c : I->d;
                 for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k] = r[from + k];
-                break;
+                    r[I->a + k] = r[from + k];
+                OP_NEXT
             }
-            case SelectV1: case SelectV2: case SelectV3: case SelectV4: {
-                const uint32_t n = I.op - SelectV1 + 1;
+            OP_CASE(SelectV1) OP_CASE(SelectV2) OP_CASE(SelectV3) OP_CASE(SelectV4) {
+                const uint32_t n = I->op - SelectV1 + 1;
                 for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k] = r[I.b + k].u ? r[I.c + k] : r[I.d + k];
-                break;
+                    r[I->a + k] = r[I->b + k].u ? r[I->c + k] : r[I->d + k];
+                OP_NEXT
             }
-            case SelectSN: {
-                const uint32_t from = r[I.b].u ? I.c : tables[I.d];
-                std::memmove(r + I.a, r + from, tables[I.d + 1] * sizeof(SpirvRegister));
-                break;
+            OP_CASE(SelectSN) {
+                const uint32_t from = r[I->b].u ? I->c : tables[I->d];
+                std::memmove(r + I->a, r + from, tables[I->d + 1] * sizeof(SpirvRegister));
+                OP_NEXT
             }
-            case Any1: r[I.a].u = r[I.b].u; break;
-            case Any2: r[I.a].u = r[I.b].u | r[I.b + 1].u; break;
-            case Any3: r[I.a].u = r[I.b].u | r[I.b + 1].u | r[I.b + 2].u; break;
-            case Any4: r[I.a].u = r[I.b].u | r[I.b + 1].u | r[I.b + 2].u | r[I.b + 3].u; break;
-            case All1: r[I.a].u = r[I.b].u; break;
-            case All2: r[I.a].u = r[I.b].u & r[I.b + 1].u; break;
-            case All3: r[I.a].u = r[I.b].u & r[I.b + 1].u & r[I.b + 2].u; break;
-            case All4: r[I.a].u = r[I.b].u & r[I.b + 1].u & r[I.b + 2].u & r[I.b + 3].u; break;
+            OP_CASE(Any1) r[I->a].u = r[I->b].u; OP_NEXT
+            OP_CASE(Any2) r[I->a].u = r[I->b].u | r[I->b + 1].u; OP_NEXT
+            OP_CASE(Any3) r[I->a].u = r[I->b].u | r[I->b + 1].u | r[I->b + 2].u; OP_NEXT
+            OP_CASE(Any4) r[I->a].u = r[I->b].u | r[I->b + 1].u | r[I->b + 2].u | r[I->b + 3].u; OP_NEXT
+            OP_CASE(All1) r[I->a].u = r[I->b].u; OP_NEXT
+            OP_CASE(All2) r[I->a].u = r[I->b].u & r[I->b + 1].u; OP_NEXT
+            OP_CASE(All3) r[I->a].u = r[I->b].u & r[I->b + 1].u & r[I->b + 2].u; OP_NEXT
+            OP_CASE(All4) r[I->a].u = r[I->b].u & r[I->b + 1].u & r[I->b + 2].u & r[I->b + 3].u; OP_NEXT
 
-            case Dot1: r[I.a].f = r[I.b].f * r[I.c].f; break;
-            case Dot2: r[I.a].f = r[I.b].f * r[I.c].f + r[I.b + 1].f * r[I.c + 1].f; break;
-            case Dot3: r[I.a].f = r[I.b].f * r[I.c].f + r[I.b + 1].f * r[I.c + 1].f + r[I.b + 2].f * r[I.c + 2].f; break;
-            case Dot4: r[I.a].f = r[I.b].f * r[I.c].f + r[I.b + 1].f * r[I.c + 1].f + r[I.b + 2].f * r[I.c + 2].f + r[I.b + 3].f * r[I.c + 3].f; break;
-            case Length1: r[I.a].f = std::fabs(r[I.b].f); break;
-            case Length2: r[I.a].f = std::sqrt(r[I.b].f * r[I.b].f + r[I.b + 1].f * r[I.b + 1].f); break;
-            case Length3: r[I.a].f = std::sqrt(r[I.b].f * r[I.b].f + r[I.b + 1].f * r[I.b + 1].f + r[I.b + 2].f * r[I.b + 2].f); break;
-            case Length4: r[I.a].f = std::sqrt(r[I.b].f * r[I.b].f + r[I.b + 1].f * r[I.b + 1].f + r[I.b + 2].f * r[I.b + 2].f + r[I.b + 3].f * r[I.b + 3].f); break;
-            case Normalize1: case Normalize2: case Normalize3: case Normalize4: {
-                const uint32_t n = I.op - Normalize1 + 1;
+            OP_CASE(Dot1) r[I->a].f = r[I->b].f * r[I->c].f; OP_NEXT
+            OP_CASE(Dot2) r[I->a].f = r[I->b].f * r[I->c].f + r[I->b + 1].f * r[I->c + 1].f; OP_NEXT
+            OP_CASE(Dot3) r[I->a].f = r[I->b].f * r[I->c].f + r[I->b + 1].f * r[I->c + 1].f + r[I->b + 2].f * r[I->c + 2].f; OP_NEXT
+            OP_CASE(Dot4) r[I->a].f = r[I->b].f * r[I->c].f + r[I->b + 1].f * r[I->c + 1].f + r[I->b + 2].f * r[I->c + 2].f + r[I->b + 3].f * r[I->c + 3].f; OP_NEXT
+            OP_CASE(Length1) r[I->a].f = std::fabs(r[I->b].f); OP_NEXT
+            OP_CASE(Length2) r[I->a].f = std::sqrt(r[I->b].f * r[I->b].f + r[I->b + 1].f * r[I->b + 1].f); OP_NEXT
+            OP_CASE(Length3) r[I->a].f = std::sqrt(r[I->b].f * r[I->b].f + r[I->b + 1].f * r[I->b + 1].f + r[I->b + 2].f * r[I->b + 2].f); OP_NEXT
+            OP_CASE(Length4) r[I->a].f = std::sqrt(r[I->b].f * r[I->b].f + r[I->b + 1].f * r[I->b + 1].f + r[I->b + 2].f * r[I->b + 2].f + r[I->b + 3].f * r[I->b + 3].f); OP_NEXT
+            OP_CASE(Normalize1) OP_CASE(Normalize2) OP_CASE(Normalize3) OP_CASE(Normalize4) {
+                const uint32_t n = I->op - Normalize1 + 1;
                 float sum = 0.0f;
                 for (uint32_t k = 0; k < n; k++)
-                    sum += r[I.b + k].f * r[I.b + k].f;
+                    sum += r[I->b + k].f * r[I->b + k].f;
                 const float scale = 1.0f / std::sqrt(sum);
                 for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k].f = r[I.b + k].f * scale;
-                break;
+                    r[I->a + k].f = r[I->b + k].f * scale;
+                OP_NEXT
             }
-            case Distance: {
+            OP_CASE(Distance) {
                 float sum = 0.0f;
-                for (uint32_t k = 0; k < I.d; k++){
-                    const float x = r[I.b + k].f - r[I.c + k].f;
+                for (uint32_t k = 0; k < I->d; k++){
+                    const float x = r[I->b + k].f - r[I->c + k].f;
                     sum += x * x;
                 }
-                r[I.a].f = std::sqrt(sum);
-                break;
+                r[I->a].f = std::sqrt(sum);
+                OP_NEXT
             }
-            case Cross: {
-                const float x = r[I.b + 1].f * r[I.c + 2].f - r[I.b + 2].f * r[I.c + 1].f;
-                const float y = r[I.b + 2].f * r[I.c].f - r[I.b].f * r[I.c + 2].f;
-                const float z = r[I.b].f * r[I.c + 1].f - r[I.b + 1].f * r[I.c].f;
-                r[I.a].f = x;
-                r[I.a + 1].f = y;
-                r[I.a + 2].f = z;
-                break;
+            OP_CASE(Cross) {
+                const float x = r[I->b + 1].f * r[I->c + 2].f - r[I->b + 2].f * r[I->c + 1].f;
+                const float y = r[I->b + 2].f * r[I->c].f - r[I->b].f * r[I->c + 2].f;
+                const float z = r[I->b].f * r[I->c + 1].f - r[I->b + 1].f * r[I->c].f;
+                r[I->a].f = x;
+                r[I->a + 1].f = y;
+                r[I->a + 2].f = z;
+                OP_NEXT
             }
-            case Vts1: r[I.a].f = r[I.b].f * r[I.c].f; break;
-            case Vts2: { const float s = r[I.c].f; r[I.a].f = r[I.b].f * s; r[I.a + 1].f = r[I.b + 1].f * s; break; }
-            case Vts3: { const float s = r[I.c].f; r[I.a].f = r[I.b].f * s; r[I.a + 1].f = r[I.b + 1].f * s; r[I.a + 2].f = r[I.b + 2].f * s; break; }
-            case Vts4: { const float s = r[I.c].f; r[I.a].f = r[I.b].f * s; r[I.a + 1].f = r[I.b + 1].f * s; r[I.a + 2].f = r[I.b + 2].f * s; r[I.a + 3].f = r[I.b + 3].f * s; break; }
-            case VtsN: {
-                const float s = r[I.c].f;
-                for (uint32_t k = 0; k < I.d; k++)
-                    r[I.a + k].f = r[I.b + k].f * s;
-                break;
+            OP_CASE(Vts1) r[I->a].f = r[I->b].f * r[I->c].f; OP_NEXT
+            OP_CASE(Vts2) { const float s = r[I->c].f; r[I->a].f = r[I->b].f * s; r[I->a + 1].f = r[I->b + 1].f * s; OP_NEXT }
+            OP_CASE(Vts3) { const float s = r[I->c].f; r[I->a].f = r[I->b].f * s; r[I->a + 1].f = r[I->b + 1].f * s; r[I->a + 2].f = r[I->b + 2].f * s; OP_NEXT }
+            OP_CASE(Vts4) { const float s = r[I->c].f; r[I->a].f = r[I->b].f * s; r[I->a + 1].f = r[I->b + 1].f * s; r[I->a + 2].f = r[I->b + 2].f * s; r[I->a + 3].f = r[I->b + 3].f * s; OP_NEXT }
+            OP_CASE(VtsN) {
+                const float s = r[I->c].f;
+                for (uint32_t k = 0; k < I->d; k++)
+                    r[I->a + k].f = r[I->b + k].f * s;
+                OP_NEXT
             }
-            case MatVec: {
-                const uint32_t cols = I.d >> 8, rows = I.d & 0xff;
+            OP_CASE(MatVec) {
+                const uint32_t cols = I->d >> 8, rows = I->d & 0xff;
                 float out[4] = {};
                 for (uint32_t col = 0; col < cols; col++){
-                    const float x = r[I.c + col].f;
+                    const float x = r[I->c + col].f;
                     for (uint32_t row = 0; row < rows; row++)
-                        out[row] += r[I.b + col * rows + row].f * x;
+                        out[row] += r[I->b + col * rows + row].f * x;
                 }
                 for (uint32_t row = 0; row < rows; row++)
-                    r[I.a + row].f = out[row];
-                break;
+                    r[I->a + row].f = out[row];
+                OP_NEXT
             }
-            case VecMat: {
-                const uint32_t cols = I.d >> 8, rows = I.d & 0xff;
+            OP_CASE(VecMat) {
+                const uint32_t cols = I->d >> 8, rows = I->d & 0xff;
                 float out[4] = {};
                 for (uint32_t col = 0; col < cols; col++){
                     for (uint32_t row = 0; row < rows; row++)
-                        out[col] += r[I.b + row].f * r[I.c + col * rows + row].f;
+                        out[col] += r[I->b + row].f * r[I->c + col * rows + row].f;
                 }
                 for (uint32_t col = 0; col < cols; col++)
-                    r[I.a + col].f = out[col];
-                break;
+                    r[I->a + col].f = out[col];
+                OP_NEXT
             }
-            case MatMat: {
-                const uint32_t rightCols = I.d >> 16, leftCols = (I.d >> 8) & 0xff, rows = I.d & 0xff;
+            OP_CASE(MatMat) {
+                const uint32_t rightCols = I->d >> 16, leftCols = (I->d >> 8) & 0xff, rows = I->d & 0xff;
                 float out[16] = {};
                 for (uint32_t col = 0; col < rightCols; col++){
                     for (uint32_t k = 0; k < leftCols; k++){
-                        const float x = r[I.c + col * leftCols + k].f;
+                        const float x = r[I->c + col * leftCols + k].f;
                         for (uint32_t row = 0; row < rows; row++)
-                            out[col * rows + row] += r[I.b + k * rows + row].f * x;
+                            out[col * rows + row] += r[I->b + k * rows + row].f * x;
                     }
                 }
                 for (uint32_t k = 0; k < rightCols * rows; k++)
-                    r[I.a + k].f = out[k];
-                break;
+                    r[I->a + k].f = out[k];
+                OP_NEXT
             }
-            case Outer: {
-                const uint32_t cols = I.d >> 8, rows = I.d & 0xff;
-                float out[16];
-                for (uint32_t col = 0; col < cols; col++)
-                    for (uint32_t row = 0; row < rows; row++)
-                        out[col * rows + row] = r[I.b + row].f * r[I.c + col].f;
-                for (uint32_t k = 0; k < cols * rows; k++)
-                    r[I.a + k].f = out[k];
-                break;
-            }
-            case Transpose: {
-                const uint32_t cols = I.c >> 8, rows = I.c & 0xff;
-                float out[16];
-                for (uint32_t col = 0; col < cols; col++)
-                    for (uint32_t row = 0; row < rows; row++)
-                        out[col * rows + row] = r[I.b + row * cols + col].f;
-                for (uint32_t k = 0; k < cols * rows; k++)
-                    r[I.a + k].f = out[k];
-                break;
-            }
-            case Determinant:
-                r[I.a].f = determinantOf(r + I.b, I.c);
-                break;
-            case Inverse: {
-                SpirvRegister out[16];
-                inverseOf(r + I.b, I.c, out);
-                for (uint32_t k = 0; k < I.c * I.c; k++)
-                    r[I.a + k] = out[k];
-                break;
-            }
-            case Reflect: {
-                float dot = 0.0f;
-                for (uint32_t k = 0; k < I.d; k++)
-                    dot += r[I.b + k].f * r[I.c + k].f;
-                for (uint32_t k = 0; k < I.d; k++)
-                    r[I.a + k].f = r[I.b + k].f - 2.0f * dot * r[I.c + k].f;
-                break;
-            }
-            case Refract: {
-                const uint32_t n = I.d & 7u;
-                const float eta = r[I.d >> 3].f;
-                float dot = 0.0f;
-                for (uint32_t k = 0; k < n; k++)
-                    dot += r[I.b + k].f * r[I.c + k].f;
-                const float root = 1.0f - eta * eta * (1.0f - dot * dot);
-                for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k].f = root < 0.0f ? 0.0f : eta * r[I.b + k].f - (eta * dot + std::sqrt(root)) * r[I.c + k].f;
-                break;
-            }
-            case FaceForward: {
-                const uint32_t n = I.d & 7u;
-                const uint32_t reference = I.d >> 3;
-                float dot = 0.0f;
-                for (uint32_t k = 0; k < n; k++)
-                    dot += r[reference + k].f * r[I.c + k].f;
-                for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k].f = dot < 0.0f ? r[I.b + k].f : -r[I.b + k].f;
-                break;
-            }
-            case Shuffle: {
+            OP_CASE(Shuffle) {
                 SpirvRegister out[4];
-                for (uint32_t k = 0; k < I.c; k++)
-                    out[k] = r[tables[I.b + k]];
-                for (uint32_t k = 0; k < I.c; k++)
-                    r[I.a + k] = out[k];
-                break;
+                for (uint32_t k = 0; k < I->c; k++)
+                    out[k] = r[tables[I->b + k]];
+                for (uint32_t k = 0; k < I->c; k++)
+                    r[I->a + k] = out[k];
+                OP_NEXT
             }
-            case ExtractDyn: {
-                const uint32_t k = (uint32_t)std::clamp<int64_t>(r[I.c].i, 0, (int64_t)I.d - 1);
-                r[I.a] = r[I.b + k];
-                break;
+            OP_CASE(ExtractDyn) {
+                const uint32_t k = (uint32_t)std::clamp<int64_t>(r[I->c].i, 0, (int64_t)I->d - 1);
+                r[I->a] = r[I->b + k];
+                OP_NEXT
             }
-            case InsertDyn: {
-                const uint32_t k = (uint32_t)std::clamp<int64_t>(r[I.c].i, 0, (int64_t)I.d - 1);
-                r[I.a + k] = r[I.b];
-                break;
+            OP_CASE(InsertDyn) {
+                const uint32_t k = (uint32_t)std::clamp<int64_t>(r[I->c].i, 0, (int64_t)I->d - 1);
+                r[I->a + k] = r[I->b];
+                OP_NEXT
             }
-            case PtrIndex: {
-                const uint32_t stride = tables[I.d], count = tables[I.d + 1];
-                const uint32_t k = (uint32_t)std::clamp<int64_t>(r[I.c].i, 0, (int64_t)count - 1);
-                r[I.a].u = I.b + k * stride;
-                break;
+            OP_CASE(PtrIndex) {
+                const uint32_t stride = tables[I->d], count = tables[I->d + 1];
+                const uint32_t k = (uint32_t)std::clamp<int64_t>(r[I->c].i, 0, (int64_t)count - 1);
+                r[I->a].u = I->b + k * stride;
+                OP_NEXT
             }
-            case PtrIndexAdd: {
-                const uint32_t stride = tables[I.d], count = tables[I.d + 1];
-                const uint32_t k = (uint32_t)std::clamp<int64_t>(r[I.c].i, 0, (int64_t)count - 1);
-                r[I.a].u = r[I.b].u + k * stride;
-                break;
+            OP_CASE(PtrIndexAdd) {
+                const uint32_t stride = tables[I->d], count = tables[I->d + 1];
+                const uint32_t k = (uint32_t)std::clamp<int64_t>(r[I->c].i, 0, (int64_t)count - 1);
+                r[I->a].u = r[I->b].u + k * stride;
+                OP_NEXT
             }
-            case LoadInd:
-                std::memmove(r + I.a, r + r[I.b].u, I.c * sizeof(SpirvRegister));
-                break;
-            case StoreInd:
-                std::memmove(r + r[I.a].u, r + I.b, I.c * sizeof(SpirvRegister));
-                break;
-            case Math1: {
-                const Math1Function function = math1Functions[I.c];
-                for (uint32_t k = 0; k < I.d; k++)
-                    r[I.a + k].f = function(r[I.b + k].f);
-                break;
+            OP_CASE(LoadInd)
+                std::memmove(r + I->a, r + r[I->b].u, I->c * sizeof(SpirvRegister));
+                OP_NEXT
+            OP_CASE(StoreInd)
+                std::memmove(r + r[I->a].u, r + I->b, I->c * sizeof(SpirvRegister));
+                OP_NEXT
+            OP_CASE(Math1) {
+                const Math1Function function = math1Functions[I->c];
+                for (uint32_t k = 0; k < I->d; k++)
+                    r[I->a + k].f = function(r[I->b + k].f);
+                OP_NEXT
             }
-            case Math2: {
-                const Math2Function function = math2Functions[I.d >> 8];
-                const uint32_t n = I.d & 0xff;
+            OP_CASE(Math2) {
+                const Math2Function function = math2Functions[I->d >> 8];
+                const uint32_t n = I->d & 0xff;
                 for (uint32_t k = 0; k < n; k++)
-                    r[I.a + k].f = function(r[I.b + k].f, r[I.c + k].f);
-                break;
+                    r[I->a + k].f = function(r[I->b + k].f, r[I->c + k].f);
+                OP_NEXT
             }
-            case PackUnorm4x8: {
-                uint32_t result = 0;
-                for (uint32_t k = 0; k < 4; k++)
-                    result |= (uint32_t)std::lround(glslClamp(r[I.b + k].f, 0.0f, 1.0f) * 255.0f) << (8 * k);
-                r[I.a].u = result;
-                break;
-            }
-            case UnpackUnorm4x8: {
-                const uint32_t value = r[I.b].u;
-                for (uint32_t k = 0; k < 4; k++)
-                    r[I.a + k].f = (float)((value >> (8 * k)) & 0xffu) / 255.0f;
-                break;
-            }
-            case PackSnorm4x8: {
-                uint32_t result = 0;
-                for (uint32_t k = 0; k < 4; k++)
-                    result |= ((uint32_t)std::lround(glslClamp(r[I.b + k].f, -1.0f, 1.0f) * 127.0f) & 0xffu) << (8 * k);
-                r[I.a].u = result;
-                break;
-            }
-            case UnpackSnorm4x8: {
-                const uint32_t value = r[I.b].u;
-                for (uint32_t k = 0; k < 4; k++)
-                    r[I.a + k].f = glslClamp((float)(int8_t)((value >> (8 * k)) & 0xffu) / 127.0f, -1.0f, 1.0f);
-                break;
-            }
-            case PackUnorm2x16: {
-                uint32_t result = 0;
-                for (uint32_t k = 0; k < 2; k++)
-                    result |= (uint32_t)std::lround(glslClamp(r[I.b + k].f, 0.0f, 1.0f) * 65535.0f) << (16 * k);
-                r[I.a].u = result;
-                break;
-            }
-            case UnpackUnorm2x16: {
-                const uint32_t value = r[I.b].u;
-                for (uint32_t k = 0; k < 2; k++)
-                    r[I.a + k].f = (float)((value >> (16 * k)) & 0xffffu) / 65535.0f;
-                break;
-            }
-            case PackSnorm2x16: {
-                uint32_t result = 0;
-                for (uint32_t k = 0; k < 2; k++)
-                    result |= ((uint32_t)std::lround(glslClamp(r[I.b + k].f, -1.0f, 1.0f) * 32767.0f) & 0xffffu) << (16 * k);
-                r[I.a].u = result;
-                break;
-            }
-            case UnpackSnorm2x16: {
-                const uint32_t value = r[I.b].u;
-                for (uint32_t k = 0; k < 2; k++)
-                    r[I.a + k].f = glslClamp((float)(int16_t)((value >> (16 * k)) & 0xffffu) / 32767.0f, -1.0f, 1.0f);
-                break;
-            }
-            case PackHalf2x16:
-                r[I.a].u = floatToHalf(r[I.b].f) | (floatToHalf(r[I.b + 1].f) << 16);
-                break;
-            case UnpackHalf2x16: {
-                const uint32_t value = r[I.b].u;
-                r[I.a].f = halfToFloat(value & 0xffffu);
-                r[I.a + 1].f = halfToFloat(value >> 16);
-                break;
-            }
-            case Jump: {
-                const SpirvInstruction* target = code + I.a;
+            OP_CASE(Jump) {
+                const SpirvInstruction* target = code + I->a;
                 if (target <= pc && --budget < 0)
                     return Result::TooLong;
                 pc = target;
-                break;
+                OP_NEXT
             }
-            case JumpIf: {
-                const SpirvInstruction* target = code + (r[I.b].u ? I.a : I.c);
+            OP_CASE(JumpIf) {
+                const SpirvInstruction* target = code + (r[I->b].u ? I->a : I->c);
                 if (target <= pc && --budget < 0)
                     return Result::TooLong;
                 pc = target;
-                break;
+                OP_NEXT
             }
-            case Switch: {
-                const int32_t value = r[I.a].i;
-                uint32_t target = tables[I.b + 2 * I.c];
-                for (uint32_t k = 0; k < I.c; k++){
-                    if ((int32_t)tables[I.b + 2 * k] == value){
-                        target = tables[I.b + 2 * k + 1];
-                        break;
-                    }
-                }
-                pc = code + target;
-                break;
-            }
-            case Call:
+            OP_CASE(Call)
                 stack[depth++] = (uint32_t)(pc - code);
-                pc = code + I.a;
-                break;
-            case Ret:
+                pc = code + I->a;
+                OP_NEXT
+            OP_CASE(Ret)
                 if (depth == 0)
                     return Result::Ok;
                 pc = code + stack[--depth];
-                break;
-            case Kill:
-                return Result::Discarded;
-            case Sample: {
+                OP_NEXT
+            OP_CASE(Sample) {
                 float out[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-                const uint32_t slot = r[I.b].u;
+                const uint32_t slot = r[I->b].u;
                 const SpirvImage* image = slot < textures.size() ? textures[slot] : nullptr;
                 if (image != nullptr){
-                    const float lod = r[I.d].f;
-                    const float u = r[I.c].f, v = r[I.c + 1].f;
+                    const float lod = r[I->d].f;
+                    const float u = r[I->c].f, v = r[I->c + 1].f;
                     const int top = image->mipCount() - 1;
                     const float clamped = glslClamp(lod, 0.0f, (float)top);
                     const int low = (int)clamped;
@@ -2321,8 +2060,8 @@ SpirvMachine::Result SpirvMachine::execute(){
                     }
                 }
                 for (uint32_t k = 0; k < 4; k++)
-                    r[I.a + k].f = out[k];
-                break;
+                    r[I->a + k].f = out[k];
+                OP_NEXT
             }
             default:
                 return Result::TooLong;

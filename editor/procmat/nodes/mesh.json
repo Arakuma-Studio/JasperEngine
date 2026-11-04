@@ -8,7 +8,7 @@
   "mesh_capsule",
   "mesh_ridged_bell",
   "mesh_screen_blend",
-  "transform2__mesh"
+  "transform2_of_mesh"
  ],
  "id": "mesh",
  "inputs": [
@@ -26,7 +26,7 @@
   "vec3 $(name)_mesh_pattern(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
   "\tuv *= $tiling;",
   "\tif ($diagonal) {",
-  "\t\tuv = transform2__mesh(uv, vec2(0.0), 45.0 * 0.01745329251, vec2(1.0 / sqrt(2.0)));",
+  "\t\tuv = transform2_of_mesh(uv, vec2(0.0), 45.0 * 0.01745329251, vec2(1.0 / sqrt(2.0)));",
   "\t}",
   "\t",
   "\tfloat pattern = 0.0;",

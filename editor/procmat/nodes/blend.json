@@ -126,10 +126,6 @@
     {
      "name": "AddSub",
      "value": "addsub"
-    },
-    {
-     "name": "Linear Light",
-     "value": "linear_light"
     }
    ]
   },

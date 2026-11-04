@@ -61,6 +61,16 @@ def split_arguments(text: str) -> list[str]:
     return args
 
 
+def parenthesized(uv: str) -> str:
+    """Material Maker substitutes coordinates as text, so `$uv.x` with `a+b` binds to b alone. It
+    goes unnoticed when the types still agree, and fails to compile when they do not."""
+    if re.fullmatch(r"[\w.\[\]]+", uv):
+        return uv
+    if uv[0] == "(" and matching(uv, 0) == len(uv) - 1:
+        return uv
+    return f"({uv})"
+
+
 class Context:
     def __init__(self, parent=None):
         self.variants = {}
@@ -486,7 +496,9 @@ class Shader(Generator):
         source = self.get_source(index)
         if source is None:
             old_uv = variables["uv"]
-            variables["uv"] = parameters
+            # .variation() has more arguments than coordinates, and only those reach a default
+            coordinates = split_arguments(parameters)[0] if suffix == "variation" else parameters
+            variables["uv"] = parenthesized(coordinates)
             replaced = self._replace_variables(str(definition.get("default", "")), variables, rv, context)
             variables["uv"] = old_uv
             return replaced
@@ -568,7 +580,7 @@ class Shader(Generator):
         current = self.expander.current_pass
         declare = not context.has_variant(self)
         output = self.outputs[port]
-        variables = {"uv": uv, "name": self.genname,
+        variables = {"uv": parenthesized(uv), "name": self.genname,
                      "?1": "_controlled_variation_.x", "?2": "_controlled_variation_.y",
                      "?3": "_controlled_variation_.z", "?4": "_controlled_variation_.w",
                      "node_id": str(self.index)}
@@ -753,11 +765,15 @@ class Expander:
         self.current_pass = current
         generator, port = root
         kind = generator.output_type(port)
-        rv = generator.shader_code("uv", port, Context())
+        # a 2D view of a 3D output: the coordinate the port's functions take, at z = 0
+        coordinate = self.types[kind]["params"]
+        coordinate_type = self.types[kind]["paramdefs"].split()[0]
+        setup = "" if coordinate == "uv" else f"\t{coordinate_type} {coordinate} = {coordinate_type}(uv, {'0.0' if coordinate_type == 'vec3' else '0.0, 0.0'});"
+        rv = generator.shader_code(coordinate, port, Context())
         color = {"f": "vec4(vec3(@), 1.0)", "rgb": "vec4(@, 1.0)", "rgba": "@", "sdf2d": "vec4(vec3(@), 1.0)",
                  "fill": "@", "sdf3d": "vec4(vec3(@), 1.0)", "sdf3dc": "vec4(vec3(@.x), 1.0)",
                  "tex3d": "vec4(@, 1.0)", "tex3d_gs": "vec4(vec3(@), 1.0)"}[rv.output_type].replace("@", rv.output_values[rv.output_type])
-        functions = "\n".join("\n".join(self.functions[f]["code"]) for f in self.function_closure(rv.functions))
+        functions = "\n".join("\n".join(self.functions[f]["code"]) for f in self.function_closure(rv.functions | {"jp_finite"}))
         lines = ["#version 450", "in vec2 v_uv;", "out vec4 g_finalColor;"]
         for item in current.textures:
             lines.append(f"uniform texture2D t_{item['name']};")
@@ -765,8 +781,8 @@ class Expander:
         if current.values:
             lines.append(f"uniform u_fs_procmat {{\n\tvec4 v[{(len(current.values) + 3) // 4}];\n}} pm;")
         return "\n".join(lines + [functions, rv.defs, "void main() {", "\tfloat _seed_variation_ = 0.0;",
-                                  "\tvec4 _controlled_variation_ = vec4(0.0);", "\tvec2 uv = v_uv;", rv.code,
-                                  f"\tg_finalColor = {color};", "}", ""]) if kind else ""
+                                  "\tvec4 _controlled_variation_ = vec4(0.0);", "\tvec2 uv = v_uv;", setup, rv.code,
+                                  f"\tg_finalColor = jp_finite({color});", "}", ""]) if kind else ""
 
 
 def slug(text: str) -> str:

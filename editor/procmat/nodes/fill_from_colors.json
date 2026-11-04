@@ -210,7 +210,7 @@
     "functions": [],
     "inputs": [
      {
-      "default": "1.0",
+      "default": "vec4(1.0)",
       "label": "",
       "name": "in",
       "type": "rgba"

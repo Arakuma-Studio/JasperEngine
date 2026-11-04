@@ -3,8 +3,8 @@
  "description": "Translates, rotates and scales its input",
  "format": 1,
  "functions": [
-  "transform2__transform2",
-  "transform2_clamp"
+  "transform2_clamp",
+  "transform2_of_transform2"
  ],
  "id": "transform2",
  "inputs": [
@@ -64,7 +64,7 @@
  "outputs": [
   {
    "description": "Shows a transformed image",
-   "expr": "$i#($mode(transform2__transform2($uv, vec2($translate_x*(2.0*$tx($uv)-1.0), $translate_y*(2.0*$ty($uv)-1.0)), $rotate*0.01745329251*(2.0*$r($uv)-1.0), vec2($scale_x*(2.0*$sx($uv)-1.0), $scale_y*(2.0*$sy($uv)-1.0)))))",
+   "expr": "$i#($mode(transform2_of_transform2($uv, vec2($translate_x*(2.0*$tx($uv)-1.0), $translate_y*(2.0*$ty($uv)-1.0)), $rotate*0.01745329251*(2.0*$r($uv)-1.0), vec2($scale_x*(2.0*$sx($uv)-1.0), $scale_y*(2.0*$sy($uv)-1.0)))))",
    "label": "Output#",
    "type": "rgba"
   }

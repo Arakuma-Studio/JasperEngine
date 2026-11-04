@@ -337,6 +337,35 @@
    "name": "blend_burn_f",
    "origin": "blend"
   },
+  "blend_color": {
+   "code": [
+    "vec3 blend_color(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "\tfloat facm = 1.0 - opacity;",
+    "",
+    "\tvec3 outcol = c2;",
+    "",
+    "\tvec3 hsv, hsv2, tmp;",
+    "\thsv2 = rgb_to_hsv(c1);",
+    "",
+    "\tif (hsv2.y != 0.0) {",
+    "\t\thsv = rgb_to_hsv(outcol);",
+    "\t\thsv.x = hsv2.x;",
+    "\t\thsv.y = hsv2.y;",
+    "\t\ttmp = hsv_to_rgb(hsv);",
+    "",
+    "\t\toutcol = mix(outcol, tmp, opacity);",
+    "\t}",
+    "\treturn outcol;",
+    "}"
+   ],
+   "deps": [
+    "hsv_to_rgb",
+    "rgb_to_hsv"
+   ],
+   "kind": "function",
+   "name": "blend_color",
+   "origin": "blend2"
+  },
   "blend_darken": {
    "code": [
     "vec3 blend_darken(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
@@ -400,6 +429,30 @@
    "name": "blend_dodge_f",
    "origin": "blend"
   },
+  "blend_exclusion": {
+   "code": [
+    "vec3 blend_exclusion(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "\treturn opacity*vec3(blend_exclusion_f(c1.x, c2.x), blend_exclusion_f(c1.y, c2.y), blend_exclusion_f(c1.z, c2.z)) + (1.0-opacity)*c2;",
+    "}"
+   ],
+   "deps": [
+    "blend_exclusion_f"
+   ],
+   "kind": "function",
+   "name": "blend_exclusion",
+   "origin": "blend2"
+  },
+  "blend_exclusion_f": {
+   "code": [
+    "float blend_exclusion_f(float c1, float c2) {",
+    "\treturn c1 + c2 - 2.0 * c1 * c2;",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "blend_exclusion_f",
+   "origin": "blend2"
+  },
   "blend_hard_light": {
    "code": [
     "vec3 blend_hard_light(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
@@ -413,6 +466,55 @@
    "name": "blend_hard_light",
    "origin": "blend"
   },
+  "blend_hard_mix": {
+   "code": [
+    "vec3 blend_hard_mix(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "\t\treturn opacity*vec3(blend_hard_mix_f(c1.x, c2.x), blend_hard_mix_f(c1.y, c2.y), blend_hard_mix_f(c1.z, c2.z)) + (1.0-opacity)*c2;",
+    "}"
+   ],
+   "deps": [
+    "blend_hard_mix_f"
+   ],
+   "kind": "function",
+   "name": "blend_hard_mix",
+   "origin": "blend2"
+  },
+  "blend_hard_mix_f": {
+   "code": [
+    "float blend_hard_mix_f(float c1, float c2) {",
+    "\treturn floor(c1 + c2);",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "blend_hard_mix_f",
+   "origin": "blend2"
+  },
+  "blend_hue": {
+   "code": [
+    "vec3 blend_hue(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "\tvec3 outcol = c2;",
+    "",
+    "\tvec3 hsv, hsv2, tmp;",
+    "\thsv2 = rgb_to_hsv(c1);",
+    "",
+    "\tif (hsv2.y != 0.0) {",
+    "\t\thsv = rgb_to_hsv(outcol);",
+    "\t\thsv.x = hsv2.x;",
+    "\t\ttmp = hsv_to_rgb(hsv);",
+    "\t\toutcol = mix(outcol, tmp, opacity);",
+    "\t}",
+    "\treturn outcol;",
+    "}"
+   ],
+   "deps": [
+    "hsv_to_rgb",
+    "rgb_to_hsv"
+   ],
+   "kind": "function",
+   "name": "blend_hue",
+   "origin": "blend2"
+  },
   "blend_lighten": {
    "code": [
     "vec3 blend_lighten(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
@@ -423,6 +525,30 @@
    "kind": "function",
    "name": "blend_lighten",
    "origin": "blend"
+  },
+  "blend_linear_light": {
+   "code": [
+    "vec3 blend_linear_light(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "return opacity*vec3(blend_linear_light_f(c1.x, c2.x), blend_linear_light_f(c1.y, c2.y), blend_linear_light_f(c1.z, c2.z)) + (1.0-opacity)*c2;",
+    "}"
+   ],
+   "deps": [
+    "blend_linear_light_f"
+   ],
+   "kind": "function",
+   "name": "blend_linear_light",
+   "origin": "blend2"
+  },
+  "blend_linear_light_f": {
+   "code": [
+    "float blend_linear_light_f(float c1, float c2) {",
+    "\treturn (c1 + 2.0 * c2) - 1.0;",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "blend_linear_light_f",
+   "origin": "blend2"
   },
   "blend_multiply": {
    "code": [
@@ -470,6 +596,57 @@
    "name": "blend_overlay_f",
    "origin": "blend"
   },
+  "blend_pin_light": {
+   "code": [
+    "vec3 blend_pin_light(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "\treturn opacity*vec3(blend_pin_light_f(c1.x, c2.x), blend_pin_light_f(c1.y, c2.y), blend_pin_light_f(c1.z, c2.z)) + (1.0-opacity)*c2;",
+    "}"
+   ],
+   "deps": [
+    "blend_pin_light_f"
+   ],
+   "kind": "function",
+   "name": "blend_pin_light",
+   "origin": "blend2"
+  },
+  "blend_pin_light_f": {
+   "code": [
+    "float blend_pin_light_f( float c1, float c2) {",
+    "\treturn (2.0 * c1 - 1.0 > c2) ? 2.0 * c1 - 1.0 : ((c1 < 0.5 * c2) ? 2.0 * c1 : c2);",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "blend_pin_light_f",
+   "origin": "blend2"
+  },
+  "blend_saturation": {
+   "code": [
+    "vec3 blend_saturation(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "\tfloat facm = 1.0 - opacity;",
+    "",
+    "\tvec3 outcol = c2;",
+    "\tvec3 hsv, hsv2;",
+    "",
+    "\thsv = rgb_to_hsv(outcol);",
+    "",
+    "\tif (hsv.y != 0.0) {",
+    "\t\thsv2 = rgb_to_hsv(c1);",
+    "",
+    "\t\thsv.y = facm * hsv.y + opacity * hsv2.y;",
+    "\t\toutcol = hsv_to_rgb(hsv);",
+    "\t}",
+    "\treturn outcol;",
+    "}"
+   ],
+   "deps": [
+    "hsv_to_rgb",
+    "rgb_to_hsv"
+   ],
+   "kind": "function",
+   "name": "blend_saturation",
+   "origin": "blend2"
+  },
   "blend_screen": {
    "code": [
     "vec3 blend_screen(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
@@ -504,6 +681,51 @@
    "kind": "function",
    "name": "blend_soft_light_f",
    "origin": "blend"
+  },
+  "blend_value": {
+   "code": [
+    "vec3 blend_value(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "\tfloat facm = 1.0 - opacity;",
+    "",
+    "\tvec3 hsv, hsv2;",
+    "\thsv = rgb_to_hsv(c2);",
+    "\thsv2 = rgb_to_hsv(c1);",
+    "",
+    "\thsv.z = facm * hsv.z + opacity * hsv2.z;",
+    "\treturn hsv_to_rgb(hsv);",
+    "}"
+   ],
+   "deps": [
+    "hsv_to_rgb",
+    "rgb_to_hsv"
+   ],
+   "kind": "function",
+   "name": "blend_value",
+   "origin": "blend2"
+  },
+  "blend_vivid_light": {
+   "code": [
+    "vec3 blend_vivid_light(vec2 uv, vec3 c1, vec3 c2, float opacity) {",
+    "\treturn opacity*vec3(blend_vivid_light_f(c1.x, c2.x), blend_vivid_light_f(c1.y, c2.y), blend_vivid_light_f(c1.z, c2.z)) + (1.0-opacity)*c2;",
+    "}"
+   ],
+   "deps": [
+    "blend_vivid_light_f"
+   ],
+   "kind": "function",
+   "name": "blend_vivid_light",
+   "origin": "blend2"
+  },
+  "blend_vivid_light_f": {
+   "code": [
+    "float blend_vivid_light_f(float c1, float c2) {",
+    "\treturn (c1 < 0.5) ? 1.0 - (1.0 - c2) / (2.0 * c1) : c2 / (2.0 * (1.0 - c1));",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "blend_vivid_light_f",
+   "origin": "blend2"
   },
   "box": {
    "code": [
@@ -2110,9 +2332,51 @@
    "name": "fromLinear",
    "origin": "color_conversion"
   },
-  "fs__seven_segment2": {
+  "from_rgb_to_hsv": {
    "code": [
-    "vec4 fs__seven_segment2(vec2 p,float s, float st, float sl, bool is_top)",
+    "vec3 from_rgb_to_hsv(vec3 c) {",
+    "\tvec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);",
+    "\tvec4 p = c.g < c.b ? vec4(c.bg, K.wz) : vec4(c.gb, K.xy);",
+    "\tvec4 q = c.r < p.x ? vec4(p.xyw, c.r) : vec4(c.r, p.yzx);",
+    "",
+    "\tfloat d = q.x - min(q.w, q.y);",
+    "\tfloat e = 1.0e-10;",
+    "\treturn vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "from_rgb_to_hsv",
+   "origin": "convert_colorspace"
+  },
+  "from_rgb_to_rgb": {
+   "code": [
+    "vec3 from_rgb_to_rgb(vec3 c) {return c;}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "from_rgb_to_rgb",
+   "origin": "convert_colorspace"
+  },
+  "from_rgb_to_yuv": {
+   "code": [
+    "// Matrix coefficients taken from https://en.wikipedia.org/wiki/YCbCr#ITU-R_BT.709_conversion",
+    "vec3 from_rgb_to_yuv(vec3 c) {",
+    "\treturn c * mat3(",
+    "\t\tvec3( 0.2126,  0.7152,  0.0722),",
+    "\t\tvec3(-0.1146, -0.3854,  0.5),",
+    "\t\tvec3( 0.5,    -0.4542, -0.0458)",
+    "\t);",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "from_rgb_to_yuv",
+   "origin": "convert_colorspace"
+  },
+  "fs_of_seven_segment2": {
+   "code": [
+    "vec4 fs_of_seven_segment2(vec2 p,float s, float st, float sl, bool is_top)",
     "{",
     "\tsl = (1.0 - sl)/2.0; st /= 2.0;",
     "\tsl = clamp(sl, 0.0,1.0);",
@@ -2138,12 +2402,12 @@
    ],
    "deps": [],
    "kind": "function",
-   "name": "fs__seven_segment2",
+   "name": "fs_of_seven_segment2",
    "origin": "seven_segment2"
   },
-  "fs__sixteen_segment": {
+  "fs_of_sixteen_segment": {
    "code": [
-    "float fs__sixteen_segment(vec2 p, float st, float sl, vec4 s14, float s5, bool sf, float da)",
+    "float fs_of_sixteen_segment(vec2 p, float st, float sl, vec4 s14, float s5, bool sf, float da)",
     "{",
     "\tconst vec2 h = vec2(1,-1);",
     "\tda *= 0.017453;",
@@ -2176,14 +2440,14 @@
     "\tvec4 qv4 = vec4(q1,q2,q3,q4);",
     "\tqv4 = min(qv4,s14);",
     "\t",
-    "\treturn max(m__sixteen_segment(min(vec4(d),qv4)), min(isg,s5));",
+    "\treturn max(m_of_sixteen_segment(min(vec4(d),qv4)), min(isg,s5));",
     "}"
    ],
    "deps": [
-    "m__sixteen_segment"
+    "m_of_sixteen_segment"
    ],
    "kind": "function",
-   "name": "fs__sixteen_segment",
+   "name": "fs_of_sixteen_segment",
    "origin": "sixteen_segment"
   },
   "gabor": {
@@ -3405,6 +3669,19 @@
    ],
    "origin": "voronoi"
   },
+  "jp_finite": {
+   "code": [
+    "// NaN has no defined 8-bit or filtered value, and each tier makes up its own: a pass writes zero",
+    "// instead, so a node's 0/0 is the same image everywhere (R12, R13)",
+    "vec4 jp_finite(vec4 c) {",
+    "\treturn vec4(c.x == c.x ? c.x : 0.0, c.y == c.y ? c.y : 0.0, c.z == c.z ? c.z : 0.0, c.w == c.w ? c.w : 0.0);",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "jp_finite",
+   "origin": "jasperengine"
+  },
   "jp_hash_float": {
    "code": [
     "float jp_hash_float(uint h, uint stream) {",
@@ -4346,19 +4623,19 @@
    "name": "l",
    "origin": "japanese_glyphs2"
   },
-  "m__seven_segment2": {
+  "m_of_seven_segment2": {
    "code": [
-    "float m__seven_segment2(vec4 a, vec4 b)",
+    "float m_of_seven_segment2(vec4 a, vec4 b)",
     "{",
     "\treturn max(max(max(a.x,a.y),max(a.z,a.w)),max(max(b.x,b.y),max(b.z,b.w)));",
     "}"
    ],
    "deps": [],
    "kind": "function",
-   "name": "m__seven_segment2",
+   "name": "m_of_seven_segment2",
    "origin": "seven_segment2"
   },
-  "m__sixteen_segment": {
+  "m_of_sixteen_segment": {
    "code": [
     "/*",
     " bit position mapping:",
@@ -4379,11 +4656,11 @@
     " e.g. M = 0001 0010 0001 1011 (binary) = 4635 (dec) = 0x121B (hex) ",
     "*/",
     "",
-    "float m__sixteen_segment(vec4 d) { return max(max(d.x,d.y),max(d.z,d.w)); }"
+    "float m_of_sixteen_segment(vec4 d) { return max(max(d.x,d.y),max(d.z,d.w)); }"
    ],
    "deps": [],
    "kind": "function",
-   "name": "m__sixteen_segment",
+   "name": "m_of_sixteen_segment",
    "origin": "sixteen_segment"
   },
   "matmap_rotate_nm": {
@@ -6842,6 +7119,39 @@
    "name": "sdRoundedX",
    "origin": "sdroundedx"
   },
+  "sdSmoothIntersection": {
+   "code": [
+    "float sdSmoothIntersection( float d1, float d2, float k ) {",
+    "\tfloat h = clamp( 0.5 - 0.5*(d2-d1)/k, 0.0, 1.0 );",
+    "\treturn mix( d2, d1, h ) + k*h*(1.0-h); }"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "sdSmoothIntersection",
+   "origin": "sdsmoothboolean_v"
+  },
+  "sdSmoothSubtraction": {
+   "code": [
+    "float sdSmoothSubtraction( float d1, float d2, float k ) {",
+    "\tfloat h = clamp( 0.5 - 0.5*(d2+d1)/k, 0.0, 1.0 );",
+    "\treturn mix( d2, -d1, h ) + k*h*(1.0-h); }"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "sdSmoothSubtraction",
+   "origin": "sdsmoothboolean_v"
+  },
+  "sdSmoothUnion": {
+   "code": [
+    "float sdSmoothUnion( float d1, float d2, float k ) {",
+    "\tfloat h = clamp( 0.5 + 0.5*(d2-d1)/k, 0.0, 1.0 );",
+    "\treturn mix( d2, d1, h ) - k*h*(1.0-h); }"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "sdSmoothUnion",
+   "origin": "sdsmoothboolean_v"
+  },
   "sdStairs": {
    "code": [
     "// The MIT License, Copyright © 2022 Inigo Quilez",
@@ -7322,30 +7632,30 @@
    "code": [
     "float ssd(vec2 p, float s, float st, float sl, float bevel, int num)",
     "{",
-    "\tvec4 a = fs__seven_segment2(p,s,st,sl,true);",
-    "\tvec4 b = fs__seven_segment2(p,s,st,sl,false);",
+    "\tvec4 a = fs_of_seven_segment2(p,s,st,sl,true);",
+    "\tvec4 b = fs_of_seven_segment2(p,s,st,sl,false);",
     "\t",
     "\tfloat d;",
     "\t",
     "\tvec4 x = vec4(0.0);",
     "\t",
-    "\tif (num == 0) d = m__seven_segment2(vec4(a.xyw,b.y),vec4(b.zw,x.xx));",
-    "\tif (num == 1) d = m__seven_segment2(vec4(a.y,b.y,x.xx),x);",
-    "\tif (num == 2) d = m__seven_segment2(vec4(a.xyz,b.w),vec4(b.z,x.xxx));",
-    "\tif (num == 3) d = m__seven_segment2(vec4(a.xyz,b.y),vec4(b.z,x.xxx));",
-    "\tif (num == 4) d = m__seven_segment2(vec4(a.yzw,b.y),x);",
-    "\tif (num == 5) d = m__seven_segment2(vec4(a.xwz,b.y),vec4(b.z,x.xxx));",
-    "\tif (num == 6) d = m__seven_segment2(vec4(a.xwz,b.y),vec4(b.zw,x.xx));",
-    "\tif (num == 7) d = m__seven_segment2(vec4(a.xy,b.y,x.x),x);",
-    "\tif (num == 8) d = m__seven_segment2(a,b);",
-    "\tif (num == 9) d = m__seven_segment2(a,vec4(b.yz,x.xx));",
+    "\tif (num == 0) d = m_of_seven_segment2(vec4(a.xyw,b.y),vec4(b.zw,x.xx));",
+    "\tif (num == 1) d = m_of_seven_segment2(vec4(a.y,b.y,x.xx),x);",
+    "\tif (num == 2) d = m_of_seven_segment2(vec4(a.xyz,b.w),vec4(b.z,x.xxx));",
+    "\tif (num == 3) d = m_of_seven_segment2(vec4(a.xyz,b.y),vec4(b.z,x.xxx));",
+    "\tif (num == 4) d = m_of_seven_segment2(vec4(a.yzw,b.y),x);",
+    "\tif (num == 5) d = m_of_seven_segment2(vec4(a.xwz,b.y),vec4(b.z,x.xxx));",
+    "\tif (num == 6) d = m_of_seven_segment2(vec4(a.xwz,b.y),vec4(b.zw,x.xx));",
+    "\tif (num == 7) d = m_of_seven_segment2(vec4(a.xy,b.y,x.x),x);",
+    "\tif (num == 8) d = m_of_seven_segment2(a,b);",
+    "\tif (num == 9) d = m_of_seven_segment2(a,vec4(b.yz,x.xx));",
     "\t",
     "\treturn clamp(d/max(bevel, 0.00001), 0.0, 1.0);",
     "}"
    ],
    "deps": [
-    "fs__seven_segment2",
-    "m__seven_segment2"
+    "fs_of_seven_segment2",
+    "m_of_seven_segment2"
    ],
    "kind": "function",
    "name": "ssd",
@@ -7372,6 +7682,43 @@
    "name": "ssd_multi",
    "origin": "seven_segment2"
   },
+  "swirl_tile_false": {
+   "code": [
+    "vec2 swirl_tile_false(vec2 uv, vec2 center, float radius, float angle) {",
+    "\tvec2 v = uv-center;",
+    "\tfloat l = length(v);",
+    "\tif (l > radius) {",
+    "\t\treturn uv;",
+    "\t} else {",
+    "\t\treturn rotate(v, angle*(1.0-l/radius)*(1.0-l/radius))+center;",
+    "\t}",
+    "}"
+   ],
+   "deps": [
+    "rotate"
+   ],
+   "kind": "function",
+   "name": "swirl_tile_false",
+   "origin": "swirl"
+  },
+  "swirl_tile_true": {
+   "code": [
+    "vec2 swirl_tile_true(vec2 uv, vec2 center, float radius, float angle) {",
+    "\tcenter = fract(center);",
+    "\tvec2 tile_offset = 2.0*(step(vec2(0.5), uv)-vec2(0.5));",
+    "\tuv = swirl_tile_false(uv, center, radius, angle);",
+    "\tuv = swirl_tile_false(uv, center+tile_offset, radius, angle);",
+    "\tuv = swirl_tile_false(uv, center+vec2(tile_offset.x, 0.0), radius, angle);",
+    "\treturn swirl_tile_false(uv, center+vec2(0.0, tile_offset.y), radius, angle);",
+    "}"
+   ],
+   "deps": [
+    "swirl_tile_false"
+   ],
+   "kind": "function",
+   "name": "swirl_tile_true",
+   "origin": "swirl"
+  },
   "toLinear": {
    "code": [
     "// Converts a color from sRGB gamma to linear light gamma",
@@ -7388,6 +7735,43 @@
    "kind": "function",
    "name": "toLinear",
    "origin": "color_conversion"
+  },
+  "to_rgb_from_hsv": {
+   "code": [
+    "vec3 to_rgb_from_hsv(vec3 c) {",
+    "\tvec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);",
+    "\tvec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);",
+    "\treturn c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "to_rgb_from_hsv",
+   "origin": "convert_colorspace"
+  },
+  "to_rgb_from_rgb": {
+   "code": [
+    "vec3 to_rgb_from_rgb(vec3 c) {return c;}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "to_rgb_from_rgb",
+   "origin": "convert_colorspace"
+  },
+  "to_rgb_from_yuv": {
+   "code": [
+    "vec3 to_rgb_from_yuv(vec3 c) {",
+    "\treturn c * mat3(",
+    "\t\tvec3(1.0,  0.0,     1.5748),",
+    "\t\tvec3(1.0, -0.1873, -0.4681),",
+    "\t\tvec3(1.0,  1.8556,  0.0)",
+    "\t);",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "to_rgb_from_yuv",
+   "origin": "convert_colorspace"
   },
   "transform": {
    "code": [
@@ -7411,9 +7795,20 @@
    "name": "transform",
    "origin": "transform"
   },
-  "transform2__mesh": {
+  "transform2_clamp": {
    "code": [
-    "vec2 transform2__mesh(vec2 uv, vec2 translate, float rotate, vec2 scale) {",
+    "vec2 transform2_clamp(vec2 uv) {",
+    "\treturn clamp(uv, vec2(0.0), vec2(1.0));",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "transform2_clamp",
+   "origin": "transform2"
+  },
+  "transform2_of_mesh": {
+   "code": [
+    "vec2 transform2_of_mesh(vec2 uv, vec2 translate, float rotate, vec2 scale) {",
     " \tvec2 rv;",
     "\tuv -= translate;",
     "\tuv -= vec2(0.5);",
@@ -7428,12 +7823,12 @@
     "scale"
    ],
    "kind": "function",
-   "name": "transform2__mesh",
+   "name": "transform2_of_mesh",
    "origin": "transform2"
   },
-  "transform2__transform2": {
+  "transform2_of_transform2": {
    "code": [
-    "vec2 transform2__transform2(vec2 uv, vec2 translate, float rotate, vec2 scale) {",
+    "vec2 transform2_of_transform2(vec2 uv, vec2 translate, float rotate, vec2 scale) {",
     " \tvec2 rv;",
     "\tuv -= translate;",
     "\tuv -= vec2(0.5);",
@@ -7446,18 +7841,7 @@
    ],
    "deps": [],
    "kind": "function",
-   "name": "transform2__transform2",
-   "origin": "transform2"
-  },
-  "transform2_clamp": {
-   "code": [
-    "vec2 transform2_clamp(vec2 uv) {",
-    "\treturn clamp(uv, vec2(0.0), vec2(1.0));",
-    "}"
-   ],
-   "deps": [],
-   "kind": "function",
-   "name": "transform2_clamp",
+   "name": "transform2_of_transform2",
    "origin": "transform2"
   },
   "truchet1": {
@@ -7785,12 +8169,12 @@
     "\t",
     "\tst = clamp(st, 0, 1) * 0.5;",
     "",
-    "\tfloat d1 = fs__sixteen_segment(uv+vec2(0.125, -0.2), st, sl, vec4(i(ch,1), i(ch,2), i(ch,3), i(ch,4)), i(ch,5) ,true, da );",
-    "\tfloat d2 = fs__sixteen_segment(uv-vec2(0.125,  0.2), st, sl, vec4(i(ch,6), i(ch,7), i(ch,8), 0), i(ch,9) ,false, da);",
-    "\tfloat d3 = fs__sixteen_segment(uv+vec2(0.125,  0.2), st, sl, vec4(i(ch,10), i(ch,11),0, i(ch,12)), i(ch,13) ,false, da);",
-    "\tfloat d4 = fs__sixteen_segment(uv-vec2(0.125, -0.2), st, sl, vec4(i(ch,14), i(ch,15),0,0), i(ch,16), true, da);",
+    "\tfloat d1 = fs_of_sixteen_segment(uv+vec2(0.125, -0.2), st, sl, vec4(i(ch,1), i(ch,2), i(ch,3), i(ch,4)), i(ch,5) ,true, da );",
+    "\tfloat d2 = fs_of_sixteen_segment(uv-vec2(0.125,  0.2), st, sl, vec4(i(ch,6), i(ch,7), i(ch,8), 0), i(ch,9) ,false, da);",
+    "\tfloat d3 = fs_of_sixteen_segment(uv+vec2(0.125,  0.2), st, sl, vec4(i(ch,10), i(ch,11),0, i(ch,12)), i(ch,13) ,false, da);",
+    "\tfloat d4 = fs_of_sixteen_segment(uv-vec2(0.125, -0.2), st, sl, vec4(i(ch,14), i(ch,15),0,0), i(ch,16), true, da);",
     "\t",
-    "\td = m__sixteen_segment(vec4(d1,d2,d3,d4));",
+    "\td = m_of_sixteen_segment(vec4(d1,d2,d3,d4));",
     "\td = max(d,(-distance(uv-0.5,dpo)*3.0)+0.1*dps*dpt);",
     "",
     "\treturn clamp(d/max(bevel, 1e-4), 0, 1);",
@@ -7798,9 +8182,9 @@
    ],
    "deps": [
     "CHARS",
-    "fs__sixteen_segment",
+    "fs_of_sixteen_segment",
     "i",
-    "m__sixteen_segment"
+    "m_of_sixteen_segment"
    ],
    "kind": "function",
    "name": "xvisd",

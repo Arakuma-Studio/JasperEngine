@@ -59,12 +59,11 @@ float steps(float x, int count) {
     return sum;
 }
 float choose(int k) {
-    switch (k) {
-        case 0: return 1.5;
-        case 1:
-        case 2: return 2.5;
-        default: return -1.0;
-    }
+    if (k == 0)
+        return 1.5;
+    else if (k == 1 || k == 2)
+        return 2.5;
+    return -1.0;
 }
 void main() {
     float total = 1.0;
@@ -80,10 +79,12 @@ void main() {
     a[0] = v_uv.x;
     a[1] = v_uv.y;
     a[2] = a[index % 2] + 1.0;
+    vec4 inserted = vec4(0.0);
+    inserted[index] = 2.0;
     mat2 m = mat2(1.0, 2.0, 3.0, v_uv.x);
     vec2 mv = m * v_uv + v_uv * m;
-    mat2 mm = m * transpose(m);
-    g_finalColor = vec4(w + total + float(visits), steps(v_uv.x, 6) + choose(index) + picked, vectorPart + a[2], mv.x + mv.y + mm[1][0] + determinant(m));
+    mat2 mm = m * m;
+    g_finalColor = vec4(w + total + float(visits), steps(v_uv.x, 6) + choose(index) + picked, vectorPart + a[2] + inserted[index] + inserted[(index + 1) % 4], mv.x + mv.y + mm[1][0]);
 }
 
 //# rand
@@ -125,16 +126,6 @@ void main() {
     vec4 wrapped = textureLod(sampler2D(t_input, s_input), v_uv + vec2(3.0, -2.0), 0.0);
     vec4 coarse = textureLod(sampler2D(t_input, s_input), v_uv, 1.0);
     g_finalColor = vec4(base.r, wrapped.r, coarse.r, textureLod(sampler2D(t_input, s_input), v_uv, 0.5).r);
-}
-
-//# discard_half
-#version 450
-in vec2 v_uv;
-out vec4 g_finalColor;
-void main() {
-    if (v_uv.x < 0.5)
-        discard;
-    g_finalColor = vec4(1.0);
 }
 
 //# endless

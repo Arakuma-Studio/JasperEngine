@@ -369,7 +369,7 @@
     "functions": [],
     "inputs": [
      {
-      "default": "0.0",
+      "default": "vec3(0.0)",
       "label": "",
       "name": "in",
       "type": "rgb"

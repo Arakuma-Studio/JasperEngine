@@ -86,7 +86,7 @@ namespace jasperengine::editor::procmat {
         void setUniforms(const float* values, size_t count);
         void setTexture(int slot, const SpirvImage* image);
 
-        enum class Result { Ok, Discarded, TooLong };
+        enum class Result { Ok, TooLong };
 
         // Runs the shader for one fragment: uv is its first input, rgba what it wrote
         Result shade(float u, float v, float rgba[4]);

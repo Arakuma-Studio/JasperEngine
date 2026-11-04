@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-// One fullscreen fragment pass on a surfaceless GL 4.1 context, read back as RGBA8: the software
+// One fullscreen fragment pass on a surfaceless GL 4.1 context, read back as floats: the software
 // tier of S53 measured with no window and no engine. Linux and Mesa only, like this tool.
 class GlPass {
 public:
@@ -22,7 +22,7 @@ public:
     std::string renderer() const;
 
     bool render(const std::string& vertex, const std::string& fragment, const std::vector<float>& uniforms, int textureSize,
-                const std::vector<float>& textureRgba, int size, std::vector<uint8_t>& out, Timings& timings, std::string& error);
+                const std::vector<float>& textureRgba, int size, std::vector<float>& out, Timings& timings, std::string& error);
 };
 
 #endif

@@ -2,7 +2,14 @@
  "code": [],
  "description": "",
  "format": 1,
- "functions": [],
+ "functions": [
+  "from_rgb_to_hsv",
+  "from_rgb_to_rgb",
+  "from_rgb_to_yuv",
+  "to_rgb_from_hsv",
+  "to_rgb_from_rgb",
+  "to_rgb_from_yuv"
+ ],
  "id": "convert_colorspace",
  "inputs": [
   {

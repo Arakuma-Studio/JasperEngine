@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -122,13 +123,13 @@ TEST(SpirvInterpreter, ControlFlowFunctionsArraysAndMatrices){
         const float picked = both ? 1.0f : (either ? 2.0f : 3.0f);
         EXPECT_NEAR(out[1], sum + choose + picked, 1e-5f);
         const float a2 = (index % 2 == 0 ? u : v) + 1.0f;
-        EXPECT_NEAR(out[2], (float)(index + 1) + a2, 1e-5f);
+        EXPECT_NEAR(out[2], (float)(index + 1) + a2 + 2.0f, 1e-5f);
         // mat2(1, 2, 3, u): columns (1, 2) and (3, u)
         const float mvx = 1.0f * u + 3.0f * v + (u * 1.0f + v * 2.0f);
         const float mvy = 2.0f * u + u * v + (u * 3.0f + v * u);
-        const float mm10 = 1.0f * 2.0f + 3.0f * u;
-        const float det = 1.0f * u - 3.0f * 2.0f;
-        EXPECT_NEAR(out[3], mvx + mvy + mm10 + det, 1e-4f);
+        // row 0 of column 1 of m * m
+        const float mm10 = 1.0f * 3.0f + 3.0f * u;
+        EXPECT_NEAR(out[3], mvx + mvy + mm10, 1e-4f);
     }
 }
 
@@ -189,16 +190,6 @@ TEST(SpirvInterpreter, SamplerIsBilinearRepeatWithBoxMips){
     EXPECT_NEAR(out[0], 0.625f, 1e-6f);
 }
 
-TEST(SpirvInterpreter, DiscardIsReported){
-    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_discard_half);
-    ASSERT_TRUE(program);
-    SpirvMachine machine(*program);
-    float out[4];
-    EXPECT_EQ(machine.shade(0.25f, 0.5f, out), SpirvMachine::Result::Discarded);
-    EXPECT_EQ(machine.shade(0.75f, 0.5f, out), SpirvMachine::Result::Ok);
-    EXPECT_EQ(out[0], 1.0f);
-}
-
 TEST(SpirvInterpreter, AnEndlessLoopStopsThePixel){
     const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_endless);
     ASSERT_TRUE(program);
@@ -224,10 +215,12 @@ TEST(SpirvInterpreter, RejectsWhatIsNotAModule){
     EXPECT_EQ(SpirvProgram::load(garbage, std::size(garbage), error), nullptr);
     EXPECT_FALSE(error.empty());
     error.clear();
-    // cut in the middle of an instruction
-    const size_t cut = std::size(fixture_rand) - 1;
-    EXPECT_EQ(SpirvProgram::load(fixture_rand, cut, error), nullptr);
-    EXPECT_FALSE(error.empty());
+    // cut before the last instruction, and in the middle of the last but one (OpReturn, OpFunctionEnd)
+    for (const size_t missing : {1u, 3u}){
+        error.clear();
+        EXPECT_EQ(SpirvProgram::load(fixture_rand, std::size(fixture_rand) - missing, error), nullptr);
+        EXPECT_FALSE(error.empty());
+    }
 }
 
 // R13: one thread's results do not depend on what it shaded before

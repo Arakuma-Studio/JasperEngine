@@ -8,7 +8,11 @@
  ],
  "description": "Performs smooth boolean operations (union, intersection or difference) between two or more shapes",
  "format": 1,
- "functions": [],
+ "functions": [
+  "sdSmoothIntersection",
+  "sdSmoothSubtraction",
+  "sdSmoothUnion"
+ ],
  "id": "sdsmoothboolean_v",
  "inputs": [
   {

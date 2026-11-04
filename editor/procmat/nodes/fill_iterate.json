@@ -6,7 +6,7 @@
  "id": "fill_iterate",
  "inputs": [
   {
-   "default": "0.0",
+   "default": "vec4(0.0)",
    "function": true,
    "label": "",
    "name": "in",

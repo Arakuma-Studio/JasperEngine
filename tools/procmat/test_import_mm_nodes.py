@@ -262,11 +262,11 @@ class ImportTest(unittest.TestCase):
         self.source.run(self.out)
         functions = self.functions()
         self.assertIn("same", functions)
-        self.assertIn("other__a", functions)
-        self.assertIn("other__b", functions)
-        self.assertEqual(self.descriptor("a")["outputs"][0]["expr"], "other__a(0.0)")
-        self.assertEqual(self.descriptor("b")["outputs"][0]["expr"], "other__b(1.0)")
-        self.assertEqual(functions["other__a"]["deps"], ["same"])
+        self.assertIn("other_of_a", functions)
+        self.assertIn("other_of_b", functions)
+        self.assertEqual(self.descriptor("a")["outputs"][0]["expr"], "other_of_a(0.0)")
+        self.assertEqual(self.descriptor("b")["outputs"][0]["expr"], "other_of_b(1.0)")
+        self.assertEqual(functions["other_of_a"]["deps"], ["same"])
 
     def test_a_name_built_from_an_enum_resolves(self):
         enum = {"name": "mode", "type": "enum", "default": 0, "label": "", "values": [{"name": "A", "value": "one"}, {"name": "B", "value": "two"}]}
