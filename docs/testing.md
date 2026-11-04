@@ -781,7 +781,7 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
   the editor, its Windows command-line twin and the editor test targets link it.
 - **Vendored libraries**: Jolt is unity-built where nothing ships (`JASPERENGINE_VENDORED_UNITY`);
   the others build source by source, and ccache serves them to every tree of a configuration.
-- **Header fan-out** (S52): `JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES`, defined on the engine's and
+- **Header fan-out** (S72): `JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES`, defined on the engine's and
   the editor's targets (and the editor's tests, through the editor's definitions), turns off the
   includes `registry/EntityRegistry.h` and `object/GameObject.h` keep for code
   outside the engine: a source there includes each component and object it uses

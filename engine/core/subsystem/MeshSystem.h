@@ -10,7 +10,6 @@
 #include "ecs/ComponentFwd.h"
 #include "math/Ray.h"
 #include "math/Rect.h"
-#include "render/InstanceData.h"
 #include "texture/Material.h"
 #include "texture/MaterialPbr.h"
 #include "texture/Texture.h"
@@ -27,7 +26,6 @@
 #include "component/TerrainComponent.h"
 #include "io/watch/FileIdentity.h"
 #include "math/Rect.h"
-#include "render/InstanceData.h"
 #include "texture/Material.h"
 #include "texture/MaterialPbr.h"
 #include "texture/Texture.h"
@@ -43,6 +41,7 @@ namespace tinygltf {
 
 namespace jasperengine{
 
+    struct InstanceData;
     struct Submesh;
     struct TerrainFoliageLayer;
 

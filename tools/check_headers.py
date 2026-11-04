@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Header self-sufficiency check (docs/specs/S52-build-hygiene.md): each header compiles alone, with the
+"""Header self-sufficiency check (docs/specs/S72-build-hygiene.md): each header compiles alone, with the
 flags of its target and no precompiled header (exports, web and Android build without one).
 
     tools/check_headers.py engine/core/Scene.h editor/Project.h   # these

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Header fan-out gate (docs/specs/S52-build-hygiene.md, docs/testing.md "Build speed"): how many
+"""Header fan-out gate (docs/specs/S72-build-hygiene.md, docs/testing.md "Build speed"): how many
 translation units an edit of a header rebuilds, from the dependency database of a built tree.
 
     tools/check_fanout.py                   # build/linux/editor: fails past the limits below
@@ -152,6 +152,9 @@ def main(argv: list[str]) -> int:
     failures = check_limits(rows)
     for failure in failures:
         print(f"FAIL {failure}", file=sys.stderr)
+    if failures:
+        print("A header that only names a component forward-declares it (engine/core/ecs/ComponentFwd.h); "
+              "only the sources that read it include it (docs/testing.md, \"Build speed\").", file=sys.stderr)
     return 1 if failures else 0
 
 
