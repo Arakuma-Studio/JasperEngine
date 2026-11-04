@@ -2820,7 +2820,6 @@ void editor::App::show(){
     avatarWindow->show();
     HumanoidConvertDialog::draw(&project);
     poseAnimationWindow->show();
-    animatorWindow->show();
     // the Scene views posing its character: a selection elsewhere leaves posing, ghosts go
     PoseViewport::frame(&project);
     terrainEditWindow->show();

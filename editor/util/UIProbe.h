@@ -10,11 +10,13 @@ namespace jasperengine::editor {
     // Test-only widget locator. With JASPER_UI_PROBE=<file> in the editor's environment (the MCP
     // test harness sets it for Editor(ui_probe=True)), the widgets the editor names here are
     // written to that file as JSON, {"frame": n, "items": {name: [x0, y0, x1, y1]}, "scroll":
-    // {name: [y, maxY]}}, in pixels of the editor window (what xdotool and an editor screenshot
-    // use), so a UI test can click a widget wherever the layout puts it instead of at a fixed
-    // position. Only items drawn whole inside their window's visible area in the last frame are
-    // listed. "scroll" holds the vertical scroll of the windows that name it, so a test scrolling
-    // one with the mouse wheel sees each notch applied and knows when it can go no further.
+    // {name: [y, maxY]}, "begins": {name: n}}, in pixels of the editor window (what xdotool and an
+    // editor screenshot use), so a UI test can click a widget wherever the layout puts it instead
+    // of at a fixed position. Only items drawn whole inside their window's visible area in the last
+    // frame are listed. "scroll" holds the vertical scroll of the windows that name it, so a test
+    // scrolling one with the mouse wheel sees each notch applied and knows when it can go no further.
+    // "begins" lists the top-level windows begun more than once a frame: a panel shown twice
+    // appends to itself, and nothing on screen says so.
     // Without the variable every call returns at once (one getenv, cached).
     class UIProbe {
     public:
