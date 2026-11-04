@@ -163,13 +163,13 @@ namespace jasperengine{
 		Vector4 stochastic[MAX_TERRAIN_LAYERS];  // Stochastic Tiling: cell size (0 = off), blend sharpness, contrast, rotation
 	} fs_terrain_layers_t;
 
-	// includes/environment.glsl (u_fs_environment)
 	// u_fs_planarReflection (includes/planar_reflection.glsl)
 	typedef struct fs_planar_reflection_t {
 		Matrix4 viewProjection; // the reflection camera's, logical
 		Vector4 params;         // x the plane's height, y 1 with a reflection
 	} fs_planar_reflection_t;
 
+	// includes/environment.glsl (u_fs_environment)
 	typedef struct fs_environment_t {
 		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
 		Vector4 params;        // x highest mip level, y 1 with an environment
