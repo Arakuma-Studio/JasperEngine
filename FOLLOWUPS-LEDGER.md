@@ -55,6 +55,7 @@ S65, S67, S68, S69, S70, S72 and S35-S40. Several ready big features may share o
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
+| Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B | In progress |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | In progress |
 | S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A | In progress |
@@ -138,3 +139,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: Correction: I told the user GitHub SSH was still refused and the key needed checking on their side. That was stale: I had last tested it at 09:50 UTC. It works (retested 14:20), and the key never needed anything. The refusal was real but temporary: other sessions on this host logged the same error until at least 11:10 UTC. Cause unknown. Git is back on the normal SSH remote.
 - 2026-11-04: S36 committed M1-M7 on its branch, so S37 M6 can build on it. Over budget, not yet measured properly: a 3-minute OGG took 6.3 s against 1.2 s, and an uncached 1 s clip took 63 ms against 40 ms, both on loaded H.
 - 2026-11-04: S37 committed M1-M4. S35 started without waiting for S62, because only its Recorder audio part overlaps and S62 has not reported yet.
+- 2026-11-04: S69 found a crash already on `main`: under load, a second editor on a locked project segfaults in 61 of 64 launches, in `Project::getSelectedEntities`, instead of exiting with code 3. Fixing on its own branch.
