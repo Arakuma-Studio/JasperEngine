@@ -65,6 +65,22 @@ TEST(ShaderKey, ShadowsHQNeedsShadows){
     EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(unshadowed)), 0x8u);
 }
 
+TEST(ShaderKey, NormalizeDropsStaleTwoDTangents){
+    // the built-in Lit's unlit 2D light variant ('Ult' 0, 'L2d' 22) took 'Tan' (8) without a
+    // normal map ('Nmp' 7) until November 2026; the 2D lights read tangents only for the map
+    const uint64_t ult = uint64_t(1) << 0, nmp = uint64_t(1) << 7, tan = uint64_t(1) << 8, l2d = uint64_t(1) << 22;
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 22, true), "L2d");
+    const ShaderKey stale = ShaderPool::getShaderKey(ShaderType::MESH, ult | tan | l2d);
+    EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(stale)), ult | l2d);
+    // with a normal map, lit, or a shader of its own (a library shader may @require tangents) it stays
+    const ShaderKey mapped = ShaderPool::getShaderKey(ShaderType::MESH, ult | nmp | tan | l2d);
+    EXPECT_EQ(ShaderPool::normalizeKey(mapped), mapped);
+    const ShaderKey lit = ShaderPool::getShaderKey(ShaderType::MESH, tan | l2d | (uint64_t(1) << 3));
+    EXPECT_EQ(ShaderPool::normalizeKey(lit), lit);
+    const ShaderKey custom = ShaderPool::getShaderKey(ShaderType::MESH, ult | tan | l2d, 3);
+    EXPECT_EQ(ShaderPool::getPropertiesFromKey(ShaderPool::normalizeKey(custom)), ult | tan | l2d);
+}
+
 TEST(ShaderKey, SpecsNameTypeAndProperties){
     const std::string first = ShaderPool::getShaderPropertyName(ShaderType::MESH, 0, true);
     const std::string second = ShaderPool::getShaderPropertyName(ShaderType::MESH, 1, true);

@@ -1700,6 +1700,12 @@ ShaderKey ShaderPool::normalizeKey(ShaderKey key) {
     // the high-quality shadow filters only exist in a variant that receives shadows
     if (type == ShaderType::MESH && !(key.properties & shaderPropertyBit(4)))
         key.properties &= ~getShadowsHQProperty();
+    // the built-in Lit's unlit 2D light variant took 'Tan' without 'Nmp' until November 2026;
+    // the 2D lights read tangents only for a normal map. A shader with a custom id keeps it: a
+    // library shader may @require tangents on that path
+    if (type == ShaderType::MESH && key.customId == 0 && (key.properties & shaderPropertyBit(0)) &&
+            (key.properties & shaderPropertyBit(22)) && !(key.properties & shaderPropertyBit(7)))
+        key.properties &= ~shaderPropertyBit(8);
     return key;
 }
 

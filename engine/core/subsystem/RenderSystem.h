@@ -2649,6 +2649,10 @@ namespace jasperengine{
 		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite,
 		                                               const MaterialStencil& stencil, int colorWrite, const ShaderManifest* manifest,
 		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
+		// A Points component's: Depth Write Auto (with a manifest's zwrite= Auto too) follows the
+		// queue, written when opaque and not when transparent (Unity's transparent ZWrite Off).
+		// depthFollowsQueue: whether it did, so a change of transparency needs new pipelines
+		static RenderState resolvePointsRenderState(const PointsComponent& points, bool& depthFollowsQueue);
 		// The variants a particle effect draws with (without the post-processing colour bit): its
 		// quads, meshes and trails, the shader reference (its features and blend define)
 		struct ParticleVariantSet{

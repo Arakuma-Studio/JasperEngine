@@ -258,6 +258,7 @@ void prepare<PointsComponent>(PointsComponent& points, Entity, CloneContext& ctx
     points.needUpdateBuffer = false;
     points.needUpdateTexture = false;
     points.uiGroupAlpha = 1.0f;
+    points.loadedTransparent = false;
 }
 
 template<>
