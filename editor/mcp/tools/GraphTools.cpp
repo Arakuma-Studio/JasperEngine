@@ -193,12 +193,17 @@ void editGraphTool(const CallPtr& call) {
     }
     // the ops in order; a bad one stops the batch with nothing written
     std::vector<std::string> names;
+    Json addedIds = Json::array();
     size_t index = 0;
     try {
         for (const Json& item : args["ops"]) {
             const GraphOp op = graph::opFromJson(item);
             names.push_back(graph::describe(g, op));
-            graph::apply(g, op);
+            // what undoes a new node, edge or group names its id, supplied or allocated
+            const GraphOp inverse = graph::apply(g, op);
+            if (inverse.op == "removeNode" || inverse.op == "disconnect" || inverse.op == "ungroup") {
+                addedIds.push_back({{"op_index", index}, {"id", inverse.args.value("id", std::string())}});
+            }
             index++;
         }
     } catch (const std::exception& e) {
@@ -222,6 +227,7 @@ void editGraphTool(const CallPtr& call) {
                    "); nothing was written. allow_invalid: true writes it anyway.", data);
         return;
     }
+    data["added"] = addedIds;
     if (dryRun) {
         data["graph"] = toMcp(graph::toJson(g));
         call->ok("Dry run: " + std::to_string(names.size()) + " op(s) apply, " + std::to_string(issues.size()) + " issue(s); nothing was written.", data);

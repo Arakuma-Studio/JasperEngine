@@ -158,3 +158,30 @@ async def test_strict_kind_refuses_typos():
         await write_graph(ed)
         await ed.call("edit_graph", path=PATH, ops=[{"op": "setParam", "node": "n2", "name": "wieght", "value": 0.7}])
         ed.check_eq(json.loads((ed.project / PATH).read_text())["nodes"][1]["params"]["wieght"], 0.7, "a non-strict kind takes it")
+
+
+async def test_new_ids_come_back():
+    """F6: edit_graph says which id each new node, edge and group got."""
+    async with Editor(create=True, name="Graph Ids CI", env={"JASPER_TEST_GRAPH_KIND": "1"}) as ed:
+        await write_graph(ed)
+        ops = [{"op": "addNode", "node": {"type": "speed", "position": [0, 300]}},
+               {"op": "moveNodes", "ids": ["n1"], "delta": [1, 1]},
+               {"op": "addNode", "node": {"type": "blend", "position": [200, 300]}},
+               {"op": "connect", "from": {"node": "n1", "port": "value"}, "to": {"node": "n2", "port": "a"}},
+               {"op": "group", "title": "Inputs", "nodes": ["n1"]}]
+        dry = await ed.call("edit_graph", path=PATH, ops=ops, dry_run=True)
+        ed.check_eq(dry["added"], [{"op_index": 0, "id": "n4"}, {"op_index": 2, "id": "n5"}, {"op_index": 3, "id": "e6"}, {"op_index": 4, "id": "g7"}],
+                    "the ids a dry run would allocate")
+        done = await ed.call("edit_graph", path=PATH, ops=ops)
+        ed.check_eq(done["added"], dry["added"], "the real edit allocates the same ones")
+        written = json.loads((ed.project / PATH).read_text())
+        ed.check({"n4", "n5"} <= {n["id"] for n in written["nodes"]}, f"in the file: {written['nodes']}")
+        ed.check_eq([e["id"] for e in written["edges"]], ["e6"], "the edge's id")
+        ed.check_eq([g["id"] for g in written["groups"]], ["g7"], "the group's id")
+
+        # an edit that adds nothing has none; a refused one has no ids to use
+        moved = await ed.call("edit_graph", path=PATH, ops=[{"op": "moveNodes", "ids": ["n1"], "delta": [1, 1]}])
+        ed.check_eq(moved["added"], [], "nothing added")
+        bad = [{"op": "connect", "from": {"node": "n3", "port": "text"}, "to": {"node": "n5", "port": "a"}}]
+        refused = await ed.call_raw("edit_graph", {"path": PATH, "ops": bad})
+        ed.check(refused.is_error and "added" not in (refused.structured or {}), f"refused: {refused.structured}")
