@@ -3,6 +3,8 @@
 
 #include "CurveEditor.h"
 
+#include "shortcuts/CommandCatalog.h"
+
 #include "Theme.h"
 #include "window/AnimationWindowClipCurves.h"
 
@@ -259,7 +261,7 @@ void CurveEditor::drawKeyMenu(std::vector<CurveBinding>& curves, CurveEditorResu
         ImGui::EndMenu();
     }
     ImGui::Separator();
-    if (ImGui::MenuItem("Delete Key", "Delete")) {
+    if (ImGui::MenuItem("Delete Key", CommandCatalog::editor().menuShortcutText("curve.delete").c_str())) {
         beginGesture(curves, result);
         std::vector<Curve*> all = mutableCurves(curves);
         selection = menuSelection;
@@ -339,6 +341,51 @@ void CurveEditor::drawBottomBar(std::vector<CurveBinding>& curves, CurveEditorRe
             ImGui::EndCombo();
         }
         if (pre == 0) ImGui::SameLine();
+    }
+}
+
+bool CurveEditor::canRun(Command command, const std::vector<CurveBinding>& curves) const {
+    if (drag != Drag::None) return false;
+    switch (command) {
+        case Command::Frame:
+            return true;
+        case Command::Delete:
+            return !selection.empty();
+        case Command::Copy:
+            return !selection.empty() && activeCurve(curves) >= 0;
+        case Command::Paste:
+            return !clipboard.empty() && activeCurve(curves) >= 0;
+    }
+    return false;
+}
+
+void CurveEditor::runCommand(Command command, std::vector<CurveBinding>& curves, CurveEditorResult& result, bool hovered, float mouseX) {
+    const int active = activeCurve(curves);
+    switch (command) {
+        case Command::Frame:
+            frame(curves);
+            break;
+        case Command::Delete: {
+            beginGesture(curves, result);
+            std::vector<Curve*> targets = mutableCurves(curves);
+            curveops::deleteKeys(targets, selection);
+            result.changed = true;
+            result.ended = true;
+            break;
+        }
+        case Command::Copy:
+            clipboard = curveops::copyKeys(*curves[(size_t)active].curve, selection, active);
+            break;
+        case Command::Paste: {
+            beginGesture(curves, result);
+            const float time = hovered ? view.toTime(mouseX) : dragStartTime;
+            const std::vector<int> pasted = curveops::pasteKeys(*curves[(size_t)active].curve, clipboard, time, hasRange ? &range : nullptr);
+            selection.clear();
+            for (int index : pasted) selection.push_back({active, index});
+            result.changed = true;
+            result.ended = true;
+            break;
+        }
     }
 }
 
@@ -522,34 +569,11 @@ CurveEditorResult CurveEditor::draw(const char* id, std::vector<CurveBinding>& c
     }
     drawList->PopClipRect();
 
-    // keys: F frames, Delete removes, Ctrl+C / Ctrl+V copy and paste at the cursor's time
-    const bool keyboard = hovered || ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    if (keyboard && !ImGui::GetIO().WantTextInput && drag == Drag::None) {
-        if (ImGui::IsKeyPressed(ImGuiKey_F, false) && !io.KeyCtrl) frame(curves);   // shortcut-lint: allow a key of this widget's own curves, selection and clipboard, while it has focus or the mouse (docs/editor/curves.md)
-        if ((ImGui::IsKeyPressed(ImGuiKey_Delete, false) || ImGui::IsKeyPressed(ImGuiKey_Backspace, false)) && !selection.empty()) {   // shortcut-lint: allow a key of this widget's own curves, selection and clipboard, while it has focus or the mouse (docs/editor/curves.md)
-            beginGesture(curves, result);
-            std::vector<Curve*> targets = mutableCurves(curves);
-            curveops::deleteKeys(targets, selection);
-            result.changed = true;
-            result.ended = true;
-        }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C, false)) {   // shortcut-lint: allow a key of this widget's own curves, selection and clipboard, while it has focus or the mouse (docs/editor/curves.md)
-            const int active = activeCurve(curves);
-            if (active >= 0) clipboard = curveops::copyKeys(*curves[(size_t)active].curve, selection, active);
-        }
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V, false) && !clipboard.empty()) {   // shortcut-lint: allow a key of this widget's own curves, selection and clipboard, while it has focus or the mouse (docs/editor/curves.md)
-            const int active = activeCurve(curves);
-            if (active >= 0) {
-                beginGesture(curves, result);
-                const float time = hovered ? view.toTime(mouse.x) : dragStartTime;
-                const std::vector<int> pasted = curveops::pasteKeys(*curves[(size_t)active].curve, clipboard, time, hasRange ? &range : nullptr);
-                selection.clear();
-                for (int index : pasted) selection.push_back({active, index});
-                result.changed = true;
-                result.ended = true;
-            }
-        }
+    // the catalog's curve.* commands since the last draw
+    for (const Command command : requested) {
+        if (canRun(command, curves)) runCommand(command, curves, result, hovered, mouse.x);
     }
+    requested.clear();
 
     drawKeyMenu(curves, result);
     if (ImGui::BeginPopup("##curveCanvasMenu")) {
@@ -564,7 +588,7 @@ CurveEditorResult CurveEditor::draw(const char* id, std::vector<CurveBinding>& c
                 if (!result.changed) result.began = false;
             }
         }
-        if (ImGui::MenuItem("Frame All", "F")) {
+        if (ImGui::MenuItem("Frame All", CommandCatalog::editor().menuShortcutText("curve.frame").c_str())) {
             selection.clear();
             frame(curves);
         }

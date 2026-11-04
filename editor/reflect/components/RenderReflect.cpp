@@ -526,6 +526,7 @@ const ComponentDesc kModelDesc{
     .codegen = JE_FACTORY_CODEGEN(createModelComponent),
     .extraKeys = kModelKnownKeys,
     .extraProperties = &modelExtraProperties,
+    .extraUpdateFlags = UpdateFlags_None,
 };
 
 namespace {

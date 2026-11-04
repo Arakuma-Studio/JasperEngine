@@ -1260,7 +1260,7 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     // the Project Hub over no project (S27 R16): only the project tools and the server's own run
     const std::string unavailable = app.projectUnavailableReason();
     if (!unavailable.empty()) {
-        static const char* const kWithoutProject[] = {"create_project", "open_project", "import_project", "list_project_templates",
+        static const char* const kWithoutProject[] = {"create_project", "open_project", "import_project", "list_project_templates", "clear_project_leftovers",
                                                       "editor_status", "get_job", "list_jobs", "cancel_job", "tool_groups",
                                                       "read_console", "get_editor_health"};
         const bool allowed = std::any_of(std::begin(kWithoutProject), std::end(kWithoutProject),
