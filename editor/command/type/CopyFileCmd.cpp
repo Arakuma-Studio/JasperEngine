@@ -68,6 +68,13 @@ editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<std::string> sour
     addVatPairs();
 }
 
+editor::CopyFileCmd::CopyFileCmd(Project* project, std::vector<FileCopyData> entries, bool copy){
+    this->project = project;
+    this->files = std::move(entries);
+    this->copy = copy;
+    addVatPairs();
+}
+
 namespace {
 
     // source's bytes replace target's atomically: copied next to it, then published (S03)
@@ -122,8 +129,10 @@ namespace {
         if (!fs::exists(target, ec)) {
             return target;
         }
-        const std::string stem = target.stem().string();
-        const std::string extension = target.extension().string();
+        // a folder's name is all name: "my.folder" -> "my.folder 1"
+        const bool directory = fs::is_directory(target, ec);
+        const std::string stem = directory ? target.filename().string() : target.stem().string();
+        const std::string extension = directory ? std::string() : target.extension().string();
         for (int counter = 1;; counter++) {
             const fs::path candidate = target.parent_path() / (stem + " " + std::to_string(counter) + extension);
             if (!fs::exists(candidate, ec)) {
@@ -132,6 +141,10 @@ namespace {
         }
     }
 
+}
+
+fs::path editor::CopyFileCmd::freeName(const fs::path& target){
+    return freeCopyName(target);
 }
 
 std::vector<editor::Command::Touched> editor::CopyFileCmd::touchedPaths(bool undo) const{
@@ -148,24 +161,85 @@ std::vector<editor::Command::Touched> editor::CopyFileCmd::touchedPaths(bool und
     return out;
 }
 
+fs::path editor::CopyFileCmd::destinationFor(const FileCopyData& fdata) const{
+    const fs::path source = (fdata.sourceDirectory / fdata.filename).lexically_normal();
+    const fs::path target = (fdata.targetDirectory / fdata.filename).lexically_normal();
+    if (!copy && source == target) {
+        return fs::path();
+    }
+    return freeCopyName(target);
+}
+
+std::string editor::CopyFileCmd::refusal() const{
+    for (const FileCopyData& fdata : files) {
+        const fs::path source = fdata.sourceDirectory / fdata.filename;
+        const fs::path target = fdata.targetDirectory / fdata.filename;
+        std::string why = copy ? AssetOps::copyRefusal(source, target) : AssetOps::moveRefusal(source, target);
+        if (!why.empty()) {
+            return why;
+        }
+    }
+    return std::string();
+}
+
+bool editor::CopyFileCmd::fail(std::string error){
+    lastError = std::move(error);
+    if (report) report->error = lastError;
+    return false;
+}
+
+void editor::CopyFileCmd::beginReport(){
+    lastError.clear();
+    if (report) *report = Report();
+    for (FileCopyData& fdata : files) {
+        fdata.went = false;
+    }
+}
+
+bool editor::CopyFileCmd::isNoOp() const{
+    return std::none_of(files.begin(), files.end(), [](const FileCopyData& fdata) { return fdata.went; });
+}
+
+std::string editor::CopyFileCmd::describe() const{
+    std::vector<fs::path> names;
+    for (const FileCopyData& file : files) {
+        names.push_back(file.filename);
+    }
+    const char* verb = duplicate ? "Duplicate " : copy ? "Copy " : "Move ";
+    std::string name = std::string(verb) + (files.size() == 1 ? "File " : "") + CommandNames::files(names);
+    // a move that took a free name says so
+    if (!copy && files.size() == 1 && !files[0].destination.empty() && files[0].destination.filename() != files[0].filename) {
+        name += " as " + FileUtils::pathToUtf8(files[0].destination.filename());
+    }
+    return name;
+}
+
 // Moves and copies go through AssetOps: files and metas together, GUIDs kept by moves and
 // new (the same again on a redo) for copies, references refreshed in memory
 // Without a project (file operations of a folder that is none: the tests of the write scope),
-// the files alone: copied under a free name or moved, in the write scope beneath its root
+// the files alone: copied or moved under a free name, in the write scope beneath its root
 bool editor::CopyFileCmd::executeFiles(){
+    beginReport();
+    if (std::string why = refusal(); !why.empty()) {
+        Out::error("%s", why.c_str());
+        return fail(why);
+    }
     for (size_t i = 0; i < files.size(); i++) {
         FileCopyData& fdata = files[i];
         const fs::path source = fdata.sourceDirectory / fdata.filename;
         std::error_code ec;
         if (!fs::exists(source, ec)) {
+            if (report) report->gone++;
             continue;
+        }
+        if (fdata.destination.empty()) fdata.destination = destinationFor(fdata);
+        if (fdata.destination.empty()) {
+            continue;   // moved into the folder it is in
         }
         bool done;
         if (copy) {
-            if (fdata.destination.empty()) fdata.destination = freeCopyName(fdata.targetDirectory / fdata.filename);
             done = FileUtils::copyPath(source, fdata.destination, false, ec);
         } else {
-            fdata.destination = fdata.targetDirectory / fdata.filename;
             done = fs::exists(fdata.destination, ec) ? false : FileUtils::renamePath(source, fdata.destination, ec);
         }
         if (!done) {
@@ -174,12 +248,15 @@ bool editor::CopyFileCmd::executeFiles(){
             Out::error("Couldn't %s \"%s\": %s", copy ? "copy" : "move", fdata.filename.string().c_str(), why.c_str());
             for (size_t back = i; back-- > 0;) {
                 const FileCopyData& earlier = files[back];
+                if (!earlier.went) continue;
                 std::error_code ignored;
                 if (copy) FileUtils::removeAll(earlier.destination, ignored);
                 else FileUtils::renamePath(earlier.destination, earlier.sourceDirectory / earlier.filename, ignored);
             }
-            return false;
+            return fail("Couldn't " + std::string(copy ? "copy " : "move ") + FileUtils::pathToUtf8(fdata.filename) + ": " + why);
         }
+        fdata.went = true;
+        if (report) report->landed.push_back(fdata.destination);
     }
     return true;
 }
@@ -188,7 +265,7 @@ void editor::CopyFileCmd::undoFiles(){
     for (auto it = files.rbegin(); it != files.rend(); ++it) {
         const FileCopyData& fdata = *it;
         std::error_code ec;
-        if (fdata.destination.empty() || !fs::exists(fdata.destination, ec)) {
+        if (!fdata.went || fdata.destination.empty() || !fs::exists(fdata.destination, ec)) {
             continue;
         }
         const bool done = copy ? FileUtils::removeAll(fdata.destination, ec)
@@ -204,6 +281,12 @@ bool editor::CopyFileCmd::execute(){
     if (!project) {
         return executeFiles();
     }
+    beginReport();
+    // a folder into itself (or a copy making a second project.yaml) refuses the whole step
+    if (std::string why = refusal(); !why.empty()) {
+        Out::error("%s", why.c_str());
+        return fail(why);
+    }
     // what went (moved or copied): the Vertex Animation meshes among it name their textures again
     std::vector<std::pair<fs::path, fs::path>> went;
     for (size_t i = 0; i < files.size(); i++) {
@@ -211,6 +294,7 @@ bool editor::CopyFileCmd::execute(){
         const fs::path source = fdata.sourceDirectory / fdata.filename;
         std::error_code ec;
         if (!fs::exists(source, ec)) {
+            if (report) report->gone++;
             continue;
         }
         AssetOps::Result result;
@@ -232,42 +316,50 @@ bool editor::CopyFileCmd::execute(){
             if (!error.empty()) {
                 fdata.backup.clear();
                 Out::error("Couldn't replace \"%s\": %s", fdata.filename.string().c_str(), error.c_str());
-                return false;
+                return fail("Couldn't replace " + FileUtils::pathToUtf8(fdata.filename) + ": " + error);
             }
             project->onAssetFilesChanged(project->getAssetDatabase().importAssets(target));
             went.emplace_back(source, target);
+            fdata.went = true;
+            if (report) report->landed.push_back(target);
             continue;
         }
-        if (copy) {
-            if (fdata.destination.empty()) {
-                fdata.destination = freeCopyName(fdata.targetDirectory / fdata.filename);
-                // the other file of a Vertex Animation pair copied in this step takes the same name
-                const fs::path pair = vat::pairPathOf(source);
-                for (FileCopyData& other : files) {
-                    if (!pair.empty() && other.destination.empty() &&
-                        (other.sourceDirectory / other.filename).lexically_normal() == pair.lexically_normal()) {
-                        other.destination = vat::pairPathOf(fdata.destination);
-                    }
+        if (fdata.destination.empty()) {
+            fdata.destination = destinationFor(fdata);
+            // the other file of a Vertex Animation pair in this step takes the same free name
+            const fs::path pair = vat::pairPathOf(source);
+            for (FileCopyData& other : files) {
+                if (!pair.empty() && !fdata.destination.empty() && other.destination.empty() &&
+                    (other.sourceDirectory / other.filename).lexically_normal() == pair.lexically_normal()) {
+                    other.destination = vat::pairPathOf(fdata.destination);
                 }
             }
-            result = AssetOps::copy(*project, source, fdata.destination, &copyGuids);
-        } else {
-            fdata.destination = fdata.targetDirectory / fdata.filename;
-            result = AssetOps::move(*project, source, fdata.destination);
         }
+        if (fdata.destination.empty()) {
+            continue;   // moved into the folder it is in: nothing to do
+        }
+        if (!copy && fdata.destination.filename() != fdata.filename) {
+            Out::info("Moved %s as %s (the name was taken)", FileUtils::pathToUtf8(fdata.filename).c_str(),
+                      FileUtils::pathToUtf8(fdata.destination.filename()).c_str());
+        }
+        result = copy ? AssetOps::copy(*project, source, fdata.destination, &copyGuids)
+                      : AssetOps::move(*project, source, fdata.destination);
         if (!result.ok) {
             Out::error("Couldn't %s \"%s\": %s", copy ? "copy" : "move", fdata.filename.string().c_str(), result.error.c_str());
             // what was done goes back, so a failed command leaves nothing half done
             for (size_t back = i; back-- > 0;) {
                 const FileCopyData& done = files[back];
+                if (!done.went) continue;
                 if (copy) {
                     AssetOps::removeCopy(*project, done.destination);
                 } else {
                     AssetOps::move(*project, done.destination, done.sourceDirectory / done.filename);
                 }
             }
-            return false;
+            return fail("Couldn't " + std::string(copy ? "copy " : "move ") + FileUtils::pathToUtf8(fdata.filename) + ": " + result.error);
         }
+        fdata.went = true;
+        if (report) report->landed.push_back(fdata.destination);
         went.emplace_back(source, fdata.destination);
     }
 
@@ -278,21 +370,23 @@ bool editor::CopyFileCmd::execute(){
         vatUriMoves = went;
     }
     vatUriEdits = vat::rebaseMovedVatMeshes(went);
-    // a .vat copied under a free name ("walk 1.vat") names the mesh copied with it
-    if (copy) {
-        for (const FileCopyData& fdata : files) {
-            const std::string destination = FileUtils::pathToUtf8(fdata.destination);
-            if (!Util::isVertexAnimationFile(destination) || fdata.destination.filename() == fdata.filename) {
-                continue;
-            }
-            std::ifstream file(fdata.destination, std::ios::binary);
-            std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-            file.close();
-            if (vat::setMeshField(text, vat::pairPathOf(fdata.destination).filename().generic_string()) &&
-                FileUtils::writeFileReplacing(fdata.destination, text)) {
-                project->importPrefabFiles(fdata.destination);
-                VatDocument::filesChanged({fdata.destination}, project);
-            }
+    // a .vat copied or moved under a free name ("walk 1.vat") names the mesh that went with it;
+    // a move's undo writes the old text back
+    vatMeshFieldEdits.clear();
+    for (const FileCopyData& fdata : files) {
+        const std::string destination = FileUtils::pathToUtf8(fdata.destination);
+        if (!fdata.went || !Util::isVertexAnimationFile(destination) || fdata.destination.filename() == fdata.filename) {
+            continue;
+        }
+        std::ifstream file(fdata.destination, std::ios::binary);
+        const std::string original((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        file.close();
+        std::string text = original;
+        if (vat::setMeshField(text, vat::pairPathOf(fdata.destination).filename().generic_string()) &&
+            FileUtils::writeFileReplacing(fdata.destination, text)) {
+            if (!copy) vatMeshFieldEdits.emplace_back(fdata.destination, original);
+            project->importPrefabFiles(fdata.destination);
+            VatDocument::filesChanged({fdata.destination}, project);
         }
     }
 
@@ -300,7 +394,7 @@ bool editor::CopyFileCmd::execute(){
     // first: a clip moved in the same step is at its final place when its hint is rewritten)
     if (!copy) {
         for (const FileCopyData& fdata : files) {
-            if (fdata.destination.empty()) {
+            if (!fdata.went) {
                 continue;
             }
             std::vector<ClipHintEdit> edits = remapClipHints(project, fdata.sourceDirectory / fdata.filename, fdata.destination);
@@ -317,10 +411,17 @@ void editor::CopyFileCmd::undo(){
     }
     restoreClipHints(project, clipHintEdits);
     clipHintEdits.clear();
+    // a moved .vat that took a free name names its old mesh again before it goes back
+    for (const auto& [path, original] : vatMeshFieldEdits) {
+        if (FileUtils::writeFileReplacing(path, original)) {
+            VatDocument::filesChanged({path}, project);
+        }
+    }
+    vatMeshFieldEdits.clear();
     for (auto it = files.rbegin(); it != files.rend(); ++it) {
         FileCopyData& fdata = *it;
         std::error_code ec;
-        if (fdata.destination.empty() || !fs::exists(fdata.destination, ec)) {
+        if (!fdata.went || fdata.destination.empty() || !fs::exists(fdata.destination, ec)) {
             continue;
         }
         if (!fdata.backup.empty()) {
