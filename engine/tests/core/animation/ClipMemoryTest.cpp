@@ -156,7 +156,9 @@ namespace {
         EXPECT_EQ(std::memcmp(&a.rotation, &b.rotation, sizeof(Quaternion)), 0) << what;
         EXPECT_EQ(a.weights, b.weights) << what;
         ASSERT_EQ(a.offsets.size(), b.offsets.size()) << what;
-        if (!a.offsets.empty()) EXPECT_EQ(std::memcmp(a.offsets.data(), b.offsets.data(), a.offsets.size() * sizeof(Vector3)), 0) << what;
+        if (!a.offsets.empty()){
+            EXPECT_EQ(std::memcmp(a.offsets.data(), b.offsets.data(), a.offsets.size() * sizeof(Vector3)), 0) << what;
+        }
     }
 
     // bit for bit, at every key time, between keys, before and past the ends
@@ -262,7 +264,8 @@ TEST(ClipMemory, AnAllLinearTrackHasNoEasings){
     EXPECT_EQ(eased.easings[1], EaseType::LINEAR);
     ASSERT_NE(trackOf(*clip, "Stepped", ClipChannel::Position).easings, nullptr);
 
-    const int discrete = clip->findPropertyTrack("Box", "gameobject", "active");
+    const ClipData normalized = clip->toData();
+    const int discrete = normalized.findPropertyTrack("Box", "gameobject", "active");
     ASSERT_GE(discrete, 0);
     ASSERT_NE(clip->getTracks()[(size_t)discrete].easings, nullptr) << "a discrete property steps";
     EXPECT_EQ(clip->getTracks()[(size_t)discrete].easings[0], EaseType::STEP);
