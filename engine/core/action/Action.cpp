@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Action.h"
+#include "component/ActionComponent.h"
 
 using namespace jasperengine;
 

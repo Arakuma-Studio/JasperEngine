@@ -7,6 +7,7 @@
 // overrides at any level, Prefab Mode (prefab stages), the standalone prefab list.
 // Every edit runs through the editor's commands (one undo step per call).
 #include "McpTools.h"
+#include "component/Transform.h"
 
 #include "mcp/McpDataSafety.h"
 #include "mcp/McpCall.h"

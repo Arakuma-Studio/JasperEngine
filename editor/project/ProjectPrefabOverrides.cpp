@@ -5,6 +5,10 @@
 // overrides (revert/apply) and component override apply.
 
 #include "Project.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/Transform.h"
+#include "project/PrefabUnpackRecord.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"
@@ -339,7 +343,7 @@ std::vector<editor::PrefabUnpackRecord> editor::Project::unpackPrefabInstances(u
     }
 
     // What each prefab overrides of the instances nested in it becomes theirs (kept per root)
-    std::unordered_map<Entity, std::vector<PrefabUnpackRecord::NestedState>> nestedBefore;
+    std::unordered_map<Entity, std::vector<PrefabNestedState>> nestedBefore;
     for (Entity root : unpackRoots) {
         promoteNestedAssetData(sceneId, *index.roots.at(root).path, root, nestedBefore[root], queued, !completely);
     }
@@ -496,7 +500,7 @@ void editor::Project::repackPrefabInstances(uint32_t sceneId, std::vector<Prefab
                 }
             }
             // the instances nested in it get back the overrides they had
-            for (PrefabUnpackRecord::NestedState& nested : record.nestedBefore) {
+            for (PrefabNestedState& nested : record.nestedBefore) {
                 if (Prefab::Instance* inner = findInstanceAt(sceneProject, nested.root, nested.path)) {
                     inner->overrides = std::move(nested.overrides);
                     inner->removed = std::move(nested.removed);
