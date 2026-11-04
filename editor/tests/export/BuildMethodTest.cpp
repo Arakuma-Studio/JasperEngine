@@ -365,8 +365,10 @@ TEST(AndroidSigning, TheDebugKeyByDefaultMadeWhenMissing) {
     EXPECT_TRUE(android.warnings.empty());
 }
 
-TEST(AndroidSigning, AReleaseKeystoreSignsBothFormatsWithItsPasswordsInFilesOnly) {
-    for (AndroidFormat format : {AndroidFormat::Apk, AndroidFormat::Aab}) {
+namespace build_method_test {
+
+    // a release keystore signs the package, its passwords in files that do not outlive the build
+    void expectReleaseKeystoreSigns(AndroidFormat format) {
         FakeAndroid android;
         ScopedVariable store("FAKE_STORE", "s3cret-store"), key("FAKE_KEY", "s3cret-key"), alias("FAKE_ALIAS", "game");
         android.useKeystore("game", "s3cret-store", "s3cret-key");
@@ -387,6 +389,15 @@ TEST(AndroidSigning, AReleaseKeystoreSignsBothFormatsWithItsPasswordsInFilesOnly
         EXPECT_FALSE(fs::exists(android.package.workDir / ".ks-pass"));
         EXPECT_FALSE(fs::exists(android.package.workDir / ".key-pass"));
     }
+
+}
+
+TEST(AndroidSigning, AReleaseKeystoreSignsAnApk) {
+    expectReleaseKeystoreSigns(AndroidFormat::Apk);
+}
+
+TEST(AndroidSigning, AReleaseKeystoreSignsABundleWithAnyKeyType) {
+    expectReleaseKeystoreSigns(AndroidFormat::Aab);
 }
 
 TEST(AndroidSigning, TheEnvironmentGivesThePasswords) {

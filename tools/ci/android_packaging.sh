@@ -141,8 +141,8 @@ tools/build.sh exec android bash -euo pipefail -c "
     # (the debug project's output folders hold what was just built; prepare validates each)
     cat > \$OUT/debug/publishing.json <<JSON
 {\"schemaVersion\": 1, \"releasesDir\": \"../releases\", \"targets\": {
-  \"apk\": {\"platform\": \"android\", \"arch\": \"universal\", \"flavour\": \"'$FLAVOUR'\", \"buildDir\": \"../debug-apk\"},
-  \"aab\": {\"platform\": \"android\", \"arch\": \"universal\", \"flavour\": \"'$FLAVOUR'\", \"buildDir\": \"../debug-aab\"}}}
+  \"apk\": {\"platform\": \"android\", \"arch\": \"universal\", \"flavour\": \"$FLAVOUR\", \"buildDir\": \"../debug-apk\"},
+  \"aab\": {\"platform\": \"android\", \"arch\": \"universal\", \"flavour\": \"$FLAVOUR\", \"buildDir\": \"../debug-aab\"}}}
 JSON
     dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor publish prepare --project \$OUT/debug --release s47 > \$OUT/logs/publish-prepare.log 2>&1 \
         || { tail -n 30 \$OUT/logs/publish-prepare.log; fail 'publish prepare refused the APK or the bundle'; }
