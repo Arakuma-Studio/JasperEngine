@@ -83,7 +83,7 @@ namespace jasperengine {
         // What one walk finds of the links (followLinks): each folder is entered once per walk
         struct LinkWalk {
             explicit LinkWalk(const std::filesystem::path& root) : follower(root) {}
-            LinkFollower follower;
+            watch::LinkFollower follower;
             std::map<std::string, std::filesystem::path> found;
         };
 
