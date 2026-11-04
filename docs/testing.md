@@ -81,7 +81,8 @@ there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/te
   of a Chromium reference (`golden/browser/**`).
 - `tools/build.sh mcp-tests` runs `tools/mcp/run-tests.sh` in the Linux image against
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
-  `CI = True`; `MCP_SUITE=all` runs every file and needs the default fixture project, which is
+  `CI = True` (`tools/ci/check-mcp-ci-suite.py`, run by check-changed: every file is classified,
+  docs/mcp/README.md); `MCP_SUITE=all` runs every file and needs the default fixture project, which is
   not in git: `JASPER_FIXTURE`, else `build/fixture-unity` of the checkout or the main checkout,
   else `~/je/fixture-unity` (the build servers' copy), mounted at `/fixture`. The harness looks in
   the same places (`harness.default_fixture()`); without a fixture, the tests that need it skip
