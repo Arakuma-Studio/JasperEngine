@@ -280,6 +280,10 @@ uint64_t SystemRender::getNestedPassCount(){
     return SokolSystem::getNestedPassCount();
 }
 
+void SystemRender::waitGpuIdle(){
+    SokolSystem::waitGpuIdle();
+}
+
 void SystemRender::shutdown(){
     SokolSystem::shutdown();
 }

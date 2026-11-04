@@ -181,6 +181,7 @@ bool Engine::gameEventsPaused = false;
 bool Engine::osPaused = false;
 bool Engine::nativePaused = false;
 std::atomic<bool> Engine::focused = true;
+std::atomic<bool> Engine::visible = true;
 int Engine::targetFrameRate = -1;
 // the project's VSync setting (platformConfig().vsync, set in systemInit; the generated init()
 // may set it again)
@@ -213,6 +214,7 @@ FunctionSubscribe<void()> Engine::onPause;
 FunctionSubscribe<void()> Engine::onResume;
 FunctionSubscribe<void()> Engine::onShutdown;
 FunctionSubscribe<void(bool)> Engine::onFocus;
+FunctionSubscribe<void(bool)> Engine::onVisibilityChanged;
 FunctionSubscribe<void(int)> Engine::onOrientationChanged;
 FunctionSubscribe<void()> Engine::onLowMemory;
 FunctionSubscribe<void()> Engine::onSafeAreaChanged;
@@ -1834,6 +1836,7 @@ void Engine::systemInit(int argc, char* argv[], System* system, bool startProjec
     osPaused = false;
     nativePaused = false;
     focused = true;
+    visible = true;
     lastOrientation = 0;
     orientationPendingSince = 0.0;
 
@@ -2115,6 +2118,9 @@ void Engine::systemFramePresented(){
 }
 
 void Engine::systemUpdate(){
+    // Metal frees what a frame released by frame count, and only a frame with a pass waits for
+    // the GPU: frames without passes would free what the GPU still reads
+    SystemRender::waitGpuIdle();
     runFrame(false);
 }
 
@@ -2531,6 +2537,11 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
 #endif
 
 void Engine::systemViewDestroyed(){
+    // a launch that failed before systemViewLoaded (macOS without Metal), or a second destroy:
+    // there is nothing to tear down, and sokol was never set up
+    if (!viewLoaded)
+        return;
+
     SoundPool::requestShutdown();
     TextureDataPool::requestShutdown();
 
@@ -2700,6 +2711,16 @@ void Engine::systemFocus(bool hasFocus){
     Engine::onFocus.call(hasFocus);
 }
 
+void Engine::systemVisibilityChanged(bool isVisible){
+    if (isVisible == visible) return;
+    visible = isVisible;
+    if (isVisible)
+        Log::print("Window visible: drawing again");
+    else
+        Log::print("Window hidden: updating at %g Hz without drawing", getHiddenUpdateFps());
+    Engine::onVisibilityChanged.call(isVisible);
+}
+
 void Engine::systemOrientationChanged(){
     if (!System::hasInstance()) return;
     const int orientation = (int)Screen::getOrientation();
@@ -2769,6 +2790,7 @@ void Engine::resetApplicationState(){
         AudioSystem::setPlatformPaused(false);
     }
     focused = true;
+    visible = true;
     lastOrientation = 0;
     orientationPendingSince = 0.0;
     targetFrameRate = -1;
@@ -2783,6 +2805,15 @@ bool Engine::isFocused(){
 
 bool Engine::isPaused(){
     return paused;
+}
+
+bool Engine::isVisible(){
+    return visible;
+}
+
+double Engine::getHiddenUpdateFps(){
+    const double refreshRate = System::hasInstance() ? System::instance().getRefreshRate() : 0.0;
+    return PlatformRules::hiddenUpdateFps(targetFrameRate, vSyncCount, refreshRate);
 }
 
 void Engine::setTargetFrameRate(int fps){

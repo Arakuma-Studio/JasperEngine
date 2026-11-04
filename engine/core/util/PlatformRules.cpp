@@ -520,3 +520,14 @@ FramePacing PlatformRules::computeFramePacing(Platform platform, int targetFrame
     }
     return pacing;
 }
+
+double PlatformRules::hiddenUpdateFps(int targetFrameRate, int vSyncCount, double refreshRate){
+    constexpr double MAX_HIDDEN_FPS = 60.0;
+    const double refresh = refreshRate > 0.0 ? refreshRate : 60.0;
+    double fps = MAX_HIDDEN_FPS;
+    if (vSyncCount > 0)
+        fps = refresh / (double)vSyncCount;
+    else if (targetFrameRate > 0)
+        fps = (double)targetFrameRate;
+    return std::clamp(fps, 1.0, MAX_HIDDEN_FPS);
+}

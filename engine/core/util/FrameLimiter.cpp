@@ -78,12 +78,15 @@ void FrameLimiter::wait(double fps){
 }
 
 bool FrameLimiter::isDue(double fps, double tolerance){
+    return isDueAt(now(), fps, tolerance);
+}
+
+bool FrameLimiter::isDueAt(double current, double fps, double tolerance){
     if (fps <= 0.0){
         reset();
         return true;
     }
     const double period = 1.0 / fps;
-    const double current = now();
     if (!started){
         started = true;
         deadline = current + period;
@@ -95,4 +98,13 @@ bool FrameLimiter::isDue(double fps, double tolerance){
         deadline = current + period;
     }
     return true;
+}
+
+double FrameLimiter::secondsUntilDue() const{
+    return secondsUntilDueAt(now());
+}
+
+double FrameLimiter::secondsUntilDueAt(double current) const{
+    if (!started || deadline <= current) return 0.0;
+    return deadline - current;
 }

@@ -26,6 +26,12 @@ namespace jasperengine {
         // due now, `tolerance` seconds early counting as due; a due frame moves the schedule on.
         // fps <= 0: always due.
         bool isDue(double fps, double tolerance = 0.002);
+        // the same at a given time (monotonic seconds)
+        bool isDueAt(double current, double fps, double tolerance = 0.002);
+
+        // Seconds until the next frame is due: 0 when it is due, or before the first frame
+        double secondsUntilDue() const;
+        double secondsUntilDueAt(double current) const;
 
         void reset();
 

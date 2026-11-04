@@ -144,6 +144,11 @@ namespace jasperengine {
         JASPERENGINE_API FramePacing computeFramePacing(Platform platform, int targetFrameRate, int vSyncCount,
                                                         double refreshRate, int maxSwapInterval, bool canDisableVSync);
 
+        // The update rate of a desktop window nobody can see (minimized, hidden, covered): the game
+        // updates without drawing at its own rate, vSyncCount first (refreshRate / vSyncCount), then
+        // targetFrameRate, at most 60 and at least 1. refreshRate <= 0 counts as 60.
+        JASPERENGINE_API double hiddenUpdateFps(int targetFrameRate, int vSyncCount, double refreshRate);
+
     }
 
 }
