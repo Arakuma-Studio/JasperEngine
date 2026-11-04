@@ -1699,7 +1699,7 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     code << ind << "terrain.rootGridSize = " << formatInt(terrain.rootGridSize) << ";\n";
     code << ind << "terrain.levels = " << formatInt(terrain.levels) << ";\n";
     // T3 R50: only what differs from the defaults
-    const TerrainComponent terrainDefaults;
+    const TerrainComponent terrainDefaults{};
     if (terrain.quality != terrainDefaults.quality) code << ind << "terrain.quality = static_cast<TerrainQualitySetting>(" << static_cast<int>(terrain.quality) << ");\n";
     if (terrain.limitLayersPerPixel) code << ind << "terrain.limitLayersPerPixel = true;\n";
     if (terrain.offscreenShadows != terrainDefaults.offscreenShadows) code << ind << "terrain.offscreenShadows = static_cast<TerrainOffscreenShadows>(" << static_cast<int>(terrain.offscreenShadows) << ");\n";

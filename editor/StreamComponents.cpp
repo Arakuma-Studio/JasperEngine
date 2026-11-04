@@ -600,7 +600,7 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     node["levels"] = terrain.levels;
 
     // T3 R50: each at its default stays out, so an old scene saves back byte-identical
-    const TerrainComponent defaults;
+    const TerrainComponent defaults{};
     if (terrain.quality != defaults.quality) node["quality"] = std::string(StreamSchema::terrainQualitySetting().toString(terrain.quality));
     if (terrain.limitLayersPerPixel) node["limitLayersPerPixel"] = true;
     if (terrain.offscreenShadows != defaults.offscreenShadows) node["offscreenShadows"] = std::string(StreamSchema::terrainOffscreenShadows().toString(terrain.offscreenShadows));
@@ -705,7 +705,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     if (node["levels"]) terrain.levels = YamlNumbers::as<int>(node["levels"]);
 
     // T3 R50: an absent key is the default, also when decoding over a terrain that had another value
-    const TerrainComponent defaults;
+    const TerrainComponent defaults{};
     terrain.quality = node["quality"] ? decodeEnum(node, "quality", StreamSchema::terrainQualitySetting()) : defaults.quality;
     terrain.limitLayersPerPixel = node["limitLayersPerPixel"] ? YamlNumbers::as<bool>(node["limitLayersPerPixel"]) : defaults.limitLayersPerPixel;
     terrain.offscreenShadows = node["offscreenShadows"] ? decodeEnum(node, "offscreenShadows", StreamSchema::terrainOffscreenShadows()) : defaults.offscreenShadows;
