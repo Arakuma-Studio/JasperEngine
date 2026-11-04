@@ -7,7 +7,7 @@
 
 #include <vector>
 
-using namespace jasperengine::editor;
+using namespace jasperengine;
 
 TEST(NearestName, SuggestsWithinTwoEdits){
     const std::vector<std::string> lights = {"directional", "point", "spot"};
