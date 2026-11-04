@@ -134,7 +134,8 @@ TEST_F(TitleArtRendererGpu, JobMembers) {
     }
     // progress rises monotonically to 1; every GPU step has a cost
     float last = 0.0f;
-    for (int frame = 0; frame < 40000 && !job->done(); frame++) {
+    const auto start = std::chrono::steady_clock::now();
+    while (!job->done() && std::chrono::steady_clock::now() - start < std::chrono::minutes(3)) {
         SystemRender::updateGpuCreation();
         RuntimeShaderCompiler::beginFrame();
         if (!job->waiting()) {

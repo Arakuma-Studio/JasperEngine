@@ -23,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <map>
@@ -346,9 +347,11 @@ namespace jasperengine::titleart::test {
 
     // ---- running a job ----
 
-    // frames until the job is done (its programs compile on the way); false on failure
-    inline ::testing::AssertionResult runJob(TitleRenderJob& job, const StepBudget& budget = {}, int maxFrames = 4000) {
-        for (int i = 0; i < maxFrames; i++) {
+    // frames until the job is done (its programs compile on the way, a cold shader cache takes
+    // a while on a software device); false on failure or after three minutes
+    inline ::testing::AssertionResult runJob(TitleRenderJob& job, const StepBudget& budget = {}, int maxFrames = 1000000) {
+        const auto start = std::chrono::steady_clock::now();
+        for (int i = 0; i < maxFrames && std::chrono::steady_clock::now() - start < std::chrono::minutes(3); i++) {
             SystemRender::updateGpuCreation();
             RuntimeShaderCompiler::beginFrame();
             const bool done = job.step(budget);
@@ -356,7 +359,7 @@ namespace jasperengine::titleart::test {
             if (done) return ::testing::AssertionSuccess();
             if (job.failed()) return ::testing::AssertionFailure() << "the job failed: " << job.error();
         }
-        return ::testing::AssertionFailure() << "the job did not finish in " << maxFrames << " frames";
+        return ::testing::AssertionFailure() << "the job did not finish (" << job.passesDone() << " of " << job.passesTotal() << " passes)";
     }
 
     struct Pixels {

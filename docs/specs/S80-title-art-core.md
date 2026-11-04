@@ -1990,3 +1990,11 @@ rest of S82 lands in 6B.
     masks, the front part its face alone; the cell's image is front over back.
 26. **Implementation: element seeds add the document's as seed + (document seed - 1)**, so the
     default document seed 1 renders Pachislop's patterns, textures and dry brush.
+27. **Measured: R42's colour budget holds for the title, not its layer effects.** On the
+    classic-style fixture of `TitleArtRendererGpu.CacheCascade` (four rims, a gold face, a glow
+    and a drop shadow standing in for Outer Glow and Drop Shadow) a full render is 57 passes, a
+    face colour change 23, a whole-pixel move 2 and an outer rim width change 20 (35 %). The title
+    itself re-runs only its stack, placement, compose and output (8 passes); the two layer effects
+    re-run because an effect's output is a function of its input pixels and a definition cannot
+    say it reads only their alpha. A later `FxInputs` member (alpha only) would let the runner key
+    such effects by the field hash and hold the colour change at 8.
