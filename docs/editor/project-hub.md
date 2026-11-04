@@ -24,6 +24,12 @@ a project at the top. Missing projects are greyed with **Locate...** and **Remov
 Right-click: Show in Explorer/Finder, Remove from List, **Open Without Last Scene**. The list
 keeps 30 projects (pinned ones are never dropped); File > Recent Projects shows the first 10.
 
+Only an editor a person works in records recent projects and the last project. The command line
+(`export`, `check`, `publish`, ... save projects too), agents' editors (`jasperengine-editor mcp`,
+`--headless`) and benchmarks open, create and save projects without touching the list or the
+last project, so an export or an agent's scratch copy never becomes the project the next editor
+opens.
+
 ## New Project
 
 Pick a template, a **Project Name** (default "New Project") and a **Location** (the last one
