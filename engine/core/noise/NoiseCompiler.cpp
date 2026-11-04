@@ -488,7 +488,7 @@ namespace jasperengine { namespace noise {
                     op.f[6] = static_cast<float>(paramNumber(node, "evaporation", 0.02));
                     op.f[7] = static_cast<float>(paramNumber(node, "gravity", 4.0));
                     op.i[0] = std::clamp(static_cast<int>(paramNumber(node, "lifetime", 48.0)), 8, 128);
-                    op.i[1] = std::clamp(static_cast<int>(paramNumber(node, "radius", 1.0)), 1, 4);
+                    op.i[1] = std::clamp(static_cast<int>(paramNumber(node, "radius", 2.0)), 1, 4);
                     op.seedOffset = seedOffsetOf(node);
                     op.inValue[0] = fieldInput(nodeIndex, "height", nullptr, 0.0);
                     if (const InEdge* edge = edgeInto(nodeIndex, "hardness")) {

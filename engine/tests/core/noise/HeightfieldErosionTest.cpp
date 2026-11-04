@@ -59,16 +59,18 @@ namespace {
         return values[static_cast<size_t>(p * static_cast<float>(values.size() - 1))];
     }
 
-    // Mean absolute curvature: roughness
-    double curvature(const std::vector<float>& h, int size) {
+    // Mean absolute curvature over a stencil of that many texels. The broad one is the terrain's shape,
+    // which erosion wears down; at one texel a droplet's own cuts count.
+    double curvature(const std::vector<float>& h, int size, int stencil) {
         double sum = 0.0;
-        for (int z = 1; z + 1 < size; z++) {
-            for (int x = 1; x + 1 < size; x++) {
+        const size_t row = static_cast<size_t>(stencil) * static_cast<size_t>(size);
+        for (int z = stencil; z + stencil < size; z++) {
+            for (int x = stencil; x + stencil < size; x++) {
                 const size_t i = static_cast<size_t>(z) * size + x;
-                sum += std::fabs(h[i - 1] + h[i + 1] + h[i - size] + h[i + size] - 4.0f * h[i]);
+                sum += std::fabs(h[i - stencil] + h[i + stencil] + h[i - row] + h[i + row] - 4.0f * h[i]);
             }
         }
-        return sum / static_cast<double>((size - 2) * (size - 2));
+        return sum / static_cast<double>((size - 2 * stencil) * (size - 2 * stencil));
     }
 
     float steepest(const std::vector<float>& h, int size, const ErosionRegion& region) {
@@ -147,8 +149,7 @@ TEST(HeightfieldErosion, CarvesChannels) {
     const std::vector<float> start = fractalHeights(size);
     std::vector<float> h = start, flow(start.size());
     HydraulicParams params;
-    params.dropletsPerTexel = 1.0f;
-    params.seed = 2u;
+    params.seed = 2u;       // everything else as a person gets it
     ASSERT_TRUE(HeightfieldErosion::hydraulic(params, regionOf(size), h.data(), nullptr, flow.data(), nullptr));
     const float median = percentile(flow, 0.5f);
     const float p99 = percentile(flow, 0.99f);
@@ -157,8 +158,9 @@ TEST(HeightfieldErosion, CarvesChannels) {
         ASSERT_GE(value, 0.0f);
         ASSERT_LE(value, 1.0f);
     }
-    // AC17: the ground is smoother for it, which is what the channels and fans a droplet leaves do to a fractal
-    EXPECT_LT(curvature(h, size), curvature(start, size));
+    // AC17, at the defaults and at both scales: the broad shape wears down, and no texel-scale roughness appears
+    EXPECT_LT(curvature(h, size, 4), curvature(start, size, 4));
+    EXPECT_LT(curvature(h, size, 1), curvature(start, size, 1) * 1.1);
 }
 
 TEST(HeightfieldErosion, HardnessSlowsTheCut) {

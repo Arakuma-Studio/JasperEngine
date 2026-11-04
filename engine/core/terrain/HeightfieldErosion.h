@@ -28,7 +28,9 @@ namespace jasperengine { namespace terrain {
         float depositRate = 0.3f;
         float evaporation = 0.02f;
         float gravity = 4.0f;
-        int radius = 1;
+        // Texels a cut or deposit spreads over. 2 wears the ground down without roughening it; 1 is
+        // faster and preserves fine detail, and can roughen it (Deviations of docs/specs/T2-noise-graphs.md)
+        int radius = 2;
         uint32_t seed = 0;
     };
 

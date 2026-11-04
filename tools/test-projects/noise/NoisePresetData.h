@@ -108,7 +108,7 @@ R"__P__({
         "deposit_rate": 0.3,
         "evaporation": 0.02,
         "gravity": 4.0,
-        "radius": 1,
+        "radius": 2,
         "seed_offset": 11
       }
     },
@@ -830,7 +830,7 @@ R"__P__({
         "deposit_rate": 0.3,
         "evaporation": 0.02,
         "gravity": 4.0,
-        "radius": 1,
+        "radius": 2,
         "seed_offset": 0
       }
     },

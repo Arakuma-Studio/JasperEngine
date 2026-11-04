@@ -70,5 +70,6 @@ Coordinates are in terrain widths unless `metadata.noise.space` is `world` (metr
 - `region` is terrain-local metres, snapped outward to texels and reported as `rect`. `feather` lerps over the old values across its border.
 - `resolution`: dry runs at any value; real runs only on a terrain without a height map or a whole-terrain run. A partial run at another resolution is refused.
 - A layer weight is clamped to 0..1; a sum above 1 is normalized; layer 0 takes the rest unless it has its own output. A missing layer or foliage layer is an error, or a warning and a skip with `optional`.
+- Erosion's `radius` defaults to 2. `radius` 1 is faster and preserves fine detail, and can roughen the ground.
 - Erosion on a region warns `erosion-region-seam`: it may not match a whole-map run at the border.
 - A graph that reads `terrain_height` fails with `terrain-changed` if the terrain changed during the run, and writes nothing.

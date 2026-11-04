@@ -343,7 +343,7 @@ namespace jasperengine { namespace noise {
                              {floatParam("droplets_per_texel", 0.25, 0.01, 4.0), intParam("lifetime", 48, 8.0, 128.0), floatParam("inertia", 0.05, 0.0, 1.0),
                               floatParam("capacity", 4.0, 0.0), floatParam("min_slope", 0.01, 0.0), floatParam("erode_rate", 0.3, 0.0, 1.0),
                               floatParam("deposit_rate", 0.3, 0.0, 1.0), floatParam("evaporation", 0.02, 0.0, 1.0), floatParam("gravity", 4.0, 0.0),
-                              intParam("radius", 1, 1.0, 4.0), intParam("seed_offset", 0)}));
+                              intParam("radius", 2, 1.0, 4.0), intParam("seed_offset", 0)}));
         t.push_back(nodeType("thermal_erosion", "Stage", "Thermal Erosion", {inPort("height", "field", "Height"), outPort("out", "field", "Height")},
                              {intParam("iterations", 8, 1.0, 64.0), floatParam("talus_angle", 35.0, 0.0, 89.0), floatParam("rate", 0.5, 0.0, 1.0)}));
 

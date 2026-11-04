@@ -69,6 +69,7 @@ namespace jasperengine { namespace terrain {
         struct HydraulicRun {
             const HydraulicParams* params;
             int width, depth;
+            int radius;
             float mpt;
             float* height;              // world units
             const float* hardness;
@@ -77,40 +78,39 @@ namespace jasperengine { namespace terrain {
             const std::vector<BrushCell>* brush;
         };
 
-        void depositAt(const HydraulicRun& run, int ix, int iz, float fx, float fz, float amount){
+        // Adds amount (negative: takes it) over the brush around the droplet's nearest texel. Deposits
+        // and cuts share the brush: settling on the four cells under a droplet while cutting through a
+        // wider brush roughens the ground texel by texel. The part of a brush past the buffer is shared
+        // out among what is left, so the material moved is what the droplet carries. From the cell
+        // below a droplet this reaches radius + 1 texels, which the padding and the tile side count.
+        void applyBrush(const HydraulicRun& run, int ix, int iz, float fx, float fz, float amount){
+            const int cx = fx >= 0.5f ? ix + 1 : ix;
+            const int cz = fz >= 0.5f ? iz + 1 : iz;
             const size_t w = static_cast<size_t>(run.width);
-            const size_t i = static_cast<size_t>(iz) * w + static_cast<size_t>(ix);
-            const float a = amount * (1.0f - fx) * (1.0f - fz);
-            const float b = amount * fx * (1.0f - fz);
-            const float c = amount * (1.0f - fx) * fz;
-            const float d = amount - a - b - c;
-            run.height[i] += a;
-            run.height[i + 1] += b;
-            run.height[i + w] += c;
-            run.height[i + w + 1] += d;
-            if (run.sediment){
-                run.sediment[i] += a;
-                run.sediment[i + 1] += b;
-                run.sediment[i + w] += c;
-                run.sediment[i + w + 1] += d;
+            const int reach = run.radius;
+            if (cx >= reach && cz >= reach && cx + reach < run.width && cz + reach < run.depth){
+                // The usual case, and the hot path: the whole brush is inside and its weights sum to 1
+                for (const BrushCell& cell : *run.brush){
+                    const size_t i = static_cast<size_t>(cz + cell.dz) * w + static_cast<size_t>(cx + cell.dx);
+                    const float share = cell.weight * amount;
+                    run.height[i] += share;
+                    if (run.sediment && share > 0.0f) run.sediment[i] += share;
+                }
+                return;
             }
-        }
-
-        // Takes amount from the brush around (ix, iz): the part of a brush past the buffer is shared
-        // out among what is left, so the material taken is what the droplet carries
-        void cutAt(const HydraulicRun& run, int ix, int iz, float amount){
-            const size_t w = static_cast<size_t>(run.width);
             float inside = 0.0f;
             for (const BrushCell& cell : *run.brush){
-                const int x = ix + cell.dx, z = iz + cell.dz;
+                const int x = cx + cell.dx, z = cz + cell.dz;
                 if (x >= 0 && x < run.width && z >= 0 && z < run.depth) inside += cell.weight;
             }
             const float scale = amount / inside;
             for (const BrushCell& cell : *run.brush){
-                const int x = ix + cell.dx, z = iz + cell.dz;
-                if (x >= 0 && x < run.width && z >= 0 && z < run.depth){
-                    run.height[static_cast<size_t>(z) * w + static_cast<size_t>(x)] -= cell.weight * scale;
-                }
+                const int x = cx + cell.dx, z = cz + cell.dz;
+                if (x < 0 || x >= run.width || z < 0 || z >= run.depth) continue;
+                const size_t i = static_cast<size_t>(z) * w + static_cast<size_t>(x);
+                const float share = cell.weight * scale;
+                run.height[i] += share;
+                if (run.sediment && share > 0.0f) run.sediment[i] += share;
             }
         }
 
@@ -170,7 +170,7 @@ namespace jasperengine { namespace terrain {
                 if (carried > capacity || deltaHeight > 0.0f){
                     float amount = deltaHeight > 0.0f ? (deltaHeight < carried ? deltaHeight : carried) : (carried - capacity) * p.depositRate;
                     carried -= amount;
-                    depositAt(run, ix, iz, fx, fz, amount);
+                    applyBrush(run, ix, iz, fx, fz, amount);
                 } else {
                     float amount = (capacity - carried) * p.erodeRate;
                     const float limit = -deltaHeight;
@@ -180,7 +180,7 @@ namespace jasperengine { namespace terrain {
                         hard = hard < 0.0f ? 0.0f : (hard > 1.0f ? 1.0f : hard);
                         amount *= 1.0f - hard;
                     }
-                    cutAt(run, ix, iz, amount);
+                    applyBrush(run, ix, iz, fx, fz, -amount);
                     carried += amount;
                 }
                 const float speed2 = velocity * velocity + slope * p.gravity;
@@ -192,7 +192,7 @@ namespace jasperengine { namespace terrain {
                 fz = nfz;
             }
             // What it still carries settles where it stopped: nothing leaves the map with a droplet
-            if (carried > 0.0f) depositAt(run, ix, iz, fx, fz, carried);
+            if (carried > 0.0f) applyBrush(run, ix, iz, fx, fz, carried);
             return steps;
         }
 
@@ -212,7 +212,7 @@ namespace jasperengine { namespace terrain {
         if (sediment) std::fill(sediment, sediment + texels, 0.0f);
 
         const std::vector<BrushCell> brush = makeBrush(params.radius);
-        HydraulicRun run{&params, region.width, region.depth, static_cast<float>(mpt), height, hardness, flow, sediment, &brush};
+        HydraulicRun run{&params, region.width, region.depth, params.radius, static_cast<float>(mpt), height, hardness, flow, sediment, &brush};
 
         const int64_t side = 2 * static_cast<int64_t>(HeightfieldErosion::hydraulicPadding(params));
         std::atomic<uint64_t> totalSteps{0};
