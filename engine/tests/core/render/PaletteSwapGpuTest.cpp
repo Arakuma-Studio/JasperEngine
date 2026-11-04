@@ -256,8 +256,9 @@ TEST_F(PaletteSwapGpu, Cycling){
         mesh.needUpdateShaderUniforms = true;
         for (int step = 0; step < 4; step++){
             const float time = 10.0f + step * 0.25f;
-            if (speed != 0.0f && step > 0)
+            if (speed != 0.0f && step > 0){
                 ASSERT_FALSE(sameTexels(expected(0, time, speed, true), expected(0, 10.0f, speed, true))) << "each step rotates the ramp";
+            }
             Engine::setPinnedShaderTime(time);
             ASSERT_TRUE(settle());
             EXPECT_TRUE(sameTexels(readTexels(), expected(0, time, speed, true))) << "speed " << speed << " step " << step;
