@@ -236,6 +236,7 @@ uint64_t SokolCmdQueue::select_commands(std::vector<SokolRenderCommand>& backlog
 	// handles updated this frame (sokol updates a resource once a frame)
 	std::unordered_set<uint32_t> updatedImages, updatedBuffers;
 	bool barrier = false;
+	bool budgetFull = false;
 	uint64_t spent = 0;
 	size_t kept = 0;
 
@@ -281,8 +282,10 @@ uint64_t SokolCmdQueue::select_commands(std::vector<SokolRenderCommand>& backlog
 		if (!wait)
 		{
 			bytes = upload_bytes(command);
-			// the frame's first upload runs whatever its size, alone when it is over the budget
-			wait = bytes > 0 && spent > 0 && spent + bytes > budget;
+			// the frame's first upload runs whatever its size, alone when it is over the budget;
+			// once one waits for the budget the later ones wait behind it, in order
+			wait = bytes > 0 && (budgetFull || (spent > 0 && spent + bytes > budget));
+			budgetFull = budgetFull || wait;
 		}
 		if (!wait && opaque && kept > 0)
 		{

@@ -87,18 +87,17 @@ async def test_device_tier_settings_with_undo(ed: Editor):
     ed.check_eq(low["volumetrics"], False, "untouched cells stay")
     ed.check("device:" in yaml.read_text(), "saved to project.yaml")
 
-    # two keys in one call are two steps of the project history
+    # one call is one step of the project history
     await ed.call("undo", scope="project")
-    ed.check_eq((await settings_of(ed, "quality.lod_bias"))["quality.lod_bias"], 1.0, "the LOD bias undone first")
-    await ed.call("undo", scope="project")
+    ed.check_eq((await settings_of(ed, "quality.lod_bias"))["quality.lod_bias"], 1.0, "the LOD bias undone")
     low = (await settings_of(ed, low_key))[low_key]
     ed.check_eq(low["render_scale"], 0.5, "undo restores the cell")
     ed.check_eq(low["ssao"], False)
     ed.check_eq(low["msaa_samples"], None)
     ed.check("device:" not in yaml.read_text(), "back to the defaults on disk")
     await ed.call("redo", scope="project")
-    low = (await settings_of(ed, low_key))[low_key]
-    ed.check(abs(low["render_scale"] - 0.6) < 1e-6, "redo")
+    got = await settings_of(ed, low_key, "quality.lod_bias")
+    ed.check(abs(got[low_key]["render_scale"] - 0.6) < 1e-6 and abs(got["quality.lod_bias"] - 0.8) < 1e-6, f"redo: {got}")
     await ed.call("undo", scope="project")
 
     await ed.check_error("set_project_settings", values={low_key: {"render_scale": 2}}, contains="render_scale")

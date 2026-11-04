@@ -230,7 +230,7 @@ namespace jasperengine {
 
 		// What one frame runs of `backlog`, in order, into `run`; what waits stays in `backlog`,
 		// in order. An upload past the budget waits (unless it is the frame's first: an item
-		// larger than the budget goes alone), as does every command on a handle a waiting one
+		// larger than the budget goes alone) with every upload after it, as does every command on a handle a waiting one
 		// creates, a second update of a handle in the frame, and from the first CUSTOM or pass
 		// command that would overtake a waiting one, everything after it (a CUSTOM marks an
 		// object loaded once its resources exist). Returns the bytes `run` uploads.
