@@ -11,6 +11,7 @@
 #include "io/AtomicFile.h"
 
 #include "support/TestTempDir.h"
+#include "util/FileUtils.h"
 
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "libs/miniz/miniz.h"
@@ -18,12 +19,18 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdlib>
 #include <fstream>
+#include <thread>
 
 #ifndef _WIN32
     #include <signal.h>
+    #include <spawn.h>
     #include <sys/resource.h>
+    #include <sys/wait.h>
+    #include <unistd.h>
+    extern char** environ;
 #endif
 
 using namespace jasperengine;
@@ -436,3 +443,153 @@ TEST(ProjectTemplates, CatalogAndSaveAsTemplate) {
     EXPECT_TRUE(fs::exists(builtInMade / "project.yaml"));
     EXPECT_TRUE(fs::exists(builtInMade / "Main.scene"));
 }
+
+// ---- S46: a copy killed in the middle (docs/specs/S46-crash-leftovers.md AC1)
+
+#ifndef _WIN32
+namespace {
+
+    // Set for the process that gets killed: this test binary started again with the same test
+    // filtered, the copy held by the editor's hook JASPER_TEST_STAGING_HOLD. "<what>|<a>|<b>"
+    constexpr const char* crashChildEnv = "JE_HUB_TEST_CRASH_CHILD";
+
+    // In the child: runs the copy (it stops at the hold until it is killed); false in the parent
+    bool runCrashChild() {
+        const char* spec = std::getenv(crashChildEnv);
+        if (!spec) return false;
+        const std::string text = spec;
+        const size_t first = text.find('|'), second = text.find('|', first + 1);
+        const std::string what = text.substr(0, first);
+        const fs::path a = text.substr(first + 1, second - first - 1), b = text.substr(second + 1);
+        std::string error, id;
+        fs::path projectDir;
+        if (what == "zip") {
+            importer::importZip(a, b, ZipLimits(), nullptr, projectDir, error);
+        } else if (what == "template") {
+            const std::vector<ProjectTemplate> list = templates::all(fs::path());
+            templates::materialize(*templates::find(list, a.string()), b, error);
+        } else {
+            templates::saveProjectAsTemplate(a, b, "Saved", "", "Main", {}, id, error);
+        }
+        std::fflush(nullptr);
+        ::_exit(3);
+    }
+
+    // The other process, held in the middle of its copy until it is killed
+    class HeldCopy {
+    public:
+        HeldCopy(const char* test, const std::string& spec, const fs::path& scratch) : hold(scratch / "hold") {
+            std::ofstream(hold) << "hold\n";
+            const std::string self = (FileUtils::getExecutableDir() / "jasperengine-editor-tests").string();
+            const std::string filter = std::string("--gtest_filter=") + test;
+            const std::string childEnv = std::string(crashChildEnv) + "=" + spec;
+            const std::string holdEnv = "JASPER_TEST_STAGING_HOLD=" + hold.string();
+            std::vector<char*> args = {const_cast<char*>(self.c_str()), const_cast<char*>(filter.c_str()), nullptr};
+            std::vector<char*> env;
+            for (char** entry = environ; *entry; entry++) env.push_back(*entry);
+            env.push_back(const_cast<char*>(childEnv.c_str()));
+            env.push_back(const_cast<char*>(holdEnv.c_str()));
+            env.push_back(nullptr);
+            started = ::posix_spawn(&pid, self.c_str(), nullptr, nullptr, args.data(), env.data()) == 0;
+        }
+        ~HeldCopy() {
+            kill9();
+            std::error_code ec;
+            fs::remove(hold, ec);
+        }
+        // true once the copy waits at the hold, with part of its files written
+        bool reachedHold() const {
+            std::error_code ec;
+            const fs::path held = hold.string() + ".held";
+            for (int i = 0; started && i < 6000; i++) {
+                if (fs::exists(held, ec)) return true;
+                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            }
+            return false;
+        }
+        void kill9() {
+            if (!started) return;
+            started = false;
+            ::kill(pid, SIGKILL);
+            int status = 0;
+            ::waitpid(pid, &status, 0);
+        }
+
+    private:
+        fs::path hold;
+        pid_t pid = 0;
+        bool started = false;
+    };
+
+    std::vector<std::string> namesIn(const fs::path& dir) {
+        std::vector<std::string> names;
+        std::error_code ec;
+        for (const fs::directory_entry& entry : fs::directory_iterator(dir, ec)) names.push_back(entry.path().filename().string());
+        std::sort(names.begin(), names.end());
+        return names;
+    }
+
+}
+
+TEST(CrashLeftovers, AZipImportKilledMidway) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-zip");
+    const fs::path zip = dir.path() / "Game.zip";
+    writeZip(zip, {{"Game/project.yaml", "name: Game\n"}, {"Game/scenes/Main.scene", "scene\n"}, {"Game/scenes/Other.scene", "scene\n"}});
+    const fs::path parent = dir.path() / "Projects";
+    fs::create_directories(parent);
+    {
+        HeldCopy copy("CrashLeftovers.AZipImportKilledMidway", "zip|" + zip.string() + "|" + parent.string(), dir.path());
+        ASSERT_TRUE(copy.reachedHold());
+        EXPECT_FALSE(emptyFolder(parent / "Game.importing"));
+        copy.kill9();
+    }
+    EXPECT_TRUE(fs::is_directory(parent / "Game.importing")) << "kill -9 runs no clean-up";
+
+    // the next import: the rest is gone before it starts, so it takes the plain names
+    bool plainStaging = true;
+    auto progress = [&](float, const std::string&) {
+        if (!fs::is_directory(parent / "Game.importing") || fs::exists(parent / "Game.importing2")) plainStaging = false;
+        return true;
+    };
+    fs::path projectDir;
+    std::string error;
+    ASSERT_TRUE(importer::importZip(zip, parent, ZipLimits(), progress, projectDir, error)) << error;
+    EXPECT_EQ(projectDir, parent / "Game");
+    EXPECT_TRUE(plainStaging) << "the next import's staging folder has a number";
+    EXPECT_EQ(namesIn(parent), std::vector<std::string>{"Game"});
+}
+
+TEST(CrashLeftovers, ATemplateCopyKilledMidway) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-template");
+    const fs::path parent = dir.path() / "Projects";
+    fs::create_directories(parent);
+    {
+        HeldCopy copy("CrashLeftovers.ATemplateCopyKilledMidway", "template|3d|" + (parent / "New").string(), dir.path());
+        ASSERT_TRUE(copy.reachedHold());
+        EXPECT_FALSE(emptyFolder(parent / "New.importing"));
+        copy.kill9();
+    }
+    const std::vector<ProjectTemplate> list = templates::all(fs::path());
+    std::string error;
+    ASSERT_TRUE(templates::materialize(*templates::find(list, "3d"), parent / "New", error)) << error;
+    EXPECT_EQ(namesIn(parent), std::vector<std::string>{"New"});
+}
+
+TEST(CrashLeftovers, ASaveAsTemplateKilledMidway) {
+    if (runCrashChild()) return;
+    TestTempDir dir("crash-save");
+    const fs::path project = writeGameProject(dir.path() / "Game");
+    const fs::path user = templates::userDirectory(dir.path() / "settings");
+    {
+        HeldCopy copy("CrashLeftovers.ASaveAsTemplateKilledMidway", "save|" + project.string() + "|" + user.string(), dir.path());
+        ASSERT_TRUE(copy.reachedHold());
+        EXPECT_FALSE(emptyFolder(user / ".staging" / "saved.importing"));
+        copy.kill9();
+    }
+    std::string id, error;
+    ASSERT_TRUE(templates::saveProjectAsTemplate(project, user, "Saved", "", "Main", {}, id, error)) << error;
+    EXPECT_EQ(namesIn(user), std::vector<std::string>{"saved"}) << "the catalog's folder has nothing else";
+}
+#endif

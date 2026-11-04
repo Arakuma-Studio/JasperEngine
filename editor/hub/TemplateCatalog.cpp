@@ -8,6 +8,7 @@
 #include "hub/TemplateCatalog.h"
 
 #include "hub/HubPaths.h"
+#include "hub/StagingFolders.h"
 #include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 
@@ -213,6 +214,7 @@ bool templates::materialize(const ProjectTemplate& info, const fs::path& target,
             const io::WriteResult written =
                 io::writeFileAtomic(staging / fs::path(file.relative), std::string_view(reinterpret_cast<const char*>(file.data), file.size));
             if (!written.ok()) return fail(written.message);
+            staging::holdForTest();
         }
         return publish();
     }
@@ -230,6 +232,7 @@ bool templates::materialize(const ProjectTemplate& info, const fs::path& target,
         if (!copyOneFile(it->path(), staging / relative, ec)) {
             return fail("cannot copy " + rel + ": " + ec.message());
         }
+        staging::holdForTest();
     }
     return publish();
 }
@@ -287,6 +290,7 @@ bool templates::saveProjectAsTemplate(const fs::path& project, const fs::path& u
         if (!copyOneFile(it->path(), staging / relative, ec)) {
             return fail("cannot copy " + relative.generic_string() + ": " + ec.message());
         }
+        staging::holdForTest();
     }
     ProjectTemplate info;
     info.id = id;

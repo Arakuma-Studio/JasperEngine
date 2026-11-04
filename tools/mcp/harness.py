@@ -647,6 +647,8 @@ class Editor:
     keep      keep the scratch dir even on success
     ui_probe  the editor writes the rectangles of the widgets it names (editor/util/UIProbe.h), read
               by ui_items() / ui_rect(): UI tests click widgets wherever the layout puts them
+    scratch   start in this scratch dir (Scratch.make) instead of a new one: what an editor before
+              this one left in its settings folder stays; the caller removes it
     """
 
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
@@ -655,7 +657,7 @@ class Editor:
                  extra_args: list[str] | None = None, env: dict[str, str] | None = None,
                  settings: dict[str, Any] | None = None, startup_timeout: float = 180.0,
                  call_timeout: float = 300.0, keep: bool | None = None, label: str = "",
-                 scratch_prefix: str | None = None, ui_probe: bool = False):
+                 scratch_prefix: str | None = None, ui_probe: bool = False, scratch: "Scratch | None" = None):
         if url is None and project is None and not create and os.environ.get("JASPER_MCP_URL"):
             url = os.environ["JASPER_MCP_URL"]
         if fake is None:
@@ -679,7 +681,8 @@ class Editor:
         self.scratch_prefix = scratch_prefix
         self.ui_probe = ui_probe
 
-        self.scratch: Scratch | None = None
+        self.scratch: Scratch | None = scratch
+        self.own_scratch = scratch is None
         self.session: ClientSession | None = None
         self.init_result: Any = None
         self.instructions: str = ""
@@ -723,7 +726,8 @@ class Editor:
             streams = await self._stack.enter_async_context(streamable_http_client(self.url, http_client=http))
         else:
             extra = {"prefix": self.scratch_prefix} if self.scratch_prefix else {}
-            self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings, **extra)
+            if self.own_scratch:
+                self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings, **extra)
             display = None
             inherit = self.xvfb_mode == "none"
             if self.xvfb_mode == "harness":
@@ -781,7 +785,7 @@ class Editor:
         if self._stderr_file:
             self._stderr_file.close()
             self._stderr_file = None
-        if self.scratch:
+        if self.scratch and self.own_scratch:
             if self.failed or self.keep:
                 print(f"[harness] scratch kept: {self.scratch.root}", file=sys.stderr)
             else:

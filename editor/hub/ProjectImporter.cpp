@@ -9,6 +9,7 @@
 #include "hub/ProjectImporter.h"
 
 #include "hub/HubPaths.h"
+#include "hub/StagingFolders.h"
 #include "vcs/ProcessExec.h"
 
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
@@ -166,6 +167,7 @@ bool importer::extractZip(const fs::path& zip, const fs::path& destination, cons
             error = "cancelled";
             return false;
         }
+        staging::holdForTest();
     }
     return true;
 }
@@ -339,6 +341,7 @@ bool importer::importGit(const std::string& url, const fs::path& parent, const s
         error = "git clone failed (exit " + std::to_string(exitCode) + ")";
         return false;
     }
+    staging::holdForTest();
     // LFS objects when the project uses LFS and git-lfs is there
     std::ifstream attributes(staging / ".gitattributes");
     std::stringstream text;
