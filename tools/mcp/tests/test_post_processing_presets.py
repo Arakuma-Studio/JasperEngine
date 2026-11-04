@@ -15,7 +15,8 @@ EDITOR = {"create": True, "name": "Post Processing Presets"}
 TIMEOUT = 600
 
 SCENE = "scenes/Presets.scene"
-PRESETS = ["none", "mobile", "mobile_adaptive", "console", "stylised", "crt_retro", "film", "vhs"]
+# S43 added handheld_4 and pico_8 (Palette Quantize with a built-in palette)
+PRESETS = ["none", "mobile", "mobile_adaptive", "console", "stylised", "crt_retro", "film", "vhs", "handheld_4", "pico_8"]
 
 
 def png(width: int, height: int) -> bytes:

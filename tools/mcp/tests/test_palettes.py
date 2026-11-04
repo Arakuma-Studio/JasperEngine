@@ -2,6 +2,8 @@
 on a new project:
 
 - the pixel_art group is hidden by default and listed once tool_groups enables it;
+- the project's assets directory is `assets/` (the fixtures' layout: `path` is project-relative, `asset_path` is
+  relative to the assets directory);
 - Lospec (AC3) through the recorded mirror (tools/mcp/tests/fixtures/lospec-mirror, copied to a scratch folder the
   editor's JASPERENGINE_IMPORT_MIRROR names): endesga-32 creates assets/Palettes/endesga-32.palette with its author
   and source; the URL and lospec-palette:// forms normalise; an unknown slug is lospec_not_found with its fix; the
@@ -63,6 +65,13 @@ def ramp_hexes(palette: dict, name: str) -> list[str]:
     return [palette["colors"][i] for i in ramp["colors"]]
 
 
+async def test_setup(ed: Editor):
+    await ed.call("get_project_summary")  # the new project is made by then
+    (ed.project / "assets").mkdir(exist_ok=True)
+    await ed.call("set_project_settings", values={"editor.assets_dir": "assets"})
+    ed.check_eq((await ed.call("get_project_summary"))["assets_dir"], "assets")
+
+
 async def test_group_hidden_until_enabled(ed: Editor):
     default = {t.name for t in await ed.tools(groups=None)}
     ed.check("edit_palette" not in default and "apply_palette" not in default, "pixel_art is hidden by default")
@@ -81,6 +90,10 @@ async def test_lospec(ed: Editor):
     ed.check(target.exists(), f"output writes {target}")
     ed.check_eq(made["written"], ["assets/Palettes/endesga-32.palette"])
     ed.check(made.get("job_id"), "the fetch ran as a job")
+    top = (await ed.call("get_undo_history", scope="project", limit=1))["entries"][0]
+    undo = made.get("undo")
+    ed.check(isinstance(undo, dict) and undo.get("id") == top["id"], f"the result's undo {{id, name}} names the step: {undo} {top}")
+    ed.check_eq(top["origin"].get("tool"), "edit_palette", "the job's write is the agent's step")
     stored = json.loads(target.read_text())
     ed.check_eq(stored["author"], "ENDESGA", "the author")
     ed.check_eq(stored["source"]["kind"], "lospec")
@@ -130,7 +143,7 @@ async def test_lospec_network_blocked():
         ed.check_eq([e["kind"] for e in errors_of(r)], ["network_unavailable"], f"the typed error: {r.text[:400]}")
         ed.check(seconds < 60, f"bounded by the 10 s timeout, not a hang: {seconds:.1f} s")
         harness.over_budget("Lospec with the network blocked", {"network_unavailable": seconds}, 10.0)
-        ed.check(not (ed.project / "assets" / "Palettes" / "endesga-32.palette").exists(), "nothing was written")
+        ed.check(not list(ed.project.rglob("*.palette")), f"nothing was written: {list(ed.project.rglob('*.palette'))}")
 
 
 async def test_builtins(ed: Editor):
@@ -191,10 +204,13 @@ async def test_edit_ops(ed: Editor):
     ed.check_eq(preview["palette"]["colors"][0], "#ffffff", "the preview shows the edit")
     ed.check_eq(preview["changed"], [0])
     ed.check_eq(sha(file), before, "a preview writes nothing")
+    steps = {e["id"] for e in (await ed.call("get_undo_history", scope="project", limit=500))["entries"]}
     written = await call_ops(ed, [{"op": "set", "index": 0, "color": "#ffffff"}, {"op": "set", "index": 1, "color": "#ee0000"}])
     ed.check(sha(file) != before, "output writes")
-    ed.check_eq(len(written["undo"]), 1, "two ops, one undo entry")
-    ed.check_eq(written["undo"][0]["scope"], "project")
+    added = [e for e in (await ed.call("get_undo_history", scope="project", limit=500))["entries"] if e["id"] not in steps]
+    ed.check_eq(len(added), 1, f"two ops, one project undo step: {[e['name'] for e in added]}")
+    undo = written.get("undo")
+    ed.check(isinstance(undo, dict) and undo.get("id") == added[0]["id"], f"the result's undo {{id, name}} names the step: {undo}")
     await ed.call("undo", scope="project")
     ed.check_eq(sha(file), before, "one undo puts both ops back")
     await ed.call("redo", scope="project")

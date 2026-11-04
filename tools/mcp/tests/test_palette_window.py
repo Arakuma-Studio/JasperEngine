@@ -3,14 +3,17 @@
 
 1. A .palette opens in Window > 2D > Palette; dragging swatch 0 past swatch 3 reorders the file,
    and one project undo puts the old order back (the window reads the file again).
-2. Generate Ramp... > Add to Palette appends a ramp of darker + 1 + lighter steps.
+2. Generate Ramp... > Add to Palette appends a ramp of darker + 1 + lighter steps; the dialog's
+   close button closes it (it stays open for more ramps, over the Palette window's buttons).
 3. Create Variant adds "Variant 1"; clicking its hatched ("same as base") cell gives the cell the
    base colour with the Color window open on it, and Esc makes it "same as base" again.
 4. Usage, pinned to a texture: each swatch's label carries its pixel count (the badges).
-5. The Color window's Snap to Palette moves a typed colour to the nearest palette colour.
+5. The Color window's Snap to Palette moves a typed colour (Tab out of Hexadecimal) to the nearest
+   palette colour.
 
 The swatch buttons' labels are "color <rrggbb>[ count <n>]###palette_swatch_<i>": the id after
-### stays put while the text says what the swatch shows. Screenshots of each step go to
+### stays put while the text says what the swatch shows. find_ui_item reports a label as drawn, its
+"##" part included; the checks read the text before it. Screenshots of each step go to
 $JE_EVIDENCE_DIR (else the scratch directory).
 """
 
@@ -72,17 +75,22 @@ async def until(ed: Editor, probe, what: str, frames: int = 1200):
     ed.fail(f"{what} (last: {value!r})")
 
 
+def shown(item: dict) -> str:
+    """an item's visible text: its label before the "##" id"""
+    return item["label"].split("##", 1)[0]
+
+
 async def label(ui: ui_input.Ui, name: str, window: str | None = WINDOW) -> str:
     item = await ui.find(name, window)
     ui.ed.check(item is not None, f"{name} is drawn")
-    return item["label"]
+    return shown(item)
 
 
 async def label_until(ui: ui_input.Ui, name: str, predicate, what: str, window: str | None = WINDOW) -> str:
     text = ""
     for _ in range(300):
         item = await ui.find(name, window, frames=4)
-        text = item["label"] if item else ""
+        text = shown(item) if item else ""
         if item and predicate(text):
             return text
     ui.ed.fail(f"{what}: {name} is {text!r}")
@@ -137,6 +145,13 @@ async def test_generate_ramp(ed: Editor):
     ed.check_eq(len(ramps[0]["colors"]), 7)
     await label_until(ui, "###palette_ramp_0", lambda t: t.startswith("Ramp 1"), "the ramp's strip is drawn")
     await shot(ed, "4-ramp")
+    # the dialog stays open for more ramps and floats over the Palette window's buttons: closed as a person would
+    await ui.click_item("#CLOSE", "Generate Ramp")
+    for _ in range(30):
+        if await ui.find("Add to Palette", "Generate Ramp", frames=4) is None:
+            break
+    else:
+        ed.fail("the Generate Ramp dialog closes on its close button")
 
 
 async def test_create_variant(ed: Editor):
@@ -146,7 +161,7 @@ async def test_create_variant(ed: Editor):
     ed.check_eq(variants[0]["name"], "Variant 1")
 
     cell = await ui.reveal("###palette_variant_0_2", WINDOW)
-    ed.check(cell["label"].startswith("same as base"), f"a new variant's cells are the base colour: {cell['label']!r}")
+    ed.check(shown(cell).startswith("same as base"), f"a new variant's cells are the base colour: {cell['label']!r}")
     await ui.click(ui.centre(cell["rect"]))
 
     def cell_color():
@@ -185,10 +200,14 @@ async def test_color_picker_snaps_to_the_palette(ed: Editor):
     ui = ui_of(ed)
     await ed.call("run_command", id="window.colorPicker")
     await ui.click_item("Snap to Palette", "Color")
-    await ui.click_item("##hex", "Color")
+    # "##hex" also finds the Copy##hex button beside the field: the field is the item of that whole label
+    fields = [i for i in (await ed.call("find_ui_item", label="##hex", window="Color"))["items"] if i["label"] == "##hex" and i["visible"]]
+    ed.check(fields, "the Hexadecimal field is drawn")
+    await ui.click(ui.centre(fields[0]["rect"]))
     await ui.key("ctrl+a")
     await ui.type("F01010")
-    await ui.key("Return")
+    # Tab leaves the field, which applies the hex; Enter would also close the window (S27: Enter commits)
+    await ui.key("Tab")
     colors = palette_file(ed)["colors"]
     expected = f"Snapped: index {colors.index('#ff0000')} #ff0000"
     await label_until(ui, "###snap_result", lambda t: t.startswith(expected), "the typed colour snaps to the nearest palette colour", "Color")

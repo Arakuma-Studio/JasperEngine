@@ -217,6 +217,8 @@ TEST_F(PaletteSwapGpu, SwapsRowsExactly){
     const std::vector<Rgba8> original = readTexels();
     EXPECT_TRUE(sameTexels(original, expected(0)));
     for (int row : {1, 2}){
+        // the control: a draw that swapped nothing would show row 0, which these rows are not
+        ASSERT_FALSE(sameTexels(expected(row), expected(0))) << "row " << row << " must differ from the source";
         setRow(sprite, (float)row);
         ASSERT_TRUE(settle());
         EXPECT_TRUE(sameTexels(readTexels(), expected(row))) << "row " << row;
@@ -254,6 +256,8 @@ TEST_F(PaletteSwapGpu, Cycling){
         mesh.needUpdateShaderUniforms = true;
         for (int step = 0; step < 4; step++){
             const float time = 10.0f + step * 0.25f;
+            if (speed != 0.0f && step > 0)
+                ASSERT_FALSE(sameTexels(expected(0, time, speed, true), expected(0, 10.0f, speed, true))) << "each step rotates the ramp";
             Engine::setPinnedShaderTime(time);
             ASSERT_TRUE(settle());
             EXPECT_TRUE(sameTexels(readTexels(), expected(0, time, speed, true))) << "speed " << speed << " step " << step;

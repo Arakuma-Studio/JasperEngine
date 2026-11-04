@@ -113,6 +113,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Panner](#librarypanner) `library:panner` | mesh | Effects | none | opaque |
 | [Panoramic Sky](#librarypanoramic_sky) `library:panoramic_sky` | sky | Sky | none | - |
 | [Particle](#libraryparticle) `library:particle` | points | Particles | none | alpha (Auto) |
+| [Particles](#libraryparticles) `library:particles` | particles | Particles | none | alpha (Auto) |
 | [Pixelate](#librarypixelate) `library:pixelate` | postprocess | Post-processing | none | - |
 | [Posterize](#libraryposterize) `library:posterize` | postprocess | Post-processing | none | - |
 | [Procedural Sky](#libraryprocedural_sky) `library:procedural_sky` | sky | Sky | none | - |
@@ -162,7 +163,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 
 | Texture | Default | Description |
 |---|---|---|
-| `u_baseTexture` | white | Base map |
+| `u_baseTexture` | white; built-in particle with `PARTICLE_TEXTURE` | Base map |
 
 | Feature | Default | Description |
 |---|---|---|
@@ -171,6 +172,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 | `SOFT` | off | Soft intersections (fade where it meets geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
 | `STOCHASTIC` | off | Stochastic Tiling |
+| `PARTICLE_TEXTURE` | off | Built-in soft particle texture (when no base map is set) |
 
 ## Lit
 
@@ -1043,6 +1045,8 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `glowColor` | HDR colour | (2, 1.5, 0.8, 1) | Glow colour (HDR) (with `GLOW`) |
 | `glowScale` | range 0 to 4 | 1 | Glow alpha scale (with `GLOW`) |
 | `glowPower` | range 0.1 to 8 | 2 | Glow falloff power (with `GLOW`) |
+| `paletteRow` | int | 0 | Active palette (0: original) (with `PALETTE_SWAP`) |
+| `paletteCycleSpeed` | float | 1 | Cycling speed (with `PALETTE_CYCLE`) |
 
 | Texture | Default | Description |
 |---|---|---|
@@ -1058,6 +1062,8 @@ Sprite, tilemap and polygon effects on the sprite's own texture and colour: outl
 | `COLOR_REPLACE` | off | Colour replace |
 | `OVERLAY` | off | Overlay (hard light) |
 | `GLOW` | off | Glow |
+| `PALETTE_SWAP` | off | Palette Swap |
+| `PALETTE_CYCLE` | off | Palette Cycling |
 
 <a id="librarysprite_mask"></a>
 ### Sprite mask (`library:sprite_mask`)
@@ -1111,6 +1117,38 @@ Image and Text effects: grayscale, hue shift, tint overlay and a moving diagonal
 Point-sprite particles: texture (sprite-sheet rect per point) times the particle colour, with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Points component's blend mode (alpha by default; additive, premultiplied and multiply need no other setting); no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
 
 - **Type**: points (a Points component's custom shader); category Particles.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Default state**: depth write off.
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | colour | (1, 1, 1, 1) | Tint |
+| `glowColor` | HDR colour | (2, 1.3, 0.6, 1) | Glow colour (HDR) (with `GLOW`) |
+| `glowScale` | range 0 to 4 | 1 | Glow alpha scale (with `GLOW`) |
+| `glowPower` | range 0.1 to 8 | 3 | Glow falloff power (with `GLOW`) |
+| `erosionSoftness` | range 0.01 to 0.5 | 0.08 | Erosion edge softness (with `EROSION`) |
+| `erosionTiling` | float | 1 | Erosion noise tiling (per particle) (with `EROSION`) |
+| `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
+| `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
+| `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_erosionTexture` | gray | Erosion noise (red channel) (with `EROSION`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `GLOW` | off | Glow (alpha as light) |
+| `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
+| `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
+| `NEAR_FADE` | off | Camera near fade |
+
+<a id="libraryparticles"></a>
+### Particles (`library:particles`)
+
+The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
+
+- **Type**: particles; category Particles.
 - **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
 - **Default state**: depth write off.
 
@@ -1261,7 +1299,7 @@ Glowing outlines: the picture's edges (Sobel on brightness) lit in a neon colour
 <a id="librarygameboy"></a>
 ### Game Boy (`library:gameboy`)
 
-A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them.
+A four-shade handheld screen: big pixels, the brightness mapped to four greens with an ordered dither between them; for an exact palette use Post-processing ▸ Palette Quantize.
 
 - **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
 - **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).
@@ -1292,7 +1330,7 @@ Big square pixels: the picture in blocks of a few output pixels, each the colour
 <a id="libraryposterize"></a>
 ### Posterize (`library:posterize`)
 
-Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern.
+Fewer colours: each channel rounded to a few levels, with an optional ordered dither that trades the bands for a fine pattern; for an exact palette use Post-processing ▸ Palette Quantize.
 
 - **Type**: post-process (a pass of the scene's post-process chain); category Post-processing.
 - **Inputs**: the previous pass's colour (`u_sceneColorTexture`) (the engine also binds `u_originalSceneTexture`, `u_depthTexture`, `u_gbufferTexture`, `u_ssaoTexture` to a pass declaring them).

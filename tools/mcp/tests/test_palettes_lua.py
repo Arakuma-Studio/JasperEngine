@@ -1,6 +1,8 @@
 """Palette Swap and Palette Quantize through the existing tools and Lua (docs/specs/S43-palettes.md R41, R42, R45, AC17,
 AC19's asset identity), on a new project: a 2D scene with two Sprites ("Hero", "Villain") drawing a 2x2 texture of the
 palette's colours 1-4 with library:sprite, PALETTE_SWAP and a shaderPalettes.u_palette binding set by set_properties.
+The assets directory is `assets/` (the fixtures' layout), so the paths tools take (project-relative) differ from the
+ones materials and Lua use (relative to the assets directory).
 
 - get_entity returns the resolved row names (palette_rows: "", "Team Blue") and the palette_swap_lossy_texture warning
   until the texture is lossless (set_texture_import_settings);
@@ -98,6 +100,10 @@ async def probe_sprite(ed: Editor, at: tuple[float, float]) -> set[str]:
 
 
 async def test_setup(ed: Editor):
+    await ed.call("get_project_summary")  # the new project is made by then
+    (ed.project / "assets").mkdir(exist_ok=True)
+    await ed.call("set_project_settings", values={"editor.assets_dir": "assets"})
+    ed.check_eq((await ed.call("get_project_summary"))["assets_dir"], "assets")
     await ed.call("tool_groups", enable=["pixel_art", "editor_tools"])
     made = await ed.call("edit_palette", {"path": PALETTE, "from": {"colors": SOURCE},
                                           "ops": [{"op": "add_variant", "name": "Team Blue", "colors": TEAM_BLUE}], "output": True})
@@ -156,7 +162,7 @@ async def test_edit_mode_draws_the_source(ed: Editor):
 async def test_lua_swaps_rows(ed: Editor):
     scene = S["scene"]
     await ed.call("create_script", kind="lua", name="PaletteProbe", content=LUA, entity=S["Hero"])
-    saved = await ed.call("save_scene", scene=scene, path="scenes/Palettes")
+    saved = await ed.call("save_scene", scene=scene, path="assets/scenes/Palettes")
     S["scene_path"] = saved["scene"]["path"]
     await ed.call("edit_build_scenes", action="add", scene=S["scene_path"])
     await ed.call("edit_build_scenes", action="set_start", scene=S["scene_path"])

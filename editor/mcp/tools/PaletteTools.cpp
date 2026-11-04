@@ -345,12 +345,13 @@ ToolImage pngImage(const epx::RgbaImage& image) {
 
 // ---------------------------------------------------------------- writes
 
-// The files of one call as one project undo step; the step's name for the result's undo entry
-bool writeOneStep(McpContext& ctx, std::vector<w4::WriteFilesCmd::Item> items, std::string& stepName, std::string& error) {
+// The files of one call as one project undo step, named in the result as the server names an
+// edit's step ({id, name}, McpUndo): a job's result, read after the call replied, still has it
+bool writeOneStep(McpContext& ctx, std::vector<w4::WriteFilesCmd::Item> items, Json& undo, std::string& error) {
     if (!w4::writeFilesUndoable(ctx, std::move(items), error)) return false;
     CommandHistory* history = ctx.project()->getProjectCommandHistory();
     const UndoEntry* top = history ? history->top() : nullptr;
-    stepName = top ? top->name() : std::string("Write Files");
+    undo = top ? Json{{"id", top->info.id}, {"name", top->name()}} : Json{{"name", "Write Files"}};
     return true;
 }
 
@@ -588,13 +589,14 @@ EditOutcome finishEdit(McpContext& ctx, const EditArgs& args, EditBase base) {
             written.push_back(args.exportTo.path);
         }
         if (!items.empty()) {
-            std::string step, error;
-            if (!writeOneStep(ctx, std::move(items), step, error)) {
+            Json undo;
+            std::string error;
+            if (!writeOneStep(ctx, std::move(items), undo, error)) {
                 out.headline = "Nothing was written:";
                 out.errors.push_back(problem("write_failed", "path", error, "check the folder is writable, then call again"));
                 return out;
             }
-            data["undo"] = Json::array({{{"scope", "project"}, {"name", step}}});
+            data["undo"] = std::move(undo);
             std::string list;
             for (const Json& path : written) list += (list.empty() ? "" : ", ") + path.get<std::string>();
             writeText = " Wrote " + list + " as one undo step (undo with scope project).";
@@ -683,17 +685,24 @@ struct LospecState {
     std::string text;
 };
 
-// Runs `then` on the main thread once `done` is set (polled once an editor frame)
-void whenDone(McpContext* ctx, const std::shared_ptr<std::atomic<bool>>& done, std::function<void()> then) {
+// Runs `then` on the main thread once `done` is set (polled once an editor frame). Its writes are
+// the call's undo steps, the agent's when the call is (as the server's own continuations are)
+void whenDone(McpContext* ctx, const std::shared_ptr<std::atomic<bool>>& done, std::optional<UndoOrigin> origin, std::function<void()> then) {
     ctx->app().requestRedraw();
-    getEditorHost().enqueueMainThreadTask([ctx, done, then]() {
+    getEditorHost().enqueueMainThreadTask([ctx, done, origin, then]() {
         McpWriteScope writeScope;
         if (!done->load()) {
-            whenDone(ctx, done, then);
+            whenDone(ctx, done, origin, then);
             return;
         }
+        std::optional<UndoOriginScope> attribution;
+        if (origin) attribution.emplace(*origin);
         then();
     });
+}
+
+std::optional<UndoOrigin> originOf(const CallPtr& call) {
+    return call->attributed() ? std::optional<UndoOrigin>(call->getUndoOrigin()) : std::nullopt;
 }
 
 void finishLospec(const std::shared_ptr<LospecState>& state) {
@@ -765,7 +774,7 @@ void startLospec(const CallPtr& call, EditArgs args, const std::string& slug, co
         if (state->error.field.empty()) state->error.field = "from.lospec";
         state->done = true;
     }).detach();
-    whenDone(&ctx, done, [state]() {
+    whenDone(&ctx, done, originOf(call), [state]() {
         try {
             finishLospec(state);
         } catch (const std::exception& e) {
@@ -1243,14 +1252,15 @@ bool finishApply(McpContext& ctx, const ApplyArgs& args, const epx::RgbaImage& s
             found.source.file = FileUtils::pathToUtf8(args.textureAbsolute.filename());
             items.push_back({args.savePaletteAbsolute, px::PaletteCodec::write(found)});
         }
-        std::string step, error;
-        if (!writeOneStep(ctx, std::move(items), step, error)) {
+        Json undo;
+        std::string error;
+        if (!writeOneStep(ctx, std::move(items), undo, error)) {
             problems.push_back(problem("write_failed", "output", error, "check the folder is writable, then call again"));
             return false;
         }
         data["written"] = args.outputPath;
         if (!args.savePalette.empty()) data["palette_written"] = args.savePalette;
-        data["undo"] = Json::array({{{"scope", "project"}, {"name", step}}});
+        data["undo"] = std::move(undo);
         text += " Wrote " + args.outputPath + (args.savePalette.empty() ? "" : " and " + args.savePalette) + " as one undo step (undo with scope project).";
     } else if (!args.measureOnly) {
         data["next"] = "Preview only, nothing written: call again with the same arguments plus output: true (overwrite " + args.texture +
@@ -1326,7 +1336,7 @@ void applyPaletteTool(const CallPtr& call) {
         }
         state->done = true;
     }).detach();
-    whenDone(&ctx, done, [state]() {
+    whenDone(&ctx, done, originOf(call), [state]() {
         const JobPtr& job = state->job;
         Project* current = state->ctx->project();
         std::vector<Problem> problems;

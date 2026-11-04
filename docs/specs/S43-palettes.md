@@ -1156,6 +1156,9 @@ Recorded while implementing (`feature/s43-palettes`).
 - **`apply_palette`**: `image` defaults to false with `measure_only` (a check wants the verdict);
   `save_palette` needs `reduce` and is written only with `output`; built-ins are read without copying them
   (nothing stores the reference). `edit_palette`'s `written` is a list (the palette and an export).
+- **`undo` in the results** of `edit_palette` and `apply_palette` is the server's `{id, name}` of the one project step
+  (S24's attribution names an edit's step so, and replaces a tool's own `undo`), not §6.6's `[{scope, name}]`; the
+  tools write the same shape so that a job's result (`get_job`) agrees with the reply. The text says `scope project`.
 - **`shaderPalettes` through `set_properties`** takes the material's scene-file encoding: assets-relative paths
   (both tools return `asset_path`), no `builtin:` alias there.
 - **Lospec waits** up to 30 s for its job (the request is bounded by 10 s); AC3's red control blocks the
