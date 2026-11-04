@@ -1024,3 +1024,29 @@ hooks stay out of `MeshSystem.cpp` and `RenderSystem.cpp`.
   plus the AC35 expectation.
 - **`random_noise` (R37).** T1 R19 makes it a seeded hash and records the changed output; it is not `TerrainNoise.h`, so
   `noise::compat` does not change for it.
+
+## Deviations
+
+Recorded by the implementer. Each names what changed and why; the spec text above is unchanged.
+
+- **Output port ids of the erosion nodes (R9).** A node's ports share one namespace (`graph::portsOf`, `findPort`), so an input `height` and an output `height` cannot both exist. The input stays `height`; the output is `out`, named Height. `flow` and `sediment` are as written.
+- **`terrain_height` is grid-only as well as bake-only (R9).** It reads a snapshot by texel, so it has no meaning at an arbitrary point. `isGridOnlyType` says so; `evaluatePoints` on it would otherwise have returned zeros silently.
+- **The Value node extends `compat::value` on `[0, 65535)`, not `[0, 65536)` (N13).** The node's lattice wraps at the last cell, where the old code had no wrap. Wrapping keeps the field continuous across the period; the old value at that cell differs, and the tests cover the range that matches.
+- **`EvalContext` and `CompileOptions` grew (N15).** Additive fields: the snapshot's extent and origin (a padded region must clamp to it), `uvPerUnit` (a region's UVs are the whole terrain's), `clock` (the seam of AC13), `backend`, `report`, and `previewNodes`, `maxHeight`, `forbidGridOnly`, `forbidBakeOnly` on the options. `evaluateGridOutputs` is new: outputs of one run share a stage, so an erosion runs once.
+- **`metadata.noise.usage` and `metadata.noise.resolution` (R15, R26).** `validate_graph` has no call context, so a file states where it runs (`bake`, `runtime`, `points`) for `bake-only-node` and `grid-only-node`, and the resolution for `erosion-budget`, default 1024. `compile`'s options override both.
+- **Layout of `evaluateGrid3D` (N15).** x fastest, then y, then z. The spec names no order; T6 R2 says only "x fastest".
+- **Smallest `TerrainMapDeltaCmd` (T1 R24).** T1's command had not landed. `editor/command/type/TerrainMapDeltaCmd` holds one XOR rectangle per map, with T1 R25's shape guard, but no 64x64 tiles or zstd. Whichever of T1 and T2 lands second keeps T1's form; `TerrainGeneration` is the one caller. New maps are made as files by `TerrainMaps` and bound with property commands in the same `CommandGroup`, since no `EditorTerrainStore` exists yet.
+- **`sampleGrid`'s position (R68).** Samples are texel centres, `(round(x / step) + i + 0.5) * step`, so a script's grid has the bits a generation gives at those texels. `x` and `z` snap to the lattice.
+- **The default `radius` is 2, not R24's 1 (coordinator's decision, overriding R24), and deposits go through the brush.** Measured with a scratch probe at 257 texels on 1000 m, `droplets_per_texel` 0.25, seeds and grounds varied, as a multiple of the fractal's own curvature (`terrain-evidence/T2/erosion-radius-probe-after.txt`):
+
+  | `radius` | One-texel curvature, 5 / 8 octaves | Four-texel curvature, 5 / 8 octaves | M steps/s, one thread (busy host, with the in-bounds path; 5-octave ground) |
+  |---|---|---|---|
+  | 1 | 1.51-1.52 / 1.06-1.08 | 1.03 / 1.00 | 11.1 |
+  | 2 | 1.04 / 0.95 | 0.97 / 0.93-0.94 | 9.0 |
+  | 3 | 0.95-0.96 / 0.97 | 0.92-0.93 / 0.91 | 7.0 |
+  | 4 | 0.99 / 0.98 | 0.91 / 0.91 | 4.7 |
+
+  2 is the smallest radius that stops the roughening; 3 and 4 add little for much more cost. With deposits on the four cells under a droplet, as Beyer has them, `radius` 2 stood at 1.35 and 1 at 1.67 (1.95 at `droplets_per_texel` 1), which is why they share the brush. `radius` 1 stays selectable: it is the fastest and preserves fine detail, and it can roughen the ground (`docs/mcp/guide/noise-graphs.md`). `CarvesChannels` pins both scales at the defaults. Whether it looks right still needs AC17's reviewed screenshots, and R48's 8 M steps/s, met here at 9.0 on a busy host by a scratch probe, must still be gated by `je-bench-noise` on an idle one.
+- **Hand-picked Simplex radius (R1).** 3D Simplex uses radius 0.5 rather than the paper's 0.6, which keeps the field continuous; the result is clamped to -1..1.
+- **`NoisePresetData.h` (R41).** The test project's build has no hook to embed files, so the presets are a generated, committed header (`tools/noise/gen_test_project_presets.py`, `--check`).
+- **The Android image gains cross compilers too (section 6, D22).** Besides `qemu-user-static`, `gcc-aarch64-linux-gnu` and `gcc-arm-linux-gnueabihf` are in the image, for section 9's fallback when a static bionic binary will not start under qemu-user.

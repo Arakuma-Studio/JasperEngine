@@ -19,17 +19,18 @@ namespace jasperengine::editor{
         std::string before;
         std::string after;
         std::string label;
+        bool creates = false;   // the step made the file: undo removes it (T2 R16)
         bool write(const std::string& text) const;
 
     public:
-        GraphEditCmd(std::filesystem::path file, std::string before, std::string after, std::string label);
+        GraphEditCmd(std::filesystem::path file, std::string before, std::string after, std::string label, bool createsFile = false);
 
         bool execute() override;
         void undo() override;
         bool affectsStructure() const override { return false; }
         std::string describe() const override { return label; }
         const char* typeName() const override { return "GraphEditCmd"; }
-        bool isNoOp() const override { return before == after; }
+        bool isNoOp() const override { return !creates && before == after; }
         size_t memoryBytes() const override { return sizeof(*this) + before.size() + after.size(); }
         bool releaseOffThread() const override { return true; }
     };

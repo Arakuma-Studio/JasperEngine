@@ -60,6 +60,10 @@ public:
                                                 uint32_t sceneId,
                                                 Entity entity,
                                                 const TerrainBlendmapRequest& request);
+
+    // An empty 8-bit density map for a foliage layer, as a file: T2's generation writes into it
+    static bool createDensitymap(Project* project, uint32_t sceneId, Entity entity, int foliageLayer, int resolution,
+                                 std::string& relativePath, std::string& error);
 };
 
 } // namespace jasperengine::editor::mcp

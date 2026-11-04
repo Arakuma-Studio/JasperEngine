@@ -1,0 +1,351 @@
+{
+  "formatVersion": 1,
+  "kind": "noise",
+  "kindVersion": 1,
+  "nextId": 26,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "ridged",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "basis": "perlin",
+        "dimensions": "2d",
+        "frequency": 2.5,
+        "octaves": 8,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "seed_offset": 0
+      }
+    },
+    {
+      "id": "n2",
+      "type": "fbm",
+      "position": [
+        0.0,
+        200.0
+      ],
+      "params": {
+        "basis": "perlin",
+        "dimensions": "2d",
+        "frequency": 1.5,
+        "octaves": 4,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "seed_offset": 7
+      }
+    },
+    {
+      "id": "n3",
+      "type": "remap",
+      "position": [
+        240.0,
+        200.0
+      ],
+      "params": {
+        "from_min": -0.6,
+        "from_max": 0.6,
+        "to_min": 0.0,
+        "to_max": 1.0,
+        "clamp": true
+      }
+    },
+    {
+      "id": "n5",
+      "type": "math",
+      "position": [
+        480.0,
+        0.0
+      ],
+      "params": {
+        "op": "multiply",
+        "b": 1.0
+      }
+    },
+    {
+      "id": "n8",
+      "type": "remap",
+      "position": [
+        720.0,
+        0.0
+      ],
+      "params": {
+        "from_min": 0.0,
+        "from_max": 0.7,
+        "to_min": 0.02,
+        "to_max": 1.0,
+        "clamp": true
+      }
+    },
+    {
+      "id": "n10",
+      "type": "hydraulic_erosion",
+      "position": [
+        960.0,
+        0.0
+      ],
+      "params": {
+        "droplets_per_texel": 0.25,
+        "lifetime": 48,
+        "inertia": 0.05,
+        "capacity": 4.0,
+        "min_slope": 0.01,
+        "erode_rate": 0.3,
+        "deposit_rate": 0.3,
+        "evaporation": 0.02,
+        "gravity": 4.0,
+        "radius": 2,
+        "seed_offset": 11
+      }
+    },
+    {
+      "id": "n12",
+      "type": "thermal_erosion",
+      "position": [
+        1200.0,
+        0.0
+      ],
+      "params": {
+        "iterations": 8,
+        "talus_angle": 38.0,
+        "rate": 0.5
+      }
+    },
+    {
+      "id": "n14",
+      "type": "output_height",
+      "position": [
+        1440.0,
+        0.0
+      ],
+      "params": {
+        "unit": "normalized"
+      }
+    },
+    {
+      "id": "n16",
+      "type": "slope_mask",
+      "position": [
+        1440.0,
+        200.0
+      ],
+      "params": {
+        "min_angle": 32.0,
+        "max_angle": 90.0,
+        "falloff": 6.0
+      }
+    },
+    {
+      "id": "n18",
+      "type": "output_layer",
+      "position": [
+        1680.0,
+        200.0
+      ],
+      "params": {
+        "layer": 1,
+        "optional": true
+      }
+    },
+    {
+      "id": "n20",
+      "type": "height_mask",
+      "position": [
+        1440.0,
+        400.0
+      ],
+      "params": {
+        "min": 0.62,
+        "max": 1.0,
+        "falloff": 0.06
+      }
+    },
+    {
+      "id": "n22",
+      "type": "output_layer",
+      "position": [
+        1680.0,
+        400.0
+      ],
+      "params": {
+        "layer": 2,
+        "optional": true
+      }
+    },
+    {
+      "id": "n24",
+      "type": "output_layer",
+      "position": [
+        1680.0,
+        600.0
+      ],
+      "params": {
+        "layer": 3,
+        "optional": true
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e4",
+      "from": {
+        "node": "n2",
+        "port": "out"
+      },
+      "to": {
+        "node": "n3",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e6",
+      "from": {
+        "node": "n1",
+        "port": "out"
+      },
+      "to": {
+        "node": "n5",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e7",
+      "from": {
+        "node": "n3",
+        "port": "out"
+      },
+      "to": {
+        "node": "n5",
+        "port": "b"
+      }
+    },
+    {
+      "id": "e9",
+      "from": {
+        "node": "n5",
+        "port": "out"
+      },
+      "to": {
+        "node": "n8",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e11",
+      "from": {
+        "node": "n8",
+        "port": "out"
+      },
+      "to": {
+        "node": "n10",
+        "port": "height"
+      }
+    },
+    {
+      "id": "e13",
+      "from": {
+        "node": "n10",
+        "port": "out"
+      },
+      "to": {
+        "node": "n12",
+        "port": "height"
+      }
+    },
+    {
+      "id": "e15",
+      "from": {
+        "node": "n12",
+        "port": "out"
+      },
+      "to": {
+        "node": "n14",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e17",
+      "from": {
+        "node": "n12",
+        "port": "out"
+      },
+      "to": {
+        "node": "n16",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e19",
+      "from": {
+        "node": "n16",
+        "port": "out"
+      },
+      "to": {
+        "node": "n18",
+        "port": "weight"
+      }
+    },
+    {
+      "id": "e21",
+      "from": {
+        "node": "n12",
+        "port": "out"
+      },
+      "to": {
+        "node": "n20",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e23",
+      "from": {
+        "node": "n20",
+        "port": "out"
+      },
+      "to": {
+        "node": "n22",
+        "port": "weight"
+      }
+    },
+    {
+      "id": "e25",
+      "from": {
+        "node": "n10",
+        "port": "sediment"
+      },
+      "to": {
+        "node": "n24",
+        "port": "weight"
+      }
+    }
+  ],
+  "variables": [],
+  "groups": [],
+  "viewport": {
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "zoom": 1.0
+  },
+  "metadata": {
+    "noise": {
+      "space": "terrain"
+    },
+    "preset": {
+      "id": "alpine",
+      "name": "Alpine",
+      "description": "Eroded mountains with snow, rock and scree layers.",
+      "tags": [
+        "rugged",
+        "snow",
+        "eroded"
+      ],
+      "terrain_size": 2000.0,
+      "max_height": 800.0
+    }
+  }
+}

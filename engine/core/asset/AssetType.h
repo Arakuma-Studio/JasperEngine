@@ -37,8 +37,9 @@ namespace jasperengine {
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
-        // 24-30 are reserved for the other terrain streams (T2, T3): the map stores the number, so
-        // it stays this whichever lands first
+        // 24-27 are pixel art's (programme ledger D19): the value is stored in assetmap.bin, so it never moves
+        NoiseGraph = 28,            // a .noisegraph Noise Graph (T2)
+        // 29 and 30 are the other terrain streams' (D22)
         VoxelVolume = 31            // a .voxelvolume (T6 R77, its GUID in a sidecar)
     };
 
@@ -68,6 +69,7 @@ namespace jasperengine {
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
+            case AssetType::NoiseGraph: return "noise_graph";
             case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::Unknown: break;
         }

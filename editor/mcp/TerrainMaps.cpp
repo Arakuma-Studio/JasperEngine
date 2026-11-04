@@ -9,7 +9,8 @@
 #include "texture/TextureData.h"
 #include "util/FileUtils.h"
 #include "util/PngWriter.h"
-#include "terrain/TerrainNoise.h"
+#include "noise/NoiseCompat.h"
+#include "util/TerrainMapUtils.h"
 
 #include "stb_image_write.h"
 
@@ -62,7 +63,7 @@ std::vector<unsigned char> makeHeightPixels(const TerrainHeightmapRequest& reque
                 for (int o = 0; o < octaves; ++o) {
                     const float nx = (static_cast<float>(x) / static_cast<float>(resolution - 1)) * f;
                     const float ny = (static_cast<float>(y) / static_cast<float>(resolution - 1)) * f;
-                    sum += (terrain::TerrainNoise::value(nx, ny, request.seed + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
+                    sum += (noise::compat::value(nx, ny, request.seed + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
                     weightSum += weight;
                     weight *= 0.5f;
                     f *= 2.0f;
@@ -250,6 +251,31 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
     result.relativePath = (ec ? result.fullPath : rel).generic_string();
     result.success = true;
     return result;
+}
+
+bool TerrainMaps::createDensitymap(Project* project, uint32_t sceneId, Entity entity, int foliageLayer, int resolution,
+                                   std::string& relativePath, std::string& error) {
+    if (!project || project->getProjectPath().empty() || resolution < 2) {
+        error = "Could not create the density map.";
+        return false;
+    }
+    const fs::path baseDir = project->getTerrainMapsDir();
+    std::error_code ec;
+    FileUtils::createDirectories(baseDir, ec);
+    fs::path candidate;
+    for (uint32_t i = 0; i < 10000; ++i) {
+        candidate = baseDir / ("terrain_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_density_" +
+                               std::to_string(foliageLayer) + "_" + std::to_string(i) + ".png");
+        if (!fs::exists(candidate, ec)) break;
+    }
+    const fs::path rel = fs::relative(candidate, project->getAssetsPath(), ec);
+    relativePath = ec ? candidate.generic_string() : rel.generic_string();
+    const std::vector<unsigned char> pixels(static_cast<size_t>(resolution) * static_cast<size_t>(resolution), 0);
+    if (!TerrainMapUtils::writeFile(project, relativePath, resolution, resolution, 1, 1, pixels)) {
+        error = "Could not write the density map " + relativePath + ".";
+        return false;
+    }
+    return true;
 }
 
 } // namespace jasperengine::editor::mcp

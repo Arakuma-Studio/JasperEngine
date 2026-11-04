@@ -927,6 +927,9 @@ void LuaBinding::registerClasses(lua_State *L){
     registerGameplayClasses(L);
     registerNavigationClasses(L);
     registerSplineClasses(L);
+#if JASPERENGINE_NOISE
+    registerNoiseClasses(L);
+#endif
 #if JASPERENGINE_VOXEL
     registerVoxelClasses(L);
 #endif

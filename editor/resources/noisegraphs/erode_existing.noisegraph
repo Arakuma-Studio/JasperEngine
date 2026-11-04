@@ -1,0 +1,123 @@
+{
+  "formatVersion": 1,
+  "kind": "noise",
+  "kindVersion": 1,
+  "nextId": 8,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "terrain_height",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {}
+    },
+    {
+      "id": "n2",
+      "type": "hydraulic_erosion",
+      "position": [
+        240.0,
+        0.0
+      ],
+      "params": {
+        "droplets_per_texel": 0.25,
+        "lifetime": 48,
+        "inertia": 0.05,
+        "capacity": 4.0,
+        "min_slope": 0.01,
+        "erode_rate": 0.3,
+        "deposit_rate": 0.3,
+        "evaporation": 0.02,
+        "gravity": 4.0,
+        "radius": 2,
+        "seed_offset": 0
+      }
+    },
+    {
+      "id": "n4",
+      "type": "thermal_erosion",
+      "position": [
+        480.0,
+        0.0
+      ],
+      "params": {
+        "iterations": 4,
+        "talus_angle": 38.0,
+        "rate": 0.5
+      }
+    },
+    {
+      "id": "n6",
+      "type": "output_height",
+      "position": [
+        720.0,
+        0.0
+      ],
+      "params": {
+        "unit": "normalized"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e3",
+      "from": {
+        "node": "n1",
+        "port": "out"
+      },
+      "to": {
+        "node": "n2",
+        "port": "height"
+      }
+    },
+    {
+      "id": "e5",
+      "from": {
+        "node": "n2",
+        "port": "out"
+      },
+      "to": {
+        "node": "n4",
+        "port": "height"
+      }
+    },
+    {
+      "id": "e7",
+      "from": {
+        "node": "n4",
+        "port": "out"
+      },
+      "to": {
+        "node": "n6",
+        "port": "in"
+      }
+    }
+  ],
+  "variables": [],
+  "groups": [],
+  "viewport": {
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "zoom": 1.0
+  },
+  "metadata": {
+    "noise": {
+      "space": "terrain"
+    },
+    "preset": {
+      "id": "erode_existing",
+      "name": "Erode Existing",
+      "description": "Runs hydraulic and thermal erosion on the terrain's current heights.",
+      "tags": [
+        "utility",
+        "eroded"
+      ],
+      "terrain_size": 1000.0,
+      "max_height": 200.0,
+      "hidden": true
+    }
+  }
+}

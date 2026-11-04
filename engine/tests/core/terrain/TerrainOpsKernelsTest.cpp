@@ -6,7 +6,7 @@
 #include "TerrainTestSupport.h"
 
 #include "terrain/TerrainLayers.h"
-#include "terrain/TerrainNoise.h"
+#include "noise/NoiseCompat.h"
 
 #include <gtest/gtest.h>
 
@@ -192,7 +192,7 @@ TEST(TerrainOpsKernels, AddNoiseFollowsTheField) {
     const std::vector<float> after = readHeights(*store);
     for (int y = 0; y < SIZE; y++) {
         for (int x = 0; x < SIZE; x++) {
-            const float expected = 0.5f + TerrainNoise::fractal(static_cast<float>(x) / 2.0f, static_cast<float>(y) / 2.0f, 9, 3) * 0.1f;
+            const float expected = 0.5f + noise::compat::fractal(static_cast<float>(x) / 2.0f, static_cast<float>(y) / 2.0f, 9, 3) * 0.1f;
             EXPECT_NEAR(heightAt(after, x, y), expected, QUANTUM);
         }
     }
@@ -539,7 +539,7 @@ TEST(TerrainOpsKernels, FractalFillKeepsItsBytes) {
             for (int o = 0; o < 4; o++) {
                 const float nx = (static_cast<float>(x) / static_cast<float>(SIZE - 1)) * f;
                 const float ny = (static_cast<float>(y) / static_cast<float>(SIZE - 1)) * f;
-                sum += (TerrainNoise::value(nx, ny, 7 + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
+                sum += (noise::compat::value(nx, ny, 7 + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
                 weightSum += weight;
                 weight *= 0.5f;
                 f *= 2.0f;
@@ -568,7 +568,7 @@ TEST(TerrainOpsKernels, RandomNoiseIsSeededAndPortable) {
     EXPECT_EQ(run(5), run(5));
     EXPECT_NE(run(5), run(6));
     // The per-texel hash's own value: a standard-library distribution could not pin this
-    EXPECT_EQ(detHash01(3, 4, 5), TerrainNoise::hash(3, 4, 5));
+    EXPECT_EQ(detHash01(3, 4, 5), noise::compat::hash01(3, 4, 5));
 }
 
 // ------------------------------------------------------------------ every shape, on one op

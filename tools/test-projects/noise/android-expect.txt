@@ -1,0 +1,2 @@
+# tools/android-emulator-test.sh --ordered --expect-file: what the noise project logs on Android (logcat -v tag)
+[gate] noise_selfcheck=pass

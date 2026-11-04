@@ -985,5 +985,66 @@ CASES = [
         "checks": {"any_of": [{"calls": [{"tool": "edit_voxels", "args": {"create": {"terrain": "*"}}}]},
                               {"calls": [{"tool": "generate_voxels", "args": {"preset": "cave_entrance"}}]}]},
         "max_turns": 12,
+    # -- T2: terrain generation. Red: a surface from before the tools (AC49) ---------------------
+    {
+        "id": "terrain_generate_preset",
+        "kind": "bad",
+        "what_happened": "Asked for mountains with a seed, an agent scripted noise strokes instead of generating: it must take generate_terrain's preset.",
+        "text_at_issue": "TerrainGenerationTools.cpp generate_terrain: name and description",
+        "source": "docs/specs/T2-noise-graphs.md AC49",
+        "prompt": "Make the terrain in this scene into mountains, seed 7.",
+        "mocks": [
+            {"tool": "generate_terrain", "args": {"preset": "mountains", "seed": 7}, "result": ok(
+                "Generate Terrain (Mountains, seed 7): height 0.02 to 0.98, 1 map(s) changed.",
+                {"seed": 7, "undo_name": "Generate Terrain (Mountains, seed 7)", "changed": [{"map": "height", "rect": [0, 0, 513, 513], "texels": 263169}]})},
+        ],
+        "checks": {"calls": [{"tool": "generate_terrain", "args": {"preset": "mountains", "seed": 7}}],
+                   "must_not_call": ["edit_terrain", "sculpt_terrain", "set_terrain_maps"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "noise_graph_edit_loop",
+        "kind": "guard",
+        "what_happened": "Tuning a graph: the loop is edit_graph, then preview_noise_graph, then a dry run before any write.",
+        "text_at_issue": "docs/mcp/guide/noise-graphs.md The loop; generate_terrain's and preview_noise_graph's descriptions",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R65",
+        "prompt": "Tune graphs/Hills.noisegraph so the hills are gentler (lower its fbm frequency to 2), and show me what the terrain would look like. Don't change the terrain yet.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"path": "re:Hills"}, "result": ok("Edit: 1 op(s), 0 issue(s).", {"applied": 1, "issues": []})},
+            {"tool": "preview_noise_graph", "args": {"path": "re:Hills"}, "result": ok("Hills: 3 node(s) at 128, seed 1.", {"nodes": [], "outputs": {"height": "00"}})},
+            {"tool": "generate_terrain", "args": {"graph": "re:Hills", "dry_run": True}, "result": ok("Dry run: nothing was written.", {"dry_run": True, "hash": {"height": "00"}})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Hills"}}, {"tool": "generate_terrain", "args": {"dry_run": True}}],
+                   "must_not_call": [{"tool": "generate_terrain", "args": {"dry_run": False}}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "noise_graph_create",
+        "kind": "guard",
+        "what_happened": "A new graph file: edit_graph's create makes it, as one undo step. write_file refuses the extension.",
+        "text_at_issue": "GraphTools.cpp edit_graph: create",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R16",
+        "prompt": "Start a new noise graph at graphs/Peaks.noisegraph from the alpine preset.",
+        "mocks": [
+            {"tool": "edit_graph", "args": {"path": "re:Peaks", "create": {"kind": "noise", "from_preset": "alpine"}}, "result": ok(
+                "Create Peaks.noisegraph: 0 op(s), 0 issue(s).", {"applied": 0, "issues": [], "undo_name": "Create Peaks.noisegraph"})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"create": {"kind": "noise"}}}], "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "terrain_generate_error_next",
+        "kind": "guard",
+        "what_happened": "A graph error's result names the fix in next; the agent follows it with edit_graph on that node instead of giving up.",
+        "text_at_issue": "TerrainGenerationTools.cpp addNext",
+        "source": "docs/specs/T2-noise-graphs.md AC49, R65",
+        "prompt": "Generate the terrain from graphs/Bad.noisegraph. Fix it if something is wrong with the graph.",
+        "mocks": [
+            {"tool": "generate_terrain", "args": {"graph": "re:Bad"}, "result": err(
+                "octaves must be 1..12, not 40 (next: edit_graph on node n1 of graphs/Bad.noisegraph, then preview_noise_graph.)")},
+            {"tool": "edit_graph", "args": {"path": "re:Bad"}, "result": ok("Edit: 1 op(s), 0 issue(s).", {"applied": 1, "issues": []})},
+        ],
+        "checks": {"calls": [{"tool": "edit_graph", "args": {"path": "re:Bad"}}]},
+        "max_turns": 10,
     },
 ]
