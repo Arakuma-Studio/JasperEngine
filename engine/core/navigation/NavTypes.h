@@ -14,6 +14,7 @@
 // positions; NavMesh works in nav space.
 
 #include "Export.h"
+#include "ecs/Entity.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 
@@ -53,13 +54,42 @@ namespace jasperengine::nav {
         Invalid
     };
 
+    // ---- S42 diagnostics: why a path is not Complete (docs/specs/S42-navigation-diagnostics.md
+    // R1-R4). Shared with S43 (onPathFailed); values may only be appended.
+    enum class PathFailure : uint8_t {
+        None,
+        // no enabled, active NavMeshSurface of the agent type (or the given entity is not one)
+        NoSurface,
+        // surfaces exist, none has a navmesh (never baked, cleared, its asset refused)
+        NotBaked,
+        // no polygon in the surface's search box around the start (or the end)
+        StartOffMesh,
+        EndOffMesh,
+        // a polygon is there, but its area is outside the query's mask
+        StartFiltered,
+        EndFiltered,
+        // the ends never connect (separate islands, or only one-way links)
+        Disconnected,
+        // they connect through areas the mask leaves out
+        BlockedByArea,
+        // the search ran out of its 2048 nodes (or 2048 corridor polygons) first
+        OutOfNodes
+    };
+
+    // "none", "no_surface", ... (MCP, Lua and the docs use these names)
+    JASPERENGINE_API const char* pathFailureName(PathFailure failure);
+    // one English sentence per value (the Path Tester, MCP text, docs)
+    JASPERENGINE_API const char* pathFailureDescription(PathFailure failure);
+    // false (out unchanged) for an unknown name
+    JASPERENGINE_API bool pathFailureFromName(const std::string& name, PathFailure& out);
+
     // The plane a surface or grid lies in: XZ is 3D (Y up), XY is a 2D scene
     enum class NavPlane {
         XZ,
         XY
     };
 
-    // ---- S43 queries
+    // ---- S55 queries
 
     // A path corner's flags (Detour's DT_STRAIGHTPATH_* values)
     enum CornerFlag : uint8_t {
@@ -103,7 +133,25 @@ namespace jasperengine::nav {
         PathStatus status = PathStatus::Invalid;
         std::vector<Vector3> corners;
         float length = 0.0f;
-        // ---- S43 queries
+
+        // ---- S42 (R2, R4): failure is None exactly when status is Complete; Invalid goes with
+        // NoSurface, NotBaked and the four end reasons, Partial with Disconnected, BlockedByArea
+        // and OutOfNodes
+        PathFailure failure = PathFailure::NoSurface;
+        // the surface that answered (NULL_ENTITY: none did)
+        Entity surface = NULL_ENTITY;
+        // the ends snapped to the mesh (the requested point when that end found no polygon), and
+        // how far they moved (< 0: no polygon)
+        Vector3 start, end;
+        float startSnapDistance = -1.0f, endSnapDistance = -1.0f;
+        // the ends' islands, -1 unless the surface's islands were current (queries never label)
+        int startIsland = -1, endIsland = -1;
+        // the last corner (Complete, Partial; gap 0 when Complete) and how far it is from the
+        // snapped end, or from the requested end when the end is off the mesh. An Invalid path
+        // has no corners: the snapped start (else the requested one) and its distance to the end.
+        Vector3 closestPoint;
+        float gap = 0.0f;
+        // ---- S55 queries
         // per corner: the area of the stretch that starts there (the last: the area at the end)
         std::vector<uint8_t> cornerAreas;
         // per corner: CornerFlag bits
@@ -122,7 +170,7 @@ namespace jasperengine::nav {
         bool areaCrossings = false;
     };
 
-    // randomPoint (spec S43 R1): anywhere (uniform by area), around a point (reachable from it
+    // randomPoint (spec S55 R1): anywhere (uniform by area), around a point (reachable from it
     // within radius, not uniform) and/or on the island of a point; seeded: a private stream
     struct RandomPointQuery {
         bool around = false;
@@ -132,6 +180,42 @@ namespace jasperengine::nav {
         Vector3 islandOf;
         bool seeded = false;
         uint64_t seed = 0;
+    };
+
+    // ---- S42 diagnostics (R7-R10)
+
+    // locate(): where a point is on the navmesh
+    struct NavLocation {
+        // a polygon is in the surface's search box (where a path from here would start)
+        bool onMesh = false;
+        // a polygon within maxDistance (always true when onMesh)
+        bool found = false;
+        // the nearest point on it, and the distance to it (< 0: none found)
+        Vector3 position;
+        float snapDistance = -1.0f;
+        int island = -1;
+        uint8_t area = 0;
+        Entity surface = NULL_ENTITY;
+    };
+
+    // A connected component of a navmesh's polygons (links included, either direction)
+    struct NavIsland {
+        // discovery order over the tiles ascending (y, x, layer), then polygon index
+        int id = -1;
+        // m^2 (NavigationSystem; nav units^2 on NavMesh)
+        float area = 0.0f;
+        int polys = 0;
+        Vector3 boundsMin, boundsMax;
+    };
+
+    struct NavCoverage {
+        // m^2: the ground polygons, the largest island, the non-empty tiles' footprints
+        float walkableArea = 0.0f;
+        float largestIslandArea = 0.0f;
+        float tilesArea = 0.0f;
+        // walkableArea / tilesArea (0 without tiles)
+        float fraction = 0.0f;
+        int islandCount = 0;
     };
 
     // One row of the project's area table (Window > AI > Navigation > Areas)
@@ -217,7 +301,7 @@ namespace jasperengine::nav {
 
     JASPERENGINE_API const char* pathStatusName(PathStatus status);
 
-    // ---- S43 queries
+    // ---- S55 queries
     // an area cost as queries use it: >= 1 (a lower or non-finite cost warns, once per process)
     JASPERENGINE_API float clampAreaCost(float cost);
 

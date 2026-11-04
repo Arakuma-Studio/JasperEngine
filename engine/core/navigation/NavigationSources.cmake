@@ -6,6 +6,7 @@
 
 set(JASPERENGINE_NAVIGATION_SRCS
     core/navigation/NavTypes.cpp
+    core/navigation/NavDiagnostics.cpp
     core/navigation/NavBakeInput.cpp
     core/navigation/NavBakeCollector.cpp
     core/navigation/NavBakeScheduler.cpp

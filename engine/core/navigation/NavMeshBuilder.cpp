@@ -109,6 +109,9 @@ struct NavMeshBuilder::TileJob::State {
     std::vector<NavLinkInput> links;
 
     const NavBakeInput& in() const { return *input; }
+    // S42: the probe's relaxed limits for this build (null: the input's)
+    std::unique_ptr<NavBuildConfig> configOverride;
+    const NavBuildConfig& config() const { return configOverride ? *configOverride : input->config; }
 
     void fail(const std::string& message) {
         result.ok = false;
@@ -138,7 +141,7 @@ struct NavMeshBuilder::TileJob::State {
 
 void NavMeshBuilder::TileJob::State::gather() {
     const NavBakeInput& input = in();
-    const NavBuildConfig& config = input.config;
+    const NavBuildConfig& config = this->config();
     result.coord = input.tileCoord(index);
     result.hash = index < input.tileHashes.size() ? input.tileHashes[index] : 0;
 
@@ -344,7 +347,7 @@ void NavMeshBuilder::TileJob::State::markAreas() {
         return;
     }
     part = 0;
-    if (input.config.carving) {
+    if (config().carving) {
         buildLayers();
         return;
     }
@@ -386,9 +389,9 @@ void NavMeshBuilder::TileJob::State::contours() {
         finishEmpty();
         return;
     }
-    if (scratch.polyMesh->npolys > in().config.maxPolysPerTile) {
+    if (scratch.polyMesh->npolys > config().maxPolysPerTile) {
         fail(std::to_string(scratch.polyMesh->npolys) + " polygons, more than a tile may hold (" +
-             std::to_string(in().config.maxPolysPerTile) + "); use a smaller tile size or a larger cell size");
+             std::to_string(config().maxPolysPerTile) + "); use a smaller tile size or a larger cell size");
         return;
     }
     stage = Stage::Detail;
@@ -538,10 +541,12 @@ void NavMeshBuilder::TileJob::State::buildLayers() {
     stage = Stage::Done;
 }
 
-NavMeshBuilder::TileJob::TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index)
+NavMeshBuilder::TileJob::TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index, const NavBuildConfig* configOverride)
     : state(std::make_unique<State>()) {
     state->input = std::move(input);
     state->index = index;
+    if (configOverride)
+        state->configOverride = std::make_unique<NavBuildConfig>(*configOverride);
 }
 
 NavMeshBuilder::TileJob::~TileJob() = default;
@@ -597,9 +602,9 @@ NavTileBuildResult& NavMeshBuilder::TileJob::result() {
     return state->result;
 }
 
-NavTileBuildResult NavMeshBuilder::buildTile(const NavBakeInput& input, uint32_t index) {
+NavTileBuildResult NavMeshBuilder::buildTile(const NavBakeInput& input, uint32_t index, const NavBuildConfig* configOverride) {
     // a non-owning pointer: the caller holds the input for the call
-    TileJob job(std::shared_ptr<const NavBakeInput>(std::shared_ptr<const NavBakeInput>(), &input), index);
+    TileJob job(std::shared_ptr<const NavBakeInput>(std::shared_ptr<const NavBakeInput>(), &input), index, configOverride);
     while (!job.step()) {
     }
     return std::move(job.result());
@@ -627,7 +632,7 @@ struct NavMeshBuilder::TileJob::State {
     NavTileBuildResult result;
 };
 
-NavMeshBuilder::TileJob::TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index)
+NavMeshBuilder::TileJob::TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index, const NavBuildConfig*)
     : state(std::make_unique<State>()) {
     state->index = index;
     if (input)
@@ -647,7 +652,7 @@ bool NavMeshBuilder::TileJob::done() const { return true; }
 uint32_t NavMeshBuilder::TileJob::index() const { return state->index; }
 NavTileBuildResult& NavMeshBuilder::TileJob::result() { return state->result; }
 
-NavTileBuildResult NavMeshBuilder::buildTile(const NavBakeInput& input, uint32_t index) {
+NavTileBuildResult NavMeshBuilder::buildTile(const NavBakeInput& input, uint32_t index, const NavBuildConfig*) {
     NavTileBuildResult result;
     result.coord = input.tileCoord(index);
     result.ok = false;

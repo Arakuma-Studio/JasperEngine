@@ -262,7 +262,7 @@ TEST_F(NavDeterminismTest, CrowdReplay){
     EXPECT_EQ(std::memcmp(first.data(), second.data(), first.size() * sizeof(float)), 0);
 }
 
-// ---- S43 queries (docs/specs/S43-navigation-gameplay-api.md R9, R10)
+// ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R9, R10)
 
 // AC10: an agent with its own cost on the mud detours through the gap, its neighbour walks through
 // the mud; two agents with the same costs share one filter

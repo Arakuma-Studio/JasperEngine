@@ -17,6 +17,7 @@
 #include "Export.h"
 #include "ecs/Entity.h"
 #include "navigation/NavBakeInput.h"
+#include "navigation/NavDiagnostics.h"
 #include "navigation/NavFrame.h"
 
 #include <memory>
@@ -44,6 +45,9 @@ namespace jasperengine::nav {
         int excluded = 0;
         size_t triangles = 0;
         std::vector<std::string> warnings;
+        // S42, with NavCollectOptions::recordSources only: each GameObject left out and why
+        // ("layer", "inactive", "moving body", "agent", "obstacle", "exclude modifier")
+        std::vector<std::pair<Entity, std::string>> excludedEntities;
     };
 
     // the largest tile a web player bakes at runtime (NavBakeCollector::configOf)
@@ -51,8 +55,10 @@ namespace jasperengine::nav {
 
     class JASPERENGINE_API NavBakeCollector {
     public:
-        // The input of the surface's bake, null (with *error) when the surface cannot be baked
-        static std::shared_ptr<NavBakeInput> collect(Scene* scene, Entity surface, std::string& error, NavCollectStats* stats = nullptr);
+        // The input of the surface's bake, null (with *error, and *code) when the surface cannot be
+        // baked (NoSurface, NothingCollected, TooLarge)
+        static std::shared_ptr<NavBakeInput> collect(Scene* scene, Entity surface, std::string& error, NavCollectStats* stats = nullptr,
+                                                     const NavCollectOptions& options = {}, NavBakeError* code = nullptr);
 
         // The surface's nav space now (its world position and rotation, its plane)
         static NavFrame frameOf(Scene* scene, Entity surface);

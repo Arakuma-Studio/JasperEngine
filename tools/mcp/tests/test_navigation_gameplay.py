@@ -1,9 +1,9 @@
-"""S43 navigation gameplay API as an agent sees it (docs/specs/S43-navigation-gameplay-api.md R42-R45;
+"""S55 navigation gameplay API as an agent sees it (docs/specs/S55-navigation-gameplay-api.md R42-R45;
 AC26-AC28, AC30).
 
 Scene Gameplay (3D): a 40 x 40 floor (plane x 4) with a NavMesh Surface, a strip of the "Mud" area
 (index 3, cost 4) across it at x in [-1, 1] (a NavMesh Modifier volume), and a walker with a NavMesh
-Agent. test_query_ops (S43 P1): query_navigation's random (seeded, around a point, on an island),
+Agent. test_query_ops (S55 P1): query_navigation's random (seeded, around a point, on an island),
 move_along, closest_edge with max_distance, and the path's cost, corner areas and flags and lengths
 per area, in edit mode and in play.
 """
@@ -56,7 +56,7 @@ def flat_distance(a, b) -> float:
 
 
 async def check_queries(ed: Editor, scene=None):
-    """The S43 query ops (scene: the edited scene, or None for the running one)."""
+    """The S55 query ops (scene: the edited scene, or None for the running one)."""
     q = {"scene": scene} if scene is not None else {}
 
     # a path across the mud prices it at 4 per metre and reports its length per area name

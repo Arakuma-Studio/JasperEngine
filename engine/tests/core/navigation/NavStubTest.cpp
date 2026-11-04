@@ -34,7 +34,7 @@ TEST_F(NavStubTest, QueriesFail){
     nav::NavHit hit;
     EXPECT_FALSE(nav->samplePosition(Vector3(), 2.0f, hit));
     EXPECT_FALSE(nav->findClosestEdge(Vector3(), hit));
-    // S43's queries fail the same way
+    // S55's queries fail the same way
     EXPECT_FALSE(nav->findClosestEdge(Vector3(), hit, {}, 5.0f));
     EXPECT_FALSE(nav->randomPoint(hit));
     EXPECT_FALSE(nav->moveAlongSurface(Vector3(), Vector3(1, 0, 0), hit));

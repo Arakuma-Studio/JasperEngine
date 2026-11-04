@@ -362,7 +362,7 @@ Json hitJson(const nav::NavHit& hit) {
             {"area", hit.area}, {"area_name", nav::getSettings().areas[(size_t)std::min<int>(hit.area, nav::AREA_COUNT - 1)].name}};
 }
 
-// ---- S43 queries: a path's cost, per-corner areas and flags, and its length per area name
+// ---- S55 queries: a path's cost, per-corner areas and flags, and its length per area name
 void addPathCosts(Json& data, const nav::NavPath& path) {
     data["cost"] = rounded(path.cost);
     Json areas = Json::array(), flags = Json::array();
@@ -496,7 +496,7 @@ void queryNavigationTool(const CallPtr& call) {
     Vector3 from, to;
     nav::NavHit hit;
     if (op == "random") {
-        // S43 R42: anywhere without from; around from within max_distance; else on from's island.
+        // S55 R42: anywhere without from; around from within max_distance; else on from's island.
         // Its own stream (the seed, else the default): the game's stream is never drawn from.
         nav::RandomPointQuery query;
         query.seeded = true;

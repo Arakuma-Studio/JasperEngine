@@ -404,12 +404,12 @@ namespace {
 
     std::atomic<uint64_t> revisions{1};
 
-    // ---- S43 queries
+    // ---- S55 queries
     // the most tries findRandomPointAround makes for a point within the radius (and island)
     constexpr int RANDOM_AROUND_TRIES = 8;
     // the polygons moveAlongSurface may cross (Detour's tiny node pool holds 64)
     constexpr int MOVE_MAX_VISITED = 64;
-    // area tables a mesh keeps for anywhere random points (spec S43 R39)
+    // area tables a mesh keeps for anywhere random points (spec S55 R39)
     constexpr size_t MAX_RANDOM_TABLES = 4;
 
     // Detour's random callbacks take no context: the stream of the call in progress (main thread)
@@ -419,7 +419,7 @@ namespace {
     }
 
     // The area a query reports for a polygon: its flag bit (an area is a flag; a link has the flag
-    // of its area while its polygon area holds its cost), Not Walkable for flags 0 (spec S43 D3)
+    // of its area while its polygon area holds its cost), Not Walkable for flags 0 (spec S55 D3)
     uint8_t reportedArea(const dtPoly* poly) {
         const unsigned short flags = poly->flags;
         if (flags == 0)
@@ -599,7 +599,11 @@ struct NavMesh::Impl {
     // whether some tile has off-mesh connections, at linksRevision (a crowd asks every tick)
     mutable uint64_t linksRevision = UINT64_MAX;
     mutable bool hasLinks = false;
-    // ---- S43 queries: the passable polygons of a mask (and island) with their cumulative areas,
+    // S42: the island labels of `labelledRevision` (made on demand, R8), the searches run
+    mutable NavIslandLabels islands;
+    mutable uint64_t labelledRevision = 0;
+    mutable uint64_t searches = 0;
+    // ---- S55 queries: the passable polygons of a mask (and island) with their cumulative areas,
     // for random points uniform by area; dropped when the revision changes
     struct RandomTable {
         uint16_t mask = 0;
@@ -615,6 +619,8 @@ struct NavMesh::Impl {
     ~Impl() { release(); }
 
     void release() {
+        islands = NavIslandLabels();
+        labelledRevision = 0;
         if (query) dtFreeNavMeshQuery(query);
         if (tileCache) dtFreeTileCache(tileCache);
         if (navMesh) dtFreeNavMesh(navMesh);
@@ -774,6 +780,32 @@ struct NavMesh::Impl {
         return ref;
     }
 
+    bool labelsCurrent() const { return valid && labelledRevision == revision && revision != 0; }
+
+    void ensureLabels() const {
+        if (!valid || labelsCurrent())
+            return;
+        labelIslands(navMesh, islands);
+        labelledRevision = revision;
+    }
+
+    // the island of a polygon when the labels are current, else -1 (no labelling)
+    int islandOf(dtPolyRef ref) const {
+        if (!ref || !labelsCurrent())
+            return -1;
+        unsigned int salt = 0, it = 0, ip = 0;
+        navMesh->decodePolyId(ref, salt, it, ip);
+        return islands.labelOf(it, ip);
+    }
+
+    // whether a polygon of any area is in the box (an end the mask filtered, R3 step 3)
+    bool anyPolyNear(const Vector3& point, const Vector3& halfExtents, const dtQueryFilter& filter) const {
+        dtQueryFilter all = filter;
+        all.setIncludeFlags(ALL_AREAS);
+        float ignored[3];
+        return nearest(point, halfExtents, all, ignored) != 0;
+    }
+
     uint8_t areaOf(dtPolyRef ref) const {
         const dtMeshTile* tile = nullptr;
         const dtPoly* poly = nullptr;
@@ -782,7 +814,7 @@ struct NavMesh::Impl {
         return reportedArea(poly);
     }
 
-    // the table of a mask and island (S42's labels, -1: any) at this revision, built on first use
+    // the table of a mask and island (S54's labels, -1: any) at this revision, built on first use
     const RandomTable& randomTable(uint16_t mask, int island, const dtQueryFilter& filter) const {
         if (randomTablesRevision != revision) {
             randomTables.clear();
@@ -823,6 +855,8 @@ struct NavMesh::Impl {
                 for (int v = 2; v < poly->vertCount; v++)
                     area += std::fabs(dtTriArea2D(a, &tile->verts[poly->verts[v - 1] * 3], &tile->verts[poly->verts[v] * 3]));
                 if (!(area > 0.0f))
+                    continue;
+                if (island >= 0 && islandOf(ref) != island)
                     continue;
                 total += area;
                 table.refs.push_back(ref);
@@ -1049,32 +1083,72 @@ bool NavMesh::isCarving() const {
     return impl->valid && impl->tileCache != nullptr;
 }
 
+namespace {
+
+    // a Detour failure on references the query found itself: the mesh is not what it should be
+    void logDetourFailure(const char* call) {
+        static std::atomic<bool> logged{false};
+        if (!logged.exchange(true))
+            Log::error("Navigation: Detour's %s failed on a valid navmesh; the path reports not_baked", call);
+    }
+
+    bool outOfNodes(dtStatus status) {
+        return dtStatusDetail(status, DT_OUT_OF_NODES) || dtStatusDetail(status, DT_BUFFER_TOO_SMALL);
+    }
+
+}
+
 NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFilter& filter, const Vector3& halfExtents,
                           const PathOptions& options) const {
     NavPath path;
-    if (!impl->valid)
+    path.start = start;
+    path.end = end;
+    // an answer without corners: from the snapped start (else the requested one) to the end
+    auto invalid = [&](PathFailure failure) {
+        path.failure = failure;
+        path.closestPoint = path.start;
+        path.gap = path.start.distance(path.end);
         return path;
+    };
+    if (!impl->valid)
+        return invalid(PathFailure::NotBaked);
     dtQueryFilter f;
     impl->fillFilter(filter, f);
     float startPoint[3], endPoint[3];
     const dtPolyRef startRef = impl->nearest(start, halfExtents, f, startPoint);
     const dtPolyRef endRef = impl->nearest(end, halfExtents, f, endPoint);
-    if (!startRef || !endRef)
-        return path;
+    if (startRef) {
+        path.start = Vector3(startPoint[0], startPoint[1], startPoint[2]);
+        path.startSnapDistance = path.start.distance(start);
+        path.startIsland = impl->islandOf(startRef);
+    }
+    if (endRef) {
+        path.end = Vector3(endPoint[0], endPoint[1], endPoint[2]);
+        path.endSnapDistance = path.end.distance(end);
+        path.endIsland = impl->islandOf(endRef);
+    }
+    // R3 step 3: Filtered when a polygon of another area is there
+    if (!startRef)
+        return invalid(impl->anyPolyNear(start, halfExtents, f) ? PathFailure::StartFiltered : PathFailure::StartOffMesh);
+    if (!endRef)
+        return invalid(impl->anyPolyNear(end, halfExtents, f) ? PathFailure::EndFiltered : PathFailure::EndOffMesh);
 
     static thread_local std::vector<dtPolyRef> polys;
     polys.resize(MAX_PATH_POLYS);
     int count = 0;
+    impl->searches++;
     const dtStatus status = impl->query->findPath(startRef, endRef, startPoint, endPoint, &f, polys.data(), &count, MAX_PATH_POLYS);
-    if (dtStatusFailed(status) || count == 0)
-        return path;
+    if (dtStatusFailed(status) || count == 0) {
+        logDetourFailure("findPath");
+        return invalid(PathFailure::NotBaked);
+    }
 
     float target[3] = {endPoint[0], endPoint[1], endPoint[2]};
     const bool partial = polys[(size_t)count - 1] != endRef || dtStatusDetail(status, DT_PARTIAL_RESULT);
     if (polys[(size_t)count - 1] != endRef)
         impl->query->closestPointOnPoly(polys[(size_t)count - 1], endPoint, target, nullptr);
 
-    // the corners, with Detour's flags and the polygon each one enters (S43 D3)
+    // the corners, with Detour's flags and the polygon each one enters (S55 D3)
     static thread_local std::vector<float> corners;
     static thread_local std::vector<unsigned char> flags;
     static thread_local std::vector<dtPolyRef> refs;
@@ -1084,8 +1158,10 @@ NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFil
     int cornerCount = 0;
     const int cornerOptions = options.areaCrossings ? DT_STRAIGHTPATH_AREA_CROSSINGS : 0;
     if (dtStatusFailed(impl->query->findStraightPath(startPoint, target, polys.data(), count, corners.data(), flags.data(), refs.data(),
-                                                      &cornerCount, MAX_CORNERS, cornerOptions)) || cornerCount == 0)
-        return path;
+                                                      &cornerCount, MAX_CORNERS, cornerOptions)) || cornerCount == 0) {
+        logDetourFailure("findStraightPath");
+        return invalid(PathFailure::NotBaked);
+    }
     const uint8_t endArea = impl->areaOf(polys[(size_t)count - 1]);
     path.corners.reserve((size_t)cornerCount);
     path.cornerAreas.reserve((size_t)cornerCount);
@@ -1132,9 +1208,40 @@ NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFil
         path.areaLengths[reportedArea(poly)] += length;
     }
 
+    // the corridor before S54's all-areas search reuses the buffer
     path.polys.assign(polys.begin(), polys.begin() + count);
     path.meshRevision = impl->revision;
-    path.status = partial ? PathStatus::Partial : PathStatus::Complete;
+
+    path.closestPoint = path.corners.back();
+    if (!partial) {
+        path.status = PathStatus::Complete;
+        path.failure = PathFailure::None;
+        return path;
+    }
+    path.status = PathStatus::Partial;
+    path.gap = path.closestPoint.distance(path.end);
+    // R3 steps 4-6
+    if (outOfNodes(status)) {
+        path.failure = PathFailure::OutOfNodes;
+    } else if (filter.areaMask == ALL_AREAS) {
+        path.failure = PathFailure::Disconnected;
+    } else if (path.startIsland >= 0 && path.endIsland >= 0 && path.startIsland != path.endIsland) {
+        // the islands say it at once: no second search
+        path.failure = PathFailure::Disconnected;
+    } else {
+        // the same costs with every area: a path there means the mask blocks it
+        dtQueryFilter all = f;
+        all.setIncludeFlags(ALL_AREAS);
+        int allCount = 0;
+        impl->searches++;
+        const dtStatus allStatus = impl->query->findPath(startRef, endRef, startPoint, endPoint, &all, polys.data(), &allCount, MAX_PATH_POLYS);
+        if (dtStatusSucceed(allStatus) && allCount > 0 && polys[(size_t)allCount - 1] == endRef && !dtStatusDetail(allStatus, DT_PARTIAL_RESULT))
+            path.failure = PathFailure::BlockedByArea;
+        else if (dtStatusSucceed(allStatus) && outOfNodes(allStatus))
+            path.failure = PathFailure::OutOfNodes;
+        else
+            path.failure = PathFailure::Disconnected;
+    }
     return path;
 }
 
@@ -1180,7 +1287,7 @@ NavHit NavMesh::raycast(const Vector3& from, const Vector3& to, const NavFilter&
     const float end[3] = {to.x, to.y, to.z};
     static thread_local std::vector<dtPolyRef> polys;
     polys.resize(MAX_PATH_POLYS);
-    // with the costs of the polygons it crosses (S43 R6)
+    // with the costs of the polygons it crosses (S55 R6)
     dtRaycastHit rayHit;
     std::memset(&rayHit, 0, sizeof(rayHit));
     rayHit.path = polys.data();
@@ -1268,7 +1375,7 @@ bool NavMesh::findRandomPoint(const NavFilter& filter, NavRandom& random, int is
     const Impl::RandomTable& table = impl->randomTable(filter.areaMask, island, f);
     if (table.refs.empty())
         return false;
-    // draw 1: a polygon by area; draws 2-3: a point in it (S43 D2)
+    // draw 1: a polygon by area; draws 2-3: a point in it (S55 D2)
     const float pick = random.nextFloat() * table.cumulative.back();
     size_t index = (size_t)(std::upper_bound(table.cumulative.begin(), table.cumulative.end(), pick) - table.cumulative.begin());
     index = std::min(index, table.refs.size() - 1);
@@ -1303,7 +1410,6 @@ bool NavMesh::findRandomPointAround(const Vector3& center, float radius, const N
     const dtPolyRef startRef = impl->nearest(center, halfExtents, f, startPoint);
     if (!startRef)
         return false;
-    (void)island;
     activeRandom = &random;
     bool found = false;
     dtPolyRef ref = 0;
@@ -1314,7 +1420,7 @@ bool NavMesh::findRandomPointAround(const Vector3& center, float radius, const N
         if (dtStatusFailed(impl->query->findRandomPointAroundCircle(startRef, startPoint, radius, &f, drawActiveRandom, &ref, point)))
             break;
         const float dx = point[0] - center.x, dz = point[2] - center.z;
-        found = dx * dx + dz * dz <= radius * radius;
+        found = dx * dx + dz * dz <= radius * radius && (island < 0 || impl->islandOf(ref) == island);
     }
     activeRandom = nullptr;
     if (!found)
@@ -1532,10 +1638,14 @@ bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& conne
 }
 
 void NavMesh::getDebugGeometry(const std::function<bool(const float* bmin, const float* bmax)>& visible, size_t maxTriangles,
-                               bool detailMesh, NavDebugGeometry& out) const {
+                               bool detailMesh, NavDebugGeometry& out, uint32_t extras) const {
     out = NavDebugGeometry();
     if (!impl->valid)
         return;
+    const bool withIslands = (extras & DEBUG_ISLANDS) != 0;
+    const bool withTiles = (extras & DEBUG_TILES) != 0;
+    if (withIslands)
+        impl->ensureLabels();
     const dtNavMesh* mesh = impl->navMesh;
     size_t triangles = 0;
     for (int i = 0; i < mesh->getMaxTiles(); i++) {
@@ -1544,14 +1654,25 @@ void NavMesh::getDebugGeometry(const std::function<bool(const float* bmin, const
             continue;
         if (visible && !visible(tile->header->bmin, tile->header->bmax))
             continue;
+        const int32_t tileIndex = (int32_t)(out.tileBounds.size() / 6);
         out.tileBounds.insert(out.tileBounds.end(), tile->header->bmin, tile->header->bmin + 3);
         out.tileBounds.insert(out.tileBounds.end(), tile->header->bmax, tile->header->bmax + 3);
+        out.tileCoords.push_back(tile->header->x);
+        out.tileCoords.push_back(tile->header->y);
+        out.tileCoords.push_back(tile->header->layer);
 
         for (int p = 0; p < tile->header->polyCount; p++) {
             const dtPoly& poly = tile->polys[p];
             if (poly.getType() == DT_POLYTYPE_OFFMESH_CONNECTION)
                 continue;
             const uint8_t area = poly.getArea() < AREA_COUNT ? poly.getArea() : AREA_WALKABLE;
+            const int32_t island = withIslands ? impl->islands.labelOf((unsigned int)i, (unsigned int)p) : -1;
+            auto tag = [&]() {
+                if (withIslands)
+                    out.triangleIslands.push_back(island);
+                if (withTiles)
+                    out.triangleTiles.push_back(tileIndex);
+            };
             if (detailMesh && tile->detailMeshes) {
                 const dtPolyDetail& detail = tile->detailMeshes[p];
                 for (int t = 0; t < detail.triCount; t++) {
@@ -1566,6 +1687,7 @@ void NavMesh::getDebugGeometry(const std::function<bool(const float* bmin, const
                         out.triangles.insert(out.triangles.end(), v, v + 3);
                     }
                     out.triangleAreas.push_back(area);
+                    tag();
                     triangles++;
                 }
             } else {
@@ -1581,6 +1703,7 @@ void NavMesh::getDebugGeometry(const std::function<bool(const float* bmin, const
                     out.triangles.insert(out.triangles.end(), b, b + 3);
                     out.triangles.insert(out.triangles.end(), c, c + 3);
                     out.triangleAreas.push_back(area);
+                    tag();
                     triangles++;
                 }
             }
@@ -1654,6 +1777,224 @@ bool NavMesh::hasOffMeshConnections() const {
     return impl->hasLinks;
 }
 
+// ---------------------------------------------------------------- S42 diagnostics
+
+const std::vector<NavIsland>& NavMesh::getIslands() const {
+    impl->ensureLabels();
+    return impl->islands.islands;
+}
+
+float NavMesh::getWalkableArea() const {
+    impl->ensureLabels();
+    return impl->islands.walkableArea;
+}
+
+bool NavMesh::areIslandsCurrent() const {
+    return impl->labelsCurrent();
+}
+
+int NavMesh::getIslandOf(uint32_t polyRef) const {
+    return impl->islandOf(polyRef);
+}
+
+uint64_t NavMesh::getLabelledRevision() const {
+    return impl->labelledRevision;
+}
+
+size_t NavMesh::getIslandMemoryBytes() const {
+    return impl->islands.memoryBytes();
+}
+
+NavLocation NavMesh::locate(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float maxDistance) const {
+    NavLocation location;
+    if (!impl->valid)
+        return location;
+    impl->ensureLabels();
+    dtQueryFilter f;
+    impl->fillFilter(filter, f);
+    float nearestPoint[3];
+    dtPolyRef ref = impl->nearest(point, halfExtents, f, nearestPoint);
+    location.onMesh = ref != 0;
+    if (!ref && maxDistance > 0.0f) {
+        ref = impl->nearest(point, Vector3(maxDistance, maxDistance, maxDistance), f, nearestPoint);
+        if (ref && Vector3(nearestPoint[0], nearestPoint[1], nearestPoint[2]).distance(point) > maxDistance)
+            ref = 0;
+    }
+    if (!ref)
+        return location;
+    location.found = true;
+    location.position = Vector3(nearestPoint[0], nearestPoint[1], nearestPoint[2]);
+    location.snapDistance = location.position.distance(point);
+    location.island = impl->islandOf(ref);
+    const dtMeshTile* tile = nullptr;
+    const dtPoly* poly = nullptr;
+    impl->navMesh->getTileAndPolyByRefUnsafe(ref, &tile, &poly);
+    location.area = poly->getArea() < AREA_COUNT ? poly->getArea() : AREA_WALKABLE;
+    return location;
+}
+
+bool NavMesh::covers(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents) const {
+    if (!impl->valid)
+        return false;
+    dtQueryFilter f;
+    impl->fillFilter(filter, f);
+    const float p[3] = {point.x, point.y, point.z};
+    const float extents[3] = {halfExtents.x, halfExtents.y, halfExtents.z};
+    dtPolyRef ref = 0;
+    float nearestPoint[3];
+    bool over = false;
+    if (dtStatusFailed(impl->query->findNearestPoly(p, extents, &f, &ref, nearestPoint, &over)))
+        return false;
+    return ref != 0 && over;
+}
+
+bool NavMesh::isReachable(const Vector3& start, const Vector3& end, const NavFilter& filter, const Vector3& halfExtents,
+                          PathFailure* why) const {
+    if (impl->valid && impl->labelsCurrent()) {
+        // R6: two lookups, no search, when the islands tell
+        dtQueryFilter f;
+        impl->fillFilter(filter, f);
+        float ignored[3];
+        const int a = impl->islandOf(impl->nearest(start, halfExtents, f, ignored));
+        const int b = a >= 0 ? impl->islandOf(impl->nearest(end, halfExtents, f, ignored)) : -1;
+        if (a >= 0 && b >= 0 && a != b) {
+            if (why)
+                *why = PathFailure::Disconnected;
+            return false;
+        }
+    }
+    const NavPath path = findPath(start, end, filter, halfExtents);
+    if (why)
+        *why = path.failure;
+    return path.status == PathStatus::Complete;
+}
+
+uint64_t NavMesh::getSearchCount() const {
+    return impl->searches;
+}
+
+void NavMesh::getLinkStates(std::vector<NavLinkState>& out) const {
+    out.clear();
+    if (!impl->valid)
+        return;
+    impl->ensureLabels();
+    const dtNavMesh* mesh = impl->navMesh;
+    for (int i = 0; i < mesh->getMaxTiles(); i++) {
+        const dtMeshTile* tile = mesh->getTile(i);
+        if (!tile || !tile->header)
+            continue;
+        for (int c = 0; c < tile->header->offMeshConCount; c++) {
+            const dtOffMeshConnection& con = tile->offMeshCons[c];
+            NavLinkState state;
+            state.userId = con.userId;
+            state.start = Vector3(con.pos[0], con.pos[1], con.pos[2]);
+            state.end = Vector3(con.pos[3], con.pos[4], con.pos[5]);
+            // Detour links the connection's polygon to its start's ground polygon with edge 0
+            // and to its end's with edge 1 (DetourNavMesh.cpp baseOffMeshLinks, connectExtOffMeshLinks)
+            const dtPoly& poly = tile->polys[con.poly];
+            for (unsigned int l = poly.firstLink; l != DT_NULL_LINK; l = tile->links[l].next) {
+                const dtLink& link = tile->links[l];
+                unsigned int salt = 0, it = 0, ip = 0;
+                mesh->decodePolyId(link.ref, salt, it, ip);
+                if (link.edge == 0) {
+                    state.startConnected = true;
+                    state.startIsland = impl->islands.labelOf(it, ip);
+                } else if (link.edge == 1) {
+                    state.endConnected = true;
+                    state.endIsland = impl->islands.labelOf(it, ip);
+                }
+            }
+            out.push_back(state);
+        }
+    }
+}
+
+void NavMesh::getTileInfos(std::vector<NavTileInfo>& out) const {
+    out.clear();
+    if (!impl->valid)
+        return;
+    const dtNavMesh* mesh = impl->navMesh;
+    for (int i = 0; i < mesh->getMaxTiles(); i++) {
+        const dtMeshTile* tile = mesh->getTile(i);
+        if (!tile || !tile->header)
+            continue;
+        NavTileInfo info;
+        info.x = tile->header->x;
+        info.y = tile->header->y;
+        info.layer = tile->header->layer;
+        info.polys = tile->header->offMeshBase;
+        info.bytes = (size_t)tile->dataSize;
+        std::memcpy(info.bmin, tile->header->bmin, sizeof(info.bmin));
+        std::memcpy(info.bmax, tile->header->bmax, sizeof(info.bmax));
+        out.push_back(info);
+    }
+    std::sort(out.begin(), out.end(), [](const NavTileInfo& a, const NavTileInfo& b) {
+        if (a.y != b.y) return a.y < b.y;
+        if (a.x != b.x) return a.x < b.x;
+        return a.layer < b.layer;
+    });
+}
+
+uint32_t NavMesh::getPolyAt(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents) const {
+    if (!impl->valid)
+        return 0;
+    dtQueryFilter f;
+    impl->fillFilter(filter, f);
+    float nearestPoint[3];
+    return impl->nearest(point, halfExtents, f, nearestPoint);
+}
+
+bool NavMesh::setPolyFlags(uint32_t polyRef, uint16_t flags) {
+    if (!impl->valid || dtStatusFailed(impl->navMesh->setPolyFlags(polyRef, flags)))
+        return false;
+    impl->bump();
+    return true;
+}
+
+bool NavMesh::tileCovers(const NavTileBlob& staticTile, const NavBuildConfig& config, const Vector3& point, const Vector3& halfExtents) {
+    if (staticTile.data.size() < sizeof(dtMeshHeader))
+        return false;
+    dtMeshHeader header;
+    std::memcpy(&header, staticTile.data.data(), sizeof(header));
+    const int maxPolys = (int)nextPow2((unsigned int)std::max({config.maxPolysPerTile, header.polyCount, 1}));
+    if (refuseTileData(staticTile, maxPolys))
+        return false;
+    dtNavMeshParams params;
+    std::memset(&params, 0, sizeof(params));
+    params.tileWidth = config.tileWorldSize();
+    params.tileHeight = params.tileWidth;
+    params.maxTiles = 1;
+    params.maxPolys = maxPolys;
+    dtNavMesh* mesh = dtAllocNavMesh();
+    dtNavMeshQuery* query = dtAllocNavMeshQuery();
+    bool covered = false;
+    unsigned char* copy = (unsigned char*)dtAlloc(staticTile.data.size(), DT_ALLOC_PERM);
+    if (mesh && query && copy && dtStatusSucceed(mesh->init(&params))) {
+        std::memcpy(copy, staticTile.data.data(), staticTile.data.size());
+        if (dtStatusSucceed(mesh->addTile(copy, (int)staticTile.data.size(), DT_TILE_FREE_DATA, 0, nullptr))) {
+            copy = nullptr;
+            if (dtStatusSucceed(query->init(mesh, 64))) {
+                dtQueryFilter filter;
+                filter.setIncludeFlags(ALL_AREAS);
+                filter.setExcludeFlags(0);
+                const float p[3] = {point.x, point.y, point.z};
+                const float extents[3] = {halfExtents.x, halfExtents.y, halfExtents.z};
+                dtPolyRef ref = 0;
+                float nearestPoint[3];
+                bool over = false;
+                covered = dtStatusSucceed(query->findNearestPoly(p, extents, &filter, &ref, nearestPoint, &over)) && ref != 0 && over;
+            }
+        }
+    }
+    if (copy)
+        dtFree(copy);
+    if (query)
+        dtFreeNavMeshQuery(query);
+    if (mesh)
+        dtFreeNavMesh(mesh);
+    return covered;
+}
+
 #else // JASPERENGINE_NAVIGATION
 
 // Without Recast/Detour: the data model and its file format work (an editor can read and write
@@ -1692,7 +2033,15 @@ int NavMesh::getTileCount() const { return 0; }
 int NavMesh::getPolyCount() const { return 0; }
 size_t NavMesh::getMemoryBytes() const { return 0; }
 bool NavMesh::isCarving() const { return false; }
-NavPath NavMesh::findPath(const Vector3&, const Vector3&, const NavFilter&, const Vector3&, const PathOptions&) const { logUnavailable(); return NavPath(); }
+NavPath NavMesh::findPath(const Vector3& start, const Vector3& end, const NavFilter&, const Vector3&, const PathOptions&) const {
+    logUnavailable();
+    NavPath path;
+    path.failure = PathFailure::NotBaked;
+    path.start = path.closestPoint = start;
+    path.end = end;
+    path.gap = start.distance(end);
+    return path;
+}
 NavHit NavMesh::samplePosition(const Vector3&, float, const NavFilter&) const { logUnavailable(); return NavHit(); }
 NavHit NavMesh::raycast(const Vector3&, const Vector3&, const NavFilter&, const Vector3&) const { logUnavailable(); return NavHit(); }
 NavHit NavMesh::findClosestEdge(const Vector3&, const NavFilter&, const Vector3&, float) const { logUnavailable(); return NavHit(); }
@@ -1716,12 +2065,31 @@ bool NavMesh::updateLink(uint32_t, const std::vector<NavLinkInput>&, std::string
     error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
     return false;
 }
-void NavMesh::getDebugGeometry(const std::function<bool(const float*, const float*)>&, size_t, bool, NavDebugGeometry& out) const {
+void NavMesh::getDebugGeometry(const std::function<bool(const float*, const float*)>&, size_t, bool, NavDebugGeometry& out, uint32_t) const {
     out = NavDebugGeometry();
 }
 void* NavMesh::detourNavMesh() const { return nullptr; }
 void* NavMesh::detourQuery() const { return nullptr; }
 uint64_t NavMesh::getRevision() const { return 0; }
 bool NavMesh::hasOffMeshConnections() const { return false; }
+const std::vector<NavIsland>& NavMesh::getIslands() const { static const std::vector<NavIsland> none; return none; }
+float NavMesh::getWalkableArea() const { return 0.0f; }
+bool NavMesh::areIslandsCurrent() const { return false; }
+int NavMesh::getIslandOf(uint32_t) const { return -1; }
+uint64_t NavMesh::getLabelledRevision() const { return 0; }
+size_t NavMesh::getIslandMemoryBytes() const { return 0; }
+NavLocation NavMesh::locate(const Vector3&, const NavFilter&, const Vector3&, float) const { logUnavailable(); return NavLocation(); }
+bool NavMesh::covers(const Vector3&, const NavFilter&, const Vector3&) const { logUnavailable(); return false; }
+bool NavMesh::isReachable(const Vector3&, const Vector3&, const NavFilter&, const Vector3&, PathFailure* why) const {
+    logUnavailable();
+    if (why) *why = PathFailure::NotBaked;
+    return false;
+}
+uint64_t NavMesh::getSearchCount() const { return 0; }
+void NavMesh::getLinkStates(std::vector<NavLinkState>& out) const { out.clear(); }
+void NavMesh::getTileInfos(std::vector<NavTileInfo>& out) const { out.clear(); }
+uint32_t NavMesh::getPolyAt(const Vector3&, const NavFilter&, const Vector3&) const { return 0; }
+bool NavMesh::setPolyFlags(uint32_t, uint16_t) { logUnavailable(); return false; }
+bool NavMesh::tileCovers(const NavTileBlob&, const NavBuildConfig&, const Vector3&, const Vector3&) { logUnavailable(); return false; }
 
 #endif // JASPERENGINE_NAVIGATION

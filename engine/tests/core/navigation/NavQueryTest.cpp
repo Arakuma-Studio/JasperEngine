@@ -160,7 +160,7 @@ TEST_F(NavQueryTest, MovedSurfaceMovesItsNavmesh){
     EXPECT_NEAR(hit.position.x, 100.0f, CELL);
 }
 
-// ---- S43 queries (docs/specs/S43-navigation-gameplay-api.md R3, R4)
+// ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R3, R4)
 
 // AC5: a wall 3 m away: within 2 m none (the distance says how far it looked), within 5 m found
 TEST_F(NavQueryTest, ClosestEdgeMaxDistance){

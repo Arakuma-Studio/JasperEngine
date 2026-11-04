@@ -21,6 +21,8 @@
 #include "math/AABB.h"
 #include "math/Vector3.h"
 #include "navigation/GridPathfinder.h"
+#include "navigation/NavBakeCollector.h"
+#include "navigation/NavDiagnostics.h"
 #include "navigation/NavMesh.h"
 #include "navigation/NavTypes.h"
 
@@ -57,6 +59,18 @@ namespace jasperengine{
         int polys = 0;
         double milliseconds = 0.0;
         std::vector<std::string> warnings;
+
+        // ---- S42 bake report (R16): why it failed, what it collected, the tiles it built
+        nav::NavBakeError errorCode = nav::NavBakeError::None;
+        // bakeErrorHint(errorCode)
+        std::string hint;
+        nav::NavCollectStats sources;
+        std::vector<nav::NavTileReport> tiles;
+        // filled on the first getLastBakeResult (islands label on demand, never in the landing):
+        // m^2, -1 until then, the 16 largest islands (world bounds, m^2)
+        float walkableArea = 0.0f;
+        int islandCount = -1;
+        std::vector<nav::NavIsland> islands;
     };
 
     struct JASPERENGINE_API NavSurfaceStatus{
@@ -73,7 +87,7 @@ namespace jasperengine{
         // the agents and obstacles of its crowd
         int crowdAgents = 0;
         int crowdCapacity = 0;
-        // ---- S43 queries: its crowd's query filters in use (of 16) and the agents on a fallback one
+        // ---- S55 queries: its crowd's query filters in use (of 16) and the agents on a fallback one
         int crowdFilters = 0;
         int crowdFilterOverflow = 0;
     };
@@ -92,7 +106,7 @@ namespace jasperengine{
         void onComponentRemoved(Entity entity, ComponentId componentId) override;
 
         // ---- queries (world positions); without a surface, the first surface of the agent type
-        // that answers (entity order). Every query honours the filter's area costs (S43 R8).
+        // that answers (entity order). Every query honours the filter's area costs (S55 R8).
         nav::NavPath calculatePath(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {},
                                    const nav::PathOptions& options = {});
         bool samplePosition(const Vector3& point, float maxDistance, nav::NavHit& out, const nav::QueryFilter& filter = {});
@@ -101,14 +115,16 @@ namespace jasperengine{
         // the nearest wall within maxDistance (<= 0: S19's reach); false with out.distance =
         // maxDistance when none is that close
         bool findClosestEdge(const Vector3& point, nav::NavHit& out, const nav::QueryFilter& filter = {}, float maxDistance = -1.0f);
-        bool isReachable(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {});
+        // S42 R6: false without a search when the ends' islands are current and differ; why: the
+        // failure of the answering surface (None when reachable)
+        bool isReachable(const Vector3& from, const Vector3& to, const nav::QueryFilter& filter = {}, nav::PathFailure* why = nullptr);
         // the same on one surface
         nav::NavPath calculatePathOn(Entity surface, const Vector3& from, const Vector3& to, uint16_t areaMask = nav::ALL_AREAS);
         bool samplePositionOn(Entity surface, const Vector3& point, float maxDistance, nav::NavHit& out, uint16_t areaMask = nav::ALL_AREAS);
         bool raycastOn(Entity surface, const Vector3& from, const Vector3& to, nav::NavHit& out, uint16_t areaMask = nav::ALL_AREAS);
         bool findClosestEdgeOn(Entity surface, const Vector3& point, nav::NavHit& out, uint16_t areaMask = nav::ALL_AREAS);
 
-        // ---- S43 queries (spec S43 R1-R9)
+        // ---- S55 queries (spec S55 R1-R9)
         static constexpr uint64_t DEFAULT_RANDOM_SEED = 0x5EED;
         // A random navmesh point of the filter's agent type: anywhere (uniform by area), around
         // query.center (reachable within query.radius, not uniform) and/or on the island of
@@ -141,16 +157,19 @@ namespace jasperengine{
         // Starts a bake: the inputs are collected now (main thread), the tiles build on the job
         // system (the Background lane in the editor, Normal in a game) or time-sliced (web).
         // The navmesh changes once every tile is built; a cancel keeps the previous one.
-        bool bake(Entity surface, NavBakeMode mode, std::string& error);
+        // A bake that cannot start (nothing collected, too large, unavailable) is the surface's
+        // last result too; code: why (S42)
+        bool bake(Entity surface, NavBakeMode mode, std::string& error, nav::NavBakeError* code = nullptr);
         // Re-collects and rebuilds the tiles touching the world box (procedural levels)
-        bool updateTiles(Entity surface, const AABB& worldBounds, std::string& error);
+        bool updateTiles(Entity surface, const AABB& worldBounds, std::string& error, nav::NavBakeError* code = nullptr);
         // A bake from start to finish on this thread (waiting for the jobs)
         NavBakeResult bakeNow(Entity surface, NavBakeMode mode);
         bool cancelBake(Entity surface);
         bool isBaking(Entity surface) const;
         bool isAnyBaking() const;
-        // the last finished bake (null before any)
-        const NavBakeResult* getLastBakeResult(Entity surface) const;
+        // the last finished bake (null before any). Not const (S42): the first read fills its
+        // island fields (main thread: the editor, Lua)
+        const NavBakeResult* getLastBakeResult(Entity surface);
         // Lands finished bakes and runs time-sliced ones (the editor calls it every frame;
         // fixedUpdate and update do it in a game)
         void processBakes(double budgetMs);
@@ -216,7 +235,53 @@ namespace jasperengine{
         // accepts (world bounds), at most maxTriangles; tileBounds holds 8 world corners per
         // tile (corner c: x max if c & 1, y max if c & 2, z max if c & 4, in the surface's frame)
         bool getDebugGeometry(Entity surface, const std::function<bool(const AABB& worldBounds)>& visible, size_t maxTriangles,
-                              bool detailMesh, nav::NavDebugGeometry& out);
+                              bool detailMesh, nav::NavDebugGeometry& out, uint32_t extras = 0);
+
+        // ---- S42 diagnostics (docs/specs/S42-navigation-diagnostics.md; world positions, m, m^2).
+        // Islands label on demand here (R8); path queries never label.
+        // Where a point is (R10): over the agent type's surfaces, the on-mesh one with the
+        // smallest snap distance, else the closest found
+        nav::NavLocation locate(const Vector3& point, const nav::QueryFilter& filter = {}, float maxDistance = 5.0f);
+        nav::NavLocation locateOn(Entity surface, const Vector3& point, uint16_t areaMask = nav::ALL_AREAS, float maxDistance = 5.0f);
+        // the surface's islands, world bounds, m^2 (empty when not baked)
+        std::vector<nav::NavIsland> getIslands(Entity surface);
+        nav::NavCoverage getCoverage(Entity surface);
+        // The box a query searches around a point on the surface (nav units; zero when not baked)
+        Vector3 getSearchExtents(Entity surface);
+
+        // every enabled link, per surface whose navmesh holds it (surface NULL_ENTITY: none does)
+        struct LinkStatus {
+            Entity link = NULL_ENTITY;
+            Entity surface = NULL_ENTITY;
+            int connections = 0;
+            // every connection joined at both ends
+            bool connected = false;
+            // the first connection's ends (-1: unconnected)
+            int islandStart = -1, islandEnd = -1;
+        };
+        std::vector<LinkStatus> getLinkStatus();
+
+        // every tile of the surface's navmesh with its last build in this session (ms -1: not
+        // built since it loaded, R17)
+        std::vector<nav::NavTileReport> getTileReports(Entity surface);
+
+        // The surface's inputs collected now, against its navmesh (the stale check, the
+        // Inspector's estimate, the probe's data)
+        struct InputReport {
+            // tiles whose inputs differ from the baked ones (-1: not collected)
+            int dirtyTiles = -1;
+            std::vector<nav::NavTileCoord> dirty;
+            int tilesWide = 0, tilesHigh = 0, tileSize = 0, nonEmptyTiles = 0;
+            float cellSize = 0, agentRadius = 0;
+            std::string error;
+            nav::NavBakeError errorCode = nav::NavBakeError::None;
+            // keepInput only
+            std::shared_ptr<const nav::NavBakeInput> input;
+        };
+        InputReport inspectInputs(Entity surface, const nav::NavCollectOptions& options = {}, bool keepInput = false);
+
+        // The scene's navigation problems (R13, R14), error first, then by entity and code
+        std::vector<nav::NavFinding> getFindings(const nav::NavFindingOptions& options = {});
 
         // ---- statistics
         int getCrowdCount() const;
@@ -247,7 +312,7 @@ namespace jasperengine{
         std::string slowestBakeStep;
         std::map<std::string, double> bakeStageMaxMs;
 
-        // ---- S43 queries: the random point stream (R2)
+        // ---- S55 queries: the random point stream (R2)
         nav::NavRandom randomStream{DEFAULT_RANDOM_SEED};
         uint64_t randomSeed = DEFAULT_RANDOM_SEED;
 

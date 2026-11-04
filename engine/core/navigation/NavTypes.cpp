@@ -208,7 +208,61 @@ const char* nav::pathStatusName(PathStatus status) {
     return "invalid";
 }
 
-// ---------------------------------------------------------------- S43 queries: area costs
+// ---------------------------------------------------------------- S42: path failures
+
+namespace {
+
+    struct FailureText {
+        PathFailure failure;
+        const char* name;
+        const char* description;
+    };
+
+    // in enum order (NavFailureTest.NamesAreTheContract)
+    constexpr FailureText FAILURES[] = {
+        {PathFailure::None, "none", "The path reaches the end."},
+        {PathFailure::NoSurface, "no_surface", "No enabled NavMesh Surface of this agent type is in the scene."},
+        {PathFailure::NotBaked, "not_baked", "The NavMesh Surfaces of this agent type have no navmesh: bake them."},
+        {PathFailure::StartOffMesh, "start_off_mesh", "The start is not on the navmesh: no polygon is near it."},
+        {PathFailure::EndOffMesh, "end_off_mesh", "The end is not on the navmesh: no polygon is near it."},
+        {PathFailure::StartFiltered, "start_filtered", "The start is on an area the area mask leaves out."},
+        {PathFailure::EndFiltered, "end_filtered", "The end is on an area the area mask leaves out."},
+        {PathFailure::Disconnected, "disconnected",
+         "The start and the end are on parts of the navmesh that do not connect (or only through one-way links)."},
+        {PathFailure::BlockedByArea, "blocked_by_area", "The start and the end connect only through areas the area mask leaves out."},
+        {PathFailure::OutOfNodes, "out_of_nodes",
+         "The search ran out of nodes before reaching the end: the path is longer than 2048 polygons."},
+    };
+
+}
+
+const char* nav::pathFailureName(PathFailure failure) {
+    for (const FailureText& text : FAILURES) {
+        if (text.failure == failure)
+            return text.name;
+    }
+    return "none";
+}
+
+const char* nav::pathFailureDescription(PathFailure failure) {
+    for (const FailureText& text : FAILURES) {
+        if (text.failure == failure)
+            return text.description;
+    }
+    return FAILURES[0].description;
+}
+
+bool nav::pathFailureFromName(const std::string& name, PathFailure& out) {
+    for (const FailureText& text : FAILURES) {
+        if (name == text.name) {
+            out = text.failure;
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---------------------------------------------------------------- S55 queries: area costs
 
 float nav::clampAreaCost(float cost) {
     if (cost >= 1.0f && std::isfinite(cost))

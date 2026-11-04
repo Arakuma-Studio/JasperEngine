@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
         results.add("query_raycast_p95_ms", bench::percentile(raycasts, 0.95), "ms");
     }
 
-    // ---- S43 queries (docs/specs/S43-navigation-gameplay-api.md R36): random points (the area
+    // ---- S55 queries (docs/specs/S55-navigation-gameplay-api.md R36): random points (the area
     // table's first build, then cached), around a point, the closest wall within 5 m, 2 m steps
     {
         const Vector3 extents(1.0f, 2.0f, 1.0f);

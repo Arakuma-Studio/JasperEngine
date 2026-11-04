@@ -79,7 +79,7 @@ struct NavCrowd::Impl {
     std::vector<const dtCrowdAgent*> obstacleScratch;
     // the agents whose traversal Detour runs (a fallback, see takeDetourTraversals)
     std::vector<uint8_t> detourLink;
-    // ---- S43 queries: Detour's 16 query filters, keyed by area mask and costs (0: the
+    // ---- S55 queries: Detour's 16 query filters, keyed by area mask and costs (0: the
     // project's), reference-counted; filter 0 (every area, the project's costs) is never freed
     struct FilterSlot {
         uint16_t mask = 0;

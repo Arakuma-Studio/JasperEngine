@@ -99,7 +99,7 @@ namespace jasperengine{
         // the link it is on: false when it is on none
         bool getCurrentOffMeshLink(Vector3& start, Vector3& end, Entity& link) const;
 
-        // ---- S43 queries
+        // ---- S55 queries
 
         // its own area cost (Unity's SetAreaCost), runtime only: it applies to its crowd planning
         // and its queries; the areas it does not set cost the project's
