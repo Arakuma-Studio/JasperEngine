@@ -86,8 +86,10 @@ namespace jasperengine {
         // Frame-rate independent stepping: pass speed * deltaTime as maxDistanceDelta.
         Vector3 moveTowards( const Vector3& target, float maxDistanceDelta ) const;
 
-        // Linear interpolation from this vector toward target (t in [0, 1]).
+        // Unity's Lerp: from this vector toward target, t clamped to [0, 1]
         Vector3 lerp( const Vector3& target, float t ) const;
+        // Unity's LerpUnclamped: t outside [0, 1] extrapolates
+        Vector3 lerpUnclamped( const Vector3& target, float t ) const;
 
         void makeFloor( const Vector3& v );
         void makeCeil( const Vector3& v );

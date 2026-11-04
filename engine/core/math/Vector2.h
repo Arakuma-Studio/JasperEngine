@@ -97,6 +97,14 @@ namespace jasperengine {
 
         Vector2 midPoint( const Vector2& vec ) const;
 
+        // Move toward target by at most maxDistanceDelta, never overshooting it (a negative
+        // delta moves away). Frame-rate independent stepping: pass speed * deltaTime.
+        Vector2 moveTowards( const Vector2& target, float maxDistanceDelta ) const;
+        // Unity's Lerp: from this vector toward target, t clamped to [0, 1]
+        Vector2 lerp( const Vector2& target, float t ) const;
+        // Unity's LerpUnclamped: t outside [0, 1] extrapolates
+        Vector2 lerpUnclamped( const Vector2& target, float t ) const;
+
         void makeFloor( const Vector2& cmp );
         void makeCeil( const Vector2& cmp );
 

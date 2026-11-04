@@ -101,3 +101,16 @@ TEST(Vector2, ConvertsFromVector3ByDroppingZ){
 TEST(Vector2, ToString){
     EXPECT_EQ(Vector2(1, -2).toString(), "Vector2(1.000000, -2.000000)");
 }
+
+TEST(Vector2, MoveTowardsAndLerp){
+    const Vector2 from(0, 0);
+    const Vector2 to(3, 4);
+    EXPECT_EQ(from.moveTowards(to, 2.5f), Vector2(1.5f, 2.0f));
+    EXPECT_EQ(from.moveTowards(to, 10.0f), to);
+    EXPECT_EQ(to.moveTowards(to, 1.0f), to);
+    EXPECT_EQ(from.moveTowards(to, -5.0f), Vector2(-3, -4));
+    EXPECT_EQ(from.lerp(to, 0.5f), Vector2(1.5f, 2.0f));
+    EXPECT_EQ(from.lerp(to, 3.0f), to);
+    EXPECT_EQ(from.lerp(to, -1.0f), from);
+    EXPECT_EQ(from.lerpUnclamped(to, 2.0f), Vector2(6, 8));
+}

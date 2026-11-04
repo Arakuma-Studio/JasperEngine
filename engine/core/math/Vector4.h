@@ -93,6 +93,14 @@ namespace jasperengine {
 
         float dotProduct(const Vector4& vec) const;
 
+        // Move toward target by at most maxDistanceDelta, never overshooting it (a negative
+        // delta moves away). Frame-rate independent stepping: pass speed * deltaTime.
+        Vector4 moveTowards( const Vector4& target, float maxDistanceDelta ) const;
+        // Unity's Lerp: from this vector toward target, t clamped to [0, 1]
+        Vector4 lerp( const Vector4& target, float t ) const;
+        // Unity's LerpUnclamped: t outside [0, 1] extrapolates
+        Vector4 lerpUnclamped( const Vector4& target, float t ) const;
+
         bool isNaN() const;
 
     };

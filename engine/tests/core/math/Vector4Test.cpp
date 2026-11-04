@@ -52,3 +52,14 @@ TEST(Vector4, AssigningAVector3KeepsW){
 TEST(Vector4, ToString){
     EXPECT_EQ(Vector4(1, 2, 3, 4).toString(), "Vector4(1.000000, 2.000000, 3.000000, 4.000000)");
 }
+
+TEST(Vector4, MoveTowardsAndLerp){
+    const Vector4 from(0, 0, 0, 0);
+    const Vector4 to(2, 2, 2, 2);  // 4 apart
+    EXPECT_EQ(from.moveTowards(to, 2.0f), Vector4(1, 1, 1, 1));
+    EXPECT_EQ(from.moveTowards(to, 10.0f), to);
+    EXPECT_EQ(to.moveTowards(to, 1.0f), to);
+    EXPECT_EQ(from.lerp(to, 0.25f), Vector4(0.5f, 0.5f, 0.5f, 0.5f));
+    EXPECT_EQ(from.lerp(to, 2.0f), to);
+    EXPECT_EQ(from.lerpUnclamped(to, -1.0f), Vector4(-2, -2, -2, -2));
+}
