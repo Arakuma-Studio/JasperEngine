@@ -683,4 +683,37 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
 
 ## Deviations
 
+- S55 P2: `NavMesh::addAreaOverride(volume, area, order = 0)` takes an order key: overrides apply in
+  ascending (order, id). NavigationSystem passes the entity id for modifier volumes and
+  `2^32 + handle` for script volumes, which is R13's order; NavMesh itself knows neither.
+- S55 P2: `NavigationSystem::syncAreaOverrides()` returns whether a polygon changed (the editor
+  redraws the Scene view then).
+- S55 P2: `NavPolyState` writes flags and areas into Detour's tiles itself and `NavMesh` bumps the
+  revision once per operation that changed a polygon, instead of a `setPolyFlags` call per polygon
+  (D5): the same "every applied change bumps", one bump for a door of many polygons.
+- S55 P2: the `nav_doors` fixture is built in code like S19's fixtures (`NavFixtures.h` `doors()`,
+  `doorway()` adds the runtime volume); its tile hashes are `fixtures/navigation/nav_doors_hashes.txt`,
+  one line per platform tag and tile (bakes are bit-exact per platform, S19 R40b).
+- S55 P2: the system's area state is declared in an internal header
+  (`subsystem/NavigationAreas.h`) so that `NavigationSystem`'s destructor sees a complete type.
+- S55 P2: added beside §6: `hasAreaOverride`, `getAreaOverride` (NavAreaOverride's fields),
+  `getAreaOverrides` / `AreaOverrideStatus` (overlay, `get_navigation_info`),
+  `getModifierAppliedPolygons`, `getAreaOverridePolygons`, `isLinkActive(Entity)`,
+  `updateLink(Entity)`, `getScene()`; `NavMesh::getPolyStateTileCount` and `getTileStateBytes`
+  (R13/R18 checks); `NavBakeCollector::boxVolume` (one box-to-prism code for bake and runtime).
+- S55 P2: a runtime modifier volume applies to every surface (the component has no agent-type
+  filter); only the tiles it overlaps are touched. The centroid of a polygon counts as inside when it
+  is within the prism's footprint and within one step (`max(agentClimb, cellHeight)`) of its heights.
+- S55 P2: `NavMeshLink:updateLink()` calls `NavigationSystem::updateLink(link)`, which recomputes the
+  connections (`linkConnections`) for every surface whose navmesh holds the link and calls
+  `NavMesh::updateLink`; a cost the bake did not see uses the area's cost. S53's fixed-tick Auto
+  Update reuses the same NavMesh call.
+- S55 P2: Occupied (R17) is the engine's own link traversal (`onOffMeshLinkStart` to `End`); Detour's
+  fallback traversal (`takeDetourTraversals`) carries no link id and does not count.
+- S55 P2: AC18's allocation count covers the area sync's share of a tick (`syncAreaOverrides`, 600
+  calls with 50 agents, no overrides): S19's tick itself allocates (its sorted agent list), which
+  `NavSystemTest.GameplayZeroCost` (P3) measures.
+- S55 P2: R43's `modifiers[].apply_at_runtime` belongs to S54 P2's `modifiers[]` list, which is not on
+  `nav/integration` yet: whichever lands second adds the field.
+
 ## Progress (implementation notes, keep updated)

@@ -44,11 +44,14 @@ namespace jasperengine::editor {
         bool showAvoidance = false;
         bool showLinks = true;
         bool showObstacles = true;
+        // ---- S55 areas: runtime modifier volumes always, script volumes in play (R41)
+        bool showAreaOverrides = true;
 
         bool operator==(const NavOverlaySettings& other) const {
             return enabled == other.enabled && showNavMesh == other.showNavMesh && showTileBounds == other.showTileBounds &&
                    showHeightMesh == other.showHeightMesh && showGrid == other.showGrid && showPaths == other.showPaths &&
-                   showAvoidance == other.showAvoidance && showLinks == other.showLinks && showObstacles == other.showObstacles;
+                   showAvoidance == other.showAvoidance && showLinks == other.showLinks && showObstacles == other.showObstacles &&
+                   showAreaOverrides == other.showAreaOverrides;
         }
         bool operator!=(const NavOverlaySettings& other) const { return !(*this == other); }
     };
@@ -70,6 +73,15 @@ namespace jasperengine::editor {
         // what the last update drew (tests, visualize_navigation)
         size_t getTriangleCount() const { return drawnTriangles; }
         size_t getLineCount() const { return drawnLines; }
+
+        // ---- S55 areas: each area override box the last update drew, and its colour (tests)
+        struct AreaOverrideDraw {
+            Entity modifier = NULL_ENTITY;
+            uint32_t handle = 0;
+            Vector4 color;
+            size_t lines = 0;
+        };
+        const std::vector<AreaOverrideDraw>& getAreaOverrideDraws() const { return areaOverrideDraws; }
 
     private:
         struct SurfaceDraw {
@@ -97,6 +109,7 @@ namespace jasperengine::editor {
         LineRenderer* lines = nullptr;
         size_t drawnTriangles = 0;
         size_t drawnLines = 0;
+        std::vector<AreaOverrideDraw> areaOverrideDraws;
 
         Mesh* newMesh();
         LineRenderer* newLines(unsigned int maxLines);

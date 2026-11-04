@@ -72,6 +72,12 @@ namespace jasperengine::nav {
         // connections); costAreas maps cost overrides to link cost areas (null: area costs)
         static void linkConnections(Scene* scene, Entity link, const NavFrame& frame, float agentRadius,
                                     std::vector<float>* costAreas, std::vector<NavLinkInput>& out);
+
+        // A box (center and size in the space worldOf maps to the world) as the frame's nav-space
+        // prism: the hull of its corners' footprint and their height range (unbounded on a 2D
+        // surface), with its bounds. False when it has no footprint. (Modifier volumes, S55's
+        // runtime volumes)
+        static bool boxVolume(const NavFrame& frame, const Matrix4& worldOf, const Vector3& center, const Vector3& size, NavConvexVolume& out);
     };
 
 }

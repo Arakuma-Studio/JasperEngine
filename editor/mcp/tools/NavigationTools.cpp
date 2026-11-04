@@ -295,9 +295,19 @@ void getNavigationInfoTool(const CallPtr& call) {
         const NavMeshLinkComponent& link = s->getComponent<NavMeshLinkComponent>(entity);
         const Transform* transform = s->findComponent<Transform>(entity);
         const Matrix4 model = transform ? transform->modelMatrix : Matrix4();
-        links.push_back({{"entity", McpRefs::entityJson(scene, entity)}, {"start", vec3Json(model * link.startPoint)},
-                         {"end", vec3Json(model * link.endPoint)}, {"bidirectional", link.bidirectional}, {"area", link.area},
-                         {"width", link.width}, {"enabled", link.enabled}});
+        Json item = {{"entity", McpRefs::entityJson(scene, entity)}, {"start", vec3Json(model * link.startPoint)},
+                     {"end", vec3Json(model * link.endPoint)}, {"bidirectional", link.bidirectional}, {"area", link.area},
+                     {"width", link.width}, {"enabled", link.enabled}, {"activated", link.activated}};
+        if (playing) item["occupied"] = system->isLinkOccupied(entity);
+        links.push_back(item);
+    }
+    // S55 R43: runtime modifier volumes and script volumes, applied or not
+    Json areaOverrides = Json::array();
+    int appliedOverrides = 0;
+    for (const NavigationSystem::AreaOverrideStatus& status : system->getAreaOverrides()) {
+        Json source = status.handle != 0 ? Json{{"handle", status.handle}} : Json{{"entity", McpRefs::entityJson(scene, status.modifier)}};
+        areaOverrides.push_back({{"source", source}, {"area", status.area}, {"applied", status.applied}, {"polygons", status.polygons}});
+        if (status.applied) appliedOverrides++;
     }
     Json agents = Json::array();
     for (Entity entity : entitiesWith<NavMeshAgentComponent>(s)) {
@@ -316,9 +326,11 @@ void getNavigationInfoTool(const CallPtr& call) {
     }
     Json data = {{"scene_id", scene->id}, {"playing", playing}, {"navmesh_available", nav::isNavMeshAvailable()},
                  {"settings", settingsJson(project->getNavigationSettings())}, {"surfaces", surfaces}, {"grids", grids},
-                 {"links", links}, {"agents", agents},
+                 {"links", links}, {"area_overrides", areaOverrides}, {"agents", agents},
                  {"stats", {{"crowds", system->getCrowdCount()}, {"crowd_agents", system->getAgentCount()}, {"bytes", system->getMemoryBytes()}}}};
     text += "\n  " + std::to_string(links.size()) + " link(s), " + std::to_string(agents.size()) + " agent(s)";
+    if (!areaOverrides.empty())
+        text += ", " + std::to_string(areaOverrides.size()) + " area override(s) (" + std::to_string(appliedOverrides) + " applied)";
     call->ok(text, data);
 }
 
@@ -763,6 +775,7 @@ void visualizeNavigationTool(const CallPtr& call) {
         overlay.showGrid = show.value("grid", overlay.showGrid);
         overlay.showLinks = show.value("links", overlay.showLinks);
         overlay.showObstacles = show.value("obstacles", overlay.showObstacles);
+        overlay.showAreaOverrides = show.value("area_overrides", overlay.showAreaOverrides);
         overlay.showAvoidance = show.value("avoidance", overlay.showAvoidance);
         if (show.contains("paths")) {
             const Json& paths = show["paths"];
@@ -777,7 +790,7 @@ void visualizeNavigationTool(const CallPtr& call) {
     Json data = {{"scene_id", scene->id}, {"overlay", encodeNavOverlaySettings(overlay).size() ? Json::parse("{}") : Json::object()}};
     data["overlay"] = {{"navmesh", overlay.showNavMesh}, {"tiles", overlay.showTileBounds}, {"heightmesh", overlay.showHeightMesh},
                        {"grid", overlay.showGrid}, {"links", overlay.showLinks}, {"obstacles", overlay.showObstacles},
-                       {"avoidance", overlay.showAvoidance},
+                       {"area_overrides", overlay.showAreaOverrides}, {"avoidance", overlay.showAvoidance},
                        {"paths", overlay.showPaths == NavOverlaySettings::Paths::All ? "all" : overlay.showPaths == NavOverlaySettings::Paths::None ? "none" : "selected"}};
     std::string text = "AI Navigation overlay on.";
     NavigationEditor::get().setQueryPath(scene->id, {});
@@ -931,13 +944,14 @@ void registerNavigationTools(McpRegistry& registry) {
         tool.title = "Visualize Navigation";
         tool.description =
             "Turn on the Scene view's AI Navigation overlay and set what it shows (navmesh in area colours, tiles, heightmesh, "
-            "grid, agent paths, avoidance, links, obstacles); path {from, to} also draws a query path. screenshot: true returns "
+            "grid, agent paths, avoidance, links, obstacles, area overrides); path {from, to} also draws a query path. screenshot: true returns "
             "the Scene view as a PNG.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"show", object({{"navmesh", boolean("")}, {"tiles", boolean("")}, {"heightmesh", boolean("")}, {"grid", boolean("")},
                              {"paths", Json{{"anyOf", Json::array({Json{{"type", "boolean"}}, stringEnum("", {"none", "selected", "all"})})}}},
-                             {"avoidance", boolean("")}, {"links", boolean("")}, {"obstacles", boolean("")}})},
+                             {"avoidance", boolean("")}, {"links", boolean("")}, {"obstacles", boolean("")},
+                             {"area_overrides", boolean("")}})},
             {"path", object({{"from", vec3("")}, {"to", vec3("")}}, {"from", "to"})},
             {"screenshot", withDefault(boolean(""), false)},
             {"max_width", withDefault(integer("", 0, 4096), 1024)}

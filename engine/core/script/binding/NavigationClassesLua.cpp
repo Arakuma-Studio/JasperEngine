@@ -540,5 +540,7 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("layout", &NavGrid::getLayout)
         .endClass();
 
+    registerNavigationComponentClasses(L);
+
 #endif //DISABLE_LUA_BINDINGS
 }

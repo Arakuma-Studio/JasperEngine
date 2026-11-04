@@ -73,6 +73,45 @@ NavMesh Obstacles with **Carve** then cut holes into it (re-cut when they move m
 *Move Threshold*, optionally only once stationary). Carving updates are budgeted (1 ms per fixed
 tick). Without carving, obstacles are avoided like agents.
 
+### Doors and bridges
+
+Areas change at runtime without a rebake, in edit mode and in play:
+
+- A **NavMesh Modifier** with **Volume** and **Apply At Runtime** is a door: the bake only splits the
+  navmesh along the box (the polygons keep their areas), and while the modifier is enabled and its
+  GameObject active, the polygons inside take its **Area Type**. Not Walkable closes the door;
+  disabling the modifier opens it. Moving, turning or resizing the box applies it again; polygons
+  then follow their centre (a polygon whose centre lies in the box takes the area), not the baked
+  split. Give touching doors a gap of one cell.
+- A script volume does the same without a component: `nav:setAreaInVolume(center, size, area,
+  {rotation = q, agentType = "Humanoid"})` returns a **NavAreaOverride** (`area`, `center`,
+  `size`, `rotation`, `appliedPolygons`, `valid`, `remove()`). It follows the centre rule too, and
+  ends with the scene's navigation (Stop).
+- Overrides apply in order, modifier volumes by GameObject, then script volumes by creation; a later
+  one wins and Not Walkable always wins. Removing the last one of a tile gives it its baked areas
+  back exactly. They survive every rebuild of their tiles (incremental bakes, carving, link updates,
+  a full bake, a reload).
+- A **NavMesh Link** with **Activated** off passes nothing: paths and agents ignore it, an agent
+  already on it finishes. It is not a bake input (toggling it never makes the bake stale).
+  `occupied` is true while an agent crosses it.
+- When an area changes, the agents whose path crosses a changed polygon ask for their destination
+  again at the next fixed tick (their whole path, not only the next polygons), and so do agents
+  whose path stopped short. Without **Auto Repath** such a path is dropped and `onPathFailed` fires.
+  An agent standing where it becomes Not Walkable is moved to the nearest passable polygon.
+
+```lua
+local door = NavMeshModifier(self.scene, doorway)
+door.enabled = false                                   -- the door opens
+local bridge = NavMeshLink(self.scene, bridgeEntity)
+bridge.activated = false ; print(bridge.occupied)
+local nav = self.scene:getNavigationSystem()
+local gate = nav:setAreaInVolume(Vector3(0, 1, 0), Vector3(2, 3, 0.5), NavAreas.getAreaFromName("Not Walkable"))
+gate.area = 0 ; gate:remove()
+```
+
+In the Scene view, **Show Area Overrides** (AI Navigation overlay) draws runtime volumes always and
+script volumes in play, in their area's colour: solid while applied, faint while not.
+
 ## Areas and agent types
 
 **Window > AI > Navigation** has four tabs:
@@ -125,6 +164,31 @@ One-way links are only crossed from the start.
 
 Agents of one surface and agent type form a crowd (Detour's dtCrowd) of up to
 *Crowd Max Agents* (128); a full crowd grows, with a warning.
+
+### Script names
+
+Lua members use Unity's scripting names, the Inspector Unity's labels; stored fields keep theirs.
+`NavMeshObstacle(scene, entity)`, `NavMeshLink(scene, entity)` and `NavMeshModifier(scene,
+entity)` are the components' handles:
+
+| Lua | Inspector | Stored field |
+|---|---|---|
+| obstacle `carving` | Carve | `carve` |
+| obstacle `carvingMoveThreshold` | Move Threshold | `moveThreshold` |
+| obstacle `carvingTimeToStationary` | Time To Stationary | `timeToStationary` |
+| obstacle `velocity` (read) | | from its transform each fixed tick |
+| link `agentTypeID` | Agent Type | `agentType` |
+| link `autoUpdate` | Auto Update Positions | `autoUpdatePosition` |
+| link `activated`, `occupied` (read), `updateLink()` | Activated | `activated` |
+| modifier `center`, `size` | Center, Size | `volumeCenter`, `volumeSize` |
+| modifier `appliedPolygons` (read) | Applied Polygons (play) | |
+| agent `obstacleAvoidanceType` | Quality | `obstacleAvoidance` |
+| surface `agentTypeID`, `layerMask` | Agent Type, Include Layers | `agentType`, `includeLayers` |
+
+A modifier's `enabled`, `area`, `center` and `size` change a runtime volume at once; `useVolume`,
+`applyAtRuntime`, `overrideArea` and `applyToChildren` are bake inputs (read only). A link's other
+fields are bake inputs too: `updateLink()` moves its baked connections to them (false, with a
+warning, when a surface must be rebaked).
 
 ## Queries
 

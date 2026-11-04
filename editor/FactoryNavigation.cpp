@@ -124,6 +124,7 @@ std::string editor::Factory::createNavMeshLinkComponent(int indentSpaces, Entity
     code << ind << "navLink.bidirectional = " << formatBool(link.bidirectional) << ";\n";
     code << ind << "navLink.autoUpdatePosition = " << formatBool(link.autoUpdatePosition) << ";\n";
     code << ind << "navLink.area = " << link.area << ";\n";
+    if (!link.activated) code << ind << "navLink.activated = false;\n";
     if (!link.enabled) code << ind << "navLink.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshLinkComponent", "navLink", assignExisting);
     return code.str();
@@ -145,6 +146,7 @@ std::string editor::Factory::createNavMeshModifierComponent(int indentSpaces, En
     code << ind << "navModifier.useVolume = " << formatBool(modifier.useVolume) << ";\n";
     code << ind << "navModifier.volumeCenter = " << formatVector3(modifier.volumeCenter) << ";\n";
     code << ind << "navModifier.volumeSize = " << formatVector3(modifier.volumeSize) << ";\n";
+    if (modifier.applyAtRuntime) code << ind << "navModifier.applyAtRuntime = true;\n";
     if (!modifier.enabled) code << ind << "navModifier.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "NavMeshModifierComponent", "navModifier", assignExisting);
     return code.str();
