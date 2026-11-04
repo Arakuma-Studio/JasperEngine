@@ -130,10 +130,9 @@ void recordGameTool(const CallPtr& call) {
             return;
         }
         std::string message = "The recording failed: " + result.error + ".";
+        // (in the text: of an error, that is all a client like Claude Code shows the model)
         if (!result.failedStep.empty()) {
-            const std::string next = "The output path holds nothing and Play is still running: stop it (play action stop), fix the cause, then record again.";
-            message += " " + next;
-            data["next"] = next;
+            message += " The output path holds nothing and Play is still running: stop it (play action stop), fix the cause, then record again.";
         }
         job->fail(message, data);
     });

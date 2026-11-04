@@ -113,6 +113,7 @@ async def test_audio_write_failure_keeps_the_video():
         text, data = await record_failed(ed, frames=60, format="mp4", output=str(movie), audio=True)
         ed.check("disk full" in text and "MB free" in text, f"it says why: {text}")
         ed.check("audio" in text, f"it says what: {text}")
+        ed.check("Play is still running" in text and "play action stop" in text, f"the text says what to do (all an error shows the model): {text}")
         ed.check_eq(data.get("failed_step"), "audio", f"{data}")
         ed.check(not movie.exists(), "no file at the output path")
         partial = out / "take.partial.mp4"
