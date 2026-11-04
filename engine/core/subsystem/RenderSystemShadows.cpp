@@ -582,6 +582,7 @@ void RenderSystem::updateShadowCasters(){
         revision.add(mesh.shadowCasterRevision);
         revision.add(mesh.lodEnabled);
         revision.add(mesh.lodBias);
+        revision.add(QualityResolver::lodBias() * QualityResolver::shadowLodBias());
         revision.add(mesh.shadowsBillboard);
         revision.add(transform->billboard);
         bool morphs = false;
@@ -1036,7 +1037,8 @@ bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& rend
 RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
-    view.threshold = SHADOW_LOD_TEXELS;
+    // the project's Shadow LOD Bias and the device tier's (QualityResolver, contract C4)
+    view.threshold = SHADOW_LOD_TEXELS / std::max(QualityResolver::shadowLodBias(), 0.001f);
 
     const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
     const Matrix4& projection = shadowCamera.lightProjectionMatrix;

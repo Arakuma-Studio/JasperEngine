@@ -166,3 +166,12 @@ TEST(LaunchOptions, LaunchAppliesThemToThePlatform) {
     RunControl::reset();
     platformConfig() = saved;
 }
+
+// --device-tier (spec S56 R4): a tier name in either form, case-insensitive; anything else refused
+TEST(LaunchOptions, DeviceTier) {
+    EXPECT_EQ(ok({"--device-tier=low"}).deviceTier, "low");
+    EXPECT_EQ(ok({"--device-tier", "Ultra"}).deviceTier, "ultra");
+    EXPECT_TRUE(ok({}).deviceTier.empty());
+    EXPECT_NE(refused({"--device-tier=extreme"}).find("low, medium, high or ultra"), std::string::npos);
+    EXPECT_NE(refused({"--device-tier"}).find("needs a value"), std::string::npos);
+}
