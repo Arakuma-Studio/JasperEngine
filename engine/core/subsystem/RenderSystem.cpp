@@ -7168,7 +7168,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (!inputs.manifest || mesh.submeshes[i].customShaderId == 0)
             continue;
         water = water || (inputs.manifest->role == ShaderRole::WATER && mesh.submeshes[i].alphaBlend);
-        planarReflection = planarReflection || (inputs.manifest->resolveRequire(inputs.features) & ShaderRequire_PlanarReflection);
+        // (a water draws its planar reflection inside REFLECTION: without it, no pass for it)
+        const bool reads = (inputs.manifest->resolveRequire(inputs.features) & ShaderRequire_PlanarReflection) != 0 &&
+            (inputs.manifest->role != ShaderRole::WATER ||
+             std::find(inputs.features.begin(), inputs.features.end(), "REFLECTION") != inputs.features.end());
+        planarReflection = planarReflection || reads;
     }
     setWaterMesh(entity, water, planarReflection);
     // a mixed mesh whose blended submeshes read the scene keeps its opaque ones in the opaque
