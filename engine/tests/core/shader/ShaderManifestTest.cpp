@@ -277,3 +277,49 @@ TEST(ShaderReference, BlendDefines){
     EXPECT_TRUE(ShaderReference::isBlendDefine("BLEND_MULTIPLY"));
     EXPECT_FALSE(ShaderReference::isBlendDefine("BLEND_SCREEN"));
 }
+
+// @role: what the engine treats a shader as, whatever its name (forks of library:water)
+TEST(ShaderManifest, RoleDirective){
+    const ShaderManifest none = parse("// @shader mesh\n// @name \"Plain\"\n");
+    EXPECT_EQ(none.role, ShaderRole::NONE);
+
+    const ShaderManifest water = parse("// @shader mesh\n// @name \"My water\"\n// @role water\n");
+    EXPECT_EQ(water.role, ShaderRole::WATER);
+    EXPECT_FALSE(water.hasErrors());
+
+    const ShaderManifest underwater = parse("// @shader postprocess\n// @name \"My underwater\"\n// @role Underwater\n");
+    EXPECT_EQ(underwater.role, ShaderRole::UNDERWATER);
+
+    const ShaderManifest unknown = parse("// @shader mesh\n// @role ocean\n");
+    EXPECT_EQ(unknown.role, ShaderRole::NONE);
+    EXPECT_TRUE(hasDiagnostic(unknown, true, "@role takes one of"));
+
+    const ShaderManifest twice = parse("// @shader mesh\n// @role water\n// @role underwater\n");
+    EXPECT_EQ(twice.role, ShaderRole::WATER);
+    EXPECT_TRUE(hasDiagnostic(twice, true, "@role given twice"));
+
+    // a water is a mesh shader, an underwater pass a post-process one
+    ShaderManifest wrongType = parse("// @shader postprocess\n// @name \"Wrong\"\n// @role water\n");
+    wrongType.checkComplete("test.frag", false);
+    EXPECT_TRUE(hasDiagnostic(wrongType, true, "@role water needs @shader mesh"));
+}
+
+// @require planarreflection: the define, the name, mesh shaders only
+TEST(ShaderManifest, PlanarReflectionRequire){
+    ShaderManifest manifest = parse("// @shader mesh\n// @name \"Mirror\"\n// @require planarreflection feature=MIRROR\n"
+                                    "// @feature MIRROR \"Mirror\"\n");
+    manifest.checkComplete("test.frag", true);
+    EXPECT_FALSE(manifest.hasErrors());
+    EXPECT_EQ(manifest.resolveRequire({}) & ShaderRequire_PlanarReflection, 0u);
+    EXPECT_NE(manifest.resolveRequire({"MIRROR"}) & ShaderRequire_PlanarReflection, 0u);
+    const std::vector<std::string> defines = ShaderManifest::getRequireDefines(ShaderRequire_PlanarReflection);
+    ASSERT_EQ(defines.size(), 1u);
+    EXPECT_EQ(defines[0], "SURFACE_PLANAR_REFLECTION");
+    const std::vector<std::string> names = ShaderManifest::getRequireNames(ShaderRequire_PlanarReflection);
+    ASSERT_EQ(names.size(), 1u);
+    EXPECT_EQ(names[0], "planarreflection");
+
+    ShaderManifest ui = parse("// @shader ui\n// @name \"UI\"\n// @require planarreflection\n");
+    ui.checkComplete("test.frag", true);
+    EXPECT_TRUE(hasDiagnostic(ui, true, "@require planarreflection needs @shader mesh"));
+}

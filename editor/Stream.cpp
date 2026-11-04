@@ -2202,7 +2202,9 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["disableFaceCulling"]   = ds.disableFaceCulling;
     sceneNode["disableFog"]           = ds.disableFog;
     sceneNode["disableClouds"]        = ds.disableClouds;
-    sceneNode["animateWater"]         = ds.animateWater;
+    // written only when off (the default is on)
+    if (!ds.animateWater)
+        sceneNode["animateWater"] = ds.animateWater;
     if (ds.showPostProcessing)
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
