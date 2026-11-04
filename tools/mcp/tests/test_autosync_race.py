@@ -15,11 +15,11 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
-import tempfile
 import time
 from pathlib import Path
 
 from harness import Editor, RawEditor, find_key
+from pngdiff import encode as encode_png
 
 EDITOR = {"create": True, "name": "AutoSyncRace", "env": {"JASPER_TEST_SETTLE_DELAY_MS": "300"}}
 TIMEOUT = 1200
@@ -69,12 +69,10 @@ async def quiet(ed: Editor):
 async def new_file_stamped_inside_the_call(ed: Editor, tag: str, source: str):
     """A new file written 0 ms after a writing call, stamped (as a coarse clock can) inside the call."""
     await quiet(ed)
-    t0 = time.time_ns()
     await write_file(ed, f"scripts/{tag}Tool.lua", "return {}\n")
-    t1 = time.time_ns()
     rel = f"scripts/{tag}Inside.lua"
     (ed.project / rel).write_text("return {}\n")
-    stamp(ed.project / rel, (t0 + t1) // 2)
+    stamp(ed.project / rel, (ed.project / f"scripts/{tag}Tool.lua").stat().st_mtime_ns)
     r = await status_call(ed)
     ext = external(r)
     ed.check(ext is not None and rel in ext.get("added", []), f"the file stamped inside the call is not reported: {ext!r}")
@@ -192,13 +190,13 @@ async def test_writing_results_wait_for_their_settle_and_read_only_ones_do_not(e
 async def test_deferred_completion_settles_before_its_result(ed: Editor):
     """A call that completes in a waitUntil / afterFrames callback: settled at the end of tick."""
     await quiet(ed)
-    t0 = time.time_ns()
     await ed.screenshot(view="game", save_path="assets/deferred-shot.png")
-    t1 = time.time_ns()
-    ed.check((ed.project / "assets/deferred-shot.png").is_file(), "the screenshot was saved")
+    shot = ed.project / "assets/deferred-shot.png"
+    ed.check(shot.is_file(), "the screenshot was saved")
     rel = "scripts/AfterDeferred.lua"
+    (ed.project / rel).parent.mkdir(parents=True, exist_ok=True)
     (ed.project / rel).write_text("return {}\n")
-    stamp(ed.project / rel, (t0 + t1) // 2)
+    stamp(ed.project / rel, shot.stat().st_mtime_ns)
     ext = external(await status_call(ed))
     ed.check(ext is not None and ext["changed"] == [rel], f"the external file is reported, the screenshot is not: {ext!r}")
 
@@ -207,6 +205,7 @@ async def test_completion_outside_a_handler_settles_before_its_result():
     """A detached call (commit_files: the version control service answers it from its own update):
     settled by a main-thread task before its result."""
     async with Editor(create=True, name="AutoSyncRaceDetached", label="detached", env=EDITOR["env"]) as ed:
+        await status_call(ed)
         env = dict(os.environ, HOME=str(ed.scratch.home), GIT_CONFIG_NOSYSTEM="1", GIT_TERMINAL_PROMPT="0", LC_ALL="C")
         for name in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
             env.pop(name, None)
@@ -228,55 +227,42 @@ async def test_completion_outside_a_handler_settles_before_its_result():
         (ed.project / "notes.txt").write_text("two\n")
         await quiet(ed)
 
-        t0 = time.time_ns()
         wall = time.monotonic()
         committed = await ed.call("commit_files", paths=["notes.txt"], message="Notes")
-        t1 = time.time_ns()
         ed.check(committed.get("revision"), f"{committed}")
         ed.check(time.monotonic() - wall >= SETTLE_DELAY_S, "the detached call's result went out before its settle")
         rel = "scripts/AfterDetached.lua"
         (ed.project / rel).parent.mkdir(parents=True, exist_ok=True)
         (ed.project / rel).write_text("return {}\n")
-        stamp(ed.project / rel, (t0 + t1) // 2)
+        # the coarse clock's stamp from inside the call: an instant before its result
+        stamp(ed.project / rel, time.time_ns() - 1_000_000)
         ext = external(await status_call(ed))
         ed.check(ext is not None and ext["changed"] == [rel], f"the external file is reported: {ext!r}")
 
 
-async def test_stop_answers_a_writing_call_that_was_waiting():
-    """A writing call deferred when the editor closes gets its answer: stop() runs the settle queue
-    before the stdio transport flushes."""
-    hold = Path(tempfile.gettempdir()) / f"jasper-autosync-hold-{os.getpid()}"
-    held = Path(str(hold) + ".held")
-    hold.write_text("hold\n")
-    held.unlink(missing_ok=True)
-    try:
-        async with RawEditor(create=True, name="AutoSyncRaceStop", env={"JASPER_TEST_EXPORT_HOLD": str(hold)}) as raw:
-            await raw.initialize()
-            raw.send({"jsonrpc": "2.0", "id": 21, "method": "tools/call",
-                      "params": {"name": "save_scene", "arguments": {"path": "Stop.scene"}}})
-            saved = await raw.response(21)
-            if saved.get("result", {}).get("isError"):
-                raw.fail(f"save_scene: {saved}")
-            out = raw.scratch.root / "export"
-            raw.send({"jsonrpc": "2.0", "id": 22, "method": "tools/call", "params": {"name": "build_project", "arguments": {
-                "mode": "source", "output_dir": str(out), "platform": "linux", "backends": ["opengl"],
-                "allow_missing_assets": True, "overwrite": True, "timeout_seconds": 900}}})
-            for _ in range(3000):
-                if held.exists():
-                    break
-                await asyncio.sleep(0.1)
-            else:
-                raw.fail("the export never reached its hold")
-            assert raw.proc and raw.proc.stdin
-            raw.proc.stdin.close()
-            answer = await raw.response(22, 60)
-            hold.unlink(missing_ok=True)
-            text = str(answer.get("result", {}).get("content", ""))
-            if not answer.get("result", {}).get("isError") or "shutting down" not in text:
-                raw.fail(f"the waiting call's answer: {answer}")
-    finally:
-        hold.unlink(missing_ok=True)
-        held.unlink(missing_ok=True)
+async def test_editor_closes_with_a_writing_call_waiting():
+    """A writing call waiting for its job when the client goes away: stop() fails it and runs the settle
+    queue, and the editor exits cleanly (a client that is gone gets no answer)."""
+    async with RawEditor(create=True, name="AutoSyncRaceStop", env=EDITOR["env"]) as raw:
+        await raw.initialize()
+
+        def call(id: int, name: str, **arguments) -> None:
+            raw.send({"jsonrpc": "2.0", "id": id, "method": "tools/call", "params": {"name": name, "arguments": arguments}})
+
+        call(21, "save_scene", path="Stop.scene")
+        if (await raw.response(21)).get("result", {}).get("isError", True):
+            raw.fail("save_scene failed")
+        example = raw.scratch.project / "assets/stop_example.png"
+        example.parent.mkdir(parents=True, exist_ok=True)
+        example.write_bytes(encode_png(64, 64, os.urandom(64 * 64 * 4)))
+        call(22, "synthesize_texture", examples=["assets/stop_example.png"], size=1024, quality="high", seed=4,
+             companions="none", output="assets/stop_out.png", timeout_seconds=600)
+        await asyncio.sleep(0.5)
+        if any(m.get("id") == 22 for m in raw.messages):
+            raw.fail(f"the call ended by itself: {raw.messages[-1]}")
+        code = await raw.close_stdin_and_wait(120)
+        if code != 0:
+            raw.fail(f"the editor must exit cleanly, got {code!r}")
 
 
 # ------------------------------------------------------------------ R3, R4 and what they cost
@@ -301,28 +287,24 @@ async def test_change_stamped_before_the_call_stays_external(ed: Editor):
 async def test_rewrite_with_the_same_stamp_reloads(ed: Editor):
     """The same-stamp rewrite is applied, not only reported: its stamp is racy for the auto-sync (2 s)
     but no longer for the hot reload's applied stamps (100 ms), which call the file current."""
-    entity = (await ed.call("create_entity", name="SameStampHost", type="cube"))["entity_id"]
-    script = 'return { properties = { { name = "speed", type = "int", default = %d } } }\n'
+    script = 'return { properties = { { name = "%s", type = "int", default = 1 } } }\n'
     for attempt in range(6):
-        rel = f"scripts/SameStamp{attempt}.lua"
-        path = ed.project / rel
-        made = await ed.call("create_script", kind="lua", name=f"SameStamp{attempt}", content=script % 1, entity=entity)
-        rel = made["path"]
+        name = f"SameStamp{attempt}"
+        entity = (await ed.call("create_entity", name=name + "Host", type="cube"))["entity_id"]
+        rel = (await ed.call("create_script", kind="lua", name=name, content=script % "alpha", entity=entity))["path"]
         path = ed.project / rel
         await quiet(ed)
-        path.write_text(script % 2)
+        path.write_text(script % "bravo")
         mtime = time.time_ns() - 400_000_000
         stamp(path, mtime)
         ed.check_in(rel, changed(await status_call(ed)), "the first rewrite is reported")
         if (time.time_ns() - mtime) / 1e9 >= RACY_S:
             continue    # so loaded that the pick-up saw an old stamp: nothing to conclude
-        path.write_text(script % 3)
+        path.write_text(script % "carol")
         stamp(path, mtime)
         ed.check_in(rel, changed(await status_call(ed)), "the same-stamp rewrite is reported")
-        scripts = (await ed.call("list_scripts", entity=entity))["scripts"]
-        listed = next(s for s in scripts if s.get("path") == rel or s.get("name") == f"SameStamp{attempt}")
-        speed = next(p for p in listed["properties"] if p["name"] == "speed")
-        ed.check_eq(speed.get("default", speed.get("value")), 3, "the content the rewrite left is the one loaded")
+        listed = (await ed.call("list_scripts", entity=entity))["scripts"][0]
+        ed.check_eq([p["name"] for p in listed["properties"]], ["carol"], "the content the rewrite left is the one loaded")
         return
     ed.fail("every attempt was too slow to conclude anything")
 

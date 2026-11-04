@@ -32,6 +32,7 @@ namespace jasperengine::watch {
         bool start(const fs::path& rootIn, WatchSink& sinkIn, std::string& error) override;
         void stop() override;
         bool flush(std::chrono::milliseconds timeout) override;
+        bool flushIsDrain() const override { return true; }
         const char* name() const override { return "inotify"; }
         bool isNative() const override { return true; }
         size_t watchCount() const override { return watches.load(); }

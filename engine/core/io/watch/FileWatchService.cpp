@@ -859,6 +859,20 @@ bool FileWatchService::pump(double budgetMs) {
 }
 
 bool FileWatchService::flush(std::chrono::milliseconds timeout) {
+    return barrier(timeout, true);
+}
+
+bool FileWatchService::flushJournal(std::chrono::milliseconds timeout) {
+    return barrier(timeout, false);
+}
+
+bool FileWatchService::flushIsDrain() const {
+    if (!shared) return false;
+    std::lock_guard<std::mutex> lock(shared->stateMutex);
+    return shared->backend && shared->backend->flushIsDrain();
+}
+
+bool FileWatchService::barrier(std::chrono::milliseconds timeout, bool deliverToMainHere) {
     if (!shared) return false;
     Shared& s = *shared;
     const auto deadline = Clock::now() + timeout;
@@ -887,7 +901,7 @@ bool FileWatchService::flush(std::chrono::milliseconds timeout) {
     }
     s.rawCv.notify_all();   // the dispatcher's next deadline changed
     deliverWorkers();
-    if (onMainThread()) deliverMain(std::numeric_limits<double>::infinity());
+    if (deliverToMainHere && onMainThread()) deliverMain(std::numeric_limits<double>::infinity());
     else wakeMain();
     return ok;
 }

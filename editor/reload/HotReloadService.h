@@ -98,6 +98,10 @@ namespace jasperengine::editor {
         // adopted something (the views redraw).
         bool update();
 
+        // `path` (absolute) is not what was last reloaded from it, whatever its stat says: it holds
+        // other content under the same stat (McpAutoSync's verification of a racy stamp)
+        void forgetApplied(const std::filesystem::path& path);
+
         // Nothing of `paths` (absolute) is still reloading
         bool idleFor(const std::vector<std::filesystem::path>& paths) const;
         bool idle() const;

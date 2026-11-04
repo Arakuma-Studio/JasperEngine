@@ -140,6 +140,8 @@ namespace jasperengine {
         // R7: when it returns true, every change that completed on disk before the call has
         // been handed to the sink. False when the timeout passed first.
         virtual bool flush(std::chrono::milliseconds timeout) = 0;
+        // flush only drains what the system already holds (not a round trip, not a walk of the tree)
+        virtual bool flushIsDrain() const { return false; }
 
         // "inotify", "ReadDirectoryChangesW", "FSEvents", "polling", "null"
         virtual const char* name() const = 0;
