@@ -25,10 +25,12 @@
 
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
+#include "Readback.h"
 
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -84,6 +86,17 @@ namespace {
             return Vector3(m[column][0], m[column][1], m[column][2]).normalized();
         }
     };
+
+    // the pixels of the target the batch covers (anything brighter than the black background)
+    int coveredPixels(){
+        Framebuffer& target = GpuEnvironment::target();
+        std::vector<uint8_t> rgba;
+        readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
+        int covered = 0;
+        for (size_t i = 0; i + 3 < rgba.size(); i += 4)
+            covered += (rgba[i] + rgba[i + 1] + rgba[i + 2] > 30) ? 1 : 0;
+        return covered;
+    }
 
     void expectNear(const Vector3& actual, const Vector3& expected, const char* what){
         EXPECT_NEAR(actual.x, expected.x, 1e-3f) << what;
@@ -182,5 +195,29 @@ TEST_F(InstancedFadeGpu, TheFadeCutsAndShrinksUnderSsr){
     ASSERT_TRUE(submesh.gbufferShader) << "SSR on draws no G-buffer";
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 16, true), "Ifd");
     EXPECT_NE(submesh.gbufferShaderProperties & (uint64_t(1) << 16), 0u) << "the G-buffer does not shrink faded instances ('Ifd')";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// inside the near band an instance is drawn shrunk toward its base: half way through, at half size
+TEST_F(InstancedFadeGpu, TheNearBandShrinksTheInstance){
+    JASPER_REQUIRE_GPU();
+    scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
+    scene.setGlobalIllumination(1.0f);
+    camera.setPosition(0.0f, 8.0f, 0.01f);
+    camera.setTarget(0.0f, 0.0f, 0.0f);
+    batch.setFaceCulling(false);
+    batch.addInstance(Vector3(3.0f, 0.0f, 0.0f));
+    batch.setDistanceFade(true);
+    batch.setFadeRange(30.0f, 40.0f);
+    settle();
+    const int whole = coveredPixels();
+    ASSERT_GT(whole, 50) << "the instance does not draw";
+
+    // the instance 3 m away, the band from 2 m to 4 m: half its size, a quarter of its area
+    batch.setNearFadeRange(2.0f, 4.0f);
+    GpuEnvironment::drawFrames(3);
+    const int band = coveredPixels();
+    EXPECT_GT(band, whole / 10) << "the instance half way through the band vanished";
+    EXPECT_LT(band, whole / 2) << "the instance half way through the band is not shrunk";
     EXPECT_NO_ENGINE_ERRORS();
 }
