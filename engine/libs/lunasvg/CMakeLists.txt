@@ -8,8 +8,10 @@
 # the disk: no system font scan (fonts are registered by engine/core/util/LunaSVGRuntime) and
 # no external <image href> files (data: URIs work).
 
-file(GLOB LUNASVG_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/source/*.cpp)
-file(GLOB PLUTOVG_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/plutovg/source/*.c)
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/JasperEnginePaths.cmake)
+jasperengine_glob_escape(LUNASVG_GLOB_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+file(GLOB LUNASVG_SOURCES CONFIGURE_DEPENDS ${LUNASVG_GLOB_DIR}/source/*.cpp)
+file(GLOB PLUTOVG_SOURCES CONFIGURE_DEPENDS ${LUNASVG_GLOB_DIR}/plutovg/source/*.c)
 
 add_library(
 

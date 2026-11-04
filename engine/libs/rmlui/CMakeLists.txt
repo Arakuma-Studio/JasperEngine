@@ -2,15 +2,17 @@
 # Core, Debugger (JASPERENGINE_HTMLUI_DEBUGGER) and the SVG plugin. The font engine is the
 # engine's own (engine/core/htmlui/RmlFontEngine), so there is no FreeType; see
 # docs/html-ui/FORK.md for the vendored subset and patches.
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/JasperEnginePaths.cmake)
+jasperengine_glob_escape(RMLUI_GLOB_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 file(GLOB RMLUI_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Core/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Core/Elements/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/Core/Layout/*.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/Source/SVG/*.cpp
+    ${RMLUI_GLOB_DIR}/Source/Core/*.cpp
+    ${RMLUI_GLOB_DIR}/Source/Core/Elements/*.cpp
+    ${RMLUI_GLOB_DIR}/Source/Core/Layout/*.cpp
+    ${RMLUI_GLOB_DIR}/Source/SVG/*.cpp
 )
 # JASPERENGINE_HTMLUI_DEBUGGER (engine/CMakeLists.txt): the editor, Debug exports, the tests
 if(JASPERENGINE_HTMLUI_DEBUGGER)
-    file(GLOB RMLUI_DEBUGGER_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/Source/Debugger/*.cpp)
+    file(GLOB RMLUI_DEBUGGER_SOURCES CONFIGURE_DEPENDS ${RMLUI_GLOB_DIR}/Source/Debugger/*.cpp)
     list(APPEND RMLUI_SOURCES ${RMLUI_DEBUGGER_SOURCES})
 endif()
 

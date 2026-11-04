@@ -7,17 +7,19 @@
 # html, ns, tag and the platform ports; this file replaces the upstream build. One local patch
 # records the source offsets of start tags, attributes, comments and text (PATCHES.md).
 
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/JasperEnginePaths.cmake)
+jasperengine_glob_escape(LEXBOR_GLOB_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 file(GLOB LEXBOR_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/core/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/dom/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/dom/interfaces/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/html/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/html/interfaces/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/html/tokenizer/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/html/tree/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/html/tree/insertion_mode/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/ns/*.c
-    ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/tag/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/core/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/dom/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/dom/interfaces/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/html/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/html/interfaces/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/html/tokenizer/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/html/tree/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/html/tree/insertion_mode/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/ns/*.c
+    ${LEXBOR_GLOB_DIR}/lexbor/tag/*.c
 )
 
 # memory/fs/perf of the platform: windows_nt on Windows, posix everywhere else (Linux, macOS,
@@ -27,7 +29,7 @@ if(WIN32)
 else()
     set(LEXBOR_PORT posix)
 endif()
-file(GLOB LEXBOR_PORT_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/lexbor/ports/${LEXBOR_PORT}/lexbor/core/*.c)
+file(GLOB LEXBOR_PORT_SOURCES CONFIGURE_DEPENDS ${LEXBOR_GLOB_DIR}/lexbor/ports/${LEXBOR_PORT}/lexbor/core/*.c)
 
 add_library(
 

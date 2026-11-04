@@ -24,7 +24,9 @@ set(ZSTD_DECOMPRESS_SOURCES
     ${ZSTD_LIB_DIR}/decompress/zstd_decompress.c
     ${ZSTD_LIB_DIR}/decompress/zstd_decompress_block.c
 )
-file(GLOB ZSTD_COMPRESS_SOURCES CONFIGURE_DEPENDS ${ZSTD_LIB_DIR}/compress/*.c)
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/JasperEnginePaths.cmake)
+jasperengine_glob_escape(ZSTD_LIB_GLOB_DIR "${ZSTD_LIB_DIR}")
+file(GLOB ZSTD_COMPRESS_SOURCES CONFIGURE_DEPENDS ${ZSTD_LIB_GLOB_DIR}/compress/*.c)
 # zstdmt_compress.c calls the pool; without ZSTD_MULTITHREAD it runs jobs inline
 list(APPEND ZSTD_COMPRESS_SOURCES ${ZSTD_LIB_DIR}/common/pool.c ${ZSTD_LIB_DIR}/common/threading.c)
 

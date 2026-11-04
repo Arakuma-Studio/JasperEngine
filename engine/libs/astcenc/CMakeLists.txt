@@ -6,7 +6,9 @@
 # point, so SSE4.1 (x86-64), NEON (arm64) and scalar builds write byte-identical blocks and the
 # cook cache key need not name the ISA.
 
-file(GLOB ASTCENC_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/Source/astcenc_*.cpp)
+include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/JasperEnginePaths.cmake)
+jasperengine_glob_escape(ASTCENC_GLOB_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+file(GLOB ASTCENC_SOURCES CONFIGURE_DEPENDS ${ASTCENC_GLOB_DIR}/Source/astcenc_*.cpp)
 
 add_library(astcenc STATIC ${ASTCENC_SOURCES})
 
