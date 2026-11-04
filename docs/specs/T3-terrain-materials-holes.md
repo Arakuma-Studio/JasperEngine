@@ -1,4 +1,4 @@
-# S55 — Terrain materials and holes
+# T3 — Terrain materials and holes
 
 Wave 5 (terrain programme, `TERRAIN-LEDGER.md`, D1-D21 binding). Owns D7: the hole representation and the terrain
 material shader changes. Reports: `/tmp/terrain-research/reports/terrain3d-shaders-instancer.md`,
@@ -7,12 +7,12 @@ material shader changes. Reports: `/tmp/terrain-research/reports/terrain3d-shade
 ## 1. Goal
 
 A painted terrain today fetches every non-zero layer at up to four reads per map and leaves no
-texture slot free, so it costs too much on phones and cannot grow. S55 gives it a per-pixel cap on
+texture slot free, so it costs too much on phones and cannot grow. T3 gives it a per-pixel cap on
 the strongest layers, and three Quality tiers (High, Medium, Low) with a per-platform default and
 a hard fetch budget for Low. It adds macro variation, distance resampling, cliff projection with no
 extra fetch, a macro normal map, compressed layer arrays and up to 12 layers, and it makes terrain
 outside the view cast shadows. It adds **holes**: one crisp mask that rendering, collision, navmesh,
-picking, foliage, particles and splines all read the same way, which S58 uses for cave entrances.
+picking, foliage, particles and splines all read the same way, which T6 uses for cave entrances.
 A terrain that uses none of this draws what it drew, for what it cost.
 
 ## 2. Scope
@@ -24,21 +24,21 @@ A terrain that uses none of this draws what it drew, for what it cost.
 - Layers 10-12 in the blend maps' alpha channels.
 - Compressed layer arrays on export (S14's array exclusion lifted, §6 D8).
 - The shadow cut: off-screen terrain casts into the shadow maps.
-- The hole map, its behaviour in every consumer, `cut_holes` / `fill_holes` semantics for S53's
+- The hole map, its behaviour in every consumer, `cut_holes` / `fill_holes` semantics for T1's
   engine, a hole overlay, the Hole brush.
 - Terrain Layers panel, Inspector and Project Settings Quality UI with a live fetch readout, Scene view
   per-tier preview; `sample_terrain` and `visualize_terrain` extensions; Lua.
 
 **Out of scope**
-- S53's operation engine, surface query, undo store and `edit_terrain` / `visualize_terrain` tools:
-  S55 specifies what the hole operations and overlays mean, S53 owns the plumbing (D4, D5, D7).
-- Tiles, streaming, far overview, per-tile formats (S56); voxel surfaces under a hole (S58).
+- T1's operation engine, surface query, undo store and `edit_terrain` / `visualize_terrain` tools:
+  T3 specifies what the hole operations and overlays mean, T1 owns the plumbing (D4, D5, D7).
+- Tiles, streaming, far overview, per-tile formats (T4); voxel surfaces under a hole (T6).
 - A control-map splat, painted per-texel angle and scale, per-layer UV rotation: they need a new map
   or an integer format (D13), and hex tiling already breaks repetition (S11).
 - Per-pixel normals from the height map: rejected in §6 D6.
-- Displacement. A hole cut in the vertex stage. Skirts or walls around a hole (S58's voxels supply
+- Displacement. A hole cut in the vertex stage. Skirts or walls around a hole (T6's voxels supply
   the walls).
-- Runtime automatic navmesh rebake after a hole edit: a game calls S19's bake with S53's dirty rectangle.
+- Runtime automatic navmesh rebake after a hole edit: a game calls S19's bake with T1's dirty rectangle.
 - **Do-not-copy** (`docs/specs/README.md:23-27`, D13): no CBT terrain, no GPU-driven culling, no GPU
   grass. From Terrain3D: no `//INSERT:` shader splicing, no world noise, no float-bits control map,
   no region uniform arrays, no clipmap (D11).
@@ -152,7 +152,7 @@ Roope Palmroos, and Contributors). Untrusted data: never run it. Paths under its
 | File | Take | Do not take |
 |---|---|---|
 | `main.glsl:350` | Height blend `exp2(sharpness * log2(weight + id_w + alb.a)) * weight`. **Transcribe with header and a `NOTICE.md` entry** | The rest of the material function |
-| `main.glsl:333-336` | The idea of rotating `textureGrad` derivatives. We already rotate in hex tiling; no transcription needed in S55 | Control-map rotation, detiling |
+| `main.glsl:333-336` | The idea of rotating `textureGrad` derivatives. We already rotate in hex tiling; no transcription needed in T3 | Control-map rotation, detiling |
 | `dual_scaling.glsl:16-20,74` | Idea: the near read skipped once the far share is 1. **Reimplement** | One chosen texture only: ours covers every layer |
 | `projection.glsl:6-14` | Idea: one plane per steep pixel rather than a blend. **Reimplement** on our side planes | 45-degree snapping (ours picks x or z) |
 | `macro_variation.glsl:20-24` | Idea: two low-frequency values tint albedo, faded by slope. **Reimplement** | The noise texture (no slot) |
@@ -192,7 +192,7 @@ vertex-grained and rely on `0./0.`. We do not copy them.
   then is scaled so the kept weights sum to the original sum of **all** layer weights. The base weight stays
   `1 - sum(all)`. When the scaled sum is 0 (a tie of more than K), the kept weights are used as read. This makes
   a layer entering or leaving the cap continuous: its share is 0 at the swap. Height biasing applies after it.
-- **R4 High is unchanged.** At High with no feature on, the output is the same as before S55 within AC1's
+- **R4 High is unchanged.** At High with no feature on, the output is the same as before T3 within AC1's
   tolerance, on both paths. The only source change is the skipped far read where its share is exactly 0, which is
   exact (`mix(a, b, 0.0) == a`) and precedented (`terrain_fs.glsl:131`, S11:761 perf2).
 - **R5 Low's strongest-layer normal.** The strongest layer's normal strength is scaled by
@@ -228,7 +228,7 @@ layers stay raw there, TF:577-579). Each costs nothing when off.
     varying, no fragment cost).
   - Base Map: the base material's colour texture, already read for the base weight (`mesh.frag:252`), multiplies
     the layers as `mix(1, base * 2, macroStrength)`. No new slot or read. It gives authors a macro
-    colour map (S54 bakes no colour map; a graph can only make the mask, S54 §8). With no base texture the Inspector says so and it has no effect.
+    colour map (T2 bakes no colour map; a graph can only make the mask, T2 §8). With no base texture the Inspector says so and it has no effect.
 - **R10 Distance Resampling.** `resampleEnabled`, `resampleNear`, `resampleFar` (metres), `resampleReduction`
   (default 0.25). Replaces the fixed tile break (TF:19-22) on this terrain: near only below `resampleNear`, a
   crossfade of near and far between, far only past `resampleFar` with the near read skipped. Far terrain then costs
@@ -249,13 +249,13 @@ layers stay raw there, TF:577-579). Each costs nothing when off.
   RG8 with renormalized mips, on a Background job; on the single-thread web build by rows within S06's 4 ms slice. It is
   bound to `u_normalTexture`, so it adds no slot (a base material normal map is replaced, with an Inspector warning),
   and replaces the vertex normal as the shading base and in whiteout (not in the triplanar weights). Until the bake is
-  ready, its strength in the block is 0 and vertex normals draw. S53's dirty rectangles re-bake a region, uploaded at
+  ready, its strength in the block is 0 and vertex normals draw. T1's dirty rectangles re-bake a region, uploaded at
   most 4 times a second during a stroke. Not at Low.
 - **R15 Layers 10-12.** A terrain with more than 9 layers weights layer `9 + m` by `1 - blendMaps[m].a`, so an
   opaque map means weight 0 and every existing map stays valid (an absent map binds `emptyBlack`, opaque too, RS:1152). No new slot or fetch (the maps are already read).
   `TERRAIN_EXTENDED_LAYERS` selects a 12-entry block; a terrain with up to 9 keeps the 9-entry block. Blend map slots
   for layers 10-12 force all three maps at Medium and Low. `MAX_TERRAIN_LAYERS` becomes 12.
-  `terrainLayerChannel(index)` in `engine/core/terrain/TerrainLayers.h` is the one mapping; S53's paint operation calls it.
+  `terrainLayerChannel(index)` in `engine/core/terrain/TerrainLayers.h` is the one mapping; T1's paint operation calls it.
 - **R16 Compressed layer arrays.** With Compress Terrain Layers on, an export cooks each array slice as an ordinary
   2D KTX2 through S14's encoders, and the player loads the slices of a terrain and concatenates each level
   (`createTextureLevels`, `TEXTURE_ARRAY`):
@@ -283,7 +283,7 @@ layers stay raw there, TF:577-579). Each costs nothing when off.
   Absent means no holes, and no cost anywhere. Created at the height map's resolution by the first cut, deleted when the
   last hole is filled (R29). Why not a blend map's alpha: §6 D3.
 - **R19 The query.** `isHole(map, u, v)` in `engine/core/terrain/TerrainHoles.h` is the only definition: texel
-  `min(floor(u * W), W - 1)`, same for v, with `u = (localX + half) / size`. S53's surface query calls it. A point on a
+  `min(floor(u * W), W - 1)`, same for v, with `u = (localX + half) / size`. T1's surface query calls it. A point on a
   texel edge belongs to the higher texel. Outside the terrain is not a hole (it is off the terrain, as today).
 - **R20 Rendering, every pass.** Fragments in a hole are discarded, at the top of the shader, with the same texel test
   and the same interpolated local XZ, in: colour (`mesh.frag`), the extra pass, depth (shadow atlas, SSAO, depth
@@ -308,7 +308,7 @@ layers stay raw there, TF:577-579). Each costs nothing when off.
   across a hole, nothing falls through drawn ground, and the collider is open everywhere deeper than the rim of R22.
 - **R25 Picking.** `raycastTerrainSurface` and MeshRaycast skip a crossing or closest point inside a hole and go on along
   the ray, so a ray down a hole misses this terrain and returns what lies beyond it. An optional `ignoreHoles` is set by every
-  terrain brush, so a brush can paint and fill inside a hole (it passes `skipHoles = false` to S53's `raycastSurface`, S53 R16). S26's 1e-4 rule (S26:467) holds outside holes.
+  terrain brush, so a brush can paint and fill inside a hole (it passes `skipHoles = false` to T1's `raycastSurface`, T1 R16). S26's 1e-4 rule (S26:467) holds outside holes.
 - **R26 Other consumers.**
 
   | Consumer | Over a hole |
@@ -319,23 +319,23 @@ layers stay raw there, TF:577-579). Each costs nothing when off.
   | Spline fill, terrain bake | Height map only; a bake neither cuts nor fills |
   | Particles (`sampleTerrain`) | No surface: the particle passes |
   | PlacementWorld | The heightfield of R22 |
-  | `sampleTerrainSurface` | Height and normal as today: the height map stays defined under a hole (S53 reports `hole` beside them, R43) |
-  | Lua height query (S53) | Same as above |
+  | `sampleTerrainSurface` | Height and normal as today: the height map stays defined under a hole (T1 reports `hole` beside them, R43) |
+  | Lua height query (T1) | Same as above |
 
-- **R27 `cut_holes` / `fill_holes` semantics** (S53's engine runs them; §6 D5):
+- **R27 `cut_holes` / `fill_holes` semantics** (T1's engine runs them; §6 D5):
   - A region is a rectangle, circle, polygon or R8 mask (threshold 0.5); a texel is in it when its centre is. No falloff, no
     strength: the operation is absolute and idempotent (a second identical call changes 0 texels). `fill_holes` with no
     region fills all.
   - Validation is all-or-nothing; `dry_run` changes nothing; one undo step per call.
-  - The result has `changed_texels`, the rectangle in S53's `changed` (S53 R9), `hole_texels`, `hole_fraction`, `map_created`, `map_removed`,
-    `collision_samples_open` and a `warnings` list (`hole_no_collision`, a region that opens no collision sample, S53 Table 2).
+  - The result has `changed_texels`, the rectangle in T1's `changed` (T1 R9), `hole_texels`, `hole_fraction`, `map_created`, `map_removed`,
+    `collision_samples_open` and a `warnings` list (`hole_no_collision`, a region that opens no collision sample, T1 Table 2).
   - Height, blend and density data are untouched, so filling restores the surface exactly.
 - **R28 Refresh on change.** Rendering: the R8 map re-uploads at most once a frame (`sg_update_image`, D12). Collider:
-  S53's refresh re-evaluates R22 over the dirty rectangle grown by one cell, since a sample depends on four squares
-  (`SetHeights`, or a rebuild, S53's choice). Foliage: the dirty cells. Navmesh: its hash notices at the next bake.
+  T1's refresh re-evaluates R22 over the dirty rectangle grown by one cell, since a sample depends on four squares
+  (`SetHeights`, or a rebuild, T1's choice). Foliage: the dirty cells. Navmesh: its hash notices at the next bake.
 - **R29 Lifecycle.** First cut creates the map and reloads the variant; last fill removes it from the component, and the
   file at save, and reloads the variant. Undo restores either state. While the non-saved `holeMapHolds` count on the component
-  is above 0 (S58 R40: a terrain with an attached Automatic Voxel Volume, in Play), a last fill keeps the map, all solid, and
+  is above 0 (T6 R40: a terrain with an attached Automatic Voxel Volume, in Play), a last fill keeps the map, all solid, and
   reloads nothing, so a first in-game dig costs no variant reload. A hole map whose size differs from the height map
   stays valid (the query is in UV). A hole map that fails to load warns once and draws no holes.
 - **R30 Overlay.** `Holes` overlay (editor only): hole texels hatched in place on a ghost of the surface, so a hole can be
@@ -345,7 +345,7 @@ layers stay raw there, TF:577-579). Each costs nothing when off.
 
 - **R31** Every feature works on GL 3.3, GLES3/WebGL2, Metal, D3D11 and Vulkan, and all export targets. No compute,
   SSBO, bindless, indirect, integer textures or float-bits packing (D13). `texelFetch` is already used in the vertex stage
-  (`includes/vat.glsl:42`, `includes/skinning.glsl`); S55 is its first fragment-stage use on terrain, on `highp` coordinates, and AC23
+  (`includes/vat.glsl:42`, `includes/skinning.glsl`); T3 is its first fragment-stage use on terrain, on `highp` coordinates, and AC23
   runs it on WebGL2.
 - **R32 Slots.** No terrain variant exceeds 16 fragment textures (§6 D4 table). `ShaderLibraryMatrix` gains the worst case
   of every tier with holes, post colour and all lighting, and fails above 16.
@@ -355,11 +355,11 @@ layers stay raw there, TF:577-579). Each costs nothing when off.
 - **R34 No runtime compiler.** The collector reaches every variant a player can ask for:
   - Tiers of an export = the project's tiers of its target platforms, plus any component `quality`, plus all three if a
     script mentions `setTerrainQuality` or `terrainQuality`, or **Ship All Terrain Tiers** is on.
-  - A terrain ships `Thl` when it has a hole map or a Voxel Volume attached to it with `terrainCut = Automatic` (S58 R40). The rule is S55's; if S55
-    lands before S58, S58 adds the second clause and AC10's case in this form.
+  - A terrain ships `Thl` when it has a hole map or a Voxel Volume attached to it with `terrainCut = Automatic` (T6 R40). The rule is T3's; if T3
+    lands before T6, T6 adds the second clause and AC10's case in this form.
   - `MeshShaderEnvironment` gains `terrainTier`, included in `environmentBits` (`ShaderVariantCollector.cpp:214-218`).
   - `PlayerConfig` carries the shipped-tier mask and R2 clamps to it, so a lite player never requests a variant it lacks and
-    never loses the draw. Nothing in S55 relies on a fallback, and no `Thl` or define bit joins `getFallbackProperties`,
+    never loses the draw. Nothing in T3 relies on a fallback, and no `Thl` or define bit joins `getFallbackProperties`,
     because `ShaderPool.h:75-78` allows only features whose loss keeps blocks, and a dropped `Thl` would draw over holes.
 
 ### Performance
@@ -376,7 +376,7 @@ is the RTX machine of `docs/perf/gpu-campaign.md`, not available here. "Mobile" 
   | Terrain Nine | ≤ 0.5x | ≤ 0.3x |
 
   Low on mobile at 1080p: terrain pass ≤ 4 ms (manual).
-- **R36 Feature cost.** No feature on: within 1 % of pre-S55 (host), expected faster from R4. On High, each alone:
+- **R36 Feature cost.** No feature on: within 1 % of pre-T3 (host), expected faster from R4. On High, each alone:
   Holes colour pass ≤ +3 %, depth pass ≤ 1.3x (discard defeats early Z); Noise macro ≤ +3 %; Macro Normal ≤ +3 %; Resampling
   ≤ 1.0x; Cliff Flat Only ≤ 1.0x.
 - **R37 CPU.** `isHole` ≤ 20 ns on the host. Heightfield build with holes ≤ +20 %. Shadow cut selection ≤ 1.5x the view
@@ -423,29 +423,29 @@ No new tool (D15, `docs/mcp/conventions.md`). Group `terrain` (D17).
   - `info.holes`: `map`, `resolution`, `hole_texels`, `hole_fraction`, `collision_cell`; null without a map.
   - Per point: `hole`, `collision_gap`, `nav_excluded`, `layers_painted`, `layers_drawn` (`[{layer, weight}]` after the cap),
     `fetches`.
-  - `stats: ["coverage"]` with S53's `region` (S53 R70) returns the hole fraction and layer-count histogram of that rectangle as
+  - `stats: ["coverage"]` with T1's `region` (T1 R70) returns the hole fraction and layer-count histogram of that rectangle as
     `stats.coverage`.
-- **R44 `visualize_terrain`** (S53's tool) gains overlays `layer_count` (1-12 on a fixed ramp), `fetch_cost` (reads per pixel on
+- **R44 `visualize_terrain`** (T1's tool) gains overlays `layer_count` (1-12 on a fixed ramp), `fetch_cost` (reads per pixel on
   a fixed ramp) and `holes` (R30), and a `quality` argument that renders one frame at that tier without changing anything. Its
   result includes the per-pixel maximum and a histogram read back from the frame.
 - **R45 Setting tiers.** `set_properties` on `terrain.quality` and the other new fields (`terrain.surfaceLayers[i].cliffProjection`,
   `terrain.holeMap` with a path or null); `set_project_settings` on `graphics.terrainQuality.<platform>`. All validated and undoable through
-  the existing paths. `set_terrain_maps` does not change for S55: reflection reaches these fields, and its exception does not rise.
-- **R46 `edit_terrain`** (S53's tool) exposes R27 with the same arguments and result. `get_project_settings` returns the shipped
+  the existing paths. `set_terrain_maps` does not change for T3: reflection reaches these fields, and its exception does not rise.
+- **R46 `edit_terrain`** (T1's tool) exposes R27 with the same arguments and result. `get_project_settings` returns the shipped
   tiers an export would have.
-- **R47 Guide.** `docs/mcp/guide/terrain.md` (S53 or `agent-authoring` creates it; S55 adds its section, and creates it if neither has landed) with how to
+- **R47 Guide.** `docs/mcp/guide/terrain.md` (T1 or `agent-authoring` creates it; T3 adds its section, and creates it if neither has landed) with how to
   check a budget and a hole end to end. No agent guide line. `docs/mcp/TOOLS.md` regenerated. Stay within `tools/mcp/budget.json`: the `terrain` group's
-  limits are S53 R74's, and no `exceptions` entry is added or raised: `sample_terrain` and `visualize_terrain` stay within 1,500 with S55's keys (S53 §6).
+  limits are T1 R74's, and no `exceptions` entry is added or raised: `sample_terrain` and `visualize_terrain` stay within 1,500 with T3's keys (T1 §6).
 - **R48 Lua.** On `Terrain`: `terrainQuality`, `effectiveQuality` (read only), `limitLayersPerPixel`, `offscreenShadows`,
   `macroMode`, `macroScale`, `macroStrength`, `resampleEnabled`, `resampleNear`, `resampleFar`, `heightBlendSharpness`, `macroNormal`,
   `setHoleMap(path)`, `getHoleMapPath()`. On `TerrainSurfaceLayer`: `cliffProjection`. Globally
-  `Engine.setTerrainQuality(q)` and `Engine.clearTerrainQuality()`. The query is S53's `isHoleAt(x, z)` and runtime hole edits are
-  S53's Lua operations.
+  `Engine.setTerrainQuality(q)` and `Engine.clearTerrainQuality()`. The query is T1's `isHoleAt(x, z)` and runtime hole edits are
+  T1's Lua operations.
 
 ### Data & compatibility
 
 - **R49 Fields.** `TerrainComponent` gains, after the `u_vs_terrainParams` run (TC:186-195, its layout is uploaded as is):
-  `Texture holeMap` (added by S53's foundation, S53 R81), `quality` (Auto), `limitLayersPerPixel` (false), `offscreenShadows` (Auto), `macroMode` (Off), `macroScale` (64),
+  `Texture holeMap` (added by T1's foundation, T1 R81), `quality` (Auto), `limitLayersPerPixel` (false), `offscreenShadows` (Auto), `macroMode` (Off), `macroScale` (64),
   `macroStrength` (0.35), `macroTintA` (0.80, 0.84, 0.76), `macroTintB` (1.04, 1.0, 0.92), `macroSlopeFade` (0.33),
   `resampleEnabled` (false), `resampleNear` (30), `resampleFar` (120), `resampleReduction` (0.25), `heightBlendSharpness` (0),
   `macroNormal` (false), and the non-saved, not reflected `holeMapHolds` (0, R29; reset on clone). `TerrainSurfaceLayer` gains `cliffProjection` (Auto), appended and in `operator==`.
@@ -456,11 +456,11 @@ No new tool (D15, `docs/mcp/conventions.md`). Group `terrain` (D17).
   every target. New projects from the templates write Windows, Linux, macOS High, Web Medium, Android and iOS Low, and turn
   Compress Terrain Layers on. Project Settings shows one line on an old project saying what the recommended mobile defaults are.
 - **R52 Textures.** `holeMap` joins S14's CPU-readable slots (S14:123): never block-compressed, R8, NEAREST, clamped, no mips,
-  data retained on load as the height map's is. S05's self-write suppression covers it, through S53's map writer.
-- **R53 New terrains.** The Create Terrain dialog and `create_entity type terrain` (S53) set Limit Layers Per Pixel on, in S53's
-  `applyNewTerrainDefaults` (S53 R91). The struct default stays off so old terrains are untouched.
-- **R54 Lit define bits are 64 wide.** D2's table takes `defineCodes` to 30 entries and S58 R49 adds 4, past the 32 of today's
-  `uint32_t`. S55 widens `MaterialPbr::getDefineBits`, `getDefineBit` and `getDefinesFromBits` (`engine/core/texture/MaterialPbr.cpp:538-563`)
+  data retained on load as the height map's is. S05's self-write suppression covers it, through T1's map writer.
+- **R53 New terrains.** The Create Terrain dialog and `create_entity type terrain` (T1) set Limit Layers Per Pixel on, in T1's
+  `applyNewTerrainDefaults` (T1 R91). The struct default stays off so old terrains are untouched.
+- **R54 Lit define bits are 64 wide.** D2's table takes `defineCodes` to 30 entries and T6 R49 adds 4, past the 32 of today's
+  `uint32_t`. T3 widens `MaterialPbr::getDefineBits`, `getDefineBit` and `getDefinesFromBits` (`engine/core/texture/MaterialPbr.cpp:538-563`)
   to `uint64_t` with `1ull << i`, and every consumer with them: `MeshComponent::litDefineBits` (`MeshComponent.h:211`), `environmentBits`
   and the tests at `RenderSystem.cpp:3270-3272,14816-14819`, `editor/Project.cpp:3788`, `editor/mcp/tools/MaterialsLightingTools.cpp:45-46,82`,
   `editor/window/InspectorMaterialPbr.cpp:197`. A `static_assert` ties the table's size to the width. The field is runtime only
@@ -474,16 +474,16 @@ No new tool (D15, `docs/mcp/conventions.md`). Group `terrain` (D17).
   `main`, with a comment line as `v40`-`v44` have; on a merge with another programme, re-bump so each change has its own version (Doriax ledger).
 - **R57 Doriax overlap (D21; none landed: whichever lands second merges onto the first).**
 
-  | Doriax spec | What S55 touches in common | Rule |
+  | Doriax spec | What T3 touches in common | Rule |
   |---|---|---|
-  | `draw-perf` | `Dlo`, MESH's next free bit, guards point and spot code in `lights.glsl`, `mesh.frag` and shadow includes, and frees two texture units in sun-only scenes. `updateAllTerrainRenderTextures` walks `TerrainComponent` | Bits by name (D2). D4's worst case stays the general variant, so S55 relies on no freed unit. Terrain tiers and `Thl` combine with `Dlo`, and the collector ships each `Dlo` key with its twin, tiers included (AC49). S55's hooks in that function follow whichever loop calls it |
+  | `draw-perf` | `Dlo`, MESH's next free bit, guards point and spot code in `lights.glsl`, `mesh.frag` and shadow includes, and frees two texture units in sun-only scenes. `updateAllTerrainRenderTextures` walks `TerrainComponent` | Bits by name (D2). D4's worst case stays the general variant, so T3 relies on no freed unit. Terrain tiers and `Thl` combine with `Dlo`, and the collector ships each `Dlo` key with its twin, tiers included (AC49). T3's hooks in that function follow whichever loop calls it |
   | `ssr-probes` | G-buffer terrain occlusion: `g_occlusion` is set when the colour variant samples the map, plus `terrainSurface.occlusion` under `HAS_TERRAIN_PBR`; GBUFFER bits `Occ`, `Uv2`; `color[2].a` | `Thl` drops `u_occlusionTexture` from colour (R21), so `g_occlusion` is off with `Thl` and the swap's AO matches. Low has no surface map, so its G-buffer occlusion reads 1 as colour does. Bits by name (AC50) |
   | `mesh-memory` | `MeshComponent::litDefineBits` and `Submesh` move into `StableArray` and `GrowArray`; capacities go | R54's widening applies to the field wherever it lives. `sg_` limits on slots are unaffected |
-  | `render-correctness` | G-buffer variants and the variant match at `RenderSystem.cpp:3270`, shader loops rule ("lod-safe" comments, `terrain_fs.glsl:565`), Foliage Distance | `terrain_select.glsl` and `terrain_macro.glsl` follow that rule. `pbrVariantMatches` learns S55's defines through the one helper of D2, on whichever form lands |
-  | `agent-authoring` | `set_terrain_maps` factors and blend slots 0-2, `terrain.md` | S55 adds no factor and no blend parameter. A terrain using layers 10-12 still paints through `terrainLayerChannel` |
+  | `render-correctness` | G-buffer variants and the variant match at `RenderSystem.cpp:3270`, shader loops rule ("lod-safe" comments, `terrain_fs.glsl:565`), Foliage Distance | `terrain_select.glsl` and `terrain_macro.glsl` follow that rule. `pbrVariantMatches` learns T3's defines through the one helper of D2, on whichever form lands |
+  | `agent-authoring` | `set_terrain_maps` factors and blend slots 0-2, `terrain.md` | T3 adds no factor and no blend parameter. A terrain using layers 10-12 still paints through `terrainLayerChannel` |
 
   **Pixel art.** S41's `Pxs` and S52's stream bits are appended to MESH and DEPTH too, in landing order: bits by name. S49's Analytic particles do not collide, so R26's particle row applies to S20's path only. No name clash.
-- **R58 Eval cases.** S55 adds no tool, but its new keys and its `terrain.md` section need cases that fail without them (AC51).
+- **R58 Eval cases.** T3 adds no tool, but its new keys and its `terrain.md` section need cases that fail without them (AC51).
 - **R59 Vendored text.** `terrain_height_blend.glsl` holds a transcribed formula under `engine/shaderlib`, so it gets a `NOTICE.md` entry and no `engine/notices.json` entry (that file covers `engine/libs`). `python3 tools/ci/check-notices.py` covers it.
 
 ## 6. Design constraints & decisions
@@ -522,7 +522,7 @@ or stochastic paths. Holes are a **property bit** instead of a Lit define becaus
 defines reach only non-manifest colour shaders (RS:3907). G-buffer takes `Thl` and two new tier bits, `Tqm` and `Tql`, so SSR on a Low terrain
 stays within budget; it ignores Macro Variation and Macro Normal, as it ignores hex today.
 
-The programme's property bits are names plus an order among our streams, not reservations (D19), the one table S56, S57 and S58 cite. Each bit
+The programme's property bits are names plus an order among our streams, not reservations (D19), the one table T4, T5 and T6 cite. Each bit
 takes the next free one of its type when it lands, in landing order; pixel art (`Pxs`), Doriax (`Dlo`, `Occ`, `Uv2`) and others are appended the same way. Masks
 are `uint64_t` (`ShaderBuildTypes.h:17`). The spec that lands a bit raises `getShaderPropertyCount` to cover it, adds a case to `getShaderPropertyName` and to
 `ShaderVariantCompiler.cpp`'s definitions, using `shaderPropertyBit`, adds one test pinning the number it got (the form of draw-perf's `ShaderKey.DirectionalOnlyIsMeshBit36`), and bumps
@@ -530,13 +530,13 @@ the shader cache by one (R56).
 
 | Order | Bit | Spec | Define | MESH | DEPTH | GBUFFER |
 |---|---|---|---|---|---|---|
-| 1 | `Thl` | S55 R20 | `TERRAIN_HOLES` | yes | yes | yes |
-| 2 | `Tqm`, `Tql` | S55 | the Medium and Low Lit defines above | no: Lit defines | no | yes |
-| 3 | `Cin` | S57 F3 | `HAS_COMPACT_INSTANCE` | yes | yes | yes |
-| 4 | `Wnd` | S57 F8 | its wind define | yes | yes | yes |
-| 5 | `Dth` | S57 F6 | its dither define | yes | yes | yes |
-| 6 | `Vox` | S58 R49 | `HAS_VOXEL` (G-buffer only: Lit defines do not reach it) | no | no | yes |
-| 7 | `Twd` | S56 D4 | `HAS_TERRAIN_WORLD` | yes | yes | yes |
+| 1 | `Thl` | T3 R20 | `TERRAIN_HOLES` | yes | yes | yes |
+| 2 | `Tqm`, `Tql` | T3 | the Medium and Low Lit defines above | no: Lit defines | no | yes |
+| 3 | `Cin` | T5 F3 | `HAS_COMPACT_INSTANCE` | yes | yes | yes |
+| 4 | `Wnd` | T5 F8 | its wind define | yes | yes | yes |
+| 5 | `Dth` | T5 F6 | its dither define | yes | yes | yes |
+| 6 | `Vox` | T6 R49 | `HAS_VOXEL` (G-buffer only: Lit defines do not reach it) | no | no | yes |
+| 7 | `Twd` | T4 D4 | `HAS_TERRAIN_WORLD` | yes | yes | yes |
 
 **D3 Hole map: its own R8, not a blend map's alpha.** A blend alpha is free (no slot, no fetch) and was the serious option. Rejected:
 - blend maps may be absent or bound black (RS:5819-5834: a map not covered by the array binds `emptyBlack`), and that binding would need
@@ -547,11 +547,11 @@ the shader cache by one (R56).
 - S14 block-compresses blend maps while holes need exact CPU-readable texels, so all of blend 0 would go uncompressed and retained;
 - every paint writer would have to preserve it.
 
-R8 costs a slot only in a terrain that has holes, and gets it from a map rarely set on a terrain (R21). It also lets S56 keep one mask per
+R8 costs a slot only in a terrain that has holes, and gets it from a map rarely set on a terrain (R21). It also lets T4 keep one mask per
 tile with no edge filtering. Alpha goes to layers 10-12 instead (R15), inverted, which has none of these problems because a wrong value only
 tints.
 
-**D4 Slot table, after S55** (worst case: all lighting):
+**D4 Slot table, after T3** (worst case: all lighting):
 
 | Variant | Base | Lighting | Terrain | Total |
 |---|---|---|---|---|
@@ -561,17 +561,17 @@ tints.
 | Low, up to 3 layers, holes | 3 or 4 | 8 or 7 | 3 | 14 |
 | Macro Normal | uses the normal slot | | | unchanged |
 
-**D5 Seam with S53.** S53 owns `TerrainMapStore`, the operation engine, undo and tools. `TerrainMapStore` reads and writes hole rectangles in texels,
-with 0 and 255 only. `TerrainOps` calls `rasterizeRegion` (`TerrainHoles.h`) and reports R27's result. S53's surface query returns
-`isHole`; S55 replaces the listed direct calls of §3 only where S53 has not already moved them. If S53's tool names differ when
-S55 starts, follow S53 and record it in Deviations.
+**D5 Seam with T1.** T1 owns `TerrainMapStore`, the operation engine, undo and tools. `TerrainMapStore` reads and writes hole rectangles in texels,
+with 0 and 255 only. `TerrainOps` calls `rasterizeRegion` (`TerrainHoles.h`) and reports R27's result. T1's surface query returns
+`isHole`; T3 replaces the listed direct calls of §3 only where T1 has not already moved them. If T1's tool names differ when
+T3 starts, follow T1 and record it in Deviations.
 
 **D6 Normals.** Per-pixel normals from the height map in the fragment stage would take a new slot (`u_heightMap` is vertex only) and 4 reads per
 pixel, on a full budget. Rejected. A baked map costs 1 read, uses a slot that already exists, and removes the LOD-dependent shading. Vertex normals stay
 the default and the only option at Low.
 
 **D7 Sampling the hole.** `texelFetch` with no filter gives a texel-exact edge, identical on CPU and GPU, testable bit for bit. The cost is a
-stair-stepped edge at texel scale; S58's voxel surface covers entrances, and the default resolution equals the height map's. A smoothed edge would
+stair-stepped edge at texel scale; T6's voxel surface covers entrances, and the default resolution equals the height map's. A smoothed edge would
 disagree with collision and has no exact CPU form.
 
 **D8 S14's array exclusion.** Lifted without touching S14's format support: a slice is an ordinary 2D texture to the cook, so `Ktx2.cpp:68` keeps
@@ -593,7 +593,7 @@ namespace jasperengine::terrain {
     void openSquares(const HoleMapView&, int samples, float mirrorX, float mirrorZ, std::vector<uint8_t>& open);
     void noCollisionSamples(const std::vector<uint8_t>& open, int samples, std::vector<uint8_t>& out);
     void navHoleCells(const HoleMapView&, int samples, std::vector<uint8_t>& cells);
-    // R27's texel-centre rule: writes 0 (cut) or 255 (fill) through S53's store, returns the changed count
+    // R27's texel-centre rule: writes 0 (cut) or 255 (fill) through T1's store, returns the changed count
     int rasterizeRegion(TerrainMapStore& store, const Shape& region, uint8_t value, TexelRect* changed);
     struct LayerChannel { int map; int channel; bool inverted; };
     LayerChannel terrainLayerChannel(int layer);
@@ -613,9 +613,9 @@ void terrainDiscardHole(){
 
 **D11 Implementation order** for one implementer, each landing separately: (1) move the array code, golden first (AC1), far-read skip;
 (2) tiers, cap, budgets, readouts; (3) holes in shaders, then each consumer; (4) shadow cut; (5) material features;
-(6) layers 10-12; (7) compressed arrays; (8) UX and agent surface. S53's foundation lands before any of them (S53 §8), then S55 runs in
-parallel with S53's rest, S54, S57 and S58, and S56 lands last. Steps 1, 2, 4, 5, 6 and 7 need only that foundation; hole authoring in step 3 and
-the overlays of step 8 need S53's rest (`edit_terrain`, `visualize_terrain`). Until it lands, `TerrainHoles` is driven directly by tests and `set_properties` on `holeMap`.
+(6) layers 10-12; (7) compressed arrays; (8) UX and agent surface. T1's foundation lands before any of them (T1 §8), then T3 runs in
+parallel with T1's rest, T2, T5 and T6, and T4 lands last. Steps 1, 2, 4, 5, 6 and 7 need only that foundation; hole authoring in step 3 and
+the overlays of step 8 need T1's rest (`edit_terrain`, `visualize_terrain`). Until it lands, `TerrainHoles` is driven directly by tests and `set_properties` on `holeMap`.
 
 ## 7. Acceptance criteria
 
@@ -626,7 +626,7 @@ a mutation, disable the named line and show the failure, and record the run.
 | AC | R | Test | Backends | Criterion | Red |
 |---|---|---|---|---|---|
 | AC1 | R4, R6 | `TerrainMaterialsGpu.LegacyHighMatchesPreS55` | G, V | Four scenes (3 colour layers; 4 PBR layers with a cliff; hex and stochastic; post colour with shadows), 640x360. **Golden drawn at the commit before any render change.** G: 0 pixels differ by more than 1/255, at most 0.01 % by 1/255. V: within the Vulkan-to-glcore difference measured on that same pre-change commit, recorded in the test | Change `TERRAIN_HEIGHT_CONTRAST` to 5: fails |
-| AC2 | R4, R7 | `ShaderZeroCost.DefaultVariantsUnchanged` (existing) | CPU | Only the 4 terrain rows of the list are regenerated, once, for the far-read skip; all other rows unchanged; each S55 define and bit off gives the same hash | Add a line to `mesh.frag` outside a guard: fails |
+| AC2 | R4, R7 | `ShaderZeroCost.DefaultVariantsUnchanged` (existing) | CPU | Only the 4 terrain rows of the list are regenerated, once, for the far-read skip; all other rows unchanged; each T3 define and bit off gives the same hash | Add a line to `mesh.frag` outside a guard: fails |
 | AC3 | R3 | `TerrainLayerSelect.Continuity` | CPU | 10,000 weight pairs across each swap: the kept shares change by at most 2x the input step; the sum and the base weight are conserved | Hard top-K without the subtraction: fails |
 | AC4 | R3 | `TerrainMaterialsGpu.LayerCapSeamless` | G, V | A ramp through 5 layers at each tier: no neighbour pixel step above 6/255 beyond the High render's own largest step; golden | Same mutation in `terrain_select.glsl` |
 | AC5 | R3 | `TerrainMaterialsGpu.ShaderMatchesCpuSelect` | G, V | `TERRAIN_DEBUG_VIEW` readback of drawn layer count matches `selectLayers` at 64 points | Off-by-one K in C++ |
@@ -665,39 +665,39 @@ a mutation, disable the named line and show the failure, and record the run.
 | AC38 | R42, R44 | `test_terrain_materials.py::test_preview_and_overlays` | MCP, G | Preview Low draws without saving (project file unchanged); `visualize_terrain quality=low` leaves state unchanged; overlays' maxima match AC6 | Leave preview on |
 | AC39 | R43, R45, R46 | `test_terrain_materials.py::test_agent_fields`, group check | MCP, G | Every field of R43; tiers set by `set_properties` and `set_project_settings`; invalid value refused atomically; the `terrain` group hidden until `tool_groups` enables it | Invalid value accepted |
 | AC40 | R47 | `tools/mcp/gen_tool_docs.py --check`, `tools/mcp/tool_budget.py --check tools/mcp/budget.json`, doc test | CPU | Pass | Stale docs |
-| AC41 | R48 | `LuaTerrainMaterials` in `engine/tests/core/script/`, doc test of Lua blocks | CPU | Every member reads and writes; S53's `isHoleAt` matches `TerrainHoles`; `setTerrainQuality` takes effect | Binding removed |
+| AC41 | R48 | `LuaTerrainMaterials` in `engine/tests/core/script/`, doc test of Lua blocks | CPU | Every member reads and writes; T1's `isHoleAt` matches `TerrainHoles`; `setTerrainQuality` takes effect | Binding removed |
 | AC42 | R49, R50 | `StreamComponent.TerrainMaterialsRoundTrip`, `StreamComponent.OldTerrainResavesIdentical`, `GeneratedScenes` (existing), `Compat.CorpusRoundTrip` (existing), reflection-parity fixture | CPU | Every field round-trips by Stream, Factory and runtime codec; an old scene re-saves byte-identical; `jasperengine-editor reflect --emit-runtime-fields` leaves no diff | Encode a default: fails |
 | AC43 | R51, R53 | `test_terrain_materials.py::test_project_defaults` | MCP, G | Old project: High everywhere and no key written; new template: table of R51; new terrain has the limit on | Change the default |
 | AC44 | R52 | `TextureTypeInference.HoleMapStaysReadable` in `editor/tests/texture/TextureTypeInferenceTest.cpp` | CPU | Cooks to uncompressed R8; CPU pixels present in a cooked build | Remove from the list |
 | AC45 | R35, R36, R37 | `tools/perf/terrain_tiers.py` (new; uses S15's timers), `TerrainHolesBench` | Host, llvmpipe | Each ratio and time, 5 runs, median; results in `terrain-evidence` | The High run is the control |
-| AC46 | R35 | `docs/specs/checklists/S55.md` | Campaign GPU and Android: **manual, not on this host** | Same ratios on the RTX at 4K; Low ≤ 4 ms on the phone; recorded when run | n/a |
+| AC46 | R35 | `docs/specs/checklists/T3.md` | Campaign GPU and Android: **manual, not on this host** | Same ratios on the RTX at 4K; Low ≤ 4 ms on the phone; recorded when run | n/a |
 | AC47 | all | `tools/check-changed` per commit; before the push, the full suite (R55), then `tools/build.sh web`, `android`, `tools/smoke-test.sh`, `GRAPHIC_BACKEND=vulkan` unit tests | Host | Green | n/a |
-| AC48 | R54 | `MaterialPbrDefines.BitsAreSixtyFourWide` in `engine/tests/core/texture/` | CPU | The three functions and `litDefineBits` are `uint64_t`; every table entry round-trips through `getDefineBit`, `getDefineBits` and `getDefinesFromBits`; S58's defines take this past bit 31 | Leave `litDefineBits` at `uint32_t`: fails |
-| AC49 | R57 | `ShaderVariantCollectorTerrain.DloTwinsCoverTiers`, `TerrainMaterialsGpu.TiersUnderDlo` | CPU; G, V | Every S55 tier and `Thl` key with `Dlo` has its general twin; a sun-only terrain draws the same as its twin within the strict tolerance. Runs once `draw-perf` is on the tree, by whichever lands second | Remove the twin for a tier key |
+| AC48 | R54 | `MaterialPbrDefines.BitsAreSixtyFourWide` in `engine/tests/core/texture/` | CPU | The three functions and `litDefineBits` are `uint64_t`; every table entry round-trips through `getDefineBit`, `getDefineBits` and `getDefinesFromBits`; T6's defines take this past bit 31 | Leave `litDefineBits` at `uint32_t`: fails |
+| AC49 | R57 | `ShaderVariantCollectorTerrain.DloTwinsCoverTiers`, `TerrainMaterialsGpu.TiersUnderDlo` | CPU; G, V | Every T3 tier and `Thl` key with `Dlo` has its general twin; a sun-only terrain draws the same as its twin within the strict tolerance. Runs once `draw-perf` is on the tree, by whichever lands second | Remove the twin for a tier key |
 | AC50 | R20, D2 | `ShaderKey.TerrainHolesBitIsPinned`, `.TerrainTierBitsArePinned`, and for G-buffer `TerrainHolesGpu.GBufferAoMatchesColourWithHoles` | CPU; G, V | Each bit's name maps to the number it got at landing; a `Thl` terrain's G-buffer has no occlusion map, once `ssr-probes` is on the tree, by whichever lands second | Set `g_occlusion` with `Thl`: AO differs |
-| AC51 | R58, R47 | Cases in `tools/mcp/eval/cases.py`, run as S53 AC74 says (`-k terrain_`; lent accounts, else unverified): `terrain_cut_hole_check` (guard; "cut a cave mouth and check a ball falls in": `edit_terrain cut_holes`, then `sample_terrain` `collision_gap`), `terrain_mobile_budget` (bad; "why is this slow on phones": `sample_terrain` `info.material`, `visualize_terrain fetch_cost`, must not only list materials), `terrain_set_quality_tier` (guard; "use Low on Android": `set_project_settings graphics.terrainQuality.android`) | eval | Each fails on a surface from before S55's text | That surface |
-| AC52 | R59, R12 | `python3 tools/ci/check-notices.py`; `python3 tools/check_raw_writes.py` (no new raw write: the hole map goes through S53's writer) | CPU | Pass | `--self-test` |
+| AC51 | R58, R47 | Cases in `tools/mcp/eval/cases.py`, run as T1 AC74 says (`-k terrain_`; lent accounts, else unverified): `terrain_cut_hole_check` (guard; "cut a cave mouth and check a ball falls in": `edit_terrain cut_holes`, then `sample_terrain` `collision_gap`), `terrain_mobile_budget` (bad; "why is this slow on phones": `sample_terrain` `info.material`, `visualize_terrain fetch_cost`, must not only list materials), `terrain_set_quality_tier` (guard; "use Low on Android": `set_project_settings graphics.terrainQuality.android`) | eval | Each fails on a surface from before T3's text | That surface |
+| AC52 | R59, R12 | `python3 tools/ci/check-notices.py`; `python3 tools/check_raw_writes.py` (no new raw write: the hole map goes through T1's writer) | CPU | Pass | `--self-test` |
 
 ## 8. Dependencies & conflicts
 
 **Depends on**
-- **S53**: the operation engine, `TerrainMapStore`, surface query, `edit_terrain`, `visualize_terrain`, collision refresh, undo. See §6 D5. Landing order is S53 §8's: S53's foundation first, then S53's rest, S54, S55, S57 and S58 in parallel, then S56 last.
+- **T1**: the operation engine, `TerrainMapStore`, surface query, `edit_terrain`, `visualize_terrain`, collision refresh, undo. See §6 D5. Landing order is T1 §8's: T1's foundation first, then T1's rest, T2, T3, T5 and T6 in parallel, then T4 last.
 - S11 (Lit defines, hex), S14 (cook, encoders, CPU-readable slots), S15 (timers), S19 (bake), S26 (picking), S30 (runtime codec), S34 (lite), S10 (cascade fit).
 
 **Blocks and seams**
-- **S53** must: store hole rectangles; call `rasterizeRegion`; return R27's result; include `isHole` in the surface query; set `ignoreHoles` on brush rays; call
+- **T1** must: store hole rectangles; call `rasterizeRegion`; return R27's result; include `isHole` in the surface query; set `ignoreHoles` on brush rays; call
   `terrainLayerChannel` for paint; grow a collider refresh by one cell and apply R22; re-bake Macro Normal from dirty rectangles; give Create Terrain the limit on (R53);
   host R44's overlays.
-- **S56**: a hole map is per tile, with no filtering, so tile edges agree. `TerrainHoles` takes a view, and tiled stores supply one per tile. Each tile's collider and nav lattice apply
-  R22 and R23; the rim rule crosses tile edges only if the lattice does. The tier is global, so one variant across tiles, and `Thl` is per World (S56 D14: a tile with no holes binds a shared solid texel). `TerrainDetailBuilder` keys by slice, so tiles
+- **T4**: a hole map is per tile, with no filtering, so tile edges agree. `TerrainHoles` takes a view, and tiled stores supply one per tile. Each tile's collider and nav lattice apply
+  R22 and R23; the rim rule crosses tile edges only if the lattice does. The tier is global, so one variant across tiles, and `Thl` is per World (T4 D14: a tile with no holes binds a shared solid texel). `TerrainDetailBuilder` keys by slice, so tiles
   can share one array. The far overview should draw at Low. Shadow cut per tile.
-- **S57**: the foliage origin test comes through S53's query. `HoleMapView` is a plain view over texels, so a job's copied texels use the same `isHole`; a hole edit reaches S57 as S53's dirty event. R26's foliage row is what S57's `exclude.holes` default must keep. No spec of this programme bumps the scene version (R50, S53 R81, S56 R54, S57 R60, S58 R80).
-- **S58**: cuts a footprint with `cut_holes` and an R8 mask, and fills it with the same mask (no ownership tag in the map). S55 owns S58's two requests: `holeMapHolds` (R29, R49) and the collector rule (R34). The rim of R22 means an entrance should be at least 3 collision cells wide
+- **T5**: the foliage origin test comes through T1's query. `HoleMapView` is a plain view over texels, so a job's copied texels use the same `isHole`; a hole edit reaches T5 as T1's dirty event. R26's foliage row is what T5's `exclude.holes` default must keep. No spec of this programme bumps the scene version (R50, T1 R81, T4 R54, T5 R60, T6 R80).
+- **T6**: cuts a footprint with `cut_holes` and an R8 mask, and fills it with the same mask (no ownership tag in the map). T3 owns T6's two requests: `holeMapHolds` (R29, R49) and the collector rule (R34). The rim of R22 means an entrance should be at least 3 collision cells wide
   and the voxel surface should overlap the hole's edge by one texel. `sample_terrain` reports `collision_gap` for checking. Holes never make walls.
 
 **Hooks in hotspots** (D2): `RenderSystem.cpp`: 3623-3626 inputs, 3908-3916 defines, 5481-5726 moved out, 5752-5785 block fill call, 5787-5853 hole bind call, 6539-6552 block offset, 9023 and
 `terrainViewData` call for the shadow cut, 14811-14826 reload. `RenderSystemShadows.cpp`: `prepareCameraShadows` calls cut selection. `MeshSystem.cpp`: raycast crossing and closest point, foliage origin. `InspectorWindow.cpp`
-9801 region: one panel call. `TerrainEditWindow.cpp`: brush modes via S53. `WorldTools.cpp`: `terrainSample`, `terrainInfo` call a new `TerrainMaterialInfo` helper in `editor/mcp/`. Shared hotspots with other
+9801 region: one panel call. `TerrainEditWindow.cpp`: brush modes via T1. `WorldTools.cpp`: `terrainSample`, `terrainInfo` call a new `TerrainMaterialInfo` helper in `editor/mcp/`. Shared hotspots with other
 streams: `terrain_fs.glsl`, `terrain_vs.glsl`, `TerrainComponent.h`, `MaterialPbr.cpp` table, `Render.h` texture enum (append only), `tools/mcp/budget.json`, `NOTICE.md`.
 
 **Verifiable on this host (8 cores, software rendering, no KVM, no Windows or macOS).** There is no CI, so a row marked No is unverified until a person runs its command.
@@ -710,9 +710,9 @@ streams: `terrain_fs.glsl`, `terrain_vs.glsl`, `TerrainComponent.h`, `MaterialPb
 | Android APK build | Yes, build only; no emulator (no KVM), so ASTC draw is **not** verified here | On a host with `/dev/kvm`: `ANDROID_PROJECT=terrain-materials ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` |
 | Windows build and CPU suites | **No** | With `vcvars64`: `cmake -S engine -B build-engine-gl -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DJASPERENGINE_TESTS=ON && cmake --build build-engine-gl --target jasperengine-core-tests && build-engine-gl/tests/core/jasperengine-core-tests.exe --gtest_filter=Terrain*-*Gpu*` |
 | macOS build; real Metal draws | **No** | `cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON && cmake --build build-engine --target jasperengine-core-tests && build-engine/tests/core/jasperengine-core-tests --gtest_filter=TerrainMaterialsGpu*:TerrainHolesGpu*:TerrainShadowsGpu*` |
-| iOS build; real D3D11 draws | **No**: no automated pixel test exists | iOS: `python3 tools/xcode_sync_engine.py --check`, then `terrain-materials` from the Xcode workspace. D3D11: `docs/specs/checklists/S55.md` on Windows |
-| Real GPU timing, mobile timing | **No**: AC46, manual | `docs/specs/checklists/S55.md` |
-| `fixture-unity` MCP tests | No: they skip; S55's tests use their own project (the default MCP suite) | |
+| iOS build; real D3D11 draws | **No**: no automated pixel test exists | iOS: `python3 tools/xcode_sync_engine.py --check`, then `terrain-materials` from the Xcode workspace. D3D11: `docs/specs/checklists/T3.md` on Windows |
+| Real GPU timing, mobile timing | **No**: AC46, manual | `docs/specs/checklists/T3.md` |
+| `fixture-unity` MCP tests | No: they skip; T3's tests use their own project (the default MCP suite) | |
 
 ## 9. Risks & defaults
 
@@ -729,7 +729,7 @@ streams: `terrain_fs.glsl`, `terrain_vs.glsl`, `TerrainComponent.h`, `MaterialPb
 | Tier change is a hitch (variant reload, array rebuild) | Stand-in draws meanwhile (RS `needVariantReload`). Documented as a settings-menu operation, not per-frame |
 | Web raw path of a big array still takes heap | New projects compress by default. Old projects keep raw for fidelity (R51) and see the setting's hint |
 | Height in the alpha of a PBR colour slice breaks a future reader of that alpha | The shader ignores it today (TF:579-580); a comment and AC8 pin it |
-| S53 names differ at implementation | D5: follow S53, record in Deviations |
+| T1 names differ at implementation | D5: follow T1, record in Deviations |
 | Off-screen shadows change the look of old scenes that had the bug | Accepted as a bug fix, only where such a caster exists; Off restores it. Listed in release notes |
 
 **Defaults taken.** Holes cut in the fragment stage only. Low on Android and iOS, Medium on web, High on desktop, only for new projects. Limit Layers Per Pixel on for new terrains. Macro strength 0.35 when on. Layer count 12 at most, no 16:

@@ -1,4 +1,4 @@
-# S53 — Terrain operations and authoring
+# T1 — Terrain operations and authoring
 
 Wave 5 (terrain programme). Owner stream: terrain. Programme decisions: `TERRAIN-LEDGER.md` D1-D21,
 binding. Analyst reports (reading only, re-verified here where cited): `our-terrain-authoring.md`,
@@ -11,7 +11,7 @@ query, so a brush stroke, an agent call, a Lua script, a spline bake and a gener
 thing and can be tested without a GPU. A person gets a terrain that starts from a real dialog, tells
 them what is under the cursor, shows slope and height on the ground and reports its errors in the
 window. An agent gets declarative, deterministic edits it can validate, undo in one step and verify by
-numbers and by picture. A game gets height queries and runtime edits with stated costs. S54 to S58
+numbers and by picture. A game gets height queries and runtime edits with stated costs. T2 to T6
 build on the seams defined here.
 
 ## 2. Scope
@@ -37,14 +37,14 @@ build on the seams defined here.
 **Out of scope** (default decisions, not open questions)
 - A non-destructive modifier stack: ruled out by S18:40-42 and it stays out. Terrain edits are
   destructive and undoable.
-- Noise graphs, `generate_terrain`, full-map erosion jobs: S54. S53 keeps today's value noise for the
+- Noise graphs, `generate_terrain`, full-map erosion jobs: T2. T1 keeps today's value noise for the
   Noise brush and `set_terrain_maps` (moved, not extended).
 - What holes do in the renderer, collision, navmesh and picking, the terrain material shader, a layer
-  cap: S55 (D7, S55 R18-R30). S53 runs `cut_holes` and `fill_holes` and answers `isHoleAt`.
-- Tiled worlds, streaming, collision paging, auto-regions: S56 (D8). S53's store abstraction is what
-  S56 implements.
-- Partial foliage refill, placement on jobs, `scatter_by_rules`: S57. S53 keeps the existing
-  whole-layer refill and publishes dirty rectangles for S57 to narrow.
+  cap: T3 (D7, T3 R18-R30). T1 runs `cut_holes` and `fill_holes` and answers `isHoleAt`.
+- Tiled worlds, streaming, collision paging, auto-regions: T4 (D8). T1's store abstraction is what
+  T4 implements.
+- Partial foliage refill, placement on jobs, `scatter_by_rules`: T5. T1 keeps the existing
+  whole-layer refill and publishes dirty rectangles for T5 to narrow.
 - A sokol region-update patch (see DC9, D12). Compute, SSBOs, GPU-side editing: never (`CLAUDE.md`).
 - Do-not-copy: no CBT terrain, no GPU grass, no GPU-driven culling (`docs/specs/README.md:23-25`).
   Terrain3D is MIT and only its ideas are taken (D14): no Godot code is lifted.
@@ -206,7 +206,7 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
 ### Functional — the operation engine (D1, D4)
 
 - **R1** `engine/core/terrain/` holds the engine, namespace `jasperengine::terrain`, with no ECS,
-  render or editor includes (only `math/`, `jobs/`, the standard library, and the `noise/` headers S54 R36
+  render or editor includes (only `math/`, `jobs/`, the standard library, and the `noise/` headers T2 R36
   and N8 name for `noise::compat` and `HeightfieldErosion`).
   `TerrainOpsDeps.NoEcsOrRenderIncludes` enforces it by reading the folder's includes (the
   source-reading precedent is `SokolPatchMarkers`). Every terrain write in engine and editor goes
@@ -214,7 +214,7 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
   only exceptions are structural: creating, deleting, rebinding, resizing or converting a whole map.
 - **R2** `TerrainMapStore` is abstract: read and write rectangles of height, blend, hole and density
   data in texels, as normalized floats and as stored bytes, with dirty-rectangle reporting (§6
-  sketch). Callers never touch `TextureData`. Its contract for S56 is R86. Rectangles may cross a
+  sketch). Callers never touch `TextureData`. Its contract for T4 is R86. Rectangles may cross a
   store's tiles.
 - **R3** Four stores ship.
   - `RawMapStore` (pure): owned or borrowed buffers; used by tests, generation and the spline bake's
@@ -259,14 +259,14 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
   Terrain3D's silent return, `terrain_3d_editor.cpp:102-104`).
 - **R11** Quantization is one rule for every map: `lround(clamp01(v) * max)`. Only texels whose value
   changed are written back: untouched texels, including those inside a rect, keep their bytes.
-- **R12** `cut_holes` and `fill_holes` follow S55 R18, R19, R27 and R29 exactly (§6 DC3). The map is
+- **R12** `cut_holes` and `fill_holes` follow T3 R18, R19, R27 and R29 exactly (§6 DC3). The map is
   `holeMap`: R8, 0 = hole, 255 = solid, created at the height map's resolution by the first cut,
   removed by the last fill. A texel is in the region when its centre is (filters apply, then a mask's
   threshold is 0.5). There is no falloff and no strength, and a second identical call changes 0
   texels. `fill_holes` with no shape fills all. The op's result carries `hole_texels`,
-  `hole_fraction`, `map_created`, `map_removed` and, once S55's collider rule exists,
-  `collision_samples_open`. Height, blend and density stay untouched. While S55's consumers have not
-  landed, a cut warns `holes_not_rendered`; S55 removes that warning.
+  `hole_fraction`, `map_created`, `map_removed` and, once T3's collider rule exists,
+  `collision_samples_open`. Height, blend and density stay untouched. While T3's consumers have not
+  landed, a cut warns `holes_not_rendered`; T3 removes that warning.
 - **R13** `remap_layers {order}` moves every layer's paint to its new index across the blend maps and
   reorders `surfaceLayers` in the same undo step. The Terrain window's layer drag and delete use it,
   so deleting or reordering a layer keeps the paint on the right layer (fixes `Terrain.cpp:136-137`,
@@ -277,7 +277,7 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
 
 - **R14** `engine/core/terrain/TerrainSurface.h` is the one implementation of height, normal, is-hole
   and ray. `querySurface(TerrainComponent&, localX, localZ)` in `engine/core/object/TerrainEdit.h` is
-  the one function callers use (S56 adds its world lookup there). `MeshSystem::sampleTerrainSurface`,
+  the one function callers use (T4 adds its world lookup there). `MeshSystem::sampleTerrainSurface`,
   `sampleTerrainHeight`, `sampleTerrainHeightTexels`, `terrainTexelCoord` and `raycastTerrainSurface`
   stay as one-line forwarders so their callers do not change (D2). The private copies at TEW:675-695
   and TEW:3904 go.
@@ -285,11 +285,11 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
   within 1e-4 of the shader's fetch (S18:530, S26:467). Normals keep today's forward difference
   exactly, so foliage and physics do not move.
 - **R16** It never returns NaN. Outside the terrain it clamps to the edge and sets `inside = false`.
-  A hole only sets `hole`: height and normal stay defined under it (S55 R26, S58 R39). With no map loaded, it returns height 0, up normal and `present = false`. `exact` is true on a
-  single map; S56's tiled query (its R24) returns false when it answers from an overview.
+  A hole only sets `hole`: height and normal stay defined under it (T3 R26, T6 R39). With no map loaded, it returns height 0, up normal and `present = false`. `exact` is true on a
+  single map; T4's tiled query (its R24) returns false when it answers from an overview.
   `raycastSurface` takes `skipHoles`: `Terrain:raycast` passes true, brush rays always pass false
-  (S55's `ignoreHoles`, so a hole can be filled), and `MeshSystem::raycastTerrainSurface` passes false
-  until S55 changes it.
+  (T3's `ignoreHoles`, so a hole can be filled), and `MeshSystem::raycastTerrainSurface` passes false
+  until T3 changes it.
 
 ### Functional — migrating the writers
 
@@ -304,7 +304,7 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
   `fractal_noise` produce today's bytes through the internal `fill_noise` op on a `RawMapStore`.
   `random_noise` moves to a per-texel hash with `seed`: same seed gives the same map everywhere, but
   not today's map, which was never portable. Recorded in `docs/terrain.md`. Agent-authoring adds
-  `blendmap.index` and layer factors to this schema (R97); S53 and S55 add nothing to it.
+  `blendmap.index` and layer factors to this schema (R97); T1 and T3 add nothing to it.
 - **R20** The spline bake writes through `applyField`, and `TerrainSplineBake::bakeHeights`,
   `bakeBlend` and `bakeDensity` keep their signatures through `RawMapStore`, so
   `TerrainSplineBakeTests.*` run unchanged. `apply` and `TerrainSplineLiveSession` use an
@@ -316,8 +316,8 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
   `scriptedStampSeconds`, `ActiveStroke::workingPixels`, `beforeSnapshot` and `heightReference*` are
   gone. `TerrainErosion.*` lives in `engine/core/terrain/` (D1, with `std::function` replaced by a
   template or plain callback). `TerrainNoise.h` moves beside it with its bytes unchanged, or the
-  kernels call `noise::compat` if S54 has landed; whichever of S53 and S54 lands second deletes the
-  header (S54 R36, N13). No `TODO`, no dead path.
+  kernels call `noise::compat` if T2 has landed; whichever of T1 and T2 lands second deletes the
+  header (T2 R36, N13). No `TODO`, no dead path.
 - **R23** A map edit does not rebuild the terrain. Height edits refit the node ranges overlapping the
   dirty rectangle and their ancestors (`MeshSystemTerrainEdit.cpp`), keep `heightMapLoaded` true, and
   bump a new `TerrainComponent::surfaceRevision`. `SplineSystem.cpp:713`, `MeshTriangles.cpp:162` and
@@ -404,12 +404,12 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
 
 - **R40** `applyField(store, map, rect, field)` runs a per-texel callback `(x, z, current) -> {weight,
   target}` with the same quantization, dirty tracking and overlay: the C++ route for spline bakes and
-  for S54.
+  for T2.
 - **R41** Other terrains on the same file keep following an edit (`refreshSharing`, TMU:114), without
   a whole texture copy: they share the pool entry and the same GPU image.
 - **R42** `TerrainEditEvents`: every height, hole, blend and density write, whichever route it took,
   publishes `(terrain, map, rect)` once per frame to subscribers (RAII subscriptions, S09). Node
-  refit, overlay, GPU upload and collision use it, and S55 (Macro Normal), S56 and S57 (re-snap,
+  refit, overlay, GPU upload and collision use it, and T3 (Macro Normal), T4 and T5 (re-snap,
   foliage refill) subscribe. With no edit nothing is allocated.
 
 ### Platform and backends
@@ -417,7 +417,7 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
 - **R43** The engine, query and runtime edits work on all five backends and six export targets, with
   no compute, SSBO or render-to-height. Runtime uploads use only stream images
   (`createDynamicHeightTexture`, DC9). The editor overlays use existing transparent meshes and lines,
-  with no terrain shader change (DC8; S55 owns those shaders).
+  with no terrain shader change (DC8; T3 owns those shaders).
 - **R44** Single-thread web: `parallelFor` runs inline, ops never wait on a job, and `applyOps` works
   on the `st` player.
 - **R45** On GLES3 and WebGL2, the upload path converts only the dirty rectangle into a float shadow
@@ -457,7 +457,7 @@ host in release, idle.
   Terrain window closed: no query per frame.
 - **R54** Player size: linked `.text` and `.rodata` growth on Linux glcore ≤ 96 KiB, web `st` gzipped
   ≤ 32 KiB, measured against the merge base and recorded in `docs/perf/terrain.md` (no player module:
-  games with a terrain get this code, others lose it to dead-stripping; D18 lists no module for S53).
+  games with a terrain get this code, others lose it to dead-stripping; D18 lists no module for T1).
 
 ### Editor UX (human)
 
@@ -533,7 +533,7 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
   (a colour ramp from 0 to Terrain Height), Slope (0-15 green, 15-30 yellow, 30-45 orange, over 45
   red, or the Slope Filter's range when it is on), Contours (interval in metres, auto by default),
   Layer Weights (palette per layer, with a legend of layer names). Later specs add sources through R90
-  (S55 Holes and budgets, S56 tiles, S57 density), which take the next digits. Scene view only, saved
+  (T3 Holes and budgets, T4 tiles, T5 density), which take the next digits. Scene view only, saved
   with the workspace per scene, never in a game or camera image, and it updates at most 10 times a
   second from dirty rectangles. A legend sits in the Scene view's corner. Implementation is DC8.
 - **R66** **Slope Filter** is the paint mask's new label, and it can reach every map op: Slope Filter checkbox,
@@ -565,9 +565,9 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
 - **R70** `sample_terrain` gains `region`, `stats` (`height`, `slope`, `layers`), `slope_bins`,
   `issues`, `hash`, and existing arguments and results do not change, apart from agent-authoring's rename of
   `foliage_layers` to `details` (R97). Full map up to 2049²; larger maps stride and report `stride`. Later specs add to it
-  under these names only: S55's `info.material`, `info.holes`, per-point fields and `stats: ["coverage"]` over `region`
-  (S55 R43; S55 D5: S53's names win), S56's per-point `state` and `world` (S56 R45, R46), S57's `foliage` over `region`
-  (S57 R55). With all of them it stays within `tool_default` (R74).
+  under these names only: T3's `info.material`, `info.holes`, per-point fields and `stats: ["coverage"]` over `region`
+  (T3 R43; T3 D5: T1's names win), T4's per-point `state` and `world` (T4 R45, R46), T5's `foliage` over `region`
+  (T5 R55). With all of them it stays within `tool_default` (R74).
 - **R71** Framing a terrain is `visualize_terrain`'s `framing` (`fit`, `top`, `orbit`), through
   `SceneViewController::frameAll(sceneProject, includeTerrain)`, which the Terrain window's Frame Terrain also calls, for
   the terrain alone. `set_scene_camera` does not change: `frame_all` keeps S26 R18 and Alt+F, and its exception does not
@@ -584,12 +584,12 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
   jasper://docs/terrain`, with no digest section and no line in the 3D bullet; it stays ≤ 8,192 bytes with ≥ 1,500 free
   (`budget.json` `guide`), and the entry needs AC74's case `terrain_find_docs`. `tool_groups`' description for `terrain`
   (`McpToolGroups.cpp:25`) is updated.
-- **R74** `budget.json`: `groups.terrain {chars: 16000, tools: 10, spec}`, the one limit for S53-S57 (D17; the others
-  refer here), lowered to the measured total plus 5 % when S56 lands. No S53-S57 tool gets an `exceptions` entry: every
+- **R74** `budget.json`: `groups.terrain {chars: 16000, tools: 10, spec}`, the one limit for T1-T5 (D17; the others
+  refer here), lowered to the measured total plus 5 % when T4 lands. No T1-T5 tool gets an `exceptions` entry: every
   new tool fits `tool_default` (1,500) by its shape (R95). The 10 tools, sized by a script over the §6 schemas (estimates,
   nothing built): `sculpt_terrain` (2,699, its existing exception), `set_terrain_maps` (2,369; about 2,680 with
   agent-authoring), `sample_terrain` 1,431 with every later key, `edit_terrain` 1,461, `visualize_terrain` 1,434,
-  `export_terrain_heightmap` 696, S54's `generate_terrain` 1,249 and `preview_noise_graph` 883, S56's `edit_terrain_world`
+  `export_terrain_heightmap` 696, T2's `generate_terrain` 1,249 and `preview_noise_graph` 883, T4's `edit_terrain_world`
   884, agent-authoring's `edit_terrain_details` (about 1,100): about 14,320 in all. `test_tool_groups.py:208` lists the new
   tools. `docs/mcp/TOOLS.md` is regenerated.
 - **R75** Lua on `Terrain` (§6 sketch), in a new `engine/core/script/binding/TerrainClassesLua.cpp`:
@@ -634,8 +634,8 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
   next line. Node ranges refit in `MeshSystem::update`; collision refreshes before the next physics
   step, through `SetHeights` on the block-aligned sample rectangle grown by one cell
   (`JoltTerrainRefresh.{h,cpp}`, under `JASPERENGINE_PHYSICS_3D`), with the same per-sample function
-  as `buildHeightFieldShape` so S55's rim rule (its R22, R28) holds in both, and activates bodies in
-  the box; GPU upload follows pacing (DC9); foliage is flagged at most 4 times a second (S57 narrows
+  as `buildHeightFieldShape` so T3's rim rule (its R22, R28) holds in both, and activates bodies in
+  the box; GPU upload follows pacing (DC9); foliage is flagged at most 4 times a second (T5 narrows
   it). `ColliderSource` other than the terrain heightfield is not touched.
 - **R80** The NavMesh is not rebaked: a NavMesh Surface over an edited terrain reports stale as
   today's staleness does (a `navmesh_stale` issue), and the game calls `bakeAsync()`.
@@ -643,8 +643,8 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
 ### Data and compatibility
 
 - **R81** New fields default so old projects load unchanged, with no scene version bump
-  (`docs/specs/README.md`, Serialization compatibility, as S55 R50): `allowRuntimeEdits` (false), and
-  `TerrainComponent::holeMap` (empty; S53's foundation adds it, §8, and S55 R49 the rest). They go through
+  (`docs/specs/README.md`, Serialization compatibility, as T3 R50): `allowRuntimeEdits` (false), and
+  `TerrainComponent::holeMap` (empty; T1's foundation adds it, §8, and T3 R49 the rest). They go through
   `StreamComponents.cpp:573`, `RuntimeFields.gen.inc`, `ComponentHooks.cpp:152-158`,
   `RenderReflect.cpp:336`, `catalog_snapshot.json` and the factory, in one commit. `surfaceRevision`
   and the edit state are not serialized and reset in `EntityCloner.cpp:365`.
@@ -657,60 +657,60 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
   (R66). A stored `brushStrength` keeps its number, and R34 and R35 keep its click and held rates; only a moving stroke's
   deposit goes from per second to per distance, which no stored number could convert, so nothing migrates. Every key here is
   optional and new, so no version bump, migration or fixture (`AGENTS.md`, Invariants).
-- **R84** Undo history is not persisted, so nothing migrates; a project's first run with S53 loads and
+- **R84** Undo history is not persisted, so nothing migrates; a project's first run with T1 loads and
   draws the same (`test_upgrade_from_main.py` stays green). Writing a hole map bumps nothing; an older
   editor opening that scene preserves the unknown field (S03).
 - **R85** Exported games: `TerrainEdit` queries read what cooks already keep (S14 R3). Allow Runtime
-  Edits is visible to the cook and the player's variant check. Hole maps cook as S55 R52 says.
+  Edits is visible to the cook and the player's variant check. Hole maps cook as T3 R52 says.
 
-### Seams with S54 to S58
+### Seams with T2 to T6
 
-These come from the sibling specs (S54 §8 and N9, S55 D5 and §8, S56 D11, D12 and §8, S57 §8). Names
+These come from the sibling specs (T2 §8 and N9, T3 D5 and §8, T4 D11, D12 and §8, T5 §8). Names
 here win where theirs were assumptions (each of them says so).
 
-- **R86** Store contract for S56. Texels are signed; a map's extent is `format(map).bounds`, not `[0,
+- **R86** Store contract for T4. Texels are signed; a map's extent is `format(map).bounds`, not `[0,
   W)`. Each map has its own lattice; ops convert only through `worldOfTexel` and `texelOfWorld`, never `(i
-  + 0.5) / W`. These two give each map its own frame, so no `frameOf` is needed (S56 D12).
+  + 0.5) / W`. These two give each map its own frame, so no `frameOf` is needed (T4 D12).
   A write may refuse (past a limit, read only): `canWrite(map, rect)` runs for every
   rectangle before an overlay commits, so a refusal changes nothing. A write reports tiles created, and
-  `takeUndoHook()` hands what it created to `TerrainMapDeltaCmd`, which runs the hook with the step (S56
+  `takeUndoHook()` hands what it created to `TerrainMapDeltaCmd`, which runs the hook with the step (T4
   R30; the single-map store returns null).
   `preferredBlock(map)` and `beginLarge(map, rect)` exist; the single-map store answers the whole map
   and a null token.
 - **R87** Large edits. No kernel allocates a buffer larger than `preferredBlock` plus its margin when
   the rectangle is larger than that block. With a non-null `beginLarge` token, `applyOps` works block
-  by block straight on the store and the token holds undo (S56 R30); with a null token it uses the
+  by block straight on the store and the token holds undo (T4 R30); with a null token it uses the
   overlay, which holds only touched tiles. Both give the same bytes.
-- **R88** `terrain::Batch` is the absolute write route for generators (S54 N9): `Batch batch(store)`,
+- **R88** `terrain::Batch` is the absolute write route for generators (T2 N9): `Batch batch(store)`,
   `setHeights(rect, normalized)`, `setLayerWeights(rect, layers, weights)`, `setDensity(rect,
   foliageLayer, values)`, `readHeights(rect, out)`, `commit()` returning `TerrainOpResult`, or
   `discard()`. Its `setLayerWeights` is the single encoder of layer weights: clamp 0..1, normalize a
-  sum above 1, layer 0 takes the rest unless it has its own value (S54 R30). `paint_by_rules` uses it.
+  sum above 1, layer 0 takes the rest unless it has its own value (T2 R30). `paint_by_rules` uses it.
   The editor wraps a Batch's commit as one `TerrainMapDeltaCmd` with the caller's undo name.
-- **R89** Op registration (S57 R23). `registerOp(name, validate, apply)` adds a kind from another
+- **R89** Op registration (T5 R23). `registerOp(name, validate, apply)` adds a kind from another
   file: it runs inside the same validation, overlay, result and undo, and returns its own result
   fields in the op's entry. An op's own keys arrive in its op object, which the listed schema leaves open (R95), so a later
   spec adds no schema text and the handler names the valid keys in its error. Registered ops may write non-map data through
-  their own store (S57's `TreeStore`), which joins the same undo step. A registered op may declare `spansFrames` (S57's
+  their own store (T5's `TreeStore`), which joins the same undo step. A registered op may declare `spansFrames` (T5's
   `bake_impostors` renders one view per frame): the call is then a job whatever its texel count.
-- **R90** Overlay sources (S55 R44, S56 R46, S57 R57). `TerrainOverlay::registerSource(name, bake,
-  legend)`: `bake` fills an RGBA8 rectangle from the store, `legend` returns colour stops. S53
+- **R90** Overlay sources (T3 R44, T4 R46, T5 R57). `TerrainOverlay::registerSource(name, bake,
+  legend)`: `bake` fills an RGBA8 rectangle from the store, `legend` returns colour stops. T1
   registers its four through this same interface. A source may instead declare that it needs a
-  rendered frame (S55's `fetch_cost`). `visualize_terrain`'s `overlay` is a string checked in the handler, so a source adds no schema text, and
+  rendered frame (T3's `fetch_cost`). `visualize_terrain`'s `overlay` is a string checked in the handler, so a source adds no schema text, and
   `quality` and `foliage_quality` are those specs' own keys.
 - **R91** `applyNewTerrainDefaults(TerrainComponent&)` in `TerrainEdit.h` is the one place new
-  terrains get defaults: S55 R53 adds Limit Layers Per Pixel there, S57 F12 its Detail Distance. `TerrainEditWindow` keeps one-line
-  slots for S54's `drawGenerateSection()` and for S57's panel, which also adds its Foliage section to Terrain Settings (S57 R20). Create Terrain's Start Shape lists
-  `TerrainPresets::list()` and calls `TerrainGeneration::start()` once S54 has landed (S54 R61),
+  terrains get defaults: T3 R53 adds Limit Layers Per Pixel there, T5 F12 its Detail Distance. `TerrainEditWindow` keeps one-line
+  slots for T2's `drawGenerateSection()` and for T5's panel, which also adds its Foliage section to Terrain Settings (T5 R20). Create Terrain's Start Shape lists
+  `TerrainPresets::list()` and calls `TerrainGeneration::start()` once T2 has landed (T2 R61),
   replacing Rolling Hills and Island.
 - **R92** Layer addressing. Paint ops map a layer to a blend map and channel only through
-  `terrainLayerChannel(index)` in `engine/core/terrain/TerrainLayers.h` (S55's R15), and never assume
-  nine layers (`MAX_TERRAIN_LAYERS` becomes 12 there). S53's foundation (§8) creates
-  that header and `TerrainHoles.{h,cpp}` (`isHole`, `HoleMapView`, `rasterizeRegion`) as S55
-  specifies; S55 extends them.
-- **R93** `TerrainSurfaceQuery` is the abstract form of the query for regions and worlds (S57
-  `FoliageRegion`, S56 R24): `sample`, `heightAt`, `raycast`. `SurfaceView` is its copied-texel form
-  for jobs (S57 R7). `querySurface` uses the single-map implementation unless S56's hook applies.
+  `terrainLayerChannel(index)` in `engine/core/terrain/TerrainLayers.h` (T3's R15), and never assume
+  nine layers (`MAX_TERRAIN_LAYERS` becomes 12 there). T1's foundation (§8) creates
+  that header and `TerrainHoles.{h,cpp}` (`isHole`, `HoleMapView`, `rasterizeRegion`) as T3
+  specifies; T3 extends them.
+- **R93** `TerrainSurfaceQuery` is the abstract form of the query for regions and worlds (T5
+  `FoliageRegion`, T4 R24): `sample`, `heightAt`, `raycast`. `SurfaceView` is its copied-texel form
+  for jobs (T5 R7). `querySurface` uses the single-map implementation unless T4's hook applies.
 
 ### Upstream revision: no CI, lean MCP, Doriax, storage
 
@@ -719,7 +719,7 @@ here win where theirs were assumptions (each of them says so).
   `MCP_SUITE=all JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/build.sh mcp-tests -j <n>`). Every AC runs on this host (8 cores,
   software GL, lavapipe, Emscripten, Android build with no emulator) or is labelled not verifiable here with the command a
   person runs on that platform (§7's table). A row not run is reported unverified, never as passing.
-- **R95 Lean tools.** Each tool asked for by S53-S58 was challenged against "merge or extend before adding a near-duplicate":
+- **R95 Lean tools.** Each tool asked for by T1-T6 was challenged against "merge or extend before adding a near-duplicate":
 
   | Asked for | Outcome | Why |
   |---|---|---|
@@ -728,13 +728,13 @@ here win where theirs were assumptions (each of them says so).
   | `export_terrain_heightmap` | Kept | Writes a file, so it cannot be the read-only `sample_terrain`; nothing else exports |
   | `visualize_terrain` | Kept | Overlay plus framing, as `visualize_navigation`; `overlay` is a handler-checked string |
   | `include_terrain` on `set_scene_camera` | Removed | `visualize_terrain`'s `framing` does it, and a raised exception is not allowed (R71) |
-  | `generate_terrain` | Kept (S54) | Own job, statistics and image; the agent's "make me a terrain" entry |
-  | `preview_noise_graph` | Kept (S54) | Needs no terrain, works in Play, reports per node; `generate_terrain dry_run` does none of these |
-  | `create_terrain_world` | Merged: `edit_terrain_world {create}` (S56) | Same pattern as `edit_graph {create}` |
-  | `get_terrain_world_status` | Merged: `sample_terrain {world}` (S56) | A read of the same terrain; the status tool repeated its addressing |
-  | `edit_terrain_world` | Kept, at most 1,500 (S56) | Its ops are allowed in Play and `edit_terrain` is not, so one tool cannot carry both annotations |
-  | `bake_terrain_impostors` | Merged: `edit_terrain` op `bake_impostors` (S57, R89's `spansFrames`) | One more registered op |
-  | S55's additions | None to the listing beyond two `visualize_terrain` and `sample_terrain` keys; `set_terrain_maps` unchanged (S55 R45) | Reflection reaches the fields |
+  | `generate_terrain` | Kept (T2) | Own job, statistics and image; the agent's "make me a terrain" entry |
+  | `preview_noise_graph` | Kept (T2) | Needs no terrain, works in Play, reports per node; `generate_terrain dry_run` does none of these |
+  | `create_terrain_world` | Merged: `edit_terrain_world {create}` (T4) | Same pattern as `edit_graph {create}` |
+  | `get_terrain_world_status` | Merged: `sample_terrain {world}` (T4) | A read of the same terrain; the status tool repeated its addressing |
+  | `edit_terrain_world` | Kept, at most 1,500 (T4) | Its ops are allowed in Play and `edit_terrain` is not, so one tool cannot carry both annotations |
+  | `bake_terrain_impostors` | Merged: `edit_terrain` op `bake_impostors` (T5, R89's `spansFrames`) | One more registered op |
+  | T3's additions | None to the listing beyond two `visualize_terrain` and `sample_terrain` keys; `set_terrain_maps` unchanged (T3 R45) | Reflection reaches the fields |
   | `sculpt_terrain` | Stays for now | It is the near-duplicate, but AC13's baseline and Doriax's texts depend on it (§9) |
 
   Schemas stay lean, with validation in the handler. Descriptions say what a tool does, its default or limit, the one misuse and
@@ -746,13 +746,13 @@ here win where theirs were assumptions (each of them says so).
 - **R96 Eval cases.** New tool text and every guide line get a case in `tools/mcp/eval/cases.py` that fails without it (AC74).
 - **R97 Doriax overlap (D21).** `agent-authoring`, `render-correctness`, `draw-perf`, `ssr-probes` and `mesh-memory` are specs on
   `docs/superpowers/specs/`, not landed. Whichever lands second merges onto the first, with no duplicated capability. §8 lists what
-  S53 shares with each.
+  T1 shares with each.
 - **R98 Writes and lints.** Every persistent write goes through `engine/core/io/AtomicFile.h` or a helper on it: maps through
   `TerrainMapFileWriter` (R31), `export_terrain_heightmap` through `safewrite::writeFileResolvedBeneath`, encoding to memory first
   (`stbi_write_*_to_func`, never a path). `JASPER_TERRAIN_STROKE_LOG` is append-only and test-only, so it gets one reasoned line in
-  `tools/raw_writes_allowlist.txt` ("append-only logs" section). S53 vendors nothing, so `NOTICE.md` and `engine/notices.json` do
+  `tools/raw_writes_allowlist.txt` ("append-only logs" section). T1 vendors nothing, so `NOTICE.md` and `engine/notices.json` do
   not change (Terrain3D: ideas only, D14).
-- **R99 Shaders.** S53 changes no shader (DC8), so no variant bit and no shader cache bump. An implementer who has to change one
+- **R99 Shaders.** T1 changes no shader (DC8), so no variant bit and no shader cache bump. An implementer who has to change one
   bumps the shader cache version in `editor/App.cpp` by one and records a Deviation.
 
 ## 6. Design constraints & decisions
@@ -763,11 +763,11 @@ here win where theirs were assumptions (each of them says so).
 - **DC2 Float working values, stored bytes at rest.** The overlay keeps floats so gentle stamps are
   not lost to rounding (the reason at `TerrainEditWindow.h:135-137`), per touched tile instead of per
   map. Height goes through normalized floats, lossless for R8 and R16 in a 32-bit float.
-- **DC3 The hole seam.** D7 gives S55 the representation and S55 R18 fixes it: `holeMap`, R8, 0 =
-  hole, 255 = solid. S53 runs the ops through `terrain::rasterizeRegion` (`TerrainHoles.h`) against `MapKind::Hole`
-  with values 0 and 255 only (S55 D5). S53's foundation lands first (§8), so S53 creates the field
-  and a minimal `TerrainHoles` to S55's definitions (R92) and S55 extends them. Nothing draws a hole
-  until S55's consumers land, which the warning says.
+- **DC3 The hole seam.** D7 gives T3 the representation and T3 R18 fixes it: `holeMap`, R8, 0 =
+  hole, 255 = solid. T1 runs the ops through `terrain::rasterizeRegion` (`TerrainHoles.h`) against `MapKind::Hole`
+  with values 0 and 255 only (T3 D5). T1's foundation lands first (§8), so T1 creates the field
+  and a minimal `TerrainHoles` to T3's definitions (R92) and T3 extends them. Nothing draws a hole
+  until T3's consumers land, which the warning says.
 - **DC4 Blend is still blend maps.** D4 says the store handles blend data in texels. `MapKind::Blend`
   is one RGBA map, as stored, and layers reach it through R92. `paint_layer` keeps today's rule:
   normalization is within the layer's own blend map (TEW:1469-1470, TEW:1865). `paint_by_rules` goes
@@ -778,12 +778,12 @@ here win where theirs were assumptions (each of them says so).
   world values, because scripts think in world space. `getHeights`, `setHeights` are texel rectangles
   with terrain-local heights.
 - **DC6 Tiles are 64×64 texels** for overlay and delta alike, addressed in store texels. It is
-  independent of S56's world tiles.
+  independent of T4's world tiles.
 - **DC7 XOR plus zstd.** One buffer replaces two rectangles and gives undo and redo the same code.
   Sculpt XORs are mostly small low bytes and compress well. Linking is safe: the editor links `zstd`
   (`CMakeLists.txt:1437`); the player does not need it because deltas are editor-only.
 - **DC8 Overlays are editor meshes, not a shader mode.**
-  - S55 owns the terrain material shaders, and painted terrains are at the 16-texture limit
+  - T3 owns the terrain material shaders, and painted terrains are at the 16-texture limit
     (`S11:87`). `TerrainOverlay` (`editor/terrain/`) follows `NavigationOverlay`: System-pool entities
     with `setEditorOverlay`, transparent, unlit, no shadows. It is a grid of up to 256×256 cells (7
     meshes at 16-bit indices) lifted conservatively, each vertex at the highest fine texel in its
@@ -793,7 +793,7 @@ here win where theirs were assumptions (each of them says so).
     keeps it readable, the same technique as spline overlays (`SceneRender.h:305`). This trades
     pixel-exact alignment for zero render-path cost and zero variants.
   - Contours bake into the texture.
-- **DC9 Partial upload, honestly.** Sokol takes the whole image, so S53's GPU upload is whole-image:
+- **DC9 Partial upload, honestly.** Sokol takes the whole image, so T1's GPU upload is whole-image:
   - The CPU side is partial: dirty rectangles update the map, and on GLES3 and WebGL2 only the float
     shadow's rectangle. Drivers then copy the whole image.
   - A new `TextureRender::createDynamicHeightTexture(label, w, h, bits)` makes a stream image of R16
@@ -807,7 +807,7 @@ here win where theirs were assumptions (each of them says so).
   - No sokol patch here (D12). Region updates would need a new image usage on GL (single slot), D3D11
     (DEFAULT plus `UpdateSubresource`), Metal and Vulkan, and only GL and Vulkan can be tested on this
     host. `je-bench-terrain` records upload time per size on llvmpipe and lavapipe, and
-    `docs/perf/terrain.md` holds the numbers on which S56 revisits this; S56's per-tile textures make
+    `docs/perf/terrain.md` holds the numbers on which T4 revisits this; T4's per-tile textures make
     the unit of upload a tile, which is the real partial upload.
 - **DC10 No new system.** Edits flush from hooks guarded by `terrain.editState`: the existing terrain
   loop (`MeshSystem.cpp:7225-7233`), `updateTerrainRenderTextures` (`RenderSystem.cpp:5855`), the
@@ -819,7 +819,7 @@ here win where theirs were assumptions (each of them says so).
 - **DC12 Alt.** This editor follows Unity: Alt+LMB drag orbits (`SceneWindow.cpp:2047`) in every tool,
   by default. D16's Terrain3D Alt is the preference **Alt Alternates While Painting** (default off). A
   press with Alt starts nothing: past the drag threshold it is an orbit, and a release before it is a
-  pick (R56, R63; S57 R46, S58 R60). Right mouse still orbits or looks, and every alternate is also a
+  pick (R56, R63; T5 R46, T6 R60). Right mouse still orbits or looks, and every alternate is also a
   button and a rebindable key (`terrain.alternate`).
 - **DC13 EXR yes, TIFF no.** `FloatImage` already reads and writes EXR, so it is cheap. Anything else
   is out.
@@ -864,8 +864,8 @@ Internal only (C++): `fill_noise` (R19), `apply_field` (R40), `set_heights` (imp
 
 Warnings in results: `outside_terrain` (partly), `clipped_low`, `clipped_high`, `no_change`,
 `filter_excluded_all`, `map_created`, `size_clamped`, `map_8bit_steps`, `brush_under_one_texel`,
-`holes_not_rendered`, `hole_no_collision` (a cut that opens no collision sample, S55 R27),
-`rotated_terrain`, `stride_used`, `tile_created` (S56's stores).
+`holes_not_rendered`, `hole_no_collision` (a cut that opens no collision sample, T3 R27),
+`rotated_terrain`, `stride_used`, `tile_created` (T4's stores).
 
 Issues (severity): `no_height_map` (error, fix Create Terrain), `size_zero` (error), `max_height_zero`
 (error), `map_load_failed` (error, fix Retry), `map_write_failed` (error, fix Retry Write),
@@ -947,7 +947,7 @@ The last three columns give one mesh quad per heightmap texel at the finest leve
 namespace jasperengine::terrain {
     enum class MapKind : uint8_t { Height, Blend, Hole, Density };
     struct MapId { MapKind kind = MapKind::Height; int index = 0; };  // Blend: blend map, Density: foliage layer
-    struct TexelRect { int x = 0, y = 0, w = 0, h = 0; };             // signed origin (S56), w and h >= 0
+    struct TexelRect { int x = 0, y = 0, w = 0, h = 0; };             // signed origin (T4), w and h >= 0
     struct MapFormat { TexelRect bounds; int channels = 0, bitsPerChannel = 0; bool exists = false; };
     struct TerrainFrame { float maxHeight = 0; };                     // heights 0..maxHeight
     struct WriteResult { bool ok = false; std::string error; int tilesCreated = 0; };
@@ -997,7 +997,7 @@ namespace jasperengine::terrain {
 // engine/core/terrain/TerrainSurface.h
 namespace jasperengine::terrain {
     struct SurfaceView { const uint8_t* pixels; int width, height, channels, bytesPerChannel; float size, maxHeight;
-                         HoleMapView holes; };                                         // S55's view (TerrainHoles.h)
+                         HoleMapView holes; };                                         // T3's view (TerrainHoles.h)
     struct SurfaceSample { float height; Vector3 normal; bool hole, inside, present, exact; };
     SurfaceSample sampleSurface(const SurfaceView& view, float localX, float localZ);
     float sampleHeight(const SurfaceView& view, float localX, float localZ);
@@ -1014,7 +1014,7 @@ namespace jasperengine::terrain {
 
 // engine/core/object/TerrainEdit.h
 namespace jasperengine {
-    terrain::SurfaceSample querySurface(TerrainComponent& terrain, float localX, float localZ);   // R14; S56 adds its branch here
+    terrain::SurfaceSample querySurface(TerrainComponent& terrain, float localX, float localZ);   // R14; T4 adds its branch here
     void applyNewTerrainDefaults(TerrainComponent& terrain);                                      // R91
     class TerrainEditEvents {                                                                     // R42
     public:
@@ -1076,7 +1076,7 @@ object({
 //   filter {slope, height, layer {index, min, max}, invert, softness}, height, heights, delta, strength, in_range, out_range,
 //   layer, order, normalize, rules [{layer, slope, height, invert, opacity, noise}], steps, iterations, seed, noise_size,
 //   amplitude, octaves, asset, instanced, spacing, count, scale, rotation_jitter, align_to_normal, and the import fields below.
-//   An unknown op or key fails naming the valid ones. S57 R23 adds ops the same way (R89).
+//   An unknown op or key fails naming the valid ones. T5 R23 adds ops the same way (R89).
 // import_heightmap: {op, path, format ("auto"), width, height, byte_order ("auto"), flip_vertically, range ("auto", "full", "source"),
 //   source_min, source_max, set_max_height, resolution}; the call's dry_run gives detection and a preview only.
 //   Height formula: normalized = (value - range_low) / (range_high - range_low); world = normalized * max_height + position.y.
@@ -1088,14 +1088,14 @@ object({
 //   warnings: [{op, code, message}], next?, hashes?: {map: "hex"}, job_id?, status?}, plus a preview image for import_heightmap.
 //   annotations: not read-only, not destructive, idempotent only with absolute ops; allowedWhilePlaying false.
 
-// visualize_terrain (1,434 characters by script, with S55's and S57's keys)
+// visualize_terrain (1,434 characters by script, with T3's and T5's keys)
 // "Show a terrain overlay in the Scene view (none hides it), frame the terrain and return a Scene view PNG with the overlay's
 //  legend and the camera. The view stays as set; no project data changes. Overlay names: jasper://docs/terrain."
 object({
   {"scene", sceneRef()}, {"entity", entityRef("Default: the only terrain.")},
   {"overlay", string("height, slope, contours, layer_weights, holes, density...")},
-  // handler: none, height, slope, contours, layer_weights; R90 adds S55 layer_count, fetch_cost, holes; S56 tiles, tile_state, lod,
-  // collision; S57 density, tree_density.
+  // handler: none, height, slope, contours, layer_weights; R90 adds T3 layer_count, fetch_cost, holes; T4 tiles, tile_state, lod,
+  // collision; T5 density, tree_density.
   {"contour_interval", number("World units; default: auto.", 0)}, {"slope_range", array(numberItem, "Degrees.")},
   {"layer", integer("", 0, 64)}, {"opacity", withDefault(number("", 0, 1), 0.7)},
   {"framing", withDefault(stringEnum("", {"keep", "fit", "top", "orbit"}), "fit")},
@@ -1108,15 +1108,15 @@ object({
 // result: {overlay, legend: [{value, color, label}], camera: {position, target}, view_rect_in_window}, plus a ToolResult image.
 //   readOnly true for project data; allowedWhilePlaying false.
 
-// sample_terrain, added keys (1,431 characters in all by script, with S56's and S57's; today's keys and replies are unchanged)
+// sample_terrain, added keys (1,431 characters in all by script, with T4's and T5's; today's keys and replies are unchanged)
   {"region", anyObject("{min:[x,z],max:[x,z]}")},
-  {"stats", array(string(""), "height, slope, layers, coverage.")},   // handler checks the names; S55 R43 adds coverage
+  {"stats", array(string(""), "height, slope, layers, coverage.")},   // handler checks the names; T3 R43 adds coverage
   {"slope_bins", withDefault(integer("Over 0-90 degrees.", 1, 90), 9)},
   {"issues", withDefault(boolean("Problems and fixes."), false)},
   {"hash", withDefault(boolean("Content hash of each map."), false)},
-  {"foliage", withDefault(boolean("Details and trees in region."), false)},   // S57 R55
-  {"world", anyObject("A Terrain World's tiles, with wait_for.")},             // S56 R45
-  {"timeout_seconds", number("", 0)}                                           // S56 R45's wait
+  {"foliage", withDefault(boolean("Details and trees in region."), false)},   // T5 R55
+  {"world", anyObject("A Terrain World's tiles, with wait_for.")},             // T4 R45
+  {"timeout_seconds", number("", 0)}                                           // T4 R45's wait
 // grid's default stays 9 only when none of points, stats, issues, hash is given.
 // result adds: stats: {texels, stride,
 //     height: {min, max, mean, p05, p50, p95, clipped_low_share, clipped_high_share},
@@ -1184,7 +1184,7 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
 - **AC7 (R11)** `TerrainOps.UntouchedTexelsKeepTheirBytes`: on 8-bit and 16-bit maps with odd values.
 - **AC8 (R12, R16, R92, DC3)** `TerrainHoles.CutFillAndQuery`: `cut_holes` then `isHole`, a second
   identical cut changes 0 texels, last fill removes the map, 0 and 255 only, height bytes untouched;
-  `test_terrain_ops.py::test_holes_warn_until_s55` (S55 removes the assertion with the warning);
+  `test_terrain_ops.py::test_holes_warn_until_s55` (T3 removes the assertion with the warning);
   `TerrainLayers.ChannelMappingIsTheOnlyRoute`.
 - **AC9 (R13)** `TerrainLayers.RemapMovesPaintAcrossBlendMaps`: layer 1 moved to index 5 keeps its
   weights exactly; `test_terrain_ui.py::test_delete_layer_keeps_paint`.
@@ -1249,7 +1249,7 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
   `.SpeedAboveThresholdDoesNotChangeOutcome`.
 - **AC26 (R36)** `TerrainStroke.RampDependsOnlyOnEnds`.
 - **AC27 (R37)** `TerrainStroke.PressureScalesStrengthAndSize`, `.ZeroPressureAfterPenIsClick`. Real
-  tablets: manual, `docs/specs/checklists/S53.md`, not verifiable on this host.
+  tablets: manual, `docs/specs/checklists/T1.md`, not verifiable on this host.
 - **AC28 (R38)** `TerrainStrokeSession.BudgetDoesNotChangeResult`: 0.1 ms and unlimited budgets give
   equal bytes.
 - **AC29 (R39)** `test_terrain_ui.py::test_stroke_log_replays_exactly`: real mouse drag with
@@ -1354,7 +1354,7 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
 
 **Data**
 - **AC59 (R81, R82, R84)** `StreamComponentTest.TerrainNewFieldsRoundTrip`,
-  `StreamComponentTest.OldTerrainYamlLoads` (a fixture from before S53 draws the same hash),
+  `StreamComponentTest.OldTerrainYamlLoads` (a fixture from before T1 draws the same hash),
   `test_upgrade_from_main.py` green, reflection `catalog_snapshot.json` updated, generated-code test
   `GeneratedScenesTest` green.
 - **AC60 (R83)** `TerrainSettingsMigration.OldSettingsLoad`: an old `brushMode`, `paintUseMask` and
@@ -1420,7 +1420,7 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
 - **AC76 (R66, R83)** `TerrainSettingsMigration.PaintMaskKeepsItsMeaning`: a workspace with `paintUseMask: true` and no new keys
   filters Paint Texture and leaves Raise unfiltered; `filterAllTools` extends it; `python3 tools/check_stream_keys.py` passes.
   **Red:** applying `paintUseMask` to every tool fails the test.
-- **AC77 (R97)** Second-lander merge check, run by whichever of S53 and agent-authoring lands second: one
+- **AC77 (R97)** Second-lander merge check, run by whichever of T1 and agent-authoring lands second: one
   `docs/mcp/guide/terrain.md`, one `Other areas` entry, `test_terrain_details.py` and `test_terrain_ops.py` both green, no terrain
   tool over its limit in `tool_budget.py --check`. `sample_terrain` returns `details`, not `foliage_layers`.
 - **AC78 (R98)** `python3 tools/check_raw_writes.py` passes with exactly one new allowlist line (the stroke log), and
@@ -1442,12 +1442,12 @@ runs the command and reports it; until then the row is unverified. The commands 
 | Goldens on glcore and Vulkan | Yes (llvmpipe, lavapipe) | The reference renderers, so they count |
 | GLES3 and WebGL2 upload path | Partly: forced format in `TerrainEditGpu`, web gate in headless Chromium | |
 | Metal drawing and upload | No: code by careful reading only | The macOS command above with `--gtest_filter=TerrainEditGpu*` (the default Metal device, `docs/testing.md:493`) |
-| D3D11 drawing and upload | No: no automated pixel test exists | By hand: `docs/specs/checklists/S53.md` on Windows |
+| D3D11 drawing and upload | No: no automated pixel test exists | By hand: `docs/specs/checklists/T1.md` on Windows |
 | Android | Build only, no emulator (no KVM) | On a host with `/dev/kvm`: `ANDROID_PROJECT=terrain-edit ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` |
 | iOS | No | On a Mac: `python3 tools/xcode_sync_engine.py --check`, then build and run `terrain-edit` from the Xcode workspace on a device; checklist |
-| GPU timings | No meaningful number: only relative, and bytes uploaded are exact | `docs/specs/checklists/S53.md` on real GPUs |
+| GPU timings | No meaningful number: only relative, and bytes uploaded are exact | `docs/specs/checklists/T1.md` on real GPUs |
 | CPU budgets | Yes, with `RB_SLOTS=2` and nothing else queued; the benchmark run is the enforcement | |
-| Pen pressure on real tablets | No: resampler and replay only; `Backend::penPressure` by reading | `docs/specs/checklists/S53.md` |
+| Pen pressure on real tablets | No: resampler and replay only; `Backend::penPressure` by reading | `docs/specs/checklists/T1.md` |
 | Human feel of decal, overlays, dialogs | Screenshots and pixel checks here; feel is a checklist item | Owner on a real display |
 
 ## 8. Dependencies & conflicts
@@ -1456,74 +1456,74 @@ runs the command and reports it; until then the row is unverified. The commands 
 `memoryBytes`, groups), S25 (shortcuts), S26 (`frameAll`, S26 R18), S31 (groups, budget), S34 (no
 module, size). All landed in `terrain/integration`.
 
-**Blocks:** S54, S55, S56, S57 and the terrain integration of S58. They may spec now against the seams
+**Blocks:** T2, T3, T4, T5 and the terrain integration of T6. They may spec now against the seams
 below.
 
-**Programme landing order** (every spec follows this): S53's foundation first, then S53's rest, S54, S55,
-S57 and S58 in parallel, then S56 last. The foundation is the `engine/core/terrain/` and
+**Programme landing order** (every spec follows this): T1's foundation first, then T1's rest, T2, T3,
+T5 and T6 in parallel, then T4 last. The foundation is the `engine/core/terrain/` and
 `engine/core/object/TerrainEdit.h` seams (R1-R16, R40, R42, R86-R89, R92, R93, `applyNewTerrainDefaults`)
 and `groups.terrain` in `budget.json` (R74). The rest is migration, undo, strokes, tools, UI, Lua and
 runtime edits (R90's `TerrainOverlay` comes with the tools).
 
 **Seams other specs must know**
 
-S54, S55, S56 and S57 were read while this was written; each says S53's names win. Where they assumed
+T2, T3, T4 and T5 were read while this was written; each says T1's names win. Where they assumed
 other names:
 
 | Spec | They asked for | Here |
 |---|---|---|
-| S54 N9, §8 | `TerrainOps::Batch`, `setHeights`, `setLayerWeights`, `setDensity`, `commit`, `store.readHeights` | R88: `terrain::Batch`, and `batch.readHeights` |
-| S54 R36, N13 | Moved brushes call `noise::compat`; the second lander deletes `TerrainNoise.h` | R22 |
-| S54 R61, §8 | Create dialog lists `TerrainPresets::list()`, calls `TerrainGeneration::start()`; one-line `drawGenerateSection()` | R91 |
-| S55 D5, §8 | Hole rectangles, `rasterizeRegion`, R27's result, `isHole` in the query, `ignoreHoles` on brush rays, `terrainLayerChannel`, collider refresh grown by one cell, Macro Normal from dirty rects, Create Terrain's limit on, its overlays | R12, R16, R92, R79, R42, R91, R90 |
-| S55 R44, R46, R47 | `visualize_terrain` overlays and `quality`; `edit_terrain` exposes R27; adds to `terrain.md` | R90, R12, R73 |
-| S55 R43 | `coverage` on `sample_terrain` | Use `region` (R70) |
-| S56 §8, D11, D12 | Signed texels, refusable writes, per-map lattices (`worldOfTexel`, `texelOfWorld`), `preferredBlock`, `beginLarge`, created tiles in undo (`takeUndoHook`), `exact`, `present`, overlay room | R86, R87, R16, R90 |
-| S56 R28 | `TiledMapStore` with no caller changes | R2, R86; S56 hooks `querySurface` in one place and provides a `TerrainSurfaceQuery` |
-| S56 R31 | Runtime edits are RAM only | R78 |
-| S57 R23, R54 | Ops registered from another file; `edit_terrain` hosts them | R89 (keys in the op object) |
-| S57 §8 | Read-rectangle from the main thread; subscribable dirty rectangles; overlay source; `region` | `TerrainMapStore::read`, R42, R90, R70 |
-| S57 R7 | Query and its copied-texel form | R93 |
-| S58 R39, R40, R46 | `cut_holes` and `fill_holes` over rectangles or masks, also at runtime; a query that gives the height under a hole; dirty rectangles | R12, R75, R16, R42; a voxel volume does not use `TerrainMapStore` |
+| T2 N9, §8 | `TerrainOps::Batch`, `setHeights`, `setLayerWeights`, `setDensity`, `commit`, `store.readHeights` | R88: `terrain::Batch`, and `batch.readHeights` |
+| T2 R36, N13 | Moved brushes call `noise::compat`; the second lander deletes `TerrainNoise.h` | R22 |
+| T2 R61, §8 | Create dialog lists `TerrainPresets::list()`, calls `TerrainGeneration::start()`; one-line `drawGenerateSection()` | R91 |
+| T3 D5, §8 | Hole rectangles, `rasterizeRegion`, R27's result, `isHole` in the query, `ignoreHoles` on brush rays, `terrainLayerChannel`, collider refresh grown by one cell, Macro Normal from dirty rects, Create Terrain's limit on, its overlays | R12, R16, R92, R79, R42, R91, R90 |
+| T3 R44, R46, R47 | `visualize_terrain` overlays and `quality`; `edit_terrain` exposes R27; adds to `terrain.md` | R90, R12, R73 |
+| T3 R43 | `coverage` on `sample_terrain` | Use `region` (R70) |
+| T4 §8, D11, D12 | Signed texels, refusable writes, per-map lattices (`worldOfTexel`, `texelOfWorld`), `preferredBlock`, `beginLarge`, created tiles in undo (`takeUndoHook`), `exact`, `present`, overlay room | R86, R87, R16, R90 |
+| T4 R28 | `TiledMapStore` with no caller changes | R2, R86; T4 hooks `querySurface` in one place and provides a `TerrainSurfaceQuery` |
+| T4 R31 | Runtime edits are RAM only | R78 |
+| T5 R23, R54 | Ops registered from another file; `edit_terrain` hosts them | R89 (keys in the op object) |
+| T5 §8 | Read-rectangle from the main thread; subscribable dirty rectangles; overlay source; `region` | `TerrainMapStore::read`, R42, R90, R70 |
+| T5 R7 | Query and its copied-texel form | R93 |
+| T6 R39, R40, R46 | `cut_holes` and `fill_holes` over rectangles or masks, also at runtime; a query that gives the height under a hole; dirty rectangles | R12, R75, R16, R42; a voxel volume does not use `TerrainMapStore` |
 
 Other facts for them:
-- S54 generation returns `changed` and `warnings` in `TerrainOpResult`'s JSON shape and follows `edit_terrain`'s job pattern. If
-  `add_noise`'s bytes change, S54 updates `TerrainGolden` hashes in the same commit.
-- S55 flips `raycastTerrainSurface` to skip holes and removes `holes_not_rendered`. All shader changes
-  are S55's, including any later overlay in the shader.
-- S56: per-tile textures replace the whole-image upload unit (DC9); world collision replaces
+- T2 generation returns `changed` and `warnings` in `TerrainOpResult`'s JSON shape and follows `edit_terrain`'s job pattern. If
+  `add_noise`'s bytes change, T2 updates `TerrainGolden` hashes in the same commit.
+- T3 flips `raycastTerrainSurface` to skip holes and removes `holes_not_rendered`. All shader changes
+  are T3's, including any later overlay in the shader.
+- T4: per-tile textures replace the whole-image upload unit (DC9); world collision replaces
   `JoltTerrainRefresh`'s single-body lookup.
-- **Budget:** S53's foundation adds group `terrain` with R74's limits, 16,000 characters and 10 tools,
-  sized for all of S53-S57 (D17, S54 §8, S57 R59). S53 adds 3 tools; S54 2, S55 and S57 none, S56 1, agent-authoring 1.
-- **Bits and assets:** S53 adds no variant bit and no asset type.
+- **Budget:** T1's foundation adds group `terrain` with R74's limits, 16,000 characters and 10 tools,
+  sized for all of T1-T5 (D17, T2 §8, T5 R59). T1 adds 3 tools; T2 2, T3 and T5 none, T4 1, agent-authoring 1.
+- **Bits and assets:** T1 adds no variant bit and no asset type.
 
 **Merge hotspots**: `TerrainEditWindow.{h,cpp}`, `WorldTools.cpp` (handlers only),
-`MeshSystem.{h,cpp}` and `RenderSystem.cpp` (guarded hooks), `TerrainComponent.h` (S55 also adds),
+`MeshSystem.{h,cpp}` and `RenderSystem.cpp` (guarded hooks), `TerrainComponent.h` (T3 also adds),
 `StreamComponents.cpp`, `McpTools.cpp`, `McpToolGroups.cpp`, `budget.json`, `test_tool_groups.py`,
 `SceneWindow.cpp`, `SceneRender.cpp`, `HierarchyWindow.cpp`, `DefaultCommands.cpp`,
 `bench-thresholds.json`, `engine/CMakeLists.txt` (`include(core/terrain/TerrainSources.cmake)`,
 flags).
 
-**Land order inside S53** (each buildable, gate per commit `tools/check-changed`, and the full suite before the push when it needs it (R94)): baseline fixture
+**Land order inside T1** (each buildable, gate per commit `tools/check-changed`, and the full suite before the push when it needs it (R94)): baseline fixture
 (DC11); `engine/core/terrain/` with tests; surface query with forwarders (the foundation ends here); brush, generation and bake
 migration, delta undo and persistence together with R23; strokes; MCP tools; UI; Lua and runtime last.
 
 **Doriax overlap (D21; none landed yet: whichever lands second merges onto the first)**
 
-| Doriax spec | What S53 touches in common | Rule |
+| Doriax spec | What T1 touches in common | Rule |
 |---|---|---|
-| `agent-authoring` | `edit_terrain_details` and `TerrainDetailRules`; `set_terrain_maps` `blendmap.index` and layer factors; `sample_terrain`'s `foliage_layers` renamed `details`, with `drawn`; `docs/mcp/guide/terrain.md`, `jasper://docs/terrain`, the guide's restructure; the Terrain window's load-once settings (`TerrainEditWindow.cpp:3589-3684`); `McpToolGroups.cpp:25` | S53 adds no detail-layer tool or field and no blend-slot parameter. `paint_density` and `erase_density` address `details` indices. S53 extends the guide file if it exists and creates it otherwise, and the second lander merges sections into one file. S53's new settings keys go through their load path, and their fix is not repeated. `sculpt_terrain` stays, because their text names it |
-| `render-correctness` | `TerrainFoliageLayer` fields and the foliage ring in `MeshSystem.cpp` | S53 only keeps the whole-layer refill (R23); the ring is S57's and theirs. Same `terrain.md` paragraph: merged |
+| `agent-authoring` | `edit_terrain_details` and `TerrainDetailRules`; `set_terrain_maps` `blendmap.index` and layer factors; `sample_terrain`'s `foliage_layers` renamed `details`, with `drawn`; `docs/mcp/guide/terrain.md`, `jasper://docs/terrain`, the guide's restructure; the Terrain window's load-once settings (`TerrainEditWindow.cpp:3589-3684`); `McpToolGroups.cpp:25` | T1 adds no detail-layer tool or field and no blend-slot parameter. `paint_density` and `erase_density` address `details` indices. T1 extends the guide file if it exists and creates it otherwise, and the second lander merges sections into one file. T1's new settings keys go through their load path, and their fix is not repeated. `sculpt_terrain` stays, because their text names it |
+| `render-correctness` | `TerrainFoliageLayer` fields and the foliage ring in `MeshSystem.cpp` | T1 only keeps the whole-layer refill (R23); the ring is T5's and theirs. Same `terrain.md` paragraph: merged |
 | `draw-perf` | `updateAllTerrainRenderTextures` (`RenderSystem.cpp:5905-5919`) walks `TerrainComponent` instead of `MeshComponent`; DC10's hook at `:5855` | Hook the terrain's texture update, whichever loop calls it |
-| `ssr-probes`, `mesh-memory` | Nothing in S53's code; `MeshComponent` stays out of `TerrainOps` (R1), and `MeshSystemTerrainEdit.cpp` uses indices, not references, across writes to its arrays | No action beyond that rule |
+| `ssr-probes`, `mesh-memory` | Nothing in T1's code; `MeshComponent` stays out of `TerrainOps` (R1), and `MeshSystemTerrainEdit.cpp` uses indices, not references, across writes to its arrays | No action beyond that rule |
 
-**Pixel art.** S50 uses "terrain" for tile autotiling (`TerrainSolver`, `TerrainTemplates`, `terrain_sets`, `edit_tilemap`'s terrain brush). S53's C++ names are in `jasperengine::terrain`, its commands are `terrain.*` and S50 adds no `edit_terrain`, so nothing collides, but `namespace {}` helpers must not reuse S50's file-scope names in a unity build (`AGENTS.md`, Code), and `terrain_control_tilemap_name` (AC74) keeps agents apart.
+**Pixel art.** S50 uses "terrain" for tile autotiling (`TerrainSolver`, `TerrainTemplates`, `terrain_sets`, `edit_tilemap`'s terrain brush). T1's C++ names are in `jasperengine::terrain`, its commands are `terrain.*` and S50 adds no `edit_terrain`, so nothing collides, but `namespace {}` helpers must not reuse S50's file-scope names in a unity build (`AGENTS.md`, Code), and `terrain_control_tilemap_name` (AC74) keeps agents apart.
 
 ## 9. Risks & defaults
 
 - **Precision after stamping on 8-bit maps.** Default: keep the map 8-bit, warn, one-click convert. It
   never upgrades silently because it would touch a file the user may own.
-- **Overlay poke-through at far LODs (DC8).** Default: accept with the 25 % copy, and let S55 offer a
+- **Overlay poke-through at far LODs (DC8).** Default: accept with the 25 % copy, and let T3 offer a
   shader mode if a real project needs better. A screenshot in evidence shows the worst case.
 - **The 1 s debounce lengthens crash loss slightly.** Default: accept; a stroke's commit is the moment
   users think of as done, and today's encode of a large map already takes seconds. Autosave flushes
@@ -1549,11 +1549,11 @@ migration, delta undo and persistence together with R23; strokes; MCP tools; UI;
 - **Create Terrain changes what the menu row does.** `create_entity` and scripts are unchanged;
   `test_undo_ui.py` and other tests use `create_entity`. A human who wants the old empty terrain
   presses Create with Flat. The dialog remembers the last preset.
-- **Land order of S53 and S55.** S53's foundation lands first (§8), so R92's headers and `holeMap` exist
-  when S55 starts. The warning in R12 lasts only until S55's consumers land.
+- **Land order of T1 and T3.** T1's foundation lands first (§8), so R92's headers and `holeMap` exist
+  when T3 starts. The warning in R12 lasts only until T3's consumers land.
 - **`docs/specs/IMPLEMENTING.md` is stale on branches and servers** (`oe-port`, A/B/C). Default: the
   ledger's build queue and branches apply: worktree under `.worktrees/`, branch
   `terrain/s53-authoring`, `rb.sh L`.
 - **`sculpt_terrain` stays beside `edit_terrain`.** It is rate-based and D15 would not add it today. Default: keep it, because AC13
   proves the migration through it and agent-authoring's text names it. Retiring it would give back 2,699 characters and is the
-  owner's decision after S53 lands.
+  owner's decision after T1 lands.

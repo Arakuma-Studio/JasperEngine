@@ -18,12 +18,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 
 | Spec | Step | One line |
 |---|---|---|
-| S53 | Terrain operations and authoring | One operation engine behind brushes, MCP, Lua and bakes; Create Terrain dialog, overlays, Raw import/export, delta undo, spaced stamps; `edit_terrain`, `visualize_terrain`, richer `sample_terrain`; Lua height queries and runtime edits |
-| S54 | Noise graphs and generation | Our own deterministic noise library and versioned Noise Graph asset, the first real `edit_graph` kind; pins on GraphCanvas; erosion; `generate_terrain` as a job |
-| S55 | Terrain materials and holes | Top-N layer cap, quality tiers including a mobile tier, macro variation, distance resampling, cliff projection; holes that agree across render, collision, navmesh and picking |
-| S56 | Terrain worlds | Tiled worlds past one map: streaming, per-tile collision paging, far-distance overview, per-tile formats, editing across tiles |
-| S57 | Foliage upgrade | Placement on jobs, shared mesh parsing, compact grass instances, tree impostors, tree collision, wind |
-| S58 | Voxel volumes | Opt-in module: bounded smooth voxel volumes with Transvoxel LOD, caves, overhangs, destruction, terrain integration |
+| T1 | Terrain operations and authoring | One operation engine behind brushes, MCP, Lua and bakes; Create Terrain dialog, overlays, Raw import/export, delta undo, spaced stamps; `edit_terrain`, `visualize_terrain`, richer `sample_terrain`; Lua height queries and runtime edits |
+| T2 | Noise graphs and generation | Our own deterministic noise library and versioned Noise Graph asset, the first real `edit_graph` kind; pins on GraphCanvas; erosion; `generate_terrain` as a job |
+| T3 | Terrain materials and holes | Top-N layer cap, quality tiers including a mobile tier, macro variation, distance resampling, cliff projection; holes that agree across render, collision, navmesh and picking |
+| T4 | Terrain worlds | Tiled worlds past one map: streaming, per-tile collision paging, far-distance overview, per-tile formats, editing across tiles |
+| T5 | Foliage upgrade | Placement on jobs, shared mesh parsing, compact grass instances, tree impostors, tree collision, wind |
+| T6 | Voxel volumes | Opt-in module: bounded smooth voxel volumes with Transvoxel LOD, caves, overhangs, destruction, terrain integration |
 
 ## Programme decisions (every spec honours these)
 
@@ -36,19 +36,19 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - D3. User-facing names: **Terrain**, **Terrain Layer**, **Noise Graph**, **Terrain World**, **Voxel Volume**.
 
 **The seams between specs**
-- D4. **S53 owns the operation engine** (`engine/core/terrain/TerrainOps.h`). Every terrain write goes
+- D4. **T1 owns the operation engine** (`engine/core/terrain/TerrainOps.h`). Every terrain write goes
   through it: brush strokes, MCP, Lua, spline bakes, generation, world tiles. It takes an abstract
   **`TerrainMapStore`** interface (read and write rectangles of height, blend, hole and density data in
-  texels, reporting dirty rectangles) so that S56 can supply a tiled store without changing callers.
-- D5. **S53 owns the terrain surface query** (height, normal, is-hole) behind one function used by
+  texels, reporting dirty rectangles) so that T4 can supply a tiled store without changing callers.
+- D5. **T1 owns the terrain surface query** (height, normal, is-hole) behind one function used by
   physics, navigation, picking, foliage, splines, particles and Lua; it must keep matching the drawn
   surface (S18:531, S26:467).
-- D6. **S54 owns `engine/core/noise/`**; S58 uses it for volume generation, and `generate_terrain` writes
-  through S53's operations.
-- D7. **S55 owns the hole representation and the terrain material shader changes.** S53 exposes
-  `cut_holes` and `fill_holes` as operations; S55 makes them mean something in every consumer.
-- D8. **S56 owns tiles, streaming and collision paging**, and is implemented after S53 and S55 land.
-- D9. Foliage (S57) stays attached to the terrain or world through S53's surface query.
+- D6. **T2 owns `engine/core/noise/`**; T6 uses it for volume generation, and `generate_terrain` writes
+  through T1's operations.
+- D7. **T3 owns the hole representation and the terrain material shader changes.** T1 exposes
+  `cut_holes` and `fill_holes` as operations; T3 makes them mean something in every consumer.
+- D8. **T4 owns tiles, streaming and collision paging**, and is implemented after T1 and T3 land.
+- D9. Foliage (T5) stays attached to the terrain or world through T1's surface query.
 
 **Rules from the analysis**
 - D10. No FastNoise2 at runtime or in the editor: its cross-target output is unproven, and encoded trees
@@ -69,16 +69,16 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   (operation-coloured brush decal, Ctrl and Shift modifiers, live info panel, pick from terrain, overlays).
   Alt+drag always orbits by default, as in Unity. Alternates are a button and the `C` key, and the
   preference `Alt Alternates While Painting` (off by default) gives Terrain3D's Alt. Alt+click still picks.
-- D17. MCP groups: `terrain` for S53 to S57 (raise its limits in `tools/mcp/budget.json`), `voxels` for S58.
+- D17. MCP groups: `terrain` for T1 to T5 (raise its limits in `tools/mcp/budget.json`), `voxels` for T6.
 - D18. Runtime code that many games will not use is an S34 player module with `ModuleUsage` detection, a
-  CMake option and a test: `JASPERENGINE_TERRAIN_WORLD` (S56), `JASPERENGINE_VOXEL` (S58),
-  and `JASPERENGINE_NOISE` (S54's runtime evaluator, also used by voxels).
+  CMake option and a test: `JASPERENGINE_TERRAIN_WORLD` (T4), `JASPERENGINE_VOXEL` (T6),
+  and `JASPERENGINE_NOISE` (T2's runtime evaluator, also used by voxels).
 - D19. Shader variant bits are appended at landing, in landing order, as on the pixel-art and Doriax programmes: the
-  table in S55 D2 gives names and the order among our streams, not reservations, and a test pins each. Each shader
-  change bumps the shader cache version. S55 widens `getDefineBits` to 64 bits so S58 has room. No spec bumps the scene
+  table in T3 D2 gives names and the order among our streams, not reservations, and a test pins each. Each shader
+  change bumps the shader cache version. T3 widens `getDefineBits` to 64 bits so T6 has room. No spec bumps the scene
   version; new fields default. Asset types 24-27 are pixel art's, so ours start at 28.
-- D20. Landing order: S53 foundation first (the `engine/core/terrain` seams), then the rest of S53, S54, S55,
-  S57 and S58 in parallel, then S56 last.
+- D20. Landing order: T1 foundation first (the `engine/core/terrain` seams), then the rest of T1, T2, T3,
+  T5 and T6 in parallel, then T4 last.
 - D21. Doriax's unlanded `agent-authoring` and `render-correctness` also touch terrain and foliage. We align with their
   specs instead of duplicating them, and whichever lands second merges onto the first. New MCP text follows the lean
   rules (a failing eval case for new text, guide limits, budget ratchet).
@@ -105,22 +105,22 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Analysis of the three repos and our code | done | Nine reports |
 | Build host setup | done | Docker 29.1.3, swap, `rb.sh` queue |
 | Baseline on the merged tree | in progress | Linux, unit, MCP, web and Android results to compare against |
-| S53 spec | done | 93 requirements, 73 acceptance criteria at first draft |
-| S54 spec | done | 71 and 47 |
-| S55 spec | done | 53 and 47, then one requirement added in reconciliation |
-| S56 spec | done | 55 and 43 |
-| S57 spec | done | 63 and 40 |
-| S58 spec | done | 80 and 53 |
-| Spec reconciliation | done | One bit table, one landing order, S53's names win |
-| Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to S53-S58 |
+| T1 spec | done | 93 requirements, 73 acceptance criteria at first draft |
+| T2 spec | done | 71 and 47 |
+| T3 spec | done | 53 and 47, then one requirement added in reconciliation |
+| T4 spec | done | 55 and 43 |
+| T5 spec | done | 63 and 40 |
+| T6 spec | done | 80 and 53 |
+| Spec reconciliation | done | One bit table, one landing order, T1's names win |
+| Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
-| S53 foundation | in progress | Seams everything else builds on |
-| S53 implementation | not started | |
-| S54 implementation | not started | |
-| S55 implementation | not started | |
-| S56 implementation | not started | After S53 and S55 |
-| S57 implementation | not started | |
-| S58 implementation | not started | |
+| T1 foundation | in progress | Seams everything else builds on |
+| T1 implementation | not started | |
+| T2 implementation | not started | |
+| T3 implementation | not started | |
+| T4 implementation | not started | After T1 and T3 |
+| T5 implementation | not started | |
+| T6 implementation | not started | |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
 ## Log
@@ -131,8 +131,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - Installed Docker, added swap, wrote the local build queue, started the baseline build.
 - Wrote this ledger and the programme decisions; started the six spec writers.
 - All six specs written and reconciled: shader bits, version policy, hole map scope, Alt key, seam names.
-- Started S53 foundation in `.worktrees/s41`.
+- Started T1 foundation in `.worktrees/s41`.
 - Owner flagged remote changes. `origin/main` had 28 new commits: pixel-art specs S41-S52, 19 Doriax specs, lean MCP rules,
-  an AGENTS.md rewrite and removal of all CI. Renumbered our specs to S53-S58, merged, restarted the baseline, and started a
+  an AGENTS.md rewrite and removal of all CI. Renumbered our specs to T1-T6, merged, restarted the baseline, and started a
   revision of the specs. Doriax's agent-authoring and render-correctness overlap terrain and foliage.
 - Specs revised for no CI, the lean MCP rules and the Doriax overlap. Six near-duplicate tools merged away.
