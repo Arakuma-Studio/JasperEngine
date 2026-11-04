@@ -193,7 +193,7 @@ async def test_transparent_under_water_screenshot(ed: Editor):
         M + "shaderParams": {"baseColor": [1.0, 0.1, 0.1, 0.5]}}})
     shot = await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_glass_under.png"})
     ed.check(shot.images, "screenshot of the box under the water")
-    await ed.call("delete_entity", entity=glass)
+    await ed.call("delete_entities", entities=[glass])
 
 
 async def test_waves_hold_while_paused(ed: Editor):
