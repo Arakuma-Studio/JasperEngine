@@ -248,6 +248,10 @@ void LuaFunctionBase::push_value(lua_State *vm, NavMeshSurface o){
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
+void LuaFunctionBase::push_value(lua_State *vm, nav::PathFailure o){
+    lua_pushstring(vm, nav::pathFailureName(o));
+}
+
 void LuaFunctionBase::push_value(lua_State *vm, const VideoPlayer &o){
     if (!luabridge::push<VideoPlayer>(vm, o))
         throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);

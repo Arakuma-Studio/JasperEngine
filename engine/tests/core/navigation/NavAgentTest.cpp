@@ -327,7 +327,7 @@ TEST_F(NavAgentTest, PathFailedFires){
     step();
     NavMeshAgent handle(scene.get(), walker);
     int failed = 0;
-    handle.getOnPathFailed() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { failed++; });
+    handle.getOnPathFailed() = std::function<void(NavMeshAgent, nav::PathFailure)>([&](NavMeshAgent, nav::PathFailure) { failed++; });
     handle.setDestination(Vector3(8.0f, 0.0f, 0.0f));
     steps(60);
     EXPECT_EQ(failed, 1);

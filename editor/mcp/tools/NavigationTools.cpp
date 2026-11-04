@@ -311,6 +311,9 @@ void getNavigationInfoTool(const CallPtr& call) {
             item["velocity"] = vec3Json(agent.velocity);
             item["is_on_navmesh"] = agent.isOnNavMesh;
             item["is_on_off_mesh_link"] = agent.isOnOffMeshLink;
+            // ---- S55 agents (R43): why its last path failed, and the watchdog's count
+            item["last_failure"] = nav::pathFailureName(agent.lastPathFailure);
+            if (agent.stuckDetection) item["stuck_seconds"] = rounded(agent.stuckTime);
         }
         agents.push_back(item);
     }
