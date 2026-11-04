@@ -177,7 +177,7 @@ if [[ "${ANDROID_PACKAGING_SOURCE:-0}" == 1 ]]; then
         dbus-run-session -- build/linux/editor-install/bin/jasperengine-editor export --project $OUT/debug --out $OUT/source --backend opengles \
             > $OUT/logs/source-export.log 2>&1 || { tail -n 30 $OUT/logs/source-export.log; echo 'FAIL: the source export'; exit 1; }
         cd $OUT/source/workspaces/androidstudio
-        JASPERENGINE_ANDROID_ABIS=x86_64 CMAKE_CXX_COMPILER_LAUNCHER=ccache sh ./gradlew --no-daemon assembleDebug bundleDebug \
+        JASPERENGINE_ANDROID_ABIS=x86_64 CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug bundleDebug \
             > /src/$OUT/logs/source-gradle.log 2>&1 || { tail -n 40 /src/$OUT/logs/source-gradle.log; echo 'FAIL: Gradle on the source export'; exit 1; }
         \$BT/apksigner verify --print-certs app/build/outputs/apk/debug/app-debug.apk | grep -q 'CN=Android Debug' || { echo 'FAIL: the APK of the source export is not signed'; exit 1; }
         jarsigner -verify app/build/outputs/bundle/debug/app-debug.aab | grep -q 'jar verified' || { echo 'FAIL: the bundle of the source export is not signed'; exit 1; }

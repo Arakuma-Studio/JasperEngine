@@ -119,6 +119,9 @@ settings allow ships).
   logged. The key is checked before any packaging: a wrong store password, a wrong key password
   and an unknown alias each fail at once and say which.
 
+  A source export is an Android Studio project (`workspaces/androidstudio`, `./gradlew assembleDebug
+  bundleDebug`). Gradle signs it with the debug key; set up a release key in Android Studio.
+
   Project Settings > Android > Package Format picks what Build makes:
   - **App Bundle** (`aab`, the default) is what Google Play takes. Play gives each device only its
     own ABI's libraries.
