@@ -16,7 +16,7 @@ and a fix, and reloads documents as you save them.
 screens: HTML/CSS. The component UI (`create_ui`: Text, Image, Button, Panel, layout groups,
 placed in pixels) still exists and still works; documents draw in front of it. Use the
 component UI for a few pixel-placed widgets, HTML/CSS for anything with layout, styling,
-lists, forms or animation.
+lists, forms or animation. Edit mode runs no Lua: a document's script logic runs only in play.
 
 ### UI Documents: the model
 
