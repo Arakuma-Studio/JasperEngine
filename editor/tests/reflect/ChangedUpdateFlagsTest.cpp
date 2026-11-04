@@ -421,7 +421,7 @@ TEST(ChangedUpdateFlags, ComparingMakesNothing) {
     setSlots(b, 16);
     Catalog::getChangedUpdateFlags(ComponentType::MeshComponent, &a, &b);
     for (const MeshComponent* mesh : {&a, &b}) {
-        for (size_t slot = 0; slot < mesh->submeshes.size(); slot++) {
+        for (size_t slot = 0; slot < mesh->submeshes.stored(); slot++) {
             EXPECT_FALSE(mesh->submeshes[slot].material.extraPass.isSet()) << slot;
             EXPECT_FALSE(mesh->submeshes[slot].material.pbr.isSet()) << slot;
         }

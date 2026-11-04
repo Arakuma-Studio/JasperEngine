@@ -20,7 +20,7 @@
 #include "ecs/Entity.h"
 #include "ecs/ComponentFwd.h"
 #include "Engine.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
@@ -36,7 +36,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "util/HybridArray.h"
 
 namespace jasperengine{
     class Scene;
