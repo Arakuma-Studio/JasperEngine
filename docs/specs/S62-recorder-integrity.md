@@ -1,4 +1,4 @@
-# S42 — Recorder integrity: a recording that reports success is a good recording
+# S62 — Recorder integrity: a recording that reports success is a good recording
 
 **Depends on.** S27 (Recorder), BF14 (recorder audio), S32 (async pipelines). Lands before S35, which edits
 `editor/recorder/RecorderSession.cpp` too. Touches `editor/recorder/`.

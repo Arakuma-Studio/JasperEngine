@@ -1,4 +1,4 @@
-# S50 — Auto-sync settles before the reply, so external changes are never lost
+# S70 — Auto-sync settles before the reply, so external changes are never lost
 
 **Depends on.** S05's journal and watcher, `editor/mcp/McpAutoSync.*`, `McpServer.cpp`. Reference: sound-layer
 `2026-10-19-sound-layer-cleanup-b-design.md` §2.2, `test_autosync_race.py`, in `je-wt/snd-ro` (re-derive on today's code).

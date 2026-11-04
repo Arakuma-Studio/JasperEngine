@@ -2,9 +2,9 @@
 """Every MCP test file is classified for the CI suite: CI = True, CI_EXCLUDED = "why", or it needs
 the default fixture project (tools/mcp/run_tests.py, ci_files).
 
-`--suite ci` refuses to run when one is not, but only after CI's or check-changed's editor build,
-and for everyone once the file is on main. This says the same in a second, with the standard
-library alone: CI's unit job runs it among its lints, and check-changed when a diff touches an MCP test file.
+`--suite ci` refuses to run when one is not, but only after check-changed's editor build, and for
+everyone once the file is on main. This says the same in a second, with the standard library alone:
+check-changed runs it when a diff touches an MCP test file.
 
     python3 tools/ci/check-mcp-ci-suite.py
 """

@@ -1,4 +1,4 @@
-# S52 — Build hygiene: fewer rebuilds, and sanitizer builds install
+# S72 — Build hygiene: fewer rebuilds, and sanitizer builds install
 
 **Depends on.** S33. Touches headers across `editor/` and `engine/core/`; merge hotspot. Land fast and merge `main` often.
 
