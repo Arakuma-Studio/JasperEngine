@@ -388,6 +388,7 @@ function UnifiedLighting:init()
     self.sun:setDirection(0, -1, 0)
     self.sun.shadows = false
 
+    -- here, in the scene's load: the player is ready once they and their shaders are
     if LOADING_THREAD then Engine.startAsyncThread() end
     self.nodes = Model(scene)
     self.nodes.position = Vector3(0, 0, -2.5)
