@@ -290,6 +290,10 @@ namespace jasperengine{
         double time = 0.0;
         std::array<Vector3, 4> horizon;
         std::string horizonSource = "fog_color";
+        // the clouds' weather map when it was authored with another wrap (weatherTexture), and
+        // the map it was copied from
+        Texture tiledWeatherMap;
+        Texture tiledWeatherSource;
 
         // the noise textures (shared by every scene, AtmosphereNoise) and the blue noise
         static TextureRender noiseShape;

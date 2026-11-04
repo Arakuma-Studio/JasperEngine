@@ -1394,7 +1394,7 @@ namespace jasperengine::editor{
         bool saveSceneShaderKeys(SceneProject* sceneProject);
         bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true,
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
-        void writeSceneSource(const SceneProject* sceneProject);
+        void writeSceneSource(SceneProject* sceneProject);
         bool hasMissingSceneSources() const;
         void writeMissingSceneSources();
         void configureGenerator();

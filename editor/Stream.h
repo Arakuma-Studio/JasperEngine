@@ -171,7 +171,7 @@ namespace jasperengine::editor {
         static YAML::Node encodeExternalBuffer(const ExternalBuffer& buffer);
         static void decodeExternalBuffer(ExternalBuffer& buffer, const YAML::Node& node);
 
-        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true);
+        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true, bool encodeVertexCount = true);
         static Submesh decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh = nullptr);
 
         static YAML::Node encodeAABB(const AABB& aabb);
@@ -388,6 +388,9 @@ namespace jasperengine::editor {
         // True when a mesh's geometry is rebuilt on load from its sprite, tilemap, mesh
         // polygon or terrain component, so its buffers and bones must not be serialized.
         static bool isGeneratedMesh(const EntityRegistry* registry, Signature signature);
+        // the submeshes a save writes and the code generates: what the mesh's generator leaves
+        // it with, whether or not it ran yet
+        static unsigned int savedSubmeshCount(const MeshComponent& mesh, const EntityRegistry* registry, Signature signature);
 
         // True when a UIComponent's geometry is rebuilt on load from its image, text or
         // polygon component, so its buffers must not be serialized.
@@ -514,7 +517,10 @@ namespace jasperengine::editor {
         static YAML::Node encodeTransform(const Transform& transform);
         static Transform decodeTransform(const YAML::Node& node, const Transform* oldTransform = nullptr);
 
-        static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true);
+        // numSubmeshes: at least so many are written (savedSubmeshCount); encodeVertexCounts: off for a
+        // mesh whose generator sets them (isGeneratedMesh)
+        static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true,
+                                              unsigned int numSubmeshes = 0, bool encodeVertexCounts = true);
         static MeshComponent decodeMeshComponent(const YAML::Node& node, const MeshComponent* oldMesh = nullptr);
 
         // textureIsAtlas: a Text's UI, whose texture is the font atlas the UISystem publishes once the

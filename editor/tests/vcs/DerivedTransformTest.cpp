@@ -186,6 +186,56 @@ TEST(Stream, DerivedTransformWorldMatricesUnchanged) {
     }
 }
 
+// What a frame computes (spec S43): an auto-resizing camera's clips and aspect are the canvas's,
+// a Light's world direction and a Mesh's world bounds its transform's, a Terrain's Auto Ranges its
+// camera's far clip. Written, a save followed what was drawn before it. Read when a file has them.
+TEST(Stream, ValuesAFrameComputesNotWritten) {
+    const std::string old =
+        "formatVersion: 7\nid: 43\nname: Derived\nscene:\n  backgroundColor: [0, 0, 0, 1]\nsceneType: scene_3d\nmainCamera: 0\nentities:\n"
+        "  - type: Entity\n    entity: 1001\n    name: Sized\n    components:\n      transform:\n        position: [0, 0, 0]\n"
+        "      camera:\n        autoResize: true\n        rightClip: 1280\n        topClip: 661\n        aspect: 1.9364599\n        farClip: 77\n"
+        "  - type: Entity\n    entity: 1002\n    name: Fixed\n    components:\n      transform:\n        position: [0, 0, 0]\n"
+        "      camera:\n        autoResize: false\n        rightClip: 321\n        aspect: 2.5\n"
+        "  - type: Entity\n    entity: 1003\n    name: Lamp\n    components:\n      transform:\n        position: [0, 0, 0]\n"
+        "      light:\n        direction: [1, 0, 0]\n        worldDirection: [0, 0, 1]\n"
+        "  - type: Entity\n    entity: 1004\n    name: Box\n    components:\n      transform:\n        position: [0, 0, 0]\n"
+        "      mesh:\n        aabb:\n          min: [1, 1, 1]\n          max: [2, 2, 2]\n        worldAABB:\n          min: [3, 3, 3]\n          max: [4, 4, 4]\n"
+        "  - type: Entity\n    entity: 1005\n    name: Land\n    components:\n      transform:\n        position: [0, 0, 0]\n"
+        "      terrain:\n        autoSetRanges: true\n        ranges: [8, 4000]\n"
+        "  - type: Entity\n    entity: 1006\n    name: Hand\n    components:\n      transform:\n        position: [0, 0, 0]\n"
+        "      terrain:\n        autoSetRanges: false\n        ranges: [9, 99]\n";
+    const DecodedScene decoded = decodeSceneText(old, "derived.scene");
+    Scene* scene = decoded.scene->scene;
+    EXPECT_FLOAT_EQ(scene->getComponent<CameraComponent>(1001).rightClip, 1280.0f) << "read when a file has it";
+    EXPECT_FLOAT_EQ(scene->getComponent<LightComponent>(1003).worldDirection.z, 1.0f) << "read when a file has it";
+    EXPECT_EQ(scene->getComponent<TerrainComponent>(1005).ranges.size(), 2u) << "read when a file has it";
+
+    const YAML::Node saved = YAML::Load(encodeSceneText(decoded));
+    const auto components = [&saved](const std::string& name) {
+        for (const YAML::Node& entity : saved["entities"]) {
+            if (entity["name"].as<std::string>() == name) return entity["components"];
+        }
+        ADD_FAILURE() << "no " << name;
+        return YAML::Node();
+    };
+    for (const char* key : {"leftClip", "rightClip", "bottomClip", "topClip", "aspect"}) {
+        EXPECT_FALSE(components("Sized")["camera"][key]) << key;
+    }
+    EXPECT_EQ(components("Sized")["camera"]["farClip"].as<float>(), 77.0f) << "what the canvas does not give stays";
+    EXPECT_EQ(components("Fixed")["camera"]["rightClip"].as<float>(), 321.0f) << "a camera without Auto Resize keeps its own";
+    EXPECT_EQ(components("Fixed")["camera"]["aspect"].as<float>(), 2.5f) << "a camera without Auto Resize keeps its own";
+    EXPECT_FALSE(components("Lamp")["light"]["worldDirection"]);
+    EXPECT_FALSE(components("Box")["mesh"]["worldAABB"]);
+    EXPECT_TRUE(components("Box")["mesh"]["aabb"]) << "the geometry's bounds are not computed again";
+    EXPECT_FALSE(components("Land")["terrain"]["ranges"]);
+    EXPECT_EQ(components("Hand")["terrain"]["ranges"].size(), 2u) << "ranges set by hand stay";
+    // a terrain has its two submeshes before it first ran, and its generator's vertex counts are not written
+    const YAML::Node landMesh = components("Land")["mesh"];
+    if (landMesh) {
+        for (const YAML::Node& submesh : landMesh["submeshes"]) EXPECT_FALSE(submesh["vertexCount"]);
+    }
+}
+
 // A RectTransform's scissor is the clip rectangle the last draw computed, in the pixels of the view
 // that drew it (RenderSystem sets it every frame): a save wrote whatever the editor's window last
 // laid out, so opening and saving a UI scene again rewrote it (float noise, a resized Game view),

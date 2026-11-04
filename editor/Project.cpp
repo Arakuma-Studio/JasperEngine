@@ -27,6 +27,7 @@
 #include "pose/PoseSheetRenderer.h"
 #include "Factory.h"
 #include "picking/ScenePicker.h"
+#include "sceneview/SceneViewController.h"
 #include "sceneview/SceneViewVisibility.h"
 #include "picking/SceneBvh.h"
 #include "Workspace.h"
@@ -3613,7 +3614,8 @@ void editor::Project::calculateSceneMaxValues(const SceneProject* sceneProject, 
     for (size_t i = 0; i < meshes->size(); ++i) {
         if (!own(meshes, i)) continue;
         const MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        maxValues.maxSubmeshes = std::max(maxValues.maxSubmeshes, mesh.numSubmeshes);
+        const Signature signature = sceneProject->scene->getSignature(meshes->getEntity(i));
+        maxValues.maxSubmeshes = std::max(maxValues.maxSubmeshes, Stream::savedSubmeshCount(mesh, sceneProject->scene, signature));
         maxValues.maxExternalBuffers = std::max(maxValues.maxExternalBuffers, mesh.numExternalBuffers);
         maxValues.maxBones = std::max(maxValues.maxBones,
             static_cast<unsigned int>(mesh.bonesMatrix.size()));
@@ -7376,7 +7378,13 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
     return true;
 }
 
-void editor::Project::writeSceneSource(const SceneProject* sceneProject) {
+void editor::Project::writeSceneSource(SceneProject* sceneProject) {
+    // A 3D scene without a Camera generates the Scene view's, which takes the view's projection
+    // when it first draws: the code holds the same whether or not it drew
+    if (sceneProject->sceneRender && sceneProject->sceneRender->getCamera() &&
+        getSceneCamera(sceneProject) == sceneProject->sceneRender->getCamera()->getEntity()) {
+        SceneViewController::projectCamera(*sceneProject, sceneProject->sceneRender->getViewWidth(), sceneProject->sceneRender->getViewHeight(), false);
+    }
     // prefabs only scripts reference or other prefabs nest get their sources too
     loadBuildPrefabs();
     const auto baked = bakePrefabsForExport();
@@ -7393,7 +7401,7 @@ bool editor::Project::hasMissingSceneSources() const {
 
 // Scenes the editor never saved or played, like one created outside it
 void editor::Project::writeMissingSceneSources() {
-    for (const SceneProject& sceneProject : scenes) {
+    for (SceneProject& sceneProject : scenes) {
         if (generator.hasSceneSource(sceneProject.id, sceneProject.name, getProjectInternalPath())) {
             continue;
         }

@@ -160,9 +160,6 @@ namespace jasperengine::editor::reflect {
         bool assignExisting = false;
         // the variables of the GameObjects an Entity field may name (Factory::formatEntity)
         const std::unordered_map<Entity, std::string>* entityVarNames = nullptr;
-        // fields left out of the exported code: values the game derives itself (a Default
-        // Camera's canvas size)
-        std::span<const char* const> omit = {};
     };
 
     // How a field's values are stored, compared, written and read. Deduced from the member type
@@ -252,6 +249,9 @@ namespace jasperengine::editor::reflect {
         uint64_t enumMask = 0;            // the enum values offered (bit per value; 0: every item)
         // the elements in use of a fixed array whose owner counts them (numFramesRect); null: all
         size_t (*count)(const void* owner) = nullptr;
+        // while true the engine recomputes this value: a document and the exported code leave it
+        // out, as NotWritten does for a value always computed
+        bool (*derivedIf)(const void* owner) = nullptr;
     };
 
     struct StructDesc {
