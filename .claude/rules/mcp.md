@@ -15,9 +15,10 @@ The rule book is `docs/mcp/conventions.md`; keep these in mind on every change h
 - Limits live only in `tools/mcp/budget.json`; check with
   `tools/mcp/tool_budget.py --check tools/mcp/budget.json`. Never raise a limit inside a test.
 - Descriptions at most 400 characters; shared conventions go in the agent guide
-  (`editor/mcp/McpInstructions.cpp`) or `docs/mcp/guide/`. The guide holds the workflow and one
-  short digest per area (its limits: the `guide` entry of `tools/mcp/budget.json`); an area's
-  detail goes in `docs/mcp/guide/<area>.md` (`jasper://docs/<area>`), which the digest names.
+  (`editor/mcp/McpInstructions.cpp`) or `docs/mcp/guide/`. The guide holds only what an agent needs
+  before it picks a tool (its limits: the `guide` entry of `tools/mcp/budget.json`); an area's
+  detail goes in `docs/mcp/guide/<area>.md` (`jasper://docs/<area>`). New text needs a case of
+  `tools/mcp/eval` that fails without it; hints an agent must see go in `structuredContent`.
 - A schema must not depend on project state: the CLI builds the registry offline
   (`buildToolRegistry`) and compares it with the live listing.
 - Every tool has a test in `tools/mcp/tests/` (`test_tool_coverage.py`); regenerate
