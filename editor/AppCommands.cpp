@@ -13,7 +13,9 @@
 #include "window/ProjectWindow.h"
 #include "render/SceneRender.h"
 #include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
 #include "window/GameWindow.h"
+#include "window/SpriteNormalsWindow.h"
 #include "window/TerrainEditWindow.h"
 
 #include "AppMenuCommand.h"
