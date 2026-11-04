@@ -387,6 +387,7 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::TerrainComponent: return &InspectorWindow::drawTerrainComponent;
         case ComponentType::LightComponent: return &InspectorWindow::drawLightComponent;
         case ComponentType::ShadowCaster2DComponent: return &InspectorWindow::drawShadowCaster2DComponent;
+        case ComponentType::CapsuleShadowCasterComponent: return &InspectorWindow::drawCapsuleShadowCasterComponent;
         case ComponentType::FogComponent: return &InspectorWindow::drawFogComponent;
         case ComponentType::VolumetricCloudsComponent: return &InspectorWindow::drawVolumetricCloudsComponent;
         case ComponentType::ReflectionProbeComponent: return &InspectorWindow::drawReflectionProbeComponent;

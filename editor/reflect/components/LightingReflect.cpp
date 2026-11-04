@@ -1,13 +1,15 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Lights, fog, clouds, mirrors, reflection probes and the sky (docs/specs/S08-reflection.md).
+// Lights, capsule shadow casters, fog, clouds, mirrors, reflection probes and the sky
+// (docs/specs/S08-reflection.md).
 // Field order is each component's YAML key order.
 
 #include "reflect/Components.h"
 
 #include "Factory.h"
 #include "Stream.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/FogComponent.h"
 #include "component/Light2DComponent.h"
 #include "component/LightComponent.h"
@@ -30,6 +32,12 @@ namespace {
     bool lightSpotUnmasked(const void* light) {
         const LightComponent* l = static_cast<const LightComponent*>(light);
         return l->type == LightType::SPOT && l->spotMask.empty();
+    }
+
+    // contact shadows march towards a directional or spot light that casts shadows
+    bool lightCastsContactShadows(const void* light) {
+        const LightComponent* l = static_cast<const LightComponent*>(light);
+        return l->type != LightType::POINT && l->shadows;
     }
 
     constexpr uint64_t kShadowCamera = UpdateFlags_LightShadowCamera;
@@ -81,6 +89,23 @@ namespace {
                  .group = "Shadows"),
         JE_FIELD(LightComponent, shadowUpdateMode, .enumDesc = &enums::kShadowUpdateMode, .flags = OmitIfDefault | CodegenIfChanged,
                  .label = "Update Mode", .group = "Shadows"),
+        // contact shadows (S57 R3): a screen-space march towards a directional or spot light. The
+        // render system finds the lights that ask for it each frame (no update flag)
+        JE_FIELD(LightComponent, contactShadows, .flags = OmitIfDefault | CodegenIfChanged,
+                 .tooltip = "Screen-space shadows of small details the shadow map misses, from a directional or spot light with Shadows "
+                            "on. A fullscreen pass after the depth pre-pass (which it turns on) marching 8-16 depth samples a pixel; "
+                            "full resolution on High, half on Medium, off on Low.",
+                 .group = "Shadows", .visibleIf = &lightCastsContactShadows),
+        JE_FIELD(LightComponent, contactShadowLength, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
+                 .label = "Contact Length", .tooltip = "How far the march reaches towards the light.", .group = "Shadows",
+                 .visibleIf = &lightCastsContactShadows),
+        JE_FIELD(LightComponent, contactShadowThickness, .flags = OmitIfDefault | CodegenIfChanged, .unit = Unit::Meters, .min = 0.0f,
+                 .label = "Contact Thickness", .tooltip = "How thick a surface in the depth buffer is taken to be: thicker shadows more "
+                                                         "behind thin objects.",
+                 .group = "Shadows", .visibleIf = &lightCastsContactShadows),
+        JE_FIELD(LightComponent, contactShadowSampleCount, .flags = OmitIfDefault | CodegenIfChanged, .min = 8.0f, .max = 16.0f,
+                 .label = "Contact Sample Count", .tooltip = "Depth samples a pixel marches: more are smoother and cost more.",
+                 .group = "Shadows", .visibleIf = &lightCastsContactShadows),
         // the volumetric fog's share of the light
         JE_FIELD(LightComponent, volumetricIntensity, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0f,
                  .tooltip = "How much of this light the volumetric fog scatters (High atmosphere quality, up to 4 point or spot lights, no "
@@ -103,7 +128,8 @@ namespace {
         "type", "direction", "shadows", "cullingMask", "intensity", "range", "color", "innerConeCos", "outerConeCos", "spotMask",
         "shadowBias", "mapResolution", "automaticShadowCamera", "shadowCameraNear", "shadowCameraFar", "numShadowCascades", "softShadows",
         "shadowStrength", "shadowNormalBias", "cascadeSplitMode", "cascadeSplits", "shadowDistance", "shadowAngularDiameter",
-        "shadowSourceRadius", "shadowUpdateMode", "volumetricIntensity", "shading", "intensityUnit", "useColorTemperature", "colorTemperature",
+        "shadowSourceRadius", "shadowUpdateMode", "contactShadows", "contactShadowLength", "contactShadowThickness",
+        "contactShadowSampleCount", "volumetricIntensity", "shading", "intensityUnit", "useColorTemperature", "colorTemperature",
         "enabled"
     };
 
@@ -140,6 +166,40 @@ namespace {
         JE_FIELD(ShadowCaster2DComponent, closed, .visibleIf = &shadowCasterPolygon),
         JE_FIELD(ShadowCaster2DComponent, enabled),
         JE_FIELD(ShadowCaster2DComponent, points, .ops = &ops::PushBackList<Vector2>, .flags = NoDefault | ListWhole, .visibleIf = &shadowCasterPolygon),
+    };
+
+    // ---------------------------------------------------------------- Capsule Shadow Caster (S57 R2)
+
+    // the members in declaration order: the exported code writes each capsule as an aggregate
+    // initializer (structPushBackStatements). The render system resolves the bones by name each
+    // frame (resolvedHash), so no field needs an update flag
+    constexpr FieldDesc kCapsuleShadowShapeFields[] = {
+        JE_FIELD(CapsuleShadowShape, bone,
+                 .tooltip = "The name of the bone (a GameObject under this one) the capsule follows. Empty: this GameObject."),
+        JE_FIELD(CapsuleShadowShape, radius, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(CapsuleShadowShape, length, .unit = Unit::Meters, .min = 0.0f,
+                 .tooltip = "The distance between the centres of the two caps."),
+        JE_FIELD(CapsuleShadowShape, offset, .unit = Unit::Meters, .tooltip = "The capsule's centre in the bone's space."),
+        JE_FIELD(CapsuleShadowShape, direction, .enumDesc = &enums::kCapsuleDirection, .tooltip = "The bone axis the capsule lies along."),
+    };
+
+    constexpr TypeOps kCapsuleListOps = detail::withStatements(ops::Array<CapsuleShadowShape>, &detail::structPushBackStatements);
+
+}
+
+JE_REFLECT_STRUCT_TRAITS(CapsuleShadowShape, kCapsuleShadowShapeStruct);
+const StructDesc kCapsuleShadowShapeStruct = JE_STRUCT_DESC(CapsuleShadowShape, "CapsuleShadowShape", kCapsuleShadowShapeFields);
+
+namespace {
+
+    // the capsules: the whole list is what a prefab override holds (up to MAX_CAPSULES are drawn)
+    constexpr FieldDesc kCapsuleShadowCasterFields[] = {
+        JE_FIELD(CapsuleShadowCasterComponent, enabled, .flags = CodegenIfChanged),
+        JE_FIELD(CapsuleShadowCasterComponent, castShadows, .enumDesc = &enums::kCapsuleCastShadows,
+                 .tooltip = "On: the meshes also cast their shadow-map shadows (their own Cast Shadows decides). Capsules Only: the "
+                            "meshes leave the shadow maps, so a moving character keeps the static shadow cache valid."),
+        JE_FIELD(CapsuleShadowCasterComponent, capsules, .ops = &kCapsuleListOps, .flags = ListWhole | ListTemplate,
+                 .tooltip = "Up to 8 capsules on the character's bones."),
     };
 
     // ---------------------------------------------------------------- Fog
@@ -317,6 +377,14 @@ const ComponentDesc kShadowCaster2DDesc{
     .body = JE_STRUCT_DESC(ShadowCaster2DComponent, "ShadowCaster2DComponent", kShadowCaster2DFields),
     .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(ShadowCaster2DComponent),
     .codegenVar = "shadowcaster2d",
+};
+
+const ComponentDesc kCapsuleShadowCasterDesc{
+    .type = ComponentType::CapsuleShadowCasterComponent, .cppName = "CapsuleShadowCasterComponent", .key = "capsuleshadowcaster",
+    .displayName = "Capsule Shadow Caster", .icon = ICON_FA_CAPSULES,
+    .body = JE_STRUCT_DESC(CapsuleShadowCasterComponent, "CapsuleShadowCasterComponent", kCapsuleShadowCasterFields),
+    .hasEnabled = true, .structural = false, JE_COMPONENT_ACCESS(CapsuleShadowCasterComponent),
+    .codegenVar = "capsuleshadowcaster",
 };
 
 const ComponentDesc kFogDesc{

@@ -3,8 +3,8 @@
 
 // Inspector shadow settings (docs/rendering/shadows.md), in Unity's order: the light's Shadows
 // section (Shadow Type, Strength, Resolution, Bias, Normal Bias, Near Plane, Update Mode, then
-// the directional light's distance, cascades and split bar or a local light's source radius)
-// and the scene's Shadows settings. Every row is an undo step (dragging merges into one); a
+// the directional light's distance, cascades and split bar or a local light's source radius,
+// then Contact Shadows) and the scene's Shadows settings. Every row is an undo step (dragging merges into one); a
 // row that cannot apply on this platform's tier says why.
 
 #include "InspectorWindow.h"
@@ -236,6 +236,32 @@ void editor::InspectorWindow::drawLightShadows(ComponentType cpType, SceneProjec
         ImGui::PopStyleColor();
     }
 
+    // contact shadows (S57 R3): the screen-space march towards a directional or spot light
+    if (light.type != LightType::POINT){
+        RowSettings settingsContact;
+        settingsContact.help = "Screen-space shadows of the small details the shadow map misses (creases, feet on the ground). Costs a "
+                               "fullscreen pass after the depth pre-pass (which it turns on) marching 8-16 depth samples a pixel; full "
+                               "resolution on High, half on Medium, off on Low.";
+        propertyRow(RowPropertyType::Bool, cpType, "contactShadows", "Contact Shadows", sceneProject, entities, settingsContact);
+        if (light.contactShadows){
+            RowSettings settingsLength;
+            settingsLength.indent = true;
+            settingsLength.stepSize = 0.01f;
+            settingsLength.help = "Metres the march reaches towards the light: longer finds larger occluders, and misses more thin ones.";
+            propertyRow(RowPropertyType::FloatPositive, cpType, "contactShadowLength", "Length", sceneProject, entities, settingsLength);
+            RowSettings settingsThickness = settingsLength;
+            settingsThickness.help = "Metres a surface in the depth buffer is taken to be thick: thicker shadows more behind thin objects, "
+                                     "and may shadow through gaps.";
+            propertyRow(RowPropertyType::FloatPositive, cpType, "contactShadowThickness", "Thickness", sceneProject, entities, settingsThickness);
+            RowSettings settingsSamples;
+            settingsSamples.indent = true;
+            settingsSamples.intMin = 8;
+            settingsSamples.intMax = 16;
+            settingsSamples.help = "Depth samples each pixel marches (8-16): more are smoother and cost more.";
+            propertyRow(RowPropertyType::Int, cpType, "contactShadowSampleCount", "Sample Count", sceneProject, entities, settingsSamples);
+        }
+    }
+
     endTable();
 }
 
@@ -323,7 +349,7 @@ void editor::InspectorWindow::drawShadowSplitBar(SceneProject* sceneProject, std
 
 void editor::InspectorWindow::drawSceneShadows(SceneProject* sceneProject){
     Scene* scene = sceneProject->scene;
-    const float labelWidth = getLabelSize("Effective Tier") + ImGui::GetStyle().CellPadding.x * 2.0f;
+    const float labelWidth = std::max(getLabelSize("Effective Tier"), getLabelSize("Capsule Intensity")) + ImGui::GetStyle().CellPadding.x * 2.0f;
     const ImGuiTableFlags tableFlags = ImGuiTableFlags_SizingFixedFit;
     if (!ImGui::BeginTable("scene_shadow_settings_table", 2, tableFlags))
         return;
@@ -345,6 +371,16 @@ void editor::InspectorWindow::drawSceneShadows(SceneProject* sceneProject){
         "The last fraction of the shadow distance over which directional shadows fade to lit, so they end without a line.");
     drawScenePropertyRow<bool>(sceneProject, "shadow_cascade_blend", "Cascade Blend", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
         "Blend each shadow cascade into the next over a band before its split (Low dithers instead), so the change of detail shows no seam.");
+    drawScenePropertyRow<bool>(sceneProject, "capsule_shadows_enabled", "Capsule Shadows", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+        "Soft shadows of characters from the main directional light, cast by the capsules of the 4 Capsule Shadow Casters nearest the "
+        "camera, without a shadow map. Costs per lit pixel, up to 32 capsule tests; Capsules Only casters keep the static shadow cache valid.");
+    // the two below mean nothing while it is off
+    ImGui::BeginDisabled(!scene->isCapsuleShadowsEnabled());
+    drawScenePropertyRow<float>(sceneProject, "capsule_shadow_intensity", "Capsule Intensity", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 1.0f,
+        "How dark capsule shadows are: 0 casts none, 1 full shadow.");
+    drawScenePropertyRow<float>(sceneProject, "capsule_shadow_softness", "Capsule Softness", ScenePropertyInputType::SliderFloat, -1.0f, 0.0f, 2.0f,
+        "How fast a capsule shadow's penumbra widens per metre along the light: 0 is hard, higher is softer further from the character.");
+    ImGui::EndDisabled();
 
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);

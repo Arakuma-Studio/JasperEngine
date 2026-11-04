@@ -167,26 +167,11 @@ namespace {
         return node;
     }
 
-    void structPushBacks(const FieldDesc& field, const void* value, const std::string& target, const CodegenContext& ctx, std::string& out) {
-        void* array = const_cast<void*>(value);
-        const std::string ind = Factory::indentation(ctx.indentSpaces);
-        for (size_t i = 0; i < field.arrayOps->size(array); i++) {
-            void* element = field.arrayOps->at(array, i);
-            std::string literal = "{";
-            for (size_t m = 0; m < field.structDesc->fields.size(); m++) {
-                const FieldDesc& member = field.structDesc->fields[m];
-                if (m > 0) literal += ", ";
-                literal += member.ops->cppLiteral ? member.ops->cppLiteral(member, member.ref(element), ctx) : std::string("{}");
-            }
-            out += ind + target + ".push_back(" + literal + "});\n";
-        }
-    }
-
     template<typename T>
     constexpr TypeOps flowList() {
         TypeOps ops = jasperengine::editor::reflect::ops::Array<T>;
         ops.toYaml = &flowListToYaml;
-        ops.cppStatements = &structPushBacks;
+        ops.cppStatements = &detail::structPushBackStatements;
         return ops;
     }
 
