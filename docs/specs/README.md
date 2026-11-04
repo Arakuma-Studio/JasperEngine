@@ -107,3 +107,16 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S38 | Loudness: `AudioMeter` (LUFS, true peak), true-peak lookahead `limiter`, new-project mixer and audio defaults | 4A (sound; M1 first) |
 | S39 | Music system: tracks and playlists, tempo, bars and beats, quantized transitions with snapshots, stingers, tempo detection | 4B (sound; spec-first) |
 | S40 | Timeline audio: audio cues on animation clips for the Animation Player, Animator and montages | 4B (sound; spec-first) |
+| S41 | Window-scoped commands: a key acts on the focused panel; curve and colour keys rebindable | 5 |
+| S42 | Recorder integrity: no false success, no stand-in frames | 5 |
+| S43 | Saved files do not depend on what was drawn or loaded (sprite frames, weather map, guard test) | 5 |
+| S44 | Shader lists complete for closed scenes (`generate_shaders`, `get_build_info`, Play) | 5 |
+| S45 | Models load whole: no primitive or material dropped, same on the loading thread | 5 |
+| S46 | Crash leftovers clean themselves up (imports, template copies) | 5 |
+| S47 | Android and iOS packaging tested end to end, bundletool download | 5 |
+| S48 | Linked folders: exports ship them, one file one GUID | 5 |
+| S49 | Every modal dialog can be seen and answered by an agent (`EditorModal`) | 5 |
+| S50 | Auto-sync settles before the reply; racy stamps verified | 5 |
+| S51 | Cheap Mesh update flags (measure first) | 5 |
+| S52 | Build hygiene: header fan-out, sanitizer builds install | 5 |
+| S53 | Code cleanups: generated AssetRefSchema, frozen parity data, dead code, shader counter | 5 |
