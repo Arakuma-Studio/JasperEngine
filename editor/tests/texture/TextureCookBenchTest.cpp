@@ -18,6 +18,7 @@
 #include <chrono>
 #include <cstdio>
 #include <map>
+#include "util/UiItemLocator.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

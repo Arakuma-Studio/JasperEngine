@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cstring>
 #include <unordered_map>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::cook;

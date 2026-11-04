@@ -11,6 +11,7 @@
 #include <yaml-cpp/yaml.h>
 
 #include <limits>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

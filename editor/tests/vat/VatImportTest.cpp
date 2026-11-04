@@ -39,6 +39,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "stream/UpstreamParticles.h"
+#include "object/ui/Image.h"
 
 using namespace jasperengine;
 namespace fs = std::filesystem;

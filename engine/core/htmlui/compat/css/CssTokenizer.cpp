@@ -7,6 +7,7 @@
 #include "htmlui/compat/LiteralCompare.h"
 
 #include <cmath>
+#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 

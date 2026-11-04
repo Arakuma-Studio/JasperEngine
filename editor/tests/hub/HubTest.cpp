@@ -20,6 +20,7 @@
 #include <atomic>
 #include <cstdlib>
 #include <fstream>
+#include "profiler/GpuMemory.h"
 
 #ifndef _WIN32
     #include <signal.h>

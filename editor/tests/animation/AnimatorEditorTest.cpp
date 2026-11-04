@@ -30,6 +30,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include "pose/PoseUiLogic.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

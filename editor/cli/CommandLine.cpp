@@ -102,6 +102,8 @@
 #include <string>
 #include <tuple>
 #include <vector>
+#include "htmlui/compat/CompatApi.h"
+#include "component/PrefabComponent.h"
 
 #if defined(_WIN32)
     #define NOMINMAX

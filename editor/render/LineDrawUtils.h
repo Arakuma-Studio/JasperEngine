@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "JasperEngine.h"
 #include <cmath>
 #include <tuple>
 

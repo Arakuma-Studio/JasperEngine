@@ -8,6 +8,7 @@
 #include "search/SearchScorer.h"
 #include <cctype>
 #include <cstring>
+#include "spritenormals/SpriteNormalsField.h"
 
 namespace jasperengine {
 namespace editor {

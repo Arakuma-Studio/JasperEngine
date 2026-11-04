@@ -112,6 +112,7 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
+#include "component/LatticeFollowerComponent.h"
 
 using namespace jasperengine;
 

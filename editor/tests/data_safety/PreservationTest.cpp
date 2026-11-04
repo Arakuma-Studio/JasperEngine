@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <sstream>
 #include <tuple>
+#include "component/LightComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

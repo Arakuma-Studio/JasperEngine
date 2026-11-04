@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <sstream>
+#include "io/File.h"
 
 using namespace jaspertest;
 

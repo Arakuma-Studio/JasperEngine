@@ -17,6 +17,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <set>
+#include "component/CameraComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

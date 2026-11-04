@@ -38,6 +38,7 @@
 #include <set>
 #include <sstream>
 #include <vector>
+#include "window/widget/InputTextContextMenu.h"
 
 #if defined(_WIN32)
     #include <fcntl.h>

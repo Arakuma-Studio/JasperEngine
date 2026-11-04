@@ -20,6 +20,8 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include "util/UiItemLocator.h"
+#include "player/LaunchOptions.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

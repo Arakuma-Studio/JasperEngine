@@ -22,6 +22,8 @@
 #include <set>
 #include <type_traits>
 #include <vector>
+#include "window/widget/InputTextContextMenu.h"
+#include "object/ui/Image.h"
 
 namespace fs = std::filesystem;
 using nlohmann::json;

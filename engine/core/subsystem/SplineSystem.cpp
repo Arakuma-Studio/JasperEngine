@@ -47,6 +47,8 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include "object/environment/Water.h"
+#include "object/ui/Polygon.h"
 
 using namespace jasperengine;
 

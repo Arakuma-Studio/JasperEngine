@@ -21,6 +21,7 @@
 #include <cmath>
 #include <cstring>
 #include <limits>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

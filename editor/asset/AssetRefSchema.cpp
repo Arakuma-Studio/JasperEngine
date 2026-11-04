@@ -36,6 +36,7 @@
 #include "texture/MaterialPbr.h"
 
 #include <unordered_map>
+#include "navigation/NavGridBrush.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

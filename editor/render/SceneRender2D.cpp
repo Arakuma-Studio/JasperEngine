@@ -11,6 +11,21 @@
 
 #include <algorithm>
 #include <cmath>
+#include "component/AudioSourceComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "object/Sprite.h"
+#include "subsystem/RenderSystem.h"
 
 
 using namespace jasperengine;

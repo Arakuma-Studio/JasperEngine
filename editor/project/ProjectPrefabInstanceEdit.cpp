@@ -16,6 +16,7 @@
 #include <functional>
 #include <map>
 #include <unordered_set>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;

@@ -83,6 +83,16 @@
 #include <cmath>
 #include <fstream>
 #include <memory>
+#include "window/widget/InputTextContextMenu.h"
+#include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/ProjectWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "window/TerrainEditWindow.h"
+#include "window/TextureSynthesisWindow.h"
+#include "window/VertexAnimationBakerWindow.h"
 
 namespace fs = std::filesystem;
 

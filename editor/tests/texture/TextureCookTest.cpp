@@ -22,6 +22,7 @@
 #include <fstream>
 #include <map>
 #include <set>
+#include "texture/TextureData.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

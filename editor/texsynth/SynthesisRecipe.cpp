@@ -19,6 +19,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include "object/ui/Image.h"
 
 namespace fs = std::filesystem;
 using nlohmann::json;

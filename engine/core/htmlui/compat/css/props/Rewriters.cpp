@@ -20,6 +20,7 @@
 #include <cstring>
 #include <map>
 #include <mutex>
+#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 

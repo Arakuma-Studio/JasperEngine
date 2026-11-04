@@ -29,6 +29,9 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include "component/TerrainComponent.h"
+#include "component/Transform.h"
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

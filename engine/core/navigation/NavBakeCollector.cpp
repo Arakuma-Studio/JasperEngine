@@ -39,6 +39,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include "object/Mesh.h"
 
 using namespace jasperengine;
 using namespace jasperengine::nav;

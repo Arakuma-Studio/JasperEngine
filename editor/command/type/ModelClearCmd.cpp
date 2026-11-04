@@ -13,6 +13,9 @@
 #include <algorithm>
 #include <unordered_map>
 #include <unordered_set>
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/BoneComponent.h"
 
 using namespace jasperengine;
 

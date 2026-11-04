@@ -12,6 +12,7 @@
 #include "command/type/RemoveComponentCmd.h"
 
 #include <unordered_set>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

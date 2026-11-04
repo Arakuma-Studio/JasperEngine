@@ -22,6 +22,7 @@
 #include <fstream>
 #include <random>
 #include <thread>
+#include "object/ui/Image.h"
 
 #ifdef __linux__
 #include <sys/wait.h>

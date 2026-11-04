@@ -36,6 +36,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include "navigation/NavigationOverlay.h"
 
 namespace jasperengine::editor::mcp {
 

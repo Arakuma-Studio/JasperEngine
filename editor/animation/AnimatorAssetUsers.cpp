@@ -12,6 +12,7 @@
 #include "util/ProjectChecks.h"
 
 #include <functional>
+#include "spritenormals/SpriteNormalsField.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

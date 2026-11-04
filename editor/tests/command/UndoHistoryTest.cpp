@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <memory>
 #include <type_traits>
+#include "util/BackgroundRelease.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

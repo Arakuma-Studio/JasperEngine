@@ -9,6 +9,12 @@
 #include "Stream.h"
 #include "StreamSchema.h"
 #include "util/YamlNumbers.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
 
 using namespace jasperengine;
 

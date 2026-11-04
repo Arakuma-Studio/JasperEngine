@@ -23,6 +23,9 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
+#include "render/SceneRender.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;

@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "serialization/CookStream.h"
 
 using namespace jasperengine;
 using namespace jasperengine::particles;

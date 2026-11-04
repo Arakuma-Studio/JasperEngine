@@ -12,6 +12,8 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+#include "util/Prefab.h"
+#include "io/File.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

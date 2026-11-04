@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include "yaml-cpp/yaml.h"
+#include "Project.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

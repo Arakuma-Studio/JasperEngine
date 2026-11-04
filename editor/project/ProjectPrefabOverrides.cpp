@@ -16,6 +16,11 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
+#include "project/PrefabUnpackRecord.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;
@@ -339,7 +344,7 @@ std::vector<editor::PrefabUnpackRecord> editor::Project::unpackPrefabInstances(u
     }
 
     // What each prefab overrides of the instances nested in it becomes theirs (kept per root)
-    std::unordered_map<Entity, std::vector<PrefabUnpackRecord::NestedState>> nestedBefore;
+    std::unordered_map<Entity, std::vector<PrefabNestedState>> nestedBefore;
     for (Entity root : unpackRoots) {
         promoteNestedAssetData(sceneId, *index.roots.at(root).path, root, nestedBefore[root], queued, !completely);
     }
@@ -496,7 +501,7 @@ void editor::Project::repackPrefabInstances(uint32_t sceneId, std::vector<Prefab
                 }
             }
             // the instances nested in it get back the overrides they had
-            for (PrefabUnpackRecord::NestedState& nested : record.nestedBefore) {
+            for (PrefabNestedState& nested : record.nestedBefore) {
                 if (Prefab::Instance* inner = findInstanceAt(sceneProject, nested.root, nested.path)) {
                     inner->overrides = std::move(nested.overrides);
                     inner->removed = std::move(nested.removed);

@@ -15,6 +15,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include "object/ui/Image.h"
 
 // stb_image_write's in-memory PNG encoder: compiled into the engine (engine/libs/stb), declared
 // only in the implementation part of its header

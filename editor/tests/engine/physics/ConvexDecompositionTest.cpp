@@ -23,6 +23,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "object/Mesh.h"
 
 #if defined(JASPERENGINE_SANITIZE_ADDRESS)
     // the ASan runtime's (sanitizer/allocator_interface.h, not installed with every compiler)

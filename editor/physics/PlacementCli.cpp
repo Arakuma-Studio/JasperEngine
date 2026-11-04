@@ -34,6 +34,7 @@
 #include <sstream>
 #include <thread>
 #include <vector>
+#include "window/widget/InputTextContextMenu.h"
 
 #if defined(_WIN32)
     #include <fcntl.h>

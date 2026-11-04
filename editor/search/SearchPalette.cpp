@@ -26,6 +26,10 @@
 #include <algorithm>
 #include <cstdio>
 #include <functional>
+#include "window/InspectorWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ProjectWindow.h"
+#include "window/SceneWindow.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

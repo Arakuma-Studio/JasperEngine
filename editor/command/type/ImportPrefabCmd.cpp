@@ -8,6 +8,7 @@
 #include "Stream.h"
 #include "util/ProjectUtils.h"
 #include "util/WorldTransforms.h"
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

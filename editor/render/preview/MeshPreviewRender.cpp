@@ -5,6 +5,7 @@
 
 #include "Configs.h"
 #include "Stream.h"
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

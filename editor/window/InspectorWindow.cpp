@@ -136,6 +136,14 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
+#include "render/preview/MaterialRender.h"
+#include "spritenormals/SpriteNormalsField.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SkyboxComponent.h"
+#include "pool/ShaderPool.h"
+#include "subsystem/AtmosphereRenderer.h"
+#include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
 

@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include "yaml-cpp/yaml.h"
+#include "spritenormals/SpriteNormalsField.h"
 
 using namespace jasperengine::editor;
 using jasperengine::editor::test::FakeAssetIndex;

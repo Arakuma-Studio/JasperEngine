@@ -10,6 +10,7 @@
 
 #include <cstring>
 #include <system_error>
+#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -37,6 +37,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "jobs/JobStats.h"
 
 using namespace jasperengine;
 

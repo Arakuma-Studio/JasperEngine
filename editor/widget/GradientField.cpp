@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "command/CommandHistory.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

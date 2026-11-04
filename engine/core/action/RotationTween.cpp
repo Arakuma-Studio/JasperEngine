@@ -4,6 +4,7 @@
 #include "RotationTween.h"
 
 #include "util/Angle.h"
+#include "component/RotationTweenComponent.h"
 
 using namespace jasperengine;
 

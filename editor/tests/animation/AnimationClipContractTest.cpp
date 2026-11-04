@@ -22,6 +22,8 @@
 #include <string>
 #include <type_traits>
 #include <vector>
+#include "unity/UnityYaml.h"
+#include "animation/UpstreamAnimFormats.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

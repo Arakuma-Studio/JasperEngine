@@ -60,6 +60,14 @@
 #include <cstdint>
 #include <climits>
 #include <cstring>
+#include "component/AudioSourceComponent.h"
+#include "component/BoneComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/TextComponent.h"
+#include "component/TextEffectComponent.h"
+#include "object/Terrain.h"
 
 using namespace jasperengine;
 using namespace jasperengine::rendershared;

@@ -11,6 +11,9 @@
 #include "component/Light2DComponent.h"
 #include "util/CameraTextureLink.h"
 #include "util/ProjectUtils.h"
+#include "component/LineRendererComponent.h"
+#include "component/SplineComponent.h"
+#include "component/TrailRendererComponent.h"
 
 using namespace jasperengine;
 

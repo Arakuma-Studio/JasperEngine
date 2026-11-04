@@ -15,6 +15,7 @@
 #include "util/Prefab.h"
 
 #include <gtest/gtest.h>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

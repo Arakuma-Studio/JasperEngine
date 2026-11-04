@@ -11,6 +11,9 @@
 #include <fstream>
 #include <limits>
 #include <system_error>
+#include "unity/UnityYaml.h"
+#include "htmlui/compat/CompatTypes.h"
+#include "io/Data.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

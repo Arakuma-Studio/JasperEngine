@@ -64,6 +64,7 @@
 #include <iterator>
 #include <map>
 #include <unordered_set>
+#include "profiler/GpuMemory.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

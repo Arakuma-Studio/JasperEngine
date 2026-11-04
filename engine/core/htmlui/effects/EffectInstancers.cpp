@@ -32,6 +32,7 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include "object/Mesh.h"
 
 using namespace jasperengine;
 using namespace jasperengine::htmlui;

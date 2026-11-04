@@ -5,6 +5,7 @@
 
 #include "Stream.h"
 #include "util/YamlFootprint.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

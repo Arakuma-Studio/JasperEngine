@@ -10,6 +10,7 @@
 #include "Log.h"
 
 #include <algorithm>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

@@ -103,6 +103,7 @@
 #include <unordered_set>
 #include <memory>
 #include "script/ScriptMessages.h"
+#include "object/physics/Joint3D.h"
 
 using namespace jasperengine;
 

@@ -9,6 +9,7 @@
 #include <cctype>
 #include <mutex>
 #include <regex>
+#include "reload/handlers/ReloadHandlers.h"
 
 using namespace jasperengine::editor;
 

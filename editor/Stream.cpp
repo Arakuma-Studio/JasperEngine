@@ -59,6 +59,26 @@
 #include <fstream>
 #include <set>
 #include <stdexcept>
+#include "component/AlphaTweenComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/FogComponent.h"
+#include "component/ImageComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/SafeAreaComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/TextComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "camera/CameraType.h"
+#include "component/PrefabComponent.h"
+#include "component/ScriptComponent.h"
+#include "component/FluidSimulationComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/VideoPlayerComponent.h"
+#include "util/TextEffects.h"
 
 using namespace jasperengine;
 

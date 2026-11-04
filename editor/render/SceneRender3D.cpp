@@ -28,6 +28,22 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include "component/AudioSourceComponent.h"
+#include "component/BoneComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/LightComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/Transform.h"
+#include "component/TranslateTracksComponent.h"
+#include "object/Sprite.h"
+#include "subsystem/PhysicsSystem.h"
+#include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
 

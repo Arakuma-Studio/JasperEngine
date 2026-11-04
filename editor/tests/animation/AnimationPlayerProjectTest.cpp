@@ -32,6 +32,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "component/AnimationPlayerComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

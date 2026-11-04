@@ -23,6 +23,8 @@
 #include <cstdlib>
 #include <set>
 #include <tuple>
+#include "stream/UpstreamParticles.h"
+#include "component/AnimationPlayerComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -26,6 +26,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "widget/CurveEditorOps.h"
+#include "htmlui/HtmlUIInspectorInternal.h"
 
 namespace jasperengine::editor::mcp {
 

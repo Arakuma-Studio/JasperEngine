@@ -19,6 +19,10 @@
 
 #include <set>
 #include <string>
+#include "component/FogComponent.h"
+#include "component/LightComponent.h"
+#include "component/LocalVolumetricFogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

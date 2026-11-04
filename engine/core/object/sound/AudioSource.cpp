@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <stdexcept>
+#include "component/Transform.h"
 
 
 using namespace jasperengine;

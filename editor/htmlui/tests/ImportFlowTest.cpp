@@ -21,6 +21,7 @@
 #include <condition_variable>
 #include <sstream>
 #include <thread>
+#include "htmlui/compat/runtime/LucideIcons.h"
 
 using namespace jasperengine::editor::htmlui;
 using namespace jasperengine::editor::htmlui::test;

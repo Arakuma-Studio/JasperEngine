@@ -22,6 +22,7 @@
 #include <functional>
 #include <thread>
 #include <chrono>
+#include "object/ui/Image.h"
 
 using namespace jasperengine::editor::spritenormals;
 namespace fs = std::filesystem;

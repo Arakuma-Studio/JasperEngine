@@ -57,6 +57,10 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include "component/TextComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "physics/PlacementSession.h"
+#include "window/PhysicsPlacementWindow.h"
 
 using namespace jasperengine;
 

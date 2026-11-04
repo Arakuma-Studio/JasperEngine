@@ -16,6 +16,7 @@
 #include <set>
 #include <tuple>
 #include <unordered_set>
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

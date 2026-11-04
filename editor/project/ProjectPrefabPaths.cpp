@@ -32,6 +32,9 @@
 #include <map>
 #include <system_error>
 #include <unordered_set>
+#include "component/VertexAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

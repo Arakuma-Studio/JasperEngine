@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

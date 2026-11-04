@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShadowCaster2D.h"
+#include "component/ShadowCaster2DComponent.h"
 
 using namespace jasperengine;
 

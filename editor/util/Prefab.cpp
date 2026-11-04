@@ -9,6 +9,7 @@
 #include "util/YamlNumbers.h"
 
 #include <unordered_set>
+#include "component/PrefabComponent.h"
 
 namespace jasperengine::editor {
 

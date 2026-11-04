@@ -68,6 +68,7 @@
 #include "shader/ShaderGlobals.h"
 #include "util/Color.h"
 #include "object/EntityHandle.h"
+#include "object/Camera.h"
 
 using namespace jasperengine;
 

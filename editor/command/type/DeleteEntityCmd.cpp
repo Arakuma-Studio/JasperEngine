@@ -20,6 +20,11 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include "component/CameraComponent.h"
+#include "component/FogComponent.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

@@ -6,6 +6,8 @@
 #include "component/CameraComponent.h"
 #include "component/Transform.h"
 #include "picking/PickTypes.h"
+#include "object/Camera.h"
+#include "render/SceneRender.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -27,6 +27,7 @@
 #include <functional>
 #include <stdexcept>
 #include <unordered_set>
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

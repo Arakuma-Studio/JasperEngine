@@ -24,6 +24,7 @@
 #include <cmath>
 #include <unordered_map>
 #include <unordered_set>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

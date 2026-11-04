@@ -19,6 +19,7 @@
 #include <chrono>
 #include <unordered_map>
 #include <random>
+#include "object/ui/Image.h"
 
 using namespace jasperengine::editor::spritenormals;
 namespace fs = std::filesystem;

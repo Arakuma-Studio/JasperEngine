@@ -6,6 +6,8 @@
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "Stream.h"
+#include "util/UiItemLocator.h"
+#include "project/PrefabUnpackRecord.h"
 
 using namespace jasperengine;
 

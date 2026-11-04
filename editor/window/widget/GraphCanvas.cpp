@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include "graph/Graph.h"
+#include "spline/SplineCurve.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

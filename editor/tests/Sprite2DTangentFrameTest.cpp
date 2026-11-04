@@ -53,6 +53,7 @@
 #include <string>
 #include <vector>
 #include "reflect/Reflect.h"
+#include "object/ui/Polygon.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

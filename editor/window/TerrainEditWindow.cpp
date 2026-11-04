@@ -53,6 +53,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

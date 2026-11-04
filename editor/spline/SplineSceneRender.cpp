@@ -21,6 +21,9 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include "component/TerrainComponent.h"
+#include "component/Transform.h"
+#include "subsystem/MeshSystem.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

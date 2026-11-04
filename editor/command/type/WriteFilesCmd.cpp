@@ -13,6 +13,7 @@
 #include <cstring>
 #include <fstream>
 #include <iterator>
+#include "util/UiItemLocator.h"
 
 using namespace jasperengine;
 

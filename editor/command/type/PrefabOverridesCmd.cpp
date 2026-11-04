@@ -7,6 +7,7 @@
 #include "command/type/AddEntityToPrefabCmd.h"
 #include "command/type/DeleteEntityCmd.h"
 #include "command/type/PrefabOverrideCmd.h"
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

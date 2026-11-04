@@ -15,6 +15,7 @@
 #include <new>
 #include <set>
 #include <thread>
+#include "object/ui/Image.h"
 
 namespace jasperengine::editor::texsynth {
 

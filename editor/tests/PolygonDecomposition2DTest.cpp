@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "object/ui/Polygon.h"
 
 using namespace jasperengine;
 

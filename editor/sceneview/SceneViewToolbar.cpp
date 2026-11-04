@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include "util/UiItemLocator.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

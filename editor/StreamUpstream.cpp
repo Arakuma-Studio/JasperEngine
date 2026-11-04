@@ -19,6 +19,12 @@
 #include <cmath>
 #include <limits>
 #include <string>
+#include "component/CanvasGroupComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/RagdollComponent.h"
+#include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "render/LineRibbonBuilder.h"
 
 using namespace jasperengine;
 

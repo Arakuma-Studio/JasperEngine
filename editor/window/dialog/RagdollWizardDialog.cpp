@@ -8,6 +8,7 @@
 #include "util/RagdollWizard.h"
 #include "component/AnimationPlayerComponent.h"
 #include "imgui.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

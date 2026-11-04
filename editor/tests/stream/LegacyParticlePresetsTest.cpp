@@ -33,6 +33,7 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "profiler/Profiler.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

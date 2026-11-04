@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/spline/Spline.h"
+#include "object/spline/SplineAnimate.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
 #include "LuaBinding.h"
 #include "component/ActionComponent.h"
 
@@ -76,6 +80,12 @@
 #include "component/PhysicsCommon.h"
 #include <optional>
 #include "WaterVolume.h"
+#include "component/ButtonComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/PanelComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/SafeAreaComponent.h"
+#include "component/ScrollbarComponent.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"

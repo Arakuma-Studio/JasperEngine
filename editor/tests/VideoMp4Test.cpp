@@ -35,6 +35,7 @@
 #include <fstream>
 #include <functional>
 #include <thread>
+#include "Stream.h"
 
 using namespace jasperengine;
 using jaspertest::TestHttpServer;

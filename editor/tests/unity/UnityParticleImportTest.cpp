@@ -29,6 +29,8 @@
 #include <fstream>
 #include <random>
 #include <sstream>
+#include "component/ParticleSystemComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

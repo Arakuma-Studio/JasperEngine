@@ -14,6 +14,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include "component/ActionComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/MeshComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/SplineComponent.h"
+#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::cook;

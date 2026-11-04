@@ -80,6 +80,8 @@
 #include <memory>
 #include <set>
 #include <unordered_set>
+#include "component/CameraFollowComponent.h"
+#include "component/CameraShakerComponent.h"
 
 namespace jasperengine::editor::mcp {
 

@@ -73,6 +73,10 @@
 #include <set>
 #include <sstream>
 #include <vector>
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
 
 
 namespace {

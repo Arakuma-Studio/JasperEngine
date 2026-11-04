@@ -18,6 +18,8 @@
 #include <system_error>
 #include <thread>
 #include <vector>
+#include "util/TerrainMapFileWriter.h"
+#include "profiler/GpuMemory.h"
 
 using namespace jasperengine;
 namespace fs = std::filesystem;

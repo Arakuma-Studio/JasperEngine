@@ -14,32 +14,7 @@
 #include "shortcuts/CommandCatalog.h"
 #include "shortcuts/ShortcutDispatcher.h"
 
-#include "window/InspectorWindow.h"
-#include "window/HierarchyWindow.h"
-#include "window/ConsoleWindow.h"
-#include "window/SceneWindow.h"
-#include "window/ProjectWindow.h"
-#include "window/ImageViewerWindow.h"
-#include "window/CodeEditor.h"
-#include "window/AnimationWindow.h"
-#include "window/PoseAnimationWindow.h"
-#include "window/AnimatorWindow.h"
-#include "window/AvatarWindow.h"
-#include "window/TerrainEditWindow.h"
-#include "window/TextureSynthesisWindow.h"
-#include "window/AudioMixerWindow.h"
-#include "window/VertexAnimationBakerWindow.h"
-#include "window/PhysicsPlacementWindow.h"
-#include "window/SystemsWindow.h"
-#include "window/AssetPanels.h"
-#include "window/SpriteNormalsWindow.h"
-#include "spritenormals/SpriteNormalsWatcher.h"
-#include "window/GameWindow.h"
-#include "window/MainToolbar.h"
-#include "window/StatusBar.h"
-#include "window/PlayInput.h"
 
-#include "window/LoadingWindow.h"
 #include "hub/ProjectHubWindow.h"
 #include "recorder/RecorderWindow.h"
 
@@ -56,7 +31,6 @@
 #include "window/dialog/AboutWindow.h"
 #include "window/dialog/ScenesWindow.h"
 
-#include "render/SceneRender.h"
 
 #include <chrono>
 #include <cstdint>
@@ -83,6 +57,32 @@ namespace jasperengine::editor::vcs {
 
 namespace jasperengine::editor{
 
+    class InspectorWindow;
+    class HierarchyWindow;
+    class ConsoleWindow;
+    class SceneWindow;
+    class ProjectWindow;
+    class ImageViewerWindow;
+    class CodeEditor;
+    class AnimationWindow;
+    class PoseAnimationWindow;
+    class AnimatorWindow;
+    class AvatarWindow;
+    class TerrainEditWindow;
+    class TextureSynthesisWindow;
+    class AudioMixerWindow;
+    class VertexAnimationBakerWindow;
+    class PhysicsPlacementWindow;
+    class SystemsWindow;
+    class SpriteNormalsWindow;
+    class GameWindow;
+    class MainToolbar;
+    class StatusBar;
+    class PlayInput;
+    class LoadingWindow;
+    class MissingAssetsWindow;
+    class AssetReferencesWindow;
+    class SpriteNormalsWatcher;
     class JobsMemoryWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;

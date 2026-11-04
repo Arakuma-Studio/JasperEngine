@@ -15,6 +15,7 @@
 #include "util/EntityPath.h"
 
 #include <algorithm>
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 namespace fs = std::filesystem;

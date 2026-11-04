@@ -12,6 +12,7 @@
 #include "unity/UnityYaml.h"
 
 #include <cmath>
+#include "Project.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::unity;

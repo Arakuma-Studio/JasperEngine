@@ -15,6 +15,7 @@
 
 #include <string>
 #include <vector>
+#include "component/ModelComponent.h"
 
 namespace jasperengine::editor{
 

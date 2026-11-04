@@ -29,6 +29,8 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include "Stream.h"
+#include "profiler/GpuMemory.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

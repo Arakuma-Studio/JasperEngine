@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <functional>
 #include <unordered_set>
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;

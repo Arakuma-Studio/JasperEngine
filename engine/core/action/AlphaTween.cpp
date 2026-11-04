@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AlphaTween.h"
+#include "component/AlphaTweenComponent.h"
 
 using namespace jasperengine;
 

@@ -37,6 +37,8 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include "Workspace.h"
+#include "animation/AnimatorPose.h"
 
 namespace jasperengine::editor::mcp {
 

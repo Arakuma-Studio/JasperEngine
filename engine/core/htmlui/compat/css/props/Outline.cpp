@@ -17,6 +17,7 @@
 #include "htmlui/compat/css/RcssGrammar.h"
 #include "htmlui/compat/css/Units.h"
 #include "htmlui/compat/css/ValueNormalizer.h"
+#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::props;

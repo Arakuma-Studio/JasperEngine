@@ -45,6 +45,7 @@
 #include <memory>
 #include <set>
 #include <unordered_set>
+#include "component/Transform.h"
 
 namespace fs = std::filesystem;
 

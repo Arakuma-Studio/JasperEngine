@@ -10,6 +10,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
 
 using namespace jasperengine;
 

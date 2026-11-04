@@ -44,6 +44,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "htmlui/compat/css/RewriteSession.h"
 
 namespace jasperengine::editor::mcp {
 

@@ -42,6 +42,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <set>
+#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 

@@ -11,6 +11,7 @@
 #include "TempDir.h"
 
 #include <gtest/gtest.h>
+#include "shortcuts/ShortcutDispatcher.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -12,6 +12,9 @@
 #include "shortcuts/CommandCatalog.h"
 
 #include <algorithm>
+#include "render/SceneRender.h"
+#include "render/ToolsLayer.h"
+#include "window/PhysicsPlacementWindow.h"
 
 using namespace jasperengine;
 

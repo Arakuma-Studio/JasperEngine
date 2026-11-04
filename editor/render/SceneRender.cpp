@@ -1,12 +1,41 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "LayerViewCamera.h"
 #include "SceneRender.h"
 #include "spline/SplineEditor.h"
 #include "profiler/Profile.h"
 
 #include "resources/icons/camera-icon_png.h"
 #include "resources/icons/audio-source-icon_png.h"
+#include "component/ActionComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TextComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/UIComponent.h"
+#include "subsystem/ActionSystem.h"
+#include "subsystem/MeshSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "subsystem/UIDocumentSystem.h"
+#include "subsystem/UISystem.h"
+#include "object/Sprite.h"
 
 // defined by resources/icons/bulb-icon_png.h, included in SceneRender3D.cpp
 // (the xxd headers define non-static arrays, so they link in one TU only)
@@ -120,6 +149,10 @@ void editor::SceneRender::dropParticleShapeLines(const std::set<Entity>& current
             ++it;
         }
     }
+}
+
+void editor::SceneRender::setEditorOverlay(Entity entity){
+    scene->getSystem<RenderSystem>()->setEditorOverlay(entity, true);
 }
 
 editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOverlays, float gizmoScale, float selectionOffset): toolslayer(use2DGizmos), uilayer(enable3DOverlays){

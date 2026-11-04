@@ -47,6 +47,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "component/ScriptComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -16,6 +16,7 @@
 #include "util/ExternalCodeEditor.h"
 #include "util/FileUtils.h"
 #include <cmath>
+#include "window/ProjectWindow.h"
 
 namespace {
 

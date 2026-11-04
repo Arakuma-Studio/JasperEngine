@@ -17,6 +17,10 @@
 #include <yaml-cpp/yaml.h>
 
 #include <string>
+#include "component/SplineAnimateComponent.h"
+#include "component/SplineComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/SplineInstantiateComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

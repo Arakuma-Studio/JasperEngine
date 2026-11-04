@@ -13,6 +13,7 @@
 #include "pose/HumanoidMapIO.h"
 
 #include <algorithm>
+#include "asset/TextReferences.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

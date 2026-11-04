@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "component/LayoutGroupComponent.h"
 
 using namespace jasperengine;
 

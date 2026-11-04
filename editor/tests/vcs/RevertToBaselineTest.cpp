@@ -21,6 +21,9 @@
 #include "vcs/scene/SceneDiff.h"
 
 #include <sstream>
+#include "spritenormals/SpriteNormalsField.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -4,6 +4,7 @@
 #include "TerrainMapPatchCmd.h"
 
 #include <utility>
+#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 

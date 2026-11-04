@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <string>
 #include <vector>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using editor::EntityPath;

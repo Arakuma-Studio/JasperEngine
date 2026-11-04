@@ -22,6 +22,11 @@
 #include <set>
 #include <string>
 #include <vector>
+#include "component/MeshComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
+#include "animation/ClipTypes.h"
+#include "component/AnimationPlayerComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

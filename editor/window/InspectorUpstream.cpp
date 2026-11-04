@@ -19,6 +19,8 @@
 
 #include <algorithm>
 #include <filesystem>
+#include "component/ImageComponent.h"
+#include "component/OnScreenControlComponents.h"
 
 using namespace jasperengine;
 

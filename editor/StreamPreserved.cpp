@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include "component/Transform.h"
+#include "profiler/Profiler.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

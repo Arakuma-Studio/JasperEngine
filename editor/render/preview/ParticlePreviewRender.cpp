@@ -10,6 +10,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include "camera/CameraType.h"
+#include "component/LightComponent.h"
 
 using namespace jasperengine;
 

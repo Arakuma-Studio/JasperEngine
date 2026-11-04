@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include "component/Transform.h"
 
 namespace fs = std::filesystem;
 

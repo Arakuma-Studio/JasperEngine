@@ -36,6 +36,8 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include "component/Transform.h"
+#include "camera/CameraType.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

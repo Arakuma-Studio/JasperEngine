@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include "util/TerrainMapFileWriter.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

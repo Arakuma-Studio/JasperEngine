@@ -23,6 +23,23 @@
 #include <cctype>
 #include <cmath>
 #include <cstring>
+#include "component/AnimatorComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/RagdollComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/TextComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/TextEffectComponent.h"
+#include "util/TextEffects.h"
 
 namespace {
 

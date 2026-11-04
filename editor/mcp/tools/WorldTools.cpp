@@ -115,6 +115,9 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include "navigation/NavGridBrush.h"
+#include "stream/UpstreamParticles.h"
+#include "object/physics/Ragdoll.h"
 
 namespace jasperengine::editor::mcp {
 

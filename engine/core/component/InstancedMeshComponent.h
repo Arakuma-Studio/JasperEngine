@@ -8,6 +8,7 @@
 #include "math/Rect.h"
 
 #include <vector>
+#include "buffer/ExternalBuffer.h"
 
 namespace jasperengine{
 

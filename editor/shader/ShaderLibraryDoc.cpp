@@ -12,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <sstream>
+#include "profiler/GpuMemory.h"
 
 using namespace jasperengine;
 

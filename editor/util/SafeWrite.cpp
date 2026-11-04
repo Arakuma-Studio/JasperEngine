@@ -21,6 +21,10 @@
 #include <system_error>
 #include <thread>
 #include <utility>
+#include "buffer/Buffer.h"
+#include "htmlui/compat/runtime/DecoratorCommon.h"
+#include "io/File.h"
+#include "net/CurlApi.h"
 
 #ifdef _WIN32
     #ifndef NOMINMAX

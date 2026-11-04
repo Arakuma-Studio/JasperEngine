@@ -12,6 +12,22 @@
 #include <initializer_list>
 #include <set>
 #include <string>
+#include "component/ActionComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/FogComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/LightComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "camera/CameraType.h"
+#include "component/ScriptComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

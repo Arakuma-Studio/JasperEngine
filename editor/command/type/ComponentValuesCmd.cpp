@@ -17,6 +17,9 @@
 #include "window/dialog/ComponentAddDialog.h"
 
 #include <initializer_list>
+#include "stream/UpstreamParticles.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
 
 using namespace jasperengine;
 

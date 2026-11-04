@@ -46,6 +46,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include "htmlui/compat/css/Import.h"
+#include "render/SceneRender.h"
 
 namespace jasperengine::editor::mcp {
 

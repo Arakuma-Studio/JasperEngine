@@ -20,6 +20,7 @@
 #include <fstream>
 #include <random>
 #include <set>
+#include "component/TextComponent.h"
 
 namespace fs = std::filesystem;
 using namespace jasperengine;

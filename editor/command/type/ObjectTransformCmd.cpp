@@ -10,6 +10,8 @@
 
 #include "command/CommandNames.h"
 #include "command/PlayChangeReview.h"
+#include "component/RectTransformComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

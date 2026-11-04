@@ -83,6 +83,8 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include "animation/ClipBinding.h"
+#include "particles/ParticleModules.h"
 
 namespace fs = std::filesystem;
 

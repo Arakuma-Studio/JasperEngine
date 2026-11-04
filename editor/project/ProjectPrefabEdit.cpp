@@ -19,6 +19,10 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::prefabinternal;

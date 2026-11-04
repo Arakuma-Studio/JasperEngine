@@ -23,6 +23,7 @@
 #include <span>
 #include <string>
 #include <unordered_set>
+#include "object/ui/Panel.h"
 
 using namespace jasperengine;
 using namespace jasperengine::rendershared;

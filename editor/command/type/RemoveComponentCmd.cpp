@@ -15,6 +15,9 @@
 #include <map>
 #include <set>
 #include <utility>
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/Transform.h"
 
 using namespace jasperengine;
 

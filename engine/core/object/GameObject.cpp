@@ -7,6 +7,20 @@
 #include "subsystem/PhysicsSystem.h"
 #include "manager/ObjectManager.h"
 #include "Engine.h"
+#include "component/BuoyancyComponent.h"
+#include "component/SplineAnimateComponent.h"
+#include "component/SplineComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/SplineInstantiateComponent.h"
+#include "component/WaterVolumeComponent.h"
+#include "object/environment/WaterVolume.h"
+#include "object/physics/Buoyancy.h"
+#include "object/physics/CharacterController.h"
+#include "object/physics/CharacterController2D.h"
+#include "object/spline/Spline.h"
+#include "object/spline/SplineAnimate.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
 
 using namespace jasperengine;
 

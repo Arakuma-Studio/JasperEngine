@@ -54,6 +54,7 @@
 #include <set>
 #include <sstream>
 #include <thread>
+#include "component/ScriptComponent.h"
 
 using namespace jasperengine;
 using jasperengine::editor::Util;

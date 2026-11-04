@@ -4,6 +4,7 @@
 #include "TextureFormatSelector.h"
 
 #include <cstdio>
+#include "spritenormals/SpriteNormals.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

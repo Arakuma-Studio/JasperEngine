@@ -56,6 +56,7 @@
 #include <map>
 #include <memory>
 #include <unordered_set>
+#include "component/VolumetricCloudsComponent.h"
 
 using namespace jasperengine;
 namespace fs = std::filesystem;

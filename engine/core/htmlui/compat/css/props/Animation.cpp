@@ -18,6 +18,7 @@
 #include "htmlui/compat/css/ValueNormalizer.h"
 
 #include <cmath>
+#include "object/ui/Text.h"
 
 using namespace jasperengine::htmlui::compat;
 using namespace jasperengine::htmlui::compat::props;

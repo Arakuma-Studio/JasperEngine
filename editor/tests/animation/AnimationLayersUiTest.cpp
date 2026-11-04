@@ -41,6 +41,7 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

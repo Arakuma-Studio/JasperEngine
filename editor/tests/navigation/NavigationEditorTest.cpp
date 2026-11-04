@@ -18,6 +18,12 @@
 
 #include <algorithm>
 #include <functional>
+#include "component/NavGridComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

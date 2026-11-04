@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <unordered_set>
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

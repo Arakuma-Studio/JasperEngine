@@ -1416,6 +1416,7 @@ function(configure_jasperengine_editor_target target_name)
     )
 
     target_compile_definitions(${target_name} PRIVATE
+        JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES
         "JASPERENGINE_CXX_STANDARD_LIST=${JASPERENGINE_CXX_STANDARD_LIST}"
         "JASPERENGINE_CXX_FLOOR_GNU=\"${JASPERENGINE_CXX_FLOOR_GNU}\""
         "JASPERENGINE_CXX_FLOOR_CLANG=\"${JASPERENGINE_CXX_FLOOR_Clang}\""
@@ -1675,15 +1676,22 @@ if(WIN32)
     list(APPEND JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor-cmd)
 endif()
 
+# What `cmake --install` installs for: the release configurations, and a sanitizer tree's (Debug
+# by default, tools/build.sh), whose install the MCP tests run like a normal one's
+set(JASPERENGINE_INSTALL_CONFIGURATIONS Release MinSizeRel)
+if(JASPERENGINE_SANITIZE)
+    list(APPEND JASPERENGINE_INSTALL_CONFIGURATIONS Debug RelWithDebInfo)
+endif()
+
 # The bundle already holds the dylib and engine/.
 if(APPLE)
     install(TARGETS jasperengine-editor
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             BUNDLE DESTINATION bin
     )
 else()
     install(TARGETS ${JASPERENGINE_EDITOR_INSTALL_TARGETS} jasperengine
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             RUNTIME DESTINATION bin
             LIBRARY DESTINATION bin
             ARCHIVE DESTINATION bin
@@ -1691,7 +1699,7 @@ else()
 
     if(JASPERENGINE_MINGW_RUNTIME)
         install(FILES ${JASPERENGINE_MINGW_RUNTIME}
-                CONFIGURATIONS Release MinSizeRel
+                CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
                 DESTINATION bin
         )
     endif()
@@ -1701,10 +1709,10 @@ else()
     install(CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" \"-DENGINE_SOURCE=${CMAKE_SOURCE_DIR}/engine\"
                       \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
                       -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
-            CONFIGURATIONS Release MinSizeRel)
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS})
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             PATTERN ".cxx" EXCLUDE
             PATTERN ".gradle" EXCLUDE
             PATTERN "build" EXCLUDE
@@ -1738,7 +1746,7 @@ endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${JASPERENGINE_CHECK_NOTICES})
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/NOTICE.md ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
         DESTINATION ${JASPERENGINE_NOTICES_DESTINATION}
-        CONFIGURATIONS Release MinSizeRel
+        CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
 )
 string(REPLACE "\n" ";" JASPERENGINE_LICENSE_MANIFEST "${JASPERENGINE_LICENSE_MANIFEST}")
 foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
@@ -1746,7 +1754,7 @@ foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
         install(FILES "${CMAKE_MATCH_1}"
                 DESTINATION ${JASPERENGINE_NOTICES_DESTINATION}/licenses
                 RENAME "${CMAKE_MATCH_2}"
-                CONFIGURATIONS Release MinSizeRel
+                CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
         )
     endif()
 endforeach()
@@ -1756,19 +1764,19 @@ endforeach()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/jasperengine-editor.desktop
             DESTINATION share/applications
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
     )
 
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/com.jaspergameengine.editor.metainfo.xml
             DESTINATION share/metainfo
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
     )
 
     foreach(icon_size IN ITEMS 16 32 48 64 128 256 512)
         install(FILES ${JASPERENGINE_LINUX_ICON_DIR}/jasperengine-editor-${icon_size}.png
                 DESTINATION share/icons/hicolor/${icon_size}x${icon_size}/apps
                 RENAME jasperengine-editor.png
-                CONFIGURATIONS Release MinSizeRel
+                CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
         )
     endforeach()
 endif()

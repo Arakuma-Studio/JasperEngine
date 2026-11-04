@@ -41,6 +41,7 @@
 #include <map>
 #include <set>
 #include <unordered_map>
+#include "widget/CurveEditorOps.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

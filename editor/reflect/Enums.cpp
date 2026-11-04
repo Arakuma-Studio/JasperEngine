@@ -22,6 +22,22 @@
 #include "render/LineRibbonBuilder.h"
 
 #include <cctype>
+#include "component/ActionComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/FogComponent.h"
+#include "component/VolumetricCloudsComponent.h"
+#include "render/shadow/ShadowTypes.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "particles/LegacyParticleSystem.h"
+#include "component/ScriptComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/UIDocumentComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

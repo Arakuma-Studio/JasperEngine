@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include "component/ModelComponent.h"
 
 using namespace jasperengine;
 using playerdetail::completeRest;

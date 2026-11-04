@@ -98,6 +98,8 @@
 #include <algorithm>
 #include <unordered_set>
 #include <memory>
+#include "spritenormals/SpriteNormalsField.h"
+#include "window/AnimationWindow.h"
 
 using namespace jasperengine;
 

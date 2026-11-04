@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <map>
 #include <set>
+#include "action/Animation.h"
 
 namespace fs = std::filesystem;
 using namespace jasperengine;

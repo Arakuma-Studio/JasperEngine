@@ -42,6 +42,8 @@
 #include <cstdlib>
 #include <memory>
 #include <set>
+#include "component/LineRendererComponent.h"
+#include "component/TrailRendererComponent.h"
 
 namespace jasperengine::editor::mcp {
 

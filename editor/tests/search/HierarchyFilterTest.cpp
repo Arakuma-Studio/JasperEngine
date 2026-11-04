@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include "graph/Graph.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

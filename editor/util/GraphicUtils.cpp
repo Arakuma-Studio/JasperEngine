@@ -17,6 +17,8 @@
 #include <vector>
 #include <thread>
 #include <utility>
+#include "component/RectTransformComponent.h"
+#include "component/TextComponent.h"
 
 #if defined(SOKOL_METAL)
     #include <TargetConditionals.h>

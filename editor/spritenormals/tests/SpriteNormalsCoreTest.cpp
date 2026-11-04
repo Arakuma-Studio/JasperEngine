@@ -25,6 +25,7 @@
 #include <functional>
 #include <limits>
 #include <thread>
+#include "object/ui/Image.h"
 
 using namespace jasperengine::editor::spritenormals;
 namespace fs = std::filesystem;

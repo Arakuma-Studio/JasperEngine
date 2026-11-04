@@ -14,6 +14,8 @@
 
 #include <algorithm>
 #include <unordered_set>
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 

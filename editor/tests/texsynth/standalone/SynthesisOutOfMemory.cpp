@@ -22,6 +22,7 @@
 #include <fstream>
 #include <random>
 #include <string>
+#include "object/ui/Image.h"
 
 using namespace jasperengine::editor::texsynth;
 

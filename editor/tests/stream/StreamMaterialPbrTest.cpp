@@ -16,6 +16,7 @@
 #include <chrono>
 #include <string>
 #include <thread>
+#include "component/TerrainComponent.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

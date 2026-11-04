@@ -17,6 +17,8 @@
 #include "util/Color.h"
 #include "util/StringUtils.h"
 #include "pool/FontPool.h"
+#include "component/ActionComponent.h"
+#include "component/TweenComponent.h"
 
 using namespace jasperengine;
 

@@ -5,6 +5,8 @@
 #define LIGHT_H
 
 #include "GameObject.h"
+#include "component/LightComponent.h"
+#include "render/shadow/ShadowTypes.h"
 
 namespace jasperengine{
 

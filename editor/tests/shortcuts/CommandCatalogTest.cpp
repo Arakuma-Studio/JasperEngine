@@ -13,6 +13,8 @@
 #include <cstdlib>
 #include <fstream>
 #include <set>
+#include "shortcuts/Chord.h"
+#include "shortcuts/CommandCatalog.h"
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;

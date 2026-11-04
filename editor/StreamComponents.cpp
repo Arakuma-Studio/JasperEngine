@@ -26,6 +26,38 @@
 #include <cstring>
 #include <mutex>
 #include <set>
+#include "component/ActionComponent.h"
+#include "component/BuoyancyComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/ForceFieldComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeModifierComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/ParticleSystemComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/PoseAnimatorComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/UIComponent.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/WaterVolumeComponent.h"
+#include "util/HybridArray.h"
+#include "component/ScriptComponent.h"
+#include "component/LineRendererComponent.h"
 
 using namespace jasperengine;
 

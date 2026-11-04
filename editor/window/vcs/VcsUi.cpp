@@ -24,6 +24,7 @@
 #include "imgui.h"
 
 #include <algorithm>
+#include "util/UiItemLocator.h"
 
 namespace jasperengine::editor::vcs {
 

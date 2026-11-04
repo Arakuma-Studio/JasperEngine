@@ -12,6 +12,7 @@
 
 #include <string>
 #include <vector>
+#include "object/Model.h"
 
 using namespace jasperengine::editor;
 

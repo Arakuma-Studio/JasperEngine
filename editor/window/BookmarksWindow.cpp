@@ -17,6 +17,8 @@
 #include "imgui.h"
 
 #include <cstring>
+#include "window/HierarchyWindow.h"
+#include "window/ProjectWindow.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

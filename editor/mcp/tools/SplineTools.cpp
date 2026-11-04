@@ -38,6 +38,8 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include "component/MeshComponent.h"
+#include "component/Transform.h"
 
 namespace jasperengine::editor::mcp {
 

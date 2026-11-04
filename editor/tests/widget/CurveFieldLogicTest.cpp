@@ -19,6 +19,7 @@
 
 #include <cmath>
 #include <limits>
+#include "ecs/View.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

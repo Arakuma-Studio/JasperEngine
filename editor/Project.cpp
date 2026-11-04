@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "render/LayerViewCamera.h"
 #include "Project.h"
 #include "diag/HangWatchdog.h"
 #include "util/EditorDiagnostics.h"
@@ -134,6 +135,18 @@
 #include "PrefabManager.h"
 #include "ObjectManager.h"
 #include "script/ScriptRuntime.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "script/LuaBinding.h"
+#include "subsystem/ActionSystem.h"
+#include "subsystem/AtmosphereRenderer.h"
+#include "subsystem/AudioSystem.h"
+#include "subsystem/RenderSystem.h"
 
 using namespace jasperengine;
 

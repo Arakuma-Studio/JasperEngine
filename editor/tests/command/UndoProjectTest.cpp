@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include "component/Transform.h"
 
 namespace fs = std::filesystem;
 using namespace jasperengine;

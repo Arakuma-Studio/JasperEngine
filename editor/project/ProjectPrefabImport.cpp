@@ -25,6 +25,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include "component/PrefabComponent.h"
 
 using namespace jasperengine;
 
@@ -2055,7 +2056,7 @@ std::map<std::filesystem::path, std::shared_ptr<editor::BakedPrefab>> editor::Pr
 }
 
 void editor::Project::promoteNestedAssetData(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
-        std::vector<PrefabUnpackRecord::NestedState>& before, const std::unordered_set<Entity>& skip, bool includeBase) {
+        std::vector<PrefabNestedState>& before, const std::unordered_set<Entity>& skip, bool includeBase) {
     SceneProject* sceneProject = getScene(sceneId);
     Prefab* prefab = getPrefab(path);
     Prefab::Instance* holder = findInstanceAt(sceneProject, instanceRoot, path);
@@ -2066,7 +2067,7 @@ void editor::Project::promoteNestedAssetData(uint32_t sceneId, const std::filesy
     const Prefab::Instance holderCopy = *holder;
 
     auto saveState = [&](Entity root, const std::filesystem::path& levelPath) {
-        for (const PrefabUnpackRecord::NestedState& state : before) {
+        for (const PrefabNestedState& state : before) {
             if (state.root == root && state.path == levelPath) {
                 return;
             }

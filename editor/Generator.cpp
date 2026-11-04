@@ -41,6 +41,8 @@
 #include <functional>
 #include <regex>
 #include <set>
+#include "object/FluidSimulation.h"
+#include "component/PrefabComponent.h"
 
 #ifdef _WIN32
     #include <windows.h>

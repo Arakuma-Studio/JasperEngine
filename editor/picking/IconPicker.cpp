@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "spritenormals/SpriteNormalsField.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

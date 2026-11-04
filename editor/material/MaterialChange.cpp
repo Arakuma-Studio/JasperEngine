@@ -8,6 +8,7 @@
 #include "shader/ShaderManifest.h"
 
 #include <type_traits>
+#include "component/MeshComponent.h"
 
 using namespace jasperengine;
 

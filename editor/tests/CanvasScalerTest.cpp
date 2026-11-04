@@ -27,6 +27,7 @@
 #include "mcp/McpValues.h"
 
 #include <cmath>
+#include "camera/CameraType.h"
 
 namespace jasperengine {
     // TEST-ONLY seam (System.h befriends it): detach / restore the instance

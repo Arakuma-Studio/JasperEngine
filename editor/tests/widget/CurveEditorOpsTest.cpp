@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include "ecs/View.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

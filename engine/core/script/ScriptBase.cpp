@@ -11,6 +11,10 @@
 #include "registry/EntityCloner.h"
 
 #include <algorithm>
+#include "object/physics/Collision.h"
+#include "object/physics/Collision2D.h"
+#include "object/physics/Joint2D.h"
+#include "object/physics/Joint3D.h"
 
 using namespace jasperengine;
 

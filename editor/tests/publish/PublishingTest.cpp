@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <fstream>
+#include "settings/SettingsRegistry.h"
 
 namespace fs = std::filesystem;
 using namespace jasperengine;

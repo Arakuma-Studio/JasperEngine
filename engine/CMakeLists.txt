@@ -2045,6 +2045,10 @@ jasperengine_skip_unity_build(
 jasperengine_target_unity_build(jasperengine)
 jasperengine_target_pch(jasperengine)
 
+# the engine's sources include the components they use (registry/EntityRegistry.h); a game's own
+# code, built without it, keeps all of them through Scene.h
+target_compile_definitions(jasperengine PRIVATE JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES)
+
 target_compile_definitions(jasperengine
     PUBLIC
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>

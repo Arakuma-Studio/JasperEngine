@@ -94,6 +94,9 @@
 #include <set>
 #include <sstream>
 #include <thread>
+#include "stream/UpstreamParticles.h"
+#include "util/TerrainMapFileWriter.h"
+#include "profiler/GpuMemory.h"
 
 namespace jasperengine::editor::mcp {
 

@@ -15,6 +15,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include "reload/handlers/ReloadHandlers.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

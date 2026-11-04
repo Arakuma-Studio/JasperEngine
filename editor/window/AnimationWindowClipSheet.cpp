@@ -29,6 +29,7 @@
 
 #include <chrono>
 #include <map>
+#include "component/Transform.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
