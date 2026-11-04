@@ -85,10 +85,6 @@ std::string jasperengine::editor::mcp::dialogBlockMessage(const EditorDialogInfo
     return text + ".";
 }
 
-Json jasperengine::editor::mcp::dialogRefusalJson(const EditorDialogInfo& info) {
-    return Json{{"dialog", dialogJson(info)}, {"next", dialogBlockMessage(info)}};
-}
-
 bool jasperengine::editor::mcp::answerFilePicker(const Json& args, std::string& error) {
     const std::string choice = args.value("choice", "");
     if (choice == "cancel") return EditorFilePicker::cancel(error);

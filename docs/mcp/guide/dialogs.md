@@ -32,6 +32,6 @@ your next edit, which says so.
 are refused unrun, so retry them after.
 
 - `choices: ["ok", "cancel"]`: answer `{"values": {"path": "..."}}` (absolute or relative to the project;
-  `paths` where the message offers it) or `{"choice": "cancel"}`. A wrong path is refused and it stays open. This is
+  `paths` where the message says so) or `{"choice": "cancel"}`. A wrong path is refused and it stays open. This is
   every picker of a `--headless` editor.
 - `choices: []`: the system's dialog in an editor with a window; only the human there can close it.

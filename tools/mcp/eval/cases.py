@@ -58,13 +58,10 @@ RENAME_STATUS = {"text": "Project \"Space Dodge\". Open dialog: \"Rename File\".
 DIALOG_ANSWERED = {"text": "Answered the dialog.", "real": True, "structured": {"answered": {"title": "Rename File", "choice": "ok"}}}
 
 FILE_PICKER_DIALOG = {"kind": "file_picker", "title": "Open Files", "choices": ["ok", "cancel"],
-                      "message": "The editor waits for the files to open. Answer with respond_dialog values {\"path\": ...} or "
-                                 "{\"paths\": [...]} (absolute, or relative to the project), or choice cancel.",
+                      "message": "The editor waits for the files to open. Several: values.paths.",
                       "fields": [{"name": "path", "type": "path", "value": ""}]}
 
-FILE_PICKER_OPEN = {"text": "The editor is showing the dialog \"Open Files\".", "real": True, "structured": {
-    "dialog": FILE_PICKER_DIALOG,
-    "next": "The editor is showing the dialog \"Open Files\". Answer it with respond_dialog, choice one of: ok cancel, values for its fields: path."}}
+FILE_PICKER_OPEN = {"text": "The editor is showing the dialog \"Open Files\".", "real": True, "structured": {"dialog": FILE_PICKER_DIALOG}}
 
 
 CASES = [
@@ -872,7 +869,7 @@ CASES = [
         "id": "dialog_answers_a_file_picker",
         "kind": "bad",
         "what_happened": "A file picker held a headless editor with no way to answer it: every call hung.",
-        "text_at_issue": "The picker's dialog.message and next; values: 'a file picker takes path'",
+        "text_at_issue": "respond_dialog values: 'a file picker takes path'; dialog.fields with path",
         "source": "docs/specs/S69-editor-modal.md R5",
         "groups_enabled": ["editor_ux"],
         "prompt": "Run the editor's Import New Asset command (assets.import) and import /tmp/art/hero.png with it.",

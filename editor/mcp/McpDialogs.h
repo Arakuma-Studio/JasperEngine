@@ -13,9 +13,6 @@ namespace jasperengine::editor::mcp {
     Json dialogJson(const EditorDialogInfo& info);
     // "The editor is showing the dialog ...": how to answer it, for a call it refuses
     std::string dialogBlockMessage(const EditorDialogInfo& info);
-    // The structured part of a reply that is not an error but must say so (editor_status while a picker
-    // waits, the tool that opened it): a client that shows the structured part alone reads it as `next`
-    Json dialogRefusalJson(const EditorDialogInfo& info);
 
     // respond_dialog
     void respondDialogTool(const CallPtr& call);

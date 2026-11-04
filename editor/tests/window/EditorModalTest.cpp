@@ -662,7 +662,6 @@ TEST(EditorFilePickerTest, AnAgentAnswersWithAPathItChecks) {
     EXPECT_EQ(info.kind, "file_picker");
     EXPECT_EQ(info.title, "Open File");
     EXPECT_NE(info.message.find("png, jpg"), std::string::npos) << info.message;
-    EXPECT_NE(info.message.find("values"), std::string::npos) << info.message;
     EXPECT_EQ(info.choices, strings({"ok", "cancel"}));
     ASSERT_EQ(info.fields.size(), 1u);
     EXPECT_EQ(info.fields[0].name, "path");

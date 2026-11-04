@@ -59,4 +59,5 @@ choices or message, so an agent gets stuck on most of them.
   before, and the progress returns after it. A person sees the dialog stay where it used to vanish.
 - **A refusal's instructions are in the error's text, not in `next`.** Eval `dialog_refusal_answers_the_box_first`,
   sonnet, 2 samples: for an `isError` result Claude Code showed the model the text and not `structuredContent`, so a `next` there
-  was never read and both samples failed. `next` stays only on replies that are not errors.
+  was never read and both samples failed. A picker's message needs no instructions either: with them stripped from the mock,
+  `dialog_answers_a_file_picker` passed 4 of 4 on the schema and fields alone, so they were cut.

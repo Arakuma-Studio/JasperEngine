@@ -170,8 +170,7 @@ bool EditorFilePicker::info(EditorDialogInfo& out) {
     if (!state.request.extensions.empty()) out.message += " (" + extensionList(state.request) + ")";
     if (!state.request.defaultPath.empty()) out.message += ", starting in " + state.request.defaultPath;
     if (!state.request.defaultName.empty()) out.message += ", named " + state.request.defaultName;
-    out.message += std::string(". Answer with respond_dialog values {\"path\": ...}") + (several ? " or {\"paths\": [...]}" : "") +
-                   " (absolute, or relative to the project), or choice cancel.";
+    out.message += several ? ". Several: values.paths." : ".";
     out.choices = {"ok", "cancel"};
     out.fields.push_back({"path", "path", EditorDialogValue::ofText(state.request.defaultName), {}});
     return true;

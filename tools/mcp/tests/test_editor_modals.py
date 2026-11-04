@@ -516,7 +516,7 @@ async def test_file_picker_from_a_command(ed: Editor):
     ed.check_eq(r["dialog"]["kind"], "file_picker", f"the tool says so: {r}")
     d = await dialog(ed)
     ed.check_eq(d["kind"], "file_picker", f"editor_status reports it: {d}")
-    ed.check_in("values", d["message"], "says how to answer it")
+    ed.check_in("paths", d["message"], "this one takes several")
     ed.check_eq(d["choices"], ["ok", "cancel"], "ok, cancel")
     ed.check_in("path", fields(d), "the path field")
 
