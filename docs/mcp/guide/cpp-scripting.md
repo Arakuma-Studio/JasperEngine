@@ -240,6 +240,12 @@ or keep the handles in a `TimerGroup` member. Logging with a category and the ca
   `Rigidbody::setPosition/setRotation` or `Rigidbody2D::setPosition/setAngle`, never by
   writing the GameObject's transform from `onFixedUpdate`. See `jasper://docs/physics`.
 - `Rigidbody::setMass` only writes the live Jolt body and is lost on reload: author density.
+- Hierarchy as Unity's Transform: `getParent()`, `setParent(&parent, worldPositionStays = true)`
+  (`nullptr`: the root), `getChildCount()`, `getChild(i)`, `getChildren()`, `findChild("Arm/Hand")`
+  on `GameObject` (optional results: `if (auto hand = findChild("Hand")) ...`).
+- The code editor's completion offers only what C++ has: Lua properties backed by an accessor
+  (`Engine.deltatime`) are `Engine::getDeltatime()` here; MCP `search_engine_api` marks the Lua-only
+  ones `cpp_callable: false`.
 
 ## Where sources go and how they build
 

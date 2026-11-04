@@ -639,3 +639,30 @@ Tests: the files of section 10. Docs: the files of 6.9.
   today; their forward-slash rule applies unchanged.
 - No dependency on: `export-pipeline`, `build-toolchain`, `mobile-shipping`, `draw-perf`, `ssr-probes`,
   `water-reflections`, `water-boats`, `platform-lifecycle`.
+
+## Deviations
+
+Recorded while implementing on `dc/scripting` (2026-11-04).
+
+1. **`LuaPropertiesResult` gains flags, not statuses.** `returnedTable` and `noPropertiesField` instead of
+   `NoPropertiesTable` / `NotATable` status values (6.3): `ProjectChecks::checkLuaScript` (and so MCP
+   `check_script`) reports every non-`Ok` status as an error, and a script without properties is not one.
+2. **One isolated Lua state per file, not per pass** (6.3): each distinct file still runs once per pass, but in a
+   state of its own, so one script's top-level globals never leak into the next one's read.
+3. **Editor test files.** The project-backed tests of 10 share one headless project in
+   `editor/tests/project/ScriptingEditorTest.cpp` (`ScriptingEditor.*`: the property refresh, `ScriptAttach`,
+   and ModelLoadCmd's part settings) instead of `ScriptPropertiesRefreshTest.cpp`, `ScriptAttachTest.cpp` and
+   `ModelLoadPartSettingsTest.cpp`; the two-part glTF writer is shared in `editor/tests/support/TwoPartGltf.h`.
+4. **The bool-default guard covers single bindings only** (6.4.3): an overload set picks its overload by the
+   argument count, so its full-arity form always gets every argument (Lattice `addFollower` is such a set).
+   On `main` the guard finds exactly `ActionSystem.actionStart(newRun)` and `MeshSystem.loadGLTF(changeRootTransform)`.
+5. **Stubs mark trailing `std::optional` parameters optional** (`parser.py` `to_lua_sig`): the wrappers of 6.4
+   show `newRun?`, `wake?`, `worldPositionStays?` with their documented defaults, instead of `boolean|nil`.
+6. **`search_engine_api` description unchanged** (lean MCP rules, `fe3e90b97`): the results carry
+   `cpp_callable: false` and `cpp_note` (`structuredContent`), no new tool or guide text, so no eval case.
+7. **Add Component's script rows** come through `ComponentAddDialog::setScripts(scripts, onScript)` after
+   `open()` rather than two more `open()` parameters (its other callers stay as they are).
+8. **Drops and picks report through `ScriptAttach::attachFile`** (Console warnings: outside the Lua directory,
+   no header beside a `.cpp`, already attached), shared by the Inspector and the Hierarchy.
+9. **The root Mesh section of a parts model** draws the note and Select Parts, then the usual fields disabled
+   (`drawMeshComponentFields` inside `BeginDisabled`).
