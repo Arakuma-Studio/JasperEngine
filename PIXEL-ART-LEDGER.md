@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | paused: overlaps with `dc/sprite-batching` |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | waits for `dc/sprite-batching` on origin/main; scope narrowed |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -200,6 +200,20 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
 
 ## Log
 
+- 2026-11-04: The split with the Doriax catch-up program is agreed and recorded in both ledgers.
+  - `dc/sprite-batching` (their program, started now) owns generic dynamic batching: sprites,
+    small meshes and UI quads; 2D reordering; settled objects; buffers shared by content; and the
+    batch counters in `get_render_stats`.
+  - It provides two hooks for S52: a sort key the batcher respects (layer and order first;
+    batching only within a bucket), and a per-vertex or batch-key channel for per-sprite
+    parameters (the S43 palette row, S48 flash/fade/dissolve, the S41 snap).
+  - S52 narrows to Sorting Layers, Order in Layer and Sorting Groups, the Sprite Batch component
+    (a bulk instanced API), and making the pixel-art per-sprite parameters batch-compatible
+    through those hooks. It starts once `dc/sprite-batching` is merged on origin/main; the spec is
+    re-scoped then.
+  - `mesh-memory` and S44: whoever lands second merges onto the first. Their program adds no
+    `AssetType`, so 24–27 stay ours. Shader, variant and update-flag bits take the next free bit
+    at landing, in landing order, on both sides.
 - 2026-11-04: `origin/main` brought the Doriax catch-up program (`docs/doriax-catchup/LEDGER.md`,
   19 specs in `docs/superpowers/specs/`). Its `sprite-batching` spec duplicates most of S52
   (dynamic sprite batching, 2D reordering, shared buffers, batch stats), so S52 was stopped before
