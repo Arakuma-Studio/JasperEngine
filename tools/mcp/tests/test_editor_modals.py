@@ -210,6 +210,23 @@ async def test_about_scenes_prefabs_preferences(ed: Editor):
 
 
 @clean
+async def test_focus_window_drives_preferences_under_itself(ed: Editor):
+    """focus_window's page and close act on Preferences, so its refusal of edits does not stop them; any
+    other panel is refused meanwhile"""
+    await ed.call("focus_window", window="preferences", page="Logging")
+    d = await wait_dialog(ed, "Preferences")
+    ed.check(d, "open")
+    r = await ed.call_raw("focus_window", {"window": "preferences", "page": "General"})
+    ed.check(not r.is_error, f"another page: {r.text[:300]}")
+    r = await ed.call_raw("focus_window", {"window": "console"})
+    ed.check(r.is_error and "Preferences" in r.text, f"another panel is refused: {r.text[:300]}")
+    r = await ed.call_raw("focus_window", {"window": "preferences", "close": True})
+    ed.check(not r.is_error, f"close: {r.text[:300]}")
+    await ed.call("find_ui_item", label="##frame pacer")
+    ed.check_eq(await dialog(ed), None, "closed")
+
+
+@clean
 async def test_project_settings_merges_edits(ed: Editor):
     """R4: Project Settings keeps concurrent edits: reported, answerable, and it refuses nothing"""
     d = await open_modal(ed, "edit.projectSettings", "Project Settings")

@@ -1388,7 +1388,9 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
             app.answerDialog("ok", {}, error);
             notes += "\n(Dismissed an editor " + std::string(dialog.kind == "alert" ? "alert" : "message") + " shown earlier: " +
                      dialog.title + (dialog.message.empty() ? std::string() : ": " + dialog.message) + ")";
-        } else if (def.name != "respond_dialog" && def.name != "batch") {
+        } else if (def.name != "respond_dialog" && def.name != "batch" &&
+                   // focus_window's page and close act on Preferences itself
+                   !(def.name == "focus_window" && dialog.title == "Preferences" && call->args().value("window", "") == "preferences")) {
             call->fail(blockingDialogMessage() + " Edits are refused until it is answered.",
                        Json{{"dialog", dialogJson(dialog)}});
             return;

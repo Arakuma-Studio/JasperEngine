@@ -173,7 +173,9 @@ def center(rect):
 async def shot(ed: Editor, name: str):
     shots = Path(os.environ["JASPER_SHOTS_DIR"]) if os.environ.get("JASPER_SHOTS_DIR") else ed.scratch.root / "shots"
     shots.mkdir(parents=True, exist_ok=True)
-    await ed.call("wait", frames=4)
+    # find_ui_item answers two frames later; wait is refused under Create Crowd, a modal (S69)
+    for _ in range(2):
+        await ed.call("find_ui_item", label="##frame pacer")
     await ed.screenshot("editor", path=str(shots / f"{name}.png"), max_width=1600)
 
 
