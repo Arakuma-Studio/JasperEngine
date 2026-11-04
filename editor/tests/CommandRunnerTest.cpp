@@ -337,3 +337,16 @@ TEST(CommandRunner, CloexecPipesAreNotInheritedBySpawnedPrograms) {
     EXPECT_EQ(::read(fds[0], &byte, 1), 0);
     ::close(fds[0]);
 }
+
+// A tool's output reaches the Build window, the log and MCP as UTF-8: a line that is not (a
+// tool writing another code page) is repaired, one U+FFFD per bad byte; UTF-8 passes untouched
+TEST(CommandRunner, InvalidUtf8OutputIsRepaired) {
+    EXPECT_EQ(CommandRunner::capture({"/usr/bin/printf", "a\\377b\\n"}), "a\xEF\xBF\xBD" "b");
+    EXPECT_EQ(CommandRunner::capture({"/usr/bin/printf", "caf\xC3\xA9 \xF0\x9F\x98\x80\\n"}), "caf\xC3\xA9 \xF0\x9F\x98\x80");
+    std::vector<std::string> lines;
+    CommandRunner runner;
+    ASSERT_TRUE(runner.run({"/usr/bin/printf", "ok\\n\\351t\\351\\n"}, fs::path(), [&lines](const std::string& line) {
+        lines.push_back(line);
+    }));
+    EXPECT_EQ(lines, (std::vector<std::string>{"ok", "\xEF\xBF\xBDt\xEF\xBF\xBD"}));
+}

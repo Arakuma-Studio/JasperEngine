@@ -52,9 +52,15 @@ void raw(HANDLE file, const char* text, size_t size) {
     }
 }
 void line(HANDLE file, const char* text) { raw(file, text, textLength(text)); raw(file, "\n", 1); }
+// The report paths are UTF-8 (a user folder named "José" or "张伟"): widened on the stack, so
+// nothing allocates and nothing depends on the ANSI code page (games run before Windows 10 1903)
+bool widePath(const char* path, wchar_t (&wide)[kPathBytes]) {
+    return *path && MultiByteToWideChar(CP_UTF8, 0, path, -1, wide, static_cast<int>(kPathBytes)) > 0;
+}
 HANDLE openFile(const char* path, bool append = false) {
-    if (!*path) return INVALID_HANDLE_VALUE;
-    return CreateFileA(path, append ? FILE_APPEND_DATA : GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+    wchar_t wide[kPathBytes];
+    if (!widePath(path, wide)) return INVALID_HANDLE_VALUE;
+    return CreateFileW(wide, append ? FILE_APPEND_DATA : GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
                        nullptr, append ? OPEN_ALWAYS : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 }
 void number(HANDLE file, const char* label, uint64_t value, bool hex = false) {
@@ -164,7 +170,8 @@ DWORD WINAPI writer(void*) {
     if (WaitForSingleObject(request, INFINITE) != WAIT_OBJECT_0) return 0;
     auto& s = state();
     if (s.beforeReportForTesting) s.beforeReportForTesting();
-    CreateDirectoryA(s.sessionDir, nullptr);
+    wchar_t sessionDir[kPathBytes];
+    if (widePath(s.sessionDir, sessionDir)) CreateDirectoryW(sessionDir, nullptr);
     // DbgHelp is process-wide and single threaded. Never wait indefinitely on a lock the
     // faulting thread may own. A failed lock still yields a report with its saved PC/SP.
     std::unique_lock<std::timed_mutex> lock(Backtrace::dbgHelpMutex(), std::defer_lock);
@@ -222,16 +229,18 @@ DWORD WINAPI writer(void*) {
     line(report, "modules:");
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, GetCurrentProcessId());
     if (snapshot != INVALID_HANDLE_VALUE) {
-        MODULEENTRY32A module{};
+        MODULEENTRY32W module{};
         module.dwSize = sizeof(module);
-        if (Module32FirstA(snapshot, &module)) do {
-            n = appendText(buffer, sizeof(buffer), 0, module.szExePath);
+        if (Module32FirstW(snapshot, &module)) do {
+            char exePath[MAX_PATH * 3] = "";
+            WideCharToMultiByte(CP_UTF8, 0, module.szExePath, -1, exePath, static_cast<int>(sizeof(exePath)), nullptr, nullptr);
+            n = appendText(buffer, sizeof(buffer), 0, exePath);
             n = appendText(buffer, sizeof(buffer), n, " ");
             n = appendHex(buffer, sizeof(buffer), n, reinterpret_cast<uintptr_t>(module.modBaseAddr));
             n = appendText(buffer, sizeof(buffer), n, " size=");
             appendHex(buffer, sizeof(buffer), n, module.modBaseSize);
             line(report, buffer);
-        } while (Module32NextA(snapshot, &module));
+        } while (Module32NextW(snapshot, &module));
         CloseHandle(snapshot);
     }
     if (report != INVALID_HANDLE_VALUE) CloseHandle(report);

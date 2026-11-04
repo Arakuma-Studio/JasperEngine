@@ -233,6 +233,7 @@ namespace jasperengine {
 
     private:
         std::string scratch;
+        std::wstring wideScratch;
     };
 #endif
 

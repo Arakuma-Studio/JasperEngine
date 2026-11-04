@@ -111,21 +111,10 @@ namespace {
 
 std::wstring jasperengine::winUtf8ToWide(const std::string& text) {
     if (text.empty()) return {};
-    int count = MultiByteToWideChar(
-        CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()),
-        nullptr, 0);
-    UINT codePage = CP_UTF8;
-    DWORD flags = MB_ERR_INVALID_CHARS;
-    if (count <= 0) {
-        codePage = CP_ACP;
-        flags = 0;
-        count = MultiByteToWideChar(
-            codePage, flags, text.data(), static_cast<int>(text.size()), nullptr, 0);
-    }
+    const int count = MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), nullptr, 0);
     if (count <= 0) return {};
     std::wstring result(static_cast<size_t>(count), L'\0');
-    MultiByteToWideChar(codePage, flags, text.data(), static_cast<int>(text.size()),
-                        result.data(), count);
+    MultiByteToWideChar(CP_UTF8, 0, text.data(), static_cast<int>(text.size()), result.data(), count);
     return result;
 }
 

@@ -959,6 +959,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/UIUtils.cpp
     ${EDITOR_DIR}/util/UiItemLocator.cpp
     ${EDITOR_DIR}/util/CommandRunner.cpp
+    ${EDITOR_DIR}/util/TextEncoding.cpp
     ${EDITOR_DIR}/util/ShellEnv.cpp
     ${EDITOR_DIR}/material/MaterialChange.cpp
     ${EDITOR_DIR}/pose/PoseAnimationDocument.cpp

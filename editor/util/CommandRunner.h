@@ -109,8 +109,16 @@ namespace jasperengine::editor {
         // their arguments (BatBadBut). "" with `resolved` set, else why it can't run.
         static std::string resolveWindowsProgram(const fs::path& program, const std::vector<fs::path>& searchDirs, fs::path& resolved);
 
+        // vswhere's argv: the program, the arguments, then -utf8 (without it vswhere prints in the
+        // console's code page, so a localized Visual Studio name or a non-ASCII path would garble).
+        // Portable, for tests.
+        static std::vector<std::string> vswhereArguments(const std::string& program, std::vector<std::string> arguments);
+
 #ifdef _WIN32
-        static std::string findVswherePath();
+        // vswhere.exe run with these arguments (vswhereArguments), its trimmed output ("" when
+        // vswhere is missing or fails). The only way the editor runs vswhere.
+        static std::string vswhere(std::vector<std::string> arguments, int timeoutMs = 0);
+        static bool hasVswhere();
         static std::string vsInstallationPath();
         static bool hasVSWithCppTools();
         static std::string findVcvarsall();
@@ -118,6 +126,9 @@ namespace jasperengine::editor {
 
     private:
         void terminateCurrentProcess();
+#ifdef _WIN32
+        static std::string findVswherePath();
+#endif
 
         std::atomic<bool> cancelRequested{false};
         bool quiet = false;   // capture(): no "exited with code" / spawn-failure lines

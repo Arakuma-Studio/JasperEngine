@@ -24,8 +24,7 @@
 
 namespace jasperengine {
 
-    // UTF-8 to UTF-16 for the wide Win32 entry points. Falls back to the active
-    // code page when the text is not valid UTF-8.
+    // UTF-8 to UTF-16 for the wide Win32 entry points; invalid bytes become U+FFFD
     std::wstring winUtf8ToWide(const std::string& text);
 
     struct WindowWinConfig {

@@ -1,9 +1,13 @@
-# Embeds the DPI awareness manifest into a Windows executable. Included by the
-# editor build and by the standalone game build, which are separate top levels.
+# Embeds jasperengine.manifest (DPI awareness, the UTF-8 code page) into a Windows
+# executable. Included by the editor build, the standalone game build (separate top
+# levels) and the test targets (engine/cmake/JasperTesting.cmake), so tests run in the
+# code page users run in.
 
 set(JASPERENGINE_WINDOWS_MANIFEST "${CMAKE_CURRENT_LIST_DIR}/jasperengine.manifest")
 
 function(jasperengine_add_windows_manifest target_name)
+    # the file next to this one, whichever scope included it and whichever calls
+    set(JASPERENGINE_WINDOWS_MANIFEST "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/jasperengine.manifest")
     if(MSVC)
         # CMake passes a .manifest source to the linker's /MANIFESTINPUT, which
         # merges it with the one the linker generates
