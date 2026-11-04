@@ -56,6 +56,8 @@ namespace jasperengine::editor{
         static int hapticCount;
         static bool hostFocused;
         static bool hostFocusKnown;
+        // send_input {type: "app", action: "hide"}: the game updates without drawing
+        static bool gameHiddenSimulated;
 
     protected:
         bool platformOpenURL(const std::string& url) override;
@@ -95,6 +97,15 @@ namespace jasperengine::editor{
         // The editor window's OS focus as Engine::systemFocus while a Play session runs (its
         // changes only: Play starts focused); headless MCP runs have no user to focus anything
         static void forwardHostFocus(bool focused, bool playSessionActive);
+        // The editor window's visibility as Engine::systemVisibilityChanged while a Play session
+        // runs: hidden while the window can't be seen (minimized, unmapped, covered on macOS) or
+        // the game is hidden by send_input. Also headless: an Xvfb window is mapped, and a test
+        // unmaps it on purpose
+        static void forwardHostVisibility(bool windowVisible, bool playSessionActive);
+        // send_input {type: "app", action: "hide" / "show"}: the running game updates without
+        // drawing (its Game view keeps the last frame) while the window stays visible; ends with Play
+        static void setGameHiddenSimulated(bool hidden);
+        static bool isGameHiddenSimulated();
 
         // the host browser is never started: MCP --headless, or Linux without a display
         static bool isHeadless();
