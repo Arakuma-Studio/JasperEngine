@@ -33,6 +33,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <vector>
 #include "log/Logger.h"
@@ -1045,6 +1046,22 @@ TEST_F(CoroutineTest, CppTimersAndScriptBaseInvokeEndWithTheScript) {
     EXPECT_EQ(ScriptScheduler::timerCount(), 0u);
     frames(2);
     EXPECT_EQ(freeCalls, 3);
+}
+
+// runtime-core spec 6.1: without the editor's crash hook (an exported game) a C++ timer that
+// throws is logged and the game goes on; a repeating one keeps its schedule
+TEST_F(CoroutineTest, CppTimerExceptionIsLoggedAndTheGameGoesOn) {
+    int calls = 0;
+    const TaskId repeating = ScriptScheduler::every(0.0, 0.0001, [&calls]() {
+        calls++;
+        throw std::runtime_error("cpp timer boom");
+    }, TimeMode::Scaled, nullptr, 3);
+    frames(3);
+    EXPECT_EQ(calls, 3) << "the timer fired every frame although it threw";
+    EXPECT_FALSE(ScriptScheduler::isPending(repeating));
+    const std::string text = logged();
+    EXPECT_EQ(countOf(text, "timer:C++ failed: C++ exception std::runtime_error: cpp timer boom"), 1u)
+        << "logged once a second: " << text;
 }
 
 TEST_F(CoroutineTest, CppTimersFireAtTheirFrame) {
