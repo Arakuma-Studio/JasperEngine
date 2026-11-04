@@ -252,6 +252,7 @@ namespace {
         }
         bindings.targets.assign(count, NULL_ENTITY);
         bindings.cursors.assign(count, anim::KeyCursor());
+        bindings.rests.assign(rest ? count : 0, nullptr);
         bindings.byName.clear();
         bindings.resolvedCount = 0;
         bindings.unboundProperties = 0;
@@ -295,12 +296,18 @@ namespace {
                 bindings.targets[i] = target;
                 bindings.resolvedCount++;
                 if (binding.scriptIndex >= 0) bindings.scriptProperties++;
-                if (rest) playerdetail::completePropertyRest(scene, target, (*rest)[target], binding);
+                if (rest){
+                    bindings.rests[i] = &(*rest)[target];
+                    playerdetail::completePropertyRest(scene, target, *bindings.rests[i], binding);
+                }
                 continue;
             }
             bindings.targets[i] = target;
             bindings.resolvedCount++;
-            if (rest) completeRest(scene, target, (*rest)[target], tracks[i].channel);
+            if (rest){
+                bindings.rests[i] = &(*rest)[target];
+                completeRest(scene, target, *bindings.rests[i], tracks[i].channel);
+            }
         }
         bindings.humanoid = humanoidBinding;
         if (humanoidBinding && rest){
@@ -652,7 +659,7 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
             current = target;
             // bound entities are alive: destroying one under a parent bumps the hierarchy
             // revision, and bindings are validated (or resolved again) before sampling
-            currentRest = &rest[target];
+            currentRest = i < bindings.rests.size() && bindings.rests[i] ? bindings.rests[i] : &rest[target];
             currentAccum = nullptr;
         }
         anim::ChannelRest& channelRest = *currentRest;
@@ -1142,7 +1149,8 @@ void ActionSystem::advancePlayer(Entity entity, AnimationPlayerComponent& player
 
     // each layer's queue head waits for the states playing now on that layer (R17 per layer):
     // they stop at their next end
-    std::vector<float> offsets(states.size(), 0.0f);
+    std::vector<float>& offsets = playerStateOffsets;
+    offsets.assign(states.size(), 0.0f);
     for (size_t l = 0; l < runtime.layers.size(); l++){
         if (runtime.layers[l].queue.empty()) continue;
         const anim::QueuedState head = runtime.layers[l].queue.front();

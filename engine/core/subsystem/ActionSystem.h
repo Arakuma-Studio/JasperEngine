@@ -217,6 +217,8 @@ namespace jasperengine{
 
 		// players with events or finished states to dispatch
 		std::vector<Entity> playersWithCallbacks;
+		// advancePlayer's per-state start offsets (no allocation per player and frame)
+		std::vector<float> playerStateOffsets;
 		// "<clip>|<function>" of clip events already warned about having no handler (spec 3.5:
 		// once per (clip, function), whatever the number of players)
 		std::unordered_set<std::string> warnedEventHandlers;
