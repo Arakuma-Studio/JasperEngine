@@ -107,3 +107,9 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   water-reflections).
 - 2026-11-04: agreed the split with the pixel-art lead (see decisions): feature 13 is `sprite-batching` again, with
   hooks for their narrowed S52, and started now (16 agents) because their S52 waits for it.
+- 2026-11-04: `origin/main` moved again (`815791c80`..`297562c95`): AGENTS.md rewritten as the one rule book, the
+  GitHub workflows removed (no CI: nothing checks Windows, macOS or iOS code except reading), and the push gate is
+  now the full suite for big features (`WERROR=1` linux and unit-tests, the slow MCP suite, area lints). Merged into
+  `main` (fast-forward) and pushed; the brief's definition of done follows it, and all 16 implementers were told to
+  merge `main` before their next gate. Baseline of `main` on this host: `tools/build.sh linux` passes with 11
+  warnings (ODR warnings of the vendored shader compiler's SPIR-V headers, as the pixel-art lead measured).
