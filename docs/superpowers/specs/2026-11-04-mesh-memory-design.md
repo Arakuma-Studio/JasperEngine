@@ -717,3 +717,41 @@ Hot files for merge planning: `SokolObject.{h,cpp}`, `RenderSystem.cpp`, `MeshSy
 - `agent-authoring`: may edit `WorldTools.cpp`; the tilemap and sprite refusals here are small hunks.
 - No dependency on the water, UI, platform, unicode, build-toolchain, project-window, ssr-probes or code-editor-git
   features.
+
+## Deviations
+
+Recorded during the implementation (branch `dc/mesh-memory`).
+
+1. **Palette writers may grow it (6.4).** `AnimatorSystem`, the skin bindings and the legacy BoneComponent path
+   keep their `validIndex` (the 65,536 limit) instead of stopping at `stored()`: a write past the palette grows it,
+   and `updateMeshBuffers` then reloads the mesh, which makes its GPU palette again with the new rows. This heals a
+   palette that was shorter than its skin (a scene or cooked read) instead of dropping the joint. The model load
+   sizes the palette on both of its paths (the flatten path takes its largest skin's), so in practice writers
+   stay inside it.
+2. **Palette length is kept by every writer.** The YAML encoder writes the whole palette (it no longer trims
+   trailing identities: with no 128 fixed entries nothing needs trimming, and the length is how many joints the
+   skinned vertices may name); the cooked writer and the generated scene code always write the last entry. A
+   mesh without a skin writes `bonesMatrix: []` as before, and old files' trimmed lists read back as they are.
+3. **No automatic shrink after a smaller reload (6.3).** `RenderSystem::destroyMesh` releases the GPU objects of
+   every stored submesh and buffer (also past the counts), but `MeshSystem` does not `resize` the storage after a
+   reload with fewer primitives: a Tilemap writes a submesh's material before it raises `numSubmeshes`
+   (`Tilemap::addRect`), so trimming at a reload could drop authored data. The few kilobytes stay until the
+   component goes. Decoders do size frames, tiles and tile rects to their counts.
+4. **`arrayHeapBytes()` members instead of a `ComponentHeapBytes<T>` trait header (6.10).** `ComponentArray<T>`
+   detects a `size_t arrayHeapBytes() const` member with a `requires` expression; Mesh, Sprite, Points, Sprite
+   Animation and Tilemap components have one. Same report, no extra header.
+5. **Lean MCP rules (AGENT-BRIEF).** `get_ecs_stats` keeps its description; the new numbers are fields of its
+   structured result (`element_bytes`, `heap_bytes`, `bytes.heap`) and one clause of its text. The property-path
+   error keeps its text (there is no per-error text to extend; the append rule itself is in the resolver).
+6. **Tests placed by fixture.** `GrowArray` and `StableArray` share `engine/tests/core/util/GrowArrayTest.cpp`; the
+   scene-load trim is `PersistenceTest.ASceneLoadRequestsAHeapTrim` (its SceneManager fixture);
+   `HeapTrim.RequestsMerge` replaces the coalescing part of the spec's list.
+7. **`test_save_determinism.py`** no longer checks `maxValues` (there is none to count) nor the scene-dump CLI's
+   count of a model's buffers (the purpose of that step, sizing `MAX_EXTERNAL_BUFFERS` without a model load, is
+   gone); the byte-for-byte checks stay. `test_reflection.py` compares a golden's `maxValues` with what the resave
+   wrote (the block as read, or none).
+8. **Inspector limits.** The Add buttons are disabled with a tooltip at the limits (D7), the tile-from-rect button
+   included.
+9. **Pixel-art S45** plans `std::vector` for `SpriteComponent::framesRect` and keeps `MAX_SPRITE_FRAMES` for
+   Sprite Animation and Points. With this branch both are already growable (`GrowArray` has `resize`, which S45's
+   generated code calls) and the macro is gone: S45 can keep `GrowArray` as it is.

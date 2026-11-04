@@ -16,9 +16,14 @@ macOS, Android, iOS or the web. It picks one of two methods:
   the game, as before. It is needed when the project has
   - C++ scripts,
   - a `ProjectBuild.cmake`,
-  - capacities above the player's (Project Settings > Scene Limits: `MAX_BONES` above 128, ...),
   - Google Mobile Ads (AdMob),
   - or when Build Settings > Build Method says Compile.
+
+  Content size is never a reason: meshes, sprites and tilemaps hold as many submeshes, bones,
+  frames and tiles as they are given, in a prebuilt player as in the editor (there are no
+  `MAX_SUBMESHES`-style capacities). A player runtime packaged before that change (only usable
+  with the player-mismatch option) is refused with the reason "holds fixed array capacities".
+  Compile builds drop the old capacity definitions, so each compile cache builds once more.
 
   Compiling makes builds for this computer's platform and for the web; other platforms are
   built from the exported source project (Export source, then Android Studio, Xcode or CMake).
