@@ -35,7 +35,11 @@ APP="$ROOT/engine/workspaces/androidstudio/app"
 # no `clean`: its native step needs the CMake AGP installs only while building; the APK of an
 # earlier run goes, the merged resources are rewritten by the build
 rm -rf "$APP/build/outputs/apk"
-(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" -PjasperPlayerVariant="$PLAYER_VARIANT" "$TASK")
+# a deprecation in our Gradle files fails the build (tools/ci/check_gradle_warnings.py)
+GRADLE_LOG="$(mktemp)"
+(cd "$ROOT/engine/workspaces/androidstudio" && ./gradlew --no-daemon -PjasperPlayer=true -PjasperBackend="$BACKEND" -PjasperPlayerVariant="$PLAYER_VARIANT" "$TASK") 2>&1 | tee "$GRADLE_LOG"
+python3 "$ROOT/tools/ci/check_gradle_warnings.py" "$GRADLE_LOG"
+rm -f "$GRADLE_LOG"
 
 rm -rf "$OUT"
 mkdir -p "$OUT"
