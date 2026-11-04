@@ -15,11 +15,8 @@
 
 #include <gtest/gtest.h>
 
-#include <atomic>
-#include <chrono>
 #include <fstream>
 #include <iterator>
-#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -228,14 +225,15 @@ TEST(PinnedDownload, CancelStopsTheTransferAndKeepsItsBytes) {
     ASSERT_TRUE(server.started());
     TestTempDir dir("pinned-cancel");
     PinnedDownload download = request(dir, server.url("/trickle/1000000/100"), "x");
-    std::atomic<bool> cancel{false};
-    std::thread canceller([&cancel]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(400));
-        cancel.store(true);
-    });
+    // cancelled once some of it has arrived
+    const fs::path partial = partOf(download);
+    const auto arrived = [&partial]() {
+        std::error_code ec;
+        const uintmax_t size = fs::file_size(partial, ec);
+        return !ec && size > 0;
+    };
     std::string error;
-    const bool ok = fetchPinned(download, [&cancel]() { return cancel.load(); }, error);
-    canceller.join();
+    const bool ok = fetchPinned(download, arrived, error);
     EXPECT_FALSE(ok);
     EXPECT_EQ(error, "cancelled");
     EXPECT_FALSE(fs::exists(download.target));

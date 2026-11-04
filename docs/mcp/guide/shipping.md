@@ -44,6 +44,9 @@ build-tools, platform, JDK; the bundletool jar is downloaded by the first `aab` 
 pinned; iOS: a Mac with a full Xcode). An iOS device build without a team stops before signing with
 `W-IOS-NO-TEAM`; a wrong Android keystore password or alias fails before any packaging and says which.
 
+Before exporting: the scenes saved, the Console clean in play, the start scene right
+(`edit_build_scenes`).
+
 ## Running a build
 
 `run_build` starts a desktop build. With `quit_after` (frames), `fixed_fps`, `after_ready`
