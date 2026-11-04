@@ -110,6 +110,8 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
+- A relaunch on Android logs `Entity does not exist to get signature` (found by S67).
+- `list_missing_assets` is not found by agents while its `assets_pipeline` group is hidden (found by S68).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
 
 ## Done
