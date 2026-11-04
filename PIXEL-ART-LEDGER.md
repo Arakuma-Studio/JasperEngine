@@ -170,7 +170,7 @@ never build or run them.
 | S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | implementing |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | implementing |
-| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | implementing |
+| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | in review |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
@@ -212,6 +212,13 @@ There is no CI.
 
 ## Log
 
+- 2026-11-04: S44 implementation reported at `a06bf6491`, with `main` merged in.
+  - Passing: `WERROR=1` linux, unit-tests, web and android builds; 5,733 unit tests; the MCP
+    suite with `tools/fixtures/tween-curve` standing in for the missing fixture.
+  - Still open: the Sprite Preview editor test and screenshots, `aseprite_compat.py`, and
+    real-Aseprite goldens.
+  - An independent review is running. The Aseprite CLI is being built from source in Docker
+    (`/var/lib/orquester/workspaces/jaspersito/tools-aseprite/`) to author real goldens.
 - 2026-11-04: Baseline `tools/build.sh unit-tests` of `main` (87 min): core 2,808 passed and
   1 failed (`NavBakeTest.RuntimeUpdateTiles`, failing on `main` before any pixel-art code);
   editor 2,842 passed and 7 disabled.
