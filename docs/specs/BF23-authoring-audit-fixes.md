@@ -241,3 +241,33 @@ result changes S54's first milestone.
    is intended.
 
 ## Deviations
+
+Section A (F1 to F4), 2026-11-04.
+
+- **F1 reproduced.** On the base of this spec, `ParticlesGpu.DeathSubEmitterChildrenDraw` found the
+  children alive in the simulation and 0 of their pixels on screen, so S54 §3 stands as written.
+- **F1, wider than `drawParticles`.** Drawing the children needed four more things they had never
+  needed: the system's bounds cover them (culling and draw order read those bounds), their
+  interpolation factor follows the parent's in the same frame (it was a frame late), scene-input
+  readers among them register (a soft child), and `ShaderVariantCollector` ships their variants
+  (an export without them could not draw a child with another Renderer).
+- **F1, not done: the HTML UI `<particle-system>` element.** It draws one Renderer's quads with one
+  material (`UIParticleSource`), so a child with its own Renderer needs a list of materials there.
+  It keeps drawing only the root, and `docs/mcp/guide/html-ui.md` says so.
+- **F1, not done: editing a child's file while its parent is live.** `ParticleSubsystem` tracks the
+  version of the root's asset only, and a `rebind` keeps the children, so the edit shows after the
+  parent's next full bind. This was already true of the simulation; S54's authoring window will meet it.
+- **F2, wider than the two lines named.** `getParticleCount` (Lua's `particleCount`, and what an
+  Action's controller waits for) counts children too, since a controller stopped while children
+  were alive. In the budget share, three things were wrong and are fixed: children were not in what
+  a system wants; a child was capped by its parent's Max Particles (each emitter is now held to its
+  own); and sibling entries each saw the whole remainder, so they could overspend it.
+- **F3.** The key is `particles.world_budget`, on the Graphics page, 0 for the platform's default. It
+  reaches compiled games through the generated `main.cpp` and prebuilt players through
+  `PlayerConfig`. A running world follows it at once; `ParticleWorld::setBudget` still overrides it
+  for one world. No Lua API: it is a project setting, read at startup, like `physics.max_bodies`.
+  (`physics.max_bodies` and its two siblings do not reach prebuilt players: seen, not changed here.)
+- **F4.** The field keeps loading and saving, is hidden in the Inspector, and leaves the Lua stubs
+  (`tools/gen_particle_stubs.py`), the only place the docs listed it. `ps.trails.generateLightingData`
+  still answers, because the Lua view reads the same field table. `TrailParams::lightingData` had no
+  reader and is gone.
