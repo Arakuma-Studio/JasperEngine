@@ -27,7 +27,7 @@ namespace {
     constexpr float PI = 3.14159265358979323846f;
 
     // one input triangle (or terrain cell half) under the point, in nav space
-    struct Ground {
+    struct ProbeGround {
         float height = 0.0f;
         // degrees from up
         float slope = 0.0f;
@@ -35,7 +35,7 @@ namespace {
         Entity source = NULL_ENTITY;
     };
 
-    std::string number(float value) {
+    std::string probeNumber(float value) {
         char text[32];
         std::snprintf(text, sizeof(text), "%.2g", (double)value);
         if (std::fabs(value) >= 10.0f)
@@ -45,7 +45,7 @@ namespace {
         return text;
     }
 
-    std::string nameOf(Scene* scene, Entity entity) {
+    std::string probeName(Scene* scene, Entity entity) {
         return "'" + scene->getEntityName(entity) + "'";
     }
 
@@ -77,8 +77,8 @@ namespace {
     }
 
     // every surface under (and over) the point: the tile's triangles and the terrains' cells
-    std::vector<Ground> groundUnder(const nav::NavBakeInput& input, const Vector3& p) {
-        std::vector<Ground> out;
+    std::vector<ProbeGround> groundUnder(const nav::NavBakeInput& input, const Vector3& p) {
+        std::vector<ProbeGround> out;
         const float point[3] = {p.x, p.y, p.z};
         const nav::NavTileCoord coord = input.tileAt(point);
         if (coord.x >= input.minTileX && coord.x <= input.maxTileX && coord.y >= input.minTileY && coord.y <= input.maxTileY) {
@@ -88,7 +88,7 @@ namespace {
                     const float* a = &input.vertices[(size_t)input.triangles[(size_t)t * 3] * 3];
                     const float* b = &input.vertices[(size_t)input.triangles[(size_t)t * 3 + 1] * 3];
                     const float* c = &input.vertices[(size_t)input.triangles[(size_t)t * 3 + 2] * 3];
-                    Ground ground;
+                    ProbeGround ground;
                     if (!heightOver(a, b, c, p, ground.height))
                         continue;
                     ground.slope = slopeOf(a, b, c);
@@ -114,7 +114,7 @@ namespace {
                         const float a[3] = {corners[half[0]].x, corners[half[0]].y, corners[half[0]].z};
                         const float b[3] = {corners[half[1]].x, corners[half[1]].y, corners[half[1]].z};
                         const float c[3] = {corners[half[2]].x, corners[half[2]].y, corners[half[2]].z};
-                        Ground ground;
+                        ProbeGround ground;
                         if (!heightOver(a, b, c, p, ground.height))
                             continue;
                         ground.slope = slopeOf(a, b, c);
@@ -200,7 +200,7 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
         return result;
     result.location = system.locateOn(surface, world, filter.areaMask);
     const nav::NavMesh* mesh = system.getNavMesh(surface);
-    const std::string surfaceName = nameOf(scene, surface);
+    const std::string surfaceName = probeName(scene, surface);
     if (!mesh || !component->enabled) {
         reason("not_baked", "NavMesh Surface " + surfaceName + " has no navmesh: bake it.", surface);
         return result;
@@ -252,8 +252,8 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
             }
             if (here.island != largestId && (size_t)here.island < islands.size()) {
                 const float area = islands[(size_t)here.island].area;
-                reason("small_island", "This is island #" + std::to_string(here.island) + " (" + number(area) +
-                                           " m\xC2\xB2), not the largest (" + number(largest) + " m\xC2\xB2): agents elsewhere cannot reach it.",
+                reason("small_island", "This is island #" + std::to_string(here.island) + " (" + probeNumber(area) +
+                                           " m\xC2\xB2), not the largest (" + probeNumber(largest) + " m\xC2\xB2): agents elsewhere cannot reach it.",
                        surface, area, largest);
             }
         }
@@ -280,10 +280,10 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
         return result;
     }
 
-    const std::vector<Ground> candidates = groundUnder(*input, p);
+    const std::vector<ProbeGround> candidates = groundUnder(*input, p);
     // the ground: the highest surface within a step above the point, down to an agent's height below
-    const Ground* ground = nullptr;
-    for (const Ground& candidate : candidates) {
+    const ProbeGround* ground = nullptr;
+    for (const ProbeGround& candidate : candidates) {
         if (candidate.height <= p.y + tolerance && candidate.height >= p.y - config.agentHeight &&
             (!ground || candidate.height > ground->height))
             ground = &candidate;
@@ -305,7 +305,7 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
         }
         const bool vertical = frame.plane == nav::NavPlane::XY || (p.y >= lo.y - tolerance && p.y <= hi.y + tolerance);
         if (p.x >= lo.x && p.x <= hi.x && p.z >= lo.z && p.z <= hi.z && vertical)
-            reason("excluded", nameOf(scene, excluded.first) + " is left out of the bake (" + excluded.second +
+            reason("excluded", probeName(scene, excluded.first) + " is left out of the bake (" + excluded.second +
                                    "): nothing of it is walkable.", excluded.first, 0.0f, 0.0f, excluded.second);
     }
     if (!ground) {
@@ -320,21 +320,21 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
         if (volume.recastArea != nav::RECAST_NULL_AREA || source == NULL_ENTITY)
             continue;
         if (insideVolume(volume, Vector3(p.x, ground->height, p.z)))
-            reason("not_walkable_area", nameOf(scene, source) + " marks this place Not Walkable.", source);
+            reason("not_walkable_area", probeName(scene, source) + " marks this place Not Walkable.", source);
     }
     if (ground->recastArea == nav::RECAST_NOT_WALKABLE || ground->recastArea == nav::RECAST_NULL_AREA) {
         const Entity modifier = modifierOf(scene, ground->source);
-        reason("not_walkable_area", nameOf(scene, modifier) + " marks this ground Not Walkable.", modifier);
+        reason("not_walkable_area", probeName(scene, modifier) + " marks this ground Not Walkable.", modifier);
     }
 
     // the agent's limits
     if (frame.plane == nav::NavPlane::XZ) {
         if (ground->slope > config.agentMaxSlope + 0.01f)
-            reason("too_steep", "The ground slopes " + number(ground->slope) + "\xC2\xB0 here; " + agent.name + "'s Max Slope is " +
-                                    number(config.agentMaxSlope) + "\xC2\xB0.", ground->source, ground->slope, config.agentMaxSlope);
+            reason("too_steep", "The ground slopes " + probeNumber(ground->slope) + "\xC2\xB0 here; " + agent.name + "'s Max Slope is " +
+                                    probeNumber(config.agentMaxSlope) + "\xC2\xB0.", ground->source, ground->slope, config.agentMaxSlope);
         float ceiling = std::numeric_limits<float>::max();
         Entity ceilingSource = NULL_ENTITY;
-        for (const Ground& candidate : candidates) {
+        for (const ProbeGround& candidate : candidates) {
             if (candidate.height > ground->height + config.cellHeight && candidate.height < ceiling) {
                 ceiling = candidate.height;
                 ceilingSource = candidate.source;
@@ -342,8 +342,8 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
         }
         const float headroom = ceiling - ground->height;
         if (ceiling < std::numeric_limits<float>::max() && headroom < config.agentHeight)
-            reason("low_clearance", "There is " + number(headroom / unit) + " m of headroom here under " + nameOf(scene, ceilingSource) +
-                                        "; " + agent.name + "'s Height is " + number(config.agentHeight / unit) + " m.",
+            reason("low_clearance", "There is " + probeNumber(headroom / unit) + " m of headroom here under " + probeName(scene, ceilingSource) +
+                                        "; " + agent.name + "'s Height is " + probeNumber(config.agentHeight / unit) + " m.",
                    ceilingSource, headroom / unit, config.agentHeight / unit);
     }
 
@@ -375,13 +375,13 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
         return result;
     if (coversWith([](nav::NavBuildConfig& c) { c.walkableRadius = 0; })) {
         const float distance = result.location.found ? std::max(0.0f, config.agentRadius - result.location.snapDistance) : 0.0f;
-        reason("near_wall", "The point is about " + number(distance / unit) + " m from a wall or edge; " + agent.name + "'s Radius is " +
-                                number(config.agentRadius / unit) + " m.", NULL_ENTITY, distance / unit, config.agentRadius / unit);
+        reason("near_wall", "The point is about " + probeNumber(distance / unit) + " m from a wall or edge; " + agent.name + "'s Radius is " +
+                                probeNumber(config.agentRadius / unit) + " m.", NULL_ENTITY, distance / unit, config.agentRadius / unit);
     }
     if (frame.plane == nav::NavPlane::XZ && coversWith([](nav::NavBuildConfig& c) { c.walkableClimb = c.walkableHeight; })) {
         const float step = result.location.found ? std::fabs(ground->height - frame.toNav(result.location.position).y) : 0.0f;
-        reason("step_too_high", "A ledge of " + number(step / unit) + " m is next to the point; " + agent.name + "'s Step Height is " +
-                                    number(config.agentClimb / unit) + " m.", NULL_ENTITY, step / unit, config.agentClimb / unit);
+        reason("step_too_high", "A ledge of " + probeNumber(step / unit) + " m is next to the point; " + agent.name + "'s Step Height is " +
+                                    probeNumber(config.agentClimb / unit) + " m.", NULL_ENTITY, step / unit, config.agentClimb / unit);
     }
     if (coversWith([](nav::NavBuildConfig& c) {
             c.minRegionArea = 0;
@@ -401,8 +401,8 @@ NavProbeResult NavWalkabilityProbe::explain(Scene* scene, NavigationSystem& syst
             if (here.island >= 0 && (size_t)here.island < islands.size())
                 patch = islands[(size_t)here.island].area / (unit * unit);
         }
-        reason("small_region", "The walkable patch here (" + number(patch) + " m\xC2\xB2) is smaller than NavMesh Surface " + surfaceName +
-                                   "'s Minimum Region Area (" + number(component->minRegionArea) + " m\xC2\xB2), so the bake removes it.",
+        reason("small_region", "The walkable patch here (" + probeNumber(patch) + " m\xC2\xB2) is smaller than NavMesh Surface " + surfaceName +
+                                   "'s Minimum Region Area (" + probeNumber(component->minRegionArea) + " m\xC2\xB2), so the bake removes it.",
                surface, patch, component->minRegionArea);
     }
     return result;

@@ -19,11 +19,13 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/NavMeshLinkComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "jobs/JobSystem.h"
 #include "navigation/GridPathfinder.h"
 #include "navigation/NavBakeCollector.h"
 #include "navigation/NavBakeScheduler.h"
+#include "navigation/NavDiagnostics.h"
 #include "navigation/NavGridMap.h"
 #include "navigation/NavMesh.h"
 #include "navigation/NavRandom.h"
@@ -239,6 +241,116 @@ int main(int argc, char** argv) {
         results.add("query_random_circle_p95_ms", bench::percentile(around, 0.95), "ms");
         results.add("query_wall_p95_ms", bench::percentile(walls, 0.95), "ms");
         results.add("query_move_along_p95_ms", bench::percentile(moves, 0.95), "ms");
+    }
+
+    // ---- S54 diagnostics: island labelling, a disconnected reject, locate (islands current)
+    {
+        static_assert(sizeof(nav::NavIsland) <= 48, "R21: an island is at most 48 bytes");
+        nav::NavIslandLabels labels;
+        std::vector<double> times;
+        for (int i = 0; i < 20; i++) {
+            const auto t = bench::Clock::now();
+            nav::labelIslands(runtime.detourNavMesh(), labels);
+            times.push_back(msSince(t));
+        }
+        results.add("city_islands_ms", bench::percentile(times, 0.5), "ms");
+        results.add("city_islands", (double)labels.islands.size(), "islands");
+        const size_t islandBytes = labels.islands.capacity() * sizeof(nav::NavIsland);
+        results.add("islands_bytes_per_poly", (double)(labels.memoryBytes() - islandBytes) / std::max(1, runtime.getPolyCount()), "B");
+
+        const nav::NavFilter filter = nav::NavFilter::fromSettings(nav::ALL_AREAS);
+        const Vector3 extents(1.0f, 2.0f, 1.0f);
+        const std::vector<nav::NavIsland>& islands = runtime.getIslands();
+        int largest = 0;
+        for (const nav::NavIsland& island : islands) {
+            if (island.area > islands[(size_t)largest].area)
+                largest = island.id;
+        }
+        std::mt19937 random(11);
+        std::uniform_real_distribution<float> coordinate(-120.0f, 120.0f);
+        std::uniform_real_distribution<float> height(0.0f, 16.0f);
+        // a pair on two islands (the ground and a roof): rejected without a search
+        Vector3 ground, roof;
+        bool hasGround = false, hasRoof = false;
+        std::vector<double> locates;
+        for (int i = 0; i < 2000; i++) {
+            const Vector3 p(coordinate(random), height(random), coordinate(random));
+            const auto t = bench::Clock::now();
+            const nav::NavLocation location = runtime.locate(p, filter, extents, 5.0f);
+            locates.push_back(msSince(t));
+            if (!location.onMesh || location.island < 0)
+                continue;
+            if (!hasGround && location.island == largest) {
+                ground = location.position;
+                hasGround = true;
+            } else if (!hasRoof && location.island != largest) {
+                roof = location.position;
+                hasRoof = true;
+            }
+        }
+        results.add("query_locate_p95_ms", bench::percentile(locates, 0.95), "ms");
+        if (hasGround && hasRoof) {
+            const uint64_t searches = runtime.getSearchCount();
+            std::vector<double> rejects;
+            for (int b = 0; b < 20; b++) {
+                const auto t = bench::Clock::now();
+                for (int i = 0; i < 1000; i++)
+                    runtime.isReachable(ground, roof, filter, extents);
+                rejects.push_back(msSince(t));
+            }
+            results.add("query_reject_disconnected_us", bench::percentile(rejects, 0.5), "us");
+            results.add("query_reject_searches", (double)(runtime.getSearchCount() - searches), "searches");
+        } else {
+            std::fprintf(stderr, "no pair of islands found for the reject\n");
+        }
+    }
+
+    // ---- S54 findings: bench_nav_city with 100 agents and 20 links, stale counts cached
+    {
+        Scene findingsScene;
+        test::disableSubSystems(findingsScene);
+        findingsScene.getScheduler().setEnabled("NavigationSystem", true);
+        City findingsCity = city(findingsScene);
+        NavigationSystem* system = findingsScene.getSystem<NavigationSystem>().get();
+        system->setKeepBakeData(true);
+        system->setNavMeshData(findingsCity.surface, nav::NavMeshData(data), error);
+        std::mt19937 random(23);
+        std::uniform_real_distribution<float> coordinate(-110.0f, 110.0f);
+        int agents = 0;
+        while (agents < 100) {
+            nav::NavHit hit;
+            if (!system->samplePosition(Vector3(coordinate(random), 3.0f, coordinate(random)), 6.0f, hit))
+                continue;
+            agent(findingsScene, hit.position);
+            agents++;
+        }
+        for (int i = 0; i < 20; i++) {
+            nav::NavHit a, b;
+            const Vector3 p(coordinate(random), 3.0f, coordinate(random));
+            if (!system->samplePosition(p, 6.0f, a) || !system->samplePosition(p + Vector3(3.0f, 0.0f, 0.0f), 6.0f, b)) {
+                i--;
+                continue;
+            }
+            const Entity link = transformEntity(findingsScene, Vector3());
+            NavMeshLinkComponent component;
+            component.startPoint = a.position;
+            component.endPoint = b.position;
+            findingsScene.addComponent<NavMeshLinkComponent>(link, component);
+        }
+        resolveTransforms(findingsScene);
+        // the links' tiles only
+        system->bakeNow(findingsCity.surface, NavBakeMode::DIRTY);
+        nav::NavFindingOptions options;
+        options.dirtyTilesOf = [](Entity) { return 0; };
+        size_t count = system->getFindings(options).size();
+        std::vector<double> times;
+        for (int i = 0; i < 20; i++) {
+            const auto t = bench::Clock::now();
+            count = system->getFindings(options).size();
+            times.push_back(msSince(t));
+        }
+        results.add("findings_city_ms", bench::percentile(times, 0.5), "ms");
+        results.add("findings_city_count", (double)count, "findings");
     }
 
     // ---- crowds: 100 and 500 agents (Good) walking across the city; the system's fixed tick

@@ -3,12 +3,12 @@
 
 // The editor side of navigation (docs/specs/S19-navigation.md R31, R35, R39, R41): the six
 // components re-encode identically (scene round trip), the project's navigation block keeps only
-// what differs from the defaults and reads back sanitized, the overlay settings round trip, the
-// generated main.cpp sets the settings, and the nav-grid brush's stamps, lines, fills and strokes.
+// what differs from the defaults and reads back sanitized, the generated main.cpp sets the
+// settings, and the nav-grid brush's stamps, lines, fills and strokes. (The overlay's settings:
+// NavigationOverlayTest.cpp.)
 
 #include "Stream.h"
 #include "navigation/NavGridBrush.h"
-#include "navigation/NavigationOverlay.h"
 #include "navigation/NavigationProjectSettings.h"
 
 #include "LogCapture.h"
@@ -106,17 +106,6 @@ TEST(NavigationProjectSettings, GeneratedCodeSetsThem){
     EXPECT_NE(code.find("navigation.crowdMaxAgents = 300;"), std::string::npos) << code;
     EXPECT_NE(code.find("navigation.areas[6] = {\"Ice \\\"slippery\\\"\""), std::string::npos) << code;
     EXPECT_NE(code.find("nav::setSettings(navigation);"), std::string::npos) << code;
-}
-
-TEST(NavigationOverlay, SettingsRoundTrip){
-    EXPECT_EQ(encodeNavOverlaySettings(NavOverlaySettings()).size(), 0u);
-    NavOverlaySettings settings;
-    settings.showTileBounds = true;
-    settings.showPaths = NavOverlaySettings::Paths::All;
-    settings.showNavMesh = false;
-    NavOverlaySettings read;
-    decodeNavOverlaySettings(YAML::Load(YAML::Dump(encodeNavOverlaySettings(settings))), read);
-    EXPECT_EQ(read, settings);
 }
 
 TEST(NavGridBrush, StampsLinesAndFills){

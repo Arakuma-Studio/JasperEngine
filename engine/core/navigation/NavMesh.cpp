@@ -599,7 +599,7 @@ struct NavMesh::Impl {
     // whether some tile has off-mesh connections, at linksRevision (a crowd asks every tick)
     mutable uint64_t linksRevision = UINT64_MAX;
     mutable bool hasLinks = false;
-    // S42: the island labels of `labelledRevision` (made on demand, R8), the searches run
+    // S54: the island labels of `labelledRevision` (made on demand, R8), the searches run
     mutable NavIslandLabels islands;
     mutable uint64_t labelledRevision = 0;
     mutable uint64_t searches = 0;
@@ -1777,7 +1777,7 @@ bool NavMesh::hasOffMeshConnections() const {
     return impl->hasLinks;
 }
 
-// ---------------------------------------------------------------- S42 diagnostics
+// ---------------------------------------------------------------- S54 diagnostics
 
 const std::vector<NavIsland>& NavMesh::getIslands() const {
     impl->ensureLabels();
