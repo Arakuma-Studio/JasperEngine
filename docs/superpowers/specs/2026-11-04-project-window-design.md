@@ -794,8 +794,10 @@ Recorded while implementing on `dc/project-window`; each keeps the spec's intent
    it, and unsaved scene edits are written into the copy by the next Save (as a saved scene's edits always are).
 5. **Protected roots** (D10): `ProjectWindow::rootRefusal` has its own check (lexical and resolved, as
    `McpRefs::trustedRootTouched`) to word the Project Settings path the user needs; it also refuses the project folder.
-6. **Edit > Cut / Copy / Paste** route to the Project window only from the menu (its keys stay `project.*`): their key
-   gates exclude the Project window, so typing in its search box never copies assets.
+6. **Edit menu routing** goes through `main`'s panel claims (S61, `PanelClaims`), which landed after the spec: the
+   Project window's claim gains Duplicate (`project.duplicate`) beside its Delete, Copy, Cut, Paste, Select All and
+   Rename, so Edit > Duplicate and Ctrl+D act on the assets while the Project window has focus. No `App` routing of
+   its own.
 7. **Tests not written as named**: the Vertex Animation pair half of `HumanoidSidecarAndVatPairMoveWithTheirFile` (the
    pair move reuses `vat::existingPairOf` and the planned-move path the sidecar test covers; a valid baked pair fixture
    is VatEditorTest's), and the MCP `test_unsaved_buffer_of_a_moving_file_refuses` (no MCP tool makes a Code Editor
