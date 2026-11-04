@@ -97,7 +97,7 @@ size_t NavIslandLabels::memoryBytes() const {
 
 namespace {
 
-    int32_t findRoot(std::vector<int32_t>& parent, int32_t i) {
+    int32_t islandRoot(std::vector<int32_t>& parent, int32_t i) {
         int32_t root = i;
         while (parent[(size_t)root] != root)
             root = parent[(size_t)root];
@@ -157,7 +157,7 @@ void nav::labelIslands(const void* detourNavMesh, NavIslandLabels& out) {
                 const int32_t other = (int32_t)(out.tileBase[(size_t)it] + ip);
                 if (parent[(size_t)other] < 0)
                     continue;
-                const int32_t a = findRoot(parent, self), b = findRoot(parent, other);
+                const int32_t a = islandRoot(parent, self), b = islandRoot(parent, other);
                 if (a != b)
                     parent[(size_t)std::max(a, b)] = std::min(a, b);
             }
@@ -180,7 +180,7 @@ void nav::labelIslands(const void* detourNavMesh, NavIslandLabels& out) {
     });
     std::vector<int32_t> roots(total);
     for (size_t i = 0; i < total; i++)
-        roots[i] = parent[i] < 0 ? -1 : findRoot(parent, (int32_t)i);
+        roots[i] = parent[i] < 0 ? -1 : islandRoot(parent, (int32_t)i);
     std::vector<int32_t> idOfRoot(total, -1);
     constexpr float FLOAT_MAX = std::numeric_limits<float>::max();
     for (int s : order) {
