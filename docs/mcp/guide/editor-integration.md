@@ -189,12 +189,20 @@ project, or empty the trash.
 
 `list_shortcuts {group?, context?, conflicts_only?}` is the command catalog: each command's
 `chords`, `default_chords`, `context` (`global`, `editor`, `scene_view`, `hierarchy`,
-`project`, `console`, `animation`, `pose_animation`), `menu_path` and the `menu_shortcut` its menu item shows, and
+`project`, `console`, `animation`, `pose_animation`, `curve`, `color_picker`), `menu_path` and the `menu_shortcut` its menu item shows, and
 `conflicts` / `shadowed_by` (a Global or Editor key over a window's own). `set_shortcut {id,
 chords}` rebinds (`[]` unbinds, `null` resets); a chord another command has in the same context
 fails unless `force: true`, which takes it from that command. Rebindings are the user's, in
 `shortcuts.yaml` next to the editor settings, for every project. `docs/editor/keyboard-shortcuts.md`
 lists the defaults.
+
+The edit commands follow the focused panel (S41): while the Curve window, the Project window, the
+Animator, Input Actions, Animation, Pose Animation, Sprite Normal Map, Color, Gradient Editor or
+Jobs & Memory window (or the Console's list) has focus, `run_command edit.delete` (`edit.copy`,
+`edit.frameSelected`...) goes to that panel, or is refused as disabled when it has nothing to act
+on; it never reaches the scene then. `editor_status.windows.focused` says which window that is;
+`ui.curve_window` (`open`, `focused`, `selected_keys`, `clipboard_keys`, `view`) and
+`ui.color_picker` (`open`, `focused`, `sampling`) show those windows' state.
 
 ## Window layouts
 
