@@ -7198,6 +7198,8 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         }
     }
 
+    applyFirstDrawSettings(sceneProject);
+
     SceneMaxValues maxValues;
     maxValues.maxBones = sceneProject->maxValues.maxBones;
     maxValues.legacyMaxColliders2D = sceneProject->maxValues.legacyMaxColliders2D;
@@ -7378,13 +7380,25 @@ bool editor::Project::writeSceneToPath(uint32_t sceneId, const std::filesystem::
     return true;
 }
 
-void editor::Project::writeSceneSource(SceneProject* sceneProject) {
-    // A 3D scene without a Camera generates the Scene view's, which takes the view's projection
-    // when it first draws: the code holds the same whether or not it drew
+// What the first draw would set on the scene's data: a file and the code hold the same whether or
+// not it drew
+void editor::Project::applyFirstDrawSettings(SceneProject* sceneProject) const {
+    if (!sceneProject->scene) {
+        return;
+    }
+    auto terrains = sceneProject->scene->getComponentArray<TerrainComponent>();
+    for (size_t i = 0; i < terrains->size(); ++i) {
+        MeshSystem::applyTerrainMapSettings(terrains->getComponentFromIndex(i));
+    }
+    // a 3D scene without a Camera generates the Scene view's, with the view's projection
     if (sceneProject->sceneRender && sceneProject->sceneRender->getCamera() &&
         getSceneCamera(sceneProject) == sceneProject->sceneRender->getCamera()->getEntity()) {
         SceneViewController::projectCamera(*sceneProject, sceneProject->sceneRender->getViewWidth(), sceneProject->sceneRender->getViewHeight(), false);
     }
+}
+
+void editor::Project::writeSceneSource(SceneProject* sceneProject) {
+    applyFirstDrawSettings(sceneProject);
     // prefabs only scripts reference or other prefabs nest get their sources too
     loadBuildPrefabs();
     const auto baked = bakePrefabsForExport();

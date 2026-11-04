@@ -7,6 +7,7 @@
 // their ComponentDesc's codec (editor/reflect/components). The rest of the scene file is Stream.cpp.
 
 #include "Stream.h"
+#include "subsystem/MeshSystem.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
 #include "StreamSchema.h"
@@ -30,7 +31,7 @@
 using namespace jasperengine;
 
 YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers, bool embedTextureData, bool encodeBones,
-                                               unsigned int numSubmeshes, bool encodeVertexCounts) {
+                                               unsigned int numSubmeshes, bool encodeGeneratedValues) {
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(mesh.enabled);
 
@@ -49,9 +50,9 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     // Encode submeshes
     YAML::Node submeshesNode;
     // past the count, what the generator will start from (the first slot exists before it ran)
-    static const Submesh unbuilt;
+    static const Submesh unbuilt{};
     for(unsigned int i = 0; i < std::max(mesh.numSubmeshes, numSubmeshes); i++) {
-        submeshesNode.push_back(encodeSubmesh(i == 0 || i < mesh.numSubmeshes ? mesh.submeshes[i] : unbuilt, embedTextureData, encodeVertexCounts));
+        submeshesNode.push_back(encodeSubmesh(i == 0 || i < mesh.numSubmeshes ? mesh.submeshes[i] : unbuilt, embedTextureData, encodeGeneratedValues));
     }
     node["submeshes"] = submeshesNode;
 
@@ -96,8 +97,10 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     }
 
     // Encode AABBs
-    node["aabb"] = encodeAABB(mesh.aabb);
-    node["verticesAABB"] = encodeAABB(mesh.verticesAABB);
+    if (encodeGeneratedValues) {
+        node["aabb"] = encodeAABB(mesh.aabb);
+        node["verticesAABB"] = encodeAABB(mesh.verticesAABB);
+    }
     // computed from the other two and the transform when the scene runs
     if (!reflect::DocumentEncodeScope::active()) {
         node["worldAABB"] = encodeAABB(mesh.worldAABB);
@@ -725,6 +728,8 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     terrain.numNodes = 0;
 
     if (node["enabled"]) terrain.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    MeshSystem::applyTerrainMapSettings(terrain);
 
     return terrain;
 }

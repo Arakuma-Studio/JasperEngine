@@ -565,7 +565,7 @@ TEST_F(AtmosphereGpu, VolumetricClouds){
 }
 
 // The wrap of a component's weather map is its authored setting, saved with the scene: a draw does
-// not write it (spec S43), and the clouds tile whatever it says
+// not write it (spec S63), and the clouds tile whatever it says
 TEST_F(AtmosphereGpu, AWeatherMapTilesWhateverItsWrap){
     JASPER_REQUIRE_GPU();
     ground(20000.0f, Vector3(0.3f, 0.35f, 0.28f));

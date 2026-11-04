@@ -517,10 +517,10 @@ namespace jasperengine::editor {
         static YAML::Node encodeTransform(const Transform& transform);
         static Transform decodeTransform(const YAML::Node& node, const Transform* oldTransform = nullptr);
 
-        // numSubmeshes: at least so many are written (savedSubmeshCount); encodeVertexCounts: off for a
-        // mesh whose generator sets them (isGeneratedMesh)
+        // numSubmeshes: at least so many are written (savedSubmeshCount); encodeGeneratedValues: off for
+        // a mesh whose generator sets its vertex counts and bounds (isGeneratedMesh)
         static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true,
-                                              unsigned int numSubmeshes = 0, bool encodeVertexCounts = true);
+                                              unsigned int numSubmeshes = 0, bool encodeGeneratedValues = true);
         static MeshComponent decodeMeshComponent(const YAML::Node& node, const MeshComponent* oldMesh = nullptr);
 
         // textureIsAtlas: a Text's UI, whose texture is the font atlas the UISystem publishes once the

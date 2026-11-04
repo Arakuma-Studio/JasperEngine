@@ -186,7 +186,7 @@ TEST(Stream, DerivedTransformWorldMatricesUnchanged) {
     }
 }
 
-// What a frame computes (spec S43): an auto-resizing camera's clips and aspect are the canvas's,
+// What a frame computes (spec S63): an auto-resizing camera's clips and aspect are the canvas's,
 // a Light's world direction and a Mesh's world bounds its transform's, a Terrain's Auto Ranges its
 // camera's far clip. Written, a save followed what was drawn before it. Read when a file has them.
 TEST(Stream, ValuesAFrameComputesNotWritten) {
@@ -229,11 +229,32 @@ TEST(Stream, ValuesAFrameComputesNotWritten) {
     EXPECT_TRUE(components("Box")["mesh"]["aabb"]) << "the geometry's bounds are not computed again";
     EXPECT_FALSE(components("Land")["terrain"]["ranges"]);
     EXPECT_EQ(components("Hand")["terrain"]["ranges"].size(), 2u) << "ranges set by hand stay";
-    // a terrain has its two submeshes before it first ran, and its generator's vertex counts are not written
-    const YAML::Node landMesh = components("Land")["mesh"];
-    if (landMesh) {
-        for (const YAML::Node& submesh : landMesh["submeshes"]) EXPECT_FALSE(submesh["vertexCount"]);
-    }
+}
+
+// A Terrain's mesh and maps as its first run leaves them, whether or not it ran (spec S63): two
+// submeshes, its generator's counts and bounds not written, its height and blend maps clamped and
+// the height map's pixels kept. A draw wrote those, so a save followed what was drawn before it.
+TEST(Stream, ATerrainSavesWhatItsFirstRunLeaves) {
+    const std::string old =
+        "formatVersion: 7\nid: 44\nname: Land\nscene:\n  backgroundColor: [0, 0, 0, 1]\nsceneType: scene_3d\nmainCamera: 0\nentities:\n"
+        "  - type: Entity\n    entity: 1001\n    name: Land\n    components:\n      transform:\n        position: [0, 0, 0]\n"
+        "      terrain:\n        heightMap:\n          textureType: 2D\n          source: path\n          path: height.png\n"
+        "          wrapU: repeat\n          wrapV: repeat\n          releaseDataAfterLoad: true\n"
+        "        blendMaps:\n          - textureType: 2D\n            source: path\n            path: blend.png\n"
+        "            wrapU: repeat\n            wrapV: repeat\n"
+        "      mesh:\n        submeshes: ~\n        aabb:\n          min: [1, 1, 1]\n          max: [2, 2, 2]\n";
+    const DecodedScene decoded = decodeSceneText(old, "land.scene");
+    const YAML::Node saved = YAML::Load(encodeSceneText(decoded));
+    const YAML::Node components = saved["entities"][0]["components"];
+    EXPECT_EQ(components["terrain"]["heightMap"]["wrapU"].as<std::string>(), "clamp_to_edge");
+    EXPECT_EQ(components["terrain"]["heightMap"]["wrapV"].as<std::string>(), "clamp_to_edge");
+    EXPECT_EQ(components["terrain"]["heightMap"]["releaseDataAfterLoad"].as<std::string>(), "false");
+    EXPECT_EQ(components["terrain"]["blendMaps"][0]["wrapU"].as<std::string>(), "clamp_to_edge");
+    ASSERT_EQ(components["mesh"]["submeshes"].size(), 2u);
+    for (const YAML::Node& submesh : components["mesh"]["submeshes"]) EXPECT_FALSE(submesh["vertexCount"]);
+    EXPECT_FALSE(components["mesh"]["aabb"]);
+    EXPECT_FALSE(components["mesh"]["verticesAABB"]);
+    EXPECT_EQ(saved["maxValues"]["maxSubmeshes"].as<unsigned int>(), 2u);
 }
 
 // A RectTransform's scissor is the clip rectangle the last draw computed, in the pixels of the view

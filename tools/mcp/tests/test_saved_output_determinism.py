@@ -1,10 +1,10 @@
-"""Saved files do not depend on what was drawn or loaded (spec S43).
+"""Saved files do not depend on what was drawn or loaded (spec S63).
 
 - test_fixture_scenes_save_the_same_drawn_or_not (R3, the guard): every scene of every project of
   tools/fixtures is opened and saved in one batch (no frame: nothing drawn, no texture loaded),
   drawn in both views with its assets loaded (a screenshot waits for them), and saved again. The
-  scene file and every generated source must not change by a byte. A difference the engine accepts
-  is listed in ACCEPTED with its reason (and in the spec's Deviations): none is left silent.
+  scene file and every generated source must not change by a byte. A difference is fixed, or the
+  fixture holds what the first draw settles and the spec's Deviations say why: none is left silent.
 - test_sprite_frames_generate_as_authored (R1): a Sprite whose frames are in pixels generates those
   pixels, with its texture unloaded, held back on its worker or loaded.
 - test_weather_map_wrap_stays_authored (R2): a draw does not write a Volumetric Clouds' weather map.
@@ -33,9 +33,6 @@ TEXTURE_DELAY_ENV = "JASPER_TEXTURE_LOAD_DELAY_MS"
 FRAMES_AFTER_DRAW = 10
 FRAME_TIMEOUT = 300
 SHOT_TIMEOUT = 300
-
-# (fixture name, scene path) -> why that scene may differ. Each entry is in the spec's Deviations.
-ACCEPTED: dict[tuple[str, str], str] = {}
 
 
 def fixture_projects() -> list[Path]:
@@ -106,10 +103,7 @@ async def test_fixture_scenes_save_the_same_drawn_or_not():
                 await ed.call("save_scene", scene=rel, allow_data_loss=True)
                 found = differences({rel: undrawn}, {rel: path.read_bytes()}) + differences(undrawn_sources, generated_files(ed.project))
                 compared += 1
-                key = (fixture.name, rel)
-                if found and key in ACCEPTED:
-                    print(f"[guard] {fixture.name}/{rel}: accepted ({ACCEPTED[key]})")
-                elif found:
+                if found:
                     print(f"[guard] {fixture.name}/{rel}: DIFFERS\n" + "\n".join(found))
                     findings.append(f"{fixture.name}/{rel}: " + "\n".join(found))
                 else:

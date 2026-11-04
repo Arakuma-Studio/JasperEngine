@@ -368,7 +368,7 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   shader, HTML, scene or material (by path), and, for an engine change, the files that run a prebuilt
   game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), those that compile a
   game when what the compile path reads changes (`COMPILE_PATHS`), and the guard of what a save
-  writes (`test_saved_output_determinism.py`, spec S43) when serialization or code generation
+  writes (`test_saved_output_determinism.py`, spec S63) when serialization or code generation
   changes (`SAVED_OUTPUT_PATHS`).
   No map, a map older than 14 days or 400 commits, or a changed source the map does not know (new
   code), or a file no test names adds the CI suite; code the map knows that no test executes

@@ -31,7 +31,7 @@ unit and MCP tests that can see it; the full suite is for pushes to origin main 
    asset (by path; a shader also test_shader_library.py and the CI suite), the files that run a
    prebuilt game when the engine changes, and those that compile a game when what the compile
    path reads changes (COMPILE_PATHS), and the guard of what a save writes when serialization or
-   code generation changes (SAVED_OUTPUT_PATHS, spec S43). Fallbacks: no map, a
+   code generation changes (SAVED_OUTPUT_PATHS, spec S63). Fallbacks: no map, a
    map older than MAP_MAX_AGE_DAYS or MAP_MAX_COMMITS, or a changed source the map does not know
    (new) or file no test names add the CI suite; a harness change runs the whole suite.
 5. A pass is cached (build/.cache/check-changed.json) by a hash of the base, the diff, the
@@ -102,7 +102,7 @@ COMPILE_FILES = ("test_build.py", "test_html_ui_effects_export.py", "test_hub.py
 COMPILE_PATHS = ("engine/CMakeLists.txt", "engine/project/*", "engine/player/*", "engine/platform/*", "engine/core/player/*",
                  "engine/core/diag/*", "editor/Exporter*", "editor/Generator*", "editor/players/*", "tools/players/*")
 # what a save writes (the scene files, the generated code): the guard that it does not depend on
-# what was drawn or loaded (spec S43); it runs the code the map sees through every other test file
+# what was drawn or loaded (spec S63); it runs the code the map sees through every other test file
 SAVED_OUTPUT_FILES = ("test_saved_output_determinism.py",)
 SAVED_OUTPUT_PATHS = ("editor/Factory*", "editor/Generator*", "editor/Stream*", "editor/stream/*", "editor/reflect/*",
                       "engine/core/serialization/*")

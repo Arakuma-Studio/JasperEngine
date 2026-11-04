@@ -62,6 +62,7 @@ namespace jasperengine::editor::reflect {
         const char* cppPath = nullptr;
         size_t (*count)(const void* owner) = nullptr;
         Given<TypeOps> elementOps;             // instead of the element type's (Entity elements)
+        bool (*derivedIf)(const void* owner) = nullptr;
     };
 
     namespace detail {
@@ -110,6 +111,7 @@ namespace jasperengine::editor::reflect {
             desc.group = meta.group;
             desc.drawer = meta.drawer;
             desc.visibleIf = meta.visibleIf;
+            desc.derivedIf = meta.derivedIf;
             desc.enabledIf = meta.enabledIf;
             desc.aliases = meta.aliases;
             desc.uiOrder = meta.uiOrder;

@@ -70,18 +70,19 @@ def first_difference(actual: str, expected: str) -> str:
 
 
 # What the goldens' editor wrote and this one leaves out, because the engine computes it when the
-# scene runs (S29 R20, S43). The goldens stay the capture from before S08 (see above), so these lines
+# scene runs (S29 R20, S63). The goldens stay the capture from before S08 (see above), so these lines
 # are taken out of a golden before the comparison:
 # - an autoResize camera's clips and aspect, the canvas's: masked as VIEW_MASKED when captured;
 # - a Light's worldDirection and a Mesh's or UI's worldAABB;
 # - a Terrain's ranges under Auto Ranges, set from the camera's far clip;
-# - of a mesh a component generates, the vertex counts of its submeshes;
-# - in the code: a mesh's vertexCount (set when it loads) and, of a mesh a component generates, the
-#   geometry (the scene file never held it, the code held it when a frame had made it).
+# - of a mesh a component generates, the vertex counts of its submeshes and its bounds;
+# - in the code: a mesh's vertexCount (set when it loads), a rigidbody's runtime flags and, of a mesh
+#   a component generates, the geometry (the scene file never held it, the code held it when a
+#   frame had made it).
 VIEW_MASKED = "<view>"
 GENERATED_MESH_COMPONENTS = ("sprite", "tilemap", "meshpolygon", "terrain", "splineextrude")
 GENERATED_MESH_CODE = re.compile(r"addComponent<(?:Sprite|Tilemap|MeshPolygon|Terrain|SplineExtrude)Component>")
-DERIVED_CODE_DROPPED = re.compile(r"^\s*mesh\.vertexCount = \d+;$")
+DERIVED_CODE_DROPPED = re.compile(r"^\s*(?:mesh\.vertexCount = \d+|rigidbody(?:2d)?\.(?:needReloadBody|needUpdateColliders|newBody) = \w+);$")
 GENERATED_CODE_DROPPED = re.compile(r"^\s*mesh\.(?:submeshes\[\d+\]\.vertexCount = |buffer\.|indices\.)")
 
 
@@ -119,7 +120,12 @@ def scene_golden_as_now(golden: str) -> str:
                         if lines[k].strip() == "ranges:":
                             dropped.update(range(k, block_end(lines, k)))
             if "mesh" in keys and any(name in keys for name in GENERATED_MESH_COMPONENTS):
-                dropped.update(k for k in range(keys["mesh"], block_end(lines, keys["mesh"])) if lines[k].strip().startswith("vertexCount: "))
+                mesh_end = block_end(lines, keys["mesh"])
+                for k in range(keys["mesh"], mesh_end):
+                    if lines[k].strip().startswith("vertexCount: "):
+                        dropped.add(k)
+                    elif lines[k].strip() in ("aabb:", "verticesAABB:"):
+                        dropped.update(range(k, block_end(lines, k)))
     return "".join(line for i, line in enumerate(lines) if i not in dropped)
 
 

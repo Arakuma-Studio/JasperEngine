@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// A Sprite's frame on the headless device (docs/specs/S43-saved-output-determinism.md R1): the
+// A Sprite's frame on the headless device (docs/specs/S63-saved-output-determinism.md R1): the
 // generated code holds a frame as it was authored, so a frame in pixels has to draw what the same
 // frame normalised draws, also when it was chosen before the texture's size was known.
 

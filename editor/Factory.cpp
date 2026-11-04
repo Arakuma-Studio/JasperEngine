@@ -1867,9 +1867,6 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
     const Collider2D defCollider;
     code << ind << "Rigidbody2DComponent rigidbody2d;\n";
     code << ind << "rigidbody2d.type = " << formatBodyType(body.type) << ";\n";
-    code << ind << "rigidbody2d.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";
-    code << ind << "rigidbody2d.needUpdateColliders = " << formatBool(body.needUpdateColliders) << ";\n";
-    code << ind << "rigidbody2d.newBody = " << formatBool(body.newBody) << ";\n";
 
     // the body fields that differ from the defaults
     if (body.gravityScale != def.gravityScale) code << ind << "rigidbody2d.gravityScale = " << formatFloat(body.gravityScale) << ";\n";
@@ -1953,9 +1950,6 @@ std::string editor::Factory::createRigidbodyComponent(int indentSpaces, EntityRe
     code << ind << "rigidbody.waterAngularDrag = " << formatFloat(body.waterAngularDrag) << ";\n";
     // The bit mask, rather than six OR'd enumerators in the generated source.
     code << ind << "rigidbody.allowedDOFs = " << static_cast<unsigned int>(body.allowedDOFs) << ";\n";
-    code << ind << "rigidbody.needReloadBody = " << formatBool(body.needReloadBody) << ";\n";
-    code << ind << "rigidbody.needUpdateColliders = " << formatBool(body.needUpdateColliders) << ";\n";
-    code << ind << "rigidbody.newBody = " << formatBool(body.newBody) << ";\n";
     code << ind << "rigidbody.overrideMassProperties = " << formatBool(body.overrideMassProperties) << ";\n";
     code << ind << "rigidbody.solidBoxSize = " << formatVector3(body.solidBoxSize) << ";\n";
     code << ind << "rigidbody.solidBoxDensity = " << formatFloat(body.solidBoxDensity) << ";\n";

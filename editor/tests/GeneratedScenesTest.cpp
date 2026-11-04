@@ -11,6 +11,7 @@
 #include "Generator.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "component/Rigidbody2DComponent.h"
 #include "object/Camera.h"
 #include "object/Mesh.h"
 #include "object/Sprite.h"
@@ -222,6 +223,22 @@ TEST(GeneratedScenes, ACameraSizedByTheCanvasGeneratesNoSize) {
     component.autoResize = false;
     const std::string fixedSize = Factory::createComponent(8, &scene, camera.getEntity(), ComponentType::CameraComponent, fs::path());
     EXPECT_NE(fixedSize.find("camera.rightClip = 1280"), std::string::npos) << fixedSize;
+}
+
+// A body's runtime flags are not authored: a frame clears them, a load and the game start with them on
+TEST(GeneratedScenes, ARigidbodyGeneratesNoRuntimeFlags) {
+    Scene scene;
+    Entity entity = scene.createEntity();
+    Rigidbody2DComponent body2d;
+    body2d.needReloadBody = false;
+    body2d.needUpdateColliders = false;
+    body2d.newBody = false;
+    scene.addComponent<Rigidbody2DComponent>(entity, body2d);
+    const std::string code = Factory::createComponent(8, &scene, entity, ComponentType::Rigidbody2DComponent, fs::path());
+    EXPECT_NE(code.find("Rigidbody2DComponent rigidbody2d;"), std::string::npos) << code;
+    EXPECT_EQ(code.find("needReloadBody"), std::string::npos) << code;
+    EXPECT_EQ(code.find("needUpdateColliders"), std::string::npos) << code;
+    EXPECT_EQ(code.find("newBody"), std::string::npos) << code;
 }
 
 // A Terrain's Auto Ranges are its camera's far clip
