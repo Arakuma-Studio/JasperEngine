@@ -69,6 +69,9 @@ over the Scene view pasted a GameObject (3 -> 4). So this was a real loss of wor
 - The Sprite Normal Map window's F became the claim's Frame handler, and with it focused the `tools.*` keys (W, E, G, X...)
   are off: they fired together with that window's own letters.
 - `editor_status` gained `ui.curve_window` and `ui.color_picker`: agents and tests need them to check these keys.
+- The generated AGENTS.md's Source references says an editor key is rebound with `set_shortcut`: without it agents asked to
+  rebind a key went to the editor's source (eval case `guard_curve_keys_rebind`, 0/2 without the sentence, 2/2 with it; a line
+  in the guide's Other areas did not move them, 0/2).
 
 **R4 audit.** Every key poll of these keys under `editor/`:
 
