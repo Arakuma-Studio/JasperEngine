@@ -1,25 +1,25 @@
-# S60 — Title localisation and interchange: languages, translations and per-language bakes; Pachislop, Photoshop and SVG import; PNG, PSD, SVG and sheet export
+# S87 — Title localisation and interchange: languages, translations and per-language bakes; Pachislop, Photoshop and SVG import; PNG, PSD, SVG and sheet export
 
-**Wave / Depends on.** Title Art program (spec-first), **wave 6C** (with S57, S58; program graph in
-§8, program rules in S53 §6.15). Depends on:
-- **S53**: the `.titleart` document v1 (§6.1), `TitleArtOps` and the path grammar (§6.2), the
+**Wave / Depends on.** Title Art program (spec-first), **wave 6C** (with S84, S85; program graph in
+§8, program rules in S80 §6.15). Depends on:
+- **S80**: the `.titleart` document v1 (§6.1), `TitleArtOps` and the path grammar (§6.2), the
   renderer, `TitleFrame`, Outputs and bakes, float readback, the `title_art` MCP tools;
-- **S54**: the Title Art Renderer, Render Mode, the Lua `TitleArt` API, the bake sidecar
+- **S81**: the Title Art Renderer, Render Mode, the Lua `TitleArt` API, the bake sidecar
   `logo.titleart.bake.json` and its always-in-core reader `TitleArtBakeInfo`, Realtime re-render,
   Glyph Atlas, export (font subsetting, Characters set);
-- **S55**: the Title Designer (toolbar, panels, Library panel, font picker);
-- **S56**: the effect and generator ids, the `material` effect, and the Pachislop map
+- **S82**: the Title Designer (toolbar, panels, Library panel, font picker);
+- **S83**: the effect and generator ids, the `material` effect, and the Pachislop map
   (`editor/titleart/fx/PachislopFxMap.cpp`, data `editor/resources/titleart/pachislop-fx-map.yaml`);
-- **S57**: user Looks (`.titlelook`, the library ops), the font pack ids, the library maps;
-- **S58** (same wave; S58 owns them): `TitleAnimPlan` and frame sampling, its baked flipbook pages
+- **S84**: user Looks (`.titlelook`, the library ops), the font pack ids, the library maps;
+- **S85** (same wave; S85 owns them): `TitleAnimPlan` and frame sampling, its baked flipbook pages
   and `<file>.anim.json`;
-- **S59**: `TitleDocument3D::fromPachislop` for Pachislop `title3d` layers.
+- **S86**: `TitleDocument3D::fromPachislop` for Pachislop `title3d` layers.
 
-The milestones (end of the spec) let parts land as their dependencies do: localisation needs S53
-and S54, export needs S53, Pachislop import needs S56 and S57.
+The milestones (end of the spec) let parts land as their dependencies do: localisation needs S80
+and S81, export needs S80, Pachislop import needs S83 and S84.
 
 Owner area:
-- `engine/core/util/TitleArtLanguage.*` (always in core, beside S54's `TitleArtBakeInfo`);
+- `engine/core/util/TitleArtLanguage.*` (always in core, beside S81's `TitleArtBakeInfo`);
   `engine/core/titleart/TitleTranslations.*`, `TitleFit.*`;
 - `editor/titleart/localisation/`: strings CSV/XLIFF, the language checks, the Translations panel
   model;
@@ -49,7 +49,7 @@ Exports go to whatever the next tool needs:
 - PNG (8/16-bit, trimmed, with no dark fringes);
 - layered PSD;
 - SVG outlines;
-- sprite sheets, atlases and sequences of S58 animations;
+- sprite sheets, atlases and sequences of S85 animations;
 - KTX2 through the existing cook.
 
 All exports are sRGB, tagged as sRGB.
@@ -78,7 +78,7 @@ All exports are sRGB, tagged as sRGB.
     premultiplied), with per-layer parts and a placement manifest;
   - layered PSD 8/16-bit (a C++ writer);
   - SVG for vector-representable content;
-  - grid sheets, packed atlases and PNG sequences of S58 animations;
+  - grid sheets, packed atlases and PNG sequences of S85 animations;
   - KTX2 through S14's cooker;
   - ZIP bundles.
 - Colour management of exports: sRGB with an sRGB tag (PNG `sRGB` chunk, PSD embedded ICC
@@ -97,7 +97,7 @@ All exports are sRGB, tagged as sRGB.
 - `.psb` export, 32-bit PSD, WebP/AVIF/EXR exports, GIF/APNG/video exports (the Movie Recorder,
   S27, records Play), Lottie.
 - Pachislop v1–v3 files (Pachislop itself refuses them), its autosave records, its user preset
-  files (`src/presets/user.ts`; S57 converts looks).
+  files (`src/presets/user.ts`; S84 converts looks).
 - Runtime parsing of CSV, XLIFF, PSD, SVG or Pachislop files. Everything here except language
   resolution, translations, fit and reading the bake sidecar is editor-only.
 
@@ -120,10 +120,10 @@ All exports are sRGB, tagged as sRGB.
 - Nothing translates anything. No string table, no `.po`/`.csv`/`.xliff` reader, no
   `localization` setting. `docs/openengine-analysis/06-ui-framework.md:147` lists "no
   localization" as a gap. The only text-related language input is `ShapeOptions::language`
-  (`engine/core/util/TextShaper.h:28`), the BCP 47 tag HarfBuzz uses for `locl` forms. S53's
+  (`engine/core/util/TextShaper.h:28`), the BCP 47 tag HarfBuzz uses for `locl` forms. S80's
   text layer `language` member feeds it.
-- S53 reserves the top-level `.titleart` members `languages` and `variants` for this spec
-  (S53 §6.1, "Reserved top-level names").
+- S80 reserves the top-level `.titleart` members `languages` and `variants` for this spec
+  (S80 §6.1, "Reserved top-level names").
 
 **Images out.**
 - `editor/util/PngWriter.h` has `writePng` (8-bit via `stb_image_write`) and `encodePng16` (16-bit,
@@ -185,7 +185,7 @@ All exports are sRGB, tagged as sRGB.
 ### 4.1 Pachislop: what is ported and what is improved
 
 The owner has the author's permission to port (contract). Ported files keep a header naming
-Pachislop (SafEight) and the source file. `NOTICE.md` gets the program's Pachislop entry (S53)
+Pachislop (SafEight) and the source file. `NOTICE.md` gets the program's Pachislop entry (S80)
 and the ag-psd entry below.
 
 | Pachislop | Take | Improve |
@@ -219,9 +219,9 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 - `LocaleRules` for normalisation, and the editor's simulated language for Play.
 - `SynthesisRecipe` chunks for export recipes.
 - `PngEditorChunks` stripping for shipped PNGs.
-- The VAT sibling-file pattern and S53's output naming (`logo.titleart.png`) for per-language
+- The VAT sibling-file pattern and S80's output naming (`logo.titleart.png`) for per-language
   bakes.
-- S54's bake sidecar and S58's `<file>.anim.json`, reused unchanged per language.
+- S81's bake sidecar and S85's `<file>.anim.json`, reused unchanged per language.
 - `WriteFilesCmd` for imports that create files.
 - `bake-vat` / `generate-sprite-normals` (`editor/main.cpp:101-109`) for subcommand shape.
 - `call --project` (S31) for one-shot headless editors.
@@ -235,12 +235,12 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
     monolingual.
   - `languages` is a list of translation languages. Each has a `code`, a display `name`, a default
     `font` and `fallback_fonts` for every text layer of that language, `characters` (extra
-    characters for runtime text, added to S54's Characters set), and `bake` (true).
+    characters for runtime text, added to S81's Characters set), and `bake` (true).
   - Codes are stored in BCP 47 canonical case (`zh-Hant-TW`, `pt-BR`) after
     `LocaleRules::normalize`. They are unique and never equal `source_language`.
   - At most 64 languages.
   - A document with an empty `source_language` and no `languages` is monolingual. It renders in
-    every language exactly as S53 v1 renders it, and every R2–R27 code path is skipped (R50).
+    every language exactly as S80 v1 renders it, and every R2–R27 code path is skipped (R50).
 - **R2. Translations of a text layer** (`translations: {code: Translation}`).
   - A Translation always has `text`, `status` (`translated` | `needs_review`) and `source_hash`.
   - Optionally it overrides `font`, `face_index`, `fallback_fonts`, `language` (shaping), `size_scale`,
@@ -277,7 +277,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   - A non-empty list hides the layer in every other language, the source included unless its code
     is listed. An example is a katakana reading shown only in Japanese.
   - Hidden layers are excluded from fit, frames, checks and bakes of those languages.
-- **R7. Exposed text parameters** (S53 `exposed`, S54 instances).
+- **R7. Exposed text parameters** (S80 `exposed`, S81 instances).
   - An instance's text override replaces the text in every language. The active language still
     supplies font, layout and fit, and the shaping language.
   - `setLanguage` never clears an instance override.
@@ -302,7 +302,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   alone, without rendering.
 - **R10. Algorithm** (`engine/core/titleart/TitleFit.{h,cpp}`, deterministic):
   - `shrink`: the largest uniform scale s ∈ [min_scale, 1] with extent(s) ≤ box. Binary search
-    to 1/256, at most 9 measures. Style units scale with it (S53 `%` units), so the look is kept.
+    to 1/256, at most 9 measures. Style units scale with it (S80 `%` units), so the look is kept.
   - `condense`: first `h_scale` × c with c ∈ [min_h_scale, 1], then `shrink`.
   - `wrap`: line breaks are chosen so the longest line is as short as possible, for 1 to
     `max_lines` lines, with the fewest lines that fit; then `shrink`. Break opportunities:
@@ -353,39 +353,39 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 
 ### Functional — bakes and modes
 
-- **R16. Per-language bakes (Baked mode).** S53's bake runs once for the source and once for each
+- **R16. Per-language bakes (Baked mode).** S80's bake runs once for the source and once for each
   language with `bake: true` whose resolved document differs from the source:
-  - **A language bake is a full bake set.** Every derived file of the source set (S53's output
-    PNGs and `.bake.json` sidecar, S58's flipbook pages and `.anim.json`) is written again for the
-    language through S53's bake writer. The infix `.<code lowercase>` goes right after the
-    document's file name, before everything else (S53 §6.15): `logo.titleart.de.png`,
+  - **A language bake is a full bake set.** Every derived file of the source set (S80's output
+    PNGs and `.bake.json` sidecar, S85's flipbook pages and `.anim.json`) is written again for the
+    language through S80's bake writer. The infix `.<code lowercase>` goes right after the
+    document's file name, before everything else (S80 §6.15): `logo.titleart.de.png`,
     `logo.titleart.de.glow.png`, `logo.titleart.de.bake.json`, `logo.titleart.de.anim.json`,
-    `logo.titleart.de.7c1e0a42.flip0.png`. S54's and S58's readers then read a language set
+    `logo.titleart.de.7c1e0a42.flip0.png`. S81's and S85's readers then read a language set
     unchanged. (Delivery exports, R40, name their files `<stem>[_<part>][.<code>].<ext>` instead:
     they are not bake sets.)
-  - Each language has its own trimmed frame, shared by that language's outputs (S53 §6.9).
-  - For animations, S58's `TitleAnimPlan` is rebuilt per language, because a different glyph
+  - Each language has its own trimmed frame, shared by that language's outputs (S80 §6.9).
+  - For animations, S85's `TitleAnimPlan` is rebuilt per language, because a different glyph
     count changes stagger delays and glyph parts.
   - A language that does not differ (no translated text, no override, no `only_languages`
     difference) writes no file and reuses the source set.
   - The source sidecar gains `languages` (§6.6): per code, the language sidecar's file name, or
     `null` for "same as the source".
-  - Each PNG's S53 recipe gains `language` and `resolved_hash`, so a translation change stales
+  - Each PNG's S80 recipe gains `language` and `resolved_hash`, so a translation change stales
     only that language's set.
   - An output id equal to a language code is refused by normalize (`output_id_is_language`), so
     file names stay unambiguous.
 - **R17. Realtime and Glyph Atlas.**
-  - A language change resolves the document for the new language and runs S54's re-render path
+  - A language change resolves the document for the new language and runs S81's re-render path
     (time-sliced, double-buffered), with no extra code path.
   - Glyph Atlas keys its atlas by (document, language). It renders the new language's glyphs and
     Characters set once, and drops the old atlas when the new one is ready.
-  - Fonts of every shipped language ship. S54's "Characters used by the document" (S54 R53)
+  - Fonts of every shipped language ship. S81's "Characters used by the document" (S81 R53)
     covers every shipped language's resolved text; each Language's `characters` joins the set.
 
 ### Functional — checks and reports
 
 - **R18. `check_title` language checks**, per language in `languages` (`"all"` default).
-  - S53's `assets_present` already covers Language and Translation fonts (they are AssetRefs).
+  - S80's `assets_present` already covers Language and Translation fonts (they are AssetRefs).
   - Each check returns PASS/FAIL/WARN with the language, the layer path and ready-to-apply fix
     ops (contract decision 12).
   - A fix op that needs content (a missing translation) is marked `needs_input: true` and carries
@@ -394,12 +394,12 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 
   | Check | Level | When | Fix ops |
   |---|---|---|---|
-  | `languages_complete` | FAIL | A layer with `translate`, non-empty source text, visible in that language, has no Translation `text` (the id S53 §6.12 reserves) | `set_translation {layer, language, text: "<source>"}` (`needs_input`); `set {layer, values: {translate: false}}` |
+  | `languages_complete` | FAIL | A layer with `translate`, non-empty source text, visible in that language, has no Translation `text` (the id S80 §6.12 reserves) | `set_translation {layer, language, text: "<source>"}` (`needs_input`); `set {layer, values: {translate: false}}` |
   | `translation_stale` | WARN | `source_hash` ≠ hash of the current source text, or `status: needs_review` | `mark_reviewed {language, layers}` |
   | `text_overflow` | FAIL | The resolved extent exceeds `fit.box` by more than 2 % after fit, or no fit and a box is set | Each candidate is offered only after the check re-runs fit with it and it fits: `fit.mode: condense`, `wrap` with `max_lines` 2 or 3, the `min_scale` that fits (≥ 0.4), a box widened to the extent |
   | `fit_scale_low` | WARN | Fit scale (× condense) below 0.75 | Same candidates as above, except lowering `min_scale` |
-  | `glyphs_present` (S53's, run per language) | FAIL | Code points of the resolved text that no face of the chain has | Adding a project font or an S57 pack font that covers them to the Language's `fallback_fonts` (copied in on apply) |
-  | `bake_fresh` (S53's, run per language) | FAIL | Baked mode: a language set is missing, or its recipe `resolved_hash` differs | `export_title {path, languages: [code]}` |
+  | `glyphs_present` (S80's, run per language) | FAIL | Code points of the resolved text that no face of the chain has | Adding a project font or an S84 pack font that covers them to the Language's `fallback_fonts` (copied in on apply) |
+  | `bake_fresh` (S80's, run per language) | FAIL | Baked mode: a language set is missing, or its recipe `resolved_hash` differs | `export_title {path, languages: [code]}` |
   | `project_language_missing` | WARN | `localization.languages` lists a language that the document lacks, and the document has translatable text | `add_language {code}` |
   | `translation_unused` | WARN | A Translation of a layer whose `translate` is false, or of a language not in `languages` (kept, unused) | `revert_translation` |
 
@@ -450,7 +450,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 
 - **R24. Languages in the shipped sidecar.**
   - A Baked title ships its source set, its language sets and the source sidecar's `languages`
-    table (§6.6). Baked titles still need no `.titleart` in the build (S54 R8, R52).
+    table (§6.6). Baked titles still need no `.titleart` in the build (S81 R8, R52).
   - The table also holds `source` and `default` (the project default when the document has it,
     else the source), so the runtime resolves without the document.
 - **R25. Which languages ship.**
@@ -461,15 +461,15 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
     project's file is untouched.
   - An empty list ships every language of every document.
 - **R26. Runtime footprint.**
-  - Language matching, the global language and the sidecar `languages` table belong to S54's
+  - Language matching, the global language and the sidecar `languages` table belong to S81's
     always-in-core part: `engine/core/util/TitleArtLanguage.{h,cpp}` beside `TitleArtBakeInfo`,
-    ≤ 6 KiB stripped arm64 (≤ 3 KiB wasm gzip) of the program's 60 KiB core-part target (S53
-    §6.15, measured by S54).
+    ≤ 6 KiB stripped arm64 (≤ 3 KiB wasm gzip) of the program's 60 KiB core-part target (S80
+    §6.15, measured by S81).
   - Translation resolution and fit (`engine/core/titleart/TitleTranslations.*`, `TitleFit.*`)
     are needed only to re-shape, so they sit with the renderer behind `JASPERENGINE_TITLE_ART`
     (Realtime and Glyph Atlas; contract decision 4) and in the editor.
 - **R27. The Baked switch.**
-  - On a language change the component reads the language's sidecar (S54's reader) and requests
+  - On a language change the component reads the language's sidecar (S81's reader) and requests
     its texture through the texture pool. The current texture is drawn until the new one is
     loaded.
   - The new texture is positioned by its frame, so a wider German bake stays centred on the same
@@ -487,33 +487,33 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
     - newer versions get `pachislop_version_newer`.
   - Size caps: 256 MiB of JSON, 64 MiB per decoded asset, 4,096 layers.
   - It is migrated to v11 (§4.1, literally) and then mapped to `.titleart` through `TitleArtOps`
-    (`add_layer`, `set`, `add_effect`, ...), so S53 validates and normalises the result (§6.8).
+    (`add_layer`, `set`, `add_effect`, ...), so S80 validates and normalises the result (§6.8).
   - The import never fails because one field cannot be mapped (R31).
 - **R29. Pachislop assets.**
   - Embedded fonts and assets are written to `<stem>_assets/` beside the new `.titleart`.
     Names are sanitised (port of `safeFileName`) and suffixed `_2`, `_3` on clashes.
   - A file whose SHA-256 equals a file already in that folder is reused, so re-importing writes
     nothing new.
-  - The 12 Pachislop builtin font ids map to S57 font pack ids by S57's `pachislop-map.json` fonts
-    table (`dela-gothic-one` → `dela-gothic-one`, ...). The pack font is imported as S57 R29 does
+  - The 12 Pachislop builtin font ids map to S84 font pack ids by S84's `pachislop-map.json` fonts
+    table (`dela-gothic-one` → `dela-gothic-one`, ...). The pack font is imported as S84 R29 does
     (`assets/TitleArt/Fonts/<dir>/`, once per project). A font the pack lacks leaves the built-in
-    face, and the report says `font_unavailable` with the family name; the S55 font picker finds
+    face, and the report says `font_unavailable` with the family name; the S82 font picker finds
     it on Google Fonts.
   - GIF assets become PNG (first frame).
   - WebP assets cannot be decoded (no WebP decoder is vendored): the layer keeps an empty
     image with note `image_format_unsupported`.
   - SVG, GLB and HDR assets are copied as they are.
-- **R30. 3D layers.** `title3d` layers map through S59's `TitleDocument3D::fromPachislop` (S59
-  R67). Before S59 lands:
-  - they import with `dimension: "3d"` (S53 draws them 2D with `dimension_unavailable`);
+- **R30. 3D layers.** `title3d` layers map through S86's `TitleDocument3D::fromPachislop` (S86
+  R67). Before S86 lands:
+  - they import with `dimension: "3d"` (S80 draws them 2D with `dimension_unavailable`);
   - the face colour is taken from the 3D face material's base colour;
   - the Pachislop `style3d` JSON is kept verbatim in the unknown member `pachislop_style3d`.
 
-  **Reimport 3D** (Designer, op `reimport_pachislop_3d`) re-maps that member once S59 is present.
+  **Reimport 3D** (Designer, op `reimport_pachislop_3d`) re-maps that member once S86 is present.
 - **R31. Import report.**
   - Every unmapped, approximated or dropped item is a note `{layer (new path), field, what,
     action: dropped | approximated | kept_unknown}`. Examples: `solo` true, `companionOf`, an
-    effect type with no S56 id, a non-default comp camera without 3D layers.
+    effect type with no S83 id, a non-default comp camera without 3D layers.
   - The report is returned (MCP, CLI `--json`) and shown in the **Import Report** window. Clicking a
     note selects its layer.
   - The document's `import_notes: [string]` keeps the report's text lines. The Inspector shows
@@ -521,8 +521,8 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 - **R32. Photoshop styles** (`.asl` style libraries, and layers with effects in `.psd`), mapped
   by §6.9:
   - **to Looks:** library op `import_ps_styles {file, styles?, scope: "project", reference_px?}`
-    (no document `path`, like S57's library ops, S57 R44) writes one `.titlelook` per style
-    through S57's capture code. The id is the style name's slug, the family `custom`, the tags
+    (no document `path`, like S84's library ops, S84 R44) writes one `.titlelook` per style
+    through S84's capture code. The id is the style name's slug, the family `custom`, the tags
     `["photoshop", "<file stem>"]`, and `ref_size` the reference size;
   - **to a layer:** op `apply_ps_style {layer, file, style, reference_px}`.
 
@@ -537,19 +537,19 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   - Pixel layers and smart objects become Image layers (pixels to `<stem>_assets/<layer>.png`,
     trimmed, placed at their bounds). They keep their styles, mapped as R32.
   - Text layers become Text layers:
-    - text, font PostScript name (matched to project fonts, then S57's pack, then system fonts
+    - text, font PostScript name (matched to project fonts, then S84's pack, then system fonts
       by family; unmatched → built-in face + note), size, fill colour, tracking, leading
       (`line_height`) and paragraph alignment come from EngineData;
     - multiple style runs use the first run, with a note;
     - warp text becomes a note.
-  - Groups become groups. Pass-through becomes Normal with a note (S53 §6.1 Group).
+  - Groups become groups. Pass-through becomes Normal with a note (S80 §6.1 Group).
   - Blend modes and opacity carry over. Fill opacity goes to the face. Clipping, visibility and
     user layer masks carry over (a mask becomes an `image` mask on `<stem>_assets/<layer>_mask.png`).
     Vector masks are rasterised to the same, with a note.
-  - Adjustment layers of the 13 S53 types become Adjustment layers: `levl`, `curv`, `hue2`,
+  - Adjustment layers of the 13 S80 types become Adjustment layers: `levl`, `curv`, `hue2`,
     `brit`/`CgEd`, `expA`, `vibA`, `blnc`, `blwh`, `phfl`, `grdm`, `nvrt`, `post`, `thrs`. Others
     (selective colour, channel mixer, colour lookup) are dropped with a note.
-  - Solid and gradient fill layers become S53's `fill` generator.
+  - Solid and gradient fill layers become S80's `fill` generator.
   - The canvas is the PSD size. `dpi` comes from resource 0x03ED. `global_light` comes from
     0x040D/0x0419.
 - **R34. SVG into Vector layers** (`import_svg {file, split, mode, parent, name}`; drop on the
@@ -561,20 +561,20 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   - Each split part is written as its own small `.svg` beside the original: the original root
     `viewBox` and `width`/`height`, plus that element with its ancestors' transforms, `<defs>`
     and referenced `<use>` targets. The layers share size and position, so they register exactly
-    with no new S53 member.
-  - `mode: auto` (default) picks S53 `shape` when every fill and stroke is one colour or
+    with no new S80 member.
+  - `mode: auto` (default) picks S80 `shape` when every fill and stroke is one colour or
     none/black, else `artwork`.
   - Elements that `shape` mode cannot use are listed as notes: `<text>` (convert to outlines in
     the authoring tool), `<image>`, `clipPath`, `mask`, `filter`.
 
 ### Functional — export
 
-- **R35. `export_title` formats** (S53's tool bakes; S60 adds `format`, `languages`, `options`
+- **R35. `export_title` formats** (S80's tool bakes; S87 adds `format`, `languages`, `options`
   and `out`, §6.3):
-  - `format: "bake"` (default) is S53's bake, run for the source and the languages of R16
+  - `format: "bake"` (default) is S80's bake, run for the source and the languages of R16
     (`languages` restricts it);
   - delivery formats: `png`, `psd`, `svg`, `sheet`, `atlas`, `sequence`, `ktx2`, `csv`, `xliff`
-    (values of S53's `format` enum, beside S59's `glb`).
+    (values of S80's `format` enum, beside S86's `glb`).
     Their options (R36–R43) go in `options`, a free-form object the handler checks against a
     closed table per format before anything renders (`bad_option`, listing that format's keys).
     The table is in `jasper://docs/title-art`. Every option named in R36–R43 is an `options` key,
@@ -586,7 +586,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   - existing files fail with `output_exists` unless `overwrite`;
   - work over 1 s is an `McpJobs` job with progress `done/total` renders;
   - the result lists `files`, `frame` per language, and `warnings`.
-- **R36. Frames.** Every image export uses S53's `TitleFrame`:
+- **R36. Frames.** Every image export uses S80's `TitleFrame`:
   - rendered on an enlarged canvas so glows never clip;
   - the opaque background is excluded from measuring;
   - full-bleed generators are measured clipped to the canvas.
@@ -604,15 +604,15 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   All languages and outputs of one call share one frame when `registered: true` (default
   false: each language has its own trimmed frame).
 - **R37. PNG.**
-  - Bit depth uses S53 §6.9's readback:
+  - Bit depth uses S80 §6.9's readback:
     - 8-bit: the output pass writes straight sRGB with dither into RGBA8. `dither: false` asks
       that pass for none;
     - 16-bit: straight sRGB-encoded half floats, rounded to 0..65535 on the CPU, undithered;
     - on the RGBA8 fallback path (no float readback, contract decision 3) 16-bit is refused
       (`bit_depth_unsupported`).
-  - `alpha: straight` (default) uses `alpha_bleed: true`, S53 §6.9's routine. Every fully
+  - `alpha: straight` (default) uses `alpha_bleed: true`, S80 §6.9's routine. Every fully
     transparent pixel takes the colour of the nearest pixel with alpha > 0 (two-pass distance on
-    the CPU) within `bleed_px` (default 8, S53's cap; up to 64 for textures mipped further).
+    the CPU) within `bleed_px` (default 8, S80's cap; up to 64 for textures mipped further).
     Farther pixels are written black. There are no dark fringes under bilinear filtering or mips.
   - `alpha_bleed: false` writes zeros (Pachislop's output).
   - `alpha: premultiplied` multiplies colour by alpha in the encoded domain (what image editors and
@@ -642,7 +642,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
     - `lyid` sequential;
     - opacity, visibility, the clipping flag;
     - blend keys: normal `norm`, add `lddg`, screen `scrn`, multiply `mul `, overlay `over`,
-      and the other S53 §6.4 modes by a table. A mode Photoshop lacks is written as `norm`, with
+      and the other S80 §6.4 modes by a table. A mode Photoshop lacks is written as `norm`, with
       a warning;
   - groups as `lsct` section dividers (open folder 1, end marker 3);
   - clipped layers masked by the base's alpha before the base's effects, as Pachislop does;
@@ -687,10 +687,10 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
     the layer;
   - `embed_raster: true` embeds non-vector layers as registered PNG `<image>`s;
   - `strict: true` fails with the list instead.
-- **R42. Sheets, atlases, sequences** (S58 animations):
-  - `animation` (name, default the first), `fps` (default S58's), `frames` (`[from, to]`
+- **R42. Sheets, atlases, sequences** (S85 animations):
+  - `animation` (name, default the first), `fps` (default S85's), `frames` (`[from, to]`
     indexes or a count; at most 1,024);
-  - frame i is S58's sampling (`TitleAnimSampling`) at t = i / fps, with `TitleAnimPlan` built
+  - frame i is S85's sampling (`TitleAnimSampling`) at t = i / fps, with `TitleAnimPlan` built
     for the export's language.
 
   The three formats:
@@ -724,11 +724,11 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 
 - **R45. Runtime parts on every target.** R12–R17 and R24–R27 run on GL 3.3, GLES3/WebGL2,
   Metal, D3D11 and Vulkan, on Windows, Linux, macOS, Android, iOS and HTML5. They add no shader,
-  no GPU feature and no thread: the Baked switch is a texture swap, and Realtime uses S54's
+  no GPU feature and no thread: the Baked switch is a texture swap, and Realtime uses S81's
   path.
 - **R46. Editor parts** (import, export, strings, checks) run in the Linux, Windows and macOS
-  editors. Their GPU work is S53's renderer on the editor's backend. 16-bit outputs need float
-  readback (S53), else `bit_depth_unsupported`.
+  editors. Their GPU work is S80's renderer on the editor's backend. 16-bit outputs need float
+  readback (S80), else `bit_depth_unsupported`.
 - **R47. Portable code.** C++20 within `tools/check-cxx-subset.py`. Parsers of untrusted files
   (PSD, ASL, CSV, XLIFF, `.pslot.json`, SVG) bound every length against the remaining bytes, cap
   descriptor nesting at 64, and fail with a message, never a crash. They are run under
@@ -739,11 +739,11 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 - **R48. Runtime.**
   - `TitleArtLanguage::match`: ≤ 2 µs.
   - `TitleArt.setLanguage` with 100 Title Art Renderers loaded: ≤ 0.3 ms on the main thread. It
-    only marks them; the work is time-sliced by S54.
-  - Reading a language sidecar (≤ 4 KB, S54 R8): ≤ 0.1 ms on the loader thread.
+    only marks them; the work is time-sliced by S81.
+  - Reading a language sidecar (≤ 4 KB, S81 R8): ≤ 0.1 ms on the loader thread.
   - Fit of one text layer of ≤ 64 code points: ≤ 0.3 ms desktop, ≤ 1.5 ms phone. It runs only
     when text, language or a fit member changes.
-  - A Realtime switch costs what S54's text change costs.
+  - A Realtime switch costs what S81's text change costs.
   - A Baked switch adds one texture load (KTX2: a 2048² BC7 loads in ≈ 3.3 ms on the loader
     thread, `docs/textures.md:239`).
 - **R49. Editor.**
@@ -760,7 +760,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
     channels after its render.
 - **R50. Disabled costs nothing.**
   - A monolingual document does no resolution, fit or language check, writes no `languages`
-    table in its sidecar, and renders byte-identical bakes to S53 without S60.
+    table in its sidecar, and renders byte-identical bakes to S80 without S87.
   - A project without titles compiles none of R26.
   - Nothing polls: no CSV is watched, and imports run only when asked.
 
@@ -785,7 +785,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 - **R53. Edit Languages dialog.**
   - Add from a searchable list of the 60 most used game languages (code and English and native
     names), or a free BCP 47 tag validated live.
-  - Per language: name, default font and fallbacks (the S55 picker), Bake, and **Copy From**
+  - Per language: name, default font and fallbacks (the S82 picker), Bake, and **Copy From**
     another language.
   - **Add Project Languages** adds every language of `localization.languages`. **Source
     Language** has a swap option (D6).
@@ -799,14 +799,14 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   - **Import...** and **Export...** (CSV, XLIFF);
   - double-click selects the layer and switches the canvas to that language.
 - **R55. Compare Languages.** A canvas mode with every language side by side:
-  - thumbnails rendered through S53's `TitlePreviewQueue` within its budget (contract decision 11),
+  - thumbnails rendered through S80's `TitlePreviewQueue` within its budget (contract decision 11),
     visible ones first;
   - labels with code, fit scale and overflow state;
   - a click switches to that language.
 - **R56. Project Settings > Localization.**
   - **Languages** (an ordered list) and **Default Language** (`localization.languages`,
     `localization.default_language`), searchable (S25).
-  - The **Title Art Renderer** Inspector (S54) gets **Language: Auto (Device) | <codes>**, and the
+  - The **Title Art Renderer** Inspector (S81) gets **Language: Auto (Device) | <codes>**, and the
     Title Art Inspector summary "Languages: en (source), de, ja · 1 missing".
 - **R57. Import UI.**
   - **Assets > Import Title Art...** (`.pslot.json`, `.psd`, `.svg`) and drag-drop onto the
@@ -835,13 +835,13 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 - **R59. MCP** (group `title_art`, no new tool; §6.3):
   - `edit_title` gets the ops of §6.2 and `create.from` (a Pachislop, PSD or SVG file to import);
   - `export_title` gets `format`, `languages`, `options` and `out` (R35–R43);
-  - `render_title` gets `options.languages` (a list or `"all"`, a key of S53's `options`): one sheet
+  - `render_title` gets `options.languages` (a list or `"all"`, a key of S80's `options`): one sheet
     row per language and one column per backdrop, labelled with code, fit scale and overflow;
   - `check_title` gets `languages`;
   - `get_title` gets `language`.
 
   The `allowedWhilePlaying` decisions:
-  - `edit_title` keeps S53's;
+  - `edit_title` keeps S80's;
   - `export_title` with an image format renders off-screen and is allowed;
   - imports through `create.from` and the library op `import_ps_styles` are allowed (they write
     files and open no scene).
@@ -864,20 +864,20 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 
 ### Data & compatibility
 
-- **R63. Document members** (§6.1) are optional and added to v1 without a version bump (S53 §6.1
+- **R63. Document members** (§6.1) are optional and added to v1 without a version bump (S80 §6.1
   migration rule 1).
-  - Missing members mean monolingual, no fit and every language visible, which is exactly S53 v1's
+  - Missing members mean monolingual, no fit and every language visible, which is exactly S80 v1's
     rendering.
   - Translation objects are sparse (D5): the writer emits `text`, `status` and `source_hash`,
     then only the overrides that are present, in table order.
-  - Unknown members inside Translations and Languages survive a save (S53).
+  - Unknown members inside Translations and Languages survive a save (S80).
 - **R64. Project settings.** `localization.languages` (list, `[]`) and
   `localization.default_language` (`""`, which means the first of `localization.languages`, else
   `"en"`). Both are project-wide names a later localisation system reuses (D3). They reach the game
   with the other start values (`Generator.cpp:2622` pattern; the prebuilt package beside
   `package.presentation`, `ExporterPrebuilt.cpp:1106`).
 - **R65. Formats** are versioned:
-  - the sidecar `languages` table is an optional member of S54's sidecar v1. A sidecar that
+  - the sidecar `languages` table is an optional member of S81's sidecar v1. A sidecar that
     lacks it, or a language sidecar that fails to read, makes the runtime use the source set,
     with one warning;
   - `.parts.json`, `.sheet.json` and `.atlas.json` carry `format`/`version` keys as well;
@@ -896,7 +896,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   colours and rims are shared, so restyling the title restyles every language. Copying the layer
   per language (Pachislop's only option) would let languages drift apart. `only_languages` covers
   the rare layer that exists in one language only.
-- **D3. Coexisting with a future project localisation.** S60 fixes three things such a system
+- **D3. Coexisting with a future project localisation.** S87 fixes three things such a system
   must reuse unchanged:
   - the key format `<string_namespace>.<text_key>` (dots, lowercase);
   - the CSV and XLIFF files of §6.6, which a String Table importer reads as they are;
@@ -910,7 +910,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   Simplified Chinese and Portuguese users nothing. R13's rules are the ones platforms use, and a
   table test pins them (AC1). The whole preferred-locales list is used, not only the first entry,
   because users list fallbacks.
-- **D5. Sparse Translations are the one exception to S53's "every member written".** A written
+- **D5. Sparse Translations are the one exception to S80's "every member written".** A written
   default would freeze today's source value into every language, and a later edit of the source
   `size` would then not reach them. The exception is local and tested (AC3).
 - **D6. Changing the source language swaps.** `set_source_language {code, swap: true}`:
@@ -921,7 +921,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   This lets a team that wrote the title in Japanese switch the source to English without
   retyping. `swap: false` only relabels.
 - **D7. sRGB only, tagged the standard way per format.** Titles are authored and rendered in sRGB
-  primaries (S53). The tags:
+  primaries (S80). The tags:
   - PNG: the `sRGB` chunk, plus the `gAMA`/`cHRM` that the PNG spec asks writers to add. The PNG
     spec says not to write iCCP beside sRGB, and the chunk is understood by every decoder;
   - PSD: an embedded profile, the only tag Photoshop reads. It is our own generated sRGB v2
@@ -933,7 +933,7 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
 - **D8. Straight alpha with colour bleed by default.** The engine's Image and Sprite blend straight
   alpha. Bleeding colour under transparent pixels removes the dark fringe Pachislop's zeroed RGB
   causes under bilinear filtering and mips, without asking every consumer to switch blend modes.
-  Premultiplied stays available for tools that want it. S53's 8 px reach covers three mip
+  Premultiplied stays available for tools that want it. S80's 8 px reach covers three mip
   levels. `bleed_px` goes to 64 for textures mipped further. Beyond the reach, black keeps the
   file small.
 - **D9. Exports default to `Recordings/Title Art/`.**
@@ -953,18 +953,18 @@ No library is added. tinyxml2 (`engine/libs/tinyxml2`) parses and writes XLIFF. 
   renders changing. Its unit tests are the specification, so the port keeps its structure, and
   only the v11 → `.titleart` mapper is new code.
 - **D12. Split SVG parts are files, not element references.** They give exact registration with
-  no S53 renderer change. Each part is an ordinary asset that a person can open and edit.
+  no S80 renderer change. Each part is an ordinary asset that a person can open and edit.
 - **D13. Fit measures geometry, not pixels.** Rendering to measure would cost a bake per
   iteration and could not run on a phone for Realtime titles. Outline bounds grown by rim widths
   are cheap, deterministic and exact for round joins.
 - **D14. No new MCP tool and no guide bytes.** Every capability is an op or a parameter of the six
   `title_art` tools (contract). The detail lives in `jasper://docs/title-art`, whose Languages and
-  Import/Export sections S60 writes.
-- **D15. `variants` stays unused.** S53 reserved it for S60. Per-language bakes are derived files
-  listed by the source sidecar, not document data, so S60 needs no `variants` member. S53 may
+  Import/Export sections S87 writes.
+- **D15. `variants` stays unused.** S80 reserved it for S87. Per-language bakes are derived files
+  listed by the source sidecar, not document data, so S87 needs no `variants` member. S80 may
   release the reservation.
 
-### 6.1 Document members (S60 adds; all optional)
+### 6.1 Document members (S87 adds; all optional)
 
 Top level:
 
@@ -1000,10 +1000,10 @@ added to `transform.position`), `fit` (partial: only the members given).
 Image layer: `translations: {code: {image: AssetRef}}`. Vector layer: `translations: {code: {svg:
 AssetRef}}`. Every layer: `only_languages` ([string], `[]`).
 
-Field paths (S53 §6.2) reach them as `translations.de.text`, `translations.pt-BR.fit.mode`, and
+Field paths (S80 §6.2) reach them as `translations.de.text`, `translations.pt-BR.fit.mode`, and
 `languages[1].font`.
 
-### 6.2 Ops (`edit_title {ops}`; S60 adds)
+### 6.2 Ops (`edit_title {ops}`; S87 adds)
 
 | Op | Members | Effect |
 |---|---|---|
@@ -1015,11 +1015,11 @@ Field paths (S53 §6.2) reach them as `translations.de.text`, `translations.pt-B
 | `mark_reviewed` | `language?`, `layers?` (default all) | `status: translated`, `source_hash` refreshed |
 | `import_strings` | `file`, `format?` (`auto` \| `csv` \| `xliff`), `languages?`, `add_languages?` (false), `status?` | R21–R23; returns applied counts and the report |
 | `apply_ps_style` | `layer`, `file`, `style?` (name or index, 0), `reference_px?` | R32; returns `summary`, `notes` |
-| `import_ps_styles` | `file`, `styles?` (names or indexes; default all), `scope?` (`project`), `reference_px?`, `overwrite?` | Library op (no `path`, S57 R44): one `.titlelook` per style; returns per style `id`, `summary`, `notes` |
+| `import_ps_styles` | `file`, `styles?` (names or indexes; default all), `scope?` (`project`), `reference_px?`, `overwrite?` | Library op (no `path`, S84 R44): one `.titlelook` per style; returns per style `id`, `summary`, `notes` |
 | `import_svg` | `file`, `split?`, `mode?`, `parent?`, `name?` | R34 |
 | `reimport_pachislop_3d` | `layer?` (default all with `pachislop_style3d`) | R30 |
 
-**Importing into a new document** is S53's `create` with one more key: `edit_title {path:
+**Importing into a new document** is S80's `create` with one more key: `edit_title {path:
 "assets/titles/logo.titleart", create: {from: "/home/me/logo.pslot.json", overwrite?}}`.
 - `from` may be outside the project, because it is only read. The kind is detected by content:
   `8BPS` (PSD/PSB), `<svg` (SVG), or a JSON object with `format: "pslot"` (Pachislop).
@@ -1030,30 +1030,30 @@ Field paths (S53 §6.2) reach them as `translations.de.text`, `translations.pt-B
 
 ### 6.3 MCP parameters and the budget (S31)
 
-S60's row of S53 §6.11's program budget table (≤ 195 characters; S53 already carries the hooks
-`export_title.format` with every S60 format, `export_title.options`, `render_title.options` and the
+S87's row of S80 §6.11's program budget table (≤ 195 characters; S80 already carries the hooks
+`export_title.format` with every S87 format, `export_title.options`, `render_title.options` and the
 `create` object), with schemas that carry no description (each parameter is explained in
 `jasper://docs/title-art`):
 
-| Tool | S60 adds | Listing chars (cap) |
+| Tool | S87 adds | Listing chars (cap) |
 |---|---|---|
-| `export_title` | `languages` (`{"type":["string","array"]}`); `out` (string); `path` also accepts an array (several documents, strings only). The formats `png`, `psd`, `svg`, `sheet`, `atlas`, `sequence`, `ktx2`, `csv`, `xliff` are values of S53's `format` enum, and their options (R35-R43) keys of S53's `options`, checked per format by the handler (the S47 D4 pattern) | ≤ 90 |
-| `edit_title` | `create.from` (string). The 11 ops are `ops` items, which S53 validates in `TitleArtOps`, so they cost no schema characters | ≤ 30 |
-| `render_title` | `options.languages` (a key of S53's `options`) | 0 |
+| `export_title` | `languages` (`{"type":["string","array"]}`); `out` (string); `path` also accepts an array (several documents, strings only). The formats `png`, `psd`, `svg`, `sheet`, `atlas`, `sequence`, `ktx2`, `csv`, `xliff` are values of S80's `format` enum, and their options (R35-R43) keys of S80's `options`, checked per format by the handler (the S47 D4 pattern) | ≤ 90 |
+| `edit_title` | `create.from` (string). The 11 ops are `ops` items, which S80 validates in `TitleArtOps`, so they cost no schema characters | ≤ 30 |
+| `render_title` | `options.languages` (a key of S80's `options`) | 0 |
 | `check_title` | `languages` (`{"type":["string","array"]}`, no description) | ≤ 45 |
 | `get_title` | `language` (string) | ≤ 30 |
 
-- ≤ 195 characters in total, no tool, and no `budget.json` entry; the group total is S53's table's
+- ≤ 195 characters in total, no tool, and no `budget.json` entry; the group total is S80's table's
   (7,735 of 15,000, 6 of 12 tools).
 - If a tool would pass 1,500, descriptions move to `jasper://docs/title-art`. Limits are never
   raised (conventions: `exceptions` are for tools that predate the rule).
-- Guide: +0 bytes. The Title Art digest line (S53) already points to `jasper://docs/title-art`.
+- Guide: +0 bytes. The Title Art digest line (S80) already points to `jasper://docs/title-art`.
 - Docs: `jasper://docs/title-art` gains `### Languages` (the R60 loop, the resolution rules, fit,
   the checks) and `### Import and export` (kinds, formats, parameters, the colour rules).
 - Gates: `tool_budget.py --check`, `test_tool_conventions.py` (snake_case, closed objects,
   `anyOf` only), `gen_tool_docs.py --check`, `test_tool_coverage.py`.
 
-### 6.4 Lua API (runtime; S54 owns the component object and how it is obtained)
+### 6.4 Lua API (runtime; S81 owns the component object and how it is obtained)
 
 ```lua
 TitleArt.setLanguage("de")              -- global default for every renderer whose Language is Auto
@@ -1061,7 +1061,7 @@ TitleArt.setLanguage("")                -- back to the device's languages
 local code = TitleArt.getLanguage()     -- the value set ("" = device)
 RegisterEvent(self, TitleArt.onLanguageChanged, "languageChanged")   -- self:languageChanged(code)
 
-local title = self.gameObject:getTitleArt()   -- S54's component object
+local title = self.gameObject:getTitleArt()   -- S81's component object
 title.language = "ja"                   -- this renderer only; "" = Auto
 title:getResolvedLanguage()             -- "ja" (what R12-R13 picked)
 title:getLanguages()                    -- {"en", "de", "ja"}: source first, then shipped languages
@@ -1072,11 +1072,11 @@ RegisterEvent(self, title.onLanguageReady, "showTitle")         -- self:showTitl
 TitleArt.setLanguage(PlayerPrefs.getString("language", ""))
 ```
 
-- Bindings go in S54's `engine/core/script/binding/TitleArtClassesLua.cpp`, with the stubs
+- Bindings go in S81's `engine/core/script/binding/TitleArtClassesLua.cpp`, with the stubs
   `---@field language string` (rw), `---@field onLanguageReady FunctionSubscribe` (code: string),
   and the statics `TitleArt.setLanguage(code)`, `TitleArt.getLanguage()` and
   `TitleArt.onLanguageChanged` (a static `FunctionSubscribe`, code: string).
-- Errors, one sentence each, as S54 §6.6 words them:
+- Errors, one sentence each, as S81 §6.6 words them:
   - `TitleArt.setLanguage("xx_!")`: "TitleArt: 'xx_!' is not a language tag (BCP 47, for example
     "de", "pt-BR", "zh-Hant").";
   - `title.language = "fr"` on a title without French: no error. The renderer resolves to its
@@ -1084,7 +1084,7 @@ TitleArt.setLanguage(PlayerPrefs.getString("language", ""))
 - C++: `jasperengine::TitleArtLanguage::setGlobal(const std::string&)`, `global()`, `match(...)`,
   `resolve(candidates, available)`.
 - Events use the event-object protocol (`docs/mcp/guide/lua-api.md` §Events), `FunctionSubscribe`
-  as S54's `onReady`.
+  as S81's `onReady`.
 - `docs/unity-glossary.md` gets the row: Unity Localization `LocalizationSettings.SelectedLocale`
   maps to `TitleArt.setLanguage` (titles only).
 
@@ -1135,7 +1135,7 @@ assets/titles/logo.titleart,logo.headline,"Main title, max one line",12,BIG WIN,
 </xliff>
 ```
 
-**Sidecar `languages` table** (an optional member S60 adds to S54's `logo.titleart.bake.json` v1;
+**Sidecar `languages` table** (an optional member S87 adds to S81's `logo.titleart.bake.json` v1;
 only the source sidecar has it):
 
 ```json
@@ -1144,7 +1144,7 @@ only the source sidecar has it):
 ```
 
 - `null` means the language reuses the source set.
-- A language sidecar is an ordinary S54 sidecar (its own `frame`, `origin`, `outputs`, `anchors`,
+- A language sidecar is an ordinary S81 sidecar (its own `frame`, `origin`, `outputs`, `anchors`,
   `alpha_bounds`) plus `"language": "<code>"`.
 - The shipped copy lists only shipped languages (R25).
 
@@ -1171,25 +1171,25 @@ translation", validated by `LocaleRules::normalize`.
 ### 6.8 Pachislop v11 → `.titleart` mapping (`editor/titleart/interchange/pachislop/PachislopMapper.cpp`)
 
 `PachislopMapper` maps the project's structure (tree, ids, groups, comp); every style, effect,
-generator and template member goes through S57's `PachislopPort` member mapping (data
-`editor/resources/titleart/pachislop-map.json`) and S56's `PachislopFxMap`, so the look converter
+generator and template member goes through S84's `PachislopPort` member mapping (data
+`editor/resources/titleart/pachislop-map.json`) and S83's `PachislopFxMap`, so the look converter
 and the project importer give the same result for the same Pachislop data.
 
 | Pachislop | `.titleart` | Notes |
 |---|---|---|
 | `project.name`; `comp.width/height`; `comp.background`; `comp.globalLight`; `comp.dpi` | `name`; `canvas`; `canvas.background`; `global_light`; `dpi` | |
-| `comp.camera`, `environment`, `lights`, `toneMapping`, `exposure`, `supersample` | S59's `scene_3d` when a `title3d` layer exists | Else a note if non-default |
+| `comp.camera`, `environment`, `lights`, `toneMapping`, `exposure`, `supersample` | S86's `scene_3d` when a `title3d` layer exists | Else a note if non-default |
 | flat `layers` with `parentId` | the tree, `children` bottom first | Subtrees are contiguous below their group, as Pachislop guarantees |
-| `id` | new S53 ids; a map old → new for `follow`, layer masks, `materialLinks`, part keys | |
-| `name`, `visible`, `locked`, `guide`, `blend` (5 modes), `transform` (`x, y` → `position`; `rotZ` → `rotation`, both clockwise; `scale`; `flipX/Y`; `opacity`); `clip`; `masks` (`shape`/`gradient`/`layer` types 1:1) | the same S53 members | `solo` dropped with a note; `z`, `rotX`, `rotY` go to S59 |
+| `id` | new S80 ids; a map old → new for `follow`, layer masks, `materialLinks`, part keys | |
+| `name`, `visible`, `locked`, `guide`, `blend` (5 modes), `transform` (`x, y` → `position`; `rotZ` → `rotation`, both clockwise; `scale`; `flipX/Y`; `opacity`); `clip`; `masks` (`shape`/`gradient`/`layer` types 1:1) | the same S80 members | `solo` dropped with a note; `z`, `rotX`, `rotY` go to S86 |
 | `title2d` with `text` / `shape` / `svg` / `image` source | Text / Shape / Vector (`mode: shape`) / Image layer, `dimension: 2d` | Text: `fontId` → `font`, `tracking`, `lineHeight`, `align`, `vertical`, `shear`, `hScale/vScale`, `tsume` → `proportional`, `tateChuYoko` → `tate_chu_yoko`, `chars` (`dx, dy` → `offset`, `rotate` → `rotation`, `face`), `lines`; `warp`, `distort`, `weight` |
-| `style` (TitleStyle2D: `face`, `rims`, `knockout`, `erode`; Material2D camelCase) | `style` (snake_case members, S53 §6.1), by the member rules of S57's `pachislop-map.json` (the camelCase to snake_case rule and its exceptions) | `reflection.map` presets → S57's library maps of the same names, copied into the project |
-| `title3d` | `dimension: 3d` via S59's `TitleDocument3D::fromPachislop` (R30) | |
-| `background` | generator `fill` (S53) | |
+| `style` (TitleStyle2D: `face`, `rims`, `knockout`, `erode`; Material2D camelCase) | `style` (snake_case members, S80 §6.1), by the member rules of S84's `pachislop-map.json` (the camelCase to snake_case rule and its exceptions) | `reflection.map` presets → S84's library maps of the same names, copied into the project |
+| `title3d` | `dimension: 3d` via S86's `TitleDocument3D::fromPachislop` (R30) | |
+| `background` | generator `fill` (S80) | |
 | `group` (`collapsed`) | Group | `companionGroupOf` dropped |
-| `adjustment` (14 types, camelCase) | Adjustment (snake_case types, S53) | |
-| `generator` (`type`, `params`) | Generator with the S56 id and params from S56's `PachislopFxMap` (S56 R51), units and angle conventions converted there | `companionOf` dropped with a note |
-| `effects`, `partEffects` (`face`, `rim:<id>`, `band:<id>`, `side`) | `effects`, `part_effects` with S56 ids and params from `PachislopFxMap` | A type the map lacks is kept as an S53 unknown effect (`unknown_type`) with a note; `fromPreset` dropped |
+| `adjustment` (14 types, camelCase) | Adjustment (snake_case types, S80) | |
+| `generator` (`type`, `params`) | Generator with the S83 id and params from S83's `PachislopFxMap` (S83 R51), units and angle conventions converted there | `companionOf` dropped with a note |
+| `effects`, `partEffects` (`face`, `rim:<id>`, `band:<id>`, `side`) | `effects`, `part_effects` with S83 ids and params from `PachislopFxMap` | A type the map lacks is kept as an S80 unknown effect (`unknown_type`) with a note; `fromPreset` dropped |
 | `materialLinks` | `material_links` | |
 
 ### 6.9 Photoshop style mapping (`editor/titleart/interchange/psd/PsStyleConvert.cpp`, port of `psStyle.ts`)
@@ -1197,14 +1197,14 @@ and the project importer give the same result for the same Pachislop data.
 | Photoshop | Title Art | Change from Pachislop |
 |---|---|---|
 | Stroke(s) (`FrFX`, `lmfx` arrays) | Rims sorted by reach (outside = size, center = size/2, inside drawn outside with a note); a stroke reaching no further than one above it is dropped; colour, gradient (Shape Burst → `shape_burst`) or pattern fill | Stroke opacity → rim material `opacity` (was drawn opaque) |
-| Gradient overlay (`GrFl`) | Face fill gradient (`linear`, `radial`, `angle`, `reflected`, `diamond`); PS angle (counter-clockwise) → S53 clockwise; scale; offset along the axis; reverse | Opacity stops → stop `alpha`; midpoints → `mid` (were extra mixed stops; transparency ignored) |
+| Gradient overlay (`GrFl`) | Face fill gradient (`linear`, `radial`, `angle`, `reflected`, `diamond`); PS angle (counter-clockwise) → S80 clockwise; scale; offset along the axis; reverse | Opacity stops → stop `alpha`; midpoints → `mid` (were extra mixed stops; transparency ignored) |
 | Colour overlay (`SoFi`) | Face fill solid mixed over the base by opacity | |
 | Pattern overlay (`patternFill`) | Procedural pattern by name (EN/JA table) | Unmatched bitmap patterns: the `Patt` image is extracted to `<stem>_assets/patterns/<name>.png`, giving `pattern.kind: custom` (was skipped) |
-| Bevel & Emboss (`ebbl`), Inner and Outer Bevel | Face or rim bevel: technique → profile (chisel soft → chamfer, note); contour → custom profile; gloss contour → named or custom; highlight/shadow colours and opacities; `use_global_light`; stroke emboss → every rim; outer bevel → outermost rim, else the face with a note | Direction Down → S53's Material `bevel.direction: down` (was light + 180°, which also moved the highlight colour) |
-| Bevel & Emboss, Emboss and Pillow Emboss styles | An S56 `material` effect (layer colours) with the bevel above; Pillow Emboss with `bevel.direction: down` (an approximation, noted), as S56 asks | Were face bevels, which cannot raise outside the outline |
+| Bevel & Emboss (`ebbl`), Inner and Outer Bevel | Face or rim bevel: technique → profile (chisel soft → chamfer, note); contour → custom profile; gloss contour → named or custom; highlight/shadow colours and opacities; `use_global_light`; stroke emboss → every rim; outer bevel → outermost rim, else the face with a note | Direction Down → S80's Material `bevel.direction: down` (was light + 180°, which also moved the highlight colour) |
+| Bevel & Emboss, Emboss and Pillow Emboss styles | An S83 `material` effect (layer colours) with the bevel above; Pillow Emboss with `bevel.direction: down` (an approximation, noted), as S83 asks | Were face bevels, which cannot raise outside the outline |
 | Satin (`ChFX`) | `satin` (blend mapped as Pachislop's table) | |
-| Inner Glow (`IrGl`) | S53's `inner_glow` effect (`source: edge` or `center` as the style says) | |
-| Outer Glow, Drop Shadow, Inner Shadow (`OrGl`, `DrSh`, `IrSh`, `lmfx` arrays) | S53's `outer_glow`, `drop_shadow`, `inner_shadow` (px params; an Outer Glow with a light blend → `mode: add`; the shadows have no mode, a non-Normal shadow blend is a note) | Every instance of a CC multi-effect array is kept |
+| Inner Glow (`IrGl`) | S80's `inner_glow` effect (`source: edge` or `center` as the style says) | |
+| Outer Glow, Drop Shadow, Inner Shadow (`OrGl`, `DrSh`, `IrSh`, `lmfx` arrays) | S80's `outer_glow`, `drop_shadow`, `inner_shadow` (px params; an Outer Glow with a light blend → `mode: add`; the shadows have no mode, a non-Normal shadow blend is a note) | Every instance of a CC multi-effect array is kept |
 | Fill opacity (`iOpa`), Knockout (`knko`) | face `opacity`, `knockout` | |
 | Scale Effects (`Scl `) | Multiplies every size | |
 | Units (points, picas, mm, cm, inches) | px at the file's ppi, then % of the reference size for style members | |
@@ -1230,17 +1230,17 @@ and the project importer give the same result for the same Pachislop data.
 | AC2 (R12, R14) | `TitleArtLanguageTest.CandidateOrder`: component > global > each preferred locale in order > project default > source; `setLanguage("")` returns to the device; an invalid tag changes nothing |
 | AC3 (R2, R4–R7, D5) | `TitleTranslationsTest`: per-member inheritance; Language font default; `size_scale`; shaping language = code; `only_languages`; an exposed text override wins in every language; a sparse Translation writes only present overrides, and a later source `size` change reaches it. **Red control:** writing every Translation member (a test-only flag) breaks the last assertion |
 | AC4 (R8–R11, D13) | `TitleFitTest`: shrink, condense then shrink, wrap balanced (Latin and the kinsoku table), vertical, the `min_scale` floor then `fits: false`, determinism, ≤ 9 measures; the extent equals the bounds of the rasterised face + rims within 1 px for round joins, and within 2 % for miter |
-| AC5 (R18) | `tools/mcp/tests/test_title_language_checks.py`: each of the 7 S60 checks and the per-language runs of `glyphs_present` and `bake_fresh` fire on their seeded defects; every offered fix op applied through `edit_title` makes it PASS (except `needs_input` ones, which are checked for shape); a clean three-language document passes all; a monolingual document runs none |
-| AC6 (R16, R50) | `test_title_language_bakes.py`: language sets are written only for differing languages (PNGs, sidecar, and for an animated fixture the `.de.anim.json` and flipbook pages with the German glyph count); the source sidecar's `languages` table; recipe `language`/`resolved_hash`; per-language frames; editing the German text stales only `.de` bakes; a monolingual document's bakes are byte-identical to the same document baked with S60 disabled (S53's bake on a build without the S60 members) |
-| AC7 (R15, R27) | `engine/tests/core/titleart/TitleBakedLanguageTest.cpp` (headless GPU, S53's harness): `setLanguage("de")` swaps the texture after it loads; a frame capture of every frame in between shows the English title (no blank frame); `onLanguageReady` fires on the first German frame; the Japanese texture is never requested |
-| AC8 (R17, contract decision 1) | `TitleRealtimeLanguageTest`: Realtime and Glyph Atlas titles switched to `de` and `ja` match their Baked goldens within S53's tolerance; the previous image stays until the new one is ready |
+| AC5 (R18) | `tools/mcp/tests/test_title_language_checks.py`: each of the 7 S87 checks and the per-language runs of `glyphs_present` and `bake_fresh` fire on their seeded defects; every offered fix op applied through `edit_title` makes it PASS (except `needs_input` ones, which are checked for shape); a clean three-language document passes all; a monolingual document runs none |
+| AC6 (R16, R50) | `test_title_language_bakes.py`: language sets are written only for differing languages (PNGs, sidecar, and for an animated fixture the `.de.anim.json` and flipbook pages with the German glyph count); the source sidecar's `languages` table; recipe `language`/`resolved_hash`; per-language frames; editing the German text stales only `.de` bakes; a monolingual document's bakes are byte-identical to the same document baked with S87 disabled (S80's bake on a build without the S87 members) |
+| AC7 (R15, R27) | `engine/tests/core/titleart/TitleBakedLanguageTest.cpp` (headless GPU, S80's harness): `setLanguage("de")` swaps the texture after it loads; a frame capture of every frame in between shows the English title (no blank frame); `onLanguageReady` fires on the first German frame; the Japanese texture is never requested |
+| AC8 (R17, contract decision 1) | `TitleRealtimeLanguageTest`: Realtime and Glyph Atlas titles switched to `de` and `ja` match their Baked goldens within S80's tolerance; the previous image stays until the new one is ready |
 | AC9 (R14, R61) | `tools/mcp/tests/test_title_lua_language.py` (Play): `TitleArt.setLanguage`, `renderer.language`, `onLanguageChanged` once per change, `onLanguageReady` after it; `configure_game_view {language: "de-DE"}` selects German with no script code |
 | AC10 (R24–R26, R64) | `test_title_export_languages.py` (`JASPER_SLOW_BUILD=1`, prebuilt Linux player): the shipped source sidecar's `languages` table matches the expected JSON and the language sets are in the build; `localization.languages: [en, de]` drops `ja` (its set absent, the shipped table without it, the project's sidecar unchanged) with `W-TITLE-LANGUAGE-DROPPED`; the player run with `LANGUAGE=de` (headless, `HostServicesLinux.cpp:115`) shows the German bake (screenshot equal to the bake within 2/255); a project without titles has no `TitleArtLanguage` symbol (`nm`) |
 | AC11 (R20, R21, R23) | `editor/tests/titleart/StringsCsvTest.cpp`: export then import is an identity; BOM/no BOM, `;` and tab, CRLF/LF, quoted newlines and quotes; Unity headers `German (de)`; `unknown_key`, `unknown_language`, `add_languages`; `source_changed` → `needs_review`; empty cell unchanged; multi-document `file` routing; one undo step |
 | AC12 (R22) | `StringsXliffTest`: the 1.2 export parses with tinyxml2 and has the fixed structure; 1.2 and 2.0 fixtures import with the state mapping; inline markup refused per unit; round trip |
 | AC13 (R28, D11) | `editor/tests/titleart/PachislopMigrationTest.cpp`: every case of the six Pachislop test files of §4.1, ported, passes on constructed JSON (case names kept); "migrating twice equals once" for each step |
 | AC14 (R28–R31, §6.8) | `PachislopImportTest.MatchesGolden` over `editor/tests/titleart/fixtures/pachislop/` (`v4_text_rims`, `v6_groups_masks_clip`, `v7_content_effects`, `v8_lighting`, `v10_rings`, `v11_all_kinds`, made by `tools/titleart/make_pachislop_fixtures.py` from the documented shapes, with an OFL font subset and an arithmetic PNG); each import equals its committed `.titleart` golden; the v4 file and its v11 twin import identically; each fixture's report lists exactly its seeded unmapped items. `tools/mcp/tests/test_title_import.py` renders them (a regression golden, not a claim of Pachislop parity: Pachislop is never run) |
-| AC15 (R29, R57) | `test_title_import.py`: fonts and images extracted; re-import writes nothing new; builtin font ids map to the S57 pack; a WebP asset gives `image_format_unsupported`; one undo removes every file; a v3 file gives Pachislop's message; a v12 file gives `pachislop_version_newer` |
+| AC15 (R29, R57) | `test_title_import.py`: fonts and images extracted; re-import writes nothing new; builtin font ids map to the S84 pack; a WebP asset gives `image_format_unsupported`; one undo removes every file; a v3 file gives Pachislop's message; a v12 file gives `pachislop_version_newer` |
 | AC16 (R32, §6.9) | `editor/tests/titleart/PsStyleConvertTest.cpp`, one case per §6.9 row. Fixtures come from `tools/titleart/make_psd_fixtures.py` (an independent Python writer of `lfx2`/`Lefx` descriptors, ASL and PSD from the Adobe document) plus Photoshop-made samples (the PSD/ASL test files of ag-psd 33.0.0's MIT repository at the pinned tag, or files the owner provides; recorded in Deviations if neither exists). The improvements are asserted: alpha stops, `mid`, rim opacity, custom pattern image, `lmfx` arrays. **Red control:** a Pachislop-literal mode (test-only) fails the alpha and `mid` assertions |
 | AC17 (R33) | `PsdImportTest`: groups, pass-through → Normal + note, clipping, masks, text layer → Text (font name, size, colour, tracking, leading), the 13 adjustment records, fill layers → `fill`, 16-bit, PSB, CMYK refused for layers but styles read |
 | AC18 (R34, D12) | `SvgImportTest`: `split: groups` and `paths` render, composited, equal the unsplit render within 1/255; `auto` mode picks `shape` for a one-colour icon and `artwork` for a multi-colour logo; text/image/filter elements reported |
@@ -1250,9 +1250,9 @@ and the project importer give the same result for the same Pachislop data.
 | AC22 (R42) | `TitleSheetExportTest`: sheet cells registered and named `@WxH`; atlas packing deterministic, with padding and extrude; JSON valid against the shapes of §6.6; `duration`; per-language sheets; 1,024-frame cap |
 | AC23 (R43) | `test_title_export_ktx2.py`: the KTX2 decodes with `cook-textures`' decode path (`TextureCli::decode`) and matches the PNG within that family's codec tolerance (S14) |
 | AC24 (R44, §6.10) | `IccSrgbTest.ProfileIsValid`: the header, tag table and D50; matrix columns sum to D50 within 1e-4; the TRC matches IEC 61966-2-1 within 1/65535; bytes identical on Linux, Windows and macOS (CI); a PSD with an Adobe RGB profile imports with `color_profile_ignored` |
-| AC25 (R59, §6.3) | `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py`, `gen_tool_docs.py --check`; `title_art` stays hidden until `tool_groups` enables it (S53's test, extended with the new parameters) |
+| AC25 (R59, §6.3) | `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py`, `gen_tool_docs.py --check`; `title_art` stays hidden until `tool_groups` enables it (S80's test, extended with the new parameters) |
 | AC26 (R62) | `tools/mcp/tests/test_title_cli.py`: batch import of 3 files and batch export to 2 formats; exit codes 0/1/2; `--json`; strings and Pachislop import spawn no editor process (the harness checks the child list); render formats start exactly one headless editor |
-| AC27 (R51–R58) | `tools/mcp/tests/test_title_designer_languages.py` (xvfb, isolated editor, `find_ui_item`): the switcher lists status; editing in German shows the override bar and Revert works; a Translations cell edit is one undo step; the Edit Languages dialog adds `pt-BR`; the import dialog and Import Report; the export dialog writes the files. Screenshots in `docs/specs/evidence/S60/` |
+| AC27 (R51–R58) | `tools/mcp/tests/test_title_designer_languages.py` (xvfb, isolated editor, `find_ui_item`): the switcher lists status; editing in German shows the override bar and Revert works; a Translations cell edit is one undo step; the Edit Languages dialog adds `pt-BR`; the import dialog and Import Report; the export dialog writes the files. Screenshots in `docs/specs/evidence/S87/` |
 | AC28 (R48, R49) | `tools/perf/title_localisation_bench` on server A and the S13 phone class; thresholds as R48–R49, reported in this spec with the measured table |
 | AC29 (R50) | Monolingual documents: no sidecar `languages` table, no check output, identical bakes (AC6); a Compile export of a project with no titles is byte-identical to the base (S34 size tools) |
 | AC30 (R60) | `tools/mcp/eval` case "translate this title to German and Japanese": an agent with only the guide doc finishes in one `edit_title` batch, plus fixes, with `check_title` all PASS (this proves the doc is enough, not the guide) |
@@ -1260,41 +1260,41 @@ and the project importer give the same result for the same Pachislop data.
 
 ## 8. Dependencies & conflicts
 
-**The Title Art program graph and waves** (the same in S53-S60; S53 §8 is the source, S53 §6.15
+**The Title Art program graph and waves** (the same in S80-S87; S80 §8 is the source, S80 §6.15
 the shared rules; an arrow means "needs"):
 
 | Wave | Specs | Needs |
 |---|---|---|
-| 6 (title art) | S53 core | merged work only |
-| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of S53 §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
-| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+| 6 (title art) | S80 core | merged work only |
+| 6B | S81 runtime, S82 Title Designer, S83 effects and generators, S86 3D | S80 (every hook of S80 §6.15); within the wave, by owner: S81 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S82 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S83 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S86 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S84 library, S85 animation, S87 localisation and interchange | S80 and wave 6B; within the wave, by owner: S84 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S85 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S87 owns the sidecar `languages` table and the per-language bake sets |
 
-Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
-compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
-fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
-S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
-wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
-rest of S55 lands in 6B.
+Edges: S81 → S80. S82 → S80, S81 (Preview As Glyph Atlas, create menus). S83 → S80, S81 (live
+compose runs its kernels; sidecar anchors). S86 → S80, S81 (scheduler, sub-options, component
+fields), S82 (sections, gizmo), S83 (`Glint3D`). S84 → S80, S82 (Library panel), S83, S86. S85 →
+S80, S81, S82, S83 (S86 optional). S87 → S80, S81, S82, S83, S84, S85, S86. One exception crosses a
+wave: S82's Library panel milestone (its M6) draws S84's data and lands with S84 in wave 6C; the
+rest of S82 lands in 6B.
 
 - **Depends on.**
-  - S53 (§6.1 members, §6.2 grammar, `TitleArtOps`, `TitleFrame`, Outputs, bakes, float readback,
-    missing-glyph report, tools); S54 (component, Lua object, re-render, Glyph Atlas, subsetting,
-    the sidecar and `TitleArtBakeInfo`); S55 (Designer toolbar overflow and `addPanel`, S55
-    §6.8; font picker); S56 (`PachislopFxMap`, the `material` effect); S57
-    (`.titlelook` capture, library ops, font pack, `pachislop-map.json`, reflection maps); S58
-    (`TitleAnimPlan`, sampling, `<file>.anim.json`); S59 (`TitleDocument3D::fromPachislop`).
+  - S80 (§6.1 members, §6.2 grammar, `TitleArtOps`, `TitleFrame`, Outputs, bakes, float readback,
+    missing-glyph report, tools); S81 (component, Lua object, re-render, Glyph Atlas, subsetting,
+    the sidecar and `TitleArtBakeInfo`); S82 (Designer toolbar overflow and `addPanel`, S82
+    §6.8; font picker); S83 (`PachislopFxMap`, the `material` effect); S84
+    (`.titlelook` capture, library ops, font pack, `pachislop-map.json`, reflection maps); S85
+    (`TitleAnimPlan`, sampling, `<file>.anim.json`); S86 (`TitleDocument3D::fromPachislop`).
   - S03 (atomic writes), S04 (GUIDs, asset refresh), S14 (cooker), S24 (undo), S25 (commands,
     settings search), S27 (Recordings), S31 (`call`, `SchemaArgs`), S45 (`@WxH` slicing, soft:
     sheets work as plain textures before it lands).
 - **What the other specs provide (all in their text now).**
-  - S53 (§6.15's hook table): sparse Translation objects in the canonical writer (a sparse kind of
+  - S80 (§6.15's hook table): sparse Translation objects in the canonical writer (a sparse kind of
     `TitleArtSchema`, D5); the reserved members `source_language`, `languages`,
     `string_namespace`, `dpi`, `import_notes`; `create.from`; `RenderRequest::overrides` for a
     resolved language, `TitleFrame` and the bake writer's per-language sets; `bleedAlpha(reachPx)`
-    (8 for bakes, up to 64 here, R37); the check registry with S60's ids listed; `export_title`'s
-    `format` and `options` and `render_title.options.languages`; `variants` released (D15). S60
+    (8 for bakes, up to 64 here, R37); the check registry with S87's ids listed; `export_title`'s
+    `format` and `options` and `render_title.options.languages`; `variants` released (D15). S87
     adds the `output_id_is_language` rule to normalize itself.
-  - S54:
+  - S81:
     - the sidecar gets the optional `languages` table (§6.6), and the Baked binding switches sets
       (R27);
     - `TitleArtLanguage` sits in its always-in-core part (R26);
@@ -1302,10 +1302,10 @@ rest of S55 lands in 6B.
     - Glyph Atlas is keyed by language;
     - the component's `language` field and `onLanguageReady`; the static `TitleArt.setLanguage`
       and `onLanguageChanged` (§6.4).
-  - S58: `TitleAnimPlan` and frame sampling callable per language. S58's flipbook writer and
-    S60's atlas writer share `stb_rect_pack` order rules (R42).
-  - S57 (same wave, S57 owns them): `pachislop-map.json`, embedded in the editor, read by the same
-    `PachislopPort` member mapping S60's `PachislopMapper` calls (S57 R20; `port-pachislop --check`
+  - S85: `TitleAnimPlan` and frame sampling callable per language. S85's flipbook writer and
+    S87's atlas writer share `stb_rect_pack` order rules (R42).
+  - S84 (same wave, S84 owns them): `pachislop-map.json`, embedded in the editor, read by the same
+    `PachislopPort` member mapping S87's `PachislopMapper` calls (S84 R20; `port-pachislop --check`
     keeps it in sync); `TitleLibraryApply::lookFromStyle` (capture from a style instead of a layer)
     for `import_ps_styles`.
 - **Merge hotspots.**
@@ -1316,7 +1316,7 @@ rest of S55 lands in 6B.
   - `editor/Generator.cpp`;
   - `NOTICE.md`;
   - `tools/mcp/pngdiff.py` (16-bit decode, premultiplied compare);
-  - the `title_art` tool files of S53 (`editor/mcp/tools/TitleArtTools*.cpp`);
+  - the `title_art` tool files of S80 (`editor/mcp/tools/TitleArtTools*.cpp`);
   - `docs/mcp/guide/title-art.md`;
   - `docs/unity-glossary.md`.
 
@@ -1343,7 +1343,7 @@ rest of S55 lands in 6B.
   wins over the device. Persisting is the game's job (`PlayerPrefs`, §6.4).
 - **Hundreds of languages × outputs bloat bakes.** Default: languages identical to the source share
   its PNG (R16), `bake: false` per language, and `localization.languages` limits what ships.
-- **S59 lands after S60's Pachislop import.** Default: R30's verbatim member and Reimport 3D.
+- **S86 lands after S87's Pachislop import.** Default: R30's verbatim member and Reimport 3D.
 - **ag-psd licence or files differ at the pinned tag.** Default: stop and record it in Deviations.
   The descriptor parser is then written from the Adobe document.
 
@@ -1352,28 +1352,28 @@ rest of S55 lands in 6B.
 - **M1** Document members, `TitleTranslations`, `TitleFit`, `TitleArtLanguage`, the ops, `get_title`
   language view, the language checks, `render_title` sheets (R1–R13, R18, R19); AC1–AC5.
 - **M2** Per-language bakes, the sidecar `languages` table, the Baked switch, Realtime/Glyph Atlas re-shaping, Lua,
-  settings, export of languages (R14–R17, R24–R27, R61, R64); AC6–AC10. Needs S54.
+  settings, export of languages (R14–R17, R24–R27, R61, R64); AC6–AC10. Needs S81.
 - **M3** Strings CSV/XLIFF and the Translations panel (R20–R23, R54); AC11, AC12.
 - **M4** PNG export (encoder, bleed, chunks, ICC), parts, sheets, atlases, sequences, KTX2, ZIP
   (R35–R38, R42–R44); AC19, AC22–AC24.
 - **M5** PSD reader and writer, `psdread.py` (R39); AC20.
-- **M6** Photoshop styles and layered PSD import (R32, R33); AC16, AC17. Needs S56, S57.
-- **M7** Pachislop import (R28–R31); AC13–AC15. Needs S56, S57 (S59 for 3D).
+- **M6** Photoshop styles and layered PSD import (R32, R33); AC16, AC17. Needs S83, S84.
+- **M7** Pachislop import (R28–R31); AC13–AC15. Needs S83, S84 (S86 for 3D).
 - **M8** SVG import and export (R34, R41); AC18, AC21.
 - **M9** Designer UI not covered above, CLI, docs, budgets, benches, fuzzing (R51–R53, R55–R60,
   R62); AC25–AC31.
 
 ## Deviations
 
-1. **Reconciled: S58's files are `<file>.anim.json` and `<file>.<animation id>.flip<N>.png`** (S60
+1. **Reconciled: S85's files are `<file>.anim.json` and `<file>.<animation id>.flip<N>.png`** (S87
    said `.titlebake` and "parts atlas", which no spec defines); a language set inserts `.<code>`
    after `.titleart` for every derived file.
-2. **Reconciled: S57's map is `pachislop-map.json`** read through S57's `PachislopPort`;
+2. **Reconciled: S84's map is `pachislop-map.json`** read through S84's `PachislopPort`;
    `PachislopMapper` keeps only the structure mapping.
-3. **Reconciled: `bevel.direction` is S53's Material member** (S56 asked for it, S53 owns it); the
-   Photoshop Outer Glow, Drop Shadow, Inner Shadow and Inner Glow map to S53's types.
-4. **Reconciled: `export_title.format` and `options` are S53's hooks** (S59's `glb` is in the same
-   enum), and `render_title`'s `languages` is `options.languages`; S60's budget row is ≤ 195
+3. **Reconciled: `bevel.direction` is S80's Material member** (S83 asked for it, S80 owns it); the
+   Photoshop Outer Glow, Drop Shadow, Inner Shadow and Inner Glow map to S80's types.
+4. **Reconciled: `export_title.format` and `options` are S80's hooks** (S86's `glb` is in the same
+   enum), and `render_title`'s `languages` is `options.languages`; S87's budget row is ≤ 195
    characters (was about 410).
-5. **Reconciled: the core-part share is 6 KiB of the program's 60 KiB** (S53 §6.15), not of
-   S54's former 40.
+5. **Reconciled: the core-part share is 6 KiB of the program's 60 KiB** (S80 §6.15), not of
+   S81's former 40.

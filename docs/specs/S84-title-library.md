@@ -1,12 +1,12 @@
-# S57 — Title Library: Looks, Color Schemes and Templates for any style of title
+# S84 — Title Library: Looks, Color Schemes and Templates for any style of title
 
-**Wave / Depends on.** Title Art program (spec-first), **wave 6C** (with S58, S60; program graph in
-§8, program rules in S53 §6.15). Depends on **S53** (the `.titleart` document
+**Wave / Depends on.** Title Art program (spec-first), **wave 6C** (with S85, S87; program graph in
+§8, program rules in S80 §6.15). Depends on **S80** (the `.titleart` document
 v1, `TitleArtOps`, the renderer and its readback, `check_title`, the `title_art` MCP group, the
-JSON migration framework); **S56** for the effects and generators most looks use (a look whose
-effect or generator types are not registered yet is listed as unavailable, R6, so S57 can land
-before S56 is complete); **S59** for the 3D looks and 3D templates (same rule). S55 draws the
-Library panel on this spec's APIs; S54 binds the runtime Color Scheme switch to Lua; S60 adds
+JSON migration framework); **S83** for the effects and generators most looks use (a look whose
+effect or generator types are not registered yet is listed as unavailable, R6, so S84 can land
+before S83 is complete); **S86** for the 3D looks and 3D templates (same rule). S82 draws the
+Library panel on this spec's APIs; S81 binds the runtime Color Scheme switch to Lua; S87 adds
 per-language samples to templates. Owner area:
 - `editor/titleart/library/` (library store, apply, capture, search, previews, lint, calibration,
   baker, CLI);
@@ -27,7 +27,7 @@ independent axes with a written keep-and-replace contract, so "I like this shape
 never destroys work. Pachislop's 104 looks, 11 colourways and 37 templates are ported by a committed
 converter with per-item provenance and review records, with every franchise and brand name removed;
 the rest are new. Fonts (32 OFL families, Latin and Japanese display faces, from `google/fonts`) and
-the reflection environments (S59's four Poly Haven CC0 HDRIs plus four S57 adds for the new
+the reflection environments (S86's four Poly Haven CC0 HDRIs plus four S84 adds for the new
 families) come from their upstream sources and are copied into a project only when a document uses
 them. Users save their own looks, schemes and templates per project or in
 a personal library shared across projects. Every built-in item passes `check_title` and the ported
@@ -41,7 +41,7 @@ None of it adds a byte to a player that does not ship a Realtime title with an e
 **In scope**
 - File formats: `.titlelook` (Look), `.titlecolors` (Color Scheme), `.titletemplate` (Template: a
   `.titleart` document plus a `template` member), version-tagged JSON with migrations.
-- The ops `apply_look`, `apply_color_scheme`, `apply_template` (names reserved by S53 §6.2) and the
+- The ops `apply_look`, `apply_color_scheme`, `apply_template` (names reserved by S80 §6.2) and the
   library ops `save_look`, `save_color_scheme`, `save_template`, `copy_library_item`,
   `delete_library_item`; the keep-and-replace contract; capture of a layer into a look.
 - The runtime recolour (`engine/core/titleart/ColorSchemeApply`) and the document member
@@ -50,7 +50,7 @@ None of it adds a byte to a player that does not ship a Realtime title with an e
   assignment, review records, the port's red controls.
 - Fourteen families, 91 new looks, 22 new color schemes, 36 new templates, each specified below.
 - The font pack (32 families, OFL, from `google/fonts` at a pinned commit), four Poly Haven CC0 HDRIs
-  added to S59's environment set, their notices, staging, import on use.
+  added to S86's environment set, their notices, staging, import on use.
 - User library: project and personal scopes, favorites, recents, sharing.
 - Thumbnails: the baker CLI, committed baked thumbnails with recipes, the live preview service.
 - Search (bilingual names, synonyms, families, effect tags), `list_title_library` tiers, the
@@ -60,31 +60,31 @@ None of it adds a byte to a player that does not ship a Realtime title with an e
 
 **Out of scope**
 - The Library panel's drawing, layout, hover intent, tile sizes and the Save As dialogs' widgets
-  (S55; this spec defines what they call and what they show).
-- The effects, generators and 3D materials themselves (S56, S59). This spec lists what the looks
+  (S82; this spec defines what they call and what they show).
+- The effects, generators and 3D materials themselves (S83, S86). This spec lists what the looks
   need from them (§6.8.1).
-- Font import of `.woff`/`.woff2`, the Google Fonts browser and system fonts (S55); font subsetting
-  and export of fonts and environments into games (S54, S59).
-- Reveal and animation presets (S58), per-language template variants beyond the en/ja samples (S60),
-  Photoshop `.asl` import into looks (S60).
+- Font import of `.woff`/`.woff2`, the Google Fonts browser and system fonts (S82); font subsetting
+  and export of fonts and environments into games (S81, S86).
+- Reveal and animation presets (S85), per-language template variants beyond the en/ja samples (S87),
+  Photoshop `.asl` import into looks (S87).
 - A Search palette (S25) provider for looks: `SearchKind` is a closed enum
   (`editor/search/SearchEngine.h`); the Title Designer's own search covers the library (R33).
 - Never taken from Pachislop: the Japan Color 2011 ICC profile (`public/icc/`), its font and HDRI
   binaries and reflection JPGs (fonts and HDRIs come from upstream, §6.11, §6.12), its golden
-  reference PNGs as goldens (they are review aids only, §6.7.4; S59 AC21 commits the 40 3D ones as
+  reference PNGs as goldens (they are review aids only, §6.7.4; S86 AC21 commits the 40 3D ones as
   its parity fixtures), and any franchise, brand, product
   or creator name (§6.7.3).
 
 ## 3. Current state (`feature/title-art` 3ffafdfaa, read)
 
-- **No title code yet.** `engine/core/titleart/` and `editor/titleart/` do not exist. S53 is in
-  draft (`docs/specs/S53-title-art-core.md` §6.1, §6.2 written): the document is canonical JSON with
+- **No title code yet.** `engine/core/titleart/` and `editor/titleart/` do not exist. S80 is in
+  draft (`docs/specs/S80-title-art-core.md` §6.1, §6.2 written): the document is canonical JSON with
   every member written; Text, Shape, Vector and Image layers carry `style` (face, `rims` innermost
   first, `knockout`, `erode`) and `part_effects`; part keys are `face`, `rim:<id>` with positional
-  aliases `rim#<n>` "which Looks store (S57)"; every layer has an informational `look {id,
-  color_scheme}` "S57 writes"; library fonts and reflection maps "are copied into the project on
-  first use (S57)"; exposed parameters have a `color_scheme` type that "applies a Color Scheme to the
-  document (S57)"; `apply_look`, `apply_color_scheme`, `apply_template` are reserved op names.
+  aliases `rim#<n>` "which Looks store (S84)"; every layer has an informational `look {id,
+  color_scheme}` "S84 writes"; library fonts and reflection maps "are copied into the project on
+  first use (S84)"; exposed parameters have a `color_scheme` type that "applies a Color Scheme to the
+  document (S84)"; `apply_look`, `apply_color_scheme`, `apply_template` are reserved op names.
 - **Fonts.** `.ttf`/`.otf` are Font assets with a sidecar `.meta` (`editor/asset/AssetTypes.cpp:32`).
   The engine's built-in faces are Roboto and Noto Sans Arabic (`engine/core/util/FontRegistry.cpp`
   `ensureBuiltIns`); the editor UI loads Roboto, JetBrains Mono and Font Awesome
@@ -130,10 +130,10 @@ None of it adds a byte to a player that does not ship a Realtime title with an e
 | `src/presets/types.ts` | `StylePreset` (look), `PresetPartKey` positional parts, `refSize`, `Template`, `Colourway` | Bilingual names, families, tags, font pairs, `applies`, `requires`, lint and check allowlists, provenance; companions become generator layers |
 | `src/presets/factory.ts`, `factory3dMore.ts`, `factory3dSetA.ts`, `factory3dSetB.ts` | All 104 looks (`FACTORY_STYLES`), by evaluating them | Renamed and refamilied (§6.7); sparse JSON |
 | `src/presets/colourways.ts` | The 11 colourway tables, role classification (`ringPaints`, `DARK_LUMA = 0.18`), paint mapping (`paint2D`, `paint3D`, `keepAlpha`), light ramps (`LIGHT`, `onRamp`, `WHITE_CORE`), `spectrum`, `tintOrb`, `recolorLight` | One C++ implementation in the engine (players need it for exposed schemes); generalised to any scheme file |
-| `src/presets/apply.ts` | `applyPreset`, `placeLook`, `transferEffects` (px × k, handles relative), `presetFromLayer` | Ops on the S53 document; a recorded owner instead of symbol markers; "keep color scheme" |
+| `src/presets/apply.ts` | `applyPreset`, `placeLook`, `transferEffects` (px × k, handles relative), `presetFromLayer` | Ops on the S80 document; a recorded owner instead of symbol markers; "keep color scheme" |
 | `src/presets/templates.ts` | The 37 templates (`TEMPLATES`), by evaluating `build()` | Flattened into `.titletemplate` documents; texts as exposed parameters with en/ja samples |
 | `src/presets/lint.ts` | The seven rules (its no-op rule split into two checks here) and their thresholds | Rule texts rewritten without third-party names; a `check_title` check with fix ops; run over the library in CI |
-| `src/presets/user.ts` | Shape validation before migration, fresh ids on import | Lenient read with warnings (S53 codec rules) instead of dropping entries |
+| `src/presets/user.ts` | Shape validation before migration, fresh ids on import | Lenient read with warnings (S80 codec rules) instead of dropping entries |
 | `src/ui/library/thumbs.ts`, `LibraryPanel.tsx` | Content-keyed thumbnails, isolated renderer, 300 ms settle, keep-old-only-if-same-layer | Baked first tier, disk cache, per-frame budget |
 | `tests/harness/cases.ts`, `tests/golden/compare.ts` | Registry-driven cases, render twice, premultiplied compare (max 48, mean 0.25, 0.1 % over 8) | CI on known renderers, red controls, ledger |
 | `tests/golden/refs/look/*.png`, `refs/template/*.png` | Visual reference beside our renders in the port review (§6.7.4) | Never committed, never goldens |
@@ -141,7 +141,7 @@ None of it adds a byte to a player that does not ship a Realtime title with an e
 Not taken: `public/icc/**`, `public/fonts/**`, `public/hdri/**`, `public/reflections/**` (fonts and
 HDRIs come from upstream; Playfair from `google/fonts`' variable originals, not Pachislop's modified
 instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts keep their own notices
-(Patchy warp, three.js tone map: S53).
+(Patchy warp, three.js tone map: S80).
 
 ### 4.2 Engine precedents to copy
 
@@ -161,7 +161,7 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 - **R1. Look** (`.titlelook`, §6.1): one JSON object, `"format": "jasperengine.titlelook"`,
   `"version": 1`; identity (`id`, `revision`), bilingual `name` and `description`, `family`, `tags`,
   `synonyms`, `dimension` (`2d`, `3d`), `applies` (`style` or `effects`), `ref_size`, an optional font
-  pair, then the restyle: `style` (2D) or `style_3d` (3D, S59's member), `effects`, `part_effects`
+  pair, then the restyle: `style` (2D) or `style_3d` (3D, S86's member), `effects`, `part_effects`
   keyed by positional aliases (`face`, `rim#<n>`, `band#<n>`, `bevel`, `side`), `generators`,
   `group_effects`, `lighting` (3D), `links` (material link names), plus `lint_allow`, `check_allow`
   and `provenance`. A look holds no layer or element ids and no document data: it applies to any
@@ -172,7 +172,7 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   bevel shade; `face_glow`, `glow`, `glow_gradient`, `shadow`, `glint`, `light_ramp` (4 to 7 colours,
   luma ascending), `orb`, optional `pattern` marks and `pattern_ground`, `spectrum` (the rainbow
   behaviour), `swatch` (UI colours).
-- **R3. Template** (`.titletemplate`, §6.3): a complete S53 `.titleart` document (every member
+- **R3. Template** (`.titletemplate`, §6.3): a complete S80 `.titleart` document (every member
   written) plus a top-level `template` member: identity and search members as R1, `placeholders`
   (the document's exposed `text` parameters with `sample.en` and `sample.ja`, `role`, `max_chars`),
   `canvas_note`. A template's layers carry `look {id, color_scheme}` of the items used to build it.
@@ -182,11 +182,11 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   with `library_item_not_found`, the three closest ids (`fuzzyScore` over id and names) and the
   `list_title_library` call that finds more. Built-in ids never change once released; a renamed or
   removed item keeps an `aliases` entry in `manifest.json` that resolves with a `deprecated` warning.
-- **R5. Versions.** Looks and schemes use S53's JSON migration framework with their own kinds
-  (`TitleLookMigrations`, `TitleColorsMigrations`, v1 tables empty) and S53's rules (fill the old
+- **R5. Versions.** Looks and schemes use S80's JSON migration framework with their own kinds
+  (`TitleLookMigrations`, `TitleColorsMigrations`, v1 tables empty) and S80's rules (fill the old
   behaviour, idempotent steps, a fixture per version). They are **sparse**: a member equal to the
   default of the file's format version is omitted, arrays are written whole with sparse elements.
-  Therefore **changing the default of any member a look or scheme can carry (S53, S56, S59 members)
+  Therefore **changing the default of any member a look or scheme can carry (S80, S83, S86 members)
   bumps `TITLE_LOOK_VERSION` / `TITLE_COLORS_VERSION` with a step that writes the old default into
   files that omit it** (`TitleLookMigrationsTest.DefaultChangeKeepsOldLooks`). Unknown members and
   unknown effect, generator or pattern types survive a rewrite. Templates follow `TITLE_ART_VERSION`;
@@ -194,7 +194,7 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 - **R6. Availability.** When the library index loads, each item's `requires` is computed (not
   stored): every effect, generator, pattern, texture and 3D material type it uses, and `s59` for
   `dimension: 3d` or 3D template layers. An item whose requirement this build lacks is listed with
-  `available: false` and a reason (`needs effect drips (S56)`), cannot be applied (`library_item_unavailable`),
+  `available: false` and a reason (`needs effect drips (S83)`), cannot be applied (`library_item_unavailable`),
   and is excluded from the gate with its count reported (R36).
 
 ### Functional — applying
@@ -217,25 +217,25 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   content with the template's (§6.4, §6.5.3), keeping its file identity, name and outputs; with
   `keep_text` the values of the document's exposed `text` parameters carry into the template's
   placeholders of the same name, otherwise the placeholders take `sample.<language>`. Creating a
-  document from a template is S53's create path with `template` (one undo step that writes the file,
+  document from a template is S80's create path with `template` (one undo step that writes the file,
   `Create Title Art from Template <name>`). Fonts and maps the template uses are imported (R29, R30)
   in the same undo step.
 - **R10. Determinism.** Applying an item gives the same document whatever ids the library or the
   layer had (new ids are drawn from the document's id generator, rendering never depends on them,
-  S53); the result of `apply_look` does not depend on the layer's previous look except through the
+  S80); the result of `apply_look` does not depend on the layer's previous look except through the
   kept members of §6.4; every random element a look brings is seeded from its own data plus the
-  document `seed` (S53 decision 8).
+  document `seed` (S80 decision 8).
 - **R11. Preview = apply.** The Library's hover preview and every thumbnail run the same apply
   functions on a copy of the document (`TitleLibraryApply::preview(doc, op) -> TitleArtDoc`), never
-  through the history; the canvas shows the copy until the pointer leaves (S55 draws it). A preview
+  through the history; the canvas shows the copy until the pointer leaves (S82 draws it). A preview
   never imports files: a font or map not yet in the project is read from the pack for the preview.
 - **R12. Runtime Color Schemes.** `ColorSchemeApply` lives in `engine/core/titleart/` (inside the
   `JASPERENGINE_TITLE_ART` module), is pure CPU and deterministic, and is the one implementation the
-  editor, MCP and players call. When a document exposes a `color_scheme` parameter (S53 `expose`),
+  editor, MCP and players call. When a document exposes a `color_scheme` parameter (S80 `expose`),
   the data of each scheme in its `options` is copied into the document's top-level `color_schemes`
   map (scheme id to scheme data; written by `expose` and refreshed by `apply_color_scheme`), so a
-  player switches schemes without the library (S54's `TitleArt:setColorScheme(id)` re-renders from
-  the authored document with the scheme applied). Empty `options` means any scheme (S54's
+  player switches schemes without the library (S81's `TitleArt:setColorScheme(id)` re-renders from
+  the authored document with the scheme applied). Empty `options` means any scheme (S81's
   `colorSchemes`): `color_schemes` then holds every built-in and project scheme (about 100 KB of JSON
   in the document) and `check_title` warns `color_scheme_options_empty` with that size and the
   `set` op that lists the used ones. A document without the member costs nothing.
@@ -270,7 +270,7 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 - **R17. Sharing.** `copy_library_item {op, ref, to: "project" | "user", id?}` copies an item (and its
   `.files/` folder) between scopes, so a personal look reaches every project and a project look can
   be promoted. Dropping `.titlelook`, `.titlecolors` or `.titletemplate` files onto the Library panel
-  copies them into the project scope (S55 handles the drop, this spec the copy: validation, id
+  copies them into the project scope (S82 handles the drop, this spec the copy: validation, id
   clash refused unless `overwrite`). `delete_library_item {op, ref}` deletes a project or personal
   item; built-ins cannot be deleted (`library_item_builtin`).
 - **R18. Favorites and recents** are personal editor settings (S25 settings registry):
@@ -297,12 +297,12 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   scripts, `npm install` or tests. Host only, like `tools/htmlui` (never in CI or Docker).
 - **R20. Converter, stage 2 (map).** `jasperengine-editor title-library port-pachislop --dump <json>
   --out <dir>` (no GPU) maps the dump with `PachislopPort` (`editor/titleart/library/PachislopPort.{h,cpp}`),
-  the C++ code S60's Pachislop project importer shares: style and template members by
-  `editor/resources/titleart/pachislop-map.json` (embedded in the editor, so S60 reads the same file:
+  the C++ code S87's Pachislop project importer shares: style and template members by
+  `editor/resources/titleart/pachislop-map.json` (embedded in the editor, so S87 reads the same file:
   ids, families, bilingual names, renames, the camelCase to snake_case rule and its exceptions, part
   keys, companion to generator layer, fonts, environments, fields dropped with reasons, template
-  texts), effects and generators by S56's `PachislopFxMap` (`editor/resources/titleart/pachislop-fx-map.yaml`),
-  3D styles by S59's `TitleDocument3D::fromPachislop`; then the per-item JSON merge patches of
+  texts), effects and generators by S83's `PachislopFxMap` (`editor/resources/titleart/pachislop-fx-map.yaml`),
+  3D styles by S86's `TitleDocument3D::fromPachislop`; then the per-item JSON merge patches of
   `tools/titleart/pachislop-port/overrides.json` (the tuning done after the port, so a re-run keeps
   it). A Pachislop member with no mapping and no `dropped` entry fails the run naming it; nothing is
   dropped silently. It writes `editor/resources/titleart/provenance/pachislop.json` (per item: new id,
@@ -330,7 +330,7 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 - **R24. Ported items.** All 104 Pachislop looks under the new ids of §6.7.2, the 11 colourways as
   Color Schemes with their ids (`white`, `blue`, `green`, `purple`, `red`, `gold`, `silver`, `zebra`,
   `giraffe`, `leopard`, `rainbow`), the 37 templates as §6.10.1, with the renames of §6.7.3.
-- **R25. New looks**: the 91 of §6.8, each built from S53/S56/S59 members as described there, with a
+- **R25. New looks**: the 91 of §6.8, each built from S80/S83/S86 members as described there, with a
   `provenance {source: "jasperengine"}`.
 - **R26. New schemes**: the 22 of §6.9.
 - **R27. New templates**: the 36 of §6.10.2.
@@ -350,28 +350,28 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   that is missing (no staged pack) leaves the layer's font as it was and returns warning
   `font_unavailable` naming the face and the fix (reinstall, or `JASPERENGINE_TITLEART_LIBRARY_DIR`);
   thumbnails then render with the built-in face and say so. Nothing is ever silently substituted:
-  missing glyphs remain S53's `glyphs_present` problem.
-- **R30. Environments** (§6.12): S59 owns title environments (procedural presets and the four
-  Pachislop HDRIs `softbox`, `highway`, `city`, `sky`, S59 R24, R66). S57 adds four Poly Haven CC0
+  missing glyphs remain S80's `glyphs_present` problem.
+- **R30. Environments** (§6.12): S86 owns title environments (procedural presets and the four
+  Pachislop HDRIs `softbox`, `highway`, `city`, `sky`, S86 R24, R66). S84 adds four Poly Haven CC0
   photo environments for the new families (`night_city`, `night_dark`, `sunset_harbour`, `warehouse`)
-  to S59's `editor/resources/titleart/hdri/manifest.json`, fetched by S59's `fetch_hdris.py` (2k
-  `.hdr`, S59's size rule). Looks name environments by S59's ids. 2D reflection maps (S53's
+  to S86's `editor/resources/titleart/hdri/manifest.json`, fetched by S86's `fetch_hdris.py` (2k
+  `.hdr`, S86's size rule). Looks name environments by S86's ids. 2D reflection maps (S80's
   `reflection.map`, an equirectangular Texture) use the same `.hdr` files: the first apply into a
   project imports the file into `assets/TitleArt/Environments/` as an HDR Texture (S14 import type HDR)
   and points the field at it, once per project, in the op's undo step.
 - **R31. Notices.** `NOTICE.md` gains: one paragraph for the Pachislop port (looks, color schemes,
   templates, the recolouring algorithm and the style lint rules, by SafEight, used with the author's
-  permission, with the files that hold them); one row per font family (§6.11); four rows in S59's
-  HDRI table for S57's environments; and the missing row for `lythwood_room`
+  permission, with the files that hold them); one row per font family (§6.11); four rows in S86's
+  HDRI table for S84's environments; and the missing row for `lythwood_room`
   (`PreviewEnvironment.h`). `tools/ci/check-notices.py` gains `CONTENT_ROOTS`: every directory under
   `editor/resources/titleart/fonts/` needs a NOTICE row naming it and an `OFL.txt`; the editor install
   carries them as `licenses/titleart-font-<dir>-OFL.txt` (`--install-manifest` and `--installed` check
-  them; S59 R66 covers `hdri/`).
+  them; S86 R66 covers `hdri/`).
 
 ### Functional — thumbnails, previews, search
 
 - **R32. Baked thumbnails.** `jasperengine-editor title-library bake-thumbnails [--only <glob>]
-  [--check]` renders, headless with the S53 renderer, every built-in look and scheme on three sample
+  [--check]` renders, headless with the S80 renderer, every built-in look and scheme on three sample
   texts (`latin` = `HERO`, `kanji` = `大当り`, `digits` = `1234`; a look may override them with
   `thumbnail_texts`) and every template once per sample language (en, ja): 240 × 135 RGBA8 PNGs in
   `editor/resources/titleart/thumbnails/<kind>/<id>.<text>.png`, transparent background, framed by
@@ -381,18 +381,18 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   `--check` recomputes recipes without rendering and exits 1 listing stale or missing thumbnails.
 - **R33. Live previews** (`TitleLibraryPreviews`): renders library items on the user's own layer (its
   text, font, size, warp, distort, weight, transforms) or document (templates on their own
-  placeholders) for S55's tiles: key = SHA-256 of (item id, revision, the layer's content key,
+  placeholders) for S82's tiles: key = SHA-256 of (item id, revision, the layer's content key,
   applied scheme, Dimension, `TITLE_ART_BAKE_VERSION`), excluding position and canvas; requests
-  carry a priority (visible tiles first), at most 2 in flight, submitted through S53's
-  `TitlePreviewQueue` (S53 §6.13, priority `Tiles`: the one 4 ms per-frame budget every title preview shares),
-  time-sliced on the S53 renderer (contract decision 2), cancelled when the panel closes; GPU
+  carry a priority (visible tiles first), at most 2 in flight, submitted through S80's
+  `TitlePreviewQueue` (S80 §6.13, priority `Tiles`: the one 4 ms per-frame budget every title preview shares),
+  time-sliced on the S80 renderer (contract decision 2), cancelled when the panel closes; GPU
   LRU of 240 tiles; disk cache `.jasperengine/cache/titleart/library/<key>.png` (contract decision
   11); a pending tile keeps its old picture only if it shows the same layer; a failed render shows
   "Render failed" and is not retried for that key. Until a live tile is ready, the baked thumbnail of
   the script that matches the layer's text (kanji/kana, digits only, else Latin) is shown. GPU device
   loss drops the GPU cache and re-requests visible tiles.
-- **R34. Search** (`TitleLibrarySearch`): all words of the query must match (after S55's
-  `foldForSearch`, S55 R27: full-width to ASCII, half-width to full-width katakana, katakana to
+- **R34. Search** (`TitleLibrarySearch`): all words of the query must match (after S82's
+  `foldForSearch`, S82 R27: full-width to ASCII, half-width to full-width katakana, katakana to
   hiragana, lower case) any of: the item's `name.en`, `name.ja`, `synonyms`
   (both languages, romaji included), `tags`, family names (both languages), `dimension`, and the
   derived effect tags (§6.13: `light glow`, `bevel`, `pattern zebra`, `glass`, `3d`...); results
@@ -402,10 +402,10 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 ### Functional — quality
 
 - **R35. Style lint** (`editor/titleart/library/StyleLint.{h,cpp}`): the rules of Pachislop's
-  `lint.ts`, re-implemented and registered as `check_title`'s `style_lint` check (S53's check
+  `lint.ts`, re-implemented and registered as `check_title`'s `style_lint` check (S80's check
   registry) with one result per finding (§6.14.1: ids, thresholds, fix ops). Rule texts are our own
-  words. The Title Designer shows them (S55); `check_title` returns them with ready-to-apply ops.
-  S57 also adds the two pixel checks S53 §6.12 assigns it, `color_scheme_match` and `metal_range`
+  words. The Title Designer shows them (S82); `check_title` returns them with ready-to-apply ops.
+  S84 also adds the two pixel checks S80 §6.12 assigns it, `color_scheme_match` and `metal_range`
   (§6.14.1).
 - **R36. Library gate.** `tools/mcp/tests/test_title_library.py` (CI) loads every built-in item
   (no load warning), and for every available look on each sample text, every scheme on its three
@@ -432,10 +432,10 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 
 - **R39.** `ColorSchemeApply` is CPU code with no GPU or platform dependency, built on every export
   target inside `JASPERENGINE_TITLE_ART`; it is part of the module, so a player has it exactly when
-  it has the module (a shipped Realtime or Glyph Atlas title, S54 R52) and a Baked-only game has
+  it has the module (a shipped Realtime or Glyph Atlas title, S81 R52) and a Baked-only game has
   none of it. Everything
   else in this spec is editor-only: nothing under `editor/resources/titleart/` is a player input; a
-  game gets only the fonts and environments its documents imported, as ordinary assets (S54/S59
+  game gets only the fonts and environments its documents imported, as ordinary assets (S81/S86
   decide what an export includes). The pack is staged next to the editor binary (`bin/titleart/`,
   macOS `Contents/Resources/titleart/`), in the build tree beside the editor target, found by
   `FileUtils::getTitleArtLibraryDir()`, overridden by `JASPERENGINE_TITLEART_LIBRARY_DIR`. A missing
@@ -459,17 +459,17 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
     `-j 4`.
 - **R41. Sizes.** Embedded in the editor binary: the item data (looks, schemes, templates,
   `manifest.json`), zstd-compressed (`engine/libs/zstd`), ≤ 1.5 MiB of binary growth. Staged with
-  the install: fonts 46.2 MB (§6.11), S57's four HDRIs ≤ 30 MB (S59's rule), thumbnails ≤ 16 MiB (the baker fails
+  the install: fonts 46.2 MB (§6.11), S84's four HDRIs ≤ 30 MB (S86's rule), thumbnails ≤ 16 MiB (the baker fails
   above it). Players: zero bytes unless R39's condition holds, then `ColorSchemeApply` ≤ 30 KB
   (Linux Release, measured by S34's size tools).
 
-### Editor UX (human; drawn by S55)
+### Editor UX (human; drawn by S82)
 
 - **R42.** The Library shows three tabs **Looks**, **Color Schemes**, **Templates**; sections by
   family (folding state remembered per user), Favorites and Recent first when no filter is set;
   each tile shows the item's name in the UI language (English names, Japanese in the tooltip and
   search), a star, a `3D` badge, `→3D` / `→2D` when applying changes the layer's Dimension, and
-  disabled tiles say why (`Needs Generator: Fire (S56)`, `Image layers cannot take 3D looks yet`).
+  disabled tiles say why (`Needs Generator: Fire (S83)`, `Image layers cannot take 3D looks yet`).
   Applying is one named undo step (R7–R9); a toast after a Dimension change names it ("Converted
   Title to 3D. Ctrl+Z to undo"). An "Apply Font" toggle (off by default, remembered per user) and a
   "Keep Color Scheme" toggle (on by default) sit above the Looks grid. The Title Designer menu gains
@@ -477,25 +477,25 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   Library, family, tags; dialog validation from the same functions as the ops) and the layer context
   menu **Revert to Look** (re-applies `look.id` with the toggles' values; disabled when none).
   Assets > Create > Title Art > **From Template…** opens the Templates grid in a picker. The six
-  featured templates of S55's empty canvas card (`manifest.json` `featured`) are
+  featured templates of S82's empty canvas card (`manifest.json` `featured`) are
   `casino/big-win-3d`, `metal/chrome-title`, `fantasy/kingdom-title`, `scifi/hud-title`,
   `cartoon/party-title`, `minimal/clean-title`; applying a template selects the layer of its
   placeholder with `role: "title"`.
 
 ### Agent UX (MCP, CLI, Lua)
 
-- **R43. `list_title_library`** (group `title_art`, the tool S53 registers; this spec defines its
+- **R43. `list_title_library`** (group `title_art`, the tool S80 registers; this spec defines its
   library kinds and tiers, §6.15): no arguments → the catalogue (counts per kind and family, ≤ 150
   tokens); `kind` with `query`/`family`/`dimension`/`tags`/`scope`/`favorites` → rows `{n, id, name,
   family, dim, tags, cost, available, use}` where `use` is the ready op (≤ 30 tokens a row, 20 rows by
-  default as S53 §6.11, `offset` pages); `id` → the item's detail (structure summary, what applying keeps and
+  default as S80 §6.11, `offset` pages); `id` → the item's detail (structure summary, what applying keeps and
   replaces, font pair, environment, allowlists, provenance; ≤ 400 tokens); `sheet` → the chosen items
   rendered on the agent's text (or on a layer of a document), numbered cells with the same numbers
   in the JSON, ≤ 9 cells, ≤ 1024 × 576 (about 786 image tokens). Kinds: `looks`, `color_schemes`,
-  `templates` and the pack rows of `fonts` (values of S53's program `kind` enum; `effects`,
-  `generators`, `blend_modes` and `fonts` are S53's, `environments`, `materials_3d` and
-  `bevel_profiles` S59's, which list S57's four environments, `animation_presets` S58's).
-- **R44. Ops for agents.** The ops of R7–R9 and R13–R17 are `edit_title` ops (S53): a batch made only
+  `templates` and the pack rows of `fonts` (values of S80's program `kind` enum; `effects`,
+  `generators`, `blend_modes` and `fonts` are S80's, `environments`, `materials_3d` and
+  `bevel_profiles` S86's, which list S84's four environments, `animation_presets` S85's).
+- **R44. Ops for agents.** The ops of R7–R9 and R13–R17 are `edit_title` ops (S80): a batch made only
   of library ops (`save_*`, `copy_library_item`, `delete_library_item`) needs no document `path`.
   Results list `changes` (replaced and kept members, imported files with paths, the Dimension change,
   warnings), errors list valid alternatives (R4). `edit_title` ops never touch favorites or recents.
@@ -513,19 +513,19 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   is generated into `docs/mcp/guide/title-library.md` (`jasper://docs/title-library`, one `###`
   section per family so it splits into per-family resources, `also_found_as` aliases from synonyms)
   by `jasperengine-editor title-library gen-docs`, checked by `gen-docs --check` in `test_docs.py`.
-  No new line in the agent guide (`McpInstructions.cpp`): the Title Art entry S53 adds points at
+  No new line in the agent guide (`McpInstructions.cpp`): the Title Art entry S80 adds points at
   `jasper://docs/title-art`. `docs/unity-glossary.md` gains rows for Preset (Look), Preset Library
   (Title Library) and "Swatches/Color Presets" (Color Scheme).
-- **R48. Lua.** S57 adds no Lua API; S54's `TitleArt:setColorScheme(id)` and
+- **R48. Lua.** S84 adds no Lua API; S81's `TitleArt:setColorScheme(id)` and
   read-only `colorSchemes` property call R12's function.
 
 ### Data & compatibility
 
 - **R49.** Old documents and old library files load forever (R5); a document's layers keep working
   when the look they name is renamed or removed (`look.id` is informational; "Revert to Look" resolves
-  aliases). A personal library written by a newer editor is read-only with a notice (S53's newer
+  aliases). A personal library written by a newer editor is read-only with a notice (S80's newer
   version rule). Unknown members are preserved.
-- **R50.** The binary content (fonts, S57's HDRIs, thumbnails; at most 92 MB) enters the repository
+- **R50.** The binary content (fonts, S84's HDRIs, thumbnails; at most 92 MB) enters the repository
   as **one squashed commit** with `.gitattributes` (`*.ttf *.hdr *.png binary`), as S36 did; its size
   and the install growth are recorded in the Progress section on landing. The text content (looks,
   schemes, templates, mapping, provenance, review) is ordinary commits.
@@ -537,20 +537,20 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   contract (§6.4), so a user tries schemes on a look, or looks on a scheme, without losing the
   other. All three are applied by `TitleLibraryApply` (`editor/titleart/library/`), called by the ops,
   the previews, the baker and the gate; the scheme half is `ColorSchemeApply` in the engine.
-- **D2. JSON like the document.** S53 chose canonical JSON for `.titleart`; library files use the
+- **D2. JSON like the document.** S80 chose canonical JSON for `.titleart`; library files use the
   same codec rules (member order, `%.7g`, sorted maps, lenient read, unknown members kept), but
   looks and schemes are **sparse** (R5) because they overlay any document and stay small and
   reviewable; templates are full documents.
 - **D3. Positional, id-free, size-relative.** Looks store part keys as `rim#n` / `band#n`, `%` style
   units, px effect parameters with `ref_size`, handle positions relative to the layer, material
-  links by name, fonts by pack id, environments by S59's environment ids: nothing ties a look to a document.
+  links by name, fonts by pack id, environments by S86's environment ids: nothing ties a look to a document.
 - **D4. A copy, with a record.** Applying copies the data into the document (exported games carry no
-  library); the layer records `look.id` and `look.color_scheme` (S53's informational member), which
+  library); the layer records `look.id` and `look.color_scheme` (S80's informational member), which
   drives Keep Color Scheme, Revert to Look and `check_title`'s attribution. There is no live link:
   editing a look never changes documents (a user who wants that re-applies).
 - **D5. Built-in data embedded, heavy assets staged.** Item data (≈ 4 MB of JSON, ≤ 1.5 MiB
   compressed) is embedded in the editor, so the library always works; fonts, HDRIs and thumbnails
-  (≤ 92 MB) are files staged with the install and copied into a project on first use (S53 §6.1
+  (≤ 92 MB) are files staged with the install and copied into a project on first use (S80 §6.1
   decided "copied into the project on first use"). No network access, ever.
 - **D6. The converter is committed, evaluates rather than parses.** Pachislop's looks are built by
   TypeScript helpers (`fx()` expands registry defaults, colourway-generated families, orbs as
@@ -560,7 +560,7 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 - **D7. Families are presentation; ids are forever.** An id's family prefix is chosen at release and
   never changes (a later family move keeps the id; `family` is a separate member).
 - **D8. Font pairs.** Most display fonts with character are Latin-only, Japanese titles are first
-  class, and S53 has a fallback chain: a look names `{latin, ja}`, the Latin face is the font and the
+  class, and S80 has a fallback chain: a look names `{latin, ja}`, the Latin face is the font and the
   Japanese face its first fallback. One look then serves `HERO` and `大当り`.
 - **D9. Quality is measured, not hoped.** Every built-in item passes the checks and the lint on the
   sample texts in CI; thresholds come from measurements over the library (calibration) and a
@@ -617,19 +617,19 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 | `ref_size` | number 200 | The layer `size` the px values were authored for |
 | `font` | `{latin, ja, variations?}` or absent | Pack ids (§6.11); `variations` e.g. `{"wght": 900}`; user looks may name `{"file": "<slug>.files/X.ttf"}` |
 | `thumbnail_texts` | `{latin, kanji, digits}` | Optional overrides of R32's samples |
-| `style` / `style_3d` | sparse S53 Style2D / S59 3D style | Exactly one, matching `dimension`; absent for `applies: effects`. Rims and bands carry no `id` |
-| `effects` | [`{type, enabled?, params}`] | S53 effect entries without `id`; params sparse |
+| `style` / `style_3d` | sparse S80 Style2D / S86 3D style | Exactly one, matching `dimension`; absent for `applies: effects`. Rims and bands carry no `id` |
+| `effects` | [`{type, enabled?, params}`] | S80 effect entries without `id`; params sparse |
 | `part_effects` | map positional key → [effect] | Keys `face`, `rim#n`, `band#n`, `bevel`, `side`; a key the look's own style lacks is a load warning |
-| `generators` | [`{type, preset?, place, scope, name?, blend, opacity, params, effects}` (`place`: `above` or `below`; `scope`: `layer` or `group`)] | Become generator layers following the layer (§6.5.1); `scope: group` follows the auto group (Pachislop's `outer` companions); `preset` names an S56 generator preset expanded at apply |
+| `generators` | [`{type, preset?, place, scope, name?, blend, opacity, params, effects}` (`place`: `above` or `below`; `scope`: `layer` or `group`)] | Become generator layers following the layer (§6.5.1); `scope: group` follows the auto group (Pachislop's `outer` companions); `preset` names an S83 generator preset expanded at apply |
 | `group_effects` | [effect] | Effects of the auto group (§6.5.1) |
-| `lighting` | S59 lighting override, complete | 3D only |
+| `lighting` | S86 lighting override, complete | 3D only |
 | `links` | map name → `{name}` | Materials in `style`/`style_3d` with `link: <name>` form one link group per application |
 | `lint_allow`, `check_allow` | [`{rule` or `check, reason}`] | Gate exceptions (R36) |
 | `assets` | [`{key, file, sha256}`] | User looks: files in `<slug>.files/` referenced from the style as `"asset:<key>"` |
 | `provenance` | `{source, commit?, file?, line?, item?, author?, license_note?}` | `source`: `pachislop`, `jasperengine`, `user` |
 
-Units: `%` style members and `rim#n` widths as S53; effect and generator params whose definition
-has `ParamUnit::Px` (S53 §6.5) are multiplied by `k = layer size / ref_size` on apply; Vec2 params
+Units: `%` style members and `rim#n` widths as S80; effect and generator params whose definition
+has `ParamUnit::Px` (S80 §6.5) are multiplied by `k = layer size / ref_size` on apply; Vec2 params
 with a `point` gizmo hint (an on-canvas position: flare centre, impact point) are stored relative to
 the layer origin and become `layer position + k × value`.
 
@@ -667,15 +667,15 @@ the layer origin and become `layer position + k × value`.
 }
 ```
 
-A paint is `{fill (S53 Fill), ramp (Gradient or null: the gradient-map finish for bevelled metal
-elements; null keeps the element's colour unmapped), material_3d (S59 Material), shade (the bevel
+A paint is `{fill (S80 Fill), ramp (Gradient or null: the gradient-map finish for bevelled metal
+elements; null keeps the element's colour unmapped), material_3d (S86 Material), shade (the bevel
 shadow tint), pattern? (marks for patterned faces: zebra, giraffe, leopard)}`. `spectrum: true`
 (the `rainbow` scheme) makes faces and gradient fills spectra and switches solid generator fills to
 their palette modes (§6.5.2).
 
 ### 6.3 Template file (`.titletemplate`)
 
-A `.titleart` document (S53 §6.1, every member written, its own `guid`, unused: a template is not an
+A `.titleart` document (S80 §6.1, every member written, its own `guid`, unused: a template is not an
 asset) with the member `template` after `guid`:
 
 ```json
@@ -691,8 +691,8 @@ asset) with the member `template` after `guid`:
 }
 ```
 
-Placeholders are the document's exposed `text` parameters (S53 `exposed`), named `text` (the
-title: S53 exposes the first text layer as `text`), `subtitle`, `kicker`, `counter`, `label`, `line_2`
+Placeholders are the document's exposed `text` parameters (S80 `exposed`), named `text` (the
+title: S80 exposes the first text layer as `text`), `subtitle`, `kicker`, `counter`, `label`, `line_2`
 in that order of preference. The stored document holds the `ja` sample for Japanese-origin
 templates and the `en` sample otherwise; `apply_template` sets the language's sample (or the
 carried text) through the exposed targets. Backdrops are guide layers (never in outputs) unless they
@@ -705,7 +705,7 @@ are part of the art, as in Pachislop.
 | `format`, `version`, `guid`, `name`, the file, its outputs (`outputs[]`) | kept | kept | kept (the template's outputs are used only when the document's are the default single `main`) |
 | `canvas`, `global_light`, `seed` | kept | kept | replaced |
 | `exposed` | kept | kept (a `color_scheme` parameter's embedded data refreshed) | replaced; values of same-named `text` parameters carried with `keep_text` |
-| `material_links` | the layer's old link groups lose this layer; the look's links get fresh ids | kept (a recoloured linked material recolours its group through S53's link sync) | replaced |
+| `material_links` | the layer's old link groups lose this layer; the look's links get fresh ids | kept (a recoloured linked material recolours its group through S80's link sync) | replaced |
 | `color_schemes` (embedded) | kept | the applied scheme added when it is an exposed option | replaced by the template's |
 | layer tree | kept, except the look's own generator layers and auto group (below) | kept | replaced |
 | layer `id`, `type`, `name`, `visible`, `locked`, `guide` | kept | kept | — |
@@ -726,7 +726,7 @@ are part of the art, as in Pachislop.
 | `look.id` | set | kept | from the template |
 | `look.color_scheme` | kept and re-applied with Keep Color Scheme, else cleared | set | from the template |
 
-S57 adds two optional members to S53's schema (no version bump, S53 rule 1): `look.owner` (an Id,
+S84 adds two optional members to S80's schema (no version bump, S80 rule 1): `look.owner` (an Id,
 default `""`: the layer whose look created this generator layer or auto group) and `from_look`
 (bool, default false) on effect entries of an auto group.
 
@@ -736,28 +736,28 @@ default `""`: the layer whose look created this generator layer or auto group) a
 
 1. Resolve `look` (R4) and check availability (R6). Applicability: `applies: style` → Text, Shape,
    Vector (both modes) and Image layers; `applies: effects` → every type but Adjustment; else
-   `look_not_applicable` naming the layer type. A 3D look needs S59 (`dimension_unavailable`).
+   `look_not_applicable` naming the layer type. A 3D look needs S86 (`dimension_unavailable`).
 2. `k = layer.size / look.ref_size`.
-3. Dimension: when the look's differs, set `dimension` (S59 rebuilds the 3D state from the source;
+3. Dimension: when the look's differs, set `dimension` (S86 rebuilds the 3D state from the source;
    an Image layer becomes 3D through its `trace`).
-4. Style: build the full style from S53/S59 defaults overlaid with the look's sparse style; give every
+4. Style: build the full style from S80/S86 defaults overlaid with the look's sparse style; give every
    rim and band a fresh id; when the layer's face fill kind is `source`, keep that fill. Replace.
 5. Part effects: map each positional key to the new style's part (`rim#2` → `rim:<id of the third
    rim>`); fresh effect ids; px params × k, handles relative (§6.1). Replace `part_effects`.
 6. Effects: the same transfer; replace `effects`.
 7. Generators: remove generator layers whose `look.owner` is this layer. If the look has
-   `group_effects` or a `scope: group` generator, or (S56 D3's rule) a generator whose blend is not
+   `group_effects` or a `scope: group` generator, or (S83 D3's rule) a generator whose blend is not
    Normal while the layer has siblings below it, ensure the auto group: the existing one (a group
    whose `look.owner` is this layer and that contains it) or a new group named "<layer name> FX"
-   (S56 D3), placed where the layer was, containing it. For each look generator, add a generator layer
-   (`follow` = the layer, or the auto group for `scope: group`; `look.owner` = the layer id; S56
+   (S83 D3), placed where the layer was, containing it. For each look generator, add a generator layer
+   (`follow` = the layer, or the auto group for `scope: group`; `look.owner` = the layer id; S83
    preset expanded, then the look's params; px × k; name = the look's `name` or the generator's
    type name) directly above or below the layer in its order, inside the auto group when there is
    one. Replace the auto group's effects marked `from_look` with the look's `group_effects` (marked
    `from_look`), keeping the user's. A group left with no `group_effects`, no `scope: group`
    generator and only the layer (and its own generators) is dissolved: members move to its place
-   with its transform folded in (S53 `ungroup`).
-8. Lighting (3D): set the layer's complete lighting override from the look (S59).
+   with its transform folded in (S80 `ungroup`).
+8. Lighting (3D): set the layer's complete lighting override from the look (S86).
 9. Links: for each link name used, a new `material_links` entry (fresh id, the name) for this
    application; the layer's materials that belonged to older link groups leave them.
 10. Font (only with `apply_font`): R29.
@@ -795,7 +795,7 @@ colour patterns are cleared. The face's inner glow takes `face_glow`.
 
 Effects and generators: glow effects take `glow` (gradient glows `glow_gradient`); drop, inner and
 perspective shadows take `shadow` (never black); the 3D glint takes
-`glint`. Every colour and gradient parameter marked `light` (S56's `ParamDef::light`: the colours of light
+`glint`. Every colour and gradient parameter marked `light` (S83's `ParamDef::light`: the colours of light
 effects and of generators) is mapped by luma onto `light_ramp` closed by black and white
 (`onRamp`): colours with every channel ≥ 0.92 (white cores) stay unless every visible colour of
 the element is white, then they take `glow`; a colour already within 4/255 of the ramp stays (so
@@ -803,7 +803,7 @@ applying twice changes nothing). Exceptions that keep their own colours: generat
 `smoke`, `ink_splatter`, `lens_flare`, `glints` (Pachislop's rule: natural phenomena and optics).
 `pattern_fill` generators take the scheme's marks when it has them. With `spectrum: true`, faces and
 gradient parameters become the spectrum (after a white core stop when they start with one, the
-alpha profile kept), and each definition's `SpectrumSwitch` (S56 §6.2:
+alpha profile kept), and each definition's `SpectrumSwitch` (S83 §6.2:
 `particles.color_mode solid → palette`, `speed_lines.color_mode solid → around`) is applied so it shows. Shape layers of shape `orb` recolour
 by body tint only (`orb.ramp`, radial or diagonal for spectra), keeping their material model.
 
@@ -821,7 +821,7 @@ changed field paths (the op's `changes`).
    of the same name when `keep_text` and it existed (and is not longer than `max_chars × 2`; else
    warning `placeholder_text_long`), else `sample[language]`; set through the exposed targets.
    Exposed parameters of the old document with no counterpart are listed in `changes.exposed_removed`
-   (instances using them warn, S54).
+   (instances using them warn, S81).
 4. Import the fonts and environments the template references (R29, R30); its layers already name
    project-relative paths under `assets/TitleArt/`, which the import fills.
 5. One undo step `Apply Template <name>`; `changes` lists the imports and carried texts.
@@ -872,7 +872,7 @@ Pachislop clone (read-only) ──dump.mjs──▶ <scratch>/pachislop-dump.jso
                                               ▼
             tools/titleart/pachislop-port/dump/pachislop-1c32502.json           (committed)
                                               │ title-library port-pachislop: pachislop-map.json,
-                                              │ S56 pachislop-fx-map.yaml, S59 fromPachislop, overrides.json
+                                              │ S83 pachislop-fx-map.yaml, S86 fromPachislop, overrides.json
                                               ▼
  editor/resources/titleart/{looks,color-schemes,templates}/**  +  provenance/pachislop.json
                                               │ title-library normalize
@@ -883,7 +883,7 @@ Pachislop clone (read-only) ──dump.mjs──▶ <scratch>/pachislop-dump.jso
 `port-pachislop --check` (CI, AC11) runs the last two stages into a temporary directory and compares
 with the committed files. `pachislop-map.json` holds: `ids` (Pachislop id → new id), `families`,
 `names` (the split of Pachislop's mixed names: a leading CJK run is `ja`, the rest `en`; missing
-halves written out by hand), `fonts` (Pachislop `fontId` → pack pair; S60 uses the same table),
+halves written out by hand), `fonts` (Pachislop `fontId` → pack pair; S87 uses the same table),
 `environments`, `fields` (exceptions to the camelCase → snake_case rule), `dropped` (`{path,
 reason}`), `template_texts` (the replaced sample texts of §6.7.3 and every template's `en` sample of
 §6.10.1).
@@ -892,13 +892,13 @@ Field mapping rules (in `PachislopPort`, §6.7.1): keys and enum values camelCas
 `shapeBurst` → `shape_burst`) unless `fields` says otherwise; `kind: title2d | title3d` → `dimension`;
 `style3d` → `style_3d`; rim and band ids dropped; `partEffects` keys `rim:N` → `rim#N`, `band:N` →
 `band#N`; `companions` → `generators` (`outer: true` → `scope: "group"`); `groupEffects` →
-`group_effects`; `refSize` → `ref_size`; 2D `reflection.map` names (`highway`, `city`, `sky`, `studio`) → S59's
+`group_effects`; `refSize` → `ref_size`; 2D `reflection.map` names (`highway`, `city`, `sky`, `studio`) → S86's
 photo environments of the same assets (`studio` → `softbox`), copied in on first use (§6.12); 3D
-lookups through S59's `TitleDocument3D::fromPachislop` (S59 R67); effects and generators through
-S56's `PachislopFxMap` (S56 §6.9: generator angles negated, `x`/`y` pairs to Vec2, renames); template layers `title2d` / `title3d` → `text`, `shape`, `vector` or `image` by their source
-with `dimension`; `background` layers → S53 `fill` generator layers; ids in templates re-minted
-deterministically (FNV-1a of the layer path and index); colours lowercase. S53 kept Pachislop's
-coordinate space, units and angle conventions (S53 §6.1), so style values copy unchanged.
+lookups through S86's `TitleDocument3D::fromPachislop` (S86 R67); effects and generators through
+S83's `PachislopFxMap` (S83 §6.9: generator angles negated, `x`/`y` pairs to Vec2, renames); template layers `title2d` / `title3d` → `text`, `shape`, `vector` or `image` by their source
+with `dimension`; `background` layers → S80 `fill` generator layers; ids in templates re-minted
+deterministically (FNV-1a of the layer path and index); colours lowercase. S80 kept Pachislop's
+coordinate space, units and angle conventions (S80 §6.1), so style values copy unchanged.
 
 #### 6.7.2 New ids of the 104 ported looks
 
@@ -990,15 +990,15 @@ BIG BONUS, RUSH, FEVER, CHANCE, 保留, まくら, JACKPOT) are not trademarks a
    for every ported item. The PNGs stay outside the repository (they are the review aid only; our
    renderer is not expected to match them pixel for pixel).
 4. `review.json` records the verdict; `tuned` items have their patch in `overrides.json`. A
-   maintainer re-running the port after S56 or S59 change reviews only items whose render or data
+   maintainer re-running the port after S83 or S86 change reviews only items whose render or data
    changed (`review-sheet --changed-since <git ref>`).
 
 ### 6.8 New looks (91)
 
 Notation: Face = the face material; Rims inner → outer as `width% colour [extras]`; "base" = a
-rim with offset `[0, −w]`; effects and generators by S53/S56 type; fonts as pack ids `latin / ja`.
+rim with offset `[0, −w]`; effects and generators by S80/S83 type; fonts as pack ids `latin / ja`.
 Colours are the starting values; the author tunes them by eye against our renderer and records the
-final values in the file. All 2D unless marked 3D (S59 material presets named as Pachislop's:
+final values in the file. All 2D unless marked 3D (S86 material presets named as Pachislop's:
 `gold`, `chrome`, `silver`, `candy`, `glass`, `plastic`, `emissive`, `ruby`, `blue_metal`, `black_gloss`,
 `white_gloss`...).
 
@@ -1052,7 +1052,7 @@ final values in the file. All 2D unless marked 3D (S59 material presets named as
 | `scifi/hud-cyan` | Face `#00e0ff` fill opacity 0.2 with `scanlines` (intensity 0.35, spacing 4 px); rim 0.8 % `#8af6ff`; `outer_glow` `#00e0ff` 20 px add; generator `magic_circle` (`hud`) below, following | orbitron (wght 900) / train-one |
 | `scifi/hologram-glitch` | Face linear `#bff8ff → #2a8aff`, opacity 0.75, sheen 0.8; `scanlines`; `glitch` amount 0.3; `chromatic_aberration` 4 px | audiowide / train-one |
 | `scifi/plasma-edge` | Face `#0a0f1e`; rims 1 % `#50a0ff`, `outer_glow` `#3a80ff` 18 px; generator `lightning` (`electrify`, blue) | orbitron (wght 900) / train-one |
-| `scifi/titanium-bevel-3d` (3D) | Extrude 16 %, chamfer 3 %; face `blue_metal` with `pattern` `brushed_metal` (S56's kind) and `flakes` 0.2; band 0.8 % `emissive` cyan keyline; `warehouse` | russo-one / train-one |
+| `scifi/titanium-bevel-3d` (3D) | Extrude 16 %, chamfer 3 %; face `blue_metal` with `pattern` `brushed_metal` (S83's kind) and `flakes` 0.2; band 0.8 % `emissive` cyan keyline; `warehouse` | russo-one / train-one |
 | `scifi/visor-chrome-3d` (3D) | Extrude 12 %, round bevel; face `chrome` with gradient `#ffffff → #2060ff (0.55) → #000820`; side gunmetal; `night_city`; glint | audiowide / train-one |
 | `scifi/contour-light-guide` | Face `#0b1a2a`; rim 0.8 % `#2ad8ff`; `contour_lines` (4 lines inward, cyan, glow) | orbitron (wght 700) / train-one |
 | `scifi/warp-streak` | Face linear `#ffffff → #6ae8ff`; rim 1 % `#04203a`; `motion_trail` (smear, 180°, 60 px, taper); generator `speed_lines` (`flow_h`) below | orbitron (wght 900) / train-one |
@@ -1163,13 +1163,13 @@ final values in the file. All 2D unless marked 3D (S59 material presets named as
 | `minimal/mono-stroke` | Face `#111111`; rims 1.5 % white, 0.8 % `#111111` | archivo-black / mplus1p-black |
 | `minimal/matte-3d` (3D) | Extrude 8 %, round bevel 1 %; face `plastic` white roughness 0.7; AO on; `softbox` | inter (wght 800) / zen-kaku-gothic-new-black |
 
-#### 6.8.1 What the new looks need from S56 and S59
+#### 6.8.1 What the new looks need from S83 and S86
 
-Every effect, generator and preset named above is in S56's catalogue (§6.6, §6.7, §6.8 of S56),
+Every effect, generator and preset named above is in S83's catalogue (§6.6, §6.7, §6.8 of S83),
 including its genre effects `drips`, `scanlines`, `pixelate`, `distress`, `chalk` and `holographic`;
-the colour-scheme hooks are S56's `ParamDef::light` and `SpectrumSwitch` (S56 §6.2). From S59: extrude
-and inflate, bevel, bands with box plates, the material presets named (S59 R17), `emissive`, glint,
-AO, and the environments named (S59 R24 plus the four S57 adds, §6.12). Where S56 or S59 rename
+the colour-scheme hooks are S83's `ParamDef::light` and `SpectrumSwitch` (S83 §6.2). From S86: extrude
+and inflate, bevel, bands with box plates, the material presets named (S86 R17), `emissive`, glint,
+AO, and the environments named (S86 R24 plus the four S84 adds, §6.12). Where S83 or S86 rename
 something before landing, their names win and the look files follow.
 
 ### 6.9 Color Schemes (33)
@@ -1270,7 +1270,7 @@ clipping, adjustment layers) and its Japanese text as `sample.ja`; `sample.en` i
 
 (⏎ = a line break.) Templates whose text has per-character styling (`t-gekiatsu-burst`: 激 red, アツ
 gold) store per-language character adjustments in the placeholder (`chars: {en: {...}, ja: {...}}`),
-applied with the sample; carried user text keeps only adjustments within its length (S53 `set_text`).
+applied with the sample; carried user text keeps only adjustments within its length (S80 `set_text`).
 Two templates have no text layer: their `placeholders` is empty.
 
 #### 6.10.2 The 36 new templates
@@ -1318,7 +1318,7 @@ the family's gradient) unless stated; "title" / "subtitle" are the `text` / `sub
 | `minimal/hud-label` | SCORE 0 (スコア 0), 512 × 128 | text `minimal/ink-inset` |
 
 `gems/treasure-banner`, `elements/frozen-banner`, `metal/gold-award-badge`, `fantasy/quest-complete` and
-`sports/match-title` use 3D looks and are unavailable until S59 (R6). `horror/the-end` is a
+`sports/match-title` use 3D looks and are unavailable until S86 (R6). `horror/the-end` is a
 generic ending banner; game-specific catchphrases are denied terms.
 
 ### 6.11 The font pack (32 families, 46,181,548 bytes)
@@ -1370,12 +1370,12 @@ Japanese: 41,223,888 bytes; Latin: 4,957,660 bytes.
 - **All 32 in the install, none in the binary, a copy in a project on use.** Every look must render
   offline the moment the editor is installed, and Japanese titles are first class, so the pack is
   whole (44 MiB staged with the install, like S36's library). The editor binary does not grow by a
-  font. A project only gets the faces its documents use; a game only gets what S54 subsets from them.
+  font. A project only gets the faces its documents use; a game only gets what S81 subsets from them.
 - **Variable fonts stay variable.** Playfair, Tilt Neon, Orbitron, Teko and Inter ship as upstream's
-  variable files; looks set axes through S53's `variations`. No derived static instance is made, so
+  variable files; looks set axes through S80's `variations`. No derived static instance is made, so
   the files stay byte-identical to upstream and the OFL's modification clause does not arise.
 - **The editor UI** (Library tile names in Japanese, the text field) needs a CJK UI font; that is
-  S55's (e2 §7): the pack's Black weights are display faces, not UI faces.
+  S82's (e2 §7): the pack's Black weights are display faces, not UI faces.
 
 #### 6.11.2 Files and notices
 
@@ -1393,17 +1393,17 @@ version string) | Location (`editor/resources/titleart/fonts/<id>/` with `OFL.tx
 bytes is also found through S04's asset database), else a copy plan: the font file and `OFL.txt` into
 `assets/TitleArt/Fonts/<pack id>/`, the font's `.meta` minted by S04 with a `provenance` section
 `{licence: OFL-1.1, source: titleart-pack, url: <upstream path at the commit>, builtin: {set: fonts,
-id: <pack id>, sha256}}` (S36 R8's schema; if S36 has not landed, S57 adds the section to
+id: <pack id>, sha256}}` (S36 R8's schema; if S36 has not landed, S84 adds the section to
 `AssetMeta::isKnown` with S36's exact schema). The copy is part of the op's undo step (`CopyFileCmd`
 per file and `SetAssetMetaCmd`, grouped with the document write). A file already there with other
 bytes is never overwritten (`font_conflict`, the import uses `<pack id>-2/`).
 
-### 6.12 Environments (S59's system; four added by S57)
+### 6.12 Environments (S86's system; four added by S84)
 
-S59 R24 defines the environment ids: procedural `studio`, `strips`, `backlit`, `under`, `sunset`,
+S86 R24 defines the environment ids: procedural `studio`, `strips`, `backlit`, `under`, `sunset`,
 `neon`, `gold`, `night`, `softbox` (Studio Small 09 plus the key softbox), photo `highway` (Autumn
 Road), `city` (Potsdamer Platz), `sky` (Derelict Highway Midday), `custom`, `matcap`. Ported looks keep
-Pachislop's names, which are S59's. S57 adds four photo environments to S59's manifest, for families
+Pachislop's names, which are S86's. S84 adds four photo environments to S86's manifest, for families
 Pachislop had no light for (asset pages checked on 2026-11-04: CC0, 1K to 16K available):
 
 | id | Poly Haven asset | Author (asset page) | Used by |
@@ -1413,10 +1413,10 @@ Pachislop had no light for (asset pages checked on 2026-11-04: CC0, 1K to 16K av
 | `sunset_harbour` | `venice_sunset` | Greg Zaal | sports, fantasy gold |
 | `warehouse` | `empty_warehouse_01` | Sergej Majboroda | metal, sci-fi, mecha |
 
-They are fetched, licensed, staged and noticed exactly as S59's four (S59 §6.5 "Fetch", R66): 2k
+They are fetched, licensed, staged and noticed exactly as S86's four (S86 §6.5 "Fetch", R66): 2k
 `.hdr` in `editor/resources/titleart/hdri/`, the manifest's slug, URL and SHA-256, never from the
 Pachislop repository. 2D looks reach a photo environment as a reflection map (§6.7.1): Pachislop's
-2D map `studio` is `softbox`'s HDRI, `highway`, `city`, `sky` are S59's photos of the same names.
+2D map `studio` is `softbox`'s HDRI, `highway`, `city`, `sky` are S86's photos of the same names.
 Import on use: `assets/TitleArt/Environments/<slug>_2k.hdr` with a `.meta` (`import.textureImporter`
 type HDR; provenance `{licence: CC0-1.0, source: polyhaven, url}`), the same rules as fonts (§6.11.3).
 
@@ -1425,7 +1425,7 @@ type HDR; provenance `{licence: CC0-1.0, source: polyhaven, url}`), the same rul
 `TitleLibraryIndex` derives for every item: `uses` (effect, generator, pattern, texture and 3D
 material types), `features` (`bevel`, `knockout`, `erode`, `glass`, `reflection`, `finish`,
 `pattern:<kind>`, `texture:<kind>`, `3d`, `inflate`, `extrude`, `generators`) and `cost`
-(S53's `CostClass` `C0`..`C4`: the maximum over the item's effects and generators, at least `C3`
+(S80's `CostClass` `C0`..`C4`: the maximum over the item's effects and generators, at least `C3`
 for any 3D look). Each derived term has an English phrase and a Japanese
 word from a table in `TitleLibrarySearch.cpp` (`light_glow` → "light glow", "power glow" / ライトグロー,
 `pattern:zebra` → "zebra" / ゼブラ, `knockout` → "hollow" / 中抜き, `inflate` → "puffy" / ぷっくり);
@@ -1486,7 +1486,7 @@ threshold is never moved onto the library's worst item.
 
 `tools/mcp/tests/fixtures/title-library-red/`: one bad item and its fixed twin per lint rule (eight
 layers, one per check id; the same eight are `lint_cases` in the dump, so our results are compared with `lint.ts`'s)
-and per `check_title` check S53 defines and the two S57 adds (an olive gold, a flat metal; a clipped glyph, a missing glyph, a flooded counter, a
+and per `check_title` check S80 defines and the two S84 adds (an olive gold, a flat metal; a clipped glyph, a missing glyph, a flooded counter, a
 no-op effect, an unseeded random element...), plus library-level ones: a look with an unmapped
 member, a denied term in a synonym, a stale thumbnail recipe, a look whose `part_effects` key its
 style lacks, a template without placeholders over a text layer, a scheme with a 3-colour light ramp.
@@ -1496,22 +1496,22 @@ The gate asserts each bad item fails exactly its check and its twin passes.
 
 `tools/mcp/tests/test_title_library_golden.py` (llvmpipe class in `tools/mcp/gpu_lane.json`, as the
 MCP suite's other goldens): 36 cases in `tools/mcp/tests/golden/title-library/`: two looks per family
-(one 2D, one 3D; 3D cases are added when S59 lands), four schemes on `casino/outline-gold`
+(one 2D, one 3D; 3D cases are added when S86 lands), four schemes on `casino/outline-gold`
 (`gold`, `rainbow`, `zebra`, `neon-pink`), four templates (`casino/big-win-3d`, `casino/rush-title-fx`,
 `fantasy/kingdom-title`, `minimal/clean-title`) on their `en` sample, at 0.25 × on transparent
 backgrounds, compared premultiplied with Pachislop's three limits (max channel difference 48/255,
 mean 0.25/255, at most 0.1 % of pixels over 8/255; a premultiplied mode added to
 `tools/mcp/pngdiff.py`). Each case renders twice first (identical bytes). Updating a golden
-(`JASPER_TITLE_UPDATE_GOLDEN=1`) needs a row in S53's title golden ledger (name, metric before and
-after, reason) in `docs/titleart/goldens.md`, checked by S53's `tools/titleart/check_golden_ledger.py`.
+(`JASPER_TITLE_UPDATE_GOLDEN=1`) needs a row in S80's title golden ledger (name, metric before and
+after, reason) in `docs/titleart/goldens.md`, checked by S80's `tools/titleart/check_golden_ledger.py`.
 
 ### 6.15 MCP: `list_title_library` and the ops
 
-S53 registers `list_title_library` in group `title_art` (Read, read-only, idempotent, allowed while
+S80 registers `list_title_library` in group `title_art` (Read, read-only, idempotent, allowed while
 playing). Its schema as this spec needs it (`McpSchema` builders, closed objects):
 
 ```
-kind        stringEnum (S53's program enum: effects|generators|blend_modes|fonts|looks|color_schemes|
+kind        stringEnum (S80's program enum: effects|generators|blend_modes|fonts|looks|color_schemes|
             templates|environments|materials_3d|bevel_profiles|animation_presets)
 id          string            one item: detail tier
 query       string            words, en/ja/romaji
@@ -1520,7 +1520,7 @@ dimension   stringEnum 2d|3d
 tags        array of string   all must match
 scope       stringEnum builtin|project|user|all   default all
 favorites   boolean
-limit       integer 1..48     default 20 (S53)
+limit       integer 1..48     default 20 (S80)
 offset      integer ≥ 0
 sheet       object {text?, ids? (≤ 9), path? + layer? (render on a document's layer), cell? [w,h],
                     columns? 1..5, background? black|white|checker|machine, color_scheme?}
@@ -1529,9 +1529,9 @@ sheet       object {text?, ids? (≤ 9), path? + layer? (render on a document's 
 Description (≤ 400 characters): "Title Art library: Looks, Color Schemes, Templates, fonts,
 environments. No arguments: the catalogue. kind + query/family/tags: rows with a ready `use` op. id:
 one item. sheet: items rendered on your text or layer as one numbered image: pick by seeing. Apply
-with edit_title ops apply_look, apply_color_scheme, apply_template." Listing size: S57's row of S53
+with edit_title ops apply_look, apply_color_scheme, apply_template." Listing size: S84's row of S80
 §6.11's program budget table: ≤ 450 characters on `list_title_library` (which ends at ≤ 1,430 with
-S53's 860 and S56's 120) and 0 on `edit_title` (S53's description already names the library op
+S80's 860 and S83's 120) and 0 on `edit_title` (S80's description already names the library op
 family and points at `jasper://docs/title-art#ops`). No new tool. `available` is not a parameter: unavailable items are listed with
 `available: false` and the reason.
 
@@ -1542,13 +1542,13 @@ family and points at `jasper://docs/title-art#ops`). No new tool. `available` is
 | `{id:"metal/chrome-3d"}` | name en/ja, description, family, dimension, `ref_size`, structure summary (`face: chrome, bevel round 3 %; bands: 2; effects: outer_glow; generators: glints; environment: softbox`), font pair, keeps / replaces line, `requires`, allowlists, provenance, the thumbnail as an image only if asked (`sheet`) | ≤ 1,600 chars (≈ 400 tokens) |
 | `{kind:"looks", query:"gold", sheet:{text:"大当り", cell:[320,160], columns:3}}` | rows as above numbered 1..n and one PNG (cells labelled with `n`), `render_ms` | 960 × 320 ≈ 410 image tokens; ≤ 1024 × 576 (≈ 786) |
 
-Sheets render through `TitleLibraryApply::preview` on the S53 renderer: a sheet is a job past 1 s
+Sheets render through `TitleLibraryApply::preview` on the S80 renderer: a sheet is a job past 1 s
 (`McpJobs`); cells are cached by preview key (R33). With `path` + `layer`, each cell is that layer
 with the look or scheme applied (the agent's real content); with `text`, a Text layer of size 200 in
 the item's font pair. Errors: unknown `kind` lists the kinds, unknown `family` the families, an id that
 does not resolve the R4 suggestions.
 
-Ops (in `edit_title`'s `ops`, S53 §6.2):
+Ops (in `edit_title`'s `ops`, S80 §6.2):
 
 | Op | Members |
 |---|---|
@@ -1614,7 +1614,7 @@ namespace jasperengine::editor::titleart {
         OpResult applyTemplate(TitleArtDoc& doc, const ApplyTemplateArgs& args, ImportPlan& imports);
         Look captureLook(const TitleArtDoc& doc, std::string_view layer, const CaptureOptions& o, AssetCopies& files);
         titleart::ColorScheme extractColorScheme(const TitleArtDoc& doc, std::string_view layer);
-        Look lookFromStyle(const StyleSource& style, double refSize, const CaptureOptions& o);   // S60's .asl import
+        Look lookFromStyle(const StyleSource& style, double refSize, const CaptureOptions& o);   // S87's .asl import
         TitleArtDoc preview(const TitleArtDoc& doc, const nlohmann::json& op);   // no imports, no history
     }
     class TitleLibraryPreviews {
@@ -1627,7 +1627,7 @@ namespace jasperengine::editor::titleart {
 ```
 
 `PachislopPort` (`editor/titleart/library/PachislopPort.h`: `portDump(json, PortOptions) -> PortResult
-{files, provenance, notes}`) is the converter's stage 2 and S60's importer core. `TitleArtOps` (S53)
+{files, provenance, notes}`) is the converter's stage 2 and S87's importer core. `TitleArtOps` (S80)
 dispatches the eight ops to `TitleLibraryApply` / the library store; an
 `ImportPlan` becomes `CopyFileCmd`s and `SetAssetMetaCmd`s grouped with the document's
 `WriteFilesCmd` into the op batch's one undo step.
@@ -1642,14 +1642,14 @@ dispatches the eight ops to `TitleLibraryApply` / the library store; an
 | `title_library.keep_color_scheme` | User | bool | true |
 | `title_library.folded_sections` | User | list of `<kind>/<family>` | `[]` |
 
-Commands (S25 CommandCatalog, placed by S55): `titleDesigner.saveAsLook`, `titleDesigner.saveAsColorScheme`,
+Commands (S25 CommandCatalog, placed by S82): `titleDesigner.saveAsLook`, `titleDesigner.saveAsColorScheme`,
 `titleDesigner.saveAsTemplate`, `titleDesigner.revertToLook`, `assets.createTitleArtFromTemplate`. No default
 shortcuts.
 
 ### 6.18 Player size (S34)
 
 Only `ColorScheme.cpp` / `ColorSchemeApply.cpp` reach players, as part of the `JASPERENGINE_TITLE_ART`
-module (a player has them exactly when it has the module, S54 R52). Estimated
+module (a player has them exactly when it has the module, S81 R52). Estimated
 ≤ 30 KB Linux Release, ≤ 15 KB wasm gzip. Everything else (library, previews, lint, baker, pack): editor
 only.
 
@@ -1658,9 +1658,9 @@ only.
 | AC | Verification |
 |---|---|
 | AC1 (R1–R3, R5, R49) | gtest `editor/tests/titleart/TitleLibraryIOTest.cpp`: every built-in file parses with no warning and `write(parse(f)) == f`; sparse writing omits defaults and keeps unknown members and unknown types; `TitleLookMigrationsTest.DefaultChangeKeepsOldLooks` registers a test-only v1→v2 step that changes a default and fills the old one: a v1 look renders identically before and after; **red control**: the same test without the fill step fails; a file of a newer version loads read-only with `version_newer`. |
-| AC2 (R4, R6) | `TitleLibraryTest.Refs`: built-in, `project/`, `user/` refs resolve; a typo returns three suggestions and the `list_title_library` call; an `aliases` entry resolves with `deprecated`. `TitleLibraryTest.Availability`: with a fake registry lacking `drips`, `horror/blood-drip` is `available: false` with reason "needs effect drips (S56)" and `apply_look` refuses it. |
+| AC2 (R4, R6) | `TitleLibraryTest.Refs`: built-in, `project/`, `user/` refs resolve; a typo returns three suggestions and the `list_title_library` call; an `aliases` entry resolves with `deprecated`. `TitleLibraryTest.Availability`: with a fake registry lacking `drips`, `horror/blood-drip` is `available: false` with reason "needs effect drips (S83)" and `apply_look` refuses it. |
 | AC3 (R7, §6.4 look column) | `TitleLibraryApplyTest.LookKeepsContract`: a layer with every kept member of §6.4 set to non-default values; after `apply_look` each kept member is byte-identical (canonical JSON of the member) and each replaced member equals the look's; **red control**: a test hook that drops `masks` in apply makes the test fail naming `masks`. |
-| AC4 (R7) | `TitleLibraryApplyTest`: `PxScaleByRefSize` (ref 200 on size 400 doubles every px param, handles land at `position + 2 × value`); `OwnedGeneratorsReplaced` (owned ones replaced, a user generator following the layer kept); `AutoGroup` (created, reused, dissolved with the transform folded); `DimensionSwitch` (3D look on a 2D layer sets `dimension: 3d`, back again; skipped with a reason until S59); `FreshLinks` (two applications of a linked look do not share a link); `KeepColorScheme` (scheme re-applied, cleared when off). |
+| AC4 (R7) | `TitleLibraryApplyTest`: `PxScaleByRefSize` (ref 200 on size 400 doubles every px param, handles land at `position + 2 × value`); `OwnedGeneratorsReplaced` (owned ones replaced, a user generator following the layer kept); `AutoGroup` (created, reused, dissolved with the transform folded); `DimensionSwitch` (3D look on a 2D layer sets `dimension: 3d`, back again; skipped with a reason until S86); `FreshLinks` (two applications of a linked look do not share a link); `KeepColorScheme` (scheme re-applied, cleared when off). |
 | AC5 (R13, §6.5.4) | `TitleLibraryCaptureTest.RoundTripsEveryBuiltIn`: for every available built-in look, `capture(apply(look))` normalised equals the look (ids, positions, `ref_size`, `from_look` marks); a look with an image fill saved to `user` scope writes `<slug>.files/` and re-applies in a second project with the image imported. |
 | AC6 (R8, §6.5.2) | gtest `engine/tests/core/titleart/ColorSchemeApplyTest.cpp`: role fixtures (a keyline at luma 0.1 → dark; an offset rim → base; three accent rings and two accents → the outermost takes the last); structure kept (rim count, widths, joins, offsets, bevels, textures, depths, non-colour params byte-identical); face span `layer` → `line`, `char` kept; alpha profile kept; relief-only pattern kept; white cores kept; `fire`, `smoke`, `ink_splatter`, `lens_flare`, `glints` untouched; spectrum on `rainbow`; orb tint; `Idempotent`: for every scheme × every available built-in look, applying twice equals once. |
 | AC7 (R8, R19 parity) | `ColorSchemeApplyTest.MatchesPachislop`: for the dump's `colourway_cases` (21 looks × 11 colourways computed by Pachislop's `applyColourway`), our `applyColorScheme` on the ported look equals the mapped Pachislop result member by member, colours within 1/255. |
@@ -1675,67 +1675,67 @@ only.
 | AC16 (R35, R45) | gtest `editor/tests/titleart/StyleLintTest.cpp`: per rule, fires on the bad twin with the measured value, not on the good twin, and its fix op makes it pass; `LibraryChecksTest`: a `gold`-schemed face moved to olive (hue +40°) fails `color_scheme_match` and its fix passes, a metal face with finish and bevel off fails `metal_range`, their twins pass; `MatchesPachislop`: our findings on the dump's `lint_cases` equal `lint.ts`'s (rule ids mapped). `test_title_library_mcp.py`: `check_title` returns `style_lint.contrast` with `measured`, `threshold`, `rim#1` and a `fix` that `edit_title` applies. |
 | AC17 (R37, §6.14.3) | `test_title_library_calibration.py`: for each check, `calibration.json`'s `L`, `R`, `T` are recomputed from the gate's run and the red controls; `T` sits in the middle half; **red controls**: a threshold changed in code without the file → fail; a `T` set to the library's worst value → fail. |
 | AC18 (R38) | `title-library verify` and `PachislopPortTest.DeniedTerms`: an injected term in a name, synonym, tag, template sample and text layer each fail; a Latin denied term matches as a whole word and not inside a longer word, a CJK denied term matches as a substring (test terms read from `denied_terms.txt`). |
-| AC19 (R28–R31) | `tools/ci/test_check_notices.py` new cases: a font directory without `OFL.txt` or without a NOTICE row fails; `--installed` on the Linux install tree finds `licenses/titleart-font-*-OFL.txt`; `fetch_fonts.py --verify` (offline) matches every font file's SHA-256 and size with `SOURCE.json` and every path is under `ofl/`; S57's four HDRIs are in S59's manifest with SHA-256 and pass S59's checks. `test_title_library_ops.py::test_font_import`: `apply_look` with `apply_font` imports `assets/TitleArt/Fonts/dela-gothic-one/` with `OFL.txt` and a `.meta` provenance once (a second apply imports nothing); with `JASPERENGINE_TITLEART_LIBRARY_DIR` pointing at an empty directory the op succeeds with `font_unavailable` and the layer's font unchanged. |
+| AC19 (R28–R31) | `tools/ci/test_check_notices.py` new cases: a font directory without `OFL.txt` or without a NOTICE row fails; `--installed` on the Linux install tree finds `licenses/titleart-font-*-OFL.txt`; `fetch_fonts.py --verify` (offline) matches every font file's SHA-256 and size with `SOURCE.json` and every path is under `ofl/`; S84's four HDRIs are in S86's manifest with SHA-256 and pass S86's checks. `test_title_library_ops.py::test_font_import`: `apply_look` with `apply_font` imports `assets/TitleArt/Fonts/dela-gothic-one/` with `OFL.txt` and a `.meta` provenance once (a second apply imports nothing); with `JASPERENGINE_TITLEART_LIBRARY_DIR` pointing at an empty directory the op succeeds with `font_unavailable` and the layer's font unchanged. |
 | AC20 (R32, R33) | `title-library bake-thumbnails --check` exits 0 on the committed tree; **red control**: a colour edited in a look's file → exit 1 naming that look. gtest `TitleLibraryPreviewsTest` (fake renderer): a position change keeps the key, a text change makes a new one; never more than 2 in flight; a frame's slice stays within the budget; LRU evicts the oldest past 240; a pending tile keeps its old image only for the same layer; device loss re-requests visible tiles. |
-| AC21 (R40, R41) | `tools/perf` bench `title_library_bench` on a build server and lane machine H (before/after table in Progress): every R40 budget; the editor binary's growth ≤ 1.5 MiB; the staged thumbnails ≤ 16 MiB (the baker fails above `JASPER_TITLEART_THUMB_BUDGET`, red control with a 1 MiB budget); a project without `color_schemes` exports byte-identical with and without S57 (S34's size tools), one with it grows by the measured `ColorSchemeApply` size (≤ 30 KB). |
+| AC21 (R40, R41) | `tools/perf` bench `title_library_bench` on a build server and lane machine H (before/after table in Progress): every R40 budget; the editor binary's growth ≤ 1.5 MiB; the staged thumbnails ≤ 16 MiB (the baker fails above `JASPER_TITLEART_THUMB_BUDGET`, red control with a 1 MiB budget); a project without `color_schemes` exports byte-identical with and without S84 (S34's size tools), one with it grows by the measured `ColorSchemeApply` size (≤ 30 KB). |
 | AC22 (R43, §6.15) | `tools/mcp/tests/test_title_library_mcp.py`: the group is hidden until `tool_groups` enables `title_art`; catalogue ≤ 600 characters; rows ≤ 120 characters each and a row's `use` op, pasted into `edit_title`, applies; detail ≤ 1,600 characters; a 9-cell sheet returns one image ≤ 1024 × 576 with the JSON numbered alike; a sheet over 1 s returns a `job_id`; `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py` pass. |
-| AC23 (R12, R39) | `ColorSchemeApplyTest.EmbeddedSchemes`: `expose` of a `color_scheme` parameter with two options writes both into `color_schemes`; the engine function on the document equals the editor op's result byte for byte (canonical JSON); empty `options` gives `color_scheme_options_empty` in `check_title`. The player-side switch through Lua is S54's AC. |
+| AC23 (R12, R39) | `ColorSchemeApplyTest.EmbeddedSchemes`: `expose` of a `color_scheme` parameter with two options writes both into `color_schemes`; the engine function on the document equals the editor op's result byte for byte (canonical JSON); empty `options` gives `color_scheme_options_empty` in `check_title`. The player-side switch through Lua is S81's AC. |
 | AC24 (R34) | gtest `TitleLibrarySearchTest`: `gold` finds `metal/classic-gold`; `きん` and `kin` find the `gold` scheme; `ゴールド` and `ごーるど` find the same items (kana folding); `ＧＯＬＤ` (full width) equals `gold`; "light glow" finds `metal/light-glow-gold` through derived tags; all words must match (`gold zebra` finds `casino/zebra-gold`, not `metal/classic-gold`); runs under the harness's network guard. |
-| AC25 (R42) | `tools/mcp/tests/test_title_library_ui.py` (xvfb, isolated editor; runs once S55's panel exists): clicking a Looks tile applies with one undo step named `Apply Look Classic Gold`; Ctrl+Z restores; Revert to Look re-applies; Save As Look writes the file; a `→3D` tile converts with the toast; screenshots of the three tabs in the evidence. |
+| AC25 (R42) | `tools/mcp/tests/test_title_library_ui.py` (xvfb, isolated editor; runs once S82's panel exists): clicking a Looks tile applies with one undo step named `Apply Look Classic Gold`; Ctrl+Z restores; Revert to Look re-applies; Save As Look writes the file; a `→3D` tile converts with the toast; screenshots of the three tabs in the evidence. |
 | AC26 (R10, R11) | `TitleLibraryApplyTest.Deterministic`: one document with two id seeds, the same look applied → identical canonical JSON after id normalisation and identical renders; `preview` leaves the history, the files and the project untouched (no import even for a pack font). |
 | AC27 (R47) | `test_docs.py`: `title-library gen-docs --check` passes; `jasper://docs/title-library` serves per-family sections; `gen_tool_docs.py --check` and `tool_budget.py --check` pass. |
 | AC28 (R36, §6.14.5) | `test_title_library_golden.py`: the 36 cases match their goldens; the summary prints how many differ at all and the largest difference; **red control**: one colour of `gold` moved by 6/255 in the face ramp makes its case fail with a three-panel sheet; a golden changed without a ledger row fails the ledger check. |
 
 ## 8. Dependencies & conflicts
 
-**The Title Art program graph and waves** (the same in S53-S60; S53 §8 is the source, S53 §6.15
+**The Title Art program graph and waves** (the same in S80-S87; S80 §8 is the source, S80 §6.15
 the shared rules; an arrow means "needs"):
 
 | Wave | Specs | Needs |
 |---|---|---|
-| 6 (title art) | S53 core | merged work only |
-| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of S53 §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
-| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+| 6 (title art) | S80 core | merged work only |
+| 6B | S81 runtime, S82 Title Designer, S83 effects and generators, S86 3D | S80 (every hook of S80 §6.15); within the wave, by owner: S81 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S82 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S83 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S86 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S84 library, S85 animation, S87 localisation and interchange | S80 and wave 6B; within the wave, by owner: S84 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S85 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S87 owns the sidecar `languages` table and the per-language bake sets |
 
-Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
-compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
-fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
-S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
-wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
-rest of S55 lands in 6B.
+Edges: S81 → S80. S82 → S80, S81 (Preview As Glyph Atlas, create menus). S83 → S80, S81 (live
+compose runs its kernels; sidecar anchors). S86 → S80, S81 (scheduler, sub-options, component
+fields), S82 (sections, gizmo), S83 (`Glint3D`). S84 → S80, S82 (Library panel), S83, S86. S85 →
+S80, S81, S82, S83 (S86 optional). S87 → S80, S81, S82, S83, S84, S85, S86. One exception crosses a
+wave: S82's Library panel milestone (its M6) draws S84's data and lands with S84 in wave 6C; the
+rest of S82 lands in 6B.
 
-- **Depends on.** S53: the document codec and its JSON migration framework, `TitleArtOps` and its
-  commit, `look {id, color_scheme}` (S57 adds `look.owner` and effect `from_look`, §6.4), part keys
+- **Depends on.** S80: the document codec and its JSON migration framework, `TitleArtOps` and its
+  commit, `look {id, color_scheme}` (S84 adds `look.owner` and effect `from_look`, §6.4), part keys
   with positional aliases, `exposed` with `color_scheme`, `ParamUnit::Px` and gizmo hints, `CostClass`,
-  the renderer and readback, `render_title` previews and jobs, `check_title`'s registry (S53 §6.12
-  assigns S57 `style_lint`, `color_scheme_match`, `metal_range`), `list_title_library` (S53 §6.11:
-  800 characters; S57 adds ≤ 450 for `family`, `dimension`, `tags`, `scope`, `favorites`, `sheet` and
+  the renderer and readback, `render_title` previews and jobs, `check_title`'s registry (S80 §6.12
+  assigns S84 `style_lint`, `color_scheme_match`, `metal_range`), `list_title_library` (S80 §6.11:
+  800 characters; S84 adds ≤ 450 for `family`, `dimension`, `tags`, `scope`, `favorites`, `sheet` and
   the kind `environments`, and fills `looks`, `color_schemes`, `templates`, pack rows of `fonts`), and
-  the `create.template` / `create.look` path of `edit_title`. S56: the catalogue and presets
-  (§6.6-6.8 of S56), `ParamDef::light`, `SpectrumSwitch`, `PachislopFxMap` (S56 §6.9). S59:
+  the `create.template` / `create.look` path of `edit_title`. S83: the catalogue and presets
+  (§6.6-6.8 of S83), `ParamDef::light`, `SpectrumSwitch`, `PachislopFxMap` (S83 §6.9). S86:
   `style_3d`, bands, materials (R17), environments (R24, R66) and `fetch_hdris.py`,
-  `TitleDocument3D::fromPachislop` (R67). S55: the Library panel and dialogs, `foldForSearch` (R27),
-  `TitlePreviewQueue` (R67), the CJK UI font. S54: the module condition for `color_schemes`, Lua
+  `TitleDocument3D::fromPachislop` (R67). S82: the Library panel and dialogs, `foldForSearch` (R27),
+  `TitlePreviewQueue` (R67), the CJK UI font. S81: the module condition for `color_schemes`, Lua
   `setColorScheme`, export of imported fonts and environments. S04 (asset database and `.meta`), S05
   (folder watching), S14 (HDR import type), S24, S25 (settings, commands), S31 (MCP rules), S34, S36
-  (`provenance` section, or S57 adds it with S36's schema).
-- **Blocks.** S55's Library panel content; S60's Pachislop importer (`PachislopPort`,
+  (`provenance` section, or S84 adds it with S36's schema).
+- **Blocks.** S82's Library panel content; S87's Pachislop importer (`PachislopPort`,
   `pachislop-map.json`, `TitleLibraryApply::lookFromStyle`) and template variants (it extends
-  `placeholders`); S58's `animation_presets` rows in `list_title_library` (S53's enum carries the
+  `placeholders`); S85's `animation_presets` rows in `list_title_library` (S80's enum carries the
   kind).
-- **Aligned with the specs as written on 2026-11-04** (their names win where they move): S56's
-  effect ids (`light_glow`, `aura`, `drips`, `scanlines`, `pixelate`; S53's `outline` for Pachislop's
-  keyline) and preset ids; S59's environment ids, its HDRI folder and fetcher (S57 adds four entries
-  instead of a second pack) and its material preset names; S55's featured-template slot, search fold
-  and preview queue (now S53's `TitlePreviewQueue`); S54's `colorSchemes` "any scheme" when
+- **Aligned with the specs as written on 2026-11-04** (their names win where they move): S83's
+  effect ids (`light_glow`, `aura`, `drips`, `scanlines`, `pixelate`; S80's `outline` for Pachislop's
+  keyline) and preset ids; S86's environment ids, its HDRI folder and fetcher (S84 adds four entries
+  instead of a second pack) and its material preset names; S82's featured-template slot, search fold
+  and preview queue (now S80's `TitlePreviewQueue`); S81's `colorSchemes` "any scheme" when
   `options` is empty (R12). **Settled with the owners:** `ColorSchemeApply` is part of the module
-  (S54 R52); S54 exports the fonts S57 imported under `assets/TitleArt/Fonts/` only as its
-  subsetting decides; S59 R66 accepts the four extra HDRIs within its manifest and size rule; S53
-  §6.1 lists `look.owner`, `from_look` and `color_schemes`; the title golden ledger is S53's.
-- **Merge hotspots.** `editor/mcp/tools/TitleArtTools*.cpp` (S53, S56, S58: `list_title_library`
+  (S81 R52); S81 exports the fonts S84 imported under `assets/TitleArt/Fonts/` only as its
+  subsetting decides; S86 R66 accepts the four extra HDRIs within its manifest and size rule; S80
+  §6.1 lists `look.owner`, `from_look` and `color_schemes`; the title golden ledger is S80's.
+- **Merge hotspots.** `editor/mcp/tools/TitleArtTools*.cpp` (S80, S83, S85: `list_title_library`
   kinds), `editor/titleart/TitleArtOps.cpp` (op dispatch), `tools/ci/check-notices.py` and
   `NOTICE.md`, root `CMakeLists.txt` (embedding, install staging), `editor/AppSettings`/settings
-  registry, `docs/mcp/guide/title-art.md` (S53 owns the file; S57 writes the Library section).
+  registry, `docs/mcp/guide/title-art.md` (S80 owns the file; S84 writes the Library section).
 
 ## 9. Risks & defaults
 
@@ -1744,13 +1744,13 @@ rest of S55 lands in 6B.
 - **Repository growth (≤ 92 MB binary content).** Default: one squashed commit as S36 did; no LFS
   (the repository uses none); thumbnails are the only part that can be regenerated and they have a
   hard budget.
-- **Install growth (≤ 92 MB with fonts, S57's HDRIs, thumbnails).** Default: accepted for offline
+- **Install growth (≤ 92 MB with fonts, S84's HDRIs, thumbnails).** Default: accepted for offline
   Japanese-first titles; a later "minimal install" could drop the extended Japanese faces and fall back
-  to imports from a user-chosen folder, not in this spec; S57's four HDRIs drop to 1k if they pass
-  30 MB (S59's rule).
-- **S56 or S59 lag.** Default: unavailable items are listed with reasons, excluded from the gate with a
+  to imports from a user-chosen folder, not in this spec; S84's four HDRIs drop to 1k if they pass
+  30 MB (S86's rule).
+- **S83 or S86 lag.** Default: unavailable items are listed with reasons, excluded from the gate with a
   count, and become gated the day their requirements register (the gate then fails until they pass).
-- **Default changes in S53/S56/S59 shift sparse looks.** Default: R5's rule (a version bump with a
+- **Default changes in S80/S83/S86 shift sparse looks.** Default: R5's rule (a version bump with a
   fill step) and AC1's red control; the 36 library goldens (§6.14.5) catch what slips through.
 - **Trademark misses.** Default: the denied-terms list is reviewed with every content change and only
   grows; names are descriptive (material, colour, structure), never a product's.
@@ -1759,7 +1759,7 @@ rest of S55 lands in 6B.
 - **ThorVG/HarfBuzz render a pack font differently from browsers.** Not a risk for the port review
   (Pachislop references are aids), but thumbnails use our renderer only.
 - **A user edits an imported pack font in place.** It is a project file; its `.meta` provenance keeps
-  the source and S54's credits still list it.
+  the source and S81's credits still list it.
 
 ## Milestones
 
@@ -1770,28 +1770,28 @@ rest of S55 lands in 6B.
 - **M3** `apply_look`, capture, `apply_template`, the library ops, favorites and recents (R7, R9–R11,
   R13–R15, R17, R18, R44); AC3–AC5, AC8–AC10, AC26.
 - **M4** The converter, the port of 104 looks and 37 templates, review records (R19–R22, R24); AC11–AC13.
-- **M5** Font pack, S57's four HDRIs in S59's set, imports, notices (R28–R31); AC19.
+- **M5** Font pack, S84's four HDRIs in S86's set, imports, notices (R28–R31); AC19.
 - **M6** Lint, gate, calibration, denied terms, goldens (R35–R38, R45); AC15–AC18, AC28.
-- **M7** New content: 91 looks, 22 schemes, 36 templates (R23, R25–R27); AC14 (items needing S56/S59
+- **M7** New content: 91 looks, 22 schemes, 36 templates (R23, R25–R27); AC14 (items needing S83/S86
   become available as those land).
 - **M8** Baker, thumbnails, live previews, search, MCP tiers, docs, CLI (R32–R34, R43, R46, R47); AC20,
-  AC22, AC24, AC27; then budgets and sizes AC21; the UI AC25 with S55.
+  AC22, AC24, AC27; then budgets and sizes AC21; the UI AC25 with S82.
 
 ## Deviations
 
 1. **Reconciled: `ColorSchemeApply` has no separate link condition**; it is part of the
-   `titleart` module, which only Realtime and Glyph Atlas titles pull in (S54 R52). A per-member
+   `titleart` module, which only Realtime and Glyph Atlas titles pull in (S81 R52). A per-member
    condition would need a third sub-option for about 30 KB.
-2. **Reconciled: `list_title_library` kinds are S53's program enum**; `environments` rows are S59's
-   (they include S57's four HDRIs), `animation_presets` S58's (was "reveals").
-3. **Reconciled: no op names in `edit_title`'s description** (was ≤ 160 characters); S53's
+2. **Reconciled: `list_title_library` kinds are S80's program enum**; `environments` rows are S86's
+   (they include S84's four HDRIs), `animation_presets` S85's (was "reveals").
+3. **Reconciled: no op names in `edit_title`'s description** (was ≤ 160 characters); S80's
    description names the op families, so `edit_title` stays under 1,500.
-4. **Reconciled: item `cost` uses S53's `CostClass` C0-C4** (was `CostTier`), at least C3 for 3D looks.
-5. **Reconciled: Lua reads `colorSchemes` (S54's property)**, not `getColorSchemes()`; command ids use
-   the `titleDesigner.` prefix of S55's window.
+4. **Reconciled: item `cost` uses S80's `CostClass` C0-C4** (was `CostTier`), at least C3 for 3D looks.
+5. **Reconciled: Lua reads `colorSchemes` (S81's property)**, not `getColorSchemes()`; command ids use
+   the `titleDesigner.` prefix of S82's window.
 6. **Reconciled: names.** `metal/deep-glow-gold` is `metal/light-glow-gold` and the derived term is
    "power glow" (no product names); source ids and old texts that carry denied terms appear only in
    §6.7.3's rename table; sample texts `ASHEN REALM` and `伝説` replace texts tied to published works.
-7. **Reconciled: 3D look members use S59's names** (`metallic`, `emission_intensity`, `surface`,
-   no 3D shadow catcher); 2D members use S53's (`gloss` ring, gloss `opacity`); Backlight intensity
-   is S56's percent.
+7. **Reconciled: 3D look members use S86's names** (`metallic`, `emission_intensity`, `surface`,
+   no 3D shadow catcher); 2D members use S80's (`gloss` ring, gloss `opacity`); Backlight intensity
+   is S83's percent.

@@ -1,29 +1,29 @@
-# S56 — Title effects and generators: the full Pachislop catalogue, genre effects, live variants
+# S83 — Title effects and generators: the full Pachislop catalogue, genre effects, live variants
 
-**Wave / Depends on.** Title Art program (spec-first), **wave 6B** (with S54, S55, S59; program
-graph in §8, program rules in S53 §6.15). Depends on:
-- **S53** (wave 6, lands first; every hook below is in S53 §6.15's table): the `.titleart` document, the 2D renderer and its pixel contract, the
+**Wave / Depends on.** Title Art program (spec-first), **wave 6B** (with S81, S82, S86; program
+graph in §8, program rules in S80 §6.15). Depends on:
+- **S80** (wave 6, lands first; every hook below is in S80 §6.15's table): the `.titleart` document, the 2D renderer and its pixel contract, the
   effect and generator registry, the distance-field (SDF) service, the core effects (Outer Glow,
   Inner Glow, Drop Shadow, Inner Shadow, Outline, Color Overlay, Gradient Overlay, Pattern
   Overlay, Gaussian Blur, Adjust), the generators `fill` and `pattern_fill`, `TitleArtOps`, and
   the MCP tools `list_title_library`, `get_title`, `edit_title`, `render_title`, `check_title`;
-- **S54** (same wave; S54 owns them): Realtime mode, its time-sliced cache, the bake sidecar, the live compose
-  that runs the live kernels this spec defines (S54 R9), Glyph Atlas and its `glyph_safety` classes
-  (S54 R31);
-- **S58** (wave 6C, after this spec): the time axis; it animates the parameters this spec classes
-  with S53's `FxAnim` (S58 R11-R12) and depends on the live variants of §6.12.
+- **S81** (same wave; S81 owns them): Realtime mode, its time-sliced cache, the bake sidecar, the live compose
+  that runs the live kernels this spec defines (S81 R9), Glyph Atlas and its `glyph_safety` classes
+  (S81 R31);
+- **S85** (wave 6C, after this spec): the time axis; it animates the parameters this spec classes
+  with S80's `FxAnim` (S85 R11-R12) and depends on the live variants of §6.12.
 
-S55 (the Title Designer) shows what the registry declares; S57 converts Pachislop looks with the
-id map of §6.9; S59 hosts the 3D glint of §6.6.30 inside its 3D render. Owner area:
-- S56's definitions in S53's layout: `engine/core/titleart/effects/*.cpp` and
+S82 (the Title Designer) shows what the registry declares; S84 converts Pachislop looks with the
+id map of §6.9; S86 hosts the 3D glint of §6.6.30 inside its 3D render. Owner area:
+- S83's definitions in S80's layout: `engine/core/titleart/effects/*.cpp` and
   `engine/core/titleart/generators/*.cpp` (one file per family); `engine/core/titleart/analysis/`
   (CPU analysis: highlights, edges, contours, layouts); `engine/core/titleart/gpu/QuadBatch.*`;
-- shader code as `TA_PROGRAM_*` programs of S53's `ShaderType::TITLE_ART` (S53 §6.3), in includes
+- shader code as `TA_PROGRAM_*` programs of S80's `ShaderType::TITLE_ART` (S80 §6.3), in includes
   `engine/shaderlib/titleart/fx/*.glsl`, `engine/shaderlib/titleart/gen/*.glsl` and the shared
   `engine/shaderlib/titleart/tfx_*.glsl`;
 - `editor/resources/titleart/fx-presets/` (one YAML file per effect or generator type);
 - `editor/titleart/fx/FxRecipes.*`, `editor/titleart/fx/FxCost.*`;
-- S56's columns of the generated `docs/mcp/guide/title-art-effects.md` (S53's
+- S83's columns of the generated `docs/mcp/guide/title-art-effects.md` (S80's
   `tools/titleart/gen_effect_docs.py`) and the "Effects and generators" section of
   `docs/mcp/guide/title-art.md`.
 
@@ -46,15 +46,15 @@ desktop-only float formats, no pinned pseudo-effects, and no generators shown as
 ## 2. Scope
 
 **In scope**
-- The 17 Pachislop effects S53 does not port (§6.6.1-6.6.17): Light Glow, Contour Lines, Motion
+- The 17 Pachislop effects S80 does not port (§6.6.1-6.6.17): Light Glow, Contour Lines, Motion
   Blur, Lens Blur, Tilt-Shift Blur, Radial Blur, Extrude, Motion Trail, Halftone, Perspective
   Shadow, Floor Reflection, Wave Warp, Chromatic Aberration, Grain, Glitch, Material, Shatter.
-- The 15 Pachislop generators S53 does not port (§6.7.1-6.7.15): Particles, Ink Splatter, Speed
+- The 15 Pachislop generators S80 does not port (§6.7.1-6.7.15): Particles, Ink Splatter, Speed
   Lines, Light Streaks, Shockwave, Magic Circle, Brush Swirl, Glints, Lens Flare, Backlight, Fire,
-  Smoke, Aura, Lightning, Sunburst. Pattern Fill and Fill are S53's (§6.7.17); S56 adds to them.
+  Smoke, Aura, Lightning, Sunburst. Pattern Fill and Fill are S80's (§6.7.17); S83 adds to them.
 - Ten new genre effects (§6.6.18-6.6.27): Distress, Drips, Scanlines, Pixelate, Ink Brush Stroke,
   Frost, Neon Tube, Chalk, Stitch, Holographic Foil. One new generator: Fractal Noise (§6.7.16).
-- Twelve new procedural material kinds for S53's pattern library (wood, stone, metal and more,
+- Twelve new procedural material kinds for S80's pattern library (wood, stone, metal and more,
   §6.6.28), used by Pattern Overlay, the Material `pattern` member and Pattern Fill.
 - The two Pachislop pinned pseudo-effects, redesigned as style settings (§6.6.29 かすれ Dry
   Brush, §6.6.30 Glint (3D highlights)): no pinned rows in an effect stack.
@@ -64,7 +64,7 @@ desktop-only float formats, no pinned pseudo-effects, and no generators shown as
   CPU analysis library on a packed 8-bit readback grid, seeded random streams, the 8-bit light
   headroom encoding, the cost model and readout (§6.4, §6.5).
 - Per entry: parameters (types, defaults, ranges, units), pass structure, cost class, seeds,
-  animatable parameters for S58, 8-bit fallback, and the live variant for S54 or "bake only".
+  animatable parameters for S85, 8-bit fallback, and the live variant for S81 or "bake only".
 - Registry integration: inspector rows, MCP validation, Lua names, the generated docs page,
   goldens, the Add Effect and Add Generator menus (§6.10), MCP additions (§6.11).
 - Tests: a golden per effect at defaults plus its presets, one per generator preset, parity with
@@ -72,10 +72,10 @@ desktop-only float formats, no pinned pseudo-effects, and no generators shown as
 
 **Out of scope**
 - The registry mechanism itself, the effect runner, distance fields, blend modes, masks, the
-  document format and the core effects: S53. This spec states what it needs from them (§8).
-- Realtime caching, time slicing, the Title Art Renderer component and export: S54. Keyframes,
-  tracks and flipbooks: S58. Designer panels and gizmo drawing: S55. Looks and the converter: S57.
-  The 3D render and its tone map: S59.
+  document format and the core effects: S80. This spec states what it needs from them (§8).
+- Realtime caching, time slicing, the Title Art Renderer component and export: S81. Keyframes,
+  tracks and flipbooks: S85. Designer panels and gizmo drawing: S82. Looks and the converter: S84.
+  The 3D render and its tone map: S86.
 - A particle simulation. Title particles are a closed-form sampler (D6); simulated particles stay
   S20's. A "convert to Particle System" command is not provided (§9 risk 6).
 - Changing the HTML UI effects (`engine/shaderlib/effects/`) or the scene post stack (S13). No
@@ -86,8 +86,8 @@ desktop-only float formats, no pinned pseudo-effects, and no generators shown as
 ## 3. Current state (`feature/title-art` 3ffafdfaa, read)
 
 - **No title code exists.** `engine/core/titleart/`, `editor/titleart/` and
-  `engine/shaderlib/titleart/` are absent. S53 (`docs/specs/S53-title-art-core.md`, written in
-  parallel, read at its current text) fixes what S56 builds on:
+  `engine/shaderlib/titleart/` are absent. S80 (`docs/specs/S80-title-art-core.md`, written in
+  parallel, read at its current text) fixes what S83 builds on:
   - §6.1 the document: effect entry `{id, type, enabled, params}` with every param written;
     generator layer `{generator: {type, params}, follow}`; `px` units scaled by `px_scale`; angles
     clockwise on screen from +x except Photoshop-convention light directions; `style.erode` (かすれ)
@@ -103,11 +103,11 @@ desktop-only float formats, no pinned pseudo-effects, and no generators shown as
   - §6.4 the 18 blend modes, Normal and Add through `PREMULTIPLIED`/`ADDITIVE_PREMULTIPLIED`, and
     the ink-versus-light stack (`adds_light`, `outline`);
   - §6.5 `TitleEffectRegistry` (`EffectDef`, `GeneratorDef`, `ParamDef` with `ParamKind`
-    `Number ... Adjustment`, `CostClass` C0-C4 (S53's integrated text), `passVersion` in the bake version), the
+    `Number ... Adjustment`, `CostClass` C0-C4 (S80's integrated text), `passVersion` in the bake version), the
     ten core effects and the generators `fill` and `pattern_fill`; the docs page
     `docs/mcp/guide/title-art-effects.md` generated by `tools/titleart/gen_effect_docs.py`;
   - §6.11-6.12 `list_title_library {kind: "effects" | "generators", id?, query?}`, `render_title`,
-    `check_title` and the `title_art` budget (S53 §6.11's program budget table).
+    `check_title` and the `title_art` budget (S80 §6.11's program budget table).
 - **HTML UI effects** (`engine/shaderlib/effects/`, 103 `.frag` files) already have per-element
   versions of a third of Pachislop's effects: `glints.frag` (a grid-scattered port of shaders.com
   Sparkle, `@param density`), `sunburst.frag`, `fire.frag` (a generic edge flame), `scanlines.frag`,
@@ -157,14 +157,14 @@ Code, shaders and looks are ported to C++/GLSL with a `NOTICE.md` entry (§6.1 D
 | `src/effects/a/glow.ts` (`deepGlow`, `contourLines`), `src/effects/a/lightGlow.ts` | `light_glow`, `contour_lines` | Mobile tier accumulates down the pyramid (D11); 8-bit light headroom (§6.5) |
 | `src/effects/a/blur.ts` (`motionBlur`, `lensBlur`, `tiltShift`) | `motion_blur`, `lens_blur`, `tilt_shift` | `textureLod` in every loop (D3D11, report p4 §5) |
 | `src/effects/a/distort.ts` (`radialBlur`, `wave`, `chromaticAberration`) | `radial_blur`, `wave_warp`, `chromatic_aberration` | Wave gains a `turbulent` type |
-| `src/effects/a/stylize.ts` (`gradientOverlay` → S53, `extrude2d`, `motionTrail`, `halftone`) | `extrude`, `motion_trail`, `halftone` | Halftone gains dot shapes for comic screens |
-| `src/effects/a/shadow.ts` (`perspectiveShadow`, `floorReflection`; drop and inner → S53) | `perspective_shadow`, `floor_reflection` | Layer box from S53's CPU bounds, not a 6-pass GPU reduction |
-| `src/effects/a/finish.ts` (`glitch`, `grain`, `keyline`) | `glitch`, `grain`; Keyline is S53's Outline | Glitch gains `blocks` mode |
+| `src/effects/a/stylize.ts` (`gradientOverlay` → S80, `extrude2d`, `motionTrail`, `halftone`) | `extrude`, `motion_trail`, `halftone` | Halftone gains dot shapes for comic screens |
+| `src/effects/a/shadow.ts` (`perspectiveShadow`, `floorReflection`; drop and inner → S80) | `perspective_shadow`, `floor_reflection` | Layer box from S80's CPU bounds, not a 6-pass GPU reduction |
+| `src/effects/a/finish.ts` (`glitch`, `grain`, `keyline`) | `glitch`, `grain`; Keyline is S80's Outline | Glitch gains `blocks` mode |
 | `src/effects/a/recipes.ts` | `editor/titleart/fx/FxRecipes.cpp` | Same recipes (shine, rainbow, long shadow, vignette), snake_case |
 | `src/effects/b/material.ts` | `material` | Fields cached by content key instead of rebuilt every run |
 | `src/effects/b/shatter.ts`, `src/effects/b/common.ts` | `shatter`, `analysis/ReadGrid`, `gpu/QuadBatch` | Layout on a job; packed 8-bit grid |
-| `src/effects/lib.ts` (`sdf`, `bounds`, `blur`) | S53's distance fields (`render/FieldPasses.cpp`); S56 uses them | Cached by content hash; RGBA8 seeds on devices (S53) |
-| `src/effects/globalLight.ts` (`lit`) | S53's `withGlobalLight(def, angleKey, relation)` | Same three relations: from, away, floor |
+| `src/effects/lib.ts` (`sdf`, `bounds`, `blur`) | S80's distance fields (`render/FieldPasses.cpp`); S83 uses them | Cached by content hash; RGBA8 seeds on devices (S80) |
+| `src/effects/globalLight.ts` (`lit`) | S80's `withGlobalLight(def, angleKey, relation)` | Same three relations: from, away, floor |
 | `src/generators/common.ts` (`GLINT_STAR_GLSL`, `ANAMORPHIC_GLSL`, `drawInstancedQuads`) | `tfx_glint_star.glsl`, `tfx_anamorphic.glsl`, `QuadBatch` | |
 | `src/generators/particles.ts` | `particles` | Adds `time`, `loop`, `gravity` (closed form) for animation |
 | `src/generators/inkSplatter.ts` | `ink_splatter` | Adds `growth` |
@@ -173,7 +173,7 @@ Code, shaders and looks are ported to C++/GLSL with a `NOTICE.md` entry (§6.1 D
 | `src/generators/glints.ts` | `glints`, `analysis/HighlightFinder` | Anchors cached with the bake; live twinkle |
 | `src/generators/light/{lensFlare,backlight}.ts` | `lens_flare`, `backlight` | |
 | `src/generators/energy/{fire,smoke,corona,lightning,shared}.ts` | `fire`, `smoke`, `aura`, `lightning`, `tfx_upstream.glsl` | Noise texture and baked upstream field on the mobile tier |
-| `src/generators/pattern.ts`, `src/engine/patterns.ts` | S53's `pattern_fill` and pattern library | Twelve new kinds, a scroll `offset` |
+| `src/generators/pattern.ts`, `src/engine/patterns.ts` | S80's `pattern_fill` and pattern library | Twelve new kinds, a scroll `offset` |
 | `src/ui/erode.ts`, `src/ui/glint.ts` | Style settings (§6.6.29, §6.6.30) | Not pinned effect rows |
 | `src/generators/fromEffect.ts`, `src/model/companions.ts` | Add Effect's "Generators that follow this layer" section (§6.10) | Real layers in a visible group, no folding |
 | `tests/harness/cases.ts:360-376`, `tests/golden/compare.ts`, `tests/golden/refs/{effect,generator}/` | `TitleFxGoldenGpu`, `TitleFxParityGpu` | Refs copied as fixtures; parity tolerance §7 |
@@ -198,12 +198,12 @@ Code, shaders and looks are ported to C++/GLSL with a `NOTICE.md` entry (§6.1 D
 ### 4.3 Not taken
 
 - The third-party product names Pachislop used as look references are not used as feature names,
-  aliases or docs text (they are in S57's denied terms); the docs say "power-law glow", "star
+  aliases or docs text (they are in S84's denied terms); the docs say "power-law glow", "star
   filter", and so on. Pachislop's own type keys (`deepGlow`, ...) appear only in the converter's id
   map (§6.9), as source keys.
 - Pachislop's two overlapping param-builder families and its inline GLSL strings: one C++ table
   per definition, one shader include per pass family.
-- The 6-pass GPU bounds reduction (`bounds`): S53 knows a layer's content box on the CPU.
+- The 6-pass GPU bounds reduction (`bounds`): S80 knows a layer's content box on the CPU.
 - The folded companion group and pinned pseudo-effects (report p5 §7.2 item 2).
 
 ## 5. Requirements
@@ -211,31 +211,31 @@ Code, shaders and looks are ported to C++/GLSL with a `NOTICE.md` entry (§6.1 D
 ### Functional — registry integration
 
 - **R1. One definition per type.** Every effect and generator of §6.6 and §6.7 is one entry of
-  S53's `TitleEffectRegistry` (`EffectDef` or `GeneratorDef`, S53 §6.5, with the fields S56 adds
+  S80's `TitleEffectRegistry` (`EffectDef` or `GeneratorDef`, S80 §6.5, with the fields S83 adds
   in §6.2), registered from one `.cpp` per family in `engine/core/titleart/effects/` or
   `generators/`. The entry is the only place that states the type's id, user
   name, category, parameters (key, label, type, default, range, step, unit, `when` condition,
   animation class, one-line doc), gizmo hints, `reach`, `gather`, `adds_light`, `outline`,
   inputs (`input`, `content`, `sdf`, `analysis`), global-light relation, cost model, fallback class
-  and live variant. Inspector rows (S55), MCP validation, Lua names, the docs page and the golden
+  and live variant. Inspector rows (S82), MCP validation, Lua names, the docs page and the golden
   list are generated from it; no list elsewhere names the types.
 - **R2. Ids and names.** Ids are snake_case (`light_glow`, `speed_lines`); user names are
   Unity/After Effects-like Title Case ("Light Glow", "Speed Lines", "Tilt-Shift Blur"). Param keys
   are snake_case. An id never changes once shipped; a rename keeps the old id as an alias that
-  `normalizeTitleArt` rewrites (S53 migration rule 1: no version bump).
+  `normalizeTitleArt` rewrites (S80 migration rule 1: no version bump).
 - **R3. Search aliases.** Each definition lists aliases searched by the Add menus, `search_editor`
   (S25) and `list_title_library {query}`: Pachislop's labels and types, Japanese terms and common
   names (`light_glow`: "power glow", "bloom", "glare", "発光"; `speed_lines`: "集中線", "流線",
   "manga lines"; `aura`: "corona", "オーラ"; `distress`: "grunge", "かすれ", "worn").
 - **R4. Parameters are total and stable.** Every parameter has a default inside its range; a
-  stored value outside the range is clamped on read with a warning (S53 lenient read); an unknown
+  stored value outside the range is clamped on read with a warning (S80 lenient read); an unknown
   param is preserved. A parameter hidden by `when` still applies its value and is still written.
 - **R5. Effect vs generator.** Effects transform a layer's pixels and live in an Effects stack.
   Generators draw new content and are Generator layers (`type: "generator"`). No generator is
   offered as an effect entry; the Add Effect menu's generator section adds a layer and says so
   (§6.10, D3).
 - **R6. Following.** A generator definition declares `follow: required | optional | none`. A
-  following generator reads the followed layer (S53 `follow` member) as `content` (its pixels
+  following generator reads the followed layer (S80 `follow` member) as `content` (its pixels
   before its own effects: shapes, flame sources, emitter masks) or `styled` (after its effects:
   highlight analysis). With `follow` required and empty or dangling, it draws nothing and reports
   `fx_follow_missing` (`check_title`, §6.11) instead of failing the render.
@@ -252,16 +252,16 @@ Code, shaders and looks are ported to C++/GLSL with a `NOTICE.md` entry (§6.1 D
 
 ### Functional — shared machinery
 
-- **R9. Pixel contract.** Every pass reads and writes S53's contract: linear, premultiplied,
+- **R9. Pixel contract.** Every pass reads and writes S80's contract: linear, premultiplied,
   targets addressed in memory rows (row 0 = the top), RGBA16F where `renderRGBA16F &&
   filterRGBA16F`, and the RGBA8 path of §6.5 otherwise. Pachislop's y-up formulas get their
-  directions through S53's `ta_dir(angle, convention)` and CPU positions through `TitleFrame`, once
+  directions through S80's `ta_dir(angle, convention)` and CPU positions through `TitleFrame`, once
   per formula with a comment, never by flipping a pass. Light is encoded as Pachislop's: RGB may
   exceed 1, alpha = `clamp(max(r, g, b), 0, 1)`; light passes blend colour `(ONE, ONE)` and alpha
   `(ONE, ONE_MINUS_SRC_ALPHA)` (`BlendMode::LIGHT_PREMULTIPLIED`, R12).
 - **R10. Units.** `px` params are canvas px times `px_scale`; `%` params are percent of the
   param's stated base; `deg` params are clockwise on screen from +x, except the light directions
-  (`light_angle`) which use S53's Photoshop convention. Analysis grids are locked to canvas px on a
+  (`light_angle`) which use S80's Photoshop convention. Analysis grids are locked to canvas px on a
   lattice from the canvas centre, so a glint, bolt or stitch lands at the same canvas position at
   any `px_scale` (Pachislop's comp-pixel invariance).
 - **R11. `QuadBatch`** (`engine/core/titleart/gpu/QuadBatch.{h,cpp}`, shaders
@@ -271,38 +271,38 @@ Code, shaders and looks are ported to C++/GLSL with a `NOTICE.md` entry (§6.1 D
   drawn at `min_px` with colour scaled by the area ratio. Blends: normal, add, screen, light
   (R9), max. Up to 65,536 instances per draw from a streamed instance buffer. Used by particles,
   glints, ink splatter, speed lines, light streaks, lightning, stitch and drips.
-- **R12. Blend modes.** S56's passes use S53's `LIGHT_PREMULTIPLIED` (colour ONE/ONE, alpha
-  ONE/ONE_MINUS_SRC_ALPHA) and `MAX_PREMULTIPLIED` (`BlendOperation::MAX`, all factors ONE) (S53
+- **R12. Blend modes.** S83's passes use S80's `LIGHT_PREMULTIPLIED` (colour ONE/ONE, alpha
+  ONE/ONE_MINUS_SRC_ALPHA) and `MAX_PREMULTIPLIED` (`BlendOperation::MAX`, all factors ONE) (S80
   §6.4, mapped on all five backends there).
 - **R13. Analysis grid.** `analysis/ReadGrid` reads a layer (styled or content) box-averaged to
   cells fixed in canvas px (4, 6 or 8 px per cell, per consumer), packed into RGBA8: R = mean
   alpha, G/B = mean premultiplied luminance as 16-bit fixed point over 0..4, A = a mean-saturation
   byte for colour sampling. One `FrameReadback::readTexture` per grid (4 bytes/px, every backend),
-  at most 480 × 288 cells (0.55 MB). Grids are cached by S53's content key of the layer, so an
+  at most 480 × 288 cells (0.55 MB). Grids are cached by S80's content key of the layer, so an
   unchanged layer is never read back twice.
 - **R14. Analysis results are bake products.** Highlight anchors, edge lists, contours, shatter
   layouts and emitter masks are computed in the editor, cached by the analysed layer's content
-  hash, and written into S54's bake sidecar (S54 R8) and Realtime export data for every title that
+  hash, and written into S81's bake sidecar (S81 R8) and Realtime export data for every title that
   is Realtime or has a live variant.
   A title whose analysed layers never change
   at runtime performs no readback on the device. A runtime text change re-runs the analysis inside
-  S54's time-sliced re-render (one readback per analysed layer, R50 budget).
+  S81's time-sliced re-render (one readback per analysed layer, R50 budget).
 - **R15. Seeds.** Every random element draws from `tfx::Stream(seed_total, index, salt)`:
-  mulberry32 seeded by a 32-bit mix of the element's `seed` param, the document `seed` (S53), the
+  mulberry32 seeded by a 32-bit mix of the element's `seed` param, the document `seed` (S80), the
   type id hash, the element index and a per-purpose salt. All random values of an element are drawn
   before any condition, so toggling one option keeps others in place, and changing a count never
   moves elements with lower indices (Pachislop `stream(seed, i, salt)`). GPU noise uses
   `tfx_hash.glsl` (Hoskins "Hash without Sine", `highp`) and `tfx_noise.glsl`.
-- **R16. No clock.** No effect or generator reads time. Motion is animated parameters (S58):
+- **R16. No clock.** No effect or generator reads time. Motion is animated parameters (S85):
   every param marked L or R in §6.6/6.7 may be keyed; `phase`, `time`, `offset`, `reveal`,
   `growth`, `twinkle_phase` and `evolution` exist for that purpose; strobing effects (lightning, speed lines, glitch,
-  grain, neon flicker) animate their `seed` with S58's stepped "Reseed every N frames" track.
+  grain, neon flicker) animate their `seed` with S85's stepped "Reseed every N frames" track.
 
 ### Functional — the catalogue
 
 - **R17. Effects.** The 27 effect types of §6.6.1-6.6.27 exist with the parameters, passes, cost
   model, fallback class and live variant their entry states. The 12 pattern kinds of §6.6.28 join
-  S53's pattern enum. §6.6.29 and §6.6.30 are style settings with Add Effect entries.
+  S80's pattern enum. §6.6.29 and §6.6.30 are style settings with Add Effect entries.
 - **R18. Generators.** The 16 generator types of §6.7.1-6.7.16 exist likewise.
 - **R19. Light Glow kernel.** `light_glow` implements Pachislop's power-law kernel exactly:
   intensity ∝ r^−p with `p = 1.6 + 1.6 × falloff/100`, built as a scale mixture of unit-energy
@@ -339,7 +339,7 @@ Code, shaders and looks are ported to C++/GLSL with a `NOTICE.md` entry (§6.1 D
 - **R28. Recipes cover the rest of the genre list.** Long Shadow (Extrude), Emboss and Deboss
   (Material), Icicles (Drips), Comic Dots and Ben-Day Dots (Halftone), CRT (Scanlines), Shine,
   Rainbow and Vignette (Gradient Overlay) are menu entries with recipes (§6.8); "keyline" is an
-  alias of S53's Outline, which is Pachislop's Keyline.
+  alias of S80's Outline, which is Pachislop's Keyline.
 
 ### Platform & backends
 
@@ -349,15 +349,15 @@ Code, shaders and looks are ported to C++/GLSL with a `NOTICE.md` entry (§6.1 D
 - **R30.** Loops with a data-dependent length use `textureLod(…, 0)` or `texelFetch` and a
   constant maximum with `break`; every title shader declares `precision highp float`.
 - **R31.** No definition needs a renderable or filterable RGBA32F target at runtime. SDF seeds
-  use S53's float targets in the editor and its RGBA8 12.4 fixed-point seed encoding where
+  use S80's float targets in the editor and its RGBA8 12.4 fixed-point seed encoding where
   `renderRGBA16F` is false (§6.5); data textures (speed-line table, gradient LUTs) are RGBA16F or
   RGBA8 sampled with nearest or linear filtering, which every backend samples.
-- **R32. Forced fallback.** S53's per-request flags `TITLE_ART_TEST_NO_FLOAT_TARGETS` and
+- **R32. Forced fallback.** S80's per-request flags `TITLE_ART_TEST_NO_FLOAT_TARGETS` and
   `TITLE_ART_TEST_NO_FLOAT_BLEND` (the `FluidSimulator` pattern) and `render_title {fallback: "rgba8"}`
   force the RGBA8 path; every definition agrees with its float render within its fallback class
   (§6.5).
 - **R33.** Exported games build on Windows, Linux, macOS, Android, iOS and HTML5 with the module on
-  and off; with `JASPERENGINE_TITLE_ART` off no S56 code or shader is linked (S53 module rule).
+  and off; with `JASPERENGINE_TITLE_ART` off no S83 code or shader is linked (S80 module rule).
 
 ### Performance (budgets)
 
@@ -377,8 +377,8 @@ title surface, predicted by the static model and confirmed by hand (AC22).
   checks every type at defaults and every preset against its class's static limit (presets may be
   up to one class heavier, stated in their file).
 - **R35. Live kernels.** A live kernel costs ≤ 1.2 FRE over its own bounds and ≤ 2,000 instances on
-  the mobile tier (≤ 0.45 ms each predicted); one title's live compose stays within S54's per-title
-  live budget (0.5 ms on mobile and web, 1 ms on desktop, S54 R9), else S54 re-renders and
+  the mobile tier (≤ 0.45 ms each predicted); one title's live compose stays within S81's per-title
+  live budget (0.5 ms on mobile and web, 1 ms on desktop, S81 R9), else S81 re-renders and
   `check_title` reports `fx_live_budget` with fixes (§6.11).
 - **R36. CPU.** On server A (Release editor), single thread: highlight analysis of a 480 × 288 grid
   ≤ 3 ms; edge extraction ≤ 1 ms and 12 bolts ≤ 1 ms; shatter layout ≤ 2 ms (glass, 400 pieces) and
@@ -389,80 +389,80 @@ title surface, predicted by the static model and confirmed by hand (AC22).
   document does not use add no pass, no draw, no target and no shader variant (variants compile
   only for types a document uses, S32 warm-up list); the cost readout of a document with every
   effect disabled equals that of the same document without them.
-- **R38. Memory.** Per analysed layer: grid ≤ 0.55 MB CPU; SDF per S53; light accumulation
-  targets are pooled from S53's scratch pool at render size, never kept between renders except the
-  splits that live kernels read (S54).
+- **R38. Memory.** Per analysed layer: grid ≤ 0.55 MB CPU; SDF per S80; light accumulation
+  targets are pooled from S80's scratch pool at render size, never kept between renders except the
+  splits that live kernels read (S81).
 
 ### Editor UX (human)
 
-- **R39. Inspector rows** (S55 draws them from the definition): one control per param type
+- **R39. Inspector rows** (S82 draws them from the definition): one control per param type
   (slider with unit, angle dial, colour, gradient, curve, enum dropdown, bool, vec2 handle, layer
   picker, asset picker, array of rows with add/remove for magic circle rows); `when` hides rows;
   presets as chips at the top; a dice button on every `seed` (one undo step "Randomize Seed").
 - **R40. Gizmos** declared by the definition: `point` (vec2 handle), `direction` (angle, optional
   length), `radius` (circle/ellipse/box), `light` (angle + altitude sphere, writes the global light
-  while `use_global_light` is on). S55 draws them; each drag is one undo step.
+  while `use_global_light` is on). S82 draws them; each drag is one undo step.
 - **R41. Cost badge.** Each effect row and generator layer row shows its class (C0-C4) as a small
   badge; the tooltip gives the estimate on desktop and mobile and "Bake only" where it applies; the
   Effects header shows the stack total. A Realtime document marks C4 entries amber with the text
   "Baked on mobile" (D12).
 - **R42. Add Effect and Add Generator menus** follow §6.10: categories, counts per category,
-  search over names and aliases (English and Japanese), hover preview (S55), the generator section
+  search over names and aliases (English and Japanese), hover preview (S82), the generator section
   inside Add Effect, style-setting entries.
 - **R43. Missing follow.** A following generator whose layer is gone shows the row warning
   "Follows a deleted layer" with a "Pick Layer" button.
 
 ### Agent UX (MCP, Lua, CLI)
 
-- **R44. Discovery.** S53's `list_title_library {kind: "effects" | "generators", id?, query?}`
-  lists S56's types with the row fields and the `category` filter of §6.11. No new tool.
+- **R44. Discovery.** S80's `list_title_library {kind: "effects" | "generators", id?, query?}`
+  lists S83's types with the row fields and the `category` filter of §6.11. No new tool.
 - **R45. Editing.** `edit_title` ops `add_effect {type, preset?}` and `add_layer {type:
   "generator", generator, preset?, follow?, place?, group?}` accept every id and preset id here.
   Unknown types, presets and param keys fail listing the nearest valid names (edit distance ≤ 3,
-  then the category's list); out-of-range numbers are clamped and echoed in `clamped` (S53); a
+  then the category's list); out-of-range numbers are clamped and echoed in `clamped` (S80); a
   value set on a param hidden by `when` succeeds with the note `inactive: <key> applies only when
   <cond>`.
 - **R46. Cost readout.** `render_title {options: {cost: "desktop" | "mobile"}}` returns the cost model per layer and per
   effect, plus S15 GPU pass times when timing is available (§6.11). `check_title` gains the checks
   `fx_follow_missing`, `fx_bake_only_realtime`, `fx_live_budget`, `fx_realtime_budget`,
   `fx_hdr_on_8bit` with fix ops.
-- **R47. Lua.** Scripts reach effect and generator params through Exposed Parameters only (S54
+- **R47. Lua.** Scripts reach effect and generator params through Exposed Parameters only (S81
   R66, contract decision 13): exposing the target `{layer: "Title", field:
-  "fx:light_glow.intensity"}` as `glow` (S53 `expose` op) lets
-  `titleArt:setParameter("glow", 2)` drive it, and an exposed L param changes through S54's live
+  "fx:light_glow.intensity"}` as `glow` (S80 `expose` op) lets
+  `titleArt:setParameter("glow", 2)` drive it, and an exposed L param changes through S81's live
   compose without a re-render. Ids and keys, which the exposed targets name, are listed in
   `docs/mcp/guide/title-art-effects.md`.
-- **R48. Docs.** S53's generated page `docs/mcp/guide/title-art-effects.md`
-  (`tools/titleart/gen_effect_docs.py`, checked by `test_docs.py`) covers S56's types; S56 adds its
+- **R48. Docs.** S80's generated page `docs/mcp/guide/title-art-effects.md`
+  (`tools/titleart/gen_effect_docs.py`, checked by `test_docs.py`) covers S83's types; S83 adds its
   columns: aliases, animation class per param, presets, cost class, fallback class and live
   variant. `docs/mcp/guide/title-art.md` gets a section "Effects and generators" (≤ 2,500 bytes);
   the agent guide itself is not changed.
 
 ### Data & compatibility
 
-- **R49.** Adding these types, params and enum values does not bump `TITLE_ART_VERSION` (S53 rule
-  1). A document naming a type this build lacks keeps it verbatim (S53 `unknown_type`).
+- **R49.** Adding these types, params and enum values does not bump `TITLE_ART_VERSION` (S80 rule
+  1). A document naming a type this build lacks keeps it verbatim (S80 `unknown_type`).
 - **R50. Analysis budget on device.** A runtime re-render needing analysis performs ≤ 1 readback
   per analysed layer and ≤ 4 ms CPU on the mobile tier (predicted from R36 × 2.5), on a job.
 - **R51. Pachislop map.** §6.9 maps every Pachislop effect type, generator type, preset id and
-  param key to ours, including unit and angle-convention conversions; S57's converter and S60's
+  param key to ours, including unit and angle-convention conversions; S84's converter and S87's
   importers use `editor/titleart/fx/PachislopFxMap.cpp`, which is generated from that table's data
   file `editor/resources/titleart/pachislop-fx-map.yaml`.
-- **R52. Bake version.** A change to a definition's output bumps its `passVersion` (S53 §6.5), which
+- **R52. Bake version.** A change to a definition's output bumps its `passVersion` (S80 §6.5), which
   is part of the bake version, so stale bakes are reported.
-- **R53. Glyph Atlas classes.** Every S56 definition has a `glyph_safety` (§6.13) that S54's Glyph
-  Atlas uses (S54 R31).
-- **R54. S53's definitions get classes and live variants** (§6.12), so S58's minimum live set
-  (S58 §6.2) is complete when S56 lands.
-- **R55. Colour roles for S57.** Light colours carry `light: true` and the two spectrum switches
-  are declared (§6.2, §6.3), so S57's color schemes recolour light without a list of their own.
+- **R53. Glyph Atlas classes.** Every S83 definition has a `glyph_safety` (§6.13) that S81's Glyph
+  Atlas uses (S81 R31).
+- **R54. S80's definitions get classes and live variants** (§6.12), so S85's minimum live set
+  (S85 §6.2) is complete when S83 lands.
+- **R55. Colour roles for S84.** Light colours carry `light: true` and the two spectrum switches
+  are declared (§6.2, §6.3), so S84's color schemes recolour light without a list of their own.
 
 ## 6. Design constraints & decisions
 
 ### 6.1 Decisions
 
-- **D1. Definitions are C++ entries of S53's `TitleEffectRegistry`, passes are `TA_PROGRAM_*`
-  programs of `ShaderType::TITLE_ART`** (S53 §6.3, §6.5). Not the HTML UI `@effect` manifest: that
+- **D1. Definitions are C++ entries of S80's `TitleEffectRegistry`, passes are `TA_PROGRAM_*`
+  programs of `ShaderType::TITLE_ART`** (S80 §6.3, §6.5). Not the HTML UI `@effect` manifest: that
   grammar is parsed from shader comments for project-authored effects, has no texture inputs
   (report e1 §1.4) and no CPU stage, while title definitions need cost, reach and layout functions
   and CPU analysis. One include per pass family (`titleart/fx/light_glow.glsl` holds emit, blur,
@@ -478,17 +478,17 @@ title surface, predicted by the static model and confirmed by hand (AC22).
   an Add-blended companion lights only that layer (Pachislop's companion group, without folding);
   `"none"` inserts it as a sibling; `"always"` always wraps. The entry's row says "Adds a Generator
   layer". Pachislop's companion and folded-wrapper model is not copied (report p5 §7.2 item 2).
-- **D4. Fewer types, more recipes** (Pachislop `effectDedupe.ts`). Keyline is S53's Outline (its
+- **D4. Fewer types, more recipes** (Pachislop `effectDedupe.ts`). Keyline is S80's Outline (its
   port, drawn under light), found by the alias "keyline"; Long Shadow is Extrude; Emboss and
   Deboss are Material; Icicles are Drips; CRT is Scanlines; Shine, Rainbow
-  and Vignette are S53's Gradient Overlay. Each has its own menu entry and search aliases.
-- **D5. No pinned pseudo-effects.** かすれ Dry Brush is S53's `style.erode`; Glint (3D highlights)
-  is S59's 3D style member. Both are style settings shown in the layer's Style section; Add Effect
+  and Vignette are S80's Gradient Overlay. Each has its own menu entry and search aliases.
+- **D5. No pinned pseudo-effects.** かすれ Dry Brush is S80's `style.erode`; Glint (3D highlights)
+  is S86's 3D style member. Both are style settings shown in the layer's Style section; Add Effect
   lists them as entries marked "Style setting" that switch them on and open that section. Nothing
   in an Effects stack is pinned or "deleted by resetting".
 - **D6. Title particles are a closed-form sampler, not S20.** Pachislop's particle generator is "a
   sampler of end states": each particle's state is a function of params, index and `time`. That
-  gives bake = Realtime parity (contract decision 1), exact scrubbing for S58 and no per-frame
+  gives bake = Realtime parity (contract decision 1), exact scrubbing for S85 and no per-frame
   CPU. S20 stays the tool for world-space simulated effects; `tfx_particle_shapes.glsl` (dot,
   glint, ember, petal, confetti foil, star, heart, bokeh, rain) is written as a standalone include
   so S20's renderer can adopt it later.
@@ -497,16 +497,16 @@ title surface, predicted by the static model and confirmed by hand (AC22).
   code, so a render on any backend and any worker count is identical (AC5).
 - **D8. Analysis on the CPU from a packed 8-bit grid** (R13), never from float readback: works on
   every backend (`FrameReadback` reads 4 bytes/px), 16-bit luminance is enough for the Hessian and
-  NMS, and results are cached and shipped in S54's runtime data (R14).
+  NMS, and results are cached and shipped in S81's runtime data (R14).
 - **D9. Whole HTML UI effects and S13 post effects are not shared** (§4.2): different pixel
   contract, units and inputs. Maths includes are shared where conventions match.
 - **D10. Live variants.** Each definition declares `live.kind`:
-  - `none`: animating any param re-renders the layer through S54's time-sliced cache (Realtime)
-    or a flipbook (S58 Baked);
+  - `none`: animating any param re-renders the layer through S81's time-sliced cache (Realtime)
+    or a flipbook (S85 Baked);
   - `scale_split`: the effect's light or shadow output is kept as its own cached split; its L
     params (an intensity or opacity) scale that split per frame in one compose pass;
   - `kernel`: a per-frame pass list reading cached inputs (content split, SDF, anchors, edges,
-    instance buffers), run by S54's live compose into the display target (S54 R9; S54's own four
+    instance buffers), run by S81's live compose into the display target (S81 R9; S81's own four
     built-in live layers in `library:title_fx` are separate). The kernel is the same program as
     the bake pass compiled with `TFX_LIVE`, so bake and live cannot drift
     (AC17).
@@ -521,7 +521,7 @@ title surface, predicted by the static model and confirmed by hand (AC22).
   full-resolution accumulation (D2). The two agree within F1 (AC6 reuses the comparison).
 - **D12. C4 in Realtime on the mobile tier.** Each C4 definition names its mobile reduction (Lens
   Blur: 64-tap quarter-res gather; Light Glow: D11; Extrude: steps of twice the length; Glint (3D):
-  S59's reduced pass list). A Realtime document whose
+  S86's reduced pass list). A Realtime document whose
   layer would still exceed C3 on the mobile tier keeps that layer's output as a static split baked
   by the editor; when the layer's content changes at runtime the effect is skipped and the player
   logs `titleart: <path> skipped (bake-only effect on this device)` once. `check_title` reports it
@@ -537,33 +537,33 @@ title surface, predicted by the static model and confirmed by hand (AC22).
   from his published distance-function articles, not from Pachislop); Dave Hoskins' "Hash without
   Sine" (MIT); mulberry32 (Tommy Ettinger, public domain). Ported shader files keep a header naming
   the Pachislop source file.
-- **D16. Angle conventions.** Every `deg` param is clockwise on screen from +x (S53), so 90 = down
+- **D16. Angle conventions.** Every `deg` param is clockwise on screen from +x (S80), so 90 = down
   and −90 = up. Pachislop generator params in its counter-clockwise convention are negated by the
   converter (§6.9) and their defaults here are already converted (Fire `angle` −90 = up). Light
-  directions (`light_angle`) use S53's Photoshop convention; Pachislop's Extrude "Light From"
+  directions (`light_angle`) use S80's Photoshop convention; Pachislop's Extrude "Light From"
   −120 (clockwise) becomes `light_angle` 120.
 - **D17. Fallback is a structure, not a different effect.** Every definition runs the same passes
   on the RGBA8 path; only the target formats and the light encoding change (contract decision 3).
   No definition switches to another algorithm on 8-bit devices.
 
-### 6.2 What S56 fills in S53's registry
+### 6.2 What S83 fills in S80's registry
 
-S53's `EffectDef`, `GeneratorDef` and `ParamDef` (`engine/core/titleart/TitleEffectRegistry.h`,
-S53 §6.5) declare every member the catalogue needs, with defaults, so S54, S55 and S59 build
+S80's `EffectDef`, `GeneratorDef` and `ParamDef` (`engine/core/titleart/TitleEffectRegistry.h`,
+S80 §6.5) declare every member the catalogue needs, with defaults, so S81, S82 and S86 build
 against one header in wave 6B: `type`, `label`, `category`, `description`, `params`, `gizmos`,
 `reach`, `gather`, `fillsCanvas`, `addsLight`, `outline`, `onParts`, `costClass`, `fallback`,
 `live`, `glyphSafety`, `aliases`, `inputs`, `spectrum`, `estimate`, `analyse`, `presetFile`,
 `passVersion`, `apply`/`render`, and for generators `bounds`, `follow`, `followReach`; `ParamDef`
 carries `anim`, `interp`, `combine` and `light`; `ParamKind` includes `String`, `Material` and
-`RowArray`. S56 sets their values for its 43 definitions and, in the same change, for S53's ten
-effects and two generators (§6.12, §6.13). The types, as S53 declares them:
+`RowArray`. S83 sets their values for its 43 definitions and, in the same change, for S80's ten
+effects and two generators (§6.12, §6.13). The types, as S80 declares them:
 
 ```cpp
-namespace jasperengine::titleart {   // TitleEffectRegistry.h (S53)
-    enum class FxAnim : uint8_t { None, Live, Rerender, Step, Relayout };   // §6.3's L, R, S, X; S58 R11
+namespace jasperengine::titleart {   // TitleEffectRegistry.h (S80)
+    enum class FxAnim : uint8_t { None, Live, Rerender, Step, Relayout };   // §6.3's L, R, S, X; S85 R11
     enum class ParamInterp : uint8_t { Smooth, Stepped };    // stepped: holds between keys (a Live seed)
-    enum class ParamCombine : uint8_t { Replace, Multiply }; // S58: glow intensities combine by multiply
-    enum class GlyphSafety : uint8_t { Safe, Approximate, Unsafe };   // S54 R31, §6.13
+    enum class ParamCombine : uint8_t { Replace, Multiply }; // S85: glow intensities combine by multiply
+    enum class GlyphSafety : uint8_t { Safe, Approximate, Unsafe };   // S81 R31, §6.13
     enum class CostClass : uint8_t { C0, C1, C2, C3, C4 };   // §6.4; list_title_library's `cost`
     enum class FallbackClass : uint8_t { F0, F1, F2 };        // §6.5
     enum class LiveKind : uint8_t { None, ScaleSplit, Kernel };   // D10
@@ -585,21 +585,21 @@ namespace jasperengine::titleart {   // TitleEffectRegistry.h (S53)
 ```
 
 `analyse` runs on the S06 job system from the packed grid (R13); its result is cached by the
-analysed layer's content hash (S53 `TitleArtHash`) and shipped in S54's runtime data (R14); `render`
+analysed layer's content hash (S80 `TitleArtHash`) and shipped in S81's runtime data (R14); `render`
 receives it.
 
 ### 6.3 Catalogue notation
 
 Each entry lists: **Params** as `key` type default [min, max] unit, separated by semicolons; type
 letters `f` float, `i` int, `b` bool, `e{...}` enum, `c` colour, `g` gradient, `v2` vec2, `lyr`
-layer, `asset`, `str`. Animation marks are S53's `FxAnim` values (S58's classes derive from them): **R** = `Rerender`, smooth (numbers
+layer, `asset`, `str`. Animation marks are S80's `FxAnim` values (S85's classes derive from them): **R** = `Rerender`, smooth (numbers
 and colours unless marked); **S** = `Step` (enums, bools and ints unless marked); **X**
 = `Relayout` (the CPU layout or analysis re-runs); **L** = `Live` (live variant, D10; a stepped
 `seed` marked L reseeds live). Light colours (`light: true`) are those of `adds_light` definitions
 and Add-blended generator presets, every colour and gradient param but `shadow`-role ones.
 **Passes** at defaults on a 1920 × 1080 bake; **Cost** class (§6.4); **Seeds**; **8-bit** fallback class (§6.5); **Live**
-variant (D10); **Mobile** tier reductions. Every effect has the S53 effect members (`enabled`), every
-generator the S53 layer members (blend, opacity, transform as an offset when following).
+variant (D10); **Mobile** tier reductions. Every effect has the S80 effect members (`enabled`), every
+generator the S80 layer members (blend, opacity, transform as an offset when following).
 
 ### 6.4 Cost classes, the model and the readout
 
@@ -607,9 +607,9 @@ generator the S53 layer members (blend, opacity, transform as an offset when fol
 TitleFxCost`, mirroring `estimatePostProcessingCost`): each definition's `estimate` returns its
 passes, its **full-res equivalents** (FRE = Σ over passes of target pixels × max(1, taps/4), ÷ bake
 pixels), its maximum taps per pixel, instances, CPU ms and whether it needs the SDF, analysis or a
-readback. Shared work is counted once per layer and shown as its own row: the content SDF (S53, C3
+readback. Shared work is counted once per layer and shown as its own row: the content SDF (S80, C3
 when rebuilt, 0 when cached), each analysis grid. The class follows from the larger of FRE and
-taps (table in §5 Performance); S53's `cost` row field reports it. Tier `desktop` uses the
+taps (table in §5 Performance); S80's `cost` row field reports it. Tier `desktop` uses the
 editor path, tier `mobile` the reductions and a 1024 × 512 surface.
 
 **Predicted ms** = FRE × the tier's cost of one FRE (`desktop` 0.012 ms at 1920 × 1080 on H,
@@ -626,16 +626,16 @@ from S15 pass timing (labels `titleart/<layer id>/<effect id>/<pass>`) when
 
 ### 6.5 8-bit fallback classes
 
-The RGBA8 path is S53's (§6.3: SRGB8A8 premultiplied linear accumulators, RGBA8 12.4 seeds, 16-bit
-fixed-point distances) and keeps every pass. S56 adds one thing (D14): the light accumulators and
+The RGBA8 path is S80's (§6.3: SRGB8A8 premultiplied linear accumulators, RGBA8 12.4 seeds, 16-bit
+fixed-point distances) and keeps every pass. S83 adds one thing (D14): the light accumulators and
 light splits of `adds_light` definitions hold light × 1/4 in SRGB8A8, so values up to 4.0 survive to
 the final compose, which multiplies by 4 before the over-exposure response. Writes to RGBA8 add an
 ordered Bayer 4 dither of ±0.5/255 so blurs do not band. Agreement with the float render of the
-same document, premultiplied comparison (S53 `ImageDiff`):
+same document, premultiplied comparison (S80 `ImageDiff`):
 
 | Class | Meaning | Limit (mean / max / pixels over 8/255) |
 |---|---|---|
-| F0 | no light above 1, ≤ 2 accumulating passes | S53's §6.3 tolerance: ≤ 1.0/255 / ≤ 48/255 / ≤ 0.5 % |
+| F0 | no light above 1, ≤ 2 accumulating passes | S80's §6.3 tolerance: ≤ 1.0/255 / ≤ 48/255 / ≤ 0.5 % |
 | F1 | multi-pass blurs or accumulations, no light above 1 at the end | ≤ 1.5/255 / ≤ 64/255 / ≤ 2 % |
 | F2 | look depends on light above 1 (cores, over-exposure) | ≤ 3/255 / ≤ 96/255 / ≤ 5 % |
 
@@ -730,7 +730,7 @@ float render of the document has more than 0.5 % of pixels above 4 in any light 
 - **Params:** `size` f 9 [2, 120] px; `angle` f 45 deg; `dot` e{round, square, diamond, line,
   cross} round (new); `dot_scale` f 0.8 [0, 2] **L**; `color` c `#8a1c00`; `amount` f 0.6 [0, 1];
   `source` e{ramp, luminance, uniform, alpha} ramp; `fade` f 28 [0, 400] px **L** (alpha);
-  `ramp_angle` f 90 deg (ramp); `mode` e{S53 blend modes} multiply.
+  `ramp_angle` f 90 deg (ramp); `mode` e{S80 blend modes} multiply.
 - **Passes:** 1 (alpha source: + 1 blur, cached). AM screen; area-correct radius `sqrt(dens/π)`;
   dots touch at 70 %, then the gaps close; `alpha` = Halftone Dissolve toward soft alpha.
 - **Cost:** C1. **8-bit:** F0. **Live:** `kernel` on `dot_scale`, `fade` (entrances).
@@ -740,7 +740,7 @@ float render of the document has more than 0.5 % of pixels above 4 in any light 
   (relation `floor`); `length` f 230 [5, 2000] px **L**; `perspective` f 0.35 [0, 0.95]; `blur_near`
   f 2 [0, 100] px; `blur_far` f 22 [0, 300] px; `fade` f 0.75 [0, 1]; `offset` f 0 [−300, 300] px;
   `color` c `#000000`; `opacity` f 0.7 [0, 1] **L**.
-- **Passes:** 2 blur levels (4) and a shear compose from the layer box's bottom (S53 CPU bounds):
+- **Passes:** 2 blur levels (4) and a shear compose from the layer box's bottom (S80 CPU bounds):
   5 (Pachislop 14). **Cost:** C2. **8-bit:** F0. **Live:** `kernel` (compose only).
 
 #### 6.6.11 Floor Reflection (`floor_reflection`) · Shadow & Depth · from `floorReflection`
@@ -777,17 +777,17 @@ float render of the document has more than 0.5 % of pixels above 4 in any light 
 
 #### 6.6.16 Material (`material`) · Texture & Material · from `material`
 - **Params:** `color_mode` e{layer, fill} layer; `size` f 200 [10, 2000] px (the 100 % of the
-  material's `%` members); `material` Material (S53 §6.1 Material (2D), every member).
-- **Passes:** S53's material pipeline (SDF, cover, height, satin fields, shade) on the input's
+  material's `%` members); `material` Material (S80 §6.1 Material (2D), every member).
+- **Passes:** S80's material pipeline (SDF, cover, height, satin fields, shade) on the input's
   alpha, fields cached by the input's content key (Pachislop rebuilt them every run).
 - **Cost:** C3. **8-bit:** F1. **Live:** none. Gizmo: light (bevel light, global light).
-- **Addition to S53's Material:** `bevel.direction` e{up, down} up; `down` negates the height
+- **Addition to S80's Material:** `bevel.direction` e{up, down} up; `down` negates the height
   field (Deboss). Enum addition, no version bump.
 
 #### 6.6.17 Shatter (`shatter`) · Distort · from `shatter`
 - **Params:** `pattern` e{glass, voronoi, triangles} glass **X**; `pieces` i 60 [10, 400] **X**;
   `impact` v2 [0, 0] px **X**; `radius` f 300 [0, 4000] px **X**; `progress` f 1 [0, 1] **L** (new:
-  0 assembled, 1 blown; scales push, side, rotation, fall and fade, the S58 Shatter In/Out field);
+  0 assembled, 1 blown; scales push, side, rotation, fall and fade, the S85 Shatter In/Out field);
   `strength` f 80 [0, 1000] px **L**;
   `rotation` f 25 [0, 180] deg **L**; `fall` f 0 [0, 4000] px **L** (new: downward drift × f²);
   `fade` f 0 [0, 1] **L** (new: pieces fade with displacement); `gap` f 1 [0, 40] px **X**;
@@ -818,7 +818,7 @@ float render of the document has more than 0.5 % of pixels above 4 in any light 
   1]; `wear` f 0 [0, 1] (dirt darkening of what remains); `wear_color` c `#3a2a1a`; `outside` f 0
   [0, 1] (speckle and spray beyond the edge, within `edge` px); `seed` i 1 [0, 999].
 - **Passes:** content SDF (shared) + 1 pass: alpha × keep-mask from multi-scale value noise
-  (grunge), S53's erode field (dry_brush: the code `style.erode` uses, its
+  (grunge), S80's erode field (dry_brush: the code `style.erode` uses, its
   96-step exit march), noise-displaced SDF threshold (rough_edges), seeded thin anisotropic lines
   (scratches), thresholded fine noise (speckle), droplet noise outside the edge (spray); analytic
   antialiasing through the field gradient.
@@ -923,14 +923,14 @@ float render of the document has more than 0.5 % of pixels above 4 in any light 
 - **Params:** `amount` f 1 [0, 1]; `tilt` v2 [0, 0] [−1, 1] **L** (simulated view tilt: the foil
   shimmer); `film_thickness` f 450 [100, 1200] nm; `film_ior` f 1.5 [1, 2.5]; `relief` f 0.5 [0, 1]
   (SDF bevel normal and noise shift the angle); `pattern` e{none, diffraction, glitter, stars}
-  glitter; `pattern_scale` f 6 [1, 100] px; `mode` e{S53 blend modes} overlay; `seed` i 1.
+  glitter; `pattern_scale` f 6 [1, 100] px; `mode` e{S80 blend modes} overlay; `seed` i 1.
 - **Passes:** 1 (+ content SDF when relief > 0): view angle from tilt and the relief normal,
   colour from `iridescenceFresnel` (`engine/shaderlib/includes/iridescence.glsl`), modulated by the
   micro pattern. **Cost:** C1. **8-bit:** F0. **Live:** `kernel` on `tilt`.
 
 #### 6.6.28 Procedural material kinds (pattern library additions)
-Added to S53's `pattern.kind` enum and the shared pattern library, so Pattern Overlay, the
-Material `pattern` member and Pattern Fill all get them. Each returns S53's `(d, d2, w)` triple
+Added to S80's `pattern.kind` enum and the shared pattern library, so Pattern Overlay, the
+Material `pattern` member and Pattern Fill all get them. Each returns S80's `(d, d2, w)` triple
 (mark distance, secondary distance, relief width), so `shade` and `relief` work unchanged; `color`
 is the mark, `color2` the secondary tone:
 
@@ -952,15 +952,15 @@ is the mark, `color2` the secondary tone:
 **Cost:** C1 each inside their host. **8-bit:** F0. Golden: one Pattern Fill render per kind.
 
 #### 6.6.29 かすれ Dry Brush (style setting)
-S53's `style.erode` (Text, Shape, Vector, Image layers). S56 adds the Add Effect entry "Dry Brush
+S80's `style.erode` (Text, Shape, Vector, Image layers). S83 adds the Add Effect entry "Dry Brush
 (かすれ)" (Texture & Material, marked "Style setting") that sets `style.erode.enabled = true` and
 opens the Style section, and registers its search aliases. Any other layer type (Group, Generator)
 uses Distress with the `dry_brush` pattern, which shares the shader include.
 
 #### 6.6.30 Glint (3D highlights) (style setting on Dimension 3D layers)
-Port of `src/engine/three/glint.ts`, stored where S59 puts the 3D style (expected
-`style_3d.glint`), implemented by S56 in `engine/core/titleart/three_d/Glint3D.cpp` (compiled with S54's
-`JASPERENGINE_TITLE_ART_3D` sub-option) and `engine/shaderlib/titleart/fx/glint3d.glsl` and called by S59 on the 3D layer's linear HDR target before tone mapping.
+Port of `src/engine/three/glint.ts`, stored where S86 puts the 3D style (expected
+`style_3d.glint`), implemented by S83 in `engine/core/titleart/three_d/Glint3D.cpp` (compiled with S81's
+`JASPERENGINE_TITLE_ART_3D` sub-option) and `engine/shaderlib/titleart/fx/glint3d.glsl` and called by S86 on the 3D layer's linear HDR target before tone mapping.
 - **Params:** `enabled` b false; `threshold` f 1 [0, 16] (linear HDR luminance); `intensity` f 1 [0,
   4] **L**; `radius` f 6 [0, 100] % of size; `streaks` e{0, 2, 4, 6, 8} 4; `length` f 40 [0, 400] %
   of size; `angle` f 0 deg; `tint` c `#fff4dc`.
@@ -968,14 +968,14 @@ Port of `src/engine/three/glint.ts`, stored where S59 puts the 3D style (expecte
   box mips; coverage "tame" K/(K + coverage); two-scale bloom; point detector (bright − max of its
   1D blurs); pinch; density budget; hot core; Kawase streaks per direction (4 taps per pass at
   stride 4^k, one-sided, `fall = 0.02^(1/n)`), long thin plus short wide rays; sum × tint. ≈ 66
-  passes. **Cost:** C4. **8-bit:** the bright pass decodes S59's compressed-light main target
-  (`s = a·C/(1 + max C)`, S59 R30) when the 3D target is SRGB8A8, so the chain runs without float
+  passes. **Cost:** C4. **8-bit:** the bright pass decodes S86's compressed-light main target
+  (`s = a·C/(1 + max C)`, S86 R30) when the 3D target is SRGB8A8, so the chain runs without float
   targets; F2 against the float path. **Live:** `scale_split` on `intensity`. **Mobile:** no density
-  budget, 2 directions, half res: C3 (S59 R32 "Medium"; S59's sprite glints are its Low tier).
+  budget, 2 directions, half res: C3 (S86 R32 "Medium"; S86's sprite glints are its Low tier).
 
 ### 6.7 Generator catalogue
 
-Positions (`center`, `position`, `origin`, `impact`, `point`) are Vec2 canvas px, +y up (S53);
+Positions (`center`, `position`, `origin`, `impact`, `point`) are Vec2 canvas px, +y up (S80);
 with `follow` set they are offsets from the followed layer's centre (Pachislop `drawFollowed`).
 
 #### 6.7.1 Particles (`particles`) · Particles · follow optional · from `particles`
@@ -1069,11 +1069,11 @@ with `follow` set they are offsets from the followed layer's centre (Pachislop `
   f 0 [0, 80] deg; `color` g gold (centre → edge); `fill` f 6 [0, 100] %; `glyphs` e{runes, kuji,
   zodiac, trigrams, hud, custom} runes; `custom_glyphs` str ""; `font` asset null (null = Zen Old
   Mincho Black for runes, kuji, zodiac and trigrams, Zen Kaku Gothic New Black for hud, both OFL
-  from google/fonts, copied into the project on first use as S53's library fonts are); `rows`
+  from google/fonts, copied into the project on first use as S80's library fonts are); `rows`
   array of ≤ 6 `{type: e{ring, dashed, ticks, text, polygon, star2, star3, chevrons, arcs, hex},
   radius: f [0, 150] %, size: f [0.5, 600] px, count: i [1, 360], angle: f deg L}` (defaults:
   Pachislop's six `ROW_DEFAULTS`); `seed` i 1.
-- **Passes:** a glyph atlas once per (set, font, size bucket) through S53's text core; 1 bounding
+- **Passes:** a glyph atlas once per (set, font, size bucket) through S80's text core; 1 bounding
   quad of polar distance-field marks, AA from the Jacobian of the tilted plane, ≤ 32 chords per row;
   majors every 5, 4 or 3 ticks when the count divides. **Cost:** C2. **8-bit:** F0.
 - **Live:** `kernel` on `rotation` and row angles (rows turn at their own speeds).
@@ -1109,9 +1109,9 @@ with `follow` set they are offsets from the followed layer's centre (Pachislop `
   0.7 × ink diagonal / n_large; small ones avoid large; near-ties blend, the last picks fade
   against the runner-up; size falls with score. Hero: the strongest peak in the central band, an
   anamorphic streak with its taper term. Anchors (internally `{x, y, radius, score, phase}`) are
-  cached (R14) and shipped in S53's sidecar shape `{x, y, size, strength, fade}` (frame-normalised;
+  cached (R14) and shipped in S80's sidecar shape `{x, y, size, strength, fade}` (frame-normalised;
   `size` = radius, `strength` = score over the strongest pick, `fade` = the pick's fade against the
-  runner-up; the phase is re-derived from `glintSeed` and the index, S54 R37), at most 16.
+  runner-up; the phase is re-derived from `glintSeed` and the index, S81 R37), at most 16.
 - **Star** (`tfx_glint_star.glsl`): hot core 4 exp(−r²/rc²); bloom 0.8 exp(−45 r²) + 0.35
   exp(−5 r); rays with quadratic taper w = max(thin (0.12 + 0.88 u²), w_min), footprint we =
   sqrt(w² + 0.25 px²), spike exp(−pe/we) (w/we), sheath, along falloff (2 e^(−5 al) + 1.3 e^(−1.5 al))
@@ -1217,16 +1217,16 @@ with `follow` set they are offsets from the followed layer's centre (Pachislop `
   coloured through the gradient LUT. **Cost:** C1 (complexity > 5: C2). **8-bit:** F0.
   **Live:** `kernel`. **Mobile:** complexity ≤ 4.
 
-#### 6.7.17 Pattern Fill and Fill (S53)
-S53 ships `pattern_fill` (Pachislop's `patternFill`) and `fill`. S56 adds to Pattern Fill the
+#### 6.7.17 Pattern Fill and Fill (S80)
+S80 ships `pattern_fill` (Pachislop's `patternFill`) and `fill`. S83 adds to Pattern Fill the
 twelve kinds of §6.6.28, `offset` v2 [0, 0] px **L** (scroll), a `kernel` live variant on `offset`
 and `rotation` (one full-canvas pass; C1, cellular kinds C2), and the presets of §6.8 (Pachislop's
-nine when S53 ships the type without them, plus six new). Fill is unchanged.
+nine when S80 ships the type without them, plus six new). Fill is unchanged.
 
 ### 6.8 Presets
 
 Preset files hold Pachislop's values converted by §6.9 (generators: its `GeneratorPreset` params,
-blend, opacity, place and effects; Pachislop's glows become our Light Glow or S53 Outer Glow
+blend, opacity, place and effects; Pachislop's glows become our Light Glow or S80 Outer Glow
 entries as its preset effects were). Japanese labels move into the alias list and the name keeps
 the term in parentheses. New presets are tuned by eye against the goldens and reviewed with
 screenshots (AC2).
@@ -1247,7 +1247,7 @@ screenshots (AC2).
 | `smoke` (3) | grey: Grey Smoke; steam: White Steam; black: Black Smoke |
 | `aura` (4) | tendrils: Blue Tendrils; purple: Purple Tendrils; strong: Strong Aura (強); rising_weak: Rising Weak Aura (弱) |
 | `lightning` (3) | bolts: Lightning Bolts; electric_blue: Electric Blue; electrify: Electrify (along Edge) |
-| `pattern_fill` (S53's type; 6 new + 9) | new: wood, marble, brushed_metal, carbon_fiber, brick, camo (each its kind with tuned colours); Pachislop's zebra, giraffe, leopard, tiger, checker, hazard, seigaiha (青海波), asanoha (麻の葉), shippo (七宝) when S53 ships none |
+| `pattern_fill` (S80's type; 6 new + 9) | new: wood, marble, brushed_metal, carbon_fiber, brick, camo (each its kind with tuned colours); Pachislop's zebra, giraffe, leopard, tiger, checker, hazard, seigaiha (青海波), asanoha (麻の葉), shippo (七宝) when S80 ships none |
 | `fractal_noise` (6) | clouds (fbm, scale 400); fog (fbm, contrast 0.6, gradient transparent → `#c8d0dc`); plasma (turbulent, gradient `#ff2bd6` → `#29f0ff`); caustics (ridged, contrast 2, gradient `#002a4a` → `#bff6ff`); static (fbm, scale 2, contrast 3); nebula (fbm, complexity 7, gradient `#0a0018` → `#7a2cff` → `#ff6ad5`) |
 | `sunburst` (7) | red_gold: Red & Gold Rays; blue: Blue Rays; rainbow_halo: Rainbow Halo; purple: Purple Rays; black_gold: Black & Gold; focus_lines: Focus Lines; two_colour_wedges: Two-Colour Wedges (each with the Vignette recipe, as Pachislop's) |
 | `light_glow` | soft_bloom (radius 120, falloff 70, exposure 0.5); jackpot_flash (exposure 3, radius 400, highlight_shift 80, core_white 50) |
@@ -1281,8 +1281,8 @@ screenshots (AC2).
 Recipe entries (D4) and what they add: **Long Shadow** → `extrude/long_shadow`;
 **Emboss**, **Deboss** → `material/emboss`, `material/deboss`; **Icicles** → `drips/icicles`;
 **CRT** → `scanlines/crt`; **Comic Dots**, **Ben-Day Dots** → `halftone/comic_dots`,
-`halftone/ben_day`; **Shine** → S53's Gradient Overlay with `style: sweep`, Pachislop's
-`glintOverlay` recipe written in S53's keys: `angle` 30, `position` −20, `length` = 70 % of the
+`halftone/ben_day`; **Shine** → S80's Gradient Overlay with `style: sweep`, Pachislop's
+`glintOverlay` recipe written in S80's keys: `angle` 30, `position` −20, `length` = 70 % of the
 layer box, `gradient` = a white band whose edge stops encode softness 85 plus a second band at
 0.32 × width trailing 2.1 widths at alpha 0.8, `amount` 0.9, `mode: light`; **Rainbow** →
 `rainbowOverlay`: `style: linear`, `angle` 20, `gradient` = one spectrum cycle at saturation 0.9
@@ -1300,8 +1300,8 @@ effect angles (clockwise) are kept, except Extrude's `light` (−v → `light_an
 
 | Pachislop | Ours | Renames beyond the rules |
 |---|---|---|
-| `outerGlow`, `innerGlow`, `dropShadow`, `innerShadow`, `gradientOverlay`, `gaussianBlur`, `adjust` | S53 types | S53's map |
-| `keyline` | S53 `outline` | S53's map |
+| `outerGlow`, `innerGlow`, `dropShadow`, `innerShadow`, `gradientOverlay`, `gaussianBlur`, `adjust` | S80 types | S80's map |
+| `keyline` | S80 `outline` | S80's map |
 | `deepGlow` | `light_glow` | `colorMode` → `color_mode` |
 | `contourLines` | `contour_lines` | |
 | `motionBlur`, `lensBlur`, `tiltShift`, `radialBlur` | `motion_blur`, `lens_blur`, `tilt_shift`, `radial_blur` | `centerX/centerY` → `center` |
@@ -1320,13 +1320,13 @@ effect angles (clockwise) are kept, except Extrude's `light` (−v → `light_an
 | `fire`, `smoke` | same | `angle` negated (90 → −90) |
 | `corona` | `aura` | `mode: aura` → `rising`, `aura` → `strength` |
 | `lightning` | `lightning` | |
-| `patternFill` | S53 `pattern_fill` | `rotation` negated |
-| `style.erode` | S53 `style.erode` | |
-| `style3d.glint` | S59's 3D glint (§6.6.30) | |
+| `patternFill` | S80 `pattern_fill` | `rotation` negated |
+| `style.erode` | S80 `style.erode` | |
+| `style3d.glint` | S86's 3D glint (§6.6.30) | |
 
-### 6.10 Add Effect and Add Generator menus (S55 draws them from the registry)
+### 6.10 Add Effect and Add Generator menus (S82 draws them from the registry)
 
-**Add Effect** (a layer, a part or several selected; categories in this order, `*` = S53):
+**Add Effect** (a layer, a part or several selected; categories in this order, `*` = S80):
 
 | Category | Entries |
 |---|---|
@@ -1340,7 +1340,7 @@ effect angles (clockwise) are kept, except Extrude's `light` (−v → `light_an
 | Distort | Wave Warp, Motion Trail, Shatter |
 | Generators that follow this layer | every preset of every `follow` optional or required generator, grouped by the generator categories below; each row reads "Adds a Generator layer" and shows above/below |
 
-A new effect is appended at the end of the stack (S53 default). Search ranks name matches over
+A new effect is appended at the end of the stack (S80 default). Search ranks name matches over
 alias matches over description matches; each row shows its cost badge (R41).
 
 **Add Layer > Generator** (generator categories): Particles (Particles, Ink Splatter); Lines
@@ -1351,7 +1351,7 @@ selected layer when one is selected.
 
 ### 6.11 MCP, Lua and docs
 
-**`list_title_library`** (S53's tool, kinds `effects` and `generators`, `id` detail): S56 adds one
+**`list_title_library`** (S80's tool, kinds `effects` and `generators`, `id` detail): S83 adds one
 argument and some row fields, no tool:
 
 ```text
@@ -1362,22 +1362,22 @@ list_title_library {kind: "effects" | "generators", query?, category?: string, i
   `live` (kind and params), `follow` (generators) and `presets` (ids). Recipes and style settings
   are listed in `effects` with the type and preset they add; `query` also searches aliases.
 - `id` detail gains each param's `anim` class, the presets with their params, `fallback`, and the
-  docs anchor in `docs/mcp/guide/title-art-effects.md`; the parameter-line format stays S53's
+  docs anchor in `docs/mcp/guide/title-art-effects.md`; the parameter-line format stays S80's
   (`size px 40 [1..400] L: how far the glow reaches`).
 - Schema: one `category` string (built with `McpSchema.h`); growth ≤ 120 characters of the
   tool's 800 cap. An unknown `id` fails listing the nearest ids.
 
-**`edit_title`** (S53 ops): `add_effect {type, preset?}` applies preset params over the defaults;
+**`edit_title`** (S80 ops): `add_effect {type, preset?}` applies preset params over the defaults;
 `add_layer {type: "generator", generator, preset?, follow?, place?: "above"|"below", group?:
 "auto"|"none"|"always"}` (D3); `apply_recipe {layer?, part?, recipe}` (new op: the §6.8 recipe
 entries by id: `long_shadow`, `shine`, `rainbow`, `vignette`, `emboss`, `deboss`, `icicles`, `crt`,
 `comic_dots`, `ben_day`). Validation follows R45.
 
-**`render_title {options: {cost: "desktop" | "mobile"}}`** (a key of S53's `options`) adds `cost`
+**`render_title {options: {cost: "desktop" | "mobile"}}`** (a key of S80's `options`) adds `cost`
 (§6.4 readout) to the result; `"mobile"` uses the mobile model. Text summary example: `cost: C3 total, desktop 3.1 ms, mobile
 11.8 ms predicted; Title: light_glow C3 2.4 ms (mobile C2 7.0 ms), glints C1 0.2 ms`.
 
-Budget: S56's row of S53 §6.11's program budget table: `category` on `list_title_library` (≤ 120
+Budget: S83's row of S80 §6.11's program budget table: `category` on `list_title_library` (≤ 120
 characters); `cost` is a key of `render_title`'s `options` (0 schema characters); no
 `budget.json` entry.
 
@@ -1387,31 +1387,31 @@ characters); `cost` is a key of `render_title`'s `options` (0 schema characters)
 to 2,000, or bake), `fx_realtime_budget` (re-render > 15 ms predicted on mobile; fix: the class's
 heaviest param), `fx_hdr_on_8bit` (info).
 
-**Lua** (S54's `TitleArt`): through Exposed Parameters (R47). **Guide**: `docs/mcp/guide/title-art.md`
+**Lua** (S81's `TitleArt`): through Exposed Parameters (R47). **Guide**: `docs/mcp/guide/title-art.md`
 section "Effects and generators": discover with `list_title_library {kind, id}`, effects vs
 generators and following, recipes, live params, the cost readout, reseeding strobes.
 
-### 6.12 Live variants and classes for S53's definitions (S58's minimum set)
+### 6.12 Live variants and classes for S80's definitions (S85's minimum set)
 
-S56 sets the §6.2 members on S53's twelve definitions in the same change. Live variants:
+S83 sets the §6.2 members on S80's twelve definitions in the same change. Live variants:
 
 | Definition | L params | Kind |
 |---|---|---|
-| `gradient_overlay` | `position`, `amount`, `angle` (sweep); `offset`, `scale` (linear, radial) | `kernel`: the band or gradient from the 256 × 1 LUT over the cached input split (S58's sweep and Color Cycle) |
-| `outer_glow` | `intensity`, `opacity` | `scale_split` (S53's glow split) |
+| `gradient_overlay` | `position`, `amount`, `angle` (sweep); `offset`, `scale` (linear, radial) | `kernel`: the band or gradient from the 256 × 1 LUT over the cached input split (S85's sweep and Color Cycle) |
+| `outer_glow` | `intensity`, `opacity` | `scale_split` (S80's glow split) |
 | `drop_shadow`, `outline` | `opacity` | `scale_split` |
 | `color_overlay` | `opacity`, `color` | `kernel` over the cached input split |
 | `pattern_fill` | `offset`, `rotation` | `kernel` (§6.7.17) |
 | `inner_glow`, `inner_shadow`, `pattern_overlay`, `gaussian_blur`, `adjust`, `fill` | none | re-render |
 
-With §6.6 and §6.7 this covers S58's §6.2 table: `light_glow` `intensity`, `chromatic_aberration`
+With §6.6 and §6.7 this covers S85's §6.2 table: `light_glow` `intensity`, `chromatic_aberration`
 `amount`, `wave_warp` `phase` and `amplitude`, `shatter` `progress`, `glitch`
 `seed` and `amount`, `sunburst` `rotation`, `shockwave` `radius`, `width`, `flash`. Every
 `intensity`, `glow` and `brightness` param of an `adds_light` definition has `combine: multiply`
-(S58). S58 R12's suffix rule applies: a live param followed in its stack by an enabled effect
+(S85). S85 R12's suffix rule applies: a live param followed in its stack by an enabled effect
 without a live variant plays as re-render.
 
-### 6.13 Glyph Atlas safety (S54 R31)
+### 6.13 Glyph Atlas safety (S81 R31)
 
 | Class | Definitions |
 |---|---|
@@ -1421,17 +1421,17 @@ without a live variant plays as re-render.
 
 ## 7. Acceptance criteria
 
-The fixture is S53's **standard title** (確定, Dela Gothic One, size 200, Pachislop's
+The fixture is S80's **standard title** (確定, Dela Gothic One, size 200, Pachislop's
 `classicTitleStyle2D` converted; `engine/tests/core/titleart/fixtures/`), rendered as Pachislop's
 goldens are (`GOLDEN_STILL`: PNG path at 0.25 ×, trimmed). Following generators follow it, placed
 as their preset says. Goldens are written on glcore and Vulkan must match.
 
 | AC | Verification |
 |---|---|
-| AC1 (R1-R4, R7, R8, R49, R53, R55) | `TitleFxCatalogTest.EveryDefinitionComplete`: the registry holds the 27 effect and 16 generator ids of §6.6/6.7 (plus S53's); ids snake_case and unique, names unique, aliases non-empty; every param has label, doc, unit and animation class, a default inside its range, enum defaults among the options, `when` naming an existing param and value; every preset file parses and sets only known params in range; every recipe names an existing type and preset; every definition has a `glyph_safety`, every param an `anim` class, and the light colours of §6.3 carry `light: true`; `TITLE_ART_VERSION` is unchanged. Red control: a test-only definition with a default outside its range fails |
-| AC2 (R17, R26-R28) | `TitleFxGoldenGpu.Effects/*`: each S56 effect at defaults and with its first two presets of §6.8, and each pattern kind of §6.6.28 through Pattern Fill, matches `engine/tests/core/golden/titleart/fx/<id>[_<preset>].png` (written on glcore, Vulkan matches). New-effect goldens are reviewed by eye once; the screenshots are in the evidence |
+| AC1 (R1-R4, R7, R8, R49, R53, R55) | `TitleFxCatalogTest.EveryDefinitionComplete`: the registry holds the 27 effect and 16 generator ids of §6.6/6.7 (plus S80's); ids snake_case and unique, names unique, aliases non-empty; every param has label, doc, unit and animation class, a default inside its range, enum defaults among the options, `when` naming an existing param and value; every preset file parses and sets only known params in range; every recipe names an existing type and preset; every definition has a `glyph_safety`, every param an `anim` class, and the light colours of §6.3 carry `light: true`; `TITLE_ART_VERSION` is unchanged. Red control: a test-only definition with a default outside its range fails |
+| AC2 (R17, R26-R28) | `TitleFxGoldenGpu.Effects/*`: each S83 effect at defaults and with its first two presets of §6.8, and each pattern kind of §6.6.28 through Pattern Fill, matches `engine/tests/core/golden/titleart/fx/<id>[_<preset>].png` (written on glcore, Vulkan matches). New-effect goldens are reviewed by eye once; the screenshots are in the evidence |
 | AC3 (R18) | `TitleFxGoldenGpu.Generators/*`: every generator preset of §6.8 (72 ported, 6 Fractal Noise, 6 new Pattern Fill) matches `golden/titleart/gen/<id>_<preset>.png` |
-| AC4 (D2, R19-R25) | `TitleFxParityGpu`: the 17 ported effects at defaults and the 72 ported generator presets against Pachislop's references (copied to `engine/tests/core/golden/titleart/pachislop/{effect,generator}/` with S53's provenance file), with S53 AC12's metric (4 × 4 block means, block threshold 24, ≤ 3 % of blocks over, colour histogram distance ≤ 6 %). It runs after S53's `TitleArtParityGpu` on the standard title, and a failure there is named in every dependent failure. At most 10 entries may be listed in `docs/mcp/guide/title-art-effects.md` "Parity exceptions", each naming the S56 improvement or S53 base difference responsible, with a side-by-side image. Red control: `glints` `threshold` 30 → 45 fails `glints_highlights` |
+| AC4 (D2, R19-R25) | `TitleFxParityGpu`: the 17 ported effects at defaults and the 72 ported generator presets against Pachislop's references (copied to `engine/tests/core/golden/titleart/pachislop/{effect,generator}/` with S80's provenance file), with S80 AC12's metric (4 × 4 block means, block threshold 24, ≤ 3 % of blocks over, colour histogram distance ≤ 6 %). It runs after S80's `TitleArtParityGpu` on the standard title, and a failure there is named in every dependent failure. At most 10 entries may be listed in `docs/mcp/guide/title-art-effects.md` "Parity exceptions", each naming the S83 improvement or S80 base difference responsible, with a side-by-side image. Red control: `glints` `threshold` 30 → 45 fails `glints_highlights` |
 | AC5 (R10, R15, R25, D7) | `TitleFxDeterminism`: each definition and preset rendered twice from fresh documents (fresh ids), and with 1 and 8 job workers, is identical (tolerance 0) on one backend; a `seed` change changes it; particles `count` 400 → 401 keeps the first 400 instance records bit-identical; glint anchors at `px_scale` 1 and 4 agree within 0.5 canvas px; speed-line, shatter and stitch layouts at `px_scale` 1 and 2 agree in canvas px |
 | AC6 (R9, R31, R32, §6.5, D14, D17) | `TitleFxFallbackGpu`: every definition at defaults with `TITLE_ART_TEST_NO_FLOAT_TARGETS`, and with `TITLE_ART_TEST_NO_FLOAT_BLEND`, agrees with its float render within its F class, with the same pass names and count; the D11 mobile Light Glow agrees with the desktop one within F1. Red control: headroom H = 1 makes `light_glow` exceed F2 |
 | AC7 (R19) | `LightGlowMathTest`: the CPU twin of the response is bit-exact identity on 10⁶ random colours with channels ≤ 1; octave weights sum to 1 ± 1e-6 over falloff 0-100 and radius 4-1000; doubling `radius` keeps total glow energy within 1 %. `LightGlowGpu.Identity`: with `threshold` 2 and a layer whose channels are all ≤ 1, the ink pixels equal the input (on_face 0) |
@@ -1443,78 +1443,78 @@ as their preset says. Goldens are written on glcore and Vulkan must match.
 | AC13 (R11) | `QuadBatchGpu.SubPixelEnergy`: a 0.3 px quad's summed light equals its area × colour within 2 %; quads at `min_px` and above match analytic coverage; 65,536 instances draw in one call |
 | AC14 (R34, R35, §6.4) | `TitleFxBudget.StaticModel`: every definition at defaults and each preset, at 1920 × 1080 (desktop) and 1024 × 512 (mobile), is within its declared class (presets at most one class heavier, as their file states) and every live kernel within R35. Red control: a test definition declaring C1 with 5 FRE fails |
 | AC15 (§5 Performance, R36) | `TitleFxBench` on server H (`JASPER_TEST_PERF_SLACK=1`, GPU lane): measured GPU time per definition at defaults is within its class's desktop budget; `AnalysisBench` on server A checks R36; `TitleFxBench.Calibrate` prints the FRE constant. A missed budget is recorded in Deviations with its table |
-| AC16 (R37, R38) | `TitleFxZeroCost`: a document with every S56 effect disabled and every generator layer hidden has the same S15 pass labels, the same scratch-target allocations and no extra shader variant as the document without them; scratch targets return to S53's pool after a render (pool high-water unchanged on a second render); with `JASPERENGINE_TITLE_ART=OFF` no `titleart::fx` or `titleart::gen` symbol is linked (S53's module-off check) |
+| AC16 (R37, R38) | `TitleFxZeroCost`: a document with every S83 effect disabled and every generator layer hidden has the same S15 pass labels, the same scratch-target allocations and no extra shader variant as the document without them; scratch targets return to S80's pool after a render (pool high-water unchanged on a second render); with `JASPERENGINE_TITLE_ART=OFF` no `titleart::fx` or `titleart::gen` symbol is linked (S80's module-off check) |
 | AC17 (D10, R35) | `TitleFxLiveGpu`: for each definition with a live variant and each L param at 3 values, the live frame equals a full re-render at that value within F1 (`scale_split` within F0); the per-frame pass count equals the declared kernel's; no live frame reads back |
 | AC18 (R5, R6, R44-R46, §6.11) | `tools/mcp/tests/test_title_fx.py`: `list_title_library {kind: "effects"}` lists the menu entries (recipes and style settings included) with classes, `id: "light_glow"` returns its table with `anim` classes and presets, `query: "power glow"` finds it; `add_effect {type: "lite_glow"}` fails naming `light_glow`; an out-of-range `set` is clamped and echoed; a `set` on a hidden param returns `inactive`; `add_layer {generator: "fire", follow: "Title", group: "auto"}` creates "Title FX" with the fire inside, and an Add-blended generator there leaves a layer below the group unchanged (`render_title` crop); `apply_recipe long_shadow` adds an Extrude with the preset's values; `render_title {options: {cost: "mobile"}}` has every §6.4 field; removing the followed layer makes `check_title` report `fx_follow_missing` whose fix op passes when applied; a Realtime document with Lens Blur reports `fx_bake_only_realtime`. `tool_budget.py --check tools/mcp/budget.json` and `gen_tool_docs.py --check` pass |
-| AC19 (R39-R43, §6.10) | `tools/mcp/tests/test_title_fx_menu.py` (isolated editor, xvfb; after S55): Add Effect shows the categories in order with counts; "power glow" finds Light Glow, "かすれ" finds Dry Brush (style setting) and Distress, "fire" shows the generator section; adding a recipe is one undo step named after it; the seed dice is one undo step; the cost badge exists (`find_ui_item`); a following generator whose layer is deleted shows "Follows a deleted layer". Screenshots of the menu and the Light Glow inspector are in the evidence |
-| AC20 (R29-R31, R33) | `TitleFxShadersCompile`: every S56 program and its `TFX_LIVE` variant compiles through `engine/libs/shadercompiler` to GLSL 410, GLSL ES 300, MSL, HLSL and SPIR-V; a static scan finds no `texture(` inside a loop and `precision highp float` in each. `tools/build.sh web` and `android` build with the module on and off; `tools/smoke-test.sh` exports a Realtime title with Glints and Light Glow and runs it |
-| AC21 (R48) | `test_docs.py` (`gen_effect_docs.py --check`): `docs/mcp/guide/title-art-effects.md` equals the text generated from the registry and presets, S56's columns included. Red control: changing a label fails it |
-| AC22 (§5 Performance) | Manual: on a Mali-G57 or Adreno 610-class phone, the fixture in Realtime with Gold Dust (`loop`, `time` animated), Glints twinkle and Light Glow `scale_split` keeps the live compose ≤ 0.5 ms GPU per frame (S54's budget), and a full re-render of the classic look ≤ 15 ms time-sliced (S15 timings or a vendor profiler); recorded in `docs/mcp/guide/title-art.md` "Device measurements". Without a device it is recorded as pending in Deviations (S13 AC23 precedent) |
+| AC19 (R39-R43, §6.10) | `tools/mcp/tests/test_title_fx_menu.py` (isolated editor, xvfb; after S82): Add Effect shows the categories in order with counts; "power glow" finds Light Glow, "かすれ" finds Dry Brush (style setting) and Distress, "fire" shows the generator section; adding a recipe is one undo step named after it; the seed dice is one undo step; the cost badge exists (`find_ui_item`); a following generator whose layer is deleted shows "Follows a deleted layer". Screenshots of the menu and the Light Glow inspector are in the evidence |
+| AC20 (R29-R31, R33) | `TitleFxShadersCompile`: every S83 program and its `TFX_LIVE` variant compiles through `engine/libs/shadercompiler` to GLSL 410, GLSL ES 300, MSL, HLSL and SPIR-V; a static scan finds no `texture(` inside a loop and `precision highp float` in each. `tools/build.sh web` and `android` build with the module on and off; `tools/smoke-test.sh` exports a Realtime title with Glints and Light Glow and runs it |
+| AC21 (R48) | `test_docs.py` (`gen_effect_docs.py --check`): `docs/mcp/guide/title-art-effects.md` equals the text generated from the registry and presets, S83's columns included. Red control: changing a label fails it |
+| AC22 (§5 Performance) | Manual: on a Mali-G57 or Adreno 610-class phone, the fixture in Realtime with Gold Dust (`loop`, `time` animated), Glints twinkle and Light Glow `scale_split` keeps the live compose ≤ 0.5 ms GPU per frame (S81's budget), and a full re-render of the classic look ≤ 15 ms time-sliced (S15 timings or a vendor profiler); recorded in `docs/mcp/guide/title-art.md` "Device measurements". Without a device it is recorded as pending in Deviations (S13 AC23 precedent) |
 | AC23 (R51, D16) | `PachislopFxMapTest`: every Pachislop effect type, generator type, preset id and param key appears in the map; each negated param is a generator angle; converting each Pachislop preset gives exactly the preset file's values (the renders are AC4) |
-| AC24 (R12) | S56's passes that use them (lightning cores, drips, light accumulators) pass AC6 and AC9; the blend modes themselves are S53 AC44 (`BlendModesGpu.LightAndMax`) |
+| AC24 (R12) | S83's passes that use them (lightning cores, drips, light accumulators) pass AC6 and AC9; the blend modes themselves are S80 AC44 (`BlendModesGpu.LightAndMax`) |
 | AC25 (R13, R14, R50) | `ReadGridTest`: packed luminance round-trips 0-4 within 1/16384; one readback per content key (counter); a Realtime export with static text performs zero `FrameReadback` calls over 120 frames, and one per analysed layer after a runtime text change |
 | AC26 (R16) | `TitleFxNoClock`: a static scan finds no time or clock uniform in `engine/shaderlib/titleart/{fx,gen}` and `tfx_*.glsl`, and no clock call in `engine/core/titleart/{effects,generators,analysis,gpu}`; one document rendered at two engine times is identical |
-| AC27 (R47) | `TitleArtLuaFxTest` (S54's harness): with `{layer: "Title", field: "fx:light_glow.intensity"}` exposed as `glow` and `fx:light_glow.radius` as `glow_radius`, `setParameter("glow", 2)` changes the next frame with no re-render (re-render counter unchanged) and `setParameter("glow_radius", 300)` causes exactly one |
+| AC27 (R47) | `TitleArtLuaFxTest` (S81's harness): with `{layer: "Title", field: "fx:light_glow.intensity"}` exposed as `glow` and `fx:light_glow.radius` as `glow_radius`, `setParameter("glow", 2)` changes the next frame with no re-render (re-render counter unchanged) and `setParameter("glow_radius", 300)` causes exactly one |
 | AC28 (R52) | `TitleFxPassVersion.GoldenHash`: each definition's golden images are hashed and recorded with its `passVersion` in `engine/tests/core/golden/titleart/pass-versions.json`; a changed golden without a bumped `passVersion` fails |
-| AC29 (R54, §6.12) | `TitleFxLiveGpu.S58MinimumSet`: every parameter of S58's §6.2 table, keyed on the fixture, plays live (S58's plan reports no `live_fallback`) and its live frames match re-renders within F1; a sweep followed by an enabled Gaussian Blur falls back with S58's reason text (red control for the suffix rule) |
+| AC29 (R54, §6.12) | `TitleFxLiveGpu.S58MinimumSet`: every parameter of S85's §6.2 table, keyed on the fixture, plays live (S85's plan reports no `live_fallback`) and its live frames match re-renders within F1; a sweep followed by an enabled Gaussian Blur falls back with S85's reason text (red control for the suffix rule) |
 
 ## 8. Dependencies & conflicts
 
-**The Title Art program graph and waves** (the same in S53-S60; S53 §8 is the source, S53 §6.15
+**The Title Art program graph and waves** (the same in S80-S87; S80 §8 is the source, S80 §6.15
 the shared rules; an arrow means "needs"):
 
 | Wave | Specs | Needs |
 |---|---|---|
-| 6 (title art) | S53 core | merged work only |
-| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of S53 §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
-| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+| 6 (title art) | S80 core | merged work only |
+| 6B | S81 runtime, S82 Title Designer, S83 effects and generators, S86 3D | S80 (every hook of S80 §6.15); within the wave, by owner: S81 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S82 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S83 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S86 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S84 library, S85 animation, S87 localisation and interchange | S80 and wave 6B; within the wave, by owner: S84 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S85 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S87 owns the sidecar `languages` table and the per-language bake sets |
 
-Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
-compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
-fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
-S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
-wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
-rest of S55 lands in 6B.
+Edges: S81 → S80. S82 → S80, S81 (Preview As Glyph Atlas, create menus). S83 → S80, S81 (live
+compose runs its kernels; sidecar anchors). S86 → S80, S81 (scheduler, sub-options, component
+fields), S82 (sections, gizmo), S83 (`Glint3D`). S84 → S80, S82 (Library panel), S83, S86. S85 →
+S80, S81, S82, S83 (S86 optional). S87 → S80, S81, S82, S83, S84, S85, S86. One exception crosses a
+wave: S82's Library panel milestone (its M6) draws S84's data and lands with S84 in wave 6C; the
+rest of S82 lands in 6B.
 
-- **S53 (wave 6, blocking).** Used as S53 specifies it: `TitleEffectRegistry` (§6.5), `ShaderType::TITLE_ART`
+- **S80 (wave 6, blocking).** Used as S80 specifies it: `TitleEffectRegistry` (§6.5), `ShaderType::TITLE_ART`
   programs and includes (§6.3), regions of interest, content hashes, the target pool, `TitleArtCaps`
   and its RGBA8 fallback with the per-request test flags (§6.3), the ink-versus-light runner for
   Outline (§6.4), layer sources for `follow` (§6.4), `style.erode`, Material, the pattern library,
-  Gradient Overlay's `sweep` style (for Shine), `ImageDiff`, and the tools of §6.11. The hooks S56
-  needs are S53's (S53 §6.15): the registry members of §6.2 and `FxAnim`, `ParamKind` String,
+  Gradient Overlay's `sweep` style (for Shine), `ImageDiff`, and the tools of §6.11. The hooks S83
+  needs are S80's (S80 §6.15): the registry members of §6.2 and `FxAnim`, `ParamKind` String,
   Material, RowArray, Material `bevel.direction`, `LIGHT_PREMULTIPLIED` and `MAX_PREMULTIPLIED`,
-  the reserved op `apply_recipe`, `render_title.options` (S56's `cost` key), the check registry and
-  the sidecar's `anchors` member. S56 adds, without a format version bump: the values of the
-  registry members (its 43 definitions and S53's twelve); twelve `pattern.kind` values; Pattern
+  the reserved op `apply_recipe`, `render_title.options` (S83's `cost` key), the check registry and
+  the sidecar's `anchors` member. S83 adds, without a format version bump: the values of the
+  registry members (its 43 definitions and S80's twelve); twelve `pattern.kind` values; Pattern
   Fill's `offset`, live variant and presets; the light headroom of D14; `list_title_library` row
-  fields and `category`; `apply_recipe`'s implementation; five `check_title` checks; S56's columns
+  fields and `category`; `apply_recipe`'s implementation; five `check_title` checks; S83's columns
   in `gen_effect_docs.py`.
-- **S54 (same wave, owner of the runtime).** Runs S56's live kernels in its live compose (S54 R9) within its per-title
+- **S81 (same wave, owner of the runtime).** Runs S83's live kernels in its live compose (S81 R9) within its per-title
   budget, keeps the splits they read (light splits, the pre-distort input, instance buffers,
-  anchors), ships analysis results in its bake sidecar (S54 R8, the 16 strongest anchors) and its
-  Realtime export data (R14), applies D12 on the mobile tier, takes `glyph_safety` from §6.13 (S54
-  R31), and drives params through Exposed names (S54 R66, R47).
-- **S55** draws rows, gizmos, badges and the §6.10 menus from the registry. **S57** converts
+  anchors), ships analysis results in its bake sidecar (S81 R8, the 16 strongest anchors) and its
+  Realtime export data (R14), applies D12 on the mobile tier, takes `glyph_safety` from §6.13 (S81
+  R31), and drives params through Exposed names (S81 R66, R47).
+- **S82** draws rows, gizmos, badges and the §6.10 menus from the registry. **S84** converts
   Pachislop looks with §6.9, references preset ids, reads `light: true` and the spectrum switches
-  (R55), and its classic style port is the fixture's; S57 uses `drips` (`count`, `length`,
+  (R55), and its classic style port is the fixture's; S84 uses `drips` (`count`, `length`,
   `width`) and `pixelate.size` as defined here.
-  **S58** derives its track classes from `ParamDef::anim` (S53's `FxAnim`, S58 R11), keys the
+  **S85** derives its track classes from `ParamDef::anim` (S80's `FxAnim`, S85 R11), keys the
   params, provides "Reseed every N frames", and relies on §6.12 (`light_glow`, `wave_warp`,
-  `shatter.progress`). **S59** (same wave) hosts the 3D glint and stores its style
-  (`style_3d.glint`); `Glint3D` accepts S59's compressed SRGB8A8 light encoding (§6.6.30). **S60** maps Photoshop Bevel and Emboss "Emboss"/"Pillow Emboss" to Material
-  with `bevel.direction`, and Outer Glow, Satin and Stroke to S53's types.
+  `shatter.progress`). **S86** (same wave) hosts the 3D glint and stores its style
+  (`style_3d.glint`); `Glint3D` accepts S86's compressed SRGB8A8 light encoding (§6.6.30). **S87** maps Photoshop Bevel and Emboss "Emboss"/"Pillow Emboss" to Material
+  with `bevel.direction`, and Outer Glow, Satin and Stroke to S80's types.
 - **S15** (pass timings), **S43** (palettes for Pixelate), **S06** (jobs), **S32** (warm-up list,
-  through S54), **S11** (`iridescence.glsl`, read only).
+  through S81), **S11** (`iridescence.glsl`, read only).
 - **Merge hotspots:** `engine/core/render/Render.h` (`BlendMode`, `BlendOperation`),
-  `engine/renders/sokol/SokolPipelineCache.cpp`, `SokolObject.cpp`; `NOTICE.md`; S53's registry
+  `engine/renders/sokol/SokolPipelineCache.cpp`, `SokolObject.cpp`; `NOTICE.md`; S80's registry
   and `TitleArtOps` files; `editor/resources/titleart/`; `docs/mcp/guide/title-art.md`;
   `tools/mcp/budget.json` (`title_art` group).
 
 ## 9. Risks & defaults
 
-1. **Parity depends on S53's base title.** If the fixture alone does not match Pachislop's classic
+1. **Parity depends on S80's base title.** If the fixture alone does not match Pachislop's classic
    reference, effect parity fails too. Default: AC4's thresholds are not loosened; the base is
-   fixed first (S53's `TitleArtParityGpu` runs first and is named in every failure).
+   fixed first (S80's `TitleArtParityGpu` runs first and is named in every failure).
 2. **Mobile figures are predictions.** No phone is on the build servers. Default: readouts label
    mobile numbers "predicted", AC22 is manual, pending is recorded (S13 precedent).
 3. **MAX on float targets** needs `blendRGBA16F`. Default: the drip field and the lightning core
@@ -1523,21 +1523,21 @@ rest of S55 lands in 6B.
 4. **Readback stalls on WebGL** (synchronous). Default: only on a runtime change of an analysed
    layer, inside the time-sliced re-render; static titles never read back (R14).
 5. **Shader count.** About 60 pass shaders and their live variants. Default: variants compile only
-   for types a document uses (S32 warm-up list through S54); goldens run on every type.
+   for types a document uses (S32 warm-up list through S81); goldens run on every type.
 6. **No S20 conversion.** Screen-wide simulated celebrations stay S20's; a converter would approximate
    a closed-form look with a simulation and confuse parity. Default: not provided; the guide says
    when to use which.
 7. **Hash precision** on `mediump`-only drivers. Default: `highp` is required in every title shader;
    devices without highp fragment precision are below the engine's GLES3 baseline.
 8. **Magic circle fonts offline.** Default: when a set's library font cannot be copied, the built-in
-   face draws the glyphs and the layer reports S53's missing-glyph problem.
+   face draws the glyphs and the layer reports S80's missing-glyph problem.
 9. **Catalogue size confuses people.** Default: 27 effect types in 8 categories, recipes for the
    rest, search with aliases, hover preview, cost badges.
 10. **New pattern kinds and genre effects are judged by eye.** Default: their goldens are reviewed
     with screenshots once, then guarded like every other golden.
 11. **"Light Glow" is unfamiliar to users who know the effect by a product name.** Default: the
     generic aliases "power glow", "bloom", "glare" find it; the docs explain the technique; product
-    names stay out (S57's denied terms).
+    names stay out (S84's denied terms).
 
 ## Milestones
 
@@ -1551,24 +1551,24 @@ rest of S55 lands in 6B.
 
 ## Deviations
 
-1. **Reconciled: S53 declares every registry member and the blend modes.** S56 fills the values;
+1. **Reconciled: S80 declares every registry member and the blend modes.** S83 fills the values;
    the types (`FxAnim`, `CostClass`, `GlyphSafety`, `LiveKind`, ...) and `LIGHT_PREMULTIPLIED` /
-   `MAX_PREMULTIPLIED` are in S53's headers so that the same-wave S54, S55 and S59 compile against
-   them (S53 §6.5, §6.4).
-2. **Reconciled: `ParamDef::anim` is S53's `FxAnim {None, Live, Rerender, Step, Relayout}`,** one
-   enum for S56's L/R/S/X marks and S58's classes; the separate `relayout` flag is gone (it is
+   `MAX_PREMULTIPLIED` are in S80's headers so that the same-wave S81, S82 and S86 compile against
+   them (S80 §6.5, §6.4).
+2. **Reconciled: `ParamDef::anim` is S80's `FxAnim {None, Live, Rerender, Step, Relayout}`,** one
+   enum for S83's L/R/S/X marks and S85's classes; the separate `relayout` flag is gone (it is
    `Relayout`), `interp` stays for stepped live params.
 3. **Reconciled: `CostTier` is gone;** the row field `cost` is the class C0-C4 everywhere,
-   including S57's derived item cost.
+   including S84's derived item cost.
 4. **Reconciled: `render_title`'s `cost` and `tier` are one key `options.cost: "desktop" |
-   "mobile"`** of S53's free-form `options`, to keep the tool under 1,500 characters (S53 §6.11).
-5. **Reconciled: live kernels run only in S54's live compose, never inside `title_fx`; Lua reaches
-   params only through Exposed names** (S54 R9, R66, contract decision 13).
+   "mobile"`** of S80's free-form `options`, to keep the tool under 1,500 characters (S80 §6.11).
+5. **Reconciled: live kernels run only in S81's live compose, never inside `title_fx`; Lua reaches
+   params only through Exposed names** (S81 R9, R66, contract decision 13).
 6. **Reconciled: no product names as aliases.** "deep glow" is replaced by "power glow"; `deepGlow`
    stays only as the Pachislop source key in the id map.
-7. **Reconciled: `Glint3D` lives in `engine/core/titleart/three_d/`** behind S54's
-   `JASPERENGINE_TITLE_ART_3D`, and shipped anchors use S53's sidecar shape `{x, y, size, strength,
+7. **Reconciled: `Glint3D` lives in `engine/core/titleart/three_d/`** behind S81's
+   `JASPERENGINE_TITLE_ART_3D`, and shipped anchors use S80's sidecar shape `{x, y, size, strength,
    fade}`.
-8. **Reconciled: the Shine, Rainbow and Vignette recipes are written in S53's `gradient_overlay`
+8. **Reconciled: the Shine, Rainbow and Vignette recipes are written in S80's `gradient_overlay`
    keys** (`length`, `gradient` stops, `amount`, modes `light`, `color`, `shade`); Pachislop's
    width, softness, double band, bands and saturation become gradient stops.

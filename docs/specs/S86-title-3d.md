@@ -1,32 +1,32 @@
-# S59 — 3D titles: extruded, inflated and bevelled meshes, chrome, gold and glass, HDR title environments, 3D glints and AO, Baked and Realtime 3D
+# S86 — 3D titles: extruded, inflated and bevelled meshes, chrome, gold and glass, HDR title environments, 3D glints and AO, Baked and Realtime 3D
 
-**Wave / Depends on.** Title Art program (spec-first), **wave 6B** (with S54, S55, S56; program
-graph in §8, program rules in S53 §6.15). Depends on:
-- **S53**: the `.titleart` document (its `dimension` member on Text, Shape, Vector and Image layers,
+**Wave / Depends on.** Title Art program (spec-first), **wave 6B** (with S81, S82, S83; program
+graph in §8, program rules in S80 §6.15). Depends on:
+- **S80**: the `.titleart` document (its `dimension` member on Text, Shape, Vector and Image layers,
   the reserved `transform.z/rotation_x/rotation_y`, `scene_3d` and CharAdjust 3D members), the
   `TitleArtRenderer` and `TitleRenderJob`, the compositor, the part keys, `TitleArtOps`, Clipper2
-  (vendored by S53 R40), float readback, `diff_images` and the `title_art` MCP group;
-- **S54** (same wave; S54 owns them): the Title Art Renderer component, Render Mode (Baked / Realtime / Glyph Atlas), the
+  (vendored by S80 R40), float readback, `diff_images` and the `title_art` MCP group;
+- **S81** (same wave; S81 owns them): the Title Art Renderer component, Render Mode (Baked / Realtime / Glyph Atlas), the
   `TitleArtScheduler` (steps, cost estimates, frame budget), the `JASPERENGINE_TITLE_ART` module and
   its export scan;
-- **S55** (same wave): the Title Designer, its Dimension section and part pages, and `TitleGizmo3D` (S59 supplies
+- **S82** (same wave): the Title Designer, its Dimension section and part pages, and `TitleGizmo3D` (S86 supplies
   its `Gizmo3DTarget`);
-- **S56** (same wave): `three_d/Glint3D` (the full glint chain and its mobile reduction), which S59
+- **S83** (same wave): `three_d/Glint3D` (the full glint chain and its mobile reduction), which S86
   calls;
-- **S57** (wave 6C): the look converter and the bundled OFL font pack, needed only by the parity
-  goldens (AC21), which therefore run once S57 lands (listed as pending until then);
+- **S84** (wave 6C): the look converter and the bundled OFL font pack, needed only by the parity
+  goldens (AC21), which therefore run once S84 lands (listed as pending until then);
 - engine specs S04 (GUIDs), S06 (jobs), S11 (PBR lobes), S14 (texture cook), S27 (curve field),
   S32 (async shaders), S34 (module switches), S15 (GPU timings).
 
-S58 (animation) drives the per-frame re-render of animated 3D fields (§8). Owner area:
+S85 (animation) drives the per-frame re-render of animated 3D fields (§8). Owner area:
 - `engine/core/titleart/three_d/` (geometry, materials, renderer, environment sampling, the 3D post);
-- `engine/core/titleart/three_d/SpriteGlints.*` (the Low tier glint; the full chain is S56's
+- `engine/core/titleart/three_d/SpriteGlints.*` (the Low tier glint; the full chain is S83's
   `three_d/Glint3D`);
-- S59's program and include files in S53's `engine/shaderlib/titleart/` (the program's one title
-  shader folder, S53 §6.15); `engine/shaderlib/includes/pbr_lobes.glsl`;
+- S86's program and include files in S80's `engine/shaderlib/titleart/` (the program's one title
+  shader folder, S80 §6.15); `engine/shaderlib/includes/pbr_lobes.glsl`;
 - `editor/titleart/three_d/` (environment builder and cook, GLB writer, the Dimension-section and part-page rows,
   material and environment pickers);
-- `engine/libs/earcut/` (Clipper2 is S53's);
+- `engine/libs/earcut/` (Clipper2 is S80's);
 - `editor/resources/titleart/environments/`, `editor/resources/titleart/hdri/`, `tools/titleart/`;
 - the "3D" section of `docs/mcp/guide/title-art.md`.
 
@@ -36,7 +36,7 @@ A Text, Shape, Vector or Image layer switched to 3D becomes a lit solid: extrude
 or inflated, bevelled, with stacked bands behind it, shaded as near-mirror chrome and gold, glass,
 gems, candy paint or plastic. It reflects hard HDR strip-light studios or Poly Haven HDRIs, is
 tone mapped per layer with the hue-preserving "Punch" curve, and carries real HDR glints and
-ambient occlusion. The result composites into the S53 layer stack like any other layer. It ships
+ambient occlusion. The result composites into the S80 layer stack like any other layer. It ships
 in one of two ways:
 - **Baked**: an image, or a GLB that keeps the materials as `KHR_materials_*`;
 - **Realtime 3D**: on every backend and target, in three quality tiers with stated budgets, down to
@@ -49,9 +49,9 @@ Nothing of it runs, links or allocates in a game without a 3D title.
 
 **In scope**
 - The 3D style (`style_3d`) of Text, Shape, Vector and Image layers (Image and Vector artwork
-  outlines from S53's alpha `trace`, with the picture projected on the face and edges), the
+  outlines from S80's alpha `trace`, with the picture projected on the face and edges), the
   document's `scene_3d` (camera, environment, lights, tone mapping), per-letter 3D transforms, and
-  the 3D parts (face, bevel, side, bands) for S53's per-part effects.
+  the 3D parts (face, bevel, side, bands) for S80's per-part effects.
 - Geometry on the CPU (job system):
   - Clipper2 outline normalisation;
   - bevel profiles (seven presets and a custom curve);
@@ -76,23 +76,23 @@ Nothing of it runs, links or allocates in a game without a 3D title.
 - 3D post:
   - the tone-map-aware MSAA resolve and the compressed-light RGBA8 fallback;
   - SAO;
-  - glints: hosting S56's `Glint3D` (full and mobile reduction) and S59's sprite glints;
+  - glints: hosting S83's `Glint3D` (full and mobile reduction) and S86's sprite glints;
   - the per-layer tone map (None, ACES Filmic, AgX, Neutral, Punch);
   - Mitchell resampling;
-  - the "ink" output for outline effects; the premultiplied hand-off to the S53 compositor.
-- Delivery: Baked image (through S53), GLB export with `KHR_materials_*`, Realtime 3D with the
-  High / Medium / Low tiers, camera and perspective. Glyph Atlas refuses 3D text (S54 R30).
-- Editor UX: the Dimension switch's 3D behaviour, the rows of S55's Dimension section and part
+  - the "ink" output for outline effects; the premultiplied hand-off to the S80 compositor.
+- Delivery: Baked image (through S80), GLB export with `KHR_materials_*`, Realtime 3D with the
+  High / Medium / Low tiers, camera and perspective. Glyph Atlas refuses 3D text (S81 R30).
+- Editor UX: the Dimension switch's 3D behaviour, the rows of S82's Dimension section and part
   pages, the document's 3D Scene section, the material,
   environment and bevel pickers with previews, the gizmo's 3D semantics, statistics and tier
   badges.
-- Agent UX: `title_art` ops and parameters on the S53 tools, Lua, the guide.
+- Agent UX: `title_art` ops and parameters on the S80 tools, Lua, the guide.
 - Tests: mesher unit tests, GPU goldens, parity goldens against Pachislop's 40 `f-3d-*` look
   references, tier budget tests, a GLB round trip, fallback agreement, red controls.
 
 **Out of scope**
 - **Model sources** (Pachislop's GLB-in-a-title). Models belong in the scene.
-- **The VSM shadow catcher** (`Shadow3D`). No Pachislop look enables it (report p3 §2.4). S56's
+- **The VSM shadow catcher** (`Shadow3D`). No Pachislop look enables it (report p3 §2.4). S83's
   Drop Shadow on the 3D layer's alpha gives the matte shadow. Its fields are not ported.
 - Changing scene IBL, `IBLEnvironment`, `SkyboxComponent`, reflection probes or the scene's 8-bit
   targets. The title environment is a separate path (R26).
@@ -184,7 +184,7 @@ Nothing of it runs, links or allocates in a game without a 3D title.
   minimal AgX (`engine/core/util/PostColorLut.cpp:191-228`). Pachislop's ACES is three.js's
   `ACESFilmicToneMapping` (Hill's fit), a different curve.
 - **Text.** `TextShaper` shapes (`engine/core/util/TextShaper.h:21-66`). Glyph outlines come from
-  S53 (contract decision 6, HarfBuzz `hb-draw`); `hb_draw` is not used yet (grep).
+  S80 (contract decision 6, HarfBuzz `hb-draw`); `hb_draw` is not used yet (grep).
 
 ## 4. Reference
 
@@ -201,15 +201,15 @@ Nothing of it runs, links or allocates in a game without a 3D title.
 | `environment.ts` (780) | Preset scenes (sky latitude stops, panels, discs, tubes, rings, the LCG night lights, key softbox at azimuth -95°, 70×110°), sizes (1024; 2048 at pxScale ≥ 2; 512 for photos), grade formulas (Rec.709 saturation, contrast `col *= pivot*(l/pivot)^contrast/l`, pivot 0.5) | Evaluated per cube texel analytically with 4×4 supersampling instead of a rasterised scene with PMREM blur; grade as shader uniforms |
 | `hdrResolve.ts` (133) | Karis shoulder (knee 0.76, h 0.75) on the brightest channel before the MSAA resolve, inverse after | Also the RGBA8 fallback's encoding (§6.6) |
 | `tonemap.ts` (153) | `punch` (original to Pachislop); operating on straight colour and re-premultiplying; glint added before the curve, alpha raised by `(1-a)*max(g)` | ACES Filmic and AgX from three.js (MIT) and Neutral from Khronos directly, not from this file |
-| `glint.ts` (623) | The whole chain (bright pass `e²/(e+4)`, coverage tame `K/(K+c)`, two blooms, point detector, pinch, density budget, hot core, one-sided Kawase streaks with taper), the comp-locked lattice (level B = `round(log2(pxScale))`) | Ported by S56 (`three_d/Glint3D`, §6.6.30, with its mobile reduction); S59 hosts it on the 3D HDR image and adds sprite glints for Low |
+| `glint.ts` (623) | The whole chain (bright pass `e²/(e+4)`, coverage tame `K/(K+c)`, two blooms, point detector, pinch, density budget, hot core, one-sided Kawase streaks with taper), the comp-locked lattice (level B = `round(log2(pxScale))`) | Ported by S83 (`three_d/Glint3D`, §6.6.30, with its mobile reduction); S86 hosts it on the 3D HDR image and adds sprite glints for Low |
 | `ao.ts` (275) | SAO: 16 taps on 7 turns, surface-measured falloff, curve `(1 - 2*mean)^(2*intensity)`, two depth-aware 9-tap blurs, multiply into HDR, radius in % of size | Normal + title-relative depth in RGBA16F instead of RGBA32F (§6.6) |
 | `resample.ts` (81) | Separable Mitchell-Netravali B = C = 1/3, 2 output px of support, negatives clamped, premultiplied, the 2^25 cap | Cap lowered to 2^24 render px for editor memory (§6.7) |
 | `Layer3DRenderer.ts` | Pass order, MSAA 4 at k=1 / 2 at k>1, part renders over a depth prepass, transform-only drags moving cached pixels | Render region = projected title bounds, not the layer box |
 | `model/types.ts:691-905`, `model/defaults.ts:300-640`, `model/lighting.ts` | `Material3D`, `Band3D`, `BevelShape3D`, `Glint3D`, `AO3D`, `Title3DProps`, the 22 material presets with their ramps, plain and classic defaults, part ← layer ← document inheritance | Field names in snake_case (§6.1) |
 | `tests/golden/refs/look/f-3d-*.png` (40), `tests/golden/compare.ts`, `tests/harness/main.ts:13` | Parity references (scale 0.25, trim alpha 8, padding 0), premultiplied centred comparison | Our own tolerance (AC21) |
 
-The look tables (`presets/factory*.ts`) are converted by S57, not by this spec. Pachislop's
-Franchise-named looks are never copied (contract; S57 §6.7.3 renames them).
+The look tables (`presets/factory*.ts`) are converted by S84, not by this spec. Pachislop's
+Franchise-named looks are never copied (contract; S84 §6.7.3 renames them).
 
 ### 4.2 Engine precedents to copy
 
@@ -227,7 +227,7 @@ Franchise-named looks are never copied (contract; S57 §6.7.3 renames them).
 
 | Library / asset | Licence | Where | Why this one |
 |---|---|---|---|
-| Clipper2 (Angus Johnson), C++ `Clipper2Lib` | BSL-1.0 | `engine/libs/clipper2/`, vendored by S53 (R40) | The library Pachislop uses (`clipper2-ts` is its port): same grid, joins and orientation rules, so geometry matches the references. If S59 lands first, S59 vendors it as S53 describes |
+| Clipper2 (Angus Johnson), C++ `Clipper2Lib` | BSL-1.0 | `engine/libs/clipper2/`, vendored by S80 (R40) | The library Pachislop uses (`clipper2-ts` is its port): same grid, joins and orientation rules, so geometry matches the references. If S86 lands first, S86 vendors it as S80 describes |
 | earcut.hpp (Mapbox) v2.2.4 | ISC | `engine/libs/earcut/` (`LICENSE`) | §6.12 |
 | three.js `tonemapping_pars_fragment` (ACES Filmic, AgX) | MIT | `engine/shaderlib/titleart/title_tonemap.glsl` header | Parity with the references |
 | Khronos PBR Neutral | Apache-2.0 (sample code) | same file | As `PostColorLut` |
@@ -236,22 +236,22 @@ Franchise-named looks are never copied (contract; S57 §6.7.3 renames them).
 | PCG hashes (Jarzynski and Olano, JCGT 2020), interleaved gradient noise (Jimenez 2014) | published algorithms | comments | Replace Pachislop's unattributed hashes (report p3 §8) |
 
 `NOTICE.md` gains a row for earcut, and `engine/notices.json` an entry with `"when": "titleart"`
-(the player feature S54 adds; a Compile build without the mesher still stages the licence, which
-is harmless; Clipper2's rows are S53's). The Pachislop entry
-that S53 adds gets the S59 file
+(the player feature S81 adds; a Compile build without the mesher still stages the licence, which
+is harmless; Clipper2's rows are S80's). The Pachislop entry
+that S80 adds gets the S86 file
 list (the files of §4.1, under "Pachislop by SafEight, used with the author's permission").
 
 ## 5. Requirements
 
 ### Functional — document, parts and letters
 
-- **R1 3D fields.** S53 gives Text, Shape, Vector and Image layers `dimension` (`"2d"` default).
-  S59 owns `"3d"` and the layer's `style_3d` object (§6.1), the name S56 and S57 already use.
+- **R1 3D fields.** S80 gives Text, Shape, Vector and Image layers `dimension` (`"2d"` default).
+  S86 owns `"3d"` and the layer's `style_3d` object (§6.1), the name S83 and S84 already use.
   - With `dimension: "3d"`, `TitleArtRenderer` draws the layer's content through
-    `Title3DLayerRenderer`, from the outlines S53 builds (warp, distort, weight and per-letter 2D
-    adjustments applied). Vector `artwork` mode and Image layers take their outline from S53's
+    `Title3DLayerRenderer`, from the outlines S80 builds (warp, distort, weight and per-letter 2D
+    adjustments applied). Vector `artwork` mode and Image layers take their outline from S80's
     alpha `trace`.
-  - S53's problem `dimension_unavailable` is never raised once S59 is built.
+  - S80's problem `dimension_unavailable` is never raised once S86 is built.
   - The layer's 2D `style` is kept untouched while 3D, so switching back restores it exactly.
 - **R1a Pictures on 3D.** A layer whose face fill is `source` (Image, Vector `artwork`) projects its
   picture straight on in unsheared layer space, premultiplied, lit by the face material
@@ -265,30 +265,30 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   - each enabled rim becomes a band, innermost first: grow = rim width, join, fill counters and
     plate shape copied, depth 6, bevel `round` 1/1, material mapped like the face;
   - the side is the face colour at 50 % value;
-  - S53's rim join `bevel` maps to `miter`;
+  - S80's rim join `bevel` maps to `miter`;
   - every other field takes the §6.1 default.
 
-  A layer whose 2D style is the S53 default gets `plain` 3D instead (light-grey plastic, depth 14,
+  A layer whose 2D style is the S80 default gets `plain` 3D instead (light-grey plastic, depth 14,
   no bevel).
-- **R3 Document 3D settings.** The document carries `scene_3d` (S53's reserved member: camera,
+- **R3 Document 3D settings.** The document carries `scene_3d` (S80's reserved member: camera,
   environment, lights, tone mapping, exposure, supersample; §6.1). Values inherit one by one: part ← layer ←
   document (Pachislop `model/lighting.ts`). An absent key inherits. Environment values (preset,
   HDRI, intensity, rotation, tint, contrast, saturation, blur, repeat) can be overridden per part.
   Lights, tone mapping and exposure only per layer.
-- **R4 Per-letter 3D.** S53's CharAdjust gains the members S53 names: `dz` (% of size), `tilt_x`,
+- **R4 Per-letter 3D.** S80's CharAdjust gains the members S80 names: `dz` (% of size), `tilt_x`,
   `tilt_y` (degrees), `face_3d`, `side_3d` and `bands_3d` (material overrides, null = the layer's).
-  S59 adds `rig` (bool).
+  S86 adds `rig` (bool).
   - A character is **rigged** when `rig` is true, when `dz`/`tilt_x`/`tilt_y` is non-zero, or when
-    an S58 track animates any of its adjustments.
+    an S85 track animates any of its adjustments.
   - A rigged character is extruded alone with its own band stack, lifted 0.25 % of size. All its
     transforms (`offset`, `dz`, `rotation`, `scale`, `h_scale`, `v_scale`, tilts) become one rigid matrix
     `T(pivot + d) · Rz · Ry · Rx · S · T(-pivot)`, pivot at the em-cell centre and mid-depth. They
     never rebuild geometry.
   - An unrigged character's 2D adjustments are baked into the outlines, so letters merge as in
     Pachislop.
-- **R5 Parts.** The 3D part keys are S53's: `face` (the cap), `bevel` (absent material: the
+- **R5 Parts.** The 3D part keys are S80's: `face` (the cap), `bevel` (absent material: the
   face's), `side` and `band:<band id>` (a band's front, bevel and side wall), with the positional
-  alias `band#<n>`. S53's per-part effects on a 3D part render that part
+  alias `band#<n>`. S80's per-part effects on a 3D part render that part
   alone: an opaque depth prepass of the whole title, then colour of the listed slots only, tiling
   the full render exactly. The whole title is drawn first when its glint is on, so streaks come
   from every highlight.
@@ -302,7 +302,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     inside holes become shapes of their own.
   - Unrigged glyphs are unioned, and each resulting island is one part. A rigged glyph is a part
     of its own.
-  - Units: depth, bevel width and grow are % of the layer's S53 source size. Layer space is comp
+  - Units: depth, bevel width and grow are % of the layer's S80 source size. Layer space is comp
     px, y up; the front of the letter's top is at z = 0 and solids extend into -z.
 - **R7 Bevel profiles** (`BevelProfile`).
   - The presets `flat`, `chamfer`, `round`, `cove`, `step`, `inset` and `tube` are the formulas of
@@ -371,7 +371,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     use x/size, y/size) is built only when a material of the layer uses `projection: wrap`. GLB
     always gets both UV sets (R36).
 - **R14 Jobs and caches** (`TitleMeshJob`).
-  - Geometry is a set of S54 CPU-stage units (S54 R16) on `jobs::Lane::Background` (editor:
+  - Geometry is a set of S81 CPU-stage units (S81 R16) on `jobs::Lane::Background` (editor:
     `Normal` for the edited layer). Each unit is one island's ring stack, one outward component's
     ring step, one band, or one inflate field row band: ~1 ms or less on the reference desktop
     worker. With 0 workers (single-thread web) the scheduler runs the units on the main thread
@@ -388,7 +388,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   within 1e-4 of size. Clipper's integer grid and earcut's deterministic order give this; no
   floating-point reduction depends on thread order.
 - **R16 Transforms as matrices.**
-  - The layer root is S53's `transform`: `position` and `z`, then
+  - The layer root is S80's `transform`: `position` and `z`, then
     `R = Rz(-rotation) · Ry(rotation_y) · Rx(rotation_x)` (After Effects order; `rotation` is
     clockwise on screen), then uniform `scale` × flip.
   - Skew is a shear `x += skew.x·(-z)`, `y += skew.y·(-z)`, with inverse-transpose normals. Ramps
@@ -447,7 +447,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     on, in layer space.
   - `flakes` places one jittered disc per 3D hash cell (cell = `flake_scale` % of size), tilted at
     most 0.55, antialiased with `fwidth`.
-  - `pattern` is S53/S56's pattern GLSL in layer space, with `shade` and `relief` (finite
+  - `pattern` is S80/S83's pattern GLSL in layer space, with `shade` and `relief` (finite
     differences).
   - On caps (|n_z| > 0.999) these read a per-pixel layer position rebuilt from the view ray and
     the plane `z = vLayerPos.z`, so earcut slivers show no seams.
@@ -509,7 +509,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
 - **R29 Render region and order.** A 3D layer renders only its region: the projected bounds of
   its mesh AABB plus the glint and AO margin, clamped to the comp, at `k · pxScale`. Pass order
   (§6.6): behind (gems) → main → resolve/expand → AO → glint → tone map (+ glint) → Mitchell down
-  → ink (when an effect asks for it) → S53 layer effects and composite.
+  → ink (when an effect asks for it) → S80 layer effects and composite.
 - **R30 Tone-map-aware resolve.**
   - At k = 1 with MSAA, the main pass writes through the Karis shoulder on the brightest channel
     (knee 0.76, h 0.75). An expand pass inverts it after the resolve. At k > 1 the order is tone
@@ -518,7 +518,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     multisampled (new `RenderFeatures::msaaRGBA16F`), or when the tier says so, the main target
     is SRGB8A8. It holds `s = a·C/(1 + max(C))`, invertible as `C = (s/a)/(1 - max(s/a))`. The
     tone map and `Glint3D`'s bright pass decode it (`engine/shaderlib/titleart/hdr_compress.glsl`), so the
-    3D glint works without float targets. S56's D14 light encoding (× 1/4) stops at 4.0, and 3D
+    3D glint works without float targets. S83's D14 light encoding (× 1/4) stops at 4.0, and 3D
     highlights reach 60, so the 3D main pass keeps this encoding.
   - Forced by the test flag `TITLE_ART_TEST_NO_FLOAT_TARGETS`, this path agrees with the float path
     within AC9's tolerance.
@@ -530,15 +530,15 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     depth-aware 9-tap blurs (weight `exp(-|dz|/(0.02 z))`), and a multiply into the HDR colour
     (alpha kept).
   - Radius is % of size; intensity is 0..2.
-- **R32 Glint** (`style_3d.glint`, S56 §6.6.30).
-  - **Full chain** (Bake, High): S56's `three_d/Glint3D`, the port of glint.ts, called by S59 on the 3D
+- **R32 Glint** (`style_3d.glint`, S83 §6.6.30).
+  - **Full chain** (Bake, High): S83's `three_d/Glint3D`, the port of glint.ts, called by S86 on the 3D
     layer's linear HDR main image before tone mapping, on a grid locked to canvas pixels. A 4×
     export computes the same glint as a 1× export.
-  - **Mobile reduction** (Medium): S56's reduction of the same chain (no density budget, 2
+  - **Mobile reduction** (Medium): S83's reduction of the same chain (no density budget, 2
     directions, half resolution).
-  - **Sprite glints** (Low): S59's `three_d/SpriteGlints`, 4 passes plus one instanced draw (§6.6, no
+  - **Sprite glints** (Low): S86's `three_d/SpriteGlints`, 4 passes plus one instanced draw (§6.6, no
     readback).
-  - All three take S56's parameters (`threshold`, `intensity`, `radius`, `streaks` 0/2/4/6/8,
+  - All three take S83's parameters (`threshold`, `intensity`, `radius`, `streaks` 0/2/4/6/8,
     `length`, `angle`, `tint`). The output is additive light, added before the tone curve, and
     alpha is raised by `(1 - a)·max(g)`.
 - **R33 Tone map** (per layer): `none`, `aces_filmic` (three.js Hill fit), `agx` (three.js),
@@ -551,17 +551,17 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   - k is the largest of {tier k, 2, 1} with `regionPx·k² ≤` the tier's cap and each side ≤
     `maxTextureSize2D`. `render_title` reports the k it chose.
 - **R35 Outputs.**
-  - The layer hands S53 premultiplied, display-referred RGBA16F (or RGBA8 on S53's fallback),
-    at the layer region (aligned to 64 px as S53 R13), in S53's memory-row convention.
+  - The layer hands S80 premultiplied, display-referred RGBA16F (or RGBA8 on S80's fallback),
+    at the layer region (aligned to 64 px as S80 R13), in S80's memory-row convention.
   - On request it also hands:
-    - `ink`: tone mapped without the glint, so S56's keyline and glows do not outline streaks;
+    - `ink`: tone mapped without the glint, so S83's keyline and glows do not outline streaks;
     - per-part images (R5).
   - `outline.ts` itself is the contour plumbing of R6, not a post effect.
 
 ### Functional — delivery
 
 - **R36 Baked.**
-  - **Image**: through S53's bake (sibling PNGs, recipe chunk). The recipe adds
+  - **Image**: through S80's bake (sibling PNGs, recipe chunk). The recipe adds
     `title_3d_version` and the environment source hashes, so a changed HDRI reports the bake stale.
   - **GLB** (`export_title {format: "glb"}`, §6.8): one node per 3D layer and one child per rigged
     glyph; primitives per material slot; `KHR_materials_clearcoat`, `_iridescence`,
@@ -579,14 +579,14 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     features, shared by the runtime, the exporter's variant collector and `check_title`.
 - **R38 Cooked meshes.**
   - For a Realtime 3D title whose text cannot change (no exposed text parameter, no Lua text
-    write found by S54's export scan), the exporter writes the tier's mesh as `.titlemesh`
+    write found by S81's export scan), the exporter writes the tier's mesh as `.titlemesh`
     (§6.3). The player loads it and skips the mesher.
   - In a Compile build (S34), when no exported title needs runtime generation,
     `JASPERENGINE_TITLE_ART_MESHER` is OFF and earcut and the mesher are compiled out (Clipper2
-    stays while S53's 2D plates use it). S54's prebuilt variants that carry `titleart` carry the
+    stays while S80's 2D plates use it). S81's prebuilt variants that carry `titleart` carry the
     mesher.
-- **R39 Glyph Atlas.** S54 R30 stands: Glyph Atlas refuses a Dimension 3D text layer, and the
-  title falls back to Realtime with S54's warning. S59 adds nothing to the atlas. A counter in 3D
+- **R39 Glyph Atlas.** S81 R30 stands: Glyph Atlas refuses a Dimension 3D text layer, and the
+  title falls back to Realtime with S81's warning. S86 adds nothing to the atlas. A counter in 3D
   is a Realtime 3D title, and its digits are rigged parts, so a changed digit rebuilds only its own
   island (R14).
 - **R40 Camera.**
@@ -607,16 +607,16 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   - The editor's bake needs float render, blend and MSAA. It refuses with a named error on a device
     without them (no desktop backend lacks them).
 - **R42 Conventions.**
-  - Every 3D target is addressed in S53's memory-row frame space. The projection carries a Y flip
+  - Every 3D target is addressed in S80's memory-row frame space. The projection carries a Y flip
     on backends whose framebuffer origin is bottom-left (`RenderFeatures::originTopLeft` false),
     with the winding flipped to match (`mirrored`, R44). Passes that use `gl_FragCoord` (AO, cap
-    rebuild, glint lattice) follow S53's `TitleFrame` mapping and take the NDC near-z value as a
+    rebuild, glint lattice) follow S80's `TitleFrame` mapping and take the NDC near-z value as a
     uniform.
   - Loops sample with `textureLod` only (FXC).
   - Hashes, the cap rebuild, depth, flakes and the glint lattice are declared `highp`.
 - **R43 Limits.**
   - A Title Lit variant binds ≤ 6 fragment textures: environment cube or matcap, ramp atlas, span
-    table, base texture, behind, pattern texture if S56's pattern needs one. The vertex stage
+    table, base texture, behind, pattern texture if S83's pattern needs one. The vertex stage
     binds ≤ 1 (sprite glint cells).
   - Uniform blocks ≤ 4 per stage, each ≤ 16 KB: materials (≤ 16 × 128 B), rigs (≤ 64 × 48 B),
     frame, lights.
@@ -633,7 +633,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
 - **R45 Zero cost when unused.**
   - A document without 3D layers creates no 3D object, pass, target, shader or job.
   - In a Compile build, a game without a Realtime 3D title compiles out the 3D renderer
-    (`JASPERENGINE_TITLE_ART_3D`, a sub-option of S54's module, OFF unless S54's `ModuleUsage`
+    (`JASPERENGINE_TITLE_ART_3D`, a sub-option of S81's module, OFF unless S81's `ModuleUsage`
     scan finds a Realtime title with a 3D layer) as well as the mesher (R38).
   - A disabled AO, glint or gem adds no pass and no allocation.
   - Re-saving a document without 3D layers is byte-identical.
@@ -649,12 +649,12 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   - Gold 3D "BIG BONUS" in a 1920×1080 comp at k = 3 with the full glint: ≤ 1.5 s on the
     build server GPU from document to readback, excluding PNG encode and a cold environment build.
   - A cold procedural environment build at 1024: ≤ 400 ms.
-  - Bake targets come from S53's `TitleTargetPool` within `RendererLimits::poolBytes` (512 MB).
+  - Bake targets come from S80's `TitleTargetPool` within `RendererLimits::poolBytes` (512 MB).
     The k rule (`regionPx·k² ≤ 2^23`, about 40 B per render px) keeps a 3D layer at ≤ 350 MB.
 - **R48 Realtime tiers.** The per-tier limits and GPU budgets of §6.7, for one whole re-render of a
   title covering 30 % of a 1080p frame.
-  - A re-render is a list of S54 steps, each with a cost estimate (`cost_weight` per pass, S54
-    §6.3). S54's scheduler spreads it over frames within the Frame Budget (2 ms on mobile and web,
+  - A re-render is a list of S81 steps, each with a cost estimate (`cost_weight` per pass, S81
+    §6.3). S81's scheduler spreads it over frames within the Frame Budget (2 ms on mobile and web,
     4 ms on desktop). The main pass splits into scissor tiles of ≥ 256 × 256 px when its estimate
     exceeds the budget.
   - So a Low title on a Mali-G57 (≤ 6 ms) updates about every third frame at the default budget,
@@ -670,12 +670,12 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
 
 ### Editor UX (human)
 
-- **R50 Dimension.** S55's 2D | 3D switch (its Dimension section) and its "Convert to 3D/2D"
+- **R50 Dimension.** S82's 2D | 3D switch (its Dimension section) and its "Convert to 3D/2D"
   menu item on a Text, Shape, Vector or Image layer call `set_dimension` ("Set Dimension 3D", one
   step). The Layers panel shows a "3D" badge on 3D layers.
-- **R51 Rows** (registered through S55's panel hook, so its property search indexes them; Unity-like
+- **R51 Rows** (registered through S82's panel hook, so its property search indexes them; Unity-like
   names). Where they go:
-  - S55's **Dimension** section holds the switch and the subsections below, except Materials;
+  - S82's **Dimension** section holds the switch and the subsections below, except Materials;
   - the part pages (Face, Bevel, Side, Band 1..N) hold their material rows and the material picker;
   - the Document page gains a **3D Scene** section (camera, environment, lights, tone mapping,
     exposure, supersample).
@@ -708,7 +708,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   - a search field, Copy / Paste Material, and Link (Pachislop links);
   - hover previews the preset on the canvas without an undo step; click commits "Apply Material
     Gold"; Esc reverts.
-  - Thumbnails follow contract 11: submitted through S53's `TitlePreviewQueue` (priority
+  - Thumbnails follow contract 11: submitted through S80's `TitlePreviewQueue` (priority
     `Thumbnails`), visible first, disk cache.
 - **R55 Environment picker.**
   - Tiles show a chrome ball and a gold disc lit by the environment, plus its equirect strip, in
@@ -718,14 +718,14 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   - Hover previews, click commits, Esc reverts.
   - Alt+drag horizontally on a 3D layer in the canvas scrubs Environment Rotation (one step on
     release).
-- **R56 Gizmo target.** S59 supplies S55's `Gizmo3DTarget` (origin, axes, values, write-back):
+- **R56 Gizmo target.** S86 supplies S82's `Gizmo3DTarget` (origin, axes, values, write-back):
   - for a layer: origin = the projected layer origin at mid-depth; the X/Y/Z arcs and the ring write
     `transform.rotation_x`, `rotation_y` and `rotation`; the Z arrow writes `transform.z`; the centre
     square writes `transform.position`;
   - for selected letters: the arcs write `tilt_x`, `tilt_y` and `rotation`, the Z arrow `dz`, the
     centre square `offset` (all of them rig the letters, R4);
   - Shift's move step is 1 % of size;
-  - S55 makes the gesture one step on release ("Rotate 3D Layer", "Tilt Letters"), and Esc
+  - S82 makes the gesture one step on release ("Rotate 3D Layer", "Tilt Letters"), and Esc
     reverts.
 - **R57 Status.**
   - A footer in the Dimension section shows triangles, vertices, solids, build time, k, the environment
@@ -739,13 +739,13 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
 
 ### Agent UX (MCP, Lua, CLI)
 
-- **R59 Ops** (S53's ops API; the Designer calls the same functions):
+- **R59 Ops** (S80's ops API; the Designer calls the same functions):
   - `set_dimension {layer, dimension}`;
   - `add_band` / `remove_band` / `move_band` `{layer, band (band#n | band:<id>), index?, values?,
-    preset?}`, shaped as S53's rim ops;
+    preset?}`, shaped as S80's rim ops;
   - `apply_material {layer, part, preset}`;
   - `fit_to_tier {layer, tier}`: applies the R61 reduction fixes and lists them.
-  - Everything else goes through S53's `set {layer?, values: {path: value}}`. Field paths look like
+  - Everything else goes through S80's `set {layer?, values: {path: value}}`. Field paths look like
     `style_3d.bands[1].grow`, `style_3d.face.roughness`, `transform.rotation_y` and
     `chars.2.tilt_x`. Document members omit `layer`: `scene_3d.environment.preset`.
   - New shorthands: `band:<id>.` and `band#<n>.` mean `style_3d.bands[<index>].`; `3d.` means
@@ -757,7 +757,7 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     intermediate image, for diagnosing a look;
   - `stats_3d` in every result whose render has a 3D layer.
 
-  `quality` and `debug_view` are keys of S53's free-form `render_title.options` (S53 §6.11), not
+  `quality` and `debug_view` are keys of S80's free-form `render_title.options` (S80 §6.11), not
   top-level parameters, and `stats_3d` is a result field.
 
   `try` variants work on every 3D field.
@@ -775,22 +775,22 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     - `3d_glint_dead`: glint on but no pixel above threshold; fix: a lower threshold;
     - `3d_mesh_fallback`;
     - `3d_light_limit`.
-  - `list_title_library` takes `kind: materials_3d | environments | bevel_profiles` (values of S53's
-    program `kind` enum; S59 owns their rows, `environments` including S57's four) with thumbnails.
-  - `export_title` takes S53's `format: "glb"` with `options: {glb: {units_per_px = 0.01, texture_size = 1024,
+  - `list_title_library` takes `kind: materials_3d | environments | bevel_profiles` (values of S80's
+    program `kind` enum; S86 owns their rows, `environments` including S84's four) with thumbnails.
+  - `export_title` takes S80's `format: "glb"` with `options: {glb: {units_per_px = 0.01, texture_size = 1024,
     include_bands = true}}`.
 
-  S59's row of S53 §6.11's program budget table is 0 schema characters (option keys, kind and
-  format values that S53's enums already carry, check ids); no new tool is added.
+  S86's row of S80 §6.11's program budget table is 0 schema characters (option keys, kind and
+  format values that S80's enums already carry, check ids); no new tool is added.
 - **R62 Guide.** A `### 3D` section in `docs/mcp/guide/title-art.md` covers the fields, tiers and
-  budgets, reading `stats_3d`, the checks and when to bake. The agent guide gets no bytes: S53's
-  `title art (edit_title)` entry covers the area (S53 §6.11).
-- **R63 Lua** (S54's `TitleArt` component):
+  budgets, reading `stats_3d`, the checks and when to bake. The agent guide gets no bytes: S80's
+  `title art (edit_title)` entry covers the area (S80 §6.11).
+- **R63 Lua** (S81's `TitleArt` component):
   - `title.qualityTier` (`"auto"|"high"|"medium"|"low"`, read/write);
   - `title:getMeshStats(layerPath)` → `{triangles, vertices, solids, buildMs, tier, overBudget}`;
-  - readiness stays S54's (`ready`, `pending`, `onReady`); a mesh build shows as `pending =
+  - readiness stays S81's (`ready`, `pending`, `onReady`); a mesh build shows as `pending =
     "rendering n/m"`;
-  - 3D fields are set and animated only through Exposed Parameters (`title:setParameter`, S54
+  - 3D fields are set and animated only through Exposed Parameters (`title:setParameter`, S81
     R66), e.g. a "Spin" parameter bound to `transform.rotation_y` of layer `Logo`, or to
     `chars.2.tilt_x`.
   - All of these go into S23's JSON API description.
@@ -802,8 +802,8 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
     load and not written until the next edit. Missing nested keys take their defaults.
   - Unknown preset, profile or environment ids load as `custom` / `round` / `studio` with one
     warning naming the id.
-  - No document version bump: these are new keys with defaults (S53 v1). A later change to their
-    meaning bumps S53's version with a migration.
+  - No document version bump: these are new keys with defaults (S80 v1). A later change to their
+    meaning bumps S80's version with a migration.
 - **R65 Cooked artifacts.**
   - `.titlemesh` (§6.3) and cooked environment KTX2s live in the export cache, keyed by content
     hash + `TITLE_3D_VERSION` + tier. They are never written into the project.
@@ -812,14 +812,14 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
   - The four HDRIs (2k `.hdr`, ≤ 30 MB together) and their Poly Haven licence text live in
     `editor/resources/titleart/hdri/` with a `manifest.json` (title, slug, URL, SHA-256, licence).
     They are staged with the editor install and never in players: players get cooked cubes only.
-  - The manifest also holds S57's four photo environments (`night_city`, `night_dark`,
-    `sunset_harbour`, `warehouse`, S57 §6.12), fetched by the same `fetch_hdris.py` under the same
+  - The manifest also holds S84's four photo environments (`night_city`, `night_dark`,
+    `sunset_harbour`, `warehouse`, S84 §6.12), fetched by the same `fetch_hdris.py` under the same
     rule: 2k `.hdr`, ≤ 30 MB per set of four (a file that pushes its set over drops to 1k), SHA-256
-    and licence in the manifest. S59 owns the manifest, the fetcher and the rule; S57 owns its
-    four entries. Environment ids are S59 R24's plus these four.
+    and licence in the manifest. S86 owns the manifest, the fetcher and the rule; S84 owns its
+    four entries. Environment ids are S86 R24's plus these four.
   - `tools/ci/check-notices.py` covers the new libraries.
 - **R67 Conversion.** `TitleDocument3D::fromPachislop(const nlohmann::json& title3dProps)`
-  maps Pachislop `Title3DProps` and `Material3D` to §6.1, for S57's look converter:
+  maps Pachislop `Title3DProps` and `Material3D` to §6.1, for S84's look converter:
   - names to snake_case, `reflectivity` to `env_multiplier`, `specBoost` to
     `specular_multiplier`, `metalness` to `metallic`;
   - Pachislop curve points to `Curve` keys (smooth: ClampedAuto; corner: Linear, broken);
@@ -827,9 +827,9 @@ list (the files of §4.1, under "Pachislop by SafEight, used with the author's p
 
 ## 6. Design constraints & decisions
 
-### 6.1 Document fields (snake_case keys as S53 serializes them)
+### 6.1 Document fields (snake_case keys as S80 serializes them)
 
-Layer (`style_3d` on Text, Shape, Vector and Image; `dimension` is S53's member). S53's Transform
+Layer (`style_3d` on Text, Shape, Vector and Image; `dimension` is S80's member). S80's Transform
 gains `z` (px), `rotation_x` and `rotation_y` (degrees), default 0.
 
 | Field | Type | Default (plain) |
@@ -853,11 +853,11 @@ gains `z` (px), `rotation_x` and `rotation_y` (degrees), default 0.
 | `style_3d.camera` | `Camera3D` \| null | null |
 
 `Band3D`: `{id, name "", enabled true, grow 3, join "miter"|"round", fill_counters false,
-plate {kind "contour"|"hull"|"box", close 0, corner 4, slant 0} (S53's rim plate), depth 6, offset 0,
+plate {kind "contour"|"hull"|"box", close 0, corner 4, slant 0} (S80's rim plate), depth 6, offset 0,
 bevel {width 1, depth 1, profile "round", segments 6, curve 0}, material, side null}`.
 
 `TitleMaterial3D` (`custom` preset values):
-- colour and ramp: `preset "custom"`, `color "#ffffff"`, `gradient null` (S53 Gradient),
+- colour and ramp: `preset "custom"`, `color "#ffffff"`, `gradient null` (S80 Gradient),
   `gradient_kind "linear"`, `gradient_angle 90`, `gradient_span "layer"`, `gradient_scale 1`,
   `gradient_offset 0`, `gradient_axis "xy"`, `gradient_bend 0` (-1..1);
 - base lobes: `metallic 0`, `roughness 0.3`, `env_multiplier 1` (0..4),
@@ -865,15 +865,15 @@ bevel {width 1, depth 1, profile "round", segments 6, curve 0}, material, side n
 - coat and film: `clearcoat 0`, `clearcoat_roughness 0.04`, `iridescence 0`,
   `iridescence_ior 1.6`, `iridescence_thickness_nm [180, 520]`;
 - glass and gems: `transmission 0`, `ior 1.5` (1..2.5), `dispersion 0`, `glass_depth 0`;
-- detail: `flakes 0`, `flake_scale 0.6`, `pattern` (S53's Material `pattern` member, its GLSL
-  shared; S56's kinds included; `kind "none"`),
+- detail: `flakes 0`, `flake_scale 0.6`, `pattern` (S80's Material `pattern` member, its GLSL
+  shared; S83's kinds included; `kind "none"`),
   `surface {kind "none"|"crumple"|"hammered"|"liquid", amount 0.5, scale 20, seed 1}`,
   `base_texture {texture null, tiling [1,1], offset [0,0], projection "front"|"wrap"}`;
 - emission and opacity: `emission "#000000"`, `emission_intensity 0`, `opacity 1`;
 - `environment {}` (partial overrides), `link null`.
 
 Document:
-- `scene_3d` (S53's reserved top-level member):
+- `scene_3d` (S80's reserved top-level member):
   - `camera {fov 30, x 0, y 0, z_offset 0, rotation_x 0, rotation_y 0, rotation 0}`;
   - `environment {preset "studio", hdri null (AssetRef), matcap null (AssetRef), intensity 1,
     rotation 0, tint "#ffffff", contrast 1, saturation 1, blur 0, repeat_x 1, repeat_y 1}`;
@@ -882,14 +882,14 @@ Document:
   - `tone_mapping "neutral"`, `exposure 1`;
   - `supersample 3` (1..3, the bake k).
 
-Per character (S53 CharAdjust): `dz 0`, `tilt_x 0`, `tilt_y 0`, `face_3d null`, `side_3d null`,
-`bands_3d []` (`[TitleMaterial3D|null]`, index-aligned with `style_3d.bands`), and S59's
+Per character (S80 CharAdjust): `dz 0`, `tilt_x 0`, `tilt_y 0`, `face_3d null`, `side_3d null`,
+`bands_3d []` (`[TitleMaterial3D|null]`, index-aligned with `style_3d.bands`), and S86's
 `rig false`.
 
 ### 6.2 Geometry pipeline
 
 ```
-S53 outlines (per glyph, layer space)
+S80 outlines (per glyph, layer space)
   └─ TitleOutline3D: flatten → Clipper2 union per unrigged set / per rigged glyph → islands, spans
        └─ per part: letter solid (RingExtruder | OutwardBevel | InflateMesher | OrbMesher)
                     + band stack (TitleSolids: base outline → cumulative Clipper grow → solid per band)
@@ -932,7 +932,7 @@ Files:
 - `includes/pbr_lobes.glsl`: the pure KHR lobe functions moved out of `pbr_ext.glsl`, which
   includes it. `mesh.frag`'s preprocessed output must be unchanged (S11 AC1's hash list).
 
-`ShaderType` gains, appended after S53's types:
+`ShaderType` gains, appended after S80's types:
 - `TITLE_LIT` (title_lit.vert/frag; features in the property bits);
 - `TITLE_3D_POST` (fullscreen.vert + `title3d_post.frag` / `title_glint.frag`; pass in the bits,
   as `FLUID`);
@@ -1029,7 +1029,7 @@ Each look feature mapped to the engine's PBR:
 | 2 | Main (Title Lit) | RGBA16F, MSAA 4 (k=1) / 2 | RGBA16F MSAA 2 | RGBA16F MSAA 4, or compressed SRGB8A8 | compressed SRGB8A8 MSAA 4 |
 | 3 | Expand (k=1) | yes | — | fused into 6 | fused into 6 |
 | 4 | AO: prepass, SAO, 2 blurs, apply | if on | if on | — | — |
-| 5 | Glint | S56 `Glint3D` full (~66 passes at stock) | full | S56 mobile reduction | S59 sprites: 4 + 1 draw |
+| 5 | Glint | S83 `Glint3D` full (~66 passes at stock) | full | S83 mobile reduction | S86 sprites: 4 + 1 draw |
 | 6 | Tone map + glint add | yes | yes | yes (with decode) | yes (with decode) |
 | 7 | Mitchell H, V (k>1) | yes | yes | — | — |
 | 8 | Ink (tone map without glint, + Mitchell) | on request | on request | on request | on request |
@@ -1046,7 +1046,7 @@ Each look feature mapped to the engine's PBR:
 The star quad's texture is generated analytically (streak count, length, angle, tint), so the look
 parameters are the full chain's.
 
-Every row is one or more S54 steps with S56-style cost weights (ns per output pixel on the desktop
+Every row is one or more S81 steps with S83-style cost weights (ns per output pixel on the desktop
 reference). The main pass's weight scales with the triangle count per pixel of its region.
 
 ### 6.7 Tiers and budgets
@@ -1061,13 +1061,13 @@ reference). The main pass's weight scales with the triangle count per pixel of i
 | Triangles per layer | warn > 400k | ≤ 150k | ≤ 60k | ≤ 30k |
 | Solids per layer | any | ≤ 8 | ≤ 5 | ≤ 3 |
 | Features stripped (`titleTierFeatures`) | none | none | dispersion; gem behind; AO; surface 1 octave (`TL_SURFACE_LITE`) | + iridescence; gems → glass depth + reflection; surface 1 octave (`TL_SURFACE_LITE`); part renders → whole layer |
-| Glint | full | full | S56 mobile reduction | sprites |
-| Passes (3D layer, excluding S53 effects) | ≤ 90 | ≤ 80 | ≤ 48 | ≤ 7 |
+| Glint | full | full | S83 mobile reduction | sprites |
+| Passes (3D layer, excluding S80 effects) | ≤ 90 | ≤ 80 | ≤ 48 | ≤ 7 |
 | Target memory, 30 % of 1080p | ≤ 350 MB (cap) | ≤ 128 MB | ≤ 48 MB | ≤ 32 MB |
 | Environment memory | ≤ 70 MB | ≤ 8.5 MB | ≤ 8.4 MB | ≤ 2.2 MB |
 | Mesh memory | — | ≤ 5 MB | ≤ 2 MB | ≤ 1 MB |
 | GPU per re-render (30 % of 1080p) | R47 | RTX 3080 Ti ≤ 4 ms; Iris Xe ≤ 25 ms | Iris Xe WebGL2 ≤ 8 ms; Mali-G57 ≤ 14 ms | Mali-G57 ≤ 6 ms; Adreno 610 ≤ 7 ms; Iris Xe WebGL2 ≤ 3 ms |
-| Geometry (dynamic text, 10 glyphs) | — | ≤ 20 ms wall | ≤ 40 ms wall | ≤ 30 ms on one Cortex-A55-class worker; on single-thread web, S54 units of ≤ ~1 ms inside the frame budget |
+| Geometry (dynamic text, 10 glyphs) | — | ≤ 20 ms wall | ≤ 40 ms wall | ≤ 30 ms on one Cortex-A55-class worker; on single-thread web, S81 units of ≤ ~1 ms inside the frame budget |
 
 Over-budget titles still render. The budgets drive `check_title`'s `3d_tier_budget`, the badges and
 `getMeshStats().overBudget`.
@@ -1109,8 +1109,8 @@ namespace jasperengine::titleart {
     struct TitleTierFeatures { uint32_t litBits; GlintMode glint; bool ao, behind, partRenders; };
     TitleTierFeatures titleTierFeatures(const TitleMaterial3D&, const Title3D&, TitleTier); // pure
 
-    // the content stage of a Dimension 3D leaf in S53's draw tree (pass order step 1); its steps
-    // run inside S53's TitleRenderJob::step and carry S54's cost estimates
+    // the content stage of a Dimension 3D leaf in S80's draw tree (pass order step 1); its steps
+    // run inside S80's TitleRenderJob::step and carry S81's cost estimates
     class Title3DLayerRenderer {
     public:
         RectI region(const DrawNode&, const RenderRequest&) const;    // projected bounds + margin, 64 px aligned
@@ -1209,11 +1209,11 @@ MCP tests are in `tools/mcp/tests/test_title_art_3d*.py`. Engine goldens live in
 | AC14 | R26, R65 | `TitleEnvironmentCookTest` (editor): cooks `studio` for desktop (BC6H), mobile (RGB9E5), android_etc2 (RGB9E5) and web (UASTC HDR) KTX2 cubes with the tier's face and levels; they reload through `createTextureLevels`; key-values present; the cache hit skips re-encoding |
 | AC15 | R29, R34 | `Title3DRegionGpu`: the render region equals the projected bounds plus margin; k is 3 for a 1100×260 region and 2 for a full 1080p comp at the bake cap; Mitchell taps per axis are 13 at k=3 |
 | AC16 | R31 | `TitleAoGpu`: the letter's foot on its plate darkens by ≥ 15 %; open faces change by < 1 %; the prepass format is RGBA16F; a 4× render's AO equals the 1× one downscaled (5 %) |
-| AC17 | R30, R32 | `Title3DGlintGpu` (S56's `Glint3D` own tests cover the chain): on Gold 3D with the stock star glint, the 3D layer feeds `Glint3D` the pre-tone-map image (a highlight at radiance 40 makes a streak; the same render with the glint fed after tone mapping makes none: red control); a 2× render's glint equals the 1× one (premultiplied mean ≤ 2/255 after downscale); the compressed-light path's glint is within mean 3/255 of the float path's; sprites take ≤ 4 passes + 1 draw with no readback call (`FrameReadback` counter 0); a straight bevel line yields no sprite while a disc highlight does |
+| AC17 | R30, R32 | `Title3DGlintGpu` (S83's `Glint3D` own tests cover the chain): on Gold 3D with the stock star glint, the 3D layer feeds `Glint3D` the pre-tone-map image (a highlight at radiance 40 makes a streak; the same render with the glint fed after tone mapping makes none: red control); a 2× render's glint equals the 1× one (premultiplied mean ≤ 2/255 after downscale); the compressed-light path's glint is within mean 3/255 of the float path's; sprites take ≤ 4 passes + 1 draw with no readback call (`FrameReadback` counter 0); a straight bevel line yields no sprite while a disc highlight does |
 | AC18 | R33 | `TitleToneMapTest` (GLSL block compiled as C++): Punch below peak 0.76 is identity minus the toe; above it the channel ratios are kept (1e-5); white blend at peak 16; ACES Filmic and AgX equal three.js reference values at 12 inputs (1e-4); Neutral equals `PostColorLut::toneMap(NEUTRAL)` |
 | AC19 | R16, R40, R44 | `Title3DTransformGpu`: AE rotation order (a 90° rotation_y then rotation_x image differs from the reverse); flip X+Y with rotation_y 20 renders front faces (golden, Pachislop `scene/flip-3d`); skew shows side walls without rebuilding (geometry counter unchanged). Red control: `mirrored` ignored culls the flipped title away |
-| AC20 | R4, R14 | `TitleRigTest`: tilting a letter changes no buffer (mesh revision unchanged); its band stack moves with it; an S58 track on `chars.1.dz` rigs that letter; editing a material triggers 0 geometry jobs |
-| AC21 | R17-R33 | `test_title_art_3d_parity.py`: for each of Pachislop's 40 `look/f-3d-*` references (copied with provenance to `engine/tests/core/golden/titleart/pachislop/look/`, beside S53's and S56's references), S57 converts the look, `render_title` renders "BIG" at scale 0.25 with trim alpha 8, and `diff_images` compares premultiplied, centred: size within ±2 px, mean ≤ 6/255, ≤ 4 % of pixels over 24/255. At least 36 of 40 must pass; failures are listed with their sheets. Red control: Punch replaced by Neutral fails ≥ 20 looks |
+| AC20 | R4, R14 | `TitleRigTest`: tilting a letter changes no buffer (mesh revision unchanged); its band stack moves with it; an S85 track on `chars.1.dz` rigs that letter; editing a material triggers 0 geometry jobs |
+| AC21 | R17-R33 | `test_title_art_3d_parity.py`: for each of Pachislop's 40 `look/f-3d-*` references (copied with provenance to `engine/tests/core/golden/titleart/pachislop/look/`, beside S80's and S83's references), S84 converts the look, `render_title` renders "BIG" at scale 0.25 with trim alpha 8, and `diff_images` compares premultiplied, centred: size within ±2 px, mean ≤ 6/255, ≤ 4 % of pixels over 24/255. At least 36 of 40 must pass; failures are listed with their sheets. Red control: Punch replaced by Neutral fails ≥ 20 looks |
 | AC22 | R37, R48 | `TitleTierBudgetTest`: for the R46 title and each tier, counted passes, target bytes, environment bytes, mesh bytes, triangles and solids are within §6.7; `titleTierFeatures` strips exactly the table's features and is used by the exporter (the collector's variant list equals the runtime's) |
 | AC23 | R48 | Manual (S13 AC23 style): a Mali-G57 and an Adreno 610 phone at 1080p, the `title3d-low` fixture scene rotating one title each frame; GPU frame-time difference against the same scene with an Image, from S15 timings or a vendor profiler: ≤ 6 / ≤ 7 ms. WebGL2 on an Iris Xe laptop (Chrome): Low ≤ 3 ms, Medium ≤ 8 ms. Recorded in `docs/mcp/guide/title-art.md` |
 | AC24 | R46, R47, R49 | `bench/TitleMeshBench` and `TitleBakeBench` thresholds in `tools/perf/bench-thresholds.json` (`check_bench.py`): the R46 and R47 numbers on build server A |
@@ -1231,46 +1231,46 @@ MCP tests are in `tools/mcp/tests/test_title_art_3d*.py`. Engine goldens live in
 
 ## 8. Dependencies & conflicts
 
-**The Title Art program graph and waves** (the same in S53-S60; S53 §8 is the source, S53 §6.15
+**The Title Art program graph and waves** (the same in S80-S87; S80 §8 is the source, S80 §6.15
 the shared rules; an arrow means "needs"):
 
 | Wave | Specs | Needs |
 |---|---|---|
-| 6 (title art) | S53 core | merged work only |
-| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of S53 §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
-| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+| 6 (title art) | S80 core | merged work only |
+| 6B | S81 runtime, S82 Title Designer, S83 effects and generators, S86 3D | S80 (every hook of S80 §6.15); within the wave, by owner: S81 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S82 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S83 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S86 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S84 library, S85 animation, S87 localisation and interchange | S80 and wave 6B; within the wave, by owner: S84 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S85 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S87 owns the sidecar `languages` table and the per-language bake sets |
 
-Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
-compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
-fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
-S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
-wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
-rest of S55 lands in 6B.
+Edges: S81 → S80. S82 → S80, S81 (Preview As Glyph Atlas, create menus). S83 → S80, S81 (live
+compose runs its kernels; sidecar anchors). S86 → S80, S81 (scheduler, sub-options, component
+fields), S82 (sections, gizmo), S83 (`Glint3D`). S84 → S80, S82 (Library panel), S83, S86. S85 →
+S80, S81, S82, S83 (S86 optional). S87 → S80, S81, S82, S83, S84, S85, S86. One exception crosses a
+wave: S82's Library panel milestone (its M6) draws S84's data and lands with S84 in wave 6C; the
+rest of S82 lands in 6B.
 
-- **Needs from S53** (all in S53 §6.15's hook table):
+- **Needs from S80** (all in S80 §6.15's hook table):
   - `dimension` on Text, Shape, Vector and Image layers;
   - `trace` outlines for picture layers;
   - the reserved `transform.z/rotation_x/rotation_y`, `scene_3d` and the CharAdjust 3D members;
   - the draw tree's content stage for a 3D leaf (`Title3DLayerRenderer` plugs in there) and
     `TitleRenderJob` steps;
-  - `TitleTargetPool` with depth formats and sample counts in its key (S53 §6.3);
+  - `TitleTargetPool` with depth formats and sample counts in its key (S80 §6.3);
   - the part keys `bevel`, `side`, `band:<id>`, `band#<n>`;
   - outlines per glyph in layer space; `px_scale`;
   - `OutputContent::Ink`;
   - float readback; `diff_images`; `TitleArtOps`;
   - Clipper2; the pattern GLSL.
-- **Needs from S54** (same wave, S54 owns them): `TitleArtScheduler` steps and cost estimates, the
+- **Needs from S81** (same wave, S81 owns them): `TitleArtScheduler` steps and cost estimates, the
   CPU-unit rules (R16), the `JASPERENGINE_TITLE_ART_3D` and `_MESHER` sub-options and their
-  `ModuleUsage` wiring, the component's `qualityTier` and `runtimeEnvironments` fields (S54 §6.1;
-  S59 defines what they do), the `title_art.realtime_3d_quality` setting row, Exposed Parameters.
-- **Needs from S55**: the Dimension section, the part pages, the panel hook, and `TitleGizmo3D`,
-  which takes S59's `Gizmo3DTarget`.
-- **S56** (same wave) provides `three_d/Glint3D` and its mobile reduction. Its bright pass must accept the
-  compressed-light input (R30). S59 uses S56's keyline and glows on the `ink` output.
-- **S57** uses R67 for the look converter and provides the fonts for AC21.
-- **S58** marks animated paths (rigging, R4) and re-renders per frame through R48.
+  `ModuleUsage` wiring, the component's `qualityTier` and `runtimeEnvironments` fields (S81 §6.1;
+  S86 defines what they do), the `title_art.realtime_3d_quality` setting row, Exposed Parameters.
+- **Needs from S82**: the Dimension section, the part pages, the panel hook, and `TitleGizmo3D`,
+  which takes S86's `Gizmo3DTarget`.
+- **S83** (same wave) provides `three_d/Glint3D` and its mobile reduction. Its bright pass must accept the
+  compressed-light input (R30). S86 uses S83's keyline and glows on the `ink` output.
+- **S84** uses R67 for the look converter and provides the fonts for AC21.
+- **S85** marks animated paths (rigging, R4) and re-renders per frame through R48.
 - **Merge hotspots**:
-  - `engine/core/render/Render.h` (`ShaderType` append; S53 appends too);
+  - `engine/core/render/Render.h` (`ShaderType` append; S80 appends too);
   - `PipelineState.h` (`mirrored`);
   - `SystemRender.h` / `SokolSystem.cpp` (`msaaRGBA16F`);
   - `ShaderVariantCompiler.cpp`, `ShaderPool.cpp`;
@@ -1301,7 +1301,7 @@ rest of S55 lands in 6B.
 3. **Float MSAA on GLES** varies by driver. Default: the compressed SRGB8A8 path whenever
    `msaaRGBA16F` is false. It is tested by forcing it.
 4. **The bake's memory** (≤ 350 MB at the cap) can still be high on small laptops. Default: the
-   2^23 cap inside S53's 512 MB pool. `render_title` reports k, and `scene_3d.supersample` lets a
+   2^23 cap inside S80's 512 MB pool. `render_title` reports k, and `scene_3d.supersample` lets a
    user drop to 2.
 5. **Variant count.** 24 bits allow many combinations. Default: only the variants used are
    compiled, and the exporter lists exactly those per tier. An unexpected one compiles async while
@@ -1316,26 +1316,26 @@ rest of S55 lands in 6B.
 
 ## Deviations
 
-1. **Depth and multisampled targets in title art** (now in S53 R37 and §6.3; kept here as the record).
-   S53's first text said its renderer uses no depth buffers,
+1. **Depth and multisampled targets in title art** (now in S80 R37 and §6.3; kept here as the record).
+   S80's first text said its renderer uses no depth buffers,
    and that no title-art target has a depth or stencil buffer. The 3D layer's own passes need a depth
    buffer (MSAA where the tier says) for its main, behind and AO prepass draws. They acquire them
    from `TitleTargetPool` with the depth format and sample count in the pool key. Everything a 3D
-   layer hands to S53 (final, ink, parts) is a plain colour target as S53 requires. S53's 2D passes
+   layer hands to S80 (final, ink, parts) is a plain colour target as S80 requires. S80's 2D passes
    are unchanged.
-2. **The contract names Text and Shape for Dimension.** S53 already gives `dimension` to Vector and
-   Image layers too (outlines from `trace`), and S59 supports all four (R1, R1a). This matches S53,
+2. **The contract names Text and Shape for Dimension.** S80 already gives `dimension` to Vector and
+   Image layers too (outlines from `trace`), and S86 supports all four (R1, R1a). This matches S80,
    so it is noted rather than changed.
 3. **Reconciled: component fields are camelCase** (`qualityTier`, `runtimeEnvironments`, owned by
-   S54's §6.1); the sub-options are S54's CMake and `ModuleUsage` wiring; earcut's notice uses the
+   S81's §6.1); the sub-options are S81's CMake and `ModuleUsage` wiring; earcut's notice uses the
    player feature `titleart`.
-4. **Reconciled: `render_title`'s `quality` and `debug_view` are keys of S53's `options`,
+4. **Reconciled: `render_title`'s `quality` and `debug_view` are keys of S80's `options`,
    `stats_3d` is a result field, `export_title`'s `glb` is `options.glb`,** and the
    `list_title_library` kinds are plural (`materials_3d`, `environments`, `bevel_profiles`), so
-   the six tools fit S53 §6.11's budget.
-5. **Reconciled: no guide digest line** (was ≤ 120 bytes); the area's one entry is S53's.
-6. **Reconciled: folders.** `SpriteGlints` and S56's `Glint3D` live in `engine/core/titleart/three_d/`;
-   every S59 shader file is in `engine/shaderlib/titleart/`; goldens in
-   `engine/tests/core/golden/titleart/3d/`, Pachislop references beside S53's.
-7. **Reconciled: no product names.** The fixture look is "Gold 3D" (the structure of S57's `metal/gold-3d`) and the goal says "a lit
-   solid" (third-party product names are S57's denied terms).
+   the six tools fit S80 §6.11's budget.
+5. **Reconciled: no guide digest line** (was ≤ 120 bytes); the area's one entry is S80's.
+6. **Reconciled: folders.** `SpriteGlints` and S83's `Glint3D` live in `engine/core/titleart/three_d/`;
+   every S86 shader file is in `engine/shaderlib/titleart/`; goldens in
+   `engine/tests/core/golden/titleart/3d/`, Pachislop references beside S80's.
+7. **Reconciled: no product names.** The fixture look is "Gold 3D" (the structure of S84's `metal/gold-3d`) and the goal says "a lit
+   solid" (third-party product names are S84's denied terms).
