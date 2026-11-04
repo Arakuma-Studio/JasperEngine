@@ -215,6 +215,8 @@ namespace jasperengine{
         uint32_t splitElements = 0;
         uint32_t splitBindings = 0;
         uint32_t splitUniforms = 0;
+        uint32_t splitUniformSlots = 0;  // the uniform slots whose bytes differed (bit 31: other blocks)
+        uint32_t splitBindingParts = 0;  // 1 vertex buffers, 2 their offsets, 4 index buffer, 8 views, 16 samplers
     };
 
 }

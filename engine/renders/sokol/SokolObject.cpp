@@ -1396,16 +1396,23 @@ namespace {
         return offset;
     }
 
-    bool sameUniforms(const HeldDraw& a, const HeldDraw& b){
-        if (a.uniforms.size() != b.uniforms.size())
+    // the same blocks with the same bytes but the object block's; else the slots that differ
+    bool sameUniforms(const HeldDraw& a, const HeldDraw& b, uint32_t& differing){
+        if (a.uniforms.size() != b.uniforms.size()){
+            differing |= 0x80000000u;
             return false;
+        }
         for (size_t i = 0; i < a.uniforms.size(); i++){
             const HeldUniform& ua = a.uniforms[i];
             const HeldUniform& ub = b.uniforms[i];
-            if (ua.slot != ub.slot || ua.size != ub.size)
+            if (ua.slot != ub.slot || ua.size != ub.size){
+                differing |= 0x80000000u;
                 return false;
-            if (ua.slot != a.objectSlot && std::memcmp(a.bytes.data() + ua.offset, b.bytes.data() + ub.offset, ua.size) != 0)
+            }
+            if (ua.slot != a.objectSlot && std::memcmp(a.bytes.data() + ua.offset, b.bytes.data() + ub.offset, ua.size) != 0){
+                differing |= 1u << ua.slot;
                 return false;
+            }
         }
         return true;
     }
@@ -1423,9 +1430,14 @@ namespace {
         }
         if (std::memcmp(&a.bind, &b.bind, sizeof(sg_bindings)) != 0){
             stats.splitBindings++;
+            stats.splitBindingParts |= (std::memcmp(a.bind.vertex_buffers, b.bind.vertex_buffers, sizeof(a.bind.vertex_buffers)) ? 1u : 0u) |
+                (std::memcmp(a.bind.vertex_buffer_offsets, b.bind.vertex_buffer_offsets, sizeof(a.bind.vertex_buffer_offsets)) ? 2u : 0u) |
+                (a.bind.index_buffer.id != b.bind.index_buffer.id || a.bind.index_buffer_offset != b.bind.index_buffer_offset ? 4u : 0u) |
+                (std::memcmp(a.bind.views, b.bind.views, sizeof(a.bind.views)) ? 8u : 0u) |
+                (std::memcmp(a.bind.samplers, b.bind.samplers, sizeof(a.bind.samplers)) ? 16u : 0u);
             return false;
         }
-        if (!sameUniforms(a, b)){
+        if (!sameUniforms(a, b, stats.splitUniformSlots)){
             stats.splitUniforms++;
             return false;
         }

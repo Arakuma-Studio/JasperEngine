@@ -100,6 +100,8 @@ namespace jasperengine{
             uint32_t splitElements = 0;     // other elements (a LOD level, another submesh range)
             uint32_t splitBindings = 0;     // other buffers, textures or samplers
             uint32_t splitUniforms = 0;     // another uniform block or its bytes
+            uint32_t splitUniformSlots = 0; // the slots whose bytes differed (bit 31: other blocks)
+            uint32_t splitBindingParts = 0; // 1 vertex buffers, 2 their offsets, 4 index buffer, 8 views, 16 samplers
         };
 
         static void setEnabled(bool enabled);

@@ -134,9 +134,9 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnbatched){
     const std::vector<uint8_t> batched = readTarget();
     const DrawBatchStats stats = SystemRender::getDrawBatchStats();
     std::printf("[instancing] %u instanced draws for %u draws, %llu uniform bytes kept; %u offered, split by pipeline %u, "
-                "elements %u, bindings %u, uniforms %u\n", stats.instancedDraws, stats.batchedInstances,
+                "elements %u, bindings %u (parts %x), uniforms %u (slots %x)\n", stats.instancedDraws, stats.batchedInstances,
                 (unsigned long long)stats.uniformBytesKept, stats.offeredDraws, stats.splitPipeline, stats.splitElements,
-                stats.splitBindings, stats.splitUniforms);
+                stats.splitBindings, stats.splitBindingParts, stats.splitUniforms, stats.splitUniformSlots);
     // what the first box loaded (a test that does not batch says why)
     const Submesh& first = scene.getComponent<MeshComponent>(models[0]->getEntity()).submeshes[0];
     std::printf("[instancing] box: batch shader %s (properties %llx), colour variant %s (%s), depth variant %s (%s)\n",

@@ -418,6 +418,8 @@ DrawBatchStats SystemRender::getDrawBatchStats(){
     stats.splitElements = frame.splitElements;
     stats.splitBindings = frame.splitBindings;
     stats.splitUniforms = frame.splitUniforms;
+    stats.splitUniformSlots = frame.splitUniformSlots;
+    stats.splitBindingParts = frame.splitBindingParts;
     return stats;
 }
 
