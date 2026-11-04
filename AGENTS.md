@@ -83,8 +83,22 @@ person's checkout, and never rewrite branches you do not own.
 2. Register it into your spec's group (`ToolDef::group`, `editor/mcp/McpToolGroups.cpp`).
 3. Build its schema with `editor/mcp/McpSchema.h` only: snake_case keys, closed objects.
 4. Set annotations and activity accurately; decide `allowedWhilePlaying`.
-5. Return a text summary plus `structuredContent`; more than 1 s of work becomes a job.
+5. Return a text summary plus `structuredContent` (all a client like Claude Code shows the model); more
+   than 1 s of work becomes a job.
 6. Stay within `tools/mcp/budget.json` (`tool_budget.py --check`); put agent guidance in
    `docs/mcp/guide/<area>.md`, with at most a short digest in the agent guide.
 7. Test it in `tools/mcp/tests/`, including that its group is hidden until `tool_groups` enables it.
 8. Regenerate `docs/mcp/TOOLS.md`. The full rules: `docs/mcp/conventions.md`.
+
+## MCP text (names, descriptions, schemas, results, errors, the guide)
+
+- New tool text needs a case in `tools/mcp/eval/cases.py` that fails without it; cut text no case needs.
+- Put a rule where the agent reads it as it decides: the server enforces it, else the result says it
+  (`next` in `structuredContent`), else the description, a parameter, and last the guide.
+- Names: area noun first, one word per concept; merge or extend before adding a near-duplicate tool.
+- Descriptions: what it does, its default or limit, the one misuse, the sibling tool; no internals,
+  result field lists or examples. Guide lines: observable triggers, no escape hatches, one route each.
+- Lean listed schemas, full validation in the handler; an error names the fix.
+- `tool_budget.py --check tools/mcp/budget.json` ratchets the bytes: lower `budget.json` when you cut.
+- Run the eval (`tools/mcp/eval/README.md`) on Orquester-managed accounts (`--appdir`, `--account`),
+  never with an API key.

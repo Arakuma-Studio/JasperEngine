@@ -14,7 +14,7 @@
         "into a raised limit or a smaller headroom."
     ],
     "default_listing": {
-        "chars": 100000,
+        "chars": 99000,
         "tools": 150
     },
     "group_default": {
@@ -23,7 +23,7 @@
     },
     "tool_default": 1500,
     "guide": {
-        "bytes": 16384,
+        "bytes": 8192,
         "headroom_bytes": 1500,
         "section_bytes": 1500,
         "sections": {}

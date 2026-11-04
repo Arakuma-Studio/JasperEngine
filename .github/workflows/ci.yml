@@ -78,11 +78,12 @@ jobs:
       - name: Third-party notices
         run: python3 tools/ci/check-notices.py
 
-      - name: Gate and notice checker self-tests
+      - name: Gate, notice checker and MCP eval grader self-tests
         run: |
           python3 tools/ci/test_gtest_gate.py
           python3 tools/ci/test_smoke_jit_hangs.py
           python3 tools/ci/test_check_notices.py
+          python3 tools/mcp/eval/test_grade.py
 
       # editor keys are bound in the command catalog, not polled by hand (S25 R4, AC3)
       - name: Hard-coded editor shortcuts
