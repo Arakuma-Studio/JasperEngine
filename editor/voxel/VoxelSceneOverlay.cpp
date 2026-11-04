@@ -34,27 +34,21 @@ namespace {
     // map of visible blocks starts with them, and the panel's stats still say the true totals.
     constexpr size_t MAX_OVERLAY_LINES = 180000;
     // 16-bit indices, three unshared vertices per triangle
-    constexpr size_t TRIANGLES_PER_MESH = 21845;
-    constexpr size_t MAX_TINT_TRIANGLES = 12 * TRIANGLES_PER_MESH;
+    constexpr size_t TINT_TRIANGLES_PER_MESH = 21845;
+    constexpr size_t MAX_TINT_TRIANGLES = 12 * TINT_TRIANGLES_PER_MESH;
     constexpr float TINT_ALPHA = 0.55f;
     constexpr int COLLISION_RADIUS_BLOCKS = 4;
     constexpr double REDRAW_SECONDS = 0.1;
 
-    struct OverlayDraw {
-        uint64_t key = 0;
-        size_t lines = 0;
-        size_t triangles = 0;
-    };
-
-    uint64_t mix(uint64_t hash, uint64_t value) {
+    uint64_t overlayMix(uint64_t hash, uint64_t value) {
         return voxel::fnv1a(&value, sizeof(value), hash);
     }
 
-    Vector3 worldOf(const VoxelSystem& system, Entity owner, const voxel::Vec3d& local) {
+    Vector3 overlayWorldOf(const VoxelSystem& system, Entity owner, const voxel::Vec3d& local) {
         return system.localToWorld(owner, local);
     }
 
-    voxel::Vec3d localOf(const int32_t* position, float voxelSize) {
+    voxel::Vec3d overlayLocalOf(const int32_t* position, float voxelSize) {
         return voxel::Vec3d{voxel::fixedToLocal(position[0], voxelSize), voxel::fixedToLocal(position[1], voxelSize), voxel::fixedToLocal(position[2], voxelSize)};
     }
 
@@ -67,19 +61,19 @@ namespace {
         return (vertex.slots >> (4 * best)) & 0xF;
     }
 
-    class SceneLines {
+    class VoxelOverlayLines {
     public:
-        explicit SceneLines(Scene* scene): scene(scene) {
+        explicit VoxelOverlayLines(Scene* scene): scene(scene) {
             ScopedDefaultEntityPool sys(*scene, EntityPool::System);
             lines = new LineRenderer(scene);
             scene->getSystem<RenderSystem>()->setEditorOverlay(lines->getEntity(), true);
         }
-        ~SceneLines() {
+        ~VoxelOverlayLines() {
             if (isGone()) lines->setEntityOwned(false);
             delete lines;
         }
-        SceneLines(const SceneLines&) = delete;
-        SceneLines& operator=(const SceneLines&) = delete;
+        VoxelOverlayLines(const VoxelOverlayLines&) = delete;
+        VoxelOverlayLines& operator=(const VoxelOverlayLines&) = delete;
 
         // the buffer grows to what is drawn; `limit` keeps a whole mountain from becoming one
         void begin(size_t limit) {
@@ -107,19 +101,19 @@ namespace {
         size_t count = 0;
     };
 
-    class SceneTint {
+    class VoxelOverlayTint {
     public:
-        explicit SceneTint(Scene* scene): scene(scene) {}
-        ~SceneTint() {
+        explicit VoxelOverlayTint(Scene* scene): scene(scene) {}
+        ~VoxelOverlayTint() {
             for (Mesh* mesh : meshes) delete mesh;
         }
-        SceneTint(const SceneTint&) = delete;
-        SceneTint& operator=(const SceneTint&) = delete;
+        VoxelOverlayTint(const VoxelOverlayTint&) = delete;
+        VoxelOverlayTint& operator=(const VoxelOverlayTint&) = delete;
 
         // triangles: 3 world points and 3 colours each
         void fill(const std::vector<Vector3>& points, const std::vector<Vector4>& colours) {
             const size_t count = points.size() / 3;
-            const size_t needed = (count + TRIANGLES_PER_MESH - 1) / TRIANGLES_PER_MESH;
+            const size_t needed = (count + TINT_TRIANGLES_PER_MESH - 1) / TINT_TRIANGLES_PER_MESH;
             while (meshes.size() < needed) meshes.push_back(newMesh());
             while (meshes.size() > needed) {
                 delete meshes.back();
@@ -128,8 +122,8 @@ namespace {
             auto meshSystem = scene->getSystem<MeshSystem>();
             for (size_t m = 0; m < needed; m++) {
                 MeshComponent& mesh = meshes[m]->getComponent<MeshComponent>();
-                const size_t first = m * TRIANGLES_PER_MESH;
-                const size_t n = std::min(TRIANGLES_PER_MESH, count - first);
+                const size_t first = m * TINT_TRIANGLES_PER_MESH;
+                const size_t n = std::min(TINT_TRIANGLES_PER_MESH, count - first);
                 mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
                 mesh.numSubmeshes = 1;
                 mesh.buffer.clear();
@@ -186,11 +180,11 @@ namespace {
         std::vector<Mesh*> meshes;
     };
 
-    struct SceneOverlayState {
-        std::unique_ptr<SceneLines> decal;
-        std::unique_ptr<SceneLines> plane;
-        std::unique_ptr<SceneLines> overlay;
-        std::unique_ptr<SceneTint> tint;
+    struct VoxelSceneOverlayState {
+        std::unique_ptr<VoxelOverlayLines> decal;
+        std::unique_ptr<VoxelOverlayLines> plane;
+        std::unique_ptr<VoxelOverlayLines> overlay;
+        std::unique_ptr<VoxelOverlayTint> tint;
         uint64_t decalKey = 0;
         uint64_t planeKey = 0;
         uint64_t overlayKey = 0;
@@ -199,12 +193,12 @@ namespace {
         double sinceRedraw = REDRAW_SECONDS;
     };
 
-    std::unordered_map<Scene*, SceneOverlayState>& states() {
-        static std::unordered_map<Scene*, SceneOverlayState> map;
+    std::unordered_map<Scene*, VoxelSceneOverlayState>& overlayStates() {
+        static std::unordered_map<Scene*, VoxelSceneOverlayState> map;
         return map;
     }
 
-    struct SlicePlane {
+    struct VoxelSlicePlaneState {
         bool on = false;
         uint32_t sceneId = 0;
         Entity owner = NULL_ENTITY;
@@ -212,17 +206,17 @@ namespace {
         int position = 0;
         uint64_t revision = 1;
     };
-    SlicePlane slicePlane;
+    VoxelSlicePlaneState slicePlane;
 
-    void addBoxLines(SceneLines& lines, const VoxelSystem& system, Entity owner, const voxel::Vec3d& low, const voxel::Vec3d& high, const Vector4& colour) {
+    void addBoxLines(VoxelOverlayLines& lines, const VoxelSystem& system, Entity owner, const voxel::Vec3d& low, const voxel::Vec3d& high, const Vector4& colour) {
         const auto corner = [&](int i) {
-            return worldOf(system, owner, voxel::Vec3d{(i & 1) ? high.x : low.x, (i & 2) ? high.y : low.y, (i & 4) ? high.z : low.z});
+            return overlayWorldOf(system, owner, voxel::Vec3d{(i & 1) ? high.x : low.x, (i & 2) ? high.y : low.y, (i & 4) ? high.z : low.z});
         };
         const int edges[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3}, {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
         for (const auto& edge : edges) lines.line(corner(edge[0]), corner(edge[1]), colour);
     }
 
-    void drawDecal(Scene* scene, SceneOverlayState& state) {
+    void drawVoxelDecal(Scene* scene, VoxelSceneOverlayState& state) {
         VoxelBrushTool& tool = VoxelBrushTool::get();
         const bool mine = tool.getProject() && tool.isEditingScene(scene);
         if (!mine || !tool.decalVisible() || tool.decalAlpha() <= 0.0f) {
@@ -233,23 +227,23 @@ namespace {
         if (state.decal && state.decalKey == tool.decalRevision()) return;
         std::shared_ptr<VoxelSystem> system = scene->findSystem<VoxelSystem>();
         if (!system) return;
-        if (!state.decal) state.decal = std::make_unique<SceneLines>(scene);
+        if (!state.decal) state.decal = std::make_unique<VoxelOverlayLines>(scene);
         const VoxelDecal& decal = tool.decal();
         const Vector4 colour(decal.colour.r, decal.colour.g, decal.colour.b, tool.decalAlpha());
         // a thinner look for the wire, so the ring on the ground reads first
         const Vector4 wire(decal.colour.r, decal.colour.g, decal.colour.b, tool.decalAlpha() * 0.55f);
         state.decal->begin((decal.ring.size() + decal.wire.size()) / 2 + 8);
         for (size_t i = 0; i + 1 < decal.ring.size(); i += 2) {
-            state.decal->line(worldOf(*system, tool.getTargetEntity(), decal.ring[i]), worldOf(*system, tool.getTargetEntity(), decal.ring[i + 1]), colour);
+            state.decal->line(overlayWorldOf(*system, tool.getTargetEntity(), decal.ring[i]), overlayWorldOf(*system, tool.getTargetEntity(), decal.ring[i + 1]), colour);
         }
         for (size_t i = 0; i + 1 < decal.wire.size(); i += 2) {
-            state.decal->line(worldOf(*system, tool.getTargetEntity(), decal.wire[i]), worldOf(*system, tool.getTargetEntity(), decal.wire[i + 1]), wire);
+            state.decal->line(overlayWorldOf(*system, tool.getTargetEntity(), decal.wire[i]), overlayWorldOf(*system, tool.getTargetEntity(), decal.wire[i + 1]), wire);
         }
         state.decal->show(true);
         state.decalKey = tool.decalRevision();
     }
 
-    void drawPlane(Scene* scene, uint32_t sceneId, SceneOverlayState& state) {
+    void drawVoxelPlane(Scene* scene, uint32_t sceneId, VoxelSceneOverlayState& state) {
         if (!slicePlane.on || slicePlane.sceneId != sceneId) {
             if (state.plane) state.plane->show(false);
             state.planeKey = 0;
@@ -262,7 +256,7 @@ namespace {
             return;
         }
         if (state.plane && state.planeKey == slicePlane.revision) return;
-        if (!state.plane) state.plane = std::make_unique<SceneLines>(scene);
+        if (!state.plane) state.plane = std::make_unique<VoxelOverlayLines>(scene);
         const voxel::VolumeDesc& desc = store->desc();
         const double voxelSize = desc.voxelSize;
         const voxel::Vec3d high{desc.dimensions.x * voxelSize, desc.dimensions.y * voxelSize, desc.dimensions.z * voxelSize};
@@ -279,7 +273,7 @@ namespace {
                 case 1: p = voxel::Vec3d{u, at, v}; break;
                 default: p = voxel::Vec3d{u, v, at}; break;
             }
-            return worldOf(*system, slicePlane.owner, p);
+            return overlayWorldOf(*system, slicePlane.owner, p);
         };
         const double maxU = axis == 0 ? high.y : high.x;
         const double maxV = axis == 2 ? high.y : high.z;
@@ -296,32 +290,32 @@ namespace {
 
     // What the overlays drew from: a change here is a redraw
     uint64_t overlayKeyOf(VoxelSystem& system, Entity owner, VoxelOverlay overlay) {
-        uint64_t hash = mix(voxel::FNV_OFFSET, static_cast<uint64_t>(overlay));
-        hash = mix(hash, owner);
+        uint64_t hash = overlayMix(voxel::FNV_OFFSET, static_cast<uint64_t>(overlay));
+        hash = overlayMix(hash, owner);
         const voxel::Store* store = system.getStore(owner);
-        hash = mix(hash, store ? store->version() : 0);
+        hash = overlayMix(hash, store ? store->version() : 0);
         for (const auto& item : system.getVisibleBlocks(owner)) {
-            hash = mix(hash, item.second.windowVersion);
-            hash = mix(hash, item.second.sideMask);
-            hash = mix(hash, static_cast<uint64_t>(item.first.level) | (static_cast<uint64_t>(item.first.x) << 8) | (static_cast<uint64_t>(item.first.y) << 24) | (static_cast<uint64_t>(item.first.z) << 40));
+            hash = overlayMix(hash, item.second.windowVersion);
+            hash = overlayMix(hash, item.second.sideMask);
+            hash = overlayMix(hash, static_cast<uint64_t>(item.first.level) | (static_cast<uint64_t>(item.first.x) << 8) | (static_cast<uint64_t>(item.first.y) << 24) | (static_cast<uint64_t>(item.first.z) << 40));
         }
         const Matrix4 model = system.modelMatrixOf(owner);
         hash = voxel::fnv1a(&model, sizeof(model), hash);
         return hash;
     }
 
-    void drawMeshLines(SceneLines& lines, VoxelSystem& system, Entity owner, const voxel::MeshOut& mesh, float voxelSize, const Vector4& colour) {
+    void drawMeshLines(VoxelOverlayLines& lines, VoxelSystem& system, Entity owner, const voxel::MeshOut& mesh, float voxelSize, const Vector4& colour) {
         for (size_t i = 0; i + 2 < mesh.indices.size() && lines.size() < MAX_OVERLAY_LINES; i += 3) {
-            const Vector3 a = worldOf(system, owner, localOf(mesh.vertices[mesh.indices[i]].position, voxelSize));
-            const Vector3 b = worldOf(system, owner, localOf(mesh.vertices[mesh.indices[i + 1]].position, voxelSize));
-            const Vector3 c = worldOf(system, owner, localOf(mesh.vertices[mesh.indices[i + 2]].position, voxelSize));
+            const Vector3 a = overlayWorldOf(system, owner, overlayLocalOf(mesh.vertices[mesh.indices[i]].position, voxelSize));
+            const Vector3 b = overlayWorldOf(system, owner, overlayLocalOf(mesh.vertices[mesh.indices[i + 1]].position, voxelSize));
+            const Vector3 c = overlayWorldOf(system, owner, overlayLocalOf(mesh.vertices[mesh.indices[i + 2]].position, voxelSize));
             lines.line(a, b, colour);
             lines.line(b, c, colour);
             lines.line(c, a, colour);
         }
     }
 
-    void drawOverlayOf(Scene* scene, SceneOverlayState& state, VoxelSystem& system, Entity owner, VoxelOverlay overlay, std::vector<Vector3>& tintPoints, std::vector<Vector4>& tintColours) {
+    void drawVoxelOverlayOf(Scene* scene, VoxelSceneOverlayState& state, VoxelSystem& system, Entity owner, VoxelOverlay overlay, std::vector<Vector3>& tintPoints, std::vector<Vector4>& tintColours) {
         voxel::Store* store = system.getStore(owner);
         if (!store) return;
         const float voxelSize = store->desc().voxelSize;
@@ -357,7 +351,7 @@ namespace {
                     for (size_t i = 0; i + 2 < mesh->indices.size() && tintPoints.size() / 3 < MAX_TINT_TRIANGLES; i += 3) {
                         for (int corner = 0; corner < 3; corner++) {
                             const voxel::MeshVertex& vertex = mesh->vertices[mesh->indices[i + static_cast<size_t>(corner)]];
-                            tintPoints.push_back(worldOf(system, owner, localOf(vertex.position, voxelSize)));
+                            tintPoints.push_back(overlayWorldOf(system, owner, overlayLocalOf(vertex.position, voxelSize)));
                             if (overlay == VoxelOverlay::LodColours) {
                                 tintColours.emplace_back(levelTint.r, levelTint.g, levelTint.b, TINT_ALPHA);
                             } else {
@@ -424,7 +418,7 @@ namespace {
         }
     }
 
-    void drawOverlays(Scene* scene, SceneOverlayState& state, double dt) {
+    void drawVoxelOverlays(Scene* scene, VoxelSceneOverlayState& state, double dt) {
         std::shared_ptr<VoxelSystem> system = scene->findSystem<VoxelSystem>();
         auto array = scene->getComponentArray<VoxelVolumeComponent>();
         uint64_t key = voxelOverlayRevision();
@@ -435,7 +429,7 @@ namespace {
                 const VoxelOverlay overlay = getVoxelOverlay(owner);
                 if (overlay == VoxelOverlay::None) continue;
                 any = true;
-                key = mix(key, overlayKeyOf(*system, owner, overlay));
+                key = overlayMix(key, overlayKeyOf(*system, owner, overlay));
             }
         }
         if (!any) {
@@ -450,14 +444,14 @@ namespace {
         if (key == state.overlayKey || state.sinceRedraw < REDRAW_SECONDS) return;
         state.sinceRedraw = 0.0;
         state.overlayKey = key;
-        if (!state.overlay) state.overlay = std::make_unique<SceneLines>(scene);
+        if (!state.overlay) state.overlay = std::make_unique<VoxelOverlayLines>(scene);
         state.overlay->begin(MAX_OVERLAY_LINES);
         std::vector<Vector3> points;
         std::vector<Vector4> colours;
         for (size_t i = 0; i < array->size(); i++) {
             const Entity owner = array->getEntity(i);
             const VoxelOverlay overlay = getVoxelOverlay(owner);
-            if (overlay != VoxelOverlay::None) drawOverlayOf(scene, state, *system, owner, overlay, points, colours);
+            if (overlay != VoxelOverlay::None) drawVoxelOverlayOf(scene, state, *system, owner, overlay, points, colours);
         }
         state.overlay->show(true);
         state.overlayLines = state.overlay->size();
@@ -465,7 +459,7 @@ namespace {
         if (points.empty()) {
             if (state.tint) state.tint->hide();
         } else {
-            if (!state.tint) state.tint = std::make_unique<SceneTint>(scene);
+            if (!state.tint) state.tint = std::make_unique<VoxelOverlayTint>(scene);
             state.tint->fill(points, colours);
         }
     }
@@ -499,7 +493,7 @@ VoxelSceneOverlay::Colour VoxelSceneOverlay::levelColour(int level) {
 
 void VoxelSceneOverlay::frame(Project& project) {
     if (project.isAnyScenePlaying()) {
-        for (auto& item : states()) {
+        for (auto& item : overlayStates()) {
             if (item.second.decal) item.second.decal->show(false);
             if (item.second.plane) item.second.plane->show(false);
             if (item.second.overlay) item.second.overlay->show(false);
@@ -517,26 +511,26 @@ void VoxelSceneOverlay::frame(Project& project) {
     for (SceneProject& sceneProject : project.getScenes()) {
         Scene* scene = sceneProject.scene;
         if (!scene || !sceneProject.sceneRender) continue;
-        const auto found = states().find(scene);
+        const auto found = overlayStates().find(scene);
         // nothing on and nothing made: this scene pays one lookup (R58)
-        if (found == states().end() && !overlaysOn && !slicePlane.on && !tool.isArmed()) continue;
-        SceneOverlayState& state = states()[scene];
-        drawDecal(scene, state);
-        drawPlane(scene, sceneProject.id, state);
-        drawOverlays(scene, state, dt);
+        if (found == overlayStates().end() && !overlaysOn && !slicePlane.on && !tool.isArmed()) continue;
+        VoxelSceneOverlayState& state = overlayStates()[scene];
+        drawVoxelDecal(scene, state);
+        drawVoxelPlane(scene, sceneProject.id, state);
+        drawVoxelOverlays(scene, state, dt);
     }
 }
 
 void VoxelSceneOverlay::release(Scene* scene) {
-    states().erase(scene);
+    overlayStates().erase(scene);
 }
 
 size_t VoxelSceneOverlay::overlayLineCount(Scene* scene) {
-    const auto found = states().find(scene);
-    return found == states().end() ? 0 : found->second.overlayLines;
+    const auto found = overlayStates().find(scene);
+    return found == overlayStates().end() ? 0 : found->second.overlayLines;
 }
 
 size_t VoxelSceneOverlay::overlayTriangleCount(Scene* scene) {
-    const auto found = states().find(scene);
-    return found == states().end() ? 0 : found->second.overlayTriangles;
+    const auto found = overlayStates().find(scene);
+    return found == overlayStates().end() ? 0 : found->second.overlayTriangles;
 }

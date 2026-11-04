@@ -31,10 +31,10 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr BuildPlatform kTargets[] = {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS,
+    constexpr BuildPlatform kStatsTargets[] = {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS,
                                           BuildPlatform::Android, BuildPlatform::IOS, BuildPlatform::Web};
 
-    std::shared_ptr<VoxelSystem> systemOf(Project* project, uint32_t sceneId) {
+    std::shared_ptr<VoxelSystem> opsSystemOf(Project* project, uint32_t sceneId) {
         SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
         return sceneProject && sceneProject->scene ? sceneProject->scene->findSystem<VoxelSystem>() : nullptr;
     }
@@ -61,14 +61,14 @@ namespace {
         }
     }
 
-    std::string text(const char* format, double value) {
+    std::string formatNumber(const char* format, double value) {
         char buffer[64];
         std::snprintf(buffer, sizeof(buffer), format, value);
         return buffer;
     }
 
-    std::string megabytes(int64_t bytes) {
-        return text("%.2f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
+    std::string statsMegabytes(int64_t bytes) {
+        return formatNumber("%.2f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
     }
 
     // One undo step of a change of an asset's identity in memory: Voxel Size lives in the file's header,
@@ -96,7 +96,7 @@ namespace {
             asset->dirty = true;
             // every GameObject showing the file reads it again
             SceneProject* sceneProject = project->getScene(sceneId);
-            if (std::shared_ptr<VoxelSystem> system = systemOf(project, sceneId)) {
+            if (std::shared_ptr<VoxelSystem> system = opsSystemOf(project, sceneId)) {
                 auto array = sceneProject->scene->getComponentArray<VoxelVolumeComponent>();
                 for (size_t i = 0; i < array->size(); i++) {
                     if (array->getComponentFromIndex(i).volumeData.path == path) system->reloadVolume(array->getEntity(i));
@@ -153,7 +153,7 @@ int editor::voxelAssetUserCount(Project* project, const std::string& assetPath) 
 }
 
 bool editor::makeVoxelVolumeUnique(Project* project, uint32_t sceneId, Entity owner, std::string* error) {
-    std::shared_ptr<VoxelSystem> system = systemOf(project, sceneId);
+    std::shared_ptr<VoxelSystem> system = opsSystemOf(project, sceneId);
     const std::shared_ptr<VoxelAsset> asset = system ? system->getAsset(owner) : nullptr;
     if (!asset || !asset->store) {
         if (error) *error = "The volume is not loaded, so there is nothing to copy.";
@@ -171,7 +171,7 @@ bool editor::applyScaleToVoxelSize(Project* project, uint32_t sceneId, Entity ow
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
     Scene* scene = sceneProject ? sceneProject->scene : nullptr;
     const Transform* transform = scene ? scene->findComponent<Transform>(owner) : nullptr;
-    std::shared_ptr<VoxelSystem> system = systemOf(project, sceneId);
+    std::shared_ptr<VoxelSystem> system = opsSystemOf(project, sceneId);
     const std::shared_ptr<VoxelAsset> asset = system ? system->getAsset(owner) : nullptr;
     if (!transform || !asset || !asset->store) {
         if (error) *error = "The volume is not loaded.";
@@ -219,7 +219,7 @@ bool editor::applyScaleToVoxelSize(Project* project, uint32_t sceneId, Entity ow
 }
 
 int editor::reseedVoxelVolumeFromTerrain(Project* project, uint32_t sceneId, Entity owner, const voxel::IntBox* region, std::string* error) {
-    std::shared_ptr<VoxelSystem> system = systemOf(project, sceneId);
+    std::shared_ptr<VoxelSystem> system = opsSystemOf(project, sceneId);
     voxel::Store* store = system ? system->getStore(owner) : nullptr;
     const std::shared_ptr<VoxelAsset> asset = system ? system->getAsset(owner) : nullptr;
     if (!store || !asset) {
@@ -268,7 +268,7 @@ int editor::reseedVoxelVolumeFromTerrain(Project* project, uint32_t sceneId, Ent
 }
 
 bool editor::saveVoxelVolume(Project* project, uint32_t sceneId, Entity owner, std::string* error) {
-    std::shared_ptr<VoxelSystem> system = systemOf(project, sceneId);
+    std::shared_ptr<VoxelSystem> system = opsSystemOf(project, sceneId);
     const std::shared_ptr<VoxelAsset> asset = system ? system->getAsset(owner) : nullptr;
     if (!asset) {
         if (error) *error = "The volume is not loaded.";
@@ -289,13 +289,13 @@ std::vector<VoxelStatsRow> editor::voxelStatsRows(const VoxelStats& stats, const
     add("Hot", std::to_string(hot));
     add("Cold", std::to_string(blocks.cold));
     add("Modified", std::to_string(blocks.modified));
-    add("Memory Hot", megabytes(stats.memory.hotBytes));
-    add("Memory Cold", megabytes(stats.memory.coldBytes));
-    add("Memory Tables", megabytes(stats.memory.tableBytes));
-    add("Memory Meshes", megabytes(stats.meshBytes));
-    for (BuildPlatform target : kTargets) {
+    add("Memory Hot", statsMegabytes(stats.memory.hotBytes));
+    add("Memory Cold", statsMegabytes(stats.memory.coldBytes));
+    add("Memory Tables", statsMegabytes(stats.memory.tableBytes));
+    add("Memory Meshes", statsMegabytes(stats.meshBytes));
+    for (BuildPlatform target : kStatsTargets) {
         const VoxelLimits limits = lowerVoxelLimits(voxelTargetLimits(target), settings);
-        const std::string used = megabytes(stats.memory.total()) + " of " + megabytes(limits.cpuBudget) + ", meshes " + megabytes(stats.meshBytes) + " of " + megabytes(limits.meshBudget);
+        const std::string used = statsMegabytes(stats.memory.total()) + " of " + statsMegabytes(limits.cpuBudget) + ", meshes " + statsMegabytes(stats.meshBytes) + " of " + statsMegabytes(limits.meshBudget);
         rows.push_back(VoxelStatsRow{std::string("Budget ") + buildPlatformName(target), used});
     }
     add("Triangles", std::to_string(stats.triangles));
@@ -303,7 +303,7 @@ std::vector<VoxelStatsRow> editor::voxelStatsRows(const VoxelStats& stats, const
     add("Draws", std::to_string(stats.draws));
     add("Jobs Pending", std::to_string(stats.jobsPending));
     add("Collision Bodies", std::to_string(stats.collisionBodies));
-    add("Last Mesh", text("%.2f ms", stats.lastMeshMs));
+    add("Last Mesh", formatNumber("%.2f ms", stats.lastMeshMs));
     add("Last Latency", stats.lastLatencyFrames < 0 ? std::string("-") : std::to_string(stats.lastLatencyFrames) + " frames");
     return rows;
 }

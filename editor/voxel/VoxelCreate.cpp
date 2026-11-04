@@ -25,9 +25,9 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr int64_t BLOCK_PAYLOAD = voxel::BLOCK_SAMPLES * (sizeof(int16_t) + sizeof(uint16_t));
-    constexpr int64_t SLOT_BYTES = 8;
-    constexpr BuildPlatform kTargets[] = {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS,
+    constexpr int64_t CREATE_BLOCK_PAYLOAD = voxel::BLOCK_SAMPLES * (sizeof(int16_t) + sizeof(uint16_t));
+    constexpr int64_t CREATE_SLOT_BYTES = 8;
+    constexpr BuildPlatform kCreateTargets[] = {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS,
                                           BuildPlatform::Android, BuildPlatform::IOS, BuildPlatform::Web};
 
     int roundUpToBlock(int value) {
@@ -50,7 +50,7 @@ namespace {
         return 0.0;
     }
 
-    std::string joined(const std::vector<std::string>& names) {
+    std::string joinedTargetNames(const std::vector<std::string>& names) {
         std::string text;
         for (const std::string& name : names) {
             if (!text.empty()) text += ", ";
@@ -187,21 +187,21 @@ VoxelCreateEstimate editor::estimateVoxelCreate(const VoxelCreateOptions& option
         const int64_t blocksY = (size.y + span - 1) / span;
         const int64_t blocksZ = (size.z + span - 1) / span;
         const int64_t total = blocksX * blocksY * blocksZ;
-        estimate.bytes += total * SLOT_BYTES;
+        estimate.bytes += total * CREATE_SLOT_BYTES;
         const int64_t nonUniform = share < 0.0 ? blocksX * std::min<int64_t>(blocksY, 2) * blocksZ : static_cast<int64_t>(std::llround(static_cast<double>(total) * share));
-        estimate.bytes += nonUniform * BLOCK_PAYLOAD;
+        estimate.bytes += nonUniform * CREATE_BLOCK_PAYLOAD;
     }
-    for (BuildPlatform target : kTargets) {
+    for (BuildPlatform target : kCreateTargets) {
         const VoxelLimits limits = lowerVoxelLimits(voxelTargetLimits(target), settings);
         if (estimate.bytes > limits.cpuBudget) estimate.overBudgetTargets.push_back(buildPlatformName(target));
         if (!voxelDimensionProblem(options.name, size, target, settings).empty()) estimate.oversizeTargets.push_back(buildPlatformName(target));
     }
     if (!estimate.overBudgetTargets.empty()) {
-        estimate.warning = "Over the memory budget on " + joined(estimate.overBudgetTargets) + ".";
+        estimate.warning = "Over the memory budget on " + joinedTargetNames(estimate.overBudgetTargets) + ".";
     }
     if (!estimate.oversizeTargets.empty()) {
         if (!estimate.warning.empty()) estimate.warning += " ";
-        estimate.warning += "Too large for " + joined(estimate.oversizeTargets) + ".";
+        estimate.warning += "Too large for " + joinedTargetNames(estimate.oversizeTargets) + ".";
     }
     return estimate;
 }

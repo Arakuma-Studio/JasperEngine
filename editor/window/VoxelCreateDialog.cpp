@@ -24,16 +24,16 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr const char* TITLE = "Create Voxel Volume";
+    constexpr const char* VOXEL_CREATE_TITLE = "Create Voxel Volume";
 
-    std::string megabytes(int64_t bytes) {
+    std::string dialogMegabytes(int64_t bytes) {
         char text[64];
         std::snprintf(text, sizeof(text), "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
         return text;
     }
 
     // "in view": the camera's pivot over the terrain's square, which is what a framed terrain has
-    Entity terrainInView(SceneProject& sceneProject) {
+    Entity voxelTerrainInView(SceneProject& sceneProject) {
         Scene* scene = sceneProject.scene;
         auto array = scene->getComponentArray<TerrainComponent>();
         if (array->size() == 0) return NULL_ENTITY;
@@ -67,7 +67,7 @@ void VoxelCreateDialog::open(Project* targetProject, uint32_t targetScene, Entit
     justOpened = true;
     SceneProject* sceneProject = project->getScene(sceneId);
     if (sceneProject && sceneProject->scene) {
-        options.terrain = terrainInView(*sceneProject);
+        options.terrain = voxelTerrainInView(*sceneProject);
         if (sceneProject->sceneRender && sceneProject->sceneRender->getCamera()) {
             // centred on the view's pivot, where the person is looking
             const voxel::Int3 size = voxelCreateDimensions(options);
@@ -81,13 +81,13 @@ void VoxelCreateDialog::open(Project* targetProject, uint32_t targetScene, Entit
 void VoxelCreateDialog::draw() {
     if (!isOpen || !project) return;
     if (justOpened) {
-        ImGui::OpenPopup(TITLE);
+        ImGui::OpenPopup(VOXEL_CREATE_TITLE);
         justOpened = false;
     }
     bool keepOpen = true;
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal(TITLE, &keepOpen)) {
-        if (!keepOpen || !ImGui::IsPopupOpen(TITLE)) isOpen = false;
+    if (!ImGui::BeginPopupModal(VOXEL_CREATE_TITLE, &keepOpen)) {
+        if (!keepOpen || !ImGui::IsPopupOpen(VOXEL_CREATE_TITLE)) isOpen = false;
         return;
     }
     SceneProject* sceneProject = project->getScene(sceneId);
@@ -154,7 +154,7 @@ void VoxelCreateDialog::draw() {
     ImGui::Separator();
     const VoxelCreateEstimate estimate = estimateVoxelCreate(options, project->getVoxelSettings());
     const voxel::Int3 size = voxelCreateDimensions(options);
-    ImGui::Text("%d x %d x %d voxels, about %s", size.x, size.y, size.z, megabytes(estimate.bytes).c_str());
+    ImGui::Text("%d x %d x %d voxels, about %s", size.x, size.y, size.z, dialogMegabytes(estimate.bytes).c_str());
     if (!estimate.warning.empty()) {
         ImGui::PushTextWrapPos(0.0f);
         ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION "  %s", estimate.warning.c_str());

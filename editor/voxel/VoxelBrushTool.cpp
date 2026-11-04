@@ -18,12 +18,12 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr float MIN_RADIUS = 0.1f;
-    constexpr float MAX_RADIUS = 256.0f;
+    constexpr float BRUSH_MIN_RADIUS = 0.1f;
+    constexpr float BRUSH_MAX_RADIUS = 256.0f;
     // A dry run per hover stays well under a frame up to about this many samples (R60's strip)
     constexpr int64_t STAMP_DRY_RUN_SAMPLES = 64 * 64 * 64;
 
-    std::shared_ptr<VoxelSystem> systemOf(Project* project, uint32_t sceneId) {
+    std::shared_ptr<VoxelSystem> brushSystemOf(Project* project, uint32_t sceneId) {
         SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
         return sceneProject && sceneProject->scene ? sceneProject->scene->findSystem<VoxelSystem>() : nullptr;
     }
@@ -92,7 +92,7 @@ void VoxelBrushTool::disarm() {
 }
 
 void VoxelBrushTool::adjustSize(float factor) {
-    brush.radius = std::clamp(brush.radius * factor, MIN_RADIUS, MAX_RADIUS);
+    brush.radius = std::clamp(brush.radius * factor, BRUSH_MIN_RADIUS, BRUSH_MAX_RADIUS);
     decalRev++;
 }
 
@@ -148,7 +148,7 @@ void VoxelBrushTool::openStroke(uint32_t scene, Entity volume, const VoxelBrushS
 }
 
 bool VoxelBrushTool::applyStamp(const voxel::Vec3d& center, const voxel::Vec3d& end) {
-    std::shared_ptr<VoxelSystem> system = systemOf(project, stroke.sceneId);
+    std::shared_ptr<VoxelSystem> system = brushSystemOf(project, stroke.sceneId);
     if (!system) return false;
     const voxel::EditOp op = voxelStampOp(stroke.settings, stroke.effective, center, end);
     voxel::EditOptions options;
@@ -340,7 +340,7 @@ void VoxelBrushTool::hideCursor() {
 
 bool VoxelBrushTool::scriptedStroke(Project* project, uint32_t sceneId, Entity owner, const VoxelBrushSettings& settings, VoxelTool effective,
                                     const std::vector<voxel::Vec3d>& points, std::string& why) {
-    std::shared_ptr<VoxelSystem> system = systemOf(project, sceneId);
+    std::shared_ptr<VoxelSystem> system = brushSystemOf(project, sceneId);
     voxel::Store* store = system ? system->getStore(owner) : nullptr;
     if (!store) {
         why = "not_loaded";

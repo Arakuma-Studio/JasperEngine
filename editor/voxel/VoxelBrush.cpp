@@ -13,48 +13,48 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr int RING_POINTS = 48;
-    constexpr int CIRCLE_POINTS = 32;
-    constexpr double PI = 3.14159265358979323846;
+    constexpr int DECAL_RING_POINTS = 48;
+    constexpr int DECAL_CIRCLE_POINTS = 32;
+    constexpr double DECAL_PI = 3.14159265358979323846;
     constexpr double DECAL_REST_SECONDS = 0.5;
     constexpr double DECAL_FADE_SECONDS = 0.25;
 
-    voxel::Vec3d add(const voxel::Vec3d& a, const voxel::Vec3d& b, double scale = 1.0) {
+    voxel::Vec3d offsetBy(const voxel::Vec3d& a, const voxel::Vec3d& b, double scale = 1.0) {
         return voxel::Vec3d{a.x + b.x * scale, a.y + b.y * scale, a.z + b.z * scale};
     }
 
-    voxel::Vec3d cross(const voxel::Vec3d& a, const voxel::Vec3d& b) {
+    voxel::Vec3d crossOf(const voxel::Vec3d& a, const voxel::Vec3d& b) {
         return voxel::Vec3d{a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
     }
 
-    double length(const voxel::Vec3d& a) {
+    double lengthOf(const voxel::Vec3d& a) {
         return std::sqrt(a.x * a.x + a.y * a.y + a.z * a.z);
     }
 
-    voxel::Vec3d normalized(const voxel::Vec3d& a) {
-        const double size = length(a);
+    voxel::Vec3d unitOf(const voxel::Vec3d& a) {
+        const double size = lengthOf(a);
         return size > 1e-12 ? voxel::Vec3d{a.x / size, a.y / size, a.z / size} : voxel::Vec3d{0.0, 1.0, 0.0};
     }
 
     // two axes perpendicular to n
-    void tangents(const voxel::Vec3d& n, voxel::Vec3d& u, voxel::Vec3d& v) {
+    void tangentsOf(const voxel::Vec3d& n, voxel::Vec3d& u, voxel::Vec3d& v) {
         const voxel::Vec3d helper = std::fabs(n.y) < 0.9 ? voxel::Vec3d{0.0, 1.0, 0.0} : voxel::Vec3d{1.0, 0.0, 0.0};
-        u = normalized(cross(helper, n));
-        v = cross(n, u);
+        u = unitOf(crossOf(helper, n));
+        v = crossOf(n, u);
     }
 
-    void addCircle(std::vector<voxel::Vec3d>& lines, const voxel::Vec3d& center, const voxel::Vec3d& u, const voxel::Vec3d& v, double radius) {
-        voxel::Vec3d previous = add(center, u, radius);
-        for (int i = 1; i <= CIRCLE_POINTS; i++) {
-            const double angle = 2.0 * PI * static_cast<double>(i) / CIRCLE_POINTS;
-            const voxel::Vec3d point = add(add(center, u, radius * std::cos(angle)), v, radius * std::sin(angle));
+    void addWireCircle(std::vector<voxel::Vec3d>& lines, const voxel::Vec3d& center, const voxel::Vec3d& u, const voxel::Vec3d& v, double radius) {
+        voxel::Vec3d previous = offsetBy(center, u, radius);
+        for (int i = 1; i <= DECAL_CIRCLE_POINTS; i++) {
+            const double angle = 2.0 * DECAL_PI * static_cast<double>(i) / DECAL_CIRCLE_POINTS;
+            const voxel::Vec3d point = offsetBy(offsetBy(center, u, radius * std::cos(angle)), v, radius * std::sin(angle));
             lines.push_back(previous);
             lines.push_back(point);
             previous = point;
         }
     }
 
-    void addBox(std::vector<voxel::Vec3d>& lines, const voxel::Vec3d& center, const voxel::Vec3d& half) {
+    void addWireBox(std::vector<voxel::Vec3d>& lines, const voxel::Vec3d& center, const voxel::Vec3d& half) {
         const auto corner = [&](int i) {
             return voxel::Vec3d{center.x + ((i & 1) ? half.x : -half.x), center.y + ((i & 2) ? half.y : -half.y), center.z + ((i & 4) ? half.z : -half.z)};
         };
@@ -156,7 +156,7 @@ void VoxelStrokeStamper::moveTo(const voxel::Vec3d& point, std::vector<voxel::Ve
         return;
     }
     const voxel::Vec3d delta{point.x - last.x, point.y - last.y, point.z - last.z};
-    const double distance = length(delta);
+    const double distance = lengthOf(delta);
     if (distance <= 0.0) return;
     // walking from the segment's start, not from the last stamp, so a stamp's position does not
     // collect the rounding of the frames before it
@@ -243,20 +243,20 @@ void editor::buildVoxelDecal(voxel::Store& store, const VoxelBrushSettings& sett
     const double radius = settings.radius;
 
     // the ring: rays back down the normal, so it lies on the ground the brush will take
-    const voxel::Vec3d normal = normalized(hit.normal);
+    const voxel::Vec3d normal = unitOf(hit.normal);
     voxel::Vec3d u, v;
-    tangents(normal, u, v);
+    tangentsOf(normal, u, v);
     const double lift = std::max(radius, static_cast<double>(store.desc().voxelSize));
     const voxel::Vec3d down{-normal.x, -normal.y, -normal.z};
     const double surfaceOffset = 0.05 * static_cast<double>(store.desc().voxelSize);
     voxel::Vec3d previous;
     voxel::Vec3d first;
-    for (int i = 0; i < RING_POINTS; i++) {
-        const double angle = 2.0 * PI * static_cast<double>(i) / RING_POINTS;
-        const voxel::Vec3d onPlane = add(add(hit.point, u, radius * std::cos(angle)), v, radius * std::sin(angle));
+    for (int i = 0; i < DECAL_RING_POINTS; i++) {
+        const double angle = 2.0 * DECAL_PI * static_cast<double>(i) / DECAL_RING_POINTS;
+        const voxel::Vec3d onPlane = offsetBy(offsetBy(hit.point, u, radius * std::cos(angle)), v, radius * std::sin(angle));
         voxel::Vec3d point = onPlane;
-        const voxel::RaycastHit draped = voxel::raycast(store, add(onPlane, normal, lift), down, lift * 2.0);
-        if (draped.hit) point = add(draped.point, normal, surfaceOffset);
+        const voxel::RaycastHit draped = voxel::raycast(store, offsetBy(onPlane, normal, lift), down, lift * 2.0);
+        if (draped.hit) point = offsetBy(draped.point, normal, surfaceOffset);
         if (i > 0) {
             decal.ring.push_back(previous);
             decal.ring.push_back(point);
@@ -271,25 +271,25 @@ void editor::buildVoxelDecal(voxel::Store& store, const VoxelBrushSettings& sett
     const voxel::Vec3d x{1.0, 0.0, 0.0}, y{0.0, 1.0, 0.0}, z{0.0, 0.0, 1.0};
     switch (settings.shape) {
         case VoxelBrushShape::Sphere:
-            addCircle(decal.wire, hit.point, x, y, radius);
-            addCircle(decal.wire, hit.point, y, z, radius);
-            addCircle(decal.wire, hit.point, x, z, radius);
+            addWireCircle(decal.wire, hit.point, x, y, radius);
+            addWireCircle(decal.wire, hit.point, y, z, radius);
+            addWireCircle(decal.wire, hit.point, x, z, radius);
             break;
         case VoxelBrushShape::Box:
-            addBox(decal.wire, hit.point, voxel::Vec3d{radius, radius, radius});
+            addWireBox(decal.wire, hit.point, voxel::Vec3d{radius, radius, radius});
             break;
         case VoxelBrushShape::Capsule: {
             const voxel::Vec3d from = capsuleStart ? *capsuleStart : hit.point;
-            const voxel::Vec3d axis = normalized(voxel::Vec3d{hit.point.x - from.x, hit.point.y - from.y, hit.point.z - from.z});
+            const voxel::Vec3d axis = unitOf(voxel::Vec3d{hit.point.x - from.x, hit.point.y - from.y, hit.point.z - from.z});
             voxel::Vec3d a, b;
-            tangents(axis, a, b);
-            addCircle(decal.wire, from, a, b, radius);
-            addCircle(decal.wire, hit.point, a, b, radius);
+            tangentsOf(axis, a, b);
+            addWireCircle(decal.wire, from, a, b, radius);
+            addWireCircle(decal.wire, hit.point, a, b, radius);
             for (const voxel::Vec3d& side : {a, b}) {
-                decal.wire.push_back(add(from, side, radius));
-                decal.wire.push_back(add(hit.point, side, radius));
-                decal.wire.push_back(add(from, side, -radius));
-                decal.wire.push_back(add(hit.point, side, -radius));
+                decal.wire.push_back(offsetBy(from, side, radius));
+                decal.wire.push_back(offsetBy(hit.point, side, radius));
+                decal.wire.push_back(offsetBy(from, side, -radius));
+                decal.wire.push_back(offsetBy(hit.point, side, -radius));
             }
             break;
         }
@@ -301,7 +301,7 @@ void editor::buildVoxelDecal(voxel::Store& store, const VoxelBrushSettings& sett
                 const double extent = settings.field->voxelSize * static_cast<double>(settings.stampScale) * 0.5;
                 half = voxel::Vec3d{settings.field->size.x * extent, settings.field->size.y * extent, settings.field->size.z * extent};
             }
-            addBox(decal.wire, hit.point, half);
+            addWireBox(decal.wire, hit.point, half);
             break;
         }
     }

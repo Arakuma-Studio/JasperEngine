@@ -25,15 +25,15 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    constexpr BuildPlatform kTargets[] = {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS,
+    constexpr BuildPlatform kProblemTargets[] = {BuildPlatform::Windows, BuildPlatform::Linux, BuildPlatform::MacOS,
                                           BuildPlatform::Android, BuildPlatform::IOS, BuildPlatform::Web};
 
-    std::string megabytes(int64_t bytes) {
+    std::string problemMegabytes(int64_t bytes) {
         return std::to_string((bytes + 512 * 1024) / (1024 * 1024)) + " MB";
     }
 
-    // (scene, entity) -> the codes logged and not gone since
-    std::map<std::tuple<uint32_t, Entity>, std::set<VoxelProblemCode>>& logged() {
+    // (scene, entity) -> the codes loggedVoxelProblems and not gone since
+    std::map<std::tuple<uint32_t, Entity>, std::set<VoxelProblemCode>>& loggedVoxelProblems() {
         static std::map<std::tuple<uint32_t, Entity>, std::set<VoxelProblemCode>> map;
         return map;
     }
@@ -127,21 +127,21 @@ std::vector<VoxelProblem> editor::voxelProblems(Project& project, const ScenePro
     const int64_t memory = asset->store->memory().total();
     std::string overTargets;
     std::string overBudgetText;
-    for (BuildPlatform target : kTargets) {
+    for (BuildPlatform target : kProblemTargets) {
         const VoxelLimits limits = lowerVoxelLimits(voxelTargetLimits(target), settings);
         if (memory > limits.cpuBudget) {
             if (!overTargets.empty()) overTargets += ", ";
             overTargets += buildPlatformName(target);
-            overBudgetText = megabytes(limits.cpuBudget);
+            overBudgetText = problemMegabytes(limits.cpuBudget);
         }
     }
     if (!overTargets.empty()) {
-        add(VoxelProblemCode::OverBudget, "This volume holds " + megabytes(memory) + ", over the budget on " + overTargets + " (" + overBudgetText + " at the lowest).",
+        add(VoxelProblemCode::OverBudget, "This volume holds " + problemMegabytes(memory) + ", over the budget on " + overTargets + " (" + overBudgetText + " at the lowest).",
             "Flatten or discard modified blocks, make it smaller, or raise the budget in Project Settings > Voxels.");
     }
 
     if (!settings.ignoreDimensionLimits) {
-        for (BuildPlatform target : kTargets) {
+        for (BuildPlatform target : kProblemTargets) {
             const std::string problem = voxelDimensionProblem(name, asset->store->desc().dimensions, target, settings);
             if (!problem.empty()) {
                 add(VoxelProblemCode::OversizeForTarget, problem, "Make the volume smaller, or allow it with Ignore Dimension Limits in Project Settings > Voxels.");
@@ -157,7 +157,7 @@ std::vector<VoxelProblem> editor::voxelProblems(Project& project, const ScenePro
 }
 
 int editor::logVoxelProblems(const SceneProject& sceneProject, Entity owner, const std::vector<VoxelProblem>& problems) {
-    std::set<VoxelProblemCode>& seen = logged()[std::make_tuple(sceneProject.id, owner)];
+    std::set<VoxelProblemCode>& seen = loggedVoxelProblems()[std::make_tuple(sceneProject.id, owner)];
     std::set<VoxelProblemCode> now;
     int written = 0;
     const std::string name = sceneProject.scene ? sceneProject.scene->getEntityName(owner) : std::string();
@@ -172,5 +172,5 @@ int editor::logVoxelProblems(const SceneProject& sceneProject, Entity owner, con
 }
 
 void editor::resetVoxelProblemLog() {
-    logged().clear();
+    loggedVoxelProblems().clear();
 }

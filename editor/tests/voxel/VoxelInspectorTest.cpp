@@ -25,7 +25,7 @@ namespace {
     class VoxelSlice : public VoxelSceneTest {};
     class VoxelPicking : public VoxelSceneTest {};
 
-    constexpr ComponentType TYPE = ComponentType::VoxelVolumeComponent;
+    constexpr ComponentType VOLUME_TYPE = ComponentType::VoxelVolumeComponent;
 
 }
 
@@ -39,7 +39,7 @@ TEST_F(InspectorVoxels, UndoableFields) {
     std::set<std::string> labels;
     for (const VoxelInspectorRow& row : voxelInspectorRows()) {
         labels.insert(row.label);
-        const PropertyData property = Catalog::findProperty(scene, owner, TYPE, row.property);
+        const PropertyData property = Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property);
         EXPECT_NE(property.ref, nullptr) << row.property;
         EXPECT_STRNE(row.help, "") << row.property;
     }
@@ -52,41 +52,41 @@ TEST_F(InspectorVoxels, UndoableFields) {
     const VoxelVolumeComponent& component = scene->getComponent<VoxelVolumeComponent>(owner);
     size_t steps = 0;
     for (const VoxelInspectorRow& row : voxelInspectorRows()) {
-        const PropertyData property = Catalog::findProperty(scene, owner, TYPE, row.property);
+        const PropertyData property = Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property);
         ASSERT_NE(property.ref, nullptr) << row.property;
         switch (row.kind) {
             case VoxelInspectorRowKind::Bool: {
                 const bool old = *static_cast<bool*>(property.ref);
-                history->addCommandNoMerge(new PropertyCmd<bool>(project.get(), sceneProject->id, owner, TYPE, row.property, !old));
-                EXPECT_EQ(*static_cast<bool*>(Catalog::findProperty(scene, owner, TYPE, row.property).ref), !old) << row.property;
+                history->addCommandNoMerge(new PropertyCmd<bool>(project.get(), sceneProject->id, owner, VOLUME_TYPE, row.property, !old));
+                EXPECT_EQ(*static_cast<bool*>(Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property).ref), !old) << row.property;
                 ASSERT_TRUE(history->undo());
-                EXPECT_EQ(*static_cast<bool*>(Catalog::findProperty(scene, owner, TYPE, row.property).ref), old) << row.property;
+                EXPECT_EQ(*static_cast<bool*>(Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property).ref), old) << row.property;
                 break;
             }
             case VoxelInspectorRowKind::Int:
             case VoxelInspectorRowKind::Enum: {
                 const int old = *static_cast<int*>(property.ref);
                 const int next = std::string(row.property) == "lodRadius" ? 6 : old + 1;
-                history->addCommandNoMerge(new PropertyCmd<int>(project.get(), sceneProject->id, owner, TYPE, row.property, next));
-                EXPECT_EQ(*static_cast<int*>(Catalog::findProperty(scene, owner, TYPE, row.property).ref), next) << row.property;
+                history->addCommandNoMerge(new PropertyCmd<int>(project.get(), sceneProject->id, owner, VOLUME_TYPE, row.property, next));
+                EXPECT_EQ(*static_cast<int*>(Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property).ref), next) << row.property;
                 ASSERT_TRUE(history->undo());
-                EXPECT_EQ(*static_cast<int*>(Catalog::findProperty(scene, owner, TYPE, row.property).ref), old) << row.property;
+                EXPECT_EQ(*static_cast<int*>(Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property).ref), old) << row.property;
                 break;
             }
             case VoxelInspectorRowKind::Float: {
                 const float old = *static_cast<float*>(property.ref);
-                history->addCommandNoMerge(new PropertyCmd<float>(project.get(), sceneProject->id, owner, TYPE, row.property, old + 2.0f));
-                EXPECT_FLOAT_EQ(*static_cast<float*>(Catalog::findProperty(scene, owner, TYPE, row.property).ref), old + 2.0f) << row.property;
+                history->addCommandNoMerge(new PropertyCmd<float>(project.get(), sceneProject->id, owner, VOLUME_TYPE, row.property, old + 2.0f));
+                EXPECT_FLOAT_EQ(*static_cast<float*>(Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property).ref), old + 2.0f) << row.property;
                 ASSERT_TRUE(history->undo());
-                EXPECT_FLOAT_EQ(*static_cast<float*>(Catalog::findProperty(scene, owner, TYPE, row.property).ref), old) << row.property;
+                EXPECT_FLOAT_EQ(*static_cast<float*>(Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property).ref), old) << row.property;
                 break;
             }
             case VoxelInspectorRowKind::Entity: {
                 const Entity old = *static_cast<Entity*>(property.ref);
-                history->addCommandNoMerge(new PropertyCmd<Entity>(project.get(), sceneProject->id, owner, TYPE, row.property, owner));
-                EXPECT_EQ(*static_cast<Entity*>(Catalog::findProperty(scene, owner, TYPE, row.property).ref), owner) << row.property;
+                history->addCommandNoMerge(new PropertyCmd<Entity>(project.get(), sceneProject->id, owner, VOLUME_TYPE, row.property, owner));
+                EXPECT_EQ(*static_cast<Entity*>(Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property).ref), owner) << row.property;
                 ASSERT_TRUE(history->undo());
-                EXPECT_EQ(*static_cast<Entity*>(Catalog::findProperty(scene, owner, TYPE, row.property).ref), old) << row.property;
+                EXPECT_EQ(*static_cast<Entity*>(Catalog::findProperty(scene, owner, VOLUME_TYPE, row.property).ref), old) << row.property;
                 break;
             }
             case VoxelInspectorRowKind::Asset:

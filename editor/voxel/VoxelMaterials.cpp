@@ -16,27 +16,27 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    using Slots = std::vector<VoxelMaterialSlot>;
+    using VoxelSlotList = std::vector<VoxelMaterialSlot>;
 
-    VoxelVolumeComponent* componentOf(Project* project, uint32_t sceneId, Entity owner, std::string* error) {
+    VoxelVolumeComponent* slotOwnerComponent(Project* project, uint32_t sceneId, Entity owner, std::string* error) {
         SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
         VoxelVolumeComponent* component = sceneProject && sceneProject->scene ? sceneProject->scene->findComponent<VoxelVolumeComponent>(owner) : nullptr;
         if (!component && error) *error = "That GameObject has no Voxel Volume.";
         return component;
     }
 
-    PropertyCmd<Slots>* slotsCommand(Project* project, uint32_t sceneId, Entity owner, const Slots& slots) {
-        return new PropertyCmd<Slots>(project, sceneId, owner, ComponentType::VoxelVolumeComponent, "materialSlots", slots);
+    PropertyCmd<VoxelSlotList>* slotsCommand(Project* project, uint32_t sceneId, Entity owner, const VoxelSlotList& slots) {
+        return new PropertyCmd<VoxelSlotList>(project, sceneId, owner, ComponentType::VoxelVolumeComponent, "materialSlots", slots);
     }
 
-    bool validIndex(const VoxelVolumeComponent& component, int index, std::string* error) {
+    bool validSlotIndex(const VoxelVolumeComponent& component, int index, std::string* error) {
         if (index >= 0 && index < static_cast<int>(component.materialSlots.size())) return true;
         if (error) *error = "There is no material slot " + std::to_string(index) + ".";
         return false;
     }
 
     // slots stay where they are: the last goes, with any empty ones it leaves at the end
-    void clearSlot(Slots& slots, int index) {
+    void clearSlotKeepingIndices(VoxelSlotList& slots, int index) {
         slots[static_cast<size_t>(index)] = VoxelMaterialSlot{};
         while (!slots.empty() && isVoxelSlotEmpty(slots.back())) slots.pop_back();
     }
@@ -74,9 +74,9 @@ bool editor::isVoxelSlotEmpty(const VoxelMaterialSlot& slot) {
 }
 
 int editor::addVoxelMaterialSlot(Project* project, uint32_t sceneId, Entity owner, const std::string& name, std::string* error) {
-    const VoxelVolumeComponent* component = componentOf(project, sceneId, owner, error);
+    const VoxelVolumeComponent* component = slotOwnerComponent(project, sceneId, owner, error);
     if (!component) return -1;
-    Slots slots = component->materialSlots;
+    VoxelSlotList slots = component->materialSlots;
     int index = -1;
     for (size_t i = 0; i < slots.size(); i++) {
         if (isVoxelSlotEmpty(slots[i])) {
@@ -98,23 +98,23 @@ int editor::addVoxelMaterialSlot(Project* project, uint32_t sceneId, Entity owne
 }
 
 bool editor::removeVoxelMaterialSlot(Project* project, uint32_t sceneId, Entity owner, int index, std::string* error) {
-    const VoxelVolumeComponent* component = componentOf(project, sceneId, owner, error);
-    if (!component || !validIndex(*component, index, error)) return false;
+    const VoxelVolumeComponent* component = slotOwnerComponent(project, sceneId, owner, error);
+    if (!component || !validSlotIndex(*component, index, error)) return false;
     std::shared_ptr<VoxelSystem> system = project->getScene(sceneId)->scene->findSystem<VoxelSystem>();
     const voxel::Store* store = system ? system->getStore(owner) : nullptr;
     if (store && (voxelSlotsInUse(*store) & (1u << index))) {
         if (error) *error = "Slot " + std::to_string(index) + " is in use in this volume. Use Replace With to move those voxels to another slot first.";
         return false;
     }
-    Slots slots = component->materialSlots;
-    clearSlot(slots, index);
+    VoxelSlotList slots = component->materialSlots;
+    clearSlotKeepingIndices(slots, index);
     CommandHandle::get(sceneId)->addCommandNoMerge(slotsCommand(project, sceneId, owner, slots));
     return true;
 }
 
 bool editor::replaceVoxelMaterialSlot(Project* project, uint32_t sceneId, Entity owner, int index, int replaceWith, std::string* error) {
-    const VoxelVolumeComponent* component = componentOf(project, sceneId, owner, error);
-    if (!component || !validIndex(*component, index, error) || !validIndex(*component, replaceWith, error)) return false;
+    const VoxelVolumeComponent* component = slotOwnerComponent(project, sceneId, owner, error);
+    if (!component || !validSlotIndex(*component, index, error) || !validSlotIndex(*component, replaceWith, error)) return false;
     if (index == replaceWith) {
         if (error) *error = "A slot cannot replace itself.";
         return false;
@@ -173,8 +173,8 @@ bool editor::replaceVoxelMaterialSlot(Project* project, uint32_t sceneId, Entity
         }
     }
 
-    Slots slots = component->materialSlots;
-    clearSlot(slots, index);
+    VoxelSlotList slots = component->materialSlots;
+    clearSlotKeepingIndices(slots, index);
     CommandHistory* history = CommandHandle::get(sceneId);
     const size_t mark = history->mark();
     if (!delta.empty()) {
@@ -187,18 +187,18 @@ bool editor::replaceVoxelMaterialSlot(Project* project, uint32_t sceneId, Entity
 }
 
 bool editor::linkVoxelMaterialSlot(Project* project, uint32_t sceneId, Entity owner, int index, int terrainLayer, std::string* error) {
-    const VoxelVolumeComponent* component = componentOf(project, sceneId, owner, error);
-    if (!component || !validIndex(*component, index, error)) return false;
-    Slots slots = component->materialSlots;
+    const VoxelVolumeComponent* component = slotOwnerComponent(project, sceneId, owner, error);
+    if (!component || !validSlotIndex(*component, index, error)) return false;
+    VoxelSlotList slots = component->materialSlots;
     slots[static_cast<size_t>(index)].linkedTerrainLayer = terrainLayer;
     CommandHandle::get(sceneId)->addCommandNoMerge(slotsCommand(project, sceneId, owner, slots));
     return true;
 }
 
 bool editor::setVoxelMaterialSlot(Project* project, uint32_t sceneId, Entity owner, int index, const VoxelMaterialSlot& value, bool merge, std::string* error) {
-    const VoxelVolumeComponent* component = componentOf(project, sceneId, owner, error);
-    if (!component || !validIndex(*component, index, error)) return false;
-    Slots slots = component->materialSlots;
+    const VoxelVolumeComponent* component = slotOwnerComponent(project, sceneId, owner, error);
+    if (!component || !validSlotIndex(*component, index, error)) return false;
+    VoxelSlotList slots = component->materialSlots;
     slots[static_cast<size_t>(index)] = value;
     CommandHistory* history = CommandHandle::get(sceneId);
     if (merge) history->addCommand(slotsCommand(project, sceneId, owner, slots));

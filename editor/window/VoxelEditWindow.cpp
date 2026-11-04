@@ -36,15 +36,15 @@ using namespace jasperengine::editor;
 
 namespace {
 
-    const ImVec4 kErrorStrip(0.55f, 0.10f, 0.10f, 1.0f);
+    const ImVec4 kVoxelErrorStrip(0.55f, 0.10f, 0.10f, 1.0f);
 
-    std::string megabytes(int64_t bytes) {
+    std::string panelMegabytes(int64_t bytes) {
         char text[64];
         std::snprintf(text, sizeof(text), "%.2f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
         return text;
     }
 
-    bool toolButton(const char* icon, const char* id, const char* tooltip, bool selected, const ImVec2& size) {
+    bool voxelToolButton(const char* icon, const char* id, const char* tooltip, bool selected, const ImVec2& size) {
         ImGui::PushStyleColor(ImGuiCol_Button, selected ? Theme::Colors::ButtonActivated : ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
         const bool clicked = Widgets::iconButton(id, icon, size);
         ImGui::PopStyleColor();
@@ -53,7 +53,7 @@ namespace {
     }
 
     // label on the left, field on the right, as the Terrain window's rows
-    void row(const char* label, const char* tooltip = nullptr) {
+    void voxelPanelRow(const char* label, const char* tooltip = nullptr) {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::AlignTextToFramePadding();
@@ -69,7 +69,7 @@ void editor::drawVoxelProblemStrip(Project& project, const SceneProject& scenePr
     const std::vector<VoxelProblem> problems = voxelProblems(project, sceneProject, owner);
     logVoxelProblems(sceneProject, owner, problems);
     if (problems.empty()) return;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, kErrorStrip);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, kVoxelErrorStrip);
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(6.0f, 4.0f));
     ImGui::BeginChild("voxel_problems", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
     for (const VoxelProblem& problem : problems) {
@@ -163,7 +163,7 @@ void VoxelEditWindow::show() {
     const ImGuiIO& io = ImGui::GetIO();
     VoxelGenerateResult finished;
     if (generation.poll(finished)) {
-        if (finished.ok) setStatus("Regenerated: " + std::to_string(finished.blocksNonUniform) + " non-uniform blocks, " + megabytes(finished.memory) + ".", false);
+        if (finished.ok) setStatus("Regenerated: " + std::to_string(finished.blocksNonUniform) + " non-uniform blocks, " + panelMegabytes(finished.memory) + ".", false);
         else setStatus(finished.message.empty() ? finished.error : finished.message, true);
     }
     const bool cameraMoving = ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsMouseDown(ImGuiMouseButton_Middle) || (io.KeyAlt && ImGui::IsMouseDown(ImGuiMouseButton_Left));
@@ -258,7 +258,7 @@ void VoxelEditWindow::drawBrushTab(SceneProject& sceneProject) {
         if (i > 0) ImGui::SameLine();
         const bool selected = tool.isArmed() && brush.tool == tools[i].tool;
         const std::string tooltip = catalog.tooltip(tools[i].command, tools[i].name);
-        if (toolButton(tools[i].icon, tools[i].id, tooltip.c_str(), selected, buttonSize)) {
+        if (voxelToolButton(tools[i].icon, tools[i].id, tooltip.c_str(), selected, buttonSize)) {
             if (selected) tool.disarm();
             else tool.arm(tools[i].tool);
         }
@@ -269,30 +269,30 @@ void VoxelEditWindow::drawBrushTab(SceneProject& sceneProject) {
     ImGui::PopTextWrapPos();
 
     if (!ImGui::BeginTable("voxel_brush", 2, ImGuiTableFlags_SizingStretchProp)) return;
-    row("Shape");
+    voxelPanelRow("Shape");
     int shape = static_cast<int>(brush.shape);
     const char* shapes[] = {"Sphere", "Box", "Capsule (drag)", "Mesh", "Stamp"};
     if (ImGui::Combo("##shape", &shape, shapes, IM_ARRAYSIZE(shapes))) brush.shape = static_cast<VoxelBrushShape>(shape);
-    row("Size", "Metres from the centre to the shape's edge ([ and ])");
+    voxelPanelRow("Size", "Metres from the centre to the shape's edge ([ and ])");
     if (ImGui::DragFloat("##size", &brush.radius, 0.05f, 0.1f, 256.0f, "%.2f m", ImGuiSliderFlags_AlwaysClamp)) tool.adjustSize(1.0f);
-    row("Blend", "Smooth-CSG radius in metres: rounds the join with what is there");
+    voxelPanelRow("Blend", "Smooth-CSG radius in metres: rounds the join with what is there");
     ImGui::DragFloat("##blend", &brush.blend, 0.02f, 0.0f, 32.0f, "%.2f m", ImGuiSliderFlags_AlwaysClamp);
     if (brush.tool == VoxelTool::Smooth) {
-        row("Amount");
+        voxelPanelRow("Amount");
         ImGui::SliderFloat("##amount", &brush.amount, 0.0f, 1.0f, "%.2f");
-        row("Iterations");
+        voxelPanelRow("Iterations");
         ImGui::SliderInt("##iterations", &brush.iterations, 1, 8);
     }
     if (brush.tool == VoxelTool::Smooth || brush.tool == VoxelTool::Paint) {
-        row("Falloff", "How soft the shape's edge is");
+        voxelPanelRow("Falloff", "How soft the shape's edge is");
         ImGui::SliderFloat("##falloff", &brush.falloff, 0.0f, 1.0f, "%.2f");
     }
     if (brush.tool == VoxelTool::Paint) {
-        row("Weight");
+        voxelPanelRow("Weight");
         ImGui::SliderFloat("##weight", &brush.weight, 0.0f, 1.0f, "%.2f");
     }
     if (brush.tool == VoxelTool::Paint || brush.tool == VoxelTool::Add || brush.tool == VoxelTool::Pick) {
-        row("Material", "The slot Add and Paint write; Alt+Click picks it from the surface");
+        voxelPanelRow("Material", "The slot Add and Paint write; Alt+Click picks it from the surface");
         const VoxelVolumeComponent& component = sceneProject.scene->getComponent<VoxelVolumeComponent>(target);
         const std::string current = brush.material < static_cast<int>(component.materialSlots.size())
                                         ? std::to_string(brush.material) + ": " + component.materialSlots[static_cast<size_t>(brush.material)].name
@@ -308,7 +308,7 @@ void VoxelEditWindow::drawBrushTab(SceneProject& sceneProject) {
         }
     }
     if (brush.shape == VoxelBrushShape::Stamp) {
-        row("Stamp", "A .voxelvolume whose surface is the shape: drop one here, or browse");
+        voxelPanelRow("Stamp", "A .voxelvolume whose surface is the shape: drop one here, or browse");
         char name[256];
         std::snprintf(name, sizeof(name), "%s", stampPath.c_str());
         ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
@@ -334,7 +334,7 @@ void VoxelEditWindow::drawBrushTab(SceneProject& sceneProject) {
         }
     }
     if (brush.shape == VoxelBrushShape::Mesh) {
-        row("Mesh", "The mesh of a GameObject, voxelized once");
+        voxelPanelRow("Mesh", "The mesh of a GameObject, voxelized once");
         const std::string label = meshSource == NULL_ENTITY ? std::string("None") : sceneProject.scene->getEntityName(meshSource);
         ImGui::TextUnformatted(label.c_str());
         ImGui::SameLine();
@@ -352,7 +352,7 @@ void VoxelEditWindow::drawBrushTab(SceneProject& sceneProject) {
         }
     }
     if (brush.shape == VoxelBrushShape::Mesh || brush.shape == VoxelBrushShape::Stamp) {
-        row("Scale");
+        voxelPanelRow("Scale");
         ImGui::DragFloat("##stamp_scale", &brush.stampScale, 0.01f, 0.01f, 64.0f, "%.2f", ImGuiSliderFlags_AlwaysClamp);
     }
     ImGui::EndTable();
@@ -383,7 +383,7 @@ void VoxelEditWindow::drawInfoStrip() {
     ImGui::Text("Value     %.3f m", info.value);
     ImGui::Text("Material  %d%s", info.material.slot, info.material.weight > 0 ? (" + " + std::to_string(info.material.second) + " (" + std::to_string(info.material.weight * 100 / 255) + "%)").c_str() : "");
     ImGui::Text("Stamp     %s%lld voxels", info.stampEstimated ? "up to " : "", static_cast<long long>(info.stampVoxels));
-    ImGui::Text("Memory    %s", megabytes(info.memoryBytes).c_str());
+    ImGui::Text("Memory    %s", panelMegabytes(info.memoryBytes).c_str());
 }
 
 void VoxelEditWindow::drawSlotRow(SceneProject& sceneProject, int index) {
@@ -495,11 +495,11 @@ void VoxelEditWindow::drawSlotRow(SceneProject& sceneProject, int index) {
         const TerrainSurfaceLayer& layer = slot.layer;
         if (ImGui::BeginTable("voxel_slot_layer", 2, ImGuiTableFlags_SizingStretchProp)) {
             bool pbr = layer.pbr;
-            row("Enable PBR", "Off blends only this slot's colour; on reads every map below");
+            voxelPanelRow("Enable PBR", "Off blends only this slot's colour; on reads every map below");
             if (ImGui::Checkbox("##pbr", &pbr)) edit([&](VoxelMaterialSlot& next) { next.layer.pbr = pbr; }, false);
 
             const auto mapRow = [&](const char* label, Texture TerrainSurfaceLayer::*map) {
-                row(label);
+                voxelPanelRow(label);
                 ImGui::PushID(label);
                 const std::string path = (layer.*map).getPath(0);
                 char file[256];
@@ -531,7 +531,7 @@ void VoxelEditWindow::drawSlotRow(SceneProject& sceneProject, int index) {
                 ImGui::PopID();
             };
             const auto factorRow = [&](const char* label, float TerrainSurfaceLayer::*factor, float maxValue) {
-                row(label);
+                voxelPanelRow(label);
                 ImGui::PushID(label);
                 float value = layer.*factor;
                 if (ImGui::SliderFloat("##factor", &value, 0.0f, maxValue, "%.2f", ImGuiSliderFlags_AlwaysClamp)) edit([&](VoxelMaterialSlot& next) { next.layer.*factor = value; }, true);
@@ -540,7 +540,7 @@ void VoxelEditWindow::drawSlotRow(SceneProject& sceneProject, int index) {
 
             mapRow("Color", &TerrainSurfaceLayer::colorTexture);
             if (layer.pbr) {
-                row("Tint", "Multiplies the slot's colour");
+                voxelPanelRow("Tint", "Multiplies the slot's colour");
                 ImVec4 tint(layer.colorFactor.x, layer.colorFactor.y, layer.colorFactor.z, layer.colorFactor.w);
                 if (ImGui::ColorEdit3("##tint", &tint.x)) edit([&](VoxelMaterialSlot& next) { next.layer.colorFactor = Vector4(tint.x, tint.y, tint.z, tint.w); }, true);
                 mapRow("Normal", &TerrainSurfaceLayer::normalTexture);
@@ -553,10 +553,10 @@ void VoxelEditWindow::drawSlotRow(SceneProject& sceneProject, int index) {
                 factorRow("Occlusion Strength", &TerrainSurfaceLayer::occlusionStrength, 1.0f);
                 mapRow("Height", &TerrainSurfaceLayer::heightTexture);
             }
-            row("UV Scale", "Multiplies the shared detail tiling for this slot alone");
+            voxelPanelRow("UV Scale", "Multiplies the shared detail tiling for this slot alone");
             Vector2 uvScale = layer.uvScale;
             if (ImGui::DragFloat2("##uv_scale", &uvScale.x, 0.01f, 0.0f, 0.0f, "%.2f")) edit([&](VoxelMaterialSlot& next) { next.layer.uvScale = uvScale; }, true);
-            row("UV Offset", "Shifts this slot inside its tile");
+            voxelPanelRow("UV Offset", "Shifts this slot inside its tile");
             Vector2 uvOffset = layer.uvOffset;
             if (ImGui::DragFloat2("##uv_offset", &uvOffset.x, 0.01f, 0.0f, 0.0f, "%.2f")) edit([&](VoxelMaterialSlot& next) { next.layer.uvOffset = uvOffset; }, true);
             ImGui::EndTable();

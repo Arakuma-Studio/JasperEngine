@@ -13,9 +13,9 @@ using namespace jasperengine::editor;
 namespace {
 
     // 1/256 voxel: finer than a pixel at the largest scale
-    constexpr int FIXED = 256;
-    constexpr int MAX_UPSCALE = 8;
-    constexpr int GRID_SAMPLES = voxel::BLOCK_SIZE;
+    constexpr int SLICE_FIXED = 256;
+    constexpr int SLICE_MAX_UPSCALE = 8;
+    constexpr int SLICE_GRID = voxel::BLOCK_SIZE;
 
     constexpr VoxelSlotColor kSlotColors[voxel::MAX_SLOTS] = {
         {168, 142, 112}, {104, 158, 92}, {146, 150, 158}, {204, 166, 84},
@@ -28,7 +28,7 @@ namespace {
     const uint8_t kVolumeOutline[3] = {255, 196, 56};
     const uint8_t kTerrainOutline[3] = {96, 232, 112};
 
-    void setPixel(VoxelSliceImage& image, int x, int y, const uint8_t* rgb) {
+    void setSlicePixel(VoxelSliceImage& image, int x, int y, const uint8_t* rgb) {
         if (x < 0 || y < 0 || x >= image.width || y >= image.height) return;
         uint8_t* pixel = image.rgba.data() + 4 * (static_cast<size_t>(y) * static_cast<size_t>(image.width) + static_cast<size_t>(x));
         pixel[0] = rgb[0];
@@ -98,7 +98,7 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
     const int longer = std::max(columns, rows);
     const int maxWidth = std::max(request.maxWidth, 1);
     if (longer <= maxWidth) {
-        image.scaleNum = std::min(maxWidth / longer, MAX_UPSCALE);
+        image.scaleNum = std::min(maxWidth / longer, SLICE_MAX_UPSCALE);
         image.scaleDen = 1;
     } else {
         image.scaleNum = 1;
@@ -137,8 +137,8 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
     // Pixel centres in 1/256 voxel. Rounding down keeps it integer, so no platform's float rounding
     // reaches a byte (R70).
     const auto pixelToFixed = [&](int pixel, int count) {
-        const int64_t fixed = (2 * static_cast<int64_t>(pixel) + 1) * image.scaleDen * FIXED / (2 * image.scaleNum) - FIXED / 2;
-        return static_cast<int>(std::clamp<int64_t>(fixed, 0, static_cast<int64_t>(count - 1) * FIXED));
+        const int64_t fixed = (2 * static_cast<int64_t>(pixel) + 1) * image.scaleDen * SLICE_FIXED / (2 * image.scaleNum) - SLICE_FIXED / 2;
+        return static_cast<int>(std::clamp<int64_t>(fixed, 0, static_cast<int64_t>(count - 1) * SLICE_FIXED));
     };
     std::vector<int> columnFixed(static_cast<size_t>(image.width));
     std::vector<int> rowFixed(static_cast<size_t>(image.height));
@@ -153,26 +153,26 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
 
     for (int y = 0; y < image.height; y++) {
         const int vFixed = rowFixed[static_cast<size_t>(y)];
-        const int v0 = vFixed / FIXED;
+        const int v0 = vFixed / SLICE_FIXED;
         const int v1 = std::min(v0 + 1, rows - 1);
-        const int fv = vFixed - v0 * FIXED;
+        const int fv = vFixed - v0 * SLICE_FIXED;
         for (int x = 0; x < image.width; x++) {
             const int uFixed = columnFixed[static_cast<size_t>(x)];
-            const int u0 = uFixed / FIXED;
+            const int u0 = uFixed / SLICE_FIXED;
             const int u1 = std::min(u0 + 1, columns - 1);
-            const int fu = uFixed - u0 * FIXED;
+            const int fu = uFixed - u0 * SLICE_FIXED;
             const size_t base0 = static_cast<size_t>(v0) * static_cast<size_t>(columns);
             const size_t base1 = static_cast<size_t>(v1) * static_cast<size_t>(columns);
-            const int64_t top = int64_t(sdf[base0 + static_cast<size_t>(u0)]) * (FIXED - fu) + int64_t(sdf[base0 + static_cast<size_t>(u1)]) * fu;
-            const int64_t bottom = int64_t(sdf[base1 + static_cast<size_t>(u0)]) * (FIXED - fu) + int64_t(sdf[base1 + static_cast<size_t>(u1)]) * fu;
-            const int32_t value = static_cast<int32_t>((top * (FIXED - fv) + bottom * fv) / (FIXED * FIXED));
+            const int64_t top = int64_t(sdf[base0 + static_cast<size_t>(u0)]) * (SLICE_FIXED - fu) + int64_t(sdf[base0 + static_cast<size_t>(u1)]) * fu;
+            const int64_t bottom = int64_t(sdf[base1 + static_cast<size_t>(u0)]) * (SLICE_FIXED - fu) + int64_t(sdf[base1 + static_cast<size_t>(u1)]) * fu;
+            const int32_t value = static_cast<int32_t>((top * (SLICE_FIXED - fv) + bottom * fv) / (SLICE_FIXED * SLICE_FIXED));
             pixelSdf[static_cast<size_t>(y) * static_cast<size_t>(image.width) + static_cast<size_t>(x)] = value;
 
             uint8_t rgb[3];
             if (value < 0) {
                 // the nearest sample's slot, darker with depth: a wide wall reads as filled, not flat
-                const int nearestU = fu * 2 >= FIXED ? u1 : u0;
-                const int nearestV = fv * 2 >= FIXED ? v1 : v0;
+                const int nearestU = fu * 2 >= SLICE_FIXED ? u1 : u0;
+                const int nearestV = fv * 2 >= SLICE_FIXED ? v1 : v0;
                 const uint16_t packed = material[static_cast<size_t>(nearestV) * static_cast<size_t>(columns) + static_cast<size_t>(nearestU)];
                 const int slot = voxel::materialWeightB(packed) * 2 >= 255 ? voxel::materialSlotB(packed) : voxel::materialSlotA(packed);
                 const VoxelSlotColor color = voxelSlotColor(slot);
@@ -188,12 +188,12 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
                 rgb[1] = static_cast<uint8_t>(28 + near * 38 / voxel::SDF_MAX);
                 rgb[2] = static_cast<uint8_t>(36 + near * 46 / voxel::SDF_MAX);
             }
-            setPixel(image, x, y, rgb);
+            setSlicePixel(image, x, y, rgb);
         }
     }
 
     if (request.blockGrid) {
-        const int gridFixed = GRID_SAMPLES * FIXED;
+        const int gridFixed = SLICE_GRID * SLICE_FIXED;
         const auto dimPixel = [&](int x, int y) {
             uint8_t* pixel = image.rgba.data() + 4 * (static_cast<size_t>(y) * static_cast<size_t>(image.width) + static_cast<size_t>(x));
             for (int c = 0; c < 3; c++) pixel[c] = static_cast<uint8_t>((pixel[c] * 3 + 160) / 4);
@@ -215,7 +215,7 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
             if (line[x] >= 0) continue;
             const bool edge = (x > 0 && line[x - 1] >= 0) || (x + 1 < image.width && line[x + 1] >= 0) ||
                               (y > 0 && line[x - image.width] >= 0) || (y + 1 < image.height && line[x + image.width] >= 0);
-            if (edge) setPixel(image, x, y, kIsoLine);
+            if (edge) setSlicePixel(image, x, y, kIsoLine);
         }
     }
 
@@ -227,7 +227,7 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
             bool hasLast = false;
             int lastRow = 0;
             for (int x = 0; x < image.width; x++) {
-                const double across = static_cast<double>(columnFixed[static_cast<size_t>(x)]) / FIXED * voxelSize;
+                const double across = static_cast<double>(columnFixed[static_cast<size_t>(x)]) / SLICE_FIXED * voxelSize;
                 double height = 0.0;
                 const bool has = axis == 0 ? request.terrainHeight(planeMetres, across, height) : request.terrainHeight(across, planeMetres, height);
                 if (!has) {
@@ -238,7 +238,7 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
                 const int imageRow = image.height - 1 - voxelRow;
                 const int from = hasLast ? std::min(lastRow, imageRow) : imageRow;
                 const int to = hasLast ? std::max(lastRow, imageRow) : imageRow;
-                for (int y = std::max(from, 0); y <= std::min(to, image.height - 1); y++) setPixel(image, x, y, kTerrainOutline);
+                for (int y = std::max(from, 0); y <= std::min(to, image.height - 1); y++) setSlicePixel(image, x, y, kTerrainOutline);
                 hasLast = true;
                 lastRow = imageRow;
             }
@@ -246,9 +246,9 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
             // the map view: where the terrain crosses the plane
             std::vector<int8_t> above(static_cast<size_t>(image.width) * static_cast<size_t>(image.height));
             for (int y = 0; y < image.height; y++) {
-                const double z = static_cast<double>(rowFixed[static_cast<size_t>(y)]) / FIXED * voxelSize;
+                const double z = static_cast<double>(rowFixed[static_cast<size_t>(y)]) / SLICE_FIXED * voxelSize;
                 for (int x = 0; x < image.width; x++) {
-                    const double across = static_cast<double>(columnFixed[static_cast<size_t>(x)]) / FIXED * voxelSize;
+                    const double across = static_cast<double>(columnFixed[static_cast<size_t>(x)]) / SLICE_FIXED * voxelSize;
                     double height = 0.0;
                     const bool has = request.terrainHeight(across, z, height);
                     above[static_cast<size_t>(y) * static_cast<size_t>(image.width) + static_cast<size_t>(x)] = !has ? int8_t(-1) : (height >= planeMetres ? int8_t(1) : int8_t(0));
@@ -260,19 +260,19 @@ bool editor::renderVoxelSlice(voxel::Store& store, const VoxelSliceRequest& requ
                     if (line[x] < 0) continue;
                     const bool right = x + 1 < image.width && line[x + 1] >= 0 && line[x + 1] != line[x];
                     const bool down = y + 1 < image.height && line[x + image.width] >= 0 && line[x + image.width] != line[x];
-                    if (right || down) setPixel(image, x, y, kTerrainOutline);
+                    if (right || down) setSlicePixel(image, x, y, kTerrainOutline);
                 }
             }
         }
     }
 
     for (int x = 0; x < image.width; x++) {
-        setPixel(image, x, 0, kVolumeOutline);
-        setPixel(image, x, image.height - 1, kVolumeOutline);
+        setSlicePixel(image, x, 0, kVolumeOutline);
+        setSlicePixel(image, x, image.height - 1, kVolumeOutline);
     }
     for (int y = 0; y < image.height; y++) {
-        setPixel(image, 0, y, kVolumeOutline);
-        setPixel(image, image.width - 1, y, kVolumeOutline);
+        setSlicePixel(image, 0, y, kVolumeOutline);
+        setSlicePixel(image, image.width - 1, y, kVolumeOutline);
     }
     return true;
 }
