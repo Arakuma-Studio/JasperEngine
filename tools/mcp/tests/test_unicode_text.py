@@ -45,14 +45,14 @@ async def test_per_unit_typing_keeps_emoji(ed: Editor):
             {"type": "mouse", "action": "click", "x": P_FIELD[0], "y": P_FIELD[1]},
             {"type": "text", "text": "a" + EMOJI + "b", "per_unit": True}], "frames_after": 2})
         ed.check(not sent.is_error, f"send_input per_unit: {sent.text[:300]}")
-        values = await lua(ed, "return object('Field', 'InputField'):getText(), #typed, typed[1], typed[2], typed[3]")
+        values = await lua(ed, "return object('Field', 'InputField').text, #typed, typed[1], typed[2], typed[3]")
         ed.check_eq(values[0], "a" + EMOJI + "b", "the InputField holds the emoji whole")
         ed.check_eq(values[1:], [3, "a", EMOJI, "b"], "onCharInput got three whole characters")
 
         # a backspace erases the whole emoji, not half of it
         await ed.call("send_input", events=[{"type": "key", "key": "backspace"},
                                             {"type": "text", "text": "\b", "per_unit": True}], frames_after=2)
-        text = (await lua(ed, "return object('Field', 'InputField'):getText()"))[0]
+        text = (await lua(ed, "return object('Field', 'InputField').text"))[0]
         ed.check(text in ("a" + EMOJI, "a"), f"backspaces remove whole characters: {text!r}")
         ed.check("�" not in text, f"no replacement character: {text!r}")
 
