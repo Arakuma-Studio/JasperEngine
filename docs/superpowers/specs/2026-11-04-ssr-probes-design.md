@@ -632,3 +632,27 @@ are per backend (glcore, lavapipe).
 - `export-pipeline`: GBUFFER shader keys gain `Occ`/`Uv2`; the collector's path is unchanged.
 - Shader cache version (`editor/App.cpp`): every feature that edits shaders bumps it; merge by taking the next
   number with both comment lines.
+
+## Deviations
+
+Recorded during implementation (branch `dc/ssr-probes`).
+
+1. **G-buffer fallback order** (6.2): `{16, 17, 8, 0}` (Occ, Uv2, Mrt, Bct) instead of `{16, 8, 0}`. Dropping
+   `Uv2` keeps every uniform block prefix the draw uploads (the material block is uploaded at its reflected
+   size) and only reads the maps on UV1, so it is a valid, nearer fallback than dropping the base colour.
+2. **G-buffer Stochastic Tiling with two UV sets**: both lattices are set up whenever `Uv2` is on (Lit sets up
+   only the sets its maps use). The set-up is a pure function of the UV and the material, so the taps are the
+   same.
+3. **"SSR off" in the GPU tests** (10.3) is the same SSR path at Intensity 0 (every pixel returned as the colour
+   pass drew it), so a comparison measures the composite alone, not the offscreen-versus-direct colour pass.
+4. **GPU test files**: the composite tests (`SSRCompositeGpuTest.cpp`) use only engine API older than the change,
+   so the same file runs on the parent commit as the red control; the slot and stats tests are in
+   `SSRProbeSlotsGpuTest.cpp`. 10.3 #3 (occlusion on UV2) is part of #12 (`GBufferReadsTheMaterialsUVSets`, both
+   maps on UV2). #7's planar mirror is covered by `SSRSourceVariant.UnlitAndMirrorSkip` (the variant decides
+   Skip; a Mirror scene adds nothing the unlit case does not test). #9 checks the stats and the one log line,
+   not the far tile's pixels (the far tile reflects nothing to compare).
+5. **`getSSRStats()`** reports the frame's view (`primaryView`, the Game view in the editor); `get_render_stats`
+   reports it for the selected scene whatever `view` names.
+6. **Agent guide** (lean MCP rules, lead decision on the guide): one entry in "Other areas", `reflections (SSR
+   replaces probe reflections; check with ssr_debug_mode 7)`, instead of a line in the docs list; the eval case
+   `guard_ssr_reflection_source` (`tools/mcp/eval/cases.py`) covers it and the new `ssr_debug_mode` help.
