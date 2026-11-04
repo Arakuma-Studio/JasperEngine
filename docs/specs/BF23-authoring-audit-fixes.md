@@ -245,7 +245,7 @@ result changes S91's first milestone.
 Section A (F1 to F4), 2026-11-04.
 
 - **F1 reproduced.** On the base of this spec, `ParticlesGpu.DeathSubEmitterChildrenDraw` found the
-  children alive in the simulation and 0 of their pixels on screen, so S54 §3 stands as written.
+  children alive in the simulation and 0 of their pixels on screen, so S91 §3 stands as written.
 - **F1, wider than `drawParticles`.** Drawing the children needed four more things they had never
   needed: the system's bounds cover them (culling and draw order read those bounds), their
   interpolation factor follows the parent's in the same frame (it was a frame late), scene-input
@@ -256,7 +256,7 @@ Section A (F1 to F4), 2026-11-04.
   It keeps drawing only the root, and `docs/mcp/guide/html-ui.md` says so.
 - **F1, not done: editing a child's file while its parent is live.** `ParticleSubsystem` tracks the
   version of the root's asset only, and a `rebind` keeps the children, so the edit shows after the
-  parent's next full bind. This was already true of the simulation; S54's authoring window will meet it.
+  parent's next full bind. This was already true of the simulation; S91's authoring window will meet it.
 - **F2, wider than the two lines named.** `getParticleCount` (Lua's `particleCount`, and what an
   Action's controller waits for) counts children too, since a controller stopped while children
   were alive. In the budget share, three things were wrong and are fixed: children were not in what
