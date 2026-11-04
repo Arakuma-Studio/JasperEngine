@@ -19,7 +19,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
 | Android render gate | an APK on the Android emulator: logcat, GLES errors, and the screen against goldens (a lit 3D scene, 2D/UI, HTML UI) | `ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` (below; KVM servers A and C) | `build/android-emulator/<scene>/` |
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
-| Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger, the Android Gradle files | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_gradle_warnings.py` (and `tools/build.sh android` runs `check_gradle_warnings.py` on its Gradle log: a deprecation in our Gradle files fails the build), `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -121,6 +121,10 @@ loaded a model in the background while that file exists, so what else loads the 
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there).
+- `GATE=web-keys-audio` (after `WEB_PROJECT=web-keys-audio tools/build.sh web`) runs Chrome with the
+  desktop autoplay policy (`chrome_flags` in the baseline): the page's audio is suspended until the
+  first key press (`keys`: trusted CDP key events, `eval_before_input` before them, `eval` after),
+  and Meta, ContextMenu and events without a code reach the game as their engine keys.
 
 ### Compiled and prebuilt game builds (MCP, `JASPER_SLOW_BUILD=1`)
 

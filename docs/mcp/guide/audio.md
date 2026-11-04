@@ -207,7 +207,8 @@ new Audio Sources get).
   else behaves as on a device. `JASPERENGINE_AUDIO_BACKEND=nosound|null` forces it. A player run
   with `--headless` or `--silent-audio` mixes on the null backend, by the frames' game time: its
   sounds play, end and fire their events as in a normal run.
-- The Web needs a user gesture before sound starts (browsers); mixing and meters run before it.
+- The Web needs a user gesture before sound starts (browsers): the first key press, click or touch
+  starts it (a key the browser does not count, Escape, waits for the next); mixing and meters run before it.
 
 ## 9. Recipes
 
