@@ -720,4 +720,37 @@ InspectorWindow.cpp, budget.json, lua-api.md.
 
 ## Deviations
 
-None yet (recorded here during implementation).
+Recorded during implementation (branch `dc/runtime-core`).
+
+1. **Escape (lead decision, LEDGER "Lead decisions across specs").** A focused Game view delivers Escape to
+   the game and, when the game captured the cursor, the same press releases it. This branch does the
+   delivery (6.8); `scene-integrity` does the release. The claim (`SetKeyOwner`) takes no lock, so the
+   release, reading the key with the default owner test, still sees the press. Docs name the key
+   `Input.KEY_ESCAPE` (the Lua binding's name), not `KeyCode.ESCAPE`.
+2. **Zero-speed guard (6.3).** `animationUpdate` divides by a child's speed only when it is not 0
+   (`!= 0`, not `> 0`): a negative speed keeps today's behaviour; only the division by zero goes.
+3. **Scene view icons (6.4).** Instead of threading `active` into each `createOrUpdate*` call,
+   `SceneRender2D/3D::hideEntityGizmos(entity)` hides every per-entity icon and line of a GameObject
+   inactive in hierarchy after its update (2D views too: camera, sound and 2D light icons, layout,
+   body, joint and line overlays). Nothing is destroyed, so toggling Active creates nothing.
+4. **ActionPreviewSnapshot API (6.6).** `add(sceneId, scene, entity, excluded = readOnlyTypes())`
+   instead of one `capture(entities, excluded)`: the Animation window adds entities while a preview
+   runs (new track entities, nested Animations). Both previews leave out the same read-only types
+   (the Animation and the key data); the Inspector used to restore the keyframe components with
+   their current keys, which is the same result. A path write keeps the value through its `TypeOps`
+   (copy); a whole-component write, or a path the reflection cannot copy, keeps the component's
+   authored YAML (encoded after the component was put back to its authored state, so it holds no
+   previewed value), instead of the spec's "first segment" fallback. Before a path write only that
+   value goes back (an Action's preview state and time stay); before a whole write the component does.
+5. **The lint's red control (test 21).** On `main` no holder has `forEachEvent`, so the tree pass
+   lists every event, not the six components. The red controls are the self-test's planted misses
+   and removing `f(onControllerColliderHit)` from PhysicsSystem's visitor (the lint then fails);
+   the behaviour's red controls are the gtests 6-8.
+6. **Nested guards (test 5).** Kept as the gtest only (no `guard_nested` mode in the crash test
+   harness): its red run is the core test binary dying on the fault, run alone.
+7. **Names.** Test 10's C++ case is `CppInstantiateOfADestroyedCopyIsEmpty`; `Action::setStartOffset`
+   warns on every bad value (not once).
+8. **Lean MCP rules (fe3e90b97).** No agent-guide text was added (lead decision: guidance in
+   `docs/mcp/guide/<area>.md`). The edit_animation parameters got the eval case
+   `guard_random_start_for_copies` (`tools/mcp/eval/cases.py`); the live eval needs Orquester-managed
+   accounts and was not run here (`test_grade.py` passes).
