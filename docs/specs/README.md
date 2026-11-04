@@ -34,9 +34,8 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
   - Game/editor UI stays on our RmlUi fork + ImGui editor.
   - Vector text: avoid the Slug technique unless its patent status is verified clear; default to
     exact-scale re-rasterization and/or MSDF.
-- **Licences.** MIT/zlib/BSD/Apache-2.0 code may be vendored with notices in `NOTICE.md`.
-  MPL-2.0 (their erosion filter) and anything without a clear licence (their SVG icons) must not
-  be copied.
+- **Third-party code.** Code taken from another project keeps its header and gets an entry in
+  `NOTICE.md` (source, and its licence or the author's permission).
 - **Humans and agents.** Every user-facing feature needs: editor UI (ImGui, Unity-like naming and
   behaviour, undoable edits), a Lua API where it is runtime functionality, and MCP tools /
   resources (editor/mcp) so agents can drive and verify it. Update `docs/` and the MCP agent guide.
