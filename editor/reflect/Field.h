@@ -62,6 +62,7 @@ namespace jasperengine::editor::reflect {
         const char* cppPath = nullptr;
         size_t (*count)(const void* owner) = nullptr;
         Given<TypeOps> elementOps;             // instead of the element type's (Entity elements)
+        const void* (*peek)(const void* owner) = nullptr;
         AssetForm assetForm = AssetForm::Deduced;
         void (*assetMoved)(void* owner) = nullptr;
         size_t (*assetCount)(const void* owner) = nullptr;
@@ -120,6 +121,7 @@ namespace jasperengine::editor::reflect {
             desc.cppPath = meta.cppPath;
             desc.count = meta.count;
             if (meta.elementOps.set) desc.elementOps = meta.elementOps.ptr;
+            desc.peek = meta.peek;
             desc.assetForm = meta.assetForm;
             desc.assetMoved = meta.assetMoved;
             desc.assetCount = meta.assetCount;
