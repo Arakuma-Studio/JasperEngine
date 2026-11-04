@@ -171,7 +171,7 @@ void TextureCookQueue::attach(Project* newProject){
         swaps.clear();
         CookedTextures::setProvider(nullptr, "");
         TextureDataPool::setProcessingProvider(nullptr);
-        SetAssetMetaCmd::setWriteListener(nullptr);
+        SetAssetMetaCmd::removeWriteListener(this);
         cache.saveSources();
         cache.close();
         std::lock_guard<std::mutex> lock(mutex);
@@ -196,7 +196,7 @@ void TextureCookQueue::attach(Project* newProject){
     TextureDataPool::setProcessingProvider([this](const std::string& path, TextureProcessing& out){
         return processingFor(CookedTextures::normalize(path), out);
     });
-    SetAssetMetaCmd::setWriteListener([this](Project* writer, const fs::path& asset, const std::string& key){
+    SetAssetMetaCmd::addWriteListener(this, [this](Project* writer, const fs::path& asset, const std::string& key){
         if (writer != project || key.rfind("import", 0) != 0)
             return;
         const std::string assetPath = assetPathOf(writer->getProjectPath() / asset);
