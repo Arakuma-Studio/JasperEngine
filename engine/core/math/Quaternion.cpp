@@ -279,29 +279,12 @@ Matrix4 Quaternion::getRotationMatrix() const{
     float zz      = z * z;
     float zw      = z * w;
 
-    Matrix4 mat;
-
-    mat[0][0] = 1 - 2 * ( yy + zz );
-    mat[0][1] =     2 * ( xy + zw );
-    mat[0][2] =     2 * ( xz - yw );
-    mat[0][3] = 0.0f;
-
-    mat[1][0] =     2 * ( xy - zw );
-    mat[1][1] = 1 - 2 * ( xx + zz );
-    mat[1][2] =     2 * ( yz + xw );
-    mat[1][3] = 0.0f;
-
-    mat[2][0] =     2 * ( xz + yw );
-    mat[2][1] =     2 * ( yz - xw );
-    mat[2][2] = 1 - 2 * ( xx + yy );
-    mat[2][3] = 0.0f;
-
-    mat[3][0] = 0.0f;
-    mat[3][1] = 0.0f;
-    mat[3][2] = 0.0f;
-    mat[3][3] = 1.0f;
-
-    return mat;
+    // Constructor arguments are rows; avoid an out-of-line column lookup for every entry.
+    return Matrix4(
+        1 - 2 * ( yy + zz ),     2 * ( xy - zw ),     2 * ( xz + yw ), 0.0f,
+            2 * ( xy + zw ), 1 - 2 * ( xx + zz ),     2 * ( yz - xw ), 0.0f,
+            2 * ( xz - yw ),     2 * ( yz + xw ), 1 - 2 * ( xx + yy ), 0.0f,
+        0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 void Quaternion::fromAngle (const float angle) {
