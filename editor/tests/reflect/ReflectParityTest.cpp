@@ -19,6 +19,10 @@
 #include <gtest/gtest.h>
 #include <yaml-cpp/yaml.h>
 
+#if defined(__SSE2__) || defined(_M_X64)
+#include <xmmintrin.h>
+#endif
+
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -172,11 +176,29 @@ namespace reflect_parity_test {
     }
 
 
+    // The samples hold denormals, and SoLoud's mix leaves flush-to-zero and denormals-are-zero on in the
+    // thread that called it (soloud.cpp, it never restores them): after a test that mixes on the main
+    // thread, a denormal would read as 0 and these would compare against another text.
+    class ReflectParity : public ::testing::Test {
+    protected:
+#if defined(__SSE2__) || defined(_M_X64)
+        void SetUp() override {
+            modes = _mm_getcsr();
+            _mm_setcsr(modes & ~kFlushToZeroAndDenormalsAreZero);
+        }
+        void TearDown() override { _mm_setcsr(modes); }
+
+    private:
+        static constexpr unsigned int kFlushToZeroAndDenormalsAreZero = 0x8040u;
+        unsigned int modes = 0;
+#endif
+    };
+
 #define PARITY(Name, Type) \
-    TEST(ReflectParity, Name##EncodeMatchesFrozen) { \
+    TEST_F(ReflectParity, Name##EncodeMatchesFrozen) { \
         encodeMatches<Type>(ComponentType::Type, 1000u * static_cast<uint32_t>(ComponentType::Type), #Name); \
     } \
-    TEST(ReflectParity, Name##DecodeMatchesFrozen) { \
+    TEST_F(ReflectParity, Name##DecodeMatchesFrozen) { \
         decodeMatches<Type>(ComponentType::Type, 7919u * static_cast<uint32_t>(ComponentType::Type) + 17u, #Name); \
     }
 
@@ -195,7 +217,7 @@ PARITY_COMPONENT(FluidSimulation)
 PARITY_COMPONENT(LatticeFollower)
 
 // the fluid's back colour, written by the codec it replaced only away from its default and finite
-TEST(ReflectParity, FluidBackColorAwayFromItsDefault) {
+TEST_F(ReflectParity, FluidBackColorAwayFromItsDefault) {
     FluidSimulationComponent fluid;
     fluid.backColor = Vector3(0.0f, 9845.456f, 7931.2134f);
     const YAML::Node encoded = reflect::encodeValue(ComponentType::FluidSimulationComponent, &fluid);
@@ -220,7 +242,7 @@ PARITY_COMPONENT(Image)
 PARITY(Transform, Transform)
 // a document (a scene or prefab file) leaves out the derived world values (S29 R20); every other
 // encode writes them
-TEST(ReflectParity, TransformDocumentEncodeLeavesOutDerivedValues) {
+TEST_F(ReflectParity, TransformDocumentEncodeLeavesOutDerivedValues) {
     Transform transform;
     transform.position = Vector3(1, 2, 3);
     transform.worldPosition = Vector3(4, 5, 6);
@@ -258,7 +280,7 @@ PARITY_COMPONENT(ScaleTracks)
 
 // PostProcessingSettings (R15): the scene's post-processing block written and read through its
 // reflection fields gives the text and values the hand-written codec gave
-TEST(ReflectParity, PostProcessingMatchesFrozen) {
+TEST_F(ReflectParity, PostProcessingMatchesFrozen) {
     const reflect::StructDesc& desc = reflect::postProcessingStruct();
     ASSERT_EQ(desc.fields.size(), PostProcessingSettings::getFields().size());
     EXPECT_LT(PostProcessingSettings::getFields().size(), reflect::postProcessingFieldCapacity());
