@@ -6,6 +6,7 @@
 #include "util/EditorScripts.h"
 #include "shortcuts/CommandCatalog.h"
 #include "search/HierarchyFilter.h"
+#include "util/EntityLabels.h"
 #include "organisation/Bookmarks.h"
 #include "window/BookmarksWindow.h"
 #include "window/dialog/DataSafetyDialogs.h"
@@ -1446,11 +1447,16 @@ void editor::HierarchyWindow::updateSearchAndSelectionOrder(TreeNode& root, bool
                 names.push_back(Catalog::getComponentDisplayName(type));
             }
             return names;
-        });
+        }, [](const TreeNode& node) { return nodeText(node); });
     }
 
     visibleEntitySelectionOrder.clear();
     collectVisibleEntitySelectionOrder(root, hasSearch);
+}
+
+std::string editor::HierarchyWindow::nodeText(const TreeNode& node) {
+    if (node.isScene || node.isChildScene) return node.name;
+    return entityDisplayName(node.name, node.id);
 }
 
 std::vector<char> editor::HierarchyWindow::buildEntityPayload(const TreeNode& node) {
@@ -1633,7 +1639,14 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     }
 
     const bool renamingNode = isRenaming(node);
-    std::string nodeLabel = BidiText::toVisual(node.name);
+    // an object a script made without a name reads "GameObject <id>", dimmed (unless a colour
+    // rule above already took the row)
+    const bool unnamed = !node.isScene && !node.isChildScene && isUnnamedEntity(node.name);
+    if (unnamed && !pushedHighlightColor) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+        pushedHighlightColor = true;
+    }
+    std::string nodeLabel = BidiText::toVisual(nodeText(node));
     SceneProject* headerScene = node.isScene ? project->getScene(node.id) : nullptr;
     if (node.isScene) {
         // Unity's scene header row: framed, always spans the panel, "*" while unsaved
@@ -1769,7 +1782,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 }
             }
 
-            ImGui::Text("Moving %s", node.name.c_str());
+            ImGui::Text("Moving %s", nodeText(node).c_str());
             ImGui::EndDragDropSource();
         }
     }
@@ -1798,7 +1811,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                 ImGui::SetDragDropPayload("entity", payloadData.data(), payloadSize);
             }
 
-            ImGui::Text("Reference %s", node.name.c_str());
+            ImGui::Text("Reference %s", nodeText(node).c_str());
             ImGui::EndDragDropSource();
         }
     }

@@ -193,6 +193,8 @@ namespace jasperengine::editor{
         void handleSceneFilesDropAsChildScenes(const std::vector<std::string>& filePaths, uint32_t ownerSceneId);
         void showAddChildSceneMenu();
 
+        // the text a row shows: its name, "GameObject <id>" for an unnamed object
+        static std::string nodeText(const TreeNode& node);
         std::vector<char> buildEntityPayload(const TreeNode& node);
         std::filesystem::path getPrefabSaveDirectory() const;
         void saveNodeAsPrefab(const TreeNode& node);

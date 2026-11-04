@@ -30,10 +30,16 @@ namespace jasperengine::editor {
         // `name` and `children`; componentsOf(node) gives a node's component display names
         template <class Node, class ComponentsOf>
         void markTree(Node& node, ComponentsOf&& componentsOf) const {
-            node.matchesSearch = matches(node.name, [&]() { return componentsOf(node); });
+            markTree(node, componentsOf, [](const Node& n) -> const std::string& { return n.name; });
+        }
+        // ... matching each node by nameOf(node) (the Hierarchy: the name shown, "GameObject 42"
+        // for an unnamed one)
+        template <class Node, class ComponentsOf, class NameOf>
+        void markTree(Node& node, ComponentsOf&& componentsOf, NameOf&& nameOf) const {
+            node.matchesSearch = matches(nameOf(node), [&]() { return componentsOf(node); });
             node.hasMatchingDescendant = false;
             for (auto& child : node.children) {
-                markTree(child, componentsOf);
+                markTree(child, componentsOf, nameOf);
                 if (child.matchesSearch || child.hasMatchingDescendant) node.hasMatchingDescendant = true;
             }
         }
