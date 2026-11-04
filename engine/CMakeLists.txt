@@ -1329,9 +1329,11 @@ set(JASPERENGINE_SRCS
     core/input/InputVirtualControls.cpp
     core/audio/AudioEffects.cpp
     core/audio/AudioFileCheck.cpp
+    core/audio/AudioMeter.cpp
     core/audio/AudioMixer.cpp
     core/audio/AudioMixerIO.cpp
     core/audio/SoloudEngineFile.cpp
+    core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
     core/Log.cpp

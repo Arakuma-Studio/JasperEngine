@@ -18,6 +18,8 @@ import pbxproj
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Native Test"}
+CI_EXCLUDED = ("long-running (over 2 minutes on a loaded server: a C++ plugin compiled for Play, source exports for each platform); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 1500
 
 CPP_PLUGIN = """#include "JasperEngine.h"
