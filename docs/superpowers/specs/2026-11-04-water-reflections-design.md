@@ -700,3 +700,8 @@ Recorded during implementation (branch `dc/water-reflections`):
    S52's merge only puts its two keys in front (the comparator says so in a comment).
 9. **Animate water** is written to the workspace only when off (default on), so workspace files of untouched scenes
    do not change.
+10. **`Matrix4::obliqueNearClip` handles orthographic projections.** It took the clip-space corner with the
+    perspective shortcut (w = -z), which puts an orthographic reflection camera's near plane in the wrong place (the
+    orthographic water reflected nothing). It now takes the corner from the inverse projection and the projection's
+    own w row (Lengyel's general form); perspective results are unchanged. Mirrors share the helper, so orthographic
+    mirrors are fixed too.
