@@ -107,3 +107,6 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S38 | Loudness: `AudioMeter` (LUFS, true peak), true-peak lookahead `limiter`, new-project mixer and audio defaults | 4A (sound; M1 first) |
 | S39 | Music system: tracks and playlists, tempo, bars and beats, quantized transitions with snapshots, stingers, tempo detection | 4B (sound; spec-first) |
 | S40 | Timeline audio: audio cues on animation clips for the Animation Player, Animator and montages | 4B (sound; spec-first) |
+| S41 | Navigation fixes: upstream Recast/Detour patches, bake failure feedback, crowd path status without a synchronous search, link auto update, carving obstacle registry and count budget, Recast diagnostics, height range guard, editor/MCP defects | 5 (navigation) |
+| S42 | Navigation diagnostics: path failure reasons, islands and coverage, locate, walkability probe, one findings list (window, CLI, export, MCP), bake report, Path Tester, diagnostic overlays | 5 (navigation) |
+| S43 | Navigation gameplay API: random points, wall distance, move along surface, path cost and area crossings, per-query and per-agent area costs, runtime area overrides (doors, bridges), link activated/occupied, agent path/root-motion/stuck API, Lua handles for obstacles, links and modifiers | 5 (navigation) |
