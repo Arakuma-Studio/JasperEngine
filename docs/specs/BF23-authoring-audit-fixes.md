@@ -262,6 +262,8 @@ result changes S91's first milestone.
   has the double call, and a count in `AnimatorWindowTest` would only count that test's own calls.
   `test_animator_selection.py` reads `begins` from the UI probe, which reports top-level windows
   begun more than once a frame (ImGui's `BeginCount`). The red run reported `{'Animator': 2}`.
+- **Section 4's guide row is measured, not the estimate above:** 6,241 of 8,192 bytes, 1,951 left with
+  1,500 of headroom required, so 451 bytes free rather than about 110 (`tool_budget.py --check`).
 - **F21 adds more than the two windows named.** The comparison with the catalog also found Pose
   Animation, Vertex Animation Baker, Color Picker, Recorder, Navigation, Texture Synthesis, Sprite
   Normal Map and Physics Placement missing; they are added too. The named exclusions are the

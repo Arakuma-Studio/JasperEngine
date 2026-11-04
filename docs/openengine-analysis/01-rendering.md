@@ -5,7 +5,7 @@
 > and the fragment `SURFACE_*` hooks that recommendation maps a body to do not exist: the hooks are
 > vertex-stage (`includes/surface_vs.glsl`), and in a fragment shader `SURFACE_*` only names the inputs a
 > variant requires. Procedural materials bake to textures and a `.material` instead
-> (`docs/specs/S53-procedural-material.md`).
+> (`docs/specs/S90-procedural-material.md`).
 
 Paths: THEIRS relative to `external/OpenEngine/`, OURS relative to repo root. All claims below come from reading code, not just file names. "RG" = render graph.
 
