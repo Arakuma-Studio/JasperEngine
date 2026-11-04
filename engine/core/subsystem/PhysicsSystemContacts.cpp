@@ -7,6 +7,7 @@
 // them; Physics.ignoreCollision.
 
 #include "PhysicsSystem.h"
+#include "subsystem/AudioSystem.h"
 #include "component/CharacterControllerComponent.h"
 #include "Scene.h"
 #include "Log.h"
@@ -258,6 +259,8 @@ void PhysicsSystem::refreshListenerMask2D(Entity entity, Rigidbody2DComponent& b
 }
 
 void PhysicsSystem::processContacts2D(){
+    // Audio calls of its callbacks defer to the frame's audio update (S37 R13)
+    const AudioSystem::PhysicsCallbackScope audioDefers;
     if (!b2World_IsValid(world2D)){
         return;
     }
@@ -868,6 +871,7 @@ void PhysicsSystem::dispatchContactRemoved3D(const JPH::BodyID& body1, const JPH
 }
 
 void PhysicsSystem::processContacts3D(){
+    const AudioSystem::PhysicsCallbackScope audioDefers;
     std::vector<RawContact3D>& raws = *rawContacts3D;
     contactRecorder3D->collect(raws);
     contactTracker3D.setRecordedCount(raws.size());

@@ -169,11 +169,13 @@ namespace jasperengine::editor {
         int maxVoices = 256;
         int sampleRate = 0;             // 0 = the device's
         std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
+        int seed = 1;                   // the Sound Event generator's seed in a deterministic run
         bool creditsFile = true;        // exports write licenses/THIRD-PARTY-AUDIO.txt
 
         bool operator==(const AudioSettings& other) const {
             return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
-                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && creditsFile == other.creditsFile;
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && seed == other.seed &&
+                   creditsFile == other.creditsFile;
         }
         bool operator!=(const AudioSettings& other) const { return !(*this == other); }
     };

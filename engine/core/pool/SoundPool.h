@@ -92,6 +92,9 @@ namespace jasperengine{
         // the sample of a file with a load type: Finished (data), Loading (async loading on),
         // Failed (not found, not audio). Synchronous unless Engine::isAsyncLoading.
         static SoundLoadResult loadClip(const std::string& filename, AudioLoadType requested = AudioLoadType::Auto);
+        // The clip now, on this thread, also while its asynchronous load is on its way (a Sound
+        // Event's pick has to start this frame): Finished or Failed, never Loading
+        static SoundLoadResult loadClipNow(const std::string& filename, AudioLoadType requested = AudioLoadType::Auto);
         // A failed file is not tried again until this or remove(); a file name retries every load type
         static void retry(const std::string& idOrFile);
 

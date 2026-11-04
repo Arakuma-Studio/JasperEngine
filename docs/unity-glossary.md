@@ -350,6 +350,8 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 
 | Unity term | JasperEngine name |
 |---|---|
+| Audio Random Container | Sound Event (`.soundevent`, Assets > Create > Sound Event); `AudioSource.event`, Lua `Audio.play` |
+| `AudioSource.PlayOneShot` of a Random Container | `AudioSource:playOneShot("x.soundevent")` |
 | `AudioMixer` (asset) | `.mixer` asset (Assets > Create > Audio Mixer); Lua `AudioMixer` (static: the project's mixer) |
 | `AudioMixerGroup`, `AudioSource.outputAudioMixerGroup` | mixer group; `AudioSource.outputGroup` (the group's name, "" = Master); Lua `AudioMixer.getGroup(name)` -> `AudioMixerGroup` |
 | `AudioMixer.SetFloat` / `GetFloat` / `ClearFloat`, exposed parameters | `AudioMixer.setFloat(name, value [, seconds [, opts]])` / `getFloat(name)` / `clearFloat(name)`; expose in the Audio Mixer window (right-click a fader or a value) or `audio_mixer` op `expose`; "Remember" keeps script values in UserSettings |

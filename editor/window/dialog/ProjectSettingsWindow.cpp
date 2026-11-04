@@ -2235,6 +2235,17 @@ void ProjectSettingsWindow::drawAudioSettings() {
                                "is stopped, or the new one does not start when it is the least important.");
             }
 
+            if (settingsui::beginRow("audio.seed")) {
+                if (projectBeginSettingsRow("Random Seed", audio.seed != defaults.seed)) {
+                    audio.seed = defaults.seed;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioSeed", &audio.seed, 1.0f, 0, 2147483647);
+                audio.seed = std::max(audio.seed, 0);
+                endSettingsRow("The seed of Sound Event picks and clip variation in a run without a device, so it repeats. "
+                               "A run with a device draws its own at each start.");
+            }
+
             if (settingsui::beginRow("audio.sample_rate")) {
                 if (projectBeginSettingsRow("Sample Rate", audio.sampleRate != defaults.sampleRate)) {
                     audio.sampleRate = defaults.sampleRate;

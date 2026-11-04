@@ -854,6 +854,13 @@ void getAssetInfoTool(const CallPtr& call) {
             data["sub_assets"] = subAssets;
         }
     }
+    if (Util::isSoundEventFile(rel)) {
+        data["sound_event"] = soundEventInfo(project, file);
+        const Json& problems = data["sound_event"]["problems"];
+        call->ok(text + ": " + data["sound_event"]["mode"].get<std::string>() + ", " + std::to_string(data["sound_event"]["clips"].size()) +
+                 " clip(s), " + std::to_string(problems.size()) + " problem(s).", data);
+        return;
+    }
     if (kind != "script" && kind != "shader" && kind != "material" && kind != "scene" && kind != "prefab" && kind != "other") {
         data["inside_assets_dir"] = project->isInsideAssetsPath(file);
         if (!project->isInsideAssetsPath(file)) {

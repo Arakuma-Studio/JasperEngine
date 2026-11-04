@@ -536,6 +536,10 @@ namespace jasperengine::editor {
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer();
+        void assetsCreateSoundEvent();
+        // a shuffle event of the selected audio files
+        void assetsCreateSoundEventFromClips();
+        bool hasAudioSelection() const;
         // the sound commands (ProjectWindowSound.cpp)
         void assetsImportSoundEssentials();
         void assetsCreatePlaceholderSound();

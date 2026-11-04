@@ -1335,6 +1335,9 @@ set(JASPERENGINE_SRCS
     core/audio/AudioMeter.cpp
     core/audio/AudioMixer.cpp
     core/audio/AudioMixerIO.cpp
+    core/audio/SoundEvent.cpp
+    core/audio/SoundEventIO.cpp
+    core/audio/SoundEventLibrary.cpp
     core/audio/SoloudEngineFile.cpp
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
@@ -1594,7 +1597,9 @@ set(JASPERENGINE_SRCS
     core/object/Sprite.cpp
     core/object/Terrain.cpp
     core/object/Tilemap.cpp
+    core/object/sound/Audio.cpp
     core/object/sound/AudioSource.cpp
+    core/object/sound/SoundHandle.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp
@@ -1692,6 +1697,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
+    core/script/binding/AudioClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp

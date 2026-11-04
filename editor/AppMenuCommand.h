@@ -130,6 +130,8 @@ namespace jasperengine::editor {
         // upstream (audio-mixer, native-bridge, camera-shake): after S27's
         ToggleAudioMixer,             // Window > Audio > Audio Mixer
         AssetsCreateAudioMixer,
+        AssetsCreateSoundEvent,
+        AssetsCreateSoundEventFromClips,
         AssetsImportSoundEssentials,   // S36
         AssetsCreatePlaceholderSound,  // S36
         AssetsReanalyzeAudio,          // S36: the Project selection's cached measurements dropped

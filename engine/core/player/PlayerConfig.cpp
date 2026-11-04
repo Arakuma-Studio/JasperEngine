@@ -108,7 +108,7 @@ json PlayerConfig::toJson() const {
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
                     {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
-                    {"sampleRate", audioSampleRate}};
+                    {"sampleRate", audioSampleRate}, {"seed", audioSeed}};
     return out;
 }
 
@@ -256,6 +256,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioMaxRealVoices = audio->value("maxRealVoices", config.audioMaxRealVoices);
             config.audioMaxVoices = audio->value("maxVoices", config.audioMaxVoices);
             config.audioSampleRate = audio->value("sampleRate", config.audioSampleRate);
+            config.audioSeed = audio->value("seed", config.audioSeed);
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
@@ -279,8 +280,8 @@ bool PlayerConfig::parse(const std::string& text, PlayerConfig& out, std::string
 void jasperengine::player::applyAudio(const PlayerConfig& game) {
     const AudioConfig defaults;
     if (game.audioMaxRealVoices != defaults.maxRealVoices || game.audioMaxVoices != defaults.maxVoices ||
-        game.audioSampleRate != defaults.sampleRate) {
-        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate});
+        game.audioSampleRate != defaults.sampleRate || game.audioSeed != (int)defaults.seed) {
+        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate, (uint32_t)game.audioSeed});
     }
     if (!game.audioMixer.empty()) {
         AudioMixer::load(game.audioMixer);

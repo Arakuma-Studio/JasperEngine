@@ -1146,6 +1146,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateAudioMixer:
             projectWindow->assetsCreateAudioMixer();
             break;
+        case AppMenuCommand::AssetsCreateSoundEvent:
+            projectWindow->assetsCreateSoundEvent();
+            break;
+        case AppMenuCommand::AssetsCreateSoundEventFromClips:
+            projectWindow->assetsCreateSoundEventFromClips();
+            break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
             break;

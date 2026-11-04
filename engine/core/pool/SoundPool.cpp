@@ -242,6 +242,21 @@ SoundLoadResult SoundPool::loadClip(const std::string& filename, AudioLoadType r
     return result;
 }
 
+SoundLoadResult SoundPool::loadClipNow(const std::string& filename, AudioLoadType requested){
+    SoundLoadResult result = loadClip(filename, requested);
+    if (result.state != ResourceLoadState::Loading) return result;
+    try {
+        std::shared_ptr<SoLoud::AudioSource> sample = loadSoundInternal(result.id, filename, result.loadType, false);
+        getMap()[result.id] = sample;
+        result.state = ResourceLoadState::Finished;
+        result.data = sample;
+    } catch (const std::exception& e) {
+        result.state = ResourceLoadState::Failed;
+        result.errorMessage = e.what();
+    }
+    return result;
+}
+
 void SoundPool::retry(const std::string& idOrFile){
     std::lock_guard<std::mutex> lock(cacheMutex);
     failedBuilds.erase(idOrFile);
