@@ -1963,6 +1963,10 @@ namespace jasperengine{
 		bool drawsOit(const Submesh& submesh) const;
 		// frees what the features left unused (their targets, passes and programs)
 		void releaseLightingFeatures(bool all);
+		// asks for the fullscreen programs of the features on (contact shadows, the OIT resolve)
+		// the frame they turn on, so the scene's load waits for them (lightingPassesLoading)
+		void requestLightingPasses();
+		bool lightingPassesLoading() const;
 		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
 		// filled by updatePassFrame after the contract members (fillFrameBlock)
 		void fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const;

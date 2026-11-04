@@ -104,6 +104,24 @@ void RenderSystem::updateLightingFeatures(){
         needReloadMeshVariants();
     }
     releaseLightingFeatures(false);
+    requestLightingPasses();
+}
+
+void RenderSystem::requestLightingPasses(){
+    // asked again each update until created: a program the runtime compiler builds in the
+    // background is created by the get() after it is done (ShaderPool::get), not by its handle
+    if (lighting.contactShadows && !(lighting.contactShader && lighting.contactShader->isCreated()))
+        lighting.contactShader = ShaderPool::get(ShaderType::LIGHTING_PASS, 0);
+    if (lighting.oit && !(lighting.resolveShader && lighting.resolveShader->isCreated()))
+        lighting.resolveShader = ShaderPool::get(ShaderType::LIGHTING_PASS, 1);
+}
+
+bool RenderSystem::lightingPassesLoading() const{
+    // a program that cannot build (not in the build, or failed) is settled: its pass draws nothing
+    auto pending = [](const std::shared_ptr<ShaderRender>& shader, uint64_t properties){
+        return shader && !shader->isCreated() && !ShaderPool::isShaderBuildFailed(ShaderType::LIGHTING_PASS, properties, 0);
+    };
+    return (lighting.contactShadows && pending(lighting.contactShader, 0)) || (lighting.oit && pending(lighting.resolveShader, 1));
 }
 
 RenderSystem::LightingStats RenderSystem::getLightingStats() const{
@@ -565,7 +583,6 @@ void RenderSystem::finishTiledLights(CameraShadows& target){
 
 TextureRender* RenderSystem::renderContactShadows(CameraComponent& camera, TextureRender* depth, unsigned int width, unsigned int height){
     const int divisor = lighting.contactDivisor;
-    { static int s57diag3 = 0; if (s57diag3++ < 8) Log::verbose("S57DIAG pass divisor %i light %i of %i loaded %i shader %p created %i", divisor, lighting.contactLight, (int)sceneLightEntities.size(), (int)lighting.contactLoaded, (void*)lighting.contactShader.get(), lighting.contactShader ? (int)lighting.contactShader->isCreated() : -1); }
     if (divisor <= 0 || lighting.contactLight < 0 || lighting.contactLight >= (int)sceneLightEntities.size() || !depth)
         return nullptr;
     const Entity lightEntity = sceneLightEntities[lighting.contactLight];
@@ -676,7 +693,9 @@ TextureRender* RenderSystem::renderContactShadows(CameraComponent& camera, Textu
 //-----Weighted blended OIT-----
 
 bool RenderSystem::usesOit(const CameraComponent& camera, int msaaSamples) const{
-    return lighting.oit && camera.transparencyMode == TransparencyMode::ORDER_INDEPENDENT && camera.depthTest &&
+    // until its resolve program exists the camera draws Sorted (the accumulation alone shows nothing)
+    return lighting.oit && lighting.resolveShader && lighting.resolveShader->isCreated() &&
+           camera.transparencyMode == TransparencyMode::ORDER_INDEPENDENT && camera.depthTest &&
            !camera.invertCulling && OrderIndependentTransparency::isSupported(msaaSamples);
 }
 
@@ -731,7 +750,11 @@ void RenderSystem::finishSubmeshOit(Submesh& submesh){
     if (oit.loaded || oit.failed || !submesh.shader)
         return;
     if (!oit.shader || !oit.shader->isCreated()){
-        // still building: the submesh draws Sorted until it is built (spec S32)
+        // still building: the submesh draws Sorted until it is built (spec S32); the get()
+        // after the runtime compiler is done creates it
+        oit.shader = ShaderPool::get(ShaderType::MESH, oit.shaderProperties, oit.customShaderId);
+        if (oit.shader->isCreated())
+            return finishSubmeshOit(submesh);
         oit.failed = ShaderPool::isShaderBuildFailed(ShaderType::MESH, oit.shaderProperties, oit.customShaderId);
         if (oit.failed)
             Log::warn("The Order Independent variant of a submesh failed to build: it draws Sorted");

@@ -13219,6 +13219,16 @@ static bool isShaderUnavailable(const std::shared_ptr<ShaderRender>& shader, Sha
     return shader && !shader->isCreated() && ShaderPool::isShaderBuildFailed(type, properties, customId);
 }
 
+// S57: a submesh's Order Independent variant still building (it draws Sorted meanwhile)
+static bool isMeshOitBuilding(const MeshComponent& mesh){
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        const std::shared_ptr<SubmeshOit>& oit = mesh.submeshes[s].oit;
+        if (oit && !oit->loaded && !oit->failed)
+            return true;
+    }
+    return false;
+}
+
 static bool isMeshShaderUnavailable(const MeshComponent& mesh){
     for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
         const Submesh& submesh = mesh.submeshes[s];
@@ -13266,7 +13276,7 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
                                    mesh.numExternalBuffers == 0 && (!model || !model->needUpdateModel);
         // a mesh drawing its previous variant while the new one builds is still loading; one
         // whose load found a GPU pool full has failed (not drawn, nothing to wait for)
-        visit((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || mesh.loadMissingBuffer || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
+        visit((mesh.loaded && !mesh.needVariantReload && !isMeshOitBuilding(mesh)) || mesh.loadFailed || mesh.loadMissingBuffer || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
               nothingToLoad || scene->findComponent<SplineExtrudeComponent>(entity) != nullptr, entity, "mesh");
     }
 
@@ -13330,6 +13340,8 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
 
     // the atmosphere's passes (their shaders, the clouds' noise bake)
     visit(!atmosphere.isLoading(), NULL_ENTITY, "atmosphere");
+    // S57's fullscreen passes (contact shadows, the OIT resolve) of the features on
+    visit(!lightingPassesLoading(), NULL_ENTITY, "lighting passes");
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){
@@ -14825,6 +14837,9 @@ void RenderSystem::update(double dt){
 
             bool expectedTransparent = false;
             for (int s = 0; s < mesh.numSubmeshes; s++){
+                // S57: an Order Independent variant still building since the load
+                if (mesh.submeshes[s].oit && !mesh.submeshes[s].oit->loaded)
+                    finishSubmeshOit(mesh.submeshes[s]);
                 const MaterialAlphaMode alphaMode = mesh.submeshes[s].material.alphaMode;
                 // the queue the render state resolves to (legacy: alpha blended materials)
                 bool blended = false;
@@ -15900,7 +15915,6 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // S57's contact shadows (the main camera): the mask from the pass's packed depth, an
     // effect's above or a depth pre-pass of their own the scene inputs then share
     passContactMask = nullptr;
-    { static int s57diag = 0; if (lighting.contactShadows && s57diag++ < 8) Log::verbose("S57DIAG hook contact %i main %i light %i shared %p vp %f x %f", (int)lighting.contactShadows, (int)isMainCamera, lighting.contactLight, (void*)sharedSceneDepth, sceneInputViewport.getWidth(), sceneInputViewport.getHeight()); }
     if (lighting.contactShadows && isMainCamera && lighting.contactLight >= 0){
         const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
         const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
@@ -15913,7 +15927,6 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 sharedSceneDepth = contactDepth;
             }
         }
-        { static int s57diag2 = 0; if (s57diag2++ < 8) Log::verbose("S57DIAG depth %p", (void*)contactDepth); }
         if (contactDepth)
             passContactMask = renderContactShadows(camera, contactDepth, depthWidth, depthHeight);
     }
