@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteNormalsCli.h"
+#include "util/UiItemLocator.h"
+#include "window/widget/InputTextContextMenu.h"
 
 #include "SpriteMedia.h"
 #include "SpriteNormals.h"

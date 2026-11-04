@@ -5,6 +5,7 @@
 // (MIT, see the header and NOTICE.md).
 
 #include "TerrainSplineBake.h"
+#include "component/Transform.h"
 
 #include "Catalog.h"
 #include "command/CommandHandle.h"

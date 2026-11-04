@@ -5,6 +5,7 @@
 #define POLYGON_H
 
 #include "RectTransform.h"
+#include "texture/Material.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Polygon: public RectTransform{

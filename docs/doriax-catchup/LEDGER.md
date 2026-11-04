@@ -135,3 +135,9 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   slot the longest-waiting job; queued jobs resubmitted with their original queue time (`DC_SINCE`). Merged 65
   upstream commits (follow-ups S61, S66, S71, S38 M1) into `main`. Closest to landing: mesh-memory (final gate),
   unicode-text (linux WERROR clean, unit 5676 run / 0 failed), runtime-core (linux WERROR clean).
+- 2026-11-04 16:1x: gate corrected (owner's question). The brief had required every branch to run the full unit
+  suite and the full slow MCP suite, which AGENTS.md reserves for pushes to `origin/main`: the most expensive work
+  ran once per branch on a two-slot host. Per-branch gate is now `tools/check-changed` plus the spec's own tests,
+  red controls and lints; the lead runs the full suite once at landing, on a local `main` holding one or several
+  ready features. All 16 agents told to trim queued jobs (keeping their queue place). mesh-memory finishes the full
+  run it is already hours into; it counts toward its landing.

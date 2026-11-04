@@ -9,6 +9,8 @@
 // the hand-written codecs' frozen numbers. Prints "[bench] reflect codec".
 
 #include "support/EditorTestSupport.h"
+#include "Stream.h"
+#include "profiler/GpuMemory.h"
 
 #include "reflect/Reflect.h"
 

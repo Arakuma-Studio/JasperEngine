@@ -12,6 +12,7 @@
 #include "ShadowCaster2D.h"
 
 #include <memory>
+#include "component/SpriteComponent.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Sprite: public Mesh{

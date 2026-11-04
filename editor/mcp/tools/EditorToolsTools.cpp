@@ -14,6 +14,7 @@
 // clear_project_leftovers (S66), which works over the hub and is in this group.
 
 #include "McpTools.h"
+#include "render/SceneRender.h"
 
 #include "App.h"
 #include "AppSettings.h"

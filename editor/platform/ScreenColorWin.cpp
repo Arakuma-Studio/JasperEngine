@@ -13,6 +13,8 @@
 #include <windows.h>
 
 #include <cstring>
+#include "htmlui/compat/css/RewriteSession.h"
+#include "object/ui/Button.h"
 
 using namespace jasperengine::editor;
 
