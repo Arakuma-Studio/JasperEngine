@@ -4,7 +4,9 @@
 // The node-graph canvas (T2 R53, R54, AC41). GraphCanvasCompat pins what a graph without pins draws:
 // every vertex of a fixed Animator-like graph through each gesture, against a table captured from the
 // code before T2 touched the canvas (fixtures/widget/graph_canvas_nopins.txt; JASPER_TEST_UPDATE_GOLDEN=1
-// writes it again, which is only right when a change of the Animator's drawing is meant).
+// writes it again, which is only right when a change of the Animator's drawing is meant). GraphCanvasPins
+// drives the dataflow additions: a wire dragged to a pin, to empty space and to a pin that refuses it,
+// a wire's hit test, a box that fits its thumbnail and footer.
 
 #include <gtest/gtest.h>
 
@@ -315,4 +317,276 @@ TEST(GraphCanvasCompat, NoPinsDrawsAsBefore) {
     }
     EXPECT_EQ(want.size(), got.size());
     EXPECT_EQ(differences, 0u);
+}
+
+namespace {
+
+    // perlin [out] -> [in] output, and a third node whose input takes another type
+    const uint64_t kPerlinOut = 101, kOutputIn = 201, kCoordIn = 301;
+
+    void pinGraph(std::vector<GraphCanvas::Node>& nodes, std::vector<GraphCanvas::Link>& links) {
+        nodes.clear();
+        links.clear();
+        auto node = [&](uint64_t id, float x, float y, const char* label) -> GraphCanvas::Node& {
+            GraphCanvas::Node n;
+            n.id = id;
+            n.position = ImVec2(x, y);
+            n.label = label;
+            nodes.push_back(n);
+            return nodes.back();
+        };
+        node(1, 0, 0, "Perlin").outputs.push_back({kPerlinOut, "Out", IM_COL32(120, 200, 255, 255), false, false});
+        node(2, 400, 0, "Output").inputs.push_back({kOutputIn, "In", IM_COL32(120, 200, 255, 255), false, false});
+        node(3, 400, 200, "Warp").inputs.push_back({kCoordIn, "Coord", IM_COL32(255, 200, 90, 255), false, false});
+    }
+
+    // A pin's place on screen: on the box's side, its row's centre (GraphCanvas.cpp's layout)
+    ImVec2 pinOnScreen(const GraphCanvas& canvas, const GraphCanvas::Node& node, bool input, size_t row = 0) {
+        return canvas.toScreen(ImVec2(node.position.x + (input ? 0.0f : node.size.x), node.position.y + 24.0f + 18.0f * (static_cast<float>(row) + 0.5f)));
+    }
+
+    // Frames a wire drag: a press at `from`, a move in steps, a release at `to`. The release frame's result.
+    GraphCanvas::Result dragWire(CanvasHarness& h, GraphCanvas& canvas, std::vector<GraphCanvas::Node>& nodes, std::vector<GraphCanvas::Link>& links,
+                                 ImVec2 from, ImVec2 to) {
+        h.mouse(from.x, from.y);
+        h.frame(canvas, nodes, links);
+        h.button(0, true);
+        h.frame(canvas, nodes, links);
+        EXPECT_TRUE(canvas.isWiring());
+        h.mouse((from.x + to.x) * 0.5f, (from.y + to.y) * 0.5f);
+        h.frame(canvas, nodes, links);
+        h.mouse(to.x, to.y);
+        h.frame(canvas, nodes, links);
+        h.button(0, false);
+        return h.frame(canvas, nodes, links);
+    }
+
+}
+
+// T2 R53, AC41: a drag from an output to a compatible input, and the other way round, gives output then input
+TEST(GraphCanvasPins, DragConnects) {
+    CanvasHarness h;
+    GraphCanvas canvas;
+    std::vector<GraphCanvas::Node> nodes;
+    std::vector<GraphCanvas::Link> links;
+    pinGraph(nodes, links);
+    h.mouse(790, 490);
+    h.frame(canvas, nodes, links);
+    h.frame(canvas, nodes, links);
+
+    GraphCanvas::Result result = dragWire(h, canvas, nodes, links, pinOnScreen(canvas, nodes[0], false), pinOnScreen(canvas, nodes[1], true));
+    EXPECT_EQ(result.wireFrom, kPerlinOut);
+    EXPECT_EQ(result.wireTo, kOutputIn);
+    EXPECT_EQ(result.wireDroppedFrom, 0u);
+    EXPECT_FALSE(canvas.isWiring());
+    EXPECT_TRUE(result.moved.empty()) << "a wire drag does not move the node under it";
+    EXPECT_FALSE(nodes[0].selected);
+
+    result = dragWire(h, canvas, nodes, links, pinOnScreen(canvas, nodes[1], true), pinOnScreen(canvas, nodes[0], false));
+    EXPECT_EQ(result.wireFrom, kPerlinOut) << "normalized: the output first";
+    EXPECT_EQ(result.wireTo, kOutputIn);
+
+    // The hovered pin is reported
+    const ImVec2 pin = pinOnScreen(canvas, nodes[0], false);
+    h.mouse(pin.x, pin.y);
+    h.frame(canvas, nodes, links);
+    EXPECT_EQ(h.frame(canvas, nodes, links).hoveredPin, kPerlinOut);
+}
+
+// T2 R53, AC41: dropped on empty space the caller gets the pin and where, for its search popup
+TEST(GraphCanvasPins, DropOnEmptyRequestsSearch) {
+    CanvasHarness h;
+    GraphCanvas canvas;
+    std::vector<GraphCanvas::Node> nodes;
+    std::vector<GraphCanvas::Link> links;
+    pinGraph(nodes, links);
+    h.mouse(790, 490);
+    h.frame(canvas, nodes, links);
+    h.frame(canvas, nodes, links);
+
+    const ImVec2 empty = canvas.toScreen(ImVec2(200, 150));
+    GraphCanvas::Result result = dragWire(h, canvas, nodes, links, pinOnScreen(canvas, nodes[0], false), empty);
+    EXPECT_EQ(result.wireDroppedFrom, kPerlinOut);
+    EXPECT_NEAR(result.wireDropPosition.x, 200.0f, 1.0f);
+    EXPECT_NEAR(result.wireDropPosition.y, 150.0f, 1.0f);
+    EXPECT_EQ(result.wireFrom, 0u);
+
+    // On a node's body it is no request and no connection
+    const ImVec2 body = canvas.toScreen(ImVec2(nodes[1].position.x + nodes[1].size.x * 0.5f, nodes[1].position.y + 10.0f));
+    result = dragWire(h, canvas, nodes, links, pinOnScreen(canvas, nodes[0], false), body);
+    EXPECT_EQ(result.wireDroppedFrom, 0u);
+    EXPECT_EQ(result.wireFrom, 0u);
+}
+
+// T2 R53, AC41: canConnect refuses the drop and dims the pin during the drag
+TEST(GraphCanvasPins, IncompatibleIsRefused) {
+    CanvasHarness h;
+    GraphCanvas canvas;
+    std::vector<GraphCanvas::Node> nodes;
+    std::vector<GraphCanvas::Link> links;
+    pinGraph(nodes, links);
+    std::vector<std::pair<uint64_t, uint64_t>> asked;
+    canvas.canConnect = [&](uint64_t from, uint64_t to) {
+        asked.push_back({from, to});
+        return to != kCoordIn;
+    };
+    h.mouse(790, 490);
+    h.frame(canvas, nodes, links);
+    h.frame(canvas, nodes, links);
+
+    GraphCanvas::Result result = dragWire(h, canvas, nodes, links, pinOnScreen(canvas, nodes[0], false), pinOnScreen(canvas, nodes[2], true));
+    EXPECT_EQ(result.wireFrom, 0u);
+    EXPECT_EQ(result.wireTo, 0u);
+    EXPECT_EQ(result.wireDroppedFrom, 0u) << "a pin that refuses is no empty space";
+    ASSERT_FALSE(asked.empty());
+    for (const auto& pair : asked) EXPECT_EQ(pair.first, kPerlinOut) << "canConnect is asked output first";
+
+    // Two inputs never connect, whatever canConnect says
+    canvas.canConnect = nullptr;
+    result = dragWire(h, canvas, nodes, links, pinOnScreen(canvas, nodes[1], true), pinOnScreen(canvas, nodes[2], true));
+    EXPECT_EQ(result.wireFrom, 0u);
+
+    // During a drag the refused pin is dimmed, the accepted one is not
+    canvas.canConnect = [](uint64_t, uint64_t to) { return to != kCoordIn; };
+    const ImVec2 from = pinOnScreen(canvas, nodes[0], false);
+    h.mouse(from.x, from.y);
+    h.frame(canvas, nodes, links);
+    h.button(0, true);
+    h.frame(canvas, nodes, links);
+    h.mouse(600, 400);
+    size_t refused = 0, accepted = 0;
+    h.frame(canvas, nodes, links, [&](const GraphCanvas::Result&, ImDrawList* list, int first) {
+        for (int i = first; i < list->VtxBuffer.Size; i++) {
+            const ImU32 col = list->VtxBuffer[i].col;
+            if ((col & 0x00FFFFFF) == (IM_COL32(255, 200, 90, 0) & 0x00FFFFFF) && ((col >> IM_COL32_A_SHIFT) & 0xFF) == 63) refused++;
+            if ((col & 0x00FFFFFF) == (IM_COL32(120, 200, 255, 0) & 0x00FFFFFF) && ((col >> IM_COL32_A_SHIFT) & 0xFF) == 255) accepted++;
+        }
+    });
+    EXPECT_GT(refused, 0u) << "the coord pin at a quarter alpha";
+    EXPECT_GT(accepted, 0u) << "the field pin at full alpha";
+    h.button(0, false);
+    h.frame(canvas, nodes, links);
+}
+
+// T2 R53, AC41: a wire is selected along its curve, not along the straight line between its pins
+TEST(GraphCanvasPins, WireHitTest) {
+    CanvasHarness h;
+    GraphCanvas canvas;
+    std::vector<GraphCanvas::Node> nodes;
+    std::vector<GraphCanvas::Link> links;
+    pinGraph(nodes, links);
+    nodes[0].position = ImVec2(0, 0);
+    nodes[2].position = ImVec2(400, 240);
+    nodes[2].inputs[0].connected = true;
+    GraphCanvas::Link wire;
+    wire.id = 77;
+    wire.from = 1;
+    wire.to = 3;
+    wire.fromPin = kPerlinOut;
+    wire.toPin = kCoordIn;
+    links.push_back(wire);
+    h.mouse(790, 490);
+    h.frame(canvas, nodes, links);
+    h.frame(canvas, nodes, links);
+
+    // The curve's midpoint is on the straight line, by symmetry; a quarter along they part
+    const ImVec2 a = pinOnScreen(canvas, nodes[0], false);
+    const ImVec2 b = pinOnScreen(canvas, nodes[2], true);
+    const float reach = std::fabs(b.x - a.x) * 0.5f;
+    const float u = 0.75f, t = 0.25f;
+    const ImVec2 onCurve(u * u * u * a.x + 3 * u * u * t * (a.x + reach) + 3 * u * t * t * (b.x - reach) + t * t * t * b.x,
+                         u * u * u * a.y + 3 * u * u * t * a.y + 3 * u * t * t * b.y + t * t * t * b.y);
+    const ImVec2 onChord(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    ASSERT_GT(std::fabs(onCurve.y - onChord.y), 10.0f);
+
+    h.mouse(onChord.x, onChord.y);
+    h.frame(canvas, nodes, links);
+    h.button(0, true);
+    GraphCanvas::Result result = h.frame(canvas, nodes, links);
+    EXPECT_EQ(result.clickedLink, 0u) << "the chord is not the wire";
+    EXPECT_TRUE(result.clickedBackground);
+    h.button(0, false);
+    h.frame(canvas, nodes, links);
+
+    h.mouse(onCurve.x, onCurve.y);
+    h.frame(canvas, nodes, links);
+    h.button(0, true);
+    result = h.frame(canvas, nodes, links);
+    EXPECT_EQ(result.clickedLink, 77u);
+    EXPECT_TRUE(links[0].selected);
+    EXPECT_TRUE(result.selectionChanged);
+    h.button(0, false);
+    h.frame(canvas, nodes, links);
+
+    // Right click on it reports it too
+    h.button(1, true);
+    h.frame(canvas, nodes, links);
+    h.button(1, false);
+    result = h.frame(canvas, nodes, links);
+    EXPECT_TRUE(result.contextRequested);
+    EXPECT_EQ(result.contextLink, 77u);
+}
+
+// T2 R53, R56, AC41: the box grows around its thumbnail, footer and error, and the thumbnail hides below zoom 0.5
+TEST(GraphCanvasPins, ThumbnailAndFooterFit) {
+    CanvasHarness h;
+    GraphCanvas canvas;
+    std::vector<GraphCanvas::Node> nodes;
+    std::vector<GraphCanvas::Link> links;
+    pinGraph(nodes, links);
+    GraphCanvas::Node& node = nodes[0];
+    node.size = ImVec2(40, 20);
+    node.position = ImVec2(100, 40);
+    const ImTextureID texture = static_cast<ImTextureID>(4242);
+    node.thumbnail = texture;
+    node.thumbnailSize = ImVec2(64, 64);
+    node.footer = {"-0.62 ... 0.71  <= 1.00", "0.31 ms"};
+    node.errorText = "this message is long enough that it has to wrap to stay inside the box of its node";
+    nodes.resize(1);
+    h.mouse(790, 490);
+    h.frame(canvas, nodes, links);
+
+    size_t images = 0;
+    const auto measure = [&](const GraphCanvas::Result&, ImDrawList* list, int first) {
+        images = 0;
+        for (int i = 0; i < list->CmdBuffer.Size; i++) images += list->CmdBuffer[i].TexRef.GetTexID() == texture;
+        const ImVec2 a = canvas.toScreen(nodes[0].position);
+        const ImVec2 b = canvas.toScreen(ImVec2(nodes[0].position.x + nodes[0].size.x, nodes[0].position.y + nodes[0].size.y));
+        size_t footerVertices = 0, errorVertices = 0;
+        for (int i = first; i < list->VtxBuffer.Size; i++) {
+            const ImDrawVert& v = list->VtxBuffer[i];
+            const bool footer = v.col == IM_COL32(170, 170, 170, 255);
+            const bool error = v.col == IM_COL32(255, 120, 120, 255);
+            footerVertices += footer;
+            errorVertices += error;
+            if (!footer && !error) continue;
+            EXPECT_GE(v.pos.x, a.x);
+            EXPECT_LE(v.pos.x, b.x);
+            EXPECT_GE(v.pos.y, a.y);
+            EXPECT_LE(v.pos.y, b.y);
+        }
+        EXPECT_GT(footerVertices, 0u);
+        EXPECT_GT(errorVertices, 0u);
+    };
+    h.frame(canvas, nodes, links, measure);
+    EXPECT_GE(nodes[0].size.x, 64.0f + 2 * 6.0f);
+    EXPECT_GE(nodes[0].size.y, 24.0f + 18.0f + 64.0f + 2 * 15.0f);
+    EXPECT_GT(images, 0u) << "the thumbnail draws";
+
+    // Zoomed out below 0.5 it hides, the box keeps its size
+    const ImVec2 sizeBefore = nodes[0].size;
+    const ImVec2 inside = canvas.toScreen(ImVec2(nodes[0].position.x + 10.0f, nodes[0].position.y + 10.0f));
+    h.mouse(inside.x, inside.y);
+    h.frame(canvas, nodes, links);
+    for (int i = 0; i < 12; i++) {
+        h.wheel(-1.0f);
+        h.frame(canvas, nodes, links);
+    }
+    bool sawImage = false;
+    h.frame(canvas, nodes, links, [&](const GraphCanvas::Result&, ImDrawList* list, int) {
+        for (int i = 0; i < list->CmdBuffer.Size; i++) sawImage = sawImage || list->CmdBuffer[i].TexRef.GetTexID() == texture;
+    });
+    EXPECT_FALSE(sawImage) << "no thumbnail below zoom 0.5";
+    EXPECT_EQ(nodes[0].size.x, sizeBefore.x);
+    EXPECT_EQ(nodes[0].size.y, sizeBefore.y);
 }
