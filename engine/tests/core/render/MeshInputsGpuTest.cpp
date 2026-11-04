@@ -126,6 +126,9 @@ namespace {
 
         InputsQuadScene(){
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
+            // ambient light too: a normal it cannot read (unfed, a NaN) draws black even then
+            scene.setGlobalIllumination(1.0f);
+            scene.setAmbientLight2D(0.5f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
             camera.setPosition(0.0f, 3.0f, 0.01f);
             camera.setTarget(0.0f, 0.0f, 0.0f);
