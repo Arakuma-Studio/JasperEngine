@@ -78,6 +78,13 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
   user, since they could hold data.
 - 2026-11-04: S53: the legacy oracle's output is frozen as golden files before it is deleted.
 
+- 2026-11-04: S47: Android Vulkan is no longer offered. It could never have compiled: no sokol backend is set for it,
+  and Android only creates an EGL context. Android uses GLES3. A real Android Vulkan backend is a separate feature (see Left).
+
+## Left over, not on the user's list
+
+- Android Vulkan backend (found by S47).
+
 ## Done
 
 Nothing yet.
@@ -86,3 +93,4 @@ Nothing yet.
 
 - 2026-11-04: Fetched origin: nothing new, `main` at `b4f7816ea`. Wrote specs S41-S53 and this ledger.
 - 2026-11-04: Started 15 agents, each in its own worktree: the Mac check, S38 M1, S41-S53.
+- 2026-11-04: Merged origin/main (`e8142a81e`, lean MCP surface; someone else is pushing to origin, so fetch before every landing). B's jobs per slot cut from 8 to 4 (load was 28 on 12 cores).
