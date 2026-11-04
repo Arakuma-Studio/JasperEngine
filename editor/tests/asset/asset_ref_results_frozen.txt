@@ -1,0 +1,32 @@
+file	entity:1005/LightComponent.spotMask#0	textures/parity.png		texture	assets	scene_component
+file	entity:1007/PointsComponent.texture#0	textures/parity.png		texture	assets	scene_component
+file	entity:1008/SkyboxComponent.texture#0	textures/parity.png		texture	assets	scene_component
+file	entity:1010/UIComponent.texture#0	textures/parity.png		texture	assets	scene_component
+file	entity:1020/PrefabComponent.path#0	Reflection parity		prefab	project	scene_component
+file	entity:1021/ButtonComponent.textureDisabled#0	textures/parity.png		texture	assets	scene_component
+file	entity:1021/ButtonComponent.textureHovered#0	textures/parity.png		texture	assets	scene_component
+file	entity:1021/ButtonComponent.textureNormal#0	textures/parity.png		texture	assets	scene_component
+file	entity:1021/ButtonComponent.texturePressed#0	textures/parity.png		texture	assets	scene_component
+file	entity:1044/TextComponent.font[0]#0	fonts/Parity.ttf		font	assets	scene_component
+file	entity:1052/ReflectionProbeComponent.texture#0	textures/parity.png		texture	assets	scene_component
+file	entity:1066/PoseAnimatorComponent.animation#0	animations/parity.poseanim		pose_animation	assets	scene_component
+file	entity:1067/AnimationPlayerComponent.clips[0]#0	animations/parity.anim		animation_clip	assets	scene_component
+file	entity:1067/AnimationPlayerComponent.clips[1]#0	models/parity.gltf		model	assets	scene_component
+file	entity:1078/AnimatorComponent.controller#0	animations/parity.controller		animator_controller	assets	scene_component
+file	entity:1079/VertexAnimatorComponent.animation#0	Reflection parity		vertex_animation	assets	scene_component
+memory	entity:1005/LightComponent.spotMask#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1007/PointsComponent.texture#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1008/SkyboxComponent.texture#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1010/UIComponent.texture#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1020/PrefabComponent.path#0	Reflection parity		prefab	project	scene_component
+memory	entity:1021/ButtonComponent.textureDisabled#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1021/ButtonComponent.textureHovered#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1021/ButtonComponent.textureNormal#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1021/ButtonComponent.texturePressed#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1044/TextComponent.font[0]#0	fonts/Parity.ttf		font	assets	scene_component
+memory	entity:1052/ReflectionProbeComponent.texture#0	textures/parity.png		texture	assets	scene_component
+memory	entity:1066/PoseAnimatorComponent.animation#0	animations/parity.poseanim		pose_animation	assets	scene_component
+memory	entity:1067/AnimationPlayerComponent.clips[0]#0	animations/parity.anim		animation_clip	assets	scene_component
+memory	entity:1067/AnimationPlayerComponent.clips[1]#0	models/parity.gltf		model	assets	scene_component
+memory	entity:1078/AnimatorComponent.controller#0	animations/parity.controller		animator_controller	assets	scene_component
+memory	entity:1079/VertexAnimatorComponent.animation#0	Reflection parity		vertex_animation	assets	scene_component

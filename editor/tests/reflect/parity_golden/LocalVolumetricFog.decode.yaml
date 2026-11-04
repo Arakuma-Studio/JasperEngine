@@ -1,0 +1,82 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest a4fc538b0d1ad5fd
+--- 0
+shape: box
+size: [1e-45, 0.75165886, -57.57143]
+attenuationDistance: -24
+albedo: [85.71429, 3e+38, 7.142857]
+blendDistance: -0.049314205
+falloff: exponential
+noiseIntensity: 4417.0186
+noiseScale: -5
+scrollSpeed: [3e+38, -78, 3e+38]
+--- 1
+shape: sphere
+size: [0.7762915, 113.28571, 0]
+attenuationDistance: 0.65965855
+albedo: [-50, 0, 2]
+blendDistance: .nan
+falloff: linear
+noiseIntensity: -45
+noiseScale: -0
+scrollSpeed: [51, 5245.3555, 0.36018425]
+--- 2
+shape: sphere
+size: [24, 0.5736893, -26]
+attenuationDistance: 82.85714
+albedo: [-0, -0, -112.14286]
+blendDistance: .nan
+falloff: linear
+noiseIntensity: .nan
+noiseScale: -0
+scrollSpeed: [-0.105262294, 945.5007, 1e-45]
+--- 3
+shape: sphere
+size: [-18, 263.9055, 3e+38]
+attenuationDistance: -.inf
+albedo: [0, -0.05862455, -138.71428]
+blendDistance: .nan
+falloff: exponential
+noiseIntensity: -.inf
+noiseScale: 1e-45
+scrollSpeed: [5187.202, 0, 3e+38]
+--- 4
+shape: sphere
+size: [3e+38, 17, 7944.665]
+attenuationDistance: -0.34165582
+albedo: [9228.698, -0, 166.33473]
+blendDistance: 84.71429
+falloff: linear
+noiseIntensity: 5
+noiseScale: -72
+scrollSpeed: [20.285715, -0, -133.28572]
+--- 5
+shape: sphere
+size: [-5, 8664.382, 0]
+attenuationDistance: 1e-45
+albedo: [0.4937065, -0.75858784, -0.35109273]
+blendDistance: 1e-45
+falloff: exponential
+noiseIntensity: -69
+noiseScale: 906.2513
+scrollSpeed: [0.30205187, 7186.2354, -20]
+--- 6
+shape: sphere
+size: [-136.85715, -85, -0.16469029]
+attenuationDistance: .nan
+albedo: [7657.77, 43, 0]
+blendDistance: 0.8076012
+falloff: exponential
+noiseIntensity: 0.69048
+noiseScale: .nan
+scrollSpeed: [1e-45, -0, 50]
+--- 7
+shape: box
+size: [3, 0.966069, -27.857143]
+attenuationDistance: 0.29385144
+albedo: [0.5097153, 0, 6652.0156]
+blendDistance: -20
+falloff: exponential
+noiseIntensity: .inf
+noiseScale: 1470.0212
+scrollSpeed: [26.857143, 126.85714, -0]

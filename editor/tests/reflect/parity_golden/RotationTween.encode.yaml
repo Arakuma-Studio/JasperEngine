@@ -1,0 +1,58 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 480b6d54363f1ef2
+--- 0
+endRotation: [20, 96, 0.40298694, 1078.6401]
+startRotation: [1, 0, 6695.7554, -36]
+shortestPath: false
+spin: false
+axis: [70, 61.857143, 0]
+angle: .inf
+--- 1
+endRotation: [86, 0, -0.8165998, 1657.9276]
+startRotation: [1, -0, 7914.662, 3e+38]
+shortestPath: false
+spin: false
+axis: [1e-45, 0, 0]
+angle: -31.571428
+--- 2
+endRotation: [49, 0.5619261, -60.42857, 6194.8887]
+startRotation: [100, 0.34749946, -0.43243262, 1e-45]
+shortestPath: false
+spin: true
+axis: [8798.838, -101.28571, 0.89460427]
+angle: 23
+--- 3
+endRotation: [0.6648153, 1e-45, 69, 3305.2163]
+startRotation: [-0.14441952, 6660.77, 6421.741, 0]
+shortestPath: false
+spin: true
+axis: [0.2162349, 4571.7603, -89]
+angle: 0.0030715675
+--- 4
+endRotation: [1, -24.857143, 0, -0.7382549]
+startRotation: [95, 41.142857, -62, 9483.336]
+shortestPath: true
+spin: false
+axis: [-0, 104.85714, 0]
+angle: 86
+--- 5
+endRotation: [1, -69, 7, -0]
+startRotation: [65.57143, 1e-45, 3e+38, 137.71428]
+shortestPath: true
+spin: true
+axis: [0.63753146, -84, 0]
+angle: -14
+--- 6
+endRotation: [3602.1504, 1e-45, 13.857142, 1e-45]
+startRotation: [7129.988, 8286.529, -92, 0.8711601]
+shortestPath: true
+spin: false
+axis: [0, -0, 0.81754017]
+angle: 107.28571
+--- 7
+endRotation: [27, -26, -71.71429, 1e-45]
+startRotation: [16, 15.285714, 0, 0.45389888]
+shortestPath: true
+spin: false
+axis: [0, -74, -0.6807474]
+angle: 6680.544

@@ -1,0 +1,146 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest f25eff992ce36084
+--- 0
+mode: static
+updateMode: on_move
+boxOffset: [8178.6064, 3874.789, 0.37715614]
+boxSize: [-23, 68, 87.57143]
+blendDistance: -58
+intensity: .nan
+priority: -17
+resolution: 2473
+nearClip: 31.857143
+farClip: 52.857143
+updateInterval: 3e+38
+includeSky: true
+cullingMask: 453337251
+texture: ~
+--- 1
+mode: static
+updateMode: interval
+boxOffset: [-0, 1414.148, 45]
+boxSize: [3e+38, 8, 3e+38]
+blendDistance: 3e+38
+intensity: 2
+priority: -18
+resolution: 432
+nearClip: -21
+farClip: 42
+updateInterval: -.inf
+includeSky: true
+cullingMask: 1518285599
+texture:
+  textureType: 2D
+  source: path
+  path: a b/c.png
+  minFilter: linear
+  magFilter: linear
+  wrapU: mirrored_repeat
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+--- 2
+mode: dynamic
+updateMode: on_load
+boxOffset: [0.96199423, -46, 0.1338765]
+boxSize: [-0.6826285, 5326.198, 0]
+blendDistance: -79.42857
+intensity: 0.35359597
+priority: -10
+resolution: 717
+nearClip: .nan
+farClip: 4640.1294
+updateInterval: -0.9904787
+includeSky: true
+cullingMask: 1672772836
+texture:
+  textureType: 2D
+  source: path
+  path: textures/a.png
+  minFilter: nearest
+  magFilter: linear
+  wrapU: clamp_to_border
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+--- 3
+mode: static
+updateMode: interval
+boxOffset: [3987.1194, 0, 0]
+boxSize: [-0.85714287, 0.1753583, 84]
+blendDistance: 3343.0596
+intensity: 3e+38
+priority: 8
+resolution: 3833
+nearClip: 5872.6055
+farClip: -30
+updateInterval: 105.688156
+includeSky: true
+cullingMask: 4294967295
+texture: ~
+--- 4
+mode: static
+updateMode: manual
+boxOffset: [9064.455, 0, 0]
+boxSize: [3e+38, 71, 54]
+blendDistance: 9145.124
+intensity: -0.829326
+priority: -13
+resolution: 2394
+nearClip: -22.142857
+farClip: -0.12345254
+updateInterval: 3e+38
+includeSky: false
+cullingMask: 4294967295
+texture: ~
+--- 5
+mode: dynamic
+updateMode: interval
+boxOffset: [6564.178, 26.142857, -0.23863153]
+boxSize: [0, 100, 0]
+blendDistance: 25
+intensity: 3883.2295
+priority: -12
+resolution: 664
+nearClip: -85
+farClip: 7822.158
+updateInterval: 137.14285
+includeSky: false
+cullingMask: 1176032898
+texture: ~
+--- 6
+mode: static
+updateMode: interval
+boxOffset: [22, 4709.4175, -64.57143]
+boxSize: [0, 3e+38, 0.13277395]
+blendDistance: 48
+intensity: 63.42857
+priority: 7
+resolution: 721
+nearClip: .inf
+farClip: .nan
+updateInterval: 130.57143
+includeSky: false
+cullingMask: 4294967295
+texture:
+  textureType: 2D
+  source: path
+  path: sounds/hit.wav
+  minFilter: nearest
+  magFilter: nearest
+  wrapU: repeat
+  wrapV: clamp_to_border
+  releaseDataAfterLoad: true
+--- 7
+mode: dynamic
+updateMode: interval
+boxOffset: [-17.714285, 9696.056, -0]
+boxSize: [33, -0.39205414, -21]
+blendDistance: 6734.7207
+intensity: 0.27589566
+priority: -2
+resolution: 12
+nearClip: 8950.497
+farClip: 66.85714
+updateInterval: -33
+includeSky: true
+cullingMask: 4294967295
+texture: ~

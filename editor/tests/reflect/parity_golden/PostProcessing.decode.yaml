@@ -1,0 +1,408 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest f81b2be8d44f9959
+--- 0
+exposure: 10
+tonemap: agx
+temperature: 1
+tint: 1
+saturation: 2
+lift: [1, -1, 0.63474286]
+gamma: [4, 4, 0.1]
+gain: [0, 0.9523829, 0]
+lutTexture: fonts/Main.ttf
+lutContribution: 0
+lutInputEncoding: linear
+lutSize: 16
+monochromeMode: sepia
+vignetteEnabled: true
+vignetteSmoothness: 0.01
+vignetteRoundness: 0
+vignetteColor: [1, 1, 0]
+ditherEnabled: true
+fxaaEnabled: true
+pixelateEnabled: true
+pixelateSize: 1
+crtScanlines: 1
+crtMask: 1
+crtCurvature: 1
+crtVignette: 0
+edgeDetectThreshold: 0
+edgeDetectColor: [0.9107096, 0.36135855, 0]
+filmGrainResponse: 1e-45
+filmGrainType: filmic
+filmGrainSize: 0.25
+filmGrainColored: true
+filmFrameRate: 120
+vhsWobble: 0
+vhsTracking: 0.986499
+vhsColorBleed: 2
+vhsTapeNoise: 2
+vhsDropouts: 0
+vhsInterference: 2
+vhsSpeed: 4
+filmDamageEnabled: true
+filmHairAmount: 0.56715745
+filmScratchAmount: 8
+filmDustAmount: 0
+filmDustSize: 24
+filmGateWeave: 1
+filmGateMaskFeather: 0
+sharpenIntensity: 1
+bloomThreshold: 1
+bloomKnee: 1
+bloomIntensity: 10
+bloomTint: [0.32020545, 0, 1]
+bloomScatter: 1
+blurRadius: 0
+halationEnabled: true
+halationIntensity: 2
+halationThreshold: 0
+halationTint: [0, 1, 0]
+dynamicResolutionEnabled: true
+dynamicResolutionMinScale: 1
+--- 1
+exposure: 10
+tint: 1e-45
+contrast: 1e-45
+saturation: 2
+lift: [1, 1e-45, -1]
+gain: [0.022952903, 0, 0]
+lutInputEncoding: acescct
+monochromeEnabled: true
+vignetteEnabled: true
+vignetteSmoothness: 0.01
+vignetteColor: [1, 1, 0]
+crtMask: 1
+crtCurvature: 0
+crtVignette: 1
+edgeDetectColor: [0.9389774, 1, 0]
+filmGrainResponse: 1
+filmGrainType: lens
+filmGrainSize: 5
+filmFrameRate: 1
+vhsWobble: 2
+vhsTracking: 2
+vhsColorBleed: 0
+vhsChromaStreaks: 2
+vhsDropouts: 2
+vhsScanlines: 0.015418006
+filmDamageIntensity: 0
+filmHairAmount: 8
+filmDustAmount: 0
+filmGateMask: anamorphic_239
+bloomKnee: 1
+bloomTint: [1, 0, 0]
+bloomScatter: 1
+blurEnabled: true
+blurRadius: 0
+halationTint: [1, 0, 0.34099245]
+renderScale: 0.5
+dynamicResolutionMinScale: 1
+--- 2
+tonemap: neutral
+tint: -1
+contrast: 0.8162716
+saturation: 0
+lift: [0.8399967, 1, 0]
+gamma: [4, 0.1, 0.1]
+gain: [4, 4, 4]
+lutTexture: fonts/Main.ttf
+lutContribution: 0
+lutInputEncoding: srgb
+monochromeMode: sepia
+monochromeIntensity: 0
+vignetteRoundness: -0
+chromaticAberrationEnabled: true
+chromaticAberrationIntensity: 0.16825324
+pixelateEnabled: true
+pixelateSize: 1
+crtScanlines: 1
+crtCurvature: 0
+crtVignette: 1
+edgeDetectColor: [0, 1, 0]
+filmGrainIntensity: 1
+filmGrainResponse: 1e-45
+filmGrainType: filmic
+filmGrainSize: 8
+filmFrameRate: 96
+vhsEnabled: true
+vhsWobble: 2
+vhsColorBleed: 2
+vhsTapeNoise: 0.8006122
+vhsChromaStreaks: 0
+vhsScanlines: 0
+vhsInterference: 0.32026872
+vhsGlitches: 2
+vhsSpeed: 4
+filmDamageEnabled: true
+filmHairAmount: 8
+filmScratchAmount: 0.24146596
+filmDustSize: 24
+filmGateWeave: 1
+filmGateMask: anamorphic_239
+filmGateMaskFeather: 0.48779017
+sharpenEnabled: true
+sharpenIntensity: 1
+bloomEnabled: true
+bloomThreshold: 1e-45
+bloomKnee: 1e-45
+bloomIntensity: 10
+bloomTint: [1, 1e-45, 0]
+bloomScatter: 1
+blurEnabled: true
+blurRadius: 0
+halationIntensity: 0
+halationThreshold: 0
+halationRadius: 1
+halationTint: [-0, 0.88957304, 0]
+msaaSamples: 4
+dynamicResolutionMinScale: 0.5
+--- 3
+exposure: -10
+tonemap: neutral
+colorGradingEnabled: true
+temperature: -1
+tint: 1
+contrast: 2
+saturation: 2
+lift: [0, -1, 0.9680137]
+gamma: [4, 4, 0.1]
+gain: [4, 4, 4]
+lutTexture: ui/menu.html
+vignetteIntensity: 1
+vignetteSmoothness: 0.01
+vignetteRoundness: 0.7174981
+chromaticAberrationIntensity: 0
+pixelateSize: 1
+crtVignette: 0
+edgeDetectColor: [1, 0, 0]
+filmGrainColored: true
+filmFrameRate: 1
+vhsEnabled: true
+vhsTracking: 0
+vhsColorBleed: 2
+vhsDropouts: 2
+filmDamageEnabled: true
+filmScratchAmount: 0.030500745
+filmDustSize: 24
+filmGateWeave: 0.00047569815
+filmGateMaskFeather: 256
+sharpenEnabled: true
+bloomThreshold: 0
+bloomKnee: 1
+bloomIntensity: 10
+bloomTint: [1, 1e-45, 1]
+bloomScatter: 0
+halationThreshold: 1
+halationTint: [0, 0, 0]
+renderScale: 0.5
+dynamicResolutionTargetFps: 20
+--- 4
+exposure: 10
+tonemap: agx
+colorGradingEnabled: true
+temperature: 0.2745513
+tint: 1
+saturation: 2
+lift: [1, 0.9742776, 0]
+gamma: [0.9373623, 0.1, 4]
+gain: [0.9980246, 1e-45, 0]
+lutInputEncoding: srgb
+monochromeMode: sepia
+monochromeIntensity: 0.32869467
+vignetteIntensity: 1e-45
+vignetteColor: [0, 1, 1]
+fxaaEnabled: true
+chromaticAberrationEnabled: true
+chromaticAberrationIntensity: 1
+pixelateEnabled: true
+pixelateSize: 64
+crtScanlines: -0
+crtMask: 1e-45
+crtVignette: 1
+edgeDetectEnabled: true
+edgeDetectColor: [0, 0.15812615, 0]
+filmGrainEnabled: true
+filmGrainResponse: 1
+filmGrainType: lens
+filmFrameRate: 120
+vhsIntensity: 0
+vhsWobble: 0.23294234
+vhsTracking: 1e-45
+vhsColorBleed: 0.076546244
+vhsTapeNoise: 2
+vhsChromaStreaks: 0
+vhsDropouts: 2
+vhsScanlines: 2
+vhsGlitches: 2
+vhsSpeed: 4
+filmDamageIntensity: -0
+filmScratchAmount: -0
+filmDustAmount: 0.8915198
+filmDustSize: 0.8924677
+filmGateWeave: 0.8096493
+sharpenIntensity: 0.6174534
+bloomThreshold: 1
+bloomKnee: 1
+bloomIntensity: 0
+bloomTint: [0, 0, 1]
+bloomScatter: 0.44877875
+blurRadius: 0
+halationIntensity: 1e-45
+halationThreshold: 0
+halationRadius: -0
+halationTint: [1, 1, 1]
+renderScale: 0.5
+msaaSamples: 4
+dynamicResolutionEnabled: true
+dynamicResolutionTargetFps: 8
+--- 5
+exposure: -10
+tonemap: neutral
+colorGradingEnabled: true
+tint: 1e-45
+contrast: -0
+gamma: [4, 0.1, 0.1]
+gain: [0, 0.50237936, 0]
+lutTexture: textures/a.png
+lutInputEncoding: cineon
+vignetteIntensity: 0
+vignetteSmoothness: 1
+vignetteRoundness: 0
+vignetteColor: [1, 0, 0]
+fxaaEnabled: true
+pixelateEnabled: true
+crtScanlines: 0
+crtVignette: 0
+edgeDetectEnabled: true
+edgeDetectThreshold: 1
+edgeDetectIntensity: 0
+edgeDetectColor: [1e-45, 0, 1]
+filmGrainResponse: 0
+filmGrainType: lens
+filmGrainColored: true
+vhsIntensity: 1e-45
+vhsWobble: 1e-45
+vhsTapeNoise: 1e-45
+vhsChromaStreaks: 2
+vhsInterference: 2
+vhsSpeed: 4
+filmHairAmount: 0
+filmScratchAmount: 0
+filmDustSize: 24
+filmGateMaskFeather: 256
+sharpenEnabled: true
+sharpenIntensity: 0
+bloomEnabled: true
+bloomKnee: 0.9061514
+bloomIntensity: 1e-45
+bloomTint: [1, 1, 1e-45]
+halationIntensity: 0
+halationRadius: 0
+halationTint: [1, 1, 1]
+msaaSamples: 4
+dynamicResolutionMinScale: 1
+--- 6
+exposure: 1e-45
+temperature: -1
+tint: 1
+contrast: 0
+saturation: 0
+lift: [0.46714103, 1, 1]
+gamma: [0.1, 4, 0.15504387]
+gain: [4, 0, 0]
+lutContribution: -0
+lutInputEncoding: logc3
+lutSize: 16
+monochromeEnabled: true
+monochromeMode: sepia
+vignetteIntensity: 0
+vignetteSmoothness: 1
+vignetteRoundness: 0
+vignetteColor: [0.11438704, 1e-45, 0]
+fxaaEnabled: true
+chromaticAberrationIntensity: 1
+pixelateEnabled: true
+pixelateSize: 64
+crtMask: 1
+crtCurvature: 1
+crtVignette: 1
+edgeDetectThreshold: 1e-45
+edgeDetectColor: [1, 1, 1]
+filmGrainEnabled: true
+filmGrainIntensity: 1
+filmGrainResponse: 1
+filmGrainType: filmic
+filmGrainSize: 8
+filmGrainColored: true
+filmFrameRate: 1
+vhsEnabled: true
+vhsColorBleed: 2
+vhsTapeNoise: 2
+vhsChromaStreaks: 0
+vhsScanlines: 2
+vhsSpeed: 4
+filmDamageEnabled: true
+filmDamageIntensity: 4
+filmHairAmount: 0
+filmDustAmount: 0
+filmDustSize: 0.5
+filmGateWeave: 0.74763834
+filmGateMask: anamorphic_239
+filmGateMaskFeather: 28
+sharpenEnabled: true
+sharpenIntensity: 1
+bloomThreshold: 1e-45
+bloomKnee: 0
+bloomIntensity: 10
+bloomTint: [0, 0, 1]
+bloomScatter: 1
+blurIntensity: 0.4662654
+halationIntensity: 2
+halationThreshold: 1
+halationTint: [0, 1, 1]
+renderScale: 0.5
+dynamicResolutionTargetFps: 1
+--- 7
+exposure: 1e-45
+tonemap: agx
+tint: 0.9075008
+contrast: 0
+saturation: 0
+lift: [1, 1, -0]
+gamma: [0.1, 0.1, 4]
+gain: [0, 0, 0.48483515]
+lutTexture: ui/menu.html
+lutContribution: 0
+vignetteColor: [0, 0, 1]
+ditherEnabled: true
+chromaticAberrationIntensity: 0.92168254
+pixelateEnabled: true
+pixelateSize: 1
+crtEnabled: true
+crtMask: 1
+crtCurvature: 1
+crtVignette: 1
+edgeDetectEnabled: true
+edgeDetectColor: [0, 1, 1]
+filmGrainIntensity: 1
+filmGrainType: filmic
+filmGrainSize: 8
+filmGrainColored: true
+vhsWobble: 0
+vhsTracking: 0
+vhsChromaStreaks: 0
+vhsScanlines: 2
+vhsGlitches: 2
+filmDamageIntensity: 0
+filmDustSize: 24
+filmGateMask: rounded
+bloomEnabled: true
+bloomKnee: 1
+bloomTint: [0, 0, 0]
+blurEnabled: true
+blurRadius: 0
+blurIntensity: 0
+halationThreshold: 1e-45
+halationRadius: 1
+halationTint: [0, 0, 0]

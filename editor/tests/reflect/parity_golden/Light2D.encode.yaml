@@ -1,0 +1,90 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest a42bea9c20d7d285
+--- 0
+enabled: false
+color: [3e+38, -131.14285, 4522.3213]
+intensity: 113.85714
+range: 1061.2537
+falloff: 30
+height: -0.7598636
+shadows: false
+shadowBias: 0.15951353
+shadowSoftness: 7617.1357
+mapResolution: 2665
+--- 1
+enabled: true
+color: [-0.9140473, 1e-45, 3523.7227]
+intensity: -60
+range: -78.57143
+falloff: 96
+height: -12.714286
+shadows: true
+shadowBias: -7
+shadowSoftness: 39
+mapResolution: 796
+--- 2
+enabled: true
+color: [54, 0.7497219, 0]
+intensity: 3e+38
+range: 0.47066748
+falloff: 50
+height: -4.857143
+shadows: true
+shadowBias: 99
+shadowSoftness: .nan
+mapResolution: 2111
+--- 3
+enabled: false
+color: [0, 0, 1e-45]
+intensity: -0
+range: 133.57143
+falloff: 133.85715
+height: -52.714287
+shadows: false
+shadowBias: 4495.752
+shadowSoftness: -61.57143
+mapResolution: 3054
+--- 4
+enabled: true
+color: [11, -14, 5311.518]
+intensity: 1459.0502
+range: 3e+38
+falloff: -0
+height: -.inf
+shadows: true
+shadowBias: 110.42857
+shadowSoftness: -61
+mapResolution: 2485
+--- 5
+enabled: true
+color: [0, 119.28571, 970.79956]
+intensity: 4651.8003
+range: 0.84662914
+falloff: 122.71429
+height: -0.43712485
+shadows: false
+shadowBias: 3e+38
+shadowSoftness: 117.14286
+mapResolution: 3596
+--- 6
+enabled: false
+color: [0.45669183, 3e+38, 0]
+intensity: 1564.2708
+range: 99.85714
+falloff: -59
+height: 97
+shadows: true
+shadowBias: -0
+shadowSoftness: 99.42857
+mapResolution: 4895
+--- 7
+enabled: false
+color: [-50.142857, -35, 19]
+intensity: 1e-45
+range: -0
+falloff: 51
+height: .inf
+shadows: true
+shadowBias: 0.7782219
+shadowSoftness: 123.71429
+mapResolution: 2295

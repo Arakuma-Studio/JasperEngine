@@ -1,0 +1,90 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest d2b06c89ee9aef7c
+--- 0
+enabled: false
+color: [0.14824791, 0.72710335, 3974.8865]
+intensity: -104.85714
+range: 2560.9263
+falloff: .nan
+height: -0.4370786
+shadows: true
+shadowBias: 3e+38
+shadowSoftness: 112.57143
+mapResolution: 782
+--- 1
+enabled: true
+color: [135.42857, -64, -0]
+intensity: 84
+range: 1e-45
+falloff: -76.28571
+height: 108.14286
+shadows: false
+shadowBias: -4
+shadowSoftness: -0.50824004
+mapResolution: 558
+--- 2
+enabled: true
+color: [0, 0, -0.85714287]
+intensity: -94
+range: 0.50361
+falloff: .inf
+height: -65
+shadows: false
+shadowBias: 3e+38
+shadowSoftness: -33.714287
+mapResolution: 4087
+--- 3
+enabled: false
+color: [4900.824, -24, 3088.6892]
+intensity: 23.571428
+range: 1e-45
+falloff: -3
+height: -.inf
+shadows: true
+shadowBias: -53
+shadowSoftness: 0.53167003
+mapResolution: 1488
+--- 4
+enabled: true
+color: [0, -8, 70]
+intensity: 3e+38
+range: -0
+falloff: -55
+height: 65.14286
+shadows: true
+shadowBias: .nan
+shadowSoftness: -0.015073294
+mapResolution: 1122
+--- 5
+enabled: true
+color: [-0, 9688.488, -83]
+intensity: 30
+range: .inf
+falloff: .nan
+height: 7674.82
+shadows: false
+shadowBias: 49
+shadowSoftness: 1e-45
+mapResolution: 169
+--- 6
+enabled: false
+color: [0, 6272.283, -69]
+intensity: -13.285714
+range: 3e+38
+falloff: -48
+height: 13
+shadows: false
+shadowBias: 38.857143
+shadowSoftness: -17
+mapResolution: 2404
+--- 7
+enabled: false
+color: [0.89934766, 52, -138.85715]
+intensity: 3e+38
+range: -3.7142856
+falloff: 0.9826094
+height: 116.28571
+shadows: false
+shadowBias: .nan
+shadowSoftness: 20
+mapResolution: 1312

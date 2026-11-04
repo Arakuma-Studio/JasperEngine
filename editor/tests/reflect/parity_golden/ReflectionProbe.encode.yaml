@@ -1,0 +1,146 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 83024466cd15514a
+--- 0
+mode: dynamic
+updateMode: interval
+boxOffset: [8069.747, 104, 1e-45]
+boxSize: [68.57143, 0, 0]
+blendDistance: 1943.2461
+intensity: 3e+38
+priority: 5
+resolution: 778
+nearClip: 8725.862
+farClip: -0.8045138
+updateInterval: .inf
+includeSky: true
+cullingMask: 1351974805
+texture:
+  textureType: 2D
+  source: path
+  path: textures/a.png
+  minFilter: linear_mipmap_linear
+  magFilter: nearest
+  wrapU: clamp_to_border
+  wrapV: repeat
+  releaseDataAfterLoad: true
+--- 1
+mode: dynamic
+updateMode: manual
+boxOffset: [-3.4285715, -0.7358429, 0]
+boxSize: [87.85714, 67, 6667.528]
+blendDistance: -18
+intensity: 6375.2124
+priority: 0
+resolution: 2372
+nearClip: 8727.864
+farClip: -0.489067
+updateInterval: 8780.608
+includeSky: true
+cullingMask: 850451955
+texture: ~
+--- 2
+mode: static
+updateMode: on_move
+boxOffset: [-0.08573124, -0.24436967, 1092.8269]
+boxSize: [-91.85714, 0, 85.14286]
+blendDistance: 1810.1235
+intensity: 0.7904677
+priority: 11
+resolution: 4455
+nearClip: 5981.3164
+farClip: -0
+updateInterval: -0
+includeSky: true
+cullingMask: 1883220399
+texture: ~
+--- 3
+mode: dynamic
+updateMode: on_load
+boxOffset: [21.285715, -0.33360913, -136.85715]
+boxSize: [-0, 3529.1204, -87]
+blendDistance: 96.14286
+intensity: -0
+priority: 15
+resolution: 2171
+nearClip: -0
+farClip: 4323.846
+updateInterval: 3e+38
+includeSky: false
+cullingMask: 1278526928
+texture: ~
+--- 4
+mode: dynamic
+updateMode: on_load
+boxOffset: [64.85714, 0, 1e-45]
+boxSize: [-0, 0.76370895, 0.85671073]
+blendDistance: -74
+intensity: -0.6717301
+priority: -6
+resolution: 3967
+nearClip: 64
+farClip: 4702.887
+updateInterval: -0.640608
+includeSky: false
+cullingMask: 851844160
+texture:
+  textureType: 2D
+  source: path
+  path: fonts/Main.ttf
+  minFilter: nearest_mipmap_linear
+  magFilter: nearest
+  wrapU: clamp_to_edge
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+--- 5
+mode: dynamic
+updateMode: on_load
+boxOffset: [5076.4395, 0.19680978, 9627.574]
+boxSize: [0.85257983, 3e+38, -46]
+blendDistance: -51
+intensity: -0
+priority: -11
+resolution: 2335
+nearClip: 121.71429
+farClip: -0.5728398
+updateInterval: -96
+includeSky: false
+cullingMask: 4294967295
+texture:
+  textureType: 2D
+  source: path
+  path: a b/c.png
+  minFilter: nearest
+  magFilter: linear
+  wrapU: mirrored_repeat
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+--- 6
+mode: dynamic
+updateMode: manual
+boxOffset: [0.102455236, -1.7142857, -0.6419593]
+boxSize: [4749.5244, -45, -0.027106896]
+blendDistance: 1e-45
+intensity: 17
+priority: 1
+resolution: 3224
+nearClip: 10
+farClip: 4507.841
+updateInterval: -0.7434837
+includeSky: false
+cullingMask: 1156074944
+texture: ~
+--- 7
+mode: dynamic
+updateMode: interval
+boxOffset: [0.975924, 1e-45, 25]
+boxSize: [-0.23538522, 3e+38, -0]
+blendDistance: .nan
+intensity: -0.51155835
+priority: -3
+resolution: 4220
+nearClip: -0.06605929
+farClip: -14
+updateInterval: -0.673707
+includeSky: true
+cullingMask: 4294967295
+texture: ~

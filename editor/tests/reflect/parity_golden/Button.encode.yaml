@@ -1,0 +1,218 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 5279c5c9c4438434
+--- 0
+label: 0
+textureNormal:
+  textureType: 2D
+  source: path
+  path: textures/b.png
+  minFilter: nearest_mipmap_linear
+  magFilter: nearest
+  wrapU: clamp_to_edge
+  wrapV: repeat
+  releaseDataAfterLoad: true
+textureHovered:
+  textureType: 2D
+  source: path
+  path: a b/c.png
+  minFilter: nearest_mipmap_linear
+  magFilter: linear
+  wrapU: mirrored_repeat
+  wrapV: clamp_to_border
+  releaseDataAfterLoad: true
+texturePressed: ~
+textureDisabled:
+  textureType: 2D
+  source: path
+  path: sounds/hit.wav
+  minFilter: nearest_mipmap_nearest
+  magFilter: linear
+  wrapU: clamp_to_edge
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+colorNormal: [2184.52, 1e-45, 0, 3e+38]
+colorHovered: [0, 1719.0525, -0.81522703, 9]
+colorPressed: [62, -0, 6541.293, 82]
+colorDisabled: [7090.5205, 5958.6436, 0.24566633, 3e+38]
+disabled: false
+--- 1
+label: 24
+textureNormal:
+  textureType: 2D
+  source: path
+  path: sounds/hit.wav
+  minFilter: linear_mipmap_nearest
+  magFilter: linear
+  wrapU: mirrored_repeat
+  wrapV: clamp_to_border
+  releaseDataAfterLoad: true
+textureHovered:
+  textureType: 2D
+  source: path
+  path: textures/a.png
+  minFilter: linear
+  magFilter: linear
+  wrapU: mirrored_repeat
+  wrapV: repeat
+  releaseDataAfterLoad: true
+texturePressed:
+  textureType: 2D
+  source: path
+  path: textures/a.png
+  minFilter: linear
+  magFilter: linear
+  wrapU: clamp_to_edge
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+textureDisabled:
+  textureType: 2D
+  source: path
+  path: sounds/hit.wav
+  minFilter: linear_mipmap_linear
+  magFilter: linear
+  wrapU: mirrored_repeat
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+colorNormal: [1e-45, 3e+38, -0, 11]
+colorHovered: [0, -14, 5460.3955, 775.5661]
+colorPressed: [-14, -0.23638467, 2828.9385, 0.50776607]
+colorDisabled: [0, 9171.721, 31, -23]
+disabled: true
+--- 2
+label: 160
+textureNormal:
+  textureType: 2D
+  source: path
+  path: sounds/hit.wav
+  minFilter: linear_mipmap_linear
+  magFilter: linear
+  wrapU: clamp_to_edge
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+textureHovered: ~
+texturePressed: ~
+textureDisabled: ~
+colorNormal: [0, 1343.9972, 0, 3e+38]
+colorHovered: [-0, 42, -0.19244386, 35]
+colorPressed: [9396.749, 0.28561217, 0.48629293, -0]
+colorDisabled: [-37.857143, -0, 1484.118, -0.37727132]
+disabled: false
+--- 3
+label: 218
+textureNormal:
+  textureType: 2D
+  source: path
+  path: ui/menu.html
+  minFilter: nearest_mipmap_nearest
+  magFilter: linear
+  wrapU: repeat
+  wrapV: repeat
+  releaseDataAfterLoad: true
+textureHovered:
+  textureType: 2D
+  source: path
+  path: textures/a.png
+  minFilter: nearest_mipmap_nearest
+  magFilter: nearest
+  wrapU: clamp_to_border
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+texturePressed: ~
+textureDisabled:
+  textureType: 2D
+  source: path
+  path: fonts/Main.ttf
+  minFilter: nearest
+  magFilter: linear
+  wrapU: clamp_to_border
+  wrapV: clamp_to_border
+  releaseDataAfterLoad: true
+colorNormal: [0, 4692.992, -101.42857, -20]
+colorHovered: [-0.9508723, -17.142857, -82.14286, -0]
+colorPressed: [10, -0.020215217, -0.81353194, 7816.283]
+colorDisabled: [0.5545828, 0.45185333, 0, 37.714287]
+disabled: false
+--- 4
+label: 0
+textureNormal:
+  textureType: 2D
+  source: path
+  path: textures/b.png
+  minFilter: linear_mipmap_nearest
+  magFilter: nearest
+  wrapU: repeat
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+textureHovered: ~
+texturePressed: ~
+textureDisabled:
+  textureType: 2D
+  source: path
+  path: textures/a.png
+  minFilter: nearest_mipmap_linear
+  magFilter: nearest
+  wrapU: repeat
+  wrapV: clamp_to_border
+  releaseDataAfterLoad: true
+colorNormal: [4307.371, 0.9974959, 142, 0.97279006]
+colorHovered: [-79.14286, 0, 8603.314, 59]
+colorPressed: [1e-45, 0, 3e+38, 3138.9368]
+colorDisabled: [2314.2, -6, 9408.102, 0.016133856]
+disabled: true
+--- 5
+label: 138
+textureNormal:
+  textureType: 2D
+  source: path
+  path: ui/menu.html
+  minFilter: linear_mipmap_nearest
+  magFilter: linear
+  wrapU: repeat
+  wrapV: clamp_to_border
+  releaseDataAfterLoad: true
+textureHovered: ~
+texturePressed: ~
+textureDisabled: ~
+colorNormal: [0, 21, 0.6525276, 0]
+colorHovered: [-62.142857, -22, 5411.77, 107.14286]
+colorPressed: [-88, 16.714285, 4842.2437, -0]
+colorDisabled: [-0, 3e+38, 0, 1850.4897]
+disabled: true
+--- 6
+label: 121
+textureNormal: ~
+textureHovered: ~
+texturePressed: ~
+textureDisabled: ~
+colorNormal: [4063.497, 4125.199, 0, 142.85715]
+colorHovered: [-0.15766829, 51, 7395.2935, 50.857143]
+colorPressed: [0.77525693, -58, -0, 3e+38]
+colorDisabled: [7407.266, -128.14285, 3e+38, -0]
+disabled: true
+--- 7
+label: 0
+textureNormal:
+  textureType: 2D
+  source: path
+  path: ui/menu.html
+  minFilter: nearest_mipmap_linear
+  magFilter: nearest
+  wrapU: clamp_to_edge
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+textureHovered: ~
+texturePressed:
+  textureType: 2D
+  source: path
+  path: sounds/hit.wav
+  minFilter: linear_mipmap_nearest
+  magFilter: nearest
+  wrapU: clamp_to_edge
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+textureDisabled: ~
+colorNormal: [34, 0.9294696, 63, 34]
+colorHovered: [90.85714, -0, 1e-45, 0]
+colorPressed: [-0.3482172, 8817.126, 135.14285, 0]
+colorDisabled: [0.27454916, 1e-45, 0, 8729.493]
+disabled: false

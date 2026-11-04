@@ -1,0 +1,154 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest e359f19a5398693a
+--- 0
+type: exponential
+color: [3e+38, 1e-45, 0]
+density: -36
+linearStart: -114.14286
+linearEnd: -0
+attenuationDistance: -0.11568755
+baseHeight: -135.85715
+maximumHeight: -.inf
+startDistance: -6.428571
+maxFogDistance: -63
+maxOpacity: 1498.2219
+directionalInscattering: -32.142857
+anisotropy: 28
+skyFillAngle: 104.85714
+volumetric: true
+volumetricDistance: 0
+lightShafts: false
+noiseIntensity: -0.060966235
+noiseScale: -63
+wind: [1454.5063, 4228.863, -4]
+qualityOverride: low
+--- 1
+type: linear
+color: [-0, 6596.815, 5]
+density: -68.71429
+linearStart: -0.5296022
+linearEnd: 0.17812985
+attenuationDistance: -0.19196437
+maxFogDistance: 8144.824
+directionalInscattering: .nan
+volumetricDistance: 0
+wind: [0, 1e-45, 1e-45]
+qualityOverride: medium
+--- 2
+type: linear
+color: [0, -89, 3e+38]
+density: -0.7634605
+linearStart: .inf
+linearEnd: 1e-45
+colorMode: sky
+attenuationDistance: 3887.206
+baseHeight: 50
+maximumHeight: 1e-45
+startDistance: -80
+maxFogDistance: .inf
+maxOpacity: -.inf
+directionalInscattering: 1751.7216
+anisotropy: .inf
+skyFill: false
+skyFillAngle: 3e+38
+volumetric: true
+volumetricDistance: .nan
+noiseIntensity: 3e+38
+noiseScale: 0.42369232
+wind: [-16, 1109.2013, 0]
+qualityOverride: medium
+--- 3
+type: height
+color: [-11, -0.20482007, 0.70034796]
+density: 3e+38
+linearStart: -60
+linearEnd: -8
+attenuationDistance: 1e-45
+startDistance: -126
+maxFogDistance: 0.7584966
+maxOpacity: -3.857143
+directionalInscattering: -0.61563355
+anisotropy: -0.1448683
+skyFillAngle: -72
+volumetricDistance: 0.30229226
+noiseScale: -31
+qualityOverride: low
+--- 4
+type: linear
+color: [0.26046163, -0, 3e+38]
+density: -9
+linearStart: -21
+linearEnd: .inf
+colorMode: sky
+attenuationDistance: 28
+baseHeight: .nan
+maximumHeight: -56
+startDistance: -0.15257986
+maxFogDistance: -.inf
+maxOpacity: 3e+38
+directionalInscattering: 92
+anisotropy: -131.42857
+skyFillAngle: -88.14286
+volumetric: true
+volumetricDistance: .inf
+lightShafts: false
+noiseIntensity: .inf
+noiseScale: 7438.4844
+wind: [3e+38, 40, -18]
+qualityOverride: low
+--- 5
+type: exponential_squared
+color: [1e-45, 1681.9156, 3e+38]
+density: -0.9372643
+linearStart: 2748.7383
+linearEnd: -2
+colorMode: sky
+baseHeight: 3e+38
+maxFogDistance: -76
+maxOpacity: 0.9715076
+directionalInscattering: 3545.6536
+skyFillAngle: 96.28571
+volumetricDistance: -0
+noiseIntensity: -6.285714
+noiseScale: 81.71429
+wind: [-79.42857, 562.27496, 52]
+qualityOverride: medium
+--- 6
+type: exponential_squared
+color: [-90.28571, 58, 91]
+density: 60
+linearStart: 1e-45
+linearEnd: 9122.222
+colorMode: sky
+attenuationDistance: -.inf
+baseHeight: 3993.2378
+maximumHeight: -113.42857
+startDistance: .inf
+maxFogDistance: 91.14286
+maxOpacity: -53
+directionalInscattering: -97
+anisotropy: 3248.3972
+skyFill: false
+skyFillAngle: .nan
+volumetricDistance: -.inf
+lightShafts: false
+noiseScale: 0.104810655
+wind: [0, 0.0043082437, -122.28571]
+qualityOverride: medium
+--- 7
+type: exponential
+color: [59, 109.14286, 74.28571]
+density: 102.42857
+linearStart: 11.285714
+linearEnd: -76.85714
+colorMode: sky
+maximumHeight: -0.6951028
+startDistance: 3401.743
+maxFogDistance: -0.93244815
+directionalInscattering: -119.71429
+anisotropy: 76
+skyFillAngle: 3e+38
+volumetricDistance: .inf
+noiseIntensity: .inf
+noiseScale: 3e+38
+wind: [0, 2680.7104, 0.27497387]

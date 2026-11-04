@@ -1,0 +1,26 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest bffbc0e26560a02f
+--- 0
+endScale: [9562.608, 0.63848245, -86.28571]
+startScale: [-0.023551714, -0.6255443, 1e-45]
+--- 1
+endScale: [-0.055600975, -41, -32.142857]
+startScale: [95, 0, 1e-45]
+--- 2
+endScale: [1e-45, 5114.1333, -37.285713]
+startScale: [-13.571428, 66, 66.57143]
+--- 3
+endScale: [-69.71429, 69, 2223.2222]
+startScale: [-50, 7335.7534, 1e-45]
+--- 4
+endScale: [6265.1953, 0, -60]
+startScale: [-42.57143, 72, -0.8205222]
+--- 5
+endScale: [-0, 1e-45, 82]
+startScale: [-22, -142.14285, -76]
+--- 6
+endScale: [-0.68452454, 0.59765375, 0]
+startScale: [95, 0.19420373, 3e+38]
+--- 7
+endScale: [-7, 1e-45, 0.7576097]
+startScale: [-0.9453361, 0.73011816, 2824.6794]
