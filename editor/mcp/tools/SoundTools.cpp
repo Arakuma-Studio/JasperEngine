@@ -612,7 +612,7 @@ Json varietyOf(const GenerateWork& work) {
                 nearA = a;
                 nearB = b;
             }
-            if (d < SoundTypes::NEAR_DUPLICATE_DISTANCE || work.files[a].output.wav == work.files[b].output.wav) {
+            if (d < SoundTypes::VARIETY_NEAR_DUPLICATE_DISTANCE || work.files[a].output.wav == work.files[b].output.wav) {
                 duplicates.push_back({a + 1, b + 1, AudioAnalysis::rounded(d, 0.001)});
                 if (duplicateWords.empty()) {
                     duplicateWords = "variations " + std::to_string(a + 1) + " and " + std::to_string(b + 1) + " are near-duplicates" + formatted(" (%.3f)", d);
@@ -627,7 +627,7 @@ Json varietyOf(const GenerateWork& work) {
     std::string text = std::to_string(n) + " variations of " + name + ": ";
     if (verdict == "near_duplicates") text += duplicateWords + ": use other seeds or a different force";
     else if (verdict == "wide") text += "wide, they read as different sounds rather than takes of one" + formatted(" (distances %.3f-%.3f)", smallest, largest);
-    else text += "one palette" + formatted(" (distances %.3f-%.3f, none under ", smallest, largest) + formatted("%.3f)", SoundTypes::NEAR_DUPLICATE_DISTANCE);
+    else text += "one palette" + formatted(" (distances %.3f-%.3f, none under ", smallest, largest) + formatted("%.3f)", SoundTypes::VARIETY_NEAR_DUPLICATE_DISTANCE);
     text += formatted("; loudness spread %.1f LU.", spread);
     return {{"pairs", pairs},
             {"distance", {{"min", AudioAnalysis::rounded(smallest, 0.001)}, {"mean", AudioAnalysis::rounded(sum / std::max(pairs, 1), 0.001)}, {"max", AudioAnalysis::rounded(largest, 0.001)}}},
@@ -1427,21 +1427,19 @@ void registerSoundTools(McpRegistry& registry) {
         generate.name = "generate_sound";
         generate.title = "Generate Sound";
         generate.description =
-            "Makes a placeholder sound: no licence, no download. A mono WAV from an sfxr preset, a DSP recipe or a layered "
-            "preset (ui_click, swoosh, impact, pop, in families), brought to its type's loudness target without passing -1 dBTP, "
-            "with a .meta (type, licence generated, preset, seed). The same request gives the same bytes; variations write "
-            "<stem>_1..n.wav and report their variety. like fits a recipe or layered preset to a clip: use it for a sound the "
-            "project should match. Builds warn about placeholders: replace them with search_sounds' clips before release. One undo step.";
+            "Makes a placeholder sound, no licence needed: a mono WAV from a preset at its type's loudness, with a .meta. The same "
+            "request gives the same bytes; variations report their variety. like fits a recipe or layered preset to a clip. Builds "
+            "warn about placeholders: replace them with search_sounds' clips. One undo step.";
         generate.inputSchema = object({
-            {"path", assetPath("Project-relative .wav inside the assets folder, e.g. \"assets/sounds/jump.wav\".")},
-            {"preset", stringEnum("random picks one by the seed.", SoundSynth::names())},
+            {"path", assetPath("A .wav in the assets folder.")},
+            {"preset", stringEnum("", SoundSynth::names())},
             {"seed", integer("Omitted: random, reported.", 0, MAX_SEED)},
             {"variations", withDefault(integer("", 1, MAX_VARIATIONS), 1)},
-            {"family", string("A layered preset's character: impact wood, metal, stone, soft, heavy; others in jasper://docs/sound.")},
-            {"like", string("Clip to fit: a project path, essentials: or library: id.")},
-            {"params", anyObject("Overrides, range-checked (jasper://docs/sound).")},
-            {"loudness_lufs", number("Target momentary max (default: the type's).", MIN_LOUDNESS, MAX_LOUDNESS)},
-            {"image", stringEnum("Default: both for one file, compare for a fit, sheet for variations.", IMAGE_MODES)},
+            {"family", string("impact: wood, metal, stone, soft, heavy. Others: jasper://docs/sound.")},
+            {"like", string("Clip to fit: path, essentials: or library: id.")},
+            {"params", anyObject("Overrides (jasper://docs/sound).")},
+            {"loudness_lufs", number("Momentary max (default: the type's).", MIN_LOUDNESS, MAX_LOUDNESS)},
+            {"image", stringEnum("Default: both; like: compare; variations: sheet.", IMAGE_MODES)},
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path", "preset"});
         generate.annotations.idempotent = false;

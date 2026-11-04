@@ -344,6 +344,9 @@ namespace jasperengine::editor::SoundTypes {
     // -- variety: two variations this far apart (SoundSearch::distance) read as two different sounds,
     // not takes of one
     inline constexpr double VARIETY_WIDE_DISTANCE = 0.5;
+    // two seeds of one preset under this are the same take: a preset's seeds lie much closer than an
+    // event's clips do (NEAR_DUPLICATE_DISTANCE), 0.003 to 0.218 at their nearest over its 16 families
+    inline constexpr double VARIETY_NEAR_DUPLICATE_DISTANCE = 0.020;
 
     // -- fit: generate_sound like (SoundFit). The scales make each term of the distance 1 at one clearly
     // audible step: 3 dB of balance, 6 dB of envelope, 19% of length, twice or half the attack.

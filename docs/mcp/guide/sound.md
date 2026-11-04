@@ -92,6 +92,21 @@ refused. Any licence is accepted: only measurements reach the result, which is `
 in `provenance.reference`. `fit` has `distance`, `grade` (`close` to 1, `similar` to 2, else `rough`), `start_distance`
 and the differences in words. The distance says how alike the measurements are, not whether the result sounds right.
 
+## Slicing takes into a Sound Event
+
+`edit_sound_event {path, create: true, slice: {source, ...}}` cuts a project audio file of several takes into
+`<event stem>_01.wav`, `_02.wav`... beside the new event, a shuffle event of them, in one undo step. A clip's `.meta`
+holds the source's type, labels and licence, `provenance.sliced_from` and a click-safe fade on an edge that would click.
+The source stays as it is, and a target that exists refuses the whole call.
+
+- `gate_db` (-40): an onset counts when the level reaches this re the file's peak within 50 ms.
+- `min_gap_ms` (80): an onset closer than this to the previous one is part of it.
+- `pre_ms` (4): a slice starts this long before its onset. `max_ms` (2000): its longest.
+- `preview: true` returns the slices and an image, and writes nothing; `pick` keeps those numbers.
+- `variation: true` adds pitch +/-1 semitone and volume -1.5 to 0 dB per play: for sounds that repeat a lot.
+
+At most 64 slices, a 120 s source and 32 MiB written. Import a built-in clip first to slice it.
+
 ## Built-in sounds and licences
 
 `search_sounds {query, type, scope, filters, similar_to, limit, sheet}` finds sounds in the project, the 40

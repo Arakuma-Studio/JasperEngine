@@ -398,7 +398,11 @@ bool SoundDesign::render(const std::string& preset, const std::string& familyNam
             l.hz *= forceFactor * brightFactor;
             l.gainDb += SoundTypes::DESIGN_FORCE_DB * force + 3.0 * brightness;
         }
-        latest = std::max(latest, l.delay + (l.kind == LayerKind::Sweep ? l.length : l.t60 + l.attack));
+        if (l.kind == LayerKind::Sweep) {
+            l.hz *= brightFactor;
+            l.toHz *= brightFactor;
+        }
+        latest = std::max(latest, l.delay + (l.kind == LayerKind::Sweep ? l.length : l.t60));
     }
     Chain chain = family->chain;
     chain.highpassHz *= pitchFactor * brightFactor;

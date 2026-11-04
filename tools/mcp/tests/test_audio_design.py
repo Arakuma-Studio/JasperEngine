@@ -171,6 +171,16 @@ async def test_the_variety_report(ed: Editor):
     reply = await gen(ed, "older", "click", seed=21, variations=3)
     variety = reply.value["variety"]
     ed.check(variety["pairs"] == 3 and "3 variations of click:" in variety["text"], variety["text"])
+    # what the seeds of each family measure: the report tells a take from a repeat, so a family's usual seeds are not
+    # near-duplicates (at NEAR_DUPLICATE_DISTANCE, for an event's clips, 15 of the 16 were)
+    verdicts = []
+    for preset, families in FAMILIES.items():
+        for family in families:
+            reply = await gen(ed, f"var_{preset}_{family}", preset, seed=1, family=family, variations=8)
+            v = reply.value["variety"]
+            verdicts.append(v["verdict"])
+            print(f"[variety] {preset}/{family}: {v['verdict']} {v['distance']} near {len(v['near_duplicates'])}")
+    ed.check(verdicts.count("near_duplicates") <= len(verdicts) // 2, f"verdicts: {verdicts}")
     # one file has none
     reply = await gen(ed, "alone", "impact", seed=21)
     ed.check("variety" not in reply.value, "one file has no variety")

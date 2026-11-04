@@ -210,7 +210,7 @@ bool SoundSlicer::plan(const fs::path& source, const std::string& sourceRel, con
     for (int n : picked) {
         index++;
         const Slice& s = slices[(size_t)n - 1];
-        char number[8];
+        char number[16];
         std::snprintf(number, sizeof(number), "%02d", index);
         File file;
         file.wav = directory / (stem + "_" + number + ".wav");

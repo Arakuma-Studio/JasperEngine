@@ -890,6 +890,22 @@ CASES = [
                    "must_not_call": ["write_file", "import_files"]},
     },
     {
+        "id": "guard_sound_slice_takes",
+        "kind": "guard",
+        "what_happened": "S36 M9: a file holding several takes should become a shuffle Sound Event through edit_sound_event slice, "
+                         "not one AudioSource playing the whole file or clips cut by hand.",
+        "text_at_issue": "edit_sound_event's description and slice input",
+        "source": "S36 M9 (sound-layer phase 7)",
+        "prompt": "assets/sfx/footsteps_all.wav has about ten footstep takes one after another. Set up assets/sfx/footsteps.soundevent so each play picks a different take.",
+        "mocks": [
+            {"tool": "edit_sound_event", "result": ok(
+                "Created assets/sfx/footsteps.soundevent: shuffle, 10 clip(s). One undo step. No problems.",
+                {"event": "assets/sfx/footsteps.soundevent", "problems": [], "slices": [{"n": 1, "path": "assets/sfx/footsteps_01.wav"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sound_event", "args": {"slice": {"source": "assets/sfx/footsteps_all.wav"}}}],
+                   "must_not_call": ["write_file", "run_shell"]},
+    },
+    {
         "id": "guard_sound_fit_like",
         "kind": "guard",
         "what_happened": "S36 M10: asked for a placeholder like an existing clip, an agent should fit one with like instead of "

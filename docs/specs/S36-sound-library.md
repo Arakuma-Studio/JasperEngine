@@ -554,6 +554,26 @@ None (R29).
   decodes through libvorbisfile, returned exactly the granule on 61 of 61, while ffmpeg returned 41 to 978 frames more on
   61 of 61 (221,056 against 220,500 on `spaceEngineLow_000.ogg`). Where both decode, a mono file's samples match within
   3e-7. The editor loads each at the granule, as libsndfile does, so the overrun is ffmpeg's.
+- **This branch merges `feat/s37-sound-events` (M9).** `edit_sound_event` and S37's writer are S37 M1 and M5, which were on
+  its branch and not on `main`, so the branch holds S37 M1-M5 and whichever of the two lands second has nothing to merge
+  but its own commits.
+- **`soundlayer` is wired here, ahead of S37 M7.** S37 §6.6 defines the module; it was not on `main` or on S37's branch. The
+  option, the module name, the variants and the detection of "the export writes `je-audio-imports.json`" are in, and
+  `engine/core/audio/SoundLayerSources.cmake` is the list S37, S39 and S40 add their sources to. S37's event runtime is
+  outside the module until S37 M7 moves it. `ModuleScan::audioImportTable` is one flag S37 adds its own detections beside.
+- **`like` refuses `params`,** which the search owns: a fit's result can be adjusted afterwards with `params` and its seed.
+  `compare` is the default image of one fitted file and not a value of `image`, which keeps the schema inside its budget.
+- **`SoundFit` measures a file's head and tail at -60 dB re its peak,** not dBFS: phase 7 §2.3.2 calls every measure
+  level-independent, which the raw render and the written file need.
+- **`force` applies to `noise` layers, `brightness` to `sweep` too:** phase 7 §2.2.3 names noise layers for force, and §2.2.4
+  every filter for brightness, and a sweep's band-pass is a filter.
+- **The variety report has its own near-duplicate limit, `VARIETY_NEAR_DUPLICATE_DISTANCE` 0.020** (phase 7 §2.2.5 uses A4's
+  `NEAR_DUPLICATE_DISTANCE`, and its example says "none under 0.020"). A4's is 0.075 here, from an event's distinct clips.
+  At 0.075, seeds 1 to 8 called 15 of the 16 families near-duplicates (`test_audio_design`, red run `je-evidence/s36/it11.mcp.log`),
+  whose advice is empty: a preset's seeds are close by design.
+- **`edit_sound_event`'s `slice` is an open object in the schema, its keys checked in the handler.** A closed one costs about
+  300 characters, and S37 §6.1 reserves 150.
+- **`preview` reports `source.licensed`, not the licence's fields.** The event's reply says what is unknown in `problems`.
 - **Importing mixed sources.** `import_files` refuses built-in references mixed with other sources: a call has one plan
   and one undo step.
 

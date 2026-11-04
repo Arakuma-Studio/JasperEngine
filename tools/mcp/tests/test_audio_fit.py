@@ -36,13 +36,17 @@ async def refusal(ed: Editor, preset: str, like: str, needle: str, **args):
 
 async def test_a_fit_finds_its_own_family(ed: Editor):
     await gen(ed, "reference", "impact", seed=4, family="metal")
-    reply = await ed.call_raw("generate_sound", {"path": "assets/fit/fitted.wav", "preset": "impact", "like": "assets/fit/reference.wav"}, timeout=TIMEOUT)
+    # the reference's own seed: its family at the defaults is the reference itself, as the written file measures it
+    reply = await ed.call_raw("generate_sound", {"path": "assets/fit/fitted.wav", "preset": "impact", "like": "assets/fit/reference.wav", "seed": 4}, timeout=TIMEOUT)
     data = reply.value
     fit = data["fit"]
     ed.check(fit["family"] == "metal", f"the family a metal hit fits best: {fit}")
     ed.check(fit["distance"] <= fit["start_distance"], f"the search does not end worse: {fit}")
-    ed.check(fit["grade"] in ("close", "similar"), f"a sound of the preset's own fits: {fit}")
+    ed.check(fit["grade"] == "close" and fit["distance"] < 0.1, f"the search finds the reference's own render: {fit}")
     ed.check(0 < fit["renders"] <= 64, f"bounded: {fit['renders']}")
+    other = await gen(ed, "other_seed", "impact", like="assets/fit/reference.wav")
+    ed.check_eq(other.value["fit"]["family"], "metal", "another seed finds the family too")
+    ed.check(other.value["fit"]["distance"] <= other.value["fit"]["start_distance"], f"the search does not end worse: {other.value['fit']}")
     ed.check(set(fit["params"]) == {"pitch_st", "length", "brightness", "room", "drive"}, f"the space: {fit['params']}")
     ed.check(fit["reference"]["path"] == "assets/fit/reference.wav", fit["reference"])
     text = reply.text
@@ -115,6 +119,7 @@ async def test_refusals(ed: Editor):
     ar.write_wav(silent, [ar.silence(0.3, RATE)], RATE)
     long = ed.project / "assets/fit/long.wav"
     ar.write_wav(long, [ar.white_noise(9.0, RATE)], RATE)
+    ar.write_meta_section(long, "import", ["  audioImporter:", "    version: 1", "    type: impact"])
     loop = ed.project / "assets/fit/loop.wav"
     ar.write_wav(loop, [ar.sine(220.0, 1.0, RATE, -12.0)], RATE)
     ar.write_meta_section(loop, "import", ["  audioImporter:", "    version: 1", "    type: ambience"])
@@ -128,5 +133,5 @@ async def test_one_undo_step(ed: Editor):
     await gen(ed, "ref_u", "pluck", seed=5)
     await gen(ed, "undone", "pluck", like="assets/fit/ref_u.wav")
     ed.check((ed.project / "assets/fit/undone.wav").exists(), "written")
-    await ed.call("undo")
+    await ed.call("undo", scope="project")
     ed.check(not (ed.project / "assets/fit/undone.wav").exists() and not (ed.project / "assets/fit/undone.wav.meta").exists(), "undo removes both")
