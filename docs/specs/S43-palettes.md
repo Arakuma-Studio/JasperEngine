@@ -1172,3 +1172,14 @@ Recorded while implementing (`feature/s43-palettes`).
   Quantize's table and Apply Palette's Bayer dithers. `PaletteQuantizeGpu.GradientAtFixedResolution`
   checks the four dithers draw four different images.
 
+- **AC14** is met for the CPU side only: `PaletteSwapCache.BuildTime` and `PaletteQuantize.BakeTimes` print the
+  swap-texture build and the quantize bake (one thread and the job system). This host has no GPU (Mesa
+  llvmpipe/lavapipe), so the GPU budgets (swap ≤ 1.25×, quantize ≤ 0.15 ms) and the headless-Chrome bake time
+  are not measured and no `palette` case is in `tools/perf/gpu_campaign.py` yet: a follow-up for a GPU host.
+- **AC21** ran as `SMOKE_METHOD=compile tools/smoke-test.sh` on a scratch project an MCP script made (three
+  library:sprite heroes, Palette Swap rows chosen by a Lua script in Play, Palette Quantize on PICO-8 with
+  Bayer 4×4), not on a committed fixture. The exported game's 1280×720 frame equals the editor's Play frame
+  at a 1280×720 Game view pixel for pixel. Without the scene's fixed resolution: in the editor's Play Game
+  view the scene's Fixed Resolution does not reduce the render size (a 320×180 fixed resolution still dithers
+  per screen pixel, where the exported game dithers per 4×4 art pixel), which is the editor's fixed-resolution
+  path, not this spec's; recorded for S41/S42.
