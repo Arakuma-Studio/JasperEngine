@@ -1704,8 +1704,10 @@ else()
                       \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
                       -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
             CONFIGURATIONS Release MinSizeRel)
+    # USE_SOURCE_PERMISSIONS: jasperengine.py and gradlew stay executable (install's default drops it)
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
+            USE_SOURCE_PERMISSIONS
             CONFIGURATIONS Release MinSizeRel
             PATTERN ".cxx" EXCLUDE
             PATTERN ".gradle" EXCLUDE

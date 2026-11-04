@@ -3357,6 +3357,14 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
                 if (fs::exists(target)
                     && fs::file_size(target) == entry.file_size()
                     && filesEqual(entry.path(), target)) {
+#ifndef _WIN32
+                    // an older export (or one from an editor that lost the modes) gets the
+                    // source's: an executable script stays executable
+                    const fs::perms sourcePerms = entry.status().permissions();
+                    if (fs::status(target).permissions() != sourcePerms) {
+                        fs::permissions(target, sourcePerms, fs::perm_options::replace);
+                    }
+#endif
                     continue;
                 }
                 fs::copy_file(entry.path(), target, fs::copy_options::overwrite_existing);
@@ -3379,6 +3387,23 @@ void editor::Exporter::copyTreeIfChanged(const fs::path& src, const fs::path& ds
     } catch (const fs::filesystem_error& e) {
         ec = e.code();
     }
+}
+
+bool editor::Exporter::ensureExecutable(const std::vector<fs::path>& files, std::string& error) {
+    error.clear();
+#ifdef _WIN32
+    (void)files;
+#else
+    for (const fs::path& file : files) {
+        std::error_code ec;
+        fs::permissions(file, fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, ec);
+        if (ec) {
+            error = "Could not make " + FileUtils::pathToGenericUtf8(file) + " executable: " + ec.message();
+            return false;
+        }
+    }
+#endif
+    return true;
 }
 
 bool editor::Exporter::copyEngine() {
@@ -3438,6 +3463,13 @@ bool editor::Exporter::copyEngine() {
         fs::copy_file(sdkRoot / "jasperengine.py", config.targetDir / "jasperengine.py", fs::copy_options::overwrite_existing, ec);
         if (ec) {
             setError("Failed to copy jasperengine.py: " + ec.message());
+            return false;
+        }
+        // run from a terminal as ./jasperengine.py and ./gradlew (docs/shipping.md)
+        std::string executableError;
+        if (!ensureExecutable({config.targetDir / "jasperengine.py", config.targetDir / "workspaces" / "androidstudio" / "gradlew"},
+                              executableError)) {
+            setError(executableError);
             return false;
         }
         if (!writeAndroidProjectSettings()) return false;
