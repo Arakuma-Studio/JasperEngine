@@ -457,12 +457,21 @@ All figures are verified by running `tools/procmat/sweep` (commands below) unles
   R20's per-node image test decides these. **Red control for R10:** the old float `rand` on the same
   run puts 48 of 427 default shaders over AC8 (`perlin` 50 mean, 138 at p99; `noise_white` 84 and
   229), against 0 for both on the integer hash, excluding the cases above.
-- **What was not measured.** No hardware GPU and no lavapipe. A GPU can round more differently than
-  llvmpipe does, so AC8 and all of tier 1 stay defaults until the RTX lane runs them.
+- **What was not measured.**
+  - No hardware GPU and no lavapipe. A GPU can round more differently than llvmpipe does, so AC8 and
+    all of tier 1 stay defaults until the RTX lane runs them.
+  - AC8's run is at 128² for all shaders, and at 256² for default shaders only, where the same three
+    of 427 are over (`auto_tones`' loop, `fill_to_uv2`, `height_to_angle`). Every pass samples
+    the same 256² probe image, so no Buffer feeds another pass: R12's half rounding and any
+    accumulation across passes are unmeasured until M5 runs real graphs.
+  - These timings ran with the host at a load of 10 to 14. A rerun after the review fixes, at higher
+    load, gave `perlin` 1.78, `voronoi2` 7.01, `fast_blur_shader` 1.24 s per Mpixel, with llvmpipe also
+    about twice as slow (0.019, 0.017), so read them as a range.
 
 To repeat it, inside the Linux image: `cmake -S tools/procmat/sweep -B build/procmat-sweep`, build,
-`python3 tools/procmat/expand_nodes.py --out <corpus>`, then `procmat-sweep compile`, `interpret`,
-`crosstier` and `bench` (`EGL_PLATFORM=surfaceless`, `LIBGL_ALWAYS_SOFTWARE=1`).
+`python3 tools/procmat/expand_nodes.py --out <corpus> --chains` (`--float-hash` for R10's control),
+then `procmat-sweep compile`, `interpret`, `crosstier` and `bench` (`EGL_PLATFORM=surfaceless`,
+`LIBGL_ALWAYS_SOFTWARE=1`). `crosstier` exits 1 while anything is over AC8, so today it exits 1.
 
 ### Deviations
 
