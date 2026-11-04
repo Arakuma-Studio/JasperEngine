@@ -1775,8 +1775,7 @@
    "display_name": "Image",
    "host": true,
    "parameters": {
-    "filter": true,
-    "image": "%MATERIAL_MAKER_PATH%/examples/mm_icon.png"
+    "filter": true
    },
    "tree_item": "Simple/Image",
    "type": "image"

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Imports Material Maker's node library as data into editor/procmat/nodes/ (S53 R17 to R20).
+# (c) Eduardo Doria and contributors
+# SPDX-License-Identifier: MIT
+"""Imports Material Maker's node library as data into editor/procmat/nodes/ (S90 R17 to R20).
 
     python3 -I tools/procmat/import_mm_nodes.py --source <scratch clone> [--out DIR] [--check]
 
@@ -26,6 +28,8 @@ What it writes (all deterministic, sorted JSON; `format` is FORMAT_VERSION):
                   outputs[]    {type, expr, label, ...}
                   parameters[] {name, type, label, default, min, max, step, values[], first, last}
     graph body:   nodes[] {id, type | shader | graph, parameters, seed, ports, version, generic_size}
+                  a parameter value is a number, or a string in the closed grammar of
+                  PARAMETER_EXPRESSION, which the importer has checked
                   connections[] {from, from_port, to, to_port}, inputs[], outputs[]
                   parameters[] as above plus links[] {node, param} or configurations{}
 
@@ -43,7 +47,6 @@ import argparse
 import hashlib
 import json
 import re
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -74,7 +77,7 @@ LEFT_OUT_HOST_NODES = {
     "text": "needs Godot's text renderer",
     "sdf": "the Easy SDF builder is 58 GDScript files",
     "meshmap": "Mesh Map nodes are out of scope",
-    "portal": "wireless connections are not part of S53",
+    "portal": "wireless connections are not part of S90",
     "custom": "user-written GLSL is out of scope",
     "remote": "a graph parameter panel, part of graph nodes only",
     "comment": "not a node of the evaluator",
@@ -207,7 +210,19 @@ uint jp_hash_vec4(vec4 x) {
 // NaN has no defined 8-bit or filtered value, and each tier makes up its own: a pass writes zero
 // instead, so a node's 0/0 is the same image everywhere (R12, R13)
 vec4 jp_finite(vec4 c) {
-	return vec4(c.x == c.x ? c.x : 0.0, c.y == c.y ? c.y : 0.0, c.z == c.z ? c.z : 0.0, c.w == c.w ? c.w : 0.0);
+	return vec4(isnan(c.x) ? 0.0 : c.x, isnan(c.y) ? 0.0 : c.y, isnan(c.z) ? 0.0 : c.z, isnan(c.w) ? 0.0 : c.w);
+}
+
+// The (34x + 1)x permutation of simplex noise, on integers: in floats it stops being exact at x = 702,
+// a scale fbm reaches, and from there a GPU that fuses x - a*b gives another gradient (R10)
+int jp_mod289(int i) {
+	i -= 289 * (i / 289);
+	return i < 0 ? i + 289 : i;
+}
+
+float jp_permute289(float x) {
+	int i = jp_mod289(int(floor(clamp(x, -2147483000.0, 2147483000.0) + 0.5)));
+	return float(jp_mod289((i * 34 + 1) * i));
 }
 
 float rand(vec2 x) {
@@ -232,14 +247,23 @@ vec3 rand3_4d(vec4 x) {
 REPLACED_COMMON_FUNCTIONS = {"rand", "rand2", "rand3", "rand3_4d"}
 # Material Maker's host template declares these for every shader
 HOST_CONSTANTS = "const float PI = 3.14159265359;\nconst float TAU = 2.0*PI;\n"
-FLOAT_HASH = re.compile(r"fract\s*\(\s*(sin|cos)\s*\(|fract\s*\([^;]*\b(sin|cos)\s*\([^;]*\*\s*\d{4,}|\b43758\b")
+# What a float hash looks like: fract of a trigonometric function, a large constant with a fractional
+# part, or a permutation by floats. Whoever adds a node with one is told by the import, not the GPU.
+FLOAT_HASH = re.compile(r"fract\s*\(\s*(?:[\d.]+\s*\*\s*)?(sin|cos)\s*\(|fract\s*\([^;]*\b(sin|cos)\s*\([^;]*\*\s*\d{4,}"
+                        r"|\b\d{5,}\.\d*[1-9]|floor\([^;]*\)\s*\*\s*289\.0")
+# Float permutations in nodes (R10), and what replaces them. Their results are the same below x = 702.
+PERMUTE_REPLACEMENTS = {name: f"float {name}(float x) {{\n\treturn jp_permute289(x);\n}}"
+                        for name in ("fbm_2d_permute", "old_fbm_2d_permute")}
+FLOAT_MOD289 = {"fbm_2d_mod289", "old_fbm_2d_mod289"}
 
 COMMENT = re.compile(r"//[^\n]*|/\*.*?\*/", re.DOTALL)
 MACRO = re.compile(r"\$\(?[\w?]*\)?")
 IDENTIFIER = re.compile(r"\$\(?[\w?]*\)?|(?<![\w.])[A-Za-z_]\w*")
 MACRO_NAMES = {"uv", "name", "name_uv", "seed", "time", "node_id", "?1", "?2", "?3", "?4"}
 FORBIDDEN_TEXT = ("$(expr:", "website:", "process_option_")
-GLSL_KEYWORDS = {"if", "for", "while", "return", "switch", "else", "do"}
+# A parameter of a node inside a graph may be an expression instead of a number. This is what the
+# library writes (`0.005/$n_scale`, `$uv.x`, `3.14 / 2.0`), and all a data file may put in GLSL (R3).
+PARAMETER_EXPRESSION = re.compile(r"(?:\$\w+(?:\.[xy])?|\d+(?:\.\d*)?|[-+*/(), ])+\Z")
 MODEL_FIELDS = {"code", "global", "includes", "inputs", "instance", "longdesc", "name", "outputs", "parameters", "shortdesc"}
 # fields of a data file that execute, fetch or only concern Godot (R3): dropped with the node
 REFUSED_MODEL_FIELDS = {"custom", "exports", "preview_shader", "template", "files"}
@@ -548,6 +572,19 @@ def add_variation_calls(code: str, functions: list[str]) -> str:
     return code
 
 
+def check_parameter_values(owner: str, parameters: dict, named: set[str]) -> None:
+    """Graph parameters reach GLSL as text: refuse any that is not a plain expression (R3)."""
+    allowed = MACRO_NAMES | named | {"rnd", "rndi"}
+    for name, value in parameters.items():
+        if not isinstance(value, str):
+            continue
+        if not PARAMETER_EXPRESSION.match(value):
+            raise ImportFailure(f"{owner}: parameter {name} is not an expression: {value[:60]!r}")
+        for macro in re.findall(r"\$(\w+)", value):
+            if macro not in allowed:
+                raise ImportFailure(f"{owner}: parameter {name} uses an unknown macro ${macro}")
+
+
 class Body:
     """One shader model: a library node or a shader inside a graph, before its names are final."""
 
@@ -708,15 +745,15 @@ class Importer:
         if not m:
             raise ImportFailure(f"{FUNCTIONS_FILE}: no text field")
         text = m.group(1).replace('\\"', '"').replace("\\\\", "\\")
+        check_attributions("shader_functions", text)
         decls = split_declarations(HOST_CONSTANTS, "host")
         for decl in split_declarations(text, "shader_functions"):
             if decl.name not in REPLACED_COMMON_FUNCTIONS:
-                if "rand" in decl.name and decl.name not in ("param_rnd", "param_rndi"):
+                if "rand" in decl.name:
                     raise ImportFailure(f"shader_functions: {decl.name} is a random function with no R10 replacement")
                 decls.append(decl)
-        seen = {d.name for d in decls} | REPLACED_COMMON_FUNCTIONS
         missing = REPLACED_COMMON_FUNCTIONS - {d.name for d in split_declarations(text, "shader_functions")}
-        if missing or not seen:
+        if missing:
             raise ImportFailure(f"shader_functions: expected {sorted(missing)}")
         return split_declarations(HASH_FUNCTIONS, "jasperengine") + decls
 
@@ -745,8 +782,6 @@ class Importer:
                 roots[kind] = entry
             else:
                 raise ImportFailure(f"{tree}: unknown node type {kind!r}")
-            if kind == "graph":
-                continue
         self.keep = {}
         for node_id in sorted(set(roots) | {e.get("type") for e in self.library if e.get("type") in self.mmg
                                             and e["tree_item"].split("/")[0] != "3D"}):
@@ -769,8 +804,11 @@ class Importer:
         aliases = self.aliases.get(tree)
         if aliases:
             result["aliases"] = aliases.split(",")
-        if entry.get("type") != "graph" and entry.get("parameters"):
-            result["parameters"] = entry["parameters"]
+        presets = {k: v for k, v in (entry.get("parameters") or {}).items() if k != "image"} if entry.get("type") != "graph" else {}
+        if presets:
+            # strings other than expressions (a host path for Simple/Image) are not data we keep
+            check_parameter_values(tree, presets, set())
+            result["parameters"] = presets
         if entry.get("generic_size"):
             result["generic_size"] = int(entry["generic_size"])
         return result
@@ -803,15 +841,26 @@ class Importer:
     def _closure_children(self, node_id: str, data: dict):
         model = data.get("shader_model")
         if model:
-            for include in filter(None, model.get("includes") or []):
-                if include in DENY_LIST:
-                    return f"includes {include}, deny-list: {DENY_LIST[include]}"
-                if include not in self.mmg:
-                    return f"includes the unknown node {include}"
-            return None
+            return self._include_problem(model)
         if "nodes" not in data:
             return f"unsupported node shape of type {data.get('type')!r}"
         return self._graph_children(data)
+
+    def _include_problem(self, model: dict, seen=None):
+        """Why a model's includes cannot come along, following them: an include brings its own."""
+        seen = set() if seen is None else seen
+        for include in filter(None, model.get("includes") or []):
+            if include in seen:
+                continue
+            seen.add(include)
+            if include in DENY_LIST:
+                return f"includes {include}, deny-list: {DENY_LIST[include]}"
+            if include not in self.mmg:
+                return f"includes the unknown node {include}"
+            problem = self._include_problem(self.mmg[include].get("shader_model") or {}, seen)
+            if problem:
+                return problem
+        return None
 
     def _graph_children(self, graph: dict):
         for child in graph.get("nodes", []):
@@ -822,9 +871,9 @@ class Importer:
                 model = child["shader_model"]
                 if any(f in model for f in ("custom", "exports", "preview_shader")):
                     return f"contains a host-specific model in {child.get('name')}"
-                for include in filter(None, model.get("includes") or []):
-                    if include in DENY_LIST:
-                        return f"includes {include}, deny-list: {DENY_LIST[include]}"
+                problem = self._include_problem(model)
+                if problem:
+                    return problem
                 continue
             if "nodes" in child:
                 reason = self._graph_children(child)
@@ -854,14 +903,24 @@ class Importer:
             for nested in model.get("includes") or []:
                 if nested:
                     add_include(nested)
-            for decl in split_declarations(text_of(model.get("global")), node_id):
+            for decl in self._declarations(text_of(model.get("global")), node_id):
                 scope.setdefault(decl.name, {})[decl.signature] = decl
 
         for include in body.includes:
             add_include(include)
-        for decl in split_declarations(body.global_text, body.owner):
+        for decl in self._declarations(body.global_text, body.owner):
             scope.setdefault(decl.name, {})[decl.signature] = decl
         return scope
+
+    @staticmethod
+    def _declarations(text: str, origin: str) -> list[Declaration]:
+        declarations = []
+        for decl in split_declarations(text, origin):
+            if decl.name in PERMUTE_REPLACEMENTS:
+                decl = Declaration(decl.name, decl.kind, decl.signature, PERMUTE_REPLACEMENTS[decl.name], origin)
+            if decl.name not in FLOAT_MOD289:
+                declarations.append(decl)
+        return declarations
 
     def resolve_functions(self) -> None:
         """Gives each distinct declaration one id, so a body names what it uses, not its text."""
@@ -943,6 +1002,7 @@ class Importer:
             function_id = f"{final}({signature})" if overloaded else final
             ids.append(function_id)
             if function_id in self.functions:
+                self._merge_copy(self.functions[function_id], decl, renames)
                 continue
             deps = set()
             for token in sorted(set(identifiers(decl.normal))):
@@ -958,6 +1018,17 @@ class Importer:
             if self._notice_of(decl.origin):
                 self.functions[function_id]["notices"] = [self._notice_of(decl.origin)]
         return ids
+
+    def _merge_copy(self, function: dict, decl: Declaration, renames: dict) -> None:
+        """The same code from another node: which copy sorts first must not lose a notice or its comment."""
+        notice = self._notice_of(decl.origin)
+        if not notice:
+            return
+        if notice not in function.setdefault("notices", []):
+            function["notices"].append(notice)
+        code = lines_of(rename_tokens(decl.text.strip("\n"), renames))
+        if len("\n".join(code)) > len("\n".join(function["code"])):
+            function["code"] = code
 
     def _notice_of(self, node_id: str):
         notice = OWN_NOTICES.get(node_id)
@@ -1071,6 +1142,7 @@ class Importer:
                     parameters = self._widgets(owner, graph, child)
                     continue
                 raise ImportFailure(f"{owner}/{name}: a remote node other than gen_parameters")
+            check_parameter_values(f"{owner}/{name}", child.get("parameters", {}), self._graph_named(graph))
             item = {"id": name, "parameters": child.get("parameters", {})}
             if "shader_model" in child:
                 item["shader"] = self._shader_body(bodies[name])
@@ -1095,6 +1167,11 @@ class Importer:
         return {"nodes": nodes, "connections": graph.get("connections", []), "inputs": ports["gen_inputs"],
                 "outputs": ports["gen_outputs"], "parameters": parameters}
 
+    @staticmethod
+    def _graph_named(graph: dict) -> set[str]:
+        return {widget["name"] for child in graph.get("nodes", []) if child.get("type") == "remote"
+                for widget in child.get("widgets", []) if widget.get("type") == "named_parameter"}
+
     def _widgets(self, owner: str, graph: dict, remote: dict) -> list[dict]:
         values = remote.get("parameters", {})
         result = []
@@ -1117,6 +1194,8 @@ class Importer:
                     item["values"] = [{"name": c, "value": c} for c in configurations]
                 item["configurations"] = {c: [{"node": w["node"], "param": w["widget"], "value": w.get("value")}
                                               for w in widget["configurations"][c]] for c in configurations}
+                for links in item["configurations"].values():
+                    check_parameter_values(owner, {link["param"]: link["value"] for link in links}, self._graph_named(graph))
             elif kind == "named_parameter":
                 item.update({"type": "float", "named": True, "min": widget["min"], "max": widget["max"],
                              "step": widget["step"], "default": widget["default"]})

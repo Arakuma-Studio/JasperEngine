@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The measurements of S53 M0, over the corpus tools/procmat/expand_nodes.py writes:
+// The measurements of S90 M0, over the corpus tools/procmat/expand_nodes.py writes:
 //
 //   procmat-sweep compile --corpus DIR --out report.json [--jobs N] [--filter TEXT]
 //       compiles every shader to SPIR-V, GLSL 410, GLSL 300 es, MSL (macOS, iOS) and HLSL through
@@ -248,7 +248,7 @@ int runCompile(int argc, char** argv){
     for (const json& row : results)
         failed += row["ok"].get<bool>() ? 0 : 1;
     printf("procmat-sweep: %zu shaders, %d failed on at least one target\n", results.size(), failed);
-    return 0;
+    return failed > 0 || !manifest["expansion_failures"].empty() ? 1 : 0;
 }
 
 // A smooth, periodic image every sampled input gets, the same on every tier: multiples of 1/256,
@@ -403,7 +403,7 @@ int runInterpret(int argc, char** argv){
     printf("procmat-sweep interpret: %d ran, %d refused\n", ran, refused);
     for (const auto& [reason, count] : reasons)
         printf("  %5d %s\n", count, reason.c_str());
-    return 0;
+    return refused > 0 ? 1 : 0;
 }
 
 int runCrossTier(int argc, char** argv){
@@ -421,6 +421,7 @@ int runCrossTier(int argc, char** argv){
     printf("procmat-sweep crosstier: GL_RENDERER %s\n", gl.renderer().c_str());
     const Target glTarget = targets[0];
     json rows = json::array();
+    int errors = 0, overLimit = 0;
     shadercompiler::initialize_process();
     for (const json& shader : selection.shaders){
         const std::string name = shader["shader"];
@@ -429,6 +430,7 @@ int runCrossTier(int argc, char** argv){
         if (!compiled.ok){
             row["error"] = "compile: " + compiled.log.substr(0, 500);
             rows.push_back(row);
+            errors++;
             continue;
         }
         std::vector<float> glFloats;
@@ -438,6 +440,7 @@ int runCrossTier(int argc, char** argv){
         if (!gl.render(compiled.vertexOutput, compiled.output, uniforms, textureSize, texture, selection.size, glFloats, timings, error)){
             row["error"] = "gl: " + error.substr(0, 500);
             rows.push_back(row);
+            errors++;
             continue;
         }
         glPixels.resize(glFloats.size());
@@ -450,6 +453,7 @@ int runCrossTier(int argc, char** argv){
         if (!program){
             row["error"] = "interpreter: " + error;
             rows.push_back(row);
+            errors++;
             continue;
         }
         const InterpretResult result = interpret(*program, uniforms, &image, selection.size, selection.threads, &cpuPixels);
@@ -482,12 +486,17 @@ int runCrossTier(int argc, char** argv){
         row["mean"] = worstMean;
         row["p99"] = worstP99;
         row["max"] = worstMax;
+        // AC8's limits, per output and per pass
+        if (worstMean > 2.0 || worstP99 > 4){
+            printf("  over AC8: %s (%.2f mean, %d at p99)\n", name.c_str(), worstMean, worstP99);
+            overLimit++;
+        }
         rows.push_back(row);
     }
     shadercompiler::finalize_process();
     std::ofstream(outPath) << json({{"shaders", rows}, {"size", selection.size}, {"renderer", gl.renderer()}}).dump(1);
-    printf("procmat-sweep crosstier: %zu shaders\n", rows.size());
-    return 0;
+    printf("procmat-sweep crosstier: %zu shaders, %d errors, %d over AC8\n", rows.size(), errors, overLimit);
+    return errors > 0 || overLimit > 0 ? 1 : 0;
 }
 
 int runBench(int argc, char** argv){

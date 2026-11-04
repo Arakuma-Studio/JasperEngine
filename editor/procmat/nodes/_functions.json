@@ -2057,26 +2057,6 @@
    ],
    "origin": "fbm4"
   },
-  "fbm_2d_mod289": {
-   "code": [
-    "float fbm_2d_mod289(float x) {",
-    "\treturn x - floor(x * (1.0 / 289.0)) * 289.0;",
-    "}"
-   ],
-   "deps": [],
-   "kind": "function",
-   "name": "fbm_2d_mod289",
-   "notices": [
-    {
-     "holder": "Inigo Quilez",
-     "license": "MIT",
-     "node": "fbm4",
-     "url": "https://www.shadertoy.com/view/Xd23Dh https://www.shadertoy.com/view/clGyWm",
-     "year": ""
-    }
-   ],
-   "origin": "fbm4"
-  },
   "fbm_2d_perlin": {
    "code": [
     "float fbm_2d_perlin(vec2 coord, vec2 size, int folds, int octaves, float persistence, float lacunarity, float offset, float seed) {",
@@ -2115,11 +2095,11 @@
   "fbm_2d_permute": {
    "code": [
     "float fbm_2d_permute(float x) {",
-    "\treturn fbm_2d_mod289(((x * 34.0) + 1.0) * x);",
+    "\treturn jp_permute289(x);",
     "}"
    ],
    "deps": [
-    "fbm_2d_mod289"
+    "jp_permute289"
    ],
    "kind": "function",
    "name": "fbm_2d_permute",
@@ -3674,7 +3654,7 @@
     "// NaN has no defined 8-bit or filtered value, and each tier makes up its own: a pass writes zero",
     "// instead, so a node's 0/0 is the same image everywhere (R12, R13)",
     "vec4 jp_finite(vec4 c) {",
-    "\treturn vec4(c.x == c.x ? c.x : 0.0, c.y == c.y ? c.y : 0.0, c.z == c.z ? c.z : 0.0, c.w == c.w ? c.w : 0.0);",
+    "\treturn vec4(isnan(c.x) ? 0.0 : c.x, isnan(c.y) ? 0.0 : c.y, isnan(c.z) ? 0.0 : c.z, isnan(c.w) ? 0.0 : c.w);",
     "}"
    ],
    "deps": [],
@@ -3741,6 +3721,34 @@
    ],
    "kind": "function",
    "name": "jp_hash_vec4",
+   "origin": "jasperengine"
+  },
+  "jp_mod289": {
+   "code": [
+    "// The (34x + 1)x permutation of simplex noise, on integers: in floats it stops being exact at x = 702,",
+    "// a scale fbm reaches, and from there a GPU that fuses x - a*b gives another gradient (R10)",
+    "int jp_mod289(int i) {",
+    "\ti -= 289 * (i / 289);",
+    "\treturn i < 0 ? i + 289 : i;",
+    "}"
+   ],
+   "deps": [],
+   "kind": "function",
+   "name": "jp_mod289",
+   "origin": "jasperengine"
+  },
+  "jp_permute289": {
+   "code": [
+    "float jp_permute289(float x) {",
+    "\tint i = jp_mod289(int(floor(clamp(x, -2147483000.0, 2147483000.0) + 0.5)));",
+    "\treturn float(jp_mod289((i * 34 + 1) * i));",
+    "}"
+   ],
+   "deps": [
+    "jp_mod289"
+   ],
+   "kind": "function",
+   "name": "jp_permute289",
    "origin": "jasperengine"
   },
   "jp_quantize": {
@@ -5260,26 +5268,6 @@
    ],
    "origin": "fbm2"
   },
-  "old_fbm_2d_mod289": {
-   "code": [
-    "float old_fbm_2d_mod289(float x) {",
-    "\treturn x - floor(x * (1.0 / 289.0)) * 289.0;",
-    "}"
-   ],
-   "deps": [],
-   "kind": "function",
-   "name": "old_fbm_2d_mod289",
-   "notices": [
-    {
-     "holder": "Inigo Quilez",
-     "license": "MIT",
-     "node": "fbm2",
-     "url": "https://www.shadertoy.com/view/Xd23Dh",
-     "year": ""
-    }
-   ],
-   "origin": "fbm2"
-  },
   "old_fbm_2d_perlin": {
    "code": [
     "float old_fbm_2d_perlin(vec2 coord, vec2 size, int folds, int octaves, float persistence, float offset, float seed) {",
@@ -5318,11 +5306,11 @@
   "old_fbm_2d_permute": {
    "code": [
     "float old_fbm_2d_permute(float x) {",
-    "\treturn old_fbm_2d_mod289(((x * 34.0) + 1.0) * x);",
+    "\treturn jp_permute289(x);",
     "}"
    ],
    "deps": [
-    "old_fbm_2d_mod289"
+    "jp_permute289"
    ],
    "kind": "function",
    "name": "old_fbm_2d_permute",
@@ -7952,6 +7940,13 @@
      "holder": "Inigo Quilez",
      "license": "MIT",
      "node": "voronoi",
+     "url": "https://www.shadertoy.com/view/ldl3W8",
+     "year": "2013"
+    },
+    {
+     "holder": "Inigo Quilez",
+     "license": "MIT",
+     "node": "voronoi2",
      "url": "https://www.shadertoy.com/view/ldl3W8",
      "year": "2013"
     }

@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Expands the imported node descriptors into fragment shaders, for the compile sweep of S53 M0.
+# (c) Eduardo Doria and contributors
+# SPDX-License-Identifier: MIT
+"""Expands the imported node descriptors into fragment shaders, for the compile sweep of S90 M0.
 
     python3 tools/procmat/expand_nodes.py --nodes editor/procmat/nodes --out DIR
+                                          [--chains] [--float-hash]
 
 Writes DIR/<shader>.frag and DIR/manifest.json, which `procmat-sweep` compiles and interprets. One
 shader per output and per pass (R5): a node with three outputs is three shaders, and a graph with a
@@ -13,6 +16,10 @@ Buffer is one shader per side of it. Variants exercise what the C++ expander mus
   <p>=<v>     one enum value or boolean flipped, wired: these inline as text, so each is its own
               compile
   generic2    a generic node with two groups
+
+  --chains adds passes of 10 to 240 nodes, for R6's limits and R25's budgets. --float-hash puts Material
+  Maker's float rand functions back, the red control of R10: same corpus, compare with `crosstier`.
+  It exits 1 when a node cannot be expanded.
 
 This is Material Maker's macro semantics (gen_shader.gd) in Python, kept deliberately close to
 it so the later C++ expander (R5) has a reference to compare against. It is a development tool.
@@ -28,7 +35,13 @@ import sys
 from pathlib import Path
 
 WORD_LETTERS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_?")
-MAX_TEXTURES = 16
+# Material Maker's rand functions, kept only as the control R10 is measured against
+FLOAT_RAND = {
+    "rand": "float rand(vec2 x) {\n return fract(cos(mod(dot(x, vec2(13.9898, 8.141)), 3.14)) * 43758.5);\n}",
+    "rand2": "vec2 rand2(vec2 x) {\n return fract(cos(mod(vec2(dot(x, vec2(13.9898, 8.141)),dot(x, vec2(3.4562, 17.398))), vec2(3.14, 3.14))) * 43758.5);\n}",
+    "rand3": "vec3 rand3(vec2 x) {\n return fract(cos(mod(vec3(dot(x, vec2(13.9898, 8.141)),dot(x, vec2(3.4562, 17.398)),dot(x, vec2(13.254, 5.867))), vec3(3.14, 3.14, 3.14))) * 43758.5);\n}",
+    "rand3_4d": "vec3 rand3_4d(vec4 x) {\n return fract(cos(mod(vec3(dot(x, vec4(13.9898, 8.141, 3.4562, 17.398)),dot(x + 0.1234, vec4(3.4562, 17.398, 13.254, 5.867)),dot(x + 0.5678, vec4(11.1357, 23.234, 95.346, 9.123))), vec3(3.14))) * 43758.5);\n}",
+}
 
 
 class ExpansionError(Exception):
@@ -389,7 +402,6 @@ class Shader(Generator):
                 raise ExpansionError(f"{self.name}: unsupported parameter type {kind}")
 
     def _random_macros(self, text: str) -> str:
-        offset = 0
         for keyword, function in (("rnd", "param_rnd"), ("rndi", "param_rndi")):
             needle = f"${keyword}("
             while needle in text:
@@ -397,7 +409,7 @@ class Shader(Generator):
                 end = matching(text, position + len(needle) - 1)
                 inner = text[position + len(needle):end]
                 self.expander.note_function(self, function)
-                text = text[:position] + f"{function}({inner}, $seed+{math.sin(position + offset) * 0.5 + 0.5:f})" + text[end + 1:]
+                text = text[:position] + f"{function}({inner}, $seed+{math.sin(position) * 0.5 + 0.5:f})" + text[end + 1:]
         return text
 
     def _gradient(self, prefix, value, rv, declare):
@@ -731,8 +743,7 @@ class Expander:
     @staticmethod
     def _child_entry(generator):
         if isinstance(generator, TextureSource):
-            ports = 2 if generator.pass_kind == "iterate" else 2
-            return generator, [(generator, i) for i in range(ports)], [(generator, i) for i in range(2)]
+            return generator, [(generator, i) for i in range(2)], [(generator, i) for i in range(2)]
         if isinstance(generator, Switch):
             ports = [(generator, i) for i in range(int(generator.parameters.get("outputs", 2)))]
             inputs = int(generator.parameters.get("outputs", 2)) * int(generator.parameters.get("choices", 2))
@@ -882,23 +893,52 @@ def variants_of(descriptor):
         yield "generic2", {}, 2, has_inputs
 
 
+def expand_chains(expander: Expander, sink) -> None:
+    """Noise and blend nodes in one pass: a plausible graph of N nodes with no Buffer to cut it."""
+    for size in (10, 30, 60, 120, 240):
+        expander.counter = 0
+        expander.extra_functions = {}
+        generator = expander.instantiate("perlin", {}, 0.1)[0]
+        previous = (generator, 0)
+        count, step = 1, 0
+        while count < size:
+            noise = expander.instantiate(("fbm4", "voronoi2", "perlin", "bricks3")[step % 4], {}, 0.01 * step)[0]
+            blend = expander.instantiate("blend2", {}, 0.0, 1)[0]
+            blend.sources[blend.input_index("b")] = previous
+            blend.sources[blend.input_index("l1")] = (noise, 0)
+            previous = (blend, 0)
+            count += 2
+            step += 1
+        current = Pass()
+        sink(f"chain{size}", f"chain{size}", "default", 0, "out", expander.shader_text(previous, current), current)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--nodes", type=Path, default=Path(__file__).resolve().parents[2] / "editor/procmat/nodes")
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--chains", action="store_true", help="also write the N-node passes")
+    parser.add_argument("--float-hash", action="store_true", help="Material Maker's rand functions, R10's red control")
     args = parser.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
     expander = Expander(args.nodes)
+    if args.float_hash:
+        for name, code in FLOAT_RAND.items():
+            if name in expander.functions:
+                expander.functions[name].update(code=code.split("\n"), deps=[])
     manifest = []
     failures = []
 
-    for node_id, descriptor in sorted(expander.descriptors.items()):
+    def sink_for(kind):
         def sink(name, node, variant, port, label, text, current):
             (args.out / f"{name}.frag").write_text(text, encoding="utf-8")
             textures = [{"name": t["name"], "binding": i, "size": t["generator"].size} for i, t in enumerate(current.textures)]
-            manifest.append({"shader": name, "node": node, "kind": descriptor["kind"], "variant": variant, "output": port, "pass": label,
+            manifest.append({"shader": name, "node": node, "kind": kind, "variant": variant, "output": port, "pass": label,
                              "bytes": len(text.encode()), "uniforms": current.values, "textures": textures})
+        return sink
 
+    for node_id, descriptor in sorted(expander.descriptors.items()):
+        sink = sink_for(descriptor["kind"])
         for variant, parameters, generic, wire in variants_of(descriptor):
             try:
                 expand_variant(expander, node_id, variant, parameters, generic, wire, sink)
@@ -906,11 +946,13 @@ def main(argv=None) -> int:
                 failures.append({"node": node_id, "variant": variant, "error": str(error)})
             except (KeyError, IndexError, TypeError, ValueError) as error:
                 failures.append({"node": node_id, "variant": variant, "error": f"{type(error).__name__}: {error}"})
+    if args.chains:
+        expand_chains(expander, sink_for("graph"))
     (args.out / "manifest.json").write_text(json.dumps({"shaders": manifest, "expansion_failures": failures}, indent=0), encoding="utf-8")
     print(f"expand_nodes: {len(manifest)} shaders from {len(expander.descriptors)} nodes, {len(failures)} expansion failures")
     for failure in failures[:40]:
         print(f"  {failure['node']} [{failure['variant']}]: {failure['error']}", file=sys.stderr)
-    return 0
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

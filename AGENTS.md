@@ -85,6 +85,8 @@ Run the generator and commit its output:
 | `tools/test-projects/upgrade-from-main/` | `tools/ci/upgrade_from_main/generate.sh --ref <ref>` |
 | `docs/shaders/library.md` | `jasperengine-editor shaders --library all --doc docs/shaders/library.md` |
 | `engine/core/serialization/RuntimeFields.gen.inc` | `jasperengine-editor reflect --emit-runtime-fields engine/core/serialization/RuntimeFields.gen.inc` |
+| `editor/procmat/nodes/` | `python3 -I tools/procmat/import_mm_nodes.py --source <clone of Material Maker at its recorded commit>` |
+| `editor/tests/procmat/SpirvInterpreterFixtures.h` | `tools/build.sh exec linux python3 tools/procmat/gen_interpreter_fixtures.py build/procmat-sweep/procmat-sweep` (after building `tools/procmat/sweep`) |
 | `docs/editor/keyboard-shortcuts.md` | the unit test `CommandCatalog.MarkdownReferenceMatchesDocs` with `JASPER_UPDATE_SHORTCUT_DOCS=1`, inside the image (the variable is not forwarded into it) |
 
 - `tools/lua_api` produces the Lua API data, joined stubs and completion data at build time.

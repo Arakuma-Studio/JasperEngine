@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <set>
@@ -19,6 +20,10 @@ namespace {
 
 // A runaway loop stops a pixel instead of the whole bake: a real node runs far fewer backward jumps
 const int64_t backwardJumpLimit = 1 << 22;
+// Generous for any real shader (the library's largest has 5,259 registers), and low enough that a
+// corrupt type size cannot ask for gigabytes
+const uint64_t maxTypeSize = 1u << 20;
+const uint64_t maxRegisters = 1u << 24;
 
 #define OP_FAMILY(X, NAME) X(NAME##1) X(NAME##2) X(NAME##3) X(NAME##4)
 
@@ -41,7 +46,7 @@ const int64_t backwardJumpLimit = 1 << 22;
     OP_FAMILY(X, FEq) OP_FAMILY(X, FNe) OP_FAMILY(X, FLt) OP_FAMILY(X, FLe) OP_FAMILY(X, FGt) OP_FAMILY(X, FGe) \
     OP_FAMILY(X, FUNe) \
     OP_FAMILY(X, IEq) OP_FAMILY(X, INe) OP_FAMILY(X, SLt) OP_FAMILY(X, SLe) OP_FAMILY(X, SGt) OP_FAMILY(X, SGe) \
-    OP_FAMILY(X, ULt) OP_FAMILY(X, ULe) OP_FAMILY(X, UGt) OP_FAMILY(X, UGe) \
+    OP_FAMILY(X, ULt) OP_FAMILY(X, ULe) OP_FAMILY(X, UGt) OP_FAMILY(X, UGe) OP_FAMILY(X, IsNan) \
     /* conversions and selection */ \
     OP_FAMILY(X, F2S) OP_FAMILY(X, F2U) OP_FAMILY(X, S2F) OP_FAMILY(X, U2F) \
     OP_FAMILY(X, SelectS) OP_FAMILY(X, SelectV) X(SelectSN) OP_FAMILY(X, Any) OP_FAMILY(X, All) \
@@ -90,20 +95,21 @@ const Math2Function math2Functions[] = {mathAtan2, mathPow};
 
 // Past 2^23 a float is an integer already, and the comparison sends NaN there too. std::floor is
 // a library call on baseline x86-64, and a node's code is largely floor, fract and mod.
+// The result has x's sign, which keeps IEEE's -0 for ceil(-0.5): it decides atan(0, y) and 1/y.
 inline float floorFast(float x){
     if (!(std::fabs(x) < 8388608.0f))
         return x;
     const float t = (float)(int32_t)x;
-    return t > x ? t - 1.0f : t;
+    return std::copysign(t > x ? t - 1.0f : t, x);
 }
 inline float ceilFast(float x){
     if (!(std::fabs(x) < 8388608.0f))
         return x;
     const float t = (float)(int32_t)x;
-    return t < x ? t + 1.0f : t;
+    return std::copysign(t < x ? t + 1.0f : t, x);
 }
 inline float truncFast(float x){
-    return std::fabs(x) < 8388608.0f ? (float)(int32_t)x : x;
+    return std::fabs(x) < 8388608.0f ? std::copysign((float)(int32_t)x, x) : x;
 }
 inline float glslMod(float x, float y){ return x - y * floorFast(x / y); }
 // IEEE minNum and maxNum, as GPUs and llvmpipe implement them: a NaN operand loses. clamp() of a
@@ -192,7 +198,7 @@ public:
     SpirvCompiler(const uint32_t* words, size_t count, SpirvProgram& program) : words(words), wordCount(count), program(program) {}
 
     bool compile(std::string& error){
-        if (!parseModule() || !allocateFunctions() || !emitProgram()){
+        if (!parseModule() || !allocateFunctions() || !validateFunctions() || !emitProgram() || !problem.empty() || !verifyCode()){
             error = problem;
             return false;
         }
@@ -210,14 +216,18 @@ private:
     std::map<uint32_t, FunctionInfo> functions;
     std::vector<uint32_t> functionOrder;
     uint32_t entryFunction = 0;
-    std::vector<uint32_t> interfaceInputs;
     uint32_t bound = 0;
     std::vector<uint32_t> privateInits;
+    std::vector<uint32_t> resetEachPixel;       // what a shader can read before writing, between pixels
     std::map<uint32_t, std::string> names;
     std::set<uint32_t> constantIds;
 
     uint32_t allocate(uint32_t size){
         const uint32_t loc = (uint32_t)program.initial.size();
+        if (loc + (uint64_t)size > maxRegisters){
+            fail("a shader with too many registers");
+            return 0;
+        }
         SpirvRegister zero;
         zero.u = 0;
         program.initial.resize(program.initial.size() + size, zero);
@@ -241,12 +251,84 @@ private:
         return result;
     }
 
+    // The words an instruction this interpreter supports has at least; 0 when it does not support it.
+    // Checking this first means no later code reads an operand that is not there.
+    static uint32_t minimumWords(spv::Op op){
+        switch (op){
+            case spv::OpNop: case spv::OpNoLine: case spv::OpFunctionEnd: case spv::OpReturn: case spv::OpUnreachable:
+                return 1;
+            case spv::OpCapability: case spv::OpExtension: case spv::OpSourceExtension: case spv::OpSourceContinued:
+            case spv::OpModuleProcessed: case spv::OpTypeVoid: case spv::OpTypeBool: case spv::OpTypeSampler: case spv::OpTypeStruct:
+            case spv::OpLabel: case spv::OpBranch: case spv::OpReturnValue:
+                return 2;
+            case spv::OpExtInstImport: case spv::OpMemoryModel: case spv::OpExecutionMode: case spv::OpSource: case spv::OpString:
+            case spv::OpName: case spv::OpDecorate: case spv::OpTypeFloat: case spv::OpTypeFunction: case spv::OpTypeSampledImage:
+            case spv::OpConstantTrue: case spv::OpConstantFalse: case spv::OpConstantNull: case spv::OpConstantComposite:
+            case spv::OpUndef: case spv::OpFunctionParameter: case spv::OpStore: case spv::OpSelectionMerge:
+            case spv::OpCompositeConstruct:
+                return 3;
+            case spv::OpEntryPoint: case spv::OpMemberName: case spv::OpMemberDecorate: case spv::OpLine: case spv::OpTypeInt:
+            case spv::OpTypeVector: case spv::OpTypeMatrix: case spv::OpTypeArray: case spv::OpTypePointer: case spv::OpConstant:
+            case spv::OpVariable: case spv::OpLoad: case spv::OpAccessChain: case spv::OpInBoundsAccessChain: case spv::OpFunctionCall:
+            case spv::OpBranchConditional: case spv::OpLoopMerge: case spv::OpCopyObject: case spv::OpCopyLogical: case spv::OpBitcast:
+            case spv::OpFNegate: case spv::OpSNegate: case spv::OpNot: case spv::OpLogicalNot: case spv::OpIsNan:
+            case spv::OpConvertFToS: case spv::OpConvertFToU: case spv::OpConvertSToF: case spv::OpConvertUToF: case spv::OpAny: case spv::OpAll:
+                return 4;
+            case spv::OpFunction: case spv::OpExtInst: case spv::OpCompositeExtract: case spv::OpVectorShuffle: case spv::OpPhi:
+            case spv::OpSampledImage: case spv::OpVectorExtractDynamic: case spv::OpFAdd: case spv::OpFSub: case spv::OpFMul:
+            case spv::OpFDiv: case spv::OpFMod: case spv::OpIAdd: case spv::OpISub: case spv::OpIMul: case spv::OpUDiv: case spv::OpSDiv:
+            case spv::OpUMod: case spv::OpSMod: case spv::OpBitwiseAnd: case spv::OpBitwiseOr: case spv::OpBitwiseXor:
+            case spv::OpLogicalAnd: case spv::OpLogicalOr: case spv::OpLogicalEqual: case spv::OpLogicalNotEqual:
+            case spv::OpShiftLeftLogical: case spv::OpShiftRightLogical: case spv::OpShiftRightArithmetic: case spv::OpFOrdEqual:
+            case spv::OpFOrdNotEqual: case spv::OpFOrdLessThan: case spv::OpFOrdLessThanEqual: case spv::OpFOrdGreaterThan:
+            case spv::OpFOrdGreaterThanEqual: case spv::OpFUnordNotEqual: case spv::OpIEqual: case spv::OpINotEqual: case spv::OpSLessThan:
+            case spv::OpSLessThanEqual: case spv::OpSGreaterThan: case spv::OpSGreaterThanEqual: case spv::OpULessThan:
+            case spv::OpULessThanEqual: case spv::OpUGreaterThan: case spv::OpUGreaterThanEqual: case spv::OpDot:
+            case spv::OpVectorTimesScalar: case spv::OpMatrixTimesScalar: case spv::OpMatrixTimesVector: case spv::OpVectorTimesMatrix:
+            case spv::OpMatrixTimesMatrix:
+                return 5;
+            case spv::OpCompositeInsert: case spv::OpVectorInsertDynamic: case spv::OpSelect:
+                return 6;
+            case spv::OpImageSampleExplicitLod:
+                return 7;
+            case spv::OpTypeImage:
+                return 9;
+            default:
+                return 0;
+        }
+    }
+
+    static bool isDeclarationWithoutResult(spv::Op op){
+        switch (op){
+            case spv::OpCapability: case spv::OpExtension: case spv::OpSourceExtension: case spv::OpSourceContinued:
+            case spv::OpModuleProcessed: case spv::OpMemoryModel: case spv::OpExecutionMode: case spv::OpSource: case spv::OpString:
+            case spv::OpName: case spv::OpDecorate: case spv::OpEntryPoint: case spv::OpMemberName: case spv::OpMemberDecorate:
+            case spv::OpLine: case spv::OpNoLine: case spv::OpFunctionEnd: case spv::OpSelectionMerge: case spv::OpLoopMerge:
+                return true;
+            default:
+                return !hasResult(op) && op != spv::OpLabel;
+        }
+    }
+
+    static bool hasResultInWordOne(spv::Op op){
+        switch (op){
+            case spv::OpExtInstImport: case spv::OpLabel: case spv::OpTypeVoid: case spv::OpTypeBool: case spv::OpTypeFloat:
+            case spv::OpTypeInt: case spv::OpTypeVector: case spv::OpTypeMatrix: case spv::OpTypeArray: case spv::OpTypeStruct:
+            case spv::OpTypePointer: case spv::OpTypeFunction: case spv::OpTypeImage: case spv::OpTypeSampler: case spv::OpTypeSampledImage:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    bool isType(uint32_t id) const { return id < bound && types[id].kind != spv::OpNop; }
+
     bool parseModule(){
         if (wordCount < 5 || words[0] != spv::MagicNumber)
             return fail("not a SPIR-V module");
         bound = words[3];
-        if (bound > (1u << 24))
-            return fail("id bound too large");
+        if (bound == 0 || bound > (1u << 24))
+            return fail("id bound out of range");
         types.resize(bound);
         ids.resize(bound);
         FunctionInfo* function = nullptr;
@@ -257,7 +339,17 @@ private:
             const spv::Op op = (spv::Op)(words[i] & 0xffff);
             if (count == 0 || i + count > wordCount)
                 return fail("truncated instruction");
+            const uint32_t required = minimumWords(op);
+            if (required == 0)
+                return fail(std::string("unsupported SPIR-V instruction, opcode ") + std::to_string((int)op));
+            if (count < required)
+                return fail(std::string("malformed SPIR-V instruction, opcode ") + std::to_string((int)op));
             const uint32_t* w = words + i;
+            if (!isDeclarationWithoutResult(op)){
+                const uint32_t result = hasResultInWordOne(op) ? w[1] : w[2];
+                if (result == 0 || result >= bound)
+                    return fail("an id out of the module's bound");
+            }
             if (!parseInstruction(op, w, count, function, block, position))
                 return false;
             i += count;
@@ -266,6 +358,10 @@ private:
             return fail("truncated module");
         if (entryFunction == 0)
             return fail("no fragment entry point");
+        if (functions.find(entryFunction) == functions.end())
+            return fail("the entry point names no function");
+        if (!functions[entryFunction].params.empty())
+            return fail("an entry point with parameters");
         return true;
     }
 
@@ -289,15 +385,21 @@ private:
                 return true;
             case spv::OpMemoryModel: case spv::OpExecutionMode: case spv::OpSource: case spv::OpSourceExtension:
             case spv::OpString: case spv::OpMemberName: case spv::OpLine: case spv::OpNoLine: case spv::OpModuleProcessed:
-            case spv::OpMemberDecorate: case spv::OpSourceContinued: case spv::OpExtension: case spv::OpSelectionMerge: case spv::OpLoopMerge: case spv::OpNop:
+            case spv::OpSourceContinued: case spv::OpExtension: case spv::OpSelectionMerge: case spv::OpLoopMerge: case spv::OpNop:
                 return true;
             case spv::OpName:
                 names[w[1]] = text(w + 2, count - 2);
                 return true;
             case spv::OpDecorate:
+                if (w[2] == spv::DecorationArrayStride && count > 3)
+                    arrayStrides[w[1]] = w[3];
+                return true;
+            case spv::OpMemberDecorate:
+                if (w[3] == spv::DecorationOffset && count > 4)
+                    memberOffsets[{w[1], w[2]}] = w[4];
                 return true;
             case spv::OpTypeVoid: case spv::OpTypeBool: case spv::OpTypeFloat: case spv::OpTypeInt: case spv::OpTypeVector:
-            case spv::OpTypeMatrix: case spv::OpTypeArray: case spv::OpTypeRuntimeArray: case spv::OpTypeStruct: case spv::OpTypePointer:
+            case spv::OpTypeMatrix: case spv::OpTypeArray: case spv::OpTypeStruct: case spv::OpTypePointer:
             case spv::OpTypeFunction: case spv::OpTypeImage: case spv::OpTypeSampler: case spv::OpTypeSampledImage:
                 return parseType(op, w, count);
             case spv::OpConstant: case spv::OpConstantTrue: case spv::OpConstantFalse: case spv::OpConstantNull: case spv::OpConstantComposite: case spv::OpUndef:
@@ -305,6 +407,8 @@ private:
                     return parseConstant(op, w, count);
                 break;
             case spv::OpVariable:
+                if (!isType(w[1]) || types[w[1]].kind != spv::OpTypePointer)
+                    return fail("a variable whose type is not a pointer");
                 if (function == nullptr)
                     return parseGlobal(w, count);
                 function->variables.push_back(w[2]);
@@ -314,12 +418,14 @@ private:
                 ids[w[2]].root = w[2];
                 ids[w[2]].loc = allocate(types[types[w[1]].element].size);
                 if (count > 4){
-                    if (ids[w[4]].kind != IdKind::Register)
+                    if (w[4] >= bound || constantIds.count(w[4]) == 0)
                         return fail("a variable initializer that is not a constant");
                     variableInit[w[2]] = w[4];
                 }
                 return true;
             case spv::OpFunction:
+                if (!isType(w[1]))
+                    return fail("a function with no return type");
                 function = &functions[w[2]];
                 function->id = w[2];
                 function->returnType = w[1];
@@ -329,12 +435,14 @@ private:
                 block = 0;
                 return true;
             case spv::OpFunctionParameter:
-                if (function == nullptr)
-                    return fail("a parameter outside a function");
+                if (function == nullptr || !isType(w[1]))
+                    return fail("a parameter outside a function, or with no type");
                 function->params.push_back(w[2]);
                 ids[w[2]].type = w[1];
                 return true;
             case spv::OpFunctionEnd:
+                if (function == nullptr)
+                    return fail("OpFunctionEnd outside a function");
                 function = nullptr;
                 return true;
             case spv::OpLabel:
@@ -345,7 +453,7 @@ private:
                 break;
         }
         if (function == nullptr)
-            return fail(std::string("unsupported instruction ") + std::to_string((int)op) + " outside a function");
+            return fail(std::string("an instruction outside a function, opcode ") + std::to_string((int)op));
         RawInstruction raw;
         raw.words = w;
         raw.count = count;
@@ -358,7 +466,8 @@ private:
 
     bool parseType(spv::Op op, const uint32_t* w, uint32_t count){
         IdType& type = types[w[1]];
-        type.kind = op;
+        if (type.kind != spv::OpNop)
+            return fail("a type declared twice");
         ids[w[1]].kind = IdKind::Type;
         switch (op){
             case spv::OpTypeVoid:
@@ -372,74 +481,151 @@ private:
                     return fail("a type that is not 32 bits wide");
                 type.size = 1;
                 break;
-            case spv::OpTypeVector: case spv::OpTypeMatrix:
+            case spv::OpTypeVector:
+                if (!isType(w[2]) || types[w[2]].size != 1 || types[w[2]].count != 0 || w[3] < 2 || w[3] > 4)
+                    return fail("a vector that is not 2 to 4 scalars");
+                type.element = w[2];
+                type.count = w[3];
+                type.elementSize = 1;
+                type.size = type.count;
+                break;
+            case spv::OpTypeMatrix:
+                if (!isType(w[2]) || types[w[2]].kind != spv::OpTypeVector || w[3] < 2 || w[3] > 4)
+                    return fail("a matrix that is not 2 to 4 vectors");
                 type.element = w[2];
                 type.count = w[3];
                 type.elementSize = types[w[2]].size;
                 type.size = type.count * type.elementSize;
                 break;
             case spv::OpTypeArray: {
+                auto length = constantValues.find(w[3]);
+                if (!isType(w[2]) || types[w[2]].size == 0 || length == constantValues.end() || length->second == 0
+                        || (uint64_t)length->second * types[w[2]].size > maxTypeSize)
+                    return fail("an array with no element type, no length or too many registers");
                 type.element = w[2];
-                type.count = constantValues[w[3]];
+                type.count = length->second;
                 type.elementSize = types[w[2]].size;
                 type.size = type.count * type.elementSize;
                 break;
             }
-            case spv::OpTypeStruct:
+            case spv::OpTypeStruct: {
+                uint64_t size = 0;
                 for (uint32_t i = 2; i < count; i++){
+                    if (!isType(w[i]))
+                        return fail("a struct member with no type");
                     type.members.push_back(w[i]);
-                    type.size += types[w[i]].size;
+                    size += types[w[i]].size;
                 }
+                if (size > maxTypeSize)
+                    return fail("a struct with too many registers");
+                type.size = (uint32_t)size;
                 break;
+            }
             case spv::OpTypePointer:
+                if (!isType(w[3]))
+                    return fail("a pointer to no type");
                 type.storage = (spv::StorageClass)w[2];
                 type.element = w[3];
                 break;
             case spv::OpTypeFunction:
                 break;
-            case spv::OpTypeImage: case spv::OpTypeSampler: case spv::OpTypeSampledImage:
+            case spv::OpTypeImage:
+                // R11's samplers are 2D: another kind of image would read the wrong coordinates
+                if (w[3] != spv::Dim2D || w[5] != 0 || w[6] != 0)
+                    return fail("an image that is not a plain 2D texture");
                 type.size = 1; // the register holds the texture's slot
+                break;
+            case spv::OpTypeSampler:
+                type.size = 1;
+                break;
+            case spv::OpTypeSampledImage:
+                if (!isType(w[2]) || types[w[2]].kind != spv::OpTypeImage)
+                    return fail("a sampled image of no image");
+                type.size = 1;
                 break;
             default:
                 return fail("unsupported type");
         }
+        type.kind = op;
         return true;
     }
 
     std::map<uint32_t, uint32_t> constantValues;
     std::map<uint32_t, uint32_t> variableInit;
+    std::map<uint32_t, uint32_t> arrayStrides;
+    std::map<std::pair<uint32_t, uint32_t>, uint32_t> memberOffsets;
 
     bool parseConstant(spv::Op op, const uint32_t* w, uint32_t count){
         const uint32_t type = w[1];
         const uint32_t id = w[2];
+        if (!isType(type))
+            return fail("a constant with no type");
         const uint32_t loc = allocate(types[type].size);
+        if (!problem.empty())
+            return false;
         ids[id].kind = IdKind::Register;
         ids[id].type = type;
         ids[id].loc = loc;
         constantIds.insert(id);
         switch (op){
             case spv::OpConstant:
+                if (types[type].size != 1)
+                    return fail("a scalar constant of another type");
                 program.initial[loc].u = w[3];
                 constantValues[id] = w[3];
                 break;
             case spv::OpConstantTrue:
+                if (types[type].size != 1)
+                    return fail("a scalar constant of another type");
                 program.initial[loc].u = 1;
                 break;
             case spv::OpConstantFalse: case spv::OpConstantNull: case spv::OpUndef:
                 break;
             case spv::OpConstantComposite: {
                 uint32_t offset = loc;
+                const uint32_t end = loc + types[type].size;
                 for (uint32_t i = 3; i < count; i++){
+                    if (w[i] >= bound || constantIds.count(w[i]) == 0)
+                        return fail("a constant composite of something else");
                     const IdInfo& part = ids[w[i]];
                     const uint32_t size = types[part.type].size;
+                    if (offset + (uint64_t)size > end)
+                        return fail("a constant composite larger than its type");
                     for (uint32_t k = 0; k < size; k++)
                         program.initial[offset + k] = program.initial[part.loc + k];
                     offset += size;
                 }
+                if (offset != end)
+                    return fail("a constant composite smaller than its type");
                 break;
             }
             default:
                 return fail("unsupported constant");
+        }
+        return true;
+    }
+
+    // The register layout is the type flattened, so a block must be declared with no padding:
+    // anything else would put setUniforms' values in the wrong registers without a word.
+    bool layoutIsFlat(uint32_t type){
+        const IdType& t = types[type];
+        if (t.kind == spv::OpTypeStruct){
+            uint32_t offset = 0;
+            for (uint32_t i = 0; i < t.members.size(); i++){
+                auto declared = memberOffsets.find({type, i});
+                if (declared != memberOffsets.end() && declared->second != offset * 4)
+                    return false;
+                if (!layoutIsFlat(t.members[i]))
+                    return false;
+                offset += types[t.members[i]].size;
+            }
+        } else if (t.kind == spv::OpTypeArray){
+            auto stride = arrayStrides.find(type);
+            if (stride != arrayStrides.end() && stride->second != t.elementSize * 4)
+                return false;
+            return layoutIsFlat(t.element);
+        } else if (t.kind == spv::OpTypeMatrix){
+            return false;
         }
         return true;
     }
@@ -455,6 +641,8 @@ private:
         info.pointee = pointee;
         info.root = id;
         info.loc = allocate(types[pointee].size);
+        if (!problem.empty())
+            return false;
         switch (storage){
             case spv::StorageClassInput:
                 if (program.inputSize != 0)
@@ -468,10 +656,13 @@ private:
                     return fail("more than one fragment output");
                 program.outputLoc = info.loc;
                 program.outputSize = types[pointee].size;
+                resetEachPixel.push_back(id);
                 break;
             case spv::StorageClassUniform:
                 if (program.uniformSize != 0)
                     return fail("more than one uniform block");
+                if (!layoutIsFlat(pointee))
+                    return fail("a uniform block with padding: only arrays of vec4 are laid out as the registers are");
                 program.uniformLoc = info.loc;
                 program.uniformSize = types[pointee].size;
                 readOnlyRoots.insert(id);
@@ -487,8 +678,14 @@ private:
                 }
                 break;
             case spv::StorageClassPrivate:
-                if (count > 4)
-                    privateInits.push_back(id), variableInit[id] = w[4];
+                if (count > 4){
+                    if (w[4] >= bound || constantIds.count(w[4]) == 0)
+                        return fail("a variable initializer that is not a constant");
+                    privateInits.push_back(id);
+                    variableInit[id] = w[4];
+                } else {
+                    resetEachPixel.push_back(id);
+                }
                 break;
             default:
                 return fail(std::string("unsupported storage class ") + std::to_string((int)storage));
@@ -573,9 +770,10 @@ private:
                     function.callees.insert(raw.words[3]);
             }
         }
+        std::set<uint32_t> finished;
         for (uint32_t functionId : functionOrder){
             std::set<uint32_t> visiting;
-            if (!checkAcyclic(functionId, visiting))
+            if (!checkAcyclic(functionId, visiting, finished))
                 return false;
         }
         for (uint32_t functionId : functionOrder){
@@ -598,16 +796,228 @@ private:
         return true;
     }
 
-    bool checkAcyclic(uint32_t functionId, std::set<uint32_t>& visiting){
+    bool checkAcyclic(uint32_t functionId, std::set<uint32_t>& visiting, std::set<uint32_t>& finished){
+        if (finished.count(functionId))
+            return true;
         if (!visiting.insert(functionId).second)
             return fail("a recursive call");
         for (uint32_t callee : functions[functionId].callees){
             if (functions.find(callee) == functions.end())
                 return fail("a call to an unknown function");
-            if (!checkAcyclic(callee, visiting))
+            if (!checkAcyclic(callee, visiting, finished))
                 return false;
         }
         visiting.erase(functionId);
+        finished.insert(functionId);
+        return true;
+    }
+
+    // -- validation ----------------------------------------------------------------------------
+
+    bool isPointerValue(uint32_t id) const { return types[ids[id].type].kind == spv::OpTypePointer; }
+
+    // What the emitter assumes of a function body: terminated blocks, values defined before their use
+    // (which also rules out a cycle of renames), operands of the shape the instruction needs.
+    bool validateFunctions(){
+        std::vector<bool> defined(bound, false);
+        for (uint32_t id = 0; id < bound; id++)
+            defined[id] = ids[id].kind == IdKind::Register || ids[id].kind == IdKind::StaticPointer;
+        for (uint32_t functionId : functionOrder){
+            const FunctionInfo& function = functions[functionId];
+            if (function.body.empty())
+                return fail("a function with no body");
+            bool open = false;
+            for (const RawInstruction& raw : function.body){
+                if (raw.op == spv::OpLabel){
+                    if (open)
+                        return fail("a block with no terminator");
+                    open = true;
+                    continue;
+                }
+                if (!open)
+                    return fail("an instruction outside a block");
+                bool known = true;
+                forEachOperand(raw, [&](uint32_t id){
+                    if (id >= bound || (raw.op != spv::OpPhi && !defined[id]))
+                        known = false;
+                });
+                if (!known)
+                    return fail("an operand used before it is defined, or out of the module's bound");
+                if (hasResult(raw.op)){
+                    if (!isType(raw.words[1]))
+                        return fail("a result with no type");
+                    if (defined[raw.words[2]])
+                        return fail("an id defined twice");
+                    defined[raw.words[2]] = true;
+                    ids[raw.words[2]].type = raw.words[1];
+                }
+                if (!validateInstruction(function, raw))
+                    return false;
+                open = !(raw.op == spv::OpBranch || raw.op == spv::OpBranchConditional || raw.op == spv::OpReturn
+                         || raw.op == spv::OpReturnValue || raw.op == spv::OpUnreachable);
+            }
+            if (open)
+                return fail("a block with no terminator");
+        }
+        return true;
+    }
+
+    bool validateInstruction(const FunctionInfo& function, const RawInstruction& raw){
+        const uint32_t* w = raw.words;
+        switch (raw.op){
+            case spv::OpLoad:
+                if (!isPointerValue(w[3]) || types[ids[w[3]].type].element != w[1])
+                    return fail("a load through something that is not a pointer to its type");
+                break;
+            case spv::OpStore:
+                if (!isPointerValue(w[1]) || types[ids[w[1]].type].element != ids[w[2]].type)
+                    return fail("a store through something that is not a pointer to its type");
+                break;
+            case spv::OpAccessChain: case spv::OpInBoundsAccessChain:
+                if (!isPointerValue(w[3]) || types[w[1]].kind != spv::OpTypePointer)
+                    return fail("an access chain that is not on a pointer");
+                break;
+            case spv::OpFunctionCall: {
+                auto callee = functions.find(w[3]);
+                if (callee == functions.end() || callee->second.params.size() != raw.count - 4)
+                    return fail("a call with the wrong number of arguments");
+                for (uint32_t i = 4; i < raw.count; i++){
+                    if (ids[w[i]].type != ids[callee->second.params[i - 4]].type)
+                        return fail("a call with an argument of the wrong type");
+                }
+                break;
+            }
+            case spv::OpReturnValue:
+                if (ids[w[1]].type != function.returnType)
+                    return fail("a return value of the wrong type");
+                break;
+            case spv::OpVectorShuffle: {
+                const uint32_t n = raw.count - 5;
+                const IdType& left = types[ids[w[3]].type];
+                const IdType& right = types[ids[w[4]].type];
+                if (left.kind != spv::OpTypeVector || right.kind != spv::OpTypeVector || n < 1 || n > 4 || componentCount(w[1]) != n)
+                    return fail("a shuffle that is not of vectors, or not of 1 to 4 components");
+                for (uint32_t i = 5; i < raw.count; i++){
+                    if (w[i] != 0xffffffffu && w[i] >= left.count + right.count)
+                        return fail("a shuffle of a component that does not exist");
+                }
+                break;
+            }
+            case spv::OpCompositeConstruct: {
+                uint64_t size = 0;
+                for (uint32_t i = 3; i < raw.count; i++)
+                    size += sizeOf(ids[w[i]].type);
+                if (size != sizeOf(w[1]))
+                    return fail("a composite built from parts of another size");
+                break;
+            }
+            case spv::OpCopyObject: case spv::OpCopyLogical: case spv::OpBitcast:
+                if (sizeOf(ids[w[3]].type) != sizeOf(w[1]))
+                    return fail("a copy or bitcast that changes size");
+                break;
+            case spv::OpSampledImage:
+                if (types[ids[w[3]].type].kind != spv::OpTypeImage)
+                    return fail("a sampled image of no image");
+                break;
+            case spv::OpImageSampleExplicitLod:
+                if (types[ids[w[3]].type].kind != spv::OpTypeSampledImage || componentCount(ids[w[4]].type) < 2 || sizeOf(w[1]) != 4)
+                    return fail("a sample of no sampled image, or with the wrong coordinates");
+                break;
+            case spv::OpSelect: {
+                const uint32_t conditionSize = componentCount(ids[w[3]].type);
+                if (conditionSize != 1 && conditionSize != sizeOf(w[1]))
+                    return fail("a select whose condition does not fit its result");
+                break;
+            }
+            case spv::OpMatrixTimesVector:
+                if (types[ids[w[3]].type].kind != spv::OpTypeMatrix)
+                    return fail("a matrix product of no matrix");
+                break;
+            case spv::OpVectorTimesMatrix:
+                if (types[ids[w[4]].type].kind != spv::OpTypeMatrix)
+                    return fail("a matrix product of no matrix");
+                break;
+            case spv::OpMatrixTimesMatrix:
+                if (types[ids[w[3]].type].kind != spv::OpTypeMatrix || types[ids[w[4]].type].kind != spv::OpTypeMatrix)
+                    return fail("a matrix product of no matrix");
+                break;
+            case spv::OpExtInst:
+                if (ids[w[3]].kind != IdKind::ExtSet)
+                    return fail("an extended instruction of no set");
+                break;
+            default:
+                break;
+        }
+        return true;
+    }
+
+    // The last defence, independent of everything above: no instruction of the finished code can
+    // touch a register, table entry or instruction that does not exist.
+    bool verifyCode(){
+        const uint64_t registerCount = program.initial.size();
+        const uint64_t codeSize = program.code.size();
+        const uint64_t tableSize = program.tables.size();
+        if (codeSize == 0)
+            return fail("no code");
+        for (const SpirvInstruction& I : program.code){
+            const uint32_t op = I.op;
+            const auto reg = [&](uint32_t loc, uint64_t width){ return loc + width <= registerCount; };
+            const auto in = [&](uint32_t first, uint32_t last){ return op >= first && op <= last; };
+            const auto n = [&](uint32_t first){ return (op - first) % 4 + 1; };
+            bool ok = true;
+            const auto table = [&](uint32_t at, uint64_t count){ return at + count <= tableSize; };
+            if (in(Copy1, Copy4))                    ok = reg(I.a, op - Copy1 + 1) && reg(I.b, op - Copy1 + 1);
+            else if (op == CopyN)                    ok = reg(I.a, I.c) && reg(I.b, I.c);
+            else if (op == ClearN)                   ok = reg(I.a, I.b);
+            else if (in(FAdd1, Step4))               ok = reg(I.a, n(FAdd1)) && reg(I.b, n(FAdd1)) && reg(I.c, n(FAdd1));
+            else if (in(FNeg1, Round4))              ok = reg(I.a, n(FNeg1)) && reg(I.b, n(FNeg1));
+            else if (in(Mix1, SmoothStep4))          ok = reg(I.a, n(Mix1)) && reg(I.b, n(Mix1)) && reg(I.c, n(Mix1)) && reg(I.d, n(Mix1));
+            else if (in(IAdd1, SMax4))               ok = reg(I.a, n(IAdd1)) && reg(I.b, n(IAdd1)) && reg(I.c, n(IAdd1));
+            else if (in(SClamp1, SClamp4))           ok = reg(I.a, n(SClamp1)) && reg(I.b, n(SClamp1)) && reg(I.c, n(SClamp1)) && reg(I.d, n(SClamp1));
+            else if (in(INeg1, SSign4))              ok = reg(I.a, n(INeg1)) && reg(I.b, n(INeg1));
+            else if (in(FEq1, UGe4))                 ok = reg(I.a, n(FEq1)) && reg(I.b, n(FEq1)) && reg(I.c, n(FEq1));
+            else if (in(IsNan1, U2F4))               ok = reg(I.a, n(IsNan1)) && reg(I.b, n(IsNan1));
+            else if (in(SelectS1, SelectS4))         ok = reg(I.a, n(SelectS1)) && reg(I.b, 1) && reg(I.c, n(SelectS1)) && reg(I.d, n(SelectS1));
+            else if (in(SelectV1, SelectV4))         ok = reg(I.a, n(SelectV1)) && reg(I.b, n(SelectV1)) && reg(I.c, n(SelectV1)) && reg(I.d, n(SelectV1));
+            else if (op == SelectSN)                 ok = table(I.d, 2) && reg(I.a, program.tables[I.d + 1]) && reg(I.b, 1)
+                                                          && reg(I.c, program.tables[I.d + 1]) && reg(program.tables[I.d], program.tables[I.d + 1]);
+            else if (in(Any1, All4))                 ok = reg(I.a, 1) && reg(I.b, n(Any1));
+            else if (in(Dot1, Dot4))                 ok = reg(I.a, 1) && reg(I.b, n(Dot1)) && reg(I.c, n(Dot1));
+            else if (in(Length1, Length4))           ok = reg(I.a, 1) && reg(I.b, n(Length1));
+            else if (in(Normalize1, Normalize4))     ok = reg(I.a, n(Normalize1)) && reg(I.b, n(Normalize1));
+            else if (op == Cross)                    ok = reg(I.a, 3) && reg(I.b, 3) && reg(I.c, 3);
+            else if (op == Distance)                 ok = I.d <= 4 && reg(I.a, 1) && reg(I.b, I.d) && reg(I.c, I.d);
+            else if (in(Vts1, Vts4))                 ok = reg(I.a, op - Vts1 + 1) && reg(I.b, op - Vts1 + 1) && reg(I.c, 1);
+            else if (op == VtsN)                     ok = reg(I.a, I.d) && reg(I.b, I.d) && reg(I.c, 1);
+            else if (op == MatVec || op == VecMat){
+                const uint32_t cols = I.d >> 8, rows = I.d & 0xff;
+                ok = cols <= 4 && rows <= 4 && reg(I.a, op == MatVec ? rows : cols) && reg(op == MatVec ? I.b : I.c, (uint64_t)cols * rows)
+                     && reg(op == MatVec ? I.c : I.b, op == MatVec ? cols : rows);
+            } else if (op == MatMat){
+                const uint32_t rightCols = I.d >> 16, leftCols = (I.d >> 8) & 0xff, rows = I.d & 0xff;
+                ok = rightCols <= 4 && leftCols <= 4 && rows <= 4 && reg(I.a, (uint64_t)rightCols * rows)
+                     && reg(I.b, (uint64_t)leftCols * rows) && reg(I.c, (uint64_t)rightCols * leftCols);
+            } else if (op == Shuffle){
+                ok = I.c <= 4 && reg(I.a, I.c) && table(I.b, I.c);
+                for (uint32_t k = 0; ok && k < I.c; k++)
+                    ok = reg(program.tables[I.b + k], 1);
+            } else if (op == ExtractDyn)             ok = reg(I.a, 1) && reg(I.b, I.d) && reg(I.c, 1) && I.d >= 1;
+            else if (op == InsertDyn)                ok = reg(I.a, I.d) && reg(I.b, 1) && reg(I.c, 1) && I.d >= 1;
+            else if (op == PtrIndex)                 ok = reg(I.a, 1) && reg(I.c, 1) && table(I.d, 2) && program.tables[I.d + 1] >= 1;
+            else if (op == PtrIndexAdd)              ok = reg(I.a, 1) && reg(I.b, 1) && reg(I.c, 1) && table(I.d, 2) && program.tables[I.d + 1] >= 1;
+            else if (op == LoadInd)                  ok = reg(I.a, I.c) && reg(I.b, 1);
+            else if (op == StoreInd)                 ok = reg(I.a, 1) && reg(I.b, I.c);
+            else if (op == Math1)                    ok = I.c < std::size(math1Functions) && I.d <= 4 && reg(I.a, I.d) && reg(I.b, I.d);
+            else if (op == Math2)                    ok = (I.d >> 8) < std::size(math2Functions) && (I.d & 0xff) <= 4 && reg(I.a, I.d & 0xff)
+                                                          && reg(I.b, I.d & 0xff) && reg(I.c, I.d & 0xff);
+            else if (op == Jump || op == Call)       ok = I.a < codeSize;
+            else if (op == JumpIf)                   ok = I.a < codeSize && I.c < codeSize && reg(I.b, 1);
+            else if (op == Ret)                      ok = true;
+            else if (op == Sample)                   ok = reg(I.a, 4) && reg(I.b, 1) && reg(I.c, 2) && reg(I.d, 1);
+            else                                     ok = false;
+            if (!ok)
+                return fail("an operand of the wrong shape for its instruction");
+        }
         return true;
     }
 
@@ -643,7 +1053,6 @@ private:
         std::map<uint32_t, uint32_t> useCount;
         std::map<uint32_t, uint32_t> lastUse;       // position of the last use, in this block's order
         std::map<uint32_t, uint32_t> defBlock;
-        std::map<uint32_t, uint32_t> defPosition;
         std::set<uint32_t> crossesBlock;
         std::map<uint32_t, std::vector<std::pair<uint32_t, uint32_t>>> rootStores; // root -> (position, block)
         std::map<uint32_t, uint32_t> storeCount;
@@ -689,6 +1098,8 @@ private:
             const uint32_t init = variableInit[id];
             emitCopy(ids[id].loc, ids[init].loc, sizeOf(ids[id].pointee));
         }
+        for (uint32_t id : resetEachPixel)
+            emit(ClearN, ids[id].loc, sizeOf(ids[id].pointee));
         emit(Call, 0);
         const size_t entryCall = program.code.size() - 1;
         emit(Ret);
@@ -706,11 +1117,17 @@ private:
     }
 
     uint32_t callDepth(uint32_t functionId){
+        auto known = callDepths.find(functionId);
+        if (known != callDepths.end())
+            return known->second;
         uint32_t depth = 0;
         for (uint32_t callee : functions[functionId].callees)
             depth = std::max(depth, 1 + callDepth(callee));
+        callDepths[functionId] = depth;
         return depth;
     }
+
+    std::map<uint32_t, uint32_t> callDepths;
 
     std::vector<std::pair<size_t, uint32_t>> callPatches;
 
@@ -721,6 +1138,8 @@ private:
                 continue;
             const uint32_t* w = raw.words;
             const IdInfo& base = ids[w[3]];
+            if (base.kind != IdKind::StaticPointer && base.kind != IdKind::DynamicPointer)
+                return fail("an access chain on something that is not a pointer");
             uint32_t pointee = base.pointee;
             uint32_t offset = base.loc;
             bool isStatic = base.kind == IdKind::StaticPointer;
@@ -750,7 +1169,17 @@ private:
         return true;
     }
 
-    uint32_t memberOffset(uint32_t type, uint32_t index) const {
+    bool hasMember(uint32_t type, uint32_t index){
+        const IdType& t = types[type];
+        const bool composite = t.kind == spv::OpTypeVector || t.kind == spv::OpTypeMatrix || t.kind == spv::OpTypeArray;
+        if (t.kind == spv::OpTypeStruct ? index < t.members.size() : (composite && index < t.count))
+            return true;
+        return fail("an index out of its composite");
+    }
+
+    uint32_t memberOffset(uint32_t type, uint32_t index){
+        if (!hasMember(type, index))
+            return 0;
         const IdType& t = types[type];
         if (t.kind == spv::OpTypeStruct){
             uint32_t offset = 0;
@@ -761,7 +1190,9 @@ private:
         return index * t.elementSize;
     }
 
-    uint32_t memberType(uint32_t type, uint32_t index) const {
+    uint32_t memberType(uint32_t type, uint32_t index){
+        if (!hasMember(type, index))
+            return 0;
         const IdType& t = types[type];
         return t.kind == spv::OpTypeStruct ? t.members[index] : t.element;
     }
@@ -801,7 +1232,6 @@ private:
         for (const RawInstruction& raw : function.body){
             if (hasResult(raw.op)){
                 analysis.defBlock[raw.words[2]] = raw.block;
-                analysis.defPosition[raw.words[2]] = raw.position;
                 analysis.defInstruction[raw.words[2]] = &raw;
             }
             if (raw.op == spv::OpStore){
@@ -834,7 +1264,7 @@ private:
     }
 
     // True when the op's result is the same bits as a part of its first operand: no instruction.
-    bool aliasOf(const RawInstruction& raw, uint32_t& source, uint32_t& offset) const {
+    bool aliasOf(const RawInstruction& raw, uint32_t& source, uint32_t& offset){
         const uint32_t* w = raw.words;
         switch (raw.op){
             case spv::OpCopyObject: case spv::OpCopyLogical: case spv::OpBitcast: case spv::OpSampledImage:
@@ -960,7 +1390,7 @@ private:
                         clear = false;
                 }
             }
-            if (!clear || definition.op == spv::OpPhi)
+            if (!clear)
                 continue;
             retarget[value] = ids[pointer].loc;
             analysis.elided.insert(store.position);
@@ -1203,10 +1633,11 @@ private:
                 }
             }
         }
+        // a phi may read a part of another phi's register, not only the whole of it
         bool conflict = false;
         for (size_t i = 0; i < copies.size(); i++)
             for (size_t j = 0; j < copies.size(); j++)
-                if (i != j && copies[j].second == copies[i].first)
+                if (i != j && copies[j].second < copies[i].first + sizes[i] && copies[i].first < copies[j].second + sizes[j])
                     conflict = true;
         if (conflict){
             for (size_t i = 0; i < copies.size(); i++){
@@ -1297,9 +1728,13 @@ void SpirvCompiler::emitDynamicPointer(const RawInstruction& raw){
             pointee = memberType(pointee, constant->second);
             continue;
         }
+        if (type.kind != spv::OpTypeVector && type.kind != spv::OpTypeMatrix && type.kind != spv::OpTypeArray){
+            fail("a dynamic index on something that is not an array, vector or matrix");
+            return;
+        }
         const uint32_t table = (uint32_t)program.tables.size();
         program.tables.push_back(type.elementSize);
-        program.tables.push_back(type.kind == spv::OpTypeVector || type.kind == spv::OpTypeMatrix || type.kind == spv::OpTypeArray ? type.count : 1);
+        program.tables.push_back(type.count);
         if (haveRegister){
             emit(PtrIndexAdd, result.loc, registerNow, ids[w[i]].loc, table);
         } else {
@@ -1447,6 +1882,7 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
         case OpULessThanEqual: return binary(ULe1);
         case OpUGreaterThan: return binary(UGt1);
         case OpUGreaterThanEqual: return binary(UGe1);
+        case OpIsNan: return unary(IsNan1);
         case OpConvertFToS: return unary(F2S1);
         case OpConvertFToU: return unary(F2U1);
         case OpConvertSToF: return unary(S2F1);
@@ -1510,12 +1946,9 @@ bool SpirvCompiler::emitInstruction(FunctionInfo& function, const RawInstruction
             const size_t index = program.code.size() - 1;
             if (hasPhis(trueLabel) || hasPhis(falseLabel)){
                 // edges with copies get a stub each
-                const uint32_t source = currentBlock;
                 program.code[index].a = (uint32_t)program.code.size();
-                currentBlock = source;
                 emitJumpTo(trueLabel);
                 program.code[index].c = (uint32_t)program.code.size();
-                currentBlock = source;
                 emitJumpTo(falseLabel);
             } else {
                 pendingJumps.push_back({index, 0, trueLabel});
@@ -1553,11 +1986,14 @@ bool SpirvCompiler::emitExtended(const RawInstruction& raw){
     const uint32_t b = raw.count > 6 ? ids[w[6]].loc : 0;
     const uint32_t c = raw.count > 7 ? ids[w[7]].loc : 0;
     const uint32_t argumentN = raw.count > 5 ? componentCount(ids[w[5]].type) : n;
-    const auto family2 = [&](uint32_t base){ emit(base + n - 1, dst, a, b); return true; };
-    const auto family1 = [&](uint32_t base){ emit(base + n - 1, dst, a); return true; };
-    const auto family3 = [&](uint32_t base){ emit(base + n - 1, dst, a, b, c); return true; };
-    const auto math1 = [&](uint32_t index){ emit(Math1, dst, a, index, n); return true; };
-    const auto math2 = [&](uint32_t index){ emit(Math2, dst, a, b, (index << 8) | n); return true; };
+    const auto arguments = [&](uint32_t count){
+        return raw.count == 5 + count || fail("an extended instruction with the wrong number of arguments");
+    };
+    const auto family2 = [&](uint32_t base){ emit(base + n - 1, dst, a, b); return arguments(2); };
+    const auto family1 = [&](uint32_t base){ emit(base + n - 1, dst, a); return arguments(1); };
+    const auto family3 = [&](uint32_t base){ emit(base + n - 1, dst, a, b, c); return arguments(3); };
+    const auto math1 = [&](uint32_t index){ emit(Math1, dst, a, index, n); return arguments(1); };
+    const auto math2 = [&](uint32_t index){ emit(Math2, dst, a, b, (index << 8) | n); return arguments(2); };
     switch (w[4]){
         case GLSLstd450Round: return family1(Round1);
         case GLSLstd450Trunc: return family1(Trunc1);
@@ -1599,16 +2035,16 @@ bool SpirvCompiler::emitExtended(const RawInstruction& raw){
         case GLSLstd450SmoothStep: return family3(SmoothStep1);
         case GLSLstd450Length:
             emit(Length1 + argumentN - 1, dst, a);
-            return true;
+            return arguments(1);
         case GLSLstd450Distance:
             emit(Distance, dst, a, b, argumentN);
-            return true;
+            return arguments(2);
         case GLSLstd450Normalize:
             emit(Normalize1 + n - 1, dst, a);
-            return true;
+            return arguments(1);
         case GLSLstd450Cross:
             emit(Cross, dst, a, b);
-            return true;
+            return arguments(2);
         default:
             return fail(std::string("unsupported GLSL.std.450 instruction ") + std::to_string(w[4]));
     }
@@ -1748,12 +2184,14 @@ namespace {
     inline uint32_t cmpULe(uint32_t x, uint32_t y){ return x <= y; }
     inline uint32_t cmpUGt(uint32_t x, uint32_t y){ return x > y; }
     inline uint32_t cmpUGe(uint32_t x, uint32_t y){ return x >= y; }
+    inline uint32_t testNan(float x){ return x != x; }
     inline float fromInt(int32_t x){ return (float)x; }
     inline float fromUint(uint32_t x){ return (float)x; }
 }
 
 SpirvMachine::Result SpirvMachine::execute(){
     SpirvRegister* const r = registers.data();
+    const uint64_t registerCount = registers.size();
     const SpirvInstruction* const code = program.code.data();
     const uint32_t* const tables = program.tables.data();
     uint32_t* const stack = callStack.data();
@@ -1851,6 +2289,8 @@ SpirvMachine::Result SpirvMachine::execute(){
             CASE_I2(ULe, u, cmpULe, u)
             CASE_I2(UGt, u, cmpUGt, u)
             CASE_I2(UGe, u, cmpUGe, u)
+
+            CASE_U1(IsNan, f, testNan, u)
 
             CASE_U1(F2S, f, floatToInt, i)
             CASE_U1(F2U, f, floatToUint, u)
@@ -1999,9 +2439,13 @@ SpirvMachine::Result SpirvMachine::execute(){
                 OP_NEXT
             }
             OP_CASE(LoadInd)
+                if (r[I->b].u + (uint64_t)I->c > registerCount)
+                    return Result::TooLong;
                 std::memmove(r + I->a, r + r[I->b].u, I->c * sizeof(SpirvRegister));
                 OP_NEXT
             OP_CASE(StoreInd)
+                if (r[I->a].u + (uint64_t)I->c > registerCount)
+                    return Result::TooLong;
                 std::memmove(r + r[I->a].u, r + I->b, I->c * sizeof(SpirvRegister));
                 OP_NEXT
             OP_CASE(Math1) {
@@ -2070,6 +2514,11 @@ SpirvMachine::Result SpirvMachine::execute(){
 }
 
 SpirvImage::SpirvImage(int width, int height, std::vector<float> rgba){
+    // an image that is not what it says becomes one transparent texel, not a read out of bounds
+    if (width <= 0 || height <= 0 || rgba.size() < (size_t)width * height * 4){
+        width = height = 1;
+        rgba.assign(4, 0.0f);
+    }
     mips.push_back({width, height, std::move(rgba)});
     while (mips.back().width > 1 || mips.back().height > 1){
         const Mip& previous = mips.back();
@@ -2100,6 +2549,11 @@ SpirvImage::SpirvImage(int width, int height, std::vector<float> rgba){
 
 void SpirvImage::sampleBilinear(float u, float v, int mip, float out[4]) const {
     const Mip& level = mips[std::clamp(mip, 0, (int)mips.size() - 1)];
+    // NaN and infinity would reach an int conversion below; a tier has no defined answer for them
+    if (!std::isfinite(u))
+        u = 0.0f;
+    if (!std::isfinite(v))
+        v = 0.0f;
     const float x = (u - std::floor(u)) * (float)level.width - 0.5f;
     const float y = (v - std::floor(v)) * (float)level.height - 0.5f;
     const float floorX = std::floor(x), floorY = std::floor(y);

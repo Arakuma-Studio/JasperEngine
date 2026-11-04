@@ -20,6 +20,13 @@
    "node": "voronoi",
    "url": "https://www.shadertoy.com/view/ldl3W8",
    "year": "2013"
+  },
+  {
+   "holder": "Inigo Quilez",
+   "license": "MIT",
+   "node": "voronoi2",
+   "url": "https://www.shadertoy.com/view/ldl3W8",
+   "year": "2013"
   }
  ],
  "outputs": [

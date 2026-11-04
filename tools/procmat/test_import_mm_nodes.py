@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # (c) Eduardo Doria and contributors
 # SPDX-License-Identifier: MIT
-"""AC11 of docs/specs/S53-procedural-material.md: the node importer's licence and data rules.
+"""AC11 of docs/specs/S90-procedural-material.md: the node importer's licence and data rules.
 
     python3 tools/procmat/test_import_mm_nodes.py
 
@@ -187,6 +187,19 @@ class ImportTest(unittest.TestCase):
         self.source.run(self.out)
         self.assertFalse((self.out / "wrapped.json").exists())
 
+    def test_a_denied_node_is_followed_through_nested_includes(self):
+        self.source.add("skewed_bricks", shader(global_code="float forbidden_code(float x) { return x; }\n"), tree=False)
+        self.source.add("middle", shader(includes=["skewed_bricks"]), tree=False)
+        self.source.add("user", shader(includes=["middle"], output="forbidden_code(0.0)"))
+        inner = shader(includes=["middle"], output="forbidden_code(0.0)")
+        inner["name"] = "inner"
+        self.source.add("wrapped", {"type": "graph", "name": "g", "label": "G", "nodes": [inner], "connections": [], "parameters": {}})
+        self.source.add("plain", shader())
+        self.source.run(self.out)
+        self.assertFalse((self.out / "user.json").exists())
+        self.assertFalse((self.out / "wrapped.json").exists())
+        self.assertNotIn("forbidden_code", (self.out / "_functions.json").read_text(encoding="utf-8"))
+
     def test_the_3d_category_is_left_out(self):
         self.source.add("solid", shader(), tree="3D/SDF/solid")
         self.source.run(self.out)
@@ -204,7 +217,59 @@ class ImportTest(unittest.TestCase):
         # the comment stays with the code it covers
         self.assertIn("Inigo Quilez", "\n".join(self.functions()["star"]["code"]))
 
+    def test_a_copy_without_the_comment_keeps_the_notice(self):
+        code = "float star(float x) { return x; }\n"
+        self.source.add("aaa_copy", shader(global_code=code, output="star(0.0)"))
+        self.source.add("sdstar", shader(global_code="// The MIT License, Copyright © 2019 Inigo Quilez\n// https://www.shadertoy.com/view/3tSGDy\n" + code, output="star(0.0)"))
+        self.source.run(self.out)
+        function = self.functions()["star"]
+        self.assertEqual([n["node"] for n in function["notices"]], ["sdstar"])
+        self.assertIn("Inigo Quilez", "\n".join(function["code"]))
+        self.assertEqual([n["holder"] for n in self.descriptor("aaa_copy")["notices"]], ["Inigo Quilez"])
+
+    def test_the_shared_functions_are_scanned_for_attributions(self):
+        path = self.source.root / importer.FUNCTIONS_FILE
+        path.write_text(path.read_text(encoding="utf-8").replace("float dot2", "// Copyright Someone\nfloat dot2"), encoding="utf-8")
+        self.source.add("plain", shader())
+        self.assertRefuses(r"shader_functions: unrecognised attribution")
+
     # -- R17, R3: what is data and what is refused --
+
+    def graph_with(self, value):
+        inner = shader(parameters=[{"name": "x", "type": "float", "default": 1, "min": 0, "max": 1, "step": 0.1, "label": ""}], output="$x")
+        inner.update(name="inner", parameters={"x": value})
+        remote = {"name": "gen_parameters", "type": "remote", "parameters": {},
+                  "widgets": [{"name": "scale", "label": "Scale", "type": "named_parameter", "min": 0, "max": 1, "step": 0.1, "default": 0.5}]}
+        return {"type": "graph", "name": "g", "label": "G", "nodes": [inner, remote], "connections": [], "parameters": {}}
+
+    def test_a_graph_parameter_may_be_a_plain_expression(self):
+        for value in ("0.005/$scale", "$uv.x", "3.14 / 2.0", "1.0+$scale", "$rnd(0.0, 1.0)"):
+            with self.subTest(value=value):
+                source = Source(self.root / f"good{abs(hash(value))}")
+                source.add("wrapped", self.graph_with(value))
+                out = self.root / f"good{abs(hash(value))}_out"
+                source.run(out)
+                self.assertTrue((out / "wrapped.json").exists())
+
+    def test_a_graph_parameter_that_is_not_an_expression_is_refused(self):
+        for number, value in enumerate(("1.0); return vec4(0.0); //", "$(expr:1+1)", "$nothing", "sin(1.0)", "foo")):
+            with self.subTest(value=value):
+                source = Source(self.root / f"bad{number}")
+                source.add("wrapped", self.graph_with(value))
+                with self.assertRaisesRegex(importer.ImportFailure, "wrapped/inner: parameter x"):
+                    source.run(self.root / f"bad{number}_out")
+
+    def test_a_host_path_preset_is_not_kept(self):
+        self.source.add("plain", shader())
+        self.source.entries.append({"tree_item": "Simple/Image", "type": "image", "display_name": "Image",
+                                    "parameters": {"image": "%MATERIAL_MAKER_PATH%/examples/mm_icon.png", "filter": True}})
+        self.source.run(self.out)
+        self.assertNotIn("MATERIAL_MAKER_PATH", (self.out / "_library.json").read_text(encoding="utf-8"))
+
+    def test_a_preset_that_is_not_an_expression_is_refused(self):
+        self.source.add("plain", shader())
+        self.source.entries[0]["parameters"] = {"x": "1.0); return vec4(0.0); //"}
+        self.assertRefuses(r"parameter x is not an expression")
 
     def test_trailing_commas_are_tolerated_and_strings_keep_theirs(self):
         data = shader(output='vec4(1.0, 1.0, 1.0, 1.0).x')
@@ -252,6 +317,31 @@ class ImportTest(unittest.TestCase):
     def test_a_node_with_its_own_float_hash_fails(self):
         self.source.add("plain", shader(global_code="float h(vec2 p) { return fract(sin(dot(p, vec2(12.9, 78.2))) * 43758.5453); }\n", output="h(vec2(0.0))"))
         self.assertRefuses(r"float hash")
+
+    def test_other_shapes_of_a_float_hash_fail(self):
+        for number, code in enumerate(("float h(float x) { return fract(1234.5 * sin(x)); }\n",
+                                       "float h(float x) { float s = sin(x) * 43758.5453; return fract(s); }\n",
+                                       "float h(float x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }\n")):
+            with self.subTest(code=code):
+                source = Source(self.root / f"hash{number}")
+                source.add("plain", shader(global_code=code, output="h(0.0)"))
+                with self.assertRaisesRegex(importer.ImportFailure, "float hash"):
+                    source.run(self.root / f"hash{number}_out")
+
+    def test_the_float_permutation_becomes_the_integer_one(self):
+        code = ("float fbm_2d_mod289(float x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }\n"
+                "float fbm_2d_permute(float x) { return fbm_2d_mod289(((x * 34.0) + 1.0) * x); }\n")
+        self.source.add("plain", shader(global_code=code, output="fbm_2d_permute(1.0)"))
+        self.source.run(self.out)
+        functions = self.functions()
+        self.assertNotIn("fbm_2d_mod289", functions)
+        self.assertEqual(functions["fbm_2d_permute"]["deps"], ["jp_permute289"])
+        self.assertNotIn("289.0", "\n".join(functions["jp_permute289"]["code"]))
+
+    def test_a_pass_writes_no_nan_with_isnan(self):
+        self.source.add("plain", shader())
+        self.source.run(self.out)
+        self.assertIn("isnan(c.x)", "\n".join(self.functions()["jp_finite"]["code"]))
 
     # -- R5: functions by id --
 
@@ -319,11 +409,38 @@ class CommittedOutputTest(unittest.TestCase):
         holders = set()
         for path in NODES.glob("*.json"):
             if not path.name.startswith("_"):
-                holders.update(n["holder"] for n in json.loads(path.read_text(encoding="utf-8"))["notices"])
+                notices = json.loads(path.read_text(encoding="utf-8"))["notices"]
+                holders.update(n["holder"] for n in notices)
+                for item in notices:
+                    self.assertIn(f"`{item['node']}`", notice, path.name)
         self.assertTrue(holders)
         for holder in holders:
             self.assertIn(holder, notice)
         self.assertIn("BSD 2-Clause", notice)
+
+    def test_the_interpreter_test_holds_the_real_hash(self):
+        # IntegerHashGivesTheExactBits checks a copy: it must be this copy, or it tests nothing
+        fixture = re.sub(r"\s+", " ", (Path(__file__).parent / "interpreter_fixtures.glsl").read_text(encoding="utf-8"))
+        for function in ("jp_quantize", "jp_hash_mix", "jp_hash_float"):
+            code = re.search(rf"\w+ {function}\(.*?\n}}\n", importer.HASH_FUNCTIONS, re.DOTALL).group(0)
+            self.assertIn(re.sub(r"\s+", " ", code).strip(), fixture, function)
+
+    def test_the_expander_fails_on_a_node_it_cannot_expand(self):
+        expander_spec = importlib.util.spec_from_file_location("expand_nodes", Path(__file__).with_name("expand_nodes.py"))
+        expander = importlib.util.module_from_spec(expander_spec)
+        sys.modules["expand_nodes"] = expander
+        expander_spec.loader.exec_module(expander)
+        with tempfile.TemporaryDirectory() as scratch:
+            nodes = Path(scratch) / "nodes"
+            nodes.mkdir()
+            for name in ("_functions.json", "_types.json"):
+                (nodes / name).write_text((NODES / name).read_text(encoding="utf-8"), encoding="utf-8")
+            broken = {"id": "broken", "kind": "shader", "functions": [], "instance": [], "code": [], "inputs": [], "parameters": [],
+                      "outputs": [{"type": "f", "expr": "$nothing"}]}
+            (nodes / "broken.json").write_text(json.dumps(broken), encoding="utf-8")
+            self.assertEqual(expander.main(["--nodes", str(nodes), "--out", str(Path(scratch) / "out")]), 1)
+            (nodes / "broken.json").unlink()
+            self.assertEqual(expander.main(["--nodes", str(nodes), "--out", str(Path(scratch) / "out")]), 0)
 
     def test_pentagram_is_not_test_data(self):
         for path in Path(__file__).parent.rglob("*"):

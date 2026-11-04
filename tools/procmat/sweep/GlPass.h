@@ -9,7 +9,7 @@
 #include <vector>
 
 // One fullscreen fragment pass on a surfaceless GL 4.1 context, read back as floats: the software
-// tier of S53 measured with no window and no engine. Linux and Mesa only, like this tool.
+// tier of S90 measured with no window and no engine. Linux and Mesa only, like this tool.
 class GlPass {
 public:
     struct Timings {

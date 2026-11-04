@@ -163,8 +163,8 @@ Its random functions are float hashes (`fract(cos(mod(dot(x, ...), 3.14)) * 4375
 - **R12. Intermediate precision.** Buffers are RGBA16F on tiers 1 and 2 (renderable on all editor
   backends, `Render.h:387-392`). Tier 3 rounds to half precision when storing a Buffer, so
   differences do not accumulate across passes. Final outputs are RGBA8 through a quantize pass,
-  because read back is RGBA8 only. Every pass ends in `jp_finite`, which writes 0 for NaN, and the
-  quantize pass clamps in the shader. Each tier otherwise gives NaN and infinity its own 8-bit value
+  because read back is RGBA8 only. Every pass ends in `jp_finite`, which writes 0 for NaN using
+  `isnan`, and the quantize pass clamps in the shader. Each tier otherwise gives NaN and infinity its own 8-bit value
   (M0: 127/255 apart on real nodes).
 - **R13. Same inputs, same output.** On one device and tier, the same graph, seed and size give the
   same bytes. Across tiers, the difference stays within the tolerance in AC8. No claim of byte
@@ -470,11 +470,20 @@ To repeat it, inside the Linux image: `cmake -S tools/procmat/sweep -B build/pro
   functions, 246 entries. The other 152 `.mmg` files are 3D, materials or old versions that nothing
   references (`_manifest.json` lists them). It scans all of them for attributions anyway.
 - **R19.** Of the 26 nodes with their own notice, 14 are imported and in `NOTICE.md`. The others are
-  3D, deny-listed or unreferenced. The table in the tool still knows all of them.
+  3D, deny-listed or unreferenced. The notice table in the tool has 25 of them; the 26th, `hbao`, is
+  deny-listed, so it is never read.
 - **R10.** The mixing is MurmurHash3's (public domain), since the published GPU hashes carry licence
   questions of their own. Coordinates clamp to ±32767 before quantizing, because a float-to-int
-  conversion out of range is undefined. The four float-hash nodes are all out already: `shard_fbm`
-  by the deny-list, the three `tex3d_*` by category.
+  conversion out of range is undefined. The four `fract(sin(...))` nodes are out: `shard_fbm` by the
+  deny-list, the three `tex3d_*` by category. A fifth float hash was found by review, the
+  `(34x + 1)x mod 289` permutation of `fbm2` and `fbm4`'s simplex noise, inexact from x = 702. It is
+  now integer (`jp_permute289`), with the same results below that. llvmpipe cannot show the original
+  problem, so the fix is by reasoning, not by a measured difference. `pixelize` and `wavelet` keep
+  their low-gain `fract` terms, which differ only by rounding (inferred).
+- **R3, parameter strings.** A graph's parameter values and library presets reach GLSL as text, so the
+  importer accepts only numbers, `+ - * / ( ) ,`, and macros in the closed set (`0.005/$n_scale`,
+  `$uv.x`). The C++ expander can rely on that for imported data, and must still check `.procmat`
+  values. The `Simple/Image` preset's host path is dropped.
 - **Import-level fixes the sweep found.** A bare number as the default of a vector port becomes
   `vec4(n)` (`fill_iterate`, `layer_variations_color`, `tiler_color`). `normal2height_base`'s default
   named a macro it does not have. `blend` lost its `linear_light` value, whose function it never
@@ -489,7 +498,10 @@ To repeat it, inside the Linux image: `cmake -S tools/procmat/sweep -B build/pro
   - An input using `.size` or `.texture` needs a Buffer (R6).
   - Every pass ends in `jp_finite` (R12).
 - **R11, what the prototype leaves out.** No `discard` or `switch`, because the imported library has
-  neither; they fail at load like any other unsupported instruction. It runs on plain threads in the
+  neither; they fail at load like any other unsupported instruction. So does a malformed module, so
+  a corrupt one is an error rather than a crash: every instruction's length, ids, block structure and
+  operand shapes are checked, and the finished register code is verified on its own. It also refuses
+  images other than plain 2D, and uniform blocks with padding. It runs on plain threads in the
   bench, and only the tests and `procmat-sweep` link it. `SpirvMachine` copies `in` arguments, as GLSL
   does. Dispatch is threaded on GCC and Clang and a plain switch on MSVC, which has not been compiled.
 - **AC7.** `SpirvInterpreterTest` computes expected values in C++ from the GLSL definitions. The
