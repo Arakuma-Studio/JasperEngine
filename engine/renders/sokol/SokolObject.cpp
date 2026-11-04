@@ -28,6 +28,8 @@ namespace {
     std::atomic<int> livePipelines(0);
     // loads with an unfed vertex input (SokolObject::getUnfedVertexInputLoads)
     std::atomic<int> unfedVertexInputLoads(0);
+    // objects holding a load's working description (SokolObject::getLoadingDescCount)
+    std::atomic<int> loadingDescs(0);
     // a uniform block of the draw being set up did not fit the frame's uniform buffer
     bool uniformsDropped = false;
 
@@ -71,8 +73,7 @@ SokolObject::SokolObject(){
     bind = {};
     loadIndexBuffer.id = SG_INVALID_ID;
     loadIndexOffset = 0;
-    pipeline_desc = {};
-    baseDesc = {};
+    shader = {};
     dynamicLoaded = false;
     dynamicBaseHash = 0;
     lastDynamicPipeline.id = SG_INVALID_ID;
@@ -88,22 +89,30 @@ SokolObject::SokolObject(){
 }
 
 void SokolObject::resetWarm(){
-    for (int i = 0; i < PIPELINE_TYPES; i++){
-        warmedPipeline[i] = SG_INVALID_ID;
-        warmKey[i] = 0;
-    }
+    warm.reset();
     dynamicWarm.clear();
 }
 
 // GL with a worker context (spec S32 R4): the first draw of a pipeline with this object's
 // bindings waits for its warm draw on the worker, which makes the driver compile the program for
 // this state there. warmed holds the pipeline confirmed, key the warm draw asked for
-bool SokolObject::isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key){
-    if (warmed == pipeline.id || immediatePipelines || !SokolAsyncCreate::warmDrawsActive())
+bool SokolObject::isWarm(sg_pipeline pipeline, int index){
+    if (immediatePipelines || !SokolAsyncCreate::warmDrawsActive())
+        return true;
+    if (!warm){
+        warm = std::make_unique<WarmTable>();
+        for (int i = 0; i < PIPELINE_TYPES; i++){
+            warm->pipeline[i] = SG_INVALID_ID;
+            warm->key[i] = 0;
+        }
+    }
+    uint32_t& warmed = warm->pipeline[index];
+    uint64_t& key = warm->key[index];
+    if (warmed == pipeline.id)
         return true;
     if (key == 0)
         key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
-    if (!SokolAsyncCreate::isWarm(key) || !SokolAsyncCreate::beginFirstDraw(pipeline_desc.shader))
+    if (!SokolAsyncCreate::isWarm(key) || !SokolAsyncCreate::beginFirstDraw(shader))
         return false;
     warmed = pipeline.id;
     key = 0;
@@ -117,7 +126,7 @@ bool SokolObject::isDynamicWarm(sg_pipeline pipeline){
         if (entry.first == pipeline.id){
             if (entry.second == 0)
                 return true;
-            if (!SokolAsyncCreate::isWarm(entry.second) || !SokolAsyncCreate::beginFirstDraw(baseDesc.shader))
+            if (!SokolAsyncCreate::isWarm(entry.second) || !SokolAsyncCreate::beginFirstDraw(shader))
                 return false;
             entry.second = 0;
             return true;
@@ -126,7 +135,7 @@ bool SokolObject::isDynamicWarm(sg_pipeline pipeline){
     const uint64_t key = SokolAsyncCreate::requestWarmDraw(pipeline, bind);
     // (warm already: the first draw still waits while the worker warms the program)
     dynamicWarm.emplace_back(pipeline.id, key);
-    if (!SokolAsyncCreate::isWarm(key) || !SokolAsyncCreate::beginFirstDraw(baseDesc.shader))
+    if (!SokolAsyncCreate::isWarm(key) || !SokolAsyncCreate::beginFirstDraw(shader))
         return false;
     dynamicWarm.back().second = 0;
     return true;
@@ -151,9 +160,88 @@ int SokolObject::getUnfedVertexInputLoads(){
     return unfedVertexInputLoads.load();
 }
 
-SokolObject::SokolObject(const SokolObject& rhs) = default;
+int SokolObject::getLoadingDescCount(){
+    return loadingDescs.load();
+}
 
-SokolObject& SokolObject::operator=(const SokolObject& rhs) = default;
+// A copy shares the base description and takes its own working description and warm table (and,
+// through SokolVariantRefs, its own references to the shared variants)
+SokolObject::SokolObject(const SokolObject& rhs):
+        bind(rhs.bind), loadIndexBuffer(rhs.loadIndexBuffer), loadIndexOffset(rhs.loadIndexOffset),
+        base(rhs.base), shader(rhs.shader), dynamicLoaded(rhs.dynamicLoaded), dynamicBaseHash(rhs.dynamicBaseHash),
+        lastDynamicState(rhs.lastDynamicState), lastDynamicPipeline(rhs.lastDynamicPipeline),
+        lastDynamicGeneration(rhs.lastDynamicGeneration), immediatePipelines(rhs.immediatePipelines),
+        drawWaiting(rhs.drawWaiting), prewarmed(rhs.prewarmed), dynamicWarm(rhs.dynamicWarm),
+        loadState(rhs.loadState), msaaSamples(rhs.msaaSamples), variants(rhs.variants), noCullSame(rhs.noCullSame),
+        bindSlotIndex(rhs.bindSlotIndex), shaderInputs(rhs.shaderInputs), shaderInputSignature(rhs.shaderInputSignature),
+        blendOverride(rhs.blendOverride), blendState(rhs.blendState), bufferToBindSlot(rhs.bufferToBindSlot){
+    for (int i = 0; i < PIPELINE_TYPES; i++){
+        pipelines[i] = rhs.pipelines[i];
+    }
+    if (rhs.loadDesc){
+        loadDesc = std::make_unique<sg_pipeline_desc>(*rhs.loadDesc);
+        loadingDescs++;
+    }
+    if (rhs.warm)
+        warm = std::make_unique<WarmTable>(*rhs.warm);
+}
+
+SokolObject& SokolObject::operator=(const SokolObject& rhs){
+    if (this == &rhs)
+        return *this;
+    bind = rhs.bind;
+    loadIndexBuffer = rhs.loadIndexBuffer;
+    loadIndexOffset = rhs.loadIndexOffset;
+    for (int i = 0; i < PIPELINE_TYPES; i++){
+        pipelines[i] = rhs.pipelines[i];
+    }
+    if (rhs.loadDesc){
+        if (!loadDesc)
+            loadingDescs++;
+        loadDesc = std::make_unique<sg_pipeline_desc>(*rhs.loadDesc);
+    }else if (loadDesc){
+        loadDesc.reset();
+        loadingDescs--;
+    }
+    base = rhs.base;
+    shader = rhs.shader;
+    dynamicLoaded = rhs.dynamicLoaded;
+    dynamicBaseHash = rhs.dynamicBaseHash;
+    lastDynamicState = rhs.lastDynamicState;
+    lastDynamicPipeline = rhs.lastDynamicPipeline;
+    lastDynamicGeneration = rhs.lastDynamicGeneration;
+    immediatePipelines = rhs.immediatePipelines;
+    drawWaiting = rhs.drawWaiting;
+    prewarmed = rhs.prewarmed;
+    warm = rhs.warm ? std::make_unique<WarmTable>(*rhs.warm) : nullptr;
+    dynamicWarm = rhs.dynamicWarm;
+    loadState = rhs.loadState;
+    msaaSamples = rhs.msaaSamples;
+    variants = rhs.variants;
+    noCullSame = rhs.noCullSame;
+    bindSlotIndex = rhs.bindSlotIndex;
+    shaderInputs = rhs.shaderInputs;
+    shaderInputSignature = rhs.shaderInputSignature;
+    blendOverride = rhs.blendOverride;
+    blendState = rhs.blendState;
+    bufferToBindSlot = rhs.bufferToBindSlot;
+    return *this;
+}
+
+SokolObject::~SokolObject(){
+    if (loadDesc)
+        loadingDescs--;
+}
+
+// only from beginLoad to endLoad: made when a load writes it first
+sg_pipeline_desc& SokolObject::loadingDesc(){
+    if (!loadDesc){
+        loadDesc = std::make_unique<sg_pipeline_desc>();
+        *loadDesc = {};
+        loadingDescs++;
+    }
+    return *loadDesc;
+}
 
 SokolVariantRefs::SokolVariantRefs(const SokolVariantRefs& rhs): list(rhs.list){
     const uint64_t context = SystemRender::getContextId();
@@ -413,15 +501,16 @@ void SokolObject::beginLoad(PrimitiveType primitiveType){
     for (sg_pipeline& pipeline : pipelines){
         pipeline = {0};
     }
-    pipeline_desc = {0};
-    baseDesc = {};
+    loadingDesc() = {};
+    base.reset();
+    shader = {};
     dynamicLoaded = false;
     dynamicBaseHash = 0;
     lastDynamicPipeline.id = SG_INVALID_ID;
     lastDynamicGeneration = 0;
     resetPipelines();
 
-    pipeline_desc.primitive_type = getPrimitiveType(primitiveType);
+    loadingDesc().primitive_type = getPrimitiveType(primitiveType);
 
     bindSlotIndex = 0;
     bufferToBindSlot.clear();
@@ -451,7 +540,7 @@ namespace {
 }
 
 void SokolObject::setShader(ShaderRender* shader){
-    pipeline_desc.shader = shader->backend.get();
+    loadingDesc().shader = shader->backend.get();
     shaderInputs = 0;
     for (const ShaderStage& stage : shader->shaderData.stages){
         if (stage.type != ShaderStageType::VERTEX)
@@ -472,11 +561,11 @@ void SokolObject::setIndex(BufferRender* buffer, AttributeDataType dataType, siz
     loadIndexOffset = offset;
 
     if (dataType == AttributeDataType::UNSIGNED_SHORT){
-        pipeline_desc.index_type = SG_INDEXTYPE_UINT16;
+        loadingDesc().index_type = SG_INDEXTYPE_UINT16;
     }else if (dataType == AttributeDataType::UNSIGNED_INT){
-        pipeline_desc.index_type = SG_INDEXTYPE_UINT32;
+        loadingDesc().index_type = SG_INDEXTYPE_UINT32;
     }else{
-        pipeline_desc.index_type = SG_INDEXTYPE_NONE;
+        loadingDesc().index_type = SG_INDEXTYPE_NONE;
     }
 }
 
@@ -511,10 +600,10 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
             bind.vertex_buffer_offsets[bindSlotIndex] = bufferOffset;
             bufferToBindSlot[{vbuf.id, bufferOffset}] = bindSlotIndex;
 
-            pipeline_desc.layout.buffers[bindSlotIndex].stride = stride;
+            loadingDesc().layout.buffers[bindSlotIndex].stride = stride;
 
             if (perInstance){
-                pipeline_desc.layout.buffers[bindSlotIndex].step_func = SG_VERTEXSTEP_PER_INSTANCE;
+                loadingDesc().layout.buffers[bindSlotIndex].step_func = SG_VERTEXSTEP_PER_INSTANCE;
             }
 
             bindSlotIndex++;
@@ -522,9 +611,10 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
 
         size_t indexBuf = bufferToBindSlot[{vbuf.id, bufferOffset}];
 
-        pipeline_desc.layout.attrs[slot].buffer_index = indexBuf;
-        pipeline_desc.layout.attrs[slot].offset = attrOffset;
-        pipeline_desc.layout.attrs[slot].format = getVertexFormat(elements, dataType, normalized);
+        sg_pipeline_desc& desc = loadingDesc();
+        desc.layout.attrs[slot].buffer_index = indexBuf;
+        desc.layout.attrs[slot].offset = attrOffset;
+        desc.layout.attrs[slot].format = getVertexFormat(elements, dataType, normalized);
     }
 }
 
@@ -622,7 +712,7 @@ bool SokolObject::prewarmWith(ShaderRender* shader){
     if (immediatePipelines || !shader)
         return true;
     const sg_shader target = shader->backend.get();
-    if (target.id == SG_INVALID_ID || target.id == pipeline_desc.shader.id || sg_query_shader_state(target) != SG_RESOURCESTATE_VALID)
+    if (!base || target.id == SG_INVALID_ID || target.id == this->shader.id || sg_query_shader_state(target) != SG_RESOURCESTATE_VALID)
         return true;
     // A variant with other vertex inputs (the right variant of an object that loaded on a
     // stand-in: a_tangent where the stand-in had a_color) needs the layout its own load binds.
@@ -694,7 +784,7 @@ void SokolObject::setBlendState(const BlendState& state){
 }
 
 sg_pipeline_desc SokolObject::makePipelineDesc(PipelineType pipType) const{
-    sg_pipeline_desc desc = pipeline_desc;
+    sg_pipeline_desc desc = *base;
 
     // offscreen passes render with a Y-flipped projection on GL (top-left
     // origin), which reverses the triangle winding.
@@ -922,7 +1012,7 @@ sg_pipeline& SokolObject::pipelineOf(PipelineType pipType){
 void SokolObject::checkVertexInputs(){
     uint32_t unfed = 0;
     for (int slot = 0; slot < SG_MAX_VERTEX_ATTRIBUTES; slot++){
-        if ((shaderInputs & (1u << slot)) && pipeline_desc.layout.attrs[slot].format == SG_VERTEXFORMAT_INVALID)
+        if ((shaderInputs & (1u << slot)) && loadDesc && loadDesc->layout.attrs[slot].format == SG_VERTEXFORMAT_INVALID)
             unfed |= (1u << slot);
     }
     if (unfed){
@@ -934,6 +1024,11 @@ void SokolObject::checkVertexInputs(){
 bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples){
     loadState = state;
     checkVertexInputs();
+    // the working description becomes the shared base the pipelines and variants are made from
+    base = SokolPipelineCache::internBase(loadingDesc());
+    shader = base->shader;
+    loadDesc.reset();
+    loadingDescs--;
     // the PIP_MSAA* types' sample count, given by the RenderSystem loading the object (never
     // shared state: another scene or the editor's thumbnail thread loads with its own)
     msaaSamples = samples > 1 ? samples : 1;
@@ -965,16 +1060,20 @@ bool SokolObject::endLoad(uint16_t types, const RenderState& state, int samples)
 
 bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexType){
     checkVertexInputs();
-    baseDesc = pipeline_desc;
-    baseDesc.primitive_type = getPrimitiveType(primitiveType);
+    sg_pipeline_desc& desc = loadingDesc();
+    desc.primitive_type = getPrimitiveType(primitiveType);
     switch (indexType){
-    case IndexType::UINT16: baseDesc.index_type = SG_INDEXTYPE_UINT16; break;
-    case IndexType::UINT32: baseDesc.index_type = SG_INDEXTYPE_UINT32; break;
-    default: baseDesc.index_type = SG_INDEXTYPE_NONE; break;
+    case IndexType::UINT16: desc.index_type = SG_INDEXTYPE_UINT16; break;
+    case IndexType::UINT32: desc.index_type = SG_INDEXTYPE_UINT32; break;
+    default: desc.index_type = SG_INDEXTYPE_NONE; break;
     }
-    baseDesc.label = "dynamic-pipeline";
-    dynamicLoaded = baseDesc.shader.id != SG_INVALID_ID;
-    dynamicBaseHash = SokolPipelineCache::baseHash(baseDesc);
+    desc.label = "dynamic-pipeline";
+    base = SokolPipelineCache::internBase(desc);
+    shader = base->shader;
+    loadDesc.reset();
+    loadingDescs--;
+    dynamicLoaded = shader.id != SG_INVALID_ID;
+    dynamicBaseHash = SokolPipelineCache::baseHash(*base);
     lastDynamicPipeline.id = SG_INVALID_ID;
     return dynamicLoaded;
 }
@@ -983,8 +1082,8 @@ bool SokolObject::beginDraw(const PipelineState& state){
     uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     drawWaiting = false;
-    if (!dynamicLoaded || sg_query_shader_state(baseDesc.shader) != SG_RESOURCESTATE_VALID){
-        drawWaiting = dynamicLoaded && sg_query_shader_state(baseDesc.shader) == SG_RESOURCESTATE_ALLOC;
+    if (!dynamicLoaded || sg_query_shader_state(shader) != SG_RESOURCESTATE_VALID){
+        drawWaiting = dynamicLoaded && sg_query_shader_state(shader) == SG_RESOURCESTATE_ALLOC;
         waitingDraws += drawWaiting ? 1 : 0;
         return false;
     }
@@ -994,7 +1093,7 @@ bool SokolObject::beginDraw(const PipelineState& state){
     if (lastDynamicPipeline.id != SG_INVALID_ID && lastDynamicGeneration == generation && lastDynamicState == state){
         pipeline = lastDynamicPipeline;
     }else{
-        pipeline = SokolPipelineCache::get(baseDesc, dynamicBaseHash, state, immediatePipelines);
+        pipeline = SokolPipelineCache::get(*base, dynamicBaseHash, state, immediatePipelines);
         lastDynamicPipeline = pipeline;
         lastDynamicState = state;
         lastDynamicGeneration = generation;
@@ -1037,8 +1136,8 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool 
     // pipelines for a frame): sokol keeps such a pipeline valid, and applying it and its bindings
     // reads the dead shader (a crash in sg_apply_bindings without the validation layer). Such an
     // object draws nothing until its reload builds pipelines on the live shader.
-    if (pipeline_desc.shader.id == SG_INVALID_ID ||
-        sg_query_shader_state(pipeline_desc.shader) != SG_RESOURCESTATE_VALID){
+    if (!base || shader.id == SG_INVALID_ID ||
+        sg_query_shader_state(shader) != SG_RESOURCESTATE_VALID){
         return false;
     }
 
@@ -1090,7 +1189,7 @@ bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool 
 
     {
         const int index = pipelineIndex(pipType);
-        if (index < PIPELINE_TYPES && !isWarm(selectedPipeline, warmedPipeline[index], warmKey[index])){
+        if (index < PIPELINE_TYPES && !isWarm(selectedPipeline, index)){
             drawWaiting = true;
             waitingDraws++;
             return false;
@@ -1151,9 +1250,13 @@ void SokolObject::destroy(){
     resetPipelines();
     resetWarm();
     bind = {};
-    pipeline_desc = {};
+    if (loadDesc){
+        loadDesc.reset();
+        loadingDescs--;
+    }
     // dynamic pipelines stay in SokolPipelineCache until their shader goes
-    baseDesc = {};
+    base.reset();
+    shader = {};
     dynamicLoaded = false;
     dynamicBaseHash = 0;
     lastDynamicPipeline.id = SG_INVALID_ID;

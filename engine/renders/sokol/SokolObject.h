@@ -78,11 +78,17 @@ namespace jasperengine{
         static constexpr int PIPELINE_TYPES = 16;
         sg_pipeline pipelines[PIPELINE_TYPES];
 
-        sg_pipeline_desc pipeline_desc;
-
-        // the dynamic path (endLoadDynamic): shader, vertex layout, index and primitive type;
-        // its pipelines belong to SokolPipelineCache
-        sg_pipeline_desc baseDesc;
+        // what setShader, setIndex and addAttribute write, from beginLoad to endLoad or
+        // endLoadDynamic only (a description is 808 bytes: every render object kept two for life)
+        std::unique_ptr<sg_pipeline_desc> loadDesc;
+        sg_pipeline_desc& loadingDesc();
+        // after a load: the base description (shader, vertex layout, index and primitive type)
+        // the pipelines and their variants are made from, shared by every object loaded with an
+        // equal one (SokolPipelineCache::internBase); null before a load and after destroy. The
+        // dynamic path (endLoadDynamic) holds its own here, its pipelines SokolPipelineCache's
+        std::shared_ptr<const sg_pipeline_desc> base;
+        // base->shader, read by every draw without following the pointer
+        sg_shader shader;
         bool dynamicLoaded;
         // the last pipeline of the dynamic path: consecutive draws with the same state skip the
         // cache's lookup (valid while SokolPipelineCache::generation() is the same)
@@ -106,14 +112,19 @@ namespace jasperengine{
             sg_pipeline pipeline;
         };
         std::vector<Prewarmed> prewarmed;
-        uint32_t warmedPipeline[PIPELINE_TYPES];
-        uint64_t warmKey[PIPELINE_TYPES];
+        // per pipeline type, the pipeline confirmed warm and the warm draw asked for: made on the
+        // first draw that needs a warm draw (never where none runs)
+        struct WarmTable {
+            uint32_t pipeline[PIPELINE_TYPES];
+            uint64_t key[PIPELINE_TYPES];
+        };
+        std::unique_ptr<WarmTable> warm;
         std::vector<std::pair<uint32_t, uint64_t>> dynamicWarm;
-        bool isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key);
+        bool isWarm(sg_pipeline pipeline, int index);
         bool isDynamicWarm(sg_pipeline pipeline);
         void resetWarm();
 
-        // the render state endLoad built the pipelines with, so a variant can be rebuilt from pipeline_desc
+        // the render state endLoad built the pipelines with, so a variant can be rebuilt from base
         RenderState loadState;
         // the sample count of the PIP_MSAA* pipelines (endLoad's)
         int msaaSamples;
@@ -173,10 +184,13 @@ namespace jasperengine{
         static size_t getSharedVariantCount();
         // loads that left a vertex input of their shader without a buffer (diagnostics)
         static int getUnfedVertexInputLoads();
+        // objects holding a load's working description (between beginLoad and endLoad; tests)
+        static int getLoadingDescCount();
 
         SokolObject();
         SokolObject(const SokolObject& rhs);
         SokolObject& operator=(const SokolObject& rhs);
+        ~SokolObject();
 
         void beginLoad(PrimitiveType primitiveType);
         void setShader(ShaderRender* shader);

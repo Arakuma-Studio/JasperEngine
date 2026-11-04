@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 
 namespace jasperengine{
 
@@ -57,6 +58,13 @@ namespace jasperengine{
         // it was asked with (the shader warm-up's recording, spec S32 R10); any thread, under the
         // cache's lock: the recorder only queues
         static void setRecorder(std::function<void(const sg_pipeline_desc& desc)> recorder);
+        // The base description of a loaded SokolObject (shader, vertex layout, index and
+        // primitive type), shared by every object loaded with an equal one (descEqual) and read
+        // only: an object keeps a reference instead of a copy of its own. The last reference
+        // takes it out (any thread). Counted in the memory record Render.PipelineDescs
+        static std::shared_ptr<const sg_pipeline_desc> internBase(const sg_pipeline_desc& desc);
+        // the base descriptions alive (tests, diagnostics)
+        static size_t internedBaseCount();
         // the hash and equality interning uses, field by field (never the struct's bytes: padding)
         static uint64_t descHash(const sg_pipeline_desc& desc);
         static bool descEqual(const sg_pipeline_desc& a, const sg_pipeline_desc& b);
