@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/AudioSourceComponent.h"
+
+#if JASPERENGINE_SOUND_LAYER
+
 #include "SoundEventIO.h"
 
 #include "json.hpp"
@@ -330,3 +334,5 @@ std::vector<std::string> SoundEventIO::validate(const SoundEventDef& def) {
     }
     return problems;
 }
+
+#endif // JASPERENGINE_SOUND_LAYER

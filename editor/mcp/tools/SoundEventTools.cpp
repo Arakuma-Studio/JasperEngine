@@ -18,6 +18,7 @@
 #include "audio/SoundEventDocument.h"
 #include "audio/SoundEventIO.h"
 #include "audio/SoundEventRender.h"
+#include "audio/SoundSearch.h"
 #include "audio/SoundSlicer.h"
 #include "audio/SoundTypes.h"
 #include "command/type/SetAssetMetaCmd.h"
@@ -48,7 +49,7 @@ constexpr int SOUND_EVENT_WORK_TIMEOUT_MS = 120000;
 
 struct SoundEventJob {
     SoundEventDef def;
-    fs::path assetsRoot;
+    SoundEventRender::Input input;
     std::string key;
     uint64_t seed = 1;
     int audition = 0;
@@ -102,19 +103,22 @@ std::string guidOf(Project* project, const fs::path& file) {
 // after the write: what decoding finds, and the renditions, off the main thread
 void finishEdit(const CallPtr& call, Project* project, const fs::path& file, const std::string& rel, bool created, const SoundEventDef& def, bool written, int audition,
                 const Json& slices = nullptr, const std::vector<std::string>& sliceProblems = {}) {
+    // a new file has no entry until the database next looks, and the reply names its GUID
+    if (created) project->refreshAssetDatabase(true);
     const std::string guid = guidOf(project, file);
     auto job = std::make_shared<SoundEventJob>();
     job->def = def;
-    job->assetsRoot = fs::absolute(project->getAssetsPath());
+    job->input = SoundEventRender::prepare(*project, def);
     job->key = guid.empty() ? project->normalizeToAssetsRelative(file).generic_string() : guid;
     job->seed = (uint64_t)project->getAudioSettings().seed;
     job->audition = audition;
     std::vector<std::string> problems = SoundEventDocument::problems(project, def);
     problems.insert(problems.end(), sliceProblems.begin(), sliceProblems.end());
     std::thread([job]() {
-        job->problems = SoundEventRender::analyze(job->def, job->assetsRoot);
+        int analysed = 0;
+        job->problems = SoundSearch::eventProblems(job->def, job->input.clipFiles, job->input.cacheDirectory, analysed);
         if (job->audition > 0 && !job->def.clips.empty()) {
-            SoundEventRender::render(job->def, job->key, job->assetsRoot, job->audition, job->seed, job->renditions, job->error);
+            SoundEventRender::render(job->def, job->key, job->input, job->audition, job->seed, job->renditions, job->error);
         }
         job->finished = true;
     }).detach();
@@ -369,9 +373,9 @@ void editSoundEventTool(const CallPtr& call) {
     // Match Levels decodes every clip: off the main thread, then the one write of the call
     auto job = std::make_shared<SoundEventJob>();
     job->def = def;
-    job->assetsRoot = fs::absolute(project->getAssetsPath());
+    job->input = SoundEventRender::prepare(*project, def);
     std::thread([job]() {
-        SoundEventRender::matchLevels(job->def, job->assetsRoot, job->error);
+        SoundEventRender::matchLevels(job->def, job->input, job->error);
         job->finished = true;
     }).detach();
     call->waitUntil([job]() { return job->finished.load(); }, SOUND_EVENT_WORK_TIMEOUT_MS,
@@ -411,7 +415,7 @@ void registerSoundEventTools(McpRegistry& registry) {
         "Create or change a .soundevent (Unity's Audio Random Container): clips played by weight, shuffle, sequence or as "
         "layers, with pitch, volume and delay ranges, a cooldown and an instance limit. Scenes refer to it by GUID, so "
         "move_asset it freely; an AudioSource plays it through set_properties `event`. One undo step; during Play the next "
-        "plays use it. Result: problems, and with audition the picks and loudness of the next plays. Keys: jasper://docs/audio. "
+        "plays use it. Result: problems, and with audition the picks and loudness of the next plays. Keys: jasper://docs/sound. "
         "slice: cut a multi-take file into clips.";
     tool.inputSchema = object({
         {"path", assetPath("A .soundevent in the assets folder.")},

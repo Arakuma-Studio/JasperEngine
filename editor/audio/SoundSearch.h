@@ -4,6 +4,7 @@
 #pragma once
 
 #include "audio/AudioMeter.h"
+#include "audio/SoundEvent.h"
 
 #include "json.hpp"
 
@@ -13,6 +14,7 @@
 #include <filesystem>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::editor {
@@ -156,6 +158,8 @@ namespace jasperengine::editor {
             std::filesystem::path referenceFile;
             std::string referenceEssential;
             std::string referenceLibrary;
+            // the project's Sound Events: file (absolute) and GUID
+            std::vector<std::pair<std::filesystem::path, std::string>> events;
         };
 
         static bool scopeFromName(const std::string& name, Scope& scope);
@@ -192,6 +196,16 @@ namespace jasperengine::editor {
             std::vector<std::string> queries;
         };
         static Hint emptyHint(const std::vector<Entry>& index, const Query& query);
+
+        // What the clips' cached analyses say of a Sound Event (`clipFiles`: absolute, in its order; an
+        // empty path: not on disk): for random, shuffle and sequence, a loudness spread over
+        // EVENT_SPREAD_LU across the clips as they play, and near-duplicates (equal bytes, or a distance
+        // under SoundTypes::NEAR_DUPLICATE_DISTANCE at levels within NEAR_DUPLICATE_LEVEL_LU); for layer,
+        // each layer that adds nothing measurable. analysed counts the files analysed now. Any thread.
+        static constexpr double EVENT_SPREAD_LU = 3.0;
+        static constexpr double NEAR_DUPLICATE_LEVEL_LU = 1.0;
+        static std::vector<std::string> eventProblems(const SoundEventDef& event, const std::vector<std::filesystem::path>& clipFiles,
+                                                      const std::filesystem::path& cacheDirectory, int& analysed);
 
         // the character of an entry ("" when it has no features)
         static std::string brightnessOf(const Entry& entry);

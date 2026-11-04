@@ -8,6 +8,9 @@
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
 
+#include "audio/SoundEventDocument.h"
+#include "util/ProjectChecks.h"
+
 #include "audio/AudioCredits.h"
 #include "audio/AudioImport.h"
 #include "audio/AudioImportRegistry.h"
@@ -1119,6 +1122,7 @@ void editor::Exporter::runExport() {
     if (!copyLua()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!checkHtmlUIReferences()) return;
+    checkSoundEventClips();
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!cookTextures()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
@@ -1309,8 +1313,8 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 }
 
 std::vector<std::string> editor::Exporter::compiledModules() const {
-    // what Project Settings allow (the HTML UI and its video have no switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video"};
+    // what Project Settings allow (the HTML UI, its video and the sound layer have no switch of their own)
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -2510,6 +2514,22 @@ bool editor::Exporter::checkHtmlUIReferences(const fs::path& projectPath, const 
     return errors.empty();
 }
 
+void editor::Exporter::checkSoundEventClips() {
+    // a missing clip is a warning: the game plays the event's other clips
+    for (const fs::path& file : ProjectChecks::findProjectFiles(project->getProjectPath().lexically_normal(), {".soundevent"})) {
+        SoundEventDef def;
+        std::string error;
+        const std::string name = project->normalizeToAssetsRelative(file).generic_string();
+        if (!SoundEventDocument::read(file, def, &error)) {
+            Out::warning("Sound Event %s does not read, so it will not play: %s", name.c_str(), error.c_str());
+            continue;
+        }
+        for (const std::string& problem : SoundEventDocument::problems(project, def)) {
+            if (problem.find("missing clip") != std::string::npos) Out::warning("Sound Event %s: %s", name.c_str(), problem.c_str());
+        }
+    }
+}
+
 bool editor::Exporter::checkHtmlUIReferences() {
     if (htmlUIDocuments.empty()) {
         return true;
@@ -3653,6 +3673,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_RUNTIME_SHADERS", "runtimeshaders");
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");
+        moduleSwitch("JASPERENGINE_SOUND_LAYER", "soundlayer");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
@@ -4096,6 +4117,13 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         normalizeNewlines(out);
         return true;
     };
+
+    // ./gradlew from a shell: the installed editor's copy of the engine has lost its exec bit
+    {
+        std::error_code permissionError;
+        fs::permissions(config.targetDir / "workspaces" / "androidstudio" / "gradlew",
+                        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, permissionError);
+    }
 
     const fs::path androidAppDir = config.targetDir / "workspaces" / "androidstudio" / "app";
     const fs::path buildGradlePath = androidAppDir / "build.gradle";

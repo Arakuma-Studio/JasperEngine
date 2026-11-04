@@ -10,6 +10,7 @@
 #include "window/AnimatorWindow.h"
 #include "window/AssetPanels.h"
 #include "window/AudioMixerWindow.h"
+#include "window/SoundBrowserWindow.h"
 #include "window/AvatarWindow.h"
 #include "window/CodeEditor.h"
 #include "window/GameWindow.h"
@@ -226,6 +227,7 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
+    soundBrowserWindow = new SoundBrowserWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -722,7 +724,8 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.vertexAnimationBaker", windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
         menuSubmenu("Audio", {
-            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
+            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME)),
+            catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
@@ -1003,6 +1006,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
+            break;
+        case AppMenuCommand::ToggleSoundBrowser:
+            soundBrowserWindow->open();
             break;
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
@@ -2875,6 +2881,7 @@ void editor::App::show(){
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     audioMixerWindow->show();
+    soundBrowserWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -3354,6 +3361,10 @@ void editor::App::setupRecorder() {
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
+    host.gameScene = [playScene]() -> Scene* {
+        const SceneProject* scene = playScene();
+        return scene ? scene->scene : nullptr;
+    };
     host.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
     host.gameViewSize = [this](int& w, int& h) {
         w = gameWindow->getWidth();
@@ -4936,6 +4947,7 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
+    soundBrowserWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
@@ -5900,6 +5912,7 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     audioMixerWindow->setOpen(visibility.audioMixer);
+    soundBrowserWindow->setOpen(visibility.soundBrowser);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -5920,6 +5933,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.soundBrowser = soundBrowserWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();

@@ -1,6 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "audio/SoundEventIO.h"
+#include "organisation/AssetLabels.h"
+#include "util/ProjectChecks.h"
 #include "SoundSearch.h"
 
 #include "AudioAnalysis.h"
@@ -326,6 +329,12 @@ SoundSearch::Sources SoundSearch::sources(const Project* project, Scope scope) {
     out.projectDirectory = project->getProjectPath();
     out.assetsDirectory = project->getAssetsPath();
     out.cacheDirectory = AudioAnalysis::cacheDirectory(project->getProjectPath());
+    if (scope == Scope::Project || scope == Scope::All) {
+        // an event's GUID is its .meta's, which only the database reads on this thread
+        for (const fs::path& file : ProjectChecks::findProjectFiles(project->getProjectPath().lexically_normal(), {".soundevent"})) {
+            out.events.push_back({file, project->getAssetDatabase().getAssetGuid(file.lexically_relative(project->getProjectPath().lexically_normal())).str()});
+        }
+    }
     return out;
 }
 
@@ -433,6 +442,56 @@ std::vector<SoundSearch::Entry> SoundSearch::index(const Sources& sources, int& 
     }
     // project entries in path order, then the essentials by id, then the library's clips by id
     out = std::move(clips);
+    // the project's Sound Events: their features are their first clip's, their length the longest's
+    std::map<std::string, const Entry*> byId;
+    for (const Entry& clip : out) byId[clip.id] = &clip;
+    std::vector<Entry> events;
+    for (const auto& [file, guid] : sources.events) {
+        if (cancel && *cancel) return out;
+        std::string text;
+        SoundEventDef def;
+        if (!readBytes(file, text) || !SoundEventIO::parse(text, def)) continue;
+        Entry entry;
+        entry.source = "project";
+        entry.kind = "event";
+        entry.file = file.lexically_normal();
+        entry.path = relativeTo(file, sources.projectDirectory);
+        const fs::path fromAssets = entry.file.lexically_relative(sources.assetsDirectory.lexically_normal());
+        entry.id = fromAssets.generic_string();
+        entry.guid = guid;
+        entry.name = file.stem().string();
+        entry.type = def.type;
+        entry.inProject = true;
+        std::vector<std::string> labels;
+        AssetLabels::readFileLabels(file, false, labels);
+        entry.tags = labels;
+        for (const SoundEventClip& clip : def.clips) entry.clips.push_back(clip.clip.path);
+        const auto first = entry.clips.empty() ? byId.end() : byId.find(entry.clips.front());
+        if (entry.clips.empty()) {
+            entry.error = "the event has no clip";
+        } else if (first == byId.end() || !first->second->analysed) {
+            entry.error = "its first clip " + entry.clips.front() + " is not a project audio file that reads";
+        } else {
+            const Entry& clip = *first->second;
+            entry.analysed = true;
+            entry.sha1 = clip.sha1;
+            entry.soundKind = clip.soundKind;
+            entry.lufs = clip.lufs;
+            entry.truePeakDbtp = clip.truePeakDbtp;
+            entry.centroidHz = clip.centroidHz;
+            entry.flatness = clip.flatness;
+            entry.attackMs = clip.attackMs;
+            entry.pitchConfidence = clip.pitchConfidence;
+            entry.bandShare = clip.bandShare;
+            entry.loopRegion = clip.loopRegion;
+            for (const std::string& name : entry.clips) {
+                const auto found = byId.find(name);
+                if (found != byId.end() && found->second->analysed) entry.durationMs = std::max(entry.durationMs, found->second->durationMs);
+            }
+        }
+        events.push_back(std::move(entry));
+    }
+    out.insert(out.end(), std::make_move_iterator(events.begin()), std::make_move_iterator(events.end()));
     std::stable_sort(out.begin(), out.end(), [](const Entry& a, const Entry& b) { return a.path < b.path; });
 
     for (const SoundManifestClip& clip : SoundEssentials::all()) {
@@ -496,6 +555,104 @@ std::vector<SoundSearch::Entry> SoundSearch::index(const Sources& sources, int& 
         }
         out.push_back(std::move(entry));
         step();
+    }
+    return out;
+}
+
+std::vector<std::string> SoundSearch::eventProblems(const SoundEventDef& event, const std::vector<fs::path>& clipFiles,
+                                                    const fs::path& cacheDirectory, int& analysed) {
+    std::vector<std::string> out;
+    struct Measured {
+        bool ok = false;
+        Entry entry;
+        Json bandsDb;
+        // the level as it plays: momentary max + its importer's gain + the clip's volume_db
+        double level = NAN;
+        double offsetDb = 0.0;
+    };
+    std::vector<Measured> clips(event.clips.size());
+    for (size_t i = 0; i < event.clips.size() && i < clipFiles.size(); i++) {
+        const fs::path& file = clipFiles[i];
+        std::error_code ec;
+        if (file.empty() || !fs::is_regular_file(file, ec)) continue;
+        std::string bytes;
+        if (!readBytes(file, bytes)) continue;
+        Json cached;
+        std::string error;
+        const std::string sha1 = SHA1::hash(bytes);
+        if (!cachedAnalysis(bytes, sha1, cacheDirectory, cached, analysed, error)) continue;
+        Measured& m = clips[i];
+        m.ok = true;
+        m.entry.sha1 = sha1;
+        setFeatures(m.entry, cached, AudioAnalysis::Labels());
+        AudioImportSettings settings;
+        std::string settingsError;
+        if (AudioImportSettings::load(file, settings, settingsError)) m.entry.gainDb = settings.gainDb;
+        m.bandsDb = cached.value("bands_db", Json::object());
+        m.offsetDb = m.entry.gainDb + (double)event.clips[i].volumeDb;
+        m.level = std::isfinite(m.entry.lufs) ? m.entry.lufs + m.offsetDb : NAN;
+    }
+    auto number = [](size_t i) { return std::to_string(i + 1); };
+    char buffer[160];
+
+    if (event.mode != SoundEventMode::Layer) {
+        size_t quietest = SIZE_MAX, loudest = SIZE_MAX;
+        for (size_t i = 0; i < clips.size(); i++) {
+            if (!clips[i].ok || !std::isfinite(clips[i].level)) continue;
+            if (quietest == SIZE_MAX || clips[i].level < clips[quietest].level) quietest = i;
+            if (loudest == SIZE_MAX || clips[i].level > clips[loudest].level) loudest = i;
+        }
+        if (quietest != SIZE_MAX && clips[loudest].level - clips[quietest].level > EVENT_SPREAD_LU) {
+            std::snprintf(buffer, sizeof(buffer), "loudness spread %.1f LU across clips (clip %s at %.1f, clip %s at %.1f LUFS-M as they play): ",
+                          clips[loudest].level - clips[quietest].level, number(loudest).c_str(), clips[loudest].level,
+                          number(quietest).c_str(), clips[quietest].level);
+            out.push_back(std::string(buffer) + "the picks jump in level; use match_levels");
+        }
+        for (size_t i = 0; i < clips.size(); i++) {
+            for (size_t j = i + 1; j < clips.size(); j++) {
+                if (!clips[i].ok || !clips[j].ok) continue;
+                if (event.clips[i].clip.path == event.clips[j].clip.path) continue;  // a weight trick, on purpose
+                const bool same = clips[i].entry.sha1 == clips[j].entry.sha1;
+                const double d = distance(clips[i].entry, clips[j].entry);
+                const double levels = std::fabs(clips[i].level - clips[j].level);
+                const bool sameLevel = !std::isfinite(levels) || levels < NEAR_DUPLICATE_LEVEL_LU;
+                if (same || (std::isfinite(d) && d < SoundTypes::NEAR_DUPLICATE_DISTANCE && sameLevel)) {
+                    out.push_back("clips " + number(i) + " and " + number(j) + " are near-duplicates" +
+                                  (same ? std::string(" (the same bytes)") : std::string()) + ": they will sound like one clip");
+                }
+            }
+        }
+    } else if (clips.size() >= 2) {
+        // per band, each layer's energy as it plays
+        std::vector<std::array<double, AudioMeter::BANDS>> levels(clips.size());
+        std::array<bool, AudioMeter::BANDS> audible = {};
+        for (size_t i = 0; i < clips.size(); i++) {
+            for (int b = 0; b < AudioMeter::BANDS; b++) {
+                const double db = clips[i].ok ? numberOr(clips[i].bandsDb.value(AudioMeter::bandLabel(b), Json(nullptr)), AudioMeter::SILENCE_DB)
+                                              : AudioMeter::SILENCE_DB;
+                levels[i][b] = db + (clips[i].ok ? clips[i].offsetDb : 0.0);
+                if (clips[i].ok && levels[i][b] > SoundTypes::SILENCE_THRESHOLD_DBFS) audible[b] = true;
+            }
+        }
+        for (size_t i = 0; i < clips.size(); i++) {
+            if (!clips[i].ok) continue;
+            bool any = false, adds = false;
+            for (int b = 0; b < AudioMeter::BANDS && !adds; b++) {
+                if (!audible[b]) continue;
+                any = true;
+                double others = 0.0;
+                for (size_t j = 0; j < clips.size(); j++) {
+                    if (j != i && clips[j].ok) others += std::pow(10.0, levels[j][b] / 10.0);
+                }
+                const double othersDb = others > 0.0 ? 10.0 * std::log10(others) : AudioMeter::SILENCE_DB;
+                if (levels[i][b] > othersDb - SoundTypes::LAYER_INAUDIBLE_DB) adds = true;
+            }
+            if (any && !adds) {
+                std::snprintf(buffer, sizeof(buffer), "layer %s adds nothing measurable: %.0f dB or more under the others in every band",
+                              number(i).c_str(), SoundTypes::LAYER_INAUDIBLE_DB);
+                out.push_back(buffer);
+            }
+        }
     }
     return out;
 }

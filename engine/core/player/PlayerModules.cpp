@@ -3,6 +3,7 @@
 
 #include "PlayerModules.h"
 
+#include "component/AudioSourceComponent.h"
 #include "navigation/NavTypes.h"
 
 #include <algorithm>
@@ -50,6 +51,6 @@ std::string player::moduleDisplayName(const std::string& module) {
     if (module == "physics3d") return "3D physics";
     if (module == "physics2d") return "2D physics";
     if (module == "navigation") return "navigation meshes";
-    if (module == "soundlayer") return "the sound layer";
+    if (module == "soundlayer") return "Sound Events and clip import settings";
     return module;
 }

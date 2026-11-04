@@ -40,9 +40,10 @@ option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
 # OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
 # from Project Settings > Navigation.
 option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
-# The sound layer (S34 module soundlayer, specs S36 and S37): what a clip's import settings do at
-# run time, among others. A Compile build leaves it out when its project does not use it.
-option(JASPERENGINE_SOUND_LAYER "Compile the sound layer: clip import settings at run time" ON)
+# The sound layer (S34 module soundlayer, specs S36 and S37): Sound Events, triggers, free voices and
+# what a clip's import settings do at run time. A Compile build leaves it out when its project does
+# not use it.
+option(JASPERENGINE_SOUND_LAYER "Compile Sound Events, triggers, free voices and clip import settings" ON)
 # The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
 # controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
 # libwebm). A player variant or a Compile build leaves out what its project cannot reach
@@ -437,6 +438,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         if(GRAPHIC_BACKEND STREQUAL "gles3")
             add_definitions("-DSOKOL_GLES3")
             set(OPENGL_LIB GLESv3)
+        else()
+            # platform/android makes an EGL context and nothing else
+            message(FATAL_ERROR "Android supports GRAPHIC_BACKEND gles3 only (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-D\"lua_getlocaledecpoint()='.'\"")
@@ -1335,9 +1339,6 @@ set(JASPERENGINE_SRCS
     core/audio/AudioMeter.cpp
     core/audio/AudioMixer.cpp
     core/audio/AudioMixerIO.cpp
-    core/audio/SoundEvent.cpp
-    core/audio/SoundEventIO.cpp
-    core/audio/SoundEventLibrary.cpp
     core/audio/SoloudEngineFile.cpp
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
@@ -1597,9 +1598,7 @@ set(JASPERENGINE_SRCS
     core/object/Sprite.cpp
     core/object/Terrain.cpp
     core/object/Tilemap.cpp
-    core/object/sound/Audio.cpp
     core/object/sound/AudioSource.cpp
-    core/object/sound/SoundHandle.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp

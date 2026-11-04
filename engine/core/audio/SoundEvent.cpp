@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/AudioSourceComponent.h"
+
+#if JASPERENGINE_SOUND_LAYER
+
 #include "SoundEvent.h"
 
 using namespace jasperengine;
@@ -157,3 +161,5 @@ double SoundEventRng::uniform() {
 double SoundEventRng::range(double min, double max) {
     return min + uniform() * (max - min);
 }
+
+#endif // JASPERENGINE_SOUND_LAYER

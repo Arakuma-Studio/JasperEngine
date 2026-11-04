@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/AudioSourceComponent.h"
+
+#if JASPERENGINE_SOUND_LAYER
+
 #include "AudioImport.h"
 
 #include "Log.h"
@@ -183,3 +187,5 @@ std::optional<ClipImportSettings> AudioImportTable::find(const std::string& clip
 bool AudioImportTable::isEmpty(){
     return importTableEmpty.load();
 }
+
+#endif // JASPERENGINE_SOUND_LAYER

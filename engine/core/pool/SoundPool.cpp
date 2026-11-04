@@ -12,6 +12,7 @@
 #include "io/File.h"
 #include "io/ResourcePack.h"
 #include "audio/AudioFileCheck.h"
+#include "component/AudioSourceComponent.h"
 #if JASPERENGINE_SOUND_LAYER
 #include "audio/AudioImport.h"
 #include "audio/ClipSource.h"
