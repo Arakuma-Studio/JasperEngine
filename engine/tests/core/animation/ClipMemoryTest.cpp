@@ -236,16 +236,18 @@ TEST(ClipMemory, IdenticalTimesShareOneRange){
     EXPECT_EQ(ranges.size(), 23u);
 }
 
-TEST(ClipMemory, TimesThatDifferInOneBitDoNotShare){
+TEST(ClipMemory, TimesOneStepApartDoNotShare){
+    // the smallest difference normalize keeps (it rounds key times to 1e-6 s)
+    const float apart = 0.500001f;
     ClipData data;
     data.tracks.push_back(track("A", ClipChannel::Position, {key(0, {0, 0, 0}), key(0.5f, {1, 1, 1}), key(1, {0, 0, 0})}));
-    data.tracks.push_back(track("B", ClipChannel::Position, {key(0, {0, 0, 0}), key(std::nextafter(0.5f, 1.0f), {1, 1, 1}), key(1, {0, 0, 0})}));
-    data.tracks.push_back(track("C", ClipChannel::Position, {key(-0.0f, {0, 0, 0}), key(0.5f, {1, 1, 1}), key(1, {0, 0, 0})}));
+    data.tracks.push_back(track("B", ClipChannel::Position, {key(0, {0, 0, 0}), key(apart, {1, 1, 1}), key(1, {0, 0, 0})}));
     std::shared_ptr<const AnimationClip> clip = AnimationClip::build(data);
     const AnimationClip::Track& a = trackOf(*clip, "A", ClipChannel::Position);
     const AnimationClip::Track& b = trackOf(*clip, "B", ClipChannel::Position);
     EXPECT_NE(a.times, b.times);
-    EXPECT_EQ(b.times[1], std::nextafter(0.5f, 1.0f));
+    EXPECT_EQ(a.times[1], 0.5f);
+    EXPECT_EQ(b.times[1], apart);
     expectSameSampling(*clip, *AnimationClip::build(clip->toData()));
 }
 
