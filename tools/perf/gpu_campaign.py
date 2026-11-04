@@ -294,8 +294,7 @@ async def lighting_scene(ed: Editor, name: str) -> tuple[int, int, int]:
     sun = (await ed.call("find_entities", scene=sid, component="light"))["entities"][0]["id"]
     # a new scene draws through the default camera, which has no GameObject: make one
     camera = (await ed.call("create_entity", scene=sid, type="camera", name="Main Camera", position=[0.0, 7.0, 9.0],
-                            select=False))["entity_id"]
-    await ed.call("set_transform", scene=sid, entity=camera, position=[0.0, 7.0, 9.0], rotation=[-38.0, 0.0, 0.0])
+                            select=False, values={"camera": {"useTarget": True, "target": [0.0, 0.0, 0.0]}}))["entity_id"]
     await ed.call("set_main_camera", scene=sid, entity=camera)
     return sid, sun, camera
 
@@ -340,13 +339,14 @@ async def lighting_build(ed: Editor) -> None:
     sid, sun, _ = await lighting_scene(ed, "oit")
     await lighting_entity(ed, sid, "plane", "Ground", [0, 0, 0], scale=[2, 1, 2])
     for i in range(24):
-        await lighting_entity(ed, sid, "plane", f"Glass{i}", [-3 + (i % 6) * 1.2, 1.5, -2 + (i // 6) * 1.0],
-                              scale=[0.6, 1, 0.6], values={"mesh": {"material": {"baseColorFactor": [0.3, 0.6, 0.9, 0.4],
-                                                                                 "blendMode": "alpha", "cullMode": "off"}}})
+        # stacked, so the camera looks through them all
+        await lighting_entity(ed, sid, "plane", f"Glass{i}", [-1 + (i % 6) * 0.4, 0.5 + i * 0.15, -1 + (i // 6) * 0.4], scale=[0.6, 1, 0.6],
+                              values={"mesh": {"submeshes[0].material": {"baseColorFactor": [0.3, 0.6, 0.9, 0.4],
+                                                                         "blendMode": "alpha", "cullMode": "off"}}})
     await ed.call("save_scene", scene=sid)
 
     sid, sun, camera = await lighting_scene(ed, "hair")
-    await ed.call("set_transform", scene=sid, entity=camera, position=[0.0, 0.0, 2.2], rotation=[0.0, 0.0, 0.0])
+    await ed.call("set_transform", scene=sid, entity=camera, position=[0.0, 0.0, 2.2])
     await lighting_entity(ed, sid, "sphere", "Hair", [0, 0, 0], scale=[2, 2, 2])
     await ed.call("save_scene", scene=sid)
 
@@ -370,7 +370,7 @@ async def lighting_toggle(ed: Editor, case: str) -> str:
                       values={"camera": {"transparencyMode": "order_independent" if on else "sorted"}})
     elif scene_file == "hair":
         hair = (await ed.call("find_entities", scene=sid, name="Hair"))["entities"][0]["id"]
-        await ed.call("set_properties", scene=sid, entity=hair, values={"mesh": {"material": {"pbr": {"hair": {"enabled": on}}}}})
+        await ed.call("set_properties", scene=sid, entity=hair, values={"mesh": {"submeshes[0].material": {"pbr": {"hair": {"enabled": on}}}}})
     await ed.call("save_scene", scene=sid)
     return f"{scene_file}.scene"
 
