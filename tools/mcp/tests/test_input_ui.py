@@ -7,6 +7,7 @@ actions work again once the focus goes.
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
+CI = True
 
 TIMEOUT = 900
 
