@@ -195,10 +195,11 @@ TerrainHeightmapResult TerrainMaps::createHeightmap(Project* project,
     return result;
 }
 
-TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
-                                                          uint32_t sceneId,
-                                                          Entity entity,
-                                                          const TerrainBlendmapRequest& request) {
+namespace {
+
+// A constant RGBA PNG in the project's terrain maps folder, named terrain_<scene>_<entity>_<kind>
+TerrainBlendmapResult writeConstantMap(Project* project, uint32_t sceneId, Entity entity, const char* kind, int requested,
+                                       const unsigned char rgba[4], const char* what) {
     TerrainBlendmapResult result;
     if (!project) {
         result.error = "No project is available.";
@@ -210,17 +211,13 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
         return result;
     }
 
-    const int resolution = std::max(2, request.resolution);
-    const unsigned char r = blendChannel(request.red);
-    const unsigned char g = blendChannel(request.green);
-    const unsigned char b = blendChannel(request.blue);
-
+    const int resolution = std::max(2, requested);
     std::vector<unsigned char> pixels(static_cast<size_t>(resolution) * static_cast<size_t>(resolution) * 4);
     for (size_t i = 0; i < pixels.size(); i += 4) {
-        pixels[i] = r;
-        pixels[i + 1] = g;
-        pixels[i + 2] = b;
-        pixels[i + 3] = 255;
+        pixels[i] = rgba[0];
+        pixels[i + 1] = rgba[1];
+        pixels[i + 2] = rgba[2];
+        pixels[i + 3] = rgba[3];
     }
 
     fs::path outputDir = project->getTerrainMapsDir();
@@ -233,7 +230,7 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
 
     result.fullPath = uniqueChildPath(
         outputDir,
-        "terrain_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_blend",
+        "terrain_" + std::to_string(sceneId) + "_" + std::to_string(entity) + "_" + kind,
         ".png");
     // encoded in memory, then written beneath the project (the tool's write scope)
     std::string encoded;
@@ -242,7 +239,7 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
     };
     if (!stbi_write_png_to_func(append, &encoded, resolution, resolution, 4, pixels.data(), resolution * 4) ||
         !FileUtils::writeFileReplacing(result.fullPath, encoded)) {
-        result.error = "Failed to write generated terrain blendmap.";
+        result.error = std::string("Failed to write generated terrain ") + what + ".";
         return result;
     }
 
@@ -250,6 +247,26 @@ TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
     result.relativePath = (ec ? result.fullPath : rel).generic_string();
     result.success = true;
     return result;
+}
+
+} // namespace
+
+TerrainBlendmapResult TerrainMaps::createBlendmap(Project* project,
+                                                          uint32_t sceneId,
+                                                          Entity entity,
+                                                          const TerrainBlendmapRequest& request) {
+    const unsigned char rgba[4] = {blendChannel(request.red), blendChannel(request.green), blendChannel(request.blue), 255};
+    return writeConstantMap(project, sceneId, entity, "blend", request.resolution, rgba, "blendmap");
+}
+
+TerrainBlendmapResult TerrainMaps::createDensityMap(Project* project,
+                                                    uint32_t sceneId,
+                                                    Entity entity,
+                                                    const TerrainDensityMapRequest& request) {
+    // MeshSystem::sampleFoliageDensity reads the first channel
+    const unsigned char grey = blendChannel(request.fill);
+    const unsigned char rgba[4] = {grey, grey, grey, 255};
+    return writeConstantMap(project, sceneId, entity, "density", request.resolution, rgba, "density map");
 }
 
 } // namespace jasperengine::editor::mcp

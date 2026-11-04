@@ -13,6 +13,7 @@
 #include "Catalog.h"
 #include "util/ProjectUtils.h"
 #include "util/YamlNumbers.h"
+#include "util/TerrainDetailRules.h"
 #include "lattice/LatticeTypes.h"
 #include "Out.h"
 #include "particles/ParticleEffectCodec.h"
@@ -551,7 +552,7 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
     return node;
 }
 
-TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node) {
+TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& node, bool clamp) {
     TerrainFoliageLayer layer;
     if (node["meshPath"]) layer.meshPath = decodeAssetRef(node, "meshPath");
     if (node["densityMap"]) layer.densityMap = decodeTexture(node["densityMap"]);
@@ -567,6 +568,14 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     layer.minHeight = decodeFinite(node["minHeight"], layer.minHeight);
     layer.maxHeight = decodeFinite(node["maxHeight"], layer.maxHeight);
     layer.drawDistance = decodeFinite(node["drawDistance"], layer.drawDistance);
+    // a hand-edited or older file: values the renderer cannot use are clamped, and said so
+    if (!clamp) return layer;
+    const std::vector<std::string> clamped = editor::terrain::clampDetailLayer(layer);
+    if (!clamped.empty()) {
+        std::string what;
+        for (const std::string& change : clamped) what += (what.empty() ? "" : ", ") + change;
+        Out::warning("Terrain detail layer (foliageLayers) out of range, clamped: %s.", what.c_str());
+    }
     return layer;
 }
 

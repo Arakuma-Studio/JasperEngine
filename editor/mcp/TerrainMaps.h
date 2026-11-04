@@ -47,8 +47,13 @@ struct TerrainBlendmapResult {
     std::filesystem::path fullPath;
 };
 
-// Generated terrain maps (set_terrain_maps): 16-bit heightmaps and constant RGB blend maps
-// written as PNGs into the project's terrain maps directory
+struct TerrainDensityMapRequest {
+    int resolution = 512;
+    float fill = 1.0f;      // 0-1: the share of the layer's density everywhere
+};
+
+// Generated terrain maps (set_terrain_maps, edit_terrain_details): 16-bit heightmaps, constant RGB
+// blend maps and constant detail density maps written as PNGs into the project's terrain maps directory
 class TerrainMaps {
 public:
     static TerrainHeightmapResult createHeightmap(Project* project,
@@ -60,6 +65,12 @@ public:
                                                 uint32_t sceneId,
                                                 Entity entity,
                                                 const TerrainBlendmapRequest& request);
+
+    // a detail layer's density map, the same grey everywhere (result like createBlendmap's)
+    static TerrainBlendmapResult createDensityMap(Project* project,
+                                                  uint32_t sceneId,
+                                                  Entity entity,
+                                                  const TerrainDensityMapRequest& request);
 };
 
 } // namespace jasperengine::editor::mcp

@@ -269,3 +269,21 @@ async def test_set_mesh_geometry(ed: Editor):
     ed.check_eq(restored["values"], [[4, 4, 4]], "undo restores geometry, not merely an entity handle")
     sprite = await create(ed, sid, "GeneratedSprite", "sprite")
     await ed.check_error("set_mesh_geometry", scene=sid, entity=sprite, shape="box", contains="generated")
+
+
+async def test_rotations_are_unit_quaternions(ed: Editor):
+    """agent-authoring: red before the fix, [90, 0, 0, 1] (Euler degrees typed as a quaternion) was
+    stored as given and scaled the cube; near-unit quaternions were stored unnormalized"""
+    sid = await scene(ed, "Rotations")
+    cube = await create(ed, sid, "Cube", "cube")
+    await ed.check_error("set_properties", scene=sid, entity=cube, values={"transform": {"rotation": [90, 0, 0, 1]}},
+                         contains="euler")
+    await ed.check_error("set_properties", scene=sid, entity=cube, values={"transform": {"rotation": {"x": 90, "y": 0, "z": 0}}},
+                         contains="x, y, z and w")
+    await ed.check_error("set_transform", scene=sid, entity=cube, rotation=[0, 180, 0, 1], contains="euler")
+    rotation = await value(ed, sid, cube, "transform", "rotation")
+    ed.check(all(abs(a - b) < 1e-6 for a, b in zip(rotation["quat"], [0, 0, 0, 1])), f"refusals change nothing: {rotation}")
+    await ed.call("set_properties", scene=sid, entity=cube, values={"transform": {"rotation": [0, 0, 0.71, 0.71]}})
+    quat = (await value(ed, sid, cube, "transform", "rotation"))["quat"]
+    ed.check(abs(math.sqrt(sum(c * c for c in quat)) - 1) < 1e-5, f"stored normalized: {quat}")
+    ed.check(abs(quat[2] - math.sqrt(0.5)) < 1e-4, f"the same rotation: {quat}")

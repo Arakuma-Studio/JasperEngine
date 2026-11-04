@@ -178,8 +178,10 @@ namespace jasperengine::editor::mcp {
         static bool parseVector2(const Json& value, Vector2& out);
         static bool parseVector3(const Json& value, Vector3& out);
         static bool parseVector4(const Json& value, Vector4& out);
-        // [x,y,z,w], {"quat"}, {"euler"} (degrees, ZYX), {x,y,z,w}; `out` holds the current value
-        static bool parseQuaternion(const Json& value, Quaternion& out);
+        // A rotation: [x,y,z,w], {"quat"}, {"euler"} (degrees, ZYX) or {x,y,z,w} (all four); `out` holds
+        // the current value. Within 10% of unit length it is normalized; anything else (Euler degrees
+        // typed as a quaternion, zero) is refused with the reason in `error`.
+        static bool parseQuaternion(const Json& value, Quaternion& out, std::string* error = nullptr);
         // A float as JSON: its shortest round-trip decimal (0.1, not 0.10000000149)
         static double number(float value);
         static Json toJson(const Vector2& value);
