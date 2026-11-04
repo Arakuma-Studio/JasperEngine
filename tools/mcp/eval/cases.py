@@ -885,4 +885,18 @@ CASES = [
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
     },
+    {
+        "id": "guard_focus_animator",
+        "kind": "guard",
+        "what_happened": "focus_window handled \"animator\" and its enum left it out, so the schema told agents the window "
+                         "could not be named (BF23 F14); guards the enum when core is trimmed.",
+        "text_at_issue": "focus_window's window enum: 'animator'",
+        "source": "audit (BF23 F14); no failure on record",
+        "prompt": "Bring the Animator window to the front in the editor, I want to look at it with you.",
+        "mocks": [
+            {"tool": "focus_window", "args": {"window": "animator"}, "result": ok("Focused the Animator window.", {"window": "animator"})},
+        ],
+        "checks": {"calls": [{"tool": "focus_window", "args": {"window": "animator"}}], "must_not_call": ["screenshot"]},
+        "max_turns": 6,
+    },
 ]

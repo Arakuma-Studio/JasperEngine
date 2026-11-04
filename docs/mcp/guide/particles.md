@@ -90,6 +90,10 @@ for a given seed and frame-rate independent.
 - Both report `seed` (the one in use, also what a seedless effect drew for this play) and `state_hash`:
   put the seed in the effect (`edit_particle_effect {patch: {seed}}`) and the same time gives the
   same hash, which is how to tell that two runs are the same one.
+- `edit_particle_effect` and `add_particle_module` refuse a field the effect does not have, naming the
+  nearest one, and write nothing. A `.particles` file takes `read_file` and `write_file` too; a field
+  it does not know only warns when it is read, and another program's edit reports it in
+  `external_changes.problems`.
 - `get_particle_migration_report` lists the old particle systems (Points + Particle System action)
   the documents read were converted from; saving writes the new format.
 

@@ -233,6 +233,15 @@ inverses for undo. Graph kinds (a material graph, an animation graph) register t
 with `GraphRegistry`. MCP `list_graph_kinds`, `get_graph`, `validate_graph` and `edit_graph`
 work on any kind. This spec ships no graph editor and no visual scripting.
 
+A kind sets `strictParams` to have a misspelled parameter or node type and an out-of-range value
+count as errors, each issue with a `suggestion` ("did you mean 'value'?"), so `edit_graph` refuses
+them; other kinds keep them for a newer build. Loading never refuses a file for them. `edit_graph`
+returns `added: [{op_index, id}]`, the id of each new node, edge and group, and an `addNode` with
+its own id still gets its type's defaults. A kind's `fileExtension` is enough for its files to be
+text for `read_file` and `write_file`, and tracked: another program's edit reports its problems in
+`external_changes`. An open window or a pool reacts to edits with
+`GraphEditCmd::addChangeListener`, called on execute and on undo.
+
 ## The Lua API as data
 
 One parser (`tools/lua_api`) reads the Lua bindings at build time and writes `lua-api.json`.
