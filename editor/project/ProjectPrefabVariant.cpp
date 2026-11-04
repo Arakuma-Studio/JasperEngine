@@ -13,6 +13,7 @@
 // model and the export go through them.
 
 #include "Project.h"
+#include "component/PrefabComponent.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"

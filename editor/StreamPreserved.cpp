@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "StreamPreserved.h"
+#include "component/Transform.h"
 
 #include "Stream.h"
 #include "util/NearestName.h"

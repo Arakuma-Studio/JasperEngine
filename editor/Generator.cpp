@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "object/FluidSimulation.h"
+#include "component/PrefabComponent.h"
 #include "util/NativePlugins.h"
 #include "Factory.h"
 #include "App.h"

@@ -5,9 +5,20 @@
 
 #include "SceneRender.h"
 
-#include "JasperEngine.h"
 #include "UILayer.h"
 #include "command/Command.h"
+#include "io/watch/FileIdentity.h"
+
+namespace jasperengine{
+    struct CharacterController2DComponent;
+    struct Joint2DComponent;
+    struct Light2DComponent;
+    struct OnScreenStickComponent;
+    struct PolygonPoint;
+    struct Rigidbody2DComponent;
+    struct ShadowCaster2DComponent;
+    struct TranslateTracksComponent;
+}
 
 namespace jasperengine::editor{
 
