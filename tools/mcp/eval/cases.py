@@ -603,6 +603,26 @@ CASES = [
                    "must_not_call": ["create_entity", "instantiate_prefab", "set_scene_camera"], "reply_must": [r"645|270|125"]},
         "max_turns": 10,
     },
+    {
+        "id": "bad_lod_tint_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked which objects draw which detail level, agents changed materials to colour objects by "
+                         "their level and later had to put the materials back; the Scene view's LOD Level Draw Mode "
+                         "tints every mesh by the level it draws, editor only.",
+        "text_at_issue": "set_scene_camera display: '... draw_mode: \"lod_level\"'; meshes guide 'See the levels in "
+                         "the Scene view'",
+        "source": "S54 R11 (docs/forge-meshopt-analysis/jasper-ux-human.md 6.3)",
+        "prompt": "In the Main scene, show me which objects are drawing which LOD level right now. Don't change any "
+                  "object or material.",
+        "mocks": [
+            {"tool": "set_scene_camera", "args": {}, "result": ok(
+                "Scene view camera of \"Main\": {}.", {"display": {"draw_mode": "lod_level", "show_stats": True}})},
+            {"tool": "screenshot", "args": {}, "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "lod_level"}}}],
+                   "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
+        "max_turns": 10,
+    },
 
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
