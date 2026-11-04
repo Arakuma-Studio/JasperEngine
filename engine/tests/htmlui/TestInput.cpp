@@ -332,6 +332,8 @@ namespace {
     // a component InputField where the document has nothing (x 500..620, y 180..300), focused
     InputField& focusedInputField(SceneFixture& fixture){
         InputField& field = fixture.add<InputField>();
+        // its Text child, where the typing goes
+        field.setText("");
         field.setPosition(500, 200);
         field.setSize(120, 40);
         GpuEnvironment::drawFrames(2);
