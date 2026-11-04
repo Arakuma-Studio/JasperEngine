@@ -436,6 +436,7 @@ async def record_flip(ed: Editor, name: str) -> list:
     r = await ed.call("record_game", frames=FRAMES, fps=30, format="png", width=WIDTH, height=HEIGHT, output=str(out), timeout_seconds=600)
     ed.check_eq(r["frames"], FRAMES, f"{json.dumps(r)[:600]}")
     print(f"[recorder] {name}: {r['wallSeconds']:.2f} s, warnings {r['warnings']}")
+    ed.check_eq(r["warnings"], [], "everything it waited for settled")
     return [pngdiff.decode(p.read_bytes()) for p in sorted(out.rglob("*.png"))]
 
 

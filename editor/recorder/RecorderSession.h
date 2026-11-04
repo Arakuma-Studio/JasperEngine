@@ -175,9 +175,10 @@ namespace jasperengine::editor::recorder {
         // is good when both say all was ready and nothing moved between them
         struct FrameMarks {
             bool assetsIdle = false;      // no shader, pipeline, texture or model being made
-            bool settled = false;         // the scene's objects report loaded, nothing left to adopt
+            bool settled = false;         // the scene's objects report loaded
             uint32_t waitingDraws = 0;    // draws that found their pipeline being made (ObjectRender)
             uint32_t standIns = 0;        // bindings that got a stand-in texture (Texture)
+            uint32_t loadingAnswers = 0;  // bindings of an image still loading (Texture)
             uint32_t textureEpoch = 0;    // images that became ready (TexturePool)
             uint64_t created = 0;         // shaders, pipelines and warm draws finished (S32)
         };

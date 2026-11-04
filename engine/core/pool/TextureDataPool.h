@@ -233,9 +233,6 @@ namespace jasperengine{
         // reads, a transcode waiting for the main thread). Readiness and screenshots wait for
         // none to be left; a finished load the next draw adopts is not counted.
         static size_t getLoadingCount();
-        // those, and the finished loads no draw has adopted yet: until one has, what asked for the
-        // texture still draws a stand-in (a frame that must show it waits for this to reach 0)
-        static size_t getUnclaimedCount();
         // their ids (the texture paths), at most `max`
         static std::vector<std::string> getLoadingIds(size_t max);
     };

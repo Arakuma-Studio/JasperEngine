@@ -831,7 +831,7 @@ bool RecorderSession::assetsLoading() const {
 }
 
 bool RecorderSession::contentSettled() const {
-    if (TextureDataPool::getUnclaimedCount() > 0 || UIDocument::getPendingEffectReplays() > 0 || !Engine::areScenesLoaded(true)) return false;
+    if (UIDocument::getPendingEffectReplays() > 0 || !Engine::areScenesLoaded(true)) return false;
     Scene* scene = host.gameScene ? host.gameScene() : nullptr;
     UISystem* ui = scene ? scene->getSystem<UISystem>().get() : nullptr;
     return !ui || !ui->hasPendingImages();
@@ -852,6 +852,7 @@ RecorderSession::FrameMarks RecorderSession::readMarks() const {
     marks.settled = settleGivenUp || contentSettled();
     marks.waitingDraws = ObjectRender::getWaitingDrawCount();
     marks.standIns = Texture::getStandInCount();
+    marks.loadingAnswers = Texture::getLoadingAnswerCount();
     marks.textureEpoch = TexturePool::getReadyEpoch();
     const GpuCreationStats stats = SystemRender::getGpuCreationStats();
     marks.created = stats.createdShaders + stats.createdPipelines + stats.warmDraws;
@@ -862,7 +863,7 @@ bool RecorderSession::drawnWithAllReady(const FrameMarks& before, const FrameMar
     if (!before.assetsIdle || !after.assetsIdle) return false;
     if (settleGivenUp) return true;
     return before.settled && after.settled && before.waitingDraws == after.waitingDraws && before.standIns == after.standIns &&
-           before.textureEpoch == after.textureEpoch && before.created == after.created;
+           before.loadingAnswers == after.loadingAnswers && before.textureEpoch == after.textureEpoch && before.created == after.created;
 }
 
 void RecorderSession::captureFrame() {
@@ -942,7 +943,13 @@ void RecorderSession::checkHold(const FrameMarks& before) {
         return;
     }
     if (now - settleStart > kSettleLimit) {
-        working.warnings.push_back("frame " + std::to_string(frameIndex) + " on: recorded without waiting for what does not report loaded: " + describeLoading());
+        std::string what = describeLoading();
+        const auto add = [&what](const std::string& part) { what += (what.empty() ? "" : "; ") + part; };
+        if (before.waitingDraws != drawn.waitingDraws) add("draws waiting for their pipelines");
+        if (before.standIns != drawn.standIns || before.loadingAnswers != drawn.loadingAnswers) add("stand-in textures bound");
+        if (before.textureEpoch != drawn.textureEpoch) add("textures becoming ready");
+        if (before.created != drawn.created) add("shaders or pipelines being made");
+        working.warnings.push_back("frame " + std::to_string(frameIndex) + " on: recorded without waiting for what does not settle: " + what);
         settleGivenUp = true;
     }
 }
