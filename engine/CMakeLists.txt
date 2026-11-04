@@ -1743,6 +1743,7 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/MeshSystemGltfPbr.cpp
+    core/subsystem/GltfNormalize.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/WaterSystem.cpp
     core/subsystem/AtmosphereRenderer.cpp
