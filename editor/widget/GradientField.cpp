@@ -477,6 +477,7 @@ void GradientWindow::show() {
         closeAfterDelivery = false;
         close();
     }
+    windowFocused = false;
     if (target == 0) return;
 
     bool open = true;
@@ -487,6 +488,7 @@ void GradientWindow::show() {
     }
     const std::string windowTitle = title + "###" + WINDOW_NAME;
     if (ImGui::Begin(windowTitle.c_str(), &open, ImGuiWindowFlags_NoCollapse)) {
+        windowFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
         // Mode and the blend space
         static const char* const kModes[] = {"Blend", "Fixed"};
         int mode = (int)gradient.mode;

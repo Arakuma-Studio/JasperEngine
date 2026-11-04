@@ -11,6 +11,7 @@
 
 #include "util/FileUtils.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/GltfNormalize.h"
 
 #include "ufbx.h"
 #include "tiny_gltf.h"
@@ -458,9 +459,15 @@ namespace{
             return true;
         }, nullptr);
         // through the models' one redirect (a cooked .glb, an FBX's import: S53 R12)
-        const bool loaded = MeshSystem::loadGLTFFile(loader, &model, &err, &warn, path);
+        const bool loaded = MeshSystem::readGLTFFile(loader, &model, &err, &warn, path);
         if (!loaded){
             error = "cannot read " + fileName(path) + ": " + (err.empty() ? std::string("not a glTF file") : err);
+            return false;
+        }
+        // compressed and quantized streams as core glTF (docs/specs/S53-model-import-cook.md R1)
+        GltfNormalizeResult normalized;
+        if (!GltfNormalize::run(model, path, normalized)){
+            error = "cannot read " + fileName(path) + ": " + normalized.firstError();
             return false;
         }
         const fs::path dir = FileUtils::pathFromUtf8(path).parent_path();

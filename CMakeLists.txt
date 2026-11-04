@@ -587,13 +587,17 @@ add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
 add_subdirectory(libs/ufbx)
 add_subdirectory(libs/tinyexr)
-jasperengine_apply_cxx_standard(nfd yaml-cpp tinyexr)
+# The model decoders games never carry (docs/specs/S53-model-import-cook.md R6): Draco meshes and
+# WebP images of glTF files, which the model cook transcodes
+add_subdirectory(editor/libs/draco)
+add_subdirectory(editor/libs/libwebp)
+jasperengine_apply_cxx_standard(nfd yaml-cpp tinyexr draco_decoder)
 # The standards the project setting offers (editor/util/CxxStandards.h) and the compiler floors
 # the Play plugin checks (Generator::getToolchainFloorCheck), from the engine's definitions
 get_directory_property(JASPERENGINE_CXX_STANDARDS DIRECTORY ${JASPERENGINE_ROOT} DEFINITION JASPERENGINE_CXX_STANDARDS)
 string(REPLACE ";" "," JASPERENGINE_CXX_STANDARD_LIST "${JASPERENGINE_CXX_STANDARDS}")
 
-foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr draco_decoder webp_decoder)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -942,6 +946,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
+    ${EDITOR_DIR}/util/GltfEditorDecoders.cpp
     ${EDITOR_DIR}/util/GlbBuilder.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
@@ -994,6 +999,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shortcuts/Chord.cpp
     ${EDITOR_DIR}/shortcuts/CommandCatalog.cpp
     ${EDITOR_DIR}/shortcuts/DefaultCommands.cpp
+    ${EDITOR_DIR}/shortcuts/PanelClaims.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutDispatcher.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutOverrides.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutsWindow.cpp
@@ -1465,6 +1471,8 @@ function(configure_jasperengine_editor_target target_name)
         basisu_encoder
         ufbx
         tinyexr
+        draco_decoder
+        webp_decoder
     )
 
     if(WIN32)

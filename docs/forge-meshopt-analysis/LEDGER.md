@@ -62,7 +62,7 @@ parameters sit inside `sprite-batching`, not S55.
 
 | Spec | Status |
 |---|---|
-| S53 | impl |
+| S53 | impl: loader half merged into `mesh-lod-forge` (ccd15bf4f); importer half in progress |
 | S54 | impl |
 | S55 | impl |
 | S56 | impl |

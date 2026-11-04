@@ -4530,13 +4530,37 @@ static bool ParseOcclusionTextureInfo(
   return true;
 }
 
+// JasperEngine patch (S53 R1): whether a buffer object is a meshopt fallback buffer
+static bool IsMeshoptFallbackBuffer(const detail::json &o) {
+  detail::json_const_iterator extensions;
+  if (!detail::FindMember(o, "extensions", extensions) ||
+      !detail::IsObject(detail::GetValue(extensions))) {
+    return false;
+  }
+  const detail::json &list = detail::GetValue(extensions);
+  for (const char *name : {"EXT_meshopt_compression", "KHR_meshopt_compression"}) {
+    detail::json_const_iterator extension;
+    if (!detail::FindMember(list, name, extension) ||
+        !detail::IsObject(detail::GetValue(extension))) {
+      continue;
+    }
+    bool fallback = false;
+    if (ParseBooleanProperty(&fallback, nullptr, detail::GetValue(extension),
+                             "fallback", false) &&
+        fallback) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool ParseBuffer(Buffer *buffer, std::string *err, const detail::json &o,
                         bool store_original_json_for_extras_and_extensions,
                         FsCallbacks *fs, const URICallbacks *uri_cb,
                         const std::string &basedir,
                         const size_t max_buffer_size, bool is_binary = false,
                         const unsigned char *bin_data = nullptr,
-                        size_t bin_size = 0) {
+                        size_t bin_size = 0, size_t buffer_index = 0) {
   size_t byteLength;
   if (!ParseUnsignedProperty(&byteLength, err, o, "byteLength", true,
                              "Buffer")) {
@@ -4546,6 +4570,17 @@ static bool ParseBuffer(Buffer *buffer, std::string *err, const detail::json &o,
   // In glTF 2.0, uri is not mandatory anymore
   buffer->uri.clear();
   ParseStringProperty(&buffer->uri, err, o, "uri", false, "Buffer");
+
+  // JasperEngine patch (docs/specs/S53-model-import-cook.md R1): a meshopt fallback buffer
+  // (EXT_ or KHR_meshopt_compression "fallback": true) without a uri is a placeholder that
+  // decoding fills (engine/core/subsystem/GltfNormalize.cpp): it loads no data, in a .gltf
+  // as in a .glb, and never takes the BIN chunk
+  if (buffer->uri.empty() && IsMeshoptFallbackBuffer(o)) {
+    ParseStringProperty(&buffer->name, err, o, "name", false);
+    ParseExtrasAndExtensions(buffer, err, o,
+                             store_original_json_for_extras_and_extensions);
+    return true;
+  }
 
   // having an empty uri for a non embedded image should not be valid
   if (!is_binary && buffer->uri.empty()) {
@@ -4593,6 +4628,17 @@ static bool ParseBuffer(Buffer *buffer, std::string *err, const detail::json &o,
       }
     } else {
       // load data from (embedded) binary data
+
+      // JasperEngine patch (S53 R1): only the first buffer is the BIN chunk (glTF 2.0, GLB
+      // stored buffer); a later one without a uri used to get a copy of the BIN chunk's first
+      // bytes, which drew whatever they held
+      if (buffer_index != 0) {
+        if (err) {
+          (*err) += "Buffer " + std::to_string(buffer_index) +
+                    " has no 'uri': only the first buffer can be the GLB's BIN chunk.\n";
+        }
+        return false;
+      }
 
       if ((bin_size == 0) || (bin_data == nullptr)) {
         if (err) {
@@ -6165,7 +6211,7 @@ bool TinyGLTF::LoadFromString(Model *model, std::string *err, std::string *warn,
       if (!ParseBuffer(&buffer, err, o,
                        store_original_json_for_extras_and_extensions_, &fs,
                        &uri_cb, base_dir, max_external_file_size_, is_binary_,
-                       bin_data_, bin_size_)) {
+                       bin_data_, bin_size_, model->buffers.size())) {
         return false;
       }
 
