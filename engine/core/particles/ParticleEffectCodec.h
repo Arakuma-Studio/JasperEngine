@@ -41,6 +41,7 @@ namespace jasperengine { namespace particles {
         static nlohmann::ordered_json toKeyedJson(const ParticleEffectDocument& document);
         // Applies a JSON merge patch (RFC 7386) to the keyed form of `document`; on success the
         // result replaces it. A module set to null is removed (hidden); a module object adds it.
+        // A key the format does not have is an error here (reading a file only warns about it).
         static bool applyMergePatch(ParticleEffectDocument& document, const nlohmann::ordered_json& patch, std::vector<Diagnostic>& diagnostics);
 
         // One MinMaxCurve / MinMaxGradient value in the effect's field form (a plain constant is a

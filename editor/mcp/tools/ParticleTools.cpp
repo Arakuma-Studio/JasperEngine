@@ -35,6 +35,7 @@
 #include "window/ParticleEffectOverlay.h"
 #include "window/SceneWindow.h"
 
+#include <algorithm>
 #include <filesystem>
 
 namespace jasperengine::editor::mcp {
@@ -208,15 +209,20 @@ bool editTarget(const CallPtr& call, const EffectTarget& target, const Ordered& 
     return true;
 }
 
-void replyEffect(const CallPtr& call, const EffectTarget& target, const std::string& text, bool changed) {
+// `applied`: what the patch's own reading said; the effect as it is now can no longer say that
+void replyEffect(const CallPtr& call, const EffectTarget& target, const std::string& text, bool changed, const std::vector<Diagnostic>& applied = {}) {
     ParticleEffectDocument document;
     std::vector<Diagnostic> diagnostics;
     readTarget(target, document, diagnostics);
+    for (const Diagnostic& d : applied) {
+        const auto same = [&](const Diagnostic& other) { return other.severity == d.severity && other.path == d.path && other.message == d.message; };
+        if (std::none_of(diagnostics.begin(), diagnostics.end(), same)) diagnostics.push_back(d);
+    }
     Json data = targetJson(target);
     data["changed"] = changed;
     data["modules"] = moduleKeys(document);
     data["diagnostics"] = diagnosticsJson(diagnostics);
-    call->ok(text, data);
+    call->ok(diagnostics.empty() ? text : text + " " + std::to_string(diagnostics.size()) + " diagnostic(s), first: " + firstError(diagnostics), data);
 }
 
 // ------------------------------------------------------------------ assets
@@ -305,7 +311,7 @@ void editEffectTool(const CallPtr& call) {
     std::vector<Diagnostic> diagnostics;
     bool changed = false;
     if (!editTarget(call, target, toOrdered(args["patch"]), "Edit Particle Effect", diagnostics, changed)) return;
-    replyEffect(call, target, changed ? "Edited the effect (one undo step)." : "The patch changed nothing.", changed);
+    replyEffect(call, target, changed ? "Edited the effect (one undo step)." : "The patch changed nothing.", changed, diagnostics);
 }
 
 void moduleTool(const CallPtr& call, bool add) {
@@ -334,7 +340,7 @@ void moduleTool(const CallPtr& call, bool add) {
     std::vector<Diagnostic> diagnostics;
     bool changed = false;
     if (!editTarget(call, target, patch, add ? "Add Module" : "Remove Module", diagnostics, changed)) return;
-    replyEffect(call, target, std::string(changed ? (add ? "Added " : "Removed ") : "Nothing changed: ") + module->label + ".", changed);
+    replyEffect(call, target, std::string(changed ? (add ? "Added " : "Removed ") : "Nothing changed: ") + module->label + ".", changed, diagnostics);
 }
 
 void addModuleTool(const CallPtr& call) { moduleTool(call, true); }

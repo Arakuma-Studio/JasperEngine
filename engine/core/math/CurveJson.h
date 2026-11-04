@@ -45,6 +45,7 @@ namespace jasperengine { namespace curvejson {
         bool error = true;          // false: a warning (an unknown key, read past)
         std::string path;
         std::string message;
+        bool unknownKey = false;    // a warning about a key the format does not have
     };
 
     JASPERENGINE_API Json curveToJson(const Curve& curve);

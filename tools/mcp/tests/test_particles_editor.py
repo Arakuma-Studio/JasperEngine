@@ -9,6 +9,10 @@ Runs in one new empty project; tests run in order and share the editor.
 
 from __future__ import annotations
 
+import asyncio
+import json
+import time
+
 from harness import Editor
 
 CI = True
@@ -117,3 +121,38 @@ async def test_param_edit_keeps_particles(ed: Editor):
     restarted = await stats(ed)
     ed.check(restarted["time"] < before["time"] or restarted["particle_count"] != before["particle_count"],
              f"a structural edit restarts: {before} -> {restarted}")
+
+
+async def test_misspelled_patch_field_is_refused(ed: Editor):
+    """F10: an unknown field in a patch is refused with a did-you-mean, and nothing is written; the
+    warnings of a patch that goes through come back."""
+    s = await setup(ed)
+    path = "assets/fx/typo.particles"
+    await ed.call("create_particle_effect", path=path, preset="sparks")
+    target = ed.project / path
+    before = target.read_bytes()
+
+    r = await ed.call_raw("edit_particle_effect", {"path": path, "patch": {"modules": {"emission": {"rateOverTim": 20}}}})
+    ed.check(r.is_error, f"the misspelled field is refused: {r.text[:300]}")
+    ed.check("did you mean 'rateOverTime'" in r.text, f"with what it meant: {r.text[:300]}")
+    found = [d for d in (r.structured or {}).get("diagnostics", []) if d["path"] == "emission.rateOverTim"]
+    ed.check(found and found[0]["severity"] == "error" and "did you mean" in found[0]["message"], f"its diagnostic: {r.structured}")
+    ed.check_eq(target.read_bytes(), before, "the file is untouched")
+
+    for patch, fragment in (({"duratoin": 3}, "did you mean 'duration'"),
+                            ({"modules": {"emission": {"rateOverTime": {"mode": "twoConstants", "constant": 1, "constantMxa": 2}}}}, "did you mean 'constantMax'"),
+                            ({"modules": {"emision": {"rateOverTime": 2}}}, "did you mean 'emission'")):
+        r = await ed.call_raw("edit_particle_effect", {"path": path, "patch": patch})
+        ed.check(r.is_error and fragment in r.text, f"{patch}: {r.text[:300]}")
+        ed.check_eq(target.read_bytes(), before, f"{patch} wrote nothing")
+
+    # the same through an inline effect and through add_particle_module's fields
+    r = await ed.call_raw("edit_particle_effect", {"scene": s["scene"], "entity": s["system"], "patch": {"duratoin": 3}})
+    ed.check(r.is_error, f"an inline effect's patch: {r.text[:300]}")
+    r = await ed.call_raw("add_particle_module", {"path": path, "module": "noise", "fields": {"strenght": 3}})
+    ed.check(r.is_error and "did you mean 'strength'" in r.text, f"add_particle_module's fields: {r.text[:300]}")
+    ed.check_eq(target.read_bytes(), before, "add_particle_module wrote nothing")
+
+    # a patch that goes through says what it left wrong
+    done = await ed.call("edit_particle_effect", path=path, patch={"modules": {"renderer": {"renderMode": "none"}}})
+    ed.check([d for d in done["diagnostics"] if d["severity"] == "warning" and d["path"] == "renderer.renderMode"], f"its warnings: {done['diagnostics']}")
