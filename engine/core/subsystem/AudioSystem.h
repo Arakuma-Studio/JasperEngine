@@ -7,6 +7,7 @@
 #include "SubSystem.h"
 
 #include "component/AudioSourceComponent.h"
+#include "ecs/Entity.h"
 
 #include <functional>
 #include <map>
@@ -22,6 +23,10 @@ namespace SoLoud{
 
 namespace jasperengine{
 
+	class Scene;
+	struct SoundEventAsset;
+	struct SoundEventSpatial;
+
 	// Project Settings > Audio (audio-mixer spec A11): the exported init calls configure() before
 	// the first sound
 	struct AudioConfig {
@@ -32,6 +37,45 @@ namespace jasperengine{
 		int maxVoices = 256;
 		// 0 = the device's default
 		int sampleRate = 0;
+		// the Sound Event generator's seed in a deterministic run (Project Settings audio.seed);
+		// other runs draw one at each start
+		uint32_t seed = 1;
+	};
+
+	// One line of what happened to a voice, for AudioSystem::setVoiceObserver: every field is the
+	// capture log's (docs/specs/S37-sound-events.md R14). Built only while an observer is set.
+	struct AudioVoiceLine {
+		enum class Kind { Start, Stop, Reject };
+		Kind kind = Kind::Start;
+		// stop: "stop", "stolen_instance", "stolen_source", "stolen_budget". reject: "budget",
+		// "max_voices", "cooldown", "instance_limit", "missing_clip", "missing_event", "impact_gate"
+		const char* reason = "";
+		unsigned int handle = 0;
+		Scene* scene = nullptr;
+		Entity entity = NULL_ENTITY;
+		std::string clip;
+		// the event's GUID and path; empty for a clip
+		std::string event;
+		std::string eventPath;
+		// its clip index in the event, and its place in a layered pick
+		int variation = -1;
+		int layer = -1;
+		uint64_t instance = 0;
+		// the instance that stole it
+		uint64_t byInstance = 0;
+		// main, one_shot, point, free
+		const char* owner = "main";
+		// play, event, trigger, lua, cpp
+		const char* cause = "play";
+		const char* trigger = "";
+		float impactSpeed = -1.0f;
+		float gain = 1.0f;
+		float pitch = 1.0f;
+		int priority = 128;
+		std::string group;
+		uint32_t delayFrames = 0;
+		// the mixer's sample cursor in a deterministic run
+		uint64_t sample = 0;
 	};
 
 	// What SoLoud mixes into. Auto: the device, else NoSound (mixes in its own thread with no
@@ -40,6 +84,28 @@ namespace jasperengine{
 	// run (no threads). JASPERENGINE_AUDIO_BACKEND=nosound|null|auto in the environment.
 	enum class AudioBackend { Auto, NoSound, Null };
 
+	// a voice beyond what the source itself says (a Sound Event's values, clip variation)
+	struct AudioVoiceExtras {
+		float speedScale = 1.0f;
+		// -1: the source's
+		int priority = -1;
+		// null: the source's group
+		const std::string* groupId = nullptr;
+		bool eventLoop = false;
+		uint32_t delayFrames = 0;
+		const SoundEventSpatial* spatial = nullptr;
+		const char* owner = "main";
+		const char* cause = "play";
+		const char* trigger = "";
+		float impactSpeed = -1.0f;
+		Entity entity = NULL_ENTITY;
+		const char* clip = "";
+		const char* event = "";
+		const char* eventPath = "";
+		int variation = -1;
+		int layer = -1;
+		uint64_t instance = 0;
+	};
 	class JASPERENGINE_API AudioSystem : public SubSystem {
 		// the unit tests reach a voice's parameters without the frame's 3D pass after them
 		friend struct AudioSystemTestAccess;
@@ -93,19 +159,57 @@ namespace jasperengine{
 		std::vector<PointVoice> pointVoices;
 		std::vector<PendingPointVoice> pendingPointVoices;
 
+		using VoiceExtras = AudioVoiceExtras;
+		// a play of an event, through startEvent
+		struct EventPlay {
+			enum class Owner { Main, OneShot };
+			Owner owner = Owner::Main;
+			AudioSourceComponent* audio = nullptr;
+			Entity entity = NULL_ENTITY;
+			bool use3D = false;
+			Vector3 position;
+			float volumeScale = 1.0f;
+			float impactGain = 1.0f;
+			float impactSpeed = -1.0f;
+			const char* cause = "event";
+			const char* trigger = "";
+		};
+		struct StartedPlay {
+			uint64_t instance = 0;
+			std::vector<unsigned int> handles;
+		};
+
         bool loadSoundSample(AudioSourceComponent& audio);
         void preloadSoundAssets();
 		// the voices of a source: stop them all (main, one-shots, pending one-shots)
 		void stopVoices(AudioSourceComponent& audio);
 		void releaseSample(AudioSourceComponent& audio);
 		unsigned int startVoice(AudioSourceComponent& audio, SoLoud::AudioSource& sample, float volume, bool use3D,
-		                        const Vector3& position, bool mainVoice);
-		void applyVoiceParameters(AudioSourceComponent& audio, unsigned int handle, bool mainVoice, bool use3D);
-		void apply3dParameters(AudioSourceComponent& audio, unsigned int handle, const Vector3& position, const Vector3& velocity);
+		                        const Vector3& position, bool mainVoice, const AudioVoiceExtras& extras = AudioVoiceExtras());
+		void applyVoiceParameters(AudioSourceComponent& audio, unsigned int handle, bool mainVoice, bool use3D, float speedScale = 1.0f, bool eventLoop = false);
+		void apply3dParameters(AudioSourceComponent& audio, unsigned int handle, const Vector3& position, const Vector3& velocity,
+		                       const SoundEventSpatial* spatial = nullptr);
+		// Starts an event (docs/specs/S37-sound-events.md R6), the one function every caller uses:
+		// cooldown, instance limit, pick, voices, in this order
+		StartedPlay startEvent(const SoundEventAsset& event, const EventPlay& play);
+		// the source's event plays as its main voice; false when nothing started
+		bool startMainEvent(AudioSourceComponent& audio, Entity entity, bool use3D, const Vector3& position);
+		// the cap of a source (spec A10): false when no one-shot can give its place
+		bool makeSourceRoom(AudioSourceComponent& audio, uint64_t instance);
+		void stopMainVoices(AudioSourceComponent& audio);
+		void pruneMainVoices(AudioSourceComponent& audio);
+		// a source's event by its GUID, else its path; a reject line and one warning when it does not resolve
+		const SoundEventAsset* resolveSourceEvent(const std::string& name, Entity entity, const char* owner, const char* cause, const char* trigger, float impactSpeed);
+		// the event's group, as an AudioSource's resolves (id, name, then Master, warned once)
+		std::string eventGroup(const SoundEventAsset& event, const std::string& fallback);
+		void clipVariation(AudioSourceComponent& audio, Entity entity, float& volumeScale, float& speedScale);
+		void preloadEvent(AudioSourceComponent& audio);
+		void logReject(const char* reason, Entity entity, const std::string& clip, const SoundEventAsset* event, const std::string& eventName,
+		               const char* owner, const char* cause, const char* trigger, float impactSpeed, int priority, const std::string& group);
 		bool desiredPause(const AudioSourceComponent& audio) const;
 		void applyPause(AudioSourceComponent& audio);
 		const std::string& resolveGroup(AudioSourceComponent& audio, Entity entity);
-		void startPendingOneShots(AudioSourceComponent& audio, bool use3D, const Vector3& position, double unscaledDt);
+		void startPendingOneShots(AudioSourceComponent& audio, Entity entity, bool use3D, const Vector3& position, double unscaledDt);
 		// hasListener: 3D against the frame's listener; heard: where it hears a world position
 		void updatePointVoices(double unscaledDt, bool hasListener, const std::function<Vector3(const Vector3&)>& heard);
 		void updateFade(AudioSourceComponent& audio, double scaledDt, double unscaledDt, std::vector<std::pair<Entity, int>>& events, Entity entity);
@@ -132,6 +236,18 @@ namespace jasperengine{
 		// the Null backend: `seconds` of audio mixed now (AudioMixer::update does it each frame);
 		// nothing during an offline capture, whose caller mixes (mixOffline)
 		static void mixManually(double seconds);
+
+		// ---- Sound Events (docs/specs/S37-sound-events.md)
+		// Forgets every event's bag, sequence, cooldown and instances, the one-per-Play warnings and
+		// the seed. Play start and stop.
+		static void resetSoundEventRuntime();
+		// the mixing is on the null driver, in step with the game: the same frames give the same
+		// samples, and a seed is audio.seed
+		static bool isDeterministic();
+		// Called with every voice's start, stop and rejection (nullptr: none). The capture hook.
+		static void setVoiceObserver(std::function<void(const AudioVoiceLine&)> observer);
+		// The generator's seed of this run, chosen at its first use
+		static uint64_t getSoundEventSeed();
 
 		static void stopAll();
 		// the game's pause of everything (Lua AudioSystem.pauseAll / resumeAll): the Master bus (every

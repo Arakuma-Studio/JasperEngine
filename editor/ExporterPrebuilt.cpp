@@ -637,6 +637,7 @@ bool editor::Exporter::writeGameConfig() {
     game.audioMixer = audio.mixer;
     game.audioMaxRealVoices = audio.maxRealVoices;
     game.audioMaxVoices = audio.maxVoices;
+    game.audioSeed = audio.seed;
     game.audioSampleRate = audio.sampleRate;
 
     // the project icon, at the content root: the window and taskbar icon of every platform

@@ -1332,6 +1332,9 @@ set(JASPERENGINE_SRCS
     core/audio/AudioMeter.cpp
     core/audio/AudioMixer.cpp
     core/audio/AudioMixerIO.cpp
+    core/audio/SoundEvent.cpp
+    core/audio/SoundEventIO.cpp
+    core/audio/SoundEventLibrary.cpp
     core/audio/SoloudEngineFile.cpp
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
