@@ -816,3 +816,24 @@ Recorded during implementation (2026-11-04, branch `dc/unicode-text`).
     in `editor/tests/util/TextEncodingTest.cpp` (E1, E2, E4).
 11. **`InputTest`'s fixture records `char32_t`** (`engine/tests/htmlui/TestInput.cpp`); the
     `wchar_t` handler compatibility is C3 in the core tests.
+12. **The font search runs on the jobs' Background lane** (`jobs::enqueueDetached`), started from
+    `App::engineInit` once the job system runs (`App::setup` only records the fonts it merges into).
+13. **Android's diff is `ComponentTextInput`** (`AndroidTextInput.h`: `reset`, `update` returning a
+    `TextEdit`), the state the keyboard callback needs, instead of a free `diffText` function.
+14. **Crash report paths are UTF-8 from the start and widened at crash time** (`CrashHandlerWin.cpp`,
+    into stack buffers, no allocation): `copyPath` fills them from `path.u8string()` (not
+    `string()`, the ANSI code page before Windows 10 1903) and cuts them between characters; the
+    engine's report root comes from the platform's UTF-8 path through `std::u8string`.
+15. **The log repairs into a local string** (review): the thread's buffer was overwritten when the
+    same call emitted a rate-limit summary back through `logSubmit`; the summary's sample is cut
+    between characters. Test `LoggerTest.RepairedRecordSurvivesTheSummaryItsCallEmits`.
+16. **`legacyToUtf8` reads text as ANSI only when the process is not in the UTF-8 code page**
+    (review); in the UTF-8 code page invalid bytes are repaired with U+FFFD.
+17. **A sub-asset key keeps its backslashes** (review): `FileUtils::portablePath` (which
+    `Stream::portablePath`, `McpRefs` and the settings rows use) changes only the container's part of
+    `models/hero.glb#mesh:Body\Skin`. Test `PortablePaths.SubAssetKeysKeepTheirBackslashes`.
+18. **`currentEnvironment()` keeps the `=C:` drive entries** (review): a cmd.exe child reads each
+    drive's current folder from them, now that every child gets an environment block.
+19. **`void onCharInput(wchar_t)` in C++ is deprecated** (`docs/mcp/guide/cpp-scripting.md`): it still
+    compiles, and on Windows gets the character cut to 16 bits;
+    `FunctionSubscribeCompatTest.CharInputHandlersOfEitherTypeRegister` pins that per platform.

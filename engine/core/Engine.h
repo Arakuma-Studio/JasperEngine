@@ -978,7 +978,8 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onMouseLeave;
         static FunctionSubscribe<void(int,bool,int)> onKeyDown;
         static FunctionSubscribe<void(int,bool,int)> onKeyUp;
-        // one whole character per call, on every platform (a one-character string in Lua)
+        // one whole character per call, on every platform (a one-character string in Lua). A C++
+        // handler declared with wchar_t still compiles but is deprecated: 16 bits on Windows.
         static FunctionSubscribe<void(char32_t)> onCharInput;
         static FunctionSubscribe<void(int)> onGamepadConnect;
         static FunctionSubscribe<void(int)> onGamepadDisconnect;

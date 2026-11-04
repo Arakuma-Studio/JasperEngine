@@ -264,6 +264,14 @@ TEST(FunctionSubscribeCompatTest, CharInputHandlersOfEitherTypeRegister) {
     EXPECT_EQ(current.got, (std::vector<char32_t>{U'a', U'\U0001F600'}));
     ASSERT_EQ(wide.got.size(), 2u);
     EXPECT_EQ(wide.got[0], static_cast<uint32_t>('a'));
+    // the deprecated wchar_t form gets the character converted to wchar_t: whole where wchar_t is
+    // 32 bits, its low 16 bits on Windows (docs/mcp/guide/cpp-scripting.md)
+    EXPECT_EQ(wide.got[1], static_cast<uint32_t>(static_cast<wchar_t>(U'\U0001F600')));
+    if constexpr (sizeof(wchar_t) == 4) {
+        EXPECT_EQ(wide.got[1], 0x1F600u);
+    } else {
+        EXPECT_EQ(wide.got[1], 0xF600u);
+    }
     Engine::onCharInput.call(U'b');
     EXPECT_EQ(current.got.size(), 2u) << "unsubscribed";
 }
