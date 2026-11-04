@@ -75,8 +75,10 @@
 // value noise), so a preset needs no image files. Foam shows where the two noise layers
 // together exceed 1 - foamAmount (more on wave crests). Pixel lighting: Lambert from the ambient and the pixel lights on the water and
 // foam colour, plus a Blinn-Phong glint of each pixel light (shadowed; GGX with REFLECTION),
-// which also makes the water more opaque. Light units: includes/lights.glsl. No shadows
-// (@state shadows=off): the surface is see-through, so the bed below stays lit.
+// which also makes the water more opaque. Light units: includes/lights.glsl. The shadows it
+// receives are looked up with the surface's normal without the ripples (offset along it), so
+// a shadow's edge stays where the waves put it instead of following every ripple. It casts no
+// shadows (@state shadows=off): the surface is see-through, so the bed below stays lit.
 //
 // Distant detail: the waves' slope fades out once a pixel covers 4% of a wave length (none
 // left at 35%), the ripples to a third of their strength between 1% and 10% of a tile, so
@@ -138,7 +140,8 @@
 //     frame's mainLightColor times its intensity and its height above the horizon) it adds
 //     causticsStrength times the pattern; it grows over the first 0.25 units below the
 //     surface, fades with exp(-below / causticsDepth), and goes where its cells would be
-//     smaller than a few pixels (no shimmer).
+//     smaller than a few pixels (no shimmer). Lit per pixel with shadows, the sunlight is
+//     that light's shadow on the surface times as strong: no caustics under a shadowed surface.
 //
 // Mesh features: what the mesh carries instead of what the scene gives, for the water meshes
 // of splines (docs/specs/S18-splines.md D9: a river ribbon, a lake or banks fill), whose
@@ -405,6 +408,10 @@ void main() {
             seenThickness = (refractedDepth - surfaceDepth) * rayScale;
         }
         vec3 behind = sceneColor(refracted);
+        #ifdef WATER_CAUSTICS
+            // the caustics' brightening of the bed before the sunlight reaching it (0: none)
+            float causticsGain = 0.0;
+        #endif
         // the refracted sample replaces what the target holds once a unit of ripple shifts
         // it by 2 pixels; before (strength 0, the shore line) the water blends over the
         // target as without REFRACTION (transparent objects behind it stay visible)
@@ -422,9 +429,9 @@ void main() {
                                      (surfaceDepth + seenThickness / rayScale) / max(surfaceDepth, 1e-3));
                 float causticsFade = smoothstep(0.02, 0.25, below) * exp(-below / max(customParams.causticsDepth, 1e-3)) *
                                      (1.0 - smoothstep(0.15, 0.5, bedFootprint / cellSize));
-                vec3 sunlight = frame.mainLightColor.rgb * (frame.mainLightDirection.w * max(frame.mainLightDirection.y, 0.0));
                 float pattern = waterCaustics(bed.xz / cellSize, frame.time.x * customParams.causticsSpeed);
-                behind *= vec3(1.0) + customParams.causticsStrength * pattern * causticsFade * min(sunlight * 0.5, vec3(1.0));
+                // applied after the lights, which tell whether the surface over it is in shadow
+                causticsGain = customParams.causticsStrength * pattern * causticsFade;
             }
         #endif
 
@@ -497,9 +504,15 @@ void main() {
     vec3 color = albedo.rgb;
     float alpha = albedo.a;
 
+    // the share of the sunlight the surface gets: the main directional light's shadow there
+    float causticsShadow = 1.0;
+
     #ifdef USE_PUNCTUAL
         // the underside is lit by the light reaching the water body (from above)
         vec3 lightNormal = fromBelow ? vec3(0.0, 1.0, 0.0) : n;
+        // the shadow lookup offsets along the normal: the surface's without the ripples, or
+        // the ripples would move the shadow's edge about (from below, up as the lighting)
+        vec3 shadowNormal = fromBelow ? lightNormal : surfaceNormal;
         vec3 light = ambientLight(lightNormal);
         vec3 specular = vec3(0.0);
         #ifdef REFLECTION
@@ -513,7 +526,10 @@ void main() {
             LightSample lightSample = getLight(i, v_position);
             float shadow = 1.0;
             #ifdef USE_SHADOWS
-                shadow = lightShadow(i, v_position, lightNormal);
+                shadow = lightShadow(i, v_position, shadowNormal);
+                if (getLightData(i).type == LightType_Directional && dot(lightSample.direction, frame.mainLightDirection.xyz) > 0.999){
+                    causticsShadow = shadow;
+                }
             #endif
             light += lambert(lightSample, lightNormal) * shadow;
             #ifdef REFLECTION
@@ -526,6 +542,12 @@ void main() {
         if (fromBelow){
             specular = vec3(0.0);
         }
+    #endif
+
+    #ifdef WATER_CAUSTICS
+        // the sun focused on the bed, as much of it as reaches the surface over it
+        vec3 sunlight = frame.mainLightColor.rgb * (frame.mainLightDirection.w * max(frame.mainLightDirection.y, 0.0)) * causticsShadow;
+        behind *= vec3(1.0) + causticsGain * min(sunlight * 0.5, vec3(1.0));
     #endif
 
     if (fromBelow){

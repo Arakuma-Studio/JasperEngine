@@ -9732,7 +9732,11 @@ void RenderSystem::loadSceneColorCopy(){
     sceneColorCopySlotParams = sceneColorCopyShader.get()->shaderData.getUniformBlockIndex(UniformBlockType::BLIT_FS_PARAMS);
     // a pass of the frame: created at once, never skipped (spec S32 §6.4)
     sceneColorCopyRender.setImmediatePipelines(true);
-    if (!sceneColorCopyRender.endLoad(PIP_EFFECT, false, true, CullingMode::BACK, WindingOrder::CCW))
+    // the copy replaces: blended, it would keep rgb * alpha where the target's alpha is under 1
+    // (a background colour with alpha, say), and every reader would see that darker colour
+    RenderState copyState(false, true, CullingMode::BACK, WindingOrder::CCW);
+    copyState.blend = BlendMode::NONE;
+    if (!sceneColorCopyRender.endLoad(PIP_EFFECT, copyState))
         return;
     sceneColorCopyLoaded = true;
 }
