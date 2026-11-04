@@ -2072,7 +2072,6 @@ void editor::App::buildDefaultLayout(){
     ImGui::DockBuilderDockWindow(AnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
     ImGui::DockBuilderDockWindow(PoseAnimationWindow::WINDOW_NAME, dock_id_middle_bottom);
-    ImGui::DockBuilderDockWindow(AnimatorWindow::WINDOW_NAME, dock_id_middle_bottom);
 
     // Hierarchy top-left; the Scene tabs and Game view fill the centre.
     ImGui::DockBuilderSplitNode(dock_id_left, ImGuiDir_Left, 0.0f, &dock_id_left_top, &dock_id_middle_top);
@@ -2111,7 +2110,7 @@ void editor::App::buildDefaultLayout(){
     stampPanelDockOrder(PlayModeChangesWindow::WINDOW_NAME, 5);
     stampPanelDockOrder(SystemsWindow::WINDOW_NAME, 6);
     stampPanelDockOrder(AnimatorWindow::WINDOW_NAME, 7);
-    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 7);
+    stampPanelDockOrder(BookmarksWindow::WINDOW_NAME, 8);
 
     // Mark the scene area as the central node. CentralNode is a saved flag, so it
     // persists in the ini and lets getCentralDockId() recover this node on the
@@ -2724,9 +2723,6 @@ void editor::App::show(){
         // the Animator window edits project assets (its selection in the Inspector too)
         if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
                 (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
-            lastFocusedWindow = LastFocusedWindow::Resources;
-        } else if (animatorWindow->isFocused()) {
-            // the Animator window's edits are project steps (its controller file)
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;
