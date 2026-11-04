@@ -6052,9 +6052,6 @@ void editor::Project::finalizeStart(SceneProject* mainSceneProject, std::vector<
         selectedSceneForProperties = runtime->id;
     }
 
-    // sample 0: no game frame has run, and what the scripts' init starts is in the capture
-    beginPlayAudioCapture(mainSceneProject);
-
     Engine::pauseGameEvents(false);
     Engine::onViewLoaded.call();
     Engine::systemViewChanged();
@@ -9812,6 +9809,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // By index, and guarded: a script here can call addChildScene(), which
                 // initializes another entry and appends to runtimeScenes. Initializing from
                 // the snapshot above would then run a scene's scripts a second time.
+                // sample 0: no game frame has run, and what the scripts' init starts is in the capture
+                beginPlayAudioCapture(sceneProject);
+
                 // Each scene's start ends at a safe point for DontDestroyOnLoad (before its
                 // documents start), as in the exported game's first load.
                 SceneManager::beginStartingScenes();

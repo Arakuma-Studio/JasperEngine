@@ -47,6 +47,8 @@
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include "audio/AudioMarkers.h"
+
 #include <unordered_map>
 #include <vector>
 
@@ -605,9 +607,16 @@ namespace jasperengine{
             // a trigger pair for trigger listeners, a solid one for collision listeners
             const uint16_t wanted = settings.mIsSensor ? PhysicsCallbacks::TRIGGER_3D : PhysicsCallbacks::COLLISION_3D;
             const bool listened = ((mask1 | mask2) & wanted) != 0;
+#if JASPERENGINE_AUDIO_CAPTURE
+            // a capture marks every contact, with or without a listener
+            if (!listened && !global && !AudioMarkers::isEnabled()){
+                return;
+            }
+#else
             if (!listened && !global){
                 return;
             }
+#endif
 
             RawContact3D raw;
             raw.kind = kind;

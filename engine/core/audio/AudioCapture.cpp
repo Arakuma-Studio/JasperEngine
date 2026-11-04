@@ -212,11 +212,18 @@ namespace {
             return (bool)file;
         }
 
-        // the sizes written and the name published; on failure the temporary stays gone
-        bool close(std::string* why) {
+        // the sizes written and the name published, without the last `trim` frames; on failure the
+        // temporary stays gone
+        bool close(std::string* why, uint32_t trim = 0) {
+            frames -= std::min<uint64_t>(trim, frames);
             bool ok = patchHeader();
             file.close();
             ok = ok && !file.fail();
+            if (ok && trim > 0) {
+                std::error_code ec;
+                fs::resize_file(temporary, (uintmax_t)WAV_HEADER_BYTES + frames * channels * 4, ec);
+                ok = !ec;
+            }
             if (!ok) {
                 std::error_code ignored;
                 fs::remove(temporary, ignored);
@@ -306,10 +313,13 @@ namespace {
         // the current chunk, interleaved: what the group's meter saw of it
         std::vector<float> chunk;
         std::unique_ptr<StreamWav> stem;
+        uint32_t stemDelay = 0;
     };
 
     struct ActiveVoice {
         unsigned int handle = 0;
+        // what the lines call it: SoLoud's handles count every play since the process began
+        uint64_t serial = 0;
         std::string clip;
         std::string entity;
         int64_t entityId = -1;
@@ -356,6 +366,7 @@ namespace {
         std::string mixerPath;
 
         std::vector<ActiveVoice> voices;
+        uint64_t nextVoice = 1;
         int voicesPeak = 0;
         double fixedDelta = -1.0;
         std::set<std::string> notDeterministic;
@@ -427,8 +438,13 @@ namespace {
             if (ec || !group->stem->open(captureSession->directory / "groups" / (safeFileName(info.name) + ".wav"), captureSession->rate, 2)) {
                 failCapture("could not write the stem of group " + info.name);
                 group->stem.reset();
-            } else if (captureSession->capturedFrames > 0 && !group->stem->writeSilence((uint32_t)captureSession->capturedFrames)) {
-                failCapture("could not write the stem of group " + info.name);
+            } else {
+                // the meter is ahead of the output by the buses left to go: this keeps sample k of a
+                // stem on sample k of master.wav
+                group->stemDelay = (uint32_t)AudioMixer::getGroupDepth(info.id);
+                if (!group->stem->writeSilence((uint32_t)captureSession->capturedFrames + group->stemDelay)) {
+                    failCapture("could not write the stem of group " + info.name);
+                }
             }
         }
         GroupCapture* raw = group.get();
@@ -495,7 +511,7 @@ namespace {
         for (const ActiveVoice& voice : s.voices) {
             if (!first) out += ',';
             first = false;
-            out += '[' + std::to_string(voice.handle) + ',';
+            out += '[' + std::to_string(voice.serial) + ',';
             jsonNumber(out, levelDb(soloud.getOverallVolume(voice.handle)), 2);
             out += ']';
         }
@@ -572,7 +588,7 @@ namespace {
     }
 
     void voiceCommon(AudioCapture::Line& line, const ActiveVoice& voice) {
-        line.integer("voice", voice.handle).text("clip", voice.clip);
+        line.integer("voice", (int64_t)voice.serial).text("clip", voice.clip);
         if (voice.entity.empty()) line.null("entity").null("entity_id");
         else line.text("entity", voice.entity).integer("entity_id", voice.entityId);
         line.text("scene", voice.scene).text("group", voice.group).text("group_id", voice.groupId).text("owner", voice.owner);
@@ -604,6 +620,7 @@ namespace {
             case AudioVoiceLine::Kind::Start: {
                 ActiveVoice voice;
                 voice.handle = line.handle;
+                voice.serial = s.nextVoice++;
                 voice.clip = line.clip;
                 voice.entity = AudioCapture::entityPath(line.scene, line.entity);
                 voice.entityId = voice.entity.empty() ? -1 : (int64_t)line.entity;
@@ -1062,7 +1079,7 @@ void AudioCapture::end() {
     std::string why;
     if (!s.master.close(&why)) failCapture(why);
     for (const std::unique_ptr<GroupCapture>& group : s.groups) {
-        if (group->stem && !group->stem->close(&why)) failCapture(why);
+        if (group->stem && !group->stem->close(&why, group->stemDelay)) failCapture(why);
     }
 
     const std::string endedUtc = utcText("%Y-%m-%dT%H:%M:%SZ", std::time(nullptr));

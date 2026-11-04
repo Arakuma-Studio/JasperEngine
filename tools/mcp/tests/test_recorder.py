@@ -222,7 +222,7 @@ async def test_movie_audio_matches_capture():
         scene = made["scene"]["id"]
         await ed.call("create_entity", scene=scene, name="Source", type="audio_source")
         await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {
-            "filename": "sounds/tone.wav", "looping": True, "outputGroup": "Music"}})
+            "filename": "sounds/tone.wav", "looping": True, "outputGroup": "Music", "state": "playing"}})
         await ed.call("save_scene", scene=scene)
 
         movie = ed.scratch.root / "rec-capture.mov"

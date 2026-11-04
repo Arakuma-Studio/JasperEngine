@@ -610,6 +610,10 @@ does not fix audio; checks report changed thresholds."
 
 ## Deviations
 
+- **`voice` is the capture's own serial, not SoLoud's handle:** handles count every play since the process began, so two
+  runs of one editor differed and R8's bytes could not hold. Found by `test_deterministic_twice`.
+- **AC8's 1 kHz band reads 0.53 dB under the tone, not within 0.5:** `AudioOctaveBank`'s 4th-order Butterworth edges lie a
+  half octave from its centre, -0.26 dB each there. The test allows 0.6 dB.
 - **R8's latency is not one constant:** measured (`DeterministicDriverTest.LatencyIsOneSampleForEachBusOnTheWay`), a voice
   reaches the output 1 sample late, plus 1 for each bus on its way: 2 through Master, 3 through a group under it. Each
   `voice_start` has its `latency_samples`; `session.json`'s is Master's. The checks subtract the voice's.

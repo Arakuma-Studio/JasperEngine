@@ -120,10 +120,12 @@ async def test_spawn_and_destroy_name_their_prefab(ed: Editor):
     await ed.call("create_entity", scene=scene, type="empty", name="Spawner")
     await ed.call("create_script", kind="lua", name="Spawner", content=SPAWNER, entity="Spawner", scene=scene)
     await ed.call("save_scene", scene=scene)
+    await ed.console_since(limit=500)
     events = await capture_of(ed, scene, 12)
     spawns = [e for e in events if e["kind"] == "spawn"]
     destroys = [e for e in events if e["kind"] == "destroy"]
-    ed.check_eq(len(spawns), 1, f"{[e['kind'] for e in events]}")
+    console = [e.get("message", "")[:200] for e in await ed.console_since(limit=100)]
+    ed.check_eq(len(spawns), 1, f"{[e['kind'] for e in events]} {console}")
     ed.check_eq(spawns[0]["prefab"], "prefabs/Coin.prefab", f"{spawns[0]}")
     ed.check_eq(spawns[0]["guid"], made["guid"], f"{spawns[0]} {made}")
     ed.check_eq(len(destroys), 1, f"{[e['kind'] for e in events]}")

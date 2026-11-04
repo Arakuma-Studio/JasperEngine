@@ -92,6 +92,9 @@ async def test_deterministic_twice(ed: Editor):
     second = await play_jump(ed)
     ed.check(first != second, "two sessions")
     for name in ("master.wav", "events.jsonl", "levels.jsonl"):
+        if name.endswith(".jsonl"):
+            for a, b in zip((first / name).read_text().splitlines(), (second / name).read_text().splitlines()):
+                ed.check_eq(a, b, f"{name}: the same line on both runs")
         ed.check_eq(digest(first / name), digest(second / name), f"{name} is the same bytes on both runs")
     one, two = read_session(first), read_session(second)
     ed.check(one["deterministic"], f"the session says so: {one['not_deterministic']}")
@@ -161,7 +164,7 @@ async def test_stop_says_scene(ed: Editor):
     scene = (await ed.call("create_scene", name="Loop", type="2D", path="scenes/Loop.scene"))["scene"]["id"]
     STATE["loop"] = scene
     await ed.call("create_entity", scene=scene, name="Source", type="audio_source")
-    await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {"filename": "sounds/long.wav", "looping": True}})
+    await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {"filename": "sounds/long.wav", "looping": True, "state": "playing"}})
     await ed.call("save_scene", scene=scene)
     before = capture_sessions(ed.project)
     await ed.call("play", action="start", scene=scene, fixed_fps=60)
@@ -248,7 +251,7 @@ async def test_crash_leaves_a_readable_session():
         await ed.call("sync_files")
         scene = (await ed.call("create_scene", name="Crash", type="2D", path="scenes/Crash.scene"))["scene"]["id"]
         await ed.call("create_entity", scene=scene, name="Source", type="audio_source")
-        await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {"filename": "sounds/long.wav"}})
+        await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {"filename": "sounds/long.wav", "state": "playing"}})
         await ed.call("save_scene", scene=scene)
         await ed.call("play", action="start", scene=scene, fixed_fps=60)
         await ed.call("wait", frames=150)
@@ -273,7 +276,7 @@ async def test_levels_and_stems():
         scene = (await ed.call("create_scene", name="Tone", type="2D", path="scenes/Tone.scene"))["scene"]["id"]
         await ed.call("create_entity", scene=scene, name="Source", type="audio_source")
         await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {
-            "filename": "sounds/tone.wav", "looping": True, "outputGroup": "Music"}})
+            "filename": "sounds/tone.wav", "looping": True, "outputGroup": "Music", "state": "playing"}})
         await ed.call("save_scene", scene=scene)
 
         async def capture(fader_db: float = 0.0, stems: bool = False):
@@ -299,9 +302,10 @@ async def test_levels_and_stems():
         tail = samples[-2 * 9600:]
         peak_db = 20 * math.log10(max(abs(v) for v in tail))
         band = line["groups"]["Music"]["bands_db"][5]
-        ed.check(abs(band - line["groups"]["Music"]["peak_db"]) < 0.5, f"a 1 kHz tone is its 1 kHz band: {line['groups']['Music']}")
+        # (the bank's edges take 0.53 dB off its centre: 4th-order Butterworth, a half octave away on each side)
+        ed.check(abs(band - line["groups"]["Music"]["peak_db"]) < 0.6, f"a 1 kHz tone is its 1 kHz band: {line['groups']['Music']}")
         ed.check(abs(line["master"]["peak_db"] - peak_db) < 0.1, f"master peak {line['master']['peak_db']} vs the WAV's {peak_db}")
-        ed.check(abs(line["master"]["bands_db"][5] - peak_db) < 0.5, f"master's 1k band {line['master']['bands_db']} vs {peak_db}")
+        ed.check(abs(line["master"]["bands_db"][5] - peak_db) < 0.6, f"master's 1k band {line['master']['bands_db']} vs {peak_db}")
         ed.check(all(b < band - 10 for i, b in enumerate(line["groups"]["Music"]["bands_db"]) if abs(i - 5) >= 2),
                  f"nothing far from 1 kHz: {line['groups']['Music']['bands_db']}")
         voices = line["voices"]
