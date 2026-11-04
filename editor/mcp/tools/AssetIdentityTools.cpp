@@ -423,8 +423,7 @@ void registerAssetIdentityTools(McpRegistry& registry) {
         tool.title = "List Missing Assets";
         tool.description =
             "Every reference that resolves to no asset, by missing GUID (expected type, last path, referrers); "
-            "references bound only by path (resolved_by_path); metas whose asset is gone (orphan_metas); "
-            "assets in read-only linked folders (read_only_linked, when any).";
+            "references bound only by path (resolved_by_path); metas whose asset is gone (orphan_metas).";
         tool.inputSchema = object({
             {"scope", withDefault(stringEnum("", {"project", "open_scenes"}), "project")}
         });

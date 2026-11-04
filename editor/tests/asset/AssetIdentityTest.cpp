@@ -887,7 +887,7 @@ TEST(AssetDatabase, StaleScanIsDropped) {
     EXPECT_TRUE(database.refresh(now).empty());
 }
 
-// ==================================================================== links and hard links (S48)
+// ==================================================================== links and hard links (S68)
 
 namespace {
 

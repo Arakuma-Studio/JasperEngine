@@ -48,7 +48,7 @@ namespace {
 
 }
 
-// S48 R8: a folder linked in from out of the root is watched as one of its folders, under the link's
+// S68 R8: a folder linked in from out of the root is watched as one of its folders, under the link's
 // name; the link to itself inside it ends the walk; a link made while watching starts being watched
 TEST_P(FileWatchServiceTests, SeesChangesThroughLinkedFolders) {
     WatchTempDir elsewhere;

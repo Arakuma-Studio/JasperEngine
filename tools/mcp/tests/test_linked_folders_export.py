@@ -1,4 +1,4 @@
-"""Linked folders in exports (docs/specs/S48-linked-folders.md R1-R3, AC1, AC2). A port of the sound
+"""Linked folders in exports (docs/specs/S68-linked-folders.md R1-R3, AC1, AC2). A port of the sound
 layer's cleanup group A-1 (je-wt/snd-ro tools/mcp/tests/test_cleanup_group_a.py).
 
 Every export mode ships what linked folders hold at the paths the editor reads them by: assets, the
@@ -10,8 +10,8 @@ Lua module from linked folders, and the export is left where a web build can tak
 (JASPER_LINKED_WEB_EXPORT, see the test).
 
 Oracles: files on disk read by Python (bytes), the editor's read_file and get_asset_info for the paths
-it resolves, the player's own screenshot. Runs in a copy of the default fixture (assets dir "assets",
-Lua dir "scripts").
+it resolves, the player's own screenshot. Runs in a copy of tools/fixtures/legacy_paths_project (assets
+dir "assets", Lua dir "scripts").
 """
 
 from __future__ import annotations
@@ -25,13 +25,14 @@ from pathlib import Path
 
 import build_cache
 import pngdiff
-from harness import Editor, skip, symlinks_permitted
+from harness import REPO, Editor, skip, symlinks_permitted
 from htmlui_pixels import count_near
 
 # the Desktop game test builds with the run's prebuilt glcore runtime (tools/mcp/build_cache.py)
 PREBUILT_PLAYERS = ["glcore-release"]
-EDITOR = {"env": build_cache.player_env("glcore", "release")}
+EDITOR = {"project": REPO / "tools" / "fixtures" / "legacy_paths_project", "env": build_cache.player_env("glcore", "release")}
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "1800"))
+CI = True
 
 
 def write(path: Path, text: str) -> None:
@@ -68,9 +69,8 @@ def linked_folders(ed: Editor):
     shared, extra, lualib, shaders = outside / "shared", outside / "extra", outside / "lualib", outside / "shaders"
     write(shared / "notes.txt", "notes in a linked folder\n")
     write(shared / "sub" / "deep.txt", "deep in a linked folder\n")
-    clip = next((assets / "audio").glob("*.ogg"))
     shared.mkdir(parents=True, exist_ok=True)
-    shutil.copy(clip, shared / "clip.ogg")
+    shutil.copy(assets / "sounds" / "beep.wav", shared / "clip.wav")
     write(extra / "more.txt", "through a link inside a linked folder\n")
     write(outside / "single.txt", "a linked file\n")
     write(lualib / "helper.lua", "return { answer = 42 }\n")
@@ -89,7 +89,7 @@ def linked_folders(ed: Editor):
     expected = {
         "shared/notes.txt": (shared / "notes.txt").read_bytes(),
         "shared/sub/deep.txt": (shared / "sub" / "deep.txt").read_bytes(),
-        "shared/clip.ogg": (shared / "clip.ogg").read_bytes(),
+        "shared/clip.wav": (shared / "clip.wav").read_bytes(),
         "shared/more/more.txt": (extra / "more.txt").read_bytes(),
         "single.txt": (outside / "single.txt").read_bytes(),
         "linked_shaders/glow.frag": (shaders / "glow.frag").read_bytes(),
@@ -137,7 +137,7 @@ async def test_linked_folders_ship_where_the_editor_reads_them(ed: Editor):
                           "scripts/lib/helper.lua": "answer = 42"}.items():
             r = await ed.call_raw("read_file", {"path": rel})
             ed.check(not r.is_error and text in r.text, f"the editor reads {rel}: {r.text[:300]}")
-        info = await ed.call_raw("get_asset_info", {"path": "assets/shared/clip.ogg"})
+        info = await ed.call_raw("get_asset_info", {"path": "assets/shared/clip.wav"})
         ed.check(not info.is_error, f"the editor reads the clip in the linked folder: {info.text[:300]}")
 
         for name, platform in (("export-linux", "linux"), ("export-web", "web"), ("export-android", "android")):
@@ -163,6 +163,24 @@ async def test_a_project_without_links_exports_the_same_files(ed: Editor):
     ed.check_eq(sorted(rel for rel in own if rel not in shipped and not cooked_at(shipped, rel)), [], "every file of the assets ships")
     extra = sorted(rel for rel in shipped if rel not in own and not rel.startswith("je-cooked/") and rel != "assetmap.bin")
     ed.check_eq(extra, [], "and nothing else")
+
+
+async def test_a_link_to_the_export_itself_is_left_out(ed: Editor):
+    """What the walk writes must not be walked: a link to the export's own folder would ship the export
+    into itself without end. export-pipeline's rule ("the walkers skip the export's own folder")."""
+    if not symlinks_permitted():
+        skip("this process may not create symbolic links")
+    out = ed.scratch.root / "export-self"
+    (out / "project" / "assets").mkdir(parents=True)
+    link = ed.project / "assets" / "own_export"
+    os.symlink(out, link)
+    try:
+        exported, _, warnings, console = await source_export(ed, "export-self", "linux")
+        held = [rel for rel in tree(exported) if rel.startswith("own_export/")]
+        ed.check_eq(held, [], "nothing of the export ships inside it")
+        ed.check_in("\"own_export\"", " ".join(warnings) + " " + console, "and the warning names the link")
+    finally:
+        link.unlink()
 
 
 # -- the games ----------------------------------------------------------------------------------------
@@ -257,17 +275,16 @@ async def test_desktop_game_loads_from_linked_folders(ed: Editor):
 
 async def test_web_export_for_the_web_game(ed: Editor):
     """AC2, the web half: the editor exports the source of the same game for the web. A web build needs
-    the web image, which has no editor: JASPER_LINKED_WEB_EXPORT names where this test leaves the source
-    export, and docs/testing.md ("Linked folders in a web game") has the build and the browser run of it."""
-    target = os.environ.get("JASPER_LINKED_WEB_EXPORT", "")
-    if not target:
-        skip("set JASPER_LINKED_WEB_EXPORT to a folder to export the web game there")
+    the web image, which has no editor: with JASPER_LINKED_WEB_EXPORT the export stays in that folder, and
+    docs/testing.md ("Linked folders in a web game") has the build and the browser run of it."""
     with linked_game(ed):
         await make_linked_scene(ed)
-        out = Path(target).resolve()
+        target = os.environ.get("JASPER_LINKED_WEB_EXPORT", "")
+        out = Path(target).resolve() if target else ed.scratch.root / "export-linked-web"
         shutil.rmtree(out, ignore_errors=True)
         r = await ed.call("build_project", mode="source", output_dir=str(out), platform="web", backends=["opengles"],
                           overwrite=True, timeout_seconds=900)
         ed.check_eq(r["status"], "succeeded", f"{str(r)[:2000]}")
-        ed.check((out / "project" / "assets" / "linked_art" / "red.png").is_file(), "the texture of the linked folder ships")
+        ed.check((out / "project" / "assets" / "linked_art" / "red.png").is_file() or
+                 cooked_at(tree(out / "project" / "assets"), "linked_art/red.png"), "the texture of the linked folder ships")
         ed.check((out / "project" / "lua" / "lib" / "linkedhelper.lua").is_file(), "the Lua module of the linked folder ships")

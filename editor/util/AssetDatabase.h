@@ -15,7 +15,7 @@
 // result). The contracts are in docs/specs/S04-asset-identity.md and
 // editor/project/PREFABS.md §3.
 //
-// Links (S48). One file is one asset, whatever the paths it is reached by. A link (symbolic link,
+// Links (S68). One file is one asset, whatever the paths it is reached by. A link (symbolic link,
 // junction, mount point) leading into the project is another name of a file or folder the scan
 // reaches anyway: nothing is tracked under it, and a lookup by it answers with the real path. A link
 // leading out of the project is a folder of the project: what it holds is tracked under the link's
@@ -243,7 +243,7 @@ namespace jasperengine::editor {
         // Where the database knows a path by: project-relative, through the links the last scan found
         std::filesystem::path toRelative(const std::filesystem::path& path) const;
         const std::filesystem::path& getProjectPath() const { return projectPath; }
-        // Stops a scan's walk through links after this many entries (the bound of S48 R7; tests)
+        // Stops a scan's walk through links after this many entries (the bound of S68 R7; tests)
         static void setLinkedEntryLimitForTesting(size_t limit);
 
         // The content hashes still being computed in the background (tests and the bench wait)

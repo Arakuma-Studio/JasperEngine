@@ -208,7 +208,7 @@ A new test that needs a game that runs builds it prebuilt. One that needs what o
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
 
-### Linked folders in a web game (S48 AC2)
+### Linked folders in a web game (S68 AC2)
 
 `tools/mcp/tests/test_linked_folders_export.py` builds and runs a Desktop game with
 `JASPER_SLOW_BUILD=1`. A web game needs the web image, which has no editor, so it takes two steps:

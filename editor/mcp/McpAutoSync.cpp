@@ -289,7 +289,7 @@ void McpAutoSync::baseline(const fs::path& projectRoot) {
     walkDir("", nullptr, 0);
 }
 
-// A linked folder out of the project is one of its folders (S48): entered once. A link inside
+// A linked folder out of the project is one of its folders (S68): entered once. A link inside
 // the project (its target is walked by its own name) or leading to a folder holding the project is not.
 bool McpAutoSync::entersFolder(const fs::directory_entry& entry, const std::string& rel) {
     if (!watch::isLink(entry)) return true;

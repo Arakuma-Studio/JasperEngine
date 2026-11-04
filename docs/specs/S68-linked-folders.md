@@ -56,4 +56,20 @@ Identity (D-1, D-2):
   gates it.
 - D6 (AC3). Junctions and mount points on Windows go through `watch::isLink` (`file_type::junction` on
   MSVC) and `std::filesystem::canonical`/`safewrite::resolvedPath`; read, not run: no Windows runner.
+- D7 (`dc/export-pipeline`, 2026-11-04-export-pipeline-design.md, not landed when this was written). Its §6.1 `exportfiles::walk` and
+  its §7 rule 2 ("a link inside assets to a folder outside is not followed ... nothing changes") contradict R1: whoever lands
+  second makes `copyAssets`, `copyLua` and `copyCustomShaderSources` walk through links (`Exporter::walkTree`, or the same rules in
+  `exportfiles::walk`), and `test_linked_folders_export.py` fails if they stop. The header and script-root walks of
+  `copyCppScripts` and `copyGenerated` stay unfollowed for both (C++ is out of R1). Its other rules hold through a link and are not done
+  here: a failed copy fails the export (`copyOrFail` goes in `walkTree`'s visitors, whose copies stay unchecked as on main), an unreadable
+  folder is `W-UNREADABLE-FOLDER`, an earlier export is left out (`isExportFolder` goes in the visitors' directory step, which runs for
+  linked folders too, so a link to one is left out as well). Adapted to its rule "the walkers skip the export's own folder":
+  `walkTree` leaves out the output folder when a link leads to it or into it, which R2 needs anyway, since it would ship itself without end.
+- D8 (`dc/project-window`, 2026-11-04-project-window-design.md, not landed when this was written). Its asset-root change refuses a source or destination
+  through a link and does not walk linked folders: a project with a folder linked out of it, whose moves would go through it,
+  is refused with its message. That stands: it is the same line as D1, an operation that moves files stays out of linked
+  targets, and nothing here needs it to change. Its `AssetOps` refusals sit before the rename; `AssetDatabase::moveAssets` and
+  `removeAssets` treat a link's own name as the link (not what it leads to) after it.
+- D9 (MCP text, AGENTS.md "MCP text"). `list_missing_assets`' description is unchanged; `read_only_linked` is a result key only when non-empty,
+  with the eval case `guard_read_only_linked`. The eval needs owner-approved accounts and was not run: that this case fails without the text is not shown.
 

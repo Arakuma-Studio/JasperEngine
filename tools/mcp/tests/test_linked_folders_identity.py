@@ -1,4 +1,4 @@
-"""Linked folders: one file, one GUID (docs/specs/S48-linked-folders.md R4-R8). A port of the sound
+"""Linked folders: one file, one GUID (docs/specs/S68-linked-folders.md R4-R8). A port of the sound
 layer's cleanup group D (je-wt/snd-ro tools/mcp/tests/test_cleanup_group_d.py) to GUIDs in `.meta`: its
 Sound Events became textures (a sidecar identity) beside its prefabs (a GUID in the file).
 
@@ -12,7 +12,8 @@ Sound Events became textures (a sidecar identity) beside its prefabs (a GUID in 
   files, changes seen through it, cycles ended; a read-only target is reported, not a failure.
 
 Oracles: files' bytes and their `guid:` lines read by Python, the metas, resolve_asset, list_prefabs,
-get_prefab_info, get_entity, list_missing_assets. Runs in a copy of the default fixture.
+get_prefab_info, get_entity, list_missing_assets. Runs in a copy of tools/fixtures/legacy_paths_project
+(assets dir "assets", Lua dir "scripts").
 """
 
 from __future__ import annotations
@@ -27,13 +28,13 @@ from pathlib import Path
 import pngdiff
 import yaml
 
-from harness import Editor, skip, symlinks_permitted
+from harness import REPO, Editor, skip, symlinks_permitted
 
+EDITOR = {"project": REPO / "tools" / "fixtures" / "legacy_paths_project"}
 TIMEOUT = 1200
+CI = True
 
 GUID_D1 = "d1d1d1d1000011112222333344445555"
-GUID_D2 = "d2d2d2d2000011112222333344445555"
-GUID_D3 = "d3d3d3d3000011112222333344445555"
 
 
 def png_bytes(red: int = 200) -> bytes:
@@ -120,6 +121,8 @@ async def test_a_folder_moved_behind_a_link_keeps_its_guids(ed: Editor):
     root = ed.project / "assets"
     (root / "d1").mkdir()
     (root / "d1" / "tile.png").write_bytes(png_bytes())
+    # a GUID its path does not derive: a lookup by the old name must not find it by the legacy GUID
+    (root / "d1" / "tile.png.meta").write_text(f"metaVersion: 1\nguid: {GUID_D1}\n")
     await pickup(ed)
     sid = await new_scene(ed, "Links D1")
     light = await light_with_mask(ed, sid, "Lamp", "assets/d1/tile.png")

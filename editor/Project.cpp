@@ -386,7 +386,7 @@ fs::path editor::Project::normalizeToProjectRelative(const fs::path& path) const
         if (!ec) {
             relativePath = relativePath.lexically_normal();
             // a link out of the project is a folder of the project: its files keep the path
-            // they are reached by, not "../.." (S48 R7)
+            // they are reached by, not "../.." (S68 R7)
             if (!relativePath.empty() && *relativePath.begin() == "..") {
                 const fs::path known = assetDatabase.toRelative(normalizedPath);
                 if (!known.empty() && !known.is_absolute() && *known.begin() != "..") return known;
@@ -2082,7 +2082,7 @@ void editor::Project::resetPlayShaderGlobals() const{
 }
 
 // `path` as spelled, when it is under `root`: below a folder linked in from out of the project,
-// where std::filesystem::relative (which resolves links) leaves the root (S48 R7)
+// where std::filesystem::relative (which resolves links) leaves the root (S68 R7)
 static std::filesystem::path spelledBelowRoot(const std::filesystem::path& path, const std::filesystem::path& root){
     const std::filesystem::path spelled = path.lexically_normal().lexically_relative(root.lexically_normal());
     return spelled.empty() || *spelled.begin() == ".." ? std::filesystem::path() : spelled;

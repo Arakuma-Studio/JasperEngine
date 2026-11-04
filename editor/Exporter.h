@@ -322,7 +322,7 @@ namespace jasperengine::editor {
         // next entry), skip what it holds, or stop the walk
         enum class TreeStep { Enter, Skip, Stop };
         using TreeVisitor = std::function<TreeStep(const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real)>;
-        // A tree as the editor reaches it (S48 R1, R2): each folder listed, a link of any kind entered
+        // A tree as the editor reaches it (S68 R1, R2): each folder listed, a link of any kind entered
         // as a folder under its own name, so relPath (never canonicalized) is the path a scene or
         // script reads the file by; real is where the entry is on disk. A link to a folder that holds
         // it (it would hold itself) is left out with a warning. ec: the root could not be listed.

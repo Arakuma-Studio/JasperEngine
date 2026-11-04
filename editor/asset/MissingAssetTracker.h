@@ -53,7 +53,7 @@ namespace jasperengine::editor {
         const std::vector<ResolvedByPath>& getResolvedByPath() const { return resolvedByPath; }
         const std::vector<AssetDatabase::OrphanMeta>& getOrphanMetas() const { return orphanMetas; }
         // Assets in a folder linked in from out of the project whose identity cannot be written
-        // there (a read-only target, S48 R7): they work, with GUIDs the database keeps
+        // there (a read-only target, S68 R7): they work, with GUIDs the database keeps
         const std::vector<std::string>& getReadOnlyLinked() const { return readOnlyLinked; }
         // The status bar badge: missing groups and orphan metas, and one for the read-only files
         size_t count() const { return groups.size() + orphanMetas.size() + (readOnlyLinked.empty() ? 0 : 1); }

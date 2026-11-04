@@ -26,7 +26,7 @@ namespace jasperengine::watch {
     JASPERENGINE_API bool isAtOrBelowReal(const std::filesystem::path& path, const std::filesystem::path& dir);
 
     // Decides which links a walk of a project goes on through, so a folder linked in from elsewhere
-    // is walked as a folder of the project, under the link's name (S48 R7). A link is entered when it
+    // is walked as a folder of the project, under the link's name (S68 R7). A link is entered when it
     // leads to a folder out of the root, once per folder per walk. Not entered:
     // - a link inside the root: its target is walked under its own name, and that is the file's path;
     // - a link to a folder holding the root (a cycle, and the walk would leave for the whole disk);

@@ -2762,6 +2762,9 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
         ec = std::make_error_code(std::errc::too_many_symbolic_link_levels);
         return;
     }
+    // a link can lead to the export's own folder, or to one that holds it: what is written there
+    // while it is walked would be shipped into itself without end
+    const fs::path realOutput = config.targetDir.empty() ? fs::path() : safewrite::resolvedPath(config.targetDir);
     bool stopped = false;
     std::function<void(const fs::path&, const fs::path&)> walk = [&](const fs::path& dir, const fs::path& relDir) {
         std::error_code listError;
@@ -2780,19 +2783,26 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
                 return;
             }
             if (step != TreeStep::Enter || !isDirectory || real.empty()) continue;
+            if (!realOutput.empty() && safewrite::isAtOrBelow(real, realOutput)) {
+                if (leftOutLinks.insert(branch.back() / name).second) {
+                    Out::warning("The folder \"%s\" is left out of the export: it is the export's own folder",
+                                 FileUtils::pathToGenericUtf8(relPath).c_str());
+                }
+                continue;
+            }
             if (link) {
                 const bool holdsItself = std::any_of(branch.begin(), branch.end(), [&](const fs::path& folder) { return safewrite::isAtOrBelow(folder, real); });
                 if (holdsItself) {
                     if (leftOutLinks.insert(branch.back() / name).second) {
                         Out::warning("The linked folder \"%s\" is left out of the export: it leads to %s, which holds it, so it would hold itself",
-                                     relPath.generic_string().c_str(), real.generic_string().c_str());
+                                     FileUtils::pathToGenericUtf8(relPath).c_str(), FileUtils::pathToGenericUtf8(real).c_str());
                     }
                     continue;
                 }
                 if (++treeLinksEntered > MAX_LINKS_ENTERED) {
                     if (leftOutLinks.insert(branch.back() / name).second) {
                         Out::warning("The linked folder \"%s\" is left out of the export: the project's links lead to more than %zu folders",
-                                     relPath.generic_string().c_str(), MAX_LINKS_ENTERED);
+                                     FileUtils::pathToGenericUtf8(relPath).c_str(), MAX_LINKS_ENTERED);
                     }
                     continue;
                 }

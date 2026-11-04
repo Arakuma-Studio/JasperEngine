@@ -157,6 +157,23 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_read_only_linked",
+        "kind": "guard",
+        "what_happened": "A folder linked in from a read-only drive: its assets work with GUIDs the editor keeps, nothing is missing. "
+                         "The result says so, and the agent reports it rather than taking it for a failure or changing permissions.",
+        "text_at_issue": "list_missing_assets result: read_only_linked and its line",
+        "source": "docs/specs/S68-linked-folders.md R7",
+        "prompt": "Is anything wrong with this project's assets? Just tell me, change nothing.",
+        "mocks": [
+            {"tool": "list_missing_assets", "result": ok(
+                "0 missing asset(s), 0 resolved by path, 0 orphan meta(s).\n1 asset(s) in a read-only linked folder.",
+                {"missing": [], "resolved_by_path": [], "orphan_metas": [], "read_only_linked": ["assets/lib/locked/tile.png"]})},
+        ],
+        "checks": {"calls": ["list_missing_assets"], "reply_must": [r"read-only", r"tile\.png"],
+                   "must_not_call": ["write_file", "delete_asset", "move_asset"], "shell_must_not": [r"chmod"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_placeholder_art_path",
         "kind": "guard",
         "what_happened": "generate_placeholder_art {path: 'sprites/shield_a.png'} wrote outside assets/; the error now names the "
