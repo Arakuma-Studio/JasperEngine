@@ -1,4 +1,4 @@
-"""A file another program writes right after a tool call is an external change (S50): reported by the
+"""A file another program writes right after a tool call is an external change (S70): reported by the
 next call even 0 ms later and even with the stamps of the tool's own write, and the tool's own writes
 are never reported. Both ways of finding changes: the watcher's journal and, with the watcher off, the
 stat scan.
@@ -18,7 +18,7 @@ import subprocess
 import time
 from pathlib import Path
 
-from harness import Editor, RawEditor, find_key
+from harness import Editor, RawEditor, find_key, over_budget
 from pngdiff import encode as encode_png
 
 EDITOR = {"create": True, "name": "AutoSyncRace", "env": {"JASPER_TEST_SETTLE_DELAY_MS": "300"}}
@@ -184,7 +184,8 @@ async def test_writing_results_wait_for_their_settle_and_read_only_ones_do_not(e
         t0 = time.monotonic()
         await status_call(ed)
         fastest = min(fastest, time.monotonic() - t0)
-    ed.check(fastest < SETTLE_DELAY_S, f"a read-only call waited for a settle: {fastest:.3f} s at best")
+    slow = over_budget("read-only call, its settle delay not paid", {"fastest": fastest}, SETTLE_DELAY_S)
+    ed.check(not slow, f"a read-only call waited for a settle: {slow}")
 
 
 async def test_deferred_completion_settles_before_its_result(ed: Editor):
@@ -330,6 +331,7 @@ async def test_a_large_fresh_file_costs_no_full_hash(ed: Editor):
             worst[key] = max(worst[key], stats[key])
     print(f"[autosync race] worst scan/settle CPU around a fresh 48 MB file: {worst}")
     ed.check_in("assets/big_fresh.png", seen, "the external file is reported")
+    # the thread's CPU time, which a loaded host does not inflate: not a wall-clock budget
     ed.check(worst["scan_cpu_ms"] < 20 and worst["settle_cpu_ms"] < 20, f"the scans hashed the large file: {worst} ms of CPU")
 
     # stamped again so it is racy now, whatever the calls above took

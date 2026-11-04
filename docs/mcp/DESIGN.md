@@ -471,14 +471,14 @@ the same work and reports it itself):
   scans where it does not (FSEvents' marker round trip, polling's walk) or the watcher is off.
   While such a call runs the hot reload holds the watcher's batches, so the call's writes reload
   once, with its sync.
-- **The result waits for its settle** (S50): the completion queues `{tool, start, respond}`
+- **The result waits for its settle** (S70): the completion queues `{tool, start, respond}`
   (`McpServer::queueSettle`) and the queue runs on the main thread where no handler is on the
   stack: right after the handler returns (a synchronous call gains no frame), at the end of
   `McpServer::tick` (`waitUntil` / `afterFrames` callbacks), in a task the completion posts when it
   comes from anywhere else (a job's thread, another main-thread task), and in `McpServer::stop`.
   So whatever the client writes once it has the result is newer than the settle: reported by the
   next call, 0 ms later and whatever its stamp. Read-only calls answer at once.
-- **Racy stamps** (S50): a stamp read less than 2 s after its mtime can't rule out a later write
+- **Racy stamps** (S70): a stamp read less than 2 s after its mtime can't rule out a later write
   in the same clock tick, and the watcher's journal can't either (it compares the same stat). A racy
   file's content hash (FNV-1a; past 1 MB, of its first and last 64 KB) is recorded with its stamp and
   checked by every pick-up and settle, newest first within the scan's time budget, until it is read
