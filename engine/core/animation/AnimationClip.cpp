@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <functional>
 #include <variant>
 
@@ -126,6 +127,29 @@ std::shared_ptr<const AnimationClip> AnimationClip::build(const anim::ClipParseR
     return buildNormalized(*parsed.data, parsed.warnings);
 }
 
+namespace{
+
+    // bit for bit: toData must give each track back the very floats it came with (-0 is not 0)
+    bool sameKeyTimes(const std::vector<ClipKey>& a, const std::vector<ClipKey>& b){
+        if (a.size() != b.size()) return false;
+        for (size_t k = 0; k < a.size(); k++){
+            if (std::memcmp(&a[k].time, &b[k].time, sizeof(float)) != 0) return false;
+        }
+        return true;
+    }
+
+    // a segment that is not linear; the last key starts none (Track::trailingEase keeps its ease)
+    bool hasEasedSegment(const ClipTrackData& track){
+        const size_t segments = track.keys.empty() ? 0 : track.keys.size() - 1;
+        if (track.channel == ClipChannel::Property && track.discrete) return segments > 0;
+        for (size_t k = 0; k < segments; k++){
+            if (track.keys[k].ease != EaseType::LINEAR) return true;
+        }
+        return false;
+    }
+
+}
+
 std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipData& data, std::vector<ClipWarning> clipWarnings){
     AnimationClip* clip = new AnimationClip();
     std::shared_ptr<const AnimationClip> shared(clip);
@@ -143,13 +167,34 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
     clip->events = data.events;
 
     // sizes first: the Track pointers point into the storage, which must not move afterwards
-    size_t times = 0, vectors = 0, rotations = 0, weights = 0, points = 0;
-    for (const ClipTrackData& track : data.tracks){
+    size_t times = 0, easings = 0, vectors = 0, rotations = 0, weights = 0, points = 0;
+    // per track: the track whose key times it shares (itself when it owns the range); the owners
+    // so far are what a later track compares with
+    std::vector<size_t> timeOwner(data.tracks.size());
+    std::vector<size_t> timeOwners;
+    std::vector<uint8_t> keepsEasings(data.tracks.size(), 0);
+    for (size_t t = 0; t < data.tracks.size(); t++){
+        const ClipTrackData& track = data.tracks[t];
+        timeOwner[t] = t;
         if (track.channel == ClipChannel::Property && !track.known) continue;
         size_t keys = track.keys.size();
         bool tangents = keys > 0 && track.keys[0].hasTangents();
         size_t copies = tangents ? 3 : 1;
-        times += keys;
+        if (keys > 0){
+            auto owner = std::find_if(timeOwners.begin(), timeOwners.end(), [&](size_t other){
+                return sameKeyTimes(data.tracks[other].keys, track.keys);
+            });
+            if (owner != timeOwners.end()){
+                timeOwner[t] = *owner;
+            }else{
+                timeOwners.push_back(t);
+                times += keys;
+            }
+        }
+        if (hasEasedSegment(track)){
+            keepsEasings[t] = 1;
+            easings += keys;
+        }
         switch (track.channel){
             case ClipChannel::Position:
             case ClipChannel::Scale:
@@ -170,14 +215,16 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
                 break;
         }
     }
+    clip->tracks.reserve(data.tracks.size());
     clip->timeStorage.reserve(times);
-    clip->easingStorage.reserve(times);
+    clip->easingStorage.reserve(easings);
     clip->vectorStorage.reserve(vectors);
     clip->rotationStorage.reserve(rotations);
     clip->weightStorage.reserve(weights);
     clip->pointStorage.reserve(points);
 
-    for (const ClipTrackData& source : data.tracks){
+    for (size_t t = 0; t < data.tracks.size(); t++){
+        const ClipTrackData& source = data.tracks[t];
         Track track;
         track.path = source.path;
         track.channel = source.channel;
@@ -204,12 +251,22 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
         track.keyCount = keys;
         track.duration = source.lastKeyTime();
 
-        track.times = clip->timeStorage.data() + clip->timeStorage.size();
-        track.easings = clip->easingStorage.data() + clip->easingStorage.size();
-        for (const ClipKey& key : source.keys){
-            clip->timeStorage.push_back(key.time);
-            // a discrete property steps (the key at or before the time; at a key time its value)
-            clip->easingStorage.push_back(track.discrete ? EaseType::STEP : key.ease);
+        if (keys > 0){
+            track.trailingEase = source.keys.back().ease;
+            if (timeOwner[t] != t){
+                // an earlier track: already in `clip->tracks`, at the same index as in `data`
+                track.times = clip->tracks[timeOwner[t]].times;
+            }else{
+                track.times = clip->timeStorage.data() + clip->timeStorage.size();
+                for (const ClipKey& key : source.keys) clip->timeStorage.push_back(key.time);
+            }
+        }
+        if (keepsEasings[t]){
+            track.easings = clip->easingStorage.data() + clip->easingStorage.size();
+            for (const ClipKey& key : source.keys){
+                // a discrete property steps (the key at or before the time; at a key time its value)
+                clip->easingStorage.push_back(track.discrete ? EaseType::STEP : key.ease);
+            }
         }
 
         if (isVectorChannel(source.channel)){
@@ -368,7 +425,9 @@ ClipData AnimationClip::toData() const{
         for (size_t k = 0; k < track.keyCount; k++){
             ClipKey key;
             key.time = track.times[k];
-            key.ease = (track.channel == ClipChannel::Property && track.discrete) ? EaseType::LINEAR : track.easings[k];
+            if (track.channel == ClipChannel::Property && track.discrete) key.ease = EaseType::LINEAR;
+            else if (track.easings) key.ease = track.easings[k];
+            else if (k + 1 == track.keyCount) key.ease = track.trailingEase;
             auto vectorRow = [&](const Vector3* values, size_t width, std::vector<float>& row){
                 for (size_t i = 0; i < width; i++){
                     const Vector3& v = values[k * width + i];
