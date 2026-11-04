@@ -38,8 +38,7 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 - **Serialization compatibility.** Old projects must load. New fields get defaults; format changes
   bump the scene/asset version (S03) with a migration.
 - **Testing is part of done.** Unit tests (gtest, see S02), MCP tests (`tools/mcp/tests`), golden
-  images where rendering changes, and `tools/smoke-test.sh` must stay green. Builds and tests run
-  only on the remote build servers (see the implementer brief), never on the dev machine.
+  images where rendering changes, and `tools/smoke-test.sh` must stay green.
 
 ## Spec template (every spec uses these sections)
 
@@ -102,8 +101,20 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S38 | Loudness: `AudioMeter` (LUFS, true peak), true-peak lookahead `limiter`, new-project mixer and audio defaults | 4A (sound; M1 first) |
 | S39 | Music system: tracks and playlists, tempo, bars and beats, quantized transitions with snapshots, stingers, tempo detection | 4B (sound; spec-first) |
 | S40 | Timeline audio: audio cues on animation clips for the Animation Player, Animator and montages | 4B (sound; spec-first) |
-| S41 | Model import and cook: meshopt/quantized/Draco/WebP/Basis glTF, Model Importer (.meta, per platform), lossless and lossy Mesh Compression, baked LODs, Read/Write, Audit window, Build Report, `meshes` MCP group | 5 |
-| S42 | LOD and cross-fade: LOD on by default, fixed selection, baked levels, dithered cross-fade, shadow LOD, culled level, instanced LOD, Scene view Draw Modes, Stats, `capture_model_lods` | 5 |
-| S43 | Draw submission: automatic GPU instancing, state sort, constants once per pass, visible lists on jobs, shadow geometry, stream-budget fix, mesh benchmark gate | 5 |
-| S44 | Device tiers (GPU database after The Forge), tier overrides and Game view simulation, thermal and memory response, upload pacing | 5 |
-| S45 | Lighting after The Forge: screen-tile light lists, capsule shadows, contact shadows, weighted blended OIT, hair lobe | 5 |
+| S41 | Pixel Perfect Camera: integer scaling with letterbox or expand, project Pixels Per Unit, one pixel-snap rule on CPU and GPU, 90° steps or Rotate On Grid, sub-pixel smoothing, Scene/Game view pixel zoom | 5A (pixel art) |
+| S42 | Pixel Art Mode and validator: Pixel Art preset, 2D Pixel Art template, pixel-art texture import (nearest, lossless, alpha clip), `check_pixel_art` with fixes and verdicts, `check --pixel-art` | 5B (pixel art) |
+| S43 | Palettes: `.palette` asset, import/export of every common format, Lospec fetch, Palette window and ramp generator, OKLab/CIEDE2000 maths, Palette Swap and Cycling, Palette Quantize, Apply Palette / Reduce Colours | 5A (pixel art) |
+| S44 | Aseprite import: lossless `.aseprite` reader and writer, AsepriteSprite assets (sheets, tag clips, slices, user data), the sprite-sheet runtime (`SpriteSheetPool`, frame references, packer), live reimport, Sprite Preview | 5A (pixel art) |
+| S45 | Sprite Atlas: texture sprite sheets (Sprite Mode, `name@WxH`, Slicer), Sliced draw mode, `.spriteatlas` lossless packing, incremental builds, legacy inline-frame migration | 5B (pixel art) |
+| S46 | Pixel art cleanup: grid recovery, palette snapping, sheet slicing (port of ritmo), craft lints, verdicts and recipes, `fix_pixel_art`/`lint_pixel_art` | 5C (pixel art) |
+| S47 | Agent sprite drawing: MCP tools that read, draw, render and diff `.aseprite` sprites, with undoable, conflict-safe edits | 5C (pixel art) |
+| S48 | Pixel FX: dither fade, dissolve, ramp recolour, pixel outline and drop shadow, screen transitions, glitch, hit-stop, pixel shake, held poses, contact sheets and effect lints | 5B (pixel art) |
+| S49 | Pixel particles: Pixel Art module and Pixel render mode, palette-ramp colour, dithered fade, pixelfx presets, Analytic (closed-form) simulation | 5B (pixel art) |
+| S50 | Grid tilemap: Grid and Tilemap Layers, Tileset assets, terrain autotiling, tile colliders, Tile Palette and brushes, Tiled/LDtk import | 5C (pixel art) |
+| S51 | Pixel fonts: Bitmap Font asset from grid sheets, BMFont and pixel TTFs, integer scale on the pixel grid, pixel outline and shadow, HTML UI faces, built-in pixel font | 5B (pixel art) |
+| S52 | Sprite instancing: one instance format, batched sprites, Sorting Layers and Sorting Groups, Sprite Batch, batch statistics | 5A (pixel art) |
+| S53 | Model import and cook: meshopt/quantized/Draco/WebP/Basis glTF, Model Importer (.meta, per platform), lossless and lossy Mesh Compression, baked LODs, Read/Write, Audit window, Build Report, `meshes` MCP group | 5 |
+| S54 | LOD and cross-fade: LOD on by default, fixed selection, baked levels, dithered cross-fade, shadow LOD, culled level, instanced LOD, Scene view Draw Modes, Stats, `capture_model_lods` | 5 |
+| S55 | Draw submission: automatic GPU instancing (beside the Doriax draw-perf and sprite-batching), constants once per pass, visible lists on jobs, shadow geometry, stream-budget fix, mesh benchmark gate | 5 |
+| S56 | Device tiers (GPU database after The Forge), tier overrides and Game view simulation, thermal and memory response, upload pacing | 5 |
+| S57 | Lighting after The Forge: screen-tile light lists, capsule shadows, contact shadows, weighted blended OIT, hair lobe | 5 |

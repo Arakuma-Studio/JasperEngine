@@ -1,8 +1,8 @@
-# S42: LOD and cross-fade
+# S54: LOD and cross-fade
 
 Wave 5. Research: `docs/forge-meshopt-analysis/lod-crossfade.md` (the design; read it in full),
 `jasper-render.md` §4, `meshopt-api.md` (LOD findings) and `jasper-ux-human.md` §6.3-6.4.
-Works with S41 (baked levels, contracts C1 and C2) and S43 (per-instance fade, C3).
+Works with S53 (baked levels, contracts C1 and C2) and S55 (per-instance fade, C3).
 
 ## 1. Goal
 
@@ -61,7 +61,7 @@ Details and citations are in `lod-crossfade.md` §2.
 - **R1. Defaults.**
   - Every new-project template sets `meshLodEnabled: true`.
   - The engine default for a scene created at runtime is on.
-  - Existing scenes keep their saved value. The S41 Audit window offers "Turn on LODs in this
+  - Existing scenes keep their saved value. The S53 Audit window offers "Turn on LODs in this
     scene" as a one-click, undoable fix.
 - **R2. Builder fixes (contract C2).**
   - `MeshLodPool::buildLevels(source, recipe)` is a pure function used by both the runtime and the
@@ -69,7 +69,7 @@ Details and citations are in `lod-crossfade.md` §2.
   - `error` is the geometric deviation: the position-only error from the simplifier, or a sampled
     deviation, never the attribute-weighted one.
   - The attribute weights follow the attributes present.
-  - `target_error` is capped per Reduction (S41 R10) through the recipe. Use `SimplifyErrorClamped`
+  - `target_error` is capped per Reduction (S53 R10) through the recipe. Use `SimplifyErrorClamped`
     and `SimplifyPermissive` where they help (meshoptimizer v1.3).
   - Skinned meshes qualify, using `SimplifyRegularize` and keeping bone-weight attributes.
 - **R3. Baked levels.** A cooked glb's `JE_mesh_lods` (C1) pre-fills the pool when `recipe`
@@ -93,7 +93,7 @@ Details and citations are in `lod-crossfade.md` §2.
     - Time-based (Animate Cross-fading) by default, with the scene Cross-fade Duration of
       0.5 s.
     - Distance-based (Fade Transition Width 0.1) when Animate Cross-fading is off, and always for
-      instanced meshes, carried per instance through S43's `lodFade` (C3).
+      instanced meshes, carried per instance through S55's `lodFade` (C3).
   - **The fade snaps** when:
     - the mesh wasn't drawn last frame,
     - there was a camera cut (the error budget changes 2x in a frame),
@@ -106,7 +106,7 @@ Details and citations are in `lod-crossfade.md` §2.
   - The depth pre-pass skips fading draws.
   - SSAO, scene-depth and G-buffer passes draw the dominant level.
   - Shadows snap, using the shadow LOD: the light's projected error times
-    `quality.shadow_lod_bias`, which S43 sets (default one coarser level).
+    `quality.shadow_lod_bias`, which S55 sets (default one coarser level).
   - Picking uses LOD 0. Point-light faces, probes and render-to-texture cameras use the shadow or
     dominant rule, never all levels.
 - **R8. Instanced meshes.** Instances select a level per instance, by distance band, and draw one
@@ -129,15 +129,15 @@ Details and citations are in `lod-crossfade.md` §2.
   - **Shaded:** today's view.
   - **Wireframe** and **Shaded Wireframe:** editor-only, through a line-list index buffer built on
     demand per visible mesh, since sokol has no fill mode.
-  - **LOD Level:** tints by level. The colours are shared with S41's LOD bar: LOD 0 green, 1
+  - **LOD Level:** tints by level. The colours are shared with S53's LOD bar: LOD 0 green, 1
     blue, 2 amber, 3 red, and fading draws striped.
   - **Overdraw:** additive, a heat ramp.
   - The mode is saved in the editor layout, and costs nothing in games.
 - **R12. Stats overlay** (Game and Scene view):
   - Vertices, an LOD histogram ("LOD 0: 120, 1: 40, 2: 8, 3: 2"), objects fading this frame,
     culled-by-size count and mesh memory.
-  - S43 adds draws and instances.
-- **R13. Model Import inspector integration** (S41 R16): the inspector's Force LOD slider and the
+  - S55 adds draws and instances.
+- **R13. Model Import inspector integration** (S53 R16): the inspector's Force LOD slider and the
   LOD table read the same levels and errors. "Switches below" uses R5 with the inspector's
   reference camera.
 
@@ -178,7 +178,7 @@ Details and citations are in `lod-crossfade.md` §2.
 
 - **The fade variant** keeps the base shader's uniform and texture slot layout, validated at load.
   A mismatch disables fading for that shader with a one-time warning.
-- **Fading draws sort after non-fading opaque draws** in the opaque queue. S43's sort key reserves
+- **Fading draws sort after non-fading opaque draws** in the opaque queue. S55's sort key reserves
   the bit.
 - **One shared Bayer pattern,** not blue noise: it needs no texture slot, and its complementarity
   is exact.
@@ -194,7 +194,7 @@ addition:
 | AC2 | GPU goldens mid-fade at a fixed time on glcore and Vulkan, with a non-fading control whose pipeline has no discard (variant-key assertion). |
 | AC3 | `MeshLodPoolTest`: the R2 bug fixes, each red on `main`; skinned qualifies; error is geometric (≤ sampled max deviation × 1.05). |
 | AC4 | `MeshLodPendingTest`: R4, red on `main`. |
-| AC5 | Baked prefill: no simplify job for a cooked model (with S41 merged). |
+| AC5 | Baked prefill: no simplify job for a cooked model (with S53 merged). |
 | AC6 | Zero-cost variant-list test (R10). |
 | AC7 | MCP `test_meshes.py::capture_model_lods`, plus the stats fields. |
 | AC8 | Screenshots of each Draw Mode and Stats from an isolated editor. |
@@ -203,12 +203,20 @@ addition:
 
 ## 8. Dependencies and conflicts
 
-- **Depends on** S41 (C1, C2), S43 (C3), S44 (C4) and S32.
+- **Doriax catch-up overlap:**
+  - `render-correctness` adds foliage Near Fade and Min Draw Distance scale fades on instanced
+    meshes. S54's per-instance LOD fade composes with it: both multiply.
+  - `draw-perf` makes LOD polling free when scene LOD is off. S54 keeps that property for scenes
+    that turn it off.
+  - Shader variant bits are taken as the next free bit at landing, in landing order (the
+    `USE_LOD_FADE` bit number is a name, not a reservation).
+
+- **Depends on** S53 (C1, C2), S55 (C3), S56 (C4) and S32.
 - **Hotspots:** `RenderSystem.cpp`, `RenderSystemShadows.cpp`, `mesh.frag`, `surface_vs.glsl`,
   `ShaderPool.cpp`, `MeshComponent.h`, `SceneSettings.h` and `InspectorWindow.cpp`.
 
 ## 9. Risks and defaults
 
-- **Instanced fade:** S43's `lodFade` slot replaces the report's "matrix w" idea.
+- **Instanced fade:** S55's `lodFade` slot replaces the report's "matrix w" idea.
 - **Shading cost:** the discarded pixels of a fading object are still shaded, which is accepted
   for 0.5 s per change.

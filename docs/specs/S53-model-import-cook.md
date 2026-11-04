@@ -1,7 +1,7 @@
-# S41: Model import and cook (meshoptimizer)
+# S53: Model import and cook (meshoptimizer)
 
 Wave 5. Research: `docs/forge-meshopt-analysis/` (`meshopt-api.md`, `meshopt-gltf.md`,
-`jasper-ux-human.md`, `jasper-ux-agents.md`). Works with S42 (LOD and cross-fade), which consumes
+`jasper-ux-human.md`, `jasper-ux-agents.md`). Works with S54 (LOD and cross-fade), which consumes
 the baked LOD levels this spec produces.
 
 ## 1. Goal
@@ -29,8 +29,8 @@ In scope:
 - **Agent UX:** a `meshes` MCP tool group, CLI use through `call`, docs and the agent guide digest.
 
 Out of scope:
-- Runtime LOD selection, cross-fade, Draw Modes and Stats: S42.
-- Draw submission: S43.
+- Runtime LOD selection, cross-fade, Draw Modes and Stats: S54.
+- Draw submission: S55.
 - Merging meshes or nodes, and reducing LOD 0: those change hierarchy and identity, so they are
   never a cook step.
 - Bundling or linking gltfpack: it renumbers nodes, which scenes key on (`meshopt-gltf.md` §3).
@@ -162,13 +162,13 @@ Out of scope:
     Angle crease (implement it if the library lacks it).
   - **Generate LODs:**
     - Automatic: bake the levels the runtime would build, with the same recipe as `MeshLodPool`
-      after S42's fixes, for every mesh S42 says qualifies.
+      after S54's fixes, for every mesh S54 says qualifies.
     - On: always.
     - Off: none.
 
     LOD Count and Reduction pick the targets and the error budget: Preserve Detail at 0.6 per
     level and a tight error, Balanced at 0.5, Smallest at 0.35 with Permissive. The baked levels
-    and their errors go into the cooked glb (S42 R3 reads them).
+    and their errors go into the cooked glb (S54 R3 reads them).
 - **R11. Read/Write.**
   - Automatic keeps the CPU copy of mesh data only when something at runtime needs it: Mesh
     Collider, CPU skinning, particle mesh shapes, navigation bake sources, runtime LOD building,
@@ -205,7 +205,7 @@ Out of scope:
   - **Tabs:** Model and Animation (today's clip table), plus the platform tabs.
   - **Meshes section:** the R8 settings, with Read/Write showing its reason.
   - **Level of Detail section:**
-    - A read-only stacked LOD bar in S42's LOD colours, with "about" screen heights.
+    - A read-only stacked LOD bar in S54's LOD colours, with "about" screen heights.
     - A table of Level, Triangles, % of source, "Differs by at most" (sampled deviation as % of
       model size) and "Switches below".
   - **Before and after table** for the shown platform: Triangles, Vertices, Mesh Memory, Download
@@ -261,7 +261,7 @@ Out of scope:
     - Compares the scene against the project's `quality.render_budgets[platform]`: triangles (main
       view), draw calls, mesh memory and download.
     - Fails (`call` exits 1) with the exact list of offenders. `allowedWhilePlaying`.
-  - **`capture_model_lods`** is specified in S42.
+  - **`capture_model_lods`** is specified in S54.
   - **Text summaries** fit in about 15 lines. structuredContent carries the data. Failures are
     actionable ("`hero.glb` requires KHR_draco_mesh_compression: the cook transcodes it; run
     `reimport_models`").
@@ -323,11 +323,16 @@ Out of scope:
 
 ## 8. Dependencies and conflicts
 
+- **Doriax catch-up overlap:** `render-correctness` makes meshes without normals draw flat (a
+  runtime fallback), and S53's Normals: Calculate is the import setting. Both stand. `mesh-memory`
+  reshapes `MeshComponent` and submesh storage. S53's Read/Write release works on whatever storage
+  lands, merged second onto first.
+
 - **Depends on** S04 (meta and GUIDs), S05 (watcher), S14 (cook queue and cache patterns) and S30
   (export and player info).
-- **Hotspots:** `MeshSystem.cpp` and `MeshSystemGltfPbr.cpp`, shared with S42 (LOD attributes);
-  `RenderSystem.cpp` only via the cooked-LOD prefill, which is S42's; `AssetTools.cpp`,
-  `McpToolGroups.cpp`, `budget.json` and `ProjectSettingsWindow.cpp`, shared with S42 to S44.
+- **Hotspots:** `MeshSystem.cpp` and `MeshSystemGltfPbr.cpp`, shared with S54 (LOD attributes);
+  `RenderSystem.cpp` only via the cooked-LOD prefill, which is S54's; `AssetTools.cpp`,
+  `McpToolGroups.cpp`, `budget.json` and `ProjectSettingsWindow.cpp`, shared with S54 to S56.
 
 ## 9. Risks and defaults
 
