@@ -1,0 +1,14 @@
+{
+  "format": "jasperengine.titleart",
+  "version": 1,
+  "guid": "ffeeddccbbaa99887766554433221100",
+  "animation": {"clips": [{"name": "intro"}]},
+  "future_member": {"keep": [1, 2, 3]},
+  "layers": [
+    {"id": "0000beef", "type": "hologram", "name": "From a newer build", "beams": 3},
+    {"id": "0000cafe", "type": "text", "text": "Kept", "sparkle": true,
+     "masks": [{"id": "0000d00d", "type": "noise", "scale": 2}],
+     "effects": [{"id": "0000f00d", "type": "future_glow", "params": {"rays": 9}}],
+     "transform": {"stretch": [1.5, 1]}}
+  ]
+}

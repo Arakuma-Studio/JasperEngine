@@ -213,6 +213,14 @@ Code from [OpenEngine](https://github.com/Game-Crafters-Guild/OpenEngine) (MIT, 
 | `Engine/Modules/Platform/Source/Window.cpp` (the screen reads of the colour sampler: `XGetImage`, `BitBlt` of the desktop DC, `CGWindowListCreateImage`), adapted to one 9x9 block per frame (`NSColorSampler` on macOS) | `editor/platform/ScreenColor*` | the eyedropper outside the editor's views (S27) |
 | `Apps/Editor/Source/MovieRecorderController.cpp` (resolution and bitrate presets), `GameViewMovieCapture.cpp` (the bounded frame queues) and `VideoWriterFFmpeg.cpp` (the H.264 encoder preference list, the raw-RGBA pipe), adapted | `editor/recorder/` | the Recorder (S27); FFmpeg itself is the user's program, never linked or shipped |
 
+Code from [Pachislop](https://github.com/SafEight/pachislop) by SafEight, used with the author's permission, ported to C++ by the Title Art program (`docs/specs/S80-title-art-core.md`..`S87`). Each ported file names its source in its header; its third-party parts keep their own notices (Patchy warp, MIT; the three.js tone maps, MIT).
+
+| Code | Location | Used for |
+|---|---|---|
+| `src/engine/drawTree.ts` (the visibility rule and clip groups) | `engine/core/titleart/render/DrawTree.cpp` | what a title render draws (S80) |
+| `src/effects/globalLight.ts` (`angleFromGlobal`: the from, away and floor relations) | `engine/core/titleart/TitleEffectRegistry.cpp` | Use Global Light (S80) |
+| `src/model/defaults.ts`, `types.ts` (the defaults of the 2D materials, rims and text, renamed snake_case) | `engine/core/titleart/TitleArtSchema.cpp` | the `.titleart` document's defaults (S80) |
+
 The extended lobes' formulas (`engine/shaderlib/includes/pbr_ext.glsl`) follow the [Khronos glTF-Sample-Renderer](https://github.com/KhronosGroup/glTF-Sample-Renderer) shaders (Apache-2.0, Copyright The Khronos Group Inc.), as `includes/pbr.glsl`, `brdf.glsl` and `ibl.glsl` already do.
 
 Test assets (never shipped: `engine/tests/` stays out of the editor install and of exports): the [Khronos glTF Sample Assets](https://github.com/KhronosGroup/glTF-Sample-Assets) models of `engine/tests/render/assets/khronos/`, each with its `LICENSE.md` and `metadata.json`. The CC-BY-4.0 ones are credited here:
