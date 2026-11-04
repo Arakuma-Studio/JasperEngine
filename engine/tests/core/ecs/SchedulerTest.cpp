@@ -394,7 +394,7 @@ TEST(SchedulerTest, SingletonWaveAllocationsDoNotGrowWithSystemCount){
         disableSubSystems(scene);
         for (int i = 0; i < count; i++){
             scene.addSystemFunction(descriptor("Empty" + std::to_string(i), {}, {7},
-                exclusive ? SystemResource::Exclusive : 0), nothing);
+                exclusive ? static_cast<uint32_t>(SystemResource::Exclusive) : 0u), nothing);
         }
         auto frame = [&]{
             scene.getScheduler().runPhase(scene, SystemPhase::Update, 0.016);
