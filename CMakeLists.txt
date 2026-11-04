@@ -993,6 +993,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shortcuts/Chord.cpp
     ${EDITOR_DIR}/shortcuts/CommandCatalog.cpp
     ${EDITOR_DIR}/shortcuts/DefaultCommands.cpp
+    ${EDITOR_DIR}/shortcuts/PanelClaims.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutDispatcher.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutOverrides.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutsWindow.cpp

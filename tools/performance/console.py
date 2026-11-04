@@ -4,6 +4,7 @@
 Usage: python3 tools/performance/console.py --baseline-ref REV
 Builds production headers and method definitions with the repository's ImGui.
 No window, renderer, or editor build is needed. Reports median process CPU time.
+Add --selection to compare the selected-message lookup over monotonic log ids.
 """
 import argparse
 import os
@@ -12,6 +13,35 @@ import subprocess
 import tempfile
 
 from run_core import ROOT, definition
+
+
+def selection_production(ref, namespace):
+    path = "editor/window/ConsoleWindow.cpp"
+    source = subprocess.check_output(["git", "show", f"{ref}:{path}"], cwd=ROOT, text=True) if ref else (ROOT / path).read_text()
+    method = definition(source, "const LogData* ConsoleWindow::selectedLog").replace("ConsoleWindow::", "Selection::")
+    return f"""namespace {namespace} {{
+struct Selection {{
+    std::deque<LogData> logs;
+    uint64_t selectedLogId = 0;
+    bool hasSelection = false;
+    const LogData* selectedLog() const;
+}};
+{method}
+}}"""
+
+
+def run_selection(args):
+    fixture = (ROOT / "tools/performance/console_selection.cpp").read_text().replace(
+        "PRODUCTION", selection_production(args.baseline_ref, "before") + selection_production(None, "after"))
+    with tempfile.TemporaryDirectory(prefix="jasper-console-selection-") as directory:
+        cpp, binary = Path(directory) / "benchmark.cpp", Path(directory) / "benchmark"
+        cpp.write_text(fixture)
+        command = [os.environ.get("CXX", "c++"), "-std=c++20", "-O3", "-Wall", "-Wextra", "-Werror",
+                   "-I", str(ROOT / "editor"), "-I", str(ROOT / "libs/imgui"), str(cpp), "-o", str(binary)]
+        if args.sanitize:
+            command += ["-fsanitize=address,undefined", "-fno-omit-frame-pointer"]
+        subprocess.run(command, check=True)
+        subprocess.run([str(binary)] + (["--check-only"] if args.check_only else []), check=True)
 
 
 def production(ref, namespace):
@@ -152,7 +182,11 @@ def main():
     parser.add_argument("--baseline-ref", required=True)
     parser.add_argument("--sanitize", action="store_true", help="Enable address/undefined sanitizers")
     parser.add_argument("--check-only", action="store_true", help="Run regression checks without timing")
+    parser.add_argument("--selection", action="store_true", help="Compare selected-message lookup instead of append/filter work")
     args = parser.parse_args()
+    if args.selection:
+        run_selection(args)
+        return
     fixture = FIXTURE.replace("PRODUCTION", production(args.baseline_ref, "before") + production(None, "after"))
     with tempfile.TemporaryDirectory(prefix="jasper-console-perf-") as directory:
         cpp, binary = Path(directory) / "benchmark.cpp", Path(directory) / "benchmark"
