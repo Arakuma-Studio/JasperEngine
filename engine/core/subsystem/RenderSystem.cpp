@@ -391,8 +391,25 @@ namespace {
         return transform.worldPosition;
     }
 
+    // An instanced billboard's rotation for the batch, in the entity's space: the camera's (the
+    // view-aligned billboard), or with cylindrical only its turn about the mesh's up axis toward
+    // the camera's view; a camera looking straight along that axis keeps lastYaw (radians)
+    Quaternion instanceBillboardRotation(bool cylindrical, const Matrix4& cameraView, const Quaternion& entityWorldRotation, float& lastYaw){
+        Quaternion cameraRotation;
+        cameraRotation.fromRotationMatrix(cameraView.inverse());
+        const Quaternion local = entityWorldRotation.inverse() * cameraRotation;
+        if (!cylindrical)
+            return local;
+        // the camera's back (+Z of its frame: from the scene toward the camera) on the XZ plane
+        const Vector3 back = local * Vector3(0.0f, 0.0f, 1.0f);
+        if (back.x * back.x + back.z * back.z > 1e-8f)
+            lastYaw = std::atan2(back.x, back.z);
+        return Quaternion(Angle::radToDefault(lastYaw), Vector3(0.0f, 1.0f, 0.0f));
+    }
+
+    // the u_vs_fade block (includes/instance_fade.glsl): the far range, the near range, the eye
     void applyInstanceFadeUniform(ObjectRender& render, int slot, const InstancedMeshComponent& instmesh, const Vector3& fadeEyeLocal){
-        float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, 0.0f, 0.0f,
+        float fade[8] = {instmesh.fadeStart, instmesh.fadeEnd, instmesh.nearFadeStart, instmesh.nearFadeEnd,
             fadeEyeLocal.x, fadeEyeLocal.y, fadeEyeLocal.z, 0.0f};
         render.applyUniformBlock(slot, sizeof(fade), &fade);
     }
@@ -3984,7 +4001,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.morphTarget, inputs.morphNormal, inputs.morphTangent,
             inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
             g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4,
-            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+            inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES, p_instanceFade);
     }
 
     return variant;
@@ -7006,6 +7023,9 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             ShaderData& gbufferShaderData = mesh.submeshes[i].gbufferShader.get()->shaderData;
 
             mesh.submeshes[i].slotVSGBufferParams = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_PARAMS);
+            // the instance distance fade, as the colour and depth passes shrink it ('Ifd')
+            mesh.submeshes[i].slotVSGBufferFade = (mesh.submeshes[i].gbufferShaderProperties & shaderPropertyBit(16)) ?
+                gbufferShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE) : -1;
             mesh.submeshes[i].slotFSGBufferMaterial = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_FS_MATERIAL);
             gbufferShaderData.getUniformBlockMembers("u_fs_gbufferMaterial", mesh.submeshes[i].sizeFSGBufferMaterial);
 
@@ -9918,6 +9938,9 @@ bool RenderSystem::drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform
         }
 
         gbufferRender.applyUniformBlock(mesh.submeshes[i].slotVSGBufferParams, sizeof(vs_gbuffer_t), &vsGBufferParams);
+        if (mesh.submeshes[i].slotVSGBufferFade != -1 && instmesh){
+            applyInstanceFadeUniform(gbufferRender, mesh.submeshes[i].slotVSGBufferFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
+        }
 
         fs_gbuffer_material_t mat;
         // IBL source encoding: 0 = none, 0.5 = sky, 1 = local probe. The SSR
@@ -10872,6 +10895,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.slotVSDepthSprite = -1;
 
         submesh.slotVSGBufferParams = -1;
+        submesh.slotVSGBufferFade = -1;
         submesh.slotFSGBufferMaterial = -1;
         submesh.sizeFSGBufferMaterial = 0;
         submesh.slotVSGBufferSkinning = -1;
@@ -13376,17 +13400,24 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
     const float localRadius = hasBounds ? vertexBounds.getHalfSize().length() : 0.0f;
 
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
+    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    // the lists are cut past margins where the fade has shrunk instances to nothing, so the eye
+    // can move that far before they are cut again (RenderSystem::update)
+    const float slackFar = instanceFadeSlackFar(instmesh, cullEnd);
+    const float slackNear = instanceFadeSlackNear(cullNear);
     instmesh.lastFadeCullEnd = cullEnd;
+    instmesh.lastFadeCullNear = cullNear;
     instmesh.lastFadeCullEye = instmesh.fadeEyeLocal;
+    instmesh.lastCullSlack = (cullEnd >= 0.0f && cullNear > 0.0f) ? std::min(slackFar, slackNear) : (cullNear > 0.0f ? slackNear : slackFar);
     // small margin for CPU/GPU float differences at the edge
-    const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
+    const float cullRadius = cullEnd + slackFar + std::max(0.0001f, cullEnd * 0.00001f);
     const float cullRadiusSquared = cullRadius * cullRadius;
+    const float cullNearRadius = std::max(0.0f, cullNear - slackNear);
+    const float cullNearSquared = cullNearRadius * cullNearRadius;
 
     Quaternion bRotation;
     if (instmesh.instancedBillboard){
-        Matrix4 m1 = camera.viewMatrix.inverse();
-        bRotation.fromRotationMatrix(m1);
-        bRotation = transform.worldRotation.inverse() * bRotation;
+        bRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, instmesh.lastBillboardYaw);
     }
 
     // a version 2 Particle System's instances, aligned for the main camera
@@ -13409,6 +13440,9 @@ void RenderSystem::updateInstancedMesh(InstancedMeshComponent& instmesh, MeshCom
             const float dx = instmesh.instances[i].position.x - instmesh.fadeEyeLocal.x;
             const float dz = instmesh.instances[i].position.z - instmesh.fadeEyeLocal.z;
             if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared){
+                continue;
+            }
+            if (dx * dx + dz * dz < cullNearSquared){
                 continue;
             }
             Matrix4 instanceMatrix;
@@ -14745,9 +14779,13 @@ void RenderSystem::update(double dt){
                 const bool cameraBound = instmesh->instancedBillboard || instmesh->particle.cameraDependent();
 
                 const float cullEnd = instanceFadeCullEnd(*instmesh, mesh, *scene);
-                const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd ||
-                    (cullEnd >= 0.0f && (instmesh->fadeEyeLocal.x != instmesh->lastFadeCullEye.x ||
-                                        instmesh->fadeEyeLocal.z != instmesh->lastFadeCullEye.z));
+                const float cullNear = instanceFadeCullNear(*instmesh, mesh, *scene);
+                // cut again once the eye moves past the margin the lists were cut with
+                const float eyeDx = instmesh->fadeEyeLocal.x - instmesh->lastFadeCullEye.x;
+                const float eyeDz = instmesh->fadeEyeLocal.z - instmesh->lastFadeCullEye.z;
+                const bool eyeMoved = eyeDx * eyeDx + eyeDz * eyeDz > instmesh->lastCullSlack * instmesh->lastCullSlack;
+                const bool fadeSelectionChanged = cullEnd != instmesh->lastFadeCullEnd || cullNear != instmesh->lastFadeCullNear ||
+                    ((cullEnd >= 0.0f || cullNear > 0.0f) && eyeMoved);
                 bool instancesNeedUpdate = instmesh->needUpdateInstances || mesh.needUpdateAABB ||
                     batchSortChanged || fadeSelectionChanged;
 
@@ -14755,8 +14793,9 @@ void RenderSystem::update(double dt){
                     updateInstancedMesh(*instmesh, mesh, transform, mainCamera, mainCameraTransform);
                 }
 
-                const bool particleCamera = instmesh->particle.cameraDependent();
-                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || particleCamera))){
+                // billboards face the camera and camera-aligned particles follow it: like a
+                // transparent sort, they are rebuilt on every camera move, opaque or not
+                if (instancesNeedUpdate || ((mainCamera.needUpdate || transform.needUpdate) && (sortTransparentInstances || cameraBound))){
                     // The instance buffer is shared by every camera and sokol allows one
                     // sg_update_buffer per frame (VALIDATE_UPDATEBUF_ONCE), so the main camera
                     // fixes the batch order and every other camera reuses it.
@@ -17488,11 +17527,13 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
     const float cullEnd = instanceFadeCullEnd(instmesh, mesh, *scene);
     const float cullRadius = cullEnd + std::max(0.0001f, cullEnd * 0.00001f);
     const float cullRadiusSquared = cullRadius * cullRadius;
+    const float cullNear = instanceFadeCullNear(instmesh, mesh, *scene);
+    const float cullNearSquared = cullNear * cullNear;
 
     Quaternion billboardRotation;
     if (instmesh.instancedBillboard){
-        billboardRotation.fromRotationMatrix(camera.viewMatrix.inverse());
-        billboardRotation = transform.worldRotation.inverse() * billboardRotation;
+        float yaw = instmesh.lastBillboardYaw;
+        billboardRotation = instanceBillboardRotation(instmesh.instancedCylindricalBillboard, camera.viewMatrix, transform.worldRotation, yaw);
     }
 
     // a version 2 Particle System's instances, aligned for this camera
@@ -17522,6 +17563,8 @@ void RenderSystem::buildInstanceList(const InstancedMeshComponent& instmesh, con
         const float dx = instance.position.x - fadeEyeLocal.x;
         const float dz = instance.position.z - fadeEyeLocal.z;
         if (cullEnd >= 0.0f && dx * dx + dz * dz > cullRadiusSquared)
+            continue;
+        if (dx * dx + dz * dz < cullNearSquared)
             continue;
 
         Matrix4 instanceMatrix;
@@ -17631,7 +17674,8 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
         const InstanceVatRenderData* vat;
         const InstanceBounds* bounds;
         unsigned int count;
-        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f;
+        source.own = instmesh.instancedBillboard || instmesh.particle.cameraDependent() || instanceFadeCullEnd(instmesh, *mesh, *scene) >= 0.0f ||
+                     instanceFadeCullNear(instmesh, *mesh, *scene) > 0.0f;
         if (source.own){
             buildInstanceList(instmesh, *mesh, *transform, camera, source.fadeEyeLocal, source);
             instances = source.instances.data();

@@ -476,7 +476,7 @@ void RenderSystem::ensureCasterLayers(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         if (terrain || unbounded){
@@ -601,7 +601,7 @@ void RenderSystem::updateShadowCasters(){
         InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
         if (instmesh){
             unbounded = unbounded || instmesh->instancedBillboard ||
-                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f ||
+                instanceFadeCullEnd(*instmesh, mesh, *scene) >= 0.0f || instanceFadeCullNear(*instmesh, mesh, *scene) > 0.0f ||
                 (instmesh->cullInstances && std::isfinite(instmesh->cullDistance) && instmesh->cullDistance > 0.0f);
         }
         state.cameraDependent = terrain || unbounded;

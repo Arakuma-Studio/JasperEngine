@@ -266,6 +266,7 @@ namespace jasperengine{
         int slotVSDepthSprite = -1;
 
         int slotVSGBufferParams = -1;
+        int slotVSGBufferFade = -1;
         int slotFSGBufferMaterial = -1;
         unsigned int sizeFSGBufferMaterial = 0; // reflected: 3 vec4 with Stochastic Tiling, else 2
         int slotVSGBufferSkinning = -1;

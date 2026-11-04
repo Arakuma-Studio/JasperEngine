@@ -31,6 +31,12 @@ out vec3 v_normal;          // view space
     in vec4 i_matrix_col4;
 #endif
 
+// the distance fade, as the colour and depth passes shrink the instance (a faded one must not
+// reflect nor stop SSR's rays)
+#ifdef USE_INSTANCE_FADE
+    #include "includes/instance_fade.glsl"
+#endif
+
 #if defined(HAS_BASECOLOR_TEXTURE) || defined(HAS_METALLICROUGHNESS_TEXTURE)
     // Terrain carries no texcoord vertex attribute (its UVs are generated from the
     // world position in-shader, like mesh.vert). Declaring a_texcoord1 for terrain
@@ -110,6 +116,9 @@ void main() {
             mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
             vec4 pos = instanceMatrix * objPos;
             latticeNormal = instanceNormal(mat3(instanceMatrix), latticeNormal);
+            #ifdef USE_INSTANCE_FADE
+                pos.xyz = mix(i_matrix_col4.xyz, pos.xyz, instanceFadeVisible(i_matrix_col4.xyz));
+            #endif
         #else
             vec4 pos = objPos;
         #endif
@@ -122,6 +131,9 @@ void main() {
     #ifdef HAS_INSTANCING
         mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * objPos;
+        #ifdef USE_INSTANCE_FADE
+            pos.xyz = mix(i_matrix_col4.xyz, pos.xyz, instanceFadeVisible(i_matrix_col4.xyz));
+        #endif
         // instance matrix sits between model and object; fold it in before the
         // (model+view) normal matrix
         v_normal = normalize(mat3(gbufferParams.normalMatrix) * instanceNormal(mat3(instanceMatrix), objNormal));

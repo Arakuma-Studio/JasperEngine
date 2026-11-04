@@ -340,6 +340,8 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
         view = InstanceViewRange();
     }
     instmesh.lastFadeCullEnd = -1;
+    instmesh.lastFadeCullNear = 0;
+    instmesh.lastCullSlack = 0;
     instmesh.needUpdateBuffer = false;
     instmesh.needUpdateInstances = true;
 }

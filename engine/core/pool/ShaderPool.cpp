@@ -651,7 +651,7 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return 36;
         case ShaderType::DEPTH:  return 18;
-        case ShaderType::GBUFFER: return 16;
+        case ShaderType::GBUFFER: return 17;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -784,6 +784,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 14: return shortName ? "Vat" : "Vertex Animation";
             case 15: return shortName ? "Vab" : "Vertex Animation Bones";
+            // the Instanced Mesh distance fade (includes/instance_fade.glsl), as MESH 26 and DEPTH 8
+            case 16: return shortName ? "Ifd" : "Instance Fade";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1791,7 +1793,7 @@ uint64_t ShaderPool::getDepthMeshProperties(bool texture, bool skinning, bool mo
 
 uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normals, bool skinning, bool morphTarget, bool morphNormal, bool morphTangent, bool terrain, bool instanced, bool metallicRoughnessTexture, bool terrainPBR,
                                               bool stochasticTiling, bool lattice, bool vertexColorVec3, bool vertexColorVec4,
-                                              bool vat, bool vatBones){
+                                              bool vat, bool vatBones, bool instanceFade){
     uint64_t prop = 0;
 
     prop |= baseColorTexture        ? shaderPropertyBit(0) : 0;
@@ -1810,6 +1812,7 @@ uint64_t ShaderPool::getGBufferMeshProperties(bool baseColorTexture, bool normal
     prop |= (lattice && vertexColorVec4) ? shaderPropertyBit(13) : 0;
     prop |= (vat && !vatBones)      ? shaderPropertyBit(14) : 0;
     prop |= vatBones                ? shaderPropertyBit(15) : 0;
+    prop |= instanceFade            ? shaderPropertyBit(16) : 0;
 
     return prop;
 }
