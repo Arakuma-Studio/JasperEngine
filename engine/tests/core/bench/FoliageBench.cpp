@@ -115,8 +115,6 @@ int main(int argc, char** argv) {
     const double attemptNs = scatterAttemptNs(&cellMs);
     results.add("scatter_attempt_ns", attemptNs, "ns");
     results.add("placement_cell_full_density_ms", cellMs, "ms");
-    results.add("cull_100k_0_workers_ms", cull100k(0), "ms");
-    results.add("cull_100k_4_workers_ms", cull100k(4), "ms");
     results.add("stored_tree_bytes", static_cast<double>(sizeof(TreeRecord)), "bytes");
 
     {
@@ -210,6 +208,10 @@ int main(int argc, char** argv) {
         bench_scene.settle();
         results.add("cells_rebuilt_100_trees", static_cast<double>(stats.treeCellsRebuilt - before), "cells");
     }
+
+    // last: restarting the job system cancels the asset loads it held
+    results.add("cull_100k_0_workers_ms", cull100k(0), "ms");
+    results.add("cull_100k_4_workers_ms", cull100k(4), "ms");
 
     const char* path = bench::jsonPath(argc, argv, "je-bench-foliage.json");
     if (!results.write(path)) {

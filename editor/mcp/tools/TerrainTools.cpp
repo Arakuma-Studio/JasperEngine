@@ -9,6 +9,10 @@
 #include "McpTools.h"
 
 #include "foliage/FoliageOpRunner.h"
+#include "component/TerrainComponent.h"
+#include "window/TerrainEditWindow.h"
+#include "App.h"
+#include "Backend.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -229,6 +233,20 @@ namespace {
                 op.params.fields.emplace_back(it.key(), paramFromJson(it.value()));
             }
             ops.push_back(std::move(op));
+        }
+
+        // A layer just added has no density map: scatter_by_rules on it starts from an empty one. In
+        // memory only, so a dry run writes nothing either.
+        if (!spansFrames) {
+            TerrainEditWindow* window = Backend::getApp().getTerrainEditWindow();
+            TerrainComponent& component = scene->getComponent<TerrainComponent>(target.entity);
+            for (const Json& item : args["ops"]) {
+                if (!item.contains("target") || !item["target"].is_object() || !item["target"].contains("detail_layer") || !item["target"]["detail_layer"].is_number_integer()) continue;
+                const int layer = item["target"]["detail_layer"].get<int>();
+                if (window && layer >= 0 && layer < static_cast<int>(component.foliageLayers.size()) && component.foliageLayers[layer].densityMap.empty()) {
+                    window->ensureDensityMap(target.project, target.scene, target.entity, layer);
+                }
+            }
         }
 
         if (spansFrames) {

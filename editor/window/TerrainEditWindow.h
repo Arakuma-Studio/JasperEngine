@@ -312,6 +312,8 @@ namespace jasperengine::editor{
         template<typename T> bool setFoliageLayerProperty(const char* field, const T& value);
 
     public:
+        // A layer with no density map gets an empty one, in memory until something paints it (T5: edit_terrain)
+        bool ensureDensityMap(Project* project, SceneProject* sceneProject, Entity entity, int layer);
         static constexpr const char* WINDOW_NAME = "Terrain";
 
         static constexpr float MIN_BRUSH_SIZE = 0.1f;

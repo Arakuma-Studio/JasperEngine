@@ -63,6 +63,13 @@ async def tree_count(ed: Editor, sid: int, terrain: int) -> int:
     return sum(item["count"] for item in got["foliage"]["trees"])
 
 
+async def tree_data_path(ed: Editor, sid: int, terrain: int) -> Path:
+    fields = await ed.call("get_entity", scene=sid, entity=terrain, components=["terrain"], properties=["treeData"])
+    relative = fields["components"]["terrain"]["treeData"]
+    ed.check(relative, f"{fields}")
+    return ed.project / relative
+
+
 async def test_group_hidden_until_enabled(ed: Editor):
     default = {tool.name for tool in await ed.tools(groups=None)}
     ed.check("edit_terrain" not in default and "visualize_terrain" not in default, "the terrain group is hidden")
@@ -113,7 +120,7 @@ async def test_sculpt_resnaps_trees(ed: Editor):
     await ed.call("sculpt_terrain", scene=sid, entity=terrain, space="local", strokes=[
         {"mode": "raise", "points": [[0, 0], [10, 5], [-8, 12]], "size": 12.0, "strength": 1.0, "seconds_per_point": 0.2}])
     await ed.call("wait", seconds=30, frames=30)
-    got = await ed.call("eval_lua", code=(
+    got = await ed.call("eval_lua", allow_edit_mode=True, code=(
         "local terrain = Terrain(scene, entity('Land')) "
         "local list = terrain:getFoliageInstancesInRadius(Vector3(0, 0, 0), 500) "
         "local worst = 0 "
@@ -167,9 +174,9 @@ async def test_drawn_reads_foliage_stats(ed: Editor):
 async def test_density_overlay_changes_the_capture(ed: Editor):
     sid, terrain = await terrain_scene(ed, "Overlay")
     await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()])
-    before = (await ed.call("visualize_terrain", scene=sid, entity=terrain, overlay="none")).images
-    shown = await ed.call("visualize_terrain", scene=sid, entity=terrain, overlay="tree_density")
-    ed.check(shown.images and shown.images[0] != (before[0] if before else None), "the heat map appears")
+    before = (await ed.call_raw("visualize_terrain", {"scene": sid, "entity": terrain, "overlay": "none"})).images
+    shown = await ed.call_raw("visualize_terrain", {"scene": sid, "entity": terrain, "overlay": "tree_density"})
+    ed.check(shown.images and before and shown.images[0][0] != before[0][0], "the heat map appears")
     ed.check("legend" in shown.value, f"{shown.value}")
     hidden = await ed.call("visualize_terrain", scene=sid, entity=terrain, overlay="none")
     passes = await ed.call("get_gpu_passes")
@@ -224,9 +231,8 @@ async def test_chop_in_play_leaves_the_file_alone(ed: Editor):
     sid, terrain = await terrain_scene(ed, "Chop")
     await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()])
     await ed.call("save_scene", scene=sid)
-    files = list(ed.project.rglob("*.jetrees"))
-    ed.check_eq(len(files), 1, f"the tree file: {files}")
-    before = hashlib.sha256(files[0].read_bytes()).hexdigest()
+    tree_file = await tree_data_path(ed, sid, terrain)
+    before = hashlib.sha256(tree_file.read_bytes()).hexdigest()
 
     await ed.call("play", action="start", scene=sid, fixed_fps=60)
     try:
@@ -239,7 +245,7 @@ async def test_chop_in_play_leaves_the_file_alone(ed: Editor):
         ed.check_eq(got["values"][2], got["values"][0] - 1, f"{got}")
     finally:
         await ed.call("play", action="stop")
-    ed.check_eq(hashlib.sha256(files[0].read_bytes()).hexdigest(), before, "a chop never touches the file")
+    ed.check_eq(hashlib.sha256(tree_file.read_bytes()).hexdigest(), before, "a chop never touches the file")
 
 
 async def test_force_field_overrides_wind(ed: Editor):
@@ -276,9 +282,13 @@ async def test_duplicate_terrain_copies_on_first_write(ed: Editor):
     await ed.call("edit_terrain", scene=sid, entity=terrain, ops=[scatter()])
     await ed.call("save_scene", scene=sid)
     count = await tree_count(ed, sid, terrain)
-    copy = (await ed.call("duplicate_entities", scene=sid, entities=[terrain]))["entities"][0]
+    made = await ed.call("duplicate_entities", scene=sid, entities=[terrain])
+    copy = made["created"][0]["id"]
+    original_file = await tree_data_path(ed, sid, terrain)
+    before = original_file.read_bytes()
     await ed.call("edit_terrain", scene=sid, entity=copy, ops=[{"op": "clear_foliage", "target": "trees"}])
     ed.check_eq(await tree_count(ed, sid, copy), 0, "the copy is cleared")
     ed.check_eq(await tree_count(ed, sid, terrain), count, "the original keeps its trees")
     await ed.call("save_scene", scene=sid)
-    ed.check_eq(len(list(ed.project.rglob("*.jetrees"))), 2, "a file each after the first write")
+    ed.check_eq(original_file.read_bytes(), before, "the copy's write leaves the original's file alone")
+    ed.check((await tree_data_path(ed, sid, copy)) != original_file, "the copy has a file of its own")

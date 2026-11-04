@@ -1432,6 +1432,10 @@ bool editor::TerrainEditWindow::hasValidTarget(SceneProject* sceneProject) const
            targetScene->scene->findComponent<Transform>(selectedEntity);
 }
 
+bool editor::TerrainEditWindow::ensureDensityMap(Project* project, SceneProject* sceneProject, Entity entity, int layer){
+    return ensureEditableMap(project, sceneProject, entity, TerrainMapRef(TerrainMapTarget::DensityMap, layer), mapResolutionFor(TerrainMapTarget::DensityMap));
+}
+
 int editor::TerrainEditWindow::mapResolutionFor(TerrainMapTarget target) const{
     if (target == TerrainMapTarget::HeightMap){
         return heightMapResolution;
