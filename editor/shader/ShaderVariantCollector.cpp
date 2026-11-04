@@ -612,6 +612,16 @@ namespace {
             // mesh's or the scene's, with its features; the depth pass's library program
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
             SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
+            // T3 R34, T6 R40: a terrain with an attached Automatic volume ships its holed variant, so a
+            // first in-game dig finds it in the build
+            if (terrain && !inputs.terrainHoles){
+                auto volumes = scene->getComponentArray<VoxelVolumeComponent>();
+                for (size_t i = 0; i < volumes->size() && !inputs.terrainHoles; i++){
+                    const VoxelVolumeComponent& volume = volumes->getComponentFromIndex(i);
+                    inputs.terrainHoles = volume.terrainCut == VoxelTerrainCut::Automatic && volume.terrain != NULL_ENTITY
+                        && scene->findComponent<TerrainComponent>(volume.terrain) == terrain;
+                }
+            }
 
             const uint16_t depthShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader));
             const bool hasPass = RenderSystem::hasExtraPass(submesh, terrain != nullptr);

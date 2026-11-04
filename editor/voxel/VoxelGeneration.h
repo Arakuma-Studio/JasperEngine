@@ -77,6 +77,11 @@ namespace jasperengine::editor {
         std::shared_ptr<State> state;
     };
 
+    // V10: has the source changed since the generator's stored hash? Never changes data by itself:
+    // the panel and sample_voxels report base_stale, and Regenerate is explicit. A base with no
+    // source to compare (empty, solid ground, a preset of ops) is never stale.
+    bool isVoxelBaseStale(Scene* scene, Entity owner);
+
     // R37: the presets, as editor::TerrainPresets lists T2's
     struct VoxelPresetInfo {
         std::string name;

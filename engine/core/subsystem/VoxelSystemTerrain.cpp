@@ -158,6 +158,8 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
         state.attachedTerrain = wanted;
         if (wanted == NULL_ENTITY) return;
         TerrainComponent& terrain = scene->getComponent<TerrainComponent>(wanted);
+        // The map's texels, kept on the CPU: R39 reads them, and T1's query answers from them (T3 R52)
+        prepareTerrainHoleMap(terrain);
         const Transform* terrainTransform = scene->findComponent<Transform>(wanted);
         const Transform* volumeTransform = scene->findComponent<Transform>(state.owner);
         if (volumeTransform && terrainTransform && state.asset && state.asset->generator.kind == "terrain"){

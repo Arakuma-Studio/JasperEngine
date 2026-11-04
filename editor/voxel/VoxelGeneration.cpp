@@ -5,9 +5,11 @@
 
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "io/Data.h"
+#include "object/TerrainEdit.h"
 #include "subsystem/VoxelSystem.h"
 #include "util/MeshTriangles.h"
 #include "voxel/TransvoxelMesher.h"
@@ -118,6 +120,15 @@ namespace {
         return fnv1a(text.data(), text.size());
     }
 
+    // V10: the terrain's height over everything, which is what the base reads
+    uint64_t terrainHash(Scene* scene, Entity terrainEntity) {
+        TerrainComponent* terrain = terrainEntity != NULL_ENTITY && scene->isEntityCreated(terrainEntity) ? scene->findComponent<TerrainComponent>(terrainEntity) : nullptr;
+        if (!terrain) return 0;
+        const terrain::SurfaceView view = terrainSurfaceView(*terrain);
+        if (!view.pixels) return 0;
+        return fnv1a(view.pixels, static_cast<size_t>(view.width) * view.height * view.channels * view.bytesPerChannel);
+    }
+
 }
 
 struct VoxelGeneration::State {
@@ -130,6 +141,21 @@ struct VoxelGeneration::State {
     VoxelGenerateResult result;
     std::atomic<bool> cancelled{false};
 };
+
+bool jasperengine::editor::isVoxelBaseStale(Scene* scene, Entity owner) {
+    std::shared_ptr<VoxelSystem> system = scene->findSystem<VoxelSystem>();
+    const VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(owner);
+    std::shared_ptr<VoxelAsset> asset = system ? system->getAsset(owner) : nullptr;
+    if (!asset || !component || asset->generator.sourceHash == 0) return false;
+    if (asset->generator.kind == "noise_graph") {
+        std::string json;
+        return !readProjectFile(asset->generator.sourcePath, json) || hashString(json) != asset->generator.sourceHash;
+    }
+    if (asset->generator.kind == "terrain") {
+        return terrainHash(scene, component->terrain) != asset->generator.sourceHash;
+    }
+    return false;
+}
 
 const std::vector<VoxelPresetInfo>& jasperengine::editor::voxelPresets() {
     static const std::vector<VoxelPresetInfo> presets = {
@@ -190,6 +216,7 @@ std::shared_ptr<VoxelGeneration> VoxelGeneration::prepare(Scene* scene, Entity o
         base = terrainBase(terrain);
         if (!base) return fail("missing_asset", "no Terrain to read: pass terrain, or attach one with terrain on the component");
         generator.kind = "terrain";
+        generator.sourceHash = terrainHash(scene, terrain);
     } else if (request.source == "mesh") {
         std::vector<Vector3> vertices;
         std::vector<uint32_t> indices;

@@ -6,6 +6,8 @@
 #include "cook/VoxelVolumeCook.h"
 
 #include "Scene.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "shader/ShaderManifest.h"
@@ -155,6 +157,50 @@ TEST(VoxelExport, CollectorListsTierVariants) {
     EXPECT_EQ(voxelDefines(VoxelQuality::Low), (std::set<std::string>{"HAS_VOXEL", "VOXEL_TIER_LOW"}));
     // Auto: the target and an attached terrain choose (R51)
     EXPECT_EQ(voxelDefines(VoxelQuality::Auto), (std::set<std::string>{"HAS_VOXEL", "VOXEL_TIER_HIGH", "VOXEL_TIER_MEDIUM", "VOXEL_TIER_LOW"}));
+}
+
+namespace voxel_cook_test {
+
+    // How many MESH keys of a scene with one terrain carry 'Thl', with or without an attached volume
+    int holedTerrainKeys(VoxelTerrainCut cut, bool attached) {
+        Scene scene;
+        const Entity terrainEntity = scene.createEntity();
+        scene.addComponent<Transform>(terrainEntity, {});
+        TerrainComponent terrain;
+        terrain.heightMap.setPath("height.png");
+        scene.addComponent<TerrainComponent>(terrainEntity, terrain);
+        MeshComponent mesh;
+        mesh.numSubmeshes = 1;
+        scene.addComponent<MeshComponent>(terrainEntity, mesh);
+        ShaderVariantContent content;
+        content.registry = &scene;
+        content.entities = {terrainEntity};
+        if (attached) {
+            const Entity volume = scene.createEntity();
+            scene.addComponent<Transform>(volume, {});
+            VoxelVolumeComponent component;
+            component.quality = VoxelQuality::Low;
+            component.terrain = terrainEntity;
+            component.terrainCut = cut;
+            scene.addComponent<VoxelVolumeComponent>(volume, component);
+            content.entities.push_back(volume);
+        }
+        std::set<ShaderKey> keys;
+        ShaderVariantCollector::collectScene(&scene, content, {}, keys);
+        int holed = 0;
+        for (ShaderKey key : keys) {
+            if (ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH && (ShaderPool::getPropertiesFromKey(key) & ShaderPool::getTerrainHolesProperty(ShaderType::MESH))) holed++;
+        }
+        return holed;
+    }
+
+}
+
+// AC34, T3 R34: a first in-game dig finds the holed variant in the build
+TEST(VoxelExport, AttachedShipsHoleVariant) {
+    EXPECT_EQ(holedTerrainKeys(VoxelTerrainCut::Off, false), 0);
+    EXPECT_EQ(holedTerrainKeys(VoxelTerrainCut::Off, true), 0);
+    EXPECT_GT(holedTerrainKeys(VoxelTerrainCut::Automatic, true), 0);
 }
 
 // AC50 (without its run_build half): a baked file loads with no source and evaluates nothing
