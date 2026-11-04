@@ -19,7 +19,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <set>
+#include <thread>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -906,6 +908,12 @@ void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chron
     while (toolWindows.size() > TOOL_WINDOWS_MAX) toolWindows.pop_front();
     bool rebased = false;
     if (tool == "sync_files" || !ensureRoot(ctx, &rebased) || rebased) return;
+
+    // The harness makes the settle late on purpose, so a race with the client's next write is not
+    // left to timing (test_autosync_race.py)
+    if (const char* delay = std::getenv("JASPER_TEST_SETTLE_DELAY_MS")) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(std::clamp(std::atol(delay), 0L, 10000L)));
+    }
 
     const auto started = std::chrono::steady_clock::now();
     const double cpuStart = threadCpuMs();
