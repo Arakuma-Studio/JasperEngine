@@ -615,6 +615,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
     assetsCreateItems.push_back(catalogItem("assets.createAvatarMask", "Avatar Mask"));
     assetsCreateItems.push_back(catalogItem("assets.createAnimationMontage", "Animation Montage"));
     assetsCreateItems.push_back(catalogItem("assets.createShakePreset", "Shake Preset"));
+    assetsCreateItems.push_back(catalogItem("assets.createTitleArt", "Title Art"));
     assetsCreateItems.push_back(menuSeparator());
     assetsCreateItems.push_back(menuSubmenu("Scene", newSceneItems(), !isProjectBusy));
 
@@ -1133,6 +1134,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateShakePreset:
             projectWindow->assetsCreateShakePreset();
+            break;
+        case AppMenuCommand::AssetsCreateTitleArt:
+            projectWindow->assetsCreateTitleArt();
             break;
         case AppMenuCommand::AddCameraShakerToMainCamera: {
             SceneProject* scene = project.getSelectedScene();

@@ -60,6 +60,7 @@
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseEditSession.h"
 #include "pose/PoseImage.h"
+#include "titleart/TitleArtDocument.h"
 
 #include "Backend.h"
 #include "InspectorWindow.h"
@@ -1085,6 +1086,10 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_BURST " Create Shake Preset")){
         assetsCreateShakePreset();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_FONT " Create Title Art")){
+        assetsCreateTitleArt();
         ImGui::CloseCurrentPopup();
     }
     if (ImGui::MenuItem(ICON_FA_SLIDERS " Create Audio Mixer")){
@@ -4481,6 +4486,26 @@ void editor::ProjectWindow::assetsCreateShakePreset() {
     std::string error;
     if (!ProjectFileWrites::writeUndoable(project, {{project->getProjectPath() / relative, camera::writeShakePreset(file)}}, error)) {
         Backend::getApp().registerAlert("Create Shake Preset", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreateTitleArt() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(currentPath, "New Title Art", titleart::TITLE_ART_EXTENSION);
+    std::string error;
+    if (!TitleArtDocument::create(project, relative.generic_string(), nullptr, "Create Title Art", &error)) {
+        Backend::getApp().registerAlert("Create Title Art", error);
         return;
     }
     scanDirectory(currentPath);
