@@ -266,11 +266,13 @@ void LuaFunctionBase::push_value(lua_State *vm, const VoxelEditEvent& o){
 }
 
 void LuaFunctionBase::push_value(lua_State *vm, const AABB& o){
-    luabridge::push(vm, o);
+    if (!luabridge::push<AABB>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
 void LuaFunctionBase::push_value(lua_State *vm, const GameObject& o){
-    luabridge::push(vm, o);
+    if (!luabridge::push<GameObject>(vm, o))
+        throw luabridge::makeErrorCode(luabridge::ErrorCode::LuaStackOverflow);
 }
 
 void LuaFunctionBase::push_value(lua_State *vm, NavMeshAgent o){
