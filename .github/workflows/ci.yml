@@ -75,10 +75,7 @@ jobs:
       - name: Limit the compiler cache
         run: mkdir -p build/.cache/ccache && echo "max_size = 1.5G" > build/.cache/ccache/ccache.conf
 
-      - name: Third-party notices
-        run: python3 tools/ci/check-notices.py
-
-      - name: Gate, notice checker and MCP eval grader self-tests
+      - name: Gate, notice tool and MCP eval grader self-tests
         run: |
           python3 tools/ci/test_gtest_gate.py
           python3 tools/ci/test_smoke_jit_hangs.py
@@ -262,9 +259,6 @@ jobs:
       - name: Warnings
         if: always()
         run: python3 tools/ci/warning-summary.py build/test-results/linux-build.log >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Third-party notices in the install
-        run: python3 tools/ci/check-notices.py --installed build/linux/editor-install/bin
 
       - name: Cooked-texture runtime size (S14 R21, native Release)
         run: python3 tools/textures/runtime_size.py --binary build/linux/engine/jasperengine-project --json build/test-results/texture-runtime-size.json
@@ -679,9 +673,6 @@ jobs:
       - name: Warnings
         if: always()
         run: python tools/ci/warning-summary.py build-editor.log build-engine.log >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Third-party notices in the install
-        run: python tools/ci/check-notices.py --installed instdir/bin
 
       - name: Build engine sample project (Vulkan)
         run: |

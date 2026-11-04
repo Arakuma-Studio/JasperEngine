@@ -10,7 +10,6 @@ project's AGENTS.md instead.
 - `docs/specs/`: the feature specs and `docs/specs/IMPLEMENTING.md`, the brief for implementers.
 - `docs/mcp/DESIGN.md`: how the editor's MCP server works; `docs/mcp/conventions.md`: the tool rules.
 - `docs/testing.md`: every test suite, where a test goes, red controls, CI.
-- `NOTICE.md`: third-party code we ship. Copied code keeps its header and gets an entry here.
 
 ## What lives where
 

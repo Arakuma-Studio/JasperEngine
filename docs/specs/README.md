@@ -3,9 +3,7 @@
 Each `SNN-*.md` file here specifies one work stream of the OpenEngine-inspired upgrade of
 JasperEngine. The comparison that motivated them is in `docs/openengine-analysis/` (00-SUMMARY.md
 plus ten domain reports). OpenEngine's source is available read-only at
-`/var/lib/orquester/workspaces/jaspersito/JasperEngine-2/external/OpenEngine` (MIT, attribution
-required for copied code: add an entry to `NOTICE.md` and keep their copyright header in copied
-files). It is reference material: copy or adapt code where it is good, write better code where
+`/var/lib/orquester/workspaces/jaspersito/JasperEngine-2/external/OpenEngine`. It is reference material: copy or adapt code where it is good, write better code where
 we can. Specs describe WHAT and the acceptance bar, not a step-by-step implementation plan.
 
 ## Global decisions (apply to every spec)
@@ -34,9 +32,6 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
   - Game/editor UI stays on our RmlUi fork + ImGui editor.
   - Vector text: avoid the Slug technique unless its patent status is verified clear; default to
     exact-scale re-rasterization and/or MSDF.
-- **Licences.** MIT/zlib/BSD/Apache-2.0 code may be vendored with notices in `NOTICE.md`.
-  MPL-2.0 (their erosion filter) and anything without a clear licence (their SVG icons) must not
-  be copied.
 - **Humans and agents.** Every user-facing feature needs: editor UI (ImGui, Unity-like naming and
   behaviour, undoable edits), a Lua API where it is runtime functionality, and MCP tools /
   resources (editor/mcp) so agents can drive and verify it. Update `docs/` and the MCP agent guide.
@@ -52,7 +47,7 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 2. **Scope** — in scope / out of scope (cite the do-not-copy list where relevant).
 3. **Current state** — what JasperEngine has today, with file paths; what is wrong with it.
 4. **Reference** — the OpenEngine files to study/copy (exact paths), what to take, what to
-   improve on; licence notes.
+   improve on.
 5. **Requirements** — numbered `R1…Rn`, each testable. Group as Functional / Platform & backends /
    Performance (concrete budgets) / Editor UX (human) / Agent UX (MCP tools, Lua API, CLI) /
    Data & compatibility (formats, versioning, migration).

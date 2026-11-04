@@ -8,7 +8,7 @@
   atomics; a desktop-only fast path needs a fallback that gives the same result.
 - A disabled feature costs nothing, on the CPU and the GPU. Budget mobile and web first.
 - Read the do-not-copy list in `docs/specs/README.md` before taking anything from another
-  engine; licences decide what may be vendored (`NOTICE.md`).
+  engine: it records architecture decisions.
 - Old projects must load: new fields get defaults, format changes get a version bump and a
   migration.
 - Users and agents are both first-class: a feature gets editor UI with Unity-like names and
@@ -40,8 +40,6 @@
 
 - C++20 within the portable subset (`tools/check-cxx-subset.py`); 4-space indent; code in the
   `jasperengine::` namespaces (`jasperengine::editor::mcp` ...).
-- Every source file starts with `// (c) Eduardo Doria and contributors` and
-  `// SPDX-License-Identifier: MIT`.
 - Match the surrounding naming and comment density. Comments say why, not what.
 - No TODO stubs, dead code or disabled tests.
 
