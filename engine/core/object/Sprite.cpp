@@ -5,6 +5,8 @@
 #include <algorithm>
 
 #include "component/ShadowCaster2DComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
 #include "util/Color.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"

@@ -14,6 +14,7 @@
 #include "component/NavMeshModifierComponent.h"
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/TextComponent.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -52,6 +53,7 @@ extern unsigned int bulb_icon_png_len;
 #include "util/FluidEditorTools.h"
 #include "pose/PoseViewport.h"
 #include "component/ParticleSystemComponent.h"
+#include "component/TilemapComponent.h"
 #include "particles/ParticleCompiler.h"
 #include "subsystem/ParticleSubsystem.h"
 

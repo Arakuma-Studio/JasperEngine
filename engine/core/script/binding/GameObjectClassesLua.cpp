@@ -9,6 +9,7 @@
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/PanelComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/SafeAreaComponent.h"
 #include "component/ActionComponent.h"
 

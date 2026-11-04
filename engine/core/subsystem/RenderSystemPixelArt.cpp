@@ -15,6 +15,12 @@
 #include "pool/ShaderPool.h"
 #include "profiler/Profile.h"
 #include "pixelart/PixelSnap.h"
+#include "component/CameraComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
 
 #include <algorithm>
 #include <cmath>

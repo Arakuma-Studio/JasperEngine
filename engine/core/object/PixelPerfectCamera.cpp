@@ -4,6 +4,7 @@
 #include "PixelPerfectCamera.h"
 
 #include "component/CameraComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/Transform.h"
 #include "pixelart/PixelSnap.h"
 

@@ -61,6 +61,7 @@
 #include "component/RotateTracksComponent.h"
 #include "component/RotationTweenComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "component/ScaleTracksComponent.h"
 #include "component/ScaleTweenComponent.h"
 #include "component/ScriptComponent.h"

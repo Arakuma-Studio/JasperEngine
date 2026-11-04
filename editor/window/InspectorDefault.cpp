@@ -16,6 +16,7 @@
 #include "Theme.h"
 #include "component/FogComponent.h"
 #include "component/ModelComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include "command/CommandHandle.h"
 #include "command/type/ReflectedValueCmd.h"
 #include "reflect/Enums.h"

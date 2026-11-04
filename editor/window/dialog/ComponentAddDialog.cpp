@@ -6,6 +6,7 @@
 #include "util/UIUtils.h"
 #include "Theme.h"
 #include "search/SearchScorer.h"
+#include "component/PixelPerfectCameraComponent.h"
 #include <cctype>
 #include <cstring>
 

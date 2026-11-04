@@ -11,6 +11,7 @@
 #include "command/type/MultiPropertyCmd.h"
 #include "component/CameraComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "pixelart/PixelPerfectEditor.h"
 #include "reflect/Components.h"
