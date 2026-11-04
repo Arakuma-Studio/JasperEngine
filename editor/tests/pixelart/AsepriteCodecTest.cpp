@@ -808,6 +808,22 @@ TEST(AsepriteCodecTest, WriteRoundTrip) {
     }
 }
 
+// A document without a palette (an RGBA sprite made in code) is written with the 256 black
+// entries any reader starts from, so the file it gives re-saves byte for byte
+TEST(AsepriteCodecTest, PaletteLessDocumentResavesIdentically) {
+    Document doc = makeDocument(ColorMode::Rgba);
+    doc.palette.clear();
+    std::vector<uint8_t> bytes;
+    CodecError error;
+    ASSERT_TRUE(write(doc, bytes, &error)) << error.message;
+    ReadResult r = read(bytes);
+    ASSERT_TRUE(r.ok()) << r.error.message;
+    EXPECT_EQ(r.document->palette.size(), 256u);
+    std::vector<uint8_t> resaved;
+    ASSERT_TRUE(write(*r.document, resaved, &error)) << error.message;
+    EXPECT_TRUE(resaved == bytes) << resaved.size() << " bytes, first written " << bytes.size();
+}
+
 // A new file follows Aseprite 1.3.5's layout: the 8-bit palette chunk when it can hold the palette
 TEST(AsepriteCodecTest, NewFileLayout) {
     Document doc = makeDocument(ColorMode::Rgba);

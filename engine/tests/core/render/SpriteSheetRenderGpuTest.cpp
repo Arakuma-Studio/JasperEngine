@@ -156,7 +156,11 @@ TEST_F(SpriteSheetRenderGpu, TrimmedEqualsUntrimmed) {
             c.automaticFlipY = false;
             c.flipY = i == 10;
         }
-        sprite->setPosition(static_cast<float>(-150 + (i % 4) * 100), static_cast<float>(-80 + (i / 4) * 80), 0.0f);
+        // a 4 x 3 grid over the target (the orthographic camera's units are its pixels, from the
+        // bottom-left), each cell wider than a sprite whatever its pivot
+        const float cellW = static_cast<float>(GpuEnvironment::target().getWidth()) / 4.0f;
+        const float cellH = static_cast<float>(GpuEnvironment::target().getHeight()) / 3.0f;
+        sprite->setPosition(cellW * (static_cast<float>(i % 4) + 0.5f), cellH * (static_cast<float>(i / 4) + 0.5f), 0.0f);
         sprites.push_back(std::move(sprite));
     }
     ASSERT_TRUE(render());
@@ -165,8 +169,8 @@ TEST_F(SpriteSheetRenderGpu, TrimmedEqualsUntrimmed) {
     for (size_t p = 0; p + 3 < fromTrimmed.size(); p += 4) {
         if (!(fromTrimmed[p] == 255 && fromTrimmed[p + 1] == 0 && fromTrimmed[p + 2] == 255)) drawn++;
     }
-    // every sprite covers at least its smallest frame's pixels at 3x
-    ASSERT_GT(drawn, 12u * 9u * 4u * 9u) << "the sprites are on screen";
+    // every sprite covers at least its smallest frame's 30 pixels at 3x
+    ASSERT_GT(drawn, 12u * 30u * 9u) << "the sprites are on screen";
 
     for (std::unique_ptr<Sprite>& sprite : sprites) {
         const int frame = sprite->getFrameIndex();

@@ -111,8 +111,8 @@ TEST(StreamMigrations, SceneV1ToV2ShadowBiasInTexels){
     // 1 -> 2, then 2 -> 3 (S20's particle systems: none here), 3 -> 4 (S29's derived transform
     // values: none here), 4 -> 5 (S18's splines: identity), 5 -> 6 (S21's Animation Player
     // controllers: none here) and 6 -> 7 (S27's curve form: no lines)
-    ASSERT_EQ(result.applied.size(), 6u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 7);
+    ASSERT_EQ(result.applied.size(), 7u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
     EXPECT_EQ(root["scene"]["shadowQuality"].as<std::string>(), "auto");
     EXPECT_FLOAT_EQ(root["entities"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
     EXPECT_FLOAT_EQ(root["entities"][1]["children"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
@@ -133,7 +133,7 @@ TEST(StreamMigrations, PrefabV3ToV4ShadowBiasInTexels){
         "{type: Prefab, version: 3, members: [{type: Entity, entity: 1001, components: {light: {type: spot, shadowBias: 0.002}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 8);
+    EXPECT_EQ(root["version"].as<int>(), 9);
     EXPECT_FLOAT_EQ(root["members"][0]["components"]["light"]["shadowBias"].as<float>(), 1.0f);
 }
 
@@ -166,8 +166,8 @@ TEST(StreamMigrations, SceneV2ToV3ParticleSystemsMoveToTheirTargets){
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 2);
     // 2 -> 3, then S29's 3 -> 4, S18's identity 4 -> 5, S21's 5 -> 6 and S27's curve form 6 -> 7
-    ASSERT_EQ(result.applied.size(), 5u);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 7);
+    ASSERT_EQ(result.applied.size(), 6u);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
 
     const YAML::Node fire = root["entities"][0]["components"];
     ASSERT_TRUE(fire["particlesystem"]);
@@ -225,7 +225,7 @@ TEST(StreamMigrations, PrefabV4ToV5ParticleSystems){
         "{type: Entity, entity: 1002, name: Dust FX, components: {action: {target: 1001}, particlesystem: {rate: 9}}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Prefab, root);
     EXPECT_TRUE(result.migrated());
-    EXPECT_EQ(root["version"].as<int>(), 8) << "migrated to the current version";
+    EXPECT_EQ(root["version"].as<int>(), 9) << "migrated to the current version";
     EXPECT_TRUE(root["members"][0]["components"]["particlesystem"]);
     EXPECT_FALSE(root["members"][1]["components"]["particlesystem"]);
 }
@@ -246,8 +246,8 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
         " components: {animationplayer: {controller: anim/other.controller, controllerGuid: 0000111122223333444455556666aaaa}}}]}}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 5);
-    ASSERT_EQ(result.applied.size(), 2u) << "5 -> 6, then S27's curve form 6 -> 7 (no lines)";
-    EXPECT_EQ(root["formatVersion"].as<int>(), 7);
+    ASSERT_EQ(result.applied.size(), 3u) << "5 -> 6, S27's curve form 6 -> 7 (no lines), then S44's sheet sprites 7 -> 8";
+    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
 
     const YAML::Node granjero = root["entities"][0]["components"];
     ASSERT_TRUE(granjero["animator"]);
@@ -286,7 +286,7 @@ TEST(StreamMigrations, SceneV5ToV6AnimationPlayerControllersMoveToAnimators){
         "{type: Prefab, version: 6, members: [{type: Entity, entity: 1001, components: {animationplayer: {enabled: false, controller: anim/c.controller}}}]}");
     const MigrationResult prefabResult = StreamMigrations::migrate(DocumentKind::Prefab, prefab);
     EXPECT_TRUE(prefabResult.migrated());
-    EXPECT_EQ(prefab["version"].as<int>(), 8);
+    EXPECT_EQ(prefab["version"].as<int>(), 9);
     EXPECT_EQ(prefab["members"][0]["components"]["animator"]["controller"].as<std::string>(), "anim/c.controller");
     EXPECT_FALSE(prefab["members"][0]["components"]["animator"]["enabled"].as<bool>()) << "a disabled player: a disabled Animator";
 }

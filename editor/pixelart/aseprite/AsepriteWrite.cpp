@@ -978,6 +978,14 @@ namespace jasperengine::editor::pixelart::aseprite {
 
     bool write(const Document& document, std::vector<uint8_t>& out, CodecError* error) {
         if (error) *error = CodecError();
+        if (document.palette.empty()) {
+            // a file always has a palette: without one a reader (Aseprite's, ours) starts from the
+            // header's 256 black entries, so they are written out, and a re-save is the same bytes
+            Document withPalette = document;
+            withPalette.palette.assign(256, PaletteEntry{});
+            Writer writer(withPalette, error);
+            return writer.run(out);
+        }
         Writer writer(document, error);
         return writer.run(out);
     }

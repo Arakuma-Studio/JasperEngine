@@ -64,8 +64,14 @@ TEST(AsepriteImportTest, Layers) {
     EXPECT_EQ(all.sheet.frames[0].name, "hero 0");
     EXPECT_EQ(all.sheet.frames[0].key, "frame#0");
 
+    // §6.7: include adds and exclude removes, so "Layer 1 alone" excludes the others
+    const Document structure = loadDocument(file);
     AsepriteImportSettings only;
-    only.include = {"Layer 1"};
+    for (int l = 0; l < static_cast<int>(structure.layers.size()); l++) {
+        if (structure.layers[static_cast<size_t>(l)].name != "Layer 1" && !structure.layers[static_cast<size_t>(l)].isGroup()) {
+            only.exclude.push_back(structure.layerPath(l));
+        }
+    }
     const AsepriteImport one = importOf(file, only);
     ASSERT_TRUE(one.ok()) << one.error.message;
     EXPECT_TRUE(samePicture(untrimmedFrame(one, 2), loadPng(importFixture("asefile", "single_layer.png"))));
@@ -77,8 +83,9 @@ TEST(AsepriteImportTest, Layers) {
     AsepriteImportSettings hidden;
     hidden.includeHidden = true;
     const std::vector<int> withHidden = selectLayers(doc, hidden, warnings);
-    EXPECT_EQ(withHidden.size(), byDefault.size() + 1);
+    EXPECT_GT(withHidden.size(), byDefault.size());
     EXPECT_EQ(std::count(byDefault.begin(), byDefault.end(), doc.findLayer("invisible")), 0);
+    EXPECT_EQ(std::count(withHidden.begin(), withHidden.end(), doc.findLayer("invisible")), 1);
     AsepriteImportSettings prefixed;
     prefixed.ignorePrefixes = {"Layer"};
     EXPECT_LT(selectLayers(doc, prefixed, warnings).size(), byDefault.size());

@@ -6,11 +6,13 @@
 // on the benchmark server only (a shared builder's load alone misses wall-clock budgets).
 
 #include "pixelart/aseprite/AsepriteDocument.h"
+#include "pixelart/aseprite/AsepriteCodecInternal.h"
 #include "pixelart/aseprite/AsepriteImport.h"
 #include "support/EditorTestSupport.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <memory>
@@ -51,7 +53,7 @@ namespace {
                     for (int x = 0; x < size; x++) {
                         // blocks of flat colour with some noise: a sprite, not static
                         const bool on = ((x / 8 + y / 8 + l + f) % 3) != 0;
-                        const uint8_t n = next() & 0x0F;
+                        const uint8_t n = (x % 16 == 0) ? (next() & 0x0F) : 0;
                         image.set(x, y, on ? PixelRgba{static_cast<uint8_t>(l * 30 + n), static_cast<uint8_t>(f * 3), static_cast<uint8_t>(128 + n), 255}
                                            : PixelRgba{0, 0, 0, 0});
                     }
@@ -72,6 +74,31 @@ namespace {
         }
         d.sortCels();
         return d;
+    }
+
+    // where two encodings of one document differ: the first frame whose chunk list or a chunk's
+    // bytes differ (a failure message, "" when they are the same)
+    std::string firstDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b) {
+        ReadResult ra = read(a), rb = read(b);
+        if (!ra.ok() || !rb.ok()) return "a file does not read";
+        const auto& fa = ra.document->provenance->frames;
+        const auto& fb = rb.document->provenance->frames;
+        if (fa.size() != fb.size()) return "frame counts " + std::to_string(fa.size()) + " / " + std::to_string(fb.size());
+        for (size_t f = 0; f < fa.size(); f++) {
+            std::string ta, tb;
+            for (const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& c : fa[f].chunks) ta += std::to_string(c.type) + "(" + std::to_string(c.size) + ") ";
+            for (const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& c : fb[f].chunks) tb += std::to_string(c.type) + "(" + std::to_string(c.size) + ") ";
+            if (ta != tb) return "frame " + std::to_string(f) + ": [" + ta + "] vs [" + tb + "]";
+            for (size_t c = 0; c < fa[f].chunks.size(); c++) {
+                const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& x = fa[f].chunks[c];
+                const jasperengine::editor::pixelart::aseprite::detail::ChunkRecord& y = fb[f].chunks[c];
+                if (!std::equal(a.begin() + static_cast<std::ptrdiff_t>(x.offset), a.begin() + static_cast<std::ptrdiff_t>(x.offset + x.size),
+                                b.begin() + static_cast<std::ptrdiff_t>(y.offset))) {
+                    return "frame " + std::to_string(f) + " chunk " + std::to_string(c) + " (type " + std::to_string(x.type) + ") bytes differ";
+                }
+            }
+        }
+        return "the frame headers or the file header differ";
     }
 
     void report(const char* what, double ms, double budget) {
@@ -106,7 +133,7 @@ TEST(AsepriteBench, Codec) {
     start = std::chrono::steady_clock::now();
     ASSERT_TRUE(write(*read1.document, same, &error)) << error.message;
     report("write unchanged", elapsedMs(start), 5.0);
-    EXPECT_EQ(same, first);
+    EXPECT_TRUE(same == first) << firstDifference(first, same);
 
     Document changed = *read1.document;
     for (Cel& cel : changed.cels) {

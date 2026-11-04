@@ -95,7 +95,10 @@ TEST(SpriteSheetIOTest, CanonicalRoundTrip){
     EXPECT_LT(text.find("\"format\""), text.find("\"version\""));
     EXPECT_LT(text.find("\"pages\""), text.find("\"frames\""));
     EXPECT_NE(text.find("\"rect\": [1, 1, 14, 22]"), std::string::npos) << text;
-    EXPECT_EQ(text.find('.'), text.find(".png"));   // no decimals anywhere (the only '.' is the page file's)
+    // no decimals in the geometry (the format name, page file names and user data have dots)
+    const size_t frames = text.find("\"frames\""), tags = text.find("\"tags\"");
+    ASSERT_LT(frames, tags);
+    EXPECT_EQ(text.substr(frames, tags - frames).find('.'), std::string::npos) << text.substr(frames, tags - frames);
 }
 
 TEST(SpriteSheetIOTest, LenientAfterFormatAndVersion){
