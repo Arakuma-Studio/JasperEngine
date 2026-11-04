@@ -130,49 +130,97 @@ TEST_F(MeshLodGpu, ABuildDroppedBeforeItWasTakenIsBuiltAgain){
     EXPECT_GT(mesh.numLods, 1u);
 }
 
-// R2: a quantized model's 8-bit normals and 16-bit UVs (S53 keeps them normalized on the GPU) guide
-// the simplification like float ones (red before: the builder left them out)
+namespace {
+    // the data type of a submesh's attribute, of its own or of a buffer it reads (as the level
+    // builder finds it); false when it has none
+    bool attributeTypeOf(MeshComponent& mesh, unsigned int submesh, AttributeType type, AttributeDataType& out){
+        auto own = mesh.submeshes[submesh].attributes.find(type);
+        if (own != mesh.submeshes[submesh].attributes.end()){
+            out = own->second.getDataType();
+            return true;
+        }
+        for (int b = 0; b < mesh.numExternalBuffers; b++){
+            if (Attribute* attribute = mesh.eBuffers[b].getAttribute(type)){
+                out = attribute->getDataType();
+                return true;
+            }
+        }
+        if (Attribute* attribute = mesh.buffer.getAttribute(type)){
+            out = attribute->getDataType();
+            return true;
+        }
+        return false;
+    }
+
+    // a grid with core glTF's normalized 16-bit UVs (u = x / n, v = y / n) and no texture transform,
+    // which would bake them to floats
+    std::string writeNormalizedUvGrid(TempDir& dir, int n){
+        std::vector<float> positions;
+        std::vector<uint16_t> uvs;
+        for (int y = 0; y <= n; y++){
+            for (int x = 0; x <= n; x++){
+                positions.insert(positions.end(), {-1.0f + 2.0f * x / n, -1.0f + 2.0f * y / n, 0.0f});
+                uvs.insert(uvs.end(), {(uint16_t)(65535 * x / n), (uint16_t)(65535 * y / n)});
+            }
+        }
+        std::vector<uint16_t> indices;
+        for (int y = 0; y < n; y++){
+            for (int x = 0; x < n; x++){
+                const uint16_t a = (uint16_t)(y * (n + 1) + x), b = (uint16_t)(a + n + 1);
+                indices.insert(indices.end(), {a, (uint16_t)(a + 1), b, b, (uint16_t)(a + 1), (uint16_t)(b + 1)});
+            }
+        }
+        const size_t positionBytes = positions.size() * 4, uvBytes = uvs.size() * 2, indexBytes = indices.size() * 2;
+        {
+            std::ofstream out(dir.file("uvgrid.bin"), std::ios::binary);
+            out.write(reinterpret_cast<const char*>(positions.data()), (std::streamsize)positionBytes);
+            out.write(reinterpret_cast<const char*>(uvs.data()), (std::streamsize)uvBytes);
+            out.write(reinterpret_cast<const char*>(indices.data()), (std::streamsize)indexBytes);
+        }
+        const int vertices = (n + 1) * (n + 1);
+        std::ofstream(dir.file("uvgrid.gltf")) << R"({
+"asset": {"version": "2.0"},
+"scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+"meshes": [{"primitives": [{"attributes": {"POSITION": 0, "TEXCOORD_0": 1}, "indices": 2}]}],
+"buffers": [{"uri": "uvgrid.bin", "byteLength": )" << positionBytes + uvBytes + indexBytes << R"(}],
+"bufferViews": [
+  {"buffer": 0, "byteOffset": 0, "byteLength": )" << positionBytes << R"(},
+  {"buffer": 0, "byteOffset": )" << positionBytes << R"(, "byteLength": )" << uvBytes << R"(, "byteStride": 4},
+  {"buffer": 0, "byteOffset": )" << positionBytes + uvBytes << R"(, "byteLength": )" << indexBytes << R"(}],
+"accessors": [
+  {"bufferView": 0, "componentType": 5126, "count": )" << vertices << R"(, "type": "VEC3", "min": [-1, -1, 0], "max": [1, 1, 0]},
+  {"bufferView": 1, "componentType": 5123, "normalized": true, "count": )" << vertices << R"(, "type": "VEC2"},
+  {"bufferView": 2, "componentType": 5123, "count": )" << indices.size() << R"(, "type": "SCALAR"}]
+})";
+        return dir.file("uvgrid.gltf").generic_string();
+    }
+}
+
+// R2: a quantized model's 8-bit normals (S53 keeps them normalized on the GPU) guide the
+// simplification like float ones (red before: the builder left them out). This gltfpack file's
+// 16-bit UVs reach the mesh as floats: its base colour texture has a KHR_texture_transform, which
+// the loader bakes into them; the next test covers normalized UVs
 TEST_F(MeshLodGpu, AQuantizedModelsAttributesGuideItsLevels){
     JASPER_REQUIRE_GPU();
     Model model(&scene);
     ASSERT_TRUE(model.loadModel(JASPER_TEST_SOURCE_DIR "/fixtures/gltf/s41/quantized.glb"));
     ASSERT_TRUE(settle());
-    // the ball: the submesh with normals and UVs stored as normalized integers
     bool found = false;
     for (Entity entity : scene.getEntityList()){
         MeshComponent* mesh = scene.findComponent<MeshComponent>(entity);
         if (!mesh)
             continue;
-        // an attribute of the submesh's own, or of a buffer it reads (as the level builder finds it)
-        auto typeOf = [mesh](unsigned int s, AttributeType type, AttributeDataType& out){
-            auto own = mesh->submeshes[s].attributes.find(type);
-            if (own != mesh->submeshes[s].attributes.end()){
-                out = own->second.getDataType();
-                return true;
-            }
-            for (int b = 0; b < mesh->numExternalBuffers; b++){
-                if (Attribute* attribute = mesh->eBuffers[b].getAttribute(type)){
-                    out = attribute->getDataType();
-                    return true;
-                }
-            }
-            if (Attribute* attribute = mesh->buffer.getAttribute(type)){
-                out = attribute->getDataType();
-                return true;
-            }
-            return false;
-        };
         for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
             AttributeDataType normalType, uvType;
-            if (!typeOf(s, AttributeType::NORMAL, normalType) || normalType == AttributeDataType::FLOAT ||
-                    !typeOf(s, AttributeType::TEXCOORD1, uvType) || uvType == AttributeDataType::FLOAT)
+            if (!attributeTypeOf(*mesh, s, AttributeType::NORMAL, normalType) || normalType != AttributeDataType::BYTE ||
+                    !attributeTypeOf(*mesh, s, AttributeType::TEXCOORD1, uvType))
                 continue;
             found = true;
             MeshLodSource source;
             ASSERT_TRUE(RenderSystem::readSubmeshLodSource(*mesh, s, source));
             const size_t vertices = source.positions.size() / 3;
             ASSERT_EQ(source.normals.size(), vertices * 3) << "the 8-bit normals guide the collapses";
-            ASSERT_EQ(source.uvs.size(), vertices * 2) << "the 16-bit UVs guide the collapses";
+            ASSERT_EQ(source.uvs.size(), vertices * 2) << "the UVs guide the collapses";
             for (size_t v = 0; v < vertices; v++){
                 const float* n = &source.normals[v * 3];
                 EXPECT_NEAR(std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]), 1.0f, 0.03f) << "vertex " << v;
@@ -180,7 +228,30 @@ TEST_F(MeshLodGpu, AQuantizedModelsAttributesGuideItsLevels){
             EXPECT_EQ(MeshLodPool::buildLevels(source, MeshLodRecipe::runtime())->numLevels > 1, mesh->numLods > 1);
         }
     }
-    EXPECT_TRUE(found) << "the fixture keeps quantized normals and UVs";
+    EXPECT_TRUE(found) << "the fixture's textured mesh keeps its 8-bit normals";
+}
+
+// R2: normalized 16-bit UVs are decoded for the simplifier, to the values the shader reads
+TEST_F(MeshLodGpu, NormalizedUvsGuideTheLevels){
+    JASPER_REQUIRE_GPU();
+    TempDir dir;
+    const int n = 8;
+    Model model(&scene);
+    ASSERT_TRUE(model.loadModel(writeNormalizedUvGrid(dir, n)));
+    ASSERT_TRUE(settle());
+    MeshComponent& mesh = model.getComponent<MeshComponent>();
+    AttributeDataType uvType;
+    ASSERT_TRUE(attributeTypeOf(mesh, 0, AttributeType::TEXCOORD1, uvType));
+    ASSERT_EQ(uvType, AttributeDataType::UNSIGNED_SHORT) << "the loader keeps them normalized";
+    MeshLodSource source;
+    ASSERT_TRUE(RenderSystem::readSubmeshLodSource(mesh, 0, source));
+    const size_t vertices = source.positions.size() / 3;
+    ASSERT_EQ(vertices, (size_t)((n + 1) * (n + 1)));
+    ASSERT_EQ(source.uvs.size(), vertices * 2) << "the 16-bit UVs guide the collapses";
+    for (size_t v = 0; v < vertices; v++){
+        EXPECT_NEAR(source.uvs[v * 2], (source.positions[v * 3] + 1.0f) * 0.5f, 1e-3f) << "vertex " << v;
+        EXPECT_NEAR(source.uvs[v * 2 + 1], (source.positions[v * 3 + 1] + 1.0f) * 0.5f, 1e-3f) << "vertex " << v;
+    }
 }
 
 namespace {
