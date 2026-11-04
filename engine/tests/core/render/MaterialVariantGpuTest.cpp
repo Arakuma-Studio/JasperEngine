@@ -86,8 +86,9 @@ namespace {
             EXPECT_TRUE(GpuEnvironment::runFrames([current, entity, expectLoadedThroughout, &frames](){
                 const auto render = current->getSystem<RenderSystem>();
                 const MeshComponent& mesh = current->getComponent<MeshComponent>(entity);
-                if (expectLoadedThroughout)
+                if (expectLoadedThroughout){
                     EXPECT_TRUE(mesh.loaded) << "the mesh did not draw on frame " << frames << " of the swap";
+                }
                 frames++;
                 return render->isAllLoaded() && !mesh.needVariantReload && frames > 4;
             })) << "the scene never settled";
