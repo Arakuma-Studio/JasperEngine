@@ -84,6 +84,9 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
               "tools/test_check_changed.py": "tools/test_check_changed.py", "tools/mcp/coverage_map.py": "tools/test_check_changed.py",
               "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
               "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py"}
+# an MCP test file, or what classifies it, changes: every file must stay classified for the CI suite
+CI_SUITE_GUARD = "tools/ci/check-mcp-ci-suite.py"
+CI_SUITE_GUARD_TRIGGERS = ("tools/mcp/tests/test_*.py", "tools/mcp/run_tests.py", CI_SUITE_GUARD)
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
@@ -255,6 +258,8 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         test = SELF_TESTS.get(f)
         if test and test not in plan.self_tests:
             plan.self_tests.append(test)
+        if match(f, CI_SUITE_GUARD_TRIGGERS) and CI_SUITE_GUARD not in plan.self_tests:
+            plan.self_tests.append(CI_SUITE_GUARD)
     everything = [f for f in files if match(f, ALL_TRIGGERS)]
     if everything:
         for b in ("linux", "unit-tests", "web", "android"):

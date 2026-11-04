@@ -95,6 +95,10 @@ jobs:
       - name: Contributor docs for agents
         run: python3 tools/check_agent_docs.py
 
+      # in the first minute, not after the e2e job's editor build: --suite ci refuses an unclassified file
+      - name: MCP test files classified for the CI suite
+        run: python3 -I tools/ci/check-mcp-ci-suite.py
+
       # docs/data-safety.md: every file write goes through AtomicFile (S03 AC9), and the
       # known-key tables of editor/StreamSchema.cpp list what each decoder reads (S03 AC12)
       - name: Data-safety lints
