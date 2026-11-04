@@ -34,6 +34,12 @@ async def camera_of(ed: Editor, scene: int) -> int:
     return camera
 
 
+async def named(ed: Editor, scene: int, name: str) -> int:
+    entities = harness.find_entities(await ed.call("find_entities", scene=scene, name=name))
+    ed.check(entities, f"the scene has {name}")
+    return harness.entity_id_of(entities[0])
+
+
 async def entity(ed: Editor, scene: int, kind: str, name: str, position, scale=None, values=None) -> int:
     args = {"scene": scene, "type": kind, "name": name, "position": position, "select": False}
     if scale is not None:
@@ -85,8 +91,8 @@ async def test_lighting_fields_round_trip(ed: Editor):
     opened = await ed.call("open_scene", scene="scenes/LightingFields.scene")
     scene = opened["scene"]["id"]
     sun = await sun_of(ed, scene)
-    camera = await camera_of(ed, scene)
-    body = harness.entity_id_of(harness.find_entities(await ed.call("find_entities", scene=scene, name="Body"))[0])
+    camera = await named(ed, scene, "Main Camera")
+    body = await named(ed, scene, "Body")
     fields = {"contact": "l.contactShadows", "length": "l.contactShadowLength", "thickness": "l.contactShadowThickness",
               "samples": "l.contactShadowSampleCount", "mode": "c.transparencyMode", "OIT": "TransparencyMode.ORDER_INDEPENDENT",
               "scale": "c.oitWeightScale", "cast": "k.castShadows", "ONLY": "CapsuleCastShadows.CAPSULES_ONLY",
