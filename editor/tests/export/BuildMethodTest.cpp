@@ -275,7 +275,7 @@ namespace build_method_test {
             writeTool(dir / "jdk" / "bin" / "java", "for arg; do case \"$arg\" in --output=*) cp \"$FAKE_TOOLS_ZIP\" \"${arg#--output=}\";; esac; done\n");
             writeTool(dir / "jdk" / "bin" / "jarsigner", makesAfter("-signedjar"));
             // the keystore holds the alias FAKE_ALIAS, with the passwords FAKE_STORE and FAKE_KEY
-            writeTool(dir / "jdk" / "bin" / "keytool", R"(store=; key=; alias=; made=; made_at=
+            writeTool(dir / "jdk" / "bin" / "keytool", R"SH(store=; key=; alias=; made=; made_at=
 while [ $# -gt 0 ]; do
     case "$1" in
         -genkeypair) made=1 ;;
@@ -290,7 +290,7 @@ if [ -n "$made" ]; then echo made > "$made_at"; exit 0; fi
 if [ "$store" != "$FAKE_STORE" ]; then echo "keytool error: java.io.IOException: keystore password was incorrect"; exit 1; fi
 if [ "$alias" != "$FAKE_ALIAS" ]; then echo "keytool error: java.lang.Exception: Alias <$alias> does not exist"; exit 1; fi
 if [ "$key" != "$FAKE_KEY" ]; then echo "keytool error: java.security.UnrecoverableKeyException: Cannot recover key"; exit 1; fi
-)");
+)SH");
             std::string zipError;
             ZipWriter zip;
             EXPECT_TRUE(zip.open(dir / "package.zip", zipError)) << zipError;
@@ -434,21 +434,21 @@ TEST(IosBuild, ChoosesAFullXcodeAndLeavesTheMacsSettingAlone) {
 
     platform::XcodeChoice choice = platform::chooseXcode("", active, none);
     EXPECT_TRUE(choice.found());
-    EXPECT_EQ(choice.developerDir, active);
+    EXPECT_EQ(choice.developerDir.string(), active);
     EXPECT_FALSE(choice.throughEnvironment);
 
     choice = platform::chooseXcode("/Elsewhere/Xcode.app/Contents/Developer", tools, installed);
-    EXPECT_EQ(choice.developerDir, "/Elsewhere/Xcode.app/Contents/Developer") << "DEVELOPER_DIR wins";
+    EXPECT_EQ(choice.developerDir.string(), "/Elsewhere/Xcode.app/Contents/Developer") << "DEVELOPER_DIR wins";
     EXPECT_FALSE(choice.throughEnvironment) << "it is in the environment already";
 
     // xcode-select on the Command Line Tools, with an Xcode installed (the case that failed)
     choice = platform::chooseXcode("", tools, installed);
     EXPECT_TRUE(choice.found());
-    EXPECT_EQ(choice.developerDir, fs::path("/Applications/Xcode.app/Contents/Developer"));
+    EXPECT_EQ(choice.developerDir.string(), "/Applications/Xcode.app/Contents/Developer");
     EXPECT_TRUE(choice.throughEnvironment);
 
     choice = platform::chooseXcode("", tools, {"/Applications/Xcode-16.app", "/Applications/Xcode_26.app"});
-    EXPECT_EQ(choice.developerDir, fs::path("/Applications/Xcode_26.app/Contents/Developer"));
+    EXPECT_EQ(choice.developerDir.string(), "/Applications/Xcode_26.app/Contents/Developer");
 
     choice = platform::chooseXcode("", tools, none);
     EXPECT_FALSE(choice.found());
@@ -467,6 +467,33 @@ TEST(IosBuild, XcodeFailuresInWordsAUserCanActOn) {
     EXPECT_NE(describe("error: iOS 26.5 is not installed. Please download and install the platform").find("Components"), std::string::npos);
     EXPECT_NE(describe("xcode-select: error: tool 'xcodebuild' requires Xcode, but active developer directory").find("DEVELOPER_DIR"), std::string::npos);
     EXPECT_EQ(describe("error: something else"), "");
+}
+
+// The template links the player's library with -all_load, so it must name every framework the
+// engine's code needs (a prebuilt game failed to link on CoreMedia), and no SDK it does not ship
+TEST(IosBuild, ThePlayerTemplateLinksWhatTheEngineNeeds) {
+    const auto read = [](const std::string& relative) {
+        std::ifstream in(fs::path(JASPER_TEST_REPO_DIR) / relative, std::ios::binary);
+        EXPECT_TRUE(in.good()) << relative;
+        return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    };
+    const std::string template_ = read("engine/platform/apple/ios/player-template/JasperEnginePlayer.xcodeproj/project.pbxproj");
+    const std::string cmake = read("engine/CMakeLists.txt");
+    const std::string marker = "target_link_libraries(jasperengine PRIVATE \"-framework ";
+    size_t checked = 0;
+    for (size_t at = cmake.find(marker); at != std::string::npos; at = cmake.find(marker, at + 1)) {
+        const std::string line = cmake.substr(at, cmake.find('\n', at) - at);
+        for (size_t word = line.find("-framework "); word != std::string::npos; word = line.find("-framework ", word + 1)) {
+            const size_t start = word + 11;
+            const std::string name = line.substr(start, line.find('"', start) - start);
+            EXPECT_NE(template_.find(name + ".framework in Frameworks"), std::string::npos) << name;
+            checked++;
+        }
+    }
+    EXPECT_GE(checked, 4u) << "the engine's framework list moved: " << marker;
+    EXPECT_EQ(template_.find("GoogleMobileAds"), std::string::npos);
+    EXPECT_NE(read("tools/players/ios_player.sh").find("-DJASPERENGINE_ADMOB=OFF"), std::string::npos)
+        << "the template links no ads SDK, so the player must not reference it";
 }
 
 // no Xcode here: the Xcode project is the result, its settings filled in, and it says so
@@ -494,7 +521,7 @@ TEST(IosBuild, WithoutAMacTheXcodeProjectIsTheResult) {
     std::string error;
     ASSERT_TRUE(platform::buildIosProject(settings, runner, []() { return false; }, artifacts, notes, warnings, error)) << error;
     ASSERT_EQ(artifacts.size(), 1u);
-    EXPECT_EQ(artifacts.front(), settings.projectDir / "JasperEnginePlayer.xcodeproj");
+    EXPECT_EQ(artifacts.front().string(), (settings.projectDir / "JasperEnginePlayer.xcodeproj").string());
     ASSERT_EQ(notes.size(), 1u);
     EXPECT_NE(notes.front().find("a Mac with Xcode"), std::string::npos) << notes.front();
     std::ifstream plist(settings.projectDir / "Info.plist");

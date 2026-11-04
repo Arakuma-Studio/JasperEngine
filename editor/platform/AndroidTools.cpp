@@ -8,6 +8,7 @@
 #include "util/CommandRunner.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdlib>
 
 using namespace jasperengine;

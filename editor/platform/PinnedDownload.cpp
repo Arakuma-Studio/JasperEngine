@@ -58,7 +58,7 @@ bool platform::fetchPinned(const PinnedDownload& download, const std::function<b
         return false;
     }
     // one download at a time: a second editor waits, and finds the file cached
-    ScopedFileLock lock(fs::path(download.target.string() + ".lock"));
+    io::ScopedFileLock lock(fs::path(download.target.string() + ".lock"));
     if (pinnedFileIsCached(download, error)) return true;
 
     const fs::path partial = download.target.string() + ".part";

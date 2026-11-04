@@ -65,6 +65,17 @@ async def test_build_info_platforms(ed: Editor):
     ed.check_eq(info["build_method"], "auto")
 
 
+async def test_ios_simulator_parameter(ed: Editor):
+    """S47: an agent can ask for the simulator .app. Here (no iOS runtime, no Mac) the build says what is missing."""
+    ed.check_eq(ed.tool("build_project").input_schema["properties"]["ios_simulator"]["type"], "boolean")
+    raw = await ed.call_raw("build_project", {"mode": "player", "platform": "ios", "ios_simulator": True, "method": "prebuilt",
+                                              "output_dir": str(ed.scratch.root / "game-ios"), "timeout_seconds": 120}, timeout=180)
+    r = raw.value
+    if isinstance(r, dict) and r.get("status") == "running":
+        r = await ed.call("get_job", job_id=r["job_id"], wait_seconds=120)
+    ed.check_in("ios-arm64-metal-release", json.dumps(r) if isinstance(r, dict) else raw.text)
+
+
 async def test_prebuilt_linux_build(ed: Editor):
     await ed.call("create_entity", name="Box", type="box")
     saved = await ed.call("save_project", untitled_scene_dir="scenes")

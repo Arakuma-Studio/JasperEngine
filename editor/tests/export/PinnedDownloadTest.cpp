@@ -16,6 +16,7 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <iterator>
 #include <thread>
@@ -24,6 +25,7 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::platform;
 namespace fs = std::filesystem;
+using jasperengine::test::TestTempDir;
 using jaspertest::TestHttpServer;
 
 namespace pinned_download_test {
@@ -245,8 +247,8 @@ TEST(PinnedDownload, BundletoolIsPinned) {
     const PinnedDownload real = AndroidTools::bundletoolDownload();
     EXPECT_EQ(real.url, "https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar");
     EXPECT_EQ(real.sha256, "2d4ad908faea64047c1cc9cb747e6aa667c6ab192e09607bd16b67246a8cd6ae");
-    EXPECT_EQ(real.target.filename(), "bundletool-all-1.17.2.jar");
-    EXPECT_EQ(real.target.parent_path().filename(), "tools");
+    EXPECT_EQ(real.target.filename().string(), "bundletool-all-1.17.2.jar");
+    EXPECT_EQ(real.target.parent_path().filename().string(), "tools");
 
     TestHttpServer server;
     ASSERT_TRUE(server.started());
