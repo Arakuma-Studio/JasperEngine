@@ -12,6 +12,7 @@
 #include "command/Command.h"
 #include "command/CommandHistory.h"
 
+#include <array>
 #include <memory>
 
 namespace jasperengine::editor{
@@ -55,12 +56,19 @@ namespace jasperengine::editor{
         NavOverlaySettings navigation;
     };
 
+    // The camera gizmo's corners in the camera's space (near top-left, top-right, bottom-left,
+    // bottom-right, then the far ones): near to far with fullFrustum, else compact (2 units deep in
+    // perspective, half the view's larger side in orthographic, never past the far plane)
+    std::array<Vector3, 8> cameraGizmoCorners(const CameraComponent& camera, bool fullFrustum);
+
     struct CameraObjects{
         Sprite* icon = nullptr;
         LineRenderer* lines = nullptr;
 
         CameraType type = CameraType::CAMERA_UI;
         bool isMainCamera = false;
+        // drawn near to far (a selected camera), else compact
+        bool fullFrustum = false;
         float yfov = 0;
         float aspect = 0;
         float nearClip = 0;
@@ -332,8 +340,9 @@ namespace jasperengine::editor{
         // selection outline of boxes: their near face (2D views), or all twelve edges
         static void fillSelectionLines(LineRenderer* lines, const std::vector<OBB>& obbs, bool boxes);
 
-        void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
-        void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fixedSizeFrustum = true);
+        // fullFrustum: near to far (a selected camera, as Unity draws it), else a compact gizmo
+        void updateCameraFrustum(CameraObjects& co, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum);
+        void drawCameraFrustumLines(LineRenderer* lines, const CameraComponent& cameraComponent, bool isMainCamera, bool fullFrustum);
         void setupCameraIcon(CameraObjects& co);
         void setupSoundIcon(SoundObjects& so);
         void setupLight2DIcon(Light2DObjects& lo);

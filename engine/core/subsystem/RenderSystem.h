@@ -2647,6 +2647,9 @@ namespace jasperengine{
 		static RenderState resolveComponentRenderState(MaterialBlendMode blendMode, MaterialDepthWrite depthWrite,
 		                                               const MaterialStencil& stencil, int colorWrite, const ShaderManifest* manifest,
 		                                               const std::vector<std::string>& shaderFeatures, bool legacyCulling);
+		// near and far as rendered: a perspective camera keeps 0 < near < far (0.001 apart at least),
+		// whatever its component says; orthographic and UI ones as they are
+		static Vector2 getCameraNearFar(const CameraComponent& camera);
 		// A Points component's: Depth Write Auto (with a manifest's zwrite= Auto too) follows the
 		// queue, written when opaque and not when transparent (Unity's transparent ZWrite Off).
 		// depthFollowsQueue: whether it did, so a change of transparency needs new pipelines
