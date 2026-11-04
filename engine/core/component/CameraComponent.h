@@ -127,6 +127,21 @@ namespace jasperengine{
         bool needUpdate = true;
     };
 
+    // The up vector a camera looking along viewDirection uses: preferredUp, unless the two are
+    // (nearly) parallel and lookAt would get a zero side vector. Then the Scene view's Top/Bottom
+    // axis-view convention: +Z up on the screen looking down, -Z looking up.
+    inline Vector3 cameraUpFor(const Vector3& viewDirection, const Vector3& preferredUp){
+        const float dirLength = viewDirection.length();
+        const float upLength = preferredUp.length();
+        if (!(dirLength > 0.0f)){
+            return preferredUp;
+        }
+        if (upLength > 0.0f && (viewDirection / dirLength).crossProduct(preferredUp / upLength).length() >= 0.0175f){
+            return preferredUp;
+        }
+        return Vector3(0.0f, 0.0f, viewDirection.y < 0.0f ? 1.0f : -1.0f);
+    }
+
 }
 
 #endif //CAMERA_COMPONENT_H
