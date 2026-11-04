@@ -544,7 +544,8 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
   `AutosaveEncodeBench` (S03), `VcsBench` (S29: status poll, snapshot swap, scene diff; the
-  main-thread encode is reported) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
+  main-thread encode is reported), `ChangedUpdateFlagsBench` (S51: 50 us a call per component) and
+  `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
   cost, `test_reflection.py::test_inspector_frame_cost`, reads the same variable) (ratios such as a report's overhead stay checked everywhere). The MCP
   texture storm's frame budget (`test_jobs_memory_ui.py`, S06 AC23) reads the same variable; it assumes
   a machine whose decode workers and software renderer do not share cores (8+ hardware threads):

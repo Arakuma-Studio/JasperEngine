@@ -123,6 +123,36 @@ namespace {
 
 }
 
+// S51: Stop puts back a Mesh only when Play changed it; its decode reloads it at the next frame
+TEST_F(UndoProjectTest, StopKeepsAMeshAPlayOnlyMoved) {
+    scene->scene->addComponent<MeshComponent>(GAME, MeshComponent{});
+    const Vector3 edit = position(GAME);
+    MeshComponent& mesh = scene->scene->getComponent<MeshComponent>(GAME);
+    mesh.worldAABB = AABB(Vector3(-1, -1, -1), Vector3(1, 1, 1));
+    beginPlay();
+    scene->scene->getComponent<Transform>(GAME).position = edit + Vector3(5, 5, 5);
+    mesh.worldAABB = AABB(Vector3(4, 4, 4), Vector3(6, 6, 6));
+    mesh.needReload = false;
+    stopPlay();
+    EXPECT_EQ(position(GAME), edit);
+    const MeshComponent& restored = scene->scene->getComponent<MeshComponent>(GAME);
+    EXPECT_FALSE(restored.needReload);
+    EXPECT_EQ(YAML::Dump(Stream::encodeAABB(restored.worldAABB)), YAML::Dump(Stream::encodeAABB(AABB(Vector3(-1, -1, -1), Vector3(1, 1, 1)))));
+}
+
+TEST_F(UndoProjectTest, StopDecodesAMeshAPlayChanged) {
+    scene->scene->addComponent<MeshComponent>(GAME, MeshComponent{});
+    beginPlay();
+    MeshComponent& mesh = scene->scene->getComponent<MeshComponent>(GAME);
+    mesh.castShadows = !mesh.castShadows;
+    const bool played = mesh.castShadows;
+    mesh.needReload = false;
+    stopPlay();
+    const MeshComponent& restored = scene->scene->getComponent<MeshComponent>(GAME);
+    EXPECT_NE(restored.castShadows, played);
+    EXPECT_TRUE(restored.needReload);
+}
+
 TEST_F(UndoProjectTest, NoOpDropped) {
     const size_t before = history()->entries().size();
     EXPECT_TRUE(history()->addCommand(new PropertyCmd<Vector3>(project.get(), sceneId, SPAWNER, ComponentType::Transform,
