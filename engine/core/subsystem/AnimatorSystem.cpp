@@ -376,7 +376,10 @@ void AnimatorSystem::ikInputs(AnimatorComponent& component, anim::AnimatorInstan
 }
 
 bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float dt, Job& job){
-    if (!component.enabled || !scene->isEntityActiveInHierarchy(entity)) return false;
+    if (!component.enabled || !scene->isEntityActiveInHierarchy(entity)){
+        if (component.runtime) component.runtime->clearIKResults();
+        return false;
+    }
     if (!component.runtime) component.runtime = std::make_shared<anim::AnimatorInstance>();
     anim::AnimatorInstance& instance = *component.runtime;
     if (component.needsLoad || component.controller.path != instance.controllerPath || (revisionChanged && instance.controller &&
@@ -405,6 +408,7 @@ bool AnimatorSystem::prepare(Entity entity, AnimatorComponent& component, float 
     job.context.dt = dt;
     job.context.sample = true;
     if (component.cullingMode != AnimatorCullingMode::AlwaysAnimate && !visible(instance)){
+        instance.clearIKResults();
         if (component.cullingMode == AnimatorCullingMode::CullCompletely){
             stats.culled++;
             return false;

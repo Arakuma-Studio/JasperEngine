@@ -103,6 +103,15 @@ namespace jasperengine{
         void setIKTarget(const std::string& constraint, const Vector3& position, float weight);
         void clearIKTarget(const std::string& constraint);
         void setIKWeight(const std::string& constraint, float weight);
+        // the end is on its target after the last solve (within 1 mm; a look-at: its aim within
+        // 0.1 degree). False while it does not solve: weight 0, disabled, culled, unknown name.
+        bool isIKReached(const std::string& constraint) const;
+        // the constraint's shape (the same fields as the Inspector's): soften 0..1, the hinge axis
+        // of the mid bone (zero: auto), the twist in degrees, the eyes from the last bone
+        void setIKSoften(const std::string& constraint, float soften);
+        void setIKHingeAxis(const std::string& constraint, const Vector3& axis);
+        void setIKTwist(const std::string& constraint, float degrees);
+        void setIKAimOffset(const std::string& constraint, const Vector3& offset);
         // the first LookAt constraint's target
         void setLookAt(const Vector3& position);
         void setLookAt(const Vector3& position, float weight);

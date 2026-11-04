@@ -362,6 +362,56 @@ void Animator::setIKWeight(const std::string& constraint, float weight){
     instance->ik[(size_t)index].scriptWeight = std::isfinite(weight) ? std::min(std::max(weight, 0.0f), 1.0f) : 0.0f;
 }
 
+bool Animator::isIKReached(const std::string& constraint) const{
+    const anim::AnimatorInstance* instance = runtime();
+    const int index = findConstraint(getComponent<AnimatorComponent>(), constraint);
+    if (!instance || index < 0 || (size_t)index >= instance->ik.size()){
+        unknown("IK constraint", constraint);
+        return false;
+    }
+    return instance->ik[(size_t)index].reached;
+}
+
+void Animator::setIKSoften(const std::string& constraint, float soften){
+    AnimatorComponent& component = getComponent<AnimatorComponent>();
+    const int index = findConstraint(component, constraint);
+    if (index < 0){
+        unknown("IK constraint", constraint);
+        return;
+    }
+    component.ik[(size_t)index].soften = std::isfinite(soften) ? std::min(std::max(soften, 0.0f), 1.0f) : 0.0f;
+}
+
+void Animator::setIKHingeAxis(const std::string& constraint, const Vector3& axis){
+    AnimatorComponent& component = getComponent<AnimatorComponent>();
+    const int index = findConstraint(component, constraint);
+    if (index < 0){
+        unknown("IK constraint", constraint);
+        return;
+    }
+    component.ik[(size_t)index].hingeAxis = axis;
+}
+
+void Animator::setIKTwist(const std::string& constraint, float degrees){
+    AnimatorComponent& component = getComponent<AnimatorComponent>();
+    const int index = findConstraint(component, constraint);
+    if (index < 0){
+        unknown("IK constraint", constraint);
+        return;
+    }
+    component.ik[(size_t)index].twist = std::isfinite(degrees) ? degrees : 0.0f;
+}
+
+void Animator::setIKAimOffset(const std::string& constraint, const Vector3& offset){
+    AnimatorComponent& component = getComponent<AnimatorComponent>();
+    const int index = findConstraint(component, constraint);
+    if (index < 0){
+        unknown("IK constraint", constraint);
+        return;
+    }
+    component.ik[(size_t)index].aimOffset = offset;
+}
+
 void Animator::setLookAt(const Vector3& position){
     const AnimatorComponent& component = getComponent<AnimatorComponent>();
     for (const AnimatorIKConstraint& c : component.ik){
