@@ -3108,8 +3108,8 @@ bool editor::Exporter::copyLua() {
         if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) return TreeStep::Skip;
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
-        std::error_code fileError;
-        if (!entry.is_regular_file(fileError) || isCppSourceFile(entry.path())) return TreeStep::Skip;
+        std::error_code ec;
+        if (!entry.is_regular_file(ec) || isCppSourceFile(entry.path())) return TreeStep::Skip;
 
         if (luaRootIsAssetsRoot && !isLuaSourceFile(entry.path())) return TreeStep::Skip;
         if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) return TreeStep::Skip;
@@ -3117,9 +3117,9 @@ bool editor::Exporter::copyLua() {
         if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) return TreeStep::Skip;
 
         fs::path destPath = luaDst / relPath;
-        fs::create_directories(destPath.parent_path(), fileError);
-        fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, fileError);
-        if (!fileError) {
+        fs::create_directories(destPath.parent_path(), ec);
+        fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
+        if (!ec) {
             luaCopiedSources.insert(real);
             luaExportedPaths.insert(relPath.lexically_normal());
         }

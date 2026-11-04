@@ -161,7 +161,9 @@ async def test_a_project_without_links_exports_the_same_files(ed: Editor):
     shipped = tree(exported)
     own = {rel for rel in tree(ed.project / "assets") if not rel.endswith(".meta")}
     ed.check_eq(sorted(rel for rel in own if rel not in shipped and not cooked_at(shipped, rel)), [], "every file of the assets ships")
-    extra = sorted(rel for rel in shipped if rel not in own and not rel.startswith("je-cooked/") and rel != "assetmap.bin")
+    # (a fork's shader sources ship from anywhere in the project, at their project-relative paths)
+    sources = {rel for rel in tree(ed.project) if rel.endswith((".vert", ".frag", ".glsl")) and not rel.startswith((".", "build/"))}
+    extra = sorted(rel for rel in shipped if rel not in own and rel not in sources and not rel.startswith("je-cooked/") and rel != "assetmap.bin")
     ed.check_eq(extra, [], "and nothing else")
 
 
@@ -231,9 +233,9 @@ def linked_game(ed: Editor):
                 link.unlink()
 
 
-async def make_linked_scene(ed: Editor):
+async def make_linked_scene(ed: Editor, name: str):
     await ed.call("editor_status")
-    made = await ed.call("create_scene", name="Linked Game", type="UI", path="Linked Game.scene")
+    made = await ed.call("create_scene", name=name, type="UI", path=f"{name}.scene")
     sid = made["scene"]["id"]
     await ed.call("create_ui", scene=sid, root={
         "type": "image", "name": "Backdrop", "color": [1, 1, 1, 1], "texture": "assets/linked_art/red.png",
@@ -252,7 +254,7 @@ async def test_desktop_game_loads_from_linked_folders(ed: Editor):
     if os.environ.get("JASPER_SLOW_BUILD", "") in ("", "0"):
         skip("set JASPER_SLOW_BUILD=1 to build and run a real Desktop game (the run builds its prebuilt runtime once)")
     with linked_game(ed):
-        await make_linked_scene(ed)
+        await make_linked_scene(ed, "Linked Desktop")
         runtime = await build_cache.player_runtime(ed, "glcore", "release")
         out = ed.scratch.root / "export-linked-desktop"
         r = await ed.call("build_project", mode="desktop", output_dir=str(out), method="prebuilt", timeout_seconds=600)
@@ -278,7 +280,7 @@ async def test_web_export_for_the_web_game(ed: Editor):
     the web image, which has no editor: with JASPER_LINKED_WEB_EXPORT the export stays in that folder, and
     docs/testing.md ("Linked folders in a web game") has the build and the browser run of it."""
     with linked_game(ed):
-        await make_linked_scene(ed)
+        await make_linked_scene(ed, "Linked Web")
         target = os.environ.get("JASPER_LINKED_WEB_EXPORT", "")
         out = Path(target).resolve() if target else ed.scratch.root / "export-linked-web"
         shutil.rmtree(out, ignore_errors=True)
