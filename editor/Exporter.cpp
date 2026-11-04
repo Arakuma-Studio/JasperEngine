@@ -6157,8 +6157,10 @@ namespace {
     // A folder holding Emscripten itself: its CMake toolchain file and emcc
     bool isEmscriptenDir(const fs::path& dir) {
         std::error_code ec;
+        // (Emscripten 6 on Windows has emcc.exe launchers where earlier versions had emcc.bat)
         return fs::is_regular_file(dir / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", ec) &&
-               (fs::exists(dir / "emcc", ec) || fs::exists(dir / "emcc.bat", ec) || fs::exists(dir / "emcc.py", ec));
+               (fs::exists(dir / "emcc", ec) || fs::exists(dir / "emcc.exe", ec) || fs::exists(dir / "emcc.bat", ec) ||
+                fs::exists(dir / "emcc.py", ec));
     }
 
     bool isEmsdkRoot(const fs::path& dir) {
@@ -6314,7 +6316,7 @@ editor::EmsdkInfo editor::Exporter::detectEmsdk(const std::string& overridePath)
 }
 
 std::vector<std::string> editor::Exporter::emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
-                                                                          std::string& error) {
+                                                                          std::string& error, const fs::path& visualStudioNinja) {
     error.clear();
     // emcmake.py: only when neither -G nor CMAKE_GENERATOR picks one (CMake reads that itself)
     if (generatorGiven || !CommandRunner::variable(env, "CMAKE_GENERATOR").empty()) return {};
@@ -6332,8 +6334,10 @@ std::vector<std::string> editor::Exporter::emscriptenWindowsGeneratorArgs(const 
     fs::path found;
     if (CommandRunner::resolveWindowsProgram("mingw32-make", dirs, found).empty()) return {"-G", "MinGW Makefiles"};
     if (CommandRunner::resolveWindowsProgram("ninja", dirs, found).empty()) return {"-G", "Ninja"};
+    // Visual Studio's own Ninja, which it keeps off PATH
+    if (!visualStudioNinja.empty()) return {"-G", "Ninja", "-DCMAKE_MAKE_PROGRAM=" + visualStudioNinja.generic_string()};
     error = "no CMake generator for Emscripten: install Ninja (https://ninja-build.org) or mingw32-make and put it on PATH, "
-            "or set CMAKE_GENERATOR";
+            "install Visual Studio's C++ CMake tools, or set CMAKE_GENERATOR";
     return {};
 }
 
@@ -6350,7 +6354,8 @@ std::vector<std::string> editor::Exporter::emscriptenCMakeArgs(const EmsdkInfo& 
     if (!sdk.node.empty()) args.push_back("-DCMAKE_CROSSCOMPILING_EMULATOR=" + cmakePath(sdk.node));
 #ifdef _WIN32
     // keep CMake from picking Visual Studio, as emcmake does (looked up on the SDK environment's PATH)
-    for (const std::string& arg : emscriptenWindowsGeneratorArgs(env, generatorGiven, error)) args.push_back(arg);
+    for (const std::string& arg : emscriptenWindowsGeneratorArgs(env, generatorGiven, error, CommandRunner::findVisualStudioNinja()))
+        args.push_back(arg);
 #else
     (void)generatorGiven;
     (void)env;

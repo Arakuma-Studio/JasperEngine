@@ -201,3 +201,19 @@ TEST(EmscriptenSdk, WebBuildsRefuseFileNamesCmdWouldExpand) {
     std::error_code ec;
     fs::remove_all(base, ec);
 }
+
+// Emscripten 6 on Windows has emcc.exe (and emcmake.exe) launchers where earlier versions had .bat
+TEST(EmscriptenSdk, AcceptsTheEmscripten6WindowsLayout) {
+    const fs::path base = fs::temp_directory_path() / ("jasper-emsdk6-" + std::to_string(::getpid()));
+    fs::remove_all(base);
+    const fs::path emscripten = base / "emsdk" / "upstream" / "emscripten";
+    writeFile(emscripten / "emcc.exe", "MZ");
+    writeFile(emscripten / "emcmake.exe", "MZ");
+    writeFile(emscripten / "cmake" / "Modules" / "Platform" / "Emscripten.cmake", "# toolchain\n");
+    writeFile(base / "emsdk" / "emsdk.py", "# emsdk\n");
+    const EmsdkInfo info = Exporter::detectEmsdk((base / "emsdk").string());
+    EXPECT_TRUE(info.found);
+    EXPECT_EQ(fs::path(info.emscripten), emscripten);
+    std::error_code ec;
+    fs::remove_all(base, ec);
+}

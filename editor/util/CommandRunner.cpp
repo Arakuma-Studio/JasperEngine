@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <sstream>
 
 #ifdef _WIN32
     #include <io.h>
@@ -133,6 +134,21 @@ std::string editor::CommandRunner::findVcvarsall() {
     fs::path vcvars = fs::path(installPath) / "VC" / "Auxiliary" / "Build" / "vcvarsall.bat";
     std::error_code ec;
     if (fs::exists(vcvars, ec)) return vcvars.string();
+    return "";
+}
+
+std::string editor::CommandRunner::findVisualStudioNinja() {
+    const std::string vswhere = findVswherePath();
+    if (vswhere.empty()) return "";
+    // every install (Build Tools included), newest first
+    std::istringstream installs(capture({vswhere, "-products", "*", "-sort", "-property", "installationPath"}));
+    for (std::string install; std::getline(installs, install);) {
+        while (!install.empty() && (install.back() == '\r' || install.back() == ' ')) install.pop_back();
+        if (install.empty()) continue;
+        const fs::path ninja = fs::path(install) / "Common7" / "IDE" / "CommonExtensions" / "Microsoft" / "CMake" / "Ninja" / "ninja.exe";
+        std::error_code ec;
+        if (fs::is_regular_file(ninja, ec)) return ninja.string();
+    }
     return "";
 }
 #endif

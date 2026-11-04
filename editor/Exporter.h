@@ -451,9 +451,11 @@ namespace jasperengine::editor {
                                                             const CommandRunner::Environment& env, std::string& error);
         // emcmake.py's Windows generator choice (platform-independent, for tests): nothing when a
         // generator is given or CMAKE_GENERATOR is set in `env`; else -G "MinGW Makefiles" when
-        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is; else error.
+        // mingw32-make is on env's PATH (';'-separated), else -G Ninja when ninja is, else Ninja
+        // with CMAKE_MAKE_PROGRAM when visualStudioNinja (CommandRunner::findVisualStudioNinja)
+        // is given; else error.
         static std::vector<std::string> emscriptenWindowsGeneratorArgs(const CommandRunner::Environment& env, bool generatorGiven,
-                                                                       std::string& error);
+                                                                       std::string& error, const fs::path& visualStudioNinja = {});
         // Windows Web builds: the first file or folder below `roots` (what the build copies or
         // compiles: assets, Lua, C++ script folders) whose path holds '%' or '"' (emcc.bat runs
         // through cmd.exe), as a refusal; "" when none. At most maxEntries are looked at: more is
