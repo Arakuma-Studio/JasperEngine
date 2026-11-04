@@ -154,6 +154,7 @@ namespace {
 
         row(C::ModelComponent, "filename", Shape::Asset, AssetType::Model, Base::Assets);
         row(C::AudioSourceComponent, "filename", Shape::Asset, AssetType::Audio, Base::Assets);
+        row(C::AudioSourceComponent, "event", Shape::Asset, AssetType::SoundEvent, Base::Assets);
         row(C::UIDocumentComponent, "filename", Shape::Asset, AssetType::UIDocument, Base::Assets);
         row(C::PoseAnimatorComponent, "animation", Shape::Asset, AssetType::PoseAnimation, Base::Assets);
         // each entry: "clips[2]" (an .anim, or the model of a "<model>#<clip>" sub-clip)
@@ -649,6 +650,7 @@ namespace {
                 audio.loadFailed = false;
                 audio.needUpdate = true;
             }
+            visit.asset(audio.event, componentRow(C::AudioSourceComponent, "event"), "event");
         });
 
         eachComponent<ParticleSystemComponent>(registry, only, visit, C::ParticleSystemComponent, [&](ParticleSystemComponent& particles) {

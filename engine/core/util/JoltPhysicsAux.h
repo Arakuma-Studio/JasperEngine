@@ -4,6 +4,7 @@
 #ifndef JoltPhysicsAux_h
 #define JoltPhysicsAux_h
 
+#include "subsystem/AudioSystem.h"
 #include "subsystem/PhysicsSystem.h"
 #include "object/physics/Rigidbody.h"
 #include "object/physics/CollideShapeResult3D.h"
@@ -456,6 +457,7 @@ namespace jasperengine{
 			copy->combinedFriction = friction;
 			copy->combinedRestitution = restitution;
 			copy->sensor = sensor;
+			copy->approachSpeed = std::max(0.0f, (velocity1 - velocity2).dotProduct(normal));
 			return copy;
 		}
 	};
@@ -691,6 +693,7 @@ namespace jasperengine{
                 // synchronous mode: the old in-step delivery with a live Contact3D, now on the
                 // main thread
                 std::lock_guard<std::recursive_mutex> lock(physicsSystem->getCallbackMutex3D());
+                const AudioSystem::PhysicsCallbackScope audioDefers;
                 Rigidbody body1(scene, PhysicsCallbacks::bodyEntity(inBody1.GetUserData()));
                 Rigidbody body2(scene, PhysicsCallbacks::bodyEntity(inBody2.GetUserData()));
                 event(body1, body2, Contact3D(scene, &inBody1, &inBody2, &inManifold, &ioSettings));

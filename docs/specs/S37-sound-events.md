@@ -523,4 +523,19 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **S35 lands after M1-M4.** There is no capture, deterministic driver or `audio.seed` yet, so:
+  - `AudioSystem::setVoiceObserver` and `AudioVoiceLine` hold R14's fields and are the seam S35's capture plugs
+    into; `JASPERENGINE_AUDIO_TRACE=1` logs each line as JSON, which is how the MCP tests read them. AC3-AC7 are
+    verified on these lines rather than on capture files; AC8 waits for S35.
+  - A "deterministic run" is, until S35, a run mixed on the null driver (`AudioSystem::isDeterministic`), whose cursor
+    is the frames it mixed. This includes `--headless` players, which have no output to vary.
+  - The `audio.seed` setting (Project Settings > Audio, `AudioConfig::seed`, `game.json`) is added here. S35 keeps it.
+- **`hasSubscribers()` is not bound to Lua.** AC6's "no subscription" is `SoundEventTriggerTest.NoFlagNoSubscription`,
+  not an MCP test.
+- **The `type` vocabulary is listed in `SoundEventIO`** as well as in S36's `editor/audio/SoundTypes.h`: the engine
+  cannot include an editor header. M6 adds a test that the two lists match, once S36 is on `main`.
+- **`Audio.play`'s `delay`** runs on frames of scaled time (`unscaled`: of unscaled time), so it is exact to a frame;
+  the event's own `delay_ms` stays exact to the sample (R7).
+- **`AudioStealPolicy` and the source cap:** a play's voices never steal from each other through `maxVoices`. A voice
+  with no one-shot to steal is rejected with reason `max_voices` (a reason R14 did not list).
+- **The Lua bindings are not yet under `#if JASPERENGINE_SOUND_LAYER`:** the module is M7's.

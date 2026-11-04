@@ -83,6 +83,7 @@
 #include "pool/SoundPool.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
+#include "audio/SoundEventLibrary.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
 #include "subsystem/CameraControlSystem.h"
@@ -2995,7 +2996,8 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.maxRealVoices = std::clamp(audioSettings.maxRealVoices, 1, 255);
     audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
     if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
-    AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate});
+    audioSettings.seed = std::max(audioSettings.seed, 0);
+    AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate, (uint32_t)audioSettings.seed});
     AudioMixerDocument::setDefaultOutputGroup(audioSettings.defaultOutputGroup);
     if (mixerChanged || AudioMixer::getPath() != audioSettings.mixer) {
         applyAudioMixer();
@@ -3047,6 +3049,12 @@ bool editor::Project::applyAudioMixer(std::string* error){
 }
 
 void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>& changed){
+    // the next play of a changed Sound Event uses its file; voices that play keep playing
+    for (const fs::path& path : changed) {
+        if (Util::isSoundEventFile(path.string())) {
+            SoundEventLibrary::reload(normalizeToAssetsRelative(path).generic_string());
+        }
+    }
     const fs::path mixer = getAudioMixerFile();
     if (mixer.empty()) return;
     for (const fs::path& path : changed) {
@@ -3066,6 +3074,7 @@ void editor::Project::resetPlayAudio(bool starting) const{
     AudioMixer::setMasterPaused(false);
     AudioMixer::resetRuntime(starting);
     if (starting) AudioMixer::loadRemembered();
+    AudioSystem::resetSoundEventRuntime();
 }
 
 const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
@@ -5738,6 +5747,7 @@ void editor::Project::resetConfigs() {
     inspectedAssets.clear();
     customResolutions.clear();
     projectPath.clear();
+    SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();
