@@ -15,7 +15,7 @@
 // FFmpeg pass muxes in. The Recorder window and MCP's record_game drive this one session. The
 // bounded queues follow OpenEngine's GameViewMovieCapture.cpp (MIT, NOTICE.md).
 //
-// A recording that reports success is a good one (docs/specs/S42-recorder-integrity.md). A frame
+// A recording that reports success is a good one (docs/specs/S62-recorder-integrity.md). A frame
 // drawn with anything still loading is drawn again with the game held, until a whole frame is
 // drawn with everything ready. The output is written under temporary names and takes its real one
 // only once complete. The first write that fails stops the recording (Play goes on): the result

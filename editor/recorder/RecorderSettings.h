@@ -106,7 +106,7 @@ namespace jasperengine::editor::recorder {
     // the audio sample frames of game frame k: round((k+1) rate / fps) - round(k rate / fps)
     uint32_t audioFramesOf(int64_t frame, int frameRate, int sampleRate = kAudioRate);
 
-    // ---- integrity (docs/specs/S42-recorder-integrity.md)
+    // ---- integrity (docs/specs/S62-recorder-integrity.md)
 
     // The arguments decoding a movie's video to nowhere, its frames counted on stdout
     std::vector<std::string> decodeCheckArguments(const std::filesystem::path& movie);

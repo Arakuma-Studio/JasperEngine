@@ -121,8 +121,17 @@ void recordGameTool(const CallPtr& call) {
             job->markCancelled("Stopped after " + std::to_string(result.frames) + " frame(s); the output is finalised.");
             return;
         }
-        if (result.ok) job->succeed("Recorded " + std::to_string(result.frames) + " frames to " + FileUtils::pathToGenericUtf8(result.output) + ".", data);
-        else job->fail("The recording failed: " + result.error + ".", data);
+        if (result.ok) {
+            job->succeed("Recorded " + std::to_string(result.frames) + " frames to " + FileUtils::pathToGenericUtf8(result.output) + ".", data);
+            return;
+        }
+        std::string message = "The recording failed: " + result.error + ".";
+        if (!result.failedStep.empty()) {
+            const std::string next = "The output path holds nothing and Play is still running: stop it (play action stop), fix the cause, then record again.";
+            message += " " + next;
+            data["next"] = next;
+        }
+        job->fail(message, data);
     });
     replyWhenJobDone(call, job, args.value("wait", true), args.value("timeout_seconds", 300.0), [](const McpJob& done) {
         Json result = done.result();

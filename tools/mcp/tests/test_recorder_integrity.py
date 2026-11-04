@@ -1,4 +1,4 @@
-"""S42 Recorder integrity (docs/specs/S42-recorder-integrity.md): a recording that reports success is
+"""S62 Recorder integrity (docs/specs/S62-recorder-integrity.md): a recording that reports success is
 a good recording.
 
 - A write that fails (JASPER_TEST_RECORDER_FAIL, or a real full disk on a small tmpfs) stops the
@@ -36,7 +36,7 @@ AT = 10              # the game frame the script changes the look at
 FRAMES = 30
 
 # The decoded PCM of test_normal_recording's MOV (no lossy codec, so no FFmpeg version in it), from
-# the build before S42 (main at f9beac071): the recorder's rewrite did not touch a normal recording
+# the build before S62 (main at f9beac071): the recorder's rewrite did not touch a normal recording
 REFERENCE_AUDIO_SHA256 = "@REFERENCE@"
 REFERENCE_AUDIO_BYTES = 576000
 
