@@ -31,9 +31,10 @@ namespace {
         std::atomic<bool> open{false};
     };
 
+    // Never destroyed, as McpServer: a transport thread may still answer through it during exit
     PickerState& picker() {
-        static PickerState instance;
-        return instance;
+        static PickerState* instance = new PickerState();
+        return *instance;
     }
 
     std::string lowered(std::string text) {

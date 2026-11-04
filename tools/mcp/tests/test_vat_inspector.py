@@ -83,7 +83,9 @@ class Ui:
         await asyncio.sleep(0.3)
 
     async def frames(self, n: int = 3):
-        await self.ed.call("wait", frames=n)
+        # find_ui_item answers two frames later; wait is refused under Create Crowd, a modal (S69)
+        for _ in range((n + 1) // 2):
+            await self.ed.call("find_ui_item", label="##frame pacer")
 
     def state(self) -> tuple[dict, list[float]]:
         """The UI probe's widgets and the Inspector's scroll [y, max_y] of the last frame"""
