@@ -1,4 +1,4 @@
-# S45: Lighting techniques after The Forge
+# S57: Lighting techniques after The Forge
 
 Wave 5. Research: `docs/forge-meshopt-analysis/forge-rendering.md` (§1, §4-6, §8). Sony Bend's
 screen-space shadow sample (Apache-2.0) and The Forge (Apache-2.0) are references. Every technique
@@ -66,7 +66,7 @@ Out of scope:
 - **Shader:** `lights.glsl` keeps `pixelLightCount()` and `getLight(i, ...)` and becomes indirect
   through the tile, so library and user shaders get it free. Keep the D3D11 loop-unroll rule.
 - **Project setting:** Rendering > Light Mode with Per Object (today) and Tiled (Forward+),
-  default Tiled on Desktop and High tiers, Per Object on Low (S44).
+  default Tiled on Desktop and High tiers, Per Object on Low (S56).
 - **Zero cost** when Per Object: no texture and no job.
 - **Golden:** a scene with 64 lights on one large plane renders every light (red: Per Object
   drops them).
@@ -155,6 +155,12 @@ Out of scope:
 
 ## 8. Dependencies and conflicts
 
-- **Depends on** S10, S11, S15, S32 and S44 (tier defaults).
+- **Doriax catch-up overlap:**
+  - `render-correctness` adds a lint against implicit-derivative texture reads in non-uniform
+    control flow in light loops. S57's tiled `getLight` loop must pass it.
+  - `draw-perf` adds a directional-only Lit variant (`Dlo`). Tiled mode applies only when
+    point or spot lights exist.
+
+- **Depends on** S10, S11, S15, S32 and S56 (tier defaults).
 - **Hotspots:** `lights.glsl`, the lit shader includes, `RenderSystem.cpp` and the camera and
-  light components. S42 and S43 touch the same files.
+  light components. S54 and S55 touch the same files.

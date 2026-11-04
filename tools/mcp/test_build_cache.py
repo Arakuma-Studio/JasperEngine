@@ -1,6 +1,6 @@
 """Self-test of tools/mcp/build_cache.py's shared cache (no engine build: a fake build script).
 
-    python3 -I tools/mcp/test_build_cache.py        # in the Linux image (rb.sh <server> --img ...)
+    python3 -I tools/mcp/test_build_cache.py        # in the Linux image (tools/build.sh exec linux ...)
 
 Checks: two runs needing one key at once make one build and both get it; a later run reuses it
 without a build; the build is published whole (the readers never see a partial entry); a failed
