@@ -11394,6 +11394,11 @@
      68719476736,
      true
     ],
+    "submeshes[0].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[0].material.shaderParams": [
      15,
      68719476736,
@@ -11932,6 +11937,11 @@
     "submeshes[10].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[10].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[10].material.shaderParams": [
@@ -12474,6 +12484,11 @@
      68719476736,
      true
     ],
+    "submeshes[11].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[11].material.shaderParams": [
      15,
      68719476736,
@@ -13012,6 +13027,11 @@
     "submeshes[12].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[12].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[12].material.shaderParams": [
@@ -13554,6 +13574,11 @@
      68719476736,
      true
     ],
+    "submeshes[13].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[13].material.shaderParams": [
      15,
      68719476736,
@@ -14092,6 +14117,11 @@
     "submeshes[14].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[14].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[14].material.shaderParams": [
@@ -14634,6 +14664,11 @@
      68719476736,
      true
     ],
+    "submeshes[15].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[15].material.shaderParams": [
      15,
      68719476736,
@@ -15172,6 +15207,11 @@
     "submeshes[1].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[1].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[1].material.shaderParams": [
@@ -15714,6 +15754,11 @@
      68719476736,
      true
     ],
+    "submeshes[2].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[2].material.shaderParams": [
      15,
      68719476736,
@@ -16252,6 +16297,11 @@
     "submeshes[3].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[3].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[3].material.shaderParams": [
@@ -16794,6 +16844,11 @@
      68719476736,
      true
     ],
+    "submeshes[4].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[4].material.shaderParams": [
      15,
      68719476736,
@@ -17332,6 +17387,11 @@
     "submeshes[5].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[5].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[5].material.shaderParams": [
@@ -17874,6 +17934,11 @@
      68719476736,
      true
     ],
+    "submeshes[6].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[6].material.shaderParams": [
      15,
      68719476736,
@@ -18412,6 +18477,11 @@
     "submeshes[7].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[7].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[7].material.shaderParams": [
@@ -18954,6 +19024,11 @@
      68719476736,
      true
     ],
+    "submeshes[8].material.shaderPalettes": [
+     15,
+     0,
+     true
+    ],
     "submeshes[8].material.shaderParams": [
      15,
      68719476736,
@@ -19492,6 +19567,11 @@
     "submeshes[9].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[9].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[9].material.shaderParams": [
@@ -20119,6 +20199,11 @@
     "submeshes[].material.shaderGlobalBindings": [
      15,
      68719476736,
+     true
+    ],
+    "submeshes[].material.shaderPalettes": [
+     15,
+     0,
      true
     ],
     "submeshes[].material.shaderParams": [
@@ -43056,6 +43141,11 @@
    "submeshes[N].material.shaderGlobalBindings": [
     15,
     68719476736,
+    true
+   ],
+   "submeshes[N].material.shaderPalettes": [
+    15,
+    0,
     true
    ],
    "submeshes[N].material.shaderParams": [

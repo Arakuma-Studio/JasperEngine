@@ -3144,7 +3144,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     {
         const YAML::Node palettes = node["palettes"];
-        project->setDefaultPalette(palettes.IsMap() && palettes["default"].IsScalar() ? fs::path(palettes["default"].as<std::string>()) : fs::path());
+        // (a missing key is an undefined node: IsMap on it would throw)
+        const bool hasDefaultPalette = palettes.IsDefined() && palettes.IsMap() && palettes["default"].IsDefined() && palettes["default"].IsScalar();
+        project->setDefaultPalette(hasDefaultPalette ? fs::path(palettes["default"].as<std::string>()) : fs::path());
         const YAML::Node input = node["input"];
         project->setUnreadableInputNode("");
         project->setInputActionsMigration(InputActionsMigration());
