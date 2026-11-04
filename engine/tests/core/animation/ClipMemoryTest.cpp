@@ -191,7 +191,7 @@ namespace {
 
     std::string clipFileText(float x){
         ClipData data = slide("Hips", x);
-        data.tracks.push_back(track("Spine", ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {x, x, x})}));
+        data.tracks.push_back(track("Hips/Spine", ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {x, x, x})}));
         return anim::writeClip(data);
     }
 
@@ -454,8 +454,8 @@ TEST_F(ClipMemoryTest, AModelsSubClipsAreCountedAndDropped){
 TEST_F(ClipMemoryTest, SharedTimesSurviveAHotReload){
     animtest::writeAsset(prefix + "reloaded.anim", clipFileText(1.0f));
     const std::string path = prefix + "reloaded.anim";
-    AnimatorComponent& component = animator(controllerFile("c", controller({}, {state("Play", path)})));
-    (void)component;
+    animator(controllerFile("c", controller({}, {state("Play", path)})));
+    step(0.0);
     step(0.5);
     ASSERT_TRUE(instance().bound);
     EXPECT_NEAR(position(hips).x, 0.5f, 1e-5f);
