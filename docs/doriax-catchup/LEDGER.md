@@ -39,9 +39,9 @@ agent ("be braver"): what most users and agents expect of a game engine, Unity n
 
 - **Escape in Play** (runtime-core and scene-integrity both touch it): Unity's behaviour. A focused Game view
   delivers Escape to the game, and if the game captured the cursor, the same press also releases the capture.
-- **Mesh shader variant bits:** bit 36 is draw-perf's directional-only Lit variant (`Dlo`); bits 37 and 38 are
-  water-boats' exclusion and wake variants. Other new variant or update-flag bits take the next free bit on their
-  branch; the lead renumbers at merge if two branches collide, with a test pinning each assignment.
+- **Shader variant and update-flag bits:** taken as the next free bit at landing, in landing order, on both
+  programs (draw-perf's `Dlo`, water-boats' `Wex`/`Wwk`, ui-components' `UpdateFlags_Button` keep their names); the
+  lead renumbers at merge if two branches collide, with a test pinning each assignment.
 - **Shader cache version** (`editor/App.cpp`): each branch that changes shaders bumps it by one over its `main`;
   the lead re-bumps at merge so every merged change gets its own version.
 - **Capacities:** mesh-memory removes the fixed component capacities, so export-pipeline does not implement
@@ -50,11 +50,16 @@ agent ("be braver"): what most users and agents expect of a game engine, Unity n
 - **Agent guide budget** (`editor/mcp/McpInstructions.cpp`, 4,096-character client cut found by agent-authoring):
   only agent-authoring restructures the guide. Every other feature puts agent guidance in `docs/mcp/guide/<area>.md`
   and adds at most a one-line pointer, trimming elsewhere if needed.
-- **Pixel-art program** (S41-S52, `PIXEL-ART-LEDGER.md`, pushed to `origin/main` from another machine): S52 (Sprite
-  instancing: batched sprites, Sorting Layers) owns sprite batching. Our feature 13 is rescoped to `ui-batching`:
-  component UI quads (S52 leaves them out) and content-shared buffers for non-sprite meshes, implemented after S52
-  lands. The lean MCP rules merged with it (`fe3e90b97`: guide at most 8,192 bytes, eval cases for new text) override
-  our specs; agent-authoring revises its guide plan against them.
+- **Pixel-art program** (S41-S52, `PIXEL-ART-LEDGER.md`, pushed to `origin/main` from another machine). Split agreed
+  with its lead on 2026-11-04: our `sprite-batching` owns generic dynamic batching (sprites, small meshes, UI quads,
+  shared buffers, settled objects, 2D reordering, batching stats in `get_render_stats`); their S52 shrinks to
+  Sorting Layers / Order in Layer / Sorting Groups, the Sprite Batch component, and making pixel-art per-sprite
+  parameters batch-compatible inside our batcher, landing after us. Our batcher therefore takes a sort key that S52
+  extends and a documented per-vertex extension for per-sprite parameters. mesh-memory vs their S44 (sprite frames
+  as sheet references): whoever lands second merges onto the first. Asset types 24-27 are theirs (we add none).
+  Shader and variant bits on both sides are appended at landing in landing order (the bit numbers in our specs are
+  names, not reservations). The lean MCP rules merged with it (`fe3e90b97`: guide at most 8,192 bytes, eval cases
+  for new text) override our specs; agent-authoring revises its guide plan against them.
 - **Generated files** (`docs/mcp/TOOLS.md`, `tools/mcp/budget.json` measurements, `catalog_snapshot.json`, Lua
   stubs): each branch regenerates them after its last merge of `main`; at merge the lead regenerates again.
 
@@ -76,7 +81,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | impl |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
-| 13 | `ui-batching` (was `sprite-batching`) | batching of component UI quads and buffers shared by content for non-sprite meshes; sprite batching itself is pixel-art S52's | specced (rescope pending) |
+| 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
@@ -99,4 +104,6 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   project-window, runtime-core, scripting, mesh-memory, render-correctness, agent-authoring, code-editor-git.
   Also started, as they depend on nothing in flight: ssr-probes, water-reflections, platform-lifecycle (15 agents).
   Waiting: ui-components (after unicode-text), draw-perf (after mesh-memory), water-boats (after
-  water-reflections), ui-batching (after pixel-art S52).
+  water-reflections).
+- 2026-11-04: agreed the split with the pixel-art lead (see decisions): feature 13 is `sprite-batching` again, with
+  hooks for their narrowed S52, and started now (16 agents) because their S52 waits for it.
