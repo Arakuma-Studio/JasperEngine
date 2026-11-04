@@ -881,11 +881,12 @@ bool MeshSystem::createMeshPolygon(MeshPolygonComponent& polygon, MeshComponent&
         mesh.buffer.addVector4(AttributeType::COLOR, polygon.points[i].color);
     }
 
-    // Generation texcoords
+    // Generation texcoords (lowest(), not min(): min() is the smallest positive float, so a
+    // polygon left of or below its origin measured to 0 instead of to its own edge)
     float min_X = std::numeric_limits<float>::max();
-    float max_X = std::numeric_limits<float>::min();
+    float max_X = std::numeric_limits<float>::lowest();
     float min_Y = std::numeric_limits<float>::max();
-    float max_Y = std::numeric_limits<float>::min();
+    float max_Y = std::numeric_limits<float>::lowest();
 
     Attribute* attVertex = mesh.buffer.getAttribute(AttributeType::POSITION);
 
@@ -3209,7 +3210,9 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
         }
     }
 
-    mesh.verticesAABB = AABB::ZERO;
+    // Seeded empty, not with AABB::ZERO: that is a finite box at the origin, so merging into it
+    // stretched every mesh back to its own origin
+    mesh.verticesAABB.setNull();
     mesh.bonesAABB.clear();
     mesh.skinnedAABB.setNull(); // reposed on the next RenderSystem update
 
@@ -3264,6 +3267,10 @@ void MeshSystem::calculateMeshAABB(MeshComponent& mesh){
             }
         }
     }
+
+    // no float positions: AABB::ZERO, the "not computed" value its users test for
+    if (mesh.verticesAABB.isNull())
+        mesh.verticesAABB = AABB::ZERO;
 
     mesh.aabb = mesh.verticesAABB;
 
