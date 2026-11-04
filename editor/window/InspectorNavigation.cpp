@@ -29,6 +29,7 @@
 #include "navigation/NavBakeCollector.h"
 #include "reflect/Enums.h"
 #include "subsystem/NavigationSystem.h"
+#include "util/UIProbe.h"
 
 #include <algorithm>
 #include <cmath>
@@ -467,8 +468,8 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
     settings.secondColSize = 6 * ImGui::GetFontSize();
     RowSettings settingsInclusion;
     settingsInclusion.enumEntries = enumEntries(reflect::enums::kNavModifierInclusion);
-    settingsInclusion.help = "Remove Object: as the surface decides (moving objects are left out); Add or Modify: collected even "
-                             "when it would not be; Remove (always): never collected";
+    settingsInclusion.help = "Surface Policy: collected as the surface decides (moving bodies, agents and obstacles are left out); "
+                             "Add or Modify Object: collected even when the surface would leave it out; Remove Object: never collected";
     RowSettings settingsOverride;
     settingsOverride.help = "Give what it covers its own area";
     RowSettings settingsArea;
@@ -671,6 +672,8 @@ void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, ScenePr
             brush.shape = (NavigationEditor::BrushShape)shape;
             ImGui::SetNextItemWidth(12 * ImGui::GetFontSize());
             ImGui::SliderInt("Size (cells)##navbrush", &brush.size, 1, 64);
+            // the size in the name: a UI test reads what [ and ] did
+            UIProbe::item("inspector.navBrushSize." + std::to_string(brush.size));
         }
         ImGui::TextDisabled("Left-drag in the Scene view paints; one stroke is one undo step.");
     }

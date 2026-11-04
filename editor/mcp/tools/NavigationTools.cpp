@@ -113,6 +113,11 @@ Json settingsJson(const NavigationProjectSettings& project) {
             {"include_in_builds", project.includeInBuilds}};
 }
 
+// query_navigation's and visualize_navigation's agent type
+Json agentTypeRef() {
+    return Json{{"description", "Name or id. Default: the first."}, {"anyOf", Json::array({Json{{"type", "string"}}, Json{{"type", "integer"}}})}};
+}
+
 Json bakeResultJson(SceneProject* scene, Entity surface, const NavBakeResult& result) {
     Json item = {{"entity", McpRefs::entityJson(scene, surface)}, {"ok", result.ok}, {"tiles_built", result.tilesBuilt},
                  {"tiles_total", result.tilesTotal}, {"polys", result.polys}, {"ms", rounded(result.milliseconds)},
@@ -748,7 +753,7 @@ void paintNavGridTool(const CallPtr& call) {
 void visualizeNavigationTool(const CallPtr& call) {
     const Json& args = call->args();
     std::string error;
-    SceneProject* scene = sceneOf(call, false, error);
+    SceneProject* scene = sceneOf(call, true, error);
     if (!scene) {
         call->fail(error);
         return;
@@ -774,7 +779,7 @@ void visualizeNavigationTool(const CallPtr& call) {
             }
         }
     }
-    Json data = {{"scene_id", scene->id}, {"overlay", encodeNavOverlaySettings(overlay).size() ? Json::parse("{}") : Json::object()}};
+    Json data = {{"scene_id", scene->id}};
     data["overlay"] = {{"navmesh", overlay.showNavMesh}, {"tiles", overlay.showTileBounds}, {"heightmesh", overlay.showHeightMesh},
                        {"grid", overlay.showGrid}, {"links", overlay.showLinks}, {"obstacles", overlay.showObstacles},
                        {"avoidance", overlay.showAvoidance},
@@ -782,15 +787,19 @@ void visualizeNavigationTool(const CallPtr& call) {
     std::string text = "AI Navigation overlay on.";
     NavigationEditor::get().setQueryPath(scene->id, {});
     if (args.contains("path") && args["path"].is_object()) {
+        const Json& query = args["path"];
         Vector3 from, to;
-        if (!parsePoint(args["path"], "from", from, error) || !parsePoint(args["path"], "to", to, error)) {
+        nav::QueryFilter filter;
+        if (!parsePoint(query, "from", from, error) || !parsePoint(query, "to", to, error) || !agentTypeOf(query, filter.agentType, error)) {
             call->fail("path." + error);
             return;
         }
+        if (query.contains("area_mask")) filter.areaMask = (uint16_t)(query["area_mask"].get<int>() & nav::ALL_AREAS);
         NavigationSystem* system = NavigationEditor::systemOf(*scene);
-        const nav::NavPath path = system->calculatePath(from, to);
+        const nav::NavPath path = system->calculatePath(from, to, filter);
         NavigationEditor::get().setQueryPath(scene->id, path.corners);
-        data["path"] = {{"status", nav::pathStatusName(path.status)}, {"corners", path.corners.size()}, {"length", rounded(path.length)}};
+        data["path"] = {{"status", nav::pathStatusName(path.status)}, {"corners", path.corners.size()}, {"length", rounded(path.length)},
+                        {"agent_type", filter.agentType}, {"area_mask", filter.areaMask}};
         text += std::string(" Path ") + nav::pathStatusName(path.status) + ", " + std::to_string(rounded(path.length)) + " long (drawn magenta).";
     }
     scene->needUpdateRender = true;
@@ -836,6 +845,10 @@ void registerNavigationTools(McpRegistry& registry) {
             {"wait", withDefault(boolean(""), true)},
             {"timeout_seconds", withDefault(number("", 0.0, 3600.0), 120)}
         });
+        // clear deletes the .navmesh; a game rebakes with NavMeshSurface:bakeAsync()
+        tool.annotations.destructive = true;
+        tool.activity = ToolActivity::Edit;
+        tool.allowedWhilePlaying = false;
         tool.handler = bakeNavigationTool;
         registry.addTool(std::move(tool));
     }
@@ -850,6 +863,7 @@ void registerNavigationTools(McpRegistry& registry) {
         tool.inputSchema = object({{"scene", sceneRef()}});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
+        tool.allowedWhilePlaying = true;
         tool.handler = getNavigationInfoTool;
         registry.addTool(std::move(tool));
     }
@@ -866,7 +880,7 @@ void registerNavigationTools(McpRegistry& registry) {
             {"from", vec3("")},
             {"to", vec3("path, raycast, reachable.")},
             {"max_distance", withDefault(number("sample.", 0.0, 1e6), 2.0)},
-            {"agent_type", Json{{"description", "Name or id. Default: the first."}, {"anyOf", Json::array({Json{{"type", "string"}}, Json{{"type", "integer"}}})}}},
+            {"agent_type", agentTypeRef()},
             {"area_mask", integer("", 0, 65535)},
             {"allow_partial", withDefault(boolean("Grid paths."), true)},
             {"target", Json{{"description", "navmesh | grid | a GameObject."}, {"anyOf", Json::array({stringEnum("", {"navmesh", "grid"}), entityRef()})}}},
@@ -874,6 +888,7 @@ void registerNavigationTools(McpRegistry& registry) {
         }, {"from"});
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
+        tool.allowedWhilePlaying = true;
         tool.handler = queryNavigationTool;
         registry.addTool(std::move(tool));
     }
@@ -896,6 +911,9 @@ void registerNavigationTools(McpRegistry& registry) {
             {"max_grid_solves_per_tick", integer("", 1, 4096)},
             {"include_in_builds", boolean("Recast/Detour in exported builds.")}
         });
+        // area costs apply at the next tick; the edit stays after Stop, like Project Settings
+        tool.activity = ToolActivity::Edit;
+        tool.allowedWhilePlaying = true;
         tool.handler = setNavigationSettingsTool;
         registry.addTool(std::move(tool));
     }
@@ -922,6 +940,9 @@ void registerNavigationTools(McpRegistry& registry) {
             {"space", withDefault(stringEnum("", {"cell", "world"}), "cell")},
             {"scene", sceneRef()}
         }, {"grid", "strokes"});
+        // the brush is edit-only; a game edits cells from Lua
+        tool.activity = ToolActivity::Edit;
+        tool.allowedWhilePlaying = false;
         tool.handler = paintNavGridTool;
         registry.addTool(std::move(tool));
     }
@@ -931,17 +952,22 @@ void registerNavigationTools(McpRegistry& registry) {
         tool.title = "Visualize Navigation";
         tool.description =
             "Turn on the Scene view's AI Navigation overlay and set what it shows (navmesh in area colours, tiles, heightmesh, "
-            "grid, agent paths, avoidance, links, obstacles); path {from, to} also draws a query path. screenshot: true returns "
-            "the Scene view as a PNG.";
+            "grid, agent paths, avoidance, links, obstacles) of a scene (the running one while playing); path {from, to, "
+            "agent_type?, area_mask?} also draws a query path, as query_navigation finds it. screenshot: true returns the Scene "
+            "view as a PNG.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"show", object({{"navmesh", boolean("")}, {"tiles", boolean("")}, {"heightmesh", boolean("")}, {"grid", boolean("")},
                              {"paths", Json{{"anyOf", Json::array({Json{{"type", "boolean"}}, stringEnum("", {"none", "selected", "all"})})}}},
                              {"avoidance", boolean("")}, {"links", boolean("")}, {"obstacles", boolean("")}})},
-            {"path", object({{"from", vec3("")}, {"to", vec3("")}}, {"from", "to"})},
+            {"path", object({{"from", vec3("")}, {"to", vec3("")}, {"agent_type", agentTypeRef()}, {"area_mask", integer("", 0, 65535)}},
+                            {"from", "to"})},
             {"screenshot", withDefault(boolean(""), false)},
             {"max_width", withDefault(integer("", 0, 4096), 1024)}
         });
+        // display settings of the workspace only
+        tool.activity = ToolActivity::Control;
+        tool.allowedWhilePlaying = true;
         tool.handler = visualizeNavigationTool;
         registry.addTool(std::move(tool));
     }
