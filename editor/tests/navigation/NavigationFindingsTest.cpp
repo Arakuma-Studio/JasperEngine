@@ -92,14 +92,14 @@ TEST(NavigationFindings, ProjectWrapper){
     // the export preflight: warnings and errors with their scene, never the info
     const uint64_t cursor = Out::lastLogId();
     logNavigationPreflight(&project);
-    std::vector<LogEntry> logs = Out::getLogsSince(cursor);
-    logs.erase(std::remove_if(logs.begin(), logs.end(), [](const LogEntry& e) { return e.category != "editor"; }), logs.end());
+    std::vector<editor::LogEntry> logs = Out::getLogsSince(cursor);
+    logs.erase(std::remove_if(logs.begin(), logs.end(), [](const editor::LogEntry& e) { return e.category != "editor"; }), logs.end());
     ASSERT_EQ(logs.size(), 4u);
     EXPECT_NE(logs[0].message.find("(scene A). Window > AI > Navigation"), std::string::npos) << logs[0].message;
     EXPECT_EQ(logs[1].type, LogType::Error);
     EXPECT_NE(logs[1].message.find("'Stray'"), std::string::npos) << logs[1].message;
     EXPECT_EQ(logs[2].type, LogType::Warning);
-    for (const LogEntry& entry : logs)
+    for (const editor::LogEntry& entry : logs)
         EXPECT_EQ(entry.message.find("Spare"), std::string::npos);
 
     project.getScenes().clear();
