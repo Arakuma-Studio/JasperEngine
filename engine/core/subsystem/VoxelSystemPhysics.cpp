@@ -147,7 +147,7 @@ void VoxelSystem::applyCollisionSwaps(VolumeState& state, VoxelVolumeComponent& 
         bool ready = true;
         for (const Int3& key : swap.blocks){
             const auto found = state.collision.find(BlockTuple(key.x, key.y, key.z));
-            if (found != state.collision.end() && !found->second.built) ready = false;
+            if (found != state.collision.end() && (!found->second.built || found->second.adding)) ready = false;
         }
         if (!ready) break;
 
@@ -227,13 +227,18 @@ void VoxelSystem::addNewBodies(VolumeState& state, VoxelVolumeComponent& compone
             continue;
         }
         if (add.hasTask) add.state = add.task.get();
-        physics->finalizeBodies(add.ids, add.state);
+        physics->finalizeBodies(*add.ids, add.state);
+        for (const BlockTuple& key : add.keys){
+            const auto found = state.collision.find(key);
+            if (found != state.collision.end()) found->second.adding = false;
+        }
         state.pendingAdds.erase(state.pendingAdds.begin() + static_cast<std::ptrdiff_t>(i));
     }
     if (state.readyBodies.empty()) return;
     const int batch = voxelTierSettings(state.tier).bodyBatch;
     VolumeState::PendingAdd pending;
-    while (!state.readyBodies.empty() && static_cast<int>(pending.ids.size()) < batch){
+    pending.ids = std::make_shared<std::vector<JPH::BodyID>>();
+    while (!state.readyBodies.empty() && static_cast<int>(pending.ids->size()) < batch){
         const BlockTuple key = state.readyBodies.front();
         state.readyBodies.pop_front();
         const auto found = state.collision.find(key);
@@ -262,25 +267,27 @@ void VoxelSystem::addNewBodies(VolumeState& state, VoxelVolumeComponent& compone
         if (block.body.IsInvalid()) continue;
         block.inWorld = true;
         state.bodies++;
-        pending.ids.push_back(block.body);
+        block.adding = true;
+        pending.ids->push_back(block.body);
+        pending.keys.push_back(key);
     }
-    if (pending.ids.empty()) return;
+    if (pending.ids->empty()) return;
     // Jolt documents prepare as thread-safe (BodyInterface.h); with 0 workers a job would wait for
     // the pump, so it runs here
     if (jobs::system().isSingleThreaded()){
-        pending.state = physics->prepareBodies(pending.ids);
-        physics->finalizeBodies(pending.ids, pending.state);
+        pending.state = physics->prepareBodies(*pending.ids);
+        physics->finalizeBodies(*pending.ids, pending.state);
+        for (const BlockTuple& key : pending.keys) state.collision[key].adding = false;
         return;
     }
     state.pendingAdds.push_back(std::move(pending));
     VolumeState::PendingAdd& stored = state.pendingAdds.back();
     PhysicsSystem* system = physics.get();
-    // Its buffer stays put when the list of pending adds moves
-    const std::span<JPH::BodyID> ids(stored.ids);
+    std::shared_ptr<std::vector<JPH::BodyID>> ids = stored.ids;
     jobs::SubmitOptions options;
     options.lane = jobs::Lane::Background;
     options.name = "voxel-add-bodies";
-    stored.task = jobs::submit([system, ids]{ return system->prepareBodies(ids); }, options);
+    stored.task = jobs::submit([system, ids]{ return system->prepareBodies(*ids); }, options);
     stored.hasTask = true;
     (void)component;
 }
@@ -293,7 +300,7 @@ void VoxelSystem::evictBodies(VolumeState& state, const VoxelVolumeComponent& co
     // The least recently needed block with no body nearby goes first (R22)
     std::vector<std::pair<uint64_t, BlockTuple>> candidates;
     for (const auto& item : state.collision) {
-        if (item.second.inWorld) candidates.emplace_back(item.second.lastNeededTick, item.first);
+        if (item.second.inWorld && !item.second.adding) candidates.emplace_back(item.second.lastNeededTick, item.first);
     }
     std::sort(candidates.begin(), candidates.end());
     for (const auto& candidate : candidates){
@@ -593,7 +600,7 @@ void VoxelSystem::destroyCollision(VolumeState& state){
     auto physics = scene->findSystem<PhysicsSystem>();
     for (auto& add : state.pendingAdds){
         if (add.hasTask) add.state = add.task.get();
-        if (physics) physics->finalizeBodies(add.ids, add.state);
+        if (physics) physics->finalizeBodies(*add.ids, add.state);
     }
     state.pendingAdds.clear();
     for (auto& item : state.collision){

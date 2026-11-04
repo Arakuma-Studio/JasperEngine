@@ -54,6 +54,8 @@ namespace jasperengine{
         JPH::ShapeRefC pendingShape;
 #endif
         bool inWorld = false;
+        // Created and prepared, not finalized: Jolt lets nothing else touch it yet (V8)
+        bool adding = false;
         bool building = false;
         bool built = false;          // the job finished at this version
         bool pendingEmpty = false;
@@ -116,7 +118,9 @@ namespace jasperengine{
         int bodies = 0;
 #ifdef JASPERENGINE_PHYSICS_3D
         struct PendingAdd{
-            std::vector<JPH::BodyID> ids;
+            // Shared and never moved: a prepare job reads them, while the list of adds may reallocate
+            std::shared_ptr<std::vector<JPH::BodyID>> ids;
+            std::vector<std::tuple<int, int, int>> keys;
             JPH::BodyInterface::AddState state = nullptr;
             jobs::Task<JPH::BodyInterface::AddState> task;
             bool hasTask = false;

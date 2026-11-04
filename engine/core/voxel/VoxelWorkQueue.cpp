@@ -49,6 +49,13 @@ bool WorkQueue::cancel(uint64_t id) {
     return false;
 }
 
+void WorkQueue::cancelAndWait(uint64_t id) {
+    if (cancel(id)) return;
+    for (Running& item : running) {
+        if (item.id == id) item.task.wait();
+    }
+}
+
 void WorkQueue::reprioritize(const Rank& rank) {
     for (Item& item : items) rank(item.id, item.priority, item.distance);
 }

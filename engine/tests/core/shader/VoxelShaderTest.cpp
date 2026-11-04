@@ -66,9 +66,10 @@ namespace {
     int compileSamples(const std::vector<std::string>& defines, ShaderBackend backend, std::string& error) {
         const std::string reference = defines.empty() ? std::string() : ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, defines);
         const uint16_t id = reference.empty() ? 0 : ShaderPool::registerCustomShader(reference);
+        const CustomShaderSources sources = reference.empty() ? CustomShaderSources{} : ShaderVariantCompiler::resolveCustomShaderSources(reference, {}, ShaderType::MESH);
         ShaderData data;
         std::string log;
-        if (!ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, chunkProperties(), id), backend, nullptr, data, &error, &log)) {
+        if (!ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, chunkProperties(), id), backend, reference.empty() ? nullptr : &sources, data, &error, &log)) {
             error += "\n" + log;
             return -1;
         }

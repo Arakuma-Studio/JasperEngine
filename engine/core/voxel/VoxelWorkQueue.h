@@ -41,6 +41,9 @@ namespace jasperengine::voxel {
         // True when it was still queued, or in flight and not started
         bool cancel(uint64_t id);
 
+        // cancel(), and when the job already runs, waits for it: its closure's data may then go
+        void cancelAndWait(uint64_t id);
+
         // Re-sorts when the focus moves: gives each queued item a new priority and distance
         using Rank = std::function<void(uint64_t id, WorkPriority& priority, double& distance)>;
         void reprioritize(const Rank& rank);

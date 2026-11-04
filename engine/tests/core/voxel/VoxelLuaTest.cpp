@@ -97,7 +97,7 @@ namespace {
 TEST_F(VoxelLua, DigFillSmoothPaintReturnReports) {
     run(R"(
         local r = vol:dig(VoxelShape.sphere(Vector3(32, 32, 32), 5), {blend = 0.5})
-        digOk = r.ok; digChanged = r.voxelsChanged; digRemoved = r.removedVolume; digBoundsX = r.bounds:getMinimum().x
+        digOk = r.ok; digChanged = r.voxelsChanged; digRemoved = r.removedVolume; digBoundsX = r.bounds.minimum.x
         r = vol:fill(VoxelShape.capsule(Vector3(10, 40, 10), Vector3(20, 40, 10), 2), {material = 2})
         fillOk = r.ok; fillAdded = r.addedVolume
         r = vol:smooth(VoxelShape.box(Vector3(32, 32, 32), Vector3(4, 4, 4), Quaternion()), {amount = 0.5, iterations = 2})

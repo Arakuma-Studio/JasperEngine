@@ -139,9 +139,9 @@ namespace {
 
         bool settled(Entity owner) {
             std::shared_ptr<VoxelSystem> system = scene.getSystem<VoxelSystem>();
+            RenderSystem* render = scene.getSystem<RenderSystem>().get();
             const bool ready = GpuEnvironment::runFrames([&](){
-                system->finishPendingWork();
-                return system->isVolumeReady(owner);
+                return system->isVolumeReady(owner) && render->isAllLoaded();
             }, 600);
             GpuEnvironment::drawFrames(3);
             return ready && scene.getSystem<RenderSystem>()->isAllLoaded();

@@ -23,10 +23,11 @@ TEST(VoxelShader, CrossCompilesForEveryBackend) {
     for (const char* tier : {"VOXEL_TIER_HIGH", "VOXEL_TIER_MEDIUM", "VOXEL_TIER_LOW"}) {
         const std::string reference = ShaderReference::withFeatures(ShaderReference::BUILTIN_LIT, {"HAS_VOXEL", tier});
         const uint16_t id = ShaderPool::registerCustomShader(reference);
+        const CustomShaderSources sources = ShaderVariantCompiler::resolveCustomShaderSources(reference, {}, ShaderType::MESH);
         for (const ShaderBackend backend : backends) {
             ShaderData data;
             std::string error, log;
-            EXPECT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, properties, id), backend, nullptr, data, &error, &log))
+            EXPECT_TRUE(ShaderVariantCompiler::compile(ShaderPool::getShaderKey(ShaderType::MESH, properties, id), backend, &sources, data, &error, &log))
                 << tier << " on backend " << static_cast<int>(backend) << ": " << error << "\n" << log;
         }
     }

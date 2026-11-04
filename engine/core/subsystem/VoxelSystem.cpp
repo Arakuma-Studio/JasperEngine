@@ -363,7 +363,7 @@ void VoxelSystem::removeState(Entity owner){
     VolumeState& state = *found->second;
     for (auto it = jobs.begin(); it != jobs.end();){
         if (it->second->owner == owner){
-            if (queue) queue->cancel(it->first);
+            if (queue) queue->cancelAndWait(it->first);
             it = jobs.erase(it);
         }else{
             ++it;
