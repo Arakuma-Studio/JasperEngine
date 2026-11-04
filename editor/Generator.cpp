@@ -1720,7 +1720,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "## Source references\n\n";
     agentsContent += "The runtime API this project links against: `" + api + "` (use it first). Engine and editor source: "
                      "https://github.com/JasperRaccoon/JasperEngine, at the tag or commit of the editor version above (report it if you "
-                     "cannot match it). The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory.\n\n";
+                     "cannot match it). The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory. An editor "
+                     "key is rebound with `set_shortcut` (tool group `editor_ux`), not in that source.\n\n";
     agentsContent += "## Generated files\n\n";
     agentsContent += "The editor regenerates these on play and build; never edit them: the root `CMakeLists.txt`, `" + internal +
                      "/LocalPaths.cmake`, `" + internal + "/scene_scripts.cpp`, `" + internal + "/generated/`, `" + api + "/`. After "

@@ -179,8 +179,8 @@ call; exit codes 0 ok, 1 tool error, 2 usage, 3 connection, 4 internal. See [cli
 
 ### Developing JasperEngine itself
 
-Agents working on the engine read the repository's `AGENTS.md` and `CLAUDE.md` (build, test,
-run an isolated editor, land a change); a game project has its own, generated `AGENTS.md`.
+Agents working on the engine read the repository's `AGENTS.md` (build, test, run an isolated
+editor, land a change); a game project has its own, generated `AGENTS.md`.
 
 The repository root has a `.mcp.json` that runs the editor from your build output:
 
@@ -383,25 +383,27 @@ an item's `enabled` says whether it is drawn disabled.
 
 ### The CI suite (`CI = True`)
 
-CI runs only the test files that declare `CI = True` at module level
-(`tools/mcp/run-tests.sh --suite ci`, or `MCP_SUITE=ci tools/build.sh mcp-tests -j 2`). CI has no
-copy of the default fixture project (`build/fixture-unity`, which is not in git), so a CI file
-must not need it: its editor tests run on a project they make, `EDITOR = {"create": True, ...}`,
+This suite is the test files that declare `CI = True` at module level
+(`tools/mcp/run-tests.sh --suite ci`, or `MCP_SUITE=ci tools/build.sh mcp-tests -j 2`). A clean
+checkout has no copy of the default fixture project (`build/fixture-unity`, which is not in git), so
+such a file must not need it: its editor tests run on a project they make, `EDITOR = {"create": True, ...}`,
 or on a committed one, `EDITOR = {"project": ".../tools/fixtures/<name>"}`. Tests without an
 editor parameter need neither. The runner checks this and exits with status 2 when a `CI = True`
 file relies on the default fixture.
 
-No file is left out of CI silently: a file that is not `CI = True` either needs the default
+No file is left out of this suite silently: a file that is not `CI = True` either needs the default
 fixture (the runner finds that itself) or declares why, `CI_EXCLUDED = "long-running (...); in the
-full suite"`. A file left out for neither reason stops `--suite ci` with status 2. Every CI run
+full suite"`. A file left out for neither reason stops `--suite ci` with status 2. Every run of it
 prints how many files it runs and lists each one it leaves out with its reason, and the summary
 line and `--json` (`left_out`) repeat it. `tools/build.sh mcp-tests` runs the CI suite by default:
-a gate that means the whole suite runs `MCP_SUITE=all`.
+a gate that means the whole suite runs `MCP_SUITE=all`. `tools/ci/check-mcp-ci-suite.py` says the
+same in a second, without a build: check-changed runs it when a diff touches an MCP test file.
 
 Write new test files CI-capable by default: create the project (or use `tools/fixtures/*`), then
-declare `CI = True`. The full suite, default-fixture files included, still runs on the build
-servers (`MCP_SUITE=all tools/build.sh mcp-tests`, which finds `~/je/fixture-unity` there, or
-`JASPER_FIXTURE=<fixture>`). A test reaches the fixture through `harness.default_fixture()` (or
+declare `CI = True` when the file takes under a minute or so on a loaded server, and `CI_EXCLUDED`
+with the reason when it takes longer or builds a real player. The full suite, default-fixture files
+included, runs with `MCP_SUITE=all tools/build.sh mcp-tests`, which finds `~/je/fixture-unity` or
+`JASPER_FIXTURE=<fixture>`. A test reaches the fixture through `harness.default_fixture()` (or
 `Editor()` with no project): `JASPER_FIXTURE`, `build/fixture-unity` of this or the main checkout,
 `/fixture` (the build image's mount) or `~/je/fixture-unity`; with none of them its tests skip.
 `docs/testing.md` covers every other test suite.

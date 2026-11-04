@@ -632,7 +632,7 @@ web --no-build` configures (Linux, Emscripten 6.0.10 image); `tools/build.sh lin
 10. Android presets are `{GLES3}` in the Build Settings window and MCP (tests 11, 13); the engine's Android CMake, Gradle
     and android_player.sh refuse other backends with a message.
 11. Docs of 6.10 updated; `tools/mcp/gen_tool_docs.py --check` and `tools/check_agent_docs.py` pass; `tools/check-changed`
-    green on the build server.
+    green.
 
 ## 12. Files likely touched
 

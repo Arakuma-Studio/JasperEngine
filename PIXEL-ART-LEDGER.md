@@ -167,10 +167,10 @@ never build or run them.
 
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
-| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | spec done |
+| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | implementing |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
-| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | spec done |
-| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | spec done |
+| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | implementing |
+| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | in review |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | spec done |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | waits for `dc/sprite-batching` on origin/main; scope narrowed |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -195,11 +195,67 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
   - It runs in the current worktree and waits for one of 2 global slots, with `JOBS=4` and
     `DOCKER_CPUS=4` each.
   - ccache is shared between worktrees, since each worktree mounts at `/src`.
+- Real Aseprite 1.3.18.6, built from source in Docker for golden files (personal use, never
+  redistributed): `/var/lib/orquester/workspaces/jaspersito/tools-aseprite/aseprite -b <args>`.
 - `build/fixture-unity` (the MCP fixture project) is not available. MCP tests that need it are
   skipped, and reports must say so.
 
+### Landing gate (from `AGENTS.md`, rewritten upstream on 2026-11-04)
+
+Before a spec is merged into `main` and pushed, the merged tree passes:
+- `WERROR=1 tools/build.sh linux` and `WERROR=1 tools/build.sh unit-tests`;
+- the MCP suite: `MCP_SUITE=all` where the fixture exists. `build/fixture-unity` (TappyPlane)
+  isn't on this host, so tests that need it skip and the report lists them;
+- `web` and `android` builds when runtime code changed;
+- the area lints (raw writes, stream keys, shortcuts, notices), plus the regenerated `TOOLS.md`
+  and `tool_budget.py --check`.
+
+There is no CI.
+
 ## Log
 
+- 2026-11-04: S44 implementation reported at `a06bf6491`, with `main` merged in.
+  - Passing: `WERROR=1` linux, unit-tests, web and android builds; 5,733 unit tests; the MCP
+    suite with `tools/fixtures/tween-curve` standing in for the missing fixture.
+  - Still open: the Sprite Preview editor test and screenshots, `aseprite_compat.py`, and
+    real-Aseprite goldens.
+  - An independent review is running. The Aseprite CLI is being built from source in Docker
+    (`/var/lib/orquester/workspaces/jaspersito/tools-aseprite/`) to author real goldens.
+- 2026-11-04: Baseline `tools/build.sh unit-tests` of `main` (87 min): core 2,808 passed and
+  1 failed (`NavBakeTest.RuntimeUpdateTiles`, failing on `main` before any pixel-art code);
+  editor 2,842 passed and 7 disabled.
+- 2026-11-04: Upstream rewrote `AGENTS.md` as the only manual (`CLAUDE.md` = `@AGENTS.md`)
+  and removed CI. It now requires `WERROR=1`, a `tools/mcp/eval` case for new MCP text, migration
+  fixtures, and the full suite before big pushes. `main` merged it and was pushed. The implementer
+  brief was updated, and the S41, S43 and S44 implementers were told to merge `main` and follow
+  the new rules.
+- 2026-11-04: The split with the Doriax catch-up program is agreed and recorded in both ledgers.
+  - `dc/sprite-batching` (their program, started now) owns generic dynamic batching: sprites,
+    small meshes and UI quads; 2D reordering; settled objects; buffers shared by content; and the
+    batch counters in `get_render_stats`.
+  - It provides two hooks for S52: a sort key the batcher respects (layer and order first;
+    batching only within a bucket), and a per-vertex or batch-key channel for per-sprite
+    parameters (the S43 palette row, S48 flash/fade/dissolve, the S41 snap).
+  - S52 narrows to Sorting Layers, Order in Layer and Sorting Groups, the Sprite Batch component
+    (a bulk instanced API), and making the pixel-art per-sprite parameters batch-compatible
+    through those hooks. It starts once `dc/sprite-batching` is merged on origin/main; the spec is
+    re-scoped then.
+  - `mesh-memory` and S44: whoever lands second merges onto the first. Their program adds no
+    `AssetType`, so 24–27 stay ours. Shader, variant and update-flag bits take the next free bit
+    at landing, in landing order, on both sides.
+- 2026-11-04: `origin/main` brought the Doriax catch-up program (`docs/doriax-catchup/LEDGER.md`,
+  19 specs in `docs/superpowers/specs/`). Its `sprite-batching` spec duplicates most of S52
+  (dynamic sprite batching, 2D reordering, shared buffers, batch stats), so S52 was stopped before
+  any code was written.
+  - Proposed to that program's lead: they keep generic batching. S52 narrows to Sorting
+    Layers/Groups, a Sprite Batch bulk API, and keeping the pixel-art per-sprite parameters
+    batch-compatible. It lands after their sprite-batching. Waiting for their reply.
+  - Other overlaps flagged to them: `mesh-memory` and S44 (`SpriteComponent` frames);
+    `ui-components` and S45 (9-slice); `unicode-text` and S51; `agent-authoring` and the guide.
+- 2026-11-04: Wave 5A implementation started: S41, S43, S44 and S52, each in
+  `.worktrees/sNN` on its feature branch from `main` 7fe6b0b36. Each implementer follows
+  `.worktrees/IMPLEMENTER-BRIEF.md` (local, not committed). A baseline unit-test run of `main` is
+  in progress.
 - 2026-11-04: All 12 specs are written (S41–S52) and a consistency pass reconciled them: snap
   rule, asset type numbers, the Bayer table, tool groups and budgets, FX slots, and the wave
   order. Docker is installed on this host. The baseline `tools/build.sh linux` of `main` passed:

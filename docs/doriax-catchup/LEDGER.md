@@ -39,9 +39,9 @@ agent ("be braver"): what most users and agents expect of a game engine, Unity n
 
 - **Escape in Play** (runtime-core and scene-integrity both touch it): Unity's behaviour. A focused Game view
   delivers Escape to the game, and if the game captured the cursor, the same press also releases the capture.
-- **Mesh shader variant bits:** bit 36 is draw-perf's directional-only Lit variant (`Dlo`); bits 37 and 38 are
-  water-boats' exclusion and wake variants. Other new variant or update-flag bits take the next free bit on their
-  branch; the lead renumbers at merge if two branches collide, with a test pinning each assignment.
+- **Shader variant and update-flag bits:** taken as the next free bit at landing, in landing order, on both
+  programs (draw-perf's `Dlo`, water-boats' `Wex`/`Wwk`, ui-components' `UpdateFlags_Button` keep their names); the
+  lead renumbers at merge if two branches collide, with a test pinning each assignment.
 - **Shader cache version** (`editor/App.cpp`): each branch that changes shaders bumps it by one over its `main`;
   the lead re-bumps at merge so every merged change gets its own version.
 - **Capacities:** mesh-memory removes the fixed component capacities, so export-pipeline does not implement
@@ -50,11 +50,24 @@ agent ("be braver"): what most users and agents expect of a game engine, Unity n
 - **Agent guide budget** (`editor/mcp/McpInstructions.cpp`, 4,096-character client cut found by agent-authoring):
   only agent-authoring restructures the guide. Every other feature puts agent guidance in `docs/mcp/guide/<area>.md`
   and adds at most a one-line pointer, trimming elsewhere if needed.
-- **Pixel-art program** (S41-S52, `PIXEL-ART-LEDGER.md`, pushed to `origin/main` from another machine): S52 (Sprite
-  instancing: batched sprites, Sorting Layers) owns sprite batching. Our feature 13 is rescoped to `ui-batching`:
-  component UI quads (S52 leaves them out) and content-shared buffers for non-sprite meshes, implemented after S52
-  lands. The lean MCP rules merged with it (`fe3e90b97`: guide at most 8,192 bytes, eval cases for new text) override
-  our specs; agent-authoring revises its guide plan against them.
+- **Pixel-art program** (S41-S52, `PIXEL-ART-LEDGER.md`, pushed to `origin/main` from another machine). Split agreed
+  with its lead on 2026-11-04: our `sprite-batching` owns generic dynamic batching (sprites, small meshes, UI quads,
+  shared buffers, settled objects, 2D reordering, batching stats in `get_render_stats`); their S52 shrinks to
+  Sorting Layers / Order in Layer / Sorting Groups, the Sprite Batch component, and making pixel-art per-sprite
+  parameters batch-compatible inside our batcher, landing after us. Our batcher therefore takes a sort key that S52
+  extends and a documented per-vertex extension for per-sprite parameters. mesh-memory vs their S44 (sprite frames
+  as sheet references): whoever lands second merges onto the first. Asset types 24-27 are theirs (we add none).
+  Shader and variant bits on both sides are appended at landing in landing order (the bit numbers in our specs are
+  names, not reservations). The lean MCP rules merged with it (`fe3e90b97`: guide at most 8,192 bytes, eval cases
+  for new text) override our specs; agent-authoring revises its guide plan against them.
+- **Two more programs share `origin/main`.** Forge/meshoptimizer (S53-S57, `docs/forge-meshopt-analysis/LEDGER.md`)
+  defers to us: draw-perf owns the opaque state sort, the pipeline/binding tracker and cull-before-sort (their S55
+  instances over that order); sprite-batching's dynamic batching goes first and S55's GPU instancing takes the
+  remaining mesh draws, never both; S53-S55 keep component changes additive around mesh-memory. Follow-ups (S61-S73,
+  `FOLLOWUPS-LEDGER.md`): S68 Linked folders makes the export walk follow links (overrides export-pipeline's rule;
+  export-pipeline follows links with a cycle guard), S64 meets export-pipeline's shader keys, S67 meets
+  mobile-shipping's packaging, S65 leaves capacities to mesh-memory, S72's header fan-out cut is a merge hotspot.
+  Whoever lands second merges onto the first.
 - **Generated files** (`docs/mcp/TOOLS.md`, `tools/mcp/budget.json` measurements, `catalog_snapshot.json`, Lua
   stubs): each branch regenerates them after its last merge of `main`; at merge the lead regenerates again.
 
@@ -76,11 +89,11 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
 | 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | impl |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
-| 13 | `ui-batching` (was `sprite-batching`) | batching of component UI quads and buffers shared by content for non-sprite meshes; sprite batching itself is pixel-art S52's | specced (rescope pending) |
-| 14 | `ssr-probes` | SSR under local probes and AO, early-out | specced |
-| 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | specced |
+| 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
+| 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
+| 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | impl |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
-| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | specced |
+| 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | impl |
 | 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
 | 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | impl |
 
@@ -97,5 +110,34 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   specs, lean MCP surface). Merged (`59c2a964f`) and pushed. Feature 13 rescoped (see decisions). Wave 1 started
   (12 features): mobile-shipping, unicode-text, export-pipeline, build-toolchain, scene-integrity,
   project-window, runtime-core, scripting, mesh-memory, render-correctness, agent-authoring, code-editor-git.
-  Waiting: ui-components (after unicode-text), platform-lifecycle, ssr-probes, water-reflections, draw-perf (after
-  mesh-memory), water-boats (after water-reflections), ui-batching (after S52).
+  Also started, as they depend on nothing in flight: ssr-probes, water-reflections, platform-lifecycle (15 agents).
+  Waiting: ui-components (after unicode-text), draw-perf (after mesh-memory), water-boats (after
+  water-reflections).
+- 2026-11-04: agreed the split with the pixel-art lead (see decisions): feature 13 is `sprite-batching` again, with
+  hooks for their narrowed S52, and started now (16 agents) because their S52 waits for it.
+- 2026-11-04: `origin/main` moved again (`815791c80`..`297562c95`): AGENTS.md rewritten as the one rule book, the
+  GitHub workflows removed (no CI: nothing checks Windows, macOS or iOS code except reading), and the push gate is
+  now the full suite for big features (`WERROR=1` linux and unit-tests, the slow MCP suite, area lints). Merged into
+  `main` (fast-forward) and pushed; the brief's definition of done follows it, and all 16 implementers were told to
+  merge `main` before their next gate. Baseline of `main` on this host: `tools/build.sh linux` passes with 11
+  warnings (ODR warnings of the vendored shader compiler's SPIR-V headers, as the pixel-art lead measured).
+- 2026-11-04 07:0x: merged 11 more `origin/main` commits (follow-ups program, CI-suite classification) and pushed.
+  Recorded the splits with the Forge/meshoptimizer (S53-S57) and follow-ups (S61-S73) programs; told export-pipeline
+  (S68 links, S64 shader lists), project-window (S68) and mobile-shipping (S67). Build queue: `slot` became a
+  priority queue (mesh-memory first, then unicode-text, water-reflections). Progress: unicode-text, runtime-core,
+  render-correctness, water-reflections, scripting, agent-authoring, build-toolchain and mobile-shipping have
+  committed work and are in red/green runs; the others have code written and wait for their first build. Nothing
+  merged yet.
+- 2026-11-04 14:xx: the host disk filled (0 B free): every worktree's full gate leaves about 40 GB of build trees.
+  Freed 58 GB (a 29 GB scratch copy, Docker's build cache, an unused 24 GB swap file, the main checkout's baseline
+  build); disk rules added to the brief; the lead deletes a feature's build trees once it merges. `slot` reworked
+  twice for fairness: slot 1 serves the critical path (mesh-memory, unicode-text, water-reflections), the other
+  slot the longest-waiting job; queued jobs resubmitted with their original queue time (`DC_SINCE`). Merged 65
+  upstream commits (follow-ups S61, S66, S71, S38 M1) into `main`. Closest to landing: mesh-memory (final gate),
+  unicode-text (linux WERROR clean, unit 5676 run / 0 failed), runtime-core (linux WERROR clean).
+- 2026-11-04 16:1x: gate corrected (owner's question). The brief had required every branch to run the full unit
+  suite and the full slow MCP suite, which AGENTS.md reserves for pushes to `origin/main`: the most expensive work
+  ran once per branch on a two-slot host. Per-branch gate is now `tools/check-changed` plus the spec's own tests,
+  red controls and lints; the lead runs the full suite once at landing, on a local `main` holding one or several
+  ready features. All 16 agents told to trim queued jobs (keeping their queue place). mesh-memory finishes the full
+  run it is already hours into; it counts toward its landing.

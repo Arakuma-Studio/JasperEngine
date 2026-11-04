@@ -1,6 +1,6 @@
 """Tests of tools/check-changed (tools/check_changed.py) and its coverage map (tools/mcp/coverage_map.py).
 
-    python3 -I tools/test_check_changed.py        # stdlib only: on a build server, or in the image
+    python3 -I tools/test_check_changed.py        # stdlib only
 
 On scratch git repositories and synthetic inputs: the diff (committed, staged, unstaged, untracked,
 deleted; the base and its fallbacks; rb.sh's diff and a stale one), the build plan, the unit test
@@ -133,6 +133,10 @@ class Builds(unittest.TestCase):
         p = self.plan("tools/check_changed.py")
         self.assertEqual((p.builds, p.self_tests, p.mcp_all), ([], ["tools/test_check_changed.py"], False))
         self.assertEqual(self.plan("tools/mcp/shard.py").self_tests, ["tools/mcp/test_shard.py"])
+        # an MCP test file (a new one too): classified for the CI suite, before anything is built
+        self.assertEqual(self.plan("tools/mcp/tests/test_new.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
+        self.assertEqual(self.plan("tools/mcp/run_tests.py").self_tests, ["tools/ci/check-mcp-ci-suite.py"])
+        self.assertEqual(self.plan("tools/mcp/tests/helper.py").self_tests, [])
         for trigger in ("CMakeLists.txt", "docker/linux.Dockerfile", "tools/build.sh", "engine/cmake/JasperPch.cmake",
                         "tools/mcp/requirements.txt"):
             p = self.plan(trigger)
