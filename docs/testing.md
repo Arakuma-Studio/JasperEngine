@@ -330,7 +330,7 @@ The opt-in flag requires the engine report **and** a matching debuggerd tombston
 under the emulator result directory, and accepts that deliberate crash. Ordinary emulator tests
 continue to fail on any native crash.
 
-## Gates: per commit, batch landings, main
+## Gates: per commit, before pushing to main
 
 - **Per commit of a stream: `tools/check-changed`**. It builds and runs what the change can affect: the Linux editor and the
   unit test binaries for C++ under `engine/` or `editor/` (web for the engine, Android for its own
@@ -339,10 +339,11 @@ continue to fail on any native crash.
   files the coverage map ties to the change (below). Everything for the root CMake, `docker/`,
   `tools/build.sh`, the toolchain and the lockfiles; the whole MCP suite for a change of its harness
   (`harness.py`, `run_tests.py`, `build_cache.py`); nothing for docs.
-- **Batch landings, and before main: the full suite** (`MCP_SUITE=all JASPER_SLOW_BUILD=1
+- **Before pushing to `origin main`, only when the pushed changes need it (a big feature, not a
+  small fix): the full suite** (`MCP_SUITE=all JASPER_SLOW_BUILD=1
   JASPER_SLOW_TESTS=1`), plus the WERROR Linux
   build (with the engine sample project's LTO link) and every unit test. check-changed is a
-  selection; it never replaces this gate, and says so in every summary.
+  selection and says so in every summary.
 
 ### `tools/check-changed`
 
@@ -391,7 +392,7 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
 
 **The coverage map** (`tools/mcp/coverage_map.py`): for each MCP test file, the engine and editor
 sources its editors executed. A full run of a coverage-instrumented editor records it, off the
-critical path (a batch landing's run, a quiet machine); it is stored with its commit in the machine's
+critical path (a full suite run, a quiet machine); it is stored with its commit in the machine's
 `~/je/mcp-build-cache/coverage-map.json` (check-changed finds it there, or
 `JASPER_MCP_COVERAGE_MAP`):
 

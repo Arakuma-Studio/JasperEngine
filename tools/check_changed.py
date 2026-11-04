@@ -1,5 +1,5 @@
 """tools/check-changed: the per-commit gate of a stream. Builds what the change touches and runs the
-unit and MCP tests that can see it; the full suite stays the gate of batch landings and of main.
+unit and MCP tests that can see it; the full suite is for pushes to origin main that need it.
 
     tools/check-changed                 # build and test what the change touches
     tools/check-changed --dry-run       # the plan only
@@ -69,7 +69,7 @@ COMMON_SAMPLE = 10      # the quickest of those that a change of such a function
 MAP_MAX_AGE_DAYS = 14
 MAP_MAX_COMMITS = 400
 GAP = ("coverage gap: this is the change's own selection; the full gate is still the full suite "
-       "(batch landings and before main)")
+       "(before pushing to origin main, when the push needs it)")
 
 # a change here builds and runs everything
 ALL_TRIGGERS = ("CMakeLists.txt", "CMakePresets.json", "CopyEditorEngine.cmake", "docker/*", "tools/build.sh",

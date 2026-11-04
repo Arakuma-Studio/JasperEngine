@@ -136,7 +136,8 @@ Run the generator and commit its output:
 
 - **Per commit: `tools/check-changed`**, which runs what the change can affect.
 - `--dry-run` shows its plan; `--no-cache` reruns a cached pass.
-- **Batch landings and merges to main: the full suite**, which check-changed never replaces:
+- **Before pushing to `origin main`: the full suite, only when the pushed changes need it**, such as
+  a big feature. A small change, such as a little visual bug, does not need it. When needed, run:
   - `WERROR=1 tools/build.sh linux`
   - `WERROR=1 tools/build.sh unit-tests`
   - `MCP_SUITE=all JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/build.sh mcp-tests -j <n>`
