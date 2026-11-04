@@ -133,15 +133,6 @@ async def test_refused_editor_opens_nothing():
         owner = lock_owner(project)
         temp_root = Path(tempfile.mkdtemp(prefix="jasper-lock-tmp-"))
         try:
-            # nothing there: nothing made
-            empty = temp_root / "empty"
-            empty.mkdir()
-            run, root = second_instance(project, [], env_extra={"TMPDIR": str(empty)})
-            shutil.rmtree(root, ignore_errors=True)
-            check(run.returncode == 3, f"refused, no temporary project: exit 3, got {run.returncode}:\n{run.stderr[-2000:]}")
-            check(f"PID {owner['pid']}" in run.stderr, "the message names the owner's pid:\n" + run.stderr[-2000:])
-            check(not (empty / TEMP_PROJECT).exists(), "a refused editor makes no temporary project")
-
             # held by another editor (another refused one, under load): the crash
             busy = temp_root / "busy"
             busy.mkdir()
@@ -153,6 +144,15 @@ async def test_refused_editor_opens_nothing():
                 held.close()
             check(run.returncode == 3, f"refused, temporary project held: exit 3, got {run.returncode}:\n{run.stderr[-2000:]}")
             check(f"PID {owner['pid']}" in run.stderr, "the message names the owner's pid, not the temporary project's:\n" + run.stderr[-2000:])
+
+            # nothing there: nothing made
+            empty = temp_root / "empty"
+            empty.mkdir()
+            run, root = second_instance(project, [], env_extra={"TMPDIR": str(empty)})
+            shutil.rmtree(root, ignore_errors=True)
+            check(run.returncode == 3, f"refused, no temporary project: exit 3, got {run.returncode}:\n{run.stderr[-2000:]}")
+            check(f"PID {owner['pid']}" in run.stderr, "the message names the owner's pid:\n" + run.stderr[-2000:])
+            check(not (empty / TEMP_PROJECT).exists(), "a refused editor makes no temporary project")
         finally:
             shutil.rmtree(temp_root, ignore_errors=True)
         await first.call("get_project_summary")
@@ -175,9 +175,9 @@ async def test_no_project_open_keeps_drawing():
                     await asyncio.sleep(0.2)
                 summary = await ed.call("get_project_summary")
                 check(not summary.get("scenes"), f"no scene is open: {summary}")
-                check(ed.proc.poll() is None, "the editor is still running")
-                stderr = ed.scratch.stderr_log.read_text(errors="replace")
+                stderr = ed.stderr_text()
                 check("no project is open" in stderr, "stderr says no project is open:\n" + stderr[-2000:])
+                await ed.call("editor_status")
         finally:
             held.close()
     finally:
