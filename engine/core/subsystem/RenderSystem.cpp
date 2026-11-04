@@ -13085,15 +13085,15 @@ void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibra
 
     // the reflection the view's camera has for this mesh's height, in its own pass only
     RenderView& view = rv();
-    const RenderView& source = view.waterReflectionSource ? *view.waterReflectionSource : view;
+    RenderView& source = view.waterReflectionSource ? *view.waterReflectionSource : view;
     if (passCamera && passCamera == view.waterReflectionCamera){
         auto found = view.waterReflectionOf.find(entity);
         if (found != view.waterReflectionOf.end() && found->second >= 0 && found->second < (int)source.waterReflections.size()){
-            const WaterReflectionPass& pass = *source.waterReflections[found->second];
+            WaterReflectionPass& pass = *source.waterReflections[found->second];
             if (pass.active && pass.framebuffer.isCreated()){
                 block.viewProjection = pass.camera.viewProjectionMatrix;
                 block.params = Vector4(pass.level, 1.0f, 0.0f, 0.0f);
-                texture = &const_cast<WaterReflectionPass&>(pass).framebuffer.getRender().getColorTexture();
+                texture = &pass.framebuffer.getRender().getColorTexture();
             }
         }
     }
