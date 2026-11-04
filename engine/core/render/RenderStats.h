@@ -208,6 +208,13 @@ namespace jasperengine{
         uint64_t uniformBytesKept = 0;  // uniform bytes already in their slot, not applied again
         uint32_t pipelinesKept = 0;     // pipelines already applied, not applied again
         uint64_t instanceBytes = 0;     // the batches' instance data
+        // draws that could batch, and why one did not join the batch before it (another pipeline,
+        // elements, bindings or uniform bytes)
+        uint32_t offeredDraws = 0;
+        uint32_t splitPipeline = 0;
+        uint32_t splitElements = 0;
+        uint32_t splitBindings = 0;
+        uint32_t splitUniforms = 0;
     };
 
 }

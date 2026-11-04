@@ -141,6 +141,10 @@ bool ObjectRender::isBatchVariant() const{
     return backend.isBatchVariant();
 }
 
+const char* ObjectRender::getBatchLinkFailure() const{
+    return backend.getBatchLinkFailure();
+}
+
 void ObjectRender::setNextDrawBatch(ObjectRender* variant, int objectSlot, float lodFade){
     backend.setNextDrawBatch(variant ? &variant->backend : nullptr, objectSlot, lodFade);
 }

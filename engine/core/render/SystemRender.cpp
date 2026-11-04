@@ -413,6 +413,11 @@ DrawBatchStats SystemRender::getDrawBatchStats(){
     stats.uniformBytesKept = frame.uniformBytesKept;
     stats.pipelinesKept = frame.pipelinesKept;
     stats.instanceBytes = frame.instanceBytes;
+    stats.offeredDraws = frame.offeredDraws;
+    stats.splitPipeline = frame.splitPipeline;
+    stats.splitElements = frame.splitElements;
+    stats.splitBindings = frame.splitBindings;
+    stats.splitUniforms = frame.splitUniforms;
     return stats;
 }
 

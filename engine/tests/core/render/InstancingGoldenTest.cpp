@@ -16,6 +16,7 @@
 #include "object/Primitive.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
+#include "component/MeshComponent.h"
 
 #include "GpuEnvironment.h"
 #include "ImageCompare.h"
@@ -132,8 +133,18 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnbatched){
     ASSERT_TRUE(render()) << "the batch variants never finished loading";
     const std::vector<uint8_t> batched = readTarget();
     const DrawBatchStats stats = SystemRender::getDrawBatchStats();
-    std::printf("[instancing] %u instanced draws for %u draws, %llu uniform bytes kept\n", stats.instancedDraws,
-                stats.batchedInstances, (unsigned long long)stats.uniformBytesKept);
+    std::printf("[instancing] %u instanced draws for %u draws, %llu uniform bytes kept; %u offered, split by pipeline %u, "
+                "elements %u, bindings %u, uniforms %u\n", stats.instancedDraws, stats.batchedInstances,
+                (unsigned long long)stats.uniformBytesKept, stats.offeredDraws, stats.splitPipeline, stats.splitElements,
+                stats.splitBindings, stats.splitUniforms);
+    // what the first box loaded (a test that does not batch says why)
+    const Submesh& first = scene.getComponent<MeshComponent>(models[0]->getEntity()).submeshes[0];
+    std::printf("[instancing] box: batch shader %s (properties %llx), colour variant %s (%s), depth variant %s (%s)\n",
+                first.batchShader ? (first.batchShader->isCreated() ? "built" : "not built") : "none",
+                (unsigned long long)first.batchShaderProperties, first.batchRender.isBatchVariant() ? "linked" : "not linked",
+                first.batchRender.getBatchLinkFailure() ? first.batchRender.getBatchLinkFailure() : "-",
+                first.batchDepthRender.isBatchVariant() ? "linked" : "not linked",
+                first.batchDepthRender.getBatchLinkFailure() ? first.batchDepthRender.getBatchLinkFailure() : "-");
     EXPECT_GT(stats.instancedDraws, 0u);
     // the 36 grid objects in the colour pass alone
     EXPECT_GE(stats.batchedInstances, 30u);

@@ -86,6 +86,8 @@ namespace jasperengine {
         bool linkBatchVariant(const ObjectRender& source, const ShaderData& sourceShader, const ShaderData& variantShader,
                               const std::string& objectBlock);
         bool isBatchVariant() const;
+        // what the last linkBatchVariant refused (null: linked or never tried; diagnostics)
+        const char* getBatchLinkFailure() const;
         // the next draw() may join a batch of variant's (linked to this object), whose instances
         // read the block in objectSlot, with this LOD fade (spec S54 C3: -1..1, 0 none)
         void setNextDrawBatch(ObjectRender* variant, int objectSlot, float lodFade = 0.0f);

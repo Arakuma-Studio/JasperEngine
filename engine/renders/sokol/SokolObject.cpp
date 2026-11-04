@@ -1410,11 +1410,26 @@ namespace {
         return true;
     }
 
-    // b can be an instance of a's batch
-    bool batchesWith(const HeldDraw& a, const HeldDraw& b){
-        return a.pipeline.id == b.pipeline.id && a.pipelineIndex == b.pipelineIndex && a.variant == b.variant &&
-               a.objectSlot == b.objectSlot && a.base == b.base && a.count == b.count &&
-               std::memcmp(&a.bind, &b.bind, sizeof(sg_bindings)) == 0 && sameUniforms(a, b);
+    // b can be an instance of a's batch; else the reason is counted
+    bool batchesWith(const HeldDraw& a, const HeldDraw& b, SokolDrawBatch::FrameStats& stats){
+        if (a.pipeline.id != b.pipeline.id || a.pipelineIndex != b.pipelineIndex || a.objectSlot != b.objectSlot ||
+                a.variant->pipelines[a.pipelineIndex].id != b.variant->pipelines[b.pipelineIndex].id){
+            stats.splitPipeline++;
+            return false;
+        }
+        if (a.base != b.base || a.count != b.count){
+            stats.splitElements++;
+            return false;
+        }
+        if (std::memcmp(&a.bind, &b.bind, sizeof(sg_bindings)) != 0){
+            stats.splitBindings++;
+            return false;
+        }
+        if (!sameUniforms(a, b)){
+            stats.splitUniforms++;
+            return false;
+        }
+        return true;
     }
 
     // a held draw, drawn as it would have been
@@ -1544,7 +1559,9 @@ bool SokolDrawBatch::holdDraw(SokolObject* object, unsigned int base, unsigned i
                            draw.instances <= 1 && draw.objectSlot >= 0 && draw.pipelineIndex >= 0 &&
                            (block = draw.objectBlock()) != nullptr;
     const size_t instanceFirst = state.instanceData.size();
-    if (batchable && state.headOpen && batchesWith(state.head, draw)){
+    if (batchable)
+        state.frame.offeredDraws++;
+    if (batchable && state.headOpen && batchesWith(state.head, draw, state.frame)){
         if (packInstance(draw.variant->batchLayout, block, draw.lodFade, state.instanceData)){
             state.objectBlocks.insert(state.objectBlocks.end(), block, block + OBJECT_BLOCK_BYTES);
             state.heldInstances++;
@@ -1691,7 +1708,11 @@ void SokolObject::addBatchInstanceAttributes(const int* locations, int count, Ba
     const unsigned int stride = (unsigned int)(vectors * 4 * sizeof(float));
     for (int v = 0; v < count; v++){
         const int slot = locations[v];
-        if (slot < 0 || slot >= SG_MAX_VERTEX_ATTRIBUTES){
+        // a vector the variant does not read (the compiler left it out: a depth program reads
+        // no model rows) keeps its place in the stride
+        if (slot < 0)
+            continue;
+        if (slot >= SG_MAX_VERTEX_ATTRIBUTES){
             batchLayout = BatchLayout::NONE;
             return;
         }
@@ -1747,15 +1768,19 @@ namespace {
 bool SokolObject::linkBatchVariant(const SokolObject& source, const ShaderData& sourceShader, const ShaderData& variantShader,
                                    const std::string& objectBlock){
     std::fill(std::begin(batchUniformSlots), std::end(batchUniformSlots), (int8_t)-1);
-    auto fail = [this](){
+    batchLinkFailure = nullptr;
+    auto fail = [this](const char* reason){
         batchLayout = BatchLayout::NONE;
+        batchLinkFailure = reason;
         return false;
     };
     if (batchLayout == BatchLayout::NONE || batchInstanceBindSlot < 0)
-        return fail();
+        return fail("no instance attributes");
     // the object block goes per instance (a shader without the switch keeps it: no batches)
-    if (!findBlock(sourceShader, objectBlock) || findBlock(variantShader, objectBlock))
-        return fail();
+    if (!findBlock(sourceShader, objectBlock))
+        return fail("the source has no object block");
+    if (findBlock(variantShader, objectBlock))
+        return fail("the variant keeps the object block");
     // every other block of the source at a slot of the variant, of the same size, and no other
     size_t variantBlocks = 0;
     for (const ShaderStage& stage : variantShader.stages)
@@ -1764,31 +1789,37 @@ bool SokolObject::linkBatchVariant(const SokolObject& source, const ShaderData& 
     for (const ShaderStage& stage : sourceShader.stages){
         for (const ShaderUniformBlock& block : stage.uniformblocks){
             if (block.slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS)
-                return fail();
+                return fail("a uniform slot past sokol's");
             if (block.name == objectBlock)
                 continue;
             const ShaderUniformBlock* own = findBlock(variantShader, block.name);
             if (!own || own->sizeBytes != block.sizeBytes || own->slot >= SG_MAX_UNIFORMBLOCK_BINDSLOTS)
-                return fail();
+                return fail("a uniform block differs");
             batchUniformSlots[block.slot] = (int8_t)own->slot;
             matched++;
         }
     }
-    if (matched != variantBlocks || !sameResources(sourceShader, variantShader))
-        return fail();
+    if (matched != variantBlocks)
+        return fail("the variant has another uniform block");
+    if (!sameResources(sourceShader, variantShader))
+        return fail("other textures, samplers or storage buffers");
     // the source's vertex buffers, at the same slots, then the instance stream
     if ((size_t)batchInstanceBindSlot != source.bindSlotIndex)
-        return fail();
+        return fail("another number of vertex buffers");
     for (size_t slot = 0; slot < source.bindSlotIndex; slot++){
         if (bind.vertex_buffers[slot].id != source.bind.vertex_buffers[slot].id ||
                 bind.vertex_buffer_offsets[slot] != source.bind.vertex_buffer_offsets[slot] ||
                 pipeline_desc.layout.buffers[slot].stride != source.pipeline_desc.layout.buffers[slot].stride ||
                 pipeline_desc.layout.buffers[slot].step_func != source.pipeline_desc.layout.buffers[slot].step_func)
-            return fail();
+            return fail("other vertex buffers");
     }
     if (pipeline_desc.index_type != source.pipeline_desc.index_type || pipeline_desc.primitive_type != source.pipeline_desc.primitive_type)
-        return fail();
+        return fail("another index or primitive type");
     return true;
+}
+
+const char* SokolObject::getBatchLinkFailure() const{
+    return batchLinkFailure;
 }
 
 bool SokolObject::isBatchVariant() const{

@@ -93,6 +93,13 @@ namespace jasperengine{
             uint64_t uniformBytesKept = 0;  // uniform bytes not applied again (already in their slot)
             uint32_t pipelinesKept = 0;     // pipelines not applied again
             uint64_t instanceBytes = 0;     // instance data appended
+            // why held draws that could batch did not join the open batch (diagnostics: a scene
+            // whose copies stay single shows which state differs between them)
+            uint32_t offeredDraws = 0;      // held with a linked variant
+            uint32_t splitPipeline = 0;     // another pipeline, variant or object block slot
+            uint32_t splitElements = 0;     // other elements (a LOD level, another submesh range)
+            uint32_t splitBindings = 0;     // other buffers, textures or samplers
+            uint32_t splitUniforms = 0;     // another uniform block or its bytes
         };
 
         static void setEnabled(bool enabled);
@@ -217,6 +224,7 @@ namespace jasperengine{
         int8_t batchUniformSlots[SG_MAX_UNIFORMBLOCK_BINDSLOTS];
         int batchInstanceBindSlot = -1;
         BatchLayout batchLayout = BatchLayout::NONE;
+        const char* batchLinkFailure = nullptr;
         // the next draw's batch (setNextDrawBatch), taken by that draw
         SokolObject* nextBatchVariant = nullptr;
         int nextBatchObjectSlot = -1;
@@ -310,6 +318,8 @@ namespace jasperengine{
         bool linkBatchVariant(const SokolObject& source, const ShaderData& sourceShader, const ShaderData& variantShader,
                               const std::string& objectBlock);
         bool isBatchVariant() const;
+        // what the last linkBatchVariant refused (null: linked, or never tried)
+        const char* getBatchLinkFailure() const;
         // the next draw of this object may join a batch drawn by variant (linked to it), its object
         // block in uniform slot objectSlot, with this LOD fade (spec S54: 0 none)
         void setNextDrawBatch(SokolObject* variant, int objectSlot, float lodFade);
