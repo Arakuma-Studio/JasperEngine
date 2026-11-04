@@ -91,6 +91,9 @@ jasperengine_skip_unity_build(
         ${CMAKE_CURRENT_SOURCE_DIR}/support/AllocationCounter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/FunctionSubscribeReentrancyTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/util/PostColorLutTest.cpp)
+jasperengine_skip_unity_build(
+    REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
+    SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/platform/X11VisibilityTest.cpp)
 
 jasperengine_add_test_target(jasperengine-core-tests
     SOURCES ${CORE_TEST_SOURCES} ${CORE_TEST_ALLOCATION_COUNTER}

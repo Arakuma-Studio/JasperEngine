@@ -649,6 +649,7 @@ std::string editor::Generator::getPlatformCMakeConfig(bool vsyncEnabled, const W
     content += "        list(APPEND PLATFORM_SOURCE\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/JasperEngineLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/WindowLinux.cpp\n";
+    content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/X11Visibility.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/SystemLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/HostServicesLinux.cpp\n";
     content += "            ${JASPERENGINE_PLATFORM_DIR}/linux/LinuxInputRouter.cpp\n";

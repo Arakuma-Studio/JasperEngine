@@ -7,6 +7,7 @@
 #include "LinuxInputRouter.h"
 #include "SystemLinux.h"
 #include "WindowLinux.h"
+#include "X11Visibility.h"
 #if !defined(SOKOL_VULKAN)
 #include "GlxWorkerContext.h"
 #endif
@@ -24,8 +25,10 @@
 #endif
 #include <X11/Xutil.h>
 
+#include <poll.h>
 #include <time.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -47,6 +50,10 @@ GamepadLinux gamepads;
 LinuxInputRouter inputRouter;
 // Engine.targetFrameRate without vsync (Engine::getFramePacing().limiterFps)
 FrameLimiter frameLimiter;
+// a hidden window's update-only frames (Engine::getHiddenUpdateFps)
+FrameLimiter hiddenClock;
+// mapped and not _NET_WM_STATE_HIDDEN; a headless run is never shown and never hides
+X11Visibility visibility;
 
 bool shouldClose = false;
 bool contextReady = false;
@@ -55,6 +62,15 @@ double monotonicSeconds() {
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
     return double(now.tv_sec) + double(now.tv_nsec) / 1.0e9;
+}
+
+// A hidden window has no present to pace the loop: it sleeps until an X event or the next update
+void waitForEvents(double timeout) {
+    Display* display = WindowLinux::display();
+    if (timeout <= 0.0 || XPending(display)) return;
+
+    pollfd connection{ConnectionNumber(display), POLLIN, 0};
+    poll(&connection, 1, static_cast<int>(std::ceil(timeout * 1000.0)));
 }
 
 #if !defined(SOKOL_VULKAN)
@@ -278,6 +294,8 @@ void processEvents() {
             continue;
         }
 
+        visibility.handleEvent(event);
+
         switch (event.type) {
             case ConfigureNotify:
                 WindowLinux::updateSize(event.xconfigure.width,
@@ -360,6 +378,8 @@ int JasperEngineLinux::init(int argc, char **argv) {
     // --headless: never mapped; frames render offscreen all the same
     if (!platform.headless) {
         WindowLinux::show();
+        // the window asked to be shown counts as shown until the server says otherwise
+        visibility.attach(WindowLinux::display(), WindowLinux::handle(), true);
         inputRouter.openInputMethod(WindowLinux::display(), WindowLinux::handle());
     }
 
@@ -387,10 +407,33 @@ int JasperEngineLinux::init(int argc, char **argv) {
     else if (platform.windowMode == 2)
         WindowLinux::requestFullscreen();
 
+    bool hidden = false;
     while (!shouldClose) {
+        // a present to a hidden window may block (or draw unseen): the game updates without
+        // drawing, at a steady rate between X events
+        if (hidden)
+            waitForEvents(hiddenClock.secondsUntilDue());
+
         processEvents();
         if (shouldClose)
             break;
+
+        const bool nowHidden = !platform.headless && visibility.isHidden();
+        if (nowHidden != hidden) {
+            hidden = nowHidden;
+            // what is held comes up before the game hears of it, and the pads are not read
+            if (hidden) {
+                gamepads.release();
+                hiddenClock.reset();
+            }
+            Engine::systemVisibilityChanged(!hidden);
+        }
+
+        if (hidden) {
+            if (hiddenClock.isDue(Engine::getHiddenUpdateFps(), 0.0))
+                Engine::systemUpdate();
+            continue;
+        }
 
         // a headless run takes no input
         if (!platform.headless)

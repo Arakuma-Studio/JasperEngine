@@ -179,7 +179,8 @@ bool WindowLinux::create(const WindowLinuxConfig& config) {
     // border_pixel is required whenever the visual differs from the root's
     attributes.border_pixel = 0;
     attributes.event_mask =
-        StructureNotifyMask | ExposureMask | FocusChangeMask |
+        // PropertyChangeMask: _NET_WM_STATE_HIDDEN (X11Visibility)
+        StructureNotifyMask | PropertyChangeMask | ExposureMask | FocusChangeMask |
         KeyPressMask | KeyReleaseMask |
         ButtonPressMask | ButtonReleaseMask |
         PointerMotionMask | EnterWindowMask | LeaveWindowMask;

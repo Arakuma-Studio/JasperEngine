@@ -24,6 +24,11 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_SHARED)
         HeadlessContext.cpp
         Readback.cpp
         ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+        # the hidden-window state and the pads of exported games (core-tests X11Visibility.*,
+        # GamepadLinux.*)
+        ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/GamepadLinux.cpp
+        ${JASPERENGINE_ROOT}/platform/linux/GamepadDB.cpp
     )
     if(GRAPHIC_BACKEND STREQUAL "vulkan")
         list(APPEND JASPER_TEST_SUPPORT_SOURCES ${JASPERENGINE_ROOT}/platform/common/VulkanContext.cpp)
@@ -47,7 +52,8 @@ if(JASPER_TEST_SUPPORT_GPU AND APPLE)
     target_link_libraries(jasperengine-test-support PUBLIC "-framework Metal" "-framework Foundation")
 elseif(JASPER_TEST_SUPPORT_GPU)
     find_package(X11 REQUIRED)
-    target_include_directories(jasperengine-test-support PRIVATE
+    # public: the core tests include X11Visibility.h and GamepadLinux.h
+    target_include_directories(jasperengine-test-support PUBLIC
         ${JASPERENGINE_ROOT}/platform/linux
         ${JASPERENGINE_ROOT}/platform/common
     )
@@ -68,6 +74,6 @@ target_compile_options(jasperengine-test-support PRIVATE $<$<CXX_COMPILER_ID:MSV
 jasperengine_target_warnings(jasperengine-test-support)
 jasperengine_skip_unity_build(
     REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
-    SOURCES ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp)
+    SOURCES ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/X11Visibility.cpp)
 jasperengine_target_unity_build(jasperengine-test-support)
 jasperengine_target_pch(jasperengine-test-support)
