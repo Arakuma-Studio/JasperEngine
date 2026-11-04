@@ -50,7 +50,10 @@ bool ShortcutDispatcher::mayFire(const CommandDef& def, Chord chord, const Short
     if (!active) return false;
     if (chord.isTypingChord() && (state.wantTextInput || state.codeEditorFocused || state.gameHasKeyboard)) return false;
     if (def.context == ShortcutContext::Editor && state.wantTextInput) return false;
-    if (state.nativeMenuOwnsKeys && catalog.menuChord(def.id) == chord) return false;
+    if (state.nativeMenuOwnsKeys && (catalog.menuChord(def.id) == chord ||
+        std::find(state.nativeMenuChords.begin(), state.nativeMenuChords.end(), chord) != state.nativeMenuChords.end())) {
+        return false;
+    }
     if (def.keyGate && !def.keyGate()) return false;
     if (def.enabled && !def.enabled()) return false;
     return true;

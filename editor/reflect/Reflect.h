@@ -252,6 +252,8 @@ namespace jasperengine::editor::reflect {
         uint64_t enumMask = 0;            // the enum values offered (bit per value; 0: every item)
         // the elements in use of a fixed array whose owner counts them (numFramesRect); null: all
         size_t (*count)(const void* owner) = nullptr;
+        // the value read without making it, for a field whose ref makes it (an out-of-line value)
+        const void* (*peek)(const void* owner) = nullptr;
     };
 
     struct StructDesc {
@@ -321,6 +323,8 @@ namespace jasperengine::editor::reflect {
         // the one a path names (no ref: none), and every one of a component (null: none listed)
         PropertyData (*extraProperty)(void* comp, const std::string& path) = nullptr;
         void (*extraProperties)(void* comp, std::map<std::string, PropertyData>& out) = nullptr;
+        // the update flags its extra properties can have: none, and changedUpdateFlags does not list them
+        uint64_t extraUpdateFlags = ~uint64_t(0);
     };
 
     // ---- registry -----------------------------------------------------------------------
@@ -433,6 +437,9 @@ namespace jasperengine::editor::reflect {
     // Every Catalog property of a component (null: of the type, arrays as one template element
     // with no index where the table says so), and its extra properties
     void listProperties(const ComponentDesc& desc, void* comp, std::map<std::string, PropertyData>& out);
+    // The update flags of every property listProperties lists in both components and whose value
+    // differs (a Custom one always does), read from the components without listing them. Makes nothing in them
+    uint64_t changedUpdateFlags(const ComponentDesc& desc, void* oldComp, void* newComp);
 
     // A component value's YAML by its table (or codec), outside any entity, and a value decoded
     // over `old` (null: a default one) as the scene codec decodes it

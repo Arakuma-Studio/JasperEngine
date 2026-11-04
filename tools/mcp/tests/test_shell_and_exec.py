@@ -13,6 +13,7 @@ from pathlib import Path
 from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "Shell And Exec"}
+CI = True
 TIMEOUT = 1200
 
 

@@ -61,6 +61,9 @@ then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screen
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
+its staging folder while that file exists, after creating `<path>.held`: the tests kill the editor
+there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/test_crash_leftovers.py`).
 
 ### HTML UI, MCP, smoke, web
 
@@ -78,7 +81,8 @@ loaded a model in the background while that file exists, so what else loads the 
   of a Chromium reference (`golden/browser/**`).
 - `tools/build.sh mcp-tests` runs `tools/mcp/run-tests.sh` in the Linux image against
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
-  `CI = True`; `MCP_SUITE=all` runs every file and needs the default fixture project, which is
+  `CI = True` (`tools/ci/check-mcp-ci-suite.py`, run by check-changed: every file is classified,
+  docs/mcp/README.md); `MCP_SUITE=all` runs every file and needs the default fixture project, which is
   not in git: `JASPER_FIXTURE`, else `build/fixture-unity` of the checkout or the main checkout,
   else `~/je/fixture-unity` (the build servers' copy), mounted at `/fixture`. The harness looks in
   the same places (`harness.default_fixture()`); without a fixture, the tests that need it skip
@@ -87,6 +91,9 @@ loaded a model in the background while that file exists, so what else loads the 
   `test_mesh_raycast.py`'s web latency gate. The Linux image carries the suite's test tools
   (lua-language-server, clangd, FFmpeg with AV1, chrome-headless-shell), so none of their tests
   skips there. See `docs/mcp/README.md` for writing MCP tests.
+- `test_audio_meter.py` takes no editor: it compiles `engine/tests/core/audio/AudioMeterProbe.cpp` with
+  `AudioMeter.cpp` and `TruePeak.cpp` alone (so it needs a C++ compiler; FFmpeg decodes the fixtures)
+  and compares the meter with pyloudnorm (`uv run --with`, pinned in the test).
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
@@ -523,7 +530,8 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
   `AutosaveEncodeBench` (S03), `VcsBench` (S29: status poll, snapshot swap, scene diff; the
-  main-thread encode is reported) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
+  main-thread encode is reported), `ChangedUpdateFlagsBench` (S71: 50 us a call per component) and
+  `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
   cost, `test_reflection.py::test_inspector_frame_cost`, reads the same variable) (ratios such as a report's overhead stay checked everywhere). The MCP
   texture storm's frame budget (`test_jobs_memory_ui.py`, S06 AC23) reads the same variable; it assumes
   a machine whose decode workers and software renderer do not share cores (8+ hardware threads):

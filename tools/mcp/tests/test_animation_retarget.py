@@ -26,6 +26,7 @@ import harness
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation"}
+CI = True
 TIMEOUT = 900
 
 WALK = "assets/models/hero_animated.gltf#Walk"
