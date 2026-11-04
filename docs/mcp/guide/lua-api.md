@@ -1811,13 +1811,13 @@ Color/texture via Mesh: `Primitive(self.scene, self.entity):setColor(1, 0, 0, 1)
 
 ```lua
 local hero = Sprite(self.scene, self.entity)
-hero.sheet = "sprites/hero.aseprite"
+hero.sheet = "assets/sprites/hero.aseprite"
 hero:playTag("walk")
 local hurt = hero:getSlice("hurt")
 if hurt and hurt.visible then
     print(hero.tag, hero.frame, hurt.rect.width)
 end
-local sheet = SpriteSheet.load("sprites/hero.aseprite")
+local sheet = SpriteSheet.load("assets/sprites/hero.aseprite")
 if sheet then
     print(sheet.frameCount, sheet:findFrame("hero 3"), sheet:getTag("walk").durationMs)
 end

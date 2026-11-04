@@ -450,12 +450,13 @@ namespace {
         bool shader = false;
     };
 
-    MaterialChange visitMaterial(RefVisit& visit, Material& material, const std::string& prefix) {
+    // skipBaseColor: a sheet sprite's page (S44), the sheet's output, not a reference of the scene
+    MaterialChange visitMaterial(RefVisit& visit, Material& material, const std::string& prefix, bool skipBaseColor = false) {
         MaterialChange change;
         static const char* textureFields[] = {"baseColorTexture", "emissiveTexture", "metallicRoughnessTexture", "occlusionTexture", "normalTexture"};
         Texture* textures[] = {&material.baseColorTexture, &material.emissiveTexture, &material.metallicRoughnessTexture,
                                &material.occlusionTexture, &material.normalTexture};
-        for (size_t i = 0; i < 5; i++) {
+        for (size_t i = skipBaseColor ? 1 : 0; i < 5; i++) {
             change.texture |= visit.texture(*textures[i], materialRow(textureFields[i]), prefix + textureFields[i]);
         }
         change.texture |= visit.textureMap(material.shaderTextures, materialRow("shaderTextures{}"), prefix + "shaderTextures.");
@@ -522,8 +523,11 @@ namespace {
         using C = ComponentType;
 
         eachComponent<MeshComponent>(registry, only, visit, C::MeshComponent, [&](MeshComponent& mesh) {
+            const SpriteComponent* sheetSprite = registry.findComponent<SpriteComponent>(visit.entity);
+            const bool sheetPage = sheetSprite && !sheetSprite->sheet.empty();
             for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
-                const MaterialChange change = visitMaterial(visit, mesh.submeshes[s].material, "submeshes[" + std::to_string(s) + "].material.");
+                const MaterialChange change = visitMaterial(visit, mesh.submeshes[s].material, "submeshes[" + std::to_string(s) + "].material.",
+                                                            sheetPage && s == 0);
                 if (change.texture) mesh.submeshes[s].needUpdateTexture = true;
                 if (change.shader) mesh.needReload = true;
             }

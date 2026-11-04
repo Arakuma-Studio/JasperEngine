@@ -2847,7 +2847,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             if (!data) return std::nullopt;
             return LuaSpriteSheet{self->getSheet(), data};
         })
-        .addFunction("playTag", [](Sprite* self, const std::string& name, std::optional<float> speed) { self->playTag(name, speed.value_or(1.0f)); })
+        .addFunction("playTag", [](Sprite* self, const std::string& name, std::optional<float> speed) -> void { self->playTag(name, speed.value_or(1.0f)); })
         .addFunction("stopTag", &Sprite::stopTag)
         .addProperty("tag", [](const Sprite* self) -> std::optional<std::string> {
             const std::string tag = self->getTag();
@@ -2897,15 +2897,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
             }
             return LuaSpriteSheet{path, data};
         })
-        .addProperty("path", [](const LuaSpriteSheet* self) { return self->path; })
-        .addProperty("frameCount", [](const LuaSpriteSheet* self) { return self->data->frameCount(); })
-        .addProperty("pageCount", [](const LuaSpriteSheet* self) { return (int)self->data->pages.size(); })
+        .addProperty("path", [](const LuaSpriteSheet* self) -> std::string { return self->path; })
+        .addProperty("frameCount", [](const LuaSpriteSheet* self) -> int { return self->data->frameCount(); })
+        .addProperty("pageCount", [](const LuaSpriteSheet* self) -> int { return (int)self->data->pages.size(); })
         .addProperty("frameNames", [](const LuaSpriteSheet* self, lua_State* L) -> luabridge::LuaRef {
             std::vector<std::string> names;
             for (const SpriteFrame& f : self->data->frames) names.push_back(f.name);
             return luaSpriteSheetList(L, names);
         })
-        .addFunction("findFrame", [](const LuaSpriteSheet* self, const std::string& name) { return self->data->findFrame(name); })
+        .addFunction("findFrame", [](const LuaSpriteSheet* self, const std::string& name) -> int { return self->data->findFrame(name); })
         .addFunction("getFrame", [](const LuaSpriteSheet* self, luabridge::LuaRef which, lua_State* L) -> luabridge::LuaRef {
             const int index = which.isNumber() ? which.unsafe_cast<int>() : which.isString() ? self->data->findFrame(which.unsafe_cast<std::string>()) : -1;
             return luaSpriteSheetFrame(L, *self->data, index);

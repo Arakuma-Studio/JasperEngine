@@ -109,8 +109,12 @@ async def test_info_json_is_the_description():
     cels = json.loads(exits(run("info", str(LAYERS_AND_TAGS), "--json", "--cels"), 0, "info --json --cels").stdout)
     check(isinstance(cels.get("cels"), list) and len(cels["cels"]) > 0, "--cels lists the cels")
     check(all({"layer", "frame", "type"} <= set(c) for c in cels["cels"]), "every cel has layer, frame and type")
-    for key in ("width", "height", "frame_count", "layers", "tags", "slices"):
+    for key in ("width", "height", "frame_count", "tags", "slices"):
         check(cels[key] == d[key], f"--cels changes {key}")
+    # the full detail adds per-layer fields (flags, uuid) and changes none of the summary's
+    check(len(cels["layers"]) == len(d["layers"]), "--cels keeps the layers")
+    for full, summary in zip(cels["layers"], d["layers"]):
+        check(all(full.get(k) == v for k, v in summary.items()), f"--cels changes layer {summary['path']}")
 
 
 async def test_info_summary():

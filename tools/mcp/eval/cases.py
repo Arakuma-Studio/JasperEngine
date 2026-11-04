@@ -550,14 +550,14 @@ CASES = [
                 "imported: 1 page 128x96, clips assets/sprites/hero.aseprite#idle, #walk.",
                 {"path": "assets/sprites/hero.aseprite", "type": "aseprite_sprite", "frames": 12,
                  "tags": ["idle", "walk"], "outputs": {"clips": [
-                     {"name": "idle", "reference": "sprites/hero.aseprite#idle"},
-                     {"name": "walk", "reference": "sprites/hero.aseprite#walk"}]}})},
+                     {"name": "idle", "reference": "assets/sprites/hero.aseprite#idle"},
+                     {"name": "walk", "reference": "assets/sprites/hero.aseprite#walk"}]}})},
             {"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}, "result": ok(
-                "Sprite \"Hero\" shows frame 0 (\"hero 0\") of sprites/hero.aseprite (12 frames); its Animation Player "
+                "Sprite \"Hero\" shows frame 0 (\"hero 0\") of assets/sprites/hero.aseprite (12 frames); its Animation Player "
                 "lists 2 tag clip(s), Default Clip idle.",
                 {"sprite": {"id": 40, "path": "Hero"}, "created": True, "sheet": "assets/sprites/hero.aseprite",
                  "frame": 0, "frame_name": "hero 0", "frame_count": 12, "added_player": True, "default_clip": "idle",
-                 "clips": ["sprites/hero.aseprite#idle", "sprites/hero.aseprite#walk"]})},
+                 "clips": ["assets/sprites/hero.aseprite#idle", "assets/sprites/hero.aseprite#walk"]})},
             {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
         ],
         "checks": {"calls": [{"tool": "set_sprite_frames", "args": {"sheet": "re:hero\\.aseprite"}}],

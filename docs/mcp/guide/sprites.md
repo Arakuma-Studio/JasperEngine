@@ -20,14 +20,14 @@ and the cache state. Use the reference strings as given:
 
 | Output | Reference | Used by |
 |---|---|---|
-| the sheet | `sprites/hero.aseprite` | a Sprite's `sheet`, `SpriteSheet.load` |
+| the sheet | `assets/sprites/hero.aseprite` | a Sprite's `sheet`, `SpriteSheet.load` |
 | a frame | index `3` or name `hero 3` (`Body/3` in `layers_as_sprites`) | `set_sprite_frames {frame}`, `Sprite.frame`, `Sprite.frameName` |
-| a tag's clip | `sprites/hero.aseprite#walk` | Animation Player entries, `get_animation`, `create {from}` |
-| the clip of a file without tags | `sprites/hero.aseprite#hero` | as above |
+| a tag's clip | `assets/sprites/hero.aseprite#walk` | Animation Player entries, `get_animation`, `create {from}` |
+| the clip of a file without tags | `assets/sprites/hero.aseprite#hero` | as above |
 | a slice | its name (`hurt`) | a 2D collider's `slice`, `Sprite:getSlice` |
 
 Tag clips are read-only: `edit_animation` on one fails with `read_only_clip`. To change one,
-extract it: `edit_animation {clip: "assets/anim/walk.anim", create: {from: "sprites/hero.aseprite#walk"}}`.
+extract it: `edit_animation {clip: "assets/anim/walk.anim", create: {from: "assets/sprites/hero.aseprite#walk"}}`.
 
 ### Settings keys
 
@@ -62,7 +62,7 @@ extract it: `edit_animation {clip: "assets/anim/walk.anim", create: {from: "spri
    what the import warned about.
 
 `view_asset` on the file shows the imported frames as a contact sheet with frame indices and tag
-bands. `get_animation {clip: "sprites/hero.aseprite#walk"}` reads a tag clip's keys.
+bands. `get_animation {clip: "assets/sprites/hero.aseprite#walk"}` reads a tag clip's keys.
 
 ### Errors
 

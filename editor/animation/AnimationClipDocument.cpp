@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipDocument.h"
+#include "sprite/SpriteSheetPool.h"
 #include "AnimatorAssetDocument.h"
 
 #include "animation/AnimatorAssetIO.h"
@@ -126,7 +127,9 @@ namespace {
         if (!isInside(root, out.absolute, &rel)){
             return fail(error, "'" + path + "' is outside the project");
         }
-        if (out.subClip ? !Util::isModelFile(out.absolute.string()) : !Util::isAnimationClipFile(out.absolute.string())){
+        // a sub-clip of a model or of an .aseprite file's tags (S44)
+        const bool container = Util::isModelFile(out.absolute.string()) || SpriteSheetPool::isAsepritePath(out.absolute.string());
+        if (out.subClip ? !container : !Util::isAnimationClipFile(out.absolute.string())){
             return fail(error, "'" + path + "' is not an .anim file or a model sub-clip (\"<model>#<clip>\")");
         }
         out.fileRelative = rel.generic_string();

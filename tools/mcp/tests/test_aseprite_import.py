@@ -31,7 +31,8 @@ TIMEOUT = 900
 
 FIXTURES = REPO / "editor" / "tests" / "fixtures" / "aseprite"
 HERO = "assets/sprites/hero.aseprite"
-HERO_ASSET = "sprites/hero.aseprite"
+# the project's asset paths are project-relative (its assets root is the project folder)
+HERO_ASSET = HERO
 SLICES = "assets/sprites/slices.aseprite"
 S: dict = {}
 
@@ -125,7 +126,7 @@ async def test_settings_output_and_undo(ed: Editor):
 async def test_tag_clips_read_only(ed: Editor):
     clip = await ed.call("get_animation", clip=f"{HERO_ASSET}#T1")
     check(clip.get("read_only") is True, f"a tag clip is read-only: {clip.get('read_only')}")
-    raw = await ed.call_raw("edit_animation", {"clip": f"{HERO_ASSET}#T1", "ops": []})
+    raw = await ed.call_raw("edit_animation", {"clip": f"{HERO_ASSET}#T1", "length": 1.0})
     check(raw.is_error and raw.structured and raw.structured["error"]["kind"] == "read_only_clip", f"edit_animation: {raw.text}")
     check("create" in raw.structured["error"]["fix"], f"the fix extracts: {raw.structured['error']}")
 
@@ -152,7 +153,7 @@ async def test_lua_tags_and_sheet(ed: Editor):
     try:
         values = (await ed.call("eval_lua", code=(
             "local s = object('Hero', 'Sprite') s:playTag('T1') "
-            "local sheet = SpriteSheet.load('sprites/hero.aseprite') "
+            "local sheet = SpriteSheet.load('assets/sprites/hero.aseprite') "
             "return s.tag, s.isTagPlaying, s:getTag('T1').from, s:getTag('T1').to, s.frameCount, "
             "sheet.frameCount, sheet:findFrame('hero 3'), s.frameName")))["values"]
         check(values[0] == "T1" and values[1] is True, f"playTag: {values}")
@@ -171,6 +172,7 @@ async def test_slice_collider(ed: Editor):
     check(sprite["slices"], f"slices-moving has slices: {sprite}")
     name = sprite["slices"][0]["name"]
     await ed.call("set_sprite_frames", create={"name": "Mover"}, sheet=SLICES, clips=False)
+    await ed.call("add_component", entity="Mover", component="rigidbody2d")
     await ed.call("set_properties", entity="Mover", values={"rigidbody2d": {"colliders": [{"slice": name}]}})
     await ed.call("play", action="start", fixed_fps=60, auto_pause=False)
     try:
@@ -189,9 +191,8 @@ async def test_slice_collider(ed: Editor):
 
 async def test_source_export_ships_the_import(ed: Editor):
     ed.require_tools("build_project", "edit_build_scenes")
-    await ed.call("save_scene")
-    scenes = await ed.call("list_scenes")
-    path = scenes["scenes"][0]["path"]
+    saved = await ed.call("save_scene", path="scenes/Main")
+    path = saved["scene"]["path"]
     await ed.call("edit_build_scenes", action="add", scene=path)
     await ed.call("edit_build_scenes", action="set_start", scene=path)
     out = ed.scratch.root / "export-aseprite"

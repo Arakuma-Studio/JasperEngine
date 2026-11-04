@@ -274,21 +274,22 @@ Json asepriteAssetInfo(Project* project, const fs::path& file, std::string& text
     ase::AsepriteImporter& importer = ase::AsepriteImporter::get();
     const std::string assetPath = file.lexically_normal().lexically_relative(project->getAssetsPath().lexically_normal()).generic_string();
     Json data = Json::object();
+    Json warnings = Json::array();
     ase::ReadOptions options;
     options.pixels = false;
     options.provenance = false;
     ase::ReadResult read = ase::readFile(file, options);
-    if (!read.ok()) {
+    if (read.ok()) {
+        data["sprite"] = ase::describe(*read.document, ase::Detail::Summary);
+    } else {
+        // a file being written (or broken): the import of the last version that read stays
         data["read_error"] = problemJson(read.error);
         text += "; it does not read: " + read.error.message;
-        return data;
     }
-    data["sprite"] = ase::describe(*read.document, ase::Detail::Summary);
     std::vector<pixelart::PixelProblem> settingsProblems;
     const ase::AsepriteImportSettings settings = importer.settingsOf(assetPath, &settingsProblems);
     data["import_settings"] = {{"stored", SetAssetMetaCmd::read(file, ase::AsepriteImporter::kSettingsKey) ? "meta" : "defaults"},
                                {"resolved", settings.toJson()}, {"read_only", settings.readOnly()}};
-    Json warnings = Json::array();
     for (const pixelart::PixelProblem& p : settingsProblems) warnings.push_back(problemJson(p));
     std::shared_ptr<const ase::ImportRecord> record = importer.record(assetPath);
     if (record) {
