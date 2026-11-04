@@ -90,7 +90,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - **Everything builds on this host**, at the owner's instruction (this replaces the brief's rule against
   building here; no rented boxes). Docker was installed for this. 8 cores, 15 GB RAM, 32 GB swap, no GPU, no KVM.
 - **Build queue:** `/var/lib/orquester/workspaces/jaspersito/je-remote/rb.sh L ...`, a local stand-in for
-  the brief's `rb.sh`: 2 slots, `JOBS=4` each, shared ccache from the main checkout.
+  the brief's `rb.sh`: 3 slots of 3 jobs, first come first served, shared ccache from the main checkout. `rb.sh Q ...` is a
+  fast lane of 2 single-job slots for work under a few minutes.
 - **Branches:** `terrain/integration` collects finished work and merges to `main` at the end. Each spec has
   its own worktree under `.worktrees/` and branch `terrain/sNN-*`.
 - **Evidence** stays outside the repository in `/var/lib/orquester/workspaces/jaspersito/terrain-evidence/`.
@@ -140,4 +141,5 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - The foundation took about 10 hours. Main cause: the coordinator made every stream wait on it, leaving half the host idle
   from 08:03. Stopped waiting: T2, T3, T5 and T6 start now on the foundation's committed work; queue changed to 3 slots of 3 jobs.
 - `origin/main` moved 95 more commits and took S53-S73, so the specs moved to their own T1-T6 series. Merged.
+- Queue starved a one-file syntax check for over an hour; made the queue first come first served and added a fast lane.
 - Specs revised for no CI, the lean MCP rules and the Doriax overlap. Six near-duplicate tools merged away.
