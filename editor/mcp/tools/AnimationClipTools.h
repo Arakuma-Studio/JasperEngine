@@ -45,9 +45,13 @@ namespace jasperengine::editor::mcp::clip_tools {
     bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity);
 
     // get_asset_info of an .anim: {version, guid, length, wrap, frame_rate, tracks, events,
-    // warnings, users}; `text` gets the summary appended. False (with data.error) when it is not
-    // a readable clip.
+    // warnings, users, stats}; `text` gets the summary appended. False (with data.error) when it
+    // is not a readable clip.
     bool clipAssetInfo(Project* project, const std::filesystem::path& file, Json& data, std::string& text);
+
+    // get_asset_info of a model: each item of `animations` (by its "name") gains keys and
+    // runtime_bytes, of what a player of that clip loads; both null when the clip cannot be built
+    void addModelClipStats(const std::filesystem::path& model, Json& animations);
 
     // get_asset_info's `avatar` of a model (anim-retarget 10): {animation_type, humanoid, mapped,
     // missing, extra_mapped, twist, human_scale, notes}; null for a model without bones

@@ -25,6 +25,7 @@
 #include "animation/ClipBinding.h"
 #include "animation/ClipConverters.h"
 #include "animation/ClipPropertyNames.h"
+#include "animation/ClipReport.h"
 #include "animation/ClipEditorUtil.h"
 #include "animation/AvatarMaskWeights.h"
 #include "animation/HumanoidClip.h"
@@ -2127,6 +2128,27 @@ void listProperties(const CallPtr& call) {
     call->ok(text, out);
 }
 
+namespace {
+
+std::string subClipReferenceOf(const fs::path& model, const std::string& clip) {
+    return anim::formatSubClipReference(FileUtils::pathToGenericUtf8(model), clip);
+}
+
+anim::ClipReport clipStats(const std::string& reference) {
+    anim::ClipReportRequest request;
+    request.reference = reference;
+    return anim::analyzeClip(request);
+}
+
+// ", Memory 31 KB, 2,340 keys" of a tool's summary
+std::string statsText(const anim::ClipReport& report) {
+    if (!report.ok) return std::string();
+    return ", Memory " + anim::formatClipField(*anim::findClipReportField("runtime_bytes"), (double)report.runtimeBytes) + ", " +
+           anim::formatClipField(*anim::findClipReportField("keys"), (double)report.keys) + " keys";
+}
+
+} // namespace
+
 void getClip(const CallPtr& call) {
     const Json& args = call->args();
     Project* project = call->ctx().project();
@@ -2153,6 +2175,10 @@ void getClip(const CallPtr& call) {
     const ClipData& data = document->data();
     Json out = clipJson(project, document->path(), data, document->isReadOnly(), maxKeys);
     out["warnings"] = warningsJson(document->loadWarnings());
+    anim::SubClipReference subClipParts;
+    const bool namesSubClip = subClip && anim::parseSubClipReference(relative, subClipParts);
+    const anim::ClipReport report = clipStats(namesSubClip ? subClipReferenceOf(absolute, subClipParts.clip) : FileUtils::pathToGenericUtf8(absolute));
+    if (report.ok) out["stats"] = anim::clipReportJson(report);
     const std::vector<ClipUser> users = findClipUsers(project, relative);
     out["users"] = usersJson(project, users);
     if (users.size() > 50) out["users_total"] = users.size();
@@ -2414,7 +2440,7 @@ void getClip(const CallPtr& call) {
 
     std::string text = document->path() + (document->isReadOnly() ? " (read-only model clip)" : "") + ": " + plural(data.tracks.size(), "track") +
                        ", " + plural(data.events.size(), "event") + ", " + fmt(data.effectiveLength()) + " s, " + anim::wrapName(data.wrap) + ", " +
-                       fmt(data.frameRate) + " fps; " + plural(users.size(), "user") + sampled;
+                       fmt(data.frameRate) + " fps; " + plural(users.size(), "user") + statsText(report) + sampled;
     for (const ClipTrackData& track : data.tracks) {
         text += "\n" + ClipValidation::trackLabel(track) + " (" + plural(track.keys.size(), "key") + (track.loop ? ", loop" : "") +
                 (track.relative ? ", relative" : "") + ")";
@@ -2684,11 +2710,21 @@ bool clipAssetInfo(Project* project, const fs::path& file, Json& data, std::stri
                     {"users", usersJson(project, users)}};
     if (users.size() > 50) data["clip"]["users_total"] = users.size();
     if (!clip.previewModel.empty()) data["clip"]["preview_model"] = projectPathOf(project, clip.previewModel);
+    const anim::ClipReport report = clipStats(FileUtils::pathToGenericUtf8(file.lexically_normal()));
+    if (report.ok) data["clip"]["stats"] = anim::clipReportJson(report);
     text += ", " + plural(clip.tracks.size(), "track") + ", " + plural(clip.events.size(), "event") + ", " + fmt(clip.effectiveLength()) + " s, " +
-            anim::wrapName(clip.wrap) + ", " + plural(users.size(), "user") +
+            anim::wrapName(clip.wrap) + ", " + plural(users.size(), "user") + statsText(report) +
             (document->loadWarnings().empty() ? std::string() : ", " + plural(document->loadWarnings().size(), "warning")) +
             " (read it with get_animation {clip})";
     return true;
+}
+
+void addModelClipStats(const fs::path& model, Json& animations) {
+    for (Json& animation : animations) {
+        const anim::ClipReport report = clipStats(subClipReferenceOf(model.lexically_normal(), animation["name"].get<std::string>()));
+        animation["keys"] = report.ok ? Json(report.keys) : Json(nullptr);
+        animation["runtime_bytes"] = report.ok ? Json(report.runtimeBytes) : Json(nullptr);
+    }
 }
 
 bool checkClipText(const std::string& text, std::vector<std::string>& warnings, std::string& error) {

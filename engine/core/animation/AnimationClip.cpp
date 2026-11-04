@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
+#include <variant>
 
 using namespace jasperengine;
 
@@ -287,7 +289,50 @@ std::shared_ptr<const AnimationClip> AnimationClip::buildNormalized(const ClipDa
             whole.overridden |= (uint8_t)(1u << part.swizzle);
         }
     }
+    clip->heapBytes = clip->measureHeap();
     return shared;
+}
+
+namespace{
+
+    // a small string keeps its characters inside the object: no heap
+    size_t stringHeap(const std::string& text){
+        const char* object = reinterpret_cast<const char*>(&text);
+        const std::less<const char*> before;
+        const bool inside = !before(text.data(), object) && before(text.data(), object + sizeof(std::string));
+        return inside ? 0 : text.capacity() + 1;
+    }
+
+    template<class T>
+    size_t arrayHeap(const std::vector<T>& values){
+        return values.capacity() * sizeof(T);
+    }
+
+}
+
+size_t AnimationClip::measureHeap() const{
+    size_t bytes = sizeof(AnimationClip);
+    bytes += stringHeap(guid) + stringHeap(previewModel);
+    bytes += stringHeap(source.kind) + stringHeap(source.path) + stringHeap(source.name);
+    bytes += stringHeap(humanoid.sourceModel);
+    bytes += arrayHeap(unknownKeys);
+    for (const auto& unknown : unknownKeys) bytes += stringHeap(unknown.first) + stringHeap(unknown.second);
+    bytes += arrayHeap(warnings);
+    for (const ClipWarning& warning : warnings) bytes += stringHeap(warning.path) + stringHeap(warning.message);
+    bytes += arrayHeap(events);
+    for (const ClipEventData& event : events){
+        bytes += stringHeap(event.function) + arrayHeap(event.args);
+        for (const AnimationEventArg& arg : event.args){
+            if (const std::string* text = std::get_if<std::string>(&arg)) bytes += stringHeap(*text);
+        }
+    }
+    bytes += arrayHeap(tracks);
+    for (const Track& track : tracks){
+        bytes += stringHeap(track.path) + stringHeap(track.component) + stringHeap(track.property) + stringHeap(track.preserved);
+    }
+    bytes += arrayHeap(timeStorage) + arrayHeap(easingStorage) + arrayHeap(vectorStorage) + arrayHeap(rotationStorage) +
+             arrayHeap(weightStorage) + arrayHeap(pointStorage);
+    return bytes;
 }
 
 ClipData AnimationClip::toData() const{

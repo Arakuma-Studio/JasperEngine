@@ -711,6 +711,23 @@ void AnimatorSystem::run(double dt, bool fixedPhase){
     stats.prepareMs = prepared - start;
     stats.waveMs = waved - prepared;
     stats.finalizeMs = finished - waved;
+
+    // a frame may take several fixed steps: their time adds up, their counts do not
+    Stats& phase = fixedPhase ? fixedStats : updateStats;
+    phase.prepareMs += stats.prepareMs;
+    phase.waveMs += stats.waveMs;
+    phase.finalizeMs += stats.finalizeMs;
+    phase.animators = std::max(phase.animators, stats.animators);
+    phase.sampled = std::max(phase.sampled, stats.sampled);
+    phase.culled = std::max(phase.culled, stats.culled);
+}
+
+AnimatorSystem::Stats AnimatorSystem::takeFrameStats(){
+    Stats frame = updateStats;
+    frame += fixedStats;
+    updateStats = Stats();
+    fixedStats = Stats();
+    return frame;
 }
 
 void AnimatorSystem::update(double dt){
