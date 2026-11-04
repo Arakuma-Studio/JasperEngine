@@ -41,3 +41,7 @@ pressing Build for those targets must get a working app. Everything in the path 
   engine's CMake set no sokol backend for it, and `-PjasperBackend=vulkan` never compiled, which also failed `tools/build.sh
   players` for Android. Build Settings, `get_build_info` and `--backend` offer gles3 only, and CMake
   says why. A real Android Vulkan backend is a feature of its own.
+- Open, not fixed here: a source export's debug APK fails `android-emulator-test.sh`'s GLES check on the emulator, with
+  `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` from sokol's debug-only check, right after the emulator's own
+  `eglCodecCommon: depth attachment not complete`. Its screen still matches the golden, and the prebuilt builds compile that check
+  out. Whether a device reports it too is not known.

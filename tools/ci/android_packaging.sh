@@ -184,10 +184,13 @@ if [[ "${ANDROID_PACKAGING_SOURCE:-0}" == 1 ]]; then
     "
     echo "ok: the source export builds with Gradle: a signed APK and bundle"
     SOURCE="$OUT/source/workspaces/androidstudio/app/build/outputs"
-    tools/android-emulator-test.sh "$SOURCE/apk/debug/app-debug.apk" --out "$OUT/emulator-source-apk" --timeout 600 --golden "$GOLDEN" "${FORBID[@]}"
-    tools/android-emulator-test.sh "$SOURCE/bundle/debug/app-debug.aab" --bundletool "$OUT/bundletool.jar" --out "$OUT/emulator-source-aab" --timeout 600 --golden "$GOLDEN" "${FORBID[@]}"
+    # (both, whatever the first says: each is its own evidence)
+    source_status=0
+    tools/android-emulator-test.sh "$SOURCE/apk/debug/app-debug.apk" --out "$OUT/emulator-source-apk" --timeout 600 --golden "$GOLDEN" "${FORBID[@]}" || source_status=1
+    tools/android-emulator-test.sh "$SOURCE/bundle/debug/app-debug.aab" --bundletool "$OUT/bundletool.jar" --out "$OUT/emulator-source-aab" --timeout 600 --golden "$GOLDEN" "${FORBID[@]}" || source_status=1
     for run in emulator-source-apk emulator-source-aab; do
         grep -q "^found .*Engine presented:" "$OUT/$run/result.txt" || { echo "FAIL: $run never saw 'Engine presented:'" >&2; exit 1; }
     done
+    (( source_status == 0 )) || { echo "FAIL: the source export's runs on the emulator (result.txt in each)" >&2; exit 1; }
 fi
 echo "PASS: Android packaging (APK and bundle: built, signed, installed, run, compared)"
