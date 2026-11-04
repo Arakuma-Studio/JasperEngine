@@ -1914,19 +1914,19 @@ The project's Audio Mixer (.mixer; Unity's AudioMixer). get: groups, effects, ex
 
 Group: `audio` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-You can't hear: measure. Loudness, peaks, bands, onsets, silence, loop seam, pitch, a kind and plain-language notes of sound files or of a Play capture, with a waveform or spectrogram image. A clip with import settings is measured as it plays, the raw file under `source`. Items are numbered as in the image; later items say how they differ from the first. Fix a level, trim or fade with set_audio_import_settings.
+You can't hear: measure. Loudness, peaks, bands, onsets, silence, loop seam, pitch, a kind and plain-language notes of sound files, built-in clips or a Play capture, with an image. A clip with import settings is measured as it plays. Later items say how they differ from the first. Fix a clip with set_audio_import_settings.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `capture` | string |  | Instead of paths: a Play capture, "last", "current", a session id or directory. |
-| `detail` | `"summary"` \| `"full"` |  | full adds every onset and the 100 ms loudness curves. Default: `"summary"`. |
-| `end` | number (0..) |  | Capture range end, s (default: its end). |
-| `group` | string |  | Capture: master, or a mixer group with stems. Default: `"master"`. |
-| `image` | `"none"` \| `"waveform"` \| `"spectrogram"` \| `"both"` \| `"sheet"` |  | Default: both for one item, sheet for several. |
+| `capture` | string |  | Instead of paths: last, current, or a session id or directory. |
+| `detail` | `"summary"` \| `"full"` |  | full adds onsets and loudness curves. Default: `"summary"`. |
+| `end` | number (0..) |  | Capture end, s. |
+| `group` | string |  | Capture: master or a group with stems. Default: `"master"`. |
+| `image` | `"none"` \| `"waveform"` \| `"spectrogram"` \| `"both"` \| `"sheet"` |  | Default: both, sheet for several. |
 | `max_width` | integer (256..2048) |  | Image width, px. Default: `768`. |
-| `offset` | integer (0..) |  | Over 48 items: a page from this item; page.next_offset is the next. |
-| `paths` | array of string |  | Project-relative sound files (a Recorder .audio.wav too), essentials:<id>, essentials:<group>/*, essentials:*, library:<id> or library:<type>/*. |
-| `start` | number (0..) |  | Capture range start, s. |
+| `offset` | integer (0..) |  | Over 48 items: the page from this item. |
+| `paths` | array of string |  | Sound files, essentials:<id>, essentials:<group>/*, essentials:*, library:<id>, library:<type>/*. |
+| `start` | number (0..) |  | Capture start, s. |
 
 
 ### `generate_sound`
