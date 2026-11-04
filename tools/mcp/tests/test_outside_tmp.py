@@ -10,6 +10,7 @@ from harness import Editor
 
 BASE = "/var/tmp" if os.path.isdir("/var/tmp") and os.access("/var/tmp", os.W_OK) else None
 EDITOR = {"create": True, "name": "Outside Tmp", "scratch_prefix": (BASE + "/jasper-mcp-outside-") if BASE else "jasper-mcp-outside-"}
+CI = True
 TIMEOUT = 900
 
 
