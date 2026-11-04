@@ -99,6 +99,10 @@ bool NavMeshAgent::getCurrentOffMeshLink(Vector3& start, Vector3& end, Entity& l
     return system()->getCurrentOffMeshLink(entity, start, end, link);
 }
 
+void NavMeshAgent::setAreaCost(int area, float cost){ system()->setAgentAreaCost(entity, area, cost); }
+float NavMeshAgent::getAreaCost(int area) const{ return system()->getAgentAreaCost(entity, area); }
+void NavMeshAgent::resetAreaCost(int area){ system()->resetAgentAreaCost(entity, area); }
+
 FunctionSubscribe<void(NavMeshAgent)>& NavMeshAgent::getOnDestinationReached(){ return component().onDestinationReached; }
 FunctionSubscribe<void(NavMeshAgent)>& NavMeshAgent::getOnPathFailed(){ return component().onPathFailed; }
 FunctionSubscribe<void(NavMeshAgent)>& NavMeshAgent::getOnOffMeshLinkStart(){ return component().onOffMeshLinkStart; }

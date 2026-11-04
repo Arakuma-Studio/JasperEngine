@@ -2933,6 +2933,29 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
+
+# S43 navigation queries: random points, surface moves, the closest edge within a distance, path
+# options (docs/specs/S43-navigation-gameplay-api.md R1-R5, R42)
+OVERRIDES[('NavigationSystem', 'calculatePath')] = {
+    'doc': ['A path from `from` to `to` (Unity\'s NavMesh.CalculatePath): status, corners, length, cost, cornerAreas,',
+            'cornerFlags, areaLengths and the corridor NavMeshAgent:setPath takes. `options.areaCrossings` adds a',
+            'corner wherever the path changes area.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER), ('options?', 'NavMeshPathOptions')], 'NavMeshPath')]}
+OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
+    'doc': ['The navmesh boundary point closest to `point` (Unity\'s NavMesh.FindClosestEdge): found, then',
+            'the hit (position, normal from the wall towards the point, distance). With maxDistance only walls',
+            'that close count: none gives false with hit.distance = maxDistance.'],
+    'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER), ('maxDistance?', 'number')], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavigationSystem', 'randomPoint')] = {
+    'doc': ['A random navmesh point: anywhere (uniform by area), around `options.center` within `options.radius`',
+            '(reachable from it, not uniform) and/or on the island of `options.sameIslandAs`. Draws come from the',
+            'system\'s stream (randomSeed), or from `options.seed`\'s own. Found, then the hit.'],
+    'overloads': [([('filter?', _NAV_FILTER + '|nil'), ('options?', 'NavRandomPointOptions')], 'boolean, NavMeshHit')]}
+OVERRIDES[('NavigationSystem', 'moveAlongSurface')] = {
+    'doc': ['A controller step along the navmesh from `from` towards `to` (at most 64 polygons): moved, then the',
+            'hit (position on the surface, hit = stopped short of `to` by a wall, distance moved, area). False when',
+            '`from` is off the mesh.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)
