@@ -26,23 +26,23 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::string lowerExtension(const fs::path& path) {
+    std::string scriptFileExtension(const fs::path& path) {
         std::string ext = path.extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         return ext;
     }
 
-    std::string projectRelative(Project* project, const fs::path& absolute) {
+    std::string attachRelative(Project* project, const fs::path& absolute) {
         return ProjectChecks::projectRelative(project->getProjectPath(), absolute);
     }
 
-    std::string luaRootRelative(Project* project) {
-        const std::string rel = projectRelative(project, project->getLuaPath());
+    std::string attachLuaRoot(Project* project) {
+        const std::string rel = attachRelative(project, project->getLuaPath());
         return rel.empty() ? "." : rel;
     }
 
     // the file an entry reads its code from (the Lua file, the C++ source), to tell two entries apart
-    fs::path entryFile(Project* project, const ScriptEntry& entry) {
+    fs::path attachedScriptFile(Project* project, const ScriptEntry& entry) {
         return project->scriptSourceFile(entry);
     }
 
@@ -65,13 +65,13 @@ bool ScriptAttach::isScriptFile(const fs::path& file) {
 
 bool ScriptAttach::makeEntry(Project* project, const fs::path& file, const std::string& classNameArg, ScriptEntry& entry,
                              std::vector<std::string>& warnings, std::string& error) {
-    const std::string ext = lowerExtension(file);
+    const std::string ext = scriptFileExtension(file);
     std::error_code ec;
     entry = ScriptEntry();
     entry.enabled = true;
     if (ext == ".lua") {
         if (!Util::isInsidePath(file, project->getLuaPath())) {
-            error = "Lua scripts must be inside the project's Lua directory \"" + luaRootRelative(project) +
+            error = "Lua scripts must be inside the project's Lua directory \"" + attachLuaRoot(project) +
                     "\" (Project Settings > Directories); move the file there first (move_asset).";
             return false;
         }
@@ -95,7 +95,7 @@ bool ScriptAttach::makeEntry(Project* project, const fs::path& file, const std::
             }
         }
         if (source.empty()) {
-            error = "No source file next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".cpp).";
+            error = "No source file next to " + attachRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".cpp).";
             return false;
         }
     } else if (Util::isSourceFile(file.string())) {
@@ -109,7 +109,7 @@ bool ScriptAttach::makeEntry(Project* project, const fs::path& file, const std::
             }
         }
         if (header.empty()) {
-            error = "No header next to " + projectRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".h).";
+            error = "No header next to " + attachRelative(project, file) + " (expected " + FileUtils::pathToUtf8(file.stem()) + ".h).";
             return false;
         }
     } else {
@@ -118,8 +118,8 @@ bool ScriptAttach::makeEntry(Project* project, const fs::path& file, const std::
     }
     entry.type = ScriptType::CPP;
     // Stored as the editor stores them (projectRelative is UTF-8)
-    entry.headerPath = projectRelative(project, header);
-    entry.path = projectRelative(project, source);
+    entry.headerPath = attachRelative(project, header);
+    entry.path = attachRelative(project, source);
     std::string className = classNameArg;
     if (className.empty()) {
         if (auto found = ScriptParser::findScriptClassName(header)) className = *found;
@@ -137,7 +137,7 @@ bool ScriptAttach::makeEntry(Project* project, const fs::path& file, const std::
 
 bool ScriptAttach::attach(Project* project, SceneProject* sceneProject, const std::vector<Entity>& entities, const ScriptEntry& entry,
                           long long index, std::vector<Entity>& skipped, std::string& error, size_t* indexOut) {
-    const fs::path file = entryFile(project, entry);
+    const fs::path file = attachedScriptFile(project, entry);
     auto* multi = new MultiPropertyCmd();
     bool first = true;
     bool any = false;
@@ -146,7 +146,7 @@ bool ScriptAttach::attach(Project* project, SceneProject* sceneProject, const st
         ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
         std::vector<ScriptEntry> scripts = component ? component->scripts : std::vector<ScriptEntry>();
         auto existing = std::find_if(scripts.begin(), scripts.end(), [&](const ScriptEntry& script) {
-            return script.type == entry.type && entryFile(project, script) == file;
+            return script.type == entry.type && attachedScriptFile(project, script) == file;
         });
         if (existing != scripts.end()) {
             if (existingIndex < 0) existingIndex = existing - scripts.begin();

@@ -207,7 +207,7 @@ namespace {
 
     // the editor's material comparison: the shader, its features, its render state and which
     // custom textures it has are baked when the mesh loads; parameters only rewrite the uniform blocks
-    void applyMaterial(Scene* scene, Entity entity, MeshComponent& mesh, unsigned int submesh, const Material& material){
+    void applySubmeshMaterial(Scene* scene, Entity entity, MeshComponent& mesh, unsigned int submesh, const Material& material){
         if (submeshAt(mesh, submesh).material == material)
             return;
         const Material& current = submeshAt(mesh, submesh).material;
@@ -328,7 +328,7 @@ float Mesh::getAlpha() const{
 
 void Mesh::setMaterial(const Material& material){
     for (const MeshTarget& target : getTargetMeshes()){
-        applyMaterial(scene, target.entity, *target.mesh, 0, material);
+        applySubmeshMaterial(scene, target.entity, *target.mesh, 0, material);
     }
 }
 
@@ -340,7 +340,7 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
     MeshTarget target = findSubmesh(submesh, "Cannot set the material");
     if (!target.mesh)
         return;
-    applyMaterial(scene, target.entity, *target.mesh, submesh, material);
+    applySubmeshMaterial(scene, target.entity, *target.mesh, submesh, material);
 }
 
 Material Mesh::getMaterial(unsigned int submesh) const{
