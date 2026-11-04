@@ -47,6 +47,7 @@ each feature.
   registrations is also out of scope; the JSON describes bindings, it does not create them.
 - A graph canvas. S21 builds `editor/widget/GraphCanvas` (S21 D14: no imnodes/imgui-node-editor)
   and graph tools reuse it. Their canvas runs on their retained CSS UI and cannot be ported.
+  (Note, 2026-11-04, BF23 F26: it lives in `editor/window/widget/GraphCanvas`, as S21 D14 says.)
   S21's animator runtime stays typed and does not use the model (S21 D1); the model serves
   dataflow graphs (shader, VFX, dialogue, tooling) and any S21 editor data it chooses to store.
 - Hot reload inside exported games, a Lua debugger/DAP, a runtime Lua sandbox, packages and plugins.
