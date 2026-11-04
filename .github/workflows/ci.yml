@@ -48,7 +48,8 @@ jobs:
   unit:
     name: Unit tests (GCC, warnings as errors)
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # (the navigation-OFF engine is a second engine build)
+    timeout-minutes: 55
     env:
       JASPER_DOCKER_IMAGE: jasperengine/linux-build:ci
     steps:
@@ -117,6 +118,10 @@ jobs:
           set -o pipefail
           JASPER_PICK_SIMD=scalar UNIT_SUITE=core UNIT_TEST_ARGS='--gtest_filter=MeshBvh.*:SceneBvh.*:MeshRaycast.*:PickCache.*' \
             WERROR=1 tools/build.sh unit-tests 2>&1 | tee build/test-results/unit-picking-scalar.log
+
+      # S41 R28: the engine without Recast/Detour links, and NavStubTest (compiled only then) runs
+      - name: Navigation OFF (NavStubTest, NavGridTest)
+        run: tools/build.sh exec linux tools/check-navigation-off.sh
 
       - name: Warnings
         if: always()

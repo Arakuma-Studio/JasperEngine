@@ -144,7 +144,10 @@ takes about a second. So an MCP test compiles only when the compile path is what
   used). The test needs a real game that runs, not the compile:
   `test_build.py::test_development_build_crash_report` (the Development runtime crashes on
   purpose and writes its report), `test_html_ui_export.py::test_desktop_build_runs_the_document`,
-  `test_html_ui_video_export.py::test_desktop_build_plays_the_video` and
+  `test_html_ui_video_export.py::test_desktop_build_plays_the_video`,
+  `test_navigation_export.py::test_desktop_export_ships_navmesh` (a baked `.navmesh` in the
+  build's `content.jpak`, an agent of the headless player reaching its destination from Lua, and
+  the preflight's stale-navmesh warning after static geometry moved; S19 AC27, S41 AC29) and
   `test_call_cli.py::test_wait_job_build` (the CLI's `--wait-job` on a build job). The runtime is
   the one `tools/build.sh players` and CI build, from the same engine sources as the editor under
   test.
@@ -387,6 +390,11 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
   directly, with the same environment (`rb.sh <S> --img 'tools/build.sh ...'`, and so `rb.sh L --img`
   on this host); a target of another image (web, Android) exits 3; check-changed there leaves those
   builds out, says so in its summary and caches no pass.
+- Navigation's runtime and the engine's CMake (`NAVIGATION_OFF_PATHS`: `engine/core/navigation/`,
+  `engine/libs/recastnavigation/`, `NavigationSystem.*`, `engine/core/object/navigation/`,
+  `engine/core/component/Nav*`, `engine/CMakeLists.txt`, the navigation tests and the script) also
+  plan `navigation-off`: `tools/check-navigation-off.sh` in the Linux image (below, "Navigation
+  OFF").
 - Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
   the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
   reader, the cache and its invalidation, the exit codes).
@@ -703,6 +711,24 @@ the option errors.
 `engine/CMakeLists.txt` is also the top-level file of every exported game, so all of these default
 to off there, and the exporter never sets them: a game configures and builds exactly as before.
 
+### Navigation OFF: `tools/check-navigation-off.sh`
+
+A project with Project Settings > Navigation > Include In Builds off exports with
+`JASPERENGINE_NAVIGATION=OFF`: Recast/Detour is not compiled, every navmesh bake, query and agent
+fails and logs once, and Nav Grids keep working. `NavStubTest` checks that, and it is compiled only
+in such a build, which no other suite makes (S41 R28):
+
+```sh
+tools/build.sh exec linux tools/check-navigation-off.sh     # build/navigation-off, build/test-results/navigation-off.xml
+```
+
+It configures the standalone engine (`engine-linux-tests`, `-DJASPERENGINE_NAVIGATION=OFF`, warnings
+not errors), builds `jasperengine-core-tests`, runs `NavStubTest.*:NavGridTest.*` through the
+no-silent-green gate, and fails unless at least two `NavStubTest` tests passed (a tree that still
+compiles navigation in runs none). The first run builds the whole engine (the switch is a public
+define); later runs are incremental. `tools/check-changed` plans it for a navigation or engine CMake
+change, and CI's `unit` job runs it.
+
 ### Sanitizers
 
 ```sh
@@ -806,7 +832,7 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
 
 | Job | What | Budget |
 |---|---|---|
-| `unit` | notices, the CI scripts' tests, the data-safety lints (`tools/check_raw_writes.py`, `tools/check_stream_keys.py`), presets, `WERROR=1 tools/build.sh unit-tests` | 25 min |
+| `unit` | notices, the CI scripts' tests, the data-safety lints (`tools/check_raw_writes.py`, `tools/check_stream_keys.py`), presets, `WERROR=1 tools/build.sh unit-tests`, the engine without navigation (`tools/check-navigation-off.sh`) | 40 min |
 | `sanitizers` | `SANITIZE=address,undefined tools/build.sh unit-tests`, GPU suites included | 35 min |
 | `htmlui` | `tools/build.sh htmlui-tests` (OpenGL) | 45 min |
 | `e2e` | `WERROR=1 tools/build.sh linux`, the install's notices, `htmlui-editor-tests`, `MCP_SUITE=ci tools/build.sh mcp-tests -j 2`, the post-processing smoke test | 60 min |
