@@ -1,0 +1,150 @@
+{
+ "code": [
+  "vec4 $(name_uv)_s1 = $s1($uv);",
+  "vec4 $(name_uv)_s2 = $s2($uv);",
+  "float $(name_uv)_a = $amount*$a($uv);",
+  ""
+ ],
+ "description": "Blends its input, using an optional mask",
+ "format": 1,
+ "functions": [
+  "blend_additive",
+  "blend_addsub",
+  "blend_burn",
+  "blend_darken",
+  "blend_difference",
+  "blend_dissolve",
+  "blend_dodge",
+  "blend_hard_light",
+  "blend_lighten",
+  "blend_multiply",
+  "blend_normal",
+  "blend_overlay",
+  "blend_screen",
+  "blend_soft_light"
+ ],
+ "id": "blend",
+ "inputs": [
+  {
+   "default": "vec4($uv.x, 1.0, 1.0, 1.0)",
+   "description": "The foreground input",
+   "label": "Source1",
+   "name": "s1",
+   "short_description": "Foreground",
+   "type": "rgba"
+  },
+  {
+   "default": "vec4(1.0, $uv.y, 1.0, 1.0)",
+   "description": "The background input",
+   "label": "Source2",
+   "name": "s2",
+   "short_description": "Background",
+   "type": "rgba"
+  },
+  {
+   "default": "1.0",
+   "description": "The optional opacity mask",
+   "label": "Opacity",
+   "name": "a",
+   "short_description": "Mask",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Blend",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the result of the blend operation",
+   "expr": "vec4(blend_$blend_type($uv, $(name_uv)_s1.rgb, $(name_uv)_s2.rgb, $(name_uv)_a*$(name_uv)_s1.a), min(1.0, $(name_uv)_s2.a+$(name_uv)_a*$(name_uv)_s1.a))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 13,
+   "description": "The algorithm used to blend the inputs",
+   "label": "",
+   "name": "blend_type",
+   "short_description": "Blend mode",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Normal",
+     "value": "normal"
+    },
+    {
+     "name": "Dissolve",
+     "value": "dissolve"
+    },
+    {
+     "name": "Multiply",
+     "value": "multiply"
+    },
+    {
+     "name": "Screen",
+     "value": "screen"
+    },
+    {
+     "name": "Overlay",
+     "value": "overlay"
+    },
+    {
+     "name": "Hard Light",
+     "value": "hard_light"
+    },
+    {
+     "name": "Soft Light",
+     "value": "soft_light"
+    },
+    {
+     "name": "Burn",
+     "value": "burn"
+    },
+    {
+     "name": "Dodge",
+     "value": "dodge"
+    },
+    {
+     "name": "Lighten",
+     "value": "lighten"
+    },
+    {
+     "name": "Darken",
+     "value": "darken"
+    },
+    {
+     "name": "Difference",
+     "value": "difference"
+    },
+    {
+     "name": "Additive",
+     "value": "additive"
+    },
+    {
+     "name": "AddSub",
+     "value": "addsub"
+    }
+   ]
+  },
+  {
+   "default": 0.5,
+   "description": "The opacity of the blend operation",
+   "label": "3:",
+   "max": 1,
+   "min": 0,
+   "name": "amount",
+   "short_description": "Opacity",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Blend",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/blend.mmg"
+ },
+ "type_version": 1
+}

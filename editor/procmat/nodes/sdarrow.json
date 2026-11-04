@@ -1,0 +1,115 @@
+{
+ "code": [],
+ "description": "An arrow described as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdArrow"
+ ],
+ "id": "sdarrow",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdArrow",
+ "notices": [
+  {
+   "holder": "Inigo Quilez",
+   "license": "MIT",
+   "node": "sdarrow",
+   "url": "https://www.shadertoy.com/view/slj3Dd",
+   "year": "2021"
+  }
+ ],
+ "outputs": [
+  {
+   "description": "The shape as signed distance function",
+   "expr": "sdArrow($uv-0.5,vec2($ax,$ay),vec2($bx,$by),$wt,$wh,$k/$wh*distance(vec2($ax,$ay),vec2($bx,$by)))",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": -0.3,
+   "description": "The position on the X axis of the first point of the arrow",
+   "label": "A X",
+   "max": 1,
+   "min": 0,
+   "name": "ax",
+   "short_description": "A.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": -0.3,
+   "description": "The position on the Y axis of the first point of the arrow",
+   "label": "A Y",
+   "max": 1,
+   "min": 0,
+   "name": "ay",
+   "short_description": "A.y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.3,
+   "description": "The position on the X axis of the second point of the arrow",
+   "label": "B X",
+   "max": 1,
+   "min": 0,
+   "name": "bx",
+   "short_description": "B.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.3,
+   "description": "The position on the Y axis of the second point of the arrow",
+   "label": "B Y",
+   "max": 1,
+   "min": 0,
+   "name": "by",
+   "short_description": "B.y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.55,
+   "description": "Ratio of the arrow head to tail",
+   "label": "Ratio",
+   "max": 1,
+   "min": 0,
+   "name": "k",
+   "short_description": "Ratio",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.4,
+   "description": "Width of the arrow head",
+   "label": "Head",
+   "max": 1,
+   "min": 0,
+   "name": "wh",
+   "short_description": "Head width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "Width of the arrow tail",
+   "label": "Tail",
+   "max": 1,
+   "min": 0,
+   "name": "wt",
+   "short_description": "Tail width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdArrow",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdarrow.mmg"
+ },
+ "type_version": 1
+}

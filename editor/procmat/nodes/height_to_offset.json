@@ -1,0 +1,69 @@
+{
+ "code": [
+  "vec2 $(name_uv)_xy = $(name)_fct($uv, $target, 0.001, _seed_variation_, _controlled_variation_);",
+  ""
+ ],
+ "description": "Generates an offset map to be used by Advanced Tiler nodes from a heightmap",
+ "format": 1,
+ "functions": [],
+ "id": "height_to_offset",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The input heightmap (it is recommended to use a buffer)",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "f"
+  }
+ ],
+ "instance": [
+  "vec2 $(name)_fct(vec2 uv, float target, float epsilon, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec3 e = vec3(epsilon, -epsilon, 0);",
+  "\tfloat start = $in(uv);",
+  "\tvec2 dh = vec2(1.0, 0.0)*$in(uv+e.xz);",
+  "\tdh += vec2(0.0, 1.0)*$in(uv+e.zx);",
+  "\tdh -= vec2(1.0, 0.0)*$in(uv-e.xz);",
+  "\tdh -= vec2(0.0, 1.0)*$in(uv-e.zx);",
+  "\tdh /= 2.0*epsilon;",
+  "\treturn 16.0*dh/dot(dh,dh)*(target-start);",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "Height to Offset",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated offset map X component. The corresponding Advanced Tiler parameter (Translate X) must be set to 1.",
+   "expr": "$(name_uv)_xy.x",
+   "label": "Offset.x",
+   "type": "f"
+  },
+  {
+   "description": "The generated offset map Y component. The corresponding Advanced Tiler parameter (Translate Y) must be set to 1.",
+   "expr": "$(name_uv)_xy.y",
+   "label": "Offset.y",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "description": "The target value on the heightmap",
+   "label": "Target",
+   "max": 1,
+   "min": 0,
+   "name": "target",
+   "short_description": "Target",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Height to Offset",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/height_to_offset.mmg"
+ },
+ "type_version": 1
+}

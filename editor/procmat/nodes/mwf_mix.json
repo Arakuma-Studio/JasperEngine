@@ -1,0 +1,155 @@
+{
+ "code": [
+  "float $(name_uv)_h = 0.0;",
+  "int $(name_uv)_i = 0;",
+  "#for",
+  "float $(name_uv)_h# = $h#($uv);",
+  "if ($(name_uv)_h# > $(name_uv)_h) {",
+  "\t$(name_uv)_h = $(name_uv)_h#;",
+  "\t$(name_uv)_i = #;",
+  "}",
+  "#end"
+ ],
+ "description": "Combines the outputs of several mapped base materials, keeping the \"highest\" material",
+ "format": 1,
+ "functions": [],
+ "id": "mwf_mix",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "An height map",
+   "group_size": 5,
+   "label": "Height #",
+   "name": "h#",
+   "short_description": "Height#",
+   "type": "f"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "An albedo channel",
+   "function": true,
+   "label": "Albedo #",
+   "name": "c#",
+   "short_description": "Albedo#",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "A combination of ambient occlusion, roughness and metallic channels",
+   "function": true,
+   "label": "ORM #",
+   "name": "orm#",
+   "short_description": "ORM#",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "An emission channel",
+   "function": true,
+   "label": "Emission #",
+   "name": "em#",
+   "short_description": "Emission#",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.5, 0.5, 1.0)",
+   "description": "A normal map",
+   "function": true,
+   "label": "Normal #",
+   "name": "nm#",
+   "short_description": "Normal#",
+   "type": "rgb"
+  }
+ ],
+ "instance": [
+  "vec3 mix_c_$name(vec2 uv, int i, float _seed_variation_, vec4 _controlled_variation_) {",
+  "#for",
+  "\tif (i == #) {",
+  "\t\treturn $c#(uv);",
+  "\t} else",
+  "#end",
+  "\t{",
+  "\t\treturn vec3(0.0);",
+  "\t}",
+  "}",
+  "",
+  "vec3 mix_orm_$name(vec2 uv, int i, float _seed_variation_, vec4 _controlled_variation_) {",
+  "#for",
+  "\tif (i == #) {",
+  "\t\treturn $orm#(uv);",
+  "\t} else",
+  "#end",
+  "\t{",
+  "\t\treturn vec3(0.0);",
+  "\t}",
+  "}",
+  "",
+  "vec3 mix_em_$name(vec2 uv, int i, float _seed_variation_, vec4 _controlled_variation_) {",
+  "#for",
+  "\tif (i == #) {",
+  "\t\treturn $em#(uv);",
+  "\t} else",
+  "#end",
+  "\t{",
+  "\t\treturn vec3(0.0);",
+  "\t}",
+  "}",
+  "",
+  "vec3 mix_nm_$name(vec2 uv, int i, float _seed_variation_, vec4 _controlled_variation_) {",
+  "#for",
+  "\tif (i == #) {",
+  "\t\treturn $nm#(uv);",
+  "\t} else",
+  "#end",
+  "\t{",
+  "\t\treturn vec3(0.5, 0.5, 1.0);",
+  "\t}",
+  "}",
+  "",
+  "",
+  ""
+ ],
+ "kind": "shader",
+ "name": "Mix",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Generates the height of the result",
+   "expr": "$(name_uv)_h",
+   "group_size": 5,
+   "label": "Height",
+   "type": "f"
+  },
+  {
+   "description": "Shows the output albedo channel",
+   "expr": "mix_c_$name($uv, $(name_uv)_i, _seed_variation_, _controlled_variation_)",
+   "label": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "Shows the output ambient occlusion, roughness and metallic channels",
+   "expr": "mix_orm_$name($uv, $(name_uv)_i, _seed_variation_, _controlled_variation_)",
+   "label": "ORM",
+   "type": "rgb"
+  },
+  {
+   "description": "Shows the output emission channel",
+   "expr": "mix_em_$name($uv, $(name_uv)_i, _seed_variation_, _controlled_variation_)",
+   "label": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "Shows the output normal map",
+   "expr": "mix_nm_$name($uv, $(name_uv)_i, _seed_variation_, _controlled_variation_)",
+   "label": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Mix",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/mwf_mix.mmg"
+ },
+ "type_version": 1
+}

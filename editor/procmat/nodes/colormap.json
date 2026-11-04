@@ -1,0 +1,74 @@
+{
+ "code": [],
+ "description": "Colorizes a grayscale image by sampling colors from a row or column in another image",
+ "format": 1,
+ "functions": [],
+ "id": "colormap",
+ "inputs": [
+  {
+   "default": "$uv.x",
+   "description": "The input grayscale image",
+   "label": "",
+   "name": "input",
+   "short_description": "Input",
+   "type": "f"
+  },
+  {
+   "default": "vec4(vec3($uv.x), 1.0)",
+   "description": "The colormap image to use",
+   "label": "",
+   "name": "colormap",
+   "short_description": "Colormap",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Colormap",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The remapped RGBA image",
+   "expr": "$colormap($direction)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "The direction in which to sample the colormap",
+   "label": "",
+   "name": "direction",
+   "short_description": "Direction",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Horizontal",
+     "value": "vec2($input($uv), $offset)"
+    },
+    {
+     "name": "Vertical",
+     "value": "vec2($offset, $input($uv))"
+    }
+   ]
+  },
+  {
+   "default": 0.5,
+   "description": "The position at which to sample the colormap",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "offset",
+   "short_description": "Offset",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Colormap",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/colormap.mmg"
+ },
+ "type_version": 1
+}

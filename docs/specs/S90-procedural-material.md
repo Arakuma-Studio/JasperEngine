@@ -7,9 +7,9 @@
 `editor/window/ProceduralMaterialWindow.*` (new), `editor/mcp/tools/ProceduralMaterialTools.cpp`
 (new), `docs/mcp/guide/procedural-materials.md` (new).
 
-**Basis of this spec.** The current state below comes from reading the code at `b4f7816ea`. Nothing
-was built or run. Effort figures, timings and thresholds are estimates or defaults until M0 measures
-them.
+**Basis of this spec.** The current state below comes from reading the code at `b4f7816ea`. M0 has
+run: the numbers in R6, R12, R23 to R25, AC8 and Deviations are measured where they say so, and
+defaults where they say that. Effort figures are estimates.
 
 ## 1. Goal
 
@@ -127,9 +127,12 @@ Its random functions are float hashes (`fract(cos(mod(dot(x, ...), 3.14)) * 4375
 - **R5. Code generation.** A graph becomes one fragment shader per pass, not per node. A pass is the
   upstream subgraph inlined, cut at a Buffer. Use a C++ expander with stable graph-local names and
   Material Maker's macro semantics, resolving `global` functions by id rather than by exact text.
-- **R6. Automatic caching.** The generator inserts a Buffer when a pass would exceed the 16-texture
-  limit, the shader size limit (M0 sets it), or when one output is sampled repeatedly. Users never
-  need to place Buffers to manage performance.
+- **R6. Automatic caching.** The generator inserts a Buffer when a pass would exceed 16 textures,
+  64 KB of generated GLSL, or 200 vec4s of uniforms, or when one output is sampled repeatedly. Users
+  never need to place Buffers to manage performance. The limits are M0's: a 240-node pass (86 KB,
+  68,000 SPIR-V words) compiled and ran on every path, so size is not a hard wall. 64 KB is where
+  SPIRV-Cross reaches about 150 ms, since it grows faster than the source (22 ms at 36 KB, 358 ms at
+  86 KB). GL 4.1 guarantees only 256 fragment vec4s, and M0 measured 4.7 floats per node.
 - **R7. Live edits.** Float, colour and same-size ramp edits update a uniform block with no rebuild.
   Structural, enum and size edits rebuild after a 0.2 s debounce, and the previous image stays
   visible marked as out of date until the new one is ready.
@@ -160,7 +163,9 @@ Its random functions are float hashes (`fract(cos(mod(dot(x, ...), 3.14)) * 4375
 - **R12. Intermediate precision.** Buffers are RGBA16F on tiers 1 and 2 (renderable on all editor
   backends, `Render.h:387-392`). Tier 3 rounds to half precision when storing a Buffer, so
   differences do not accumulate across passes. Final outputs are RGBA8 through a quantize pass,
-  because read back is RGBA8 only.
+  because read back is RGBA8 only. Every pass ends in `jp_finite`, which writes 0 for NaN using
+  `isnan`, and the quantize pass clamps in the shader. Each tier otherwise gives NaN and infinity its own 8-bit value
+  (M0: 127/255 apart on real nodes).
 - **R13. Same inputs, same output.** On one device and tier, the same graph, seed and size give the
   same bytes. Across tiers, the difference stays within the tolerance in AC8. No claim of byte
   equality across devices is made anywhere, in the UI or in tool output.
@@ -207,16 +212,27 @@ Its random functions are float hashes (`fract(cos(mod(dot(x, ...), 3.14)) * 4375
 - **R22.** A player build's size and frame cost are unchanged. The evaluator and interpreter are
   editor-only targets.
 
-### Performance (defaults; M0 replaces them with measurements)
+### Performance
+
+Measured by M0 on an AMD EPYC Genoa host through `slot` (4 CPUs, shared with other builds), llvmpipe
+with `LP_NUM_THREADS=4`. No GPU was available, so every tier 1 number stays a default.
 
 - **R23.** Slider drag on tier 1: the frame cost stays under 16 ms on the reference GPU, for a
-  30-node graph with 256² previews.
+  30-node graph with 256² previews. **Default, not measured.** For scale, the same pass on llvmpipe
+  draws in 14 ms, and a float edit needs no compile (R7).
 - **R24.** Thumbnails: at most one node re-rendered per frame, one shared quad scene, an LRU of 128²
   framebuffers. No `MaterialRender` per node: the sokol pools are 2048.
-  - Tier 2: thumbnails render for the selected node and the outputs only.
-  - Tier 3: only on selection, as a cancellable job.
-- **R25.** A 1024² bake of a 30-node graph: under 2 s on tier 1, under 60 s on tier 2, under 5 min
-  on tier 3 on 8 cores. Over 1 s is a job with progress and cancel; a cancelled bake writes nothing.
+  - Tier 2: thumbnails render for the selected node and the outputs only. Measured: a first draw of
+    a 128² thumbnail is 35 ms median and 165 ms at p95, mostly llvmpipe's JIT, so one per frame
+    would miss 16 ms and the restriction stands.
+  - Tier 3: only on selection, as a cancellable job. Measured at 128² on 4 cores: 3 ms median,
+    100 ms at p90, 2.1 s worst.
+- **R25.** A 1024² bake of a 30-node graph: under 2 s on tier 1 (**default**), under 5 s on tier 2,
+  under 5 min on tier 3 on 4 cores. Over 1 s is a job with progress and cancel; a cancelled bake
+  writes nothing. Measured for 1024²: tier 2 is 0.19 s for a 30-node pass, JIT included (0.15 s after
+  it), and 0.3 to 0.6 s for the heaviest real graphs (wood, marble, dirt, every output). Tier 3 is
+  30 s for that pass and 37 to 42 s for those graphs. At 2048² the 30-node pass takes 1.4 s on tier 2
+  and 120 s on tier 3. The exception is `japanese_glyphs2`, whose first draw on llvmpipe is 71 to 78 s.
 
 ### Editor UX (human)
 
@@ -347,7 +363,7 @@ extensions +514. Core +0. Guide: at most one line in its "Other areas" index, un
 | AC5 | The bake CLI succeeds on tier 3 with no `DISPLAY` and no Xvfb on `PATH`, and exits non-zero on a bad graph and on an unknown flag | MCP harness shell test |
 | AC6 | Same graph, seed, size and tier: identical bytes across two runs | Unit test per tier |
 | AC7 | `SpirvInterpreter` matches an independent Python oracle on an instruction test set | `SpirvInterpreterTest` |
-| AC8 | Tiers differ by at most 2/255 mean and 4/255 at p99, per output, per node in the shipped library (defaults; M0 confirms) | `ProcMatCrossTierTest`, with a red control using the old float hash |
+| AC8 | Tiers differ by at most 2/255 mean and 4/255 at p99, per output, per node in the shipped library. Measured between llvmpipe and the interpreter: 1,373 of 1,379 shaders pass, with a worst of 0.31 mean and 2 at p99 among them. No hardware GPU was compared, so the limit stays the default | `ProcMatCrossTierTest`, with a red control using the old float hash |
 | AC9 | A bake is one undo step, and undo removes every file. Re-baking keeps a hand-edited field in the `.material` | `test_procedural_material.py` |
 | AC10 | Editing an input image marks the bake stale; a tier change alone does not | Unit test |
 | AC11 | The import tool fails on an unrecognised attribution comment, and no deny-listed node appears in the output | `test_import_mm_nodes.py` |
@@ -376,16 +392,17 @@ extensions +514. Core +0. Guide: at most one line in its "Other areas" index, un
    stays out unless asked for.
 2. **A hardware failure in a live editor skips tier 2** (D4). Default: accept it. Spawning a child
    editor is possible on Linux only.
-3. **Tier 3 could be too slow.** Default: M0 measures it, and the plan stands if a 1024² bake is
-   minutes rather than hours. It is a fallback, and the UI says so.
-4. **The library may compile less widely than expected.** Only GLSL 450 and Godot's language are
-   proven upstream. Default: ship what passes (R20), and M0 gives the real count.
+3. **Tier 3 could be too slow.** M0 measured it: a 1024² bake is 30 to 42 s on 4 cores. It is a
+   fallback, and the UI says so.
+4. **The library may compile less widely than expected.** M0: all 250 imported nodes compile on all
+   six targets, after the import-level fixes in Deviations. Only GLSL 410 went through a real driver.
+   MSL, HLSL and GLES 3.00 were produced by SPIRV-Cross and never compiled by their own compilers.
 5. **Tile checks can be gamed,** and a metric cannot judge taste. Default: S35's rules plus
    `look_at`, handing the call to a human.
 6. **8-bit height shows steps under parallax.** Default: `height_8bit` warns. 16-bit needs per-API
    read back and is a later change. The `RED16` format cannot be sampled on GLES3 or WebGL2 anyway
    (`S11:718-720`).
-7. **Shader size blowup from repeated sampling.** Default: R6 cuts passes.
+7. **Shader size blowup from repeated sampling.** R6 cuts passes, with M0's limits.
 
 ## Milestones
 
@@ -406,3 +423,98 @@ Effort in person-weeks, estimates at ±50%.
 - **M6 (about 1).** Budgets, docs, guide, final gate. AC17, AC18.
 
 ## Deviations
+
+### M0 result: the plan holds
+
+All figures are verified by running `tools/procmat/sweep` (commands below) unless marked otherwise.
+
+- **Compile sweep.** 250 of 250 imported nodes pass: 216 single-pass and 34 with Buffers, expanded
+  into 1,379 shaders (every output and pass, unconnected and wired, each enum value and boolean,
+  generic size 2). Each shader went to SPIR-V, GLSL 410, GLSL 300 es, MSL macOS, MSL iOS and HLSL 5.0
+  with no failure. The first run failed 87 shaders on 16 nodes, and every cause was at import or
+  expansion (below). No node is left out for failing to compile.
+- **Cold compile.** glslang 2.4 ms median, 4.4 ms at p95, 38 ms worst; SPIRV-Cross 1.0 to 1.8 ms
+  median by language, 5 ms at p95, 81 ms worst. The first compile in a process costs about 140 ms
+  more.
+- **Interpreter.** On 4 cores, in seconds per Mpixel: `perlin` 1.16, `voronoi2` 4.55,
+  `fast_blur_shader` 0.85, `fbm4` 1.11, `bricks3` 0.10. Across the library's default shaders: 0.18
+  median, 6.3 at p90, 45 at p99, 130 worst (`fill2`'s loop pass). One thread costs about 3.8 times as
+  much. llvmpipe on the same nodes: 0.009, 0.008, 0.074, 0.021, 0.003, so tier 3 is 11 to 570 times
+  slower than tier 2 on the same host.
+- **Instruction set.** The library uses 96 SPIR-V opcodes, of which 61 execute and 35 declare, and
+  38 `GLSL.std.450` instructions. The prototype covers all of them: 1,379 of 1,379 shaders load and
+  run, in `editor/procmat/SpirvInterpreter.*`. A later milestone wires it to jobs and tiers.
+- **Cross tier.** Interpreter against llvmpipe at 128², all 1,379 shaders: 1,358 are identical at
+  p99, 14 differ by 1 step and 1 by 2 steps. Six exceed AC8, on 5 nodes:
+  - Undefined arithmetic on an unconnected default: `height_to_angle` (`atan(0, 0)`) and `fill_to_uv2`
+    (division by a zero box).
+  - A near tie: `bricks` with `pattern=1`, output 6, takes `sign()` of a value that is zero up to
+    rounding.
+  - `classic_kuwahara` with `buffer=true` (0.46 mean, 14 at p99) and `auto_tones`' loop pass on two
+    variants (2.17 mean, 37 at p99). Their causes were not traced; `auto_tones` was fed a probe image
+    that its loop does not expect (inferred).
+
+  R20's per-node image test decides these. **Red control for R10:** the old float `rand` on the same
+  run puts 48 of 427 default shaders over AC8 (`perlin` 50 mean, 138 at p99; `noise_white` 84 and
+  229), against 0 for both on the integer hash, excluding the cases above.
+- **What was not measured.**
+  - No hardware GPU and no lavapipe. A GPU can round more differently than llvmpipe does, so AC8 and
+    all of tier 1 stay defaults until the RTX lane runs them.
+  - AC8's run is at 128² for all shaders, and at 256² for default shaders only, where the same three
+    of 427 are over (`auto_tones`' loop, `fill_to_uv2`, `height_to_angle`). Every pass samples
+    the same 256² probe image, so no Buffer feeds another pass: R12's half rounding and any
+    accumulation across passes are unmeasured until M5 runs real graphs.
+  - These timings ran with the host at a load of 10 to 14. A rerun after the review fixes, at higher
+    load, gave `perlin` 1.78, `voronoi2` 7.01, `fast_blur_shader` 1.24 s per Mpixel, with llvmpipe also
+    about twice as slow (0.019, 0.017), so read them as a range.
+
+To repeat it, inside the Linux image: `cmake -S tools/procmat/sweep -B build/procmat-sweep`, build,
+`python3 tools/procmat/expand_nodes.py --out <corpus> --chains` (`--float-hash` for R10's control),
+then `procmat-sweep compile`, `interpret`, `crosstier` and `bench` (`EGL_PLATFORM=surfaceless`,
+`LIBGL_ALWAYS_SOFTWARE=1`). `crosstier` exits 1 while anything is over AC8, so today it exits 1.
+
+### Deviations
+
+- **R17, import scope.** The tool imports what the non-3D library reaches: 250 descriptors, 391
+  functions, 246 entries. The other 152 `.mmg` files are 3D, materials or old versions that nothing
+  references (`_manifest.json` lists them). It scans all of them for attributions anyway.
+- **R19.** Of the 26 nodes with their own notice, 14 are imported and in `NOTICE.md`. The others are
+  3D, deny-listed or unreferenced. The notice table in the tool has 25 of them; the 26th, `hbao`, is
+  deny-listed, so it is never read.
+- **R10.** The mixing is MurmurHash3's (public domain), since the published GPU hashes carry licence
+  questions of their own. Coordinates clamp to ±32767 before quantizing, because a float-to-int
+  conversion out of range is undefined. The four `fract(sin(...))` nodes are out: `shard_fbm` by the
+  deny-list, the three `tex3d_*` by category. A fifth float hash was found by review, the
+  `(34x + 1)x mod 289` permutation of `fbm2` and `fbm4`'s simplex noise, inexact from x = 702. It is
+  now integer (`jp_permute289`), with the same results below that. llvmpipe cannot show the original
+  problem, so the fix is by reasoning, not by a measured difference. `pixelize` and `wavelet` keep
+  their low-gain `fract` terms, which differ only by rounding (inferred).
+- **R3, parameter strings.** A graph's parameter values and library presets reach GLSL as text, so the
+  importer accepts only numbers, `+ - * / ( ) ,`, and macros in the closed set (`0.005/$n_scale`,
+  `$uv.x`). The C++ expander can rely on that for imported data, and must still check `.procmat`
+  values. The `Simple/Image` preset's host path is dropped.
+- **Import-level fixes the sweep found.** A bare number as the default of a vector port becomes
+  `vec4(n)` (`fill_iterate`, `layer_variations_color`, `tiler_color`). `normal2height_base`'s default
+  named a macro it does not have. `blend` lost its `linear_light` value, whose function it never
+  had. Functions named through macros now resolve (`blend_$blend_type#`, `swirl_tile_$tile`,
+  `$direction_$colorspace`).
+- **Rules the C++ expander (R5) must keep, from `tools/procmat/expand_nodes.py`.** These differ from
+  Material Maker on purpose:
+  - Parenthesize coordinates, because `$uv.x` with `a+b` binds to `b`. Where the types still agreed,
+    Material Maker silently gave a different image, so looks can differ from it.
+  - `.variation()` on an unconnected input passes only its coordinates to the default.
+  - A 3D port viewed in 2D gets a local `p`.
+  - An input using `.size` or `.texture` needs a Buffer (R6).
+  - Every pass ends in `jp_finite` (R12).
+- **R11, what the prototype leaves out.** No `discard` or `switch`, because the imported library has
+  neither; they fail at load like any other unsupported instruction. So does a malformed module, so
+  a corrupt one is an error rather than a crash: every instruction's length, ids, block structure and
+  operand shapes are checked, and the finished register code is verified on its own. It also refuses
+  images other than plain 2D, and uniform blocks with padding. It runs on plain threads in the
+  bench, and only the tests and `procmat-sweep` link it. `SpirvMachine` copies `in` arguments, as GLSL
+  does. Dispatch is threaded on GCC and Clang and a plain switch on MSVC, which has not been compiled.
+- **AC7.** `SpirvInterpreterTest` computes expected values in C++ from the GLSL definitions. The
+  independent Python oracle remains M5's.
+- **Inferred, not tested:** `compile_to_spirv` is not reachable from the editor today, because the
+  engine links `shadercompiler` privately (`engine/CMakeLists.txt:2205`). M3 or M5 needs an engine
+  entry point for it.

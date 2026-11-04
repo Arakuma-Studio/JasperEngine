@@ -1,0 +1,200 @@
+{
+ "code": [
+  "vec4 $(name_uv)_b = $b($uv);",
+  "vec4 $(name_uv)_l;",
+  "float $(name_uv)_a;",
+  "#for",
+  "$(name_uv)_l = $l#($uv);",
+  "$(name_uv)_a = $amount#*$a#($uv);",
+  "$(name_uv)_b = vec4(blend_$blend_type#($uv, $(name_uv)_l.rgb, $(name_uv)_b.rgb, $(name_uv)_a*$(name_uv)_l.a), min(1.0, $(name_uv)_b.a+$(name_uv)_a*$(name_uv)_l.a));",
+  "#end",
+  ""
+ ],
+ "description": "Blends its input, using an optional mask",
+ "format": 1,
+ "functions": [
+  "blend_additive",
+  "blend_addsub",
+  "blend_burn",
+  "blend_color",
+  "blend_darken",
+  "blend_difference",
+  "blend_dissolve",
+  "blend_dodge",
+  "blend_exclusion",
+  "blend_hard_light",
+  "blend_hard_mix",
+  "blend_hue",
+  "blend_lighten",
+  "blend_linear_light",
+  "blend_multiply",
+  "blend_normal",
+  "blend_overlay",
+  "blend_pin_light",
+  "blend_saturation",
+  "blend_screen",
+  "blend_soft_light",
+  "blend_value",
+  "blend_vivid_light"
+ ],
+ "id": "blend2",
+ "inputs": [
+  {
+   "default": "vec4($uv.x, 1.0, 1.0, 1.0)",
+   "description": "The background input",
+   "label": "Background",
+   "name": "b",
+   "short_description": "Background",
+   "type": "rgba"
+  },
+  {
+   "default": "vec4(1.0, $uv.y, 1.0, 1.0)",
+   "description": "A layer input",
+   "label": "Layer#",
+   "name": "l#",
+   "short_description": "Layer#",
+   "type": "rgba"
+  },
+  {
+   "default": "1.0",
+   "description": "An optional opacity mask",
+   "label": "Opacity#",
+   "name": "a#",
+   "short_description": "Mask#",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Blend",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the result of the blend operation",
+   "expr": "$(name_uv)_b",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The algorithm used to blend the inputs",
+   "label": "2:",
+   "name": "blend_type#",
+   "short_description": "Blend mode",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Normal",
+     "value": "normal"
+    },
+    {
+     "name": "Dissolve",
+     "value": "dissolve"
+    },
+    {
+     "name": "Multiply",
+     "value": "multiply"
+    },
+    {
+     "name": "Screen",
+     "value": "screen"
+    },
+    {
+     "name": "Overlay",
+     "value": "overlay"
+    },
+    {
+     "name": "Hard Light",
+     "value": "hard_light"
+    },
+    {
+     "name": "Soft Light",
+     "value": "soft_light"
+    },
+    {
+     "name": "Burn",
+     "value": "burn"
+    },
+    {
+     "name": "Dodge",
+     "value": "dodge"
+    },
+    {
+     "name": "Lighten",
+     "value": "lighten"
+    },
+    {
+     "name": "Darken",
+     "value": "darken"
+    },
+    {
+     "name": "Difference",
+     "value": "difference"
+    },
+    {
+     "name": "Additive",
+     "value": "additive"
+    },
+    {
+     "name": "AddSub",
+     "value": "addsub"
+    },
+    {
+     "name": "Linear Light",
+     "value": "linear_light"
+    },
+    {
+     "name": "Vivid Light",
+     "value": "vivid_light"
+    },
+    {
+     "name": "Pin Light",
+     "value": "pin_light"
+    },
+    {
+     "name": "Hard Mix",
+     "value": "hard_mix"
+    },
+    {
+     "name": "Exclusion",
+     "value": "exclusion"
+    },
+    {
+     "name": "Hue",
+     "value": "hue"
+    },
+    {
+     "name": "Saturation",
+     "value": "saturation"
+    },
+    {
+     "name": "Color",
+     "value": "color"
+    },
+    {
+     "name": "Value",
+     "value": "value"
+    }
+   ]
+  },
+  {
+   "default": 0.5,
+   "description": "The opacity of the blend operation",
+   "label": "3:",
+   "max": 1,
+   "min": 0,
+   "name": "amount#",
+   "short_description": "Opacity",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Blend",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/blend2.mmg"
+ },
+ "type_version": 1
+}

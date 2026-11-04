@@ -1,0 +1,255 @@
+{
+ "connections": [
+  {
+   "from": "voronoi",
+   "from_port": 0,
+   "to": "math_2",
+   "to_port": 0
+  },
+  {
+   "from": "voronoi_2",
+   "from_port": 0,
+   "to": "math_3",
+   "to_port": 0
+  },
+  {
+   "from": "math",
+   "from_port": 0,
+   "to": "math_5",
+   "to_port": 1
+  },
+  {
+   "from": "math_4",
+   "from_port": 0,
+   "to": "math_5",
+   "to_port": 0
+  },
+  {
+   "from": "math_5",
+   "from_port": 0,
+   "to": "math_6",
+   "to_port": 0
+  },
+  {
+   "from": "math_4",
+   "from_port": 0,
+   "to": "math_6",
+   "to_port": 1
+  },
+  {
+   "from": "math_2",
+   "from_port": 0,
+   "to": "math",
+   "to_port": 0
+  },
+  {
+   "from": "math_2",
+   "from_port": 0,
+   "to": "math_4",
+   "to_port": 0
+  },
+  {
+   "from": "math_3",
+   "from_port": 0,
+   "to": "math_4",
+   "to_port": 1
+  },
+  {
+   "from": "math_3",
+   "from_port": 0,
+   "to": "math",
+   "to_port": 1
+  },
+  {
+   "from": "math_6",
+   "from_port": 0,
+   "to": "math_7",
+   "to_port": 0
+  },
+  {
+   "from": "math_7",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  }
+ ],
+ "description": "Generates a crystal like pattern out of Voronoi noise",
+ "format": 1,
+ "id": "crystal",
+ "inputs": [],
+ "kind": "graph",
+ "name": "Crystal",
+ "nodes": [
+  {
+   "id": "math",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 0,
+    "op": 13
+   },
+   "seed": 0.0,
+   "type": "math"
+  },
+  {
+   "id": "math_2",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 0,
+    "op": 19
+   },
+   "seed": 0.0,
+   "type": "math"
+  },
+  {
+   "id": "voronoi",
+   "parameters": {
+    "intensity": 1,
+    "randomness": 1,
+    "scale_x": 16,
+    "scale_y": 16,
+    "stretch_x": 0.85,
+    "stretch_y": 0.85
+   },
+   "seed": 0.0,
+   "type": "voronoi"
+  },
+  {
+   "id": "voronoi_2",
+   "parameters": {
+    "intensity": 1,
+    "randomness": 1,
+    "scale_x": 16,
+    "scale_y": 16,
+    "stretch_x": 0.85,
+    "stretch_y": 0.85
+   },
+   "seed": 0.46537599992007017,
+   "type": "voronoi"
+  },
+  {
+   "id": "math_3",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 0,
+    "op": 19
+   },
+   "seed": 0.0,
+   "type": "math"
+  },
+  {
+   "id": "math_4",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 0,
+    "op": 14
+   },
+   "seed": 0.0,
+   "type": "math"
+  },
+  {
+   "id": "math_5",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 0,
+    "op": 1
+   },
+   "seed": 0.0,
+   "type": "math"
+  },
+  {
+   "id": "math_6",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 0,
+    "op": 3
+   },
+   "seed": 0.0,
+   "type": "math"
+  },
+  {
+   "id": "math_7",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 1.45,
+    "op": 2
+   },
+   "seed": 0.0,
+   "type": "math"
+  }
+ ],
+ "notices": [
+  {
+   "holder": "Inigo Quilez",
+   "license": "MIT",
+   "node": "voronoi",
+   "url": "https://www.shadertoy.com/view/ldl3W8",
+   "year": "2013"
+  }
+ ],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Output",
+   "name": "out",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 16,
+   "description": "The scale along the X axis",
+   "label": "Scale X",
+   "links": [
+    {
+     "node": "voronoi",
+     "param": "scale_x"
+    },
+    {
+     "node": "voronoi_2",
+     "param": "scale_x"
+    }
+   ],
+   "max": 32,
+   "min": 1,
+   "name": "param0",
+   "short_description": "Scale X",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 16,
+   "description": "The scale along the Y axis",
+   "label": "Scale Y",
+   "links": [
+    {
+     "node": "voronoi",
+     "param": "scale_y"
+    },
+    {
+     "node": "voronoi_2",
+     "param": "scale_y"
+    }
+   ],
+   "max": 32,
+   "min": 1,
+   "name": "param1",
+   "short_description": "Scale Y",
+   "step": 1,
+   "type": "float"
+  }
+ ],
+ "short_description": "Crystal",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/crystal.mmg"
+ },
+ "type_version": 1
+}

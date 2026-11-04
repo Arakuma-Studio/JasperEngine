@@ -1,0 +1,149 @@
+{
+ "code": [
+  "float $(name_uv)_a1 = smoothstep(0.0, 1.0, ($h2($uv)-$h1($uv))/max($width, 0.0001));"
+ ],
+ "description": "Combines the outputs of 2 mapped base materials (keeping the \"highest\" material) with smooth transition.",
+ "format": 1,
+ "functions": [],
+ "id": "mwf_mix_smooth",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The height map of the first input",
+   "group_size": 5,
+   "label": "",
+   "name": "h1",
+   "short_description": "Height1",
+   "type": "f"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The albedo channel of the first input",
+   "label": "",
+   "name": "c1",
+   "short_description": "Albedo1",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The ambient occlusion, roughness and metallic channels of the first input",
+   "label": "",
+   "name": "orm1",
+   "short_description": "ORM1",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The emission channel of the first input",
+   "label": "",
+   "name": "em1",
+   "short_description": "Emission1",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.5, 0.5, 1.0)",
+   "description": "The normal map of the first input",
+   "label": "",
+   "name": "nm1",
+   "short_description": "Normal1",
+   "type": "rgb"
+  },
+  {
+   "default": "0.0",
+   "description": "The height map of the second input",
+   "group_size": 5,
+   "label": "",
+   "name": "h2",
+   "short_description": "Height2",
+   "type": "f"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The albedo channel of the second input",
+   "label": "",
+   "name": "c2",
+   "short_description": "Albedo2",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The ambient occlusion, roughness and metallic channels of the second input",
+   "label": "",
+   "name": "orm2",
+   "short_description": "ORM2",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.0)",
+   "description": "The emission channel of the second input",
+   "label": "",
+   "name": "em2",
+   "short_description": "Emission2",
+   "type": "rgb"
+  },
+  {
+   "default": "vec3(0.5, 0.5, 1.0)",
+   "description": "The normal map of the second input",
+   "label": "",
+   "name": "nm2",
+   "short_description": "Normal2",
+   "type": "rgb"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Smooth Mix",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Generates the height of the result",
+   "expr": "max($h1($uv), $h2($uv))",
+   "group_size": 5,
+   "label": "Height",
+   "type": "f"
+  },
+  {
+   "description": "Shows the output albedo channel",
+   "expr": "mix($c1($uv), $c2($uv), $(name_uv)_a1)",
+   "label": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "Shows the output ambient occlusion, roughness and metallic channels",
+   "expr": "mix($orm1($uv), $orm2($uv), $(name_uv)_a1)",
+   "label": "ORM",
+   "type": "rgb"
+  },
+  {
+   "description": "Shows the output emission channel",
+   "expr": "mix($em1($uv), $em2($uv), $(name_uv)_a1)",
+   "label": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "Shows the output normal map",
+   "expr": "mix($nm1($uv), $nm2($uv), $(name_uv)_a1)",
+   "label": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.01,
+   "description": "Width of the transition area between both materials",
+   "label": "",
+   "max": 0.2,
+   "min": 0,
+   "name": "width",
+   "short_description": "Width",
+   "step": 0.001,
+   "type": "float"
+  }
+ ],
+ "short_description": "Mix",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/mwf_mix_smooth.mmg"
+ },
+ "type_version": 1
+}

@@ -1,0 +1,54 @@
+{
+ "code": [],
+ "description": "Decomposes an RGBA input into 4 grayscale images",
+ "format": 1,
+ "functions": [],
+ "id": "decompose",
+ "inputs": [
+  {
+   "default": "vec4(1.0)",
+   "description": "The RGBA input image",
+   "label": "",
+   "name": "i",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Decompose",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the Red channel of the input",
+   "expr": "$i($uv).r",
+   "label": "Red",
+   "type": "f"
+  },
+  {
+   "description": "Shows the Green channel of the input",
+   "expr": "$i($uv).g",
+   "label": "Green",
+   "type": "f"
+  },
+  {
+   "description": "Shows the Blue channel of the input",
+   "expr": "$i($uv).b",
+   "label": "Blue",
+   "type": "f"
+  },
+  {
+   "description": "Shows the Alpha channel of the input",
+   "expr": "$i($uv).a",
+   "label": "Alpha",
+   "type": "f"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Decompose",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/decompose.mmg"
+ },
+ "type_version": 1
+}

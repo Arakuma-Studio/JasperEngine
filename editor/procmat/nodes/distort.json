@@ -1,0 +1,100 @@
+{
+ "code": [],
+ "description": "Distorts its input",
+ "format": 1,
+ "functions": [
+  "perspective_transform"
+ ],
+ "id": "distort",
+ "inputs": [
+  {
+   "default": "vec4(0.0)",
+   "description": "The input to be distorted",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [
+  "vec4 distort_$(name)(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec2 p[] = $lattice;",
+  "\tivec2 lsize = $lattice_size;",
+  "\tvec2 luv;",
+  "\tbool inside = false;",
+  "\tfor (int y = 0; y < lsize.y; ++y) {",
+  "\t\tint yi0 = y*(lsize.x+1);",
+  "\t\tint yi1 = yi0+lsize.x+1;",
+  "\t\tfor (int x = 0; x < lsize.x; ++x) {",
+  "\t\t\tluv = perspective_transform(uv, p[yi0+x], p[yi0+x+1], p[yi1+x+1], p[yi1+x]);",
+  "\t\t\tvec2 luv_m05 = luv-vec2(0.5);",
+  "\t\t\tinside = abs(luv_m05.x) < 0.5 && abs(luv_m05.y) < 0.5;",
+  "\t\t\tif (inside) {",
+  "\t\t\t\tluv += vec2(float(x), float(y));",
+  "\t\t\t\tluv /= vec2(float(lsize.x), float(lsize.y));",
+  "\t\t\t\treturn $in(luv);",
+  "\t\t\t}",
+  "\t\t}",
+  "\t}",
+  "\t/*",
+  "\t\tP0 = p0+x*(p1-p0)",
+  "\t\tP1 = p3+x*(p2-p3)",
+  "\t\tP = a+x*(b-a)+y*(d-a)+xy*(c-b)+xy*(a-d)",
+  "\t*/",
+  "\treturn inside ? $in(luv) : vec4(0.0);",
+  "}",
+  ""
+ ],
+ "kind": "shader",
+ "name": "Distort",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The distorted image",
+   "expr": "distort_$(name)($uv, _seed_variation_, _controlled_variation_)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "points": [
+     {
+      "x": 0,
+      "y": 0
+     },
+     {
+      "x": 1,
+      "y": 0
+     },
+     {
+      "x": 1,
+      "y": 1
+     },
+     {
+      "x": 0,
+      "y": 1
+     }
+    ],
+    "size": {
+     "x": 1,
+     "y": 1
+    },
+    "type": "Lattice"
+   },
+   "description": "The lattice that describes the distortion",
+   "label": "",
+   "name": "lattice",
+   "short_description": "Lattice",
+   "type": "lattice"
+  }
+ ],
+ "short_description": "Distort",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/distort.mmg"
+ },
+ "type_version": 1
+}

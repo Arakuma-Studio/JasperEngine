@@ -1,0 +1,132 @@
+{
+ "code": [
+  "vec3 $(name_uv)_pattern = $(name)_mesh_pattern($uv, _seed_variation_, _controlled_variation_);"
+ ],
+ "description": "Outputs several mesh patterns",
+ "format": 1,
+ "functions": [
+  "mesh_capsule",
+  "mesh_ridged_bell",
+  "mesh_screen_blend",
+  "transform2_of_mesh"
+ ],
+ "id": "mesh",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "Input a custom shape to be turned into a mesh pattern",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Custom Shape",
+   "type": "f"
+  }
+ ],
+ "instance": [
+  "vec3 $(name)_mesh_pattern(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tuv *= $tiling;",
+  "\tif ($diagonal) {",
+  "\t\tuv = transform2_of_mesh(uv, vec2(0.0), 45.0 * 0.01745329251, vec2(1.0 / sqrt(2.0)));",
+  "\t}",
+  "\t",
+  "\tfloat pattern = 0.0;",
+  "\tfloat mask = 0.0;",
+  "\t",
+  "\tif ($shape == 0) {",
+  "\t\tpattern = max(pattern, mesh_ridged_bell(fract(uv + vec2(0.5, 0.0))));",
+  "\t\tpattern = max(pattern, mesh_ridged_bell(fract(uv + vec2(0.0, 0.5))));",
+  "\t\tfloat pattern2 = mesh_ridged_bell(fract(uv.yx));",
+  "\t\tpattern2 = max(pattern2, mesh_ridged_bell(fract(uv.yx + vec2(0.5, 0.5))));",
+  "\t\tmask = float(pattern > pattern2);",
+  "\t\tpattern = mesh_screen_blend(pattern, pattern2);",
+  "\t} else if($shape == 1) {",
+  "\t\tpattern = max(pattern, mesh_capsule(fract(uv + vec2(0.5, 0.0))));",
+  "\t\tpattern = max(pattern, mesh_capsule(fract(uv + vec2(0.0, 0.5))));",
+  "\t\tfloat pattern2 = mesh_capsule(fract(uv.yx));",
+  "\t\tpattern2 = max(pattern2, mesh_capsule(fract(uv.yx + vec2(0.5, 0.5))));",
+  "\t\tmask = float(pattern > pattern2);",
+  "\t\tpattern = max(pattern, pattern2);",
+  "\t} else if($shape == 2) {",
+  "\t\tpattern = max(pattern, $in(fract(uv + vec2(0.5, 0.0))));",
+  "\t\tpattern = max(pattern, $in(fract(uv + vec2(0.0, 0.5))));",
+  "\t\tfloat pattern2 = $in(fract(uv.yx));",
+  "\t\tpattern2 = max(pattern2, $in(fract(uv.yx + vec2(0.5, 0.5))));",
+  "\t\tmask = float(pattern > pattern2);",
+  "\t\tpattern = max(pattern, pattern2);",
+  "\t}",
+  "\treturn vec3(pattern, mask, 1.0 - mask);",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "Mesh",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated mesh pattern",
+   "expr": "$(name_uv)_pattern.x",
+   "label": "Pattern",
+   "type": "f"
+  },
+  {
+   "description": "Mask for the horizontal shapes",
+   "expr": "$(name_uv)_pattern.y",
+   "label": "Horizontal Mask",
+   "type": "f"
+  },
+  {
+   "description": "Mask for the vertical shapes",
+   "expr": "$(name_uv)_pattern.z",
+   "label": "Vertical Mask",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 2,
+   "description": "Select between predefined patterns or the input pattern",
+   "label": "Shape",
+   "name": "shape",
+   "short_description": "Shape",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Shape 1",
+     "value": "0"
+    },
+    {
+     "name": "Shape 2",
+     "value": "1"
+    },
+    {
+     "name": "Input",
+     "value": "2"
+    }
+   ]
+  },
+  {
+   "default": 1,
+   "description": "The number of times the pattern tiles",
+   "label": "Tiling",
+   "max": 16,
+   "min": 1,
+   "name": "tiling",
+   "short_description": "Tiling",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "description": "Rotates the pattern 45 degrees while ensuring tiling",
+   "label": "Diagonal",
+   "name": "diagonal",
+   "short_description": "Diagonal",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Mesh",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/mesh.mmg"
+ },
+ "type_version": 1
+}

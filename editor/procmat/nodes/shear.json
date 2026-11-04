@@ -1,0 +1,77 @@
+{
+ "code": [],
+ "description": "Performs a shear stress transform on its input",
+ "format": 1,
+ "functions": [],
+ "id": "shear",
+ "inputs": [
+  {
+   "default": "vec4(1.0)",
+   "description": "The input image",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Shear",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the transformed image",
+   "expr": "$in#($uv+$amount*($uv.yx-vec2($center))*vec2($direction))",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "The direction of the shear transform (horizontal or vertical)",
+   "label": "Direction",
+   "name": "direction",
+   "short_description": "Direction",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Horizontal",
+     "value": "1.0, 0.0"
+    },
+    {
+     "name": "Vertical",
+     "value": "0.0, 1.0"
+    }
+   ]
+  },
+  {
+   "default": 0,
+   "description": "The amount of the transform",
+   "label": "Amount",
+   "max": 1,
+   "min": -1,
+   "name": "amount",
+   "short_description": "Amount",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The position of the shear center",
+   "label": "Center",
+   "max": 1,
+   "min": 0,
+   "name": "center",
+   "short_description": "Center",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Shear",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/shear.mmg"
+ },
+ "type_version": 1
+}

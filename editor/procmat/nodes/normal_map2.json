@@ -1,0 +1,306 @@
+{
+ "connections": [
+  {
+   "from": "edge_detect_1",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "switch",
+   "from_port": 0,
+   "to": "edge_detect_1",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "ensure_greyscale",
+   "to_port": 0
+  },
+  {
+   "from": "ensure_greyscale",
+   "from_port": 0,
+   "to": "buffer_2",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 0
+  }
+ ],
+ "description": "Generates a normal map from a height map",
+ "format": 1,
+ "id": "normal_map2",
+ "inputs": [
+  {
+   "description": "The input height map",
+   "group_size": 0,
+   "label": "Input",
+   "name": "Bump",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Normal Map",
+ "nodes": [
+  {
+   "id": "switch",
+   "parameters": {
+    "choices": 2,
+    "outputs": 1,
+    "source": 1
+   },
+   "seed": -53264,
+   "type": "switch"
+  },
+  {
+   "id": "edge_detect_1",
+   "parameters": {
+    "algo": 0,
+    "amount": 1,
+    "size": 10
+   },
+   "seed": -11547,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "0.0",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [
+     "vec3 nm_$name(vec2 uv, float amount, float size, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tvec3 e = vec3(1.0/size, -1.0/size, 0);",
+     "\tvec2 rv;",
+     "\tif ($algo == 0) {",
+     "\t\trv = vec2(1.0, -1.0)*$in(uv+e.xy);",
+     "\t\trv += vec2(-1.0, 1.0)*$in(uv-e.xy);",
+     "\t\trv += vec2(1.0, 1.0)*$in(uv+e.xx);",
+     "\t\trv += vec2(-1.0, -1.0)*$in(uv-e.xx);",
+     "\t\trv += vec2(2.0, 0.0)*$in(uv+e.xz);",
+     "\t\trv += vec2(-2.0, 0.0)*$in(uv-e.xz);",
+     "\t\trv += vec2(0.0, 2.0)*$in(uv+e.zx);",
+     "\t\trv += vec2(0.0, -2.0)*$in(uv-e.zx);",
+     "\t\trv *= size*amount/128.0;",
+     "\t} else if ($algo == 1) {",
+     "\t\trv = vec2(3.0, -3.0)*$in(uv+e.xy);",
+     "\t\trv += vec2(-3.0, 3.0)*$in(uv-e.xy);",
+     "\t\trv += vec2(3.0, 3.0)*$in(uv+e.xx);",
+     "\t\trv += vec2(-3.0, -3.0)*$in(uv-e.xx);",
+     "\t\trv += vec2(10.0, 0.0)*$in(uv+e.xz);",
+     "\t\trv += vec2(-10.0, 0.0)*$in(uv-e.xz);",
+     "\t\trv += vec2(0.0, 10.0)*$in(uv+e.zx);",
+     "\t\trv += vec2(0.0, -10.0)*$in(uv-e.zx);",
+     "\t\trv *= size*amount/512.0;",
+     "\t} else if ($algo == 2) {",
+     "\t\trv = vec2(2.0, 0.0)*$in(uv+e.xz);",
+     "\t\trv += vec2(-2.0, 0.0)*$in(uv-e.xz);",
+     "\t\trv += vec2(0.0, 2.0)*$in(uv+e.zx);",
+     "\t\trv += vec2(0.0, -2.0)*$in(uv-e.zx);",
+     "\t\trv *= size*amount/64.0;",
+     "\t} else {",
+     "\t\trv = vec2(1.0, 0.0)*$in(uv+e.xz);",
+     "\t\trv += vec2(0.0, 1.0)*$in(uv+e.zx);",
+     "\t\trv += vec2(-1.0, -1.0)*$in(uv);",
+     "\t\trv *= size*amount/20.0;",
+     "\t}",
+     "\treturn vec3(0.5)+0.5*normalize(vec3(rv, -1.0));",
+     "}",
+     ""
+    ],
+    "outputs": [
+     {
+      "expr": "nm_$name($uv, $amount, $size, _seed_variation_, _controlled_variation_)",
+      "type": "rgb"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 3,
+      "label": "",
+      "name": "algo",
+      "type": "enum",
+      "values": [
+       {
+        "name": "Sobel",
+        "value": "0"
+       },
+       {
+        "name": "Scharr",
+        "value": "1"
+       },
+       {
+        "name": "Simple",
+        "value": "2"
+       },
+       {
+        "name": "Cheap",
+        "value": "3"
+       }
+      ]
+     },
+     {
+      "default": 9,
+      "first": 4,
+      "label": "",
+      "last": 12,
+      "name": "size",
+      "type": "size"
+     },
+     {
+      "default": 0.5,
+      "label": "",
+      "max": 2,
+      "min": 0,
+      "name": "amount",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "f32": true,
+    "filter": true,
+    "mipmap": false,
+    "size": 10
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 2
+  },
+  {
+   "id": "ensure_greyscale",
+   "parameters": {},
+   "seed": 0.0,
+   "type": "ensure_greyscale"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated normal map",
+   "group_size": 0,
+   "label": "Output",
+   "name": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The algorithm used to generate the normal map",
+   "label": "",
+   "links": [
+    {
+     "node": "edge_detect_1",
+     "param": "algo"
+    }
+   ],
+   "name": "param2",
+   "short_description": "Algorithm",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Sobel",
+     "value": "0"
+    },
+    {
+     "name": "Scharr",
+     "value": "1"
+    },
+    {
+     "name": "Simple",
+     "value": "2"
+    },
+    {
+     "name": "Cheap",
+     "value": "3"
+    }
+   ]
+  },
+  {
+   "default": 10,
+   "description": "The resolution of the generated normal map",
+   "first": 4,
+   "label": "",
+   "last": 12,
+   "links": [
+    {
+     "node": "edge_detect_1",
+     "param": "size"
+    },
+    {
+     "node": "buffer_2",
+     "param": "size"
+    }
+   ],
+   "name": "size",
+   "short_description": "Resolution",
+   "type": "size"
+  },
+  {
+   "default": 1,
+   "description": "The strength of the normal map filter",
+   "label": "",
+   "links": [
+    {
+     "node": "edge_detect_1",
+     "param": "amount"
+    }
+   ],
+   "max": 2,
+   "min": 0,
+   "name": "strength",
+   "short_description": "Strength",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "configurations": {
+    "False": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 0
+     }
+    ],
+    "True": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 1
+     }
+    ]
+   },
+   "default": 1,
+   "description": "When set, a buffer is used to sample the input before the normal map filter",
+   "label": "Buffer",
+   "name": "buffer",
+   "short_description": "Buffer",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Normal map",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/normal_map2.mmg"
+ },
+ "type_version": 1
+}

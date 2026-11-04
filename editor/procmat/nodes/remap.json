@@ -1,0 +1,72 @@
+{
+ "code": [
+  "float $(name_uv)_x = $in($uv)*($max-$min);"
+ ],
+ "description": "Remaps a grayscale image for use as an input map for Advanced Tiler nodes",
+ "format": 1,
+ "functions": [],
+ "id": "remap",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The grayscale input map",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Remap",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The remapped image map",
+   "expr": "$min+$(name_uv)_x-mod($(name_uv)_x, max($step, 0.00000001))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The value generated for black areas of the input",
+   "label": "Min",
+   "max": 10,
+   "min": -10,
+   "name": "min",
+   "short_description": "Min",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The value generated for white areas of the input",
+   "label": "Max",
+   "max": 10,
+   "min": -10,
+   "name": "max",
+   "short_description": "Max",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The step between generated values",
+   "label": "Step",
+   "max": 1,
+   "min": 0,
+   "name": "step",
+   "short_description": "Step",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Remap",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/remap.mmg"
+ },
+ "type_version": 1
+}
