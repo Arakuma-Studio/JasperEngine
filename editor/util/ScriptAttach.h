@@ -7,6 +7,7 @@
 #include "component/ScriptComponent.h"
 #include "ecs/Entity.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -38,12 +39,14 @@ namespace jasperengine::editor {
         // Attaches entry to the entities (a Script component added where missing) as one undo step on
         // the scene; index < 0 appends. The entities that already have the file are left out (in
         // `skipped`); false, with nothing done, when none is left or the editor refuses the change.
-        // indexOut: where it went on the first entity.
+        // indexOut: where it went on the first entity. commandSceneId: the undo history it goes in
+        // (0: the scene's own; the Inspector's is the selected scene's, as its other edits)
         static bool attach(Project* project, SceneProject* sceneProject, const std::vector<Entity>& entities, const ScriptEntry& entry,
-                           long long index, std::vector<Entity>& skipped, std::string& error, size_t* indexOut = nullptr);
+                           long long index, std::vector<Entity>& skipped, std::string& error, size_t* indexOut = nullptr,
+                           uint32_t commandSceneId = 0);
         // makeEntry + attach for a human's gesture (a drop, a pick): problems go to the Console
         static bool attachFile(Project* project, SceneProject* sceneProject, const std::vector<Entity>& entities,
-                               const std::filesystem::path& file);
+                               const std::filesystem::path& file, uint32_t commandSceneId = 0);
         // The project's scripts: Lua modules under the Lua directory, C++ script classes in the
         // script directories (subclasses flagged), sorted by name
         static std::vector<ScriptCandidate> findProjectScripts(Project* project);

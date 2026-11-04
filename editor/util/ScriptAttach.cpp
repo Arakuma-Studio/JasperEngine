@@ -136,7 +136,8 @@ bool ScriptAttach::makeEntry(Project* project, const fs::path& file, const std::
 }
 
 bool ScriptAttach::attach(Project* project, SceneProject* sceneProject, const std::vector<Entity>& entities, const ScriptEntry& entry,
-                          long long index, std::vector<Entity>& skipped, std::string& error, size_t* indexOut) {
+                          long long index, std::vector<Entity>& skipped, std::string& error, size_t* indexOut,
+                          uint32_t commandSceneId) {
     const fs::path file = attachedScriptFile(project, entry);
     auto* multi = new MultiPropertyCmd();
     bool first = true;
@@ -178,14 +179,15 @@ bool ScriptAttach::attach(Project* project, SceneProject* sceneProject, const st
         return false;
     }
     multi->setNoMerge();
-    if (!CommandHandle::get(sceneProject->id)->addCommand(multi)) {
+    if (!CommandHandle::get(commandSceneId != 0 ? commandSceneId : sceneProject->id)->addCommand(multi)) {
         error = "The editor refused the change (is the GameObject part of a prefab instance that can't take it?).";
         return false;
     }
     return true;
 }
 
-bool ScriptAttach::attachFile(Project* project, SceneProject* sceneProject, const std::vector<Entity>& entities, const fs::path& file) {
+bool ScriptAttach::attachFile(Project* project, SceneProject* sceneProject, const std::vector<Entity>& entities, const fs::path& file,
+                              uint32_t commandSceneId) {
     if (project->isAnyScenePlaying()) {
         Out::warning("Stop Play to add scripts");
         return false;
@@ -199,7 +201,7 @@ bool ScriptAttach::attachFile(Project* project, SceneProject* sceneProject, cons
     }
     for (const std::string& warning : warnings) Out::warning("%s", warning.c_str());
     std::vector<Entity> skipped;
-    if (!attach(project, sceneProject, entities, entry, -1, skipped, error)) {
+    if (!attach(project, sceneProject, entities, entry, -1, skipped, error, nullptr, commandSceneId)) {
         Out::warning("%s", error.c_str());
         return false;
     }

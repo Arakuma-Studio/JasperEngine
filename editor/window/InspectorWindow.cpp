@@ -2357,7 +2357,7 @@ void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, co
 
             std::vector<Entity> skipped;
             std::string error;
-            if (!ScriptAttach::attach(project, sceneProject, entities, entry, -1, skipped, error)) {
+            if (!ScriptAttach::attach(project, sceneProject, entities, entry, -1, skipped, error, nullptr, project->getSelectedSceneId())) {
                 Out::warning("%s", error.c_str());
             }
         },
@@ -2367,7 +2367,7 @@ void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, co
 }
 
 void editor::InspectorWindow::attachScriptFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::filesystem::path& file){
-    ScriptAttach::attachFile(project, sceneProject, entities, file);
+    ScriptAttach::attachFile(project, sceneProject, entities, file, project->getSelectedSceneId());
 }
 
 void editor::InspectorWindow::drawAddScriptPopup(SceneProject* sceneProject, const std::vector<Entity>& entities){
