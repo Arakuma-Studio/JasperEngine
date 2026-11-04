@@ -741,6 +741,55 @@ Merge hotspots: `RenderSystem.cpp` (update loop, loadMesh, updateInstancedMesh),
 
 ## 14. Deviations
 
-Filled in during implementation (what changed from this spec, and why). Expected entry: the llvmpipe
-`GL_UNIFORM_SIZE` measurement of T10 and, if llvmpipe does not trim the array, the absence of a red control for
-T10/T11 on the CI renderers.
+Recorded during implementation (branch `dc/render-correctness`).
+
+1. **Polygon extents (added).** `UISystem::createUIPolygon` and `MeshSystem::createMeshPolygon` measured a
+   polygon's extent from `numeric_limits<float>::min()` (the smallest positive float) as the start of the
+   maximum, so a polygon left of or below its origin got texture coordinates and a width measured to 0. Same
+   class as 6.1 (bounds seeded at the origin); fixed with `lowest()`, tested by
+   `MeshBounds.PolygonLeftOfItsOriginMeasuresItsOwnExtent`.
+2. **Morph inputs (6.2).** Not gated: glTF requires a morph target's attributes to exist on the base primitive,
+   and the unlit path already builds `HAS_MORPHNORMAL` without `HAS_NORMALS` with `bindUnfedMorphInputs`. T3 has
+   no normal-less morph case and no IBL-only case (an IBL-only scene needs a baked environment the test
+   fixtures do not have); the lit pixel, vertex, mixed and 2D light cases, with and without tangents, cover the
+   variant code paths that changed.
+3. **Points (6.3).** The Inspector's Depth Write Auto label resolves the Points rule too (`Auto (Off)` on
+   transparent Points), in `InspectorShaderLibrary.cpp`'s `resolveComponentAuto`; `PointsComponent` keeps a
+   runtime `depthFollowsQueue` beside `loadedTransparent`. T7's first case (Depth Write On) is a guard, not a
+   red control.
+4. **Variant re-resolve (6.4).** `getCurrentSubmeshInputs` is the extracted helper (the spec's
+   `getCurrentSubmeshVariant` would have had no caller beside it). Presence of a pass the variant no longer
+   builds is not a mismatch (`loadMesh` keeps the G-buffer handle when SSR goes off; comparing presence would
+   reload on every later texture edit). `pbrVariantMatches` had no other caller and is removed. T8 asserts the
+   G-buffer variant bits ('Bct', 'Mrt') instead of a G-buffer readback: the bits decide which slots
+   `loadGBufferTextures` binds, and the SSR suites already check what a bound map draws.
+5. **GL uniform count (6.5).** The test hook is `sgj_query_gl_uniform_count` (the spec's name was
+   `sgj_gl_uniform_count`). The measured `GL_UNIFORM_SIZE` of llvmpipe and the red control status are in the
+   final report of the branch.
+6. **Foliage (6.6, 6.8).** The Foliage Distance rows are `DragFloat` 0-10 (typed and dragged, clamped); the
+   value is written to `project.yaml` only away from its default and carried by the prebuilt player's
+   `game.json` (`PlayerConfig::foliageDistanceScale`, `PlayerMain`), which the spec did not list.
+   `Engine.foliageDistanceScale` and `resetFoliageDistanceScale` are shader-neutral for the prebuilt export's
+   module scan (`ShaderNeutralApi`). The foliage tests are core GPU suites (`TerrainFoliageGpu`), not editor
+   tests: the ring needs loaded terrains and chunk entities.
+7. **Near fade test (T18).** A pixel-coverage check (`InstancedFadeGpu.TheNearBandShrinksTheInstance`: an
+   instance half way through the band covers between a tenth and a half of its full area) replaces the golden:
+   it holds on every renderer, so it runs on glcore and Vulkan without per-renderer images.
+8. **Camera gizmo (6.10).** `cameraGizmoCorners` is a free function in `editor/render/SceneRender.h`; the tests
+   are `editor/tests/sceneview/CameraGizmoTest.cpp`. The shadow light cameras already clamped near and far
+   (`RenderSystemShadows.cpp:665-666`), so only `updateCamera` takes `getCameraNearFar`. Main's gizmo has no
+   pure function to test against, so `OrthoCameraGizmoHasDepth` has no red run; main's `far = near + 2` is
+   read at `SceneRender.cpp:3903-3905`.
+9. **Vulkan (6.11).** The decision is `engine/core/render/VulkanRobustness.h` (`decideVulkanRobustBufferAccess`,
+   plain integers, unit-tested without a device) instead of `engine/platform/common/VulkanFeatures.h`: the editor
+   reaches `engine/core/render` headers already. It is logged to stderr with the editor's other Vulkan device
+   messages. `get_render_stats` returns `gpu.robust_buffer_access`; the tool's description is unchanged (the lean
+   MCP rules: no result field lists in descriptions).
+10. **Docs (6.12).** Under the lean MCP rules (new guide text needs an eval case) the new material is in user
+    docs: `docs/rendering/instancing.md` (fades, billboards, foliage Draw range, Foliage Distance),
+    `docs/editor/scene-view.md` (camera gizmo, near clamp), `docs/rendering/shadows.md` (`lightShadowD`, 2D PCF);
+    `docs/mcp/guide/shaders.md` gets only the corrected Points sentence; no terrain guide page is created
+    (agent-authoring owns the foliage guide). `docs/camera.md` is about shake and follow, so the near clamp is in
+    the Scene view doc.
+11. **MCP test (T22).** No Points depth-write hint test: the Auto label is Inspector text with no MCP surface;
+    `PointsDepthWriteGpu` covers the behaviour.
