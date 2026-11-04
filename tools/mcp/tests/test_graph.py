@@ -38,7 +38,7 @@ PATH = "graphs/Blend.testgraph"
 
 
 async def write_graph(ed: Editor, graph=GRAPH):
-    # (write_file takes known text types only: a graph kind's extension is the kind's)
+    # (the file as another program leaves it)
     target = ed.project / PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(graph, indent=2) + "\n")
@@ -219,3 +219,46 @@ async def test_hand_written_edges_get_ids():
         ed.check(len(set(ids)) == 2 and all(ids), f"two distinct ids: {ids}")
         await ed.call("edit_graph", path=PATH, ops=[{"op": "disconnect", "id": ids[0]}])
         ed.check_eq([e["id"] for e in json.loads((ed.project / PATH).read_text())["edges"]], [ids[1]], "the other edge keeps its id")
+
+
+async def test_graph_files_are_text_and_tracked():
+    """F11: a registered kind's extension, any kind's, is a text file and a tracked one."""
+    async with Editor(create=True, name="Graph Files CI", env={"JASPER_TEST_GRAPH_KIND": "1"}) as ed:
+        await write_graph(ed)
+        for path in (PATH, "graphs/Other.strictgraph"):
+            written = await ed.call_raw("write_file", {"path": path, "content": json.dumps(GRAPH, indent=2) + "\n"})
+            ed.check(not written.is_error, f"write_file {path}: {written.text[:300]}")
+            read = await ed.call_raw("read_file", {"path": path})
+            ed.check(not read.is_error and "formatVersion" in read.text, f"read_file {path}: {read.text[:300]}")
+        unknown = await ed.call_raw("write_file", {"path": "graphs/Other.nokindgraph", "content": "{}"})
+        ed.check(unknown.is_error, f"no kind has this extension: {unknown.text[:300]}")
+        notjson = await ed.call_raw("write_file", {"path": PATH, "content": "{not json"})
+        ed.check(notjson.is_error and "not valid JSON" in notjson.text, f"a graph file must stay loadable: {notjson.text[:300]}")
+
+        # another program's edit: its problems come with the next call
+        async def problems() -> tuple[list, dict]:
+            r = await ed.call_raw("editor_status")
+            ext = (r.structured if isinstance(r.structured, dict) else {}).get("external_changes") or {}
+            return [p for p in ext.get("problems", []) if p.get("path") == PATH], ext
+
+        target = ed.project / PATH
+        broken = json.loads(json.dumps(GRAPH))
+        broken["edges"] = [{"id": "e9", "from": {"node": "n1", "port": "value"}, "to": {"node": "n404", "port": "a"}}]
+        time.sleep(0.05)
+        target.write_text(json.dumps(broken, indent=2) + "\n")
+        found, ext = await problems()
+        ed.check(found and "n404" in found[0]["message"], f"the dangling edge is reported: {ext}")
+        time.sleep(0.05)
+        target.write_text("{not json")
+        found, ext = await problems()
+        ed.check(found and "not valid JSON" in found[0]["message"], f"a file that is not a graph is reported: {ext}")
+        time.sleep(0.05)
+        await write_graph(ed)
+        await problems()
+
+        # the tool's own write is not another program's
+        await ed.call("edit_graph", path=PATH, ops=[{"op": "setParam", "node": "n2", "name": "weight", "value": 0.25}])
+        for _ in range(3):
+            found, ext = await problems()
+            ed.check(PATH not in ext.get("changed", []), f"edit_graph's own write: {ext}")
+            await asyncio.sleep(0.25)

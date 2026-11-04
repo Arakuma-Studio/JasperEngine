@@ -518,3 +518,24 @@ TEST_F(GraphTest, LoadGivesEdgesWithoutIdsTheirOwn) {
     // once saved, they are the file's
     EXPECT_EQ(save(loadOk(save(graph))), save(graph));
 }
+
+// ---- BF23 F11: a kind's extension names its files, whatever kind it is
+
+TEST_F(GraphTest, KindForFileMatchesAnyRegisteredExtension) {
+    GraphKindDesc dotted;
+    dotted.id = "dotted";
+    dotted.fileExtension = ".proc.mat";
+    GraphRegistry::get().registerKind(dotted);
+    const auto idOf = [](std::string_view path) {
+        const auto kind = GraphRegistry::get().kindForFile(path);
+        return kind ? kind->id : std::string();
+    };
+    EXPECT_EQ(idOf("graphs/a.testgraph"), "test");
+    EXPECT_EQ(idOf("graphs/A.TESTGRAPH"), "test");
+    EXPECT_EQ(idOf("a.proc.mat"), "dotted");
+    EXPECT_EQ(idOf("a.mat"), "");
+    EXPECT_EQ(idOf("graphs/atestgraph"), "");
+    EXPECT_EQ(idOf(".testgraph"), "") << "a hidden file with no name";
+    GraphRegistry::get().unregisterKind("dotted");
+    EXPECT_EQ(idOf("a.proc.mat"), "");
+}

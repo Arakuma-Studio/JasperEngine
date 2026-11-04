@@ -156,3 +156,56 @@ async def test_misspelled_patch_field_is_refused(ed: Editor):
     # a patch that goes through says what it left wrong
     done = await ed.call("edit_particle_effect", path=path, patch={"modules": {"renderer": {"renderMode": "none"}}})
     ed.check([d for d in done["diagnostics"] if d["severity"] == "warning" and d["path"] == "renderer.renderMode"], f"its warnings: {done['diagnostics']}")
+
+
+async def external(ed: Editor) -> dict:
+    r = await ed.call_raw("editor_status")
+    return (r.structured if isinstance(r.structured, dict) else {}).get("external_changes") or {}
+
+
+async def test_particles_file_is_text_and_tracked(ed: Editor):
+    """F11: read_file and write_file take a .particles; another program's edit reports its problems."""
+    await setup(ed)
+    path = "assets/fx/direct.particles"
+    await ed.call("create_particle_effect", path=path, preset="sparks")
+    target = ed.project / path
+
+    read = await ed.call_raw("read_file", {"path": path})
+    ed.check(not read.is_error and '"version"' in read.text, f"read_file: {read.text[:300]}")
+    good = target.read_text()
+
+    def with_field(key: str, value) -> str:
+        effect = json.loads(good)
+        effect[key] = value
+        return json.dumps(effect, indent=2) + "\n"
+
+    written = await ed.call_raw("write_file", {"path": path, "content": with_field("duration", 2)})
+    ed.check(not written.is_error, f"write_file: {written.text[:300]}")
+    ed.check_eq((await ed.call("get_particle_effect", path=path))["effect"].get("duration"), 2, "write_file's effect is the one read")
+    warned = await ed.call("write_file", path=path, content=with_field("duratoin", 2))
+    ed.check([w for w in warned["warnings"] if "did you mean 'duration'" in w], f"write_file's warnings: {warned}")
+    invalid = await ed.call_raw("write_file", {"path": path, "content": '{"version": 1, "duration": -1}'})
+    ed.check(invalid.is_error and "Not a valid particle effect" in invalid.text, f"an invalid effect is refused: {invalid.text[:300]}")
+    await ed.call("write_file", path=path, content=good)
+    await external(ed)
+
+    time.sleep(0.05)
+    target.write_text(with_field("duratoin", 2))
+    ext = await external(ed)
+    found = [p for p in ext.get("problems", []) if p.get("path") == path]
+    ed.check(found and "did you mean 'duration'" in found[0]["message"], f"the bad field is reported: {ext}")
+    time.sleep(0.05)
+    target.write_text("{not json")
+    ext = await external(ed)
+    found = [p for p in ext.get("problems", []) if p.get("path") == path]
+    ed.check(found and "JSON" in found[0]["message"], f"a broken file is reported: {ext}")
+    time.sleep(0.05)
+    target.write_text(good)
+    await external(ed)
+
+    # the tool's own write is not another program's
+    await ed.call("edit_particle_effect", path=path, patch={"duration": 4})
+    for _ in range(3):
+        ext = await external(ed)
+        ed.check(path not in ext.get("changed", []), f"edit_particle_effect's own write: {ext}")
+        await asyncio.sleep(0.25)

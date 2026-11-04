@@ -4,6 +4,7 @@
 #include "GraphRegistry.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 
 using namespace jasperengine::graph;
@@ -35,6 +36,18 @@ std::shared_ptr<const GraphKindDesc> GraphRegistry::kindForExtension(const std::
     std::scoped_lock lock(mutex);
     for (const auto& [id, kind] : kinds) {
         if (!kind->fileExtension.empty() && kind->fileExtension == extension) return kind;
+    }
+    return nullptr;
+}
+
+std::shared_ptr<const GraphKindDesc> GraphRegistry::kindForFile(std::string_view path) const {
+    const auto lower = [](char c) { return static_cast<char>(std::tolower(static_cast<unsigned char>(c))); };
+    std::scoped_lock lock(mutex);
+    for (const auto& [id, kind] : kinds) {
+        const std::string& extension = kind->fileExtension;
+        if (extension.empty() || path.size() <= extension.size()) continue;
+        const std::string_view tail = path.substr(path.size() - extension.size());
+        if (std::equal(tail.begin(), tail.end(), extension.begin(), [&](char a, char b) { return lower(a) == lower(b); })) return kind;
     }
     return nullptr;
 }

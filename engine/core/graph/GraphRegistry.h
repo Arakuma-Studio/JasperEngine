@@ -17,6 +17,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jasperengine::graph {
@@ -80,6 +81,8 @@ namespace jasperengine::graph {
 
         std::shared_ptr<const GraphKindDesc> kind(const std::string& id) const;
         std::shared_ptr<const GraphKindDesc> kindForExtension(const std::string& extension) const;
+        // The kind whose extension ends this path, whatever its letter case; null for none
+        std::shared_ptr<const GraphKindDesc> kindForFile(std::string_view path) const;
         std::vector<std::string> kindIds() const;
 
         static const NodeTypeDesc* nodeType(const GraphKindDesc& kind, const std::string& typeId);
