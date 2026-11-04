@@ -867,7 +867,7 @@ namespace jasperengine::editor{
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
         // Project Settings > Quality > Device Tiers, LOD biases, Thermal Response and Graphics >
-        // Upload Budget (spec S44): project.yaml's device block
+        // Upload Budget (spec S56): project.yaml's device block
         DeviceSettings deviceSettings;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];

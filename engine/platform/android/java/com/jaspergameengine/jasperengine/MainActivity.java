@@ -179,7 +179,7 @@ public class MainActivity extends GameActivity {
 		JasperNative.dispatchConfigurationChanged(newConfig);
 	}
 
-	// Device.onLowMemory (spec S44): RUNNING_LOW and above, and every level of an app in the
+	// Device.onLowMemory (spec S56): RUNNING_LOW and above, and every level of an app in the
 	// background (UI_HIDDEN only says the UI went away, not that memory is short). The game
 	// thread sees the count change (NativeEngine::updateDeviceSignals).
 	@Override

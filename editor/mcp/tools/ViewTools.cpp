@@ -108,7 +108,7 @@ bool sceneContentLoaded(SceneProject* sp) {
     if (ms && ms->hasPendingAsyncModelLoads()) return false;
     // a frame drawn while a texture loads shows a stand-in for it (the texture before, or none)
     if (TextureDataPool::getLoadingCount() > 0) return false;
-    // and while a queued upload waits for the upload budget (spec S44 R8), its object is not drawn
+    // and while a queued upload waits for the upload budget (spec S56 R8), its object is not drawn
     if (SystemRender::getDeferredUploadCount() > 0) return false;
     return true;
 }

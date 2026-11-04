@@ -11,7 +11,7 @@ namespace jasperengine::editor{
     class Project;
 
     // Project Settings > Quality > Device Tiers (and the LOD biases, Thermal Response and the
-    // upload budget, spec S44): the editor's QualityResolver takes the settings at once, undo
+    // upload budget, spec S56): the editor's QualityResolver takes the settings at once, undo
     // restores them; project.yaml is written either way
     class DeviceSettingsCmd: public Command{
     private:

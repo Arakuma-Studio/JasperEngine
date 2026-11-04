@@ -88,7 +88,7 @@ namespace jasperengine::player {
         // per ShadowTiers platform
         std::array<ShadowTier, ShadowTiers::PLATFORM_COUNT> shadowTiers{};
         // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the
-        // upload budget (spec S44): "device", what differs from the defaults
+        // upload budget (spec S56): "device", what differs from the defaults
         DeviceSettings device;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;

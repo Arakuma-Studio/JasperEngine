@@ -2526,7 +2526,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
-    // device: what differs from the defaults of the Device Tier table and the rest (S44)
+    // device: what differs from the defaults of the Device Tier table and the rest (S56)
     {
         const nlohmann::json device = nlohmann::json::parse(project->getDeviceSettings().toJson());
         if (!device.empty())
@@ -3153,7 +3153,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
     }
 
-    // S44: a project saved before it has no device block, and gets the defaults
+    // S56: a project saved before it has no device block, and gets the defaults
     {
         DeviceSettings device;
         if (node["device"].IsDefined()) {

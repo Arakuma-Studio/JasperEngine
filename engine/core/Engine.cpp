@@ -1902,7 +1902,7 @@ void Engine::systemViewLoaded(){
     // gles3 player runs on an OpenGL ES context)
     Log::print("Graphics: %s; %s; %s", SystemRender::getBackendName(), SystemRender::getApiVersion().c_str(),
               SystemRender::getDeviceName().c_str());
-    // the GPU's tier (spec S44 R2), logged with its reason; a player applies it from here
+    // the GPU's tier (spec S56 R2), logged with its reason; a player applies it from here
     Device::detect();
 #ifndef JASPERENGINE_EDITOR
     // what the export recorded is created before the scenes need it (spec S32 R12)
@@ -2017,7 +2017,7 @@ bool Engine::areScenesLoaded(bool textures){
     // still loading: a frame drawn meanwhile shows a stand-in for it
     bool ready = ShaderPool::getPendingShaderCount() == 0 && SystemRender::isGpuCreationIdle() && !scenes.empty() &&
                  (!textures || TextureDataPool::getLoadingCount() == 0) &&
-                 // and every queued upload the frame budget left for later has run (spec S44 R8)
+                 // and every queued upload the frame budget left for later has run (spec S56 R8)
                  SystemRender::getDeferredUploadCount() == 0;
     // a game replaying its warm-up list holds its first scene until the list is ready (spec S32 R12)
     if (ready && SystemRender::getShaderCreationSettings().holdFirstSceneForWarmup)

@@ -81,7 +81,7 @@ private:
     static int jasperengine_gamepad_button(int button);
 
     static void pollGamepads();
-    // the web's memory heuristic (spec S44 R7): the wasm heap near its maximum or, where the
+    // the web's memory heuristic (spec S56 R7): the wasm heap near its maximum or, where the
     // browser has performance.memory, the JS heap near its limit is a low-memory warning
     static void pollMemoryPressure();
 

@@ -71,7 +71,7 @@ namespace jasperengine::editor {
         ThreadingProjectSettings m_threading;
         ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
-        // Quality > Device Tiers and the rest of the device settings (S44), and the platform
+        // Quality > Device Tiers and the rest of the device settings (S56), and the platform
         // group the table shows
         DeviceSettings m_deviceSettings;
         int m_deviceTierGroup = 1;

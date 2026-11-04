@@ -87,7 +87,7 @@ struct JniData{
     // Screen.safeArea: where the game's view lies in the window and the cutout rectangles
     jfieldID platformSafeAreaRevision;
     jfieldID platformSafeAreaInfo;
-    // Device's thermal state and memory warnings (spec S44): the listener's state, the onTrimMemory
+    // Device's thermal state and memory warnings (spec S56): the listener's state, the onTrimMemory
     // count, and the 2 s poll of the status and the headroom forecast
     jfieldID platformThermalState;
     jfieldID platformTrimMemoryCount;

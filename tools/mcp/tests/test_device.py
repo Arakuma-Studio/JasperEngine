@@ -1,4 +1,4 @@
-"""Device tiers (spec S44 AC4, AC5): get_device_info in edit mode and in Play, the Game view's
+"""Device tiers (spec S56 AC4, AC5): get_device_info in edit mode and in Play, the Game view's
 device simulation (tier, platform family, thermal state) applying the tier's overrides in Play
 and ending with it, and the Device Tier table through get/set_project_settings
 (quality.device_tiers.<group>.<tier>) with undo. With JASPER_DEVICE_SHOTS set, the Game view at

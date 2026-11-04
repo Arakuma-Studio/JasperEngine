@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Device tier tools (spec S44 R9, docs/mcp/guide/device.md): what the device is and gets (the
+// Device tier tools (spec S56 R9, docs/mcp/guide/device.md): what the device is and gets (the
 // GPU, the detected tier and its reason, the thermal and memory state, the overrides in effect,
 // the upload queue), and the Game view's device simulation for Play testing. The tier table
 // itself goes through get/set_project_settings (quality.device_tiers.<group>.<tier>, undoable).
@@ -29,7 +29,7 @@ namespace {
 
 using namespace schema;
 
-Json cellJson(DeviceOverride field, float value){
+Json deviceCellJson(DeviceOverride field, float value){
     const DeviceOverrideInfo& info = DeviceOverrides::info(field);
     if (info.kind == DeviceOverrideInfo::Kind::Off)
         return false;
@@ -38,7 +38,7 @@ Json cellJson(DeviceOverride field, float value){
     return value;
 }
 
-Json simulationJson(const GameViewSettings& settings){
+Json deviceSimulationJson(const GameViewSettings& settings){
     return Json{
         {"tier", settings.deviceTier >= 0 ? Json(DeviceNames::tier((DeviceTier)settings.deviceTier)) : Json("auto")},
         {"platform", settings.devicePlatform >= 0 ? Json(DeviceNames::group((DevicePlatformGroup)settings.devicePlatform)) : Json("auto")},
@@ -47,7 +47,7 @@ Json simulationJson(const GameViewSettings& settings){
 }
 
 // the device's state now, and a one-line summary of it
-Json deviceInfo(McpContext& ctx, std::string& summary){
+Json deviceInfoJson(McpContext& ctx, std::string& summary){
     const DeviceDetection& detection = Device::getDetection();
     const DeviceSimulation& simulation = Device::getSimulation();
     const bool applied = Device::isTierApplied();
@@ -64,7 +64,7 @@ Json deviceInfo(McpContext& ctx, std::string& summary){
         else if (item.source == "memory")
             entry["extra_mips"] = (int)item.value;
         else
-            entry["value"] = cellJson(item.field, item.value);
+            entry["value"] = deviceCellJson(item.field, item.value);
         overrides.push_back(entry);
     }
 
@@ -96,7 +96,13 @@ Json deviceInfo(McpContext& ctx, std::string& summary){
         {"playing", ctx.project() && ctx.project()->isAnyScenePlaying()},
     };
     if (GameWindow* game = ctx.gameWindow())
-        info["simulation"] = simulationJson(game->getSettings());
+        info["simulation"] = deviceSimulationJson(game->getSettings());
+    // what an agent testing a tier does next, where it is not obvious
+    if (!applied && !info["playing"].get<bool>())
+        info["next"] = "set_device_simulation {tier}, then play: the editor applies a tier only in Play";
+    else if (Device::getThermalState() >= ThermalState::Serious && !QualityResolver::getSettings().thermalResponse[(size_t)group])
+        info["next"] = std::string("the thermal response is off on ") + DeviceNames::group(group) +
+                       ": set_device_simulation {platform: \"mobile\"} or quality.thermal_response." + DeviceNames::group(group);
 
     summary = (specs.gpuName.empty() ? std::string("No GPU name") : specs.gpuName) + ": tier " + DeviceNames::tierLabel(Device::getTier()) +
               (applied ? std::string(" (") + source + ", " + std::to_string(overrides.size()) + " override(s) in effect)"
@@ -107,7 +113,7 @@ Json deviceInfo(McpContext& ctx, std::string& summary){
 
 void getDeviceInfoTool(const CallPtr& call){
     std::string summary;
-    const Json info = deviceInfo(call->ctx(), summary);
+    const Json info = deviceInfoJson(call->ctx(), summary);
     call->ok(summary + ".", info);
 }
 
@@ -145,14 +151,15 @@ void setDeviceSimulationTool(const CallPtr& call){
 
     const bool playing = ctx.project() && ctx.project()->isAnyScenePlaying();
     if (!playing){
-        call->ok("Device simulation set; it applies when Play starts.", Json{{"simulation", simulationJson(game->getSettings())}, {"playing", false}});
+        call->ok("Device simulation set; it applies when Play starts.", Json{{"simulation", deviceSimulationJson(game->getSettings())},
+                 {"playing", false}, {"next", "play {action: \"start\"}, then get_device_info or screenshot"}});
         return;
     }
     // at once, then the frames that apply it (the thermal step, the resolved settings)
     Device::setSimulation(game->getDeviceSimulation());
     call->afterFrames(2, [call](){
         std::string summary;
-        const Json info = deviceInfo(call->ctx(), summary);
+        const Json info = deviceInfoJson(call->ctx(), summary);
         call->ok("Device simulation applied. " + summary + ".", info);
     });
 }

@@ -1314,7 +1314,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
                  PlatformRules::orientationName(Platform::getSimulation().orientation));
         lineCount++;
     }
-    // the Device Tier in effect and the thermal response (S44)
+    // the Device Tier in effect and the thermal response (S56)
     {
         const char* tier = Device::isTierApplied() ? DeviceNames::tierLabel(Device::getTier()) : "Auto (none applied)";
         const ThermalState response = QualityResolver::getThermalResponse();

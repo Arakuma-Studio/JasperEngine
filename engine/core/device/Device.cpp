@@ -18,7 +18,7 @@ FunctionSubscribe<void()> Device::onLowMemory;
 
 namespace {
 
-    struct DeviceState {
+    struct DeviceRunState {
         DeviceDetection detection;
         bool configured = false;
         std::optional<DeviceTier> setTier;
@@ -28,16 +28,16 @@ namespace {
         int lowMemoryCount = 0;
     };
 
-    DeviceState& state(){
-        static DeviceState* s = new DeviceState();
+    DeviceRunState& deviceRunState(){
+        static DeviceRunState* s = new DeviceRunState();
         return *s;
     }
 
     // written by the platform layers on their threads, read once a frame
-    std::atomic<int> platformThermal{(int)ThermalState::Nominal};
-    std::atomic<int> pendingLowMemory{0};
+    std::atomic<int> devicePlatformThermal{(int)ThermalState::Nominal};
+    std::atomic<int> devicePendingLowMemory{0};
 
-    const char* databasePlatform(Platform platform){
+    const char* deviceDatabasePlatform(Platform platform){
         switch (platform){
             case Platform::Android: return "android";
             case Platform::iOS:
@@ -47,7 +47,7 @@ namespace {
         }
     }
 
-    const char* platformLabel(Platform platform){
+    const char* devicePlatformLabel(Platform platform){
         switch (platform){
             case Platform::Android: return "Android";
             case Platform::iOS: return "iOS";
@@ -60,10 +60,10 @@ namespace {
     }
 
     // R2: a GPU the database does not know
-    DeviceTier heuristicTier(const DeviceSpecs& profile, std::string& why){
+    DeviceTier deviceHeuristicTier(const DeviceSpecs& profile, std::string& why){
         const Platform platform = (Platform)profile.platform;
         const int mb = profile.memoryMB;
-        why = std::string(platformLabel(platform)) + " with " + (mb > 0 ? std::to_string(mb) + " MB" : std::string("unknown memory")) +
+        why = std::string(devicePlatformLabel(platform)) + " with " + (mb > 0 ? std::to_string(mb) + " MB" : std::string("unknown memory")) +
               " and " + std::to_string(profile.cores) + " cores";
         switch (platform){
             case Platform::Android:
@@ -80,7 +80,7 @@ namespace {
         }
     }
 
-    void logResponse(ThermalState response){
+    void logThermalResponse(ThermalState response){
         switch (response){
             case ThermalState::Nominal:
             case ThermalState::Fair:
@@ -108,7 +108,7 @@ DeviceDetection Device::detectTier(const DeviceSpecs& profile, const GpuTierData
 
     GpuQuery query;
     query.renderer = profile.gpuName;
-    query.platform = databasePlatform((Platform)profile.platform);
+    query.platform = deviceDatabasePlatform((Platform)profile.platform);
     const GpuMatch match = database.match(query);
     detection.vendor = match.vendor;
     const std::string gpu = profile.gpuName.empty() ? std::string("No GPU name") : profile.gpuName;
@@ -119,7 +119,7 @@ DeviceDetection Device::detectTier(const DeviceSpecs& profile, const GpuTierData
         detection.reason = gpu + ", rule " + match.kind + " (" + match.rule + "), tier " + DeviceNames::tierLabel(match.tier);
     }else{
         std::string why;
-        detection.tier = heuristicTier(profile, why);
+        detection.tier = deviceHeuristicTier(profile, why);
         detection.kind = "heuristic";
         detection.rule = why;
         detection.reason = gpu + ", unknown GPU" + (match.vendor.empty() ? std::string() : " (" + match.vendor + ")") +
@@ -142,22 +142,22 @@ void Device::detect(){
     if (profile.gpuName.empty())
         profile.gpuName = SystemRender::getDeviceName();
     setDetection(detectTier(profile, GpuTierDatabase::builtIn()));
-    const DeviceState& s = state();
+    const DeviceRunState& s = deviceRunState();
     Log::print("Device tier: %s (%s)%s", s.detection.reason.c_str(), profile.backend.c_str(),
                s.configured ? "" : "; not applied (the editor applies a simulated or set tier only)");
 }
 
 void Device::setDetection(const DeviceDetection& detection){
-    state().detection = detection;
+    deviceRunState().detection = detection;
     applyTier();
 }
 
 const DeviceDetection& Device::getDetection(){
-    return state().detection;
+    return deviceRunState().detection;
 }
 
 void Device::configure(const DeviceSettings& settings){
-    state().configured = true;
+    deviceRunState().configured = true;
     QualityResolver::setSettings(settings);
     applyTier();
 }
@@ -173,7 +173,7 @@ void Device::configure(const char* settingsJson){
 }
 
 bool Device::isConfigured(){
-    return state().configured;
+    return deviceRunState().configured;
 }
 
 void Device::setProjectSettings(const DeviceSettings& settings){
@@ -183,7 +183,7 @@ void Device::setProjectSettings(const DeviceSettings& settings){
 // ---------------------------------------------------------------- the tier
 
 void Device::applyTier(){
-    const DeviceState& s = state();
+    const DeviceRunState& s = deviceRunState();
     std::optional<DeviceTier> tier;
     if (s.simulation.tier)
         tier = s.simulation.tier;
@@ -197,7 +197,7 @@ void Device::applyTier(){
 
 DeviceTier Device::getTier(){
     const std::optional<DeviceTier> tier = QualityResolver::getTier();
-    return tier ? *tier : state().detection.tier;
+    return tier ? *tier : deviceRunState().detection.tier;
 }
 
 bool Device::isTierApplied(){
@@ -205,48 +205,48 @@ bool Device::isTierApplied(){
 }
 
 void Device::setTier(DeviceTier tier){
-    if (state().setTier == tier)
+    if (deviceRunState().setTier == tier)
         return;
-    state().setTier = tier;
+    deviceRunState().setTier = tier;
     Log::print("Device tier: %s (Device.setTier or --device-tier)", DeviceNames::tierLabel(tier));
     applyTier();
 }
 
 void Device::resetTier(){
-    state().setTier.reset();
+    deviceRunState().setTier.reset();
     applyTier();
 }
 
 bool Device::isTierSet(){
-    return state().setTier.has_value();
+    return deviceRunState().setTier.has_value();
 }
 
 std::string Device::getGpuName(){
-    return state().detection.profile.gpuName;
+    return deviceRunState().detection.profile.gpuName;
 }
 
 // ---------------------------------------------------------------- signals
 
 void Device::reportThermalState(ThermalState thermal){
-    platformThermal.store((int)thermal, std::memory_order_relaxed);
+    devicePlatformThermal.store((int)thermal, std::memory_order_relaxed);
 }
 
 void Device::reportLowMemory(){
-    pendingLowMemory.fetch_add(1, std::memory_order_relaxed);
+    devicePendingLowMemory.fetch_add(1, std::memory_order_relaxed);
 }
 
 ThermalState Device::getThermalState(){
-    return state().thermal;
+    return deviceRunState().thermal;
 }
 
 int Device::getLowMemoryCount(){
-    return state().lowMemoryCount;
+    return deviceRunState().lowMemoryCount;
 }
 
 void Device::update(double seconds){
-    DeviceState& s = state();
+    DeviceRunState& s = deviceRunState();
 
-    const ThermalState platform = (ThermalState)platformThermal.load(std::memory_order_relaxed);
+    const ThermalState platform = (ThermalState)devicePlatformThermal.load(std::memory_order_relaxed);
     const ThermalState thermal = s.simulation.thermal ? *s.simulation.thermal : platform;
     if (thermal != s.thermal){
         Log::print("Thermal state: %s (was %s)%s", DeviceNames::thermalLabel(thermal), DeviceNames::thermalLabel(s.thermal),
@@ -256,7 +256,7 @@ void Device::update(double seconds){
         onThermalStateChanged.call((int)thermal);
     }
 
-    if (pendingLowMemory.exchange(0, std::memory_order_relaxed) > 0){
+    if (devicePendingLowMemory.exchange(0, std::memory_order_relaxed) > 0){
         s.lowMemoryCount++;
         QualityResolver::addMemoryPressure();
         // the CPU copies the pools can load again, and the pools' unused entries
@@ -270,31 +270,31 @@ void Device::update(double seconds){
     const ThermalState response = QualityResolver::getThermalResponse();
     if (response != s.response){
         s.response = response;
-        logResponse(response);
+        logThermalResponse(response);
     }
 }
 
 // ---------------------------------------------------------------- the editor
 
 void Device::setSimulation(const DeviceSimulation& simulation){
-    if (simulation == state().simulation)
+    if (simulation == deviceRunState().simulation)
         return;
-    state().simulation = simulation;
+    deviceRunState().simulation = simulation;
     applyTier();
 }
 
 const DeviceSimulation& Device::getSimulation(){
-    return state().simulation;
+    return deviceRunState().simulation;
 }
 
 void Device::resetSession(){
-    DeviceState& s = state();
+    DeviceRunState& s = deviceRunState();
     s.setTier.reset();
     s.simulation = DeviceSimulation();
-    s.thermal = (ThermalState)platformThermal.load(std::memory_order_relaxed);
+    s.thermal = (ThermalState)devicePlatformThermal.load(std::memory_order_relaxed);
     s.response = ThermalState::Nominal;
     s.lowMemoryCount = 0;
-    pendingLowMemory.store(0, std::memory_order_relaxed);
+    devicePendingLowMemory.store(0, std::memory_order_relaxed);
     QualityResolver::resetResponse();
     QualityResolver::setThermalState(s.thermal);
     applyTier();

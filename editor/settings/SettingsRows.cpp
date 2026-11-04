@@ -597,7 +597,7 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
     return s;
 }
 
-// One key of the device settings (spec S44), applied as one undoable step (undo scope project):
+// One key of the device settings (spec S56), applied as one undoable step (undo scope project):
 // `set` changes a copy, which a DeviceSettingsCmd applies when it differs
 Setting deviceSetting(const std::string& key, const std::string& type, const std::string& description,
                       std::function<Json(const DeviceSettings&)> get, std::function<bool(DeviceSettings&, const Json&, std::string&)> set) {
@@ -685,7 +685,7 @@ bool mergeDeviceTier(DeviceTierOverrides& tier, const Json& value, std::string& 
     return true;
 }
 
-// Project Settings > Quality > Device Tiers and the rest of the device settings (spec S44)
+// Project Settings > Quality > Device Tiers and the rest of the device settings (spec S56)
 void addDeviceSettings(const std::function<void(Setting)>& add) {
     for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++) {
         const DevicePlatformGroup group = (DevicePlatformGroup)g;
@@ -2763,7 +2763,7 @@ std::vector<Setting> mcpSettingsTable() {
         }
         // ---- graphics: shader creation (spec S32), from its reflection table
         addShaderCreationSettings(add);
-        // ---- quality: device tiers, LOD biases, thermal response; graphics: upload budget (S44)
+        // ---- quality: device tiers, LOD biases, thermal response; graphics: upload budget (S56)
         addDeviceSettings(add);
         return t;
     }();

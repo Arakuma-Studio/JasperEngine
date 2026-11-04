@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The GPU database and detection (spec S44 R1, R2, AC1): renderer strings of every platform map
+// The GPU database and detection (spec S56 R1, R2, AC1): renderer strings of every platform map
 // to the expected tier through the expected rule, unknown GPUs get the platform's heuristic, and
 // the embedded database is the checked-in gpu_tiers.json.
 
@@ -19,7 +19,7 @@ using namespace jasperengine;
 
 namespace {
 
-    struct TierCase {
+    struct GpuTierCase {
         Platform platform;
         const char* renderer;
         int memoryMB;
@@ -27,7 +27,7 @@ namespace {
         const char* kind;
     };
 
-    DeviceDetection detect(Platform platform, const std::string& renderer, int memoryMB = 0, int cores = 8){
+    DeviceDetection detectGpuTier(Platform platform, const std::string& renderer, int memoryMB = 0, int cores = 8){
         DeviceSpecs specs;
         specs.platform = (int)platform;
         specs.gpuName = renderer;
@@ -60,7 +60,7 @@ TEST(GpuTier, FamilyPatternsMatchWholeWords){
 
 // AC1: the table of the spec, each with the rule that decided it
 TEST(GpuTier, RendererStringsMapToTiers){
-    const TierCase cases[] = {
+    const GpuTierCase cases[] = {
         {Platform::Android, "Adreno (TM) 530", 4096, DeviceTier::Low, "name"},
         {Platform::Android, "Adreno (TM) 650", 8192, DeviceTier::Medium, "name"},
         {Platform::Android, "Adreno (TM) 740", 8192, DeviceTier::High, "name"},
@@ -83,8 +83,8 @@ TEST(GpuTier, RendererStringsMapToTiers){
         {Platform::Windows, "Intel(R) Arc(TM) B580 Graphics", 16384, DeviceTier::High, "family"},
         {Platform::Windows, "Intel(R) Graphics 2025", 16384, DeviceTier::Medium, "vendor"},
     };
-    for (const TierCase& c : cases){
-        const DeviceDetection detection = detect(c.platform, c.renderer, c.memoryMB);
+    for (const GpuTierCase& c : cases){
+        const DeviceDetection detection = detectGpuTier(c.platform, c.renderer, c.memoryMB);
         EXPECT_EQ(detection.tier, c.tier) << c.renderer << ": " << detection.reason;
         EXPECT_EQ(detection.kind, c.kind) << c.renderer << ": " << detection.reason;
         EXPECT_NE(detection.reason.find(std::string("tier ") + DeviceNames::tierLabel(c.tier)), std::string::npos) << detection.reason;
@@ -92,26 +92,26 @@ TEST(GpuTier, RendererStringsMapToTiers){
 }
 
 TEST(GpuTier, ReasonSaysGpuRuleAndTier){
-    const DeviceDetection detection = detect(Platform::Android, "Adreno (TM) 650", 8192);
+    const DeviceDetection detection = detectGpuTier(Platform::Android, "Adreno (TM) 650", 8192);
     EXPECT_EQ(detection.reason, "Adreno (TM) 650, rule name (adreno 650), tier Medium");
     EXPECT_EQ(detection.vendor, "qualcomm");
 }
 
 // R2: an unknown GPU never fails, and its tier comes from the platform's memory and cores
 TEST(GpuTier, UnknownGpusGetTheHeuristic){
-    EXPECT_EQ(detect(Platform::Android, "Some GPU 9000", 2048).tier, DeviceTier::Low);
-    EXPECT_EQ(detect(Platform::Android, "Some GPU 9000", 4096).tier, DeviceTier::Medium);
-    EXPECT_EQ(detect(Platform::Android, "Some GPU 9000", 8192).tier, DeviceTier::High);
-    EXPECT_EQ(detect(Platform::Android, "", 0).tier, DeviceTier::Medium);
-    EXPECT_EQ(detect(Platform::iOS, "Some GPU", 2048).tier, DeviceTier::Low);
-    EXPECT_EQ(detect(Platform::iOS, "Some GPU", 8192).tier, DeviceTier::High);
-    EXPECT_EQ(detect(Platform::Linux, "Some GPU", 8192, 8).tier, DeviceTier::High);
-    EXPECT_EQ(detect(Platform::Linux, "Some GPU", 8192, 2).tier, DeviceTier::Medium);
+    EXPECT_EQ(detectGpuTier(Platform::Android, "Some GPU 9000", 2048).tier, DeviceTier::Low);
+    EXPECT_EQ(detectGpuTier(Platform::Android, "Some GPU 9000", 4096).tier, DeviceTier::Medium);
+    EXPECT_EQ(detectGpuTier(Platform::Android, "Some GPU 9000", 8192).tier, DeviceTier::High);
+    EXPECT_EQ(detectGpuTier(Platform::Android, "", 0).tier, DeviceTier::Medium);
+    EXPECT_EQ(detectGpuTier(Platform::iOS, "Some GPU", 2048).tier, DeviceTier::Low);
+    EXPECT_EQ(detectGpuTier(Platform::iOS, "Some GPU", 8192).tier, DeviceTier::High);
+    EXPECT_EQ(detectGpuTier(Platform::Linux, "Some GPU", 8192, 8).tier, DeviceTier::High);
+    EXPECT_EQ(detectGpuTier(Platform::Linux, "Some GPU", 8192, 2).tier, DeviceTier::Medium);
     // the web: Medium, Low under 4 GB of deviceMemory; Safari's masked name has no vendor default
-    EXPECT_EQ(detect(Platform::Web, "Apple GPU", 8192).tier, DeviceTier::Medium);
-    EXPECT_EQ(detect(Platform::Web, "Apple GPU", 2048).tier, DeviceTier::Low);
-    EXPECT_EQ(detect(Platform::Web, "WebKit WebGL", 0).tier, DeviceTier::Medium);
-    const DeviceDetection unknown = detect(Platform::Android, "Some GPU 9000", 4096, 8);
+    EXPECT_EQ(detectGpuTier(Platform::Web, "Apple GPU", 8192).tier, DeviceTier::Medium);
+    EXPECT_EQ(detectGpuTier(Platform::Web, "Apple GPU", 2048).tier, DeviceTier::Low);
+    EXPECT_EQ(detectGpuTier(Platform::Web, "WebKit WebGL", 0).tier, DeviceTier::Medium);
+    const DeviceDetection unknown = detectGpuTier(Platform::Android, "Some GPU 9000", 4096, 8);
     EXPECT_EQ(unknown.kind, "heuristic");
     EXPECT_EQ(unknown.reason, "Some GPU 9000, unknown GPU, heuristic: Android with 4096 MB and 8 cores, tier Medium");
 }

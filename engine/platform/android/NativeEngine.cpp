@@ -1522,7 +1522,7 @@ void NativeEngine::doFrame() {
     // surface size Screen holds them for that size (Engine::isOrientationPending)
     updateSafeArea();
 
-    // the thermal state and memory warnings since the last frame (spec S44)
+    // the thermal state and memory warnings since the last frame (spec S56)
     updateDeviceSignals();
 
     jasperengine::Engine::systemDraw();

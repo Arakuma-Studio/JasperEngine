@@ -98,7 +98,7 @@ namespace jasperengine::editor {
         // the safe rectangle drawn over an image of w x h: Screen's in Play, the device's stopped
         Rect safeAreaInImage(float w, float h) const;
         void drawDeviceMenu();
-        // Device: Auto | Low | Medium | High | Ultra, its platform family and thermal state (S44)
+        // Device: Auto | Low | Medium | High | Ultra, its platform family and thermal state (S56)
         void drawDeviceTierMenu();
         void drawToolbar();
         void drawContent(uint32_t sceneId);

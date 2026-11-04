@@ -137,7 +137,7 @@ struct GameViewSettings {
     bool showStats = false;
     // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
     int atmosphereQuality = -1;
-    // Device simulation in Play (spec S44 R5): the Device Tier (-1 Auto: none applies in the
+    // Device simulation in Play (spec S56 R5): the Device Tier (-1 Auto: none applies in the
     // editor, else a DeviceTier), its platform family (-1 Auto: Mobile with a simulated phone,
     // else Desktop; else a DevicePlatformGroup) and the thermal state (-1 the machine's, else a
     // ThermalState; not saved: a session's test)

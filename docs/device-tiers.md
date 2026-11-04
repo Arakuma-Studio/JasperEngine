@@ -4,7 +4,7 @@ A game runs on everything from a five-year-old phone to a desktop GPU. JasperEng
 GPU at startup, gives the device a **Device Tier** (Low, Medium, High or Ultra) and applies that
 tier's overrides of the project's quality settings. While the game runs it reacts to the platform's
 thermal state and memory warnings, and it spreads texture and buffer uploads from loading threads
-over several frames. Spec: `docs/specs/S44-device-tiers.md`. Agent guide: `jasper://docs/device`.
+over several frames. Spec: `docs/specs/S56-device-tiers.md`. Agent guide: `jasper://docs/device`.
 
 ## How a device gets its tier
 

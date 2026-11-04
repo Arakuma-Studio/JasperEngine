@@ -66,7 +66,7 @@
 
     [center addObserver:self selector:@selector(lowMemory) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
 
-    // Device.thermalState (spec S44): read now, then on every change
+    // Device.thermalState (spec S56): read now, then on every change
     [center addObserver:self selector:@selector(thermalStateChanged) name:NSProcessInfoThermalStateDidChangeNotification object:nil];
     [Renderer thermalStateChanged];
 

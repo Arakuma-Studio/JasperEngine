@@ -15,18 +15,18 @@ using nlohmann::json;
 
 namespace {
 
-    bool isWordChar(char c){
+    bool gpuNameWordChar(char c){
         return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
     }
 
-    uint32_t parseHex(const std::string& text){
+    uint32_t gpuParseHex(const std::string& text){
         if (text.size() < 3 || text[0] != '0' || (text[1] != 'x' && text[1] != 'X'))
             return 0;
         return (uint32_t)std::strtoul(text.c_str() + 2, nullptr, 16);
     }
 
     // the end of `pattern` matched at `pos` of `text`, or npos (the converter's match_at)
-    size_t matchAt(const std::string& pattern, const std::string& text, size_t pos){
+    size_t gpuPatternMatchAt(const std::string& pattern, const std::string& text, size_t pos){
         size_t i = 0;
         while (i < pattern.size()){
             if (pos >= text.size())
@@ -66,11 +66,11 @@ namespace {
         return pos;
     }
 
-    bool tierFromJson(const json& value, DeviceTier& tier){
+    bool gpuTierFromJson(const json& value, DeviceTier& tier){
         return value.is_string() && DeviceNames::tierFromName(value.get<std::string>().c_str(), tier);
     }
 
-    std::string stringOf(const json& object, const char* key){
+    std::string gpuStringOf(const json& object, const char* key){
         auto it = object.find(key);
         return (it != object.end() && it->is_string()) ? it->get<std::string>() : std::string();
     }
@@ -102,7 +102,7 @@ std::string GpuTierDatabase::normalize(const std::string& text){
     out.reserve(lower.size());
     bool space = false;
     for (char c : lower){
-        if (isWordChar(c)){
+        if (gpuNameWordChar(c)){
             if (space && !out.empty())
                 out += ' ';
             out += c;
@@ -118,7 +118,7 @@ bool GpuTierDatabase::familyMatches(const std::string& pattern, const std::strin
     for (size_t start = 0; start < normalized.size(); start++){
         if (start > 0 && normalized[start - 1] != ' ')
             continue;
-        const size_t end = matchAt(pattern, normalized, start);
+        const size_t end = gpuPatternMatchAt(pattern, normalized, start);
         if (end != std::string::npos && (end == normalized.size() || normalized[end] == ' '))
             return true;
     }
@@ -143,8 +143,8 @@ bool GpuTierDatabase::load(const std::string& text, std::string& error){
             if (!item.is_object())
                 continue;
             Vendor vendor;
-            vendor.name = stringOf(item, "name");
-            vendor.id = parseHex(stringOf(item, "id"));
+            vendor.name = gpuStringOf(item, "name");
+            vendor.id = gpuParseHex(gpuStringOf(item, "id"));
             auto tokens = item.find("tokens");
             if (tokens != item.end() && tokens->is_array()){
                 for (const json& token : *tokens)
@@ -164,26 +164,26 @@ bool GpuTierDatabase::load(const std::string& text, std::string& error){
     for (const json& item : *ruleList){
         index++;
         Rule rule;
-        if (!item.is_object() || !item.contains("tier") || !tierFromJson(item["tier"], rule.tier)){
+        if (!item.is_object() || !item.contains("tier") || !gpuTierFromJson(item["tier"], rule.tier)){
             error = "rule " + std::to_string(index) + " has no tier of low, medium, high or ultra";
             rules.clear();
             return false;
         }
-        rule.platform = stringOf(item, "platform");
-        rule.vendor = stringOf(item, "vendor");
-        const std::string kind = stringOf(item, "kind");
+        rule.platform = gpuStringOf(item, "platform");
+        rule.vendor = gpuStringOf(item, "vendor");
+        const std::string kind = gpuStringOf(item, "kind");
         if (kind == "name"){
             rule.kind = Rule::Kind::Name;
-            rule.text = stringOf(item, "name");
+            rule.text = gpuStringOf(item, "name");
             auto devices = item.find("devices");
             if (devices != item.end() && devices->is_array()){
                 for (const json& device : *devices)
                     if (device.is_string())
-                        rule.devices.push_back(parseHex(device.get<std::string>()));
+                        rule.devices.push_back(gpuParseHex(device.get<std::string>()));
             }
         }else if (kind == "family"){
             rule.kind = Rule::Kind::Family;
-            rule.text = stringOf(item, "pattern");
+            rule.text = gpuStringOf(item, "pattern");
         }else if (kind == "vendor"){
             rule.kind = Rule::Kind::Vendor;
         }else{
@@ -238,7 +238,7 @@ GpuMatch GpuTierDatabase::match(const GpuQuery& query) const{
     if (deviceId == 0 && text.rfind("angle ", 0) == 0){
         for (size_t at = text.find(" 0x"); at != std::string::npos; at = text.find(" 0x", at + 1)){
             const size_t end = text.find(' ', at + 1);
-            const uint32_t id = parseHex(text.substr(at + 1, end == std::string::npos ? std::string::npos : end - at - 1));
+            const uint32_t id = gpuParseHex(text.substr(at + 1, end == std::string::npos ? std::string::npos : end - at - 1));
             if (id != 0){
                 deviceId = id;
                 break;

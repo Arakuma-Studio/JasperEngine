@@ -87,7 +87,7 @@ namespace {
     WindowMac::create(config);
     WindowMac::setWindowDelegate((__bridge void*)self);
 
-    // Device.thermalState (spec S44): NSProcessInfo's, read now (which makes the notifications
+    // Device.thermalState (spec S56): NSProcessInfo's, read now (which makes the notifications
     // come) and on every change; the thermal response is off on desktops unless the project
     // turns it on
     auto reportThermal = []() {

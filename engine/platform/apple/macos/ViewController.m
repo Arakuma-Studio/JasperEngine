@@ -50,7 +50,7 @@
                                                  name:NSWindowDidChangeScreenNotification
                                                object:nil];
 
-    // Device.thermalState (spec S44): read now, then on every change (the thermal response is off
+    // Device.thermalState (spec S56): read now, then on every change (the thermal response is off
     // on desktops unless the project turns it on)
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(thermalStateChanged)

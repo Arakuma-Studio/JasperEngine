@@ -22,7 +22,7 @@ namespace jasperengine {
         MsaaSamples,      // at most (1, 2, 4)
         ShadowQuality,    // at most (ShadowTier: 0 Low .. 3 Ultra)
         ShadowDistance,   // metres at most
-        LodBias,          // multiplies the project's LOD Bias (S42; each mesh's lodBias times it)
+        LodBias,          // multiplies the project's LOD Bias (S54; each mesh's lodBias times it)
         ShadowLodBias,    // multiplies the project's Shadow LOD Bias
         LitQuality,       // at most (LitQuality: 0 Standard, 1 High)
         TextureQuality,   // top mips dropped at least (0..3)
@@ -92,7 +92,7 @@ namespace jasperengine {
         // frame runs (SokolCmdQueue)
         std::array<int, DEVICE_PLATFORM_GROUP_COUNT> uploadBudgetMB = {32, 8, 6};
 
-        // the defaults (spec S44 R3): Low halves the render scale, has Low shadows, LOD Bias 0.5,
+        // the defaults (spec S56 R3): Low halves the render scale, has Low shadows, LOD Bias 0.5,
         // no volumetrics and no SSAO; Medium renders at 0.85; High and Ultra are the project
         DeviceSettings();
 

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// QualityResolver (spec S44 R3, R6, R7, R13, AC2, AC6): a tier's cells cap the project's values
+// QualityResolver (spec S56 R3, R6, R7, R13, AC2, AC6): a tier's cells cap the project's values
 // and empty ones inherit, the defaults leave High and Ultra alone, the thermal response steps up
 // at once and recovers one state per 30 s of a simulated clock, memory pressure drops a mip, and
 // the platform layers' entry points (Device::reportThermalState / reportLowMemory, what the JNI,

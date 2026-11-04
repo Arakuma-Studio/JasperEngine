@@ -2,7 +2,7 @@
 # (c) Eduardo Doria and contributors
 # SPDX-License-Identifier: MIT
 #
-# The GPU database of the device tiers (docs/device-tiers.md, spec S44 R1): The Forge's gpu.data
+# The GPU database of the device tiers (docs/device-tiers.md, spec S56 R1): The Forge's gpu.data
 # tables, converted to engine/core/device/gpu_tiers.json and re-mapped to JasperEngine's tiers,
 # plus our own rules. The engine embeds the JSON (GpuTiersData.cpp, written from it here).
 #
@@ -156,7 +156,7 @@ VENDORS = [
 ]
 VENDOR_BY_ID = {vid: name for name, vid, _ in VENDORS if vid}
 
-# The acceptance table (spec S44 AC1): the C++ test (engine/tests/core/device/GpuTierTest.cpp) checks
+# The acceptance table (spec S56 AC1): the C++ test (engine/tests/core/device/GpuTierTest.cpp) checks
 # the same strings; here they check the data before it is written.
 EXAMPLES = [
     ("android", "Adreno (TM) 530", "low"),

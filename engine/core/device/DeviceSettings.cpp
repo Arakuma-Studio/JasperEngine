@@ -17,44 +17,44 @@ using nlohmann::json;
 
 namespace {
 
-    const char* const kTierNames[] = {"low", "medium", "high", "ultra"};
-    const char* const kTierLabels[] = {"Low", "Medium", "High", "Ultra"};
-    const char* const kThermalNames[] = {"nominal", "fair", "serious", "critical"};
-    const char* const kThermalLabels[] = {"Nominal", "Fair", "Serious", "Critical"};
-    const char* const kGroupNames[] = {"desktop", "mobile", "web"};
-    const char* const kGroupLabels[] = {"Desktop", "Mobile", "Web"};
+    const char* const kDeviceTierNames[] = {"low", "medium", "high", "ultra"};
+    const char* const kDeviceTierLabels[] = {"Low", "Medium", "High", "Ultra"};
+    const char* const kDeviceThermalNames[] = {"nominal", "fair", "serious", "critical"};
+    const char* const kDeviceThermalLabels[] = {"Nominal", "Fair", "Serious", "Critical"};
+    const char* const kDeviceGroupNames[] = {"desktop", "mobile", "web"};
+    const char* const kDeviceGroupLabels[] = {"Desktop", "Mobile", "Web"};
 
-    const char* const kShadowNames[] = {"Low", "Medium", "High", "Ultra"};
-    const char* const kLitNames[] = {"Standard", "High"};
-    const char* const kOffNames[] = {"Off"};
+    const char* const kDeviceShadowNames[] = {"Low", "Medium", "High", "Ultra"};
+    const char* const kDeviceLitNames[] = {"Standard", "High"};
+    const char* const kDeviceOffNames[] = {"Off"};
 
-    using Kind = DeviceOverrideInfo::Kind;
+    using OverrideKind = DeviceOverrideInfo::Kind;
 
     // the order of DeviceOverride
-    const DeviceOverrideInfo kOverrides[DEVICE_OVERRIDE_COUNT] = {
+    const DeviceOverrideInfo kDeviceOverrides[DEVICE_OVERRIDE_COUNT] = {
         {"render_scale", "Render Scale", "The most this tier renders at (the scene's Render Scale, and dynamic resolution's maximum); 0.5 to 1.",
-            Kind::Cap, false, 0.5f, 1.0f, false, nullptr, 0},
-        {"msaa_samples", "MSAA", "Multisample anti-aliasing at most (1 off, 2, 4).", Kind::Cap, true, 1.0f, 4.0f, false, nullptr, 0},
-        {"shadow_quality", "Shadow Quality", "The shadow tier at most (Low, Medium, High, Ultra).", Kind::Cap, true, 0.0f, 3.0f, true, kShadowNames, 4},
-        {"shadow_distance", "Shadow Distance", "Metres of directional shadows at most.", Kind::Cap, false, 1.0f, 100000.0f, true, nullptr, 0},
+            OverrideKind::Cap, false, 0.5f, 1.0f, false, nullptr, 0},
+        {"msaa_samples", "MSAA", "Multisample anti-aliasing at most (1 off, 2, 4).", OverrideKind::Cap, true, 1.0f, 4.0f, false, nullptr, 0},
+        {"shadow_quality", "Shadow Quality", "The shadow tier at most (Low, Medium, High, Ultra).", OverrideKind::Cap, true, 0.0f, 3.0f, true, kDeviceShadowNames, 4},
+        {"shadow_distance", "Shadow Distance", "Metres of directional shadows at most.", OverrideKind::Cap, false, 1.0f, 100000.0f, true, nullptr, 0},
         {"lod_bias", "LOD Bias", "Multiplies the project's LOD Bias: below 1 switches to coarser LODs nearer.",
-            Kind::Multiplier, false, 0.05f, 8.0f, false, nullptr, 0},
+            OverrideKind::Multiplier, false, 0.05f, 8.0f, false, nullptr, 0},
         {"shadow_lod_bias", "Shadow LOD Bias", "Multiplies the project's Shadow LOD Bias (the LODs shadow casters draw).",
-            Kind::Multiplier, false, 0.05f, 8.0f, true, nullptr, 0},
-        {"lit_quality", "Lit Quality", "The Lit shader's quality at most (Standard, High).", Kind::Cap, true, 0.0f, 1.0f, false, kLitNames, 2},
+            OverrideKind::Multiplier, false, 0.05f, 8.0f, true, nullptr, 0},
+        {"lit_quality", "Lit Quality", "The Lit shader's quality at most (Standard, High).", OverrideKind::Cap, true, 0.0f, 1.0f, false, kDeviceLitNames, 2},
         {"texture_quality", "Texture Quality", "Top mips of streamable textures dropped, at least (0 full .. 3 an eighth).",
-            Kind::AtLeast, true, 0.0f, 3.0f, false, nullptr, 0},
-        {"bloom", "Bloom", "Off turns bloom off on this tier.", Kind::Off, true, 0.0f, 0.0f, true, kOffNames, 1},
-        {"ssao", "SSAO", "Off turns screen-space ambient occlusion off on this tier.", Kind::Off, true, 0.0f, 0.0f, true, kOffNames, 1},
-        {"volumetrics", "Volumetrics", "Off turns volumetric fog and clouds off on this tier.", Kind::Off, true, 0.0f, 0.0f, true, kOffNames, 1},
+            OverrideKind::AtLeast, true, 0.0f, 3.0f, false, nullptr, 0},
+        {"bloom", "Bloom", "Off turns bloom off on this tier.", OverrideKind::Off, true, 0.0f, 0.0f, true, kDeviceOffNames, 1},
+        {"ssao", "SSAO", "Off turns screen-space ambient occlusion off on this tier.", OverrideKind::Off, true, 0.0f, 0.0f, true, kDeviceOffNames, 1},
+        {"volumetrics", "Volumetrics", "Off turns volumetric fog and clouds off on this tier.", OverrideKind::Off, true, 0.0f, 0.0f, true, kDeviceOffNames, 1},
         {"target_frame_rate", "Target Frame Rate", "Frames per second at most (the platform's default rate counts as above it).",
-            Kind::Cap, true, 1.0f, 1000.0f, false, nullptr, 0},
-        {"max_pixel_lights", "Max Pixel Lights", "Lights per object at most.", Kind::Cap, true, 1.0f, 64.0f, false, nullptr, 0},
-        {"particle_budget", "Particle Budget", "Live particles of a scene at most.", Kind::Cap, true, 1.0f, 4194304.0f, false, nullptr, 0},
+            OverrideKind::Cap, true, 1.0f, 1000.0f, false, nullptr, 0},
+        {"max_pixel_lights", "Max Pixel Lights", "Lights per object at most.", OverrideKind::Cap, true, 1.0f, 64.0f, false, nullptr, 0},
+        {"particle_budget", "Particle Budget", "Live particles of a scene at most.", OverrideKind::Cap, true, 1.0f, 4194304.0f, false, nullptr, 0},
     };
 
     template<size_t N>
-    bool indexOf(const char* const (&names)[N], const char* name, int& index){
+    bool deviceNameIndex(const char* const (&names)[N], const char* name, int& index){
         if (!name)
             return false;
         for (size_t i = 0; i < N; i++){
@@ -66,7 +66,7 @@ namespace {
         return false;
     }
 
-    std::string lowerCase(std::string text){
+    std::string deviceLowerCase(std::string text){
         for (char& c : text)
             if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
         return text;
@@ -77,62 +77,62 @@ namespace {
 // ---------------------------------------------------------------- names
 
 const char* DeviceNames::tier(DeviceTier tier){
-    return kTierNames[std::clamp((int)tier, 0, DEVICE_TIER_COUNT - 1)];
+    return kDeviceTierNames[std::clamp((int)tier, 0, DEVICE_TIER_COUNT - 1)];
 }
 
 bool DeviceNames::tierFromName(const char* name, DeviceTier& tier){
     int index = 0;
-    if (!name || !indexOf(kTierNames, lowerCase(name).c_str(), index))
+    if (!name || !deviceNameIndex(kDeviceTierNames, deviceLowerCase(name).c_str(), index))
         return false;
     tier = (DeviceTier)index;
     return true;
 }
 
 const char* DeviceNames::tierLabel(DeviceTier tier){
-    return kTierLabels[std::clamp((int)tier, 0, DEVICE_TIER_COUNT - 1)];
+    return kDeviceTierLabels[std::clamp((int)tier, 0, DEVICE_TIER_COUNT - 1)];
 }
 
 const char* DeviceNames::thermal(ThermalState state){
-    return kThermalNames[std::clamp((int)state, 0, THERMAL_STATE_COUNT - 1)];
+    return kDeviceThermalNames[std::clamp((int)state, 0, THERMAL_STATE_COUNT - 1)];
 }
 
 bool DeviceNames::thermalFromName(const char* name, ThermalState& state){
     int index = 0;
-    if (!name || !indexOf(kThermalNames, lowerCase(name).c_str(), index))
+    if (!name || !deviceNameIndex(kDeviceThermalNames, deviceLowerCase(name).c_str(), index))
         return false;
     state = (ThermalState)index;
     return true;
 }
 
 const char* DeviceNames::thermalLabel(ThermalState state){
-    return kThermalLabels[std::clamp((int)state, 0, THERMAL_STATE_COUNT - 1)];
+    return kDeviceThermalLabels[std::clamp((int)state, 0, THERMAL_STATE_COUNT - 1)];
 }
 
 const char* DeviceNames::group(DevicePlatformGroup group){
-    return kGroupNames[std::clamp((int)group, 0, DEVICE_PLATFORM_GROUP_COUNT - 1)];
+    return kDeviceGroupNames[std::clamp((int)group, 0, DEVICE_PLATFORM_GROUP_COUNT - 1)];
 }
 
 bool DeviceNames::groupFromName(const char* name, DevicePlatformGroup& group){
     int index = 0;
-    if (!name || !indexOf(kGroupNames, lowerCase(name).c_str(), index))
+    if (!name || !deviceNameIndex(kDeviceGroupNames, deviceLowerCase(name).c_str(), index))
         return false;
     group = (DevicePlatformGroup)index;
     return true;
 }
 
 const char* DeviceNames::groupLabel(DevicePlatformGroup group){
-    return kGroupLabels[std::clamp((int)group, 0, DEVICE_PLATFORM_GROUP_COUNT - 1)];
+    return kDeviceGroupLabels[std::clamp((int)group, 0, DEVICE_PLATFORM_GROUP_COUNT - 1)];
 }
 
 // ---------------------------------------------------------------- the cells
 
 const DeviceOverrideInfo& DeviceOverrides::info(DeviceOverride field){
-    return kOverrides[std::clamp((int)field, 0, DEVICE_OVERRIDE_COUNT - 1)];
+    return kDeviceOverrides[std::clamp((int)field, 0, DEVICE_OVERRIDE_COUNT - 1)];
 }
 
 bool DeviceOverrides::fromKey(const std::string& key, DeviceOverride& field){
     for (int i = 0; i < DEVICE_OVERRIDE_COUNT; i++){
-        if (key == kOverrides[i].key){
+        if (key == kDeviceOverrides[i].key){
             field = (DeviceOverride)i;
             return true;
         }
@@ -143,7 +143,7 @@ bool DeviceOverrides::fromKey(const std::string& key, DeviceOverride& field){
 std::string DeviceOverrides::format(DeviceOverride field, float value){
     const DeviceOverrideInfo& item = info(field);
     if (item.names){
-        const int index = item.kind == Kind::Off ? 0 : std::clamp((int)std::lround(value), 0, item.nameCount - 1);
+        const int index = item.kind == OverrideKind::Off ? 0 : std::clamp((int)std::lround(value), 0, item.nameCount - 1);
         return item.names[index];
     }
     char text[32];
@@ -160,7 +160,7 @@ bool DeviceOverrides::validate(DeviceOverride field, float value, std::string& e
         error = std::string(item.key) + " must be a finite number";
         return false;
     }
-    if (item.kind == Kind::Off){
+    if (item.kind == OverrideKind::Off){
         if (value != 0.0f){
             error = std::string(item.key) + ": a tier only turns it off (false or \"off\"); null inherits";
             return false;
@@ -186,15 +186,15 @@ bool DeviceOverrides::validate(DeviceOverride field, float value, std::string& e
 
 bool DeviceOverrides::parse(DeviceOverride field, const std::string& text, float& value, std::string& error){
     const DeviceOverrideInfo& item = info(field);
-    const std::string lower = lowerCase(text);
+    const std::string lower = deviceLowerCase(text);
     if (item.names){
         for (int i = 0; i < item.nameCount; i++){
-            if (lower == lowerCase(item.names[i])){
-                value = item.kind == Kind::Off ? 0.0f : (float)i;
+            if (lower == deviceLowerCase(item.names[i])){
+                value = item.kind == OverrideKind::Off ? 0.0f : (float)i;
                 return true;
             }
         }
-        if (item.kind == Kind::Off && (lower == "false" || lower == "0")){
+        if (item.kind == OverrideKind::Off && (lower == "false" || lower == "0")){
             value = 0.0f;
             return true;
         }
@@ -249,13 +249,13 @@ std::string DeviceSettings::toJson() const{
                 const std::optional<float>& cell = tiers[g][t].cells[f];
                 if (cell == defaults.tiers[g][t].cells[f])
                     continue;
-                tierJson[kOverrides[f].key] = cell.has_value() ? json(*cell) : json(nullptr);
+                tierJson[kDeviceOverrides[f].key] = cell.has_value() ? json(*cell) : json(nullptr);
             }
             if (!tierJson.empty())
-                groupJson[kTierNames[t]] = tierJson;
+                groupJson[kDeviceTierNames[t]] = tierJson;
         }
         if (!groupJson.empty())
-            tierTable[kGroupNames[g]] = groupJson;
+            tierTable[kDeviceGroupNames[g]] = groupJson;
     }
     if (!tierTable.empty())
         out["tiers"] = tierTable;
@@ -265,9 +265,9 @@ std::string DeviceSettings::toJson() const{
         out["shadow_lod_bias"] = shadowLodBias;
     for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++){
         if (thermalResponse[g] != defaults.thermalResponse[g])
-            out["thermal_response"][kGroupNames[g]] = thermalResponse[g];
+            out["thermal_response"][kDeviceGroupNames[g]] = thermalResponse[g];
         if (uploadBudgetMB[g] != defaults.uploadBudgetMB[g])
-            out["upload_budget_mb"][kGroupNames[g]] = uploadBudgetMB[g];
+            out["upload_budget_mb"][kDeviceGroupNames[g]] = uploadBudgetMB[g];
     }
     return out.dump();
 }
@@ -339,18 +339,18 @@ bool DeviceSettings::fromJson(const std::string& text, DeviceSettings& out, std:
         }
     }
     for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++){
-        if (auto it = parsed.find("thermal_response"); it != parsed.end() && it->is_object() && it->contains(kGroupNames[g])){
-            const json& value = (*it)[kGroupNames[g]];
+        if (auto it = parsed.find("thermal_response"); it != parsed.end() && it->is_object() && it->contains(kDeviceGroupNames[g])){
+            const json& value = (*it)[kDeviceGroupNames[g]];
             if (!value.is_boolean()){
-                error = std::string("thermal_response.") + kGroupNames[g] + " must be true or false";
+                error = std::string("thermal_response.") + kDeviceGroupNames[g] + " must be true or false";
                 return false;
             }
             out.thermalResponse[g] = value.get<bool>();
         }
-        if (auto it = parsed.find("upload_budget_mb"); it != parsed.end() && it->is_object() && it->contains(kGroupNames[g])){
-            const json& value = (*it)[kGroupNames[g]];
+        if (auto it = parsed.find("upload_budget_mb"); it != parsed.end() && it->is_object() && it->contains(kDeviceGroupNames[g])){
+            const json& value = (*it)[kDeviceGroupNames[g]];
             if (!value.is_number_integer() || value.get<int>() < MIN_UPLOAD_BUDGET_MB || value.get<int>() > MAX_UPLOAD_BUDGET_MB){
-                error = std::string("upload_budget_mb.") + kGroupNames[g] + " must be a whole number of MB from 1 to 1024";
+                error = std::string("upload_budget_mb.") + kDeviceGroupNames[g] + " must be a whole number of MB from 1 to 1024";
                 return false;
             }
             out.uploadBudgetMB[g] = value.get<int>();

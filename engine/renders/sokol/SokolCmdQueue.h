@@ -213,7 +213,7 @@ namespace jasperengine {
 		static void commit_commands();
 		static void flush_commands();
 
-		// ---- upload pacing (spec S44 R8)
+		// ---- upload pacing (spec S56 R8)
 
 		// bytes of image and buffer data a frame uploads at most (MAKE_IMAGE and MAKE_BUFFER with
 		// data, UPDATE_IMAGE, UPDATE_BUFFER); the first upload of a frame runs whatever its size

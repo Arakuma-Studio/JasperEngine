@@ -17,7 +17,7 @@
 // finished rotation
 + (void)focusGame:(BOOL)focused;
 + (void)lowMemory;
-// NSProcessInfo.thermalState to Device (spec S44): at start (reading it once is what makes the
+// NSProcessInfo.thermalState to Device (spec S56): at start (reading it once is what makes the
 // notifications come) and on NSProcessInfoThermalStateDidChangeNotification
 + (void)thermalStateChanged;
 + (void)orientationChanged;

@@ -68,7 +68,7 @@ public final class JasperPlatform {
 	private static DisplayManager.DisplayListener displayListener;
 	private static boolean warnedNetworkPermission = false;
 
-	// ---- thermal and memory state (Device.thermalState, Device.onLowMemory; spec S44)
+	// ---- thermal and memory state (Device.thermalState, Device.onLowMemory; spec S56)
 
 	// PowerManager's thermal status as Device's ThermalState (0 Nominal, 1 Fair, 2 Serious,
 	// 3 Critical): kept by a listener from API 29, read by the game thread every frame
