@@ -16448,7 +16448,13 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     bool distanceSort = sortsByDistance(camera);
 
     if (isBaseLayer() || pass.renderToTexture){
-        camera.render.setClearColor(scene->getBackgroundColor());
+        Vector4 clear = scene->getBackgroundColor();
+#ifdef JASPERENGINE_EDITOR
+        // the Overdraw Draw Mode's layers add up from black
+        if (isMainCamera && rv().drawMode == ViewDrawMode::OVERDRAW)
+            clear = Vector4(0.0f, 0.0f, 0.0f, 1.0f);
+#endif
+        camera.render.setClearColor(clear);
     } else {
         // When drawing a scene as an Engine layer, don't clear the color buffer.
         // Otherwise a scene that was previously the main scene would keep clearing
