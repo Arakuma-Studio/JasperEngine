@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <fstream>
 #include <iterator>
 #include <regex>
@@ -378,6 +379,50 @@ std::string NativePlugins::macosCMake(const Scan& scan, const std::string& targe
     s += ")\n";
     s += "endif()\n";
     return s;
+}
+
+bool NativePlugins::isStaticArchive(const fs::path& binary){
+    std::ifstream in(binary, std::ios::binary);
+    char magic[8] = {0};
+    in.read(magic, 8);
+    return in.gcount() == 8 && std::memcmp(magic, "!<arch>\n", 8) == 0;
+}
+
+fs::path NativePlugins::frameworkBinary(const fs::path& framework){
+    const std::string name = framework.stem().string();
+    std::error_code ec;
+    for (const fs::path& candidate : {framework / name, framework / "Versions" / "Current" / name, framework / "Versions" / "A" / name}) {
+        if (fs::is_regular_file(candidate, ec)) return candidate;
+    }
+    return {};
+}
+
+fs::path NativePlugins::xcframeworkBinary(const fs::path& xcframework){
+    tinyxml2::XMLDocument doc;
+    const auto plistPath = (xcframework / "Info.plist").generic_u8string();
+    if (doc.LoadFile(std::string(plistPath.begin(), plistPath.end()).c_str()) != tinyxml2::XML_SUCCESS) return {};
+    const tinyxml2::XMLElement* dict = doc.FirstChildElement("plist") ? doc.FirstChildElement("plist")->FirstChildElement("dict") : nullptr;
+    auto valueOf = [](const tinyxml2::XMLElement* d, const char* key) -> const tinyxml2::XMLElement* {
+        for (const tinyxml2::XMLElement* e = d ? d->FirstChildElement("key") : nullptr; e; e = e->NextSiblingElement("key")) {
+            if (e->GetText() && std::string(e->GetText()) == key) return e->NextSiblingElement();
+        }
+        return nullptr;
+    };
+    const tinyxml2::XMLElement* libraries = valueOf(dict, "AvailableLibraries");
+    const tinyxml2::XMLElement* first = libraries ? libraries->FirstChildElement("dict") : nullptr;
+    if (!first) return {};
+    auto text = [&](const char* key) {
+        const tinyxml2::XMLElement* e = valueOf(first, key);
+        return e && e->GetText() ? std::string(e->GetText()) : std::string();
+    };
+    const std::string identifier = text("LibraryIdentifier");
+    const std::string library = text("LibraryPath");
+    const std::string binary = text("BinaryPath");
+    if (identifier.empty() || library.empty()) return {};
+    const fs::path base = xcframework / identifier;
+    if (!binary.empty()) return base / binary;
+    if (fs::path(library).extension() == ".framework") return frameworkBinary(base / library);
+    return base / library;
 }
 
 std::string NativePlugins::xmlFragmentError(const std::string& xml){

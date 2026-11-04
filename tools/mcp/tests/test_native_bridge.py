@@ -156,6 +156,36 @@ async def test_native_settings_keys(ed: Editor):
     ed.check_eq(listed["settings"]["web.script_urls"], ["https://sdk.example.com/sdk.js"])
 
 
+async def test_privacy_manifest_tool(ed: Editor):
+    """mobile-shipping: native_plugins privacy_manifest returns the Apple manifest the next build
+    ships, where each entry comes from, and what is missing."""
+    import shutil
+    await ed.call("set_project_settings", values={"apple.privacy_tracking": True})
+    manifest = ed.project / "plugins" / "native" / "apple" / "Sdk" / "PrivacyInfo.xcprivacy"
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    manifest.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>NSPrivacyTrackingDomains</key>'
+                        '<array><string>sdk.example.com</string></array><key>Mystery</key><true/></dict></plist>\n')
+    try:
+        r = await ed.call("native_plugins", action="privacy_manifest", platform="ios")
+        ed.check_eq(r["platform"], "ios")
+        ed.check(r["tracking"], "the project tracks")
+        ed.check_eq(r["tracking_domains"], ["sdk.example.com"])
+        ed.check_eq(r["plugin_manifests"], ["plugins/native/apple/Sdk/PrivacyInfo.xcprivacy"])
+        ed.check_in({"what": "UserDefaults CA92.1", "origin": "engine"}, r["sources"])
+        ed.check_in({"what": "domain sdk.example.com", "origin": "plugins/native/apple/Sdk/PrivacyInfo.xcprivacy"}, r["sources"])
+        ed.check_in("<key>NSPrivacyTracking</key>\n\t<true/>", r["xml"])
+        ed.check(any("unknown key Mystery" in w for w in r["warnings"]), f"{r['warnings']}")
+        ed.check(any(w.startswith("W-PRIVACY-ATT") for w in r["warnings"]), "tracking needs NSUserTrackingUsageDescription")
+        mac = await ed.call("native_plugins", action="privacy_manifest", platform="macos")
+        ed.check(not any(w.startswith("W-PRIVACY-ATT") for w in mac["warnings"]), "no App Tracking Transparency on macOS")
+        await ed.check_error("native_plugins", action="privacy_manifest", platform="android", contains="platform")
+        listed = await ed.call("native_plugins", action="list")
+        ed.check_eq(listed["settings"].get("apple.privacy_tracking"), True, "the privacy keys are native settings")
+    finally:
+        await ed.call("set_project_settings", values={"apple.privacy_tracking": False})
+        shutil.rmtree(ed.project / "plugins", ignore_errors=True)
+
+
 async def test_play_cpp_plugin_and_mock(ed: Editor):
     ed.require_tools("play", "wait", "eval_lua", "create_script")
     import shutil
@@ -198,7 +228,7 @@ async def test_play_cpp_plugin_and_mock(ed: Editor):
 
 
 # the system frameworks every Apple export links explicitly (Exporter appleEngineFrameworks*): an
-# iOS export without AdMob once linked AVFoundation only through the AdMob SDK's module. At least
+# iOS export once linked AVFoundation only through an ads SDK's module. At least
 # the template's APP_FRAMEWORKS (tools/xcode_sync_engine.py on main), each linked once.
 APP_FRAMEWORKS = ["AVFoundation", "AudioToolbox", "CoreMedia", "CoreVideo"]
 IOS_ENGINE_FRAMEWORKS = APP_FRAMEWORKS + ["CoreGraphics", "Foundation", "GameController", "Metal", "MetalKit", "QuartzCore", "UIKit"]

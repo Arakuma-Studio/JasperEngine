@@ -5,7 +5,9 @@
      player's compiled resources (stable ids); aapt2 renames the package to the game's id. Class
      names are fully qualified: they are the player's code, whatever the game's package.
      extractNativeLibs: false (stored libraries, loaded from the APK); an APK for minSdk < 23
-     compresses them and says true (AndroidPackager compressesNativeLibraries). -->
+     compresses them and says true (AndroidPackager compressesNativeLibraries). The native plugin
+     settings without code (android.extra_permissions, manifest_xml, manifest_application_xml) go
+     into the NATIVE markers; code and Gradle dependencies make the build compile instead. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.jaspergameengine.jasperengine"
     android:versionCode="{{VERSION_CODE}}"
@@ -14,7 +16,7 @@
     <uses-sdk android:minSdkVersion="{{MIN_SDK}}" android:targetSdkVersion="{{TARGET_SDK}}" />
 {{PERMISSIONS}}
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
-{{TEXTURE_SUPPORT}}
+{{TEXTURE_SUPPORT}}{{NATIVE_MANIFEST_XML}}
     <application
         android:allowBackup="{{ALLOW_BACKUP}}"
         android:icon="{{ICON}}"
@@ -35,5 +37,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-    </application>
+{{NATIVE_APPLICATION_XML}}    </application>
 </manifest>

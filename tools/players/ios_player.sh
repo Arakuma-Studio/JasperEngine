@@ -5,8 +5,9 @@
 #   JasperEnginePlayer.xcframework   the engine and the player, main() included, as one static
 #                                    library per SDK: iphoneos arm64, iphonesimulator arm64+x86_64
 #   template/                        the Xcode project a build stages the game into
-#                                    (engine/platform/apple/ios/player-template, its storyboards
-#                                    and the asset catalog)
+#                                    (engine/platform/apple/ios/player-template, its storyboards,
+#                                    the asset catalog, the engine's PrivacyInfo.xcprivacy and
+#                                    include/JasperNative.h for the game's native plugins)
 #
 #   tools/players/ios_player.sh <release|development> [OUT] [variant]
 #
@@ -49,4 +50,7 @@ xcodebuild -create-xcframework "${LIBS[@]}" -output "$OUT/JasperEnginePlayer.xcf
 cp -R "$ROOT/engine/platform/apple/ios/player-template" "$OUT/template"
 cp "$ROOT/engine/platform/apple/ios/Main.storyboard" "$ROOT/engine/platform/apple/ios/LaunchScreen.storyboard" "$OUT/template/"
 cp -R "$ROOT/engine/workspaces/xcode/Assets.xcassets" "$OUT/template/Assets.xcassets"
+# what a game's Objective-C/Swift native plugins import (the export compiles them into the template)
+mkdir -p "$OUT/template/include"
+cp "$ROOT/engine/platform/apple/JasperNative.h" "$OUT/template/include/"
 echo "ios player: $OUT"

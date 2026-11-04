@@ -20,6 +20,7 @@
 #include "json.hpp"
 
 #include <array>
+#include <map>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -108,6 +109,11 @@ namespace jasperengine::player {
         int audioMaxRealVoices = 32;
         int audioMaxVoices = 256;
         int audioSampleRate = 0;
+
+        // the project's native plugins with code for other platforms only (the Compile build's
+        // NativeBridge::setPlatformOnlyPlugins): a call to one fails with "unavailable", and its
+        // Lua mock answering logs a warning
+        std::map<std::string, std::string> nativePlatformOnly;
 
         PlayerConfig();
 

@@ -149,6 +149,7 @@ namespace {
             NativeBridge::shutdown();
             NativeBridge::clearCppPlugins();
             NativeBridge::setPlatformOnlyPlugins({});
+            NativeBridge::setMockWarnings(false);
             MainThreadQueue::clear();
         }
 
@@ -576,6 +577,21 @@ TEST_F(NativeBridgeTest, NotFoundAndUnavailableOnLinux) {
     ASSERT_EQ(lua("got = nil; Native.callAsync('Device', 'x', nil, function(r, e, c) got = c end)"), "");
     frame();
     EXPECT_EQ(luaValue("got"), "unavailable");
+}
+
+// mobile-shipping: in a shipped game a Lua mock standing in for a plugin with code for other
+// platforms only is a fake SDK: it says so once per plugin (never in the editor's Play)
+TEST_F(NativeBridgeTest, MockInAShippedBuildWarnsOnce) {
+    NativeBridge::setPlatformOnlyPlugins({{"Ads", "Java/Kotlin plugins run only on Android"}});
+    ASSERT_EQ(lua("Native.setMock('Ads', {show = function() return true end}); Native.setMock('Free', {get = function() return 1 end})"), "");
+    ASSERT_EQ(lua("assert(Native.call('Ads', 'show') == true)"), "");
+    EXPECT_EQ(system.count("answered by its Lua mock"), 0) << "Play: mocks are what answers there";
+    NativeBridge::setMockWarnings(true);
+    ASSERT_EQ(lua("Native.call('Ads', 'show'); Native.callAsync('Ads', 'show'); Native.call('Free', 'get')"), "");
+    frame();
+    EXPECT_EQ(system.count("Native plugin \"Ads\" is answered by its Lua mock in this build: Java/Kotlin plugins run only on Android"), 1)
+        << "once per plugin";
+    EXPECT_EQ(system.count("\"Free\" is answered"), 0) << "a plugin with no code anywhere is the game's own mock";
 }
 
 // 9

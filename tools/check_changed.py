@@ -84,6 +84,8 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
               "tools/test_check_changed.py": "tools/test_check_changed.py", "tools/mcp/coverage_map.py": "tools/test_check_changed.py",
               "tools/mcp/shard.py": "tools/mcp/test_shard.py", "tools/mcp/test_shard.py": "tools/mcp/test_shard.py",
               "tools/mcp/build_cache.py": "tools/mcp/test_build_cache.py", "tools/mcp/test_build_cache.py": "tools/mcp/test_build_cache.py"}
+# the required-reason APIs of engine code against the engine's Apple privacy manifest
+APPLE_PRIVACY_CHECK = "tools/check_apple_privacy.py"
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
@@ -255,6 +257,10 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         test = SELF_TESTS.get(f)
         if test and test not in plan.self_tests:
             plan.self_tests.append(test)
+    # engine code may call a required-reason API the Apple privacy manifest must declare
+    if any(f.startswith("engine/") and f.endswith(CXX) for f in files) or "engine/workspaces/xcode/ios/PrivacyInfo.xcprivacy" in files:
+        if APPLE_PRIVACY_CHECK not in plan.self_tests:
+            plan.self_tests.append(APPLE_PRIVACY_CHECK)
     everything = [f for f in files if match(f, ALL_TRIGGERS)]
     if everything:
         for b in ("linux", "unit-tests", "web", "android"):

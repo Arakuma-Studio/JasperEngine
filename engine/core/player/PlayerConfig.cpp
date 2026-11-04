@@ -109,6 +109,7 @@ json PlayerConfig::toJson() const {
                     {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
                     {"sampleRate", audioSampleRate}};
+    if (!nativePlatformOnly.empty()) out["nativePlatformOnly"] = nativePlatformOnly;
     return out;
 }
 
@@ -256,6 +257,12 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioMaxRealVoices = audio->value("maxRealVoices", config.audioMaxRealVoices);
             config.audioMaxVoices = audio->value("maxVoices", config.audioMaxVoices);
             config.audioSampleRate = audio->value("sampleRate", config.audioSampleRate);
+        }
+        // absent: no native plugin of the project is for other platforms only
+        if (const auto native = in.find("nativePlatformOnly"); native != in.end() && native->is_object()) {
+            for (const auto& [plugin, message] : native->items()) {
+                if (message.is_string()) config.nativePlatformOnly[plugin] = message.get<std::string>();
+            }
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;

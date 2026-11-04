@@ -103,6 +103,10 @@ jobs:
           python3 tools/check_raw_writes.py
           python3 tools/check_stream_keys.py
 
+      # docs/shipping.md "Privacy manifest": every required-reason API the engine calls is declared
+      - name: Apple privacy manifest
+        run: python3 tools/check_apple_privacy.py
+
       - name: CMake presets and option errors
         run: tools/build.sh exec linux tools/ci/check-presets.sh
 
