@@ -8,6 +8,7 @@
 // the test checks it loads cleanly and holds every component type.
 
 #include "support/EditorTestSupport.h"
+#include "component/TextComponent.h"
 
 #include "Catalog.h"
 #include "Stream.h"

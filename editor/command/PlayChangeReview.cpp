@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlayChangeReview.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "command/CommandGroup.h"

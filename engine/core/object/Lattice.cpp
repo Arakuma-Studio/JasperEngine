@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Lattice.h"
+#include "component/Transform.h"
 
 #include "subsystem/LatticeSystem.h"
 #include "lattice/LatticeSolver.h"

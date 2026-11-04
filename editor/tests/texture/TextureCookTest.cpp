@@ -7,6 +7,7 @@
 // copy, metadata (R32) and cancellation.
 
 #include <gtest/gtest.h>
+#include "texture/TextureData.h"
 
 #include "support/EditorTestSupport.h"
 #include "support/TextureCorpus.h"
