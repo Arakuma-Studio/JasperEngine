@@ -5,7 +5,10 @@
 // .scene file of editor/tests/fixtures/scenes (copies of the tools/fixtures projects' scenes),
 // which must load without an engine error and save back to the same YAML.
 
+#include "component/MeshComponent.h"
 #include "Project.h"
+#include "component/LightComponent.h"
+#include "component/Transform.h"
 #include "Stream.h"
 
 #include "LogCapture.h"
@@ -86,6 +89,71 @@ TEST(StreamScene, DecodeSceneWithoutASceneMakesOne){
     std::unique_ptr<Scene> made(Stream::decodeScene(nullptr, Stream::encodeScene(&source)));
     ASSERT_NE(made, nullptr);
     EXPECT_EQ(dumpScene(made.get()), dumpScene(&source));
+}
+
+// A Play snapshot put back (Stream::decodeEntity's keepSameMeshes, docs/specs/S71-mesh-update-flags.md)
+namespace stream_scene_snapshot_test {
+
+    struct Played {
+        Scene scene;
+        Entity entity = NULL_ENTITY;
+        YAML::Node snapshot;
+
+        Played() {
+            entity = scene.createUserEntity();
+            scene.setEntityName(entity, "Box");
+            scene.addComponent<Transform>(entity, Transform{});
+            MeshComponent mesh;
+            mesh.worldAABB = AABB(Vector3(-1, -1, -1), Vector3(1, 1, 1));
+            scene.addComponent<MeshComponent>(entity, mesh);
+            snapshot = YAML::Load(YAML::Dump(Stream::encodeEntity(entity, &scene)));
+            // what a Play leaves: moved, its bounds derived from that, and already loaded
+            scene.getComponent<Transform>(entity).position = Vector3(5, 5, 5);
+            scene.getComponent<MeshComponent>(entity).worldAABB = AABB(Vector3(4, 4, 4), Vector3(6, 6, 6));
+            scene.getComponent<MeshComponent>(entity).needReload = false;
+        }
+
+        void restore(bool keepSameMeshes) {
+            Stream::decodeEntity(snapshot, &scene, nullptr, nullptr, nullptr, NULL_ENTITY, false, true, nullptr, keepSameMeshes);
+        }
+    };
+
+}
+
+TEST(StreamScene, SnapshotKeepsAMeshThatOnlyMoved){
+    stream_scene_snapshot_test::Played played;
+    played.restore(true);
+    const MeshComponent& mesh = played.scene.getComponent<MeshComponent>(played.entity);
+    EXPECT_EQ(played.scene.getComponent<Transform>(played.entity).position, Vector3(0, 0, 0));
+    EXPECT_TRUE(played.scene.getComponent<Transform>(played.entity).needUpdate);
+    EXPECT_FALSE(mesh.needReload);
+    EXPECT_EQ(YAML::Dump(Stream::encodeAABB(mesh.worldAABB)), YAML::Dump(played.snapshot["components"]["mesh"]["worldAABB"]));
+}
+
+TEST(StreamScene, SnapshotDecodesAMeshAPlayChanged){
+    stream_scene_snapshot_test::Played played;
+    played.scene.getComponent<MeshComponent>(played.entity).castShadows = false;
+    played.restore(true);
+    const MeshComponent& mesh = played.scene.getComponent<MeshComponent>(played.entity);
+    EXPECT_TRUE(mesh.castShadows);
+    EXPECT_TRUE(mesh.needReload);
+    EXPECT_EQ(YAML::Dump(Stream::encodeAABB(mesh.worldAABB)), YAML::Dump(played.snapshot["components"]["mesh"]["worldAABB"]));
+}
+
+// what the file held that this editor does not read stays, with the decode that keeps it
+TEST(StreamScene, SnapshotDecodesAMeshWithKeysItDoesNotEncode){
+    stream_scene_snapshot_test::Played played;
+    played.snapshot["components"]["mesh"]["fromALaterEditor"] = 1;
+    played.restore(true);
+    EXPECT_TRUE(played.scene.getComponent<MeshComponent>(played.entity).needReload);
+    EXPECT_TRUE(Stream::encodeEntity(played.entity, &played.scene)["components"]["mesh"]["fromALaterEditor"]);
+}
+
+// undo, prefab propagation and every other decode over a live Mesh: as ever
+TEST(StreamScene, OtherDecodesReloadTheMeshTheyDecode){
+    stream_scene_snapshot_test::Played played;
+    played.restore(false);
+    EXPECT_TRUE(played.scene.getComponent<MeshComponent>(played.entity).needReload);
 }
 
 TEST(StreamScene, EntityWithComponentsRoundTrips){

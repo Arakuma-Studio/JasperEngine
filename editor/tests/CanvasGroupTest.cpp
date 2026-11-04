@@ -10,8 +10,12 @@
 // (no RenderSystem runs), the pointer goes through UISystem's entry points.
 
 #include <gtest/gtest.h>
+#include "component/Transform.h"
+#include "component/TweenComponent.h"
+#include "component/UIComponent.h"
 
 #include "ScriptDataTestSupport.h"
+#include "support/EditorTestSupport.h"
 
 #include "Scene.h"
 #include "Engine.h"
@@ -40,8 +44,7 @@
 #include "LuaBridge.h"
 
 #include <chrono>
-#include <cstdlib>
-#include <thread>
+#include <cstdio>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -953,15 +956,16 @@ TEST_F(CanvasGroupTest, FlattenCompositeIsABuildKeyNotASceneKey){
 // optimised builds only; not under the sanitizers (they slow everything several times)
 #if defined(NDEBUG) && !defined(__SANITIZE_ADDRESS__)
 TEST_F(CanvasGroupTest, PerformanceBudgets){
-    // The budgets are for an idle machine (spec 9: Release, host). A build box running other
-    // agents' builds cannot time them: skipped above half its cores of load; below that, each
-    // budget takes the best of 50 samples, in up to 5 rounds (a round preempted by another
-    // process does not fail it)
-    const double cores = (double)std::max(1u, std::thread::hardware_concurrency());
-    double load[1] = {0.0};
-    if (getloadavg(load, 1) == 1 && load[0] > cores * 0.5){
-        GTEST_SKIP() << "load average " << load[0] << " above half of " << cores << " cores: no timing budget";
-    }
+    // The budgets are for an idle machine (spec 9: Release, host): printed, and enforced where
+    // JASPER_TEST_PERF_SLACK says the machine is one. Each takes the best of 50 samples, in up to 5
+    // rounds (a round preempted by another process does not fail it)
+    const double slack = editor::test::perfSlack();
+    auto report = [slack](const char* what, double measured, double budget){
+        std::printf("[ bench ] %s: %.2f us (budget %.1f)\n", what, measured, budget);
+        if (slack > 0.0){
+            EXPECT_LE(measured, budget * slack) << what;
+        }
+    };
     auto time = [](auto&& fn){
         const auto start = std::chrono::steady_clock::now();
         fn();
@@ -993,7 +997,7 @@ TEST_F(CanvasGroupTest, PerformanceBudgets){
     }
     ui()->syncCanvasGroups();
     const double structural = best(400.0, [&](int){ scene.hierarchyChanged(); }, [&](){ ui()->syncCanvasGroups(); });
-    EXPECT_LE(structural, 400.0) << "full pass over 5000 transforms (us)";
+    report("full pass over 5000 transforms", structural, 400.0);
 
     // clean: 50 groups, one comparison each <= 2 us
     Scene small;
@@ -1005,7 +1009,7 @@ TEST_F(CanvasGroupTest, PerformanceBudgets){
     }
     smallUi->syncCanvasGroups();
     const double clean = best(2.0, [](int){}, [&](){ smallUi->syncCanvasGroups(); });
-    EXPECT_LE(clean, 2.0) << "clean check of 50 groups (us)";
+    report("clean check of 50 groups", clean, 2.0);
 
     // an alpha fade of a group with 100 descendants <= 15 us a frame
     Scene fade;
@@ -1023,6 +1027,6 @@ TEST_F(CanvasGroupTest, PerformanceBudgets){
     fadeUi->syncCanvasGroups();
     const double fading = best(15.0, [&](int i){ fade.getComponent<CanvasGroupComponent>(fadeRoot).alpha = 0.005f + 0.01f * (float)(i % 90); },
                                [&](){ fadeUi->syncCanvasGroups(); });
-    EXPECT_LE(fading, 15.0) << "subtree pass over 101 entities (us)";
+    report("subtree pass over 101 entities", fading, 15.0);
 }
 #endif

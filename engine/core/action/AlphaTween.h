@@ -5,6 +5,7 @@
 #define ALPHATWEEN_H
 
 #include "Tween.h"
+#include "component/AlphaTweenComponent.h"
 
 namespace jasperengine{
     class JASPERENGINE_API AlphaTween: public Tween{

@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "MaterialRender.h"
+#include "component/MeshComponent.h"
+#include "component/SkyboxComponent.h"
+#include "component/LightComponent.h"
 
 #include "Configs.h"
 #include "PreviewEnvironment.h"

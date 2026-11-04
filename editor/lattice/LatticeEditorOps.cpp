@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "LatticeEditorOps.h"
+#include "component/Transform.h"
+#include "component/MeshComponent.h"
 
 #include "AppSettings.h"
 #include "Project.h"
