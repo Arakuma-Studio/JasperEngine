@@ -337,7 +337,7 @@ void editor::ProjectWindow::handleTypeAhead() {
     if (!windowFocused || io.WantTextInput || io.KeyCtrl || io.KeyAlt || io.KeySuper || io.KeyShift || isRenaming) return;
     char typed = 0;
     for (int k = ImGuiKey_0; k <= ImGuiKey_Z; k++) {
-        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k), false)) continue;
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k), false)) continue;   // shortcut-lint: allow type-ahead in the focused listing: bare letters and digits, never a binding of the window's commands
         typed = k <= ImGuiKey_9 ? static_cast<char>('0' + (k - ImGuiKey_0)) : static_cast<char>('a' + (k - ImGuiKey_A));
         break;
     }
