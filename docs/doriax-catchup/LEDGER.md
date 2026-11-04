@@ -60,6 +60,14 @@ agent ("be braver"): what most users and agents expect of a game engine, Unity n
   Shader and variant bits on both sides are appended at landing in landing order (the bit numbers in our specs are
   names, not reservations). The lean MCP rules merged with it (`fe3e90b97`: guide at most 8,192 bytes, eval cases
   for new text) override our specs; agent-authoring revises its guide plan against them.
+- **Two more programs share `origin/main`.** Forge/meshoptimizer (S53-S57, `docs/forge-meshopt-analysis/LEDGER.md`)
+  defers to us: draw-perf owns the opaque state sort, the pipeline/binding tracker and cull-before-sort (their S55
+  instances over that order); sprite-batching's dynamic batching goes first and S55's GPU instancing takes the
+  remaining mesh draws, never both; S53-S55 keep component changes additive around mesh-memory. Follow-ups (S61-S73,
+  `FOLLOWUPS-LEDGER.md`): S68 Linked folders makes the export walk follow links (overrides export-pipeline's rule;
+  export-pipeline follows links with a cycle guard), S64 meets export-pipeline's shader keys, S67 meets
+  mobile-shipping's packaging, S65 leaves capacities to mesh-memory, S72's header fan-out cut is a merge hotspot.
+  Whoever lands second merges onto the first.
 - **Generated files** (`docs/mcp/TOOLS.md`, `tools/mcp/budget.json` measurements, `catalog_snapshot.json`, Lua
   stubs): each branch regenerates them after its last merge of `main`; at merge the lead regenerates again.
 
@@ -107,3 +115,16 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   water-reflections).
 - 2026-11-04: agreed the split with the pixel-art lead (see decisions): feature 13 is `sprite-batching` again, with
   hooks for their narrowed S52, and started now (16 agents) because their S52 waits for it.
+- 2026-11-04: `origin/main` moved again (`815791c80`..`297562c95`): AGENTS.md rewritten as the one rule book, the
+  GitHub workflows removed (no CI: nothing checks Windows, macOS or iOS code except reading), and the push gate is
+  now the full suite for big features (`WERROR=1` linux and unit-tests, the slow MCP suite, area lints). Merged into
+  `main` (fast-forward) and pushed; the brief's definition of done follows it, and all 16 implementers were told to
+  merge `main` before their next gate. Baseline of `main` on this host: `tools/build.sh linux` passes with 11
+  warnings (ODR warnings of the vendored shader compiler's SPIR-V headers, as the pixel-art lead measured).
+- 2026-11-04 07:0x: merged 11 more `origin/main` commits (follow-ups program, CI-suite classification) and pushed.
+  Recorded the splits with the Forge/meshoptimizer (S53-S57) and follow-ups (S61-S73) programs; told export-pipeline
+  (S68 links, S64 shader lists), project-window (S68) and mobile-shipping (S67). Build queue: `slot` became a
+  priority queue (mesh-memory first, then unicode-text, water-reflections). Progress: unicode-text, runtime-core,
+  render-correctness, water-reflections, scripting, agent-authoring, build-toolchain and mobile-shipping have
+  committed work and are in red/green runs; the others have code written and wait for their first build. Nothing
+  merged yet.

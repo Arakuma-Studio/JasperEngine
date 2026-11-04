@@ -19,7 +19,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
 | Android render gate | an APK on the Android emulator: logcat, GLES errors, and the screen against goldens (a lit 3D scene, 2D/UI, HTML UI) | `ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` (below; KVM servers A and C) | `build/android-emulator/<scene>/` |
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
-| Tool checks | the CI scripts' own tests, the notices, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/check-notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -78,7 +78,8 @@ loaded a model in the background while that file exists, so what else loads the 
   of a Chromium reference (`golden/browser/**`).
 - `tools/build.sh mcp-tests` runs `tools/mcp/run-tests.sh` in the Linux image against
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
-  `CI = True`; `MCP_SUITE=all` runs every file and needs the default fixture project, which is
+  `CI = True` (`tools/ci/check-mcp-ci-suite.py`, run by check-changed: every file is classified,
+  docs/mcp/README.md); `MCP_SUITE=all` runs every file and needs the default fixture project, which is
   not in git: `JASPER_FIXTURE`, else `build/fixture-unity` of the checkout or the main checkout,
   else `~/je/fixture-unity` (the build servers' copy), mounted at `/fixture`. The harness looks in
   the same places (`harness.default_fixture()`); without a fixture, the tests that need it skip
@@ -784,9 +785,9 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
 Nothing runs on a push: a check counts only when someone ran it. `tools/ci/nightly-smoke.sh` is the
 smoke test of every fixture project, and `tools/ci/check-release-tag.sh` a release tag's check.
 
-Third-party notices: `tools/ci/check-notices.py` fails when a directory under `libs/`,
-`engine/libs/` or `engine/libs/shadercompiler/libs/` lacks a `NOTICE.md` row or a licence file;
-the editor install carries `NOTICE.md`, `LICENSE` and `licenses/<library>-LICENSE`.
+Third-party notices are credits, not a gate: `tools/ci/check-notices.py` stages whatever licence
+files and `NOTICE.md` rows exist into the editor install and exported games; CI does not fail on a
+library without them.
 
 The Chrome for Testing headless shell in `docker/web.Dockerfile` and `uv` in
 `docker/linux.Dockerfile` are pinned by version and sha256 and bumped by hand, as are the MCP
