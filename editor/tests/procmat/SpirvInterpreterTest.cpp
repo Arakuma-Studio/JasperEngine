@@ -190,6 +190,20 @@ TEST(SpirvInterpreter, SamplerIsBilinearRepeatWithBoxMips){
     EXPECT_NEAR(out[0], 0.625f, 1e-6f);
 }
 
+// A node's 0/0 must give what the GPU tiers give: a smooth minimum with k = 0 differed from llvmpipe
+// by 127/255 until min, max and clamp followed minNum and maxNum
+TEST(SpirvInterpreter, NaNLosesInMinMaxAndClamp){
+    const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_nan_rules);
+    ASSERT_TRUE(program);
+    SpirvMachine machine(*program);
+    float out[4];
+    ASSERT_EQ(machine.shade(0.5f, 0.5f, out), SpirvMachine::Result::Ok);
+    EXPECT_EQ(out[0], 0.25f);
+    EXPECT_EQ(out[1], 0.5f);
+    EXPECT_EQ(out[2], 0.5f);
+    EXPECT_EQ(out[3], 2.0f);
+}
+
 TEST(SpirvInterpreter, AnEndlessLoopStopsThePixel){
     const std::unique_ptr<SpirvProgram> program = loadFixture(fixture_endless);
     ASSERT_TRUE(program);

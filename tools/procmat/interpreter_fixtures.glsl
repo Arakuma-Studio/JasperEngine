@@ -128,6 +128,16 @@ void main() {
     g_finalColor = vec4(base.r, wrapped.r, coarse.r, textureLod(sampler2D(t_input, s_input), v_uv, 0.5).r);
 }
 
+//# nan_rules
+#version 450
+in vec2 v_uv;
+out vec4 g_finalColor;
+uniform u_fs_procmat { vec4 v[1]; } pm;
+void main() {
+    float nan = pm.v[0].x / pm.v[0].x;
+    g_finalColor = vec4(clamp(nan, 0.25, 0.75), min(nan, 0.5), max(nan, 0.5), nan == nan ? 1.0 : 2.0);
+}
+
 //# endless
 #version 450
 in vec2 v_uv;
