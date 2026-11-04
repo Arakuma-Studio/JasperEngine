@@ -6,6 +6,7 @@
 // Changes review (R26-R29, AC13).
 
 #include "UndoFakeCommand.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "command/PlayChangeReview.h"
@@ -22,6 +23,7 @@
 #include "command/type/RemoveComponentCmd.h"
 #include "command/type/SetAssetMetaCmd.h"
 #include "Stream.h"
+#include "subsystem/MeshSystem.h"
 #include "support/EditorTestSupport.h"
 
 #include "support/TestTempDir.h"
@@ -121,6 +123,38 @@ namespace {
     class PrefabUndoTests : public UndoProjectTest {};
     class PlayChangeReviewTests : public UndoProjectTest {};
 
+}
+
+// S71: Stop puts back a Mesh only when Play changed it; its decode reloads it at the next frame
+TEST_F(UndoProjectTest, StopKeepsAMeshAPlayOnlyMoved) {
+    scene->scene->addComponent<MeshComponent>(GAME, MeshComponent{});
+    const Vector3 edit = position(GAME);
+    MeshComponent& mesh = scene->scene->getComponent<MeshComponent>(GAME);
+    // what create_entity's box holds: the geometry the encoding writes
+    scene->scene->getSystem<MeshSystem>()->createBox(mesh, 1, 1, 1);
+    mesh.worldAABB = AABB(Vector3(-1, -1, -1), Vector3(1, 1, 1));
+    beginPlay();
+    scene->scene->getComponent<Transform>(GAME).position = edit + Vector3(5, 5, 5);
+    mesh.worldAABB = AABB(Vector3(4, 4, 4), Vector3(6, 6, 6));
+    mesh.needReload = false;
+    stopPlay();
+    EXPECT_EQ(position(GAME), edit);
+    const MeshComponent& restored = scene->scene->getComponent<MeshComponent>(GAME);
+    EXPECT_FALSE(restored.needReload);
+    EXPECT_EQ(YAML::Dump(Stream::encodeAABB(restored.worldAABB)), YAML::Dump(Stream::encodeAABB(AABB(Vector3(-1, -1, -1), Vector3(1, 1, 1)))));
+}
+
+TEST_F(UndoProjectTest, StopDecodesAMeshAPlayChanged) {
+    scene->scene->addComponent<MeshComponent>(GAME, MeshComponent{});
+    beginPlay();
+    MeshComponent& mesh = scene->scene->getComponent<MeshComponent>(GAME);
+    mesh.castShadows = !mesh.castShadows;
+    const bool played = mesh.castShadows;
+    mesh.needReload = false;
+    stopPlay();
+    const MeshComponent& restored = scene->scene->getComponent<MeshComponent>(GAME);
+    EXPECT_NE(restored.castShadows, played);
+    EXPECT_TRUE(restored.needReload);
 }
 
 TEST_F(UndoProjectTest, NoOpDropped) {

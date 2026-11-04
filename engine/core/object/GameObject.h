@@ -5,6 +5,8 @@
 #define GAMEOBJECT_H
 
 #include "EntityHandle.h"
+// the classes its getters return (EntityRegistry.h has the reason)
+#ifndef JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "Rigidbody2D.h"
 #include "CharacterController2D.h"
@@ -19,10 +21,22 @@
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
 #include "object/spline/SplineAnimate.h"
+#endif
 #include "math/Ray.h"
 #include "manager/PrefabAsset.h"
 
 namespace jasperengine{
+
+    class Rigidbody2D;
+    class CharacterController2D;
+    class Rigidbody;
+    class CharacterController;
+    class Buoyancy;
+    class WaterVolume;
+    class Spline;
+    class SplineExtrude;
+    class SplineInstantiate;
+    class SplineAnimate;
 
     class JASPERENGINE_API GameObject: public EntityHandle{
     public:

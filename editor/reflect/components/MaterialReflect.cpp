@@ -168,6 +168,19 @@ namespace {
         return &static_cast<Material*>(material)->shaderPalettes.edit();
     }
 
+    // read, an unset one is its defaults and nothing is made
+    const void* extraPassPeek(const void* material) {
+        return &static_cast<const Material*>(material)->extraPass.get();
+    }
+
+    const void* pbrPeek(const void* material) {
+        return &static_cast<const Material*>(material)->pbr.get();
+    }
+
+    const void* shaderPalettesPeek(const void* material) {
+        return &static_cast<const Material*>(material)->shaderPalettes.get();
+    }
+
     constexpr FieldDesc kMaterialFields[] = {
         JE_FIELD(Material, name, .asset = AssetKind::Material),
         JE_FIELD(Material, baseColorFactor, .flags = ColorLinear, .label = "Base Color"),
@@ -202,7 +215,7 @@ namespace {
         JE_FIELD(Material, shaderGlobalBindings, .ops = &ops::ShaderGlobalBindings, .flags = Hidden, .updateFlags = UpdateFlags_Shader_Uniforms),
         // the draw binds a changed binding by itself (RenderSystem::updateShaderPalettes)
         detail::makeField<jasperengine::pixelart::ShaderPalettes>("shaderPalettes", &shaderPalettesRef,
-                                                                   FieldMeta{.ops = &ops::ShaderPalettes, .flags = Hidden}),
+                                                                   FieldMeta{.ops = &ops::ShaderPalettes, .flags = Hidden, .peek = &shaderPalettesPeek}),
         JE_FIELD(Material, blendMode, .enumDesc = &enums::kMaterialBlendMode, .updateFlags = kMeshReload),
         JE_FIELD(Material, cullMode, .enumDesc = &enums::kMaterialCullMode, .updateFlags = kMeshReload),
         JE_FIELD(Material, depthWrite, .enumDesc = &enums::kMaterialDepthWrite, .updateFlags = kMeshReload),
@@ -213,10 +226,10 @@ namespace {
         JE_FIELD(Material, stencil, .structDesc = &kMaterialStencilStruct, .flags = ListWhole, .updateFlags = kMeshReload),
         JE_FIELD(Material, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kMeshReload, .min = -1.0f, .max = 15.0f),
         detail::makeField<MaterialPass>("extraPass", &extraPassRef,
-                                        FieldMeta{.flags = ListWhole, .updateFlags = kMeshReload | kTexture | UpdateFlags_Shader_Uniforms}),
+                                        FieldMeta{.flags = ListWhole, .updateFlags = kMeshReload | kTexture | UpdateFlags_Shader_Uniforms, .peek = &extraPassPeek}),
         JE_FIELD(Material, emissiveStrength),
         detail::makeField<MaterialPbrExtensions>("pbr", &pbrRef,
-                                                 FieldMeta{.ops = &ops::Value<MaterialPbrExtensions>, .structDesc = &kMaterialPbrStruct}),
+                                                 FieldMeta{.ops = &ops::Value<MaterialPbrExtensions>, .structDesc = &kMaterialPbrStruct, .peek = &pbrPeek}),
     };
 
 }
