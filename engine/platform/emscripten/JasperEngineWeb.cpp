@@ -64,6 +64,11 @@ namespace {
     // integer scale is over physical pixels. Input arrives in CSS pixels and is scaled by it.
     double webCanvasPixelRatio = 1.0;
     bool webCanvasPixelated = false;
+    // a canvas the page does not size (its CSS size follows its width and height attributes, as
+    // the player's shell has it) gets its CSS size pinned while the backing store is larger:
+    // otherwise every frame would grow it by the ratio again
+    bool webCanvasCssPinned = false;
+    double webCanvasPinnedWidth = 0.0, webCanvasPinnedHeight = 0.0;
 
     bool pixelArtView(){
         const jasperengine::Scaling scaling = jasperengine::Engine::getScalingMode();
@@ -857,6 +862,22 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
                 var element = document.querySelector(UTF8ToString($0));
                 if (element) element.style.imageRendering = $1 ? 'pixelated' : '';
             }, canvas.c_str(), pixelated ? 1 : 0);
+            if (pixelated && (int)round(cssWidth) == screenWidth && (int)round(cssHeight) == screenHeight) {
+                emscripten_set_element_css_size(canvas.c_str(), cssWidth, cssHeight);
+                webCanvasCssPinned = true;
+                webCanvasPinnedWidth = cssWidth;
+                webCanvasPinnedHeight = cssHeight;
+            } else if (!pixelated && webCanvasCssPinned) {
+                // back to a backing store of the CSS size, then the attributes size it again
+                webCanvasCssPinned = false;
+                changeCanvasSize((int)round(webCanvasPinnedWidth), (int)round(webCanvasPinnedHeight));
+                EM_ASM({
+                    var element = document.querySelector(UTF8ToString($0));
+                    if (element) { element.style.width = ''; element.style.height = ''; }
+                }, canvas.c_str());
+                cssWidth = webCanvasPinnedWidth;
+                cssHeight = webCanvasPinnedHeight;
+            }
         }
         const int width = (int)round(cssWidth * ratio);
         const int height = (int)round(cssHeight * ratio);
