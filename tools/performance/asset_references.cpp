@@ -20,7 +20,7 @@ using jasperengine::editor::DepEdge;
 using jasperengine::editor::DepEdgeKind;
 using jasperengine::editor::isTextEdge;
 
-#ifndef CHECK_ONLY
+#ifdef COUNT_ALLOCATIONS
 static bool countAllocations = false;
 static size_t allocationCount = 0;
 [[gnu::noinline]] void* operator new(std::size_t bytes) {
@@ -137,35 +137,42 @@ static size_t verify() {
     return cases;
 }
 
-struct Measurement { double ns; double allocations; };
 #ifndef CHECK_ONLY
 static volatile size_t resultCount = 0;
+#ifdef COUNT_ALLOCATIONS
+template<class Index> static size_t countQuery(const Index& index, Guid target, const std::string& path) {
+    const std::unordered_map<Guid, std::vector<DepEdge>> memory;
+    std::vector<DepEdge> out;
+    allocationCount = 0;
+    countAllocations = true;
+    index.collectReferences(target, path, memory, out, 1000000);
+    countAllocations = false;
+    resultCount = out.size();
+    return allocationCount;
+}
+#else
 static double cpuNs() {
     timespec stamp{};
     clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &stamp);
     return stamp.tv_sec * 1e9 + stamp.tv_nsec;
 }
-template<class Index> static Measurement measure(const Index& index, Guid target, const std::string& path, size_t repeats) {
+template<class Index> static double measure(const Index& index, Guid target, const std::string& path, size_t repeats) {
     const std::unordered_map<Guid, std::vector<DepEdge>> memory;
-    size_t allocations = 0;
     const double start = cpuNs();
     for (size_t i = 0; i < repeats; ++i) {
-        allocationCount = 0;
-        countAllocations = true;
         std::vector<DepEdge> out;
         index.collectReferences(target, path, memory, out, 1000000);
-        countAllocations = false;
-        allocations += allocationCount;
         resultCount = out.size();
     }
-    return {(cpuNs() - start) / repeats, double(allocations) / repeats};
+    return (cpuNs() - start) / repeats;
 }
 
 template<class Index> static size_t calibrate(const Index& index, Guid target, const std::string& path) {
     size_t repeats = 1;
-    while (measure(index, target, path, repeats).ns * repeats < 20000000.0) repeats *= 2;
+    while (measure(index, target, path, repeats) * repeats < 20000000.0) repeats *= 2;
     return repeats;
 }
+#endif
 
 static void benchmark(const std::string& name, size_t count, bool sharedTarget, size_t pathLength, bool checkCuts) {
     BeforeIndex before;
@@ -183,10 +190,24 @@ static void benchmark(const std::string& name, size_t count, bool sharedTarget, 
     before.rebuildReverse();
     after.rebuildReverse();
     compare(before, after, target, queryPath, {}, 1000000);
+#ifdef COUNT_ALLOCATIONS
+    const size_t allocationsBefore = countQuery(before, target, queryPath);
+    const size_t allocationsAfter = countQuery(after, target, queryPath);
+    for (size_t round = 0; round < 9; ++round) {
+        const size_t a = countQuery(before, target, queryPath);
+        const size_t b = countQuery(after, target, queryPath);
+        require(a == allocationsBefore && b == allocationsAfter, "allocation counts must be deterministic");
+        std::cout << name << ',' << round << ',' << a << ',' << b << '\n';
+        if (checkCuts && count >= 1024 && !sharedTarget) {
+            require(b <= 4, "allocation regression: a missing-path query must allocate at most four times, independent of index size");
+        }
+    }
+#else
+    (void)checkCuts;
     const size_t beforeRepeats = calibrate(before, target, queryPath);
     const size_t afterRepeats = calibrate(after, target, queryPath);
     for (size_t round = 0; round < 9; ++round) {
-        Measurement a{}, b{};
+        double a = 0, b = 0;
         if (round % 2) {
             b = measure(after, target, queryPath, afterRepeats);
             a = measure(before, target, queryPath, beforeRepeats);
@@ -194,28 +215,27 @@ static void benchmark(const std::string& name, size_t count, bool sharedTarget, 
             a = measure(before, target, queryPath, beforeRepeats);
             b = measure(after, target, queryPath, afterRepeats);
         }
-        std::cout << name << ',' << round << ',' << a.ns << ',' << b.ns << ',' << a.allocations << ',' << b.allocations << '\n';
-        if (checkCuts && count >= 1024 && !sharedTarget) {
-            require(b.allocations <= 4, "allocation regression: a missing-path query must allocate at most four times, independent of index size");
-        }
+        std::cout << name << ',' << round << ',' << a << ',' << b << '\n';
     }
+#endif
 }
 #endif
 
 int main(int argc, char** argv) {
     try {
+        const bool checkCuts = argc > 1 && std::string(argv[1]) == "--check-cuts";
+#ifndef COUNT_ALLOCATIONS
+        require(!checkCuts, "--check-cuts requires allocation instrumentation");
+#endif
         std::cerr << "PASS: " << verify() << " differential queries, 0 skipped, 0 disabled\n";
 #ifndef CHECK_ONLY
-        const bool checkCuts = argc > 1 && std::string(argv[1]) == "--check-cuts";
+        if (argc > 1 && std::string(argv[1]) == "--check-only") return 0;
         benchmark("one-referrer", 1, true, 0, checkCuts);
         benchmark("fan-in-32", 32, true, 40, checkCuts);
         benchmark("fan-in-1024", 1024, true, 40, checkCuts);
         benchmark("fan-in-10000", 10000, true, 40, checkCuts);
         benchmark("absent-path-1024", 1024, false, 40, checkCuts);
         benchmark("absent-path-10000", 10000, false, 40, checkCuts);
-#else
-        (void)argc;
-        (void)argv;
 #endif
     } catch (const std::exception& error) {
         std::cerr << "FAIL: " << error.what() << '\n';
