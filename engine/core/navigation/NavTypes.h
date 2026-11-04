@@ -54,8 +54,8 @@ namespace jasperengine::nav {
         Invalid
     };
 
-    // ---- S42 diagnostics: why a path is not Complete (docs/specs/S42-navigation-diagnostics.md
-    // R1-R4). Shared with S43 (onPathFailed); values may only be appended.
+    // ---- S54 diagnostics: why a path is not Complete (docs/specs/S54-navigation-diagnostics.md
+    // R1-R4). Shared with S55 (onPathFailed); values may only be appended.
     enum class PathFailure : uint8_t {
         None,
         // no enabled, active NavMeshSurface of the agent type (or the given entity is not one)
@@ -134,7 +134,7 @@ namespace jasperengine::nav {
         std::vector<Vector3> corners;
         float length = 0.0f;
 
-        // ---- S42 (R2, R4): failure is None exactly when status is Complete; Invalid goes with
+        // ---- S54 (R2, R4): failure is None exactly when status is Complete; Invalid goes with
         // NoSurface, NotBaked and the four end reasons, Partial with Disconnected, BlockedByArea
         // and OutOfNodes
         PathFailure failure = PathFailure::NoSurface;
@@ -182,7 +182,7 @@ namespace jasperengine::nav {
         uint64_t seed = 0;
     };
 
-    // ---- S42 diagnostics (R7-R10)
+    // ---- S54 diagnostics (R7-R10)
 
     // locate(): where a point is on the navmesh
     struct NavLocation {

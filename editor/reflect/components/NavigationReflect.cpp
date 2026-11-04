@@ -68,9 +68,9 @@ namespace {
     };
 
     constexpr EnumItem kNavModifierInclusionItems[] = {
-        {navValue(NavModifierInclusion::AUTO), "auto", "Remove Object", "NavModifierInclusion::AUTO"},
+        {navValue(NavModifierInclusion::AUTO), "auto", "Surface Policy", "NavModifierInclusion::AUTO"},
         {navValue(NavModifierInclusion::INCLUDE), "include", "Add or Modify Object", "NavModifierInclusion::INCLUDE"},
-        {navValue(NavModifierInclusion::EXCLUDE), "exclude", "Remove Object (always)", "NavModifierInclusion::EXCLUDE"},
+        {navValue(NavModifierInclusion::EXCLUDE), "exclude", "Remove Object", "NavModifierInclusion::EXCLUDE"},
     };
 
     constexpr EnumItem kNavGridLayoutItems[] = {
@@ -221,7 +221,8 @@ namespace {
 
     constexpr FieldDesc kNavMeshModifierFields[] = {
         JE_FIELD(NavMeshModifierComponent, enabled),
-        JE_FIELD(NavMeshModifierComponent, overrideInclusion, .enumDesc = &enums::kNavModifierInclusion, .label = "Mode"),
+        JE_FIELD(NavMeshModifierComponent, overrideInclusion, .enumDesc = &enums::kNavModifierInclusion, .label = "Mode",
+                 .tooltip = "Surface Policy: collected as the surface decides (moving bodies, agents and obstacles are left out); Add or Modify Object: collected even when the surface would leave it out; Remove Object: never collected."),
         JE_FIELD(NavMeshModifierComponent, overrideArea, .tooltip = "Give what it covers its own area."),
         JE_FIELD(NavMeshModifierComponent, area, .label = "Area Type"),
         JE_FIELD(NavMeshModifierComponent, applyToChildren, .tooltip = "Its descendants too (the nearest modifier wins)."),

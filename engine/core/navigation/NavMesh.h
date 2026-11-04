@@ -99,7 +99,7 @@ namespace jasperengine::nav {
         // the triangle cap stopped the extraction
         bool truncated = false;
 
-        // ---- S42: per tile of tileBounds, its x, y and layer
+        // ---- S54: per tile of tileBounds, its x, y and layer
         std::vector<int32_t> tileCoords;
         // per triangle: its island (DEBUG_ISLANDS, -1: none), the index of its tile in
         // tileBounds (DEBUG_TILES); empty without the flag
@@ -107,7 +107,7 @@ namespace jasperengine::nav {
         std::vector<int32_t> triangleTiles;
     };
 
-    // ---- S42 diagnostics (docs/specs/S42-navigation-diagnostics.md)
+    // ---- S54 diagnostics (docs/specs/S54-navigation-diagnostics.md)
 
     // getDebugGeometry's extras
     constexpr uint32_t DEBUG_ISLANDS = 1u << 0;
@@ -268,7 +268,7 @@ namespace jasperengine::nav {
         // whether a tile holds off-mesh connections (links)
         bool hasOffMeshConnections() const;
 
-        // ---- S42 diagnostics (nav space). Islands are labelled lazily, on the main thread, when
+        // ---- S54 diagnostics (nav space). Islands are labelled lazily, on the main thread, when
         // the revision changed since the last labelling (R8): the calls that say so label;
         // path queries never do, they only use labels that are current.
         // the islands (nav-space bounds, nav units^2); labels when stale

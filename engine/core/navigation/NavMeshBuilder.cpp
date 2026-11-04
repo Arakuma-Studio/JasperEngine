@@ -160,7 +160,7 @@ struct NavMeshBuilder::TileJob::State {
     std::vector<NavLinkInput> links;
 
     const NavBakeInput& in() const { return *input; }
-    // S42: the probe's relaxed limits for this build (null: the input's)
+    // S54: the probe's relaxed limits for this build (null: the input's)
     std::unique_ptr<NavBuildConfig> configOverride;
     const NavBuildConfig& config() const { return configOverride ? *configOverride : input->config; }
 

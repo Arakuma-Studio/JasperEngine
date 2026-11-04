@@ -1,7 +1,8 @@
 # Navigation (navmeshes, agents, crowds, grids)
 
 Served as `jasper://docs/navigation`. The user guide is [docs/navigation.md](../../navigation.md);
-the design is [docs/specs/S19-navigation.md](../../specs/S19-navigation.md). Tools: group
+the design is [docs/specs/S19-navigation.md](../../specs/S19-navigation.md) (diagnostics:
+[S54](../../specs/S54-navigation-diagnostics.md)). Tools: group
 `navigation` (`tool_groups` enables it in tools/list; callable by name without it).
 
 ## The model (Unity AI Navigation names)
@@ -39,15 +40,23 @@ Bake and check a level:
 - `bake_navigation` is a job: `wait: false` returns a `job_id` (poll `get_job`, stop with
   `cancel_job`; a cancel keeps the previous navmesh). `mode`: `dirty` (default: the tiles whose
   inputs changed, every tile the first time), `full`, `clear` (removes the navmesh and its asset).
-  The result has tiles built, polys, ms and warnings per surface.
+  Per surface the result has tiles built, polys, ms, warnings, `sources` (what it collected:
+  meshes, terrains, colliders, volumes, links, excluded, triangles), `walkable_area_m2`,
+  `island_count`, the 16 largest `islands` and the 5 `slowest_tiles`; a failed one has
+  `error_code` (`nothing_collected`, `too_large`, `busy`, `tile_failed`, ...) and a `hint`.
 - After moving static geometry, `get_navigation_info` shows `dirty_tiles` > 0 (the Inspector's
   stale-bake warning); bake again.
 - `query_navigation` works in edit mode and in play (the running scene). `op`: `path`, `sample`
   (nearest navmesh point within `max_distance`, default 2), `raycast` (`blocked`, hit point, `cost`),
   `closest_edge` (within `max_distance` when given: `found: false` and `distance` = the limit when
-  no wall is that close), `reachable`, `random`, `move_along`. `agent_type` by name or id,
-  `area_mask` a bit mask, `target` `navmesh`, `grid` or a surface/grid GameObject. Every op but
-  `random` needs `from`.
+  no wall is that close), `reachable`, `locate` (below), `random`, `move_along`. `agent_type` by
+  name or id, `area_mask` a bit mask, `target` `navmesh`, `grid` or a surface/grid GameObject.
+  Every op but `random` needs `from`.
+- `from` / `to` take `[x, y, z]` or a GameObject: its position, or for a NavMesh Agent its feet
+  (the base offset below it), and then its agent type and area mask unless `agent_type` /
+  `area_mask` are given. A `target` surface of another agent type is an error naming both.
+- `to` takes a list of up to 64 targets for `path`, `reachable` and `raycast`: `results[]` holds
+  one summary per target (`to`, `status`, `length`, `corner_count`, `reason`; no corners).
 - Paths carry `cost` (length times area cost), `corner_areas` and `corner_flags` (per corner; flags
   1 start, 2 end, 4 link start) and `area_lengths` (by area name).
 - `random`: without `from` anywhere on the navmesh (uniform by area); with `from` and
@@ -62,6 +71,82 @@ Bake and check a level:
 {"tool": "query_navigation", "args": {"op": "random", "from": [0, 0, 0], "max_distance": 10, "seed": 3}}
 {"tool": "query_navigation", "args": {"op": "move_along", "from": [0, 0, 0], "to": [2, 0, 0]}}
 ```
+
+## Why it does not work
+
+Start with `get_navigation_info`: its `findings` list every known problem of the scene, each with
+`code`, `severity`, the GameObject, a `message` that names the fix, and `details` (`entities`
+narrows the answer to some GameObjects). The same list feeds the Navigation window's Problems,
+`jasperengine-editor check` and the export preflight.
+
+| Finding | Severity | Means |
+|---|---|---|
+| `not_baked` | warning | an enabled surface has no navmesh: `bake_navigation` |
+| `navmesh_unreadable` | error | the `.navmesh` asset was refused: bake again |
+| `stale_bake` | warning | `dirty_tiles` changed since the bake |
+| `bake_failed` | error | the last bake of the session failed (`error_code`) |
+| `agent_off_mesh` | warning | an agent's feet are not on a surface of its type (`snap_distance`) |
+| `agent_no_surface` | warning | no surface of the agent's type and no Nav Grid under it |
+| `agent_type_missing` | error | a surface or agent names an agent type the settings lack |
+| `agent_type_unused` | info | an agent type nothing uses |
+| `link_unconnected` | warning | a link end lands on no polygon (`island_start` / `island_end` -1) |
+| `small_island` | info | a small island no agent stands on and no link reaches |
+| `crowd_filter_overflow` | warning | more than 16 area masks among one crowd's agents |
+| `obstacle_carve_ignored` | warning | Carve on a surface without Runtime Carving |
+
+Surfaces also carry `coverage` (`walkable_area_m2`, `island_count`, `largest_island_m2`,
+`tiles_area_m2`, `fraction`), their 16 largest `islands` and `last_bake` (the bake report above);
+links carry `connected`, `connections`, `island_start`, `island_end` and `surface`; `obstacles`
+and `modifiers` list those components.
+
+A path or `reachable` that is not Complete says why: `reason`, the `surface` that answered,
+`closest_point` (where the path stops), `gap` (from there to the end) and `next` (what to try).
+Paths also give `start` / `end`: `position` snapped to the navmesh, `snap_distance` and `island`.
+
+| `reason` | Status | Means |
+|---|---|---|
+| `no_surface` | invalid | no enabled NavMesh Surface of the agent type |
+| `not_baked` | invalid | the surfaces of the type have no navmesh |
+| `start_off_mesh` / `end_off_mesh` | invalid | no polygon near that end (within the agent's radius x 2 and height) |
+| `start_filtered` / `end_filtered` | invalid | that end is on an area `area_mask` leaves out |
+| `disconnected` | partial | the ends are on different islands, or joined only by one-way links |
+| `blocked_by_area` | partial | they connect only through areas `area_mask` leaves out |
+| `out_of_nodes` | partial | the path is longer than the search's 2048 polygons |
+
+Grid answers carry `reason` too: a cell outside the grid or Not Walkable is `*_off_mesh`, a cell
+the mask leaves out `*_filtered`, no way through `disconnected`.
+
+`op: "locate"` answers where a point is: `on_mesh` (a path from here would start), `found`,
+`position` (the nearest navmesh point within `max_distance`, default 5), `snap_distance`,
+`island`, `area` / `area_name`, `surface`. Off the navmesh, `why[]` explains it, in order, each
+with `code`, `message` (the value against the agent's limit), and `entity`, `value`, `limit` when
+they apply: `not_baked`, `stale_tile`, `outside_volume`, `outside_bounds`, `no_geometry`,
+`excluded` (`detail`: layer, inactive, moving body, agent, obstacle, exclude modifier),
+`not_walkable_area`, `filtered`, `too_steep`, `low_clearance`, `near_wall`, `step_too_high`,
+`small_region`, `small_island`.
+
+Recipes:
+
+```json
+{"tool": "get_navigation_info", "args": {"entities": ["Enemy"]}}
+{"tool": "query_navigation", "args": {"op": "path", "from": "Enemy", "to": "Player"}}
+{"tool": "query_navigation", "args": {"op": "locate", "from": "Player"}}
+{"tool": "query_navigation", "args": {"op": "reachable", "from": "Enemy", "to": [[0, 0, 5], [12, 0, 3], "Door"]}}
+{"tool": "visualize_navigation", "args": {"show": {"islands": true}, "frame": "navmesh", "screenshot": true}}
+```
+
+- Agent does not move: the findings first (`agent_off_mesh`, `agent_no_surface`, `not_baked`),
+  then a path from the agent (`from` its GameObject: its feet, type and mask) to its destination.
+- `start_off_mesh` / `end_off_mesh`: `locate` at that end. `disconnected`: islands
+  (`visualize_navigation` `show.islands`), then join them (walkable geometry or a NavMesh Link)
+  and bake.
+- `visualize_navigation`: `show.islands` or `show.tile_colors` recolour the navmesh (one at a
+  time; false returns to area colours), `show.slope` tints what is steeper than the agent's Max
+  Slope, `show.tile_labels` lists each visible tile's last build (`tile_labels[]`: `tile`, `text`
+  "12.4 ms · 210 polys · 18.5 KB", `dirty`). `frame` (`"navmesh"` or a GameObject) moves the Scene
+  camera first and returns `camera`. `screenshot`: `true` / `"scene"` the Scene view, `"game"` the
+  Game view. Its `path` (from / to as for `query_navigation`) reports and draws `reason`,
+  `closest_point` and `gap` (orange, the gap red).
 
 Agents in play (Lua):
 
@@ -130,6 +215,12 @@ local found, pt = nav:randomPoint(f, {center = p, radius = 10, seed = 7})   -- o
 local moved, step = nav:moveAlongSurface(a, b) ; local near, edge = nav:findClosestEdge(p, nil, 5.0)
 local ok, hit = nav:samplePosition(p, 2.0, NavAreas.All) -- hit.position, hit.normal, hit.area, hit.distance
 local blocked, hit2 = nav:raycast(a, b)
+-- a path that is not Complete: path.reason ("disconnected"...), path.surface, path.closestPoint, path.gap
+local ok, why = nav:isReachable(a, b)                 -- false, "disconnected"
+local here = nav:locate(p)                            -- onMesh, found, position, snapDistance, island, area, surface
+local cov = nav:getCoverage(surfaceEntity)            -- walkableArea, islandCount, largestIslandArea, tilesArea, fraction
+local islands = nav:getIslands(surfaceEntity)         -- {id, area, polys, boundsMin, boundsMax}
+local report = NavMeshSurface(scene, e).lastBakeResult -- nil before a bake; bake_navigation's keys in camelCase
 local surf = NavMeshSurface(scene, e) ; surf:bakeAsync() ; surf:updateTiles(aabb)
 local grid = NavGrid(scene, e) ; local p = grid:findPath(GridCell(0, 0), GridCell(9, 4), {allowPartial = true})
 grid:setCellArea(GridCell(3, 3), 1) ; grid:fillRect(c0, c1, 3) ; grid:isReachable(c0, c1) -- areas by index (1 Not Walkable)
@@ -153,4 +244,5 @@ tick), `raycast`, `findClosestEdge`, `samplePathPosition`, `nextOffMeshLinkData`
 - A crowd holds `crowd_max_agents` (default 128) per surface and agent type; it grows past that with
   a warning.
 - Exports carry Recast/Detour unless `navigation.include_in_builds` is off (then navmesh calls fail
-  and log once; grids still work). The export check warns on unbaked or stale surfaces.
+  and log once; grids still work). The export preflight logs the findings' warnings and errors
+  (it never blocks); `jasperengine-editor check` reports them all, and an error fails it.

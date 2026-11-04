@@ -145,7 +145,7 @@ bool GridSolver::passable(const NavGridMap& map, int cell, const GridQuery& quer
 
 GridPath GridSolver::solve(const NavGridMap& map, GridCell start, GridCell goal, const GridQuery& query, const float* areaCosts) {
     GridPath path = search(map, start, goal, query, areaCosts);
-    // S42: the reason, from the ends first (as the navmesh's R3 orders them)
+    // S54: the reason, from the ends first (as the navmesh's R3 orders them)
     auto endFailure = [&](GridCell cell, PathFailure offMesh, PathFailure filtered) {
         if (!map.contains(cell) || map.getAreaAt(map.index(cell)) == AREA_NOT_WALKABLE)
             return offMesh;

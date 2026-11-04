@@ -45,7 +45,7 @@ namespace jasperengine::nav {
         int excluded = 0;
         size_t triangles = 0;
         std::vector<std::string> warnings;
-        // S42, with NavCollectOptions::recordSources only: each GameObject left out and why
+        // S54, with NavCollectOptions::recordSources only: each GameObject left out and why
         // ("layer", "inactive", "moving body", "agent", "obstacle", "exclude modifier")
         std::vector<std::pair<Entity, std::string>> excludedEntities;
     };

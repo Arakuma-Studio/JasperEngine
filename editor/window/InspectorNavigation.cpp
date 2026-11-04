@@ -23,15 +23,19 @@
 #include "component/NavMeshObstacleComponent.h"
 #include "component/NavMeshSurfaceComponent.h"
 #include "component/TilemapComponent.h"
+#include "component/Transform.h"
 #include "external/IconsFontAwesome6.h"
 #include "navigation/NavigationEditor.h"
 #include "navigation/NavTypes.h"
 #include "navigation/NavBakeCollector.h"
+#include "navigation/NavBakeInput.h"
 #include "reflect/Enums.h"
 #include "subsystem/NavigationSystem.h"
+#include "util/UIProbe.h"
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <string>
 
 using namespace jasperengine;
@@ -242,8 +246,69 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     const NavSurfaceStatus status = system->getSurfaceStatus(entity);
     NavigationEditor& navEditor = NavigationEditor::get();
     const bool baking = status.state == NavBakeState::BAKING || navEditor.isBaking(sceneProject->id, entity);
+    // the summary lines are rows get_inspector_layout reads (kind Label, their text as label)
+    auto infoRow = [&](const char* id, const std::string& text) {
+        recordLayoutRow(RowPropertyType::Label, cpType, id, text, sceneProject, entities);
+    };
 
+    // S54 R29: what a bake would build, from the editor's cached collection (Volume: the box)
     ImGui::Spacing();
+    {
+        // the bake's own configuration (nav units: metres, scene points on a 2D surface)
+        const nav::NavBuildConfig config = nav::NavBakeCollector::configOf(scene, surface);
+        float cellSize = config.cellSize;
+        int tileSize = config.tileSize;
+        int64_t wide = -1, high = -1;
+        if (surface.collectObjects == NavCollectObjects::VOLUME) {
+            const Transform* transform = scene->findComponent<Transform>(entity);
+            const Vector3 scale = transform ? transform->worldScale : Vector3(1, 1, 1);
+            const float depth = surface.plane == nav::NavPlane::XY ? surface.volumeSize.y * std::fabs(scale.y) : surface.volumeSize.z * std::fabs(scale.z);
+            wide = (int64_t)std::ceil(surface.volumeSize.x * std::fabs(scale.x) / std::max(cellSize, 1e-6f));
+            high = (int64_t)std::ceil(depth / std::max(cellSize, 1e-6f));
+            wide = (wide + tileSize - 1) / tileSize * tileSize;
+            high = (high + tileSize - 1) / tileSize * tileSize;
+        } else if (const NavigationSystem::InputReport* report = navEditor.inputReport(*sceneProject, entity)) {
+            if (report->tileSize > 0) {
+                cellSize = report->cellSize;
+                tileSize = report->tileSize;
+                wide = (int64_t)report->tilesWide * report->tileSize;
+                high = (int64_t)report->tilesHigh * report->tileSize;
+            } else if (!report->error.empty()) {
+                const std::string text = "A bake would fail: " + report->error + " (" + nav::bakeErrorName(report->errorCode) + ")";
+                warningLine(text.c_str());
+                infoRow("estimateError", text);
+            }
+        }
+        if (wide >= 0 && high >= 0) {
+            const int64_t tiles = (wide / std::max(tileSize, 1)) * (high / std::max(tileSize, 1));
+            const float perRadius = config.agentRadius / std::max(cellSize, 1e-6f);
+            char estimate[160];
+            std::snprintf(estimate, sizeof(estimate), "Voxels %lld \xC3\x97 %lld, %lld tiles (%.1f voxels per agent radius)", (long long)wide,
+                          (long long)high, (long long)tiles, perRadius);
+            ImGui::TextDisabled("%s", estimate);
+            ImGui::SetItemTooltip("What a bake builds: the voxel grid of the collected bounds, its tiles, and how finely the agent's "
+                                  "radius is voxelized");
+            infoRow("estimate", estimate);
+            if (perRadius < 2.0f) {
+                const std::string text = "Fewer than 2 voxels per agent radius: corners and narrow passages get lost. Lower the Voxel Size "
+                                         "(Advanced) to radius / 3.";
+                warningLine(text.c_str());
+                infoRow("estimateVoxels", text);
+            }
+            if (tiles > 512) {
+                const std::string text = std::to_string(tiles) + " tiles is above the mobile/web budget (512): raise the Tile Size or the "
+                                         "Voxel Size, or bake a Volume.";
+                warningLine(text.c_str());
+                infoRow("estimateTiles", text);
+            }
+            const std::string limit = nav::checkPolyRefBits(tiles, config.maxPolysPerTile);
+            if (!limit.empty()) {
+                const std::string text = "The bake would be refused: " + limit;
+                warningLine(text.c_str());
+                infoRow("estimateLimit", text);
+            }
+        }
+    }
     if (baking) {
         const std::string overlay = "Baking " + std::to_string((int)std::round(status.progress * 100.0f)) + "%";
         ImGui::ProgressBar(status.progress, ImVec2(-6.0f * ImGui::GetFontSize(), 0.0f), overlay.c_str());
@@ -291,6 +356,44 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
                              " tile(s) changed since the bake. Bake to update them.").c_str());
             }
         }
+    }
+    // S54 R29: the last bake of this session, the walkable area and the islands
+    if (const NavBakeResult* last = system->getLastBakeResult(entity)) {
+        char line[192];
+        if (last->ok) {
+            std::snprintf(line, sizeof(line), "Last bake: %.0f ms, %d of %d tiles built, %d polys", last->milliseconds, last->tilesBuilt,
+                          last->tilesTotal, last->polys);
+            ImGui::TextDisabled("%s", line);
+        } else {
+            std::snprintf(line, sizeof(line), "Last bake %s: %s", last->cancelled ? "cancelled" : "failed",
+                          last->error.empty() ? nav::bakeErrorName(last->errorCode) : last->error.c_str());
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextColored(Theme::Colors::ErrorText, "%s", line);
+            if (!last->hint.empty()) ImGui::TextDisabled("%s", last->hint.c_str());
+            ImGui::PopTextWrapPos();
+        }
+        infoRow("lastBake", line);
+        if (!last->warnings.empty()) {
+            const std::string label = std::string(ICON_FA_TRIANGLE_EXCLAMATION " ") + std::to_string(last->warnings.size()) +
+                                      (last->warnings.size() == 1 ? " warning" : " warnings") + "##navbakewarnings";
+            infoRow("lastBakeWarnings", label.substr(0, label.find("##")));
+            if (ImGui::TreeNode(label.c_str())) {
+                ImGui::PushTextWrapPos(0.0f);
+                for (const std::string& warning : last->warnings) ImGui::TextColored(Theme::Colors::WarningText, "%s", warning.c_str());
+                ImGui::PopTextWrapPos();
+                ImGui::TreePop();
+            }
+        }
+    }
+    if (status.state != NavBakeState::NOT_BAKED) {
+        const nav::NavCoverage coverage = system->getCoverage(entity);
+        char line[160];
+        std::snprintf(line, sizeof(line), "Walkable: %.1f m\xC2\xB2, %d island%s (largest %.1f m\xC2\xB2)", coverage.walkableArea,
+                      coverage.islandCount, coverage.islandCount == 1 ? "" : "s", coverage.largestIslandArea);
+        ImGui::TextDisabled("%s", line);
+        ImGui::SetItemTooltip("The navmesh's area and its connected parts (links join them); Scene view > AI Navigation > Color By "
+                              "Islands shows them");
+        infoRow("walkable", line);
     }
     if (playing && status.crowdCapacity > 0)
         ImGui::TextDisabled("Crowd: %d / %d agents", status.crowdAgents, status.crowdCapacity);
@@ -506,8 +609,8 @@ void editor::InspectorWindow::drawNavMeshModifierComponent(ComponentType cpType,
     settings.secondColSize = 6 * ImGui::GetFontSize();
     RowSettings settingsInclusion;
     settingsInclusion.enumEntries = enumEntries(reflect::enums::kNavModifierInclusion);
-    settingsInclusion.help = "Remove Object: as the surface decides (moving objects are left out); Add or Modify: collected even "
-                             "when it would not be; Remove (always): never collected";
+    settingsInclusion.help = "Surface Policy: collected as the surface decides (moving bodies, agents and obstacles are left out); "
+                             "Add or Modify Object: collected even when the surface would leave it out; Remove Object: never collected";
     RowSettings settingsOverride;
     settingsOverride.help = "Give what it covers its own area";
     RowSettings settingsArea;
@@ -722,6 +825,8 @@ void editor::InspectorWindow::drawNavGridComponent(ComponentType cpType, ScenePr
             brush.shape = (NavigationEditor::BrushShape)shape;
             ImGui::SetNextItemWidth(12 * ImGui::GetFontSize());
             ImGui::SliderInt("Size (cells)##navbrush", &brush.size, 1, 64);
+            // the size in the name: a UI test reads what [ and ] did
+            UIProbe::item("inspector.navBrushSize." + std::to_string(brush.size));
         }
         ImGui::TextDisabled("Left-drag in the Scene view paints; one stroke is one undo step.");
     }

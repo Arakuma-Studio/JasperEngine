@@ -1,4 +1,7 @@
-"""S19 navigation as an agent sees it (docs/specs/S19-navigation.md R37, R38; AC22-AC25).
+"""S19 navigation as an agent sees it (docs/specs/S19-navigation.md R37, R38; AC22-AC25), with the
+S53 fixes (docs/specs/S53-navigation-fixes.md R2, R3, R4, R17, R23, R24, R28; AC5, AC7, AC26-AC28) and
+S54's tool rules (docs/specs/S54-navigation-diagnostics.md R34, AC19; the diagnostics themselves are
+in test_navigation_diagnostics.py).
 
 Scene Nav (3D): a 40 x 40 floor (plane x 4) with a static 2 m box near its middle, a NavMesh
 Surface on the floor, a walker with a NavMesh Agent, and a 16 x 12 Nav Grid. The tools: their
@@ -13,7 +16,7 @@ import time
 from pathlib import Path
 
 import pngdiff
-from harness import Editor
+from harness import Editor, tool_meta
 
 CI = True
 EDITOR = {"create": True, "name": "Navigation CI"}
@@ -67,12 +70,27 @@ async def wait_job(ed: Editor, job_id: str, timeout: float) -> dict:
 
 
 async def test_tools_listed_with_schemas(ed: Editor):
-    """Each tool is in tools/list (group navigation) with an object schema."""
+    """Each tool is in tools/list (group navigation) with an object schema; the group is hidden from
+    a new session until tool_groups enables it (S54 AC19)."""
     listed = {tool.name: tool for tool in await ed.tools(groups=["navigation"])}
     for name in TOOLS:
         ed.check(name in listed, f"{name} in tools/list")
         schema = listed[name].inputSchema if hasattr(listed[name], "inputSchema") else listed[name].input_schema
         ed.check_eq(schema.get("type"), "object", f"{name} schema {schema}")
+    default = {tool.name for tool in await ed.tools(groups=None)}
+    ed.check(not default & set(TOOLS), f"hidden until navigation is enabled: {sorted(default & set(TOOLS))}")
+    await ed.call("tool_groups", enable=["navigation"])
+    try:
+        enabled = {tool.name for tool in await ed.tools(groups=None)}
+        ed.check(set(TOOLS) <= enabled, f"listed once enabled: {sorted(set(TOOLS) - enabled)}")
+    finally:
+        await ed.call("tool_groups", disable=["navigation"])
+    # S54 R34: the read tools are read-only and idempotent; visualize_navigation is idempotent, not read-only
+    annotations = {name: listed[name].annotations for name in TOOLS}
+    for name in ("get_navigation_info", "query_navigation"):
+        ed.check(annotations[name].read_only_hint and annotations[name].idempotent_hint, f"{name}: {annotations[name]}")
+    visualize = annotations["visualize_navigation"]
+    ed.check(visualize.idempotent_hint and not visualize.read_only_hint, f"visualize_navigation: {visualize}")
 
 
 async def test_bake_job_and_info(ed: Editor):
@@ -229,12 +247,65 @@ async def test_overlay_golden(ed: Editor):
     same, fraction, _ = pngdiff.compare(img, plain, max_fraction=0.002)
     ed.check(not same, f"the overlay draws ({fraction:.4f} of the pixels differ)")
     await ed.call("visualize_navigation", scene=s["scene"], show={"navmesh": True, "tiles": False})
-    if os.environ.get("JASPER_UPDATE_GOLDEN") == "1" or not GOLDEN.exists():
+    if os.environ.get("JASPER_UPDATE_GOLDEN") == "1":
         GOLDEN.parent.mkdir(parents=True, exist_ok=True)
         GOLDEN.write_bytes(shot)
         print(f"     [golden] wrote {GOLDEN}")
     else:
+        # a missing golden is a failure, never a silent rewrite (S41 R28)
+        ed.check(GOLDEN.exists(), f"{GOLDEN} is missing: JASPER_UPDATE_GOLDEN=1 writes it")
         ok, fraction, diff = pngdiff.compare(pngdiff.decode(GOLDEN.read_bytes()), img, max_fraction=0.01)
         if not ok and ed.scratch:
             (ed.scratch.root / "navigation_overlay_diff.png").write_bytes(diff)
         ed.check(ok, f"the screenshot differs from {GOLDEN.name} in {fraction:.4f} of the pixels")
+
+
+async def test_tool_play_policy(ed: Editor):
+    """S41 AC27: in play the server refuses bake_navigation and paint_nav_grid; visualize_navigation
+    resolves the running scene (after a scene load too) and its path takes agent_type and area_mask.
+    bake_navigation is listed as destructive (clear deletes the .navmesh)."""
+    s = await setup(ed)
+    listed = {tool.name: tool for tool in await ed.tools(groups=["navigation"])}
+    bake_tool = listed["bake_navigation"]
+    ed.check(bake_tool.annotations and bake_tool.annotations.destructive_hint, f"bake_navigation destructive: {bake_tool.annotations}")
+    playing = {name: tool_meta(listed[name]).get("jasper/while_playing") for name in TOOLS}
+    ed.check_eq(playing, {"bake_navigation": False, "get_navigation_info": True, "query_navigation": True,
+                          "set_navigation_settings": True, "paint_nav_grid": False, "visualize_navigation": True},
+                "the play policy of each tool")
+
+    # a surface for agent type 1 only: a path of the default type (0) finds no navmesh
+    before = await ed.call("set_navigation_settings", agents=[{"name": "Humanoid"}, {"name": "Small", "radius": 0.3}])
+    small = next(a["id"] for a in before["agents"] if a["name"] == "Small")
+    ed.check_eq(small, 1, f"{before['agents']}")
+    made = await ed.call("create_scene", name="NavPolicy", type="3D", path="scenes/NavPolicy")
+    scene = made["scene"]["id"]
+    ground = await ed.call("create_entity", scene=scene, type="plane", name="Ground", scale=[2, 1, 2])
+    await ed.call("add_component", scene=scene, entity=ground["entity_id"], component="navmeshsurface",
+                  values={"navmeshsurface": {"agentType": small}})
+    baked = await ed.call("bake_navigation", scene=scene, mode="full")
+    ed.check(baked["polys"] > 0, f"{baked}")
+    await ed.call("save_scene", scene=scene)
+    st = await ed.call("get_play_state")
+    if st["state"] != "stopped":
+        await ed.call("play", action="stop")
+    await ed.call("play", action="start", scene=scene, fixed_fps=60)
+    try:
+        await ed.check_error("bake_navigation", scene=scene, contains="while a scene is playing")
+        await ed.check_error("paint_nav_grid", scene=s["scene"], grid=s["grid"],
+                             strokes=[{"cells": [[1, 1]]}], contains="while a scene is playing")
+        # a scene load replaces the played copy: the tools follow the one the game shows now
+        await ed.call("eval_lua", code="SceneManager.loadScene(SceneManager.currentSceneName)")
+        await ed.call("wait", frames=3)
+        running = (await ed.call("get_navigation_info"))["scene_id"]
+        ed.check(running != scene, f"the running copy is its own scene ({running} vs {scene})")
+        path = {"from": [-8, 0, -8], "to": [8, 0, 8], "agent_type": "Small", "area_mask": 1}
+        drawn = await ed.call("visualize_navigation", path=path)
+        ed.check_eq(drawn["scene_id"], running, f"drawn on the running scene: {drawn}")
+        ed.check_eq(drawn["path"]["status"], "complete", f"the Small surface's path: {drawn}")
+        ed.check_eq((drawn["path"]["agent_type"], drawn["path"]["area_mask"]), (small, 1), f"{drawn['path']}")
+        none = await ed.call("visualize_navigation", path={"from": [-8, 0, -8], "to": [8, 0, 8], "agent_type": 0})
+        ed.check(none["path"]["status"] != "complete", f"no navmesh for agent type 0: {none}")
+        await ed.call("visualize_navigation", path={"from": [0, 0, 0], "to": [1, 0, 1], "agent_type": "Nobody"}, expect_error=True)
+    finally:
+        await ed.call("play", action="stop")
+        await ed.call("undo", scope="project")

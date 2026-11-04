@@ -879,4 +879,120 @@ CASES = [
                    "must_not_call": [{"tool": "eval_lua"}], "reply_must": [r"19\.5"]},
         "max_turns": 12,
     },
+
+
+    # -- S54 navigation diagnostics: the new tool text (no failure on record yet) ----------------
+    {
+        "id": "guard_navigation_path_reason",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "A failed query_navigation path names its reason and, in structuredContent, the next call (locate "
+                         "at the end off the navmesh); locate's why[] names the cause. Guards that agents follow the result "
+                         "instead of guessing from scripts.",
+        "text_at_issue": "query_navigation: 'locate (is a point on the navmesh; if not, why). A failed path says why and what "
+                         "to do. from/to: a point or a GameObject'; result next: 'query_navigation op locate at to says why it "
+                         "is off the navmesh.'",
+        "source": "S54 R30 (docs/specs/S54-navigation-diagnostics.md); no failure on record",
+        "prompt": "In scene Main the Enemy's NavMesh Agent never reaches the Player. Find out why; don't change anything.",
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: baked, 4 tiles, 212 polys, 1 island(s), 380.2 m\u00b2 walkable\n  0 link(s), "
+                "1 agent(s), 0 obstacle(s), 0 modifier(s)\n0 finding(s).",
+                {"scene_id": 1, "playing": False, "surfaces": [{"entity": {"id": 11, "path": "Ground"}, "state": "baked", "tiles": 4,
+                 "dirty_tiles": 0, "polys": 212, "coverage": {"walkable_area_m2": 380.2, "island_count": 1}}],
+                 "agents": [{"entity": {"id": 14, "path": "Enemy"}, "agent_type": 0, "speed": 3.5}], "findings": []})},
+            {"tool": "query_navigation", "args": {"op": "locate"}, "result": ok(
+                "Not on the navmesh; its nearest point [1.2, 0, 4.1] is 1.9 away.\n  too_steep: The ground slopes 52\u00b0 here; "
+                "Humanoid's Max Slope is 45\u00b0.",
+                {"target": "navmesh", "op": "locate", "on_mesh": False, "found": True, "position": [1.2, 0, 4.1], "snap_distance": 1.9,
+                 "island": 0, "surface": {"id": 11, "path": "Ground"},
+                 "why": [{"code": "too_steep", "message": "The ground slopes 52\u00b0 here; Humanoid's Max Slope is 45\u00b0.",
+                          "entity": {"id": 15, "path": "Crate"}, "value": 52, "limit": 45}]})},
+            {"tool": "query_navigation", "result": ok(
+                "Path invalid: 0 corners, 0 long. [end_off_mesh] The end is not on the navmesh: no polygon is near it. Gap 6.3. "
+                "Next: query_navigation op locate at to says why it is off the navmesh.",
+                {"target": "navmesh", "op": "path", "agent_type": 0, "area_mask": 65535, "status": "invalid", "length": 0,
+                 "corners": [], "reason": "end_off_mesh", "surface": {"id": 11, "path": "Ground"}, "closest_point": [-4, 0, 2],
+                 "gap": 6.3, "start": {"position": [-4, 0, 2], "snap_distance": 0, "island": 0},
+                 "end": {"position": [0, 1.4, 3], "snap_distance": -1, "island": -1},
+                 "next": "query_navigation op locate at to says why it is off the navmesh."})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "locate"}}], "reply_must": [r"(?i)steep|slope"],
+                   "must_not_call": ["bake_navigation", "set_navigation_settings", "set_properties"],
+                   "edits_must_not": [r"\.(lua|scene)$"]},
+        "max_turns": 14,
+    },
+    {
+        "id": "guard_navigation_findings",
+        "kind": "guard",
+        "what_happened": "get_navigation_info's findings say what is wrong with a scene's navigation and how to fix it; guards "
+                         "that an agent finds the navigation group from the guide's index and reads the findings first when "
+                         "agents do not move, instead of playing and reading scripts.",
+        "text_at_issue": "Guide 'Other areas': 'navigation (get_navigation_info)'; get_navigation_info: '... and its "
+                         "findings: each problem with its fix. Start here when agents do not move.'",
+        "source": "S54 R13, R32 (docs/specs/S54-navigation-diagnostics.md); no failure on record",
+        "prompt": "My enemies in scene Main just stand still when I press Play. What is wrong? Tell me; don't fix it yet.",
+        "mocks": [
+            {"tool": "get_navigation_info", "result": ok(
+                "Navigation of Main:\n  surface Ground: not_baked, 0 tiles, 0 polys\n  0 link(s), 1 agent(s), 0 obstacle(s), 0 "
+                "modifier(s)\n2 finding(s):\n  warning not_baked: NavMesh Surface 'Ground' is not baked: its agents find no "
+                "navmesh in the build (Bake, or bake_navigation)\n  warning agent_off_mesh: NavMesh Agent 'Enemy' is not on the "
+                "navmesh: it does not move (move it onto the surface, warp it, or bake the surface under it)",
+                {"scene_id": 1, "playing": False, "surfaces": [{"entity": {"id": 11, "path": "Ground"}, "state": "not_baked"}],
+                 "agents": [{"entity": {"id": 14, "path": "Enemy"}, "agent_type": 0}],
+                 "findings": [{"code": "not_baked", "severity": "warning", "entity": {"id": 11, "path": "Ground"},
+                               "message": "NavMesh Surface 'Ground' is not baked: its agents find no navmesh in the build (Bake, "
+                                          "or bake_navigation)", "details": {}},
+                              {"code": "agent_off_mesh", "severity": "warning", "entity": {"id": 14, "path": "Enemy"},
+                               "message": "NavMesh Agent 'Enemy' is not on the navmesh: it does not move (move it onto the "
+                                          "surface, warp it, or bake the surface under it)", "details": {"snap_distance": -1}}]})},
+        ],
+        "checks": {"calls": ["get_navigation_info"], "reply_must": [r"(?i)not baked|bake"],
+                   "must_not_call": ["bake_navigation", "play"], "max_calls": {"*": 8}},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_navigation_frame_islands",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "visualize_navigation colours the navmesh by island and frames the Scene camera on it before its "
+                         "screenshot; guards that agents use it instead of moving the camera by hand and guessing.",
+        "text_at_issue": "visualize_navigation: 'navmesh in area, island or tile colours ... frame first moves the Scene "
+                         "camera to the navmesh or a GameObject.'; show.islands, frame",
+        "source": "S54 R33 (docs/specs/S54-navigation-diagnostics.md); no failure on record",
+        "prompt": "Show me a picture of scene Main's whole navmesh with each disconnected part in its own colour.",
+        "mocks": [
+            {"tool": "visualize_navigation", "result": ok(
+                "AI Navigation overlay on. Framed the navmesh. Image: the Scene view.",
+                {"scene_id": 1, "framed": "navmesh", "camera": {"position": [0, 30, -25], "target": [0, 0, 0]},
+                 "overlay": {"navmesh": True, "color_by": "islands"}, "image": {"view": "scene", "width": 1024, "height": 576}})},
+        ],
+        "checks": {"calls": [{"tool": "visualize_navigation", "args": {"show": {"islands": True}, "frame": "navmesh"}}],
+                   "must_not_call": ["set_scene_camera"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_navigation_many_targets",
+        "kind": "guard",
+        "groups_enabled": ["navigation"],
+        "what_happened": "query_navigation's to takes a list of up to 64 targets; guards that an agent checks several spawn "
+                         "points in one call instead of one call each.",
+        "text_at_issue": "query_navigation to: '[x, y, z] or a GameObject. Or a list of up to 64.'",
+        "source": "S54 R30 (docs/specs/S54-navigation-diagnostics.md); no failure on record",
+        "prompt": "Which of these spawn points can the Enemy in scene Main walk to: [4, 0, 4], [-6, 0, 8], [12, 0, -3], "
+                  "[0, 0, 15], [-9, 0, -9], [7, 0, 11]?",
+        "mocks": [
+            {"tool": "query_navigation", "args": {"op": "reachable"}, "result": ok(
+                "query_navigation reachable to 6 target(s): 1 not reachable, 5 reachable.",
+                {"target": "navmesh", "op": "reachable", "agent_type": 0, "area_mask": 65535, "results": [
+                    {"to": [4, 0, 4], "reachable": True}, {"to": [-6, 0, 8], "reachable": True},
+                    {"to": [12, 0, -3], "reachable": True},
+                    {"to": [0, 0, 15], "reachable": False, "reason": "disconnected", "surface": {"id": 11, "path": "Ground"},
+                     "closest_point": [0, 0, 9.5], "gap": 5.5},
+                    {"to": [-9, 0, -9], "reachable": True}, {"to": [7, 0, 11], "reachable": True}]})},
+        ],
+        "checks": {"calls": [{"tool": "query_navigation", "args": {"op": "reachable"}}], "max_calls": {"query_navigation": 2},
+                   "reply_must": [r"0,\s*0,\s*15"]},
+        "max_turns": 10,
+    },
 ]
