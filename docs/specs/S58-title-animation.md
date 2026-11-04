@@ -1,13 +1,15 @@
 # S58 — Title animation: named animations in a `.titleart`, field classes per Render Mode, Animation Presets, flipbooks, Lua, clips and the Animation panel
 
-**Wave / Depends on.** Title Art program (spec-first). Depends on:
+**Wave / Depends on.** Title Art program (spec-first), **wave 6C** (with S57, S60; program graph in
+§8, program rules in S53 §6.15). Depends on:
 - **S53**: the `.titleart` v1 document and its reserved top-level `animation` member, field paths,
   `TitleArtOps`, the renderer and `TitleRenderJob`, the bake, and the `title_art` tools;
 - **S54**: the Title Art Renderer and its companion draw, Render Mode, the scheduler and live
   compose, `library:title_fx`, the Lua `TitleArt` class, the `titleart` property rows and their
   reserved `animationTime`, and the Glyph Atlas cells;
 - **S55**: the Title Designer, `addPanel`, and the properties and gizmo edits that Record keys;
-- **S56**: per-parameter animation classes (`FxAnim`) and live kinds.
+- **S56**: the per-parameter animation classes (values of S53's `FxAnim` on `ParamDef::anim`) and
+  live kinds.
 
 It also uses upstream's clip machinery (`engine/core/animation/KeyframeSampling.*`,
 `PropertyBindings.*`), S21 (the Animator plays property tracks), S14 (cooking of flipbook pages),
@@ -104,7 +106,7 @@ at a filmstrip, check and export with the six `title_art` tools. S58 adds no too
     the display target. It costs at most 0.5 ms (mobile, web) or 1 ms (desktop) per title per
     change, else it re-renders.
   - **S54 R15**: the frame budget is 2.0 ms on Android, iOS and web, 4.0 desktop and 8.0 in Edit
-    mode. Cost = pixels × `cost_weight` × platform factor (mobile 6, web 4, desktop 1, §6.3).
+    mode. Cost = pixels × `costWeight` (S53 §6.3) × platform factor (mobile 6, web 4, desktop 1, §6.3).
   - **S54 R26-R28**: Glyph Atlas back and front cells and their compose.
   - **S54 R33-R38**: the Live Effects Sweep, Glow Pulse, Tint and Glints, on `library:title_fx`.
   - **S54 R40**: keyable rows, `overrides.<name>` among them. **S54 R41**: the reserved clip event
@@ -115,7 +117,8 @@ at a filmstrip, check and export with the six `title_art` tools. S58 adds no too
     `animations`, `onAnimationFinished`.
   - **S55 §6.8**: `TitleDesignerWindow::addPanel(PanelDef{id, title, region, draw})`. **S55 §6.5**:
     `ShortcutContext::TitleDesigner` (Q/W/E/R/T are its tools).
-  - **S56 §6.2**: `FxAnim {Live, Rerender, Step, Relayout}` per parameter. **S56 D10**: `live.kind`
+  - **S53 §6.5 / S56 §6.2**: `FxAnim {None, Live, Rerender, Step, Relayout}` per parameter (S53
+    declares it, on params and on `TitleArtSchema` members; S56 sets the values). **S56 D10**: `live.kind`
     `none | scale_split | kernel`, where "none" means a re-render, or a flipbook in S58 Baked.
   - **S56 R16**: no effect reads a clock; strobing effects use S58's reseed track.
 
@@ -272,8 +275,10 @@ S53's.
     - `opacity`;
     - `flash` (`{color, amount}`: `rgb += color × amount × alpha`);
     - S54's Live Effects: `live.sweep_position`, `live.sweep_angle`, `live.sweep_width`,
-      `live.glow_pulse`, `live.tint_color`, `live.tint_amount`, `live.glint_amount`. Their rests
-      are the instance's values.
+      `live.glow_pulse`, `live.tint_color`, `live.tint_amount`, `live.glint_amount` (track field
+      paths in the document's snake_case; each writes S54's component value of the same meaning,
+      `sweepPosition`, `sweepAngle`, `sweepWidth`, `glowPulse`, `tintColor`, `tintAmount`,
+      `glintAmount`). Their rests are the instance's values.
   - **Child tracks** on a group target `child.<field>` of each child layer, with stagger unit
     `child` (R8).
 - **R6. Drives** (continuous evolution: `phase`, rotations, offsets). A drive is
@@ -324,7 +329,7 @@ S53's.
 
 ### Functional — field classes and the Render Modes
 
-- **R11. Classes.** S53's field table carries S56's `FxAnim` attribute per member (`live`,
+- **R11. Classes.** S53's `TitleArtSchema` carries the `FxAnim` attribute per member (`live`,
   `rerender`, `step`, `relayout`), and S56's `ParamDef` already does. S58 derives a runtime class
   per track:
 
@@ -354,7 +359,7 @@ S53's.
   track, with the reason for each fallback. The no-module Baked path needs no plan: its data file
   (R60) already says which tracks play on the companion and which animations have flipbooks.
 - **R13. The companion draw.** S54's `library:title_fx` and `title_fx_sprite` gain the feature
-  `ANIM` (assumption A2), with uniforms:
+  `ANIM` (S54 R35 defines it), with uniforms:
   - `animAffine0`, `animAffine1`: a 2×3 affine in frame-normalised space about the pivot;
   - `animColor`: the opacity, and the flash colour × amount.
 
@@ -481,8 +486,9 @@ S53's.
   - times become `D`-relative;
   - targets become `title`, `main_text` or explicit names.
 
-  Presets are saved in `<settings dir>/title-animation-presets/` (user) or
-  `<project>/EditorSettings/TitleAnimationPresets/` (project), the `CurvePresets.h:7` layout. The
+  Presets are saved in `<config dir>/title-library/animation-presets/` (user) or
+  `<project>/EditorSettings/TitleLibrary/AnimationPresets/` (project), S57's library scopes (S53
+  §6.15). The
   format is §6.8.
 
 ### Functional — playback and integration
@@ -700,7 +706,7 @@ S53's.
 - **R52. `list_title_library`** gains `kind: "animation_presets"`. It has the tiers of S53's listing:
   rows `{id, name, group, role, duration, classes, use}`; `id` for the parameters as lines; and,
   with S57's `sheet`, a 5-frame filmstrip of the preset on the caller's text.
-- **R53. `render_title`** gains `animation`, an object `{name, time | times (≤ 24) | frames
+- **R53. `render_title`** gains `options.animation` (a key of S53's `options`), an object `{name, time | times (≤ 24) | frames
   (2..24), as}`. `as` is `exact` (default), `baked`, `realtime` or `glyph_atlas`.
   - It renders one frame, or a filmstrip in S53's sheet layout with `columns`, each cell labelled
     with its time.
@@ -715,8 +721,9 @@ S53's.
 - **R55. `export_title`** gains `animations` (names, default all).
   - With `dry_run`, it reports per animation the frames (unique and total), pages and bytes per
     family against R38, and writes nothing.
-  - Otherwise it bakes the flipbook pages, their `.meta` and `<file>.anim.json` with the outputs,
-    as one undo step, all or nothing, and as a job past 1 s.
+  - Otherwise it bakes the flipbook pages, their `.meta` and `<file>.anim.json` with the outputs
+    through S53's bake writer: derived files, not an undo step (S53 §6.9), all or nothing, and as a
+    job past 1 s.
   - Flipbook settings are document members set with `set_animation`, the way S53 configures
     outputs with ops.
 - **R56. Guide.** `docs/mcp/guide/title-art.md` gets `### Animation` (`jasper://docs/title-art`):
@@ -788,7 +795,7 @@ S53's.
   - a marker before `loop_start` fires in the first pass only.
 
   The `EventCrossing.*` cases are the oracle.
-- **D5. Classes are data on fields.** S56's `FxAnim` on every S53 member and S56 param, not a
+- **D5. Classes are data on fields.** S53's `FxAnim` on every S53 member and S56 param, not a
   hand-kept list. S58 adds only its virtual title and glyph fields, and the mode rule (R12).
 - **D6. The companion stays one draw.** S54's design (one Image or Sprite draw, idle = Image)
   decides the shape here. Whole-title motion is uniforms on that draw. Anything finer is S54's
@@ -875,7 +882,7 @@ S53's.
 - **Limits:** 32 animations; 512 tracks per animation; 4,096 keys per track; 64 markers; duration
   ≤ 60 s; stagger `each` ≤ 2 s and `over` ≤ 30 s.
 
-### 6.2 Classes of S53's members (S56's `FxAnim` values that S53's field table must carry)
+### 6.2 Classes of S53's members (the `FxAnim` values S53's `TitleArtSchema` carries)
 
 | `FxAnim` | S53 members |
 |---|---|
@@ -908,7 +915,7 @@ The panel shows each row's class per mode. `TitleAnimPlanTest.ThreeModes` assert
 
 | id (Name) | Group / role | Default | Parameters | What it writes | Class |
 |---|---|---|---|---|---|
-| `stamp_in` (Stamp In) | In / intro | 0.5 s | `from_scale` 2.6, `overshoot` 0.94, `shake_px` 12, `shockwave` false, `sound` | title scale `from_scale → overshoot (0.6 D) → 1`, quad_in then sine_out; opacity 0→1 by 0.25 D; `shake` keys on title position after 0.6 D (0.25 s decay); marker `onImpact` at 0.6 D; option: a `shockwave` generator layer, `radius` 0→600 px, opacity 1→0 | TL (+ shockwave per R12) |
+| `stamp_in` (Stamp In) | In / intro | 0.5 s | `from_scale` 2.6, `overshoot` 0.94, `shake_px` 12, `shockwave` false, `sound` | title scale `from_scale → overshoot (0.6 D) → 1`, quad_in then sine_out; opacity 0→1 by 0.25 D; `shake` keys on title position after 0.6 D (0.25 s decay); marker `onImpact` at 0.6 D; option: a `shockwave` generator layer, `radius` 10→600 px (S56's minimum is 10), layer opacity 1→0 | TL (+ shockwave per R12) |
 | `sweep_in` (Sweep In) | In / intro | 0.6 s | `angle` 0, `feather` 30 % | adds a gradient mask to `main_text`, its `position` from −(ink extent) to +; title `live.sweep_position` 0→1 trailing by 0.1 s | mask: re-render; sweep: TL |
 | `shatter_in` (Shatter In) | In / intro | 0.7 s | `pieces` 60, `pattern` glass, `spin` 90 | adds `shatter` to `main_text`, `progress` 1→0 cubic_out, `rotation` `spin`→0; opacity 0→1 by 0.2 D; flash 0.8→0 over the last 0.1 D; marker `onAssemble` | S56 kernel (Realtime), flipbook (Baked) |
 | `glow_up` (Glow Up) | In / intro | 0.8 s | `peak` 2.5 | opacity 0→1 (0.3 D); title `live.glow_pulse` 0→`peak` (0.6 D)→0; flash 0.6→0 | TL (needs a glow output) |
@@ -916,13 +923,13 @@ The panel shows each row's class per mode. `TitleAnimPlanTest.ThreeModes` assert
 | `typewriter` (Typewriter) | In / intro | auto | `cps` 20, `tick` (sound) | glyph opacity steps 0→1 at each delay (`each = 1/cps`); with `tick`, `ticks` writes a sound marker per glyph | Glyph |
 | `bounce_in` (Bounce In) | In / intro | 0.8 s | `height` 150 %, `squash` 0.25, `per_glyph` false | title (or glyph, staggered) position `+height→0` bounce_out; stretch `[1+squash, 1−squash]→[1,1]` elastic_out at landing; pivot bottom | TL / Glyph |
 | `flip_in` (Flip In) | In / intro | 0.5 s | `axis` y | title stretch on the axis 0→1 back_out; flash −0.3→0 (darkening read as shading); S59 3D layers: `rotation_y` −90→0 | TL |
-| `zoom_punch` (Zoom Punch) | In / intro | 0.35 s | `from_scale` 0.2, `blur` false | title scale `from_scale→1.15→1`; with `blur`, `radial_blur.amount` 60→0 on `main_text`; marker `onPunch` | TL (+ blur per R12) |
+| `zoom_punch` (Zoom Punch) | In / intro | 0.35 s | `from_scale` 0.2, `blur` false | title scale `from_scale→1.15→1`; with `blur`, `radial_blur.amount` 0.6→0 on `main_text` (S56's 0..0.95); marker `onPunch` | TL (+ blur per R12) |
 | `slide_in` (Slide In) | In / intro | 0.5 s | `from` left/right/top/bottom, `distance` 120 % | title position from the side, back_out; opacity 0→1 | TL |
 | `pop_in` (Pop In) | In / intro | 0.4 s | `per_glyph` false, `each` 0.03 | scale 0→1.12→1 elastic_out (glyph scale when `per_glyph`) | TL / Glyph |
 | `fade_in` (Fade In) | In / intro | 0.4 s | | opacity 0→1 sine_out | TL |
 | `glitch_in` (Glitch In) | In / intro | 0.5 s | `rate` 15 | adds `glitch`: `seed` reseed at `rate`, `amount` 1→0; `flicker` keys on title opacity | glitch per R12; flicker TL |
 | `neon_flicker` (Neon Flicker) | In / intro | 0.9 s | `seed` 1, `flickers` 5 | `flicker` generator: stepped title opacity and `live.glow_pulse` settling on | TL |
-| `halftone_in` (Halftone Dissolve) | In / intro | 0.6 s | `size` 12 px | adds `halftone` (dissolve), `fade` 1→0 | per R12 |
+| `halftone_in` (Halftone Dissolve) | In / intro | 0.6 s | `size` 12 px | adds `halftone` (preset `dissolve`), `fade` 60→0 px | per R12 |
 | `shake` (Shake) | Emphasis, overlay | 0.4 s | `amplitude` 16 px, `frequency` 25 Hz, `rotation` 2°, `decay` 1, `seed` 1 | `shake` keys on title position and rotation | TL |
 | `flash` (Flash) | Emphasis, overlay | 0.15 s | `color` #ffffff, `amount` 1.5, `count` 1 | title flash 0→`amount`→0 per count, at most 2 per second | TL |
 | `heartbeat` (Heartbeat) | Emphasis | 0.6 s | `scale` 1.12 | scale 1→`scale`→1→1.06→1 | TL |
@@ -1020,28 +1027,26 @@ namespace jasperengine::titleart {                        // engine/core/titlear
 }
 ```
 
-S53's renderer must provide these, as additions to S53 R18 and S54 §6.3 (assumption A1):
-- a render at a pose, meaning sampled values applied to a copy of the state, with no document
-  edit;
-- a kept layer split;
-- glyph cells of a non-Glyph-Atlas title.
+S53's renderer provides these (S53 R18a, §6.3): a render at a pose (`RenderRequest::overrides`
+with the sampled values, applied to a copy of the state, with no document edit), a kept layer
+split (`keepSplits`), and glyph cells of any text layer (`glyphCell`).
 
 ### 6.7 MCP tools and the budget (S31)
 
-S58 adds no tool. The group's room after S53 is 8,400 characters (S53 §6.11). S58's targets:
+S58 adds no tool. S58's row of S53 §6.11's program budget table (≤ 160 characters):
 
 | Tool | Change | Characters (target) |
 |---|---|---|
-| `edit_title` | ops §6.7.1 (free-form op objects, validated by `TitleAnimOps`; fields in the guide doc) | ≤ 40 (op names in the description) |
+| `edit_title` | ops §6.7.1 (free-form op objects, validated by `TitleAnimOps`; fields in the guide doc) | 0 (S53's description names the animation op family) |
 | `get_title` | `animation` (string) | ≤ 50 |
-| `render_title` | `animation`: `anyObject` `{name, time, times, frames, as}`, keys in `jasper://docs/title-art` | ≤ 110 |
+| `render_title` | `options.animation` `{name, time, times, frames, as}`, a key of S53's free-form `options`, keys in `jasper://docs/title-art` | 0 |
 | `check_title` | `animation` (string); the check ids go through the existing `checks` list | ≤ 50 |
 | `export_title` | `animations` (array of strings) | ≤ 60 |
-| `list_title_library` | `kind` value `animation_presets` | ≤ 25 |
-| **Total** | | **≤ 335; 0 tools; no `budget.json` entry** |
+| `list_title_library` | `kind` value `animation_presets` (in S53's program enum) | 0 |
+| **Total** | | **≤ 160; 0 tools; no `budget.json` entry** |
 
-`render_title` sits at S53's 1,450 cap, so its S58 argument is one free-form object with a
-one-line description, the precedent of S21 deviation 10. Annotations are unchanged.
+`render_title`'s feature arguments all go into S53's `options` object (S53 §6.11), the precedent
+of S21 deviation 10. Annotations are unchanged.
 
 #### 6.7.1 `edit_title` animation ops
 
@@ -1150,7 +1155,7 @@ keys:
 
 Unit tests live in `engine/tests/core/titleanim/` (always built) and
 `engine/tests/core/titleart/anim/` (module). Editor tests are in `editor/tests/titleart/anim/` and
-MCP tests in `tools/mcp/tests/test_title_animation*.py`. Fixtures in `tools/fixtures/titleart/anim/`:
+MCP tests in `tools/mcp/tests/test_title_animation*.py`. Fixtures in `tools/fixtures/title-art-anim/` (S54's `tools/fixtures/title-art-*` naming):
 - a two-word Latin title;
 - a vertical kanji title;
 - an adjustment layer above an animated layer;
@@ -1174,14 +1179,14 @@ GPU-lane test is class `gpu`.
 | AC8 (R14) | GPU suite `TitleAnimGpu.LayerSplitEqualsRender` (core module suite, `GRAPHIC_BACKEND=vulkan` on lavapipe and glcore): for 5 fixtures × 5 times, the live compose with layer splits equals a full render at the sampled pose. Identity transforms: max 2/255, ≤ 0.05 %. Transforms: PSNR ≥ 35 dB. Both pixel paths (forced RGBA8). **Red control:** with the adjustment rule disabled (`TitleAnimPlan::TestFlags::ignoreAdjustments`), the adjustment fixture fails |
 | AC9 (R15) | `TitleAnimGpu.GlyphCellsCascade`: a Realtime cascade's compose at rest equals S54's Glyph Atlas compose of the same text within S54's approximate-class tolerance; the crossfades in and out last 0.1 s; `merged` with a glyph opacity track is refused |
 | AC10 (R16, R60) | `TitleFlipbookTest.FrameTimes` (once includes `D`, loop excludes it), `.ConstantFrameSize`, `.DedupeIdenticalFrames` (a held section stores one rect), `.FourPixelGutters`, `.PackDeterministic` (two bakes give byte-identical `.anim.json` and page pixels), `.EstimateEqualsWritten` (R20's bytes equal the pages' cooked sizes per family); `TitleAnimDataIOTest.RoundTrip`, `.NewerRefused`, `.StaleReported` |
-| AC11 (R13, R16, R31) | `test_title_animation_export.py` (`JASPER_SLOW_BUILD=1`): a Baked animated title in a prebuilt Linux player, headless with `--fixed-fps 30`. A script calls `TitleArt:sample` at 0, 0.25 and 0.8 s and captures the Game view; the captures equal the editor's `render_title {animation: {as: "baked"}}` at those times (max 2/255, ≤ 0.1 %). The `.titleart` is not in the content manifest, and the player variant stays `lite2d` (S54 R59). `get_render_stats` while it plays shows +0 draws and passes against an Image twin |
+| AC11 (R13, R16, R31) | `test_title_animation_export.py` (`JASPER_SLOW_BUILD=1`): a Baked animated title in a prebuilt Linux player, headless with `--fixed-fps 30`. A script calls `TitleArt:sample` at 0, 0.25 and 0.8 s and captures the Game view; the captures equal the editor's `render_title {options: {animation: {as: "baked"}}}` at those times (max 2/255, ≤ 0.1 %). The `.titleart` is not in the content manifest, and the player variant stays `lite2d` (S54 R59). `get_render_stats` while it plays shows +0 draws and passes against an Image twin |
 | AC12 (R18, R37, D9) | `test_title_animation_perf.py` (GPU lane, class `gpu`): Realtime live rim pulse of `reference.titleart` at `rerender_fps` 30, no frame over S54's budget + 0.5 ms (`get_frame_times`, `harness.over_budget`); re-render sample times are multiples of 1/30, and title-live tracks update every frame while re-renders drop. Server A runs the static-model half (S54 AC17's harness) |
 | AC13 (R19) | `test_title_animation.py::test_glyph_atlas_rules`: a `text` track counts 1-2-3 live in Glyph Atlas, a plate track re-renders the plate, a glyph-layer rim track is not played, and `check_title` fails `anim_mode_support` with a fix that passes once applied |
 | AC14 (R21-R23, R61) | `editor/tests/titleart/anim/TitleAnimPresetsTest.cpp`: every built-in preset parses, evaluates and applies to three fixtures; the result passes `anim_static`, `anim_end_state` (intro presets) and `anim_loop_seamless` (loops); §6.4's class column matches the plan for each; Edit Preset Parameters regenerates only its tracks; Save as Preset round trip. `test_title_animation_presets.py`: `list_title_library {kind: "animation_presets"}` rows, the `id` tier, a 5-frame sheet of `stamp_in`, and no denied term in ids or names |
 | AC15 (R24-R30) | `test_title_animation_lua.py` (Play, `eval_lua`, Console): `play` returns true; `onAnimationEvent` receives `onImpact` once with the animation name; the script method `onImpact` runs; `onAnimationFinished`, then `next` starts Idle in the same frame (no frame where neither plays); `playOverlay("Shake")` over Idle keeps Idle's sweep; `stop` keeps the pose and `reset` restores the still (`get_render_stats` back to idle cost); `play("Nope")` returns false and warns once over 100 calls; unscaled update runs at time scale 0; a marker sound with an Audio Source starts a voice (`getPlayingVoiceCount`; S35 capture lines when S35 is in) |
 | AC16 (R27) | `test_title_animation_clips.py`: an `.anim` keying `titleart.animationTime` 0→1 with `driveAnimation: Intro` scrubs the title in Play and in the Animation window preview (`preview_animation` seek gives the `render_title` image at that time within 2/255); an Animator state plays the same clip; a `titleArtPlay` clip event starts Win |
 | AC17 (R41-R48) | `test_title_animation_designer.py` (xvfb, isolated editor): create an animation; Add Preset Stamp In; scrub (the canvas screenshot changes); play and stop; Record a scale key by gizmo drag (one step "Record Key: …"; Esc during the drag reverts); R in the panel toggles Record while R on the canvas picks S55's tool; box-scale keys (one step); Curves shows the converted curve; the class icons and the cost badge show for a rim-width track; Ctrl+Z undoes each in order; screenshots in the evidence. `TitleAnimTimelineOpsTest.*`: snapping, box scale, record keying with the time-0 rest key, `toCurve`/`fromCurve` round trip |
-| AC18 (R50-R55) | `test_title_animation.py`: every §6.7.1 op with undo and `dry_run`; all-or-nothing on a bad op (nothing applied, its index, did-you-mean on `fx:outer_glow.intensty`, `not_animatable` listing alternatives); `get_title` outline `animations`; `render_title {animation: {name: "Intro", frames: 6}, image: "none"}` returns 6 cells with rising times and non-zero `changed_pct`; `export_title {dry_run: true}` reports bytes per family and writes nothing; a real export undoes in one step |
+| AC18 (R50-R55) | `test_title_animation.py`: every §6.7.1 op with undo and `dry_run`; all-or-nothing on a bad op (nothing applied, its index, did-you-mean on `fx:outer_glow.intensty`, `not_animatable` listing alternatives); `get_title` outline `animations`; `render_title {options: {animation: {name: "Intro", frames: 6}}, image: "none"}` returns 6 cells with rising times and non-zero `changed_pct`; `export_title {dry_run: true}` reports bytes per family and writes nothing; a real export writes every file or none and adds no undo step |
 | AC19 (R54, §6.7.2) | `test_title_animation_checks.py`, each seeded failure beside its fixed twin (red controls): a loop with `rate` FAILs and `cycles` PASSes; a 10 Hz strobe flash FAILs and 2 Hz PASSes; a static animation FAILs and one moving key PASSes; an over-budget flipbook FAILs and PASSes after the fix ops; an intro ending off the still WARNs and a closing key PASSes; a visible outro end WARNs; a Glyph Atlas style track FAILs; an orphan WARNs. Every fix applies through `edit_title` |
 | AC20 (R35, R36) | `je-bench-titleanim` (`TitleAnimBench.Sample64`, `.Scene30`) on E within budget (median of N in `docs/perf/title-animation.md`); `TitleAnimPlayerTest.ZeroAllocSteadyState` (600 frames) |
 | AC21 (R32-R34) | The Android render gate gets scene `titleanim`: a Baked flipbook title and a Realtime glyph cascade, frozen by `TitleArt:sample` at 0.3 s, against a golden, run with and without `debug.jasperengine.titleart_rgba8=1`. The web gate runs the same scene (simd128 and scalar). Metal and D3D11 through the per-platform smoke exports |
@@ -1190,20 +1195,36 @@ GPU-lane test is class `gpu`.
 
 ## 8. Dependencies & conflicts
 
+**The Title Art program graph and waves** (the same in S53-S60; S53 §8 is the source, S53 §6.15
+the shared rules; an arrow means "needs"):
+
+| Wave | Specs | Needs |
+|---|---|---|
+| 6 (title art) | S53 core | merged work only |
+| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of S53 §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+
+Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
+compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
+fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
+S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
+wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
+rest of S55 lands in 6B.
+
 - **Depends on.**
-  - **S53:** the document and `FxAnim` on every member; `TitleArtOps`; `TitleRenderJob` with
+  - **S53:** the document and `FxAnim` on every member (`TitleArtSchema`); `TitleArtOps`; `TitleRenderJob` with
     pose renders, layer splits and glyph cells (A1); the bake writer and recipe chunk; the tools.
   - **S54:** the component and its system order; the companion draw and `title_fx` with the ANIM
     feature (A2); the scheduler, live compose and live budget; Glyph Atlas cells and compose;
     Live Effects; the rows and `titleArtPlay`; the Lua class; the core-size target (A3).
   - **S55:** `addPanel`, the properties panel and gizmo batches that Record rewrites, the lint
     panel, and the context enum.
-  - **S56:** `FxAnim`, `live.kind`, D10's fallback reasons, `tfx::Stream` seeds.
+  - **S56:** the `FxAnim` values of its params, `live.kind`, D10's fallback reasons, `tfx::Stream` seeds.
   - **S57:** the denied-terms list; `list_title_library`'s `sheet`.
   - **Engine and editor:** upstream's KeyframeSampling and PropertyBindings, S14, S21 property
     tracks, S24, S25, S31.
 - **Optional.** S37 (`.soundevent`), S40 M2 (sound placement), S35 (captures in AC15), S59 (3D
-  members' classes; S59 R4 rigs `chars[i]` tracks).
+  members' classes; S59 R4 rigs `chars.<i>` tracks).
 - **Blocks.** S60 R42 evaluates S58 animations for sheets and sequences (`sampleAnimation` + a pose
   render). S60's atlas writer and S58's flipbook packer should be one function; whichever lands
   second reuses the first's.
@@ -1233,15 +1254,16 @@ GPU-lane test is class `gpu`.
 - **Preview As Baked needs a preview flipbook.** It is built on the background lane. Until it is
   ready the panel shows "Building Baked preview (12/30)" and plays Exact.
 
-**Assumptions the sibling specs must meet (A1-A5)**
-- **A1 (S53):** `TitleRenderJob` renders at a pose (sampled values applied to a state copy), keeps a
-  layer split when asked, and renders glyph cells for any text layer.
-- **A2 (S54):** `title_fx` and `title_fx_sprite` gain the ANIM feature (3 `vec4`: affine and
-  colour; the frame-blend second rect), and the companion can show a flipbook page by texture
-  rect.
-- **A3 (S54):** the always-built core part grows from 40 to 60 KiB with `engine/core/titleanim/`.
-- **A4 (S53):** the field table carries S56's `FxAnim` per member, with §6.2's assignment.
-- **A5 (S57):** `list_title_library`'s animation kind is `animation_presets`, not `reveals`.
+**What the sibling specs provide (A1-A5, all now in their owners' text)**
+- **A1 (S53 R18a, §6.3):** `TitleRenderJob` renders at a pose (`RenderRequest::overrides`), keeps a
+  layer split (`keepSplits`) and renders glyph cells for any text layer (`glyphCell`).
+- **A2 (S54 R35):** `title_fx` and `title_fx_sprite` have the ANIM feature (3 `vec4`: affine and
+  colour; `frameRect`, `frameRect2`, `frameBlend`), and the companion shows a flipbook page by
+  texture rect.
+- **A3 (S54 R51, S53 §6.15):** the always-built core part is ≤ 60 KiB, S58's `engine/core/titleanim/`
+  ≤ 20 KiB of it.
+- **A4 (S53 R9a):** `TitleArtSchema` carries `FxAnim` per member, with §6.2's assignment.
+- **A5 (S53 §6.11):** `list_title_library`'s kind is `animation_presets`.
 
 **Resolved questions (decided here)**
 - Where animations live: in the `.titleart` (D1).
@@ -1274,3 +1296,18 @@ GPU-lane test is class `gpu`.
    with the module, but Baked animated titles must play without it (contract decision 4, S54 R51).
    So the always-built sampler and Baked player live in `engine/core/titleanim/`, as S54 placed
    its core part outside that directory (`engine/core/util/TitleArtBakeInfo`).
+
+   **Reconciled: accepted program-wide.** S53 §6.15 makes this the program's rule: the module is
+   `engine/core/titleart/` and nothing under it is built without `JASPERENGINE_TITLE_ART`; the
+   always-built part is S54's component, system, object and binding files, S54's
+   `engine/core/util/TitleArtBakeInfo.*`, S60's `engine/core/util/TitleArtLanguage.*` and S58's
+   `engine/core/titleanim/` (namespace `jasperengine::titleanim`), ≤ 60 KiB together.
+2. **Reconciled: `FxAnim` is S53's enum** `{None, Live, Rerender, Step, Relayout}`, carried by
+   `TitleArtSchema` and `ParamDef::anim`; S56 sets the param values (it was "S56's", and S56 called
+   it "S58's").
+3. **Reconciled: preset values in S56's units** (`radial_blur.amount` 0.6, `halftone.fade` 60 px,
+   `shockwave.radius` from its minimum 10 with layer opacity).
+4. **Reconciled: `render_title`'s `animation` is `options.animation`** and the budget row is ≤ 160
+   (S53 §6.11).
+5. **Reconciled: flipbook bakes are not undo steps** (S53 §6.9's rule for derived files); user
+   presets live in S57's library folders.

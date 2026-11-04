@@ -1,17 +1,24 @@
 # S54 — Title Art runtime: the Title Art Renderer, Baked / Realtime / Glyph Atlas, live layers, Lua `TitleArt`, the `titleart` module and export
 
-**Wave / Depends on.** Title Art program (spec-first), after S53. Depends on:
-- **S53**: the `.titleart` document (`engine/core/titleart/TitleArtIO.*`), Exposed parameters
-  (§6.1), Outputs and the bake, the shared renderer and its float/RGBA8 pixel paths, the
-  `title_art` MCP group and its tools `get_title` and `render_title`;
-- **S56** classifies every effect and generator for Glyph Atlas (`glyph_safety`, R31);
-- **S58** supplies the animations `TitleArt:play` plays (R44, §6.6).
+**Wave / Depends on.** Title Art program (spec-first), **wave 6B** (with S55, S56, S59; program
+graph in §8, program rules in S53 §6.15). Depends on:
+- **S53** (wave 6): the `.titleart` document (`engine/core/titleart/TitleArtIO.*`), Exposed
+  parameters (§6.1), Outputs, the bake and its sidecar `<file>.bake.json` (S53 §6.9), the shared
+  renderer, its render-job members, field overrides, kept splits and glyph cells (S53 R18, R18a),
+  its float/RGBA8 pixel paths, the `title_art` MCP group and its tools;
+- **S56** (same wave; S56 owns the values) classifies every effect and generator for Glyph Atlas
+  (`glyph_safety`, a registry member S53 declares, R31) and supplies the live kernels R9 runs;
+- **S58** (wave 6C) supplies the animations `TitleArt:play` plays (R44, §6.6); S54 owns the API and
+  the `title_fx` ANIM feature they play through.
 
 Owner area:
 - `engine/core/component/TitleArtRendererComponent.h`;
 - `engine/core/subsystem/TitleArtSystem.*` (core: always built);
-- `engine/core/titleart/runtime/` (the `titleart` module: scheduler, Realtime, Glyph Atlas,
-  fonts at runtime);
+- `engine/core/titleart/runtime/` (inside the `titleart` module: scheduler, Realtime, Glyph Atlas,
+  fonts at runtime) and `engine/core/subsystem/TitleArtRuntimeNone.cpp` (the module-off stub, core);
+- the player-module wiring of `JASPERENGINE_TITLE_ART` and its sub-options
+  `JASPERENGINE_TITLE_ART_3D` and `JASPERENGINE_TITLE_ART_MESHER` (S53 §6.15: S53 owns the option and
+  the sources file);
 - `engine/core/object/TitleArt.*` and `engine/core/script/binding/TitleArtClassesLua.cpp`;
 - `engine/shaderlib/library/title_fx.*`, `title_fx_sprite.*` and `engine/shaderlib/includes/title_fx.glsl`;
 - `editor/titleart/runtime/` (export, font subsetting, Characters, checks);
@@ -291,14 +298,17 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
     "Title Art 'Logo': assets/titles/logo.titleart has no bake (logo.titleart.png). Bake it in
     the Title Designer (Bake) or with export_title."
   - A stale bake (S53 recipe) draws and is reported by S53's checks.
-- **R8. Bake sidecar.** S53's bake writes `logo.titleart.bake.json` next to its PNGs. It is
-  canonical JSON, version 1:
+- **R8. Bake sidecar.** S53's bake writes `logo.titleart.bake.json` next to its PNGs (format
+  `jasperengine.titleart.bakeinfo`, version 1, S53 §6.9). It is canonical JSON:
   - `frame {x, y, w, h}` in canvas px, image space;
   - `origin [x, y]`: the document origin in frame px;
   - `outputs [{id, file, content}]`;
-  - `anchors`: R36's list, in frame-normalised coordinates;
+  - `anchors`: R36's list, in frame-normalised coordinates (S56's analysis fills it);
   - `alpha_bounds`;
-  - `source_hash`, `bake_version`.
+  - `source_hash`, `bake_version`;
+  - optional `languages` (S60's per-language sets table, source sidecar only) and `language`.
+
+  S54's `TitleArtBakeInfo` (`engine/core/util/TitleArtBakeInfo.{h,cpp}`, always built) reads it.
 
   Baked mode reads only this file and the PNGs. The sidecar is shipped in every mode (≤ 4 KB).
   The `.titleart` ships only for Realtime and Glyph Atlas titles (R52).
@@ -410,8 +420,8 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
   switches this session to the RGBA8 path once, with a warning, and the render restarts. Missing
   glyphs are not failures (R55).
 - **R20. Memory.**
-  - Intermediates (RGBA16F, or RGBA8 on the fallback path) come from a `TitleArtTargetPool` shared
-    by all titles, sized to the largest active render.
+  - Intermediates (RGBA16F, or RGBA8 on the fallback path) come from S53's `TitleTargetPool`,
+    shared by all titles, sized to the largest active render.
   - The pool is released after `Release Delay` with no render: 3 s on mobile and web, 10 s on
     desktop.
   - Cached front images of states shown earlier (R14) and S53's per-step caches (masks, SDF) live
@@ -425,8 +435,9 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
     tolerance.
   - Test hooks:
     - S53's `TITLE_ART_TEST_NO_FLOAT_TARGETS` (and its siblings), plus S54's
-      `TITLE_ART_TEST_FAIL_TARGETS` and `TITLE_ART_TEST_SLOW_STEPS`, through the same
-      `setDisabledFeaturesForTesting`;
+      `TITLE_ART_TEST_FAIL_TARGETS` and `TITLE_ART_TEST_SLOW_STEPS`, in S53's per-request
+      `RenderRequest::testFlags` (never global: the scheduler copies the instance's test state,
+      set through `setDisabledFeaturesForTesting`, into each request it builds);
     - the environment variable `JASPER_TITLEART_FORCE_RGBA8=1`, read once at start by players and
       the editor;
     - the Android property `debug.jasperengine.titleart_rgba8`.
@@ -457,7 +468,8 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
 - **R26. Glyph cells.**
   - Each distinct (font face, glyph index, variation axes, `CharAdjust.face` material hash,
     effective style hash) is rendered once by S53's renderer: a single-glyph run at the layer's
-    size × resolution, into a cell padded by the style's reach (S53 `reachPx`).
+    size × resolution, into a cell padded by the style's reach (S53 `RenderRequest::glyphCell`, padded by
+    `reachBounds`, S53 §6.6).
   - Each glyph is split into two cells:
     - **back**: every part and effect S53 draws before the face (rims outermost first, drop
       shadow, outer glow);
@@ -469,7 +481,7 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
     `kerning`, `tracking` (→ `letterSpacing`), `features`, `language`, `line_height`, `align`,
     `h_scale` and `v_scale`;
   - `vertical`, `tate_chu_yoko` and `proportional`, as S53 lays them out (the same layout code,
-    `engine/core/titleart/TitleTextLayout.*`);
+    `engine/core/titleart/text/TitleTextLayout.*`);
   - `chars.<index>` offsets, scales and rotations per glyph quad, by code point index of the
     current text;
   - `lines.<index>` per line.
@@ -497,14 +509,15 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
   (`glyph_atlas_unsupported: 3D text`): the title falls back to Realtime, with the warning in the
   Inspector, `get_title` and the Console.
 - **R31. Glyph safety.** Every effect, generator and style member has a `glyph_safety`: `safe`,
-  `approximate` or `unsafe`. S53 and S56 set it per registry entry. S54's defaults for S53's
+  `approximate` or `unsafe` (`GlyphSafety`, declared on S53's `EffectDef`/`GeneratorDef` and
+  `TitleArtSchema`; S56 §6.13 sets the values of every definition). S54's defaults for S53's
   members:
 
   | Class | Members | In Glyph Atlas |
   |---|---|---|
   | safe | fill `solid`, gradient fills with `span: "char"`, bevel, reflection, finish, pattern, satin, texture, inner glow, gloss, sheen, glass, rims with `plate.kind: "contour"`, `knockout`, `fill_counters`, `weight`, `h_scale`/`v_scale`/`shear`, CharAdjust, part effects that read only the part | Exact per glyph |
-  | approximate | gradient fills with `span: "layer"` or `"line"` (mapped to `char`), outer glow, drop shadow, Deep Glow, erode (its noise moves with the glyph) | Per glyph. Overlaps differ from the merged render. Listed as info |
-  | unsafe | `warp`, `distort`, rims with `plate.kind: "hull"` or `"box"`, layer masks, layer-scope effects that read neighbours beyond the cell (motion blur, shatter, extrude2d), generators that `follow` the text layer | Skipped (hull/box draw as `contour`). Warning `glyph_atlas_effects` lists them, with fix ops |
+  | approximate | gradient fills with `span: "layer"` or `"line"` (mapped to `char`), outer glow, drop shadow, Light Glow, erode (its noise moves with the glyph) | Per glyph. Overlaps differ from the merged render. Listed as info |
+  | unsafe | `warp`, `distort`, rims with `plate.kind: "hull"` or `"box"`, layer masks, layer-scope effects that read neighbours beyond the cell (`motion_blur`, `shatter`, `extrude`), generators that `follow` the text layer | Skipped (hull/box draw as `contour`). Warning `glyph_atlas_effects` lists them, with fix ops |
 
   `check_title {checks: ["glyph_atlas"]}` (S53's tool, S54 adds the check) returns the list
   without an instance. The Inspector shows "2 effects don't apply per glyph: Warp, Plate (Hull)"
@@ -548,6 +561,14 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
 
   **Tint** (TINT): `tintColor` and `tintAmount` with the overlay blend `ui_fx` uses, so the
   shading is kept. **Crossfade** (CROSSFADE): R17.
+
+  **Animation** (ANIM, for S58): uniforms `animAffine0`, `animAffine1` (a 2×3 affine in
+  frame-normalised space about the pivot), `animColor` (opacity, and flash colour × amount); and
+  the texture rect the companion samples, `frameRect` plus a second `frameRect2` with
+  `frameBlend` for blended flipbook frames. `TitleArtSystem` writes them from S58's
+  `TitleAnimPlayer`; with no animation playing the feature is off and R48 holds. The companion
+  shows a flipbook page by texture rect (Image: `ImageComponent` UV rect; Sprite: the sprite's
+  frame rect), so a flipbook is the same one draw.
 - **R36. Highlight anchors** are S56's analysis (S56 R13-R14: an analysis grid fixed in canvas px,
   Pachislop's `pickHighlights`):
   - **Baked** reads them from the sidecar (R8).
@@ -661,7 +682,8 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
 - **R46.** The renderer's passes use S53's `ShaderType` (called `TITLE_ART` here, appended after
   `HTMLUI_PRIM`, `Render.h:183`; the pass and pixel path in the property bits). They are cooked
   per backend like `FLUID`. `title_fx` and `title_fx_sprite` are library shaders that GLES3/WebGL2
-  compile within its limits (one `@texture glowTexture`, one `prevTexture`, 16 + 2 `vec4`
+  compile within its limits (one `@texture glowTexture`, one `prevTexture`, 16 + 2 + 5 `vec4`
+  (ANIM's three, the two frame rects)
   uniforms).
 - **R47. Warm-up (S32).**
   - The collector adds the TITLE_ART keys of every shipped Realtime and Glyph Atlas document, for
@@ -695,20 +717,26 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
     - `NOTICE.md`'s HarfBuzz row names the subset sources.
     - `engine/notices.json` gets `"harfbuzz-subset": {"dir": "engine/libs/harfbuzz/subset",
       "when": "editor"}`.
-  - **`hb-draw`.** `HB_NO_DRAW` is defined only when `JASPERENGINE_TITLE_ART` is OFF, so games
-    without the module keep today's HarfBuzz byte for byte.
-  - **ThorVG** builds when `JASPERENGINE_HTMLUI OR JASPERENGINE_TITLE_ART`:
-    - `engine/CMakeLists.txt:1134` and :1192-1196 become that condition, and
-      `util/ThorVGRuntime` is kept when either module is ON;
-    - `engine/notices.json`'s `when` accepts a list (`"when": ["htmlui", "titleart"]`, shipped
-      when the build has any of them), with `tools/ci/check-notices.py:117` and :132 extended.
-  - Clipper2, if S53 vendors it for runtime 2D, follows the same `titleart` condition.
+  - `hb-draw` (`HB_NO_DRAW` only when the module is OFF), ThorVG (`JASPERENGINE_HTMLUI OR
+    JASPERENGINE_TITLE_ART`, `engine/CMakeLists.txt:1134` and :1192-1196, `util/ThorVGRuntime`
+    kept when either is ON, notices `"when": ["htmlui", "titleart"]` with `check-notices.py` taking
+    a list) and Clipper2 (`"when": "titleart"`) are S53's (S53 R40, §6.15). S54 adds `titleart` to
+    the player features (`player-info.json features[]`) that `when` names, and S59's earcut uses
+    the same feature.
 - **R51. The `titleart` module.**
-  - `option(JASPERENGINE_TITLE_ART "Compile the Title Art Realtime and Glyph Atlas renderer" ON)`
-    next to `JASPERENGINE_NAVIGATION`, with `JASPERENGINE_TITLE_ART=$<BOOL:...>` in the public
-    definitions.
-  - `engine/core/titleart/TitleArtSources.cmake` lists the module sources: S53's runtime renderer
-    and codec, and S54's `runtime/`. OFF compiles `runtime/TitleArtRuntimeNone.cpp` instead.
+  - The option `JASPERENGINE_TITLE_ART` (next to `JASPERENGINE_NAVIGATION`,
+    `JASPERENGINE_TITLE_ART=$<BOOL:...>` in the public definitions) and
+    `engine/core/titleart/TitleArtSources.cmake` (every title spec's module sources) are S53's
+    (S53 R40, §6.15). S54 adds `runtime/` to it and, when the module is OFF, compiles
+    `engine/core/subsystem/TitleArtRuntimeNone.cpp` (core, outside the module folder, the
+    `UIDocumentSystemNone` precedent).
+  - **Sub-options** (S54 owns their CMake and wiring; S59's code is behind them):
+    `cmake_dependent_option(JASPERENGINE_TITLE_ART_3D ... ON "JASPERENGINE_TITLE_ART" OFF)`
+    (`engine/core/titleart/three_d/`, S56's `three_d/Glint3D.*` included) and
+    `JASPERENGINE_TITLE_ART_MESHER` (S59's mesher and earcut). Prebuilt variants with `titleart`
+    carry both. In a Compile build `ModuleUsage` turns `_3D` off when no shipped Realtime title has
+    a Dimension 3D layer, and `_MESHER` off when every shipped Realtime 3D title has fixed text
+    (S59 R38's cooked `.titlemesh`); the evidence lines name the titles.
   - Without the module, a Realtime or Glyph Atlas title shows its Baked image and logs once:
     "Title Art 'Logo' is Realtime, but this build has no Title Art module (titleart): showing its
     bake. Builds add the module when a shipped scene or prefab uses Realtime or Glyph Atlas;
@@ -721,12 +749,17 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
     `lite2d` stay without it** (R59, §9).
   - **Always in core:** the component, `TitleArtSystem` (Baked binding, live layers, anchors from
     the sidecar), the sidecar reader (`engine/core/util/TitleArtBakeInfo.{h,cpp}`) and the Lua `TitleArt` class.
-    None of it is in `engine/core/titleart/`, which S53 R40 compiles only with the module.
-    Target ≤ 40 KiB stripped arm64.
+    None of it is in `engine/core/titleart/`, which S53 R40 compiles only with the module. The
+    program's always-built part also holds S58's `engine/core/titleanim/` and S60's
+    `engine/core/util/TitleArtLanguage.*` (S53 §6.15). Target for the whole core part ≤ 60 KiB
+    stripped arm64 and ≤ 40 KiB wasm gzip: S54's own ≤ 34 / 25, S58's ≤ 20 / 12, S60's ≤ 6 / 3;
+    S54 measures all three.
 - **R52. Detection** (`ModuleUsage`, `editor/players/ModuleUsage.cpp:263-286`).
   - `titleart` is needed when any shipped scene or prefab has an enabled Title Art Renderer with
     `renderMode` Realtime or Glyph Atlas. Evidence reads "Title Art Renderer (Realtime) on
-    Logo". Lua cannot create such a title (R67), so components alone decide.
+    Logo". Lua cannot create such a title (R67), so components alone decide. S57's
+    `ColorSchemeApply` is part of the module (S57 R39), so a shipped Realtime or Glyph Atlas
+    document with a `color_schemes` member needs nothing more; a Baked title never recolours.
   - Shipping:
     - **Baked-only titles** ship their PNGs and sidecar. The `.titleart` and its fonts are
       excluded (S53's `.titleart` rule, plus R54 for fonts).
@@ -768,7 +801,8 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
       the title and the font;
     - a literal arg of a Lua `setText` / `text =` / `setParameter` call on a `TitleArt` value
       (best effort, through `ModuleUsage`'s Lua lexer) that falls outside the Characters set:
-      warning `W-TITLEART-CHARS`, with the file:line and the fix "add them to Characters >
+      warning `W-TITLEART-CHARS` (and `check_title`'s check `characters` in the editor), with the
+      file:line and the fix "add them to Characters >
       Custom".
   - At runtime: a text with characters outside the subset draws them with the next face of the
     chain that has them, else as nothing (never tofu, contract decision 6). The title logs once
@@ -802,7 +836,11 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
     `editor/asset/AssetRefSchema.cpp`, so `AssetRefSchema.CoversAllFields` stays green and
     dependencies ship.
   - The sidecar is versioned (`"version": 1`) and lenient like S53's codec.
-  - The project settings are a new `titleArt:` block in `project.yaml` with every default.
+  - The project settings join S53's `title_art.*` keys (Project Settings > Title Art):
+    `title_art.frame_budget_ms` (`{mobile: 2, web: 2, desktop: 4, editor: 8}`),
+    `title_art.reference_height` (1080), `title_art.release_delay_s` (`{mobile: 3, web: 3,
+    desktop: 10}`), `title_art.cache_budget_mib` (`{mobile: 16, web: 16, desktop: 64}`),
+    `title_art.simulate_export_characters` (true); S59 adds `title_art.realtime_3d_quality`.
     Absent = defaults, and no migration.
 - **R59. Player variants.** A project whose titles are all Baked keeps its smallest variant
   (`lite2d` and `lite3d` included). A project with a Realtime or Glyph Atlas title takes the
@@ -851,7 +889,8 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
   expected type.
 - **R66. Only Exposed names.** `setParameter`/`getParameter` take Exposed parameter names only
   (contract decision 13), never document paths. An effect param a script must drive
-  (S56 R47's `"Title/fx:light_glow.intensity"`) is exposed under a name (S53 `expose` op), and S56
+  (S56 R47's target `{layer: "Title", field: "fx:light_glow.intensity"}`) is exposed under a name
+  (S53 `expose` op), and S56
   L params so exposed change through the live compose (R9). This keeps prefabs, clip tracks and
   Lua on one vocabulary, and lets the export know every value a script can change.
 - **R67. No structural changes from Lua.** `title` and `renderMode` are read-only, and Lua cannot
@@ -872,25 +911,28 @@ to the shaping build as an editor-only target (R50). It gets a `NOTICE.md` row u
     display target, with live layers at `live_time`, default the component's).
   - `rerender: true` instead invalidates the live instance and returns once it is ready (Play or
     Edit).
-  - S56's `cost: true` (S56 R46), with `entity`, adds the instance's measured runtime cost: per
+  - S56's `options.cost` (S56 R46), with `entity`, adds the instance's measured runtime cost: per
     step CPU and GPU ms (S15 timer queries where available, else estimates, said so), slices,
     frames to ready, peak pool bytes and display bytes. S54 adds no second cost parameter.
-  - `force_rgba8: true` renders both paths and returns `pixel_paths_diff {max, mean,
+  - S53's `fallback: "compare"` renders both paths and returns `pixel_paths_diff {max, mean,
     changed_pct}` against the float path.
+  - `overrides`, `rerender` and `live_time` are keys of S53's free-form `render_title.options`
+    (S53 §6.11); `entity` and `scene` are top-level parameters.
   - All of it is a job past 1 s, allowed while playing.
 - **R71. Discoverability.** `get_title {entity}` also returns:
   - `particles`: the four R39 presets as `create_particles` argument objects for this title;
   - `glyph_atlas`: the unsafe and approximate list (R31) when the mode is Glyph Atlas.
 
   Component fields are set with `set_properties {component: "titleart", ...}` and
-  `add_component`, keys as §6.1 (`overrides.text`, `sweepPosition`). Budget: S54 adds at most
-  600 characters to the `title_art` group (§6.5).
+  `add_component`, keys as §6.1 (`overrides.text`, `sweepPosition`). Budget: S54's row of S53
+  §6.11's program budget table (≤ 300 characters: `get_title` 220, `render_title` 80).
 - **R72. Guide.** `docs/mcp/guide/title-art.md` (S53's file) gets a `### Runtime` section: the
   modes and when to pick each, the Play verification loop, the reserved events, Characters and
   the Lua errors. No line is added to the agent guide (`McpInstructions.cpp`): the "Other areas"
   entry S53 adds points at it.
 - **R73. CLI.** `jasperengine-editor call get_title --entity ...` works through S31. `check`
-  (S53's `--titles`) adds the R31 and R55 checks for documents and their instances in scenes.
+  (S53's `--titles`) adds the R31 and R55 checks (`check_title` ids `glyph_atlas` and
+  `characters`, registered in S53's check registry) for documents and their instances in scenes.
 
 ## 6. Design constraints & decisions
 
@@ -927,6 +969,9 @@ struct JASPERENGINE_API TitleArtRendererComponent {
     std::string additionalCharacters;
     int atlasPageSize = 1024;        // 512 | 1024 | 2048
     int atlasMaxPages = 4;           // 1..8
+    // Realtime 3D (fields S54 owns; S59 R26, R37 define what they do)
+    std::string qualityTier = "auto";             // "auto" | "high" | "medium" | "low"; Lua qualityTier
+    std::vector<std::string> runtimeEnvironments; // extra S59 environment ids or assets the export cooks
     // Live Effects
     float liveTime = 0.0f;
     bool liveUnscaledTime = false;
@@ -946,7 +991,7 @@ struct JASPERENGINE_API TitleArtRendererComponent {
 Inspector labels (Unity naming): Title Art, Render Mode, Text, Color Scheme, Parameters,
 Pivot From Title, UI Scale, Pixels Per Unit, Resolution Scale, Priority, Render When Hidden,
 Prebake Initial State, Transition, Transition Duration, Additional Characters, Atlas Page Size,
-Atlas Max Pages, Live Effects > Sweep (Position, Width, Angle, Softness, Color, Auto, Speed,
+Atlas Max Pages, Quality Tier, Runtime Environments, Live Effects > Sweep (Position, Width, Angle, Softness, Color, Auto, Speed,
 Interval), Glow (Pulse, Color), Tint (Color, Amount), Glints (Amount, Size, Rate, Seed, Color),
 Time (Live Time, Unscaled Time). Colours are stored linear and shown sRGB, as `ui.color` is.
 
@@ -975,29 +1020,19 @@ writer writes it with every default. The ops are S53's `set` (`runtime.character
 
 ### 6.3 What S54 needs from S53's render job
 
-S53 R18 defines `TitleRenderJob::step(budget)` (resumable, double-buffered, byte-identical to a
-one-shot render). The scheduler needs these members of it. Names may follow S53's header; the
-behaviour is the contract:
+S53 R18 and §6.3 define `TitleRenderJob` (resumable, double-buffered, byte-identical to a
+one-shot render) with the members the scheduler drives: `step(StepBudget, StepReport*)` (whole
+steps while their estimates fit, at least one), `done()`, `progress()` (R12's 50 % rule),
+`nextStepCostUs()` (packing), `splitOversizedSteps(maxUs)` (scissor tiles ≥ 256 × 256),
+`shaderKeys()` (R18 readiness, R47 collection), `nodeCosts()`, `error()` and `splits()`. The
+scheduler builds the request from the instance: `RenderRequest::overrides` carries the resolved
+Exposed values (R5), `keepSplits` the layers S56's live kernels and S58's layer splits read,
+`glyphCell` the Glyph Atlas cells (R26), and `pxScale` the resolution; the pixel path comes from
+the request's test flags and S53's caps. `TitleArtScheduler` keeps its own state per instance
+(`titleart::TitleArtInstance`: request, back and front display targets, hashes).
 
-```cpp
-// engine/core/titleart/TitleRenderJob.h (S53), what TitleArtScheduler drives
-struct TitleRenderState { const TitleArtDoc* doc; ResolvedExposed values; float pxScale; TitlePixelPath path; };
-class TitleRenderJob {
-public:
-    static TitleRenderJob start(const TitleRenderState&, TitleArtCaches&, TitleRenderTargets& back);
-    // runs whole steps while their estimates fit `budgetUs` (at least one); false = failed (error())
-    bool step(uint32_t budgetUs, TitleStepReport& report);
-    bool done() const;
-    float progress() const;                 // estimated cost done / total, for R12's 50 % rule
-    uint32_t nextStepCostUs() const;        // the scheduler's packing
-    void splitOversizedSteps(uint32_t maxUs);   // scissor tiles >= 256 x 256 (GPU steps)
-    std::vector<ShaderKey> shaderKeys() const;  // R18 readiness and R47 collection
-    const std::string& error() const;
-};
-```
-
-- **The cost estimate** of a step = output pixels × the pass's `cost_weight`. The weight comes
-  from the S53/S56 pass definition (S56's cost model, in ns per pixel on the desktop reference).
+- **The cost estimate** of a step = output pixels × the pass's `costWeight` (S53 §6.3). The weight
+  comes from the S53/S56 pass definition (S56's cost model, in ns per pixel on the desktop reference).
   It is scaled by a platform factor: mobile 6, web 4, desktop 1.
 - When S15 GPU timing runs (Development builds, the editor), measured step times replace the
   factor with a running median per pass label. Release builds use the static model. AC17 checks
@@ -1031,20 +1066,21 @@ Title Art Renderer                                            [?] [⋮]
 
 ### 6.5 MCP
 
-Tools (S53's group `title_art`, S53's handlers in `editor/mcp/TitleArtTools*`). S54 adds
+Tools (S53's group `title_art`, S53's handlers in `editor/mcp/tools/TitleArtTools*.cpp`). S54 adds
 parameters only:
 
 | Tool | Added | Chars (target) |
 |---|---|---|
 | `get_title` | `entity` (entityRef), `scene` (sceneRef), `wait_ready` (bool), `timeout_seconds` (number 0..120) | ≤ 220 |
-| `render_title` | `entity`, `overrides` (anyObject), `rerender` (bool), `force_rgba8` (bool), `live_time` (number); S56's `cost` gains the instance meaning | ≤ 340 |
+| `render_title` | `entity`, `scene`; the keys `overrides`, `rerender`, `live_time` of S53's `options`; S53's `fallback: "compare"` and S56's `options.cost` gain the instance meaning | ≤ 80 |
 
 - `path` stops being required when `entity` is given. The handler refuses both, and refuses
   neither, with `{kind: "bad_args", fix}`.
 - `allowedWhilePlaying` is true for both. `render_title {rerender}` is an Edit activity on the
   live instance (no file write, no undo).
-- Group total: S53's figure + ≤ 600, within `tools/mcp/budget.json`'s `group_default` (15,000
-  and 12 tools). S54 adds no tool, no group and no guide bytes.
+- S54's row of S53 §6.11's program budget table: ≤ 300 characters; the group total is that
+  table's (7,735 of the default 15,000, 6 of 12 tools). S54 adds no tool, no group and no guide
+  bytes.
 - Tests assert the group is hidden until `tool_groups` enables it (S53's test covers the tools;
   `test_title_runtime.py` re-checks the new parameters are listed).
 
@@ -1151,7 +1187,7 @@ is the same look on "1,234,567" at 128 px.
 | Glyph Atlas new glyph cell (128 px em) | ≤ 3 ms GPU per glyph, one per step | ≤ 3 ms | ≤ 0.6 ms |
 | Memory, `reference` Realtime | idle ≤ 2.2 MiB; peak during render ≤ 14 MiB (pool) | same | same |
 | Module size | `titleart` ≤ 0.6 MiB (arm64 `.so`, deflated) | ≤ 0.35 MiB (wasm gzip) | measured, reported |
-| Core part (always built) | ≤ 40 KiB stripped arm64 | ≤ 25 KiB gzip | — |
+| Core part (always built: S54 + S58 + S60, S53 §6.15) | ≤ 60 KiB stripped arm64 (S54's own ≤ 34) | ≤ 40 KiB gzip (S54's own ≤ 25) | — |
 
 Module sizes are measured with `tools/players/lib_size.py --modules` and
 `tools/players/player_sizes.py` as S34 M8 did.
@@ -1166,7 +1202,7 @@ Module sizes are measured with `tools/players/lib_size.py --modules` and
 | AC4 (R12, R13, R15) | `engine/tests/core/titleart/TitleArtSchedulerTest.cpp` (fake `TitleRenderJob` steps, fake clock): no frame runs more than budget except the guaranteed step; priority then visibility then age; hidden titles get no steps; restart under 50 %, finish-then-latest over 50 %; `TITLE_ART_TEST_SLOW_STEPS` splits into tiles; red control: disable coalescing, the "always fresh" test fails |
 | AC5 (R14, R17, R18) | `TitleArtRuntimeGpu.DoubleBuffer`: frame by frame readback of the companion's texture during a text change shows the old image on every frame until the swap, then the new one; `onReady` fires once on the swap frame; toggling back to the previous text swaps from cache without a render (step count 0); red control: render into the front target, a mixed frame appears |
 | AC6 (R19, R20, R22) | `TitleArtRuntimeGpu.Failures`: `TITLE_ART_TEST_FAIL_TARGETS` keeps the previous image, sets `failed`, retries at 2/4/8 s then stops, `onFailed` once; a simulated GPU object loss re-renders and shows the fallback meanwhile; the pool is released after Release Delay (`get_vram_report` owner rows vanish) |
-| AC7 (R21) | `TitleArtRuntimeGpu.ForcedRgba8`: `TITLE_ART_TEST_NO_FLOAT_TARGETS` renders `reference` on the RGBA8 path within S53's float/RGBA8 tolerance of the float golden; `pixelPath` reports `rgba8`; MCP `render_title {entity, force_rgba8: true}` returns `pixel_paths_diff` within it; `JASPER_TITLEART_FORCE_RGBA8=1` in a Linux player run gives the RGBA8 golden |
+| AC7 (R21) | `TitleArtRuntimeGpu.ForcedRgba8`: `TITLE_ART_TEST_NO_FLOAT_TARGETS` renders `reference` on the RGBA8 path within S53's float/RGBA8 tolerance of the float golden; `pixelPath` reports `rgba8`; MCP `render_title {entity, fallback: "compare"}` returns `pixel_paths_diff` within it; `JASPER_TITLEART_FORCE_RGBA8=1` in a Linux player run gives the RGBA8 golden |
 | AC8 (R11, R32) | `tools/mcp/tests/test_title_export.py` (`JASPER_SLOW_BUILD=1`): a Realtime instance with an override ships a prebaked texture (dedup: two instances, one texture); headless player `--fixed-fps 60 --screenshot` at frame 1 equals the editor's render (`pngdiff --tolerance 24 --max-fraction 0.01`); `capture_profile` shows 0 TitleArt steps before a change; with `prebakeInitialState: false`, frame 1 is transparent and the image appears later (red control) |
 | AC9 (R33-R38) | `engine/tests/core/titleart/TitleFxGpu`: sweep at positions 0, 0.5, 1 (0 and 1 show no band); glints at 9 anchors at live times 0 and 1.3; glow pulse 0 and 1; tint; crossfade at 50 %; a title with no Live Effect is byte-identical to an Image with the same texture; two `--fixed-fps` runs of the fixture are pixel-identical (red control: read engine time instead of `liveTime`, the second run differs) |
 | AC10 (R36) | `engine/tests/core/titleart/TitleArtRuntimeGpu.Anchors`: a Baked title's glints use the sidecar anchors; a Realtime title with an unchanged analysed layer does no readback (readback counter 0 over 300 frames); after a text change the new anchors equal S56's bake analysis of the same state, arrive on the swap frame and are at most 16; red control: swap the image before the analysis step, the frame shows glints at the old anchors |
@@ -1180,43 +1216,48 @@ Module sizes are measured with `tools/players/lib_size.py --modules` and
 | AC18 (§6.8 device rows) | Manual, as S13 AC23: a Mali-G57 or Adreno 610 class Android phone at 1080p, the fixture's `bench` scene, a Development build; `capture_profile frames=300` + `get_gpu_passes capture_id` (or a vendor profiler); results recorded in `docs/mcp/guide/title-art.md` "Runtime costs" with the device name. If no device is available, the stream records it in Deviations with the desktop and emulator figures |
 | AC19 (R45-R47) | `tools/web/gates/title-art.json` on `tools/fixtures/title-art-runtime` (console has "[title-art] ready", no GL errors, centre pixel of the title within tolerance); Android render gate: new scene `titleart` in `tools/test-projects/render-gate/main.cpp` (a Realtime and a Glyph Atlas title with sweep and glints at a fixed `liveTime`), golden `golden/titleart.png`, run twice: default and with `debug.jasperengine.titleart_rgba8=1` against the same golden within the gate's tolerance; `tools/build.sh web` and `android` build; warm-up list of the fixture contains the TITLE_ART keys of its start scene |
 | AC20 (R64-R68) | `test_title_runtime.py::test_lua`: `eval_lua` in Play: `text`, `setParameter`, `getParameter`, `resetParameter`, `colorScheme`, `ready`, `onReady`, `pending`; each §6.6 error message exactly; `setParameter("Title/fx:outer_glow.size", 3)` is refused listing the exposed names (R66); `renderMode` and `title` are read-only (assignment errors); `python3 -m lua_api doctest` passes the `lua run` blocks added to `docs/mcp/guide/title-art.md` |
-| AC21 (R69-R71, §6.5) | `test_title_runtime.py::test_mcp`: `get_title {entity}` shape; `wait_ready` returns ready after an `eval_lua` text change; `screenshot {view: "game"}` after it shows the new text (non-blank title box, differs from before by ≥ 2 %); `render_title {entity, cost: true}` has per-step costs; `render_title {entity, overrides: {text: "A"}}` leaves the instance unchanged; `tool_budget.py --check tools/mcp/budget.json`, `test_tool_conventions.py`, `gen_tool_docs.py --check` pass; the new parameters absent from the default listing until `tool_groups` enables `title_art` |
+| AC21 (R69-R71, §6.5) | `test_title_runtime.py::test_mcp`: `get_title {entity}` shape; `wait_ready` returns ready after an `eval_lua` text change; `screenshot {view: "game"}` after it shows the new text (non-blank title box, differs from before by ≥ 2 %); `render_title {entity, options: {cost: "desktop"}}` has per-step costs; `render_title {entity, options: {overrides: {text: "A"}}}` leaves the instance unchanged; `tool_budget.py --check tools/mcp/budget.json`, `test_tool_conventions.py`, `gen_tool_docs.py --check` pass; the new parameters absent from the default listing until `tool_groups` enables `title_art` |
 | AC22 (R60-R63) | `tools/editor-shot.sh` screenshots (isolated editor, `tools/fixtures/title-art-runtime` copy) of the Inspector in each mode, the R31 warning, Characters with a missing character, and the Status line while rendering; `editor/tests/titleart/InspectorTitleArtTest.cpp` (S08 inspector layout) checks the rows, the disabled rows in Baked and the undo names |
 
 ## 8. Dependencies & conflicts
 
-- **Depends on:**
-  - **S53**:
-    - the document codec and Exposed parameters;
-    - Outputs and the bake (plus the sidecar, R8, written by S53's bake);
-    - `TitleArtRenderer` and `TitleRenderJob` with the §6.3 members, its `ShaderType` (called
-      `TITLE_ART` here), the float/RGBA8 paths and
-      their tolerance;
-    - `TitleTextLayout`, `reachPx` and the face mask for anchors;
-    - the `title_art` tools `get_title`, `render_title` and `check_title`.
-  - **S56**:
-    - `glyph_safety` and the cost model (`cost_weight`) on every effect and generator;
-    - the highlight analysis and its shipped anchors (S56 R13-R14);
-    - live kinds and `TFX_LIVE` kernels (S56 D10), run by S54's live compose (R9);
-    - `render_title {cost}` (S56 R46).
-  - **S57**: Color Scheme ids for `colorScheme` and the particle colours.
-  - **S58**: the animations behind `play`, and its rows.
-  - **S60**: per-language values in R5's order, and their text in the Characters union.
-  - Existing:
-    - S04 (AssetRefs, dependency graph);
-    - S05 (hot reload);
-    - S06 (jobs, background lane);
-    - S08 (reflection, Inspector);
-    - S14 (cook);
-    - S15 (timings, VRAM);
-    - S20 (particles);
-    - S21 / anim-properties (rows, events);
-    - S24 (undo);
-    - S30 / S34 (players, variants, ModuleUsage, ShaderNeutralApi);
-    - S32 (warm-up, async variants);
-    - S41 (PPU, optional).
-- **Blocks:** S58's Realtime playback (scheduler) and S59's Realtime 3D (scheduler, budget,
-  pixel paths).
+**The Title Art program graph and waves** (the same in S53-S60; S53 §8 is the source, S53 §6.15
+the shared rules; an arrow means "needs"):
+
+| Wave | Specs | Needs |
+|---|---|---|
+| 6 (title art) | S53 core | merged work only |
+| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of S53 §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+
+Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
+compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
+fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
+S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
+wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
+rest of S55 lands in 6B.
+
+- **S54 needs from S53** (all in S53 §6.15's hook table): the document codec and Exposed
+  parameters; Outputs, the bake and the sidecar it writes (R8); `TitleArtRenderer` and
+  `TitleRenderJob` with its scheduling members, `RenderRequest::overrides`, `keepSplits` and
+  `glyphCell`; `ShaderType::TITLE_ART`; the float/RGBA8 paths and their tolerance;
+  `TitleTextLayout` and `reachBounds`; the registry's `glyphSafety`, `live` and cost members; the
+  `title_art` tools with `render_title.options` and `fallback: "compare"`; the check registry.
+- **From the same wave (6B):** S56 fills the registry values (glyph safety §6.13, live kernels D10,
+  cost weights), runs its analysis into the sidecar's `anchors`, and owns `render_title`'s
+  `options.cost`; S59 defines the semantics of the component fields `qualityTier` and
+  `runtimeEnvironments` (S54 owns the fields, §6.1) and puts its code behind S54's sub-options;
+  S55 hosts R62's Characters UI through its §6.8 `addSection` and uses R6's create functions.
+- **Later (6C):** S57 Color Scheme ids for `colorScheme` and the particle colours; S58 the
+  animations behind `play`, its rows and component fields, through the ANIM feature (R35); S60
+  the per-language values in R5's order, the `language` field and events, and their text in the
+  Characters union.
+- Existing: S04 (AssetRefs, dependency graph), S05 (hot reload), S06 (jobs, background lane), S08
+  (reflection, Inspector), S14 (cook), S15 (timings, VRAM), S20 (particles), S21 /
+  anim-properties (rows, events), S24 (undo), S30 / S34 (players, variants, ModuleUsage,
+  ShaderNeutralApi), S32 (warm-up, async variants), S41 (PPU, optional).
+- **Blocks:** S58's Realtime playback (scheduler, ANIM) and S59's Realtime 3D (scheduler, budget,
+  pixel paths, sub-options); S60's Baked language switch (the sidecar reader).
 - **Name coordination:**
   - S54 owns the component key `titleart`, the module name `titleart`, the shader names
     `library:title_fx` and `library:title_fx_sprite`, the event names `titleArt*`, the document
@@ -1240,10 +1281,9 @@ Module sizes are measured with `tools/players/lib_size.py --modules` and
 
 ## 9. Risks & defaults
 
-- **S56 wording to align.** S56 D10 says its kernels draw "as a live layer of
-  `library:title_fx`", and S56 R47 says Lua sets effect params by path. Default (S54): kernels run
-  in the live compose into the display target (R9), so the companion's draw stays one draw; Lua
-  uses Exposed names (R66). S56 records both in its Deviations or text.
+- **S56's live kernels and Lua names** (resolved): kernels run in S54's live compose into the
+  display target (R9), never inside `title_fx`, so the companion stays one draw; Lua reaches
+  effect params only through Exposed names (R66, contract decision 13). S56 D10 and R47 say so.
 - **Prebuilt variants and web size.** A lite2d web game with one Realtime title moves to `core`
   (S34 M8: 5.32 instead of 3.91 MiB gzip). Default: no new variant now. Five release runtimes per
   target is S34 D2's decision, and Baked plus live layers covers most titles. M6 measures the
@@ -1266,8 +1306,8 @@ Module sizes are measured with `tools/players/lib_size.py --modules` and
   simulation (R55), which catches dynamic strings during testing.
 - **A user forks `ui_fx` expecting `title_fx` features.** Default: `title_fx` is separate, and the
   Inspector names the shader it drives.
-- **S53's render job API may differ in names.** Default: S53 keeps §6.3's contract (resumable steps,
-  costs, keys, split). Name changes are recorded in both specs' Deviations.
+- **S53's render job API** (resolved): S53 R18 and §6.3 now carry every member §6.3 here uses,
+  under S53's names (`step(StepBudget, StepReport*)`).
 
 ## Milestones
 
@@ -1284,4 +1324,17 @@ Module sizes are measured with `tools/players/lib_size.py --modules` and
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+1. **Reconciled: S54 no longer defines the `JASPERENGINE_TITLE_ART` option, ThorVG, `hb-draw` or
+   Clipper2 conditions** (S53 R40, §6.15 owns them, because S53 lands first and its code sits
+   behind them); S54 owns the player wiring, the stub (moved to
+   `engine/core/subsystem/TitleArtRuntimeNone.cpp`, outside the module folder) and the `_3D` and
+   `_MESHER` sub-options S59 needs.
+2. **Reconciled: the always-built target is 60 KiB, not 40 KiB**, shared with S58's
+   `engine/core/titleanim/` and S60's `TitleArtLanguage` (S54's own part ≤ 34 KiB).
+3. **Reconciled: `force_rgba8` is S53's `fallback: "compare"`, and `overrides`, `rerender`,
+   `live_time` are keys of `render_title.options`,** so `render_title` fits the 1,500-character
+   tool limit with every spec's parameters (S53 §6.11).
+4. **Reconciled: the pool is S53's `TitleTargetPool`** (S54 said `TitleArtTargetPool`).
+5. **Reconciled: `title_fx` gains the ANIM feature and texture-rect frames here** (S58's A2), and
+   the component gains `qualityTier` and `runtimeEnvironments` (S59), so the wave-6C and same-wave
+   specs need nothing new from S54's files.

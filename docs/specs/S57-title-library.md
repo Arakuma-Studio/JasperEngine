@@ -1,6 +1,7 @@
 # S57 — Title Library: Looks, Color Schemes and Templates for any style of title
 
-**Wave / Depends on.** Title Art program (spec-first). Depends on **S53** (the `.titleart` document
+**Wave / Depends on.** Title Art program (spec-first), **wave 6C** (with S58, S60; program graph in
+§8, program rules in S53 §6.15). Depends on **S53** (the `.titleart` document
 v1, `TitleArtOps`, the renderer and its readback, `check_title`, the `title_art` MCP group, the
 JSON migration framework); **S56** for the effects and generators most looks use (a look whose
 effect or generator types are not registered yet is listed as unavailable, R6, so S57 can land
@@ -375,15 +376,15 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   `thumbnail_texts`) and every template once per sample language (en, ja): 240 × 135 RGBA8 PNGs in
   `editor/resources/titleart/thumbnails/<kind>/<id>.<text>.png`, transparent background, framed by
   text bounds plus the style's reach. Looks render with their own font pair, schemes on
-  `casino/outline-gold` with its font. Each PNG carries a `tEXt` chunk `jasper-titleart-thumb`
+  `casino/outline-gold` with its font. Each PNG carries a `tEXt` chunk `jasper.titleart.thumb`
   with the SHA-256 of (item canonical bytes, font files used, `TITLE_ART_BAKE_VERSION`, text, size).
   `--check` recomputes recipes without rendering and exits 1 listing stale or missing thumbnails.
 - **R33. Live previews** (`TitleLibraryPreviews`): renders library items on the user's own layer (its
   text, font, size, warp, distort, weight, transforms) or document (templates on their own
   placeholders) for S55's tiles: key = SHA-256 of (item id, revision, the layer's content key,
   applied scheme, Dimension, `TITLE_ART_BAKE_VERSION`), excluding position and canvas; requests
-  carry a priority (visible tiles first), at most 2 in flight, submitted through S55's
-  `TitlePreviewQueue` (S55 R67: the one 4 ms per-frame budget S53's and S59's previews share),
+  carry a priority (visible tiles first), at most 2 in flight, submitted through S53's
+  `TitlePreviewQueue` (S53 §6.13, priority `Tiles`: the one 4 ms per-frame budget every title preview shares),
   time-sliced on the S53 renderer (contract decision 2), cancelled when the panel closes; GPU
   LRU of 240 tiles; disk cache `.jasperengine/cache/titleart/library/<key>.png` (contract decision
   11); a pending tile keeps its old picture only if it shows the same layer; a failed render shows
@@ -394,7 +395,7 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   `foldForSearch`, S55 R27: full-width to ASCII, half-width to full-width katakana, katakana to
   hiragana, lower case) any of: the item's `name.en`, `name.ja`, `synonyms`
   (both languages, romaji included), `tags`, family names (both languages), `dimension`, and the
-  derived effect tags (§6.13: `deep glow`, `bevel`, `pattern zebra`, `glass`, `3d`...); results
+  derived effect tags (§6.13: `light glow`, `bevel`, `pattern zebra`, `glass`, `3d`...); results
   ranked by `fuzzyScore` (name first, then synonyms and tags −80, as S25's scorer). Filters: kind,
   family, dimension, tags (all), scope, favorites, available. Searching never uses the network.
 
@@ -430,8 +431,9 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
 ### Platform & backends
 
 - **R39.** `ColorSchemeApply` is CPU code with no GPU or platform dependency, built on every export
-  target inside `JASPERENGINE_TITLE_ART`; a player links it only when a shipped Realtime or Glyph
-  Atlas title has a `color_schemes` member (S54's module detection reads that member). Everything
+  target inside `JASPERENGINE_TITLE_ART`; it is part of the module, so a player has it exactly when
+  it has the module (a shipped Realtime or Glyph Atlas title, S54 R52) and a Baked-only game has
+  none of it. Everything
   else in this spec is editor-only: nothing under `editor/resources/titleart/` is a player input; a
   game gets only the fonts and environments its documents imported, as ordinary assets (S54/S59
   decide what an export includes). The pack is staged next to the editor binary (`bin/titleart/`,
@@ -490,7 +492,9 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   replaces, font pair, environment, allowlists, provenance; ≤ 400 tokens); `sheet` → the chosen items
   rendered on the agent's text (or on a layer of a document), numbered cells with the same numbers
   in the JSON, ≤ 9 cells, ≤ 1024 × 576 (about 786 image tokens). Kinds: `looks`, `color_schemes`,
-  `templates`, `fonts`, `environments` (S56 adds `effects`, `generators`; S58 `reveals`).
+  `templates` and the pack rows of `fonts` (values of S53's program `kind` enum; `effects`,
+  `generators`, `blend_modes` and `fonts` are S53's, `environments`, `materials_3d` and
+  `bevel_profiles` S59's, which list S57's four environments, `animation_presets` S58's).
 - **R44. Ops for agents.** The ops of R7–R9 and R13–R17 are `edit_title` ops (S53): a batch made only
   of library ops (`save_*`, `copy_library_item`, `delete_library_item`) needs no document `path`.
   Results list `changes` (replaced and kept members, imported files with paths, the Dimension change,
@@ -513,7 +517,7 @@ instance), `public/favicon.svg`, `docs/*.png`. Pachislop's third-party parts kee
   `jasper://docs/title-art`. `docs/unity-glossary.md` gains rows for Preset (Look), Preset Library
   (Title Library) and "Swatches/Color Presets" (Color Scheme).
 - **R48. Lua.** S57 adds no Lua API; S54's `TitleArt:setColorScheme(id)` and
-  `TitleArt:getColorSchemes()` call R12's function.
+  read-only `colorSchemes` property call R12's function.
 
 ### Data & compatibility
 
@@ -646,7 +650,7 @@ the layer origin and become `layer position + k × value`.
     "accents": [{...gold rim...}, {...red rim...}],
     "base":   {...},
     "bevel_rim_3d": null,
-    "side_3d": {"preset": "custom", "color": "#5a2a00", "metalness": 1, "roughness": 0.35}
+    "side_3d": {"preset": "custom", "color": "#5a2a00", "metallic": 1, "roughness": 0.35}
   },
   "face_glow": "#fff0a0",
   "glow": "#ffb000",
@@ -790,7 +794,7 @@ the scheme has them; a relief-only pattern (opacity 0, relief > 0) is structure 
 colour patterns are cleared. The face's inner glow takes `face_glow`.
 
 Effects and generators: glow effects take `glow` (gradient glows `glow_gradient`); drop, inner and
-perspective shadows and the 3D shadow catcher take `shadow` (never black); the 3D glint takes
+perspective shadows take `shadow` (never black); the 3D glint takes
 `glint`. Every colour and gradient parameter marked `light` (S56's `ParamDef::light`: the colours of light
 effects and of generators) is mapped by luma onto `light_ramp` closed by black and white
 (`onRamp`): colours with every channel ≥ 0.92 (white cores) stay unless every visible colour of
@@ -906,19 +910,19 @@ Rule: `<family>/<slug>`, slug from the English name, lowercase words joined by `
   `f-rainbow-glass-gold` → `rainbow-glass-gold`; `f-pat-zebra` → `zebra-gold`; `f-pat-giraffe` →
   `giraffe`; `f-pat-leopard` → `leopard`; `f-pat-tiger` → `tiger`; `f-pat-checker` → `checker`;
   `f-plate-red` → `red-plate-gold-rim`; `f-plate-makura` → `pillow-plate-black-gold`;
-  `f-plate-hokuto-box` → `slanted-box-plate`; `f-fx-jackpot` → `jackpot-rays-sparkles`;
+  (source id withheld: denied term, §6.7.3) → `slanted-box-plate`; `f-fx-jackpot` → `jackpot-rays-sparkles`;
   `f-3d-gold-plate` → `gold-on-red-stack-3d`; `f-3d-box-plate` → `slanted-box-plates-3d`;
   `f-3d-rainbow` → `rainbow-candy-3d`; `f-3d-rainbow-glass-gold` → `rainbow-glass-gold-3d`;
   `f-3d-popout` → `pop-out-gold-3d`; `f-3d-candy` → `candy-glitter-3d`; `f-3d-inflate` →
   `inflate-candy-3d`; `f-3d-two-tone` → `two-tone-split-3d`; `f-orb-candy-<c>` → `orb-candy-<c>-3d`
   (blue, green, red, gold, rainbow, white, purple), `f-orb-glass-<c>` → `orb-glass-<c>-3d` (green,
   purple), `f-orb-metal-<c>` → `orb-metal-<c>-3d` (gold, silver).
-- **metal (29):** `f-gold-classic` → `classic-gold`; `f-gold-hiro` → `double-stroke-gold`;
+- **metal (29):** `f-gold-classic` → `classic-gold`; (source id withheld: denied term, §6.7.3) → `double-stroke-gold`;
   `f-gold-ultimate` → `gradient-map-gold`; `f-gold-liquid` → `liquid-gold`; `f-gold-crumple` →
   `crumpled-gold`; `f-gold-pale` → `pale-gold`; `f-silver-premium` → `silver-premium`; `f-rose-gold`
   → `rose-gold`; `f-copper` → `copper`; `f-black-gold` → `black-gold`; `f-black-silver` →
   `black-silver`; `f-chrome` → `chrome-bevel`; `f-chrome-satin` → `satin-chrome`; `f-chrome-liquid`
-  → `liquid-chrome`; `f-fx-deepglow-gold` → `deep-glow-gold`; `f-fx-chrome-glint` →
+  → `liquid-chrome`; `f-fx-deepglow-gold` → `light-glow-gold`; `f-fx-chrome-glint` →
   `chrome-star-glints`; `f-3d-gold` → `gold-3d`; `f-3d-chrome` → `chrome-3d`; `f-3d-silver` →
   `silver-premium-3d`; `f-3d-black-chrome` → `black-chrome-red-line-3d`; `f-3d-red` →
   `candy-apple-red-3d`; `f-3d-chrome-blue` → `chrome-blue-stack-3d`; `f-3d-titanium` →
@@ -1002,7 +1006,7 @@ final values in the file. All 2D unless marked 3D (S59 material presets named as
 
 | id | Build | Font |
 |---|---|---|
-| `casino/vegas-marquee` | Face linear `#fff4c0 → #ffc020 → #a05a00`, ring bevel 3 %, gold finish; rims 1 % `#200800`, 6 % `#b00010` with pattern `dots` (`#fff6d0`, scale 3 %) as bulbs and inner glow `#ffe0a0`, 1.5 % `#ffd040` bevelled; `outer_glow` `#ffb030` 24 px behind; generator `glints` (highlights) | bungee / dela-gothic-one |
+| `casino/vegas-marquee` | Face linear `#fff4c0 → #ffc020 → #a05a00`, smooth bevel 3 % with gloss `ring`, gold finish; rims 1 % `#200800`, 6 % `#b00010` with pattern `dots` (`#fff6d0`, scale 3 %) as bulbs and inner glow `#ffe0a0`, 1.5 % `#ffd040` bevelled; `outer_glow` `#ffb030` 24 px behind; generator `glints` (highlights) | bungee / dela-gothic-one |
 | `casino/poker-velvet-red` | Face radial `#ff3040 → #8a0010`, texture `noise` 0.15 soft light, satin multiply 0.4; rims 1.2 % gold (gold finish, cove bevel), 3 % `#0a0204`; `drop_shadow` opacity 0.55, size 20 px, colour `#2a0006` | playfair-black-italic / zen-old-mincho-black |
 | `casino/lucky-clover` | Face linear `#d8ffd0 → #20c040 → #005a20`, green metal finish; rims 1.5 % white with bevel, 4 % gold metal, base 2 % `#002a10`; generator `glints` (stars) | titan-one / dela-gothic-one |
 
@@ -1011,7 +1015,7 @@ final values in the file. All 2D unless marked 3D (S59 material presets named as
 | id | Build | Font |
 |---|---|---|
 | `metal/brushed-steel` | Face linear `#e8ecf0 → #8a94a0 → #d0d6dc`, texture `brushed` 0.5 at 0°, chamfer bevel 2.5 % depth 4 gloss `linear`; rims 1 % `#1a1e24`; `drop_shadow` opacity 0.6 size 10 px | anton / zen-kaku-gothic-new-black |
-| `metal/riveted-iron-3d` (3D) | Extrude depth 20 %, chamfer bevel; face custom `#5a5e64` metalness 1 roughness 0.55 with texture `hammered` (surface); band 1: box plate 8 % gunmetal with pattern `dots` relief-only (rivets); environment `warehouse` | russo-one / zen-kaku-gothic-new-black |
+| `metal/riveted-iron-3d` (3D) | Extrude depth 20 %, chamfer bevel; face custom `#5a5e64` metallic 1 roughness 0.55 with `surface {kind: hammered}`; band 1: box plate 8 % gunmetal with pattern `dots` relief-only (rivets); environment `warehouse` | russo-one / zen-kaku-gothic-new-black |
 
 **Neon (5)**
 
@@ -1021,7 +1025,7 @@ final values in the file. All 2D unless marked 3D (S59 material presets named as
 | `neon/double-tube-cyan` | Knockout; rims 0.8 % white, 1.6 % `#00c8ff`, 1.4 % transparent gap (fill opacity 0), 0.8 % white, 1.6 % `#00c8ff`; `outer_glow` `#00e0ff` 32 px add | monoton / rocknroll-one |
 | `neon/outline-lime` | Face `#c8ff3a` fill opacity 0.15; rim 1.4 % `#c8ff3a`; inner glow `#e8ff9a`; `outer_glow` `#a0ff20` 28 px add | tilt-neon / rocknroll-one |
 | `neon/synthwave-chrome` | Face linear horizon chrome `#ffffff → #7ae0ff (0.45)`, hard stop to `#1a0050 (0.5) → #ff3ad0 → #fff0ff`, button bevel; rims 1 % white, 3 % `#2a0060`; `outer_glow` `#ff3ad0` 30 px; generator `light_streaks` (`cyan`) | audiowide / rocknroll-one |
-| `neon/tube-3d` (3D) | Inflate; face `emissive` `#ff40c0` strength 2 under a `glass` band 1 % (transmission 1); environment `night_city`; glint on | tilt-neon / rocknroll-one |
+| `neon/tube-3d` (3D) | Inflate; face `emissive` `#ff40c0` `emission_intensity` 2 under a `glass` band 1 % (transmission 1); environment `night_city`; glint on | tilt-neon / rocknroll-one |
 
 **Fire, Ice & Energy (1)**
 
@@ -1048,11 +1052,11 @@ final values in the file. All 2D unless marked 3D (S59 material presets named as
 | `scifi/hud-cyan` | Face `#00e0ff` fill opacity 0.2 with `scanlines` (intensity 0.35, spacing 4 px); rim 0.8 % `#8af6ff`; `outer_glow` `#00e0ff` 20 px add; generator `magic_circle` (`hud`) below, following | orbitron (wght 900) / train-one |
 | `scifi/hologram-glitch` | Face linear `#bff8ff → #2a8aff`, opacity 0.75, sheen 0.8; `scanlines`; `glitch` amount 0.3; `chromatic_aberration` 4 px | audiowide / train-one |
 | `scifi/plasma-edge` | Face `#0a0f1e`; rims 1 % `#50a0ff`, `outer_glow` `#3a80ff` 18 px; generator `lightning` (`electrify`, blue) | orbitron (wght 900) / train-one |
-| `scifi/titanium-bevel-3d` (3D) | Extrude 16 %, chamfer 3 %; face `blue_metal` with texture `spun`; band 0.8 % `emissive` cyan keyline; `warehouse` | russo-one / train-one |
+| `scifi/titanium-bevel-3d` (3D) | Extrude 16 %, chamfer 3 %; face `blue_metal` with `pattern` `brushed_metal` (S56's kind) and `flakes` 0.2; band 0.8 % `emissive` cyan keyline; `warehouse` | russo-one / train-one |
 | `scifi/visor-chrome-3d` (3D) | Extrude 12 %, round bevel; face `chrome` with gradient `#ffffff → #2060ff (0.55) → #000820`; side gunmetal; `night_city`; glint | audiowide / train-one |
 | `scifi/contour-light-guide` | Face `#0b1a2a`; rim 0.8 % `#2ad8ff`; `contour_lines` (4 lines inward, cyan, glow) | orbitron (wght 700) / train-one |
 | `scifi/warp-streak` | Face linear `#ffffff → #6ae8ff`; rim 1 % `#04203a`; `motion_trail` (smear, 180°, 60 px, taper); generator `speed_lines` (`flow_h`) below | orbitron (wght 900) / train-one |
-| `scifi/reactor-core-3d` (3D) | Inflate; face `emissive` `#ff8a20` strength 1.5; band 1.5 % `chrome`; band 3 % `black_gloss`; generator `aura` (`rising_weak`, orange) below; `night_dark` | russo-one / train-one |
+| `scifi/reactor-core-3d` (3D) | Inflate; face `emissive` `#ff8a20` `emission_intensity` 1.5; band 1.5 % `chrome`; band 3 % `black_gloss`; generator `aura` (`rising_weak`, orange) below; `night_dark` | russo-one / train-one |
 
 **Fantasy (10)**
 
@@ -1066,7 +1070,7 @@ final values in the file. All 2D unless marked 3D (S59 material presets named as
 | `fantasy/royal-crest` | Face `#6a1aa0` with gloss and satin; rims 1 % `#1a0030`, 2 % gold metal, base 2 % gold metal; generator `glints` (highlights) | cinzel-decorative-black / zen-old-mincho-black |
 | `fantasy/carved-wood` | Face linear `#c08850 → #7a4a20`, texture `brushed` 0.6 at 0° (grain) + `clouds` 0.2, chamfer 2 %; rim 1.2 % `#2a1606`; `drop_shadow` | medievalsharp / dela-gothic-one |
 | `fantasy/parchment-ink` | Face `#2a1a0a`, erode amount 0.35 edge 4 %; no rims; generator `ink_splatter` (`ink_behind`, small) | medievalsharp / yuji-syuku |
-| `fantasy/rune-glow-3d` (3D) | Extrude 12 %; face `emissive` `#50e0ff` strength 1.2; side and bevel custom stone `#6a6660` roughness 0.8 with texture `grunge`; `night_dark`; glint | cinzel-decorative-black / zen-old-mincho-black |
+| `fantasy/rune-glow-3d` (3D) | Extrude 12 %; face `emissive` `#50e0ff` `emission_intensity` 1.2; side and bevel custom stone `#6a6660` roughness 0.8 with `surface {kind: crumple}`; `night_dark`; glint | cinzel-decorative-black / zen-old-mincho-black |
 | `fantasy/gilded-shield-3d` (3D) | Extrude 10 %; face `gold`; band 6 % box plate `blue_metal` enamel; band 1.5 % `gold`; `sunset_harbour` | cinzel-decorative-black / zen-old-mincho-black |
 
 **Horror (10)**
@@ -1080,15 +1084,15 @@ final values in the file. All 2D unless marked 3D (S59 material presets named as
 | `horror/rusted-cage` | Face linear `#a04a1a → #4a1a08`, textures `grunge` + `hammered`, chamfer bevel; rims 1 % black, 3 % `#3a3a3a` with pattern `stripes` vertical (bars) | black-ops-one / dela-gothic-one |
 | `horror/burnt-ember` | Face `#1a1410` with texture `grunge`; inner glow `#ff5010` noise 0.6 (embers in cracks); `outer_glow` `#ff3000` 12 px; generator `particles` (`embers`) | creepster / yuji-syuku |
 | `horror/static-signal` | Face linear `#ffffff → #9a9a9a`; `scanlines` (`interlace`); `glitch` 0.5; `chromatic_aberration` 6 px; `grain` 0.4 | creepster / dela-gothic-one |
-| `horror/gothic-candle` | Face linear `#ffe8b0 → #c08030`; rim 1 % `#100800`; `outer_glow` `#ffb040` 16 px; generator `backlight` (`god_rays`, gold, intensity 0.4) | cinzel-decorative-black / zen-old-mincho-black |
-| `horror/obsidian-ooze-3d` (3D) | Inflate; face `black_gloss`; side `emissive` `#40ff60` strength 0.6; `night_dark` | nosifer / yuji-syuku |
-| `horror/bloodstone-3d` (3D) | Extrude 10 %; face `ruby` darkened (`#5a0008`, transmission 0.3); band 2 % `black_gloss`; `night_dark`; glint low | creepster / zen-old-mincho-black |
+| `horror/gothic-candle` | Face linear `#ffe8b0 → #c08030`; rim 1 % `#100800`; `outer_glow` `#ffb040` 16 px; generator `backlight` (`god_rays`, gold, intensity 40) | cinzel-decorative-black / zen-old-mincho-black |
+| `horror/obsidian-ooze-3d` (3D) | Inflate; face `black_gloss`; side `emissive` `#40ff60` `emission_intensity` 0.6; `night_dark` | nosifer / yuji-syuku |
+| `horror/bloodstone-3d` (3D) | Extrude 10 %; face `ruby` darkened (`#5a0008`, transmission 0.3); band 2 % `black_gloss`; `night_dark`; glint intensity 0.5 | creepster / zen-old-mincho-black |
 
 **Cartoon (10)**
 
 | id | Build | Font |
 |---|---|---|
-| `cartoon/bubble-pop` | Face linear `#ffffff → #7ad8ff → #2a8aff`, gloss cap 0.8, smooth bevel 6 % depth 6; rims 2 % white, 4 % `#10307a`, base 3 % `#0a1a40` | titan-one / mochiy-pop-one |
+| `cartoon/bubble-pop` | Face linear `#ffffff → #7ad8ff → #2a8aff`, gloss opacity 0.8, smooth bevel 6 % depth 6; rims 2 % white, 4 % `#10307a`, base 3 % `#0a1a40` | titan-one / mochiy-pop-one |
 | `cartoon/comic-burst` | Face linear `#ffe020 → #ff8a00` with `halftone` (6 px, 45°, on the face part); rims 1.5 % black, 4 % white, 1.5 % black | bangers / dela-gothic-one |
 | `cartoon/sticker-white` | Face `#ff5a8a`; rim 6 % white (round join); `drop_shadow` opacity 0.35 distance 6 px size 10 px | lilita-one / mochiy-pop-one |
 | `cartoon/chunky-shadow` | Face `#ffd000`; rim 1.5 % `#3a1a00`; `extrude` (long shadow, 225°, 18 px, `#3a1a00`) | titan-one / potta-one |
@@ -1183,8 +1187,8 @@ which writes the full `.titlecolors` file (the committed file is the full one; t
 not kept). Derivations:
 - `paints.face.fill`: linear gradient of the face ramp's stops, angle 90; `ramp` (metal finish):
   `[dark, face darkest, face mid, face lightest, #ffffff]` when `finish` is `metal`, else null;
-  `material_3d`: `metal` → metalness 1, roughness 0.25, colour = face ramp at 0.4; `gloss` →
-  metalness 0, clearcoat 1, roughness 0.15; `matte` → roughness 0.7; `shade` = `shadow`.
+  `material_3d`: `metal` → metallic 1, roughness 0.25, colour = face ramp at 0.4; `gloss` →
+  metallic 0, clearcoat 1, roughness 0.15; `matte` → roughness 0.7; `shade` = `shadow`.
 - `paints.dark`, `base`, `accents[]`: solid fills of the anchors (an accent named `gold metal` or
   `silver metal` takes the `gold` / `silver` scheme's accent paint); `side_3d` = face darkest × 0.7.
 - `face_glow` = face lightest; `glow_gradient` = `[glow, face mid]`; `glint` = face lightest;
@@ -1248,10 +1252,10 @@ clipping, adjustment layers) and its Japanese text as `sample.ja`; `sample.en` i
 | `t-popout-3d` | `casino/rush-pop-out-3d` | RUSH |
 | `t-cho-gekiatsu` | `casino/super-red-hot` | SUPER⏎RED HOT (超⏎激アツ) |
 | `t-satin-chrome` | `metal/special-satin-chrome` | SPECIAL |
-| `t-hokuto-box` | `casino/slanted-box-plate` | ONE STRIKE (一撃必殺; was 覇王伝説) |
-| `t-kanzen-fukkatsu` | `metal/liquid-gold-vertical-kicker` | LIMIT BREAK + AWAKEN (限界突破 + 覚醒; was 完全復活 + 転生) |
+| (source id withheld, §6.7.3) | `casino/slanted-box-plate` | ONE STRIKE (一撃必殺) |
+| `t-kanzen-fukkatsu` | `metal/liquid-gold-vertical-kicker` | LIMIT BREAK + AWAKEN (限界突破 + 覚醒) |
 | `t-push-inflate` | `casino/push-button-inflate-3d` | PUSH |
-| `t-ganso-3d` | `casino/original-depth-fade-3d` | THE ORIGINAL (元祖カミナリ; was 元祖ツラヌキ) |
+| `t-ganso-3d` | `casino/original-depth-fade-3d` | THE ORIGINAL (元祖カミナリ) |
 | `t-yaku-80` | `casino/about-80-percent-3d` | ABOUT 80% (約80%) |
 | `t-neon-knockout` | `neon/fever-hollow-neon` | FEVER |
 | `t-kasure-brush` | `wa/awakening-dry-brush` | AWAKEN (覚醒) |
@@ -1287,11 +1291,11 @@ the family's gradient) unless stated; "title" / "subtitle" are the `text` / `sub
 | `gems/crystal-title` | CRYSTAL (水晶) / LEGEND | title `gems/diamond-3d`; `glints`; `particles` (`bokeh`) |
 | `gems/treasure-banner` | TREASURE! (お宝ゲット！) | ribbon Shape `metal/gold-3d`; title `gems/ruby-faceted-3d` |
 | `gems/gem-counter` | +500, 1024 × 512 | digits `gems/sapphire-silver-frame-3d`; `glints` |
-| `wa/ink-title-vertical` | LEGEND (一騎当千), 1080 × 1920, vertical text for ja | title `wa/ink-brush`; red seal (rect Shape `wa/red-brush`, kicker 印); `ink_splatter` |
+| `wa/ink-title-vertical` | LEGEND (伝説), 1080 × 1920, vertical text for ja | title `wa/ink-brush`; red seal (rect Shape `wa/red-brush`, kicker 印); `ink_splatter` |
 | `scifi/hud-title` | SYSTEM ONLINE (システム起動) | title `scifi/hud-cyan` (with its `magic_circle`); subtitle `scifi/contour-light-guide` |
 | `scifi/mission-complete` | MISSION COMPLETE (任務完了) | title `scifi/visor-chrome-3d`; `light_streaks` (`anamorphic`); `shockwave` (`halo`) behind |
 | `scifi/countdown` | 00:59, 1024 × 512 | digits `scifi/contour-light-guide` |
-| `fantasy/kingdom-title` | KINGDOM OF ASH (灰の王国) / CHRONICLES | title `fantasy/engraved-gold`; subtitle `fantasy/carved-stone`; `backlight` (`god_rays`, gold) |
+| `fantasy/kingdom-title` | ASHEN REALM (灰の王国) / CHRONICLES | title `fantasy/engraved-gold`; subtitle `fantasy/carved-stone`; `backlight` (`god_rays`, gold) |
 | `fantasy/quest-complete` | QUEST COMPLETE (クエスト達成) | shield Shape `fantasy/gilded-shield-3d`; title `fantasy/royal-crest`; `glints`, `particles` (`gold_dust`) |
 | `fantasy/spell-label` | FIREBALL (火球), 1024 × 512 | title `fantasy/arcane-sigil` |
 | `horror/nightmare-title` | NIGHTMARE (悪夢) / NO ESCAPE | title `horror/blood-drip`; subtitle `horror/scratched-bone`; `smoke` (`black`) behind |
@@ -1314,8 +1318,8 @@ the family's gradient) unless stated; "title" / "subtitle" are the `text` / `sub
 | `minimal/hud-label` | SCORE 0 (スコア 0), 512 × 128 | text `minimal/ink-inset` |
 
 `gems/treasure-banner`, `elements/frozen-banner`, `metal/gold-award-badge`, `fantasy/quest-complete` and
-`sports/match-title` use 3D looks and are unavailable until S59 (R6). `horror/the-end` stands where a
-"YOU DIED" banner would be: that phrase is tied to a franchise (denied term).
+`sports/match-title` use 3D looks and are unavailable until S59 (R6). `horror/the-end` is a
+generic ending banner; game-specific catchphrases are denied terms.
 
 ### 6.11 The font pack (32 families, 46,181,548 bytes)
 
@@ -1421,9 +1425,9 @@ type HDR; provenance `{licence: CC0-1.0, source: polyhaven, url}`), the same rul
 `TitleLibraryIndex` derives for every item: `uses` (effect, generator, pattern, texture and 3D
 material types), `features` (`bevel`, `knockout`, `erode`, `glass`, `reflection`, `finish`,
 `pattern:<kind>`, `texture:<kind>`, `3d`, `inflate`, `extrude`, `generators`) and `cost`
-(S53's `CostTier` `cheap` / `medium` / `heavy`: the maximum over the item's effects and generators,
-`heavy` for any 3D look). Each derived term has an English phrase and a Japanese
-word from a table in `TitleLibrarySearch.cpp` (`light_glow` → "light glow", "deep glow" / ライトグロー,
+(S53's `CostClass` `C0`..`C4`: the maximum over the item's effects and generators, at least `C3`
+for any 3D look). Each derived term has an English phrase and a Japanese
+word from a table in `TitleLibrarySearch.cpp` (`light_glow` → "light glow", "power glow" / ライトグロー,
 `pattern:zebra` → "zebra" / ゼブラ, `knockout` → "hollow" / 中抜き, `inflate` → "puffy" / ぷっくり);
 both are searchable. Family names are searchable in both languages and by id.
 
@@ -1441,7 +1445,7 @@ then every enabled rim without offset (2D) or band (3D), inner to outer.
 | `style_lint.hue_count` | ≥ **3** chromatic hue families (C\* > **25**; one family = within **30°**) across face and rings | none (advice: keep rims achromatic or in the face's family) |
 | `style_lint.rims_thin` | 2D text, rim total > 0 and < **5 %** of size | `set` rims scaled to a total of 8 % |
 | `style_lint.rims_thick` | rim total > **16 %** (heavy-face stem width) | `set` rims scaled to 12 % |
-| `style_lint.hard_shadow` | a `drop_shadow` with opacity > 0.8, size < 4 % of size (in px at the layer's size) and luma < 0.15; or a 3D shadow catcher with opacity > 0.8, softness < 0.25, luma < 0.15 | `set` opacity 0.6 and size 7 % (catcher: opacity 0.6, softness 0.5) |
+| `style_lint.hard_shadow` | a `drop_shadow` with opacity > 0.8, size < 4 % of size (in px at the layer's size) and luma < 0.15; | `set` opacity 0.6 and size 7 % |
 | `style_lint.spectrum_span` | multi-line text whose face or a rim has a spectrum gradient with span `layer` | `set` span `line` |
 | `style_lint.noop_knockout` | knockout on with no enabled rim of width > 0, or with face fill opacity 1 | `add_rim` 1 % white / `set` face opacity 0 |
 | `style_lint.noop_erode` | erode on with amount 0 or edge 0 | `set` amount 0.5, edge 6 % |
@@ -1499,8 +1503,7 @@ backgrounds, compared premultiplied with Pachislop's three limits (max channel d
 mean 0.25/255, at most 0.1 % of pixels over 8/255; a premultiplied mode added to
 `tools/mcp/pngdiff.py`). Each case renders twice first (identical bytes). Updating a golden
 (`JASPER_TITLE_UPDATE_GOLDEN=1`) needs a row in S53's title golden ledger (name, metric before and
-after, reason), checked like `tools/htmlui/check_golden_ledger.py`; until S53 defines that ledger, S57
-adds `docs/titleart/goldens.md` and `tools/titleart/check_golden_ledger.py`.
+after, reason) in `docs/titleart/goldens.md`, checked by S53's `tools/titleart/check_golden_ledger.py`.
 
 ### 6.15 MCP: `list_title_library` and the ops
 
@@ -1508,7 +1511,8 @@ S53 registers `list_title_library` in group `title_art` (Read, read-only, idempo
 playing). Its schema as this spec needs it (`McpSchema` builders, closed objects):
 
 ```
-kind        stringEnum looks|color_schemes|templates|fonts|environments   (S56/S58 add values)
+kind        stringEnum (S53's program enum: effects|generators|blend_modes|fonts|looks|color_schemes|
+            templates|environments|materials_3d|bevel_profiles|animation_presets)
 id          string            one item: detail tier
 query       string            words, en/ja/romaji
 family      string
@@ -1525,10 +1529,10 @@ sheet       object {text?, ids? (≤ 9), path? + layer? (render on a document's 
 Description (≤ 400 characters): "Title Art library: Looks, Color Schemes, Templates, fonts,
 environments. No arguments: the catalogue. kind + query/family/tags: rows with a ready `use` op. id:
 one item. sheet: items rendered on your text or layer as one numbered image: pick by seeing. Apply
-with edit_title ops apply_look, apply_color_scheme, apply_template." Listing size: S53's 800 plus
-S57's ≤ 450 = ≤ 1,250 characters (under the 1,500 tool default; S53 §6.11 leaves 8,400 characters of
-the group for S54-S60, of which S57 takes these 450 and ≤ 160 for its op names in `edit_title`'s
-description). No new tool. `available` is not a parameter: unavailable items are listed with
+with edit_title ops apply_look, apply_color_scheme, apply_template." Listing size: S57's row of S53
+§6.11's program budget table: ≤ 450 characters on `list_title_library` (which ends at ≤ 1,430 with
+S53's 860 and S56's 120) and 0 on `edit_title` (S53's description already names the library op
+family and points at `jasper://docs/title-art#ops`). No new tool. `available` is not a parameter: unavailable items are listed with
 `available: false` and the reason.
 
 | Call | Returns | Size |
@@ -1638,14 +1642,14 @@ dispatches the eight ops to `TitleLibraryApply` / the library store; an
 | `title_library.keep_color_scheme` | User | bool | true |
 | `title_library.folded_sections` | User | list of `<kind>/<family>` | `[]` |
 
-Commands (S25 CommandCatalog, placed by S55): `titleart.saveAsLook`, `titleart.saveAsColorScheme`,
-`titleart.saveAsTemplate`, `titleart.revertToLook`, `assets.createTitleArtFromTemplate`. No default
+Commands (S25 CommandCatalog, placed by S55): `titleDesigner.saveAsLook`, `titleDesigner.saveAsColorScheme`,
+`titleDesigner.saveAsTemplate`, `titleDesigner.revertToLook`, `assets.createTitleArtFromTemplate`. No default
 shortcuts.
 
 ### 6.18 Player size (S34)
 
-Only `ColorScheme.cpp` / `ColorSchemeApply.cpp` reach players, inside `JASPERENGINE_TITLE_ART`, and only
-when a shipped document has `color_schemes` (S54's module detection gains that condition). Estimated
+Only `ColorScheme.cpp` / `ColorSchemeApply.cpp` reach players, as part of the `JASPERENGINE_TITLE_ART`
+module (a player has them exactly when it has the module, S54 R52). Estimated
 ≤ 30 KB Linux Release, ≤ 15 KB wasm gzip. Everything else (library, previews, lint, baker, pack): editor
 only.
 
@@ -1670,13 +1674,13 @@ only.
 | AC15 (R36, §6.14.2) | `test_title_library.py::test_gate` (CI, sharded): every available item on its sample texts passes as R36 states; the run prints counts per kind (checked, unavailable by reason, allowlisted ≤ 10 %); **red controls**: every fixture of §6.14.4 fails exactly its check and its twin passes. |
 | AC16 (R35, R45) | gtest `editor/tests/titleart/StyleLintTest.cpp`: per rule, fires on the bad twin with the measured value, not on the good twin, and its fix op makes it pass; `LibraryChecksTest`: a `gold`-schemed face moved to olive (hue +40°) fails `color_scheme_match` and its fix passes, a metal face with finish and bevel off fails `metal_range`, their twins pass; `MatchesPachislop`: our findings on the dump's `lint_cases` equal `lint.ts`'s (rule ids mapped). `test_title_library_mcp.py`: `check_title` returns `style_lint.contrast` with `measured`, `threshold`, `rim#1` and a `fix` that `edit_title` applies. |
 | AC17 (R37, §6.14.3) | `test_title_library_calibration.py`: for each check, `calibration.json`'s `L`, `R`, `T` are recomputed from the gate's run and the red controls; `T` sits in the middle half; **red controls**: a threshold changed in code without the file → fail; a `T` set to the library's worst value → fail. |
-| AC18 (R38) | `title-library verify` and `PachislopPortTest.DeniedTerms`: an injected term in a name, synonym, tag, template sample and text layer each fail; "Hokuto" matches as a word, "hokutosei" (a word containing it) does not, 北斗 matches as a substring. |
+| AC18 (R38) | `title-library verify` and `PachislopPortTest.DeniedTerms`: an injected term in a name, synonym, tag, template sample and text layer each fail; a Latin denied term matches as a whole word and not inside a longer word, a CJK denied term matches as a substring (test terms read from `denied_terms.txt`). |
 | AC19 (R28–R31) | `tools/ci/test_check_notices.py` new cases: a font directory without `OFL.txt` or without a NOTICE row fails; `--installed` on the Linux install tree finds `licenses/titleart-font-*-OFL.txt`; `fetch_fonts.py --verify` (offline) matches every font file's SHA-256 and size with `SOURCE.json` and every path is under `ofl/`; S57's four HDRIs are in S59's manifest with SHA-256 and pass S59's checks. `test_title_library_ops.py::test_font_import`: `apply_look` with `apply_font` imports `assets/TitleArt/Fonts/dela-gothic-one/` with `OFL.txt` and a `.meta` provenance once (a second apply imports nothing); with `JASPERENGINE_TITLEART_LIBRARY_DIR` pointing at an empty directory the op succeeds with `font_unavailable` and the layer's font unchanged. |
 | AC20 (R32, R33) | `title-library bake-thumbnails --check` exits 0 on the committed tree; **red control**: a colour edited in a look's file → exit 1 naming that look. gtest `TitleLibraryPreviewsTest` (fake renderer): a position change keeps the key, a text change makes a new one; never more than 2 in flight; a frame's slice stays within the budget; LRU evicts the oldest past 240; a pending tile keeps its old image only for the same layer; device loss re-requests visible tiles. |
 | AC21 (R40, R41) | `tools/perf` bench `title_library_bench` on a build server and lane machine H (before/after table in Progress): every R40 budget; the editor binary's growth ≤ 1.5 MiB; the staged thumbnails ≤ 16 MiB (the baker fails above `JASPER_TITLEART_THUMB_BUDGET`, red control with a 1 MiB budget); a project without `color_schemes` exports byte-identical with and without S57 (S34's size tools), one with it grows by the measured `ColorSchemeApply` size (≤ 30 KB). |
 | AC22 (R43, §6.15) | `tools/mcp/tests/test_title_library_mcp.py`: the group is hidden until `tool_groups` enables `title_art`; catalogue ≤ 600 characters; rows ≤ 120 characters each and a row's `use` op, pasted into `edit_title`, applies; detail ≤ 1,600 characters; a 9-cell sheet returns one image ≤ 1024 × 576 with the JSON numbered alike; a sheet over 1 s returns a `job_id`; `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py` pass. |
 | AC23 (R12, R39) | `ColorSchemeApplyTest.EmbeddedSchemes`: `expose` of a `color_scheme` parameter with two options writes both into `color_schemes`; the engine function on the document equals the editor op's result byte for byte (canonical JSON); empty `options` gives `color_scheme_options_empty` in `check_title`. The player-side switch through Lua is S54's AC. |
-| AC24 (R34) | gtest `TitleLibrarySearchTest`: `gold` finds `metal/classic-gold`; `きん` and `kin` find the `gold` scheme; `ゴールド` and `ごーるど` find the same items (kana folding); `ＧＯＬＤ` (full width) equals `gold`; "light glow" finds `metal/deep-glow-gold` through derived tags; all words must match (`gold zebra` finds `casino/zebra-gold`, not `metal/classic-gold`); runs under the harness's network guard. |
+| AC24 (R34) | gtest `TitleLibrarySearchTest`: `gold` finds `metal/classic-gold`; `きん` and `kin` find the `gold` scheme; `ゴールド` and `ごーるど` find the same items (kana folding); `ＧＯＬＤ` (full width) equals `gold`; "light glow" finds `metal/light-glow-gold` through derived tags; all words must match (`gold zebra` finds `casino/zebra-gold`, not `metal/classic-gold`); runs under the harness's network guard. |
 | AC25 (R42) | `tools/mcp/tests/test_title_library_ui.py` (xvfb, isolated editor; runs once S55's panel exists): clicking a Looks tile applies with one undo step named `Apply Look Classic Gold`; Ctrl+Z restores; Revert to Look re-applies; Save As Look writes the file; a `→3D` tile converts with the toast; screenshots of the three tabs in the evidence. |
 | AC26 (R10, R11) | `TitleLibraryApplyTest.Deterministic`: one document with two id seeds, the same look applied → identical canonical JSON after id normalisation and identical renders; `preview` leaves the history, the files and the project untouched (no import even for a pack font). |
 | AC27 (R47) | `test_docs.py`: `title-library gen-docs --check` passes; `jasper://docs/title-library` serves per-family sections; `gen_tool_docs.py --check` and `tool_budget.py --check` pass. |
@@ -1684,9 +1688,25 @@ only.
 
 ## 8. Dependencies & conflicts
 
+**The Title Art program graph and waves** (the same in S53-S60; S53 §8 is the source, S53 §6.15
+the shared rules; an arrow means "needs"):
+
+| Wave | Specs | Needs |
+|---|---|---|
+| 6 (title art) | S53 core | merged work only |
+| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of S53 §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+
+Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
+compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
+fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
+S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
+wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
+rest of S55 lands in 6B.
+
 - **Depends on.** S53: the document codec and its JSON migration framework, `TitleArtOps` and its
   commit, `look {id, color_scheme}` (S57 adds `look.owner` and effect `from_look`, §6.4), part keys
-  with positional aliases, `exposed` with `color_scheme`, `ParamUnit::Px` and gizmo hints, `CostTier`,
+  with positional aliases, `exposed` with `color_scheme`, `ParamUnit::Px` and gizmo hints, `CostClass`,
   the renderer and readback, `render_title` previews and jobs, `check_title`'s registry (S53 §6.12
   assigns S57 `style_lint`, `color_scheme_match`, `metal_range`), `list_title_library` (S53 §6.11:
   800 characters; S57 adds ≤ 450 for `family`, `dimension`, `tags`, `scope`, `favorites`, `sheet` and
@@ -1701,15 +1721,17 @@ only.
   (`provenance` section, or S57 adds it with S36's schema).
 - **Blocks.** S55's Library panel content; S60's Pachislop importer (`PachislopPort`,
   `pachislop-map.json`, `TitleLibraryApply::lookFromStyle`) and template variants (it extends
-  `placeholders`); S58's reveal kinds in `list_title_library` (it adds a kind).
+  `placeholders`); S58's `animation_presets` rows in `list_title_library` (S53's enum carries the
+  kind).
 - **Aligned with the specs as written on 2026-11-04** (their names win where they move): S56's
-  effect ids (`light_glow`, `aura`, `drips`, `scanlines`, `pixelate`, `outline` for Pachislop's
+  effect ids (`light_glow`, `aura`, `drips`, `scanlines`, `pixelate`; S53's `outline` for Pachislop's
   keyline) and preset ids; S59's environment ids, its HDRI folder and fetcher (S57 adds four entries
   instead of a second pack) and its material preset names; S55's featured-template slot, search fold
-  and preview queue; S54's `colorSchemes` "any scheme" when `options` is empty (R12). **Still
-  assumed:** S54 treats a document member `color_schemes` as a reason to link `ColorSchemeApply`
-  (§6.18), and exports the fonts S57 imported under `assets/TitleArt/Fonts/` only as its subsetting
-  decides; S59 accepts the four extra HDRIs within its manifest and size rule.
+  and preview queue (now S53's `TitlePreviewQueue`); S54's `colorSchemes` "any scheme" when
+  `options` is empty (R12). **Settled with the owners:** `ColorSchemeApply` is part of the module
+  (S54 R52); S54 exports the fonts S57 imported under `assets/TitleArt/Fonts/` only as its
+  subsetting decides; S59 R66 accepts the four extra HDRIs within its manifest and size rule; S53
+  §6.1 lists `look.owner`, `from_look` and `color_schemes`; the title golden ledger is S53's.
 - **Merge hotspots.** `editor/mcp/tools/TitleArtTools*.cpp` (S53, S56, S58: `list_title_library`
   kinds), `editor/titleart/TitleArtOps.cpp` (op dispatch), `tools/ci/check-notices.py` and
   `NOTICE.md`, root `CMakeLists.txt` (embedding, install staging), `editor/AppSettings`/settings
@@ -1757,4 +1779,19 @@ only.
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+1. **Reconciled: `ColorSchemeApply` has no separate link condition**; it is part of the
+   `titleart` module, which only Realtime and Glyph Atlas titles pull in (S54 R52). A per-member
+   condition would need a third sub-option for about 30 KB.
+2. **Reconciled: `list_title_library` kinds are S53's program enum**; `environments` rows are S59's
+   (they include S57's four HDRIs), `animation_presets` S58's (was "reveals").
+3. **Reconciled: no op names in `edit_title`'s description** (was ≤ 160 characters); S53's
+   description names the op families, so `edit_title` stays under 1,500.
+4. **Reconciled: item `cost` uses S53's `CostClass` C0-C4** (was `CostTier`), at least C3 for 3D looks.
+5. **Reconciled: Lua reads `colorSchemes` (S54's property)**, not `getColorSchemes()`; command ids use
+   the `titleDesigner.` prefix of S55's window.
+6. **Reconciled: names.** `metal/deep-glow-gold` is `metal/light-glow-gold` and the derived term is
+   "power glow" (no product names); source ids and old texts that carry denied terms appear only in
+   §6.7.3's rename table; sample texts `ASHEN REALM` and `伝説` replace texts tied to published works.
+7. **Reconciled: 3D look members use S59's names** (`metallic`, `emission_intensity`, `surface`,
+   no 3D shadow catcher); 2D members use S53's (`gloss` ring, gloss `opacity`); Backlight intensity
+   is S56's percent.

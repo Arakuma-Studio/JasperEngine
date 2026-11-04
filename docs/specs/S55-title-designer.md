@@ -1,14 +1,17 @@
 # S55 — Title Designer: the window where people author Title Art
 
-**Wave / Depends on.** Title Art program (spec-first), after S53's document, ops and renderer
-(M1-M3 of S53) and S54's Title Art Renderer component. Depends on:
+**Wave / Depends on.** Title Art program (spec-first), **wave 6B** (with S54, S56, S59; program
+graph in §8, program rules in S53 §6.15), after S53. Depends on:
 - **S53**: the `.titleart` document v1 (§6.1), `TitleArtOps` and `TitleArtDocument::commit` (§6.2),
   the renderer, the member schema and effect registry, `check_title`'s checks, bake, `get_title`;
-- **S54**: the Title Art Renderer's Glyph Atlas mode (Preview As), its create menus and drops
-  (S54 R6), the instance rectangle for In Context, the Characters UI it hosts here (S54 R62);
-- **S57**: the Looks, Color Schemes and Templates data, `TitleLibraryApply::preview`, live tile
-  previews and their cache (`TitleLibraryPreviews`), families, favorites and recents, the bundled OFL
-  font pack and the baked first-paint thumbnails;
+- **S54** (same wave, S54 owns them): the Title Art Renderer's Glyph Atlas mode (Preview As), its
+  create menus and drops (S54 R6), the instance rectangle for In Context, the Characters UI it
+  hosts here (S54 R62);
+- **S57** (wave 6C): the Looks, Color Schemes and Templates data, `TitleLibraryApply::preview`, live
+  tile previews and their cache (`TitleLibraryPreviews`), families, favorites and recents, the
+  bundled OFL font pack and the baked first-paint thumbnails. The Library panel (M6) is the one
+  part of S55 that lands with S57 in wave 6C; until then the window shows no Library region and the
+  empty state offers New Text instead of template cards;
 - **S56** (effect and generator catalogue, Add menus, gizmo hints), **S58** (Animation strip, Record),
   **S59** (3D layers, the 3D gizmo target) and **S60** (languages) plug into the window through the
   registries and the hooks defined here (§6.8); none blocks it;
@@ -351,7 +354,7 @@ entry (S53's), extended with the files above.
     same batch, named in the step: "Move Layer (Clipped)").
   - Project window drops onto the tree: a Texture makes an Image layer, an `.svg` a Vector layer, a
     font sets the font of the text layer under the pointer; OS files (`external_files`) are
-    copied into the document's folder first (fonts into `Fonts/`, web fonts converted, R59), one
+    copied into the document's folder first (fonts into `<assets>/TitleArt/Fonts/`, web fonts converted, R59), one
     step for the import and the layer.
 - **R15. Thumbnails.** Each layer row's thumbnail is that layer alone (with its effects and clipped
   layers) rendered by S53's renderer at 24 × 24 logical px × the display scale (at most 2×),
@@ -535,8 +538,9 @@ entry (S53's), extended with the files above.
   in px or %); `drawDeviceOverlay` draws rounded corners, cutouts, the home indicator and the safe
   rectangle; for TV resolutions (16:9, 1280 px and up) the title-safe (90 %) and action-safe (93 %)
   rectangles of SMPTE ST 2046-1 are drawn too. Content outside the safe rectangle is hatched red.
-  The same Display Height is what the window passes to S53's checks (R53), so "too small to read"
-  means on that device.
+  The same Display Height is what the window passes to S53's check engine function
+  (`CheckOptions::displayHeightPx`, S53 §6.12), so `legibility_contrast` is measured at the size
+  the title has on that device.
 - **R32. Guides and snapping.** Drag from a ruler to add a guide; drag a guide to move it, back onto
   the ruler to delete it; Guides ▾ > Clear Guides. Guides are view state per document in the
   workspace (D15). With **Snap** on, moving, scaling and handle drags snap within 8 screen px to the
@@ -724,7 +728,7 @@ entry (S53's), extended with the files above.
 - **R53. Style lint badge.** The Properties header shows the findings of `check_title`'s engine
   function (S53 §6.12) for the selection, with S57's `style_lint` findings (S57 R35: Pachislop's
   rules with their cited sources) and the checks later specs register (S58's animation checks):
-  `✓ 14 checks` or `⚠ 3`. Checks of kind `document` and `style_lint` run 300 ms after the last
+  `✓ 14 checks` or `⚠ 3`. Checks of kind `document` and S57's `style_lint` run 300 ms after the last
   commit, on the main thread within 2 ms, only while the panel shows; checks of kind `pixels`
   (contrast against the backgrounds, legibility at the Device's Display Height, clipping) run when
   the popover opens or on **Check Rendered**, as a job, never by themselves. The popover lists each
@@ -764,10 +768,10 @@ entry (S53's), extended with the files above.
   fetched once per session, cached for 7 days under the user cache directory). Hovering a family
   downloads its regular style into the user cache (`<user cache>/jasperengine/google-fonts/`, at most
   2 downloads at once) to preview it. Choosing it imports through `GoogleFontsImporter` in a new
-  **fonts-only mode** (`Options{writeCss = false, writeManifest = false, dir = "Fonts"}`): the styles
-  the user ticks (default Regular and Bold; the full weight range when the family is variable) go to
-  `<assets>/Fonts/<family-slug>/` with its licence file (`OFL.txt` or the family's), as the importer
-  names them today. Offline, the section says "Google Fonts needs a connection" and the rest works.
+  **fonts-only mode** (`Options{writeCss = false, writeManifest = false, dir = "TitleArt/Fonts/Google"}`):
+  the styles the user ticks (default Regular and Bold; the full weight range when the family is
+  variable) go to `<assets>/TitleArt/Fonts/Google/<family-slug>/` with its licence file (`OFL.txt`
+  or the family's), the importer's file naming, in the program's one font folder (S53 §6.15). Offline, the section says "Google Fonts needs a connection" and the rest works.
 - **R58. System fonts** (`editor/titleart/fonts/SystemFontList.h`): listed on a background job when the
   picker first opens, cached for the session:
   - Linux: `fc-list --format '%{file}\t%{index}\t%{family}\t%{style}\t%{fontformat}\n'` through
@@ -776,7 +780,7 @@ entry (S53's), extended with the files above.
   - Windows: DirectWrite (`IDWriteFactory::GetSystemFontCollection`, each face's file through
     `IDWriteLocalFontFileLoader::GetFilePathFromKey`).
 
-  Choosing one copies the file into `<assets>/Fonts/System/` (a `.ttc` whole, with the face index in
+  Choosing one copies the file into `<assets>/TitleArt/Fonts/System/` (a `.ttc` whole, with the face index in
   the document) as one step, after reading its OS/2 `fsType`. **Restricted License embedding**
   (0x0002 alone) asks first: "This font's licence does not allow embedding it in a game. Exports of
   titles using it fail unless you confirm you hold a licence (S54). Copy it anyway?"; every other
@@ -788,7 +792,7 @@ entry (S53's), extended with the files above.
 - **R59. WOFF, WOFF2 and collections** (`editor/titleart/fonts/WebFontDecode.h`): `.woff` (zlib tables
   through miniz) and `.woff2` (Brotli + the glyf/loca and hmtx transforms through the vendored
   google/woff2 decoder) are decoded to sfnt on import and written as `<stem>.ttf` (TrueType outlines)
-  or `<stem>.otf` (CFF), next to where the import was asked (picker: `<assets>/Fonts/`; a drop: the
+  or `<stem>.otf` (CFF), next to where the import was asked (picker: `<assets>/TitleArt/Fonts/`; a drop: the
   dropped folder); the `.woff` itself is not copied. A `.woff`/`.woff2` already inside the assets is
   listed in the picker with a **Convert** badge; choosing it converts it (one step creates the font
   file; the web font stays). Files over 64 MB decoded or failing the decoder's checks are refused
@@ -1019,7 +1023,7 @@ entry (S53's), extended with the files above.
 | `editor/window/TitleDesignerLayers.cpp`, `TitleDesignerProperties.cpp`, `TitleDesignerCanvas.cpp`, `TitleDesignerLibrary.cpp`, `TitleDesignerHistory.cpp`, `TitleDesignerFonts.cpp`, `TitleDesignerAdd.cpp` | The panels (members of the window class, split by file) |
 | `editor/titleart/designer/TitleDesignerState.{h,cpp}` | committed / working / preview documents, selection, staging, view state load/save |
 | `editor/titleart/designer/TitleCanvasView.{h,cpp}`, `TransientAssetResolver.{h,cpp}` | Renderer jobs, private scene, `requestDraw`, `processFrame`, view id 5, backdrops, snapshots, resource rebuild; the resolver that serves not-yet-imported fonts and images to previews |
-| `editor/titleart/designer/TitlePreviewQueue.{h,cpp}` | The shared budget arbiter (S53 R45), priorities, the layer-thumbnail GPU LRU |
+| `editor/titleart/designer/TitleLayerThumbnails.{h,cpp}` | The layer-thumbnail GPU LRU and its submissions to S53's `TitlePreviewQueue` (`editor/titleart/TitlePreviewQueue.{h,cpp}`, S53 §6.13: the shared budget arbiter of S53 R45) |
 | `editor/titleart/designer/TitlePropertyIndex.{h,cpp}`, `TitleSearchFold.{h,cpp}`, `TitleRows.cpp`, `TitleInheritance.cpp` | Collect pass, ranking, synonyms, folding; row data; inheritance table |
 | `editor/titleart/designer/TitleGizmo2D.{h,cpp}`, `TitleGizmo3D.{h,cpp}`, `TitleHandles.{h,cpp}`, `TitleSnap.{h,cpp}` | Pure hit-test and drag maths plus ImDrawList drawing |
 | `editor/titleart/designer/TitleTextEdit.{h,cpp}` | Caret/selection over S53 cluster boxes, preedit insertion |
@@ -1083,9 +1087,9 @@ namespace jasperengine::editor::titleart::designer {
         std::vector<SearchHit> query(std::string_view text, size_t limit) const;
     };
     std::string foldForSearch(std::string_view text);                            // R27
-    class TitlePreviewQueue {
+    class TitlePreviewQueue {   // S53's (editor/titleart/TitlePreviewQueue.h, S53 §6.13), shown for reference
     public:
-        enum class Priority : uint8_t { Hover, Layers, Tiles, Prefetch };
+        enum class Priority : uint8_t { Hover, Layers, Tiles, Thumbnails, Prefetch };
         using Key = std::array<uint8_t, 20>;                                      // SHA-1 of the content key
         uint64_t request(Priority, Key, PreviewJob job);   void cancel(uint64_t);  void cancelAll();
         void runFrame(double budgetMs);                                           // main thread, App::engineRender
@@ -1155,62 +1159,68 @@ the window has focus (as Pose Animation's do), all rebindable and listed in the 
 
 | Id | Name | Default |
 |---|---|---|
-| `title.toolHand` / `toolMove` / `toolRotate` / `toolScale` / `toolRect` | Hand / Move / Rotate / Scale / Rect Tool | Q / W / E / R / T |
-| `title.togglePivot` | Toggle Pivot/Center | Z |
-| `title.frameSelected` / `title.fitCanvas` / `title.zoomActual` | Frame Selected / Fit Canvas / Actual Size | F / Home, Alt+F / Shift+0 |
-| `title.zoomIn` / `title.zoomOut` | Zoom In / Out | Ctrl+= / Ctrl+- |
-| `title.editText` | Edit Text | Enter |
-| `title.find` | Find Setting | Ctrl+F |
-| `title.add` | Add… | Ctrl+Shift+N |
-| `title.duplicate` / `title.delete` / `title.rename` / `title.selectAll` | Duplicate / Delete / Rename / Select All Layers | Ctrl+D / Delete, Backspace / F2 / Ctrl+A |
-| `title.copy` / `title.cut` / `title.paste` | Copy / Cut / Paste Layers | Ctrl+C / Ctrl+X / Ctrl+V |
-| `title.group` / `title.ungroup` / `title.clip` | Group / Ungroup / Clipping Mask | Ctrl+G / Ctrl+Shift+G / Ctrl+Alt+G |
-| `title.forward` / `title.backward` / `title.toFront` / `title.toBack` | Bring Forward / Send Backward / Bring to Front / Send to Back | Ctrl+] / Ctrl+[ / Ctrl+Shift+] / Ctrl+Shift+[ |
-| `title.toggleVisible` / `title.toggleLock` | Hide / Lock Layers | H / L |
-| `title.nudgeLeft/Right/Up/Down` (+ Shift: ×10) | Nudge | Arrows (canvas focus) |
-| `title.up` | Select Parent | Esc |
-| `title.bake` | Bake Now | Ctrl+B |
+| `titleDesigner.toolHand` / `toolMove` / `toolRotate` / `toolScale` / `toolRect` | Hand / Move / Rotate / Scale / Rect Tool | Q / W / E / R / T |
+| `titleDesigner.togglePivot` | Toggle Pivot/Center | Z |
+| `titleDesigner.frameSelected` / `titleDesigner.fitCanvas` / `titleDesigner.zoomActual` | Frame Selected / Fit Canvas / Actual Size | F / Home, Alt+F / Shift+0 |
+| `titleDesigner.zoomIn` / `titleDesigner.zoomOut` | Zoom In / Out | Ctrl+= / Ctrl+- |
+| `titleDesigner.editText` | Edit Text | Enter |
+| `titleDesigner.find` | Find Setting | Ctrl+F |
+| `titleDesigner.add` | Add… | Ctrl+Shift+N |
+| `titleDesigner.duplicate` / `titleDesigner.delete` / `titleDesigner.rename` / `titleDesigner.selectAll` | Duplicate / Delete / Rename / Select All Layers | Ctrl+D / Delete, Backspace / F2 / Ctrl+A |
+| `titleDesigner.copy` / `titleDesigner.cut` / `titleDesigner.paste` | Copy / Cut / Paste Layers | Ctrl+C / Ctrl+X / Ctrl+V |
+| `titleDesigner.group` / `titleDesigner.ungroup` / `titleDesigner.clip` | Group / Ungroup / Clipping Mask | Ctrl+G / Ctrl+Shift+G / Ctrl+Alt+G |
+| `titleDesigner.forward` / `titleDesigner.backward` / `titleDesigner.toFront` / `titleDesigner.toBack` | Bring Forward / Send Backward / Bring to Front / Send to Back | Ctrl+] / Ctrl+[ / Ctrl+Shift+] / Ctrl+Shift+[ |
+| `titleDesigner.toggleVisible` / `titleDesigner.toggleLock` | Hide / Lock Layers | H / L |
+| `titleDesigner.nudgeLeft/Right/Up/Down` (+ Shift: ×10) | Nudge | Arrows (canvas focus) |
+| `titleDesigner.up` | Select Parent | Esc |
+| `titleDesigner.bake` | Bake Now | Ctrl+B |
 
 ### 6.6 What S55 needs from S53, S54, S57 and S59 (alignment)
 
-Read against the specs as written on 2026-11-04; their names win where they differ.
+Every item below is now in its owner's text under the name used here (S53's in its §6.15 hook
+table).
 
 - **S53 renderer** (§6.3): `TitleArtRenderer::begin(RenderRequest)` and `TitleRenderJob::step(StepBudget)`
   cover the canvas, layer thumbnails (`isolateLayer`), Draft (`pxScale`) and visible-window renders
-  (`region`). Needed beyond §6.3: progress (`passesDone`, `passesTotal`) and per-node cost on the job
-  for R71/R72 (S53's `RendererStats` holds totals); the **resolver** (`RenderRequest::assets`) is how
-  previews inject transient fonts: S55's `TransientAssetResolver` wraps the editor's resolver and maps
-  a font or image that is not yet a project asset (a system file, the Google download cache, S57's
-  pack) to its file for that request only. Device loss is S53 R19 (`SystemRender::getContextId()`);
-  S55's own targets follow the same signal (R64).
-- **S53 layout and geometry** (§6.6): per-cluster boxes of a laid-out text layer in document space
-  (caret, selection, the per-glyph gizmo), content bounds plus reach (gizmo box, tile frame, §6.3's
-  ROI bounds), and the outline paths and rim grow widths, which S55's part picking tests the pointer
+  (`region`); progress (`passesDone`, `passesTotal`, `progress()`) and per-node cost (`nodeCosts()`)
+  feed R71/R72. The **resolver** (`RenderRequest::assets`) is how previews inject transient fonts:
+  S55's `TransientAssetResolver` wraps the editor's resolver and maps a font or image that is not
+  yet a project asset (a system file, the Google download cache, S57's pack) to its file for that
+  request only. S58's playhead reaches the canvas as `RenderRequest::overrides` (a sampled pose).
+  Device loss is S53 R19 (`SystemRender::getContextId()`); S55's own targets follow the same
+  signal (R64).
+- **S53 layout and geometry** (§6.6 "Layout and geometry queries"): `layout()`'s per-cluster boxes
+  in document space (caret, selection, the per-glyph gizmo), `contentBounds` and `reachBounds`
+  (gizmo box, tile frame), `outlines` and `rimBands`, which S55's part picking tests the pointer
   against on the CPU (inside the outline: Face; within rim k's cumulative band: Rim k+1).
   Generators and adjustments are picked from an `isolateLayer` render at ¼ scale (alpha ≥ 0.05).
-- **S53 schema and registry** (§6.1, §6.5): the member table normalize clamps by (type, hard range,
-  default, enum values) queried by path; `ParamDef` (`label`, `kind`, `unit`, `min`/`max`/`step`,
-  `defaultValue`, `options`, `when`, `description`) and `EffectDef::gizmos` (`GizmoHint`). S55's
-  `TitleRows.cpp` adds only UI data.
-- **S53 document** (§6.2): `TitleArtDocument::commit` with a step name and a merge key; a whole-text
-  commit for Restore This Version (`commitText`); the stored after-text of each step for History
-  hover; a change notification for R74. **Ops:** `add_layer {from: <layer JSON>}` for paste and
-  cross-document drags (new ids for the layer and its contents).
-- **S54:** R6's create menus and drops (S55 only adds the document-chip drag); the instance's screen
-  rectangle for In Context (R30); a Glyph Atlas instance on an in-memory document for Preview As;
-  R62's Characters UI, hosted as the Document page's Runtime section through §6.8.
-- **S57:** `TitleLibraryApply::preview(doc, op)` for previews and the ops it commits (S57 R11), so
-  R44 holds; `TitleLibraryPreviews` (R33) submitting through `TitlePreviewQueue`; families (R23);
-  favorites and recents (R18); save dialogs' validators (R42); each template's main placeholder
-  (`placeholders[].role: "title"`, S57 §6) as the layer R5 selects; six featured templates for the
-  empty state (S57 picks them; until it does, the first template of each of six families).
-- **S56:** the Add palette's categories and entries (S56 §6.10, including "style setting" entries
-  such as Dry Brush, which switch on the style member and select its section: they never become
-  effect rows, D6), cost badges on rows and the Effects header (S56 R41), preset chips and seed dice
-  on cards (S56 R39), the "Follows a deleted layer" row warning (S56 R43).
-- **S59:** `Gizmo3DTarget` (S59 R56), its rows and sections through §6.8 (S59 R51), `set_dimension`
-  for the Dimension switch (S59 R50), its Realtime tiers in Preview As, its picker thumbnails through
-  `TitlePreviewQueue` (S59 R54).
+- **S53 schema and registry** (R9a, §6.5): `TitleArtSchema` (type, hard range, default, enum
+  values, unit, label, `FxAnim`) queried by path; `ParamDef` (`label`, `kind`, `unit`,
+  `min`/`max`/`step`, `defaultValue`, `options`, `when`, `description`, `anim`) and
+  `EffectDef::gizmos` (`GizmoHint`), `costClass`, `aliases`. S55's `TitleRows.cpp` adds only UI
+  data.
+- **S53 document** (§6.2, §6.8): `TitleArtDocument::commit` with a step name and a merge key;
+  `commitText` for Restore This Version; `stepText` for History hover; `changed` notifications
+  with their origin for R74; `add_layer {from}` for paste and cross-document drags.
+- **S53 preview queue** (§6.13): `TitlePreviewQueue`, which S55 submits to (R67) as S53's, S57's,
+  S59's and S60's previews do.
+- **S54** (same wave): R6's create menus and drops (S55 only adds the document-chip drag); the
+  instance's screen rectangle for In Context (R30); a Glyph Atlas instance on an in-memory
+  document for Preview As; R62's Characters UI, hosted as the Document page's Runtime section
+  through §6.8.
+- **S57** (wave 6C, Library panel only): `TitleLibraryApply::preview(doc, op)` for previews and the
+  ops it commits (S57 R11), so R44 holds; `TitleLibraryPreviews` (S57 R33) submitting through
+  `TitlePreviewQueue`; families (R23); favorites and recents (R18); save dialogs' validators (R42);
+  each template's main placeholder (`placeholders[].role: "title"`, S57 §6.3) as the layer R5
+  selects; the six featured templates of the empty state (S57 R42: `manifest.json` `featured`).
+- **S56** (same wave): the Add palette's categories and entries (S56 §6.10, including "style
+  setting" entries such as Dry Brush, which switch on the style member and select its section:
+  they never become effect rows, D6), cost badges on rows and the Effects header (S56 R41),
+  preset chips and seed dice on cards (S56 R39), the "Follows a deleted layer" row warning (S56
+  R43).
+- **S59** (same wave): `Gizmo3DTarget` (S59 R56), its rows and sections through §6.8 (S59 R51),
+  `set_dimension` for the Dimension switch (S59 R59), its Realtime tiers in Preview As, its picker
+  thumbnails through `TitlePreviewQueue` (S59 R54).
 ### 6.7 Scripted API and test access
 
 The window's public methods (§6.2) are what its UI calls; `TitleDesignerWindowTestAccess` (declared
@@ -1243,10 +1253,10 @@ does not exist and costs nothing.
 |---|---|
 | `focus_window`: `"title_designer"` in the enum, `{"title_designer", anyObject("")}`, description "title_designer: {path, select, panel, …} (jasper://docs/title-art)" | ≤ 95 |
 | `screenshot`: `"title_designer"` in `view`'s enum, description word | ≤ 25 |
-| `title_art` group | +0 |
+| `title_art` group | +0 (the `designer` block of `get_title` is a result field) |
 
-The core listing grows by at most 120 characters with no new tool, and the measured number goes in
-the evidence. If the default listing lacks that room, the description words go first (the keys are
+These are S55's row of S53 §6.11's program budget table. The core listing grows by at most 120
+characters with no new tool, and the measured number goes in the evidence. If the default listing lacks that room, the description words go first (the keys are
 already listed in `jasper://docs/title-art`), leaving about 60 characters (the enum values and an
 `anyObject("")`); if even those do not fit, room is made by moving existing `focus_window`
 description detail into `jasper://docs/editor-integration`, the conventions' rule (detail goes to
@@ -1284,9 +1294,9 @@ All window tests run headless in a child process with the editor's App (the
 | AC22 (R50-R52) | `TitleDesignerHistoryTest`: rows are only this document's steps with their names; a jump with no interleaved step undoes exactly those; with a scene step between, the popover lists it, Jump Anyway undoes it too, Restore This Version leaves it and adds one step; hovering a row previews that version with no step |
 | AC23 (R53) | `TitleDesignerLintTest`: S53's fixture with a low-contrast rim pair shows `⚠ 1`; Fix adds one step "Style Fix: Contrast" and the badge shows `✓`; the popover shows the rule, citation, measured value and threshold; no wording contains "good", "approved" or "looks" (string scan of the badge and popover texts) |
 | AC24 (R54, R55, R56, R60) | `TitleDesignerFontsTest`: picker sections and `.ttc` faces listed per face; each row's strip is the layer's first 24 code points shaped with that font (compared with S53's shaper output); Covers My Text hides fonts missing 激; the missing badge counts 2 for a Latin-only font on 激熱; Add Fallback Font offers fonts covering both first; a variable font shows its axes and named instances, sliders write `variations`, changing to a static font drops them in a step named "… (Axes Reset)" |
-| AC25 (R58) | `SystemFontListTest.ParsesFcList` (a captured `fc-list` output: files, faces, styles, CFF/TrueType kept, bitmap dropped); `FontLicenceTest.FsType`: Restricted (0x0002) asks and copies only after Copy Anyway, Installable (0), Preview & Print (0x0004) and Editable (0x0008) copy with the note; the copy lands in `<assets>/Fonts/System/` as one step. The CoreText and DirectWrite listers compile and list ≥ 1 font in the macOS and Windows CI unit runs |
+| AC25 (R58) | `SystemFontListTest.ParsesFcList` (a captured `fc-list` output: files, faces, styles, CFF/TrueType kept, bitmap dropped); `FontLicenceTest.FsType`: Restricted (0x0002) asks and copies only after Copy Anyway, Installable (0), Preview & Print (0x0004) and Editable (0x0008) copy with the note; the copy lands in `<assets>/TitleArt/Fonts/System/` as one step. The CoreText and DirectWrite listers compile and list ≥ 1 font in the macOS and Windows CI unit runs |
 | AC26 (R59) | `WebFontDecodeTest`: an OFL fixture font encoded as WOFF and WOFF2 (committed fixtures) decodes to sfnt whose every table equals the reference TTF's (WOFF2: glyf/loca reconstructed, compared by outline through HarfBuzz hb-draw); truncated, bad-checksum and over-64 MB inputs are refused with reasons. Red control: skipping the glyf transform fails the outline comparison |
-| AC27 (R57) | `GoogleFontsImporterTest.FontsOnlyMode` (the importer's existing fake HTTP server): fonts-only mode writes the TTFs and the licence under `Fonts/<slug>/`, no CSS and no manifest entry; the default mode is unchanged (its existing tests pass) |
+| AC27 (R57) | `GoogleFontsImporterTest.FontsOnlyMode` (the importer's existing fake HTTP server): fonts-only mode writes the TTFs and the licence under the `dir` it is given (`TitleArt/Fonts/Google/<slug>/` from the picker), no CSS and no manifest entry; the default mode is unchanged (its existing tests pass) |
 | AC28 (R61, R62) | `test_title_designer_window.py::test_document_chip_drag`: `send_input` drags the window's document chip into the Hierarchy: S54's drop creates one GameObject with a Title Art Renderer referencing the shown file, one step "Create Title Art (logo)" (S54 owns the Project-window drops and their tests); double-click on the `.titleart` in the Project window opens the window (`focus_window` state names it); the Inspector buttons of S53 and S54 open it |
 | AC29 (R75, §6.4) | `TitleDesignerUndoTest.OneStepPerGesture` (parameterized over every gesture of §6.3: gizmo drag, row scrub, wheel burst, nudge burst, handle drag, ramp stop drag, text session, Library apply, Add palette, drop): exactly one project-history step with the expected name; Esc mid-gesture: zero steps and the document hash unchanged. Red control: committing per frame (a test flag) produces N steps and fails |
 | AC30 (R74) | `test_title_designer_window.py::test_agent_edit_while_open`: an `edit_title` while a person's drag is staged cancels the drag, reloads, keeps the selection by id, shows the chip; the chip's Undo removes the agent's step only (`get_undo_history`) |
@@ -1303,8 +1313,27 @@ All window tests run headless in a child process with the editor's App (the
 
 ## 8. Dependencies & conflicts
 
-- **Depends on:** S53 (document, ops, `TitleArtDocument`, renderer, schema, registry, checks, bake,
-  `get_title`), S54 (component, creation function), S57 (apply, families, thumbnails, fonts pack),
+**The Title Art program graph and waves** (the same in S53-S60; S53 §8 is the source, S53 §6.15
+the shared rules; an arrow means "needs"):
+
+| Wave | Specs | Needs |
+|---|---|---|
+| 6 (title art) | S53 core | merged work only |
+| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of S53 §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+
+Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
+compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
+fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
+S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
+wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
+rest of S55 lands in 6B.
+
+- **Depends on:** S53 (document, ops, `TitleArtDocument` with `commitText` and `stepText`,
+  renderer and job progress, schema, registry, layout and geometry queries, checks, bake,
+  `get_title`, `TitlePreviewQueue`: all in S53 §6.15's hook table), S54 (same wave: component,
+  creation functions, Glyph Atlas instance), S56 (same wave: menus, badges, presets), S59 (same
+  wave: `Gizmo3DTarget`, rows), S57 (wave 6C: the Library panel's data; S55's M6 lands with it),
   S24 (timeline, `jumpTo`, origins), S25 (command catalog), S26 (drop surface, root-then-drill
   rule), S27 (field widgets), S04 (AssetRefs, `.ttc` as Font from S53), S06 (Background lane), S15
   (pass lists, GPU timing), unicode-text (CJK editor fonts, `IMGUI_USE_WCHAR32`,
@@ -1317,13 +1346,11 @@ All window tests run headless in a child process with the editor's App (the
   `SystemFonts::isLoadable`, `SystemFontList` checks candidates with HarfBuzz (`hb_face_count` > 0 and
   a non-zero glyph count of the face), already linked through S53, and switches to the shared check
   when it lands.
-- **Blocks:** S58 (its panel through §6.8), S59 (its rows and the 3D gizmo target), S60 (toolbar
-  hook). None is blocked from starting: they use the interfaces of §6.2 and §6.8.
-- **Alignment items** for S53 (not in its text on 2026-11-04): `add_layer {from}` for paste; job
-  progress and per-node cost on `TitleRenderJob`; the per-cluster layout query and outline/rim-band
-  geometry for part picking; `commitText` and stored step texts. For S57: six featured templates.
-  For S53, S57 and S59: submitting preview renders through `TitlePreviewQueue`. Where a spec names
-  these differently, its names win and this spec is updated in Deviations.
+- **Blocks:** S58 (its panel through §6.8), S59 (its rows and the 3D gizmo target, same wave), S60
+  (toolbar hook). None is blocked from starting: they use the interfaces of §6.2 and §6.8.
+- **Alignment items** (resolved): `add_layer {from}`, job progress and per-node cost, the layout and
+  geometry queries, `commitText`/`stepText` and the preview queue are S53's (S53 §6.15); S57 R42
+  names the six featured templates; S57, S59 and S60 submit through `TitlePreviewQueue`.
 - **Merge hotspots:** `editor/App.cpp` (construction, menu, dock, `engineRender`, shortcut panels),
   `ProjectWindow.cpp` (`openFile`, also S53's), `editor/mcp/tools/ViewTools.cpp` (`focus_window`, `screenshot`; S24, S26 and HTML UI
   specs touch it), `editor/search/SearchScorer.cpp` (S25), `editor/backend/BackendWin.cpp`,
@@ -1382,4 +1409,15 @@ All window tests run headless in a child process with the editor's App (the
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+1. **Reconciled: `TitlePreviewQueue` is S53's** (`editor/titleart/TitlePreviewQueue.{h,cpp}`, S53
+   §6.13), because S53 lands in wave 6 and its thumbnails must share the budget from the start; the
+   API and priorities are this spec's (plus `Thumbnails`), and S55 keeps the layer-thumbnail LRU
+   (`TitleLayerThumbnails`).
+2. **Reconciled: the Library panel milestone (M6) lands in wave 6C with S57**; the rest of S55 is
+   wave 6B. Until then the empty state offers New Text instead of template cards.
+3. **Reconciled: fonts copied by the picker go under `<assets>/TitleArt/Fonts/`** (`Google/<slug>/`,
+   `System/`), the program's one font folder (S53 §6.15), instead of `<assets>/Fonts/`.
+4. **Reconciled: command ids use the prefix `titleDesigner.`** (was `title.`), shared with S57's
+   window commands; S58 keeps `titleAnimation.` for its own context.
+5. **Reconciled: "too small to read" is `legibility_contrast` at `CheckOptions::displayHeightPx`**
+   (S53 §6.12); no separate size check exists.

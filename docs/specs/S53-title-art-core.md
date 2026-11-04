@@ -1,18 +1,22 @@
 # S53 — Title Art core: the `.titleart` document, its renderer, text, core effects, bake and MCP tools
 
-**Wave / Depends on.** Title Art program, first spec (S54-S60 build on it). Depends only on merged
-work: S03 (atomic writes, migrations), S04 (GUIDs, dependency graph, Missing Assets), S05 (file
-watcher, hot reload), S06 (jobs), S14 (texture cooks of the baked PNGs), S24 (named undo, agent
-attribution) and S31 (`call` CLI, tool groups, budget). **Lands together with S55** (the Title
-Designer window): S53 is the document, renderer, bake and agent surface; S55 is the window for
-people. Owner area:
-- `engine/core/titleart/` (document codec and migrations, effect/generator registry, text and
-  geometry, renderer), behind `JASPERENGINE_TITLE_ART`;
+**Wave / Depends on.** Title Art program, **wave 6 (title art)**: the first spec, alone in its
+wave; S54-S60 build on it (program graph and waves in §8, program rules in §6.15). Depends only on
+merged work: S03 (atomic writes, migrations), S04 (GUIDs, dependency graph, Missing Assets), S05
+(file watcher, hot reload), S06 (jobs), S14 (texture cooks of the baked PNGs), S24 (named undo,
+agent attribution) and S31 (`call` CLI, tool groups, budget). S53 is the document, renderer, bake,
+the hooks every later title spec needs (§6.15) and the agent surface; the Title Designer window
+(S55) follows in wave 6B. Owner area:
+- `engine/core/titleart/` (document codec and migrations, member schema, effect/generator registry,
+  text and geometry, renderer), behind `JASPERENGINE_TITLE_ART`, and the module's CMake
+  (`engine/core/titleart/TitleArtSources.cmake`, §6.15);
 - `engine/shaderlib/titleart.vert`, `titleart.frag`, `engine/shaderlib/titleart/*.glsl`;
-- `editor/titleart/` (document, ops, bake, checks, preview), `editor/mcp/tools/TitleArtTools.cpp`,
-  `editor/mcp/tools/ImageDiffTools.cpp`, `editor/window/InspectorWindowTitleArt.cpp`;
-- `docs/title-art.md`, `docs/mcp/guide/title-art.md`, `docs/mcp/guide/title-art-effects.md`
-  (generated).
+- `engine/libs/clipper2/`;
+- `editor/titleart/` root files (document, ops, bake, checks, `TitlePreviewQueue`),
+  `editor/mcp/tools/TitleArtTools.cpp`, `editor/mcp/tools/ImageDiffTools.cpp`,
+  `editor/window/InspectorWindowTitleArt.cpp`;
+- `docs/title-art.md`, `docs/mcp/guide/title-art.md` (the file and its section plan, §6.11; each
+  later spec writes its own section), `docs/mcp/guide/title-art-effects.md` (generated).
 
 ## 1. Goal
 
@@ -51,8 +55,14 @@ diffs and pass/fail checks with ready fixes.
 - Ten core effects (Outer Glow, Inner Glow, Drop Shadow, Inner Shadow, Outline, Color Overlay,
   Gradient Overlay, Pattern Overlay, Gaussian Blur, Adjust), the fourteen adjustment operations,
   two generators (Fill, Pattern Fill), and the declarative effect/generator registry (§6.5).
-- Bake (§6.9): outputs, shared frame, recipe chunk, stale detection, Auto Bake, export
-  behaviour, `check --titles`, the CLI through `jasperengine-editor call`.
+- Bake (§6.9): outputs, shared frame, recipe chunk, the bake sidecar `<file>.bake.json`, stale
+  detection, Auto Bake, export behaviour, `check --titles`, the CLI through
+  `jasperengine-editor call`.
+- The program hooks later specs build on (§6.15): the member schema with animation classes, the
+  render job's scheduling members, field overrides, kept layer splits and glyph cells, depth and
+  MSAA keys in the target pool, the shared preview queue, the light and max blend modes, reserved
+  document members, ops and tool parameters, and the program's module, folder, library and budget
+  rules.
 - Float readback (RGBA16F, RGBA32F) on GL core, Vulkan, D3D11 and Metal (§6.10).
 - MCP (§6.11-6.12): group `title_art` with `list_title_library`, `get_title`, `edit_title`,
   `render_title`, `check_title`, `export_title`; generic `diff_images` in `editor_tools`;
@@ -70,13 +80,15 @@ diffs and pass/fail checks with ready fixes.
   `TitleArt` API, live layers, clip property tracks, the player module wiring (`PlayerModules`,
   variants, `ModuleUsage`), export of `.titleart` and fonts for Realtime titles, font subsetting:
   S54. S53 adds the CMake option and the code behind it; S54 decides when a game links it.
-- The rest of the effect and generator catalogue (Deep Glow, glints, fire, lightning, shatter...):
+- The rest of the effect and generator catalogue (Light Glow, glints, fire, lightning, shatter...):
   S56. Looks, Color Schemes, Templates, the Pachislop converter, the font pack: S57
   (`apply_look`, `apply_color_scheme`, `apply_template` are reserved op names here). Time axis:
-  S58. Dimension 3D: S59. Languages, PSD/ASL import, PSD/SVG export: S60.
+  S58. Dimension 3D: S59. Languages, PSD/ASL import, PSD/SVG export: S60. S53 reserves their names
+  and provides their hooks (§6.15) but implements none of them.
 - Pachislop's interactive similarity-move cache, enlarged frames and lit-edge probes: they exist
   because its targets are full-frame; regions of interest and cached fields replace them (§6.3).
-- Print features (ICC, CMYK, dpi, mm sizes): games do not need them. The Japan Color 2011 ICC
+- Print features (ICC conversion, CMYK, mm sizes, bleed): games do not need them (S60 keeps only a
+  `dpi` tag for PNG and PSD exports and generates its own sRGB profile). The Japan Color 2011 ICC
   profile is never taken.
 - Copying the do-not-copy list's render graph: the renderer is an immediate pass list, as
   `docs/specs/README.md` requires.
@@ -223,7 +235,14 @@ nothing ops, did-you-mean errors); `synthesize_texture` (preview, then the same 
   clamping echoed per field, `%` fields echoed with their pixel value, did-you-mean errors listing
   valid alternatives, and the commit-time invariants (normalize, link sync, tree checks). A batch is
   one project undo step named by its ops ("Set Rim Width", "Add Effect Outer Glow", or
-  "Edit Title Art (5 changes)").
+  "Edit Title Art (5 changes)"). `add_layer {from}` inserts a layer object (pasted or dragged from
+  another document) with fresh ids for it and everything in it. Op names later specs implement are
+  reserved by §6.15 and answer `not_available` (naming the spec) until that spec lands.
+- **R9a. Member schema.** `TitleArtSchema` (`engine/core/titleart/TitleArtSchema.{h,cpp}`) is one
+  table of every document member by field path pattern (`style.rims[*].width`): value type, hard
+  range, default, enum values, unit, Inspector label and animation class (`FxAnim`, §6.5).
+  `normalizeTitleArt` clamps by it, `TitleArtOps` validates and suggests by it, S55's rows and S58's
+  track classes read it, and later specs register their members into it (§6.15).
 
 ### Functional — renderer
 
@@ -252,9 +271,19 @@ nothing ops, did-you-mean errors); `synthesize_texture` (preview, then the same 
 - **R17. Determinism.** Every random element is seeded from document data (`seed` + element
   seed); rendering never depends on ids, id order, frame timing, cache state or time slicing. Two
   renders of a document on one machine and backend are byte-identical.
-- **R18. Time slicing.** `TitleRenderJob::step(budget)` records passes until the CPU budget or the
-  pass budget is spent and resumes on the next call; the previous complete image stays valid until
-  the new one is done (double-buffered). The result equals a one-shot render byte for byte.
+- **R18. Time slicing.** `TitleRenderJob::step(budget)` runs whole steps (CPU stages and GPU
+  passes) until the budget is spent and resumes on the next call; the previous complete image stays
+  valid until the new one is done (double-buffered). The result equals a one-shot render byte for
+  byte. The job is a flat ordered step list and exposes what schedulers and progress readouts need
+  (§6.3): `progress()` and `passesDone/passesTotal`, `nextStepCostUs()` from each pass's
+  `costWeight` (ns per output pixel) times its pixels, `splitOversizedSteps(maxUs)` into scissor
+  tiles ≥ 256 × 256, `shaderKeys()`, `nodeCosts()` per layer, and `error()`.
+- **R18a. Render variants of one document.** A `RenderRequest` may carry field overrides (exposed
+  values, a sampled animation pose, a resolved language: values applied to the snapshot copy, never
+  to the document), `keepSplits` (layers whose own composite is kept as a cached split for a later
+  live compose) and `glyphCell` (one glyph of any text layer rendered alone, back or front part, in
+  a cell padded by the style's reach), §6.3. S54, S58 and S60 use these; none of them needs a second
+  renderer.
 - **R19. Device loss.** A new `SystemRender::getContextId()` drops every target, cache and pipeline
   and re-renders open previews; no stale handle is used.
 
@@ -301,10 +330,14 @@ nothing ops, did-you-mean errors); `synthesize_texture` (preview, then the same 
   fourteen operations.
 - **R31. Registry.** One declarative table per effect and generator (`TitleEffectRegistry`, §6.5)
   drives document defaults and validation, the Inspector rows (S55 and the S53 summary), the MCP
-  validation and `list_title_library`, the Lua names (S54), the generated docs page and the golden
-  case list. Adding an effect is one definition plus its pass code.
-- **R32. Bake outputs** as §6.9: shared trimmed frame, `round_to`, `alpha_bleed`, 8- or 16-bit,
-  recipe chunk `jasper.titleart`, `.meta` with texture import defaults on first write, all files of a
+  validation and `list_title_library`, the exposed-parameter targets (S54), the generated docs page
+  and the golden case list. Adding an effect is one definition plus its pass code. S53 declares
+  every member the program's definitions carry (§6.5: cost class, fallback class, live variant,
+  glyph safety, animation class per param, aliases, inputs, colour roles), with defaults, so S54,
+  S55, S56 and S59 build against one header; S56 fills the values for the catalogue.
+- **R32. Bake outputs** as §6.9: shared trimmed frame, `round_to`, `alpha_bleed` (reach 8 px,
+  a parameter of the routine for exports), 8- or 16-bit, recipe chunk `jasper.titleart`, the
+  sidecar `<file>.bake.json`, `.meta` with texture import defaults on first write, all files of a
   bake written all-or-nothing.
 - **R33. Stale detection.** An output is `fresh` when its recipe's source hash, asset hashes and
   bake version equal the current ones, else `stale` (with what changed), `missing` or `invalid`;
@@ -323,17 +356,24 @@ nothing ops, did-you-mean errors); `synthesize_texture` (preview, then the same 
 
 - **R37.** The renderer uses only fragment and vertex shaders, dynamic pipelines, RGBA8/R8 and
   (when available) float targets, at most 12 samplers and 4 uniform blocks per program, no MRT, no
-  depth buffers, no float blending (only RGBA16F with `blendRGBA16F`, else a shader over), no
-  compute, SSBOs, bindless, indirect draws or 64-bit atomics. It compiles for every shader target
-  (GLSL 410, GLSL ES 300, HLSL 5, MSL macOS and iOS, SPIR-V).
+  depth buffers in the 2D passes, no float blending (only RGBA16F with `blendRGBA16F`, else a
+  shader over), no compute, SSBOs, bindless, indirect draws or 64-bit atomics. It compiles for
+  every shader target (GLSL 410, GLSL ES 300, HLSL 5, MSL macOS and iOS, SPIR-V). The target pool
+  also serves depth and multisampled targets to the one consumer that needs them (S59's 3D layer
+  passes, §6.3); everything handed back to the compositor is a plain colour target.
 - **R38.** The RGBA8 fallback runs wherever RGBA8 renders (all five backends, all six targets) and
   agrees with the float path within §6.3's tolerance; it is forced in tests by
   `TITLE_ART_TEST_NO_FLOAT_TARGETS` (and `..._NO_FLOAT_FILTER`, `..._NO_R16F`), the FluidSimulator
   pattern.
 - **R39.** Frame space is memory rows on every backend (§6.3); an asymmetric golden catches a flip
   on GL core and Vulkan, and the fallback golden on the same fixture.
-- **R40.** `JASPERENGINE_TITLE_ART` (CMake option, default ON) compiles `engine/core/titleart`,
-  links ThorVG and Clipper2 and drops `HB_NO_DRAW`; OFF compiles none of it (zero bytes, zero work).
+- **R40.** `JASPERENGINE_TITLE_ART` (CMake option, default ON) compiles `engine/core/titleart`
+  (sources in `TitleArtSources.cmake`), builds and links ThorVG (`JASPERENGINE_HTMLUI OR
+  JASPERENGINE_TITLE_ART`) and Clipper2, and drops `HB_NO_DRAW`; OFF compiles none of it (zero
+  bytes, zero work) and HarfBuzz is byte for byte today's. `engine/notices.json` gains `clipper2`
+  (`"when": "titleart"`) and ThorVG's `when` becomes the list `["htmlui", "titleart"]`
+  (`tools/ci/check-notices.py` accepts a list). The program's module story (sub-options, the
+  always-built part, player wiring) is §6.15.
 
 ### Performance (budgets)
 
@@ -349,7 +389,10 @@ nothing ops, did-you-mean errors); `synthesize_texture` (preview, then the same 
 - **R44.** Peak live GPU target memory of the classic fixture at scale 1 ≤ 96 MB (Pachislop's
   full-frame design: about 25 MB per target at this canvas).
 - **R45.** Editor previews and thumbnails spend ≤ 4 ms of main-thread CPU per editor frame (p95
-  over 200 frames); visible items first; cancelled when their window closes.
+  over 200 frames); visible items first; cancelled when their window closes. One arbiter,
+  `TitlePreviewQueue` (`editor/titleart/TitlePreviewQueue.{h,cpp}`, §6.13), runs every title
+  preview of the editor (S53's thumbnails, S55's canvas thumbnails and hovers, S57's tiles, S59's
+  picker thumbnails, S60's language thumbnails), so the budget holds for all of them together.
 - **R46.** Bake of the classic fixture with readback, 8-bit encode and recipe ≤ 1.5 s wall on the GPU
   lane (≤ 12 s on llvmpipe).
 - **R47.** Codec: parse + normalize + write of a 256-layer, 1 MB document ≤ 60 ms; an op batch of 20
@@ -374,13 +417,15 @@ nothing ops, did-you-mean errors); `synthesize_texture` (preview, then the same 
 
 - **R53.** Group `title_art` ("Title Art documents (.titleart): library, edit, render, check,
   export.") with the six tools of §6.11, hidden until `tool_groups` enables it, within §6.11's
-  character caps; `diff_images` in `editor_tools`.
+  character caps; `diff_images` in `editor_tools`. §6.11's program budget table is the one place
+  the title specs' character claims are added up; every title spec stays inside its row.
 - **R54.** `edit_title` and the Designer call the same `TitleArtOps`; every call is one undo step
   attributed to the agent (`McpUndo::foldCall`), with `expect_rev`, `dry_run`, and a `render`
   option returning the image in the same call.
 - **R55.** `render_title` returns real alpha on chosen backgrounds, crops, numbered `try` sheets of
   what-if ops (file untouched), `compare` with a previous `rev` or a PNG and `changed_pct`, `layer`
-  isolation, `fallback: true` for the RGBA8 path, metrics-only mode.
+  isolation, `fallback: "rgba8"` for the RGBA8 path (`"compare"` for both), metrics-only mode, and the
+  free-form `options` object later specs add keys to (§6.11).
 - **R56.** `check_title` returns PASS/WARN/FAIL per check with measured values, thresholds, crops,
   method and ready-to-apply `fix` ops, and always says that passing is not aesthetic approval
   (§6.12).
@@ -394,8 +439,9 @@ nothing ops, did-you-mean errors); `synthesize_texture` (preview, then the same 
 - **R60.** `docs/mcp/guide/title-art.md` (`jasper://docs/title-art`) holds the agent guidance; the
   agent guide gets one entry in its "Other areas" index, ≤ 40 bytes with the generated group name.
 - **R61.** Editor Lua reaches everything through `Editor.call("edit_title", {...})`; S53 adds no
-  runtime Lua (S54's `TitleArt`), and the registry's `type` ids and param keys are the names S54's
-  Lua uses.
+  runtime Lua (S54's `TitleArt`). Runtime Lua reaches document values only through Exposed
+  parameter names (contract decision 13, S54 R66); the registry's `type` ids and param keys are the
+  field paths exposed targets name (`{layer: "<id>", field: "fx:outer_glow.size"}`).
 
 ### Data & compatibility
 
@@ -434,7 +480,11 @@ editable asset documents that a dedicated window edits (`.controller`, `.mask`, 
 - **Canonical text:** fixed member order (the order of the tables below), 2-space indent, one
   member per line, arrays of numbers on one line, numbers `%.7g` (integers plain), colours
   lowercase. **Every member is written, defaults included**, so a later change of a default never
-  changes how an existing file renders. Maps (`chars`, `lines`, `part_effects`, `variations`,
+  changes how an existing file renders. One exception, by design: S60's Translation objects
+  (`translations.<code>`) are sparse overrides of their source layer, written with `text`,
+  `status`, `source_hash` and then only the members present (S60 D5), because a written default
+  would freeze the source value into every language; the writer takes a per-member-kind sparse
+  flag from `TitleArtSchema` for exactly that kind. Maps (`chars`, `lines`, `part_effects`, `variations`,
   `features`, `material_links`, effect `params`) are written sorted by key (`chars` and `lines`
   numerically). `write(parse(write(d))) == write(d)`.
 - **Lenient read:** only a wrong or missing `format`, a `version` newer than this build, or text
@@ -514,8 +564,19 @@ that report positions say which space. The renderer converts once, in `TitleFram
 | `outputs` | [Output] | `[{"id": "main"}]` (all its defaults) | §6.1 "Outputs" |
 
 Reserved top-level names (later specs add them; until then they are unknown members and
-preserved): `animation` (S58), `languages` and `variants` (S60), `scene_3d` (S59: camera,
-environment, lights, tone mapping), `runtime` (S54).
+preserved; the owner's spec defines their content): `runtime` (S54: Characters, the Glyph Atlas
+layer), `scene_3d` (S59: camera, environment, lights, tone mapping), `color_schemes` (S57: the
+scheme data an exposed `color_scheme` parameter may pick), `animation` (S58), `source_language`,
+`languages`, `string_namespace`, `dpi` and `import_notes` (S60). (`variants` is not reserved: S60
+needs no such member.)
+
+Members later specs add inside S53's objects (optional, defaults that render exactly as S53 v1,
+no version bump, registered in `TitleArtSchema` by their owner): Transform `z`, `rotation_x`,
+`rotation_y` (S59) and `stretch` (S58); every layer `tint`, `flash` (S58) and `only_languages`
+(S60); layer `look.owner` and effect `from_look` (S57, below); text layer `glyph_mode` (S58),
+`text_key`, `translate`, `max_chars`, `translator_note`, `fit`, `translations` (S60); Text, Shape,
+Vector and Image `style_3d` (S59); CharAdjust `dz`, `tilt_x`, `tilt_y`, `face_3d`, `side_3d`,
+`bands_3d`, `rig` (S59); Image and Vector `translations` (S60).
 
 **Limits** (normalize clamps, with a warning): 256 layers in total, groups nested 16 deep, 32
 effects per stack, 16 rims, 8 masks per layer, 64 exposed parameters, 8 outputs, 1,024 code points
@@ -544,11 +605,12 @@ of text per layer, canvas 16..8192 per side and at most 33,554,432 pixels.
 | `transform` | Transform | | |
 | `masks` | [Mask] | `[]` | Multiplied in order |
 | `effects` | [Effect] | `[]` | Applied in order, index 0 first |
-| `look` | `{id: "", color_scheme: ""}` | | Informational: the Look and Color Scheme last applied (S57 writes it; `get_title` shows it; the renderer never reads it) |
+| `look` | `{id: "", color_scheme: "", owner: ""}` | | Informational: the Look and Color Scheme last applied (S57 writes it; `get_title` shows it; the renderer never reads it). `owner` (an Id, S57): on a generator layer or auto group a look created, the layer whose look created it |
 
 Transform: `position` Vec2 px `[0, 0]`; `rotation` deg 0 (clockwise); `scale` 1 (0.01..100,
 uniform); `flip_x`, `flip_y` false (mirror about the position, before rotation). S59 adds `z`,
-`rotation_x`, `rotation_y` (default 0) for Dimension 3D. **A group's transform is concatenated
+`rotation_x`, `rotation_y` (default 0) for Dimension 3D; S58 adds `stretch` (Vec2, `[1, 1]`).
+**A group's transform is concatenated
 into its children's placement** (children are positioned in group space and render sharp; the
 group composite is never resampled).
 
@@ -579,7 +641,7 @@ group composite is never resampled).
 | `warp` | Warp | | Outline operations run warp → distort → weight, before the style |
 | `distort` | Distort | | |
 | `weight` | number | 0 | %, −20..20: offset of the glyph outlines (Illustrator Offset Path) |
-| `dimension` | enum | `"2d"` | `2d`, `3d` (S59 owns `3d`; until S59 lands a `3d` layer renders as `2d` with problem `dimension_unavailable`) |
+| `dimension` | enum | `"2d"` | `2d`, `3d`. **The Dimension rule:** Text, Shape, Vector and Image layers have `dimension`; Group, Generator and Adjustment layers do not. S59 owns `3d` and the layer's `style_3d`; Text and Shape layers give S59 their outlines (after warp, distort, weight), Vector `shape` mode its paths, and Vector `artwork` mode and Image layers their alpha `trace` outline. While 3D the 2D `style` is kept untouched. Until S59 lands (or with `JASPERENGINE_TITLE_ART_3D` off), a `3d` layer renders as `2d` with problem `dimension_unavailable` |
 | `style` | Style2D | | |
 | `part_effects` | map PartKey → [Effect] | `{}` | Effects on one part's pixels, before the layer's effects |
 
@@ -670,10 +732,10 @@ looks render the same.
 |---|---|
 | `fill` | `kind: "solid"` (`solid`, `linear`, `radial`, `angle`, `reflected`, `diamond`, `shape_burst`, `image`, `source`), `color: "#ffffff"`, `gradient` (default), `angle: 90` (deg, 90 = top to bottom), `scale: 1`, `offset: 0` (−1..1), `span: "layer"` (`layer`, `line`, `char`), `image: {image: null, scale: 1, offset: [0, 0], rotation: 0, tile: false}`. `source` = the layer's own pixels (image, vector artwork); on text and shapes it is solid white with problem `fill_source_without_pixels` |
 | `opacity` | 1 (fill opacity: the element's own colour fades, effects still see the full shape) |
-| `bevel` | `enabled: false`, `profile: "smooth"` (`smooth`, `button`, `mesa`, `chamfer`, `ridge`, `cove`, `stepped`, `custom`), `profile_curve: [[0,0],[0.5,0.75],[1,1]]`, `size: 3` (%), `size_mode: "fixed"` (`fixed`, `fit`), `fit: 70` (% of local half-thickness), `depth: 3` (0..10), `soften: 0` (%), `light_angle: 120`, `light_altitude: 30`, `use_global_light: true`, `gloss: "ring"` (`linear`, `ring`, `double_ring`, `cove`, `rounded_steps`, `sawtooth`, `custom`), `gloss_curve` (identity), `highlight_color: "#ffffff"`, `highlight_opacity: 0.85`, `shadow_color: "#000000"`, `shadow_opacity: 0.6` |
+| `bevel` | `enabled: false`, `profile: "smooth"` (`smooth`, `button`, `mesa`, `chamfer`, `ridge`, `cove`, `stepped`, `custom`), `profile_curve: [[0,0],[0.5,0.75],[1,1]]`, `size: 3` (%), `size_mode: "fixed"` (`fixed`, `fit`), `fit: 70` (% of local half-thickness), `depth: 3` (0..10), `direction: "up"` (`up`, `down`: Photoshop's Direction; `down` negates the height so the bevel reads pressed in, S56's Deboss and S60's Photoshop import use it), `soften: 0` (%), `light_angle: 120`, `light_altitude: 30`, `use_global_light: true`, `gloss: "ring"` (`linear`, `ring`, `double_ring`, `cove`, `rounded_steps`, `sawtooth`, `custom`), `gloss_curve` (identity), `highlight_color: "#ffffff"`, `highlight_opacity: 0.85`, `shadow_color: "#000000"`, `shadow_opacity: 0.6` |
 | `reflection` | `enabled: false`, `map: null` (AssetRef to an equirectangular Texture; library maps are copied into the project on first use, S57), `amount: 1`, `blur: 75` (0..100), `rotation: 0` (deg), `colorize: 0` (0..1) |
 | `finish` | `enabled: false`, `gradient` (default), `amount: 1` (gradient map of the lit luminance: the gold trick) |
-| `pattern` | `kind: "none"` (`none`, `zebra`, `tiger`, `giraffe`, `leopard`, `checker`, `hazard`, `stripes`, `dots`, `sakura`, `seigaiha`, `asanoha`, `shippo`, `kikko`, `uroko`, `custom`), `color: "#000000"`, `color2: "#ffffff"`, `opacity: 1`, `scale: 12` (%), `angle: 0`, `seed: 1`, `image: null` (custom), `shade: 0.6`, `relief: 0` |
+| `pattern` | `kind: "none"` (`none`, `zebra`, `tiger`, `giraffe`, `leopard`, `checker`, `hazard`, `stripes`, `dots`, `sakura`, `seigaiha`, `asanoha`, `shippo`, `kikko`, `uroko`, `custom`; S56 §6.6.28 adds twelve procedural kinds), `color: "#000000"`, `color2: "#ffffff"`, `opacity: 1`, `scale: 12` (%), `angle: 0`, `seed: 1`, `image: null` (custom), `shade: 0.6`, `relief: 0` |
 | `satin` | `enabled: false`, `color: "#000000"`, `blend: "multiply"` (`normal`, `multiply`, `screen`, `overlay`), `opacity: 0.5`, `angle: 19`, `use_global_light: false`, `distance: 5` (%), `size: 7` (%), `contour: [[0,0],[0.5,1],[1,0]]`, `invert: true` |
 | `texture` | `kind: "none"` (`none`, `noise`, `sparkle`, `brushed`, `hairline`, `spun`, `flakes`, `ripple`, `grunge`, `clouds`, `hammered`, `crumple`, `liquid`), `amount: 0.3`, `scale: 4` (%), `blend: "overlay"` (`overlay`, `soft_light`, `screen`, `multiply`), `seed: 1`, `target: "color"` (`color`, `surface`: joins the bevel slope before lighting), `angle: 0` |
 | `inner_glow` | `enabled: false`, `color: "#ffffff"`, `size: 2` (%), `opacity: 0.6`, `noise: 0` |
@@ -743,7 +805,8 @@ Default `type` of a new adjustment layer: `hue_saturation`.
 
 #### Effect entry
 
-`{"id", "type": "<registry id>", "enabled": true, "params": {...}}`. Every param of the
+`{"id", "type": "<registry id>", "enabled": true, "params": {...}}`, plus `from_look` (bool,
+false; S57: on an auto group's effects, the ones a look brought). Every param of the
 definition is written; a missing param on read takes the definition's default (for v1 files) or
 the value a migration fills. Unknown params are kept. The S53 catalogue and every param's type,
 unit, range and default are in §6.5.
@@ -809,6 +872,7 @@ accepted everywhere and echoed in their long form:
 | `mask:<id>.` / `mask#<n>.` | `masks[...]` |
 | `gen.` | `generator.params.` |
 | `adj.` | `adjustment.` |
+| `band:<id>.` / `band#<n>.`, `3d.` | S59: `style_3d.bands[...].`, `style_3d.` |
 
 Document members are addressed with `layer` omitted: `canvas.width`, `global_light.angle`, `seed`,
 `outputs[0].scale`.
@@ -820,7 +884,7 @@ specs add ops, never tools:
 |---|---|---|
 | `set` | `layer?`, `values: {path: value}` | Sets fields; values are clamped (echoed `clamped`) |
 | `set_text` | `layer`, `text`, `font?`, `keep_chars?` (default false: char adjustments past the new length are dropped) | |
-| `add_layer` | `type`, `name?`, `parent?`, `before?` / `after?` (layer refs; default: top of `parent`), `values?`, `look?`, `generator?` (type, for generators), `adjustment?` (type) | Returns the new id |
+| `add_layer` | `type`, `name?`, `parent?`, `before?` / `after?` (layer refs; default: top of `parent`), `values?`, `look?`, `generator?` (type, for generators), `adjustment?` (type), or `from` (a complete layer object, `type` then optional; S55's paste and cross-document drag); S56 adds `preset?`, `follow?`, `place?`, `group?` for generators | Returns the new id; with `from`, new ids for the layer and everything in it (references inside the copy remapped, references outside it dropped with a `changes` note) |
 | `remove_layer` | `layer` | Also clears masks, exposed targets and `follow` that name it (each listed in `changes`) |
 | `duplicate_layer` | `layer`, `name?` | New ids for the copy and everything in it |
 | `move_layer` | `layer`, `parent?`, `before?` / `after?` | |
@@ -832,7 +896,7 @@ specs add ops, never tools:
 | `add_mask` / `remove_mask` | `layer`, `type` / `mask`, `values?` | |
 | `expose` / `unexpose` | `name`, `type`, `targets` / `name` | |
 | `link_material` / `unlink_material` | `layer`, `material` (field path of a Material), `link` (`name?` for a new link) | |
-| `apply_look`, `apply_color_scheme`, `apply_template` | (S57) | Reserved names; S53 returns `not_available` until S57 lands |
+| `apply_look`, `apply_color_scheme`, `apply_template` and the other reserved ops of §6.15 | (their owner spec) | Reserved names; S53 returns `not_available` naming the owner spec until it lands |
 
 Commit-time invariants (`TitleArtDocument::commit`, the Pachislop `commit` hook, report p1 §5.2):
 `normalizeTitleArt`, then **link sync** (the first material of a link group changed in this commit,
@@ -861,6 +925,8 @@ as `ShaderType::FLUID` does. Pipelines are dynamic (`PipelineState`), cached by
 
 ```cpp
 namespace jasperengine::titleart {
+    struct FieldOverride { std::string layerId; std::string path; nlohmann::json value; };   // layer "" = document
+    struct GlyphCellRequest { std::string layerId; uint32_t cluster = 0; enum Part : uint8_t { Back, Front } part; };
     struct RenderRequest {
         std::shared_ptr<const TitleArtDoc> doc;     // immutable snapshot (what-if copies are snapshots too)
         float pxScale = 1.0f;                       // output pixels per canvas pixel
@@ -868,9 +934,15 @@ namespace jasperengine::titleart {
         std::string isolateLayer;                   // render one layer alone, with its effects and masks
         OutputContent content = OutputContent::All; // All, Layers, Ink, Glow, Mask
         std::vector<std::string> contentLayers;
+        std::vector<FieldOverride> overrides;       // applied to a copy of the snapshot: S54 exposed values,
+                                                    // S58 sampled poses (render at a pose), S60 resolved languages
+        std::vector<std::string> keepSplits;        // layer ids whose own composite is kept as a split (S54, S58)
+        std::optional<GlyphCellRequest> glyphCell;  // one glyph of any text layer alone (S54 Glyph Atlas, S58 cells)
+        int tier = 0;                               // 0 = bake quality; S59's TitleTier for Realtime 3D
         bool includeGuides = false;                 // the editor's views draw guides; outputs never do
         uint32_t testFlags = 0;                     // TITLE_ART_TEST_*: per request, never global
-        AssetResolver* assets = nullptr;            // fonts, images, SVGs by AssetRef (editor: AssetDatabase; game: S54)
+        AssetResolver* assets = nullptr;            // fonts, images, SVGs by AssetRef (editor: AssetDatabase or
+                                                    // S55's TransientAssetResolver; game: S54)
     };
     struct RendererLimits { size_t poolBytes = 512u << 20; size_t nodeCacheBytes = 128u << 20; int maxSide = 8192; };
 
@@ -881,15 +953,33 @@ namespace jasperengine::titleart {
         const RendererStats& stats() const;     // passes, bytes live, cache hits, path (float / rgba8)
         void trim();                            // frees idle targets
     };
+    struct StepBudget { uint32_t budgetUs = 0; uint32_t maxPasses = 0; };   // 0 = unlimited
     class TitleRenderJob {
     public:
-        bool step(const StepBudget& budget);    // records passes until budget.cpuMs or budget.passes; true when done
+        bool step(const StepBudget& budget, StepReport* report = nullptr); // runs whole steps while their
+                                                // estimates fit (at least one); true when done; false + error() on failure
         bool done() const;
+        float progress() const;                 // estimated cost done / total (S54 R12's 50 % rule)
+        uint32_t passesDone() const; uint32_t passesTotal() const;          // S55's progress readout
+        uint32_t nextStepCostUs() const;        // pixels × the pass's costWeight (ns/px, desktop reference)
+        void splitOversizedSteps(uint32_t maxUs);   // GPU steps into scissor tiles >= 256 x 256
+        std::vector<ShaderKey> shaderKeys() const;  // every program variant the job will bind (S54 R18, R47)
+        std::vector<NodeCost> nodeCosts() const;    // per layer: passes, estimated and measured us (S55 R71)
+        const std::string& error() const;
         const TitleImage& image() const;        // texture (output format), frame in canvas pixels, alpha bounds
+        const TitleSplits& splits() const;      // the kept layer splits, the glow split, glyph-cell back/front
         const std::vector<Problem>& problems() const;   // glyph_missing, asset_missing, unknown_type, mask_cycle...
     };
 }
 ```
+
+The job is a flat ordered step list (no graph, the do-not-copy list): CPU stages (shaping,
+outlines, ThorVG masks, S56's analysis, S59's mesh units) and GPU passes, each with its cost
+estimate. Every pass definition carries `costWeight` (ns per output pixel on the desktop
+reference); S56's cost model (§6.5 `estimate`) supplies the weights of its definitions and S54
+scales them per platform. The bake runs the same job to the end in one call. Overrides are
+resolved before the draw tree, so a pose or an exposed value hashes like a document edit and
+reuses every cache an unchanged member allows (a colour override never recomputes masks).
 
 **Frame space and the origin pitfall** (report p1 §4.2). Pachislop's shaders assume a bottom-left
 origin and y-up `gl_FragCoord`. Here **every title-art target is addressed in memory rows on every
@@ -922,10 +1012,12 @@ or an adjustment base is ignored. Previews, bakes, thumbnails, checks and S54 al
 4. **Masks** multiply the whole result (premultiplied), so they also cut glows and the clip group.
 5. **Blend and opacity** onto the parent.
 
-**Targets** (`TitleTargetPool`): one pool keyed by (width, height, format, filter); `TargetRef` is
-a move-only RAII handle that returns its target on destruction (no manual release). Contents are
-undefined on acquire; a pass that needs a clear clears. No title-art target has a depth or stencil
-buffer. A target unused for 3 complete renders is freed; the pool never exceeds
+**Targets** (`TitleTargetPool`, the one pool name of the program): one pool keyed by (width,
+height, format, filter, depth format, sample count); `TargetRef` is a move-only RAII handle that
+returns its target on destruction (no manual release). Contents are undefined on acquire; a pass
+that needs a clear clears. The 2D passes request neither depth nor MSAA; S59's 3D layer passes
+request depth (and MSAA where its tier says) through the same pool and hand plain colour targets
+back to the compositor. S54's Realtime intermediates and S59's bake targets come from this pool. A target unused for 3 complete renders is freed; the pool never exceeds
 `RendererLimits::poolBytes` (an acquire beyond it frees idle targets first, then fails the render
 with problem `out_of_target_memory`, never an exhaustion of the engine's GPU pools).
 
@@ -951,11 +1043,12 @@ Cascade for 2D titles: geometry (CPU outlines) → masks (R8) → fields (SDF, c
 stack (frame space) → placement (one pass into the node target). Node pixels are kept in an LRU
 (`nodeCacheBytes`) by (node hash, px_scale, region); a node whose hash and placement match blends
 from the cache in one pass. A font, image or SVG change bumps its content revision, which reaches
-every hash that names it. Device loss (`SystemRender::getContextId()` changes) clears pool, caches
+every hash that names it. The cache is per layer node, so a re-render that changes one layer (an
+edit, an override, S58's re-render tracks) recomposes the others from the cache. Device loss (`SystemRender::getContextId()` changes) clears pool, caches
 and pipelines (R19).
 
 **Formats and the RGBA8 fallback** (`TitleArtCaps`, FluidSimulator's pattern; flags
-`TITLE_ART_TEST_NO_FLOAT_TARGETS`, `_NO_R16F`, `_NO_RGBA32F`, `_NO_FLOAT_BLEND`, read per request):
+`TITLE_ART_TEST_NO_FLOAT_TARGETS`, `_NO_FLOAT_FILTER`, `_NO_R16F`, `_NO_RGBA32F`, `_NO_FLOAT_BLEND`, read per request; S54 R21 and S59 R41 add theirs to the same per-request set):
 
 | Buffer | Preferred | Fallback chain |
 |---|---|---|
@@ -1002,6 +1095,12 @@ later 50 % opacity) are listed in the test with a measured bound instead, and S5
   Where the target is RGBA16F and `blendRGBA16F` is false they take the shader path.
 - **Every other mode** copies the parent's ROI rectangle to a scratch target and draws
   `mode(backdrop, source)` over the ROI with blending off: two passes, region-sized.
+- **Light and max blending** (fixed function, added to `BlendMode` in `Render.h` by S53 and mapped
+  in `SokolPipelineCache.cpp` and `SokolObject.cpp` on all five backends): `LIGHT_PREMULTIPLIED`
+  (colour ONE/ONE, alpha ONE/ONE_MINUS_SRC_ALPHA: light adds colour and unions alpha, where
+  `ADDITIVE_PREMULTIPLIED` keeps adding alpha) and `MAX_PREMULTIPLIED` (`BlendOperation` gains
+  `MAX`; all factors ONE, colour and alpha). S53's Add-blended light effects use the first; S56's
+  passes use both (lightning cores, drips). Test `BlendModesGpu.LightAndMax`.
 - `disjoint` (internal, not in the enum): `o = s + d·min(1, (1 − s.a)/d.a)`, for coverage-
   partitioned part runs (S59's 3D parts).
 - **Adjustment layers** (Pachislop's `adjustOnto`): an identity adjustment runs only its effects on
@@ -1042,8 +1141,21 @@ later 50 % opacity) are listed in the test with a measured bound instead, and S5
 
 ```cpp
 namespace jasperengine::titleart {
-    enum class ParamKind : uint8_t { Number, Integer, Bool, Enum, Color, Gradient, Curve, Vec2, Asset, Layer, Adjustment };
+    enum class ParamKind : uint8_t { Number, Integer, Bool, Enum, Color, Gradient, Curve, Vec2, Asset, Layer,
+                                     Adjustment, String, Material, RowArray };   // the last three for S56
     enum class ParamUnit : uint8_t { None, Px, Percent, Deg, Factor };   // Px scales with px_scale (decision 5)
+    // the program's shared classifications: S53 declares them, S56 fills them for the catalogue
+    enum class FxAnim : uint8_t { None, Live, Rerender, Step, Relayout };  // animation class of a param or a
+                // member (S58 R11): Live = changes without a re-render when the definition has a live variant;
+                // Rerender = smooth re-render; Step = stepped re-render; Relayout = re-runs layout/analysis;
+                // None = not animatable (ids, structure)
+    enum class ParamInterp : uint8_t { Smooth, Stepped };   // how keys interpolate (a Live seed is Stepped)
+    enum class ParamCombine : uint8_t { Replace, Multiply }; // S58 relative tracks: intensities multiply
+    enum class CostClass : uint8_t { C0, C1, C2, C3, C4 };   // S56 §6.4: trivial .. bake only
+    enum class FallbackClass : uint8_t { F0, F1, F2 };       // S56 §6.5: RGBA8 agreement class
+    enum class LiveKind : uint8_t { None, ScaleSplit, Kernel };   // S56 D10; run by S54's live compose
+    enum class GlyphSafety : uint8_t { Safe, Approximate, Unsafe };   // S54 R31's Glyph Atlas classes
+    enum class FxTier : uint8_t { Desktop, Mobile };
     struct ParamDef {
         const char* key;            // snake_case: the stored key, the MCP path segment, the Lua name
         const char* label;          // Inspector label, Unity-like ("Size", "Use Global Light")
@@ -1053,7 +1165,14 @@ namespace jasperengine::titleart {
         std::vector<EnumOption> options;    // {value, label}
         When when;                  // shown while another param has one of these values (hidden ones still apply)
         const char* description;    // one line, for docs, tooltips and list_title_library
+        FxAnim anim = FxAnim::Rerender;             // S58's class source; marks L/R/S/X in S56's tables
+        ParamInterp interp = ParamInterp::Smooth;   // Stepped for enums, bools, ints, seeds
+        ParamCombine combine = ParamCombine::Replace;
+        bool light = false;                         // a colour of light: S57's schemes map it onto light_ramp
     };
+    struct FxInputs { bool input = true, content = false, sdf = false; AnalysisSource analysis = AnalysisSource::None; };
+    struct LiveVariant { LiveKind kind = LiveKind::None; std::vector<const char*> params; uint32_t program = 0; };
+    struct SpectrumSwitch { const char* param = nullptr; const char* from = nullptr; const char* to = nullptr; };
     struct EffectDef {
         const char* type; const char* label; const char* category; const char* description;
         std::vector<ParamDef> params;
@@ -1064,7 +1183,17 @@ namespace jasperengine::titleart {
         bool (*addsLight)(const ParamValues&);
         bool outline = false;                       // traces ink
         bool onParts = true;                        // allowed in part_effects
-        CostTier cost;                              // cheap, medium, heavy
+        CostClass costClass = CostClass::C1;        // at defaults; list_title_library's `cost`
+        FallbackClass fallback = FallbackClass::F0;
+        LiveVariant live;                           // S54's live compose runs it (never title_fx)
+        GlyphSafety glyphSafety = GlyphSafety::Approximate;
+        std::vector<const char*> aliases;           // searched by menus, search_editor, list_title_library
+        FxInputs inputs;
+        SpectrumSwitch spectrum;                    // S57's spectrum schemes
+        FxCost (*estimate)(const ParamValues&, const FxSize&, FxTier) = nullptr;   // S56's static cost model;
+                                                    // null = one pass of costWeight 1 per output pixel
+        void (*analyse)(AnalysisContext&, const ParamValues&, AnalysisResult&) = nullptr;   // S56, CPU job
+        const char* presetFile = nullptr;           // editor/resources/titleart/fx-presets/<type>.yaml (S56)
         uint32_t passVersion = 1;                   // bumped with its pass code; part of the bake version (§6.9)
         void (*apply)(EffectContext&, const TargetRef& input, TargetRef& output, const ParamValues&);
     };
@@ -1080,6 +1209,14 @@ namespace jasperengine::titleart {
     EffectDef withGlobalLight(EffectDef def, const char* angleKey, LightRelation relation);
 }
 ```
+
+`GeneratorDef` carries the same classification members. S53's own twelve definitions declare, at
+defaults: `color_overlay`, `gradient_overlay`, `pattern_overlay`, `adjust`, `fill`, `pattern_fill`
+C0 / F0; `outer_glow`, `inner_glow`, `drop_shadow`, `inner_shadow`, `outline`, `gaussian_blur`
+C1 / F1; glyph safety, live variants and animation classes as S56 §6.12 and §6.13 list them (S56
+lands those values in wave 6B and its `TitleFxBudget.StaticModel` checks the classes). Before S56
+lands, every S53 param is `Rerender` (numbers, colours) or `Step` (the rest) and has no live
+variant.
 
 One definition drives: document defaults, read-time fill and clamping (R1); `TitleArtOps` validation
 and did-you-mean (`fx:` paths); the Inspector rows (S55, one switch over `ParamKind` honouring
@@ -1164,6 +1301,16 @@ Generators: `fill` (Fill: `kind` `solid` (Material fill kinds but `image`, `sour
   Anything else (text, filters, clip paths, masks) is ignored with problem `svg_feature_ignored`.
   `artwork` mode rasterizes the file with LunaSVG (`Document::renderToBitmap`) at the exact frame
   scale into the element's colour source.
+- **Layout and geometry queries** (`TitleTextLayout` and `GlyphOutlines`, public, used by S54's Glyph
+  Atlas, S55's canvas and S60's fit): `layout(layer, overrides) -> LaidOutText` with per grapheme
+  cluster `{index, codepoints, line, face, glyphs, pen, advance, ink box, em cell}` in document
+  space (y-up; S55's caret, selection and per-glyph gizmo, S54's cell placement, S58's stagger
+  units), the frame and line boxes; `outlines(layer)` the final outline paths per glyph after warp,
+  distort and weight (S59's 3D input, S60's SVG export and fit); `rimBands(layer)` the cumulative
+  grow width of each enabled rim (S55's part picking: inside the outline = Face, within rim k's
+  cumulative band = Rim k+1); `contentBounds(layer)` and `reachBounds(layer)` (content bounds plus
+  the effects' reach, the ROI rule of §6.3). All are pure CPU functions of a snapshot and cached
+  with the geometry hash.
 - **Coverage masks** (`MaskRaster.cpp`): ThorVG software canvas at frame resolution, non-zero fill;
   a rim element adds a stroke of width 2 × grow with its join (miter limit 4); the alpha becomes the R8
   coverage. `fill_counters`: 4-connected flood from the border through alpha < 128, every unreached
@@ -1217,7 +1364,7 @@ contour LUT).
 | `editor/util/Util.h` | `isTitleArtFile`, in the combined asset test |
 | `editor/asset/DepEdge.h` | `TitleArtAsset` (a font, image, SVG or map a document reads; `field` = JSON path) and `TitleArtOutput` (a baked PNG); names `"title_art_asset"`, `"title_art_output"` |
 | `editor/asset/AssetIndex.cpp` | `isReferrerType` true for `TitleArt`; `extractFile` parses (errors still yield the refs that parsed) and visits refs with `visitTitleArtRefs` |
-| `editor/titleart/TitleArtDocument.*` | The `AnimatorAssetDocument` design: `open`, `create`, `commit(doc, undoName, mergeKey)`, `filesChanged`, `filesMoved` (moves outputs and metas, rewrites recipes), `relinkGuids`, `checkDiskChanges`, listeners, `revision()` (the `rev` agents see) |
+| `editor/titleart/TitleArtDocument.*` | The `AnimatorAssetDocument` design: `open`, `create`, `commit(doc, undoName, mergeKey)`, `filesChanged`, `filesMoved` (moves outputs and metas, rewrites recipes), `relinkGuids`, `checkDiskChanges`, listeners, `revision()` (the `rev` agents see); `commitText(text, undoName)` (a whole-document write, S55's Restore This Version) and `stepText(historyEntryId, before\|after)` (the stored text of a step, from `WriteFilesCmd`'s before/after contents, for S55's History hover); `changed` notifications carry the origin (person, agent, disk) |
 | `editor/reload/handlers/TitleArt.cpp`, `ReloadHandlers.h`, `HotReloadService.cpp` | R6; a font/image/SVG change finds its documents through the dependency graph |
 | `editor/Exporter.cpp` (`copyAssets`) | R8 skip, `TitleArtExport::isNeeded`; stale handling R35 before the copy |
 | `editor/App.cpp`, `AppMenuCommand.h`, `DefaultCommands.cpp` | Assets > Create > Title Art (R7) |
@@ -1239,16 +1386,35 @@ by GUID and path, so `get_asset_info` on the PNG says which document made it and
   existing 4-byte path. 16-bit: the output pass writes straight sRGB-encoded half floats into RGBA16F,
   read with the 8-byte path (§6.10), rounded to 0..65535 on the CPU (`encodePng16`). `mask` content
   writes a 1-channel 8-bit PNG.
-- **Alpha bleed.** Fully transparent pixels take the colour of the nearest pixel with alpha > 0
-  (two-pass distance on the CPU, 8 px cap), alpha stays 0; no colour change where alpha > 0.
+- **Alpha bleed** (`bleedAlpha(RgbaImage&, int reachPx = 8)` in `editor/titleart/TitleArtBake.{h,cpp}`).
+  Fully transparent pixels within `reachPx` take the colour of the nearest pixel with alpha > 0
+  (two-pass distance on the CPU), farther ones are written black, alpha stays 0; no colour change
+  where alpha > 0. Bakes use 8 px (three mip levels); S60's exports pass their `bleed_px` (up to 64).
 - **Recipe** (iTXt keyword `jasper.titleart`, written with `insertRecipeChunk`):
-  `{"format": "jasperengine.titleart-bake", "version": 1, "source": {"guid", "path"},
+  `{"format": "jasperengine.titleart.bake", "version": 1, "source": {"guid", "path"},
   "source_hash": "<SHA-256 of the canonical document text>", "assets": [{"guid", "path", "sha256"}],
   "bake_version": N, "output": "<id>", "frame": [x, y, w, h], "scale", "bit_depth", "path_used":
-  "rgba16f" | "rgba8", "backend", "gpu", "editor_version"}`. `TITLE_ART_BAKE_VERSION` = a base number
+  "rgba16f" | "rgba8", "backend", "gpu", "editor_version"}`. Later specs add optional recipe members
+  for the derived files they bake through the same writer: `title_3d_version` and environment
+  hashes (S59), `animation_hash` (S58's flipbook pages), `language` and `resolved_hash` (S60's
+  language sets). `TITLE_ART_BAKE_VERSION` = a base number
   (1) plus the sum of the `passVersion`s of the definitions the document uses, so changing one kernel
   makes only the titles using it stale.
-- **Writing.** All files of a bake (PNGs) are staged and written with `writeFilesAllOrNothing`
+- **Sidecar** `<file>.bake.json` (`logo.titleart.bake.json`), written by every bake beside its PNGs
+  and shipped with Baked titles in every mode (≤ 4 KB; S54 R8 reads it through its always-built
+  `TitleArtBakeInfo`, so a Baked title needs neither the `.titleart` nor the module). Canonical JSON:
+  `{"format": "jasperengine.titleart.bakeinfo", "version": 1, "frame": {x, y, w, h}` (canvas px,
+  image space), `"origin": [x, y]` (the document origin in frame px), `"outputs": [{id, file,
+  content}]`, `"alpha_bounds": {x, y, w, h}`, `"source_hash", "bake_version"}`. Optional members
+  owned by later specs: `anchors` (S56's highlight analysis, at most 16 `{x, y, size, strength,
+  fade}` in frame-normalised coordinates, read by S54's live glints), `languages` (S60's per-language
+  sets table, source sidecar only) and `language` (a language set's own sidecar). A reader keeps
+  unknown members and refuses a newer `version` with a message naming the build.
+- **Extensibility.** `TitleArtBake` writes any set of derived files of a document all-or-nothing
+  with the recipe chunk: S58 adds flipbook pages and `<file>.anim.json`, S59 the 3D environment
+  hashes in the recipe, S60 one full set per language (`<file>.<code>.png`, `<file>.<code>.bake.json`,
+  ...). The bake is a resumable render job (§6.3) and reports `done/total` renders as job progress.
+- **Writing.** All files of a bake (PNGs and the sidecar) are staged and written with `writeFilesAllOrNothing`
   inside a `ScopedExpectedWrite`, then their textures are invalidated explicitly (editor writes are
   not watcher events) so S14 recooks and scenes refresh. A first write creates the `.meta` with texture
   import defaults: type `ui`, quality `high`, mipmaps on, `maxSize` = the next power of two ≥ the larger
@@ -1279,29 +1445,51 @@ Rows stay top first. GPU test `FrameReadbackGpu.FloatTargetsRoundTrip` writes kn
 Group row in `editor/mcp/McpToolGroups.cpp`: `{"title_art", "Title Art documents (.titleart):
 library, edit, render, check, export."}`; module row `{registerTitleArtTools, "Title Art",
 "title_art"}`. Schemas from `McpSchema.h` builders only; `ops` items are `anyObject` validated by
-`TitleArtOps` (document keys are snake_case already). Character caps (S53's share; the group default
-15,000 / 12 tools leaves 8,400 characters and 6 tools for S54-S60's parameters and tools; no
-`budget.json` entry is needed):
+`TitleArtOps` (document keys are snake_case already). Parameters added by S54-S60 carry no
+per-parameter description (each is explained in `jasper://docs/title-art`), the conventions'
+rule; options that only one format or one feature needs are keys of a free-form `options`
+object the handler checks against a closed table (`bad_option` listing the valid keys, the S47 D4
+pattern), never new top-level parameters.
 
-| Tool | Cap | Annotations, activity | While playing | Job |
-|---|---|---|---|---|
-| `list_title_library` | 800 | readOnly, idempotent; Read | yes | no |
-| `get_title` | 700 | readOnly, idempotent; Read | yes | no |
-| `edit_title` | 1,450 | writesFiles; Edit | yes (asset edit; hot reload shows it in Play) | no (its `render` follows `render_title`'s job rule) |
-| `render_title` | 1,450 | readOnly, idempotent, writesFiles (`save_path`); Read | yes | past 1 s |
-| `check_title` | 1,300 | readOnly, idempotent, writesFiles (`save_baseline`); Read | yes | past 1 s |
-| `export_title` | 900 | writesFiles, idempotent; Edit | yes | past 1 s |
-| **Total** | **6,600** | | | |
-| `diff_images` (`editor_tools`) | 700 | readOnly, idempotent, writesFiles (`save_diff`); Read | yes | no |
+**The program budget** (the one table every title spec references; measured by `tool_budget.py`,
+gated by `test_tool_budget.py`; each cell is a cap on what that spec adds):
 
-**`list_title_library`** `{kind?, id?, query?, limit? (20), offset?}`. `kind`: `effects`,
-`generators`, `blend_modes`, `fonts`, `looks`, `color_schemes`, `templates`. No arguments: counts per
-kind. Rows: `{id, name, category, cost, adds_light, on_parts}` for effects; `{path, guid, family,
+| Tool | S53 | S54 | S55 | S56 | S57 | S58 | S59 | S60 | Cap (≤ 1,500 tool default) |
+|---|---|---|---|---|---|---|---|---|---|
+| `list_title_library` | 860 (every program `kind` value) | 0 | 0 | 120 (`category`) | 450 (`family`, `dimension`, `tags`, `scope`, `favorites`, `sheet`) | 0 | 0 | 0 | 1,430 |
+| `get_title` | 700 | 220 (`entity`, `scene`, `wait_ready`, `timeout_seconds`) | 0 (result `designer`) | 0 | 0 | 50 (`animation`) | 0 (result `style_3d`, `stats_3d`) | 30 (`language`) | 1,000 |
+| `edit_title` | 1,350 (the description names every op family of the program) | 0 | 0 | 0 (`apply_recipe` is an op) | 0 (ops) | 0 (ops) | 0 (ops) | 30 (`create.from`) | 1,380 |
+| `render_title` | 1,300 (with `options` and `fallback`) | 80 (`entity`, `scene`) | 0 | 0 (`options.cost`) | 0 (`sheet` is on `list_title_library`) | 0 (`options.animation`) | 0 (`options.quality`, `options.debug_view`) | 0 (`options.languages`) | 1,380 |
+| `check_title` | 1,300 | 0 (check ids) | 0 | 0 (check ids) | 0 (check ids) | 50 (`animation`) | 0 (check ids) | 45 (`languages`) | 1,395 |
+| `export_title` | 1,000 (with `format` and `options`) | 0 | 0 | 0 | 0 | 60 (`animations`) | 0 (`format: "glb"`, `options.glb`) | 90 (`languages`, `out`, `path` as a list) | 1,150 |
+| **Group `title_art`** | 6,510 | 300 | 0 | 120 | 450 | 160 | 0 | 195 | **7,735 characters, 6 tools** of the group default 15,000 / 12: no `budget.json` entry |
+| `diff_images` (`editor_tools`) | 700 | | | | | | | | 700 |
+| Core listing | 0 | 0 | 120 (`focus_window` ≤ 95, `screenshot` ≤ 25), 0 tools | 0 | 0 | 0 | 0 | 0 | within 99,000 / 150 |
+| Agent guide (bytes) | ≤ 40 (one "Other areas" entry with the group name) | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 6,241 measured after `fe3e90b97` + 40 ≤ 6,692 (8,192 − 1,500 headroom) |
+
+No title spec adds a tool or a group, raises a limit or adds guide bytes beyond S53's entry; a
+spec that cannot fit its cell moves description text into `jasper://docs/title-art` and records
+it in its Deviations.
+
+| Tool | Annotations, activity | While playing | Job |
+|---|---|---|---|
+| `list_title_library` | readOnly, idempotent; Read | yes | `sheet` past 1 s |
+| `get_title` | readOnly, idempotent; Read | yes | `wait_ready` past 1 s (S54) |
+| `edit_title` | writesFiles; Edit | yes (asset edit; hot reload shows it in Play) | no (its `render` follows `render_title`'s job rule; imports by `create.from` past 1 s) |
+| `render_title` | readOnly, idempotent, writesFiles (`save_path`); Read | yes | past 1 s |
+| `check_title` | readOnly, idempotent, writesFiles (`save_baseline`); Read | yes | past 1 s |
+| `export_title` | writesFiles, idempotent; Edit | yes | past 1 s |
+| `diff_images` (`editor_tools`) | readOnly, idempotent, writesFiles (`save_diff`); Read | yes | no |
+
+**`list_title_library`** `{kind?, id?, query?, limit? (20), offset?}`. `kind` (one enum S53 writes
+for the whole program): `effects`, `generators`, `blend_modes`, `fonts` (S53); `looks`,
+`color_schemes`, `templates` (S57); `environments`, `materials_3d`, `bevel_profiles` (S59);
+`animation_presets` (S58). No arguments: counts per kind. Rows: `{id, name, category, cost,
+adds_light, on_parts}` for effects (`cost` the class `C0`..`C4`, §6.5); `{path, guid, family,
 styles, axes: [{tag, min, default, max}], scripts: ["latin", "kana", "kanji", ...], glyphs}` for
-fonts (project Font assets and the built-in face). `id` returns the parameter lines
-(`size px 40 [1..400]: how far the glow reaches`) and the `add_effect` op ready to paste. S57 fills
-`looks`, `color_schemes`, `templates` (S53 returns them empty with "Looks arrive with S57") and adds
-its `sheet` parameter.
+fonts (project Font assets and the built-in face; S57 adds the pack rows). `id` returns the
+parameter lines (`size px 40 [1..400]: how far the glow reaches`) and the `add_effect` op ready to
+paste. A kind whose owner has not landed returns an empty list with "<Kind> arrive with S5x".
 
 **`get_title`** `{path, layer?, detail? ("outline" | "overrides" | "full"), fields? [path globs]}`.
 Returns `{path, guid, rev, version, canvas, layers: [{path, id, type, name, text?, font?, look?,
@@ -1310,9 +1498,15 @@ status: "fresh" | "stale" | "missing", changed?: [...]}], problems}`. `overrides
 differ from defaults (a 15 KB title is a few hundred bytes); `full` the layer objects; `fields` exact
 values (`style.rims[*].width`).
 
-**`edit_title`** `{path, create? {canvas?, text?, overwrite?, template?, look?}, ops? [...], dry_run?,
-expect_rev?, render? (true | {max_width, backgrounds, crop}), bake? ("auto" | "now" | "never")}`.
-`create` makes the file (R7's document, with `canvas` and `text` applied; `template`/`look` are S57's).
+**`edit_title`** `{path?, create? {canvas?, text?, overwrite?, template?, look?, from?}, ops? [...],
+dry_run?, expect_rev?, render? (true | {max_width, backgrounds, crop}), bake? ("auto" | "now" |
+"never")}`. `create` makes the file (R7's document, with `canvas` and `text` applied; `template` and
+`look` are S57's, `from` (a Pachislop, PSD or SVG file to import) is S60's). `path` is required
+except for a batch made only of library ops (S57's `save_*`, `copy_library_item`,
+`delete_library_item`, S60's `import_ps_styles`). The description lists the op families of the
+whole program (document, layers, effects, rims, masks, expose, links; S56 recipes, S57 library,
+S58 animation, S59 3D, S60 language and import) and points at `jasper://docs/title-art#ops`, so
+later specs add ops without schema characters.
 Result: `{path, rev, undo: {id, name}, applied, changes: [{layer, path, from, to, clamped?, px?}],
 new_ids: {...}, problems: [{severity, code, op, path, message, nearest?, valid_here?, fix?}],
 bake: {status, job_id?}}`; with `render`, the image and `render_title`'s metrics. Errors always say
@@ -1321,22 +1515,34 @@ bake: {status, job_id?}}`; with `render`, the image and `render_title`'s metrics
 **`render_title`** `{path, ops?, try? [{label, ops}] (≤ 9), layer?, output?, backgrounds? (["checker"];
 `transparent`, `checker`, `black`, `white`, `#rrggbb`, an image path), crop? [x, y, w, h] (image px of
 the canvas), max_width? (768), columns?, compare? ("rev:<n>" | png path), image? ("always" | "none"),
-fallback?, save_path?, wait?, timeout_seconds?}`. `ops`/`try` render what-if copies and never touch the
-file; `output` renders exactly an output's frame and content; `fallback` forces the RGBA8 path.
+fallback? ("rgba8" | "compare"), options? {...}, save_path?, wait?, timeout_seconds?}`. `ops`/`try`
+render what-if copies and never touch the file; `output` renders exactly an output's frame and
+content; `fallback: "rgba8"` forces the RGBA8 path, `"compare"` renders both paths and adds
+`pixel_paths_diff {max, mean, changed_pct}` (S54 uses it on instances). `options` (free-form, the
+handler's closed key table; keys in `jasper://docs/title-art`): `overrides`, `rerender`,
+`live_time` (S54, with `entity`); `cost: "desktop" | "mobile"` (S56's readout); `animation {name,
+time | times | frames, as}` (S58); `quality`, `debug_view` (S59; `stats_3d` is returned whenever
+the render has a 3D layer); `languages` (S60). An unknown key fails listing the keys of the
+features this build has.
 Result: `{rev, size, render_ms, path_used, alpha_bounds: {x, y, w, h, margins}, coverage_pct, flat,
 cells: [{n, label}], diff?: {against, changed_pct, max, mean, bbox}, saved_to?}`. The last 16
-revisions' renders of each document are kept in `.jasperengine/titleart/renders/<guid>/` (a narrow
+revisions' renders of each document are kept in `.jasperengine/cache/titleart/renders/<guid>/` (a narrow
 editor-internal write) so `compare: "rev:<n>"` works without re-rendering old states.
 
 **`check_title`** `{path, checks? [ids], backgrounds? (["black", "white"]), baseline? (png |
 "rev:<n>"), save_baseline?, fail_on? ("fail" | "warn"), screenshot? ("on_failure" | "always" |
 "never")}` (§6.12).
 
-**`export_title`** `{path, outputs? [ids], dry_run?, force?, wait?, timeout_seconds?}`. Bakes the
+**`export_title`** `{path, outputs? [ids], format?, options?, dry_run?, force?, wait?, timeout_seconds?}`. Bakes the
 outputs (all by default; fresh ones are skipped unless `force`); `dry_run` returns what would be
 written. Result: `{files: [{output, path, guid, size, frame, bytes, vram_estimate, status}], warnings}`.
 Outputs are configured with `edit_title` ops on `outputs` (`set {"outputs[1].scale": 2}`), not here.
-S54 adds `apply`.
+`format` (default `bake`; the enum S53 writes for the program: `bake`, `glb` (S59), `png`, `psd`,
+`svg`, `sheet`, `atlas`, `sequence`, `ktx2`, `csv`, `xliff` (S60)) selects a delivery format whose
+owner has landed (else `not_available` naming it); `options` (free-form, checked per format
+against a closed table before anything renders) holds that format's keys (S59's `glb {units_per_px,
+texture_size, include_bands}`, S60's per-format options). S58 adds `animations`, S60 `languages`,
+`out` and a list `path`.
 
 **`diff_images`** `{a, b, mode? ("premultiplied" | "straight"), tolerance? (8), max_fraction? (0.001),
 max_mean? (0.25), max_diff? (48), crop?, image? ("on_fail" | "always" | "none"), save_diff?}` on two
@@ -1351,7 +1557,13 @@ layer counts, fonts (missing marked), outputs with status, problems. Both are re
 
 **Agent guide.** `docs/mcp/guide/title-art.md` (`jasper://docs/title-art`): units (`%` of size vs
 `px`), addressing and ops with examples, the render → check → fix loop, `try` sheets, baking and
-freshness, the y-up document vs top-left image coordinates. The guide (`McpInstructions.cpp`) gets one
+freshness, the y-up document vs top-left image coordinates. S53 owns the file and its section plan;
+each spec writes only its own `### ` section (so the file splits into section resources): `### Runtime`
+(S54), `### Title Designer` (S55, ≤ 1,200 bytes), `### Effects and generators` (S56, ≤ 2,500 bytes),
+`### Library` (S57, ≤ 3 KB), `### Animation` (S58), `### 3D` (S59), `### Languages` and
+`### Import and export` (S60). The generated catalogues are separate files:
+`title-art-effects.md` (S53's generator, S56's columns) and `title-library.md` (S57). The guide
+(`McpInstructions.cpp`) gets one
 "Other areas" entry, `title art (edit_title)`, and the generated `title_art` group name: ≤ 40 bytes
 together, with a case `make_title_logo` in `tools/mcp/eval/cases.py` that fails without the entry.
 
@@ -1371,7 +1583,7 @@ passing them does not mean the title looks good. Show the render to a person."}`
 | `not_flat` | pixels | The render is not blank or one colour | not flat | the layer that contributes nothing |
 | `not_clipped` | pixels | Alpha > 2/255 within 1 px of the canvas edge; per side; attributed to layers by isolated renders | margin ≥ 8 px | `set canvas.width/height` or the layer's `size` |
 | `alpha_bounds` | pixels | Trim box, coverage, centre offset | coverage 10..90 % | |
-| `legibility_contrast` | pixels | CIE L* contrast of the silhouette's outer ring against each background | ΔL* ≥ 30 | add a dark/light outer rim (an `add_rim` op) |
+| `legibility_contrast` | pixels | CIE L* contrast of the silhouette's outer ring against each background, measured on the render scaled to `CheckOptions::displayHeightPx` when the caller gives one (S55's Device view) | ΔL* ≥ 30 | add a dark/light outer rim (an `add_rim` op) |
 | `counter_survival` | pixels | Holes of the plain-text glyph mask still visible in the render | ≥ 0.8 per glyph | thinner rims (`set rim#n.width`) |
 | `noop_effects` | pixels | An enabled effect whose removal changes < 0.01 % of pixels | none | `remove_effect` |
 | `clipped_highlights` | pixels | Ink pixels with every channel ≥ 250 | ≤ 5 % | lower highlight opacity or finish |
@@ -1381,13 +1593,32 @@ passing them does not mean the title looks good. Show the render to a person."}`
 | `golden` | pixels | Premultiplied comparison with `baseline` (`ImageDiff`) | max 48, mean 0.25, 0.1 % over 8 | |
 
 Thresholds are starting points (S57 calibrates them on the library); the result echoes each one used.
-Failures carry crops of where to look (a 512 px crop costs about 175 tokens). S54 adds `runtime_budget`
-and `placement`, S57 `style_lint`, `color_scheme_match` and `metal_range`, S60 `languages_complete`.
+Failures carry crops of where to look (a 512 px crop costs about 175 tokens). Checks are rows of one
+registry (`editor/titleart/TitleArtChecks.{h,cpp}`: `registerCheck(CheckDef{id, kind, owner, group,
+run})`), so later specs add checks without touching the tool; `checks` takes ids or a group name.
+The program's check ids, by owner: S54 `glyph_atlas`, `characters`; S56 `fx_follow_missing`,
+`fx_bake_only_realtime`, `fx_live_budget`, `fx_realtime_budget`, `fx_hdr_on_8bit`; S57
+`style_lint` (results `style_lint.<rule>`), `color_scheme_match`, `metal_range`,
+`color_scheme_options_empty`; S58 the `anim_*` checks of its §6.7.2 (group `anim`); S59
+`3d_tier_budget`, `3d_reflection_pose`, `3d_z_fighting`, `3d_environment_missing`,
+`3d_glint_dead`, `3d_mesh_fallback`, `3d_light_limit`; S60 `languages_complete`,
+`translation_stale`, `text_overflow`, `fit_scale_low`, `project_language_missing`,
+`translation_unused` (and S53's `glyphs_present` and `bake_fresh` run per language). No two specs
+register the same id.
 
 ### 6.13 Editor surface in S53
 
+- **The preview queue** (`editor/titleart/TitlePreviewQueue.{h,cpp}`, owned here so that every
+  title preview of the program shares one budget from wave 6 on): `request(Priority, Key,
+  PreviewJob) -> id`, `cancel(id)`, `cancelAll(owner)`, `runFrame(budgetMs)` (main thread, from
+  `App::engineRender`, default 4 ms), `texture(id)`, `stats()`; priorities `Hover`, `Layers`,
+  `Tiles`, `Thumbnails`, `Prefetch` in that order, visible items first within one; an item whose
+  predicted cost exceeds the budget runs alone in a frame; jobs are `TitleRenderJob`s sliced by
+  `step`; device loss drops and re-requests. Submitters: S53 (Project window, Inspector), S55
+  (canvas layer thumbnails, hovers, Add palette), S57 (`TitleLibraryPreviews` tiles), S59 (material
+  and environment pickers), S60 (Compare Languages).
 - **Project window:** Title Art icon (a "T" over a rim), type colour, the thumbnail (R50) through
-  `editor/render/preview/TitleArtPreviewRender` time-sliced in the shared 4 ms budget (visible
+  `editor/render/preview/TitleArtPreviewRender` submitted to `TitlePreviewQueue` (visible
   items first, cancelled when the window closes, redrawn after device loss), disk-cached in the
   thumbnail directory (`Project::getThumbnailPath`) under a key of GUID, size, the document's source
   hash and `TITLE_ART_BAKE_VERSION` (content + engine version, contract decision 11); fresh main
@@ -1399,7 +1630,9 @@ and `placement`, S57 `style_lint`, `color_scheme_match` and `metal_range`, S60 `
   targets); Outputs table (File, Size, Status Fresh / Stale / Missing with the reason as a tooltip,
   **Bake** per row, **Bake All**, Add Output / Remove Output as undo steps); Problems (warnings with
   their message); Auto Bake (shows the project setting, links to it). Several selected: the count and
-  Bake All.
+  Bake All. Later specs add summary rows through `InspectorWindowTitleArt::addSummarySection` (S58's
+  animations with cost per mode, S60's languages); Open in Title Designer opens S55's window once it
+  exists (before it, the button is hidden and double-click selects the asset).
 - **Project Settings > Title Art:** Auto Bake, Stale Bakes On Export.
 - Strings use "Color"; every action is in the command palette (S25) as "Title Art: Bake All".
 
@@ -1409,13 +1642,131 @@ No runtime Lua in S53. Editor scripts: `Editor.call("edit_title", {path = "...",
 CLI: `jasperengine-editor call <tool> --project <p> ...` (a one-shot headless editor, GPU required
 for render, check pixels and export) and `jasperengine-editor check --titles` (no GPU).
 
+### 6.15 Program rules: hooks, module, folders, libraries
+
+The eight title specs are implemented together and land in three waves (§8). This section is the
+one statement of what they share; every other title spec refers to it rather than restating it.
+
+**Hooks S53 provides for later specs** (each a requirement and AC here, so wave 6B never waits):
+
+| Hook | Where | Used by |
+|---|---|---|
+| Reserved document members and member additions | §6.1 | S54, S57, S58, S59, S60 |
+| `TitleArtSchema` member table with `FxAnim` per member, sparse kinds, registration | R9a, §6.5 | S55 rows, S58 classes, S59/S60 members |
+| Registry members (cost, fallback, live, glyph safety, `anim`, aliases, inputs, `light`, spectrum, `estimate`, `analyse`) | §6.5 | S54, S55, S56, S57, S58, S59 |
+| `LIGHT_PREMULTIPLIED`, `MAX_PREMULTIPLIED`, `BlendOperation::MAX` | §6.4 | S56 |
+| Material `bevel.direction` | §6.1 | S56, S60 |
+| Render job: `progress`, `passesDone/Total`, `nextStepCostUs`, `splitOversizedSteps`, `shaderKeys`, `nodeCosts`, `error`, splits | R18, §6.3 | S54 scheduler, S55 progress, S58 |
+| `RenderRequest::overrides` (exposed values, poses, languages), `keepSplits`, `glyphCell`, `tier`, `assets` | R18a, §6.3 | S54, S55, S58, S59, S60 |
+| `TitleTargetPool` with depth format and sample count in the key | §6.3 | S59 |
+| Layout, outline, rim-band and bounds queries | §6.6 | S54, S55, S59, S60 |
+| `add_layer {from}`; `TitleArtDocument::commitText`, `stepText` | §6.2, §6.8 | S55 |
+| Bake sidecar `<file>.bake.json` with optional `anchors`, `languages`; bake extensibility; `bleedAlpha(reachPx)` | §6.9 | S54, S56, S58, S59, S60 |
+| `TitlePreviewQueue` | §6.13 | S55, S57, S59, S60 |
+| Check registry | §6.12 | S54, S56, S57, S58, S59, S60 |
+| Tool hooks: `edit_title.create.from`, `render_title.options`, `fallback: "compare"`, `export_title.format` and `options`, the program `kind` enum | §6.11 | S54, S56, S57, S58, S59, S60 |
+| Inspector summary sections | §6.13 | S58, S60 |
+
+**Reserved op names** (one owner each; S53's `TitleArtOps` dispatches them to the owner's code and
+answers `not_available` naming the owner until it lands): S56 `apply_recipe`; S57 `apply_look`,
+`apply_color_scheme`, `apply_template`, `save_look`, `save_color_scheme`, `save_template`,
+`copy_library_item`, `delete_library_item`; S58 `add_animation`, `set_animation`,
+`remove_animation`, `duplicate_animation`, `set_default_animation`, `set_track`, `set_key`,
+`remove_track`, `remove_keys`, `retime`, `apply_animation_preset`, `set_marker`, `remove_marker`;
+S59 `set_dimension`, `add_band`, `remove_band`, `move_band`, `apply_material`, `fit_to_tier`; S60
+`add_language`, `remove_language`, `set_source_language`, `set_translation`,
+`revert_translation`, `mark_reviewed`, `import_strings`, `apply_ps_style`, `import_ps_styles`,
+`import_svg`, `reimport_pachislop_3d`.
+
+**One module.** `JASPERENGINE_TITLE_ART` (S53: the option, default ON, required ON in the editor's
+shared engine; `engine/core/titleart/TitleArtSources.cmake` lists every module source of every
+title spec; HarfBuzz without `HB_NO_DRAW`, ThorVG and Clipper2 with it). OFF compiles nothing under
+`engine/core/titleart/`. Two sub-options, `cmake_dependent_option`s ON when the module is ON, are
+defined and wired into `ModuleUsage`, Compile builds and the prebuilt variants by **S54**, with
+S59's code behind them: `JASPERENGINE_TITLE_ART_3D` (`engine/core/titleart/three_d/`, S56's
+`three_d/Glint3D.*` included) and `JASPERENGINE_TITLE_ART_MESHER` (S59's mesher and earcut).
+Prebuilt variants that carry `titleart` carry both. The player feature for notices is `titleart`.
+**The always-built part** (core, outside `engine/core/titleart/`, so a Baked title needs no module):
+S54's component, `TitleArtSystem`, `engine/core/object/TitleArt.*`, the Lua binding,
+`engine/core/util/TitleArtBakeInfo.*` and the module-off stub
+`engine/core/subsystem/TitleArtRuntimeNone.cpp`; S60's `engine/core/util/TitleArtLanguage.*`;
+S58's `engine/core/titleanim/` (sampler, Baked player, `<file>.anim.json` reader). Its budget is
+≤ 60 KiB stripped arm64 and ≤ 40 KiB wasm gzip in total (S54 ≤ 34 / 25, S58 ≤ 20 / 12, S60 ≤ 6 /
+3), measured by S54 with `tools/players/lib_size.py`.
+
+**One set of folders.**
+- Module (`engine/core/titleart/`, namespace `jasperengine::titleart`): S53 root (`TitleArtDoc.h`,
+  `TitleArtIO`, `TitleArtMigrations`, `TitleArtHash`, `TitleArtSchema`, `TitleEffectRegistry`),
+  `text/`, `geometry/`, `render/`, `effects/` and `generators/` (S53's and S56's definitions, one
+  file per family); S54 `runtime/`; S56 `analysis/`, `gpu/`; S57 `ColorScheme.*`,
+  `ColorSchemeApply.*`; S58 `anim/`; S59 `three_d/`; S60 `TitleTranslations.*`, `TitleFit.*`.
+- Shaders: `engine/shaderlib/titleart.vert`, `titleart.frag` (S53); every other title shader file
+  in `engine/shaderlib/titleart/`: S53's includes, S56's `fx/`, `gen/` and `tfx_*.glsl`, S59's
+  programs (`title_lit.vert/.frag`, `title3d_post.frag`, `title_glint.frag`, `title_env.frag`,
+  `title_glint_sprite.vert/.frag`) and includes (`title_*.glsl`, `hdr_compress.glsl`); S54's
+  library shaders `engine/shaderlib/library/title_fx.*`, `title_fx_sprite.*` and their include
+  `engine/shaderlib/includes/title_fx.glsl`; S59's shared `includes/pbr_lobes.glsl`.
+- Editor (`editor/titleart/`): S53 root (`TitleArtDocument`, `TitleArtOps`, `TitleArtBake`,
+  `TitleArtChecks`, `TitlePreviewQueue`); S54 `runtime/`; S55 `designer/`, `fonts/`; S56 `fx/`;
+  S57 `library/`; S58 `anim/`; S59 `three_d/`; S60 `localisation/`, `interchange/`. Windows:
+  `editor/window/TitleDesigner*.cpp` (S55; S60 adds `TitleDesignerLanguages.cpp`,
+  `TitleDesignerTranslations.cpp`), `TitleArtImportDialog.cpp`, `TitleArtExportDialog.cpp` (S60),
+  `InspectorWindowTitleArt.cpp` (S53), `InspectorTitleArtRenderer.cpp` (S54). MCP:
+  `editor/mcp/tools/TitleArtTools*.cpp` (S53's files; later specs add handlers there). CLI:
+  `editor/cli/` (S57 `title-library`, S60 `TitleArtCli.*`).
+- Built-in data (`editor/resources/titleart/`): `fx-presets/`, `pachislop-fx-map.yaml` (S56);
+  `fonts/`, `thumbnails/`, `provenance/`, `pachislop-map.json`, `manifest.json` (S57); `hdri/`
+  (S59, with S57's four entries), `environments/` (S59); `animation-presets/` (S58);
+  `charsets/` (S54); `search-terms.json` (S55). Tools: `tools/titleart/` (every spec's scripts).
+- In a project: every font Title Art copies goes under `<assets>/TitleArt/Fonts/` (S57's pack faces
+  in `<pack id>/`, S55's Google Fonts in `Google/<slug>/` and system fonts in `System/`); library
+  environments in `<assets>/TitleArt/Environments/` (S57); per-document imports in
+  `<doc stem>_assets/` (S60); user library items in `EditorSettings/TitleLibrary/` (S57) and user
+  animation presets in `EditorSettings/TitleLibrary/AnimationPresets/` (S58; personal ones in
+  `<config dir>/title-library/animation-presets/`, S57's scopes); delivery exports in
+  `Recordings/Title Art/` (S60); editor caches under `.jasperengine/cache/titleart/` (`renders/`
+  S53, `library/` S57's tiles, `flipbooks/` S58's previews).
+- Derived files beside a document `logo.titleart`: `logo.titleart.png`, `logo.titleart.<output>.png`,
+  `logo.titleart.bake.json` (S53); `logo.titleart.<animation id>.flip<N>.png`,
+  `logo.titleart.anim.json` (S58); a language set inserts `.<code>` after `.titleart`
+  (`logo.titleart.de.png`, `logo.titleart.de.bake.json`, `logo.titleart.de.anim.json`, S60). Export
+  caches only: `.titlemesh` and cooked environment KTX2s (S59).
+
+**One list of vendored and ported third-party code** (each owned by one spec, with its `NOTICE.md`
+row and, under `engine/libs/`, its `engine/notices.json` entry):
+
+| Code | Licence | Where | Owner | Ships |
+|---|---|---|---|---|
+| Clipper2 (Angus Johnson) | BSL-1.0 | `engine/libs/clipper2/` | S53 | `titleart` |
+| ThorVG (existing) | MIT | `engine/libs/thorvg/` | S53 (the `when` list) | `htmlui`, `titleart` |
+| HarfBuzz `hb-draw` (existing sources) | Old MIT | `engine/libs/harfbuzz/` | S53 (`HB_NO_DRAW` condition) | always (code only with `titleart`) |
+| HarfBuzz subsetter (`hb-subset*`, `graph/`, `hb-repacker`) | Old MIT | `engine/libs/harfbuzz/subset/` | S54 | editor |
+| earcut.hpp (Mapbox) v2.2.4 | ISC | `engine/libs/earcut/` | S59 | `titleart` |
+| Brotli decoder (google/brotli `c/common`, `c/dec`) | MIT | `libs/brotli/` | S55 | editor |
+| WOFF2 decoder (google/woff2) | MIT | `libs/woff2/` | S55 | editor |
+| Pachislop (SafEight, used with the author's permission) | permission | ported files' headers | S53 (the entry; each spec adds its file list) | per file |
+| Patchy warp | MIT | `geometry/Warp.cpp` header | S53 | `titleart` |
+| Hoskins "Hash without Sine", mulberry32, Inigo Quilez `sdStar5`/`sdHeart` | MIT / public domain / MIT | S56 shader and C++ headers | S56 | `titleart` |
+| three.js tone maps, Khronos PBR Neutral, Inigo Quilez gradient noise | MIT / Apache-2.0 / MIT | S59 shader headers | S59 | `titleart` |
+| ag-psd descriptor, EngineData and reader code | MIT | `editor/titleart/interchange/psd/` headers | S60 | editor |
+| Dela Gothic One (test fixture) | OFL-1.1 | `engine/tests/core/titleart/fonts/` | S53 | tests |
+| The 32-family font pack | OFL-1.1 | `editor/resources/titleart/fonts/` | S57 | editor install |
+| Eight Poly Haven HDRIs (four each) | CC0 | `editor/resources/titleart/hdri/` | S59 (manifest, fetcher, size rule); S57 adds four entries | editor install |
+
+Nothing else is vendored by the program; miniz, zstd, stb, tinyxml2, LunaSVG and meshoptimizer
+are already in the tree. No ICC profile is taken from anywhere (S60 generates its sRGB profile),
+and no franchise or brand name appears in any id or name (S57's denied terms).
+
 ## 7. Acceptance criteria
 
 Fixtures: `engine/tests/core/titleart/fixtures/` (documents), the standard title (確定, Dela Gothic One,
 size 200, classic style: Pachislop's `classicTitleStyle2D` converted, rim offsets negated to y-up), the
 **classic fixture** (the standard title with Outer Glow and Drop Shadow), the asymmetric fixture.
 Goldens are written on glcore (llvmpipe) and Vulkan (lavapipe) must match (`docs/testing.md`); GPU
-suites end in `Gpu` and start with `JASPER_REQUIRE_GPU()`.
+suites end in `Gpu` and start with `JASPER_REQUIRE_GPU()`. Every title golden of the program (S53-S60) is
+updated only with a row in the title golden ledger `docs/titleart/goldens.md` (name, metric before
+and after, reason), checked by `tools/titleart/check_golden_ledger.py` in `test_docs.py` (S53 owns
+both, the `tools/htmlui/check_golden_ledger.py` design).
 
 | AC | Verifies | Test | Red control |
 |---|---|---|---|
@@ -1447,7 +1798,7 @@ suites end in `Gpu` and start with `JASPER_REQUIRE_GPU()`.
 | AC26 | R32, R33: bake writes shared-frame PNGs with `round_to` sizes, alpha bleed, recipe; a doc edit, a font change or a `passVersion` bump makes exactly the affected outputs stale | `TitleArtBakeTest.*`, `test_title_art.py::test_bake_stale` | |
 | AC27 | R34, R35: Auto Bake after edits (not an undo step); export with `rebake` bakes stale outputs, `fail` fails naming them | `test_title_art.py::test_auto_bake`, `::test_export_stale_policy` | |
 | AC28 | R36: float readback round trip on GL core and Vulkan in CI; D3D11 and Metal by the same test on the Windows and macOS runners | `FrameReadbackGpu.FloatTargetsRoundTrip` | |
-| AC29 | R41, R46: classic fixture full render ≤ 40 ms GPU and bake ≤ 1.5 s on the RTX lane; ≤ 8 s / ≤ 12 s on llvmpipe (median of 5 after 2 warm-ups) | `tools/performance/titleart-bench.py` | |
+| AC29 | R41, R46: classic fixture full render ≤ 40 ms GPU and bake ≤ 1.5 s on the RTX lane; ≤ 8 s / ≤ 12 s on llvmpipe (median of 5 after 2 warm-ups) | `tools/perf/title_art_core_bench.py` | |
 | AC30 | R45: previews and thumbnails ≤ 4 ms main-thread per frame (p95, 200 frames, 20 thumbnails queued) | `test_title_art.py::test_preview_budget` (`get_frame_times`) | |
 | AC31 | R47, R48: codec and op batch, shaping budgets | `TitleArtIOTest.Budget`, `TitleTextLayoutTest.Budget` (Release only) | |
 | AC32 | R40, R49: an OFF build compiles no `titleart` symbol (nm) and links no ThorVG/Clipper2 unless HTML UI needs ThorVG; ON with nothing open does 0 passes and holds 0 bytes | a new `titleart-off` selection of `tools/ci/test_player_cli.py`, `TitleArtRendererGpu.IdleIsFree` | |
@@ -1460,26 +1811,51 @@ suites end in `Gpu` and start with `JASPER_REQUIRE_GPU()`.
 | AC39 | R50-R52: Project window thumbnail, Inspector summary (Open in Title Designer, Bake, outputs) and Project Settings, shown in screenshots from an isolated editor | `tools/editor-shot.sh` shots `titleart-project.png`, `titleart-inspector.png`, kept in the PR evidence | |
 | AC40 | R60: guide stays within budget with the new entry; eval case fails without the entry | `tool_budget.py --check`, `tools/mcp/eval/cases.py` case `make_title_logo` | remove the entry: the eval case fails |
 
+| AC41 | R9a, §6.15: every member of §6.1 resolves in `TitleArtSchema` with type, range, default and `FxAnim` (S58's §6.2 assignment); a test-registered member appears in normalize's clamps and in `TitleArtOps` did-you-mean; S60's sparse kind writes only present members | `TitleArtSchemaTest.CoversEveryMember`, `.RegisteredMemberIsValidated`, `.SparseKind` | drop one member from the table: the coverage test names it |
+| AC42 | R18, R18a: a job reports `progress` rising monotonically to 1, `passesDone == passesTotal` at the end, `nextStepCostUs` > 0 for every GPU step, `splitOversizedSteps(1)` gives tiles ≥ 256 × 256 whose image equals the unsplit one byte for byte, `shaderKeys` equals the bound programs; an `overrides` render equals the render of an edited copy; a `keepSplits` render keeps the layer's composite equal to its isolated render; a `glyphCell` back + front pair composited equals the glyph's merged render within 1/255 | `TitleArtRendererGpu.JobMembers`, `.OverridesEqualEdits`, `.KeptSplit`, `.GlyphCell` | let `splitOversizedSteps` skip the scissor: the equality fails |
+| AC43 | §6.3: a 3D-style request for a depth + 4× MSAA target is served from `TitleTargetPool` under its own key and freed by the same rules; the 2D fixtures request neither (pool stats) | `TitleTargetPoolTest.DepthAndSamplesInKey` | key without the sample count: a 1× target is returned and the test fails |
+| AC44 | §6.4: `LIGHT_PREMULTIPLIED` and `MAX_PREMULTIPLIED` give the expected values on RGBA8 and RGBA16F 2 × 2 targets on glcore and Vulkan | `BlendModesGpu.LightAndMax` | map MAX to ADD: fails |
+| AC45 | §6.9: every bake writes `<file>.bake.json` with the shared frame, origin, outputs, alpha bounds and hashes; a reader keeps unknown members and refuses a newer version; `bleedAlpha` with reach 8 and 64 fills exactly the pixels within the reach | `TitleArtBakeTest.Sidecar`, `.BleedReach` | write the frame in document space: the sidecar test fails |
+| AC46 | §6.2, §6.8: `add_layer {from}` pastes a group with fresh ids and remapped inner references in one step; `commitText` restores a stored version as one step; `stepText` returns both texts of a step | `TitleArtOpsTest.AddLayerFrom`, `TitleArtDocumentTest.CommitTextAndStepText` | reuse the source ids: the duplicate-id check fails |
+| AC47 | §6.13, R45: three fake submitters at different priorities never exceed 4 ms of a frame together; visible before hidden; `cancelAll(owner)` empties that owner's items | `TitlePreviewQueueTest` (fake clock and costs) | `runFrame(inf)`: the budget assertion fails |
+| AC48 | §6.11, §6.15: a reserved op answers `not_available` naming its owner; `render_title {options: {x: 1}}` and `export_title {format: "psd"}` before their owners land fail with `bad_option` / `not_available` listing the valid keys and formats; the group's six tools stay within the program budget table | `test_title_art.py::test_reserved_and_options`, `test_tool_budget.py` | |
+
 `docs/mcp/TOOLS.md` is regenerated; `tools/check-changed` is the per-commit gate.
 
 ## 8. Dependencies & conflicts
 
-- **Depends on** merged S03, S04, S05, S06, S14, S24, S31 only.
-- **Blocks** S54 (renderer, document, registry, bake, readback), S55 (document, ops, renderer,
-  previews; lands with S53), S56 (registry, pass contract), S57 (document model, part keys, ops
-  `apply_*`, `list_title_library` kinds), S58 (document, exposed parameters, determinism), S59
-  (`dimension`, part keys `bevel`/`side`/`band:`, `disjoint`, Clipper2), S60 (`text`, reserved
-  `languages`/`variants`, checks).
+**The Title Art program graph and waves** (the same text in S53-S60; an arrow means "needs"):
+
+| Wave | Specs | Needs |
+|---|---|---|
+| 6 (title art) | S53 core | merged work only |
+| 6B | S54 runtime, S55 Title Designer, S56 effects and generators, S59 3D | S53 (every hook of §6.15); within the wave, by owner: S54 owns the component, scheduler, live compose, `title_fx`, the module wiring and the 3D and mesher sub-options; S55 owns the window, its §6.8 hooks, `DocRow` and the 3D gizmo; S56 owns the catalogue values of the registry members (glyph safety, live variants, classes, cost model), `Glint3D` and the light encoding; S59 owns 3D layers, `Gizmo3DTarget`, `quality`/`debug_view`, environments and the compressed-light encoding |
+| 6C | S57 library, S58 animation, S60 localisation and interchange | S53 and wave 6B; within the wave, by owner: S57 owns `PachislopPort`, `pachislop-map.json`, `TitleLibraryApply` (and `lookFromStyle`), the denied terms; S58 owns sampling, `TitleAnimPlan`, flipbooks and `<file>.anim.json`; S60 owns the sidecar `languages` table and the per-language bake sets |
+
+Edges: S54 → S53. S55 → S53, S54 (Preview As Glyph Atlas, create menus). S56 → S53, S54 (live
+compose runs its kernels; sidecar anchors). S59 → S53, S54 (scheduler, sub-options, component
+fields), S55 (sections, gizmo), S56 (`Glint3D`). S57 → S53, S55 (Library panel), S56, S59. S58 →
+S53, S54, S55, S56 (S59 optional). S60 → S53, S54, S55, S56, S57, S58, S59. One exception crosses a
+wave: S55's Library panel milestone (its M6) draws S57's data and lands with S57 in wave 6C; the
+rest of S55 lands in 6B.
+
+- **S53 depends on** merged S03, S04, S05, S06, S14, S24, S31 only.
+- **Blocks** every title spec (the hooks of §6.15). S53 lands alone and first; its hooks are
+  complete when it lands, so wave 6B starts from its headers.
 - **Merge hotspots:** `engine/core/asset/AssetType.h` (append order with any spec adding a type:
   S53 takes 24), `editor/asset/AssetTypes.cpp`, `DepEdge.h`, `AssetIndex.cpp`, `Render.h`
-  (`ShaderType` append), `engine/CMakeLists.txt` and `engine/libs/harfbuzz/CMakeLists.txt`,
+  (`ShaderType` append; S59 appends `TITLE_LIT`, `TITLE_3D_POST`, `TITLE_ENV`, `TITLE_GLINT_SPRITE` after S53's `TITLE_ART`; `BlendMode` and
+  `BlendOperation` appends), `engine/CMakeLists.txt` and `engine/libs/harfbuzz/CMakeLists.txt`,
   `engine/core/util/TextShaper.*` (S51 pixel fonts and S16 text work touch fonts),
   `FrameReadback.cpp`/`MetalReadback`, `editor/Exporter.cpp` `copyAssets`, `ProjectWindow.*`,
-  `InspectorWindow.cpp`, `McpToolGroups.cpp`, `McpInstructions.cpp` (guide bytes are shared by every
-  spec: S53 claims ≤ 40), `editor/cli/CommandLine.cpp` (`check` flags), `NOTICE.md`,
-  `engine/notices.json`.
-- **Contract with S54:** the renderer is runtime code from day one (no editor includes); `AssetResolver`
-  is S54's seam for players; `TitleArtExport::isNeeded` and `export_title.apply` are S54's to fill.
+  `InspectorWindow.cpp`, `McpToolGroups.cpp`, `McpInstructions.cpp` (S53's ≤ 40 bytes are the
+  program's only guide bytes), `editor/cli/CommandLine.cpp` (`check` flags), `NOTICE.md`,
+  `engine/notices.json`, `tools/ci/check-notices.py`; S53's own `TitleArtOps.cpp`,
+  `TitleArtTools*.cpp`, `TitleEffectRegistry.h` and `TitleArtSchema.cpp`, which every later title
+  spec extends.
+- **Contract with S54:** the renderer is runtime code from day one (no editor includes);
+  `AssetResolver` is S54's seam for players; `TitleArtExport::isNeeded` is S54's to fill; S54 reads
+  the sidecar S53 writes.
 
 ## 9. Risks & defaults
 
@@ -1487,7 +1863,7 @@ suites end in `Gpu` and start with `JASPER_REQUIRE_GPU()`.
 |---|---|
 | Linear vs Photoshop (sRGB) blending makes overlay and soft light look different from Photoshop | Linear, as Pachislop, so ported looks match; documented; an sRGB blend space would be a canvas member added later without a version bump (absent = linear) |
 | Adjustment layers clip HDR light | Accepted (Photoshop parity); documented in `docs/title-art.md` |
-| RGBA8 fallback loses light above 1 and precision | Tolerance-gated on the S53 set; heavy light effects (S56's Deep Glow) declare their own fallback behaviour |
+| RGBA8 fallback loses light above 1 and precision | Tolerance-gated on the S53 set; heavy light effects (S56's Light Glow) declare their own fallback behaviour |
 | JFA bounded by reach changes values beyond R | Consumers clamp at R; AC23 proves shading equality |
 | Clipper2 adds code to Realtime players | Only with `JASPERENGINE_TITLE_ART`; measured by S54 with `lib_size.py` |
 | Dropping `HB_NO_DRAW` grows players | Only with `JASPERENGINE_TITLE_ART` (a compile definition on the harfbuzz target) |
@@ -1502,3 +1878,20 @@ suites end in `Gpu` and start with `JASPER_REQUIRE_GPU()`.
 | Very long texts or huge canvases | Limits in §6.1; renders above `maxSide` reduce scale with a problem |
 
 ## Deviations
+
+1. **Reconciled: S53 lands alone in wave 6, not together with S55.** The program's waves put S55 in
+   6B; S53 therefore owns what its own surface needs from the window era: the shared
+   `TitlePreviewQueue` (it was S55's) and the hooks of §6.15.
+2. **Reconciled: depth and MSAA targets in the pool** (S59's need). The no-depth rule now covers the
+   2D passes; the pool key carries depth format and sample count.
+3. **Reconciled: tool caps lowered and parameters folded into `options`/`format`.** The specs'
+   claims summed to about 2,300 characters on `render_title` and 1,700 on `edit_title`, over the
+   1,500 tool default; §6.11's budget table replaces S53's first caps (render 1,450 → 1,300 with
+   `options`, edit 1,450 → 1,350 with the program's op list, list 800 → 860 with every kind, export
+   900 → 1,000 with `format` and `options`).
+4. **Reconciled: `CostTier` replaced by S56's `CostClass` C0-C4**, one cost vocabulary for the
+   registry, `list_title_library` and S57's derived `cost`.
+5. **Reconciled: `variants` is no longer reserved** (S60 D15); `export_title` gains no `apply` (S54
+   prebakes at export instead).
+6. **Reconciled: the light and max blend modes are S53's** (they were S56 R12's conditional
+   addition), so wave 6B has them from S53's headers.
