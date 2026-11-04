@@ -4,11 +4,13 @@
 #include <gtest/gtest.h>
 
 #include "TestPaths.h"
+#include "support/AllocationCounter.h"
 #include "titleart/TitleArtIO.h"
 #include "titleart/TitleArtSchema.h"
 #include "titleart/TitleEffectRegistry.h"
 
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -410,8 +412,10 @@ TEST_F(TitleArtIOTest, OverridesApplyToACopy) {
 }
 
 TEST_F(TitleArtIOTest, Budget) {
-    // R47: parse + normalize + write of a 256-layer, 1 MB document within 60 ms (Release); a
-    // build without optimisation gets ten times that. Every member is written, so a styled text
+    // R47: parse + normalize + write of a 256-layer, 1 MB document within 60 ms (Release; a build
+    // without optimisation gets ten times that). A wall-clock budget is printed always and enforced
+    // with perfSlack() (JASPER_TEST_PERF_SLACK, the benchmark run), never asserted on a shared
+    // builder; the round trip itself is checked everywhere. Every member is written, so a styled text
     // layer is about 14 KB: the 256 layers are styled text layers and plain groups, as many text
     // layers as make the document 1 MB.
     auto layerBytes = [](const Json& layer) {
@@ -457,6 +461,10 @@ TEST_F(TitleArtIOTest, Budget) {
 #else
     const double limit = 600.0;
 #endif
-    EXPECT_LE(best, limit) << text.size() << " bytes: parse + normalize " << parseMs << " ms, write " << writeMs
-                           << " ms (the JSON parse alone " << rawMs << " ms)";
+    std::printf("[bench] TitleArtIO 1 MB parse + normalize + write: %.3f ms (budget %.3f; %zu bytes: parse + normalize %.3f ms, "
+                "write %.3f ms, the JSON parse alone %.3f ms)\n", best, limit, text.size(), parseMs, writeMs, rawMs);
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0) {
+        EXPECT_LE(best, limit * slack);
+    }
 }
