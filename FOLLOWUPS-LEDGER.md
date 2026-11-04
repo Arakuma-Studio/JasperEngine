@@ -102,6 +102,8 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
   `copyLua` and `copyCustomShaderSources` follow links. `test_linked_folders_export.py` fails if they stop.
 - 2026-11-04: MCP eval: agents add cases but cannot run them. The integrator runs new cases at landing, on Orquester accounts.
 
+- 2026-11-04: MCP hints on errors go in the error text. S69's eval showed that for an error result Claude Code shows the model only the text, so `next` in `structuredContent` is never read there. This narrows the AGENTS.md "MCP text" rule; S69 updates that rule, and every program adding refusals should read this.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
