@@ -13149,12 +13149,6 @@ SubmeshShaderInputs RenderSystem::getCurrentSubmeshInputs(Entity entity, const M
     return inputs;
 }
 
-SubmeshShaderVariant RenderSystem::getCurrentSubmeshVariant(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
-                                                            const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader,
-                                                            const MeshShaderEnvironment& environment) const{
-    return getSubmeshShaderVariant(environment, getCurrentSubmeshInputs(entity, mesh, index, terrain, instmesh, hasMirror, sceneMeshShader));
-}
-
 // Whether every shader a reload of the mesh would take now is built (or failed: the load
 // falls back), asking for them as loadMesh does (ShaderPool::get starts their builds). The
 // variants as loadMesh resolves them, from the submeshes' attributes of their last load

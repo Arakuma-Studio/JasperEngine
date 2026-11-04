@@ -2742,11 +2742,6 @@ namespace jasperengine{
 		// the inputs a load of the submesh would resolve now, from its attributes of the last load
 		SubmeshShaderInputs getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
 		                                            const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader) const;
-		// the variant a load of the submesh would take now, from its attributes of the last load
-		// (as loadMesh resolves it, with a FluidSimulation's output lent to submesh 0)
-		SubmeshShaderVariant getCurrentSubmeshVariant(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
-		                                              const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader,
-		                                              const MeshShaderEnvironment& environment) const;
 		// whether the loaded submesh draws that variant in every pass it builds (colour with its
 		// Lit defines and extension maps, depth, G-buffer, the material's extra pass)
 		static bool loadedVariantMatches(const Submesh& submesh, const SubmeshShaderVariant& variant, const SubmeshShaderVariant* extraPass);
