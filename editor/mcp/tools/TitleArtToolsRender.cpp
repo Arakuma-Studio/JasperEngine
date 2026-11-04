@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <map>
 #include <optional>
 #include <set>
 
@@ -82,7 +83,25 @@ bool resolveTitlePath(Project* project, const std::string& given, bool mustExist
 }
 
 std::shared_ptr<TitleArtDocument> openTitle(Project* project, const fs::path& absolute, std::string& error) {
-    return TitleArtDocument::open(project, absolute.string(), &error);
+    // the documents the tools opened stay open for the session: `rev` (TitleArtDocument::revision)
+    // counts the texts one document object held, so a document closed after each call would
+    // start again at 1 and expect_rev / compare "rev:<n>" would mean nothing
+    static std::map<std::string, std::shared_ptr<TitleArtDocument>> kept;
+    static Project* keptProject = nullptr;
+    static fs::path keptRoot;
+    if (keptProject != project || (project && keptRoot != project->getProjectPath())) {
+        kept.clear();
+        keptProject = project;
+        keptRoot = project ? project->getProjectPath() : fs::path();
+    }
+    const std::string key = absolute.lexically_normal().generic_string();
+    auto it = kept.find(key);
+    // a document the registry no longer holds (closed with its project, or moved) is opened again
+    if (it != kept.end() && TitleArtDocument::find(absolute) == it->second) return it->second;
+    std::shared_ptr<TitleArtDocument> document = TitleArtDocument::open(project, absolute.string(), &error);
+    if (document) kept[key] = document;
+    else if (it != kept.end()) kept.erase(it);
+    return document;
 }
 
 bool pngBase64(const texsynth::Image& image, std::string& base64) {

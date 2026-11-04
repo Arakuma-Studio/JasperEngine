@@ -159,7 +159,7 @@ async def test_edit_atomic_undo(ed: Editor):
     ed.check(abs(change.get("px", 0) - 20.0) < 1e-6, f"10 % of size 200 is 20 px: {change}")
     stale = await ed.check_error("edit_title", path=path, expect_rev=rev, ops=[{"op": "set", "layer": "Title", "values": {"text": "x"}}])
     ed.check_in("rev", stale, "expect_rev refuses a document that moved on")
-    await ed.call("undo")
+    await ed.call("undo", scope="project")
     got = await ed.call("get_title", path=path)
     ed.check_eq(got["layers"][0]["text"], "Atomic", "undo removes the last step only (the rim width)")
     dry = await ed.call("edit_title", path=path, dry_run=True, ops=[{"op": "set", "layer": "Title", "values": {"text": "Dry"}}])
@@ -300,6 +300,8 @@ async def test_move_document(ed: Editor):
     before = await ed.call("get_asset_info", path="assets/titles/mover.titleart.png")
     png_guid = before.get("guid")
     ed.check_eq(before.get("title_art_bake", {}).get("output"), "main", f"the PNG's recipe names its output: {before}")
+    (ed.project / "assets/moved").mkdir(parents=True, exist_ok=True)
+    await ed.call("sync_files")
     await ed.call("move_asset", path=path, to="assets/moved/renamed.titleart")
     moved_png = ed.project / "assets/moved/renamed.titleart.png"
     ed.check(moved_png.exists(), "the PNG moved and was renamed with the document")
@@ -334,7 +336,7 @@ async def test_project_settings(ed: Editor):
     got = await ed.call("get_project_settings", keys=["title_art.stale_bakes_on_export", "title_art.auto_bake"])
     text = json.dumps(got)
     ed.check_in("warn", text, f"the policy is stored: {got}")
-    await ed.call("undo")
+    await ed.call("undo", scope="project")
     got = await ed.call("get_project_settings", keys=["title_art.stale_bakes_on_export"])
     ed.check_in("rebake", json.dumps(got), f"undo restores the default: {got}")
     bad = await ed.check_error("set_project_settings", values={"title_art.stale_bakes_on_export": "sometimes"})
@@ -346,6 +348,9 @@ async def test_export_excludes_document(ed: Editor):
     output fails the export naming the document."""
     await setup(ed)
     await create(ed, "assets/titles/shipped.titleart")
+    # an export needs a saved scene in the build
+    await ed.call("create_scene", name="Menu", type="2D", path="scenes/Menu")
+    await ed.call("save_project")
     await ed.call("set_project_settings", values={"title_art.stale_bakes_on_export": "fail"})
     out = ed.scratch.root / "export-fail"
     r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "platform": "linux", "backends": ["opengl"],
