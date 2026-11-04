@@ -368,9 +368,10 @@ TEST_F(NavAreaOverrideTest, ScriptVolumeHandle){
     nav->syncAreaOverrides();
     ASSERT_TRUE(nav->samplePosition(Vector3(0.0f, 0.0f, 0.0f), 0.3f, hit));
     EXPECT_EQ(hit.area, 3);
-    // an area outside 0-15 is refused
+    // an area outside 0-15 is refused, with a warning
+    test::LogCapture log;
     EXPECT_EQ(nav->setAreaInVolume(fixture.doorCenter, fixture.doorSize, none, nav::AREA_COUNT), 0u);
-    EXPECT_ENGINE_WARNINGS(1);
+    EXPECT_EQ(log.count(D_LOG_WARN, "setAreaInVolume"), 1u);
 
     // Stop: the handles end
     nav->destroy();
