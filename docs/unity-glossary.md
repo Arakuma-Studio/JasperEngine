@@ -169,6 +169,8 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `Application.systemLanguage` | `System.getSystemLanguage()` (`SystemLanguage.*`, same names and values); codes: `System.getLanguageCode()`, `getRegionCode()`, `getLocale()`, `getPreferredLanguages()` |
 | `Application.targetFrameRate` | `Engine.targetFrameRate` (Project Settings > Player > Target Frame Rate) |
 | `QualitySettings.vSyncCount` | `Engine.vSyncCount` (starts from Quality > VSync) |
+| `QualitySettings.terrainDetailDistanceFactor` | `Engine.foliageDistanceScale` (starts from Quality > Foliage Distance; [instancing.md](rendering/instancing.md)) |
+| `BillboardRenderer` facing (camera-facing, upright) | Instanced Mesh **Billboard**, **Cylindrical Billboard** |
 | `Screen.orientation`, `Screen.autorotateToPortrait` / `PortraitUpsideDown` / `LandscapeLeft` / `LandscapeRight` | `Screen.orientation`, `Screen.autorotateTo*` (`ScreenOrientation.*`) |
 | `Screen.sleepTimeout`, `SleepTimeout.NeverSleep` / `SystemSetting` | `Screen.sleepTimeout`, `SleepTimeout.*` |
 | `Screen.dpi`, `Screen.currentResolution.refreshRateRatio` | `Screen.dpi`, `Screen.refreshRate` |
