@@ -18,12 +18,12 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 
 | Spec | Step | One line |
 |---|---|---|
-| S41 | Terrain operations and authoring | One operation engine behind brushes, MCP, Lua and bakes; Create Terrain dialog, overlays, Raw import/export, delta undo, spaced stamps; `edit_terrain`, `visualize_terrain`, richer `sample_terrain`; Lua height queries and runtime edits |
-| S42 | Noise graphs and generation | Our own deterministic noise library and versioned Noise Graph asset, the first real `edit_graph` kind; pins on GraphCanvas; erosion; `generate_terrain` as a job |
-| S43 | Terrain materials and holes | Top-N layer cap, quality tiers including a mobile tier, macro variation, distance resampling, cliff projection; holes that agree across render, collision, navmesh and picking |
-| S44 | Terrain worlds | Tiled worlds past one map: streaming, per-tile collision paging, far-distance overview, per-tile formats, editing across tiles |
-| S45 | Foliage upgrade | Placement on jobs, shared mesh parsing, compact grass instances, tree impostors, tree collision, wind |
-| S46 | Voxel volumes | Opt-in module: bounded smooth voxel volumes with Transvoxel LOD, caves, overhangs, destruction, terrain integration |
+| S53 | Terrain operations and authoring | One operation engine behind brushes, MCP, Lua and bakes; Create Terrain dialog, overlays, Raw import/export, delta undo, spaced stamps; `edit_terrain`, `visualize_terrain`, richer `sample_terrain`; Lua height queries and runtime edits |
+| S54 | Noise graphs and generation | Our own deterministic noise library and versioned Noise Graph asset, the first real `edit_graph` kind; pins on GraphCanvas; erosion; `generate_terrain` as a job |
+| S55 | Terrain materials and holes | Top-N layer cap, quality tiers including a mobile tier, macro variation, distance resampling, cliff projection; holes that agree across render, collision, navmesh and picking |
+| S56 | Terrain worlds | Tiled worlds past one map: streaming, per-tile collision paging, far-distance overview, per-tile formats, editing across tiles |
+| S57 | Foliage upgrade | Placement on jobs, shared mesh parsing, compact grass instances, tree impostors, tree collision, wind |
+| S58 | Voxel volumes | Opt-in module: bounded smooth voxel volumes with Transvoxel LOD, caves, overhangs, destruction, terrain integration |
 
 ## Programme decisions (every spec honours these)
 
@@ -36,19 +36,19 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - D3. User-facing names: **Terrain**, **Terrain Layer**, **Noise Graph**, **Terrain World**, **Voxel Volume**.
 
 **The seams between specs**
-- D4. **S41 owns the operation engine** (`engine/core/terrain/TerrainOps.h`). Every terrain write goes
+- D4. **S53 owns the operation engine** (`engine/core/terrain/TerrainOps.h`). Every terrain write goes
   through it: brush strokes, MCP, Lua, spline bakes, generation, world tiles. It takes an abstract
   **`TerrainMapStore`** interface (read and write rectangles of height, blend, hole and density data in
-  texels, reporting dirty rectangles) so that S44 can supply a tiled store without changing callers.
-- D5. **S41 owns the terrain surface query** (height, normal, is-hole) behind one function used by
+  texels, reporting dirty rectangles) so that S56 can supply a tiled store without changing callers.
+- D5. **S53 owns the terrain surface query** (height, normal, is-hole) behind one function used by
   physics, navigation, picking, foliage, splines, particles and Lua; it must keep matching the drawn
   surface (S18:531, S26:467).
-- D6. **S42 owns `engine/core/noise/`**; S46 uses it for volume generation, and `generate_terrain` writes
-  through S41's operations.
-- D7. **S43 owns the hole representation and the terrain material shader changes.** S41 exposes
-  `cut_holes` and `fill_holes` as operations; S43 makes them mean something in every consumer.
-- D8. **S44 owns tiles, streaming and collision paging**, and is implemented after S41 and S43 land.
-- D9. Foliage (S45) stays attached to the terrain or world through S41's surface query.
+- D6. **S54 owns `engine/core/noise/`**; S58 uses it for volume generation, and `generate_terrain` writes
+  through S53's operations.
+- D7. **S55 owns the hole representation and the terrain material shader changes.** S53 exposes
+  `cut_holes` and `fill_holes` as operations; S55 makes them mean something in every consumer.
+- D8. **S56 owns tiles, streaming and collision paging**, and is implemented after S53 and S55 land.
+- D9. Foliage (S57) stays attached to the terrain or world through S53's surface query.
 
 **Rules from the analysis**
 - D10. No FastNoise2 at runtime or in the editor: its cross-target output is unproven, and encoded trees
@@ -69,14 +69,14 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   (operation-coloured brush decal, Ctrl and Shift modifiers, live info panel, pick from terrain, overlays).
   Alt+drag always orbits by default, as in Unity. Alternates are a button and the `C` key, and the
   preference `Alt Alternates While Painting` (off by default) gives Terrain3D's Alt. Alt+click still picks.
-- D17. MCP groups: `terrain` for S41 to S45 (raise its limits in `tools/mcp/budget.json`), `voxels` for S46.
+- D17. MCP groups: `terrain` for S53 to S57 (raise its limits in `tools/mcp/budget.json`), `voxels` for S58.
 - D18. Runtime code that many games will not use is an S34 player module with `ModuleUsage` detection, a
-  CMake option and a test: `JASPERENGINE_TERRAIN_WORLD` (S44), `JASPERENGINE_VOXEL` (S46),
-  and `JASPERENGINE_NOISE` (S42's runtime evaluator, also used by voxels).
-- D19. Shader variant bits are allocated once, in the table in S43 D2, so streams cannot collide. S43 widens
-  `getDefineBits` to 64 bits so S46 has room. No spec bumps the scene version; new fields default.
-- D20. Landing order: S41 foundation first (the `engine/core/terrain` seams), then the rest of S41, S42, S43,
-  S45 and S46 in parallel, then S44 last.
+  CMake option and a test: `JASPERENGINE_TERRAIN_WORLD` (S56), `JASPERENGINE_VOXEL` (S58),
+  and `JASPERENGINE_NOISE` (S54's runtime evaluator, also used by voxels).
+- D19. Shader variant bits are allocated once, in the table in S55 D2, so streams cannot collide. S55 widens
+  `getDefineBits` to 64 bits so S58 has room. No spec bumps the scene version; new fields default.
+- D20. Landing order: S53 foundation first (the `engine/core/terrain` seams), then the rest of S53, S54, S55,
+  S57 and S58 in parallel, then S56 last.
 
 ## How the work runs
 
@@ -97,20 +97,20 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Analysis of the three repos and our code | done | Nine reports |
 | Build host setup | done | Docker 29.1.3, swap, `rb.sh` queue |
 | Baseline Linux build | in progress | Fills the shared ccache |
-| S41 spec | done | 93 requirements, 73 acceptance criteria at first draft |
-| S42 spec | done | 71 and 47 |
-| S43 spec | done | 53 and 47, then one requirement added in reconciliation |
-| S44 spec | done | 55 and 43 |
-| S45 spec | done | 63 and 40 |
-| S46 spec | done | 80 and 53 |
-| Spec reconciliation | done | One bit table, one landing order, S41's names win |
-| S41 foundation | in progress | Seams everything else builds on |
-| S41 implementation | not started | |
-| S42 implementation | not started | |
-| S43 implementation | not started | |
-| S44 implementation | not started | After S41 and S43 |
-| S45 implementation | not started | |
-| S46 implementation | not started | |
+| S53 spec | done | 93 requirements, 73 acceptance criteria at first draft |
+| S54 spec | done | 71 and 47 |
+| S55 spec | done | 53 and 47, then one requirement added in reconciliation |
+| S56 spec | done | 55 and 43 |
+| S57 spec | done | 63 and 40 |
+| S58 spec | done | 80 and 53 |
+| Spec reconciliation | done | One bit table, one landing order, S53's names win |
+| S53 foundation | in progress | Seams everything else builds on |
+| S53 implementation | not started | |
+| S54 implementation | not started | |
+| S55 implementation | not started | |
+| S56 implementation | not started | After S53 and S55 |
+| S57 implementation | not started | |
+| S58 implementation | not started | |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
 ## Log
@@ -121,4 +121,4 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - Installed Docker, added swap, wrote the local build queue, started the baseline build.
 - Wrote this ledger and the programme decisions; started the six spec writers.
 - All six specs written and reconciled: shader bits, version policy, hole map scope, Alt key, seam names.
-- Started S41 foundation in `.worktrees/s41`.
+- Started S53 foundation in `.worktrees/s41`.

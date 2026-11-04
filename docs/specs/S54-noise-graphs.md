@@ -1,9 +1,9 @@
-# S42 — Noise graphs and terrain generation
+# S54 — Noise graphs and terrain generation
 
-Wave 5 (terrain programme, spec-first). Binding decisions: `TERRAIN_LEDGER.md` D1-D18, cited here as
+Wave 5 (terrain programme, spec-first). Binding decisions: `TERRAIN-LEDGER.md` D1-D18, cited here as
 D1, D4 ...; this spec's own decisions are N1 ... N17. Reports: `/tmp/terrain-research/reports/`
 (`fastnoise2.md`, `voxel-meshing-generators.md` section 3, `our-terrain-authoring.md`,
-`engine-constraints.md`), checked against the code where cited. Seams: S41 owns the writes (D4), S46
+`engine-constraints.md`), checked against the code where cited. Seams: S53 owns the writes (D4), S58
 reads this library (D6).
 
 ## 1. Goal
@@ -11,10 +11,10 @@ reads this library (D6).
 Anyone, a person or an agent, can make a believable terrain in seconds from a seed and a preset, then
 open the recipe, change it and see every step of it. The recipe is a **Noise Graph**: a small,
 readable `.noisegraph` file, compiled to a plan over buffers and evaluated by our own noise library,
-which gives the same bits on all six export targets. Generation runs as a job, writes through S41's
+which gives the same bits on all six export targets. Generation runs as a job, writes through S53's
 operations as one undo step, and can paint layers and foliage density from masks in the same graph.
 Games that bake pay nothing. Games that want noise at run time turn on one small player module, which
-S46's voxel volumes also use.
+S58's voxel volumes also use.
 
 ## 2. Scope
 
@@ -26,7 +26,7 @@ S46's voxel volumes also use.
 - Hydraulic and thermal erosion as heightfield stages (`engine/core/terrain/HeightfieldErosion`).
 - `generate_terrain` and `preview_noise_graph`; `.noisegraph` as the first real graph kind of
   `edit_graph`, `validate_graph` and `get_graph`.
-- Ten built-in presets shipped as `.noisegraph` files; the seam S41's Create Terrain dialog uses.
+- Ten built-in presets shipped as `.noisegraph` files; the seam S53's Create Terrain dialog uses.
 - `GraphCanvas` ports, typed pins and curved wires (additive); the Noise Graph window; the Terrain
   window's Generate section.
 - Lua `Noise` and `NoiseGraph`, the C++ runtime evaluator, the `JASPERENGINE_NOISE` player module.
@@ -39,9 +39,9 @@ S46's voxel volumes also use.
   `CurlNoiseBatch.h:27-32`) is not part of this spec; a later one must keep the goldens.
 - Sub-graphs, expression nodes, comments and group drawing. The file keeps groups (`Graph.h:86-92`);
   the window does not draw them yet.
-- A holes output: S43 owns what a hole means (D7). A later `output_hole` node is an additive change.
-- Scattering rules, tree placement and impostors (S45), tiles and streaming (S44), meshing (S46).
-- Rewriting the Erode brush (`editor/util/TerrainErosion.*`, which S41 R22 moves to `engine/core/terrain/`),
+- A holes output: S55 owns what a hole means (D7). A later `output_hole` node is an additive change.
+- Scattering rules, tree placement and impostors (S57), tiles and streaming (S56), meshing (S58).
+- Rewriting the Erode brush (`editor/util/TerrainErosion.*`, which S53 R22 moves to `engine/core/terrain/`),
   which stays a brush and keeps its output.
 - Erosion at run time: the compiler refuses it in games (N7).
 - The curl noise, the camera shake Perlin and the cloud bake (R37).
@@ -221,7 +221,7 @@ do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **Open
   | Output | `output_height` (Height Output) | `in` | `unit` normalized/metres | at most one |
   | Output | `output_layer` (Layer Output) | `weight` | `layer`, `optional` | one per layer |
   | Output | `output_density` (Foliage Density Output) | `density` | `foliage_layer`, `optional` | one per foliage layer |
-  | Output | `output_value` (Value Output) | `in` | `name` | one per name; for scripts and S46 |
+  | Output | `output_value` (Value Output) | `in` | `name` | one per name; for scripts and S58 |
 
 - **R10. Typed ports.** Two port types, `field` (one float per point) and `coord` (x, y, z per point),
   with no implicit conversion. An unconnected `coord?` means `position`. An unconnected field input
@@ -265,13 +265,13 @@ do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **Open
   - The report names every dead and folded node.
 - **R19. Interval analysis.** Every node has an analytic `[min, max]`, computed from its inputs' ranges
   and shown in the preview. It must contain every value the node outputs (tested by sampling).
-  `CompiledGraph::rangeOver(box)` returns an output's range over a position box, for S46's block
+  `CompiledGraph::rangeOver(box)` returns an output's range over a position box, for S58's block
   clipping.
 - **R20. Profile.** An optional per-evaluation profile returns milliseconds, nanoseconds per point and
   share of the total, per source node. When off it adds no clock call.
 - **R21. Evaluators.** `evaluateGrid` (2D, global integer texel start and units per texel, R23),
-  `evaluateGrid3D` (samples on the lattice, `float(double(start + i) * unitsPerVoxel)` with no half step, because S46 R5
-  needs a coarse sample to be the fine sample at its position) and `evaluatePoints` (for S46 and scripts), plus `compile` flags `gridOnly` and
+  `evaluateGrid3D` (samples on the lattice, `float(double(start + i) * unitsPerVoxel)` with no half step, because S58 R5
+  needs a coarse sample to be the fine sample at its position) and `evaluatePoints` (for S58 and scripts), plus `compile` flags `gridOnly` and
   `bakeOnly`. A `CompiledGraph` may be evaluated from many threads at once, each with its own `EvalScratch`.
 - **R22. Stages.** Grid-only nodes run over a whole region buffer and split the plan into segments. The
   compiler computes the padding a region needs (slope 1 texel; thermal `iterations`; hydraulic
@@ -279,7 +279,7 @@ do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **Open
 - **R23. Seams.** Position is `float((double(start + i) + 0.5) * unitsPerTexel)` per axis, from a 64-bit
   global texel index. So a graph without erosion gives the same bits for a texel whichever region,
   tile or resolution-equal call evaluates it, including `slope_mask` thanks to padding. This is what
-  makes S44's tiles seamless without knowing about noise. Erosion is the exception (R27).
+  makes S56's tiles seamless without knowing about noise. Erosion is the exception (R27).
 
 ### Functional — erosion
 
@@ -307,9 +307,9 @@ do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **Open
 - **R28. One path.** `editor/noise/TerrainGeneration` is what the Generate section, the Create Terrain
   dialog and `generate_terrain` call: validate, snapshot what the graph reads, evaluate on a job
   (`Lane::Background`, `GateClass::Heavy`), and apply on the main thread.
-- **R29. Writes (D4, D6).** Every write goes through S41's `terrain::Batch` (`TerrainOps.h`, S41 R88): one undo step for the whole
+- **R29. Writes (D4, D6).** Every write goes through S53's `terrain::Batch` (`TerrainOps.h`, S53 R88): one undo step for the whole
   generation, whichever maps it touches, named `Generate Terrain (Mountains, seed 7)`, reporting the
-  dirty rectangle. No PNG writing here: S41 owns persistence, collider and foliage refresh.
+  dirty rectangle. No PNG writing here: S53 owns persistence, collider and foliage refresh.
 - **R30. Layers and density.** A graph's `output_layer` nodes paint by rules: weights are clamped to 0..1;
   when they sum above 1 they are normalized; layer 0 takes the rest unless it has its own output.
   `output_density` writes a foliage layer's density. A missing layer or foliage layer is an error, or a
@@ -318,7 +318,7 @@ do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **Open
   - `region` is terrain-local metres, snapped outward to texels and reported.
   - `feather` (metres) lerps new values over old across the region's border, using the snapshot.
   - `resolution` applies to dry runs at any value, and to real runs only on a terrain without a height
-    map or for a whole-terrain run (which replaces the map at that resolution by S41's structural path, S41 R1, R28). A partial run
+    map or for a whole-terrain run (which replaces the map at that resolution by S53's structural path, S53 R1, R28). A partial run
     at another resolution is refused.
   - Clipping outside 0..1 is counted, not an error.
 - **R32. All-or-nothing (D15).** Graph errors, a missing terrain, a bad region and missing required layers
@@ -348,7 +348,7 @@ do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **Open
   their output for the same seed.
 - **R37.** Unchanged, not moved and not reimplemented: `engine/core/math/Noise.h` (camera shake),
   `engine/core/render/AtmosphereNoise.cpp` (periodic cloud bake), `engine/core/math/noise/*` (curl).
-  `random_noise` is not S42's: S41 R19 moves it to a seeded per-texel hash.
+  `random_noise` is not S54's: S53 R19 moves it to a seeded per-texel hash.
 
 ### Platform & backends
 
@@ -376,7 +376,7 @@ do-not-copy list (`docs/specs/README.md:23-36`) does not touch this work. **Open
   The editor always builds it ON (root CMake errors otherwise). `noise::compat` is outside the module
   (N13). `tools/players/lib_size.py` must not count curl noise as this module: curl shares the namespace.
 - **R43. Detection.** `ModuleUsage` needs `noise` when a Lua script names `Noise` or `NoiseGraph` (found
-  from the Lua API's `modules`), on dynamic access or C++ scripts, as S34 R5 says; S46 adds Voxel Volume
+  from the Lua API's `modules`), on dynamic access or C++ scripts, as S34 R5 says; S58 adds Voxel Volume
   components. A `.noisegraph` in the assets is not evidence by itself, and neither is a baked terrain.
 - **R44. Variants.** `noise` joins `full`, `ui` and `core`, and stays out of `lite3d` and `lite2d` (N11).
 - **R45. Bakes pay nothing.** When `noise` is not needed, `copyAssets` skips `*.noisegraph`, the Lua
@@ -464,9 +464,9 @@ beyond that the code is profiled.
   Feather), Preview (no write: a hillshaded image, min, max, slope histogram), Apply, a progress bar and
   Cancel. The last graph and seed persist in `TerrainEditorSettings` (`generateGraph`, `generateSeed`,
   with defaults, and in `check_stream_keys.py`'s table).
-- **R61. Create Terrain seam.** S41's Create Terrain dialog lists `TerrainPresets::list()` and, when one is
+- **R61. Create Terrain seam.** S53's Create Terrain dialog lists `TerrainPresets::list()` and, when one is
   chosen, calls `TerrainGeneration::start` after creating the map, with the preset's recommended size and
-  height as defaults. S41 owns the dialog; S42 owns those two calls.
+  height as defaults. S53 owns the dialog; S54 owns those two calls.
 - **R62. Asset integration.** Project window > Create > Noise Graph makes a graph from a chosen preset
   (Blank has a single `output_height` and a Constant); `window.noiseGraph` in the command catalog.
 
@@ -476,7 +476,7 @@ beyond that the code is profiled.
   always echoed), `variables`, `region`, `feather`, `resolution`, `apply_to`, `dry_run`, `max_width`, `wait`,
   `timeout_seconds`. The result has `hash` per output, `stats` (height min, max, mean, p5, p50, p95 in
   normalized units and metres; slope histogram; `clipped_low`, `clipped_high`; per-layer coverage; per-density
-  coverage), `changed` (S41 R9's `[{map, rect, local, texels}]`), `undo_name`, `plan` (ops, dead, folded, peak_bytes), `ms`
+  coverage), `changed` (S53 R9's `[{map, rect, local, texels}]`), `undo_name`, `plan` (ops, dead, folded, peak_bytes), `ms`
   (evaluate, erosion, apply) and `warnings`. A dry run writes nothing and returns a heightmap image.
 - **R64. `preview_noise_graph`** (group `terrain`, read-only, a job with `wait`, allowed while playing). `path` or
   `preset`, optional `ops` (the same as `edit_graph`, applied in memory), `seed`, `size` (16..512, default 128),
@@ -488,7 +488,7 @@ beyond that the code is profiled.
   agent guide's terrain digest gets at most one line. `list_graph_node_types` carries ranges of
   parameters from `ParamDesc`.
 - **R66. Budget.** `generate_terrain` at most 1,400 characters, `preview_noise_graph` at most 1,200, and both
-  within the `terrain` group limits of S41 R74 (D17, `tools/mcp/budget.json`). Adding `create` to `edit_graph` keeps
+  within the `terrain` group limits of S53 R74 (D17, `tools/mcp/budget.json`). Adding `create` to `edit_graph` keeps
   `scripting` within its limit. Tool test, hidden-until-enabled test and regenerated `docs/mcp/TOOLS.md`.
 
 ### Lua and runtime (module `noise`, D18)
@@ -505,7 +505,7 @@ beyond that the code is profiled.
   `.progress`, `:result()`, `:cancel()`), split so that one job stays under 1 ms and web without pthreads keeps
   its pump budget. `bakeOnly` nodes fail to load in a game; `sample` on a grid-only graph is an error
   naming the node.
-- **R69. C++ runtime API.** `engine/core/noise/NoiseGraphRuntime.h` (section 6) is S46's seam: compile from
+- **R69. C++ runtime API.** `engine/core/noise/NoiseGraphRuntime.h` (section 6) is S58's seam: compile from
   a `graph::Graph`, `evaluateGrid3D`, `evaluatePoints`, `rangeOver`, thread-safe with an `EvalScratch` per thread.
 
 ### Data & compatibility
@@ -581,10 +581,10 @@ the editor share it; it costs about 8 KiB (assumed; measured under R51).
 **N8. D1 and the module.** `HeightfieldErosion` lives in `engine/core/terrain/` per D1, in `jasperengine::terrain`,
 with no ECS or render dependency, but is compiled only with `JASPERENGINE_NOISE` so bakes pay nothing.
 
-**N9. Generate writes with S41's absolute operations.** S42 calls S41 R88's route and nothing else:
+**N9. Generate writes with S53's absolute operations.** S54 calls S53 R88's route and nothing else:
 
 ```cpp
-// engine/core/terrain/TerrainOps.h; S41's names win
+// engine/core/terrain/TerrainOps.h; S53's names win
 terrain::Batch batch(store);
 batch.readHeights(rect, out);                                       // the terrain_height snapshot
 batch.setHeights(rect, std::span<const float> normalized);          // absolute, 0..1
@@ -611,7 +611,7 @@ platform.
 module row in `McpTools.cpp`'s table (group `terrain`).
 
 ```text
-generate_terrain {scene?, entity? (S41's terrain ref), graph?, preset? (enum), seed=1, variables? (anyObject name -> number),
+generate_terrain {scene?, entity? (S53's terrain ref), graph?, preset? (enum), seed=1, variables? (anyObject name -> number),
   region? {min:[x,z], max:[x,z]}, feather=0, resolution?, apply_to? [height|layers|density],
   dry_run=false, max_width=512, wait=true, timeout_seconds=120}
   "Generate a Terrain from a Noise Graph as one undo step (job): graph (.noisegraph) or preset, seed, region,
@@ -637,7 +637,7 @@ old header **before** it is removed (`docs/testing.md` "characterization tests")
 contracted (inferred from `engine/CMakeLists.txt:1255-1261`); it now joins the x86-64 values, and that one narrow
 change is accepted because maps are stored PNGs and nothing regenerates them.
 
-It compiles **outside** the module (under 1 KiB) because S41 may move the brushes into `engine/core/terrain/`, which
+It compiles **outside** the module (under 1 KiB) because S53 may move the brushes into `engine/core/terrain/`, which
 exists in players. The `value` node equals `compat::value * 2 - 1` on `[0, 65536)` and an FBm of `value` equals
 `compat::fractal`, so the library's definitions are the old ones extended, not a second algorithm.
 
@@ -668,7 +668,7 @@ namespace jasperengine::noise {
                          std::span<const std::pair<std::string, float>> variables;
                          const float* terrainHeight = nullptr;      // the snapshot, when the graph reads it
                          jobs::CancelToken* cancel = nullptr; bool parallel = true; NodeProfile* profile = nullptr;
-                         EvalScratch* scratch = nullptr; };   // null: the evaluator's own; S46's jobs pass theirs
+                         EvalScratch* scratch = nullptr; };   // null: the evaluator's own; S58's jobs pass theirs
     struct Interval { float min, max; };
     class EvalScratch;                              // per thread, R21; size from scratchBytes()
 
@@ -680,7 +680,7 @@ namespace jasperengine::noise {
         size_t scratchBytes() const;
         bool evaluateGrid(const GridDomain&, const EvalContext&, int output, float* out) const;
         bool evaluateGrid3D(const Grid3Domain&, const EvalContext&, int output, float* out) const;
-        // one thread, no allocation: S46's blocks are already on a job
+        // one thread, no allocation: S58's blocks are already on a job
         void evaluatePoints(const float* x, const float* y, const float* z, size_t count, const EvalContext&,
                             int output, float* out, EvalScratch& scratch) const;
     };
@@ -924,49 +924,49 @@ pending until the push, and the report must say so.
 **Depends on (landed):** S04 (asset table, GUIDs), S06 (jobs), S21 (`GraphCanvas`), S23 (graph model and tools), S27 (curve field,
 for `curve` keys), S34 (modules), S20 (flags and gate precedents).
 
-**Depends on (in this programme):** S41 for `TerrainOps`, `TerrainMapStore`, the Create Terrain dialog and the terrain panel's
-structure. Programme landing order (S41 §8): S41's foundation first, then S41's rest, S42, S43, S45 and S46 in parallel, then S44
+**Depends on (in this programme):** S53 for `TerrainOps`, `TerrainMapStore`, the Create Terrain dialog and the terrain panel's
+structure. Programme landing order (S53 §8): S53's foundation first, then S53's rest, S54, S55, S57 and S58 in parallel, then S56
 last. The library, compiler, erosion, presets, `preview_noise_graph` and `generate_terrain dry_run` need only that foundation. Real
-runs need S41's `TerrainMapDeltaCmd`, and R61 its dialog, so those parts land after them.
+runs need S53's `TerrainMapDeltaCmd`, and R61 its dialog, so those parts land after them.
 
-**Seams S41 must honour**
+**Seams S53 must honour**
 - Absolute batch writes as in N9 under one undo step, with dirty rects and a height read for the snapshot.
 - A place for the one-line `drawGenerateSection()` call; the Create dialog calling `TerrainPresets::list()` and
   `TerrainGeneration::start()` (R61).
-- If S41 moves the Noise or Erode brush into `engine/core/terrain/`, they call `noise::compat` (always compiled, N13). They must
+- If S53 moves the Noise or Erode brush into `engine/core/terrain/`, they call `noise::compat` (always compiled, N13). They must
   not use the module's kernels, since players without the module would not link.
-- Whichever of S41 or S42 lands second completes the removal of `TerrainNoise.h`.
-- `paint_by_rules` in `edit_terrain` (S41) and `output_layer` (S42) must use the same normalization (R30): S41's
+- Whichever of S53 or S54 lands second completes the removal of `TerrainNoise.h`.
+- `paint_by_rules` in `edit_terrain` (S53) and `output_layer` (S54) must use the same normalization (R30): S53's
   `setLayerWeights` is the single encoder.
-- The `terrain` group's `groups` entry in `budget.json` (D17) is S41 R74's, added by S41's foundation, sized for all of S41-S45.
+- The `terrain` group's `groups` entry in `budget.json` (D17) is S53 R74's, added by S53's foundation, sized for all of S53-S57.
 
-**Seams S46 must honour**
+**Seams S58 must honour**
 - It uses `NoiseGraphRuntime.h` only (R69, N15), one `EvalScratch` per worker, `evaluatePoints` or `evaluateGrid3D`, `rangeOver` for
   block clipping, and the named `output_value` (`sdf`).
-- `JASPERENGINE_VOXEL` requires `JASPERENGINE_NOISE`; S46 adds the CMake check, its `ModuleUsage` evidence and any variant change.
+- `JASPERENGINE_VOXEL` requires `JASPERENGINE_NOISE`; S58 adds the CMake check, its `ModuleUsage` evidence and any variant change.
 - Voxel graphs use `world` space, `dimensions: 3d`, and no grid-only or bake-only node.
 
 **Seams others use**
-- S44 passes global texel starts in `GridDomain` for seamless tiles (R23), and writes reach its tiled store through S41's interface.
-- S45 reads density through the existing density maps and S41's dirty rects. Its `scatter_by_rules` `noise_mask` (S45 R24) calls `compile`
+- S56 passes global texel starts in `GridDomain` for seamless tiles (R23), and writes reach its tiled store through S53's interface.
+- S57 reads density through the existing density maps and S53's dirty rects. Its `scatter_by_rules` `noise_mask` (S57 R24) calls `compile`
   and `evaluateGrid` on the `output_value` named `mask`, or on the graph's only output. A graph with neither is its error to report. A
   run of it in a player needs the module, so any Lua path to it must carry the `noise` condition.
-- S43's top-N layers sit behind `setLayerWeights`. S43's Base Map macro mode mentions S42 bakes: this spec bakes no colour map. A graph can
+- S55's top-N layers sit behind `setLayerWeights`. S55's Base Map macro mode mentions S54 bakes: this spec bakes no colour map. A graph can
   produce the mask, and the colour bake is not in scope here.
 
 **Merge hotspots**
 
 | File | Others | Note |
 |---|---|---|
-| `engine/CMakeLists.txt`, `variants.json`, `PlayerModules.*`, `ModuleUsage.cpp:43`, `JasperPlayerVariants.cmake`, `Exporter.cpp:3589-3598,4611` | S44, S46 | Each adds a module: keep both lines |
-| `tools/mcp/budget.json`, `McpTools.cpp` table, `docs/mcp/TOOLS.md` | S41, S43, S44, S45 | Regenerate after merging |
-| `TerrainEditWindow.cpp` | S41, S43, S44, S45 | S42 touches two lines and adds one call |
-| `.github/workflows/ci.yml`, `docker/android.Dockerfile` | S44, S46 | Additive steps |
+| `engine/CMakeLists.txt`, `variants.json`, `PlayerModules.*`, `ModuleUsage.cpp:43`, `JasperPlayerVariants.cmake`, `Exporter.cpp:3589-3598,4611` | S56, S58 | Each adds a module: keep both lines |
+| `tools/mcp/budget.json`, `McpTools.cpp` table, `docs/mcp/TOOLS.md` | S53, S55, S56, S57 | Regenerate after merging |
+| `TerrainEditWindow.cpp` | S53, S55, S56, S57 | S54 touches two lines and adds one call |
+| `.github/workflows/ci.yml`, `docker/android.Dockerfile` | S56, S58 | Additive steps |
 | `GraphCanvas.*` | S21 follow-ups | Additive; AC41 guards it |
-| `docs/mcp/guide/` digest in `McpInstructions.cpp` | S41 | One line |
-| `engine/core/terrain/` | S41 | S42 only adds `HeightfieldErosion.*` |
+| `docs/mcp/guide/` digest in `McpInstructions.cpp` | S53 | One line |
+| `engine/core/terrain/` | S53 | S54 only adds `HeightfieldErosion.*` |
 
-**Blocks:** S46 (noise), parts of S41's Create dialog (presets; S41 can ship with a flat option first).
+**Blocks:** S58 (noise), parts of S53's Create dialog (presets; S53 can ship with a flat option first).
 
 ## 9. Risks & defaults
 
@@ -980,7 +980,7 @@ runs need S41's `TerrainMapDeltaCmd`, and R61 its dialog, so those parts land af
 - **Erosion can look wrong while being deterministic.** Hash tests cannot judge beauty. Default: AC17's behaviour tests plus a
   reviewed screenshot. Tile rounds (N6) may show a faint grid. Default: 4 rounds; if the screenshot shows it, more rounds with
   the same totals, adjusting goldens before landing.
-- **S41's API differs from N9.** Default: S41's names win; `TerrainGeneration` is one adapter file, and this spec is not
+- **S53's API differs from N9.** Default: S53's names win; `TerrainGeneration` is one adapter file, and this spec is not
   re-litigated.
 - **A `terrain_height` snapshot of a 4096² map costs 67 MiB.** Accepted; only graphs that read it pay.
 - **A preset's layer outputs on a terrain without those layers.** Default: `optional`, a warning, heights still apply.
@@ -991,5 +991,5 @@ runs need S41's `TerrainMapDeltaCmd`, and R61 its dialog, so those parts land af
   size change stretches it. Accepted: presets scale with the terrain, and `world` space exists for fixed scale.
 - **A variant decision (N11).** A coordinator may prefer `noise` in `full` only. Changing it is one line in `variants.json`
   plus the AC35 expectation.
-- **`random_noise` (R37).** S41 R19 makes it a seeded hash and records the changed output; it is not `TerrainNoise.h`, so
+- **`random_noise` (R37).** S53 R19 makes it a seeded hash and records the changed output; it is not `TerrainNoise.h`, so
   `noise::compat` does not change for it.
