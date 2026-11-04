@@ -1688,6 +1688,28 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        // the foliage distance scale per platform group (Engine::setFoliageDistanceScaleDefaults)
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "number";
+            s.description = std::string("Foliage Distance (0-10) of ") + groups[group] +
+                            ": multiplies every terrain foliage layer's Draw Distance and Min Draw Distance; 0 draws none (Lua: Engine.foliageDistanceScale).";
+            s.get = [group](SettingsContext& ctx) { return Json(ctx.project()->getFoliageDistanceScale()[group]); };
+            s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.0, 10.0, v, error)) return false;
+                if (apply) {
+                    std::array<float, 3> all = ctx.project()->getFoliageDistanceScale();
+                    all[group] = static_cast<float>(v);
+                    ctx.project()->setFoliageDistanceScale(all);
+                }
+                return true;
+            };
+            add(s);
+        }
 
         // ---- player logging
         {
@@ -2743,6 +2765,9 @@ const Placement placements[] = {
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.foliage_distance_desktop", "Quality", "", "Foliage Distance (Desktop)", "terrain grass trees detail draw distance"},
+    {"quality.foliage_distance_mobile", "Quality", "", "Foliage Distance (Mobile)", "terrain grass trees detail draw distance"},
+    {"quality.foliage_distance_web", "Quality", "", "Foliage Distance (Web)", "terrain grass trees detail draw distance"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},

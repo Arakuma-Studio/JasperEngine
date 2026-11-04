@@ -546,6 +546,8 @@ YAML::Node editor::Stream::encodeTerrainFoliageLayer(const TerrainFoliageLayer& 
     node["minHeight"] = layer.minHeight;
     node["maxHeight"] = layer.maxHeight;
     node["drawDistance"] = layer.drawDistance;
+    if (layer.minDrawDistance != 0.0f)
+        node["minDrawDistance"] = layer.minDrawDistance;
     node["seed"] = layer.seed;
     node["castShadows"] = layer.castShadows;
     return node;
@@ -567,6 +569,7 @@ TerrainFoliageLayer editor::Stream::decodeTerrainFoliageLayer(const YAML::Node& 
     layer.minHeight = decodeFinite(node["minHeight"], layer.minHeight);
     layer.maxHeight = decodeFinite(node["maxHeight"], layer.maxHeight);
     layer.drawDistance = decodeFinite(node["drawDistance"], layer.drawDistance);
+    layer.minDrawDistance = std::max(0.0f, decodeFinite(node["minDrawDistance"], layer.minDrawDistance));
     return layer;
 }
 
@@ -2114,6 +2117,11 @@ YAML::Node editor::Stream::encodeInstancedMeshComponent(const InstancedMeshCompo
     node["cullDistance"] = instmesh.cullDistance;
     node["fadeStart"] = instmesh.fadeStart;
     node["fadeEnd"] = instmesh.fadeEnd;
+    // written only when set, so files without a near fade stay as they were
+    if (instmesh.nearFadeStart != 0.0f || instmesh.nearFadeEnd != 0.0f) {
+        node["nearFadeStart"] = instmesh.nearFadeStart;
+        node["nearFadeEnd"] = instmesh.nearFadeEnd;
+    }
     node["instancedBillboard"] = instmesh.instancedBillboard;
     node["instancedCylindricalBillboard"] = instmesh.instancedCylindricalBillboard;
 
@@ -2143,6 +2151,8 @@ InstancedMeshComponent editor::Stream::decodeInstancedMeshComponent(const YAML::
     instmesh.cullDistance = std::max(0.0f, decodeFinite(node["cullDistance"], instmesh.cullDistance));
     instmesh.fadeStart = decodeFinite(node["fadeStart"], instmesh.fadeStart);
     instmesh.fadeEnd = decodeFinite(node["fadeEnd"], instmesh.fadeEnd);
+    instmesh.nearFadeStart = std::max(0.0f, decodeFinite(node["nearFadeStart"], instmesh.nearFadeStart));
+    instmesh.nearFadeEnd = std::max(0.0f, decodeFinite(node["nearFadeEnd"], instmesh.nearFadeEnd));
     if (node["instancedBillboard"]) instmesh.instancedBillboard = YamlNumbers::as<bool>(node["instancedBillboard"]);
     if (node["instancedCylindricalBillboard"]) instmesh.instancedCylindricalBillboard = YamlNumbers::as<bool>(node["instancedCylindricalBillboard"]);
 
