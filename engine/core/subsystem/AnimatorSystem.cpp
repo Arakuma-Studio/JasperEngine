@@ -192,7 +192,7 @@ bool AnimatorSystem::loadController(Entity entity, AnimatorComponent& component,
     return true;
 }
 
-void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool& rebind){
+void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool& rebind, bool& loadingAny){
     for (size_t i = 0; i < instance.clips.size(); i++){
         anim::AnimatorClipSlot& slot = instance.clips[i];
         if (slot.path.empty()) continue;
@@ -203,6 +203,7 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
         bool loading = false;
         std::string error;
         std::shared_ptr<const AnimationClip> clip = AnimationClipPool::pollOrLoad(slot.path, loading, &error);
+        loadingAny = loadingAny || loading;
         if (clip){
             const bool changed = clip != slot.clip;
             slot.clip = clip;
@@ -251,7 +252,11 @@ bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, an
         if (model->needUpdateModel) return false;
         if (model->loadedFilename != entry.second) rebind = true;
     }
-    pollClips(entity, component, instance, rebind);
+    bool clipsLoading = false;
+    pollClips(entity, component, instance, rebind, clipsLoading);
+    // a first bind waits for the clips on the thread pool: the states' time starts with all of
+    // them, as when they load here (a bound Animator plays on, its new clips bind when they come)
+    if (!instance.bound && clipsLoading) return false;
     if (instance.bound && scene->hierarchyRevision() != instance.hierarchyRevision){
         if (!instance.rig.stillValid(scene)){
             rebind = true;

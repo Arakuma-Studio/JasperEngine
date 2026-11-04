@@ -214,6 +214,13 @@ namespace{
         return *loads;
     }
 
+    // forgets the build of one key: one not asked for again must not keep its clip alive
+    void forgetAsyncLoad(const std::string& key){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        loads.pending.erase(key);
+    }
+
     // forgets the builds in flight of a model ("<model key>#" prefix), every one when empty
     void forgetAsyncLoads(const std::string& modelKey){
         AsyncLoads& loads = asyncLoads();
@@ -406,14 +413,37 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
     return cached;
 }
 
+namespace{
+
+    bool noThreads(){
+#ifdef JASPERENGINE_ANIM_TEST_HOOKS
+        std::function<bool()> singleThreaded;
+        {
+            PoolState& pool = state();
+            std::lock_guard<std::mutex> lock(pool.mutex);
+            singleThreaded = pool.hooks.singleThreaded;
+        }
+        if (singleThreaded) return singleThreaded();
+#endif
+        return jobs::system().isSingleThreaded();
+    }
+
+}
+
 std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error){
     loading = false;
-    if (path.empty() || !Engine::isAsyncLoading() || !anim::isSubClipReference(path)){
-        return getOrLoad(path, error);
-    }
-    if (std::shared_ptr<const AnimationClip> cached = get(path)) return cached;
+    if (path.empty() || !Engine::isAsyncLoading()) return getOrLoad(path, error);
+    // a .anim takes no lock another thread holds: without threads it needs no frames to wait for
+    // the pump (a sub-clip's builder may wait for a loading model, so it keeps its job)
+    if (!anim::isSubClipReference(path) && noThreads()) return getOrLoad(path, error);
 
     const std::string key = getKey(path);
+    if (std::shared_ptr<const AnimationClip> cached = get(path)){
+        // its job's handle holds the clip too: clearUnused would never free it
+        forgetAsyncLoad(key);
+        return cached;
+    }
+
     AsyncLoads& loads = asyncLoads();
     jobs::Task<AsyncLoad> build;
     {
@@ -471,6 +501,7 @@ void AnimationClipPool::invalidate(const std::string& path){
     }
     Reference ref = reference(path);
     if (ref.subClip) forgetAsyncLoads(ref.key);
+    else forgetAsyncLoad(ref.key);
     PoolState& pool = state();
     std::lock_guard<std::mutex> lock(pool.mutex);
     std::string key = entryKeyLocked(pool, ref);

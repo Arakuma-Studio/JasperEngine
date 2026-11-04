@@ -14,10 +14,12 @@
 
 #include "Engine.h"
 #include "animation/AnimationClip.h"
+#include "animation/AnimationClipIO.h"
 #include "pool/AnimationClipPool.h"
 #include "pool/AnimationClipPoolTesting.h"
 
 #include <atomic>
+#include <chrono>
 #include <map>
 #include <mutex>
 #include <set>
@@ -322,6 +324,148 @@ TEST_F(ClipPool, InvalidateDuringAnInFlightLoadIsNotCached){
     setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
     EXPECT_TRUE(fired);
     EXPECT_EQ(AnimationClipPool::size(), 0u);
+}
+
+namespace {
+
+    struct AsyncLoadingOn{
+        AsyncLoadingOn(): was(Engine::isAsyncLoading()){ Engine::setAsyncLoading(true); }
+        ~AsyncLoadingOn(){
+            Engine::setAsyncLoading(was);
+            setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
+        }
+        bool was;
+    };
+
+    std::shared_ptr<const AnimationClip> pollUntilDone(const std::string& path, std::string* error = nullptr){
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+        bool loading = true;
+        std::shared_ptr<const AnimationClip> clip;
+        while (loading && std::chrono::steady_clock::now() < until){
+            clip = AnimationClipPool::pollOrLoad(path, loading, error);
+            if (loading) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        EXPECT_FALSE(loading) << path << " still building";
+        return clip;
+    }
+
+}
+
+// AC7 (R16): in async loading a .anim parses on a worker: the caller gets `loading`, then the same
+// clip as a load on this thread, and the same error for a file that does not load
+TEST_F(ClipPool, PollOrLoadParsesAnimOnAWorker){
+    animtest::writeAsset(p("async.anim"), clipText(3));
+    std::shared_ptr<const AnimationClip> sync = AnimationClipPool::getOrLoad(p("async.anim"));
+    ASSERT_TRUE(sync);
+    const std::string syncBytes = anim::writeClip(sync->toData());
+    const std::string syncWarnings = std::to_string(sync->getWarnings().size());
+    sync.reset();
+    AnimationClipPool::clear();
+
+    AsyncLoadingOn async;
+    std::atomic<bool> release{false};
+    std::thread::id builtOn;
+    AnimationClipPoolTestHooks hooks;
+    hooks.beforeInsert = [&](const std::string&){
+        builtOn = std::this_thread::get_id();
+        const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+        while (!release && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    };
+    setAnimationClipPoolTestHooks(hooks);
+    bool loading = false;
+    std::string error;
+    EXPECT_FALSE(AnimationClipPool::pollOrLoad(p("async.anim"), loading, &error));
+    EXPECT_TRUE(loading) << "the call does not parse";
+    EXPECT_FALSE(AnimationClipPool::pollOrLoad(p("async.anim"), loading, &error));
+    EXPECT_TRUE(loading) << "one job, polled";
+    release = true;
+    std::shared_ptr<const AnimationClip> clip = pollUntilDone(p("async.anim"), &error);
+    setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
+    ASSERT_TRUE(clip) << error;
+    EXPECT_NE(builtOn, std::this_thread::get_id()) << "parsed on a worker";
+    EXPECT_EQ(anim::writeClip(clip->toData()), syncBytes) << "the same clip as on this thread";
+    EXPECT_EQ(std::to_string(clip->getWarnings().size()), syncWarnings);
+    EXPECT_EQ(AnimationClipPool::get(p("async.anim")), clip) << "cached";
+    EXPECT_GT(AnimationClipPool::getGeneration(p("async.anim")), 0u);
+
+    // the same failures as on this thread, and they are not cached
+    std::string syncError;
+    Engine::setAsyncLoading(false);
+    EXPECT_FALSE(AnimationClipPool::getOrLoad(p("missing.anim"), &syncError));
+    Engine::setAsyncLoading(true);
+    std::string asyncError;
+    EXPECT_FALSE(pollUntilDone(p("missing.anim"), &asyncError));
+    EXPECT_EQ(asyncError, syncError);
+    animtest::writeAsset(p("missing.anim"), clipText(4));
+    EXPECT_TRUE(pollUntilDone(p("missing.anim")));
+}
+
+// AC7 (R16): no threads (web without pthreads): the same clip in the call, on the calling thread
+TEST_F(ClipPool, PollOrLoadWithoutThreadsLoadsInTheCall){
+    animtest::writeAsset(p("nothreads.anim"), clipText(5));
+    AsyncLoadingOn async;
+    std::thread::id builtOn;
+    AnimationClipPoolTestHooks hooks;
+    hooks.singleThreaded = [](){ return true; };
+    hooks.beforeInsert = [&](const std::string&){ builtOn = std::this_thread::get_id(); };
+    setAnimationClipPoolTestHooks(hooks);
+    bool loading = true;
+    std::shared_ptr<const AnimationClip> clip = AnimationClipPool::pollOrLoad(p("nothreads.anim"), loading);
+    EXPECT_FALSE(loading);
+    ASSERT_TRUE(clip);
+    EXPECT_EQ(builtOn, std::this_thread::get_id());
+    EXPECT_FLOAT_EQ(endX(clip), 5.0f);
+    std::string error;
+    EXPECT_FALSE(AnimationClipPool::pollOrLoad(p("gone.anim"), loading, &error));
+    EXPECT_FALSE(loading);
+    EXPECT_FALSE(error.empty());
+
+    // without async loading, threads or not, it is the call too
+    Engine::setAsyncLoading(false);
+    setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
+    AnimationClipPool::clear();
+    EXPECT_TRUE(AnimationClipPool::pollOrLoad(p("nothreads.anim"), loading));
+    EXPECT_FALSE(loading);
+}
+
+// R16: an invalidate during a worker's parse is honoured like one during a call, and the handle
+// of a finished job does not keep a clip alive that its users released
+TEST_F(ClipPool, PollOrLoadInvalidateAndRelease){
+    animtest::writeAsset(p("flight.anim"), clipText(1));
+    AsyncLoadingOn async;
+    std::atomic<int> stage{0};
+    AnimationClipPoolTestHooks hooks;
+    hooks.beforeInsert = [&](const std::string&){
+        if (stage == 0){
+            stage = 1;
+            const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+            while (stage == 1 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+    };
+    setAnimationClipPoolTestHooks(hooks);
+    bool loading = false;
+    EXPECT_FALSE(AnimationClipPool::pollOrLoad(p("flight.anim"), loading));
+    EXPECT_TRUE(loading);
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (stage == 0 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    ASSERT_EQ(stage, 1) << "the worker parsed";
+    animtest::writeAsset(p("flight.anim"), clipText(2));
+    AnimationClipPool::invalidate(p("flight.anim"));
+    stage = 2;
+    std::shared_ptr<const AnimationClip> clip = pollUntilDone(p("flight.anim"));
+    setAnimationClipPoolTestHooks(AnimationClipPoolTestHooks());
+    ASSERT_TRUE(clip);
+    EXPECT_FLOAT_EQ(endX(clip), 2.0f) << "the file after the invalidate";
+
+    std::weak_ptr<const AnimationClip> weak = clip;
+    clip.reset();
+    // the finished job's own references go when it returns
+    const auto freed = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (!weak.expired() && std::chrono::steady_clock::now() < freed){
+        AnimationClipPool::clearUnused();
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_TRUE(weak.expired()) << "nothing but the pool held it";
 }
 
 // Generations come from one counter: no two (key, version) pairs share a number

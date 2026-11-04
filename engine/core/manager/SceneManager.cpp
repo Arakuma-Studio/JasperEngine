@@ -635,8 +635,8 @@ void SceneManager::updatePreloads() {
             it = pending.models.erase(it);
         }
 
-        // .anim clips are small and parse on this thread; a sub-clip waits for its model's
-        // preload, then builds on the thread pool in async loading (AnimationClipPool::pollOrLoad)
+        // a sub-clip waits for its model's preload; a clip builds on the thread pool in async
+        // loading (AnimationClipPool::pollOrLoad)
         for (auto it = pending.clips.begin(); it != pending.clips.end();) {
             anim::SubClipReference reference;
             if (anim::parseSubClipReference(*it, reference)) {

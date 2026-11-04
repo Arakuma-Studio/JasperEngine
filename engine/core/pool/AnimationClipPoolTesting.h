@@ -11,6 +11,7 @@
 // - listModelClips / buildSubClip replace anim::listModelFileClips / anim::buildModelSubClip, so
 //   the sub-clip branch (alias tables, generations, reimport with reordered animations) can be
 //   tested without model files.
+// - singleThreaded stands for a build without threads (web without pthreads) in pollOrLoad.
 // Set them while no other thread uses the pool; an empty struct restores the real functions.
 
 #ifndef ANIMATION_CLIP_POOL_TESTING_H
@@ -30,6 +31,8 @@ namespace jasperengine{
         std::function<void(const std::string& key)> beforeInsert;
         std::function<bool(const std::string& modelPath, std::vector<anim::ModelClipInfo>& out, std::string* error)> listModelClips;
         std::function<bool(const std::string& reference, ClipData& out, std::vector<ClipWarning>& warnings, std::string* error)> buildSubClip;
+        // pollOrLoad's "no threads" (else the job system's)
+        std::function<bool()> singleThreaded;
     };
 
     JASPERENGINE_API void setAnimationClipPoolTestHooks(const AnimationClipPoolTestHooks& hooks);
