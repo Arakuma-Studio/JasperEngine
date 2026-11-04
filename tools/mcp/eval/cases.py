@@ -826,8 +826,8 @@ CASES = [
         "kind": "guard",
         "what_happened": "A record_game whose write failed leaves Play running and nothing at the output path: the agent stops "
                          "Play, says what failed and what was kept, and does not record again before the cause is fixed.",
-        "text_at_issue": "record_game's failed result: 'The output path holds nothing and Play is still running: stop it (play "
-                         "action stop), fix the cause, then record again.' (next)",
+        "text_at_issue": "record_game's failed result, its text: 'The output path holds nothing and Play is still running: stop it "
+                         "(play action stop), fix the cause, then record again.'",
         "source": "docs/specs/S62-recorder-integrity.md R1, R2; no failure on record",
         "groups_enabled": ["editor_tools"],
         "prompt": "Record 5 seconds of the game with sound to captures/trailer.mp4.",
@@ -839,8 +839,7 @@ CASES = [
                 "is_error": True,
                 "real": True,
                 "structured": {"frames": 41, "fps": 30, "failed_step": "audio", "partial": "captures/trailer.partial.mp4", "partial_frames": 41,
-                               "error": "the audio write failed: disk full, 3 MB free; 41 frames were kept as captures/trailer.partial.mp4 (no audio)",
-                               "next": "The output path holds nothing and Play is still running: stop it (play action stop), fix the cause, then record again."}}},
+                               "error": "the audio write failed: disk full, 3 MB free; 41 frames were kept as captures/trailer.partial.mp4 (no audio)"}}},
             {"tool": "play", "args": {"action": "stop"}, "result": ok("Play stopped.", {"state": "stopped"})},
             {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
         ],

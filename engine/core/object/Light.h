@@ -5,8 +5,13 @@
 #define LIGHT_H
 
 #include "GameObject.h"
+#include "render/shadow/ShadowTypes.h"
 
 namespace jasperengine{
+
+    enum class LightType;
+    enum class LightShading;
+    enum class LightUnit;
 
     class JASPERENGINE_API Light: public GameObject{
     public:

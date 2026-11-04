@@ -332,6 +332,13 @@ void SystemScheduler::runSystem(Scene& scene, ScheduledSystem& system, double dt
 
 void SystemScheduler::runWave(Scene& scene, const std::vector<ScheduledSystem*>& running, const std::vector<double>& runDt,
                               bool declared, uint32_t wave){
+    // Built-in SubSystems each have their own wave: their trace needs no heap buffer.
+    if (running.size() == 1){
+        WaveTraceEntry trace;
+        runSystem(scene, *running[0], runDt[0], declared, wave, trace);
+        currentTrace.push_back(trace);
+        return;
+    }
     std::vector<WaveTraceEntry> traces(running.size());
 
     // A wave of declared systems runs on S06's workers; its MainThread systems on this
@@ -448,6 +455,14 @@ void SystemScheduler::runPhase(Scene& scene, SystemPhase phase, double dt){
             runWave(scene, running, runDt, declared, waveIndex);
             // the gates are samples: a change after the wave is newer than all of them
             clock.sample();
+        }
+
+        // One system is already in registration order.
+        if (running.size() == 1){
+            if (!running[0]->commands.empty()){
+                running[0]->commands.playback(scene);
+            }
+            continue;
         }
 
         // after the wave, in registration order

@@ -3,6 +3,7 @@
 
 #include "AnimatorSystem.h"
 #include "audio/AudioMarkers.h"
+#include "component/CharacterControllerComponent.h"
 
 #include "Engine.h"
 #include "Log.h"

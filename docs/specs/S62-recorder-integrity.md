@@ -52,6 +52,8 @@ stand-ins for things still loading. A full disk today gives a movie with bad aud
 - **R4, a recording with no set end** is estimated by its first minute; the estimate is only in the warning and the result
   (`estimated_bytes`, `free_bytes`), not a row of the window.
 - **Outside `editor/recorder/`:** `Host::gameScene` (`App.cpp`), `Texture::getLoadingAnswerCount`, and `record_game`'s result
-  (`failed_step`, `partial`, `partial_frames`, `next`; a failed write is `failed` even when the job was being cancelled).
-- **Agent text:** the rule is in the failed result's `next`, not the guide (`tools/mcp/eval/cases.py`,
-  `guard_record_failed_write`; agents cannot run the eval, the integrator does).
+  (`failed_step`, `partial`, `partial_frames`; a failed write is `failed` even when the job was being cancelled).
+- **Agent text:** what to do after a failed write is in the failed result's text, not the guide (of an error result, Claude
+  Code shows the model only the text). Case: `guard_record_failed_write` in `tools/mcp/eval/cases.py`.
+- **Not swept:** S66's `StagingFolders` owns folders through a lock file beside them; the Recorder's temporaries are single
+  files named by pid, so it is no fit, and they stay until someone removes them.
