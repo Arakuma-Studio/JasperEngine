@@ -639,12 +639,13 @@ TEST_F(ScriptLifecycleTest, ErrorsAndInstantiate) {
 TEST_F(ScriptLifecycleTest, InstantiateReturnsNilWhenInitDestroysTheCopy) {
     writeScript("Doomed",
         "local M = {}\n"
-        "function M:init() log[#log + 1] = 'init'; GameObject.destroyImmediate(self.gameObject) end\n"
+        "function M:init() if self.gameObject.name ~= 'X' then log[#log + 1] = 'init'; GameObject.destroyImmediate(self.gameObject) end end\n"
         "return M\n");
     Scene* scene = newScene();
     const Entity x = entity(scene, "X");
     entity(scene, "XChild", x);
     addScript(scene, x, "Doomed");
+    LuaBinding::initializeLuaScripts(scene);
     setScene("testScene", scene);
 
     EXPECT_EQ(lua("local copy = GameObject.instantiate(GameObject(testScene, " + std::to_string(x) + "))\n"
@@ -656,11 +657,12 @@ TEST_F(ScriptLifecycleTest, InstantiateReturnsNilWhenInitDestroysTheCopy) {
 TEST_F(ScriptLifecycleTest, InstantiateKeepsARootDestroyedLater) {
     writeScript("Fading",
         "local M = {}\n"
-        "function M:init() GameObject.destroy(self.gameObject) end\n"
+        "function M:init() if self.gameObject.name ~= 'X' then GameObject.destroy(self.gameObject) end end\n"
         "return M\n");
     Scene* scene = newScene();
     const Entity x = entity(scene, "X");
     addScript(scene, x, "Fading");
+    LuaBinding::initializeLuaScripts(scene);
     setScene("testScene", scene);
 
     EXPECT_EQ(lua("local copy = GameObject.instantiate(GameObject(testScene, " + std::to_string(x) + "))\n"
@@ -671,11 +673,12 @@ TEST_F(ScriptLifecycleTest, InstantiateKeepsARootDestroyedLater) {
 TEST_F(ScriptLifecycleTest, CppInstantiateOfADestroyedCopyIsEmpty) {
     writeScript("Doomed",
         "local M = {}\n"
-        "function M:init() GameObject.destroyImmediate(self.gameObject) end\n"
+        "function M:init() if self.gameObject.name ~= 'X' then GameObject.destroyImmediate(self.gameObject) end end\n"
         "return M\n");
     Scene* scene = newScene();
     const Entity x = entity(scene, "X");
     addScript(scene, x, "Doomed");
+    LuaBinding::initializeLuaScripts(scene);
 
     const GameObject copy = GameObject::instantiate(GameObject(scene, x));
     EXPECT_EQ(copy.getEntity(), NULL_ENTITY);

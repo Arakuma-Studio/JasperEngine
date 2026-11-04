@@ -517,7 +517,11 @@ its last key; a `relative` track there offsets from the target's pose when it st
 anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
 0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
 before the call; `loop`, `duration` (-1: until
-the actions end), `autoplay`, `speed` set the Animation. One scene undo step per call.
+the actions end), `autoplay`, `speed`, `start_offset` (seconds into the Animation each new run starts
+at, in Play) and `random_start` (a random point of one cycle instead: copies out of step) set the
+Animation; get_animation reports them (and a nested action's own when set). One scene undo step
+per call. Values edited while `preview_animation` previews (set_properties, an undo) are kept when
+it seeks or stops; their undo goes back to the authored value, never a previewed pose.
 
 ## Common mistakes
 

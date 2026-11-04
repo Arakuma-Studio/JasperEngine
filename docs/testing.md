@@ -806,7 +806,7 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
 
 | Job | What | Budget |
 |---|---|---|
-| `unit` | notices, the CI scripts' tests, the data-safety lints (`tools/check_raw_writes.py`, `tools/check_stream_keys.py`), presets, `WERROR=1 tools/build.sh unit-tests` | 25 min |
+| `unit` | notices, the CI scripts' tests, the data-safety lints (`tools/check_raw_writes.py`, `tools/check_stream_keys.py`), the event clears lint (`tools/check_event_clears.py`), presets, `WERROR=1 tools/build.sh unit-tests` | 25 min |
 | `sanitizers` | `SANITIZE=address,undefined tools/build.sh unit-tests`, GPU suites included | 35 min |
 | `htmlui` | `tools/build.sh htmlui-tests` (OpenGL) | 45 min |
 | `e2e` | `WERROR=1 tools/build.sh linux`, the install's notices, `htmlui-editor-tests`, `MCP_SUITE=ci tools/build.sh mcp-tests -j 2`, the post-processing smoke test | 60 min |

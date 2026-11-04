@@ -7,6 +7,7 @@
 #include "Stream.h"
 #include "animation/ClipRecordHooks.h"
 #include "component/KeyframeTracksComponent.h"
+#include "component/Transform.h"
 #include "reflect/Reflect.h"
 #include "util/ProjectUtils.h"
 
@@ -73,7 +74,8 @@ namespace{
                     absent = true;
                     return false;
                 }
-                node = node[(size_t)index];
+                // (reset rebinds: assigning a yaml-cpp node would write into the tree it refers to)
+                node.reset(node[(size_t)index]);
                 i = close + 1;
                 continue;
             }
@@ -89,11 +91,11 @@ namespace{
                 absent = true;
                 return false;
             }
-            node = node[key];
+            node.reset(node[key]);
             structDesc = segment->structDesc;
             i = end;
         }
-        out = node;
+        out.reset(node);
         return field != nullptr;
     }
 
@@ -217,7 +219,7 @@ struct ActionPreviewSnapshot::Data{
     YAML::Node encodeLive(Entity entity, const Component& component) const{
         Signature signature;
         signature.set(reflect::find(component.type)->componentId(scene));
-        YAML::Node encoded = Stream::encodeComponents(entity, scene, signature);
+        const YAML::Node encoded = Stream::encodeComponents(entity, scene, signature);
         return encoded[component.key] ? YAML::Node(encoded[component.key]) : YAML::Node(YAML::NodeType::Map);
     }
 
@@ -249,7 +251,7 @@ struct ActionPreviewSnapshot::Data{
         }
         // the whole component (beforeWrite put it back to its authored state, so it holds the
         // authored values and what the command wrote, no previewed one)
-        component->base = encodeLive(entity, *component);
+        component->base.reset(encodeLive(entity, *component));
         component->paths.clear();
     }
 };
@@ -288,7 +290,7 @@ void ActionPreviewSnapshot::add(uint32_t sceneId, Scene* scene, Entity entity, c
         Data::Component component;
         component.type = desc->type;
         component.key = key;
-        component.base = YAML::Clone(encoded[key]);
+        component.base.reset(YAML::Clone(encoded[key]));
         state.components.push_back(std::move(component));
     }
     data->states.push_back(std::move(state));
