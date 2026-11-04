@@ -43,6 +43,8 @@ namespace jasperengine { namespace noise { namespace detail {
             }
             return true;
         }
+        // A helper claims units without asking: nothing starts on a run already cancelled
+        if (cancelled(cancel)) return false;
         jobs::ParallelForOptions options;
         std::function<bool()> stop;
         if (cancel){

@@ -1,0 +1,17 @@
+{
+  "description": "tools/test-projects/noise (WEB_PROJECT=noise tools/build.sh web, and with WASM_SIMD=0 the scalar kernels): every case of the golden table of T2 R41 on the web, with simd128 and with scalar, and the plain background colour.",
+  "isolated": true,
+  "rgb": [
+    51,
+    102,
+    153
+  ],
+  "tolerance": 24,
+  "console": [
+    {
+      "text": "[gate] noise_selfcheck=pass table=",
+      "level": "log"
+    }
+  ],
+  "ordered": true
+}

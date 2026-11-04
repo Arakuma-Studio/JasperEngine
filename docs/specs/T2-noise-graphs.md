@@ -1024,3 +1024,19 @@ hooks stay out of `MeshSystem.cpp` and `RenderSystem.cpp`.
   plus the AC35 expectation.
 - **`random_noise` (R37).** T1 R19 makes it a seeded hash and records the changed output; it is not `TerrainNoise.h`, so
   `noise::compat` does not change for it.
+
+## Deviations
+
+Recorded by the implementer. Each names what changed and why; the spec text above is unchanged.
+
+- **Output port ids of the erosion nodes (R9).** A node's ports share one namespace (`graph::portsOf`, `findPort`), so an input `height` and an output `height` cannot both exist. The input stays `height`; the output is `out`, named Height. `flow` and `sediment` are as written.
+- **`terrain_height` is grid-only as well as bake-only (R9).** It reads a snapshot by texel, so it has no meaning at an arbitrary point. `isGridOnlyType` says so; `evaluatePoints` on it would otherwise have returned zeros silently.
+- **The Value node extends `compat::value` on `[0, 65535)`, not `[0, 65536)` (N13).** The node's lattice wraps at the last cell, where the old code had no wrap. Wrapping keeps the field continuous across the period; the old value at that cell differs, and the tests cover the range that matches.
+- **`EvalContext` and `CompileOptions` grew (N15).** Additive fields: the snapshot's extent and origin (a padded region must clamp to it), `uvPerUnit` (a region's UVs are the whole terrain's), `clock` (the seam of AC13), `backend`, `report`, and `previewNodes`, `maxHeight`, `forbidGridOnly`, `forbidBakeOnly` on the options. `evaluateGridOutputs` is new: outputs of one run share a stage, so an erosion runs once.
+- **`metadata.noise.usage` and `metadata.noise.resolution` (R15, R26).** `validate_graph` has no call context, so a file states where it runs (`bake`, `runtime`, `points`) for `bake-only-node` and `grid-only-node`, and the resolution for `erosion-budget`, default 1024. `compile`'s options override both.
+- **Layout of `evaluateGrid3D` (N15).** x fastest, then y, then z. The spec names no order; T6 R2 says only "x fastest".
+- **Smallest `TerrainMapDeltaCmd` (T1 R24).** T1's command had not landed. `editor/command/type/TerrainMapDeltaCmd` holds one XOR rectangle per map, with T1 R25's shape guard, but no 64x64 tiles or zstd. Whichever of T1 and T2 lands second keeps T1's form; `TerrainGeneration` is the one caller. New maps are made as files by `TerrainMaps` and bound with property commands in the same `CommandGroup`, since no `EditorTerrainStore` exists yet.
+- **`sampleGrid`'s position (R68).** Samples are texel centres, `(round(x / step) + i + 0.5) * step`, so a script's grid has the bits a generation gives at those texels. `x` and `z` snap to the lattice.
+- **Hand-picked Simplex radius (R1).** 3D Simplex uses radius 0.5 rather than the paper's 0.6, which keeps the field continuous; the result is clamped to -1..1.
+- **`NoisePresetData.h` (R41).** The test project's build has no hook to embed files, so the presets are a generated, committed header (`tools/noise/gen_test_project_presets.py`, `--check`).
+- **The Android image gains cross compilers too (section 6, D22).** Besides `qemu-user-static`, `gcc-aarch64-linux-gnu` and `gcc-arm-linux-gnueabihf` are in the image, for section 9's fallback when a static bionic binary will not start under qemu-user.

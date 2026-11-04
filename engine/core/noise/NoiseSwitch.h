@@ -5,9 +5,10 @@
 #define NOISE_NOISESWITCH_H
 
 // Whether the JASPERENGINE_NOISE module is in this build (T2 R42). OFF compiles every module file to
-// nothing. The standalone golden tool has no engine and no module wiring, and always wants it.
+// nothing. Undefined means on, like navigation's switch: the golden tool has no module wiring, and the
+// Xcode project is told JASPERENGINE_NOISE=0 only when an export leaves it out.
 
-#if defined(JASPERENGINE_NOISE) || defined(JASPERENGINE_NOISE_SERIAL)
+#if !defined(JASPERENGINE_NOISE) || JASPERENGINE_NOISE
     #define JASPERENGINE_NOISE_ENABLED 1
 #else
     #define JASPERENGINE_NOISE_ENABLED 0

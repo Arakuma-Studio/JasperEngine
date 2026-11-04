@@ -1,6 +1,12 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+// Pinned here too: this unit's own arithmetic is part of what the table holds, and the test project
+// builds it with its target's default flags (R38). GCC takes -ffp-contract=off from its build.
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#endif
+
 #include "NoiseGoldenCases.h"
 
 #include "graph/Graph.h"
@@ -10,6 +16,7 @@
 #include "noise/NoiseKernels.h"
 #include "terrain/HeightfieldErosion.h"
 
+#include <cstdio>
 #include <cstring>
 #include <limits>
 
@@ -385,6 +392,12 @@ namespace jasperengine { namespace noise { namespace golden {
     const Expected* expectedTable(size_t& count){
         count = sizeof(kTable) / sizeof(kTable[0]) - 1;
         return kTable;
+    }
+
+    std::string reportLine(const char* target, const char* backend, size_t cases, bool pass){
+        char hash[32];
+        std::snprintf(hash, sizeof(hash), "%016llX", static_cast<unsigned long long>(tableHash()));
+        return std::string("noise-golden ") + target + " " + backend + " " + std::to_string(cases) + " " + (pass ? "pass" : "FAIL") + " table=" + hash;
     }
 
     uint64_t tableHash(){

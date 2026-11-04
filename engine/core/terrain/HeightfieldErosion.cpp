@@ -236,6 +236,8 @@ namespace jasperengine { namespace terrain {
                     }
                 }
                 finished = noise::detail::parallelChunks(tiles.size(), control.parallel, control.cancel, [&](size_t t){
+                    // R26: at least once per tile, on whichever thread claimed it
+                    if (noise::detail::cancelled(control.cancel)) return;
                     const Tile tile = tiles[t];
                     const int64_t x0 = std::max(tile.x * side - offsetX, region.startX);
                     const int64_t z0 = std::max(tile.z * side - offsetZ, region.startZ);
@@ -266,10 +268,14 @@ namespace jasperengine { namespace terrain {
         }
 
         for (size_t i = 0; i < texels; i++) height[i] /= maxHeight;
-        // Saturating, not divided by a maximum: a texel's value must not depend on one far hot spot
+        // Saturating, not divided by a maximum: a texel's value must not depend on one far hot spot.
+        // Squared, so the sheet of water every slope carries stays near 0 and channels stand out as a mask.
         if (flow){
-            const float k = params.dropletsPerTexel * static_cast<float>(params.lifetime) * 0.25f;
-            for (size_t i = 0; i < texels; i++) flow[i] = flow[i] / (flow[i] + k);
+            const float k = params.dropletsPerTexel * static_cast<float>(params.lifetime) * 2.0f;
+            for (size_t i = 0; i < texels; i++){
+                const float t = flow[i] / (flow[i] + k);
+                flow[i] = t * t;
+            }
         }
         if (sediment){
             for (size_t i = 0; i < texels; i++){

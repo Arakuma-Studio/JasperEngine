@@ -3,7 +3,7 @@
 
 #include "terrain/TerrainErosion.h"
 
-#include "terrain/TerrainNoise.h"
+#include "noise/NoiseCompat.h"
 
 #include <algorithm>
 #include <cmath>
@@ -78,8 +78,8 @@ void TerrainErosion::hydraulic(const ErosionField& heights, const ErosionRegion&
     }
 
     for (int d = 0; d < droplets; d++){
-        float posX = static_cast<float>(region.minX) + TerrainNoise::hash(d, 0, seed) * spanX;
-        float posY = static_cast<float>(region.minY) + TerrainNoise::hash(d, 1, seed) * spanY;
+        float posX = static_cast<float>(region.minX) + noise::compat::hash01(d, 0, seed) * spanX;
+        float posY = static_cast<float>(region.minY) + noise::compat::hash01(d, 1, seed) * spanY;
         float dirX = 0.0f;
         float dirY = 0.0f;
         float speed = 1.0f;

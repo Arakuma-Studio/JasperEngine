@@ -40,6 +40,8 @@ option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
 # OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
 # from Project Settings > Navigation.
 option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
+option(JASPERENGINE_NOISE "Compile the noise library and Noise Graphs for scripts and voxels" ON)
+option(JASPERENGINE_NOISE_ALL_BACKENDS "Build the noise kernels' Scalar back end beside Native (editor and tests)" OFF)
 # The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
 # controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
 # libwebm). A player variant or a Compile build leaves out what its project cannot reach
@@ -1690,6 +1692,7 @@ set(JASPERENGINE_SRCS
     core/script/binding/ActionClassesLua.cpp
     core/script/binding/CoreClassesLua.cpp
     core/script/binding/CrashClassesLua.cpp
+    core/script/binding/NoiseClassesLua.cpp
     core/script/binding/ECSClassesLua.cpp
     core/script/binding/IOClassesLua.cpp
     core/script/binding/MathClassesLua.cpp
@@ -1904,6 +1907,8 @@ include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
 include(core/terrain/TerrainSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TERRAIN_SRCS})
+include(core/noise/NoiseSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NOISE_SRCS} ${JASPERENGINE_NOISE_COMPAT_SRCS})
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
@@ -2059,6 +2064,7 @@ target_compile_definitions(jasperengine
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
+        JASPERENGINE_NOISE=$<BOOL:${JASPERENGINE_NOISE}>
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
     PRIVATE
@@ -2160,6 +2166,9 @@ endif()
 jasperengine_skip_unity_build(
     REASON "the terrain kernels: no floating-point contraction, per unit"
     SOURCES ${JASPERENGINE_TERRAIN_SRCS})
+jasperengine_skip_unity_build(
+    REASON "the noise kernels build with their own floating-point flags"
+    SOURCES ${JASPERENGINE_NOISE_SRCS} ${JASPERENGINE_NOISE_COMPAT_SRCS})
 
 # the mip chain and the import processing: no fused multiply-adds, so the levels (and the cook
 # cache keys built on them) are the same bytes on every CPU, like stb_image_resize2's

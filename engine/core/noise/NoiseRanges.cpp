@@ -56,8 +56,11 @@ namespace jasperengine { namespace noise {
             }
             // x^0 is 1, at any base
             if (containsZero(b)) { low = std::min(low, 1.0f); high = std::max(high, 1.0f); }
-            // A negative or zero base gives 0
-            if (a.min <= 0.0f) low = std::min(low, 0.0f);
+            // A negative or zero base gives 0, and a base just above 0 with a negative exponent is as large as a float gets
+            if (a.min <= 0.0f) {
+                low = std::min(low, 0.0f);
+                if (b.min < 0.0f) high = kInf;
+            }
             if (!std::isfinite(high)) high = kInf;
             return Interval{low - std::fabs(low) * 2e-3f - 1e-6f, high + std::fabs(high) * 2e-3f + 1e-6f};
         }

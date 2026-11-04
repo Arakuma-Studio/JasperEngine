@@ -34,6 +34,9 @@ namespace jasperengine { namespace noise { namespace golden {
     // The table's own hash, which every report prints: two reports compared the same table
     uint64_t tableHash();
 
+    // The one line a run reports per back end (R72)
+    std::string reportLine(const char* target, const char* backend, size_t cases, bool pass);
+
     // The case names of node types, for NoiseNodes.EveryTypeHasAGoldenAndARange
     std::string nodeCaseName(const std::string& type);
 

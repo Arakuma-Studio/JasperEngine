@@ -95,8 +95,7 @@ namespace {
                 failures++;
             }
         }
-        std::fprintf(report, "noise-golden %s %s %zu %s table=%016llX\n", targetName(), backendName, cases.size(), failures == 0 ? "pass" : "FAIL",
-                     static_cast<unsigned long long>(golden::tableHash()));
+        std::fprintf(report, "%s\n", golden::reportLine(targetName(), backendName, cases.size(), failures == 0).c_str());
         return failures;
     }
 

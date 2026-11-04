@@ -15,9 +15,9 @@
         "basis": "perlin",
         "dimensions": "2d",
         "frequency": 3.0,
-        "octaves": 5,
+        "octaves": 4,
         "lacunarity": 2.0,
-        "gain": 0.45,
+        "gain": 0.4,
         "seed_offset": 0
       }
     },
@@ -94,7 +94,7 @@
         "green"
       ],
       "terrain_size": 1000.0,
-      "max_height": 200.0
+      "max_height": 150.0
     }
   }
 }
