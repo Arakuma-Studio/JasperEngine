@@ -204,7 +204,6 @@ TEST(ClipReduction, AnImplicitLengthSurvivesWhenEveryTrackIsConstant){
     source.tracks.push_back(track("Hips", ClipChannel::Rotation, {key(0, aroundY(5)), key(1, aroundY(5)), key(2, aroundY(5))}));
     source.tracks.push_back(track("Hips/Arm", ClipChannel::Rotation, {key(0, aroundY(1)), key(2, aroundY(1))}));
     ASSERT_FLOAT_EQ(source.effectiveLength(), 2.0f);
-    // nothing moves, so the search has nothing to measure: at one per-track value the rule shows
     const ClipData reduced = atRatio(source, rig, 1.0);
     EXPECT_FLOAT_EQ(reduced.effectiveLength(), 2.0f) << "one track keeps the clip's last time";
     EXPECT_EQ(keyCount(reduced), 3u) << "one track 1 key, the other first and last";
@@ -296,10 +295,7 @@ TEST(ClipReduction, TheBoundHoldsOnAPlantedCurveSetWhereTracksAloneWouldNot){
     EXPECT_TRUE(stackedOver) << "no tolerance overshot per track: this fixture would pass a reducer with no search";
 }
 
-TEST(ClipReduction, TheSearchTakesAtMostEightSteps){
-    // every step builds the file form once, so counting candidates means counting builds; a key
-    // at the limit forces a search; the bound is what stops it, so a clip that cannot pass must
-    // still end, with every key kept and said so
+TEST(ClipReduction, ASearchThatCannotPassEndsWithEveryKeyAndSaysSo){
     anim::ClipRig rig;
     rig.assign("test rig", {node("Root", -1, "Root", Vector3(0, 0, 0))});
     ClipData source;
@@ -309,13 +305,21 @@ TEST(ClipReduction, TheSearchTakesAtMostEightSteps){
     ASSERT_TRUE(result.ok) << result.error;
     EXPECT_TRUE(result.keptAllKeys);
     EXPECT_EQ(keyCount(result.clip), 3u);
+    EXPECT_EQ(result.searchSteps, 8) << "R22: at most 8 steps, and this one needs them all";
+}
+
+TEST(ClipReduction, AToleranceThatHoldsAtOnceTakesOneStep){
+    const anim::ClipRig rig = bodyRig();
+    ClipData source;
+    source.tracks.push_back(track("Hips/Arm", ClipChannel::Position, {key(0, {0, 0, 0}), key(0.5f, {0.5f, 0, 0}), key(1, {1, 0, 0})}));
+    EXPECT_EQ(anim::reduceClip(source, rig, tolerance(1.0)).searchSteps, 1);
 }
 
 // ---- D5 row 3: nlerp ----
 
 TEST(ClipReduction, TheEngineSamplerJudgesTheKeys){
     // Three keys at a constant angular speed over 160 degrees: slerp gives the middle one exactly,
-    // nlerp misses it by 7.5 degrees at this spread, which at this reach is 13 mm
+    // nlerp misses it by 5.5 degrees, which at the 100 mm skin is 9.6 mm
     anim::ClipRig rig;
     rig.assign("test rig", {node("Root", -1, "Root", Vector3(0, 0, 0))});
     ClipData source;
@@ -548,7 +552,6 @@ TEST(ClipReduction, APlantedFootIsMeasuredWithinItsOwnHalf){
     // Arm + Hand and LeftLeg + LeftFoot carry the same curves: only the name differs
     const ClipData source = walkClip();
     const int foot = rig.findBone("Hips/LeftLeg/LeftFoot");
-    const int hand = rig.findBone("Hips/Arm/Hand");
     const double tol = 4.0;
     const anim::ClipReductionResult result = anim::reduceClip(source, rig, tolerance(tol));
     ASSERT_TRUE(result.ok) << result.error;
@@ -561,7 +564,6 @@ TEST(ClipReduction, APlantedFootIsMeasuredWithinItsOwnHalf){
     const size_t footKeys = findTrack(result.clip, "Hips/LeftLeg/LeftFoot", ClipChannel::Rotation)->keys.size();
     const size_t handKeys = findTrack(result.clip, "Hips/Arm/Hand", ClipChannel::Rotation)->keys.size();
     EXPECT_GT(footKeys, handKeys) << "tightening shows in the keys the foot keeps";
-    (void)hand;
 
     // the override gives it the hand's budget back
     anim::ClipReductionOptions same = tolerance(tol);

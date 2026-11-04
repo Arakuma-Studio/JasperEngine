@@ -9,6 +9,7 @@
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipOptimize.h"
 #include "animation/ClipReport.h"
+#include "animation/ClipStatistics.h"
 #include "pool/AnimationClipPool.h"
 
 #include <cmath>
@@ -244,7 +245,7 @@ TEST(ClipReport, APlanted5mmBoneMoveFailsACompare){
     ASSERT_TRUE(report.compare.has_value());
     EXPECT_TRUE(report.compare->error.measured);
     EXPECT_NEAR(report.compare->error.maxErrorMm, 5.0, 0.01);
-    EXPECT_EQ(report.compare->error.worstJoint, "Elbow") << "the moved bone, or a child at the same distance";
+    EXPECT_TRUE(report.compare->error.worstJoint == "Elbow" || report.compare->error.worstJoint == "Hand") << report.compare->error.worstJoint << ": the moved bone, or its child, the same 5 mm away";
     EXPECT_NEAR(report.compare->error.worstTimeSeconds, 1.0f, 1e-5);
     ASSERT_TRUE(report.compare->withinTolerance.has_value());
     EXPECT_FALSE(*report.compare->withinTolerance);
@@ -428,4 +429,67 @@ TEST(ClipReport, TheOptimizeRecordRoundTrips){
     EXPECT_EQ(read.maxErrorMm, 1.25);
     EXPECT_EQ(read.source, "assets/anim/walk.anim");
     EXPECT_FALSE(anim::readClipOptimizeRecord(ClipData()).present);
+}
+
+// ---- Animation Statistics ----
+
+TEST(ClipStatistics, RowsPrintTheReportAndTheRecord){
+    AnimationClipPool::clear();
+    const std::filesystem::path root = std::filesystem::temp_directory_path() / "je_clip_statistics_test";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(root / "assets/anim");
+    {
+        std::ofstream(root / "project.yaml") << "name: stats\nassetsDir: assets\n";
+    }
+    ClipData plain;
+    plain.tracks.push_back(track("Moves", ClipChannel::Position, {key(0, {0, 0, 0}), key(1, {1, 0, 0})}));
+    {
+        std::ofstream(root / "assets/anim/plain.anim", std::ios::binary) << anim::writeClip(plain);
+    }
+    ClipData reduced = plain;
+    anim::ClipOptimizeRecord record;
+    record.toleranceMm = 1.0;
+    record.maxErrorMm = 0.5;
+    anim::writeClipOptimizeRecord(reduced, record);
+    {
+        std::ofstream(root / "assets/anim/reduced.anim", std::ios::binary) << anim::writeClip(reduced);
+    }
+    std::vector<std::string> notes;
+    const std::vector<anim::ProjectClip> clips = anim::listProjectClips(root, notes);
+    ASSERT_EQ(clips.size(), 2u);
+    EXPECT_TRUE(notes.empty());
+    anim::ClipStatRow first = anim::readClipStatRow(clips[0]);
+    anim::ClipStatRow second = anim::readClipStatRow(clips[1]);
+    EXPECT_EQ(first.name, "plain");
+    EXPECT_EQ(first.source, "plain.anim");
+    EXPECT_EQ(first.clip.display, "assets/anim/plain.anim");
+    EXPECT_FALSE(first.maxErrorMm.has_value()) << "no reduction, no number";
+    ASSERT_TRUE(second.maxErrorMm.has_value());
+    EXPECT_EQ(*second.maxErrorMm, 0.5);
+
+    anim::ClipReportRequest request;
+    request.reference = clips[0].reference;
+    const anim::ClipReport tool = anim::analyzeClip(request);
+    EXPECT_EQ(first.report.runtimeBytes, tool.runtimeBytes);
+    EXPECT_EQ(first.report.keys, tool.keys);
+    EXPECT_EQ(*first.report.fileBytes, *tool.fileBytes);
+    EXPECT_EQ(AnimationClipPool::loadedBytes(), 0u) << "a scan keeps nothing loaded";
+
+    first.users = 2;
+    first.loaded = true;
+    EXPECT_TRUE(anim::clipStatRowShown(first, anim::ClipStatFilter::Loaded, 0));
+    EXPECT_FALSE(anim::clipStatRowShown(second, anim::ClipStatFilter::Loaded, 0));
+    EXPECT_FALSE(anim::clipStatRowShown(first, anim::ClipStatFilter::Unused, 0));
+    EXPECT_TRUE(anim::clipStatRowShown(second, anim::ClipStatFilter::Unused, 0));
+    EXPECT_TRUE(anim::clipStatRowShown(first, anim::ClipStatFilter::OverBudget, first.report.runtimeBytes - 1));
+    EXPECT_FALSE(anim::clipStatRowShown(first, anim::ClipStatFilter::OverBudget, first.report.runtimeBytes));
+    EXPECT_TRUE(anim::clipStatRowShown(second, anim::ClipStatFilter::All, 0));
+
+    const anim::ClipStatTotals totals = anim::clipStatTotals({first, second});
+    EXPECT_EQ(totals.clips, 2u);
+    EXPECT_EQ(totals.memoryBytes, first.report.runtimeBytes + second.report.runtimeBytes);
+    EXPECT_EQ(totals.loadedBytes, first.report.runtimeBytes);
+    EXPECT_EQ(totals.unusedClips, 1u);
+    EXPECT_EQ(totals.unusedBytes, second.report.runtimeBytes);
+    std::filesystem::remove_all(root);
 }

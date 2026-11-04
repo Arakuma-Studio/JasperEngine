@@ -353,6 +353,7 @@ anim::ClipReductionResult anim::reduceClip(const ClipData& input, const ClipRig&
             result.error = "cancelled";
             return result;
         }
+        result.searchSteps = step + 1;
         const double ratio = step == 0 ? 1.0 : std::sqrt(low * high);
         ClipData candidate = reduceClipAtRatio(source, *built, rig, limits, skin, ratio);
         const ClipErrorReport measured = measureClipError(*built, *throughFile(candidate), rig, skin, cancel);

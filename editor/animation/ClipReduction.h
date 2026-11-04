@@ -51,6 +51,7 @@ namespace jasperengine::anim{
         double effectiveToleranceMm = 0.0;
         // the search found no per-track value within the limit: `clip` keeps every key
         bool keptAllKeys = false;
+        int searchSteps = 0;        // R22: how many per-track values it measured
     };
 
     // The distance a point `radius` metres from a joint moves when the joint turns from `a` to `b`:
