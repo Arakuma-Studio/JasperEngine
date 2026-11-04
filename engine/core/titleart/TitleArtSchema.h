@@ -147,7 +147,7 @@ namespace jasperengine::titleart {
         // variants; null when the discriminator names no variant this build knows
         const SchemaKind* variantOf(const SchemaKind& base, const Json& object) const;
         // the members of a kind with its base's first (a variant's full member list)
-        std::vector<const SchemaMember*> membersOf(const SchemaKind& kind) const;
+        const std::vector<const SchemaMember*>& membersOf(const SchemaKind& kind) const;
         // one member of `kind` (or its base) by key; null when none
         const SchemaMember* member(const SchemaKind& kind, std::string_view key) const;
         // the default object of a kind (every member at its default); a base with variants needs
@@ -187,7 +187,11 @@ namespace jasperengine::titleart {
         TitleArtSchema() = default;
         std::vector<std::unique_ptr<SchemaKind>> kinds;
         std::vector<SchemaReservation> reserved;
+        // lookups rebuilt after every registration (normalize reads them for every object)
+        std::map<std::string, SchemaKind*, std::less<>> byName;
+        std::map<const SchemaKind*, std::vector<const SchemaMember*>> resolved;
         SchemaKind* mutableKind(std::string_view name);
+        void reindex();
         friend struct SchemaBuilderAccess;
     };
 

@@ -1086,23 +1086,35 @@ TitleArtSchema& TitleArtSchema::get() {
         auto* s = new TitleArtSchema();
         buildS80(*s);
         registerProgramMembers(*s);
+        s->reindex();
         return s;
     }();
     return *schema;
 }
 
 const SchemaKind* TitleArtSchema::kind(std::string_view name) const {
-    for (const auto& k : kinds) {
-        if (k->name == name) return k.get();
-    }
-    return nullptr;
+    auto it = byName.find(name);
+    return it != byName.end() ? it->second : nullptr;
 }
 
 SchemaKind* TitleArtSchema::mutableKind(std::string_view name) {
+    auto it = byName.find(name);
+    return it != byName.end() ? it->second : nullptr;
+}
+
+void TitleArtSchema::reindex() {
+    byName.clear();
+    for (auto& k : kinds) byName[k->name] = k.get();
+    resolved.clear();
     for (auto& k : kinds) {
-        if (k->name == name) return k.get();
+        std::vector<const SchemaMember*>& out = resolved[k.get()];
+        if (!k->base.empty()) {
+            if (const SchemaKind* base = kind(k->base)) {
+                for (const SchemaMember& m : base->members) out.push_back(&m);
+            }
+        }
+        for (const SchemaMember& m : k->members) out.push_back(&m);
     }
-    return nullptr;
 }
 
 const SchemaKind* TitleArtSchema::variantOf(const SchemaKind& base, const Json& object) const {
@@ -1114,15 +1126,10 @@ const SchemaKind* TitleArtSchema::variantOf(const SchemaKind& base, const Json& 
     return variant != base.variants.end() ? kind(variant->second) : nullptr;
 }
 
-std::vector<const SchemaMember*> TitleArtSchema::membersOf(const SchemaKind& k) const {
-    std::vector<const SchemaMember*> out;
-    if (!k.base.empty()) {
-        if (const SchemaKind* base = kind(k.base)) {
-            for (const SchemaMember& m : base->members) out.push_back(&m);
-        }
-    }
-    for (const SchemaMember& m : k.members) out.push_back(&m);
-    return out;
+const std::vector<const SchemaMember*>& TitleArtSchema::membersOf(const SchemaKind& k) const {
+    static const std::vector<const SchemaMember*> none;
+    auto it = resolved.find(&k);
+    return it != resolved.end() ? it->second : none;
 }
 
 const SchemaMember* TitleArtSchema::member(const SchemaKind& k, std::string_view key) const {
@@ -1147,6 +1154,7 @@ Json TitleArtSchema::defaultObject(std::string_view kindName, std::string_view v
 bool TitleArtSchema::addKind(SchemaKind k) {
     if (k.name.empty() || kind(k.name)) return false;
     kinds.push_back(std::make_unique<SchemaKind>(std::move(k)));
+    reindex();
     return true;
 }
 
@@ -1158,6 +1166,7 @@ bool TitleArtSchema::addMember(std::string_view kindName, SchemaMember m) {
     }), reserved.end());
     if (m.label.empty()) m.label = labelOf(m.key);
     k->members.push_back(std::move(m));
+    reindex();
     return true;
 }
 
@@ -1178,6 +1187,7 @@ bool TitleArtSchema::removeMember(std::string_view kindName, std::string_view ke
     auto it = std::find_if(k->members.begin(), k->members.end(), [&](const SchemaMember& m) { return m.key == key; });
     if (it == k->members.end()) return false;
     k->members.erase(it);
+    reindex();
     return true;
 }
 
@@ -1185,6 +1195,7 @@ bool TitleArtSchema::removeKind(std::string_view name) {
     auto it = std::find_if(kinds.begin(), kinds.end(), [&](const auto& k) { return k->name == name; });
     if (it == kinds.end()) return false;
     kinds.erase(it);
+    reindex();
     return true;
 }
 

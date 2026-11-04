@@ -46,8 +46,12 @@ namespace {
     // ---- the canonical writer ----
 
     void writeNumber(const Json& value, std::string& out) {
+        if (value.is_number_unsigned()) {
+            out += std::to_string(value.get<uint64_t>());
+            return;
+        }
         if (value.is_number_integer()) {
-            out += value.dump();
+            out += std::to_string(value.get<int64_t>());
             return;
         }
         double v = value.get<double>();
@@ -61,9 +65,34 @@ namespace {
         out += shortNumber(v);
     }
 
+    // a JSON string literal (UTF-8 kept, control characters escaped)
+    void writeString(const std::string& text, std::string& out) {
+        out += '"';
+        for (unsigned char c : text) {
+            switch (c) {
+                case '"': out += "\\\""; break;
+                case '\\': out += "\\\\"; break;
+                case '\n': out += "\\n"; break;
+                case '\r': out += "\\r"; break;
+                case '\t': out += "\\t"; break;
+                case '\b': out += "\\b"; break;
+                case '\f': out += "\\f"; break;
+                default:
+                    if (c < 0x20) {
+                        char escaped[8];
+                        std::snprintf(escaped, sizeof(escaped), "\\u%04x", c);
+                        out += escaped;
+                    } else {
+                        out += (char)c;
+                    }
+            }
+        }
+        out += '"';
+    }
+
     void writeValue(const Json& value, int indent, std::string& out) {
-        const std::string pad((size_t)indent * 2, ' ');
-        const std::string inner((size_t)(indent + 1) * 2, ' ');
+        const size_t pad = (size_t)indent * 2;
+        const size_t inner = pad + 2;
         switch (value.type()) {
             case Json::value_t::null: out += "null"; return;
             case Json::value_t::boolean: out += value.get<bool>() ? "true" : "false"; return;
@@ -73,7 +102,7 @@ namespace {
                 writeNumber(value, out);
                 return;
             case Json::value_t::string:
-                out += value.dump(-1, ' ', false, Json::error_handler_t::replace);
+                writeString(value.get_ref<const std::string&>(), out);
                 return;
             case Json::value_t::array: {
                 if (value.empty()) {
@@ -92,11 +121,12 @@ namespace {
                 }
                 out += "[\n";
                 for (size_t i = 0; i < value.size(); i++) {
-                    out += inner;
+                    out.append(inner, ' ');
                     writeValue(value[i], indent + 1, out);
                     out += i + 1 < value.size() ? ",\n" : "\n";
                 }
-                out += pad + "]";
+                out.append(pad, ' ');
+                out += ']';
                 return;
             }
             case Json::value_t::object: {
@@ -107,13 +137,14 @@ namespace {
                 out += "{\n";
                 size_t i = 0;
                 for (auto it = value.begin(); it != value.end(); ++it, ++i) {
-                    out += inner;
-                    out += Json(it.key()).dump(-1, ' ', false, Json::error_handler_t::replace);
+                    out.append(inner, ' ');
+                    writeString(it.key(), out);
                     out += ": ";
                     writeValue(it.value(), indent + 1, out);
                     out += i + 1 < value.size() ? ",\n" : "\n";
                 }
-                out += pad + "}";
+                out.append(pad, ' ');
+                out += '}';
                 return;
             }
             default:
@@ -200,6 +231,18 @@ namespace {
     }
 
     void normalizeObjectAt(Json& object, const SchemaKind& baseKind, const std::string& path, NormalizeContext& context);
+
+    // members whose check never warns with its own path or recurses (their path is built lazily)
+    bool isScalar(ValueType type) {
+        switch (type) {
+            case ValueType::Number: case ValueType::Integer: case ValueType::Bool: case ValueType::String:
+            case ValueType::Enum: case ValueType::Color: case ValueType::Vec2: case ValueType::Vec2List:
+            case ValueType::AssetRef: case ValueType::Id: case ValueType::LayerRef:
+                return true;
+            default:
+                return false;
+        }
+    }
 
     Json memberDefault(const SchemaMember& m) {
         if (m.type == ValueType::Object && m.defaultValue.is_null() && !m.nullable) return Json::object();
@@ -467,7 +510,7 @@ namespace {
         if (baseKind.prepare) baseKind.prepare(object, context);
         if (kind != &baseKind && kind->prepare) kind->prepare(object, context);
 
-        const std::vector<const SchemaMember*> members = schema.membersOf(*kind);
+        const std::vector<const SchemaMember*>& members = schema.membersOf(*kind);
         Json out = Json::object();
         for (const SchemaMember* m : members) {
             auto it = object.find(m->key);
@@ -477,17 +520,21 @@ namespace {
                 continue;
             }
             Json value = present ? std::move(*it) : memberDefault(*m);
-            const std::string at = jsonPathMember(path, m->key);
+            // a scalar's path is only built for a warning (normalize visits every member)
+            std::string at = isScalar(m->type) ? std::string() : jsonPathMember(path, m->key);
             std::string message;
             Check check = checkMember(*m, value, out, at, context, message);
             if (check == Check::Invalid) {
+                if (at.empty()) at = jsonPathMember(path, m->key);
                 context.warn(at, "expected " + typeWord(*m) + ": the default is used");
                 value = memberDefault(*m);
                 checkMember(*m, value, out, at, context, message);
             } else if (check == Check::Clamped && !message.empty()) {
+                if (at.empty()) at = jsonPathMember(path, m->key);
                 context.warn(at, message);
             }
-            out[m->key] = std::move(value);
+            // the keys are the schema's, unique: append without ordered_map's search
+            out.get_ref<Json::object_t&>().emplace_back(m->key, std::move(value));
         }
         // unknown members follow, in the order read (reserved ones included)
         for (auto it = object.begin(); it != object.end(); ++it) {

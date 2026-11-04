@@ -411,24 +411,36 @@ TEST_F(TitleArtIOTest, OverridesApplyToACopy) {
 
 TEST_F(TitleArtIOTest, Budget) {
     // R47: parse + normalize + write of a 256-layer, 1 MB document within 60 ms (Release); a
-    // build without optimisation gets ten times that
+    // build without optimisation gets ten times that. Every member is written, so a styled text
+    // layer is about 14 KB: the 256 layers are styled text layers and plain groups, as many text
+    // layers as make the document 1 MB.
+    auto layerBytes = [](const Json& layer) {
+        Json one = Json{{"format", TITLE_ART_FORMAT}, {"version", 1}, {"layers", Json::array({layer})}};
+        return writeTitleArtJson(parseTitleArtJson(one).doc.root["layers"][0]).size();
+    };
+    Json chars = Json::object();
+    for (int c = 0; c < 4; c++) chars[std::to_string(c)] = Json{{"rotation", c}};
+    const Json textLayer = Json{{"type", "text"}, {"text", "Layer"}, {"chars", chars},
+                                {"style", {{"rims", Json::array({Json{{"width", 2}}})}}}};
+    const Json groupLayer = Json{{"type", "group"}};
+    const size_t textBytes = layerBytes(textLayer), groupBytes = layerBytes(groupLayer);
+    const size_t texts = std::min<size_t>(256, (1000000 - 256 * groupBytes) / (textBytes - groupBytes) + 1);
     Json root = Json{{"format", TITLE_ART_FORMAT}, {"version", 1}};
     Json layers = Json::array();
-    for (int i = 0; i < 256; i++) {
-        Json rims = Json::array();
-        for (int r = 0; r < 1; r++) rims.push_back(Json{{"width", 2 + r}, {"material", {{"bevel", {{"enabled", true}}}}}});
-        Json chars = Json::object();
-        for (int c = 0; c < 12; c++) chars[std::to_string(c)] = Json{{"rotation", c}};
-        layers.push_back(Json{{"type", "text"}, {"text", "Layer " + std::to_string(i)}, {"chars", chars},
-                              {"style", {{"rims", rims}}}});
-    }
+    for (size_t i = 0; i < 256; i++) layers.push_back(i < texts ? textLayer : groupLayer);
     root["layers"] = layers;
     const std::string text = writeTitleArt(parseTitleArtJson(root).doc);
-    EXPECT_GT(text.size(), 1000000u) << "the document is at least 1 MB";
-    const auto start = std::chrono::steady_clock::now();
+    EXPECT_GE(text.size(), 1000000u) << "the document is at least 1 MB";
+    using Clock = std::chrono::steady_clock;
+    const auto ms = [](Clock::time_point a, Clock::time_point b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+    const auto rawStart = Clock::now();
+    const Json raw = Json::parse(text);
+    const double rawMs = ms(rawStart, Clock::now());
+    const auto start = Clock::now();
     const TitleArtParseResult parsed = parseTitleArt(text);
+    const auto parsedAt = Clock::now();
     const std::string again = writeTitleArt(parsed.doc);
-    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+    const auto writtenAt = Clock::now();
     ASSERT_TRUE(parsed.ok);
     EXPECT_EQ(again, text);
 #ifdef NDEBUG
@@ -436,5 +448,6 @@ TEST_F(TitleArtIOTest, Budget) {
 #else
     const double limit = 600.0;
 #endif
-    EXPECT_LE(ms, limit) << "parse + normalize + write took " << ms << " ms";
+    EXPECT_LE(ms(start, writtenAt), limit) << text.size() << " bytes: parse + normalize " << ms(start, parsedAt) << " ms, write "
+                                          << ms(parsedAt, writtenAt) << " ms (the JSON parse alone " << rawMs << " ms)";
 }
