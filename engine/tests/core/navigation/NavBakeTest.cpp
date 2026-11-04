@@ -337,7 +337,7 @@ TEST_F(NavBakeTest, TooLargeRejected){
 
 // an agent keeps a valid corridor through every tick of a runtime updateTiles (S19 AC11); on a
 // carving surface the tiles build within the carving budget, the agent on the old ones till then
-// (S41 AC19)
+// (S53 AC19)
 void NavBakeTest::runtimeUpdateTiles(bool carving){
     const Entity surface = planeSurface(40.0f, 40.0f, 0.25f);
     scene->getComponent<NavMeshSurfaceComponent>(surface).runtimeCarving = carving;
@@ -409,7 +409,7 @@ TEST_F(NavBakeTest, HeightmapReleasedIsReadAgain){
     EXPECT_GT(middle, corner + 1.0f);
 }
 
-// ---------------------------------------------------------------- S41 (docs/specs/S41-navigation-fixes.md)
+// ---------------------------------------------------------------- S53 (docs/specs/S53-navigation-fixes.md)
 
 #if JASPERENGINE_NAVIGATION
 // The tile builds' rcContext keeps Recast's warnings and errors, deterministic (pointers as "?"),
@@ -439,9 +439,14 @@ TEST_F(NavBakeTest, RecastLogContext){
 #endif
 
 // 70 stacked slabs: a column of more spans than Recast connects. A static bake succeeds and
-// reports Recast's warning; a carving bake fails with Recast's own reason (AC7, R4)
+// reports Recast's warning. Over a ground plate with 10 more slabs beside the stack, the plate
+// overlaps more walkable platforms than a tile-cache layer set holds: a carving bake fails with
+// Recast's own reason (AC7, R4)
 TEST_F(NavBakeTest, RecastWarningsReported){
     slabs(70);
+    box(*scene, Vector3(6.0f, -2.4f, 6.0f), Vector3(14.0f, 0.2f, 14.0f));
+    for (int i = 0; i < 10; i++)
+        box(*scene, Vector3(10.0f, 0.1f + 2.5f * (float)i, 10.0f), Vector3(3.0f, 0.2f, 3.0f));
     const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Stack");
     addSurface(*scene, surface, 0.1667f, 64);
     resolveTransforms(*scene);

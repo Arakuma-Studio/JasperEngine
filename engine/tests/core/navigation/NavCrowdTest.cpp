@@ -89,7 +89,7 @@ TEST_F(NavCrowdTest, GrowsWhenFull){
 }
 
 // a carving box on a corridor reroutes the path within 2 ticks; removed, the path is back (AC10).
-// The budget counts tile builds (spec S41 R14): every build, sanitizers included, lands in 2 ticks
+// The budget counts tile builds (spec S53 R14): every build, sanitizers included, lands in 2 ticks
 TEST_F(NavObstacleTest, CarveBlocksAndRestores){
     const Entity surface = gapSurface();
     bake(surface);
@@ -242,7 +242,7 @@ TEST_F(NavDeterminismTest, CrowdReplay){
     EXPECT_EQ(std::memcmp(first.data(), second.data(), first.size() * sizeof(float)), 0);
 }
 
-// ---------------------------------------------------------------- S41 (docs/specs/S41-navigation-fixes.md)
+// ---------------------------------------------------------------- S53 (docs/specs/S53-navigation-fixes.md)
 
 #if JASPERENGINE_NAVIGATION && !defined(NDEBUG)
 namespace {
@@ -386,32 +386,45 @@ namespace {
 
 }
 
-// 70 carving boxes appear in one tick and are disabled the next: every cut is made and every cut
-// is taken back, none lost to Detour's 64-entry request and update lists (AC14, R11)
+// 60 carving boxes are cut; in one tick all 60 are disabled while 10 others are enabled: 70
+// requests, more than Detour's 64-entry request list takes at once. Every cut is taken back and
+// every new one made, none lost (AC14, R11)
 TEST_F(NavObstacleTest, RemoveNeverLost){
     const Entity surface = smallTileCarvingSurface(*this, *scene, 40.0f, 40.0f);
     bake(surface);
     nav->setCarveTimeCeiling(0.0);
-    std::vector<Entity> boxes;
-    std::vector<Vector3> centres;
-    // on tile corners (multiples of 3.2 m): each box touches 4 tiles
-    for (int i = 0; i < 70; i++) {
-        const Vector3 centre(-16.0f + 3.2f * (float)(i % 10), 0.5f, -9.6f + 3.2f * (float)(i / 10));
-        centres.push_back(centre);
-        boxes.push_back(obstacleBox(*scene, centre, Vector3(0.8f, 1.0f, 0.8f), true));
+    // at tile centres (3.2 m tiles): one tile each, so no update list overflows on the way in
+    const auto centre = [](int i) { return Vector3(-16.0f + 1.6f + 3.2f * (float)(i % 10), 0.5f, -16.0f + 1.6f + 3.2f * (float)(i / 10)); };
+    // the 10 enabled later come first in entity order: their adds are requested before the removals
+    std::vector<Entity> late;
+    for (int i = 60; i < 70; i++) {
+        late.push_back(obstacleBox(*scene, centre(i), Vector3(0.8f, 1.0f, 0.8f), true));
+        scene->getComponent<NavMeshObstacleComponent>(late.back()).enabled = false;
     }
-    step();
-    for (Entity entity : boxes)
-        scene->getComponent<NavMeshObstacleComponent>(entity).enabled = false;
-    // the budget's 4 builds a tick, 280 tile builds to cut and as many to restore
-    steps(200);
+    std::vector<Entity> early;
+    for (int i = 0; i < 60; i++)
+        early.push_back(obstacleBox(*scene, centre(i), Vector3(0.8f, 1.0f, 0.8f), true));
+    steps(30);
     int cut = 0;
-    for (const Vector3& centre : centres)
-        cut += walkableAt(*nav, Vector3(centre.x, 0.0f, centre.z)) ? 0 : 1;
-    EXPECT_EQ(cut, 0);
+    for (int i = 0; i < 60; i++)
+        cut += walkableAt(*nav, Vector3(centre(i).x, 0.0f, centre(i).z)) ? 0 : 1;
+    ASSERT_EQ(cut, 60);
+    for (Entity entity : early)
+        scene->getComponent<NavMeshObstacleComponent>(entity).enabled = false;
+    for (Entity entity : late)
+        scene->getComponent<NavMeshObstacleComponent>(entity).enabled = true;
+    // 70 tile builds at the budget's 4 a tick
+    steps(60);
+    int left = 0, made = 0;
+    for (int i = 0; i < 60; i++)
+        left += walkableAt(*nav, Vector3(centre(i).x, 0.0f, centre(i).z)) ? 0 : 1;
+    for (int i = 60; i < 70; i++)
+        made += walkableAt(*nav, Vector3(centre(i).x, 0.0f, centre(i).z)) ? 0 : 1;
+    EXPECT_EQ(left, 0);
+    EXPECT_EQ(made, 10);
     const nav::NavMesh* mesh = nav->getNavMesh(surface);
     ASSERT_NE(mesh, nullptr);
-    EXPECT_EQ(mesh->getTileCacheObstacleCount(), 0);
+    EXPECT_EQ(mesh->getTileCacheObstacleCount(), 10);
     EXPECT_EQ(mesh->getQueuedBuilds(), 0);
 }
 
@@ -663,8 +676,6 @@ TEST_F(NavObstacleTest, LargeObstacleWarns){
 // 10 walking agents (navmesh and grid) and 2 standing obstacles, one carving: a steady fixed tick
 // allocates nothing (AC22, R19)
 TEST_F(NavSystemTest, SteadyStateNoAllocations){
-    if (!testsupport::countsAllocations())
-        GTEST_SKIP() << "this test binary cannot count allocations";
     const Entity surface = smallTileCarvingSurface(*this, *scene, 60.0f, 20.0f);
     bake(surface);
     nav->setCarveTimeCeiling(0.0);
@@ -700,7 +711,9 @@ TEST_F(NavSystemTest, SteadyStateNoAllocations){
         nav->fixedUpdate(DT);
         allocations += count.count();
     }
-    EXPECT_EQ(allocations, 0u);
+    // (counted where the test binary wraps malloc: Linux)
+    if (testsupport::countsAllocations())
+        EXPECT_EQ(allocations, 0u);
     // still walking: nothing arrived, so every tick above moved agents
     for (Entity entity : walkers)
         EXPECT_LT(position(entity).x, 20.0f);

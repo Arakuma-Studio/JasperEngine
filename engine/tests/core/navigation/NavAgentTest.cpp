@@ -336,7 +336,7 @@ TEST_F(NavAgentTest, PathFailedFires){
     EXPECT_EQ(handle.getPathStatus(), nav::PathStatus::Partial);
 }
 
-// ---------------------------------------------------------------- S41 (docs/specs/S41-navigation-fixes.md)
+// ---------------------------------------------------------------- S53 (docs/specs/S53-navigation-fixes.md)
 
 // 20 agents walking through a gap a carving box then closes: every path status comes from the
 // crowd's corridor, no path search runs for them (getPathQueryCount stays 0 across arrivals and
@@ -350,8 +350,10 @@ TEST_F(NavAgentTest, PathStatusWithoutSearch){
     for (int i = 0; i < 20; i++) {
         const float z = -4.0f + 8.0f * (float)(i % 5) / 4.0f;
         agents.push_back(agent(*scene, Vector3(-13.0f + 1.5f * (float)(i / 5), 0.0f, z)));
-        // the first half stays on its side, the rest crosses the gap
-        destinations.push_back(i < 10 ? Vector3(-3.0f, 0.0f, -z) : Vector3(12.0f, 0.0f, -z));
+        scene->getComponent<NavMeshAgentComponent>(agents.back()).stoppingDistance = 0.2f;
+        // the first half stays on its side (a destination each, away from the gap), the rest
+        // crosses the gap
+        destinations.push_back(i < 10 ? Vector3(i < 5 ? -5.0f : -7.5f, 0.0f, -z) : Vector3(12.0f, 0.0f, -z));
     }
     step();
     const uint64_t queries = nav->getPathQueryCount();
