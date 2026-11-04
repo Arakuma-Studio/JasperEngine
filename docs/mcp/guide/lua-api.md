@@ -2982,6 +2982,32 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `play()`, `pause()`, `restart()`, `playing`, `completed`, `normalizedTime`, `distance` (rw: moves the follower) | constant world speed along the curve; a 2D spline turns the follower about Z |
 | `onComplete` (`FunctionSubscribe`), `setOnComplete(fn)` | Once: called at the end |
 
+### 4.21 Navigation: NavigationSystem, NavMeshQueryFilter, NavMeshAgent
+
+Navmesh queries take and return world positions (`jasper://docs/navigation`). Queries returning
+a hit return two values, `found, hit`; paths are plain tables (`NavMeshPath`).
+
+```lua
+local nav = self.scene:getNavigationSystem()
+local filter = NavMeshQueryFilter{agentType = "Humanoid", areaMask = NavAreas.All}
+filter:setAreaCost(3, 5)                      -- area 3 costs 5 per metre for this filter
+local path = nav:calculatePath(Vector3(0, 0, 0), Vector3(10, 0, 4), filter, {areaCrossings = true})
+local found, point = nav:randomPoint(filter, {center = Vector3(0, 0, 0), radius = 8})
+local moved, step = nav:moveAlongSurface(Vector3(0, 0, 0), Vector3(1, 0, 0))
+local near, edge = nav:findClosestEdge(Vector3(0, 0, 0), nil, 5.0)
+```
+
+| Member | Notes |
+|---|---|
+| `calculatePath(from, to[, filter[, options]])` | `status`, `corners`, `length`, `cost`, `cornerAreas`, `cornerFlags` (`NavCornerFlags`), `areaLengths[area]`, `corridor`; options `{areaCrossings = true}` |
+| `samplePosition(p, maxDistance[, filter])`, `raycast(a, b[, filter])`, `findClosestEdge(p[, filter[, maxDistance]])`, `isReachable(a, b[, filter])` | hit: `position`, `normal`, `distance`, `area`, `mask`, `hit`, `cost` (raycast) |
+| `randomPoint([filter[, options]])` | options `center` + `radius` (reachable within it, not uniform), `sameIslandAs`, `seed`; none: anywhere, uniform by area |
+| `moveAlongSurface(from, to[, filter])` | one step along the surface: hit `position`, `hit` (a wall stopped it), `distance`, `area` |
+| `randomSeed` | rw: restarts the stream (a scene starts at 0x5EED) |
+| NavMeshQueryFilter `agentType`, `areaMask`, `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | costs >= 1; the areas it does not set cost the project's |
+| NavMeshAgent `setAreaCost(area, cost)`, `getAreaCost(area)`, `resetAreaCost(area)` | runtime only (gone at Stop) |
+| `NavAreas.All`, `Walkable`, `NotWalkable`, `Jump` (masks), `NavAreas.maskOf(area)`, `getAreaFromName(name)`, `getAreaName(area)`, `getAreaCost(area)` | areas are 0-15 |
+
 ## 5. Enums (exact Lua spelling; values are integers)
 
 | Namespace | Values |

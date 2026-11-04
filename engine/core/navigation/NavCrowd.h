@@ -44,6 +44,9 @@ namespace jasperengine::nav {
         uint16_t areaMask = ALL_AREAS;
         // a non-carving obstacle: it never steers and every agent avoids it
         bool obstacle = false;
+        // ---- S55 queries
+        // the agent's own area costs; 0: the project's (which follow its later edits)
+        float areaCosts[AREA_COUNT] = {};
     };
 
     // An agent's movement request state (dtCrowd's)
@@ -138,6 +141,14 @@ namespace jasperengine::nav {
 
         // the area costs of every filter from the project's settings and the mesh's link costs
         void refreshFilters();
+
+        // ---- S55 queries: Detour's 16 query filters, keyed by area mask and costs, shared by
+        // the agents with the same key and freed when none uses them (spec S55 R10)
+        // the filters in use (the all-areas filter included)
+        int getFilterCount() const;
+        // the agents on a fallback filter now (no free filter: one with their mask, else all areas)
+        int getFilterOverflowCount() const;
+        bool isFilterFallback(int agent) const;
 
         // what the crowd holds (agents, grids, path queue), approximately
         size_t getMemoryBytes() const;

@@ -99,6 +99,10 @@ bool NavMeshAgent::getCurrentOffMeshLink(Vector3& start, Vector3& end, Entity& l
     return system()->getCurrentOffMeshLink(entity, start, end, link);
 }
 
+void NavMeshAgent::setAreaCost(int area, float cost){ system()->setAgentAreaCost(entity, area, cost); }
+float NavMeshAgent::getAreaCost(int area) const{ return system()->getAgentAreaCost(entity, area); }
+void NavMeshAgent::resetAreaCost(int area){ system()->resetAgentAreaCost(entity, area); }
+
 nav::NavPath NavMeshAgent::calculatePath(const Vector3& target) const{ return system()->calculateAgentPath(entity, target); }
 bool NavMeshAgent::setPath(const nav::NavPath& path){ return system()->setAgentPath(entity, path); }
 nav::NavPath NavMeshAgent::getPath() const{ return system()->getAgentCorridorPath(entity); }

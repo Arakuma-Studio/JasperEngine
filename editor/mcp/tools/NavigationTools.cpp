@@ -365,10 +365,30 @@ Json hitJson(const nav::NavHit& hit) {
             {"area", hit.area}, {"area_name", nav::getSettings().areas[(size_t)std::min<int>(hit.area, nav::AREA_COUNT - 1)].name}};
 }
 
+// ---- S55 queries: a path's cost, per-corner areas and flags, and its length per area name
+void addPathCosts(Json& data, const nav::NavPath& path) {
+    data["cost"] = rounded(path.cost);
+    Json areas = Json::array(), flags = Json::array();
+    for (uint8_t area : path.cornerAreas) areas.push_back(area);
+    for (uint8_t flag : path.cornerFlags) flags.push_back(flag);
+    data["corner_areas"] = areas;
+    data["corner_flags"] = flags;
+    Json lengths = Json::object();
+    for (int area = 0; area < nav::AREA_COUNT; area++) {
+        if (path.areaLengths[(size_t)area] > 0.0f)
+            lengths[nav::getSettings().areas[(size_t)area].name] = rounded(path.areaLengths[(size_t)area]);
+    }
+    data["area_lengths"] = lengths;
+}
+
 void queryGrid(const CallPtr& call, SceneProject* scene, NavigationSystem* system, Entity grid, const std::string& op) {
     const Json& args = call->args();
     std::string error;
     Vector3 from, to;
+    if (op != "path" && op != "sample" && op != "reachable") {
+        call->fail("op " + op + " is for navmeshes; a grid takes path, sample or reachable.");
+        return;
+    }
     if (!parsePoint(args, "from", from, error)) {
         call->fail(error);
         return;
@@ -402,10 +422,6 @@ void queryGrid(const CallPtr& call, SceneProject* scene, NavigationSystem* syste
                                map->isReachable(a, b);
         data["reachable"] = reachable;
         call->ok(reachable ? "Reachable." : "Not reachable.", data);
-        return;
-    }
-    if (op != "path") {
-        call->fail("op " + op + " is for navmeshes; a grid takes path, sample or reachable.");
         return;
     }
     nav::GridQuery query;
@@ -478,14 +494,42 @@ void queryNavigationTool(const CallPtr& call) {
     }
     if (args.contains("area_mask")) filter.areaMask = (uint16_t)(args["area_mask"].get<int>() & nav::ALL_AREAS);
     if (targetEntity != NULL_ENTITY) filter.agentType = scene->scene->getComponent<NavMeshSurfaceComponent>(targetEntity).agentType;
+    Json data = {{"target", "navmesh"}, {"op", op}, {"agent_type", filter.agentType}, {"area_mask", filter.areaMask}};
+    if (targetEntity != NULL_ENTITY) data["surface"] = McpRefs::entityJson(scene, targetEntity);
     Vector3 from, to;
+    nav::NavHit hit;
+    if (op == "random") {
+        // S55 R42: anywhere without from; around from within max_distance; else on from's island.
+        // Its own stream (the seed, else the default): the game's stream is never drawn from.
+        nav::RandomPointQuery query;
+        query.seeded = true;
+        query.seed = args.contains("seed") ? args["seed"].get<uint64_t>() : NavigationSystem::DEFAULT_RANDOM_SEED;
+        if (args.contains("from")) {
+            if (!parsePoint(args, "from", from, error)) {
+                call->fail(error);
+                return;
+            }
+            query.around = args.contains("max_distance");
+            query.center = from;
+            query.radius = args.value("max_distance", 0.0f);
+            query.sameIsland = !query.around;
+            query.islandOf = from;
+        }
+        const bool found = targetEntity != NULL_ENTITY ? system->randomPointOn(targetEntity, hit, filter, query)
+                                                       : system->randomPoint(hit, filter, query);
+        data["found"] = found;
+        data["seed"] = query.seed;
+        if (found) {
+            data["position"] = vec3Json(hit.position);
+            data["area"] = hit.area;
+        }
+        call->ok(found ? "Random point " + vec3Json(hit.position).dump() : std::string("No navmesh point found."), data);
+        return;
+    }
     if (!parsePoint(args, "from", from, error)) {
         call->fail(error);
         return;
     }
-    Json data = {{"target", "navmesh"}, {"op", op}, {"agent_type", filter.agentType}, {"area_mask", filter.areaMask}};
-    if (targetEntity != NULL_ENTITY) data["surface"] = McpRefs::entityJson(scene, targetEntity);
-    nav::NavHit hit;
     if (op == "sample") {
         const float distance = args.value("max_distance", 2.0f);
         const bool found = targetEntity != NULL_ENTITY ? system->samplePositionOn(targetEntity, from, distance, hit, filter.areaMask)
@@ -497,12 +541,14 @@ void queryNavigationTool(const CallPtr& call) {
         return;
     }
     if (op == "closest_edge") {
-        const bool found = targetEntity != NULL_ENTITY ? system->findClosestEdgeOn(targetEntity, from, hit, filter.areaMask)
-                                                       : system->findClosestEdge(from, hit, filter);
+        const float maxDistance = args.value("max_distance", -1.0f);
+        const bool found = targetEntity != NULL_ENTITY ? system->findClosestEdgeOn(targetEntity, from, hit, filter, maxDistance)
+                                                       : system->findClosestEdge(from, hit, filter, maxDistance);
         data.update(hitJson(hit));
         data["found"] = found;
         call->ok(found ? "Closest edge " + vec3Json(hit.position).dump() + ", " + std::to_string(rounded(hit.distance)) + " away"
-                       : "No navmesh at from.", data);
+                 : hit.distance > 0.0f ? "No edge within " + std::to_string(rounded(hit.distance)) + "."
+                                       : std::string("No navmesh at from."), data);
         return;
     }
     if (!parsePoint(args, "to", to, error)) {
@@ -510,11 +556,25 @@ void queryNavigationTool(const CallPtr& call) {
         return;
     }
     if (op == "raycast") {
-        const bool blocked = targetEntity != NULL_ENTITY ? system->raycastOn(targetEntity, from, to, hit, filter.areaMask)
+        const bool blocked = targetEntity != NULL_ENTITY ? system->raycastOn(targetEntity, from, to, hit, filter)
                                                          : system->raycast(from, to, hit, filter);
         data.update(hitJson(hit));
         data["blocked"] = blocked;
+        data["cost"] = rounded(hit.cost);
         call->ok(blocked ? "Blocked at " + vec3Json(hit.position).dump() : "Clear line.", data);
+        return;
+    }
+    if (op == "move_along") {
+        const bool found = targetEntity != NULL_ENTITY ? system->moveAlongSurfaceOn(targetEntity, from, to, hit, filter)
+                                                       : system->moveAlongSurface(from, to, hit, filter);
+        data["found"] = found;
+        data["position"] = vec3Json(found ? hit.position : from);
+        data["blocked"] = hit.hit;
+        data["distance"] = rounded(hit.distance);
+        data["area"] = hit.area;
+        call->ok(!found ? std::string("No navmesh at from.")
+                 : hit.hit ? "Stopped at " + vec3Json(hit.position).dump() + " after " + std::to_string(rounded(hit.distance))
+                           : "Reached " + vec3Json(hit.position).dump(), data);
         return;
     }
     if (op == "reachable") {
@@ -524,16 +584,17 @@ void queryNavigationTool(const CallPtr& call) {
         return;
     }
     if (op != "path") {
-        call->fail("op: path, sample, raycast, closest_edge or reachable.");
+        call->fail("op: path, sample, raycast, closest_edge, reachable, random or move_along.");
         return;
     }
-    const nav::NavPath path = targetEntity != NULL_ENTITY ? system->calculatePathOn(targetEntity, from, to, filter.areaMask)
+    const nav::NavPath path = targetEntity != NULL_ENTITY ? system->calculatePathOn(targetEntity, from, to, filter)
                                                           : system->calculatePath(from, to, filter);
     Json corners = Json::array();
     for (const Vector3& p : path.corners) corners.push_back(vec3Json(p));
     data["status"] = nav::pathStatusName(path.status);
     data["corners"] = corners;
     data["length"] = rounded(path.length);
+    addPathCosts(data, path);
     call->ok(std::string("Path ") + nav::pathStatusName(path.status) + ": " + std::to_string(path.corners.size()) + " corners, " +
              std::to_string(rounded(path.length)) + " long", data);
 }
@@ -861,20 +922,21 @@ void registerNavigationTools(McpRegistry& registry) {
         tool.name = "query_navigation";
         tool.title = "Query Navigation";
         tool.description =
-            "A navmesh or Nav Grid query in world space, in edit or play: path (corners, length, status), sample (nearest "
-            "navmesh point within max_distance), raycast (blocked + hit), closest_edge, reachable. target: navmesh (default, "
-            "by agent_type), grid (the first Nav Grid) or a surface/grid GameObject. area_mask: a bit per area.";
+            "A navmesh or Nav Grid query in world space, in edit or play: path (corners, length, status, cost), sample, "
+            "raycast, closest_edge, reachable, random, move_along (jasper://docs/navigation). target: navmesh (default, by "
+            "agent_type), grid (the first Nav Grid) or a surface/grid GameObject. area_mask: a bit per area.";
         tool.inputSchema = object({
-            {"op", withDefault(stringEnum("", {"path", "sample", "raycast", "closest_edge", "reachable"}), "path")},
-            {"from", vec3("")},
-            {"to", vec3("path, raycast, reachable.")},
-            {"max_distance", withDefault(number("sample.", 0.0, 1e6), 2.0)},
+            {"op", withDefault(stringEnum("", {"path", "sample", "raycast", "closest_edge", "reachable", "random", "move_along"}), "path")},
+            {"from", vec3("Not for random anywhere.")},
+            {"to", vec3("path, raycast, reachable, move_along.")},
+            {"max_distance", number("sample (2), closest_edge, random.", 0.0, 1e6)},
+            {"seed", integer("random.", 0, 4294967295LL)},
             {"agent_type", Json{{"description", "Name or id. Default: the first."}, {"anyOf", Json::array({Json{{"type", "string"}}, Json{{"type", "integer"}}})}}},
             {"area_mask", integer("", 0, 65535)},
             {"allow_partial", withDefault(boolean("Grid paths."), true)},
             {"target", Json{{"description", "navmesh | grid | a GameObject."}, {"anyOf", Json::array({stringEnum("", {"navmesh", "grid"}), entityRef()})}}},
             {"scene", sceneRef()}
-        }, {"from"});
+        });
         tool.annotations.readOnly = true;
         tool.annotations.idempotent = true;
         tool.handler = queryNavigationTool;
