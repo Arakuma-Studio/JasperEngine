@@ -73,6 +73,7 @@ bool PlayerInfo::fromJson(const std::string& text, PlayerInfo& out, std::string&
         info.engineVersion = in.value("engineVersion", "");
         info.gitSha = in.value("gitSha", "");
         info.contentFormatVersion = in.value("contentFormatVersion", "");
+        info.modelCookFormats = in.value("modelCookFormats", std::vector<int>{});
         info.capacities = in.value("capacities", std::map<std::string, unsigned int>{});
         info.features = in.value("features", std::vector<std::string>{});
         info.variant = in.value("variant", std::string("full"));
@@ -98,6 +99,7 @@ std::string PlayerInfo::toJson() const {
     out["engineVersion"] = engineVersion;
     out["gitSha"] = gitSha;
     out["contentFormatVersion"] = contentFormatVersion;
+    out["modelCookFormats"] = modelCookFormats;
     out["capacities"] = capacities;
     out["features"] = features;
     out["variant"] = variant;

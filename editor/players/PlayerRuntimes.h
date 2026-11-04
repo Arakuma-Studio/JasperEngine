@@ -32,6 +32,9 @@ namespace jasperengine::editor {
         std::string engineVersion;
         std::string gitSha;
         std::string contentFormatVersion;
+        // the cooked model formats it decodes (CookedModels::kFormatVersion, S53 R30); empty in a
+        // runtime built before model cooks
+        std::vector<int> modelCookFormats;
         std::map<std::string, unsigned int> capacities;   // MAX_SUBMESHES, ...
         std::vector<std::string> features;                // the modules (htmlui video runtimeshaders physics3d ...), tracy
         std::string variant = "full";                     // the release variant it was built for

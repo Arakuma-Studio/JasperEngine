@@ -117,6 +117,7 @@
 
 #include "texture/Texture.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
@@ -1051,7 +1052,7 @@ static bool importFbx(const fs::path& fbxPath, const fs::path& glbPath, const fs
 }
 
 fs::path editor::Project::getImportedModelPath(const fs::path& fbxPath) const {
-    return FileUtils::pathFromUtf8(MeshSystem::getImportedModelPath(FileUtils::pathToUtf8(fbxPath)));
+    return FileUtils::pathFromUtf8(MeshSystem::getFbxImportPath(FileUtils::pathToUtf8(fbxPath)));
 }
 
 bool editor::Project::importFbxModel(const fs::path& fbxPath, bool force) {
@@ -3203,6 +3204,21 @@ void editor::Project::setTextureSettings(const TextureProjectSettings& settings)
     // the standalone build's main.cpp bakes the runtime quality and budgets in
     if (modelLoaded){
         markGeneratedSourcesDirty();
+    }
+}
+
+const editor::ModelProjectSettings& editor::Project::getModelSettings() const{
+    return modelSettings;
+}
+
+void editor::Project::setModelSettings(const ModelProjectSettings& settings){
+    if (settings == modelSettings){
+        return;
+    }
+    const bool cookInputs = settings.defaults != modelSettings.defaults || settings.cacheSizeMB != modelSettings.cacheSizeMB;
+    modelSettings = settings;
+    if (cookInputs && ModelCookQueue::get().getProject() == this){
+        ModelCookQueue::get().projectSettingsChanged();
     }
 }
 
@@ -5734,7 +5750,11 @@ void editor::Project::resetConfigs() {
     if (TextureCookQueue::get().getProject() == this){
         TextureCookQueue::get().attach(nullptr);
     }
+    if (ModelCookQueue::get().getProject() == this){
+        ModelCookQueue::get().attach(nullptr);
+    }
     textureSettings = {};
+    modelSettings = {};
     inspectedAssets.clear();
     customResolutions.clear();
     projectPath.clear();

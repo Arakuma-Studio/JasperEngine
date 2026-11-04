@@ -12,6 +12,7 @@
 #include "Project.h"
 #include "component/ModelComponent.h"
 #include "subsystem/MeshSystem.h"
+#include "model/ModelCookQueue.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -22,6 +23,11 @@ void reload::reloadModels(Context& ctx, const std::vector<fs::path>& files) {
     Project* project = &ctx.project;
     const bool rebuild = ctx.options.rebuildModels;
     for (const fs::path& path : files) {
+        // its cooks are stale: requeued, and the reload below reads the source until they land
+        // (S53 R13; a reload of what was cooked keeps the cook)
+        if (ModelCookQueue::get().getProject() == project && project->isInsideAssetsPath(path)) {
+            ModelCookQueue::get().sourceChanged(project->normalizeToAssetsRelative(path).generic_string());
+        }
         // the file as its components name it (assets-relative)
         std::string filename;
         for (SceneProject* sceneProject : project->getScenesAndPrefabStages()) {

@@ -8,6 +8,8 @@
 #include "AppSettings.h"
 #include "EditorHost.h"
 #include "Project.h"
+#include "model/ModelCookQueue.h"
+#include "texture/TextureCookQueue.h"
 #include "log/Logger.h"
 
 #include <algorithm>
@@ -316,6 +318,15 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         // reports it missing; the new name is handled below like an added file)
         if (change.kind == FileChangeKind::Moved && reload::isHtmlUiFile(watch::pathToUtf8(change.oldPath))) {
             (change.origin == ChangeOrigin::Editor ? editorWritten : external)["ui"].push_back(change.oldPath);
+        }
+        // another program's write of a sidecar (a pull, a merge): the importers' settings in it
+        // changed, so their cooks go again (S53 R13; S14's textures as well)
+        if (change.origin == ChangeOrigin::External && change.path.extension() == ".meta" && project->isInsideAssetsPath(change.path)) {
+            fs::path asset = change.path;
+            asset.replace_extension();
+            const std::string assetPath = project->normalizeToAssetsRelative(asset).generic_string();
+            if (ModelCookQueue::get().getProject() == project) ModelCookQueue::get().settingsChanged(assetPath);
+            if (TextureCookQueue::get().getProject() == project) TextureCookQueue::get().settingsChanged(assetPath);
         }
         const std::string kind = reload::kindOf(change.path);
         if (kind.empty()) continue;
