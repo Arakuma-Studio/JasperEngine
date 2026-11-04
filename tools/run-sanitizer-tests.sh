@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds jasperengine-editor-tests with AddressSanitizer + UndefinedBehaviorSanitizer and runs it
-# under a virtual X server, from a worktree root (on a build box: jbox run 'tools/run-sanitizer-tests.sh').
+# under a virtual X server, from a worktree root.
 #
 #   tools/run-sanitizer-tests.sh [gtest args...]      e.g. --gtest_filter='Physics2D*'
 #
