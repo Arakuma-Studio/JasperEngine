@@ -184,7 +184,7 @@ cd build/linux/core-tests/tests/core
 python3 ../../../../../tools/perf/check_bench.py jobs.json memory.json
 ```
 
-Run these through `rb.sh` on a build server (`--img`), never locally.
+Run these inside the Linux image (`tools/build.sh exec linux ...`).
 
 The scheduler suites run at worker counts {0, 1, 2, 8}. For TSan, configure with
 `-DCMAKE_CXX_FLAGS=-fsanitize=thread` (and the C and linker flags) in its own build directory.
