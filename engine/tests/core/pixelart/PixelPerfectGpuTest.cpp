@@ -139,12 +139,33 @@ namespace {
         return differences;
     }
 
+    // the GPU environment's view as the suite found it: the suites after it draw at their own sizes
+    struct PixelPerfectGpuView {
+        bool saved = false;
+        int screenWidth = 0, screenHeight = 0, canvasWidth = 0, canvasHeight = 0;
+        Scaling scaling = Scaling::FITWIDTH;
+        void save(){
+            if (!GpuEnvironment::ensure()) return;
+            screenWidth = (int)GpuEnvironment::target().getWidth();
+            screenHeight = (int)GpuEnvironment::target().getHeight();
+            canvasWidth = Engine::getPreferredCanvasWidth();
+            canvasHeight = Engine::getPreferredCanvasHeight();
+            scaling = Engine::getScalingMode();
+            saved = true;
+        }
+        void restore() const{
+            if (saved) GpuEnvironment::setView(screenWidth, screenHeight, canvasWidth, canvasHeight, scaling);
+        }
+    };
+
     class PixelPerfectGpu : public ::testing::Test {
     protected:
         Scene scene;
         Camera camera{&scene};
+        PixelPerfectGpuView view;
 
         void SetUp() override{
+            view.save();
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
             camera.setType(CameraType::CAMERA_ORTHO);
             CameraComponent& component = scene.getComponent<CameraComponent>(camera.getEntity());
@@ -158,6 +179,7 @@ namespace {
             Engine::removeScene(&scene);
             Engine::setPixelPerfectForcedScale(0);
             Engine::setPixelsPerUnit(1);
+            view.restore();
         }
 
         PixelPerfectCamera pixelPerfect(int referenceWidth, int referenceHeight){

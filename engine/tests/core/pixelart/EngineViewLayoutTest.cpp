@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // S41 AC1 (R2): the project scaling modes Integer and Integer (Expand) are the Pixel Perfect
-// Camera's layout at PPU 1, with the preferred canvas as the reference.
+// Camera's layout at PPU 1, with the preferred canvas as the reference; the Engine's view of a
+// Pixel Perfect Camera goes with its main scene (R3).
 
 #include "Engine.h"
+#include "Scene.h"
 #include "pixelart/PixelPerfectLayout.h"
 
 #include <gtest/gtest.h>
@@ -44,4 +46,23 @@ TEST(EngineViewLayoutTest, OtherModesKeepTheirLayout){
     EXPECT_EQ(canvasWidth, 640);
     EXPECT_EQ(canvasHeight, 360);
     EXPECT_EQ(viewRect.getWidth(), 1366.0f);
+}
+
+// R3: a Pixel Perfect Camera's view is its main scene's; a new main scene, or none, starts without
+// it (its own Pixel Perfect Camera sets it again on its first update)
+TEST(EngineViewLayoutTest, ThePixelPerfectViewGoesWithItsMainScene){
+    PixelPerfectViewRequest request;
+    request.active = true;
+    request.referenceWidth = 320;
+    request.referenceHeight = 180;
+    Scene first, second;
+    Engine::setScene(&first);
+    Engine::setPixelPerfectView(request);
+    Engine::setScene(&first);
+    EXPECT_TRUE(Engine::getPixelPerfectView().active) << "the same main scene keeps it";
+    Engine::setScene(&second);
+    EXPECT_FALSE(Engine::getPixelPerfectView().active) << "another main scene";
+    Engine::setPixelPerfectView(request);
+    Engine::removeScene(&second);
+    EXPECT_FALSE(Engine::getPixelPerfectView().active) << "the main scene removed";
 }

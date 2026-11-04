@@ -253,9 +253,11 @@ void Engine::setScene(Scene* scene){
     if (Engine::isAsyncThread())
         drawSemaphore.acquire();
 
+    bool mainChanged = false;
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
 
+        mainChanged = mainScene != scene;
         if (mainScene){
             scenes.erase(std::remove(scenes.begin(), scenes.end(), mainScene), scenes.end());
         }
@@ -269,6 +271,10 @@ void Engine::setScene(Scene* scene){
             mainScene = scene;
         }
     }
+
+    // a Pixel Perfect Camera's view is its main scene's: a new main scene sets its own (S41)
+    if (mainChanged)
+        setPixelPerfectView(PixelPerfectViewRequest());
 
     // includeScene() runs scene->load(), which can re-enter the scene list, so it stays
     // outside sceneListMutex. Same reasoning in addSceneLayer and executeSceneOnce.
@@ -356,6 +362,7 @@ void Engine::removeScene(Scene* scene){
         drawSemaphore.acquire();
 
     bool unlinked = false;
+    bool mainRemoved = false;
 
     {
         std::lock_guard<std::mutex> lock(sceneListMutex);
@@ -370,6 +377,7 @@ void Engine::removeScene(Scene* scene){
 
             if (mainScene == scene){
                 mainScene = NULL;
+                mainRemoved = true;
             }
 
             // A scene removed explicitly must not remain in the one-shot registry.
@@ -380,6 +388,9 @@ void Engine::removeScene(Scene* scene){
 
     if (unlinked)
         scene->getSystem<UISystem>()->resetButtonStates();
+    // its Pixel Perfect Camera's view goes with the main scene (S41)
+    if (mainRemoved)
+        setPixelPerfectView(PixelPerfectViewRequest());
 
     if (Engine::isAsyncThread())
         drawSemaphore.release();

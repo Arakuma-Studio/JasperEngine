@@ -40,8 +40,9 @@ TEST(PostProcessingTiers, S13Bits){
     EXPECT_EQ(UBER_FILM_DAMAGE, 1u << 15);
     EXPECT_EQ(UBER_GRAIN_LENS, 1u << 16);
     EXPECT_EQ(UBER_GRAIN_FILMIC, 1u << 17);
-    EXPECT_EQ(UBER_FEATURE_COUNT, 18);
-    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 18);
+    // (S41's Stretch Fill, 'Psb', is bit 18 after them)
+    EXPECT_EQ(UBER_FEATURE_COUNT, 19);
+    EXPECT_EQ(ShaderPool::getShaderPropertyCount(ShaderType::BLIT), 19);
     const char* const shortNames[] = {"Vhs", "Hal", "Fdm", "Gln", "Gfm"};
     for (int i = 0; i < 5; i++)
         EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::BLIT, 13 + i, true), shortNames[i]);

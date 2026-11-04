@@ -121,12 +121,33 @@ namespace {
         return any;
     }
 
+    // the GPU environment's view as the suite found it: the suites after it draw at their own sizes
+    struct ZeroCostGpuView {
+        bool saved = false;
+        int screenWidth = 0, screenHeight = 0, canvasWidth = 0, canvasHeight = 0;
+        Scaling scaling = Scaling::FITWIDTH;
+        void save(){
+            if (!GpuEnvironment::ensure()) return;
+            screenWidth = (int)GpuEnvironment::target().getWidth();
+            screenHeight = (int)GpuEnvironment::target().getHeight();
+            canvasWidth = Engine::getPreferredCanvasWidth();
+            canvasHeight = Engine::getPreferredCanvasHeight();
+            scaling = Engine::getScalingMode();
+            saved = true;
+        }
+        void restore() const{
+            if (saved) GpuEnvironment::setView(screenWidth, screenHeight, canvasWidth, canvasHeight, scaling);
+        }
+    };
+
     class PixelPerfectOffGpu : public ::testing::Test {
     protected:
         Scene scene;
         Camera camera{&scene};
+        ZeroCostGpuView view;
 
         void SetUp() override{
+            view.save();
             GpuEnvironment::setView(320, 180, 320, 180, Scaling::LETTERBOX);
             scene.setBackgroundColor(0.1f, 0.1f, 0.2f, 1.0f);
             // a 2D game's camera: UI type, spanning the canvas
@@ -137,6 +158,7 @@ namespace {
 
         void TearDown() override{
             Engine::removeScene(&scene);
+            view.restore();
         }
     };
 
