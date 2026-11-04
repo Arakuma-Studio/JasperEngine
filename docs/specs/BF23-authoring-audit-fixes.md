@@ -1,6 +1,6 @@
 # BF23 — Fixes found while auditing particles, materials, the editor and the MCP tools
 
-**Wave / Depends on.** Lands before S41 and S42, which build on it. Depends on nothing unmerged.
+**Wave / Depends on.** Lands before S53 and S54, which build on it. Depends on nothing unmerged.
 Branch `fix/bf23-authoring-audit`, one commit per fix, in the order of §5.
 
 **Basis of this spec.** Every item was found by reading the code at `b4f7816ea`, and its cited lines
@@ -20,7 +20,7 @@ changing the code or the test.
 
 **In scope:** the 28 items in §3, and recording the gaps in §4.
 
-**Out of scope:** new features, which belong to S41 and S42. No refactor beyond what a fix needs.
+**Out of scope:** new features, which belong to S53 and S54. No refactor beyond what a fix needs.
 
 **Dropped from the audit after re-reading**
 
@@ -59,7 +59,7 @@ Priority: **P1** wrong behaviour users or agents hit, **P2** real but narrow, **
   (`ParticleProgram.h:449` is its only other mention).
   - **Fix (decided by the owner):** keep the field loading, because unknown keys are errors in this codec and old
     files must load, but remove it from the Inspector and the docs. Lit trails stay out of scope, as
-    in S42.
+    in S54.
   - **Red:** the Inspector row exists and toggling it changes no pixel or program field that is
     read.
 
@@ -97,7 +97,7 @@ Priority: **P1** wrong behaviour users or agents hit, **P2** real but narrow, **
   (`McpAutoSync.cpp:165-180`), so a direct edit reports no `external_changes.problems`, and
   `isTextFile` (`ScriptTools.cpp:140-146`) refuses it for `read_file` and `write_file`.
   - **Fix:** add `.particles` to both, and let a graph kind's `fileExtension` count as tracked and
-    text, so S41 needs no further edit. **Red:** both refusals, in `test_particles_editor.py`.
+    text, so S53 needs no further edit. **Red:** both refusals, in `test_particles_editor.py`.
 - **F12 (P2). `GraphEditCmd` only writes the file** (`GraphEditCmd.cpp:15-29`). An open window or
   pool cannot react, unlike `writeFilesUndoable`.
   - **Fix:** an after-change hook, called on execute and undo. **Red:** a registered listener is not
@@ -153,7 +153,7 @@ Priority: **P1** wrong behaviour users or agents hit, **P2** real but narrow, **
   Inspector already can.
   - **Fix (decided by the owner):** the double-click focuses the Inspector, and **Open as Text** stays in the
     context menu (`:2039`).
-  - `.particles` gets its window in S42. Until then it behaves like `.material`.
+  - `.particles` gets its window in S54. Until then it behaves like `.material`.
 - **F24 (P2). `.exr` is cookable but has no identity.** It is in `isCookableTexture`
   (`TextureCookQueue.cpp:69`) and absent from the Texture row of the GUID table
   (`AssetTypes.cpp:28-29`).
@@ -191,8 +191,8 @@ These are real, but each needs money, a device or a decision. BF23 records them 
 | Windows and macOS CI run no GPU suites | `ci.yml:666,668` (`-*Gpu*`) | A self-hosted runner, or accepting it |
 | Particle goldens run on glcore and Vulkan only | `S20:638-639` | Devices for Metal, D3D11 and GLES3 |
 | Mobile particle performance rows are unmeasured | `docs/perf/particles.md:129-136` | A person with reference phones |
-| S20's "Web: est. X ms" hint was never built | `S20:573`, no match in `InspectorParticles.cpp` | Delivered by S42's `cost` table |
-| The agent guide has about 110 bytes free, and S35, S41 and S42 all want some | `budget.json:25-30`; estimated, not measured | The second to land moves its own detail out, per `conventions.md:209-213`. Measure with `tool_budget.py --groups all` |
+| S20's "Web: est. X ms" hint was never built | `S20:573`, no match in `InspectorParticles.cpp` | Delivered by S54's `cost` table |
+| The agent guide has about 110 bytes free, and S35, S53 and S54 all want some | `budget.json:25-30`; estimated, not measured | The second to land moves its own detail out, per `conventions.md:209-213`. Measure with `tool_budget.py --groups all` |
 
 ## 5. Order and effort
 
@@ -207,7 +207,7 @@ Person-days, estimates at ±50%.
 | 5. Small checks | F15, F16 | 1 |
 
 About 3–5 weeks in total. Stop-and-report rule: F1's red test comes first in group 3, because its
-result changes S42's first milestone.
+result changes S54's first milestone.
 
 ## 6. Acceptance
 
@@ -226,7 +226,7 @@ result changes S42's first milestone.
 
 ## 7. Dependencies and conflicts
 
-- **Blocks:** S41's graph tools (F5–F9, F11, F12) and S42's first milestone (F1–F4, F10, F11, F13).
+- **Blocks:** S53's graph tools (F5–F9, F11, F12) and S54's first milestone (F1–F4, F10, F11, F13).
 - **Merge hotspots:** `App.cpp`, `Graph.cpp`, `GraphTools.cpp`, `ParticleTools.cpp`,
   `RenderSystemParticles.cpp`.
 - **F5 changes behaviour only for kinds that opt in.** The test kind and its tests keep working as
@@ -235,7 +235,7 @@ result changes S42's first milestone.
 ## 8. Risks and defaults
 
 1. **F1 may not reproduce.** Default: if children do draw, keep the pixel test, close the item and
-   correct S42.
+   correct S54.
 2. **F1 can make existing effects heavier,** because children will really render. Default: they
    count against the world budget, and the release note says so.
 3. **F10 refuses patches that used to "succeed".** Those patches were silently losing data, so this

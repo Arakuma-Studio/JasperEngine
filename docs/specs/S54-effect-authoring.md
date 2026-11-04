@@ -1,7 +1,7 @@
-# S42 — Effect authoring: the Effect window, filmstrips, and the missing VFX features on S20
+# S54 — Effect authoring: the Effect window, filmstrips, and the missing VFX features on S20
 
 **Wave / Depends on.** Authoring wave (spec-first). Extends S20 on `main`, after **BF23**. M5's
-sound events need S37 to land first. Independent of S41. Owner area:
+sound events need S37 to land first. Independent of S53. Owner area:
 `editor/window/ParticleEffectWindow.*` (new), `editor/mcp/tools/ParticleTools.cpp`,
 `engine/core/particles/`, `engine/core/subsystem/RenderSystemParticles.cpp`,
 `engine/shaderlib/library/`, `docs/mcp/guide/particles.md`.
@@ -216,7 +216,7 @@ everything. Effect edits use `ParticleEffectAssetCmd`.
   `SceneProject`, so it cannot host the window's preview. `PoseSheetRenderer` is the sheet pattern.
 - **D4. Private scenes, offscreen.** Views render only while shown, and an idle editor does not
   draw, so the tool requests its own frames and never depends on a tab being visible.
-- **D5. One check library,** `editor/util/QaChecks`, shared with S41 and S35.
+- **D5. One check library,** `editor/util/QaChecks`, shared with S53 and S35.
 
 **Budget** (characters, drafted; `tool_budget.py` replaces them): `preview_particle_effect` about
 1,500, the 12th and last slot in `particles`; `dry_run` +29; `module_fields` +96. Core +0. A later
@@ -247,7 +247,7 @@ tool in this group needs a `budget.json` entry.
 
 - **Merge hotspots:** `RenderSystemParticles.cpp`, `EmitterRuntime.*`, `ParticleEffectCodec.cpp`,
   `InspectorParticles.cpp`, `App.cpp`, `tools/mcp/budget.json`.
-- **S41** shares `QaChecks` only. **S35** defines the check row. **S37** blocks R13 only:
+- **S53** shares `QaChecks` only. **S35** defines the check row. **S37** blocks R13 only:
   `.soundevent` is not implemented on `main` yet.
 - `AnimatorWindow`'s double `show()` at `App.cpp:2815,2819` looks like a merge artifact. Touching
   this code may surface it, and it should be checked separately.

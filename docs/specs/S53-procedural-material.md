@@ -1,8 +1,8 @@
-# S41 — Procedural Material: node graphs baked in the editor to textures and a material
+# S53 — Procedural Material: node graphs baked in the editor to textures and a material
 
 **Wave / Depends on.** Authoring wave (spec-first). Depends on S23's graph model
 (`engine/core/graph`), S04 (GUIDs), S05 (hot reload), S14 (texture cooks) and S24 (undo), all on
-`main`, and on **BF23**, which fixes the graph tools first. Independent of S42. Owner area:
+`main`, and on **BF23**, which fixes the graph tools first. Independent of S54. Owner area:
 `editor/procmat/` (new), `editor/window/widget/GraphCanvas.*`,
 `editor/window/ProceduralMaterialWindow.*` (new), `editor/mcp/tools/ProceduralMaterialTools.cpp`
 (new), `docs/mcp/guide/procedural-materials.md` (new).
@@ -112,7 +112,7 @@ Its random functions are float hashes (`fract(cos(mod(dot(x, ...), 3.14)) * 4375
 ### Functional: the asset
 
 - **R1.** `.procmat` is deterministic S23 graph JSON: kind id `procedural_material`, `kindVersion`
-  1, `AssetType::ProceduralMaterial = 24` with its GUID in the file. It is a new file type, so old
+  1, `AssetType::ProceduralMaterial` (the next free value at landing; 24-27 belong to the pixel-art program) with its GUID in the file. It is a new file type, so old
   projects are unaffected.
 - **R2.** Nodes are referenced by a stable type id. A change to a node's output gives it a new
   `typeVersion` with a kind migration that keeps the old behaviour selectable. A graph never changes
@@ -369,7 +369,7 @@ with S35, which wants the same bytes.
   `McpToolGroups.cpp`, `tools/mcp/budget.json`, the agent guide.
 - **S35** shares the check row shape and the guide bytes. Put the row in `editor/util/QaChecks` and
   let the second to land adopt it.
-- **S42** shares only `QaChecks`, and does not touch `GraphCanvas`. Either can go first.
+- **S54** shares only `QaChecks`, and does not touch `GraphCanvas`. Either can go first.
 - **S11's** exclusion of a shader graph stands. **S23's** group table and S31's recorded groups
   change with R32.
 
