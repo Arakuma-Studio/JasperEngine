@@ -600,10 +600,10 @@ void VoxelSystem::writeChunk(VolumeState& state, const VoxelVolumeComponent& com
     target.buffer.clearAll();
     // Fixed point becomes the float the GPU reads through the one function (V5, R11)
     const size_t bytes = mesh.vertices.size() * sizeof(MeshVertex);
-    target.buffer.addAttribute(AttributeType::POSITION, AttributeDataType::FLOAT, 3, offsetof(MeshVertex, position));
-    target.buffer.addAttribute(AttributeType::NORMAL, AttributeDataType::FLOAT, 3, offsetof(MeshVertex, normal));
-    target.buffer.addAttribute(AttributeType::VOXELSLOTS, AttributeDataType::UNSIGNED_SHORT, 2, offsetof(MeshVertex, slots));
-    target.buffer.addAttribute(AttributeType::VOXELWEIGHTS, AttributeDataType::UNSIGNED_BYTE, 4, offsetof(MeshVertex, weights));
+    target.buffer.Buffer::addAttribute(AttributeType::POSITION, AttributeDataType::FLOAT, 3, offsetof(MeshVertex, position));
+    target.buffer.Buffer::addAttribute(AttributeType::NORMAL, AttributeDataType::FLOAT, 3, offsetof(MeshVertex, normal));
+    target.buffer.Buffer::addAttribute(AttributeType::VOXELSLOTS, AttributeDataType::UNSIGNED_SHORT, 2, offsetof(MeshVertex, slots));
+    target.buffer.Buffer::addAttribute(AttributeType::VOXELWEIGHTS, AttributeDataType::UNSIGNED_BYTE, 4, offsetof(MeshVertex, weights));
     target.buffer.getAttribute(AttributeType::VOXELSLOTS)->setNormalized(true);
     target.buffer.getAttribute(AttributeType::VOXELWEIGHTS)->setNormalized(true);
     target.buffer.setStride(sizeof(MeshVertex));

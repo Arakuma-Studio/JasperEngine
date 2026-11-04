@@ -11,6 +11,7 @@
 #include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
 #include "math/Ray.h"
+#include "object/GameObject.h"
 #include "object/physics/Rigidbody.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/VoxelSystem.h"

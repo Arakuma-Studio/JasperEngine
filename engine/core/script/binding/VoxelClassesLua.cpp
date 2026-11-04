@@ -39,43 +39,6 @@ namespace {
         return options;
     }
 
-    int pushEventTable(lua_State* L, const VoxelEditEvent& event) {
-        lua_newtable(L);
-        luabridge::push(L, event.bounds);
-        lua_setfield(L, -2, "bounds");
-        luabridge::push(L, event.center);
-        lua_setfield(L, -2, "center");
-        lua_pushnumber(L, event.removedVolume);
-        lua_setfield(L, -2, "removedVolume");
-        lua_pushnumber(L, event.addedVolume);
-        lua_setfield(L, -2, "addedVolume");
-        lua_newtable(L);
-        for (size_t i = 0; i < event.removedByMaterial.size(); i++) {
-            lua_pushnumber(L, event.removedByMaterial[i]);
-            lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
-        }
-        lua_setfield(L, -2, "removedByMaterial");
-        lua_newtable(L);
-        for (size_t i = 0; i < event.debrisPoints.size(); i++) {
-            luabridge::push(L, event.debrisPoints[i]);
-            lua_rawseti(L, -2, static_cast<lua_Integer>(i) + 1);
-        }
-        lua_setfield(L, -2, "debrisPoints");
-        return 1;
-    }
-
-}
-
-namespace luabridge {
-    // onEdited receives a plain table, so scripts read it as R31 spells it
-    template<> struct Stack<VoxelEditEvent> {
-        static Result push(lua_State* L, const VoxelEditEvent& event) {
-            pushEventTable(L, event);
-            return {};
-        }
-        static TypeResult<VoxelEditEvent> get(lua_State*, int) { return VoxelEditEvent{}; }
-        static bool isInstance(lua_State* L, int index) { return lua_istable(L, index); }
-    };
 }
 
 void LuaBinding::registerVoxelClasses(lua_State *L){

@@ -275,11 +275,12 @@ void VoxelSystem::addNewBodies(VolumeState& state, VoxelVolumeComponent& compone
     state.pendingAdds.push_back(std::move(pending));
     VolumeState::PendingAdd& stored = state.pendingAdds.back();
     PhysicsSystem* system = physics.get();
-    std::vector<JPH::BodyID>* ids = &stored.ids;
+    // Its buffer stays put when the list of pending adds moves
+    const std::span<JPH::BodyID> ids(stored.ids);
     jobs::SubmitOptions options;
     options.lane = jobs::Lane::Background;
     options.name = "voxel-add-bodies";
-    stored.task = jobs::submit([system, ids]{ return system->prepareBodies(*ids); }, options);
+    stored.task = jobs::submit([system, ids]{ return system->prepareBodies(ids); }, options);
     stored.hasTask = true;
     (void)component;
 }

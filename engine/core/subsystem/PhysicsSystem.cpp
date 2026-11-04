@@ -2923,7 +2923,7 @@ JPH::BodyID PhysicsSystem::createStaticBodyForShape(Entity entity, const JPH::Sh
 }
 
 JPH::BodyInterface::AddState PhysicsSystem::prepareBodies(std::span<JPH::BodyID> ids){
-    return world3D.GetBodyInterfaceNoLock().AddBodiesPrepare(ids.data(), static_cast<int>(ids.size()));
+    return getBodyInterface3D().AddBodiesPrepare(ids.data(), static_cast<int>(ids.size()));
 }
 
 void PhysicsSystem::finalizeBodies(std::span<JPH::BodyID> ids, JPH::BodyInterface::AddState state){

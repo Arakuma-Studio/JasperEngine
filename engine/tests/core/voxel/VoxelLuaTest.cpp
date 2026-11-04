@@ -8,6 +8,7 @@
 #include "Scene.h"
 #include "component/Transform.h"
 #include "component/VoxelVolumeComponent.h"
+#include "object/GameObject.h"
 #include "object/voxel/VoxelVolume.h"
 #include "script/LuaBinding.h"
 #include "subsystem/VoxelSystem.h"

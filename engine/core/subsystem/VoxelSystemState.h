@@ -14,15 +14,15 @@
 #ifdef JASPERENGINE_PHYSICS_3D
 #include "Jolt/Jolt.h"
 #include "Jolt/Physics/Body/BodyID.h"
+#include "Jolt/Physics/Body/BodyInterface.h"
 #include "Jolt/Physics/Collision/Shape/Shape.h"
 #endif
 
 #include <array>
 #include <deque>
 #include <map>
-#include <set>
+#include <tuple>
 #include <unordered_map>
-#include <unordered_set>
 
 namespace jasperengine{
 
