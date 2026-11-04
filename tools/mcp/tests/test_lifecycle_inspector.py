@@ -14,6 +14,7 @@ import subprocess
 from harness import Editor
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Lifecycle Inspector", "ui_probe": True}
+CI = True
 TIMEOUT = 600
 
 TOGGLE = """local Toggle = {}

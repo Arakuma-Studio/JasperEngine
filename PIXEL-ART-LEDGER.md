@@ -212,6 +212,9 @@ There is no CI.
 
 ## Log
 
+- 2026-11-04: Baseline `tools/build.sh unit-tests` of `main` (87 min): core 2,808 passed and
+  1 failed (`NavBakeTest.RuntimeUpdateTiles`, failing on `main` before any pixel-art code);
+  editor 2,842 passed and 7 disabled.
 - 2026-11-04: Upstream rewrote `AGENTS.md` as the only manual (`CLAUDE.md` = `@AGENTS.md`)
   and removed CI. It now requires `WERROR=1`, a `tools/mcp/eval` case for new MCP text, migration
   fixtures, and the full suite before big pushes. `main` merged it and was pushed. The implementer
