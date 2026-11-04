@@ -190,3 +190,13 @@ async def test_tool_reference_has_no_other_section(ed: Editor):
     text = (REPO / "docs" / "mcp" / "TOOLS.md").read_text()
     ed.check("\n## Other\n" not in text and "[Other](#other)" not in text, "a tool is listed under Other: add its module to gen_tool_docs.py")
     ed.check("- [Vertex animation](#vertex-animation) (1): `bake_vertex_animation`" in text, "bake_vertex_animation under Vertex animation")
+
+
+async def test_title_golden_ledger(ed: Editor):
+    """S80 §7: every Title Art golden added or changed since main has its row in docs/titleart/goldens.md
+    (tools/titleart/check_golden_ledger.py; its red controls are tools/ci/test_check_title_golden_ledger.py)."""
+    proc = await asyncio.create_subprocess_exec(
+        sys.executable, "-I", str(harness.REPO / "tools" / "titleart" / "check_golden_ledger.py"),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    text, _ = await asyncio.wait_for(proc.communicate(), 120)
+    ed.check(proc.returncode == 0, f"the title golden ledger is incomplete:\n{text.decode(errors='replace')[-2000:]}")
