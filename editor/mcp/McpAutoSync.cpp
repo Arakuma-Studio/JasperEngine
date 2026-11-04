@@ -10,6 +10,7 @@
 #include "Project.h"
 #include "animation/AnimationClipDocument.h"
 #include "vat/VatDocument.h"
+#include "titleart/TitleArtDocument.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
 #include "util/ScriptReloadService.h"
@@ -174,6 +175,8 @@ bool McpAutoSync::isTrackedFile(const std::string& path) {
     if (Util::isAvatarMaskFile(path) || Util::isAnimatorControllerFile(path)) return true;
     // Vertex Animations: their documents reload, VertexAnimationPool drops them, animators reload
     if (Util::isVertexAnimationFile(path)) return true;
+    // Title Art documents: their open documents reload, previews redraw, Auto Bake rebakes (S80 R6)
+    if (Util::isTitleArtFile(path)) return true;
     // models and glTF buffers: the clips made from their animations reload (picked up, not reported)
     return isModelSourceFile(path);
 }
@@ -342,6 +345,10 @@ void McpAutoSync::prepare(McpContext& ctx) {
         });
         // and .vat documents' (Inspector edits of a Vertex Animation)
         VatDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
+            w4::syncFiles(*target, changed, false);
+        });
+        // and .titleart documents' (edit_title, the Title Designer, their undo and redo; relinks)
+        TitleArtDocument::setFilesWrittenHook([target](const std::vector<fs::path>& changed) {
             w4::syncFiles(*target, changed, false);
         });
     }
@@ -700,7 +707,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
             // reload their documents now too (phase 5); so do clip and pose animation documents
             // (players see a clip's new pool generation; their problems are reported now)
             if (isUiCodeFile(rel) || (isAssetFile(rel) && !Util::isImageFile(rel)) || lowerExtension(rel) == ".glsl" ||
-                Util::isGuidJsonAssetFile(rel) || Util::isPoseAnimationFile(rel) ||
+                Util::isGuidJsonAssetFile(rel) || Util::isPoseAnimationFile(rel) || Util::isTitleArtFile(rel) ||
                 (lowerExtension(rel) == ".frag" && (pending.kind == 'r' || ProjectChecks::isUiEffectFile(path)))) {
                 uiPaths.push_back(path);
                 if (pending.sequence != 0) uiSync.sequences[path] = pending.sequence;
