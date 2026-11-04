@@ -403,6 +403,10 @@ Out of scope:
     header differ from the old snapshot; every file the engine calls is identical). On the web,
     `vertexcodec.cpp` and `vertexfilter.cpp` build with `-msimd128` when `JASPERENGINE_WASM_SIMD` is on
     (the default); the OFF build stays scalar.
+15. **The decoder's size (R28)**, measured as the release web player compiles it (em++ -O3, the
+    three decoder sources alone exporting the seven `meshopt_decode*` functions, the web image's
+    Emscripten): 16,014 bytes of wasm and 3,897 bytes gzip -9 with simd128, 8,330 and 3,316 scalar;
+    under the 8 KB gzipped budget. The normalise step's own code comes on top and is not part of it.
 
 ### The loader's API for s41-importer
 
