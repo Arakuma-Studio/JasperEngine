@@ -892,7 +892,22 @@ const editor::AssetDatabase::Entry* editor::AssetDatabase::findEntry(const fs::p
             if (it != byPath.end()) return &it->second;
         }
     }
-    return nullptr;
+    // A link the last scan has not met (made a moment ago). Only for a file of an asset type that
+    // exists and is not tracked, so a project without links pays this for nothing but such files.
+    const fs::path relative = toRelative(path);
+    std::error_code ec;
+    if (relative.empty() || relative.is_absolute() || *relative.begin() == ".." || !AssetTypes::find(relative, assetsDir) ||
+        !fs::is_regular_file(projectPath / relative, ec)) {
+        return nullptr;
+    }
+    const fs::path real = safewrite::resolvedPath(projectPath / relative);
+    const fs::path realProject = safewrite::resolvedPath(projectPath);
+    if (real.empty() || realProject.empty() || !watch::isAtOrBelowReal(real, realProject)) {
+        return nullptr;
+    }
+    const fs::path inside = real.lexically_relative(realProject);
+    it = inside == relative ? byPath.end() : byPath.find(relativeKeyOf(inside.generic_string()));
+    return it != byPath.end() ? &it->second : nullptr;
 }
 
 std::string editor::AssetDatabase::relativeKeyOf(const std::string& relative) const {

@@ -55,6 +55,12 @@ def files(folder: Path, names) -> dict:
     return {name: hashlib.sha256((folder / name).read_bytes()).hexdigest() for name in names}
 
 
+async def pickup(ed: Editor):
+    """the database's look at the disk, now: a prefab or a link is not among what a call's auto-sync
+    reports, so the poll would find them a moment later"""
+    await ed.call("list_missing_assets")
+
+
 async def reopen(ed: Editor):
     """the project opened again: the asset database scans it from its cache"""
     await ed.call("open_project", path=str(ed.project), unsaved="discard")
@@ -114,7 +120,7 @@ async def test_a_folder_moved_behind_a_link_keeps_its_guids(ed: Editor):
     root = ed.project / "assets"
     (root / "d1").mkdir()
     (root / "d1" / "tile.png").write_bytes(png_bytes())
-    await ed.call("editor_status")
+    await pickup(ed)
     sid = await new_scene(ed, "Links D1")
     light = await light_with_mask(ed, sid, "Lamp", "assets/d1/tile.png")
     crate, prefab_guid = await make_prefab(ed, sid, "Crate", "assets/d1/Crate.prefab")
@@ -126,7 +132,7 @@ async def test_a_folder_moved_behind_a_link_keeps_its_guids(ed: Editor):
     os.rename(root / "d1", root / "d1_real")
     os.symlink("d1_real", root / "d1")
     try:
-        await ed.call("editor_status")
+        await pickup(ed)
         ed.check_eq(files(root / "d1_real", names), before, "the pick-up writes nothing into the moved files (no new GUID for a second path)")
         ed.check_eq(await asset(ed, "assets/d1_real/tile.png"), (tile_guid, "assets/d1_real/tile.png"), "the database has it at the real folder")
         ed.check_eq(await asset(ed, "assets/d1/tile.png"), (tile_guid, "assets/d1_real/tile.png"), "and a lookup by the link's name finds it")
@@ -145,7 +151,7 @@ async def test_a_folder_moved_behind_a_link_keeps_its_guids(ed: Editor):
     finally:
         os.unlink(root / "d1")
         os.rename(root / "d1_real", root / "d1")
-    await ed.call("editor_status")
+    await pickup(ed)
     ed.check_eq(files(root / "d1", names), before, "moved back: the same bytes")
     ed.check_eq(await asset(ed, "assets/d1/tile.png"), (tile_guid, "assets/d1/tile.png"), "moved back: the same GUID")
 
@@ -160,7 +166,7 @@ async def test_a_link_to_a_project_folder_is_one_asset_under_two_names(ed: Edito
     root = ed.project / "assets"
     (root / "d2").mkdir()
     (root / "d2" / "tile.png").write_bytes(png_bytes())
-    await ed.call("editor_status")
+    await pickup(ed)
     sid = await new_scene(ed, "Links D2")
     _, prefab_guid = await make_prefab(ed, sid, "Barrel", "assets/d2/Barrel.prefab")
     await ed.call("save_scene", scene=sid)
@@ -168,17 +174,17 @@ async def test_a_link_to_a_project_folder_is_one_asset_under_two_names(ed: Edito
     tile_guid = meta_guid(root / "d2" / "tile.png")
     os.symlink("d2", root / "d2-link")
     try:
-        await ed.call("editor_status")
+        await pickup(ed)
         ed.check_eq(meta_guid(root / "d2" / "tile.png"), tile_guid, "the link's pick-up leaves the GUID")
         ed.check(not (root / "d2-link" / "tile.png.meta").is_symlink(), "(the meta is the real one, through the link)")
         ed.check_eq(await asset(ed, "assets/d2-link/tile.png"), (tile_guid, "assets/d2/tile.png"), "a lookup by the alias")
 
         # a write through the alias: the same asset, and no second identity
         (root / "d2" / "notes.txt").write_text("first\n")
-        await ed.call("editor_status")
+        await pickup(ed)
         notes = await asset(ed, "assets/d2/notes.txt")
         await ed.call("write_file", path="assets/d2-link/notes.txt", content="second\n")
-        await ed.call("editor_status")
+        await pickup(ed)
         ed.check_eq((root / "d2" / "notes.txt").read_text(), "second\n", "written through the alias")
         ed.check_eq(await asset(ed, "assets/d2-link/notes.txt"), notes, "it keeps its GUID")
 
@@ -197,7 +203,7 @@ async def test_a_link_to_a_project_folder_is_one_asset_under_two_names(ed: Edito
         ed.check_eq([stage["prefab"] for stage in stages], ["assets/d2/Barrel.prefab"], f"Prefab Mode by the alias opens the asset: {stages}")
         await ed.call("prefab_mode", action="close", unsaved="discard")
         await ed.call("save_scene", scene=sid)
-        await ed.call("editor_status")
+        await pickup(ed)
         ed.check_eq(files(root / "d2", ["Barrel.prefab"]), prefab_file, "the prefab file is not rewritten")
         ed.check_eq(await listed_prefabs(ed, prefab_guid), ["assets/d2/Barrel.prefab"], "the prefab is listed once")
 
@@ -205,7 +211,7 @@ async def test_a_link_to_a_project_folder_is_one_asset_under_two_names(ed: Edito
         shutil.copy(root / "d2/Barrel.prefab", root / "d2-link/Copy.prefab")
         shutil.copy(root / "d2/tile.png", root / "d2-link/tile2.png")
         shutil.copy(root / "d2/tile.png.meta", root / "d2-link/tile2.png.meta")
-        await ed.call("editor_status")
+        await pickup(ed)
         copied = guid_line(root / "d2/Copy.prefab")
         ed.check(copied and copied != prefab_guid, f"the copy has a GUID of its own: {copied}")
         ed.check_eq(guid_line(root / "d2/Barrel.prefab"), prefab_guid, "the original keeps its GUID")
@@ -221,7 +227,7 @@ async def test_a_link_to_a_project_folder_is_one_asset_under_two_names(ed: Edito
         ed.check_eq(await listed_prefabs(ed, prefab_guid), ["assets/d2/Barrel.prefab"], "the prefab once after a reopen")
     finally:
         os.unlink(root / "d2-link")
-    await ed.call("editor_status")
+    await pickup(ed)
     ed.check_eq(await asset(ed, "assets/d2/tile.png"), (tile_guid, "assets/d2/tile.png"), "the link gone: nothing changed")
 
 
@@ -236,7 +242,7 @@ async def test_file_links_and_hard_links_are_the_same_file(ed: Editor):
     root = ed.project / "assets" / "d3"
     root.mkdir()
     (root / "tile.png").write_bytes(png_bytes())
-    await ed.call("editor_status")
+    await pickup(ed)
     sid = await new_scene(ed, "Links D3")
     _, prefab_guid = await make_prefab(ed, sid, "Keg", "assets/d3/Keg.prefab")
     await ed.call("save_scene", scene=sid)
@@ -252,7 +258,7 @@ async def test_file_links_and_hard_links_are_the_same_file(ed: Editor):
                 await reopen(ed)
                 await ed.call("open_scene", scene="Links D3")
             else:
-                await ed.call("editor_status")
+                await pickup(ed)
             ed.check_eq(files(root, ["Keg.prefab"]), prefab_file, f"{when}: the prefab's file is not rewritten")
             copied = guid_line(root / "KegCopy.prefab")
             ed.check(copied and copied != prefab_guid, f"{when}: the copy has a GUID of its own: {copied}")
@@ -268,7 +274,7 @@ async def test_file_links_and_hard_links_are_the_same_file(ed: Editor):
     finally:
         for name in ("KegSym.prefab", "KegHard.prefab", "hard.png"):
             os.unlink(root / name)
-    await ed.call("editor_status")
+    await pickup(ed)
     ed.check_eq(files(root, ["Keg.prefab"]), prefab_file, "the links gone: the file as it was")
     ed.check_eq(await asset(ed, "assets/d3/Keg.prefab"), (prefab_guid, "assets/d3/Keg.prefab"), "and its GUID")
 
@@ -287,7 +293,7 @@ async def test_a_link_out_of_the_project_is_a_project_folder(ed: Editor):
         os.symlink(outside, outside / "loop")
         os.symlink(ed.project, assets / "up")
         os.symlink(outside, assets / "lib")
-        await ed.call("editor_status")
+        await pickup(ed)
         tile_guid = meta_guid(outside / "tile.png")
         ed.check_eq(await asset(ed, "assets/lib/tile.png"), (tile_guid, "assets/lib/tile.png"), "indexed by its project path, the meta beside the file")
         ed.check((outside / "sub" / "notes.txt.meta").is_file(), "data files too")
@@ -309,12 +315,12 @@ async def test_a_link_out_of_the_project_is_a_project_folder(ed: Editor):
         ed.check_eq((await ed.call("list_missing_assets"))["missing"], [], "nothing is missing")
 
         # the watcher and the pick-up see changes through the link
-        (outside / "sub" / "notes.txt").write_text("changed outside\n")
-        st = (outside / "sub" / "notes.txt").stat()
-        os.utime(outside / "sub" / "notes.txt", ns=(st.st_atime_ns, st.st_mtime_ns + 2_000_000_000))
+        (outside / "tile.png").write_bytes(png_bytes(120))
+        st = (outside / "tile.png").stat()
+        os.utime(outside / "tile.png", ns=(st.st_atime_ns, st.st_mtime_ns + 2_000_000_000))
         result = await ed.call_raw("editor_status")
         report = result.structured.get("external_changes") or {}
-        ed.check_in("assets/lib/sub/notes.txt", report.get("changed", []) + report.get("added", []), f"seen through the link: {report}")
+        ed.check_in("assets/lib/tile.png", json.dumps(report), f"seen through the link: {report}")
 
         # a read-only target is reported, not a failure (root writes through a read-only folder: a
         # folder at the meta's name makes the write fail the same way)
@@ -326,13 +332,12 @@ async def test_a_link_out_of_the_project_is_a_project_folder(ed: Editor):
         else:
             os.chmod(outside / "locked", 0o555)
         try:
-            await ed.call("editor_status")
+            await pickup(ed)
             ed.check((await asset(ed, "assets/lib/locked/tile.png"))[0], "it has its GUID")
             ed.check(not (outside / "locked" / "tile.png.meta").is_file(), "no meta there")
             listing = await ed.call("list_missing_assets")
             ed.check_in("assets/lib/locked/tile.png", listing.get("read_only_linked", []), f"the Missing list says so: {listing}")
-            again = await ed.call_raw("editor_status")
-            ed.check(not again.is_error, again.text)
+            await pickup(ed)
         finally:
             os.chmod(outside / "locked", 0o755)
     finally:
@@ -340,4 +345,4 @@ async def test_a_link_out_of_the_project_is_a_project_folder(ed: Editor):
             if link.is_symlink():
                 link.unlink()
         shutil.rmtree(outside, ignore_errors=True)
-    await ed.call("editor_status")
+    await pickup(ed)

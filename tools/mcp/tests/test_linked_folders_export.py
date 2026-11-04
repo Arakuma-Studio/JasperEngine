@@ -110,11 +110,17 @@ def linked_folders(ed: Editor):
         shutil.rmtree(outside, ignore_errors=True)
 
 
+def cooked_at(files: dict, rel: str) -> bool:
+    """the texture ships cooked: an index.json of assets/je-cooked/<family>/ names it, in place of its source (S14)"""
+    return rel.endswith(".png") and any(name.startswith("je-cooked/") and name.endswith("index.json") and rel.encode() in data
+                                        for name, data in files.items())
+
+
 def check_shipped(ed: Editor, label: str, files: dict, expected: dict):
-    missing = sorted(rel for rel in expected if rel not in files)
+    missing = sorted(rel for rel in expected if rel not in files and not cooked_at(files, rel))
     ed.check_eq(missing, [], f"{label}: files of linked folders missing from the export")
     # PNGs ship without the editor's chunks, which these have none of: the same bytes or the same image
-    wrong = sorted(rel for rel, data in expected.items() if files.get(rel) != data and not rel.endswith(".png"))
+    wrong = sorted(rel for rel, data in expected.items() if rel in files and files[rel] != data and not rel.endswith(".png"))
     ed.check_eq(wrong, [], f"{label}: exported with other bytes")
     held = sorted(rel for rel in files if rel.split("/")[0] in ("up", "broken") or rel.startswith("shared/loop/"))
     ed.check_eq(held, [], f"{label}: a link that holds itself or leads nowhere is not followed")
@@ -149,15 +155,14 @@ async def test_linked_folders_ship_where_the_editor_reads_them(ed: Editor):
 
 
 async def test_a_project_without_links_exports_the_same_files(ed: Editor):
-    """R3: every file of the assets tree ships at its own path, nothing more: the walk a link would change
-    changes nothing without one"""
+    """R3: every file of the assets tree ships at its own path (or cooked), and nothing else does"""
     await ed.call("editor_status")
     exported, _, _, _ = await source_export(ed, "export-plain", "linux")
-    shipped = set(tree(exported))
-    own = {rel for rel in tree(ed.project / "assets") if not rel.endswith(".meta") and not rel.endswith("LICENSE.txt")}
-    ed.check(own - shipped == set() or all(r.endswith((".h", ".cpp")) for r in own - shipped), f"missing: {sorted(own - shipped)[:20]}")
-    extra = {rel for rel in shipped - own if not rel.startswith(("je-cooked/",)) and not rel.endswith((".json", ".jlut"))}
-    ed.check_eq(sorted(extra), [], "and nothing else")
+    shipped = tree(exported)
+    own = {rel for rel in tree(ed.project / "assets") if not rel.endswith(".meta")}
+    ed.check_eq(sorted(rel for rel in own if rel not in shipped and not cooked_at(shipped, rel)), [], "every file of the assets ships")
+    extra = sorted(rel for rel in shipped if rel not in own and not rel.startswith("je-cooked/") and rel != "assetmap.bin")
+    ed.check_eq(extra, [], "and nothing else")
 
 
 # -- the games ----------------------------------------------------------------------------------------
