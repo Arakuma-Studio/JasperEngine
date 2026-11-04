@@ -1468,6 +1468,68 @@
 		71F225482C587388006ED3CA /* ParticleSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 71F225462C587388006ED3CA /* ParticleSystem.h */; };
 		71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71F225472C587388006ED3CA /* ParticleSystem.cpp */; };
 		71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 71F225472C587388006ED3CA /* ParticleSystem.cpp */; };
+		564F584C5B207BCAE5AAB714 /* VoxelClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C235DA717A8154716 /* VoxelClassesLua.cpp */; };
+		564F584C0A16AA5F11E3F1A2 /* VoxelClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C235DA717A8154716 /* VoxelClassesLua.cpp */; };
+		564F584CBE1F28804AA14B1A /* VoxelVolume.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C86F8B162EAC929B8 /* VoxelVolume.h */; };
+		564F584C947706D952C6D9A3 /* VoxelVolume.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C2A86808EC7A92197 /* VoxelVolume.cpp */; };
+		564F584CB4B6B6F03B9202B6 /* VoxelVolume.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C2A86808EC7A92197 /* VoxelVolume.cpp */; };
+		564F584C9D93167484AE5E0A /* GroundQuery.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584CFCED405CB2336D9F /* GroundQuery.h */; };
+		564F584C6A9CC5EAD2F4A807 /* GroundQuery.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C4A516D809E816280 /* GroundQuery.cpp */; };
+		564F584C40008000B5CB4407 /* GroundQuery.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C4A516D809E816280 /* GroundQuery.cpp */; };
+		564F584C47780198DDCB5BD0 /* RenderSystemVoxel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CFD9926D5D593E097 /* RenderSystemVoxel.cpp */; };
+		564F584C33B36CC4773874F0 /* RenderSystemVoxel.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CFD9926D5D593E097 /* RenderSystemVoxel.cpp */; };
+		564F584C7DCEA44F72009E59 /* VoxelSystemTerrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C63C9900D4241713E /* VoxelSystemTerrain.cpp */; };
+		564F584CE2E64C062E5B8995 /* VoxelSystemTerrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C63C9900D4241713E /* VoxelSystemTerrain.cpp */; };
+		564F584C3BBAB26799C3A688 /* VoxelSystemState.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C5AABFA40E1B560B7 /* VoxelSystemState.h */; };
+		564F584C2261367C72482E58 /* VoxelSystemPhysics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C76F6103215DCE89B /* VoxelSystemPhysics.cpp */; };
+		564F584CF89732A93B1C640F /* VoxelSystemPhysics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C76F6103215DCE89B /* VoxelSystemPhysics.cpp */; };
+		564F584C8E8B284A0B36DDDE /* VoxelSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C1D1714F67E2FE642 /* VoxelSystem.h */; };
+		564F584C0C436A09828F7873 /* VoxelSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C7AE536E4F8F5104F /* VoxelSystem.cpp */; };
+		564F584CD1C348947CEE1537 /* VoxelSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C7AE536E4F8F5104F /* VoxelSystem.cpp */; };
+		564F584CE8D39161CBD4F927 /* VoxelVolumeComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C1CA32F198B9C3B52 /* VoxelVolumeComponent.h */; };
+		564F584CA549673A1B93D0C9 /* VoxelWorkQueue.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C3B0B1FE5B629F1E6 /* VoxelWorkQueue.h */; };
+		564F584C5E5A0279A40D8418 /* VoxelWorkQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CFCB146D29552ABE8 /* VoxelWorkQueue.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C7748399EA006E6AB /* VoxelWorkQueue.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CFCB146D29552ABE8 /* VoxelWorkQueue.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C2E093F90ABE9844B /* VoxelVoxelize.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584CBD1E3F203756BC54 /* VoxelVoxelize.h */; };
+		564F584C41A31C19AE1A1FB8 /* VoxelVoxelize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C995D3C886DB13FEC /* VoxelVoxelize.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C5FD35EB65C50DAB6 /* VoxelVoxelize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C995D3C886DB13FEC /* VoxelVoxelize.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C19085ED862C9B07E /* VoxelTypes.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C4C35A07ACBFD7709 /* VoxelTypes.h */; };
+		564F584C52492700A442726F /* VoxelStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C12BB98BD8848589A /* VoxelStore.h */; };
+		564F584CB76E153FA36BB4B4 /* VoxelStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C278D43010F4227AE /* VoxelStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C1F5AACB710E84F70 /* VoxelStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C278D43010F4227AE /* VoxelStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CEB61C4110EC336F7 /* VoxelSample.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C4B587C7F6EAB688F /* VoxelSample.h */; };
+		564F584C48EA1AA1423DF975 /* VoxelSample.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C5AA49EE686FDE73F /* VoxelSample.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C98381E5A1540D675 /* VoxelSample.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C5AA49EE686FDE73F /* VoxelSample.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C8702FCD122005F63 /* VoxelGenerator.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584CA2AFCAEDE098C52E /* VoxelGenerator.h */; };
+		564F584C55B3C3A8B74FB89A /* VoxelGenerator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CDAD5B191AF3D97BA /* VoxelGenerator.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CD9469D9E303D6E8F /* VoxelGenerator.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CDAD5B191AF3D97BA /* VoxelGenerator.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C3EBF7035D17D6337 /* VoxelFile.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C9E3A7857E3525B30 /* VoxelFile.h */; };
+		564F584CDE574F5EFA700247 /* VoxelFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C02893F6DEA5F78CF /* VoxelFile.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C2B9D64DD9DCBD2E5 /* VoxelFile.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C02893F6DEA5F78CF /* VoxelFile.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CCEFF9942A584D5FE /* VoxelEdit.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584CEDC420CEA63BCA5D /* VoxelEdit.h */; };
+		564F584CADF18F5D46485842 /* VoxelEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CEE73F1EA8C278F3A /* VoxelEdit.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CB5B9823C4E5A7538 /* VoxelEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CEE73F1EA8C278F3A /* VoxelEdit.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C362C5AA014FB12F3 /* VoxelCoverage.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C6C25462D0EB8C8B9 /* VoxelCoverage.h */; };
+		564F584C931B58D81ED672E6 /* VoxelCoverage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C4BA75A6BC4C682AE /* VoxelCoverage.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C6CC582325B4F2615 /* VoxelCoverage.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C4BA75A6BC4C682AE /* VoxelCoverage.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CAC7F03AF41CCBE07 /* VoxelCodec.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C99DA3E20A329E9DB /* VoxelCodec.h */; };
+		564F584C1CE7878C31AC56F2 /* VoxelCodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CF1E6EF10ADC5F50F /* VoxelCodec.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CD700E3A7047BFE23 /* VoxelCodec.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CF1E6EF10ADC5F50F /* VoxelCodec.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C8D3ADF7E67FF9828 /* VoxelClipbox.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C4C4C042D600391F4 /* VoxelClipbox.h */; };
+		564F584CA6D573C92B24D281 /* VoxelClipbox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C72EEFC4B3994383A /* VoxelClipbox.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C4DA1920896FE68C2 /* VoxelClipbox.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C72EEFC4B3994383A /* VoxelClipbox.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C47B805302BE71B45 /* VoxelChangeSet.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584CFC4423CD4AC275C9 /* VoxelChangeSet.h */; };
+		564F584C5B5B476B572F9277 /* VoxelChangeSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CA0F92E74496C5709 /* VoxelChangeSet.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CC12E06121CC52EB6 /* VoxelChangeSet.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CA0F92E74496C5709 /* VoxelChangeSet.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C66094F1F5A9EB166 /* VoxelBlock.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C51B8D84F614B2E61 /* VoxelBlock.h */; };
+		564F584C8ABC8EAB4EECA192 /* VoxelBlock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CA0B3BD76A518FEB9 /* VoxelBlock.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CEA746D56B1E0FA53 /* VoxelBlock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CA0B3BD76A518FEB9 /* VoxelBlock.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C02DC67930F379B20 /* TransvoxelTables.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C180B0F528A17B255 /* TransvoxelTables.h */; };
+		564F584C669D14B39551E3EB /* TransvoxelTables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C4BFFE83C084004C6 /* TransvoxelTables.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CF5B7DA431CBE162A /* TransvoxelTables.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584C4BFFE83C084004C6 /* TransvoxelTables.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584C0CB31E225BE0E679 /* TransvoxelMesher.h in Headers */ = {isa = PBXBuildFile; fileRef = 564F584C7E49362826B8EB28 /* TransvoxelMesher.h */; };
+		564F584C8C8F5C1D09110F86 /* TransvoxelMesher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CD15CDF551D9DECBA /* TransvoxelMesher.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		564F584CF15338F8F902F1FE /* TransvoxelMesher.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 564F584CD15CDF551D9DECBA /* TransvoxelMesher.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		53504C4EB24308C2D78335F2 /* SplineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */; };
 		53504C4E56FFBE8361FFBEBC /* SplineClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */; };
 		53504C4E297A11A3049D85C4 /* SplineAnimate.h in Headers */ = {isa = PBXBuildFile; fileRef = 53504C4EFA373C8F004A166E /* SplineAnimate.h */; };
@@ -6600,6 +6662,47 @@
 		71F225442C58736B006ED3CA /* InstancedMeshComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = InstancedMeshComponent.h; sourceTree = "<group>"; };
 		71F225462C587388006ED3CA /* ParticleSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ParticleSystem.h; sourceTree = "<group>"; };
 		71F225472C587388006ED3CA /* ParticleSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ParticleSystem.cpp; sourceTree = "<group>"; };
+		564F584C235DA717A8154716 /* VoxelClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelClassesLua.cpp; sourceTree = "<group>"; };
+		564F584C86F8B162EAC929B8 /* VoxelVolume.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelVolume.h; sourceTree = "<group>"; };
+		564F584C2A86808EC7A92197 /* VoxelVolume.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelVolume.cpp; sourceTree = "<group>"; };
+		564F584CFCED405CB2336D9F /* GroundQuery.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GroundQuery.h; sourceTree = "<group>"; };
+		564F584C4A516D809E816280 /* GroundQuery.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GroundQuery.cpp; sourceTree = "<group>"; };
+		564F584CFD9926D5D593E097 /* RenderSystemVoxel.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemVoxel.cpp; sourceTree = "<group>"; };
+		564F584C63C9900D4241713E /* VoxelSystemTerrain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelSystemTerrain.cpp; sourceTree = "<group>"; };
+		564F584C5AABFA40E1B560B7 /* VoxelSystemState.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelSystemState.h; sourceTree = "<group>"; };
+		564F584C76F6103215DCE89B /* VoxelSystemPhysics.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelSystemPhysics.cpp; sourceTree = "<group>"; };
+		564F584C1D1714F67E2FE642 /* VoxelSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelSystem.h; sourceTree = "<group>"; };
+		564F584C7AE536E4F8F5104F /* VoxelSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelSystem.cpp; sourceTree = "<group>"; };
+		564F584C1CA32F198B9C3B52 /* VoxelVolumeComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelVolumeComponent.h; sourceTree = "<group>"; };
+		564F584C3B0B1FE5B629F1E6 /* VoxelWorkQueue.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelWorkQueue.h; sourceTree = "<group>"; };
+		564F584CFCB146D29552ABE8 /* VoxelWorkQueue.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelWorkQueue.cpp; sourceTree = "<group>"; };
+		564F584CBD1E3F203756BC54 /* VoxelVoxelize.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelVoxelize.h; sourceTree = "<group>"; };
+		564F584C995D3C886DB13FEC /* VoxelVoxelize.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelVoxelize.cpp; sourceTree = "<group>"; };
+		564F584C4C35A07ACBFD7709 /* VoxelTypes.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelTypes.h; sourceTree = "<group>"; };
+		564F584C12BB98BD8848589A /* VoxelStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelStore.h; sourceTree = "<group>"; };
+		564F584C278D43010F4227AE /* VoxelStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelStore.cpp; sourceTree = "<group>"; };
+		564F584C4B587C7F6EAB688F /* VoxelSample.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelSample.h; sourceTree = "<group>"; };
+		564F584C5AA49EE686FDE73F /* VoxelSample.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelSample.cpp; sourceTree = "<group>"; };
+		564F584CA2AFCAEDE098C52E /* VoxelGenerator.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelGenerator.h; sourceTree = "<group>"; };
+		564F584CDAD5B191AF3D97BA /* VoxelGenerator.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelGenerator.cpp; sourceTree = "<group>"; };
+		564F584C9E3A7857E3525B30 /* VoxelFile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelFile.h; sourceTree = "<group>"; };
+		564F584C02893F6DEA5F78CF /* VoxelFile.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelFile.cpp; sourceTree = "<group>"; };
+		564F584CEDC420CEA63BCA5D /* VoxelEdit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelEdit.h; sourceTree = "<group>"; };
+		564F584CEE73F1EA8C278F3A /* VoxelEdit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelEdit.cpp; sourceTree = "<group>"; };
+		564F584C6C25462D0EB8C8B9 /* VoxelCoverage.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelCoverage.h; sourceTree = "<group>"; };
+		564F584C4BA75A6BC4C682AE /* VoxelCoverage.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelCoverage.cpp; sourceTree = "<group>"; };
+		564F584C99DA3E20A329E9DB /* VoxelCodec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelCodec.h; sourceTree = "<group>"; };
+		564F584CF1E6EF10ADC5F50F /* VoxelCodec.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelCodec.cpp; sourceTree = "<group>"; };
+		564F584C4C4C042D600391F4 /* VoxelClipbox.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelClipbox.h; sourceTree = "<group>"; };
+		564F584C72EEFC4B3994383A /* VoxelClipbox.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelClipbox.cpp; sourceTree = "<group>"; };
+		564F584CFC4423CD4AC275C9 /* VoxelChangeSet.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelChangeSet.h; sourceTree = "<group>"; };
+		564F584CA0F92E74496C5709 /* VoxelChangeSet.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelChangeSet.cpp; sourceTree = "<group>"; };
+		564F584C51B8D84F614B2E61 /* VoxelBlock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VoxelBlock.h; sourceTree = "<group>"; };
+		564F584CA0B3BD76A518FEB9 /* VoxelBlock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VoxelBlock.cpp; sourceTree = "<group>"; };
+		564F584C180B0F528A17B255 /* TransvoxelTables.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TransvoxelTables.h; sourceTree = "<group>"; };
+		564F584C4BFFE83C084004C6 /* TransvoxelTables.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TransvoxelTables.cpp; sourceTree = "<group>"; };
+		564F584C7E49362826B8EB28 /* TransvoxelMesher.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TransvoxelMesher.h; sourceTree = "<group>"; };
+		564F584CD15CDF551D9DECBA /* TransvoxelMesher.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TransvoxelMesher.cpp; sourceTree = "<group>"; };
 		53504C4E5262B21B0E1C90F9 /* SplineClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineClassesLua.cpp; sourceTree = "<group>"; };
 		53504C4EFA373C8F004A166E /* SplineAnimate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SplineAnimate.h; sourceTree = "<group>"; };
 		53504C4ECB827EC45A167CF8 /* SplineAnimate.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SplineAnimate.cpp; sourceTree = "<group>"; };
@@ -9202,6 +9305,7 @@
 				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
+				564F584C235DA717A8154716 /* VoxelClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10456,6 +10560,53 @@
 			path = terrain;
 			sourceTree = "<group>";
 		};
+		564F584C566CEAA6686CA9AF /* voxel */ = {
+			isa = PBXGroup;
+			children = (
+				564F584CD15CDF551D9DECBA /* TransvoxelMesher.cpp */,
+				564F584C7E49362826B8EB28 /* TransvoxelMesher.h */,
+				564F584C4BFFE83C084004C6 /* TransvoxelTables.cpp */,
+				564F584C180B0F528A17B255 /* TransvoxelTables.h */,
+				564F584CA0B3BD76A518FEB9 /* VoxelBlock.cpp */,
+				564F584C51B8D84F614B2E61 /* VoxelBlock.h */,
+				564F584CA0F92E74496C5709 /* VoxelChangeSet.cpp */,
+				564F584CFC4423CD4AC275C9 /* VoxelChangeSet.h */,
+				564F584C72EEFC4B3994383A /* VoxelClipbox.cpp */,
+				564F584C4C4C042D600391F4 /* VoxelClipbox.h */,
+				564F584CF1E6EF10ADC5F50F /* VoxelCodec.cpp */,
+				564F584C99DA3E20A329E9DB /* VoxelCodec.h */,
+				564F584C4BA75A6BC4C682AE /* VoxelCoverage.cpp */,
+				564F584C6C25462D0EB8C8B9 /* VoxelCoverage.h */,
+				564F584CEE73F1EA8C278F3A /* VoxelEdit.cpp */,
+				564F584CEDC420CEA63BCA5D /* VoxelEdit.h */,
+				564F584C02893F6DEA5F78CF /* VoxelFile.cpp */,
+				564F584C9E3A7857E3525B30 /* VoxelFile.h */,
+				564F584CDAD5B191AF3D97BA /* VoxelGenerator.cpp */,
+				564F584CA2AFCAEDE098C52E /* VoxelGenerator.h */,
+				564F584C5AA49EE686FDE73F /* VoxelSample.cpp */,
+				564F584C4B587C7F6EAB688F /* VoxelSample.h */,
+				564F584C278D43010F4227AE /* VoxelStore.cpp */,
+				564F584C12BB98BD8848589A /* VoxelStore.h */,
+				564F584C4C35A07ACBFD7709 /* VoxelTypes.h */,
+				564F584C995D3C886DB13FEC /* VoxelVoxelize.cpp */,
+				564F584CBD1E3F203756BC54 /* VoxelVoxelize.h */,
+				564F584CFCB146D29552ABE8 /* VoxelWorkQueue.cpp */,
+				564F584C3B0B1FE5B629F1E6 /* VoxelWorkQueue.h */,
+			);
+			path = voxel;
+			sourceTree = "<group>";
+		};
+		564F584C5B14CEC27D54292C /* voxel */ = {
+			isa = PBXGroup;
+			children = (
+				564F584C4A516D809E816280 /* GroundQuery.cpp */,
+				564F584CFCED405CB2336D9F /* GroundQuery.h */,
+				564F584C2A86808EC7A92197 /* VoxelVolume.cpp */,
+				564F584C86F8B162EAC929B8 /* VoxelVolume.h */,
+			);
+			path = voxel;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -10534,6 +10685,7 @@
 				4A534E476646E8233CC78BAC /* native */,
 				4A534E47B1D2BFA5C64803C4 /* debug */,
 				5452524E196FDEBB284DD19F /* terrain */,
+				564F584C566CEAA6686CA9AF /* voxel */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -10793,6 +10945,7 @@
 				4A534E4755A896E2EFAC63FB /* CameraShakerComponent.h */,
 				4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */,
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
+				564F584C1CA32F198B9C3B52 /* VoxelVolumeComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -10903,6 +11056,7 @@
 				4A534E477741740820D741F9 /* VideoPlayer.h */,
 				5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */,
 				5452524EE2E21CCF598630C1 /* TerrainEdit.h */,
+				564F584C5B14CEC27D54292C /* voxel */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -11066,6 +11220,12 @@
 				4A534E47D88DB63824966935 /* VideoPlayerSystem.h */,
 				4A534E4760C1D1328627EB69 /* UIDocumentInput.h */,
 				4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */,
+				564F584C7AE536E4F8F5104F /* VoxelSystem.cpp */,
+				564F584C1D1714F67E2FE642 /* VoxelSystem.h */,
+				564F584C76F6103215DCE89B /* VoxelSystemPhysics.cpp */,
+				564F584C5AABFA40E1B560B7 /* VoxelSystemState.h */,
+				564F584C63C9900D4241713E /* VoxelSystemTerrain.cpp */,
+				564F584CFD9926D5D593E097 /* RenderSystemVoxel.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -14748,6 +14908,26 @@
 				17145B3C2FF7FC5E00543CB7 /* Light2D.h in Headers */,
 				17145B3D2FF7FC5E00543CB7 /* ShadowCaster2D.h in Headers */,
 				71F225482C587388006ED3CA /* ParticleSystem.h in Headers */,
+				564F584CBE1F28804AA14B1A /* VoxelVolume.h in Headers */,
+				564F584C9D93167484AE5E0A /* GroundQuery.h in Headers */,
+				564F584C3BBAB26799C3A688 /* VoxelSystemState.h in Headers */,
+				564F584C8E8B284A0B36DDDE /* VoxelSystem.h in Headers */,
+				564F584CE8D39161CBD4F927 /* VoxelVolumeComponent.h in Headers */,
+				564F584CA549673A1B93D0C9 /* VoxelWorkQueue.h in Headers */,
+				564F584C2E093F90ABE9844B /* VoxelVoxelize.h in Headers */,
+				564F584C19085ED862C9B07E /* VoxelTypes.h in Headers */,
+				564F584C52492700A442726F /* VoxelStore.h in Headers */,
+				564F584CEB61C4110EC336F7 /* VoxelSample.h in Headers */,
+				564F584C8702FCD122005F63 /* VoxelGenerator.h in Headers */,
+				564F584C3EBF7035D17D6337 /* VoxelFile.h in Headers */,
+				564F584CCEFF9942A584D5FE /* VoxelEdit.h in Headers */,
+				564F584C362C5AA014FB12F3 /* VoxelCoverage.h in Headers */,
+				564F584CAC7F03AF41CCBE07 /* VoxelCodec.h in Headers */,
+				564F584C8D3ADF7E67FF9828 /* VoxelClipbox.h in Headers */,
+				564F584C47B805302BE71B45 /* VoxelChangeSet.h in Headers */,
+				564F584C66094F1F5A9EB166 /* VoxelBlock.h in Headers */,
+				564F584C02DC67930F379B20 /* TransvoxelTables.h in Headers */,
+				564F584C0CB31E225BE0E679 /* TransvoxelMesher.h in Headers */,
 				53504C4E297A11A3049D85C4 /* SplineAnimate.h in Headers */,
 				53504C4EBC6278D3C50D1C80 /* SplineInstantiate.h in Headers */,
 				53504C4E311041BDE2CBB621 /* SplineExtrude.h in Headers */,
@@ -17373,6 +17553,27 @@
 				713D82AF259D307F00567F9F /* InterleavedBuffer.cpp in Sources */,
 				71E54500284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F2254A2C587388006ED3CA /* ParticleSystem.cpp in Sources */,
+				564F584C5B207BCAE5AAB714 /* VoxelClassesLua.cpp in Sources */,
+				564F584C947706D952C6D9A3 /* VoxelVolume.cpp in Sources */,
+				564F584C6A9CC5EAD2F4A807 /* GroundQuery.cpp in Sources */,
+				564F584C47780198DDCB5BD0 /* RenderSystemVoxel.cpp in Sources */,
+				564F584C7DCEA44F72009E59 /* VoxelSystemTerrain.cpp in Sources */,
+				564F584C2261367C72482E58 /* VoxelSystemPhysics.cpp in Sources */,
+				564F584C0C436A09828F7873 /* VoxelSystem.cpp in Sources */,
+				564F584C5E5A0279A40D8418 /* VoxelWorkQueue.cpp in Sources */,
+				564F584C41A31C19AE1A1FB8 /* VoxelVoxelize.cpp in Sources */,
+				564F584CB76E153FA36BB4B4 /* VoxelStore.cpp in Sources */,
+				564F584C48EA1AA1423DF975 /* VoxelSample.cpp in Sources */,
+				564F584C55B3C3A8B74FB89A /* VoxelGenerator.cpp in Sources */,
+				564F584CDE574F5EFA700247 /* VoxelFile.cpp in Sources */,
+				564F584CADF18F5D46485842 /* VoxelEdit.cpp in Sources */,
+				564F584C931B58D81ED672E6 /* VoxelCoverage.cpp in Sources */,
+				564F584C1CE7878C31AC56F2 /* VoxelCodec.cpp in Sources */,
+				564F584CA6D573C92B24D281 /* VoxelClipbox.cpp in Sources */,
+				564F584C5B5B476B572F9277 /* VoxelChangeSet.cpp in Sources */,
+				564F584C8ABC8EAB4EECA192 /* VoxelBlock.cpp in Sources */,
+				564F584C669D14B39551E3EB /* TransvoxelTables.cpp in Sources */,
+				564F584C8C8F5C1D09110F86 /* TransvoxelMesher.cpp in Sources */,
 				53504C4EB24308C2D78335F2 /* SplineClassesLua.cpp in Sources */,
 				53504C4E283B6FF5F26263BD /* SplineAnimate.cpp in Sources */,
 				53504C4E4A7CF4D85FD00022 /* SplineInstantiate.cpp in Sources */,
@@ -18191,6 +18392,27 @@
 				7162FD4525963AE00075B97D /* GameObject.cpp in Sources */,
 				71E544FF284D5BB700C68FAB /* Animation.cpp in Sources */,
 				71F225492C587388006ED3CA /* ParticleSystem.cpp in Sources */,
+				564F584C0A16AA5F11E3F1A2 /* VoxelClassesLua.cpp in Sources */,
+				564F584CB4B6B6F03B9202B6 /* VoxelVolume.cpp in Sources */,
+				564F584C40008000B5CB4407 /* GroundQuery.cpp in Sources */,
+				564F584C33B36CC4773874F0 /* RenderSystemVoxel.cpp in Sources */,
+				564F584CE2E64C062E5B8995 /* VoxelSystemTerrain.cpp in Sources */,
+				564F584CF89732A93B1C640F /* VoxelSystemPhysics.cpp in Sources */,
+				564F584CD1C348947CEE1537 /* VoxelSystem.cpp in Sources */,
+				564F584C7748399EA006E6AB /* VoxelWorkQueue.cpp in Sources */,
+				564F584C5FD35EB65C50DAB6 /* VoxelVoxelize.cpp in Sources */,
+				564F584C1F5AACB710E84F70 /* VoxelStore.cpp in Sources */,
+				564F584C98381E5A1540D675 /* VoxelSample.cpp in Sources */,
+				564F584CD9469D9E303D6E8F /* VoxelGenerator.cpp in Sources */,
+				564F584C2B9D64DD9DCBD2E5 /* VoxelFile.cpp in Sources */,
+				564F584CB5B9823C4E5A7538 /* VoxelEdit.cpp in Sources */,
+				564F584C6CC582325B4F2615 /* VoxelCoverage.cpp in Sources */,
+				564F584CD700E3A7047BFE23 /* VoxelCodec.cpp in Sources */,
+				564F584C4DA1920896FE68C2 /* VoxelClipbox.cpp in Sources */,
+				564F584CC12E06121CC52EB6 /* VoxelChangeSet.cpp in Sources */,
+				564F584CEA746D56B1E0FA53 /* VoxelBlock.cpp in Sources */,
+				564F584CF5B7DA431CBE162A /* TransvoxelTables.cpp in Sources */,
+				564F584CF15338F8F902F1FE /* TransvoxelMesher.cpp in Sources */,
 				53504C4E56FFBE8361FFBEBC /* SplineClassesLua.cpp in Sources */,
 				53504C4EC783A95717F91079 /* SplineAnimate.cpp in Sources */,
 				53504C4E5B3A511C890C7ABB /* SplineInstantiate.cpp in Sources */,
@@ -21057,6 +21279,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					"JASPERENGINE_VOXEL=1",
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -21114,6 +21337,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					"JASPERENGINE_VOXEL=1",
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -21326,6 +21550,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					"JASPERENGINE_VOXEL=1",
 					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
@@ -21392,6 +21617,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					"JASPERENGINE_VOXEL=1",
 					JASPERENGINE_ADMOB,
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
@@ -21463,6 +21689,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					"JASPERENGINE_VOXEL=1",
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -21528,6 +21755,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					"JASPERENGINE_VOXEL=1",
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -21590,6 +21818,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					"JASPERENGINE_VOXEL=1",
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,
@@ -21650,6 +21879,7 @@
 					JASPERENGINE_PHYSICS_2D,
 					JASPERENGINE_PHYSICS_3D,
 					JASPERENGINE_RUNTIME_SHADERS,
+					"JASPERENGINE_VOXEL=1",
 					RMLUI_STATIC_LIB,
 					RMLUI_MATH_EXPRESSIONS,
 					TVG_STATIC,

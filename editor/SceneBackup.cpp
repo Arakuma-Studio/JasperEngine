@@ -35,6 +35,7 @@ namespace {
             case BackupKind::Scene: return "scenes";
             case BackupKind::Untitled: return "untitled";
             case BackupKind::Prefab: return "prefabs";
+            case BackupKind::Voxel: return "voxels";
         }
         return "scenes";
     }
@@ -166,11 +167,11 @@ bool SceneBackups::discard(const fs::path& projectPath, BackupKind kind, const f
     return discard(backupPath(projectPath, kind, source, sceneId));
 }
 
-SceneBackupInfo SceneBackups::scan(const fs::path& projectPath, const fs::path& source) {
+SceneBackupInfo SceneBackups::scan(const fs::path& projectPath, const fs::path& source, BackupKind kind) {
     SceneBackupInfo info;
-    info.kind = BackupKind::Scene;
+    info.kind = kind;
     info.source = source;
-    const fs::path backup = backupPath(projectPath, BackupKind::Scene, source);
+    const fs::path backup = backupPath(projectPath, kind, source);
     std::error_code ec;
     if (!fs::is_regular_file(backup, ec) || !readSidecar(backup, info)) {
         return info;
@@ -251,6 +252,22 @@ size_t SceneBackups::removeOwnedBy(const fs::path& projectPath, int64_t pid) {
     size_t removed = 0;
     for (const SceneBackupInfo& info : list(projectPath)) {
         if (info.pid == pid && discard(info.backup))
+            removed++;
+    }
+    // a volume's copies are its scene's, and no listing shows them
+    const fs::path voxels = root(projectPath) / kindDirectory(BackupKind::Voxel);
+    std::error_code ec;
+    std::vector<fs::path> copies;
+    if (fs::is_directory(voxels, ec)) {
+        for (fs::recursive_directory_iterator it(voxels, ec), end; !ec && it != end; it.increment(ec)) {
+            std::error_code entryEc;
+            if (it->is_regular_file(entryEc) && it->path().extension() != ".json" && !io::isTemporarySiblingName(it->path().filename().string()))
+                copies.push_back(it->path());
+        }
+    }
+    for (const fs::path& copy : copies) {
+        SceneBackupInfo info;
+        if (readSidecar(copy, info) && info.pid == pid && discard(copy))
             removed++;
     }
     return removed;

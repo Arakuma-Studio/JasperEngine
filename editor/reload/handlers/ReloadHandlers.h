@@ -49,6 +49,8 @@ namespace jasperengine::editor::reload {
     void reloadModels(Context& ctx, const std::vector<std::filesystem::path>& files);
     // .particles effects: read again; every Particle System playing one rebinds (S20 R1)
     void reloadParticleEffects(Context& ctx, const std::vector<std::filesystem::path>& files);
+    // .voxelvolume files another program changed: the volumes read them again (T6 R77)
+    void reloadVoxelVolumes(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Audio: a new sample for the next plays
     void reloadAudio(Context& ctx, const std::vector<std::filesystem::path>& files);
     // Fonts: a new pool entry; the texts using it rebuild their atlas

@@ -287,6 +287,10 @@ namespace jasperengine::editor{
 
         // Frees every step
         void clear();
+        // The steps `matches` names leave the history, wherever they are in it (their content is
+        // gone: a file reloaded under them, T6 R77). The others keep their order and stay
+        // undoable; they must not depend on the steps dropped. Returns how many went.
+        size_t dropSteps(const std::function<bool(Command&)>& matches);
         // Frees the redo tail (UndoTimeline: a step of the partner history ends it)
         void freeRedo();
         // Why the last push/undo/redo was refused (beforeMutation)

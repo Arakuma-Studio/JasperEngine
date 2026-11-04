@@ -643,6 +643,11 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::AnimationPlayerComponent, "clips[]"},
         // S19: a surface's baked .navmesh and a grid's .navgrid cells
         {C::NavMeshSurfaceComponent, "navMeshData"}, {C::NavGridComponent, "gridData"},
+        // T6: a volume's blocks and the maps of its material slots
+        {C::VoxelVolumeComponent, "volumeData"}, {C::VoxelVolumeComponent, "materialSlots[].layer.colorTexture"},
+        {C::VoxelVolumeComponent, "materialSlots[].layer.normalTexture"}, {C::VoxelVolumeComponent, "materialSlots[].layer.roughnessTexture"},
+        {C::VoxelVolumeComponent, "materialSlots[].layer.metallicTexture"}, {C::VoxelVolumeComponent, "materialSlots[].layer.occlusionTexture"},
+        {C::VoxelVolumeComponent, "materialSlots[].layer.heightTexture"},
         // S18: the model or prefab of each entry of a spline placer's pools
         {C::SplineInstantiateComponent, "items[].asset"}, {C::SplineInstantiateComponent, "posts[].asset"},
         {C::SplineInstantiateComponent, "spans[].asset"}, {C::SplineInstantiateComponent, "gates[].asset"},

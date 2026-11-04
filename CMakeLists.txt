@@ -695,6 +695,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cli/ShippingCommands.cpp
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
+    ${EDITOR_DIR}/cook/VoxelVolumeCook.cpp
+    ${EDITOR_DIR}/voxel/VoxelAssetFile.cpp
+    ${EDITOR_DIR}/voxel/VoxelProjectSettings.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
     ${EDITOR_DIR}/players/ModuleUsage.cpp
@@ -753,6 +756,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reflect/components/GameplayReflect.cpp
     ${EDITOR_DIR}/reflect/components/ClipPlayersReflect.cpp
     ${EDITOR_DIR}/reflect/components/SplinesReflect.cpp
+    ${EDITOR_DIR}/reflect/components/VoxelReflect.cpp
     ${EDITOR_DIR}/reflect/components/AnimatorReflect.cpp
     ${EDITOR_DIR}/reflect/components/ParticlesReflect.cpp
     ${EDITOR_DIR}/reflect/components/RenderReflect.cpp
@@ -884,6 +888,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/reload/handlers/Assets.cpp
     ${EDITOR_DIR}/reload/handlers/Audio.cpp
     ${EDITOR_DIR}/reload/handlers/Particles.cpp
+    ${EDITOR_DIR}/reload/handlers/Voxel.cpp
     ${EDITOR_DIR}/reload/handlers/Common.cpp
     ${EDITOR_DIR}/reload/handlers/Fonts.cpp
     ${EDITOR_DIR}/reload/handlers/HtmlUi.cpp
@@ -1288,6 +1293,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/RemoveFilesCmd.cpp
     ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
     ${EDITOR_DIR}/command/type/SplineEditCmd.cpp
+    ${EDITOR_DIR}/command/type/VoxelEditCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBindingsCmd.cpp
     ${EDITOR_DIR}/command/type/LatticeBakeCmd.cpp
     ${EDITOR_DIR}/command/type/GraphEditCmd.cpp

@@ -36,7 +36,10 @@ namespace jasperengine {
         AnimatorController = 20,    // a .controller Animator Controller (S21; its GUID in its JSON)
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
-        VertexAnimation = 23        // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
+        VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
+        // 24-30 are reserved for the other terrain streams (T2, T3): the map stores the number, so
+        // it stays this whichever lands first
+        VoxelVolume = 31            // a .voxelvolume (T6 R77, its GUID in a sidecar)
     };
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
@@ -65,13 +68,15 @@ namespace jasperengine {
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
+            case AssetType::VoxelVolume: return "voxel_volume";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::VertexAnimation); value++) {
+        // (a reserved number has no name: it never matches)
+        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::VoxelVolume); value++) {
             const AssetType type = static_cast<AssetType>(value);
             if (name == assetTypeName(type)) {
                 return type;

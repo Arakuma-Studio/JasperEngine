@@ -153,6 +153,10 @@ TEST(PayloadValidator, RefusesContentNeedingAModuleTheVariantLeavesOut) {
     EXPECT_TRUE(hasFinding(findings, "needs the HTML UI (htmlui), which the player linux-x64-glcore-release-lite3d leaves out")) << join(findings);
     // the full player has every module
     EXPECT_TRUE(withModules("linux-x64-glcore-release", {"htmlui", "video", "runtimeshaders"}).empty());
+    // T6 AC38: lite3d leaves Voxel Volumes out, the full player has them
+    const std::vector<std::string> voxelFindings = withModules("linux-x64-glcore-release-lite3d", {"physics3d", "voxel"});
+    EXPECT_TRUE(hasFinding(voxelFindings, "needs Voxel Volumes (voxel), which the player linux-x64-glcore-release-lite3d leaves out")) << join(voxelFindings);
+    EXPECT_TRUE(withModules("linux-x64-glcore-release", {"voxel"}).empty());
 }
 
 TEST(PayloadValidator, RefusesCaseCollisionsAndEscapingSymlinks) {

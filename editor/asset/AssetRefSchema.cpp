@@ -10,6 +10,7 @@
 #include "component/LightComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
+#include "component/VoxelVolumeComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/PointsComponent.h"
@@ -161,6 +162,11 @@ namespace {
         row(C::AnimationPlayerComponent, "clips[]", Shape::ClipEntry, AssetType::AnimationClip, Base::Assets);
         row(C::NavMeshSurfaceComponent, "navMeshData", Shape::Asset, AssetType::NavMesh, Base::Assets);
         row(C::NavGridComponent, "gridData", Shape::Asset, AssetType::NavGrid, Base::Assets);
+        // T6: a volume's blocks, and the maps of its material slots (the same names as Terrain Layers)
+        row(C::VoxelVolumeComponent, "volumeData", Shape::Asset, AssetType::VoxelVolume, Base::Assets);
+        for (const char* layer : {"colorTexture", "normalTexture", "roughnessTexture", "metallicTexture", "occlusionTexture", "heightTexture"}) {
+            row(C::VoxelVolumeComponent, std::string("materialSlots[].layer.") + layer, Shape::Texture, AssetType::Texture, Base::Assets);
+        }
         // each pool entry: "posts[1].asset" (and "assetGuid"); a model or a prefab
         for (const char* pool : kSplinePools) {
             row(C::SplineInstantiateComponent, std::string(pool) + "[].asset", Shape::Asset, AssetType::Unknown, Base::Assets);
@@ -593,6 +599,22 @@ namespace {
                 terrain.needUpdateTerrain = true;
             }
             if (textureChanged) terrain.needUpdateTexture = true;
+        });
+
+        eachComponent<VoxelVolumeComponent>(registry, only, visit, C::VoxelVolumeComponent, [&](VoxelVolumeComponent& volume) {
+            // (VoxelSystem follows volumeData's path by itself)
+            visit.asset(volume.volumeData, componentRow(C::VoxelVolumeComponent, "volumeData"), "volumeData");
+            for (size_t i = 0; i < volume.materialSlots.size(); i++) {
+                TerrainSurfaceLayer& layer = volume.materialSlots[i].layer;
+                const std::string prefix = "materialSlots[" + std::to_string(i) + "].layer.";
+                const std::pair<const char*, Texture*> textures[] = {
+                    {"colorTexture", &layer.colorTexture}, {"normalTexture", &layer.normalTexture},
+                    {"roughnessTexture", &layer.roughnessTexture}, {"metallicTexture", &layer.metallicTexture},
+                    {"occlusionTexture", &layer.occlusionTexture}, {"heightTexture", &layer.heightTexture}};
+                for (const auto& [name, texture] : textures) {
+                    visit.texture(*texture, componentRow(C::VoxelVolumeComponent, std::string("materialSlots[].layer.") + name), prefix + name);
+                }
+            }
         });
 
         eachComponent<LightComponent>(registry, only, visit, C::LightComponent, [&](LightComponent& light) {

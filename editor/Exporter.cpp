@@ -3,6 +3,7 @@
 
 #include "util/SafeWrite.h"
 #include "Exporter.h"
+#include "cook/VoxelVolumeCook.h"
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
 #include "player/PlayerModules.h"
@@ -1301,7 +1302,7 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 
 std::vector<std::string> editor::Exporter::compiledModules() const {
     // what Project Settings allow (the HTML UI and its video have no switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video"};
+    std::vector<std::string> modules = {"htmlui", "video", "voxel"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -2375,9 +2376,15 @@ bool editor::Exporter::loadAndSaveAllScenes() {
             // loaded (a source export keeps every module its settings allow: its user's code may
             // use any)
             moduleUsageKnown = false;
-            if (imported && config.mode != ExportMode::SourceCode) {
-                moduleUsage = ModuleUsageDetector::analyze(ModuleUsageDetector::collect(project));
-                moduleUsageKnown = true;
+            voxelKeptGenerators.clear();
+            if (imported) {
+                const ModuleScan shipped = ModuleUsageDetector::collect(project);
+                // T6 R78: which volumes the asset cook leaves a generator in
+                voxelKeptGenerators = cook::voxelVolumesGeneratedAtRuntime(shipped);
+                if (config.mode != ExportMode::SourceCode) {
+                    moduleUsage = ModuleUsageDetector::analyze(shipped);
+                    moduleUsageKnown = true;
+                }
             }
 
             // Unload all scenes that were not loaded before export
@@ -2873,6 +2880,22 @@ bool editor::Exporter::copyAssets() {
 
         fs::path destPath = assetsDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
+
+        // A Voxel Volume ships baked, or the export stops naming it and the target (T6 R7, R78)
+        if (cook::isVoxelVolumeFile(entry.path())) {
+            cook::VoxelCookOptions voxelOptions;
+            voxelOptions.keepGenerator = voxelKeptGenerators.count(relPath.generic_string()) > 0;
+            voxelOptions.settings = project->getVoxelSettings();
+            voxelOptions.hasTarget = config.mode != ExportMode::SourceCode;
+            voxelOptions.target = config.mode == ExportMode::Player ? config.platform
+                                : config.mode == ExportMode::Web ? BuildPlatform::Web : hostBuildPlatform();
+            std::string voxelError;
+            if (!cook::cookVoxelVolumeFile(entry.path(), destPath, relPath.generic_string(), voxelOptions, voxelError)) {
+                setError(voxelError);
+                return false;
+            }
+            continue;
+        }
 
         // A .cube colour LUT ships cooked (S13 R25): <name>.jlut, float16 with the 3D table at most
         // 33^3, which the game loads in place of the .cube. One that does not parse ships as it
@@ -3596,6 +3619,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_RUNTIME_SHADERS", "runtimeshaders");
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");
+        moduleSwitch("JASPERENGINE_VOXEL", "voxel");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
@@ -4617,6 +4641,16 @@ bool editor::Exporter::writeAppleProjectSettings() {
             "DetourNavMeshQuery.cpp", "DetourNode.cpp", "DetourCrowd.cpp", "DetourLocalBoundary.cpp", "DetourObstacleAvoidance.cpp",
             "DetourPathCorridor.cpp", "DetourPathQueue.cpp", "DetourProximityGrid.cpp", "DetourTileCache.cpp", "DetourTileCacheBuilder.cpp"
         });
+    }
+
+    // Voxel Volumes not reached (T6 R47): the module stays out, Transvoxel's tables with it. Only
+    // the component's header and the ground query stay.
+    {
+        const std::vector<std::string> modules = compiledModules();
+        if (std::find(modules.begin(), modules.end(), "voxel") == modules.end()) {
+            replaceAll(xcodeProject, "\"JASPERENGINE_VOXEL=1\",", "\"JASPERENGINE_VOXEL=0\",");
+            excludedPhysicsSources.insert(excludedPhysicsSources.end(), {"Voxel*.cpp", "Transvoxel*.cpp", "RenderSystemVoxel.cpp"});
+        }
     }
 
     std::string excludedSources;

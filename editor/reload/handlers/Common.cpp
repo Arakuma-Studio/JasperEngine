@@ -25,6 +25,7 @@ std::string reload::kindOf(const fs::path& path) {
     if (Util::isModelFile(text) || ext == ".fbx") return "model";
     if (Util::isMaterialFile(text)) return "material";
     if (Util::isParticleEffectFile(text)) return "particles";
+    if (ext == ".voxelvolume") return "voxel";
     if (Util::isShaderFile(text)) return "shader";
     if (Util::isAudioFile(text)) return "audio";
     if (Util::isFontFile(text)) return "font";

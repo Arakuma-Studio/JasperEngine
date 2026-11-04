@@ -217,12 +217,14 @@ namespace jasperengine::editor{
         // Unity's VideoPlayer
         VideoPlayerComponent,
         // drives a RectTransform to Screen.safeArea
-        SafeAreaComponent
+        SafeAreaComponent,
+        // T6: a bounded box of smooth voxel terrain
+        VoxelVolumeComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::SafeAreaComponent;
+    constexpr ComponentType LastComponentType = ComponentType::VoxelVolumeComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
