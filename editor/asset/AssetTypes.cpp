@@ -29,7 +29,7 @@ namespace {
                 {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif", ".hdr", ".psd", ".pic", ".pnm", ".svg"}},
             {{AssetType::Model, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".gltf", ".glb", ".obj", ".fbx"}},
             {{AssetType::Audio, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".wav", ".ogg", ".mp3", ".flac"}},
-            {{AssetType::Font, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ttf", ".otf"}},
+            {{AssetType::Font, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".ttf", ".otf", ".ttc"}},
             {{AssetType::UIDocument, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".html", ".htm", ".rml"}},
             {{AssetType::Stylesheet, AssetIdentity::Sidecar, AssetPathBase::Assets, false, false}, {".css", ".rcss"}},
             {{AssetType::Shader, AssetIdentity::Sidecar, AssetPathBase::Project, false, false}, {".vert", ".frag", ".glsl"}},
@@ -51,6 +51,8 @@ namespace {
             {{AssetType::AnimatorController, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".controller"}},
             {{AssetType::AvatarMask, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".mask"}},
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
+            // Title Art documents (S80) keep their GUID in their JSON; their baked PNGs are Textures
+            {{AssetType::TitleArt, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".titleart"}},
         };
         return table;
     }
