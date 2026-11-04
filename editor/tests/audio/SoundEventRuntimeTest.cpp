@@ -12,6 +12,7 @@
 
 #include "Scene.h"
 #include "component/CameraComponent.h"
+#include "component/Transform.h"
 #include "audio/AudioMixer.h"
 #include "audio/SoundEventIO.h"
 #include "audio/SoundEventLibrary.h"
