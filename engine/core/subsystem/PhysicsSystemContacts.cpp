@@ -33,6 +33,7 @@
 
 using namespace jasperengine;
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
 namespace {
 
     // Enter / Stay / Exit of a collision or a trigger, 3D or 2D (ScriptMessage order)
@@ -64,6 +65,7 @@ namespace {
     }
 
 }
+#endif
 
 void PhysicsSystem::onScriptReceiversChanged(Scene* scene, Entity entity){
     (void)entity;

@@ -206,6 +206,7 @@ void Physics2D::resetLayerCollisionMatrix(){
 
 // Queries
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
 namespace{
 
     // A Unity-style origin/direction/distance cast as a Ray whose direction spans the
@@ -231,6 +232,7 @@ namespace{
     }
 
 }
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_3D
 RayReturn Physics::raycast(Scene* scene, const Ray& ray, uint32_t layerMask){
