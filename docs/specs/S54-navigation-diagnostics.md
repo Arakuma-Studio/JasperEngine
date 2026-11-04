@@ -640,6 +640,27 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 
 ## Deviations
 
+- S54 P2: the upstream MCP text rules (AGENTS.md "MCP text", newer than this spec) win where they
+  differ. The listed schemas stay lean: a point (`from`, `to`, `path.from/to`) is the loose type
+  list `["array", "integer", "string"]` rather than `anyOf[vec3, entityRef]`, `to` is the same list
+  with `maxItems` 64 (an array that is not three numbers is a list of targets), `frame` is
+  `["integer", "string"]`; the handler validates them. The server does not check `maxItems`, so 65
+  targets are refused by the handler with an error naming the limit (AC16 "refused by the schema").
+- S54 P2: a failed path or `reachable` also carries `next` in structuredContent (and the text): the
+  tool route of its reason (`locate` at the end off the mesh, `bake_navigation`, the islands...),
+  since a hint an agent must see goes there; list entries leave it out. `reachable` answers carry
+  `surface`, `closest_point` and `gap` from a path searched for them only when not reachable.
+- S54 P2: `from` as a NavMesh Agent also gives its Area Mask when `area_mask` is absent (the spec
+  names only the agent type), so the answer is the agent's own query.
+- S54 P2: R34 "McpInstructions.cpp is unchanged": the guide's "Other areas" index gains
+  `navigation (get_navigation_info)` (upstream: an area without a digest is one index entry), with
+  the eval case `guard_navigation_findings`. The descriptions of `get_navigation_info` and
+  `bake_navigation` lose their result field lists (upstream: descriptions hold no field lists);
+  the fields are in `docs/mcp/guide/navigation.md`.
+- S54 P2: `show.islands` and `show.tile_colors` both true is an error ("turn on one"); false on the
+  current Color By returns to Areas.
+- S54 P2: `out_of_nodes` is not raised by the MCP fixture (it needs a 3,000-polygon comb);
+  `NavFailureTest.OutOfNodes` (P1) covers it, `test_query_reasons` covers the other eight.
 - S54 P3: AC13's `test_path_tester_flow` drives the Scene view with the harness's real input
   (`tools/mcp/ui_input.py`, xdotool in its Xvfb), not `send_input` (that tool sends input to the
   running game only). The panel's answer is read through UIProbe names (`pathTester.status.<status>`,
@@ -713,6 +734,21 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 
 ## Progress (implementation notes, keep updated)
 
+- S54 P2: `query_navigation` (points as GameObjects, agent type and mask from an agent, the
+  target/agent type conflict, `locate` with the probe's `why[]`, up to 64 targets, every reason on
+  paths, reachable and grids, islands labelled for the answer), `bake_navigation` (the bake report:
+  sources, islands, slowest tiles, error code and hint), `get_navigation_info` (coverage, islands,
+  last bake, link states, obstacles, modifiers, findings, `entities`), `visualize_navigation`
+  (islands / tile colours / slope / tile labels, `frame`, `screenshot: "game"`, the path's reason),
+  the CLI `check` and the export preflight on `collectProjectFindings` / `logNavigationPreflight`.
+  Tests: `test_navigation_diagnostics.py`, `test_checks.py::test_cli_navigation_findings`,
+  `test_navigation.py::test_tools_listed_with_schemas` (group hidden, annotations); eval cases
+  `guard_navigation_*`.
+- S54 P2: `bake_navigation`'s job message was overwritten by its "baking" progress when every start
+  was refused (the reasons and hint never reached the text); the progress is set before the loop,
+  the same hunk as S53 P2's (`nav/s41-p2`). `nav/s41-p2` after 11ed93a92 is not merged here: it
+  conflicts in P1/P3 files too; its `get_navigation_info` `last_bake` (the editor's record) and this
+  package's (the bake report, R32) meet in `NavigationTools.cpp` at the integration.
 - S54 P1 (branch `nav/s42-p1`): the contract (`nav: S42 contract`, aba8fb7e8) carries the whole
   §6 sketch with working bodies. Done: R1-R10 (failure detection in `NavMesh::findPath`, the
   ranking, `isReachable`'s island reject, islands by union-find cached per revision, coverage,
