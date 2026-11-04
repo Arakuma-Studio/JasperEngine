@@ -12,6 +12,7 @@
 #include "object/Model.h"
 #include "object/Primitive.h"
 #include "pool/MeshLodPool.h"
+#include "pool/ShaderPool.h"
 #include "subsystem/RenderSystem.h"
 
 #include "GpuEnvironment.h"

@@ -472,9 +472,9 @@ std::shared_ptr<MeshLodData> MeshLodPool::buildLevels(const MeshLodSource& sourc
     // rather than deviate more
     const float scale = meshopt_simplifyScale(positions.data(), vertexCount, sizeof(float) * 3);
     const float targetError = std::max(recipe.targetError, 0.0f) * scale;
+    // (not SimplifyErrorClamped: selection reads the geometric error, so the budget is what keeps
+    // a flat mesh's texture coordinates and normals, whose position error is none)
     unsigned int options = meshopt_SimplifyErrorAbsolute | meshopt_SimplifyPrune;
-    if (attributeCount > 0)
-        options |= meshopt_SimplifyErrorClamped;   // attribute error kept to the position error's scale
     if (skinned)
         options |= meshopt_SimplifyRegularize;     // even triangles deform better
     std::vector<unsigned char> seamLocks;

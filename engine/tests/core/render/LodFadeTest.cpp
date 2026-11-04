@@ -290,8 +290,9 @@ TEST(LodFadeBench, ThousandMeshesAFrame){
             const LodDraw draw = in.animated ? lodFadeUpdate(states[(size_t)m], in) : lodDistanceFade(in);
             fading += draw.fading() ? 1 : 0;
         }
-        samples.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
         allocations += counter.count();
+        samples.push_back(ms);
         EXPECT_GE(fading, 0);
     }
     std::sort(samples.begin(), samples.end());

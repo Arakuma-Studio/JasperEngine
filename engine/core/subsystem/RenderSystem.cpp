@@ -8759,11 +8759,13 @@ bool RenderSystem::sameLodFadeBindings(const ShaderData& base, const ShaderData&
     for (size_t s = 0; s < base.stages.size(); s++){
         const ShaderStage& a = base.stages[s];
         const ShaderStage& b = fade.stages[s];
-        if (a.type != b.type || a.attributes.size() != b.attributes.size() || a.uniformblocks.size() != b.uniformblocks.size() ||
+        // (a fragment stage's inputs are varyings: the fade variant adds its own, v_lodFade)
+        const bool vertex = a.type == ShaderStageType::VERTEX;
+        if (a.type != b.type || (vertex && a.attributes.size() != b.attributes.size()) || a.uniformblocks.size() != b.uniformblocks.size() ||
                 a.textures.size() != b.textures.size() || a.samplers.size() != b.samplers.size() ||
                 a.storagebuffers.size() != b.storagebuffers.size() || a.textureSamplerPairs.size() != b.textureSamplerPairs.size())
             return false;
-        for (size_t i = 0; i < a.attributes.size(); i++)
+        for (size_t i = 0; vertex && i < a.attributes.size(); i++)
             if (a.attributes[i].name != b.attributes[i].name || a.attributes[i].location != b.attributes[i].location)
                 return false;
         for (size_t i = 0; i < a.uniformblocks.size(); i++)

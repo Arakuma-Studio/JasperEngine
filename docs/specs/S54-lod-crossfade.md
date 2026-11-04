@@ -233,7 +233,8 @@ would expect, the safest default and the best UX").
 - **Builder recipe (C2).** `MeshLodRecipe {levels, ratio, targetError, permissive}`, with
   `MeshLodRecipe::forReduction`: Preserve Detail 0.6 a level within 1 % of the mesh's size,
   Balanced 0.5 within 2 % (the runtime's), Smallest 0.35 within 5 % and permissive. Weights: normal
-  0.5, UV 1.0, bone weights 1.0, each only when present; `SimplifyErrorClamped` with attributes; a
+  0.5, UV 1.0, bone weights 1.0, each only when present; no `SimplifyErrorClamped` (selection reads the
+  geometric error, so the budget is what keeps a flat mesh's UVs and normals, whose position error is none); a
   level that stalls on seams retries with `SimplifyPermissive`, UV seams protected;
   `SimplifyRegularize` for skinned meshes. `kMeshLodRecipe` is 2. `MeshLodSource` now names its
   attributes (`normals`, `uvs`, `skinWeights`) instead of one packed array, which is what caused
@@ -300,3 +301,7 @@ would expect, the safest default and the best UX").
 - **R14:** a model path reads glTF and GLB; OBJ and FBX are captured through an entity.
 - **AC2 on Vulkan:** the mid-fade golden is compared per 8x8 tile, since the dither's phase is the
   backend's pixel origin (§4.1).
+- **R2, `SimplifyErrorClamped`:** not used. It scales the attribute error down to the position
+  error, which is none on a flat surface; with selection on the geometric error, the clamped
+  budget would let a flat mesh lose its texture mapping at every distance. `SimplifyPermissive` is
+  used where it helps (a level stalled on seams, and the Smallest reduction).

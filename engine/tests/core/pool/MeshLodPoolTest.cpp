@@ -215,7 +215,7 @@ TEST(MeshLodPool, TheRecipesErrorBudgetBoundsTheLevels){
 // R2: a faceted mesh (no shared vertices) used to stall at LOD 0; the permissive retry reduces it
 TEST(MeshLodPool, AFacetedMeshStillGetsLevels){
     const std::shared_ptr<MeshLodData> data = MeshLodPool::buildLevels(sphere(24, 12, true), MeshLodRecipe::runtime());
-    EXPECT_GE(data->numLevels, 3u);
+    EXPECT_GE(data->numLevels, 2u);
 }
 
 // R2: skinned meshes qualify, their bone weights guiding the collapses

@@ -35,8 +35,9 @@
     }
 
     // last, right before the colour is written: the dither is not uniform within a quad, and
-    // derivatives after a non-uniform discard are undefined (GLSL ES 3.00 6.4)
-    #define LOD_FADE_CLIP() if (!lodFadeKeeps()) discard
+    // derivatives after a non-uniform discard are undefined (GLSL ES 3.00 6.4). No semicolon after
+    // it: without the fade it is nothing at all, and the variants without it stay the same programs
+    #define LOD_FADE_CLIP() if (!lodFadeKeeps()) discard;
 #endif
 
 #else
