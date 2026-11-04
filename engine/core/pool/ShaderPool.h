@@ -167,7 +167,7 @@ namespace jasperengine{
         static uint64_t getVatProperty(ShaderType shaderType, bool bones);
         static uint64_t getVatProperties(ShaderType shaderType);
         // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
-        // instance, spec S43) of MESH and DEPTH, 0 for another type
+        // instance, spec S55) of MESH and DEPTH, 0 for another type
         static uint64_t getAutoInstancingProperty(ShaderType shaderType);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);

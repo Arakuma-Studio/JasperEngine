@@ -1237,7 +1237,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     } else {
         snprintf(lines[4], sizeof(lines[4]), "Target: default  VSync: %d", Engine::getVSyncCount());
     }
-    // the main view's and the shadow maps' share (S43 R7), and what GPU Instancing and the visible
+    // the main view's and the shadow maps' share (S55 R7), and what GPU Instancing and the visible
     // lists saved (Unity's "Saved by batching")
     const RenderStats renderStats = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME);
     snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main: %u draws, %llu tris  Shadows: %u draws, %llu tris", renderStats.mainDraws,

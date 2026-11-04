@@ -201,7 +201,7 @@ namespace jasperengine::editor{
         std::vector<uint32_t> benchmarkDraws;
         std::vector<uint32_t> benchmarkInstances;
         std::vector<uint64_t> benchmarkTris;
-        // the game frame's render counters (S43 R7, by kind of pass) and its draw-and-commit CPU
+        // the game frame's render counters (S55 R7, by kind of pass) and its draw-and-commit CPU
         // time (Engine::getFrameDrawCpuTime), per measured frame
         std::vector<RenderStats> benchmarkRenderStats;
         std::vector<double> benchmarkRenderCpuMs;

@@ -4,9 +4,9 @@
 #ifndef VisibleList_h
 #define VisibleList_h
 
-// A pass's visible list (spec S43 R4): what of the meshes it may draw is inside its frustum and
+// A pass's visible list (spec S55 R4): what of the meshes it may draw is inside its frustum and
 // within their distance, mesh by mesh and then submesh by submesh, culled once before the pass
-// sorts and draws; and the 64-bit key its opaque queue sorts by (R2).
+// draws; and the grouping of equal batch keys its GPU Instancing batches form from (R2).
 
 #include "Export.h"
 #include "math/AABB.h"
@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <vector>
 
 namespace jasperengine {
 
@@ -58,13 +59,12 @@ namespace jasperengine {
         static void cull(const VisibleFrustum& frustum, const VisibleCandidate* candidates, size_t count,
                          VisibleResult* results, bool parallel);
 
-        // The opaque queue's sort key: sort priority first (lower first, so stencil writers stay
-        // ahead of their readers), then draws that fade between detail levels (S42: their dither
-        // pipeline) after the others, then pipeline, material and mesh (the state a batch
-        // shares), then front to back. Equal keys keep their order (the caller's tie break).
-        static uint64_t opaqueKey(int priority, bool fading, uint32_t pipeline, uint32_t material, uint32_t mesh,
-                                  float distance, float farClip);
-        // a material's state as a sort key: what its draws bind and apply (mixed, any order)
+        // Batches form from consecutive draws (spec S55 R2: the queue's order is draw-perf's):
+        // within each run of equal priority, the draws of one batch key are brought together at
+        // the place of its first, keeping the queue's order otherwise. keys[i] 0 batches with
+        // nothing (stays where it is). order is the permutation to draw in.
+        static void groupBatches(const int* priorities, const uint64_t* keys, size_t count, std::vector<uint32_t>& order);
+        // a draw's state as a batch key: what it binds and applies (mixed, any order)
         static uint32_t mixKey(uint32_t key, uint64_t value);
     };
 

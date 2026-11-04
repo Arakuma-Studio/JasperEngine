@@ -1206,7 +1206,7 @@ void SokolObject::destroy(){
     blendState = BlendState();
 }
 
-// ---------------------------------------------------------------- automatic GPU instancing (S43)
+// ---------------------------------------------------------------- automatic GPU instancing (S55)
 
 namespace {
     // vectors an instance takes in each layout (includes/object_params.glsl, object_depth_params.glsl)

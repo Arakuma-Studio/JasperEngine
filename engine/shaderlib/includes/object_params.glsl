@@ -1,13 +1,13 @@
 // The object block of a mesh colour program, pbrParams.modelMatrix, normalMatrix and mvpMatrix:
 // per draw (u_vs_pbrParams), or per instance in an automatically instanced batch
-// (HAS_AUTO_INSTANCING, spec S43: draws of one mesh, material and pipeline drawn as one). A
+// (HAS_AUTO_INSTANCING, spec S55: draws of one mesh, material and pipeline drawn as one). A
 // shader reads pbrParams the same way in both; the instance's matrices are the draw's, bit for
 // bit, so a batch draws the image its draws would have:
 //   i_objectModel0..2   the model matrix's first three rows (its last row is 0 0 0 1)
 //   i_objectNormal0..2  the normal matrix's first three columns (xyz: what a direction reads);
 //                       i_objectNormal0.w the instance's LOD fade
 //   i_objectMvp0..3     the model-view-projection matrix's columns
-// objectLodFade() is the draw's LOD cross-fade (S42: -1..1, 0 none).
+// objectLodFade() is the draw's LOD cross-fade (S54: -1..1, 0 none).
 
 #ifdef HAS_AUTO_INSTANCING
     in vec4 i_objectModel0;

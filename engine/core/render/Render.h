@@ -245,7 +245,7 @@ namespace jasperengine{
         LINETANGENTIN,
         LINETANGENTOUT,
         LINEPARAMS,
-        // an automatically instanced batch's per-instance object block (spec S43,
+        // an automatically instanced batch's per-instance object block (spec S55,
         // includes/object_params.glsl, object_depth_params.glsl): the model matrix's rows, the
         // normal matrix's columns, the model-view-projection's columns, the depth layout's extra
         // vector (i_objectModel0..2, i_objectNormal0..2, i_objectMvp0..3, i_objectExtra)

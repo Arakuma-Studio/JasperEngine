@@ -76,7 +76,7 @@ namespace jasperengine {
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
 
-        // Automatic GPU instancing (spec S43, SystemRender::beginDrawBatch). An object loaded on the
+        // Automatic GPU instancing (spec S55, SystemRender::beginDrawBatch). An object loaded on the
         // HAS_AUTO_INSTANCING variant of another's shader, with the other's attributes, then the
         // per-instance vectors of layout at these locations (after every other attribute):
         void addBatchInstanceAttributes(const int* locations, int count, BatchLayout layout);
@@ -87,10 +87,10 @@ namespace jasperengine {
                               const std::string& objectBlock);
         bool isBatchVariant() const;
         // the next draw() may join a batch of variant's (linked to this object), whose instances
-        // read the block in objectSlot, with this LOD fade (spec S42 C3: -1..1, 0 none)
+        // read the block in objectSlot, with this LOD fade (spec S54 C3: -1..1, 0 none)
         void setNextDrawBatch(ObjectRender* variant, int objectSlot, float lodFade = 0.0f);
         // the per-instance data of this draw from the frame's stream buffer instead of original
-        // (the same layout; spec S43: a shadow slot's terrain nodes): false when it does not fit
+        // (the same layout; spec S55: a shadow slot's terrain nodes): false when it does not fit
         bool bindStreamVertexBuffer(BufferRender* original, const void* data, size_t bytes);
         // the first vertex buffer and the index buffer bound now (sort keys)
         uint32_t getVertexBufferId() const;

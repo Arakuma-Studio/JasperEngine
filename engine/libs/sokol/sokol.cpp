@@ -126,14 +126,14 @@ extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used,
 
 // Whether the draw being set up is still valid: a failed sg_apply_bindings (a destroyed buffer
 // or image) turns it off until the next sg_apply_pipeline, so a renderer that skips applying the
-// pipeline already applied (SokolDrawBatch, spec S43) applies it again after such a draw.
+// pipeline already applied (SokolDrawBatch, spec S55) applies it again after such a draw.
 extern "C" bool jasperengine_sg_next_draw_valid(void){
     return _sg.valid && _sg.next_draw_valid;
 }
 
 // Vulkan: an upload into a STREAM buffer larger than the per-frame stream staging buffer, made
 // alone through the copy staging path (in chunks of the copy staging buffer, the queue waited for
-// first) instead of the stream staging buffer it could never fit (spec S43 R6). It counts as the
+// first) instead of the stream staging buffer it could never fit (spec S55 R6). It counts as the
 // buffer's update of the frame. False on the other backends (sg_update_buffer writes the buffer).
 extern "C" bool jasperengine_sg_vk_update_buffer_alone(sg_buffer buf_id, const void* data, size_t size){
 #if defined(SOKOL_VULKAN)

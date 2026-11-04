@@ -2904,17 +2904,16 @@ void RenderSystem::renderReflectionProbeCapture(){
         const float distance = mesh->worldAABB.isNull() ? 0.0f : mesh->worldAABB.squaredDistance(capturePosition);
         opaqueRenders.push_back({entity, mesh, instanced, terrain, tilemap, &transform, distance, mesh->opaqueSortPriority, (uint32_t)opaqueRenders.size()});
     }
-    // the face's detail levels, the Shadow LOD Bias coarser than its own view's (spec S43 R5)
+    // the face's detail levels, the Shadow LOD Bias coarser than its own view's (spec S55 R5)
     const LodView probeLod = computeLodView(captureCamera, captureTransform, (float)resolution, Engine::getShadowLodBias());
+    std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
     if (SystemRender::isDrawBatching()){
-        // GPU Instancing: culled once, sorted by state, drawn in batches (spec S43)
+        // GPU Instancing: culled once, drawn in batches (spec S55)
         VisibleFrustum frustum;
         frustum.planes = captureCamera.frustumPlanes;
         frustum.farClip = captureCamera.farClip;
         frustum.eye = capturePosition;
         buildVisibleQueue(opaqueRenders, frustum, PIP_RTT_INVERT, false);
-    }else{
-        std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
     }
     SystemRender::beginDrawBatch();
     for (const OpaqueRenderData& opaque : opaqueRenders){
@@ -7142,7 +7141,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             return false;
         }
 
-        // the batch variants, on the layouts just loaded (GPU Instancing, spec S43)
+        // the batch variants, on the layouts just loaded (GPU Instancing, spec S55)
         loadSubmeshBatchVariants(mesh, mesh.submeshes[i], pipelines, colorState, needDepthPass ? depthPipelines : 0, depthState,
                                  allDepthAttributes, msaaPipelineSamples, buffers, bufferNameToRender, bufferStride, batchPending);
         attempt.renders.push_back(&mesh.submeshes[i].batchRender);
@@ -7899,7 +7898,7 @@ unsigned int RenderSystem::bindSubmeshAttributes(ObjectRender& render, ShaderDat
     return indexed ? indexCount : mesh.vertexCount;
 }
 
-// ---------------------------------------------------------------- automatic GPU instancing (S43)
+// ---------------------------------------------------------------- automatic GPU instancing (S55)
 
 SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& mesh, const Submesh& submesh, const SubmeshShaderInputs& inputs,
                                                          const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
@@ -7916,6 +7915,11 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
     resolveSubmeshRenderState(mesh, submesh, inputs.manifest.get(), blended, transparentQueue);
     if (transparentQueue)
         return batch;
+    // a draw is never both batched and instanced: dynamic batching (the Doriax catch-up's
+    // sprite-batching) takes single-submesh meshes of up to 64 vertices drawn by the built-in shader
+    const bool builtinShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc);
+    if (builtinShader && mesh.numSubmeshes == 1 && submeshVertexCount(mesh, submesh) <= DYNAMIC_BATCH_MAX_VERTICES)
+        return batch;
     // the most vertex inputs it reads (a library shader's a_smoothNormal counted), with the
     // instance's vectors within sokol's 16
     const int vertexInputs = 1 + (inputs.normal ? 1 : 0) + (inputs.tangent ? 1 : 0) + (inputs.texCoord1 ? 1 : 0) +
@@ -7929,6 +7933,16 @@ SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& me
     if (variant.depthPass && variant.depth && depthShader && vertexInputs + 8 <= SG_MAX_VERTEX_ATTRIBUTES)
         batch.depthProperties = variant.depthProperties | ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH);
     return batch;
+}
+
+unsigned int RenderSystem::submeshVertexCount(const MeshComponent& mesh, const Submesh& submesh){
+    auto own = submesh.attributes.find(AttributeType::POSITION);
+    if (own != submesh.attributes.end())
+        return own->second.getCount();
+    // (the interleaved buffer's vertices: primitives, OBJ)
+    if (mesh.buffer.getCount() > 0)
+        return mesh.buffer.getCount();
+    return mesh.vertexCount;
 }
 
 void RenderSystem::requestSubmeshBatchShaders(MeshComponent& mesh, Submesh& submesh, const SubmeshShaderInputs& inputs,
@@ -8326,11 +8340,14 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
         if (mask == 0)
             continue;
 
-        auto keyOf = [&](unsigned int s){
+        // what draws of a batch share (pipeline, material, mesh), 0 for a draw that batches with nothing
+        auto keyOf = [&](unsigned int s, bool batches) -> uint64_t{
+            if (!batches)
+                return 0;
             const Submesh& submesh = mesh.submeshes[s];
             const ObjectRender& render = depthPipelines ? submesh.depthRender : submesh.render;
-            return VisibleList::opaqueKey(entry.sortPriority, false, render.getPipelineId(pipType), materialKey(submesh),
-                                          meshKey(render), std::sqrt(std::max(entry.distanceToCamera, 0.0f)), frustum.farClip);
+            const uint64_t key = ((uint64_t)render.getPipelineId(pipType) << 32) | VisibleList::mixKey(materialKey(submesh), meshKey(render));
+            return key != 0 ? key : 1;
         };
         // a mesh without extra passes splits into its batchable submeshes, each sorted with its
         // like, and the rest in one entry (a mesh's extra passes go around all its draws)
@@ -8346,7 +8363,7 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
                     continue;
                 OpaqueRenderData split = entry;
                 split.submeshMask = 1u << s;
-                split.sortKey = keyOf(s);
+                split.batchKey = keyOf(s, true);
                 split.preCulled = candidate.cullBounds;
                 visibleEntries.push_back(split);
                 rest &= ~(1u << s);
@@ -8355,13 +8372,28 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
         if (rest != 0){
             OpaqueRenderData whole = entry;
             whole.submeshMask = rest;
-            whole.sortKey = keyOf((unsigned int)std::countr_zero(rest));
+            // (one submesh: it batches as a split entry does)
+            const unsigned int first = (unsigned int)std::countr_zero(rest);
+            const Submesh& firstSubmesh = mesh.submeshes[first];
+            const bool batches = std::popcount(rest) == 1 && !entry.instmesh && !entry.terrain && !entry.tilemap &&
+                (depthPipelines ? firstSubmesh.batchDepthRender.isBatchVariant() : firstSubmesh.batchRender.isBatchVariant());
+            whole.batchKey = keyOf(first, batches);
             whole.preCulled = candidate.cullBounds;
             visibleEntries.push_back(whole);
         }
     }
-    std::sort(visibleEntries.begin(), visibleEntries.end(), OpaqueKeyComparison());
-    queue.swap(visibleEntries);
+    // the batches form from consecutive draws: equal keys together within each priority
+    const size_t kept = visibleEntries.size();
+    visiblePriorities.resize(kept);
+    visibleKeys.resize(kept);
+    for (size_t i = 0; i < kept; i++){
+        visiblePriorities[i] = visibleEntries[i].sortPriority;
+        visibleKeys[i] = visibleEntries[i].batchKey;
+    }
+    VisibleList::groupBatches(visiblePriorities.data(), visibleKeys.data(), kept, visibleOrder);
+    queue.clear();
+    for (uint32_t index : visibleOrder)
+        queue.push_back(visibleEntries[index]);
     Engine::addVisibilityStats(visible, culled);
 }
 
@@ -9495,7 +9527,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.draw(range.offset, range.count, instanceCount);
                 }
             }else{
-                // (GPU Instancing: it may join the draws of its like, spec S43)
+                // (GPU Instancing: it may join the draws of its like, spec S55)
                 if (!instmesh && !terrain)
                     offerDrawBatch(render, mesh.submeshes[i].batchRender, mesh.submeshes[i].slotVSParams, mirroredDraw || passNoFaceCulling() || viewMirrorBound);
                 drawSubmeshGeometry(render, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
@@ -9609,7 +9641,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
 
             applyFrameBlock(depthRender, depthBindings);
 
-            // a shadow slot's own cut of the terrain (spec S43 R5), else the camera's
+            // a shadow slot's own cut of the terrain (spec S55 R5), else the camera's
             bool ownTerrainCut = false;
             if (terrain){
                 instanceCount = terrainNodes->nodesbuffer[i].getCount();
@@ -9682,7 +9714,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                     depthRender.draw(range.offset, range.count, instanceCount);
                 }
             }else{
-                // a shadow pass draws position-only indices where they pay off (spec S43 R5)
+                // a shadow pass draws position-only indices where they pay off (spec S55 R5)
                 const ShadowIndexBuffer* shadowIndices = nullptr;
                 if (pipelineType == PIP_SHADOW_DEPTH && usesShadowIndices(mesh, mesh.submeshes[i], instmesh, terrain)){
                     if (!mesh.submeshes[i].shadowIndices)
@@ -9949,7 +9981,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     ssaoPassRender.startRenderPass(&target.getRender());
     passResolution = Vector2((float)width, (float)height);
 
-    // GPU Instancing: the meshes are listed, then culled, sorted and drawn (spec S43)
+    // GPU Instancing: the meshes are listed, then culled and drawn in batches (spec S55)
     const bool batching = SystemRender::isDrawBatching();
     depthQueue.clear();
     const Vector3 eye = perCameraTransform ? perCameraTransform->worldPosition : camera.viewMatrix.inverse() * Vector3(0, 0, 0);
@@ -9992,7 +10024,7 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
         drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
     }
     if (batching){
-        // GPU Instancing: culled once, sorted by state and drawn in batches (spec S43)
+        // GPU Instancing: culled once and drawn in batches (spec S55)
         VisibleFrustum frustum;
         frustum.planes = camera.frustumPlanes;
         frustum.farClip = camera.farClip;
@@ -14964,7 +14996,7 @@ void RenderSystem::update(double dt){
     // the clock of the shadow caches (ShadowCache): one tick per update that samples the casters
     shadowFrame++;
 
-    // GPU Instancing (spec S43): the batch variants are loaded while it is on, so a change loads
+    // GPU Instancing (spec S55): the batch variants are loaded while it is on, so a change loads
     // the meshes again (each keeps drawing its loaded variants until its new ones are built)
     SystemRender::setDrawBatching(Engine::isGpuInstancingEnabled());
     if (loadedGpuInstancing != Engine::isGpuInstancingEnabled()){
@@ -16660,7 +16692,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     bool hasActiveScissor = false;
 
     // only the main camera has a culled instance view; another camera's detail levels are the
-    // Shadow LOD Bias coarser than its own view selects (spec S43 R5)
+    // Shadow LOD Bias coarser than its own view selects (spec S55 R5)
     const int instanceView = isMainCamera ? 0 : -1;
     const LodView ownLodView = isMainCamera ? LodView() : computeLodView(camera, cameraTransform, 0.0f, Engine::getShadowLodBias());
     const LodView* lodView = isMainCamera ? &rv().lodView : &ownLodView;
@@ -16710,18 +16742,19 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             }
         }
 
+        if (distanceSort){
+            // sortPriority first (lower draws first, so stencil writers go before their
+            // readers), then nearest first; ties keep the transform order (no allocation,
+            // unlike std::stable_sort)
+            std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
+        }
         if (distanceSort && SystemRender::isDrawBatching()){
-            // GPU Instancing: culled once (on jobs), split by submesh, sorted by state (spec S43)
+            // GPU Instancing: culled once (on jobs), split by submesh, batches grouped (spec S55)
             VisibleFrustum frustum;
             frustum.planes = camera.frustumPlanes;
             frustum.farClip = camera.farClip;
             frustum.eye = cameraTransform.worldPosition;
             buildVisibleQueue(opaqueRenders, frustum, colorPip, false);
-        }else if (distanceSort){
-            // sortPriority first (lower draws first, so stencil writers go before their
-            // readers), then nearest first; ties keep the transform order (no allocation,
-            // unlike std::stable_sort)
-            std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
         }
     }
 

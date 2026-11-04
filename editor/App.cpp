@@ -2969,7 +2969,7 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
             if (const char* value = requireValue(i, "--mesh-lod"))
                 benchmarkMeshLod = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
         } else if (arg == "--gpu-instancing") {
-            // the project's GPU Instancing for this run (not saved): S43's before and after
+            // the project's GPU Instancing for this run (not saved): S55's before and after
             if (const char* value = requireValue(i, "--gpu-instancing"))
                 benchmarkGpuInstancing = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
         } else if (arg == "--depth-prepass") {
@@ -4631,11 +4631,11 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
-    // the scenes' draw and the commit of each measured frame (the render submission, S43 R9)
+    // the scenes' draw and the commit of each measured frame (the render submission, S55 R9)
     json << ",\n  \"renderCpuMs\": {\"median\": " << stat(benchmarkRenderCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkRenderCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkRenderCpuMs) << "}";
     {
-        // the game frame's render counters averaged over the measured frames (S43 R7; with --play
+        // the game frame's render counters averaged over the measured frames (S55 R7; with --play
         // the frame the Game view shows): deterministic for a still scene
         const struct { const char* name; double (*value)(const RenderStats&); } counters[] = {
             {"mainDrawCalls", [](const RenderStats& r) { return (double)r.mainDraws; }},
@@ -5410,7 +5410,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
     // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v44";
+    // v45: S55's automatic GPU instancing: mesh and depth programs take their object block from
+    //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 36, DEPTH 18).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v45";
 }
 
 void editor::App::pushTabNotificationStyle(){

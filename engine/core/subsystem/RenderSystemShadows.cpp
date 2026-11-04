@@ -1690,7 +1690,7 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
     // as in Unity, a layer the rendering camera or the light culls casts no shadow
     const uint32_t shadowCameraMask = target.cameraMask;
 
-    // the casters the slots draw from, looked up once for every slot (spec S43 R4)
+    // the casters the slots draw from, looked up once for every slot (spec S55 R4)
     struct Caster {
         Entity entity;
         MeshComponent* mesh;
@@ -1755,8 +1755,8 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
             passShadowTerrain = nullptr;
         };
 
-        // GPU Instancing: the slot's casters culled at once (on jobs), sorted by state and
-        // drawn in batches (spec S43); else one by one in component order, as before
+        // GPU Instancing: the slot's casters culled at once (on jobs) and drawn in batches, in
+        // component order (spec S55); else one by one, as before
         const bool batching = SystemRender::isDrawBatching();
         depthQueue.clear();
         const Vector3 eye = shadowCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);

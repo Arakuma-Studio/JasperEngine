@@ -2578,7 +2578,7 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                 tierNames[std::clamp(static_cast<int>(tier), 0, 3)] + ");\n";
         }
     }
-    // GPU Instancing and Shadow LOD Bias (spec S43), written when not the defaults
+    // GPU Instancing and Shadow LOD Bias (spec S55), written when not the defaults
     if (!drawSubmission.gpuInstancing)
         mainContent += "    Engine::setGpuInstancingEnabled(false);\n";
     if (drawSubmission.shadowLodBias != DrawSubmissionSettings().shadowLodBias)

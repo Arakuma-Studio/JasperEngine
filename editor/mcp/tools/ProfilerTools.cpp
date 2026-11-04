@@ -187,7 +187,7 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
         {"uniform_bytes", stats.uniformBytes},
         {"image_upload_bytes", stats.imageUploadBytes},
         {"buffer_upload_bytes", stats.bufferUploadBytes},
-        // by kind of pass (S43 R7): the cameras' colour passes, the shadow maps, the depth passes
+        // by kind of pass (S55 R7): the cameras' colour passes, the shadow maps, the depth passes
         {"main_triangles", stats.mainTriangles},
         {"shadow_triangles", stats.shadowTriangles},
         {"draw_calls_by_pass", {{"main", stats.mainDraws}, {"shadow", stats.shadowDraws}, {"depth", stats.depthDraws},

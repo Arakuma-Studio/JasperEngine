@@ -1,9 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Constants once per pass (spec S43 R3, AC3): on a fixed scene, the uniform bytes a frame applies
+// Constants once per pass (spec S55 R3, AC3): on a fixed scene, the uniform bytes a frame applies
 // with GPU Instancing on (a pipeline applied once while it stays, a block applied again only when
-// its bytes changed) are at least 60% fewer than with it off, the submission before S43 (the red
+// its bytes changed) are at least 60% fewer than with it off, the submission before S55 (the red
 // count). The scene's cubes each have their own colour, so none batch: only the constant blocks
 // (frame, fog, lights, shadows) are saved.
 

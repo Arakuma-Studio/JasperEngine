@@ -107,7 +107,7 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["shadowsBillboard"] = YamlNumbers::text(mesh.shadowsBillboard);
     if (mesh.staticShadowCaster)
         node["staticShadowCaster"] = YamlNumbers::text(mesh.staticShadowCaster);
-    // (S43) written when off
+    // (S55) written when off
     if (!mesh.allowGpuInstancing)
         node["allowGpuInstancing"] = YamlNumbers::text(mesh.allowGpuInstancing);
     node["transparent"] = YamlNumbers::text(mesh.transparent);
@@ -205,7 +205,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["shadowsBillboard"]) mesh.shadowsBillboard = YamlNumbers::as<bool>(node["shadowsBillboard"]);
     // omitted when false
     mesh.staticShadowCaster = node["staticShadowCaster"] ? YamlNumbers::as<bool>(node["staticShadowCaster"]) : false;
-    // omitted when true (scenes from before S43 allow it)
+    // omitted when true (scenes from before S55 allow it)
     mesh.allowGpuInstancing = node["allowGpuInstancing"] ? YamlNumbers::as<bool>(node["allowGpuInstancing"]) : true;
     if (node["transparent"]) mesh.transparent = YamlNumbers::as<bool>(node["transparent"]);
     if (node["autoTransparency"]) mesh.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);

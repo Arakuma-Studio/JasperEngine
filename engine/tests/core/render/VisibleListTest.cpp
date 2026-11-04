@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// A pass's visible list (spec S43 R4, AC4): culled on the job system's workers and inline the
+// A pass's visible list (spec S55 R4, AC4): culled on the job system's workers and inline the
 // results are the same; a mesh's submeshes are culled one by one by their own bounds; distance
 // and unbounded meshes as RenderSystem draws them.
 

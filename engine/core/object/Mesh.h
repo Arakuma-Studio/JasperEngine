@@ -106,7 +106,7 @@ namespace jasperengine{
         void setLodBias(float lodBias);
         float getLodBias() const;
 
-        // Allow GPU Instancing (spec S43): its draws may batch with those of its like
+        // Allow GPU Instancing (spec S55): its draws may batch with those of its like
         void setAllowGpuInstancing(bool allow);
         bool isAllowGpuInstancing() const;
 

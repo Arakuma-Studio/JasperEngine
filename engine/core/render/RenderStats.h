@@ -183,7 +183,7 @@ namespace jasperengine{
         size_t pipelineCacheSize = 0;
         double gpuFrameMs = 0.0;
         bool gpuFrameValid = false;
-        // by kind of pass, from the pass list (spec S43 R7): the colour passes of the view's
+        // by kind of pass, from the pass list (spec S55 R7): the colour passes of the view's
         // cameras ("camera", "camera layer"), the shadow maps ("shadow", "point shadow" and their
         // static layers), the depth passes ("depth pre-pass", "gbuffer") and every other one
         uint32_t mainDraws = 0;
@@ -201,7 +201,7 @@ namespace jasperengine{
         uint32_t culled = 0;
     };
 
-    // automatic GPU instancing and the state not applied again in a frame (spec S43)
+    // automatic GPU instancing and the state not applied again in a frame (spec S55)
     struct DrawBatchStats {
         uint32_t instancedDraws = 0;    // instanced draws made of batches
         uint32_t batchedInstances = 0;  // the draws they replaced

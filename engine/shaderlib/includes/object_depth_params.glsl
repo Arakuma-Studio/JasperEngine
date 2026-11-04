@@ -1,11 +1,11 @@
 // The object block of a mesh depth program, depthParams.modelMatrix and mvpMatrix: per draw
 // (u_vs_depthParams), or per instance in an automatically instanced batch (HAS_AUTO_INSTANCING,
-// spec S43), the draw's matrices bit for bit (includes/object_params.glsl):
+// spec S55), the draw's matrices bit for bit (includes/object_params.glsl):
 //   i_objectModel0..2  the model matrix's first three rows (its last row is 0 0 0 1)
 //   i_objectMvp0..3    the model-view-projection matrix's columns
 //   i_objectExtra      x the instance's LOD fade
 // A batch has no lightVPMatrix: a program reads modelMatrix and mvpMatrix only.
-// objectLodFade() is the draw's LOD cross-fade (S42: -1..1, 0 none).
+// objectLodFade() is the draw's LOD cross-fade (S54: -1..1, 0 none).
 
 #ifdef HAS_AUTO_INSTANCING
     in vec4 i_objectModel0;

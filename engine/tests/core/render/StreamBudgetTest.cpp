@@ -1,9 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The stream upload budget (spec S43 R6, AC5): an upload larger than the whole per-frame stream
+// The stream upload budget (spec S55 R6, AC5): an upload larger than the whole per-frame stream
 // budget (Vulkan's stream staging buffer) is made alone in a frame of its own, and lands within
-// two frames; before S43 it was refused every frame, and the instances it held never drew. The
+// two frames; before S55 it was refused every frame, and the instances it held never drew. The
 // budget is lowered (and enforced on every backend) for the test: an instance view over it.
 
 #include "Engine.h"

@@ -68,7 +68,7 @@ namespace jasperengine{
         static void invalidateApplied();
         // changes with every pipeline applied and every invalidateApplied: the uniform blocks
         // applied in an earlier epoch are not applied any more (sokol asks for them again after
-        // sg_apply_pipeline), those of this one stay until the next (SokolDrawBatch, spec S43)
+        // sg_apply_pipeline), those of this one stay until the next (SokolDrawBatch, spec S55)
         static uint32_t appliedEpoch();
         // the pipeline applied last in this pass (SG_INVALID_ID when unknown)
         static uint32_t appliedPipeline();

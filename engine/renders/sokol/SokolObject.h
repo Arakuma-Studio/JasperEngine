@@ -65,7 +65,7 @@ namespace jasperengine{
         std::vector<Variant> list;
     };
 
-    // What the per-instance data of an automatically instanced batch (spec S43) is made of: the
+    // What the per-instance data of an automatically instanced batch (spec S55) is made of: the
     // per-draw object block its draws apply, read into the vectors of the instanced variant
     // (includes/object_params.glsl, includes/object_depth_params.glsl)
     enum class BatchLayout : uint8_t {
@@ -76,7 +76,7 @@ namespace jasperengine{
 
     class SokolObject;
 
-    // Automatic GPU instancing and redundant state (spec S43), on while GPU Instancing is (Project
+    // Automatic GPU instancing and redundant state (spec S55), on while GPU Instancing is (Project
     // Settings > Graphics; off, every draw applies its pipeline, uniforms and bindings as before).
     // On, a pipeline already applied in the pass is not applied again, nor a uniform block whose
     // bytes are the ones last applied to its slot since that pipeline (sokol keeps them; it asks for
@@ -211,7 +211,7 @@ namespace jasperengine{
 
         std::map< BufferInfo, size_t > bufferToBindSlot;
 
-        // (spec S43) As the instanced variant of another object (linkBatchVariant): that object's
+        // (spec S55) As the instanced variant of another object (linkBatchVariant): that object's
         // uniform slots in this one's shader (-1: the per-instance object block), and the bind slot
         // of the instance stream buffer, after that object's vertex buffers
         int8_t batchUniformSlots[SG_MAX_UNIFORMBLOCK_BINDSLOTS];
@@ -299,7 +299,7 @@ namespace jasperengine{
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
 
-        // (spec S43) The per-instance attributes of a batch variant (BatchLayout's vectors, at the
+        // (spec S55) The per-instance attributes of a batch variant (BatchLayout's vectors, at the
         // locations given in order), in the instance stream buffer, after every other attribute
         void addBatchInstanceAttributes(const int* locations, int count, BatchLayout layout);
         // After both loaded: makes this object (its shader variantShader) the instanced variant of
@@ -311,7 +311,7 @@ namespace jasperengine{
                               const std::string& objectBlock);
         bool isBatchVariant() const;
         // the next draw of this object may join a batch drawn by variant (linked to it), its object
-        // block in uniform slot objectSlot, with this LOD fade (spec S42: 0 none)
+        // block in uniform slot objectSlot, with this LOD fade (spec S54: 0 none)
         void setNextDrawBatch(SokolObject* variant, int objectSlot, float lodFade);
         // per-instance data of this draw in the frame's stream buffer instead of the vertex buffer
         // fromBufferId (the same layout): false when it does not fit this frame

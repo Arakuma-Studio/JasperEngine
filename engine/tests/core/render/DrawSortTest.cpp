@@ -1,81 +1,67 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The opaque queue's 64-bit state sort key (spec S43 R2, AC2): sort priority first, then the
-// draws fading between detail levels after the others, then pipeline, material and mesh, then
-// front to back within them. The transparent queue keeps its back-to-front order: it is never
-// sorted by these keys (InstancingGoldenGpu draws overlapping transparent planes with GPU
-// Instancing on and off).
+// The order a pass's opaque queue draws its batches in (spec S55 R2, AC2): the queue keeps its
+// order (sort priority, then nearest first: draw-perf owns the sort), and the draws of one batch
+// key come together at the place of the first within each priority, so a batch is a run of the
+// queue. A priority run never mixes with another, and a draw that batches with nothing stays
+// where it is. The transparent queue is never grouped (InstancingGoldenGpu draws overlapping
+// transparent planes with GPU Instancing on and off: the same image).
 
 #include "render/VisibleList.h"
 
 #include <gtest/gtest.h>
 
-#include <algorithm>
 #include <vector>
 
 using namespace jasperengine;
 
 namespace {
-    uint64_t key(int priority, bool fading, uint32_t pipeline, uint32_t material, uint32_t mesh, float distance){
-        return VisibleList::opaqueKey(priority, fading, pipeline, material, mesh, distance, 1000.0f);
+    std::vector<uint32_t> group(const std::vector<int>& priorities, const std::vector<uint64_t>& keys){
+        std::vector<uint32_t> order;
+        VisibleList::groupBatches(priorities.data(), keys.data(), keys.size(), order);
+        return order;
     }
 }
 
-TEST(DrawSort, PriorityComesFirst){
-    // a lower priority draws first whatever its state or distance (stencil writers before readers)
-    EXPECT_LT(key(-1, true, 0x7FFF, 0xFFFF, 0xFFF, 999.0f), key(0, false, 0, 0, 0, 0.0f));
-    EXPECT_LT(key(0, true, 0x7FFF, 0xFFFF, 0xFFF, 999.0f), key(1, false, 0, 0, 0, 0.0f));
-    // clamped to -128..127, order kept at the ends
-    EXPECT_LT(key(-1000, false, 0, 0, 0, 0.0f), key(-127, false, 0, 0, 0, 0.0f));
-    EXPECT_EQ(key(-1000, false, 0, 0, 0, 0.0f), key(-128, false, 0, 0, 0, 0.0f));
-    EXPECT_EQ(key(1000, false, 0, 0, 0, 0.0f), key(127, false, 0, 0, 0, 0.0f));
+TEST(DrawSort, EqualKeysComeTogetherAtTheFirst){
+    // A B A C B -> A A B B C
+    const std::vector<uint32_t> order = group({0, 0, 0, 0, 0}, {1, 2, 1, 3, 2});
+    EXPECT_EQ(order, (std::vector<uint32_t>{0, 2, 1, 4, 3}));
 }
 
-TEST(DrawSort, FadingDrawsAfterTheOthers){
-    // (S42: a dither pipeline of their own, without early depth)
-    EXPECT_LT(key(0, false, 0x7FFF, 0xFFFF, 0xFFF, 999.0f), key(0, true, 0, 0, 0, 0.0f));
+TEST(DrawSort, PriorityRunsKeepTheirPlace){
+    // equal keys in two priorities stay in their own (stencil writers before their readers)
+    const std::vector<uint32_t> order = group({-1, -1, 0, 0, 0, 1}, {5, 6, 5, 6, 5, 5});
+    EXPECT_EQ(order, (std::vector<uint32_t>{0, 1, 2, 4, 3, 5}));
 }
 
-TEST(DrawSort, StateBeforeDistance){
-    // pipeline, then material, then mesh: each wins over everything after it
-    EXPECT_LT(key(0, false, 1, 0xFFFF, 0xFFF, 999.0f), key(0, false, 2, 0, 0, 0.0f));
-    EXPECT_LT(key(0, false, 1, 1, 0xFFF, 999.0f), key(0, false, 1, 2, 0, 0.0f));
-    EXPECT_LT(key(0, false, 1, 1, 1, 999.0f), key(0, false, 1, 1, 2, 0.0f));
+TEST(DrawSort, UnbatchedDrawsStayInPlace){
+    // key 0 batches with nothing: two of them never group
+    const std::vector<uint32_t> order = group({0, 0, 0, 0}, {0, 7, 0, 7});
+    EXPECT_EQ(order, (std::vector<uint32_t>{0, 1, 3, 2}));
 }
 
-TEST(DrawSort, FrontToBackWithinState){
-    float previous = -1.0f;
-    uint64_t previousKey = 0;
-    for (float distance : {0.0f, 0.5f, 1.0f, 2.0f, 10.0f, 100.0f, 999.0f, 1000.0f}){
-        const uint64_t k = key(0, false, 3, 4, 5, distance);
-        if (previous >= 0.0f){
-            EXPECT_LE(previousKey, k) << distance;
-        }
-        previous = distance;
-        previousKey = k;
-    }
-    // far apart distances keep apart; past the far clip they share the last bucket
-    EXPECT_LT(key(0, false, 3, 4, 5, 1.0f), key(0, false, 3, 4, 5, 50.0f));
-    EXPECT_EQ(key(0, false, 3, 4, 5, 1000.0f), key(0, false, 3, 4, 5, 5000.0f));
-}
-
-TEST(DrawSort, SortsDrawsOfOneStateTogether){
-    // draws of two materials interleaved by distance come out grouped, each group front to back
-    struct Draw { uint32_t material; float distance; uint64_t key; };
-    std::vector<Draw> draws;
-    for (int i = 0; i < 8; i++){
-        Draw draw{(uint32_t)(i % 2), (float)(8 - i)};
-        draw.key = key(0, false, 7, draw.material, 9, draw.distance);
-        draws.push_back(draw);
-    }
-    std::sort(draws.begin(), draws.end(), [](const Draw& a, const Draw& b){ return a.key < b.key; });
-    for (size_t i = 0; i < draws.size(); i++){
-        EXPECT_EQ(draws[i].material, i < 4 ? 0u : 1u);
-        if (i % 4 != 0){
-            EXPECT_LE(draws[i - 1].distance, draws[i].distance);
+TEST(DrawSort, KeepsTheQueueOrderWithinABatch){
+    // a batch's draws keep their front-to-back order, and the queue is a permutation
+    std::vector<int> priorities(100, 0);
+    std::vector<uint64_t> keys(100);
+    for (size_t i = 0; i < keys.size(); i++)
+        keys[i] = 1 + i % 4;
+    const std::vector<uint32_t> order = group(priorities, keys);
+    ASSERT_EQ(order.size(), keys.size());
+    std::vector<bool> seen(order.size(), false);
+    for (size_t i = 0; i < order.size(); i++){
+        ASSERT_LT(order[i], order.size());
+        EXPECT_FALSE(seen[order[i]]);
+        seen[order[i]] = true;
+        if (i > 0 && keys[order[i]] == keys[order[i - 1]]){
+            EXPECT_LT(order[i - 1], order[i]);
         }
     }
+    // four runs, in the order of their first draws
+    for (size_t i = 0; i < order.size(); i++)
+        EXPECT_EQ(keys[order[i]], 1 + i / 25);
 }
 
 TEST(DrawSort, MixKeyDependsOnEveryValue){

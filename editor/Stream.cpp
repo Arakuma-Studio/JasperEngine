@@ -2532,7 +2532,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
     }
     // graphics.shadowTier.<platform>, only the platforms away from their default tier; GPU
-    // Instancing and Shadow LOD Bias (S43) when not their defaults
+    // Instancing and Shadow LOD Bias (S55) when not their defaults
     {
         YAML::Node graphics;
         YAML::Node tiers;
@@ -3164,7 +3164,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         project->setHtmlUiRenderSettings(htmlUiRender);
     }
 
-    // graphics.gpuInstancing, graphics.shadowLodBias (S43): projects saved before them take the defaults
+    // graphics.gpuInstancing, graphics.shadowLodBias (S55): projects saved before them take the defaults
     {
         DrawSubmissionSettings drawSubmission;
         const YAML::Node graphics = node["graphics"];

@@ -865,7 +865,7 @@ namespace jasperengine::editor{
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
-        // graphics.gpu_instancing, quality.shadow_lod_bias (spec S43)
+        // graphics.gpu_instancing, quality.shadow_lod_bias (spec S55)
         DrawSubmissionSettings drawSubmission;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
@@ -1587,7 +1587,7 @@ namespace jasperengine::editor{
         const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;
         static bool isValidHtmlUiGlyphAtlasMiB(int mib);
 
-        // GPU Instancing and Shadow LOD Bias (spec S43, the bias clamped to 0..MAX_SHADOW_LOD_BIAS):
+        // GPU Instancing and Shadow LOD Bias (spec S55, the bias clamped to 0..MAX_SHADOW_LOD_BIAS):
         // applied to the editor's scenes at once and written into exports
         void setDrawSubmissionSettings(const DrawSubmissionSettings& settings);
         const DrawSubmissionSettings& getDrawSubmissionSettings() const;

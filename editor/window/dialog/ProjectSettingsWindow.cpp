@@ -1860,7 +1860,7 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             }
         }
 
-        // automatic GPU instancing (S43)
+        // automatic GPU instancing (S55)
         if (settingsui::beginRow("graphics.gpu_instancing")) {
             const DrawSubmissionSettings defaults;
             if (projectBeginSettingsRow("GPU Instancing", m_drawSubmission.gpuInstancing != defaults.gpuInstancing)) {
@@ -1999,7 +1999,7 @@ void ProjectSettingsWindow::drawQualitySettings() {
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
 
-        // the detail levels of the shadow-like passes (S43)
+        // the detail levels of the shadow-like passes (S55)
         if (settingsui::beginRow("quality.shadow_lod_bias")) {
             const DrawSubmissionSettings defaults;
             if (projectBeginSettingsRow("Shadow LOD Bias", m_drawSubmission.shadowLodBias != defaults.shadowLodBias)) {

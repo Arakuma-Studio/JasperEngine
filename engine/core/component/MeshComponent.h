@@ -361,7 +361,7 @@ namespace jasperengine{
         // MeshComponent::smoothNormals entry its position attribute uses (-1: none)
         int smoothNormals = -1;
 
-        // Automatic GPU instancing (spec S43): the HAS_AUTO_INSTANCING variants of render and
+        // Automatic GPU instancing (spec S55): the HAS_AUTO_INSTANCING variants of render and
         // depthRender (RenderSystem::loadSubmeshBatchVariants), which draw batches of this
         // submesh's draws with those of every submesh like it; loaded while GPU Instancing is on
         // and the submesh can batch, linked to render and depthRender (else they draw nothing)
@@ -374,9 +374,9 @@ namespace jasperengine{
         uint16_t batchShaderId = 0;
         uint16_t batchDepthShaderId = 0;
         // the bounds of the vertices it draws in the mesh's space (null: not known, the mesh's
-        // are used): a pass culls a visible mesh's submeshes one by one (spec S43 R4)
+        // are used): a pass culls a visible mesh's submeshes one by one (spec S55 R4)
         AABB localBounds;
-        // position-only indices for the shadow passes (spec S43 R5), shared by the submeshes
+        // position-only indices for the shadow passes (spec S55 R5), shared by the submeshes
         // over the same buffers: null until a shadow pass first draws it, then kept (empty when
         // they would not pay off)
         std::shared_ptr<ShadowIndexBuffer> shadowIndices;
@@ -547,7 +547,7 @@ namespace jasperengine{
         // opt-out of the scene's detail levels (Scene::setMeshLodEnabled); bias above 1 keeps detail longer
         bool lodEnabled = true;
         float lodBias = 1.0f;
-        // Allow GPU Instancing (spec S43): its draws may batch with those of the same mesh,
+        // Allow GPU Instancing (spec S55): its draws may batch with those of the same mesh,
         // material and pipeline when the project's GPU Instancing is on (Unity's per-material
         // switch, here per renderer); off draws it alone
         bool allowGpuInstancing = true;

@@ -231,7 +231,7 @@ namespace jasperengine {
             uint32_t drawCalls = 0;
             uint32_t instances = 0;
             uint64_t triangles = 0;
-            // mesh draws the passes' visible lists kept and culled (spec S43 R4)
+            // mesh draws the passes' visible lists kept and culled (spec S55 R4)
             uint32_t visible = 0;
             uint32_t culled = 0;
         };
@@ -636,14 +636,14 @@ namespace jasperengine {
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
 
-        // GPU Instancing (Project Settings > Graphics, spec S43): MeshComponent draws of one mesh,
+        // GPU Instancing (Project Settings > Graphics, spec S55): MeshComponent draws of one mesh,
         // material and pipeline become instanced draws, and constant state is applied once. On by
-        // default; off submits every draw as before S43
+        // default; off submits every draw as before S55
         static void setGpuInstancingEnabled(bool enabled);
         static bool isGpuInstancingEnabled();
         // Shadow LOD Bias (Project Settings > Quality, quality.shadow_lod_bias): detail levels a
         // shadow pass, a point light face, a reflection probe or a render-to-texture camera draws
-        // coarser than its own view selects (spec S43 R5; default 1, 0 the same level)
+        // coarser than its own view selects (spec S55 R5; default 1, 0 the same level)
         static void setShadowLodBias(int levels);
         static int getShadowLodBias();
         static bool isOpenGL();

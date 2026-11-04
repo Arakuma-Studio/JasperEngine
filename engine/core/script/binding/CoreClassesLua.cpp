@@ -3198,7 +3198,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ssaoBias", &Scene::getSSAOBias, &Scene::setSSAOBias)
         .addProperty("meshLodEnabled", &Scene::isMeshLodEnabled, &Scene::setMeshLodEnabled)
         .addProperty("meshLodThreshold", &Scene::getMeshLodThreshold, &Scene::setMeshLodThreshold)
-        // the last frame's render statistics (spec S43 R7), read-only: draws, triangles and
+        // the last frame's render statistics (spec S55 R7), read-only: draws, triangles and
         // instances of every pass and by kind of pass, the GPU Instancing batches, what the
         // visible lists kept and culled, uniform and upload bytes
         .addFunction("getRenderStats", +[](const Scene*, lua_State* L) -> luabridge::LuaRef {

@@ -161,7 +161,7 @@ namespace jasperengine::editor {
         bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
     };
 
-    // Project Settings > Graphics > GPU Instancing and Quality > Shadow LOD Bias (spec S43): the
+    // Project Settings > Graphics > GPU Instancing and Quality > Shadow LOD Bias (spec S55): the
     // automatic instancing of MeshComponent draws, and the detail levels shadow passes, point
     // light faces, reflection probes and render-to-texture cameras draw coarser than their view
     // selects (quality.shadow_lod_bias)

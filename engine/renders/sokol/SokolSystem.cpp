@@ -116,7 +116,7 @@ namespace {
         // An item larger than the whole limit (reserveAlone) never fits beside others: it is made
         // alone, in a frame that took nothing before it, and fills that frame's budget (what comes
         // after it waits for the next frame). One that finds the frame begun waits for the next,
-        // which keeps the budget for it (aloneWaiting). Before S43 R6 it was refused forever.
+        // which keeps the budget for it (aloneWaiting). Before S55 R6 it was refused forever.
         uint64_t frameAlone = 0;     // the bytes of the item made alone this frame
         bool aloneWaiting = false;   // one was turned away: the frame keeps the budget for it
         bool aloneAsked = false;     // one asked this frame

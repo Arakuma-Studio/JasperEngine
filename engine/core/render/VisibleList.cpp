@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <unordered_map>
 
 using namespace jasperengine;
 
@@ -74,16 +75,24 @@ void VisibleList::cull(const VisibleFrustum& frustum, const VisibleCandidate* ca
         results[i] = cull(frustum, candidates[i]);
 }
 
-uint64_t VisibleList::opaqueKey(int priority, bool fading, uint32_t pipeline, uint32_t material, uint32_t mesh,
-                                float distance, float farClip){
-    // 8 bits of priority (-128..127), 1 fading, 15 pipeline, 16 material, 12 mesh, 12 depth
-    const uint64_t biased = (uint64_t)(std::clamp(priority, -128, 127) + 128);
-    // depth on a log scale of the pass's range: near draws keep their order finely
-    const float range = (farClip > 0.0f && std::isfinite(farClip)) ? farClip : 10000.0f;
-    const float d = std::clamp(std::isfinite(distance) ? distance : range, 0.0f, range);
-    const uint64_t depth = (uint64_t)std::min(4095.0f, 4095.0f * std::log2(1.0f + d) / std::log2(1.0f + range));
-    return (biased << 56) | ((uint64_t)(fading ? 1 : 0) << 55) | ((uint64_t)(pipeline & 0x7FFFu) << 40) |
-           ((uint64_t)(material & 0xFFFFu) << 24) | ((uint64_t)(mesh & 0xFFFu) << 12) | depth;
+void VisibleList::groupBatches(const int* priorities, const uint64_t* keys, size_t count, std::vector<uint32_t>& order){
+    order.resize(count);
+    // each draw's group: the position of the first draw of its key in its priority run, then its own
+    std::vector<std::pair<uint32_t, uint32_t>> groups(count);
+    std::unordered_map<uint64_t, uint32_t> firstOf;
+    for (size_t i = 0; i < count; i++){
+        if (i > 0 && priorities[i] != priorities[i - 1])
+            firstOf.clear();
+        uint32_t first = (uint32_t)i;
+        if (keys[i] != 0)
+            first = firstOf.emplace(keys[i], (uint32_t)i).first->second;
+        groups[i] = {first, (uint32_t)i};
+        order[i] = (uint32_t)i;
+    }
+    // (unique pairs: deterministic)
+    std::sort(order.begin(), order.end(), [&groups](uint32_t a, uint32_t b){
+        return groups[a] < groups[b];
+    });
 }
 
 uint32_t VisibleList::mixKey(uint32_t key, uint64_t value){

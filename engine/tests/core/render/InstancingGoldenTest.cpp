@@ -1,11 +1,11 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// GPU Instancing (spec S43 R1, AC1): a scene of many copies of a few meshes and materials, lit
+// GPU Instancing (spec S55 R1, AC1): a scene of many copies of a few meshes and materials, lit
 // by a shadowing sun, with overlapping transparent planes in front, drawn with the project's GPU
-// Instancing off (every draw alone: the submission before S43) and on (state sorted, batched).
+// Instancing off (every draw alone: the submission before S55) and on (state sorted, batched).
 // The two images are the same pixel for pixel, the transparent queue keeping its order (DrawSort
-// covers the opaque keys), and on draws instanced batches. The existing core goldens, drawn with
+// covers the grouping), and on draws instanced batches. The existing core goldens, drawn with
 // GPU Instancing on (the default), still match the images written before it.
 
 #include "Engine.h"
@@ -64,8 +64,8 @@ namespace {
             return *objects.back();
         }
 
-        // a 6 x 6 grid of boxes in two colours, spheres among them, a floor, and three overlapping
-        // transparent planes nearer the camera
+        // a 6 x 6 grid of tiled boxes in two colours, spheres among them, a floor (too small to be
+        // instanced: dynamic batching's), and three overlapping transparent planes nearer the camera
         void buildScene(){
             Primitive& floor = add();
             floor.createPlane(14.0f, 14.0f);
@@ -77,7 +77,8 @@ namespace {
                         box.createSphere(0.45f);
                         box.setColor(0.9f, 0.5f, 0.2f);
                     }else{
-                        box.createBox(0.8f, 0.8f, 0.8f);
+                        // (tiled past the 64 vertices dynamic batching takes)
+                        box.createBox(0.8f, 0.8f, 0.8f, 3);
                         if ((x + z) % 2 == 0)
                             box.setColor(0.2f, 0.6f, 0.9f);
                         else

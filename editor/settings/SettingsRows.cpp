@@ -597,7 +597,7 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
     return s;
 }
 
-// GPU Instancing and Shadow LOD Bias (spec S43): one field of DrawSubmissionSettings, applied as one
+// GPU Instancing and Shadow LOD Bias (spec S55): one field of DrawSubmissionSettings, applied as one
 // undoable step (undo scope project)
 bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmissionSettings&)>& change, bool apply, std::string& error) {
     Project* p = ctx.project();
@@ -1682,7 +1682,7 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
-        // GPU Instancing (S43): draws of one mesh, material and shader drawn as one
+        // GPU Instancing (S55): draws of one mesh, material and shader drawn as one
         {
             Setting s;
             s.key = "graphics.gpu_instancing";
@@ -1723,7 +1723,7 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
-        // Shadow LOD Bias (S43, quality.shadow_lod_bias): detail levels the shadow-like passes draw coarser
+        // Shadow LOD Bias (S55, quality.shadow_lod_bias): detail levels the shadow-like passes draw coarser
         {
             Setting s;
             s.key = "quality.shadow_lod_bias";
