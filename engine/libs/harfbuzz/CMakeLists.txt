@@ -5,6 +5,9 @@
 # FreeType, Glib, Graphite2 and CoreText integrations compile to nothing because
 # their HAVE_* defines are unset. Glyphs are rasterized by stb_truetype, so the
 # OpenType font funcs (hb_ot_font_set_funcs) are the only backend in use.
+# Outline extraction (hb-draw, with the CFF/CFF2 outline readers it needs) is compiled
+# only for Title Art's glyph outlines (JASPERENGINE_TITLE_ART, docs/specs/S80-title-art-core.md
+# R21): without the module HarfBuzz is built with HB_NO_DRAW, as it was before.
 
 add_library(
 
@@ -26,12 +29,16 @@ target_compile_definitions(
     HB_NO_MT                # no shared faces across threads, fonts are per scene
     HB_NO_AAT               # Apple morx/kerx tables, OpenType only
     HB_NO_COLOR             # COLR/CBDT, the atlas is single channel
-    HB_NO_DRAW              # outline extraction, stb_truetype rasterizes (implies HB_NO_PAINT)
     HB_NO_STYLE
     HB_NO_META
     HB_NO_BUFFER_SERIALIZE
     HB_NO_BUFFER_VERIFY
 )
+
+if(NOT JASPERENGINE_TITLE_ART)
+    # outline extraction, stb_truetype rasterizes (implies HB_NO_PAINT)
+    target_compile_definitions(harfbuzz PRIVATE HB_NO_DRAW)
+endif()
 
 # Keep every hb_* symbol internal. They would otherwise be exported by libjasperengine and
 # interpose on the system HarfBuzz that GTK/Pango loads through the file dialog, which

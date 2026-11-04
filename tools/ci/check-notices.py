@@ -18,7 +18,8 @@ install tree for exactly that, and that the repository-only engine/CMakePresets.
 Libraries in TESTS_ONLY are never shipped, so they have no licences/ entry.
 
 engine/notices.json (S30 R27) says which shipped games link each engine/libs library (always, a player
-feature such as physics3d, or editor: never in a game); every engine/libs directory needs an entry.
+feature such as physics3d or a list of features, or editor: never in a game); every engine/libs directory
+needs an entry.
 --player-notices FEATURE... prints the licence files a player with those features stages ('<file>|<name>'
 like --install-manifest), and --third-party-notices FEATURE... the THIRD-PARTY-NOTICES.txt of such a
 player (its libraries' NOTICE.md rows as text): tools/players/package_player.py writes both into a runtime.
@@ -94,7 +95,14 @@ def install_manifest(repo: Path) -> list[tuple[Path, str]]:
     return manifest
 
 
-GAME_CONDITIONS = {"always", "htmlui", "video", "physics2d", "physics3d", "navigation", "runtimeshaders", "tracy", "editor"}
+GAME_CONDITIONS = {"always", "htmlui", "video", "physics2d", "physics3d", "navigation", "runtimeshaders", "tracy",
+                   "titleart", "editor"}
+
+
+def when_conditions(entry: dict) -> list:
+    """An entry's `when`: one condition, or a list of them (ThorVG ships with the HTML UI or Title Art)."""
+    when = entry.get("when")
+    return when if isinstance(when, list) else [when]
 
 
 def load_game_notices(repo: Path) -> dict:
@@ -114,8 +122,10 @@ def check_game_notices(repo: Path) -> list[str]:
     for name, entry in libraries.items():
         directory = entry.get("dir", "")
         listed[directory] = name
-        if entry.get("when") not in GAME_CONDITIONS:
-            problems.append(f"engine/notices.json: {name}: when must be one of {', '.join(sorted(GAME_CONDITIONS))}")
+        conditions = when_conditions(entry)
+        if not conditions or any(not isinstance(c, str) or c not in GAME_CONDITIONS for c in conditions):
+            problems.append(f"engine/notices.json: {name}: when must be one of {', '.join(sorted(GAME_CONDITIONS))}"
+                            " or a list of player features")
         if not (repo / directory).is_dir():
             problems.append(f"engine/notices.json: {name}: {directory} does not exist")
         elif directory.rsplit("/", 1)[-1] != name:
@@ -129,7 +139,7 @@ def check_game_notices(repo: Path) -> list[str]:
 def player_libraries(repo: Path, features: list[str]) -> list[str]:
     """The engine/notices.json libraries a player with these features ships, sorted."""
     return sorted(name for name, entry in load_game_notices(repo).items()
-                  if entry["when"] == "always" or entry["when"] in features)
+                  if any(c == "always" or c in features for c in when_conditions(entry)))
 
 
 def player_manifest(repo: Path, features: list[str]) -> list[tuple[Path, str]]:
