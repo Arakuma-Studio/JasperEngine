@@ -1546,7 +1546,7 @@ void focusWindowTool(const CallPtr& call) {
         app.getSpriteNormalsWindow()->open();
         imguiName = SpriteNormalsWindow::WINDOW_NAME;
     } else {
-        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, pose_animation, terrain, mcp, "
+        call->fail("window must be one of: scene, game, console, hierarchy, inspector, project, animation, animator, pose_animation, terrain, mcp, "
                    "systems, jobs_memory, profiler, frame_debugger, preferences, undo_history, play_mode_changes, texture_synthesis, "
                    "vertex_animation_baker, sprite_normals.");
         return;
@@ -2022,7 +2022,7 @@ void registerViewTools(McpRegistry& registry) {
             "screenshot. console: returns what it shows (rows, categories, selection); preferences: opens a page; "
             "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
-            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
+            {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "animator", "pose_animation",
                                        "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
             {"scene", sceneRef("window scene: whose tab.")},
