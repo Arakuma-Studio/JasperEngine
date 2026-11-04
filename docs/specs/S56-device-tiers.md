@@ -1,4 +1,4 @@
-# S44: Device tiers, thermal and memory signals, upload pacing
+# S56: Device tiers, thermal and memory signals, upload pacing
 
 Wave 5. Research: `docs/forge-meshopt-analysis/forge-architecture.md` (§1 top five, §4.12, the GPU
 config sections). The Forge clone's data: `Common_3/OS/*/..._gpu.data`.
@@ -71,7 +71,7 @@ Out of scope:
   - It never fails, and the reason is logged ("Adreno 650, rule family, tier Medium").
 - **R3. Device Tier overrides**, in Project Settings > Quality > Device Tiers:
   - A table of the curated overrides, one column per tier, per platform group: Render Scale,
-    MSAA, Shadow Quality, Shadow Distance, LOD Bias (S42), Lit Quality, Texture Quality (mip
+    MSAA, Shadow Quality, Shadow Distance, LOD Bias (S54), Lit Quality, Texture Quality (mip
     bias or max size), Post FX toggles (bloom, SSAO, volumetrics), Target Frame Rate, Max Pixel
     Lights and Particle Budget.
   - An empty cell inherits the project value.
@@ -151,7 +151,7 @@ Out of scope:
 
 ## 8. Dependencies and conflicts
 
-- **Depends on** S13 (dynamic resolution), S14 (texture quality), S32 (queue) and S42 (LOD Bias).
+- **Depends on** S13 (dynamic resolution), S14 (texture quality), S32 (queue) and S54 (LOD Bias).
 - **Hotspots:** `ProjectSettingsWindow.cpp`, `SokolCmdQueue.cpp`, platform activity and shell
   files.
 

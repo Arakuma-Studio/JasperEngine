@@ -1,7 +1,7 @@
-# S43: Draw submission (instancing, sorting, constants, culling)
+# S55: Draw submission (instancing, sorting, constants, culling)
 
 Wave 5. Research: `docs/forge-meshopt-analysis/jasper-render.md` (§1-3, §7, §9) and
-`visibility-feasibility.md` (design A, F). Works with S42, which adds LOD fade state to draws.
+`visibility-feasibility.md` (design A, F). Works with S54, which adds LOD fade state to draws.
 
 ## 1. Goal
 
@@ -15,7 +15,8 @@ measured by a benchmark gate, so it can't silently regress.
 
 In scope:
 - Automatic GPU instancing of meshes that share mesh, material and pipeline.
-- Opaque state sort.
+- Composing with the Doriax catch-up's `draw-perf` (state sort, redundant-state tracker, cull before
+  sort) and `sprite-batching` (dynamic batching of small meshes, sprites and UI): see §10.
 - Splitting frame and pass constants from per-draw uniforms.
 - One visible list per pass, built on jobs.
 - Shadow-pass geometry: per-cascade terrain culling, shadow LOD bias, and position-only shadow
@@ -29,7 +30,7 @@ Out of scope:
   §10, do-not-copy list).
 - Occlusion culling and CPU cluster culling: a later spec, only if this spec's benchmark oracles
   clear their gates (`visibility-feasibility.md` §9).
-- LOD selection and fade: S42.
+- LOD selection and fade: S54.
 
 ## 3. Current state
 
@@ -59,19 +60,22 @@ From `jasper-render.md`, with file and line citations there:
   - Within a pass, visible MeshComponent draws batch into one instanced draw when they share
     mesh buffers, submesh, material state, pipeline and LOD level.
   - **Per-instance data:** model matrix, normal matrix (or a derived form), and colour/tint where
-    materials take it, plus S42's LOD fade factor and the instance's lightmap/probe index where
+    materials take it, plus S54's LOD fade factor and the instance's lightmap/probe index where
     applicable.
   - **Excluded:** skinned, morphed and blended (transparent) draws, and draws with per-object
     uniforms that differ (per-entity material overrides). Those stay single draws.
   - It is on by default as Project Settings > Rendering > GPU Instancing (Unity name), with a
     per-Mesh "Allow GPU Instancing" opt-out.
   - The image must be identical to unbatched rendering (golden equality test).
-- **R2. Opaque state sort.**
-  - Opaque and alpha-test draws sort by pipeline, then material bindings, then mesh, then front to
-    back within a bucket.
-  - Transparent draws keep back-to-front order.
-  - The sort key is a 64-bit integer, sorted once per pass with a radix or std sort.
-- **R3. Constants once per pass.**
+- **R2. Sort order: `draw-perf` owns it.**
+  - The Doriax catch-up's `draw-perf` (`docs/superpowers/specs/2026-11-04-draw-perf-design.md`)
+    sorts opaque queues by priority, distance band, render state and distance, after culling.
+  - Instanced batches form inside that order: a batch is a run of the sorted queue.
+  - Until `draw-perf` is on `origin/main`, S55 keeps today's order and batches by grouping equal
+    keys within each priority. At merge, the batching runs over `draw-perf`'s order.
+  - S54's fading draws sort after the non-fading opaque draws in either order.
+- **R3. Constants once per pass.** This covers uniform data; the pipeline and binding tracker is
+  `draw-perf`'s, and R3 goes through it once it lands.
   - **Frame block:** camera, time, fog, environment, global lighting, shadow cascades.
   - **Pass block:** a per-pass view, for shadow, depth and RTT.
   - Both are applied once per pipeline change, as sokol requires re-applying after
@@ -80,7 +84,8 @@ From `jasper-render.md`, with file and line citations there:
   - Per-draw uniforms are what really varies.
   - A test counts uniform bytes per frame on a fixed scene and asserts at least a 60% drop.
 - **R4. One visible list per pass.**
-  - Culling runs once per camera and pass before sorting.
+  - Culling runs once per camera and pass before sorting (the ordering is `draw-perf`'s). S55 adds
+    the per-submesh bounds and the job-built parallel list.
   - It covers frustum (AABB per submesh, not only per entity), distance, layer mask and shadow
     caster flag.
   - It runs on the job system with ParallelFor where threads exist; single-threaded web runs it
@@ -88,12 +93,12 @@ From `jasper-render.md`, with file and line citations there:
   - Shadow cascades reuse the camera list plus caster-only extras, with per-cascade frustum tests.
 - **R5. Shadow geometry.**
   - **Terrain:** per-cascade node culling, cached static terrain casters in the S10 static cache.
-  - **LOD:** shadow passes use the S42 shadow LOD (a project-wide Shadow LOD Bias, default one
+  - **LOD:** shadow passes use the S54 shadow LOD (a project-wide Shadow LOD Bias, default one
     coarser level). The same rule applies to point-light faces, probes and render-to-texture
     cameras.
   - **Position-only index buffers** from `generateShadowIndexBuffer` for meshes whose
     attribute-split vertices make it worthwhile (more than 10% fewer unique positions). They are
-    built at cook time (S41) or load time, and only when shadows are on.
+    built at cook time (S53) or load time, and only when shadows are on.
 - **R6. Stream-upload budget fix.**
   - An upload larger than the per-frame budget goes through alone in its own frame, and the
     budget then accounts for it.
@@ -127,8 +132,8 @@ From `jasper-render.md`, with file and line citations there:
   - All edits are undoable.
 - **R12. Lua:** `Mesh.allowGpuInstancing` and `Scene` render stats read-only (`getRenderStats()`),
   following the existing binding style.
-- **R13. MCP:** the R7 outputs, and `check_render_budgets` (S41) uses `main_triangles` and
-  `draw_calls`. Docs go in `docs/mcp/guide/meshes.md`, shared with S41.
+- **R13. MCP:** the R7 outputs, and `check_render_budgets` (S53) uses `main_triangles` and
+  `draw_calls`. Docs go in `docs/mcp/guide/meshes.md`, shared with S53.
 
 ## 6. Design constraints and decisions
 
@@ -156,9 +161,18 @@ From `jasper-render.md`, with file and line citations there:
 
 ## 8. Dependencies and conflicts
 
-- **Depends on** S10, S15, S32 and S42 (LOD fade in instance data).
+- **Doriax catch-up (another machine; ledger `docs/doriax-catchup/LEDGER.md`):**
+  - `sprite-batching` dynamically batches single-submesh meshes of up to 64 vertices that use the
+    built-in mesh shader, plus sprites and UI.
+  - S55's GPU instancing takes the mesh draws `sprite-batching` does not. A draw is never both
+    batched and instanced: dynamic batching runs first.
+  - `draw-perf` adds `pipelines_applied` (SetPass calls) and redundant-state skipping.
+  - `mesh-memory` reshapes `MeshComponent` storage. S55 keeps its additions to the component
+    small and additive.
+
+- **Depends on** S10, S15, S32 and S54 (LOD fade in instance data).
 - **Hotspots:** `RenderSystem.cpp`, `RenderSystemShadows.cpp`, `ObjectRender.cpp`, the mesh
-  shader includes and `SokolSystem.cpp`. S42 and S45 also touch these; merge carefully and keep
+  shader includes and `SokolSystem.cpp`. S54 and S57 also touch these; merge carefully and keep
   both sides' intent.
 
 ## 9. Risks and defaults
