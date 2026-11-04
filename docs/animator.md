@@ -139,10 +139,15 @@ feet on colliders after every layer.)
 
 The Animator evaluates its characters in parallel (the job system), keeps poses in SIMD-friendly
 arrays and writes skin matrices directly. **Culling Mode** Cull Update Transforms skips writing
-the pose of characters no camera sees (time, states, events and root motion go on); Cull
-Completely stops them. **Write Bones: Exposed** writes only the bones listed (and bones with
-attachments) to their GameObjects: the skins still follow every bone. The budget: 200 humanoids
-per frame (see `docs/perf/animator.md`).
+the pose of characters no camera sees (time, states, events and root motion go on) and casts no
+Foot IK rays for them; Cull Completely stops them. A layer of weight 0 is not sampled: its states'
+time and events go on, and raising the weight shows the right pose in that frame (a running
+transition or montage on the layer is still sampled, so interrupting it blends from the right
+pose). **Write Bones: Exposed** writes only the bones listed (and bones with attachments) to their
+GameObjects: the skins still follow every bone. With `Engine.asyncLoading` on, `.anim` files parse
+on the thread pool where the platform has threads (in the call on the web without threads); an
+Animator's first bind waits for all its clips, so it starts as it does without async loading. The
+budget: 200 humanoids per frame (see `docs/perf/animator.md`).
 
 ## Files
 
