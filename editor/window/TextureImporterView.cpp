@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TextureImporterView.h"
+#include "ImporterFields.h"
 
 #include "Backend.h"
 #include "Project.h"
@@ -28,64 +29,6 @@ namespace {
 
     // the longest side the preview keeps
     constexpr int kImporterPreviewMax = 1024;
-
-    std::vector<std::string> importerSplitKey(const std::string& key){
-        std::vector<std::string> parts;
-        size_t start = 0;
-        while (true){
-            const size_t dot = key.find('.', start);
-            parts.push_back(key.substr(start, dot == std::string::npos ? std::string::npos : dot - start));
-            if (dot == std::string::npos)
-                break;
-            start = dot + 1;
-        }
-        return parts;
-    }
-
-    YAML::Node importerGet(const YAML::Node& root, const std::string& key){
-        // (reset rebinds: yaml-cpp's assignment to a bound node overwrites what it holds)
-        YAML::Node node;
-        node.reset(root);
-        for (const std::string& part : importerSplitKey(key)){
-            if (!node || !node.IsMap() || !node[part])
-                return YAML::Node();
-            node.reset(node[part]);
-        }
-        return YAML::Clone(node);
-    }
-
-    void importerSet(YAML::Node& root, const std::string& key, const YAML::Node& value){
-        const std::vector<std::string> parts = importerSplitKey(key);
-        if (!root || !root.IsMap())
-            root = YAML::Node(YAML::NodeType::Map);
-        YAML::Node node = root;
-        for (size_t i = 0; i + 1 < parts.size(); i++){
-            if (!node[parts[i]] || !node[parts[i]].IsMap())
-                node[parts[i]] = YAML::Node(YAML::NodeType::Map);
-            node.reset(node[parts[i]]);
-        }
-        if (value)
-            node[parts.back()] = YAML::Clone(value);
-        else
-            node.remove(parts.back());
-    }
-
-    // every leaf key of a section ("maxSize", "platforms.mobile.quality")
-    void importerLeaves(const YAML::Node& node, const std::string& prefix, std::set<std::string>& out){
-        if (!node || !node.IsMap())
-            return;
-        for (const auto& entry : node){
-            const std::string key = prefix + entry.first.as<std::string>();
-            if (entry.second.IsMap())
-                importerLeaves(entry.second, key + ".", out);
-            else
-                out.insert(key);
-        }
-    }
-
-    std::string importerDump(const YAML::Node& node){
-        return node ? YAML::Dump(node) : std::string();
-    }
 
     // decoded pixels as display RGBA8: normals get Z back, single channels are grey, HDR clamped
     bool importerToRgba(GpuTextureFormat format, int width, int height, const std::vector<uint8_t>& pixels, std::vector<uint8_t>& out){
@@ -157,9 +100,16 @@ struct TextureImporterView::PreviewJob {
     int levels = 1;
 };
 
-TextureImporterView::TextureImporterView(Project* project): project(project) {}
+TextureImporterView::TextureImporterView(Project* project): project(project) {
+    // the prompt for edits not applied when the selection, the editor or Play moves on (S53 R17)
+    ImporterPrompt::add(this, {[this](){ return hasPendingEdits(); },
+                               [this](){ return assetPaths.size() == 1 ? fs::path(assetPaths[0]).filename().string()
+                                                                      : std::to_string(assetPaths.size()) + " textures"; },
+                               [this](){ apply(); }, [this](){ revert(); }});
+}
 
 TextureImporterView::~TextureImporterView(){
+    ImporterPrompt::remove(this);
     previewTexture.destroy();
 }
 
@@ -182,11 +132,11 @@ TextureImportSettings TextureImporterView::workingSettings() const{
 }
 
 YAML::Node TextureImporterView::workingValue(const std::string& key) const{
-    return importerGet(working, key);
+    return importer::get(working, key);
 }
 
 void TextureImporterView::setWorking(const std::string& key, const YAML::Node& value){
-    importerSet(working, key, value);
+    importer::set(working, key, value);
     touched.insert(key);
     mixed.erase(key);
 }
@@ -206,6 +156,16 @@ void TextureImporterView::select(const std::vector<fs::path>& selection){
     std::string key;
     for (const std::string& path : assets)
         key += path + "\n";
+    // another selection with edits not applied: the prompt decides, the edited files stay shown
+    // (Cancel keeps them until the selection moves again)
+    if (key != selectionKey && !touched.empty()){
+        if (key != promptedKey){
+            promptedKey = key;
+            ImporterPrompt::guard(nullptr);
+        }
+        return;
+    }
+    promptedKey.clear();
     // the stored settings changed under us (undo, another tool): read them again
     bool changed = key != selectionKey;
     if (!changed && touched.empty()){
@@ -254,12 +214,12 @@ void TextureImporterView::select(const std::vector<fs::path>& selection){
     std::vector<YAML::Node> sections;
     for (size_t i = 0; i < assetPaths.size(); i++){
         sections.push_back(stored[i] ? stored[i] : current[i].serialize());
-        importerLeaves(sections.back(), "", keys);
+        importer::leaves(sections.back(), "", keys);
     }
     for (const std::string& leaf : keys){
-        const std::string first = importerDump(importerGet(sections[0], leaf));
+        const std::string first = importer::dump(importer::get(sections[0], leaf));
         for (size_t i = 1; i < sections.size(); i++){
-            if (importerDump(importerGet(sections[i], leaf)) != first){
+            if (importer::dump(importer::get(sections[i], leaf)) != first){
                 mixed.insert(leaf);
                 break;
             }
@@ -285,7 +245,7 @@ void TextureImporterView::apply(){
     for (size_t i = 0; i < assetPaths.size(); i++){
         YAML::Node node = stored[i] ? YAML::Clone(stored[i]) : current[i].serialize();
         for (const std::string& key : touched)
-            importerSet(node, key, workingValue(key));
+            importer::set(node, key, workingValue(key));
         // an explicit type ends the inference's say
         if (touched.count("type"))
             node.remove("inferredFrom");

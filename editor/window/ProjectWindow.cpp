@@ -6,6 +6,7 @@
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 #include "util/EditorScripts.h"
 #include "asset/AssetTypes.h"
 #include "window/AssetPanels.h"
@@ -2196,8 +2197,35 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 if (!file.isDirectory && FbxImporter::isFbxFile(file.name)){
                     if (ImGui::MenuItem(ICON_FA_ROTATE " Reimport")) {
                         project->importFbxModel(currentPath / file.name, true);
+                        if (ModelCookQueue::get().getProject() == project && project->isInsideAssetsPath(currentPath / file.name)) {
+                            const std::string assetPath = project->normalizeToAssetsRelative(currentPath / file.name).generic_string();
+                            ModelCookQueue::get().invalidate(assetPath);
+                            ModelCookQueue::get().request(assetPath, ModelFamily::Desktop, ModelCookQueue::Selected);
+                        }
                     }
-                    ImGui::SetItemTooltip("Convert the FBX into its .glb again (it is reimported by itself when it or its textures change)");
+                    ImGui::SetItemTooltip("Convert the FBX into its .glb again and cook it (it is reimported by itself when it or its textures change)");
+                    ImGui::Separator();
+                }else if (!file.isDirectory && isModelSource(file.name) && ModelCookQueue::get().getProject() == project){
+                    // models: cook again (S53 R13); the selected ones, or every model
+                    const bool reimport = ImGui::MenuItem(ICON_FA_ARROWS_ROTATE " Reimport");
+                    uiBuilding.contextMenu.push_back({"Reimport", lastItemRect()});
+                    ImGui::SetItemTooltip("Cooks the selected models again for the desktop (the cache answers when nothing changed)");
+                    const bool reimportAll = ImGui::MenuItem(ICON_FA_ARROWS_ROTATE " Reimport All Models");
+                    uiBuilding.contextMenu.push_back({"Reimport All Models", lastItemRect()});
+                    if (reimport) {
+                        std::vector<fs::path> chosen = getSelectedFiles();
+                        if (std::find(chosen.begin(), chosen.end(), currentPath / file.name) == chosen.end()) chosen = {currentPath / file.name};
+                        for (const fs::path& path : chosen) {
+                            if (!project->isInsideAssetsPath(path) || !isModelSource(path.filename().string())) continue;
+                            const std::string assetPath = project->normalizeToAssetsRelative(path).generic_string();
+                            ModelCookQueue::get().invalidate(assetPath);
+                            ModelCookQueue::get().request(assetPath, ModelFamily::Desktop, ModelCookQueue::Selected);
+                        }
+                    }
+                    if (reimportAll) {
+                        ModelCookQueue::get().invalidateAll();
+                        ModelCookQueue::get().requestAll({ModelFamily::Desktop});
+                    }
                     ImGui::Separator();
                 }
 
@@ -4622,27 +4650,53 @@ void editor::ProjectWindow::assetsShowInFileManager() {
 }
 
 void editor::ProjectWindow::drawTextureCookBadge(ImDrawList* drawList, const FileEntry& file, ImVec2 min, ImVec2 max) {
-    if (file.type != FileType::IMAGE || file.isDirectory) return;
-    TextureCookQueue& cooks = TextureCookQueue::get();
-    if (cooks.getProject() != project) return;
+    if (file.isDirectory) return;
     const fs::path absolute = currentPath / file.name;
     if (!project->isInsideAssetsPath(absolute)) return;
-    const TextureCookStatus status = cooks.badgeStatus(project->normalizeToAssetsRelative(absolute).generic_string());
     const char* icon = nullptr;
     ImU32 color = 0;
-    const char* tooltip = nullptr;
-    switch (status) {
-        case TextureCookStatus::Queued: icon = ICON_FA_HOURGLASS_HALF; color = IM_COL32(200, 200, 200, 230); tooltip = "Texture cook queued"; break;
-        case TextureCookStatus::Cooking: icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Cooking the texture"; break;
-        case TextureCookStatus::Failed: icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The texture cook failed: the Inspector shows why"; break;
-        default: return;
+    std::string tooltip;
+    if (file.type == FileType::IMAGE) {
+        TextureCookQueue& cooks = TextureCookQueue::get();
+        if (cooks.getProject() != project) return;
+        switch (cooks.badgeStatus(project->normalizeToAssetsRelative(absolute).generic_string())) {
+            case TextureCookStatus::Queued: icon = ICON_FA_HOURGLASS_HALF; color = IM_COL32(200, 200, 200, 230); tooltip = "Texture cook queued"; break;
+            case TextureCookStatus::Cooking: icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Cooking the texture"; break;
+            case TextureCookStatus::Failed: icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The texture cook failed: the Inspector shows why"; break;
+            default: return;
+        }
+    } else if (isModelSource(file.name)) {
+        // models: cooked, cooking or failed (S53 R13, R18)
+        ModelCookQueue& cooks = ModelCookQueue::get();
+        if (cooks.getProject() != project) return;
+        const std::string assetPath = project->normalizeToAssetsRelative(absolute).generic_string();
+        switch (cooks.badgeStatus(assetPath)) {
+            case ModelCookStatus::Queued: icon = ICON_FA_HOURGLASS_HALF; color = IM_COL32(200, 200, 200, 230); tooltip = "Model cook queued"; break;
+            case ModelCookStatus::Cooking: icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Cooking the model"; break;
+            case ModelCookStatus::Failed: icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The model cook failed: the Inspector shows why"; break;
+            case ModelCookStatus::Cooked: {
+                ModelCookState state;
+                if (!cooks.getState(assetPath, ModelFamily::Desktop, state) || state.stale) return;
+                icon = ICON_FA_CHECK;
+                color = IM_COL32(130, 210, 140, 220);
+                const ModelCookRecord& record = state.record;
+                const double saved = record.sourceBytes > 0 ? 100.0 * (1.0 - (double)record.diskBytes / (double)record.sourceBytes) : 0.0;
+                char text[160];
+                std::snprintf(text, sizeof(text), "Cooked for desktop (%s): %.0f%% smaller download", meshCompressionLabel(state.resolved.meshCompression), saved);
+                tooltip = text;
+                break;
+            }
+            default: return;
+        }
+    } else {
+        return;
     }
     const float size = std::max(Theme::dpi(9.0f), std::min(max.x - min.x, max.y - min.y) * 0.3f);
     const ImVec2 at(max.x - size - Theme::dpi(1.0f), max.y - size - Theme::dpi(1.0f));
     drawList->AddRectFilled(ImVec2(at.x - Theme::dpi(1.0f), at.y - Theme::dpi(1.0f)), ImVec2(at.x + size + Theme::dpi(1.0f), at.y + size + Theme::dpi(1.0f)),
                             IM_COL32(20, 20, 20, 170), Theme::dpi(2.0f));
     drawList->AddText(ImGui::GetFont(), size, at, color, icon);
-    if (ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size, at.y + size))) ImGui::SetTooltip("%s", tooltip);
+    if (ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size, at.y + size))) ImGui::SetTooltip("%s", tooltip.c_str());
 }
 
 std::vector<fs::path> editor::ProjectWindow::getSelectedFiles() const {

@@ -108,6 +108,15 @@ void EditorHost::openPrefabAsset(const std::filesystem::path& path, uint32_t, ui
     Out::warning("Prefab Mode needs the editor window: %s not opened", path.string().c_str());
 }
 
+void EditorHost::openBuildReport(const std::filesystem::path&) {
+}
+
+void EditorHost::openMeshAudit() {
+}
+
+void EditorHost::openConsole() {
+}
+
 void EditorHost::openAudioMixerWindow(const std::filesystem::path&) {
 }
 

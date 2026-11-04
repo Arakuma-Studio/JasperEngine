@@ -61,6 +61,7 @@ namespace jasperengine::editor {
         std::set<std::string> mixed;                // keys whose values differ in the selection
         int tab = 0;                                // 0 Default, then the families shown
         std::string selectionKey;
+        std::string promptedKey;                    // the selection the unapplied-edits prompt was shown for
 
         // preview
         bool showChannel[4] = {true, true, true, true};

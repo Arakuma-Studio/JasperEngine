@@ -8,6 +8,7 @@
 #include "io/watch/FileWatchService.h"
 #include "reload/HotReloadService.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -53,19 +54,30 @@ void StatusBar::show() {
     const bool open = ImGui::BeginViewportSideBar("##StatusBar", viewport, ImGuiDir_Down, height, flags);
     ImGui::PopStyleVar(2);
     if (open) {
-        // texture cooks (S14 R23), on the left: "Cooking textures 12/40" and its cancel
+        // texture and model cooks (S14 R23, S53 R13), on the left, one counter and one cancel:
+        // "Cooking textures 12/40 · models 2/5"
         const TextureCookQueue::Progress cooks = TextureCookQueue::get().getProgress();
-        if (cooks.total > 0) {
+        const ModelCookQueue::Progress modelCooks = ModelCookQueue::get().getProgress();
+        if (cooks.total > 0 || modelCooks.total > 0) {
             ImGui::AlignTextToFramePadding();
-            ImGui::Text("Cooking textures %d/%d", cooks.done, cooks.total);
-            if (!cooks.current.empty() && ImGui::BeginItemTooltip()) {
-                ImGui::Text("Cooking %s", cooks.current.c_str());
-                ImGui::TextDisabled("Textures render from their source until their cook lands.");
+            if (cooks.total > 0 && modelCooks.total > 0)
+                ImGui::Text("Cooking textures %d/%d \xC2\xB7 models %d/%d", cooks.done, cooks.total, modelCooks.done, modelCooks.total);
+            else if (cooks.total > 0)
+                ImGui::Text("Cooking textures %d/%d", cooks.done, cooks.total);
+            else
+                ImGui::Text("Cooking models %d/%d", modelCooks.done, modelCooks.total);
+            if ((!cooks.current.empty() || !modelCooks.current.empty()) && ImGui::BeginItemTooltip()) {
+                if (!cooks.current.empty()) ImGui::Text("Cooking %s", cooks.current.c_str());
+                if (!modelCooks.current.empty()) ImGui::Text("Cooking %s", modelCooks.current.c_str());
+                ImGui::TextDisabled("Textures and models render from their source until their cook lands.");
                 ImGui::EndTooltip();
             }
             ImGui::SameLine();
             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
-            if (ImGui::SmallButton("Cancel##texture_cooks")) TextureCookQueue::get().cancelAll();
+            if (ImGui::SmallButton("Cancel##texture_cooks")) {
+                TextureCookQueue::get().cancelAll();
+                ModelCookQueue::get().cancelAll();
+            }
             ImGui::PopStyleVar();
             ImGui::SameLine();
         }

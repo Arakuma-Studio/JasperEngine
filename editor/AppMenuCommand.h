@@ -49,6 +49,8 @@ namespace jasperengine::editor {
         MigrateAssetReferences,
         ToggleAssetReferences,
         ToggleJobsMemory,
+        ToggleMeshAudit,
+        ToggleBuildReport,
         ToggleProfiler,
         ToggleFrameDebugger,
         ToggleUndoHistory,
