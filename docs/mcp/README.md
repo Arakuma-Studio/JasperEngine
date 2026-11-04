@@ -179,8 +179,8 @@ call; exit codes 0 ok, 1 tool error, 2 usage, 3 connection, 4 internal. See [cli
 
 ### Developing JasperEngine itself
 
-Agents working on the engine read the repository's `AGENTS.md` and `CLAUDE.md` (build, test,
-run an isolated editor, land a change); a game project has its own, generated `AGENTS.md`.
+Agents working on the engine read the repository's `AGENTS.md` (build, test, run an isolated
+editor, land a change); a game project has its own, generated `AGENTS.md`.
 
 The repository root has a `.mcp.json` that runs the editor from your build output:
 

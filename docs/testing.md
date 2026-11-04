@@ -92,9 +92,9 @@ loaded a model in the background while that file exists, so what else loads the 
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
-  misses those budgets. The benchmark run enforces them on a quiet server, with the box to itself (C, `RB_SLOTS=2`):
-  `RB_SLOTS=2 rb.sh C --img 'JASPER_MCP_PERF_SLACK=1 dbus-run-session -- tools/mcp/run-tests.sh
-  tools/mcp/tests/test_call_cli.py tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py'`.
+  misses those budgets. The benchmark run enforces them on a quiet machine, with nothing else running:
+  `JASPER_MCP_PERF_SLACK=1 tools/build.sh mcp-tests tools/mcp/tests/test_call_cli.py
+  tools/mcp/tests/test_hot_reload.py tools/mcp/tests/test_checks.py`.
 - Compiled and prebuilt game builds: see the next section.
 - With `-j N` the runner starts the longest files first. It orders them by each file's wall time
   in the last unfiltered run (`build/test-results/mcp-file-seconds.json`); files with no time yet
@@ -175,8 +175,8 @@ The cache cannot hide a bug:
   the player and checks its compile tree was configured with `JASPERENGINE_RELEASE_LINK` and
   `JASPERENGINE_RELEASE_LTO` on; CI's `tools/build.sh players` and `tools/build.sh linux`'s sample
   project (the gate's WERROR build) link with LTO too.
-- **Shared per machine** (`JASPER_MCP_SHARED_BUILD_CACHE=<dir>`; the build servers' rb.sh sets
-  `~/je/mcp-build-cache`, which `tools/build.sh mcp-tests` and `jimg` mount at `/mcp-build-cache`):
+- **Shared per machine** (`JASPER_MCP_SHARED_BUILD_CACHE=<dir>`, which `tools/build.sh mcp-tests` mounts at
+  `/mcp-build-cache`):
   one entry per runtime and key, `<dir>/v1/<runtime id>/<key>/`, used by every worktree, stream and
   run of the machine. One process builds a key (an exclusive lock), every other one that needs it
   waits for that build; the build goes to a staging directory renamed into place complete, so no
@@ -222,7 +222,7 @@ behaviour under test, with its expectations next to it.
 ### Android emulator: `tools/android-emulator-test.sh`
 
 Installs an APK on a headless Android emulator, launches it with its LAUNCHER intent and checks
-its logcat. It needs KVM: run it on a Linux host with `/dev/kvm` (build servers A and C; not B).
+its logcat. It needs KVM: run it on a Linux host with `/dev/kvm`.
 
 ```sh
 ANDROID_PROJECT=core-utilities tools/build.sh android
@@ -249,7 +249,7 @@ tools/android-emulator-test.sh build/android/app-debug.apk --seconds 30 --forbid
   install failed).
 - The AVD lives on a tmpfs inside the container (`EMULATOR_TMPFS_GB`, default 10; only the pages
   the run writes use memory), so a run leaves nothing on the host disk but `--out`. A boot takes
-  about 40 s on servers A and C; a whole run about 70 s.
+  about 40 s; a whole run about 70 s.
 - `EMULATOR_BOOT_TIMEOUT`, `EMULATOR_MEMORY`, `EMULATOR_CORES` and `JASPER_DOCKER_IMAGE` (a
   prebuilt emulator image) tune it. `EMULATOR_GPU` is passed to `-gpu` (below).
 - Every run also fails on what the GLES path logs when it goes wrong, expected or not: an
@@ -285,7 +285,7 @@ The gate's project is `tools/test-projects/render-gate`: a lit 3D scene (`lit3d`
 `golden/`:
 
 ```sh
-ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android      # server B or D
+ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android
 tools/android-emulator-test.sh build/android-render-gate/app-debug.apk \
     --expect-file tools/test-projects/render-gate/android-expect.txt \
     --scene lit3d --scene ui2d --scene htmlui --golden tools/test-projects/render-gate/golden
@@ -323,7 +323,7 @@ object for allocation/stdio/mutex imports. It also verifies a main-thread hang f
 checks work in the ASan/UBSan tree too (`core-tests-address-undefined`). Windows/macOS desktop
 CTest builds register the same child-process checks; Windows additionally requires a minidump.
 
-For Android (server A or C), build `ANDROID_PROJECT=crash-diagnostics tools/build.sh android`,
+For Android, build `ANDROID_PROJECT=crash-diagnostics tools/build.sh android`,
 then `tools/android-emulator-test.sh build/android-crash-diagnostics/app-debug.apk
 --expect-native-crash --expect 'JASPERENGINE CRASH:'`. This fixture segfaults at frame 10.
 The opt-in flag requires the engine report **and** a matching debuggerd tombstone, saves both
@@ -332,8 +332,7 @@ continue to fail on any native crash.
 
 ## Gates: per commit, batch landings, main
 
-- **Per commit of a stream: `tools/check-changed`** (on a build server: `rb.sh <S>
-  tools/check-changed`). It builds and runs what the change can affect: the Linux editor and the
+- **Per commit of a stream: `tools/check-changed`**. It builds and runs what the change can affect: the Linux editor and the
   unit test binaries for C++ under `engine/` or `editor/` (web for the engine, Android for its own
   code), the gtest suites whose test units include a changed file (Ninja's dependency database:
   a changed `Foo.cpp` counts through `Foo.h` and everything that includes it), and the MCP test
@@ -341,22 +340,22 @@ continue to fail on any native crash.
   `tools/build.sh`, the toolchain and the lockfiles; the whole MCP suite for a change of its harness
   (`harness.py`, `run_tests.py`, `build_cache.py`); nothing for docs.
 - **Batch landings, and before main: the full suite** (`MCP_SUITE=all JASPER_SLOW_BUILD=1
-  JASPER_SLOW_TESTS=1`), sharded across servers by `je-remote/mcp-shard.sh`, plus the WERROR Linux
+  JASPER_SLOW_TESTS=1`), plus the WERROR Linux
   build (with the engine sample project's LTO link) and every unit test. check-changed is a
   selection; it never replaces this gate, and says so in every summary.
 
 ### `tools/check-changed`
 
 ```sh
-rb.sh A tools/check-changed              # build and test what the change touches
-rb.sh A tools/check-changed --dry-run    # the plan only
-rb.sh A tools/check-changed --base main  # another base (default: the merge base with oe-port, else main, origin/main)
-rb.sh A --img tools/check-changed        # inside the Linux image (no web or Android build there)
+tools/check-changed                           # build and test what the change touches
+tools/check-changed --dry-run                 # the plan only
+tools/check-changed --base main               # another base (default: the merge base with oe-port, else main, origin/main)
+tools/build.sh exec linux tools/check-changed # inside the Linux image (no web or Android build there)
 ```
 
-- The change: committed since the base, staged, unstaged and untracked files. A server's worktree
-  has no history of the stream, so rb.sh sends the stream's diff (`build/.rb-changes.json`, with
-  every file's sha256: a diff that does not match the synced files is refused).
+- The change: committed since the base, staged, unstaged and untracked files. A checkout without
+  the stream's history reads its diff from `build/.rb-changes.json` (with every file's sha256: a
+  diff that does not match the files is refused).
 - Unit tests: the gtest suites (`TEST`, `TEST_F`, `TEST_P`, typed) of the test units that see the
   change, in `jasperengine-core-tests` and `jasperengine-editor-tests` (`--gtest_filter`, through
   `tools/build.sh unit-tests` and its no-silent-green gate); a changed test file always runs; a
@@ -384,8 +383,7 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
 - Output: the plan, then each step's result; a failed step's output (`CHECK_CHANGED_VERBOSE=1`:
   everything).
 - Inside the Linux image `tools/build.sh` has no Docker to call and runs the image's own targets
-  directly, with the same environment (`rb.sh <S> --img 'tools/build.sh ...'`, and so `rb.sh L --img`
-  on this host); a target of another image (web, Android) exits 3; check-changed there leaves those
+  directly, with the same environment; a target of another image (web, Android) exits 3; check-changed there leaves those
   builds out, says so in its summary and caches no pass.
 - Its tests: `python3 -I tools/test_check_changed.py` (the diff and its fallbacks, the build plan,
   the suites from a synthetic `ninja -t deps`, the MCP selection from a synthetic map, the gcda
@@ -393,13 +391,13 @@ rb.sh A --img tools/check-changed        # inside the Linux image (no web or And
 
 **The coverage map** (`tools/mcp/coverage_map.py`): for each MCP test file, the engine and editor
 sources its editors executed. A full run of a coverage-instrumented editor records it, off the
-critical path (a batch landing's run, a quiet server); it is stored with its commit in the server's
+critical path (a batch landing's run, a quiet machine); it is stored with its commit in the machine's
 `~/je/mcp-build-cache/coverage-map.json` (check-changed finds it there, or
 `JASPER_MCP_COVERAGE_MAP`):
 
 ```sh
-rb.sh A env COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux          # build/linux/editor-coverage-install
-rb.sh A --img 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasperengine-editor \
+COVERAGE=1 SKIP_ENGINE=1 tools/build.sh linux          # build/linux/editor-coverage-install
+JASPER_MCP_SHARED_BUILD_CACHE=~/je/mcp-build-cache tools/build.sh exec linux bash -c 'JASPER_EDITOR=/src/build/linux/editor-coverage-install/bin/jasperengine-editor \
   JASPER_MCP_COVERAGE_DIR=/src/build/coverage/runs JASPER_SLOW_TESTS=1 \
   dbus-run-session -- tools/mcp/run-tests.sh -j 4 --split-seconds 900; \
   python3 tools/mcp/coverage_map.py collect build/coverage/runs build/linux/editor-coverage \
@@ -411,40 +409,24 @@ function counts for a test file when a counter of it is above zero; the object's
 and lines it is written in (a header's for an inline function), which takes check-changed from a
 diff's hunks to functions. The run leaves out the slow builds
 (no `JASPER_SLOW_BUILD`): what a compile or a prebuilt game runs is not the editor's code, and the
-files that build games are selected by path (`GAME_BUILD_FILES`, `COMPILE_PATHS`). The server's
-`rb.sh` puts the map where check-changed looks; copy it to the other servers' `~/je/mcp-build-cache/`.
+files that build games are selected by path (`GAME_BUILD_FILES`, `COMPILE_PATHS`).
 
-### The full suite across servers: `je-remote/mcp-shard.sh`
-
-```sh
-cd <worktree> && ../../je-remote/mcp-shard.sh --pin-builds A A:7:2 H:8:2:gpu B:6:2 C:3
-```
-
-It builds each server's editor at once (`WERROR=1 SKIP_ENGINE=1 tools/build.sh linux`), lists the
-suite as `MCP_SUITE=all` collects it (`run_tests.py --list`), plans the shards
-(`tools/mcp/shard.py plan`: longest processing time first by the earlier runs' test times, the
-files that build games on `--pin-builds`, where the shared player cache and ccache are warm),
-checks the union (every listed test in exactly one chunk of one shard), runs the shards at once
-(`tools/build.sh mcp-tests --plan`), fetches their results and merges them into one report in the
-runner's format (`shard.py merge`: every planned test reported exactly once, nothing else). It
-exits non-zero on a failure, a crash, an unexpected skip (`--allow-skip`) or a broken union.
-`SERVER:WORKERS:SLOTS` takes `SLOTS` rb.sh slots (`RB_SLOTS`), whose CPUs the shard's editors share.
+### Splitting the full suite
 
 A file's tests share an editor and run in order, so a file is one piece of work, unless it declares
 `TESTS_INDEPENDENT = "why"` (each test sets up what it needs and runs in an editor of its own, in
 any order) or `TESTS_INDEPENDENT = ("why", ["test_x_*"])` for some of its tests (those use nothing
 the file's other tests leave, nor do the others use theirs): their tests may be split into chunks,
-each with its own worker process and editor (`run_tests.py --split-seconds N` on one server,
-`--chunk-seconds` across servers). `test_html_ui_examples.py` (each example's golden) and the
+each with its own worker process and editor (`run_tests.py --split-seconds N`). `test_html_ui_examples.py` (each example's golden) and the
 Khronos models of `test_materials_pbr.py` (`test_khronos_<Model>`) declare it.
 
 ### Caches and CPU caps
 
-- **ccache** is shared by every worktree of a server (`<main checkout>/build/.cache/ccache`), and
+- **ccache** is shared by every worktree of a machine (`<main checkout>/build/.cache/ccache`), and
   every worktree is `/src` in the image, so a tree another worktree built is a hit:
   an editor build of oe-port in a new worktree on A, 2,144 direct hits of 2,150 compiles, 158 s.
-  What a merge changes is compiled once per server.
-- **The prebuilt player runtimes**: once per content key per server (above).
+  What a merge changes is compiled once per machine.
+- **The prebuilt player runtimes**: once per content key per machine (above).
 - **Mesa's shader cache**: llvmpipe and lavapipe compile every shader to machine code; the editors
   keep that cache (`MESA_SHADER_CACHE_DIR`) in the server's shared MCP cache (or the checkout's
   `build/.cache/mesa-shader-cache`) instead of a fresh one in every scratch HOME. It is Mesa's own
@@ -465,12 +447,10 @@ Khronos models of `test_materials_pbr.py` (`test_khronos_<Model>`) declare it.
 
   An editor averages about 2 CPUs and holds 1 to 2.4 GB (seven at once: 6.8 GB), so memory does not
   bound `-j`: CPUs do, at about one editor per 2 CPUs of quota (`-j 4` on 8, `-j 7` on 16).
-- **Slots**: rb.sh's per-server slot locks are its heavy-job cap; a slot is `DEFJOBS` CPUs of
-  container quota (`JOBS`). An MCP shard takes the slots its editors need (`RB_SLOTS`).
 
-### The real-GPU lane (server H)
+### The real-GPU lane
 
-The GPU lane runs the tests whose checks hold on any renderer on H's RTX 3080 Ti, through headless
+The GPU lane runs the tests whose checks hold on any renderer on an NVIDIA GPU, through headless
 NVIDIA X servers in their own containers (`tools/gpu/xorg-headless.sh`, `JE_GPU_SCREEN=1600x900`,
 the size of an editor's own Xvfb; the desktop session is never touched): `DOCKER_GPU=1
 tools/build.sh mcp-tests --plan ...` sources `tools/gpu/env.sh`, and the runner gives a chunk of
@@ -552,10 +532,10 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   only with a slack above that. A
   shared build server's load alone misses them (10k timers in 20 ms instead of 2), so an ordinary
   unit test run never fails on wall-clock time; the benchmark run enforces them on a
-  quiet server, with the box to itself (C, `RB_SLOTS=2`):
+  quiet machine, with nothing else running:
 
   ```bash
-  RB_SLOTS=2 rb.sh C env JASPER_TEST_PERF_SLACK=1 \
+  JASPER_TEST_PERF_SLACK=1 \
       UNIT_TEST_ARGS='--gtest_filter=*Bench*:SchedulerTest.Process10kUnder2ms:AtmosphereNoise.*' tools/build.sh unit-tests
   ```
 
@@ -616,7 +596,7 @@ it only from an editor without S13's changes.
 
 ## Writing load-robust tests
 
-The suites run on shared build servers, next to builds and other suites (`-j 3`): there a frame
+The suites can run on shared machines, next to builds and other suites (`-j 3`): there a frame
 of a software-rendered editor or player takes 0.1 to 0.3 s, a background job seconds, the main
 thread misses a 1 s watchdog threshold on its own. A test that passes only on a quiet machine
 hides real regressions behind re-runs. So (BF12):
@@ -650,11 +630,11 @@ hides real regressions behind re-runs. So (BF12):
   thread (`PerfFixtures.h`: `gatedCpuMs`); one whose budget is near the step's cost on a build
   server (`MarkdownHtml.Perf20KB`: 1.3 ms of 2 there, 0.27 ms on a quiet one) is enforced only when
   `JASPER_HTMLUI_PERF_SLACK` is set (`benchmarkPerfSlack()`):
-  `RB_SLOTS=2 rb.sh C env JASPER_HTMLUI_PERF_SLACK=1 HTMLUI_TEST_ARGS='--gtest_filter=MarkdownHtml.Perf20KB' tools/build.sh htmlui-tests`.
+  `JASPER_HTMLUI_PERF_SLACK=1 HTMLUI_TEST_ARGS='--gtest_filter=MarkdownHtml.Perf20KB' tools/build.sh htmlui-tests`.
   Scaling a timeout with a load factor is the last resort, and a test never asserts less to pass.
 - **Prove it under load.** Run the test where it failed, under deliberate load, before and after:
   `--gtest_repeat=50` for a unit test, 20 runs for an MCP test, in parallel lanes next to busy
-  loops in the image (`rb.sh A --img '...'`; the container's `--cpus` keeps the load off the
+  loops in the image (`tools/build.sh exec linux ...`; the container's `--cpus` keeps the load off
   other jobs) or next to a full build. The run on the unchanged branch is the red control.
 
 ## How a spec adds tests
@@ -664,7 +644,7 @@ hides real regressions behind re-runs. So (BF12):
 2. Rendering changes add a `*Gpu` test with a golden in `engine/tests/core/golden/`, created on
    glcore and matched on Vulkan.
 3. Agent-facing features add MCP tests, CI-capable (`CI = True`, own project).
-4. Run `tools/build.sh unit-tests` (and the suites of the touched area) on a build server; record
+4. Run `tools/build.sh unit-tests` (and the suites of the touched area); record
    the red control.
 5. Code must build warning-free with `WERROR=1` (below).
 
@@ -1150,5 +1130,3 @@ Found on the way:
   of whatever earlier test ran one. A selection (with `AnimatorGpu.ThreeControllerPosesAndARetargetedWalk`)
   failed it every time, alone it passed. The fixture now steps in the fixed phase. A filtered run can
   show such a test up; a full run's order hides it.
-- A killed local `rb.sh` does not stop its job: ssh has no tty, so the remote shell, its
-  container, or a job still waiting for its slot goes on. Stop the remote process too.

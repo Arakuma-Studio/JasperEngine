@@ -43,8 +43,7 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 - **Serialization compatibility.** Old projects must load. New fields get defaults; format changes
   bump the scene/asset version (S03) with a migration.
 - **Testing is part of done.** Unit tests (gtest, see S02), MCP tests (`tools/mcp/tests`), golden
-  images where rendering changes, and `tools/smoke-test.sh` must stay green. Builds and tests run
-  only on the remote build servers (see the implementer brief), never on the dev machine.
+  images where rendering changes, and `tools/smoke-test.sh` must stay green.
 
 ## Spec template (every spec uses these sections)
 
