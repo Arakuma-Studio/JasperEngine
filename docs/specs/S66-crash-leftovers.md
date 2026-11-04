@@ -35,7 +35,7 @@ A crash during a project import or a template copy leaves no junk that a user ha
   journal (`<settings dir>/hub-staging/`, one file per running copy), which the spec did not ask for: without it a kill
   during an import into a folder the settings do not know would not be found by the next start (AC1). A start without
   the Hub reads only the journal. All of it runs off the main thread, so R38's 150 ms is not at stake.
-- **Added `clean_project_leftovers`** (group `editor_tools`): R3 only asks that the MCP result lists a leftover, but
+- **Added `clear_project_leftovers`** (group `editor_tools`): R3 only asks that the MCP result lists a leftover, but
   agents otherwise could not remove what the Hub's button removes.
 - **Remove asks first**, inline: the folder may hold a user's files and the removal is permanent.
-- `import_project` stays synchronous-with-wait rather than a job, and so does the new tool, as S27 made it.
+- `import_project` stays a blocking call rather than a job, and so does the new tool, as S27 made it.

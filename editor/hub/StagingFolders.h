@@ -4,7 +4,7 @@
 #pragma once
 
 // The staging folders of the Project Hub's imports and template copies
-// (docs/specs/S46-crash-leftovers.md): a copy is built in <parent>/<name>.importing and moved into
+// (docs/specs/S66-crash-leftovers.md): a copy is built in <parent>/<name>.importing and moved into
 // place whole. Here is who owns such a folder, and what becomes of one whose owner died.
 //
 // The owner marker is the file <folder>.lock beside the folder (never in it: git clones into the

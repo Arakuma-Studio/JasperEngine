@@ -3205,7 +3205,7 @@ void editor::App::loadStartupProject() {
         return;
     }
 
-    // S46: what an editor killed during an import or a template copy left, whatever opens now
+    // S66: what an editor killed during an import or a template copy left, whatever opens now
     hub::staging::setJournalDirectory(AppSettings::getConfigDirectory() / "hub-staging");
     projectHub.startSweep(false);
 

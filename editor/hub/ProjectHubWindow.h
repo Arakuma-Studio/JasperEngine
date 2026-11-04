@@ -9,7 +9,7 @@
 // pin, search, sort; missing ones greyed with Locate... and Remove from List), New Project
 // (Built-in and My Templates cards, Project Name, Location), Open (a folder with project.yaml)
 // and Import (zip or Git URL, progress, log tail, Cancel), with the leftover staging folders of
-// stopped copies on Projects and Import (S46). What it does to the editor goes through Actions (App:
+// stopped copies on Projects and Import (S66). What it does to the editor goes through Actions (App:
 // requestProjectChange, the loading window).
 
 #include "hub/ProjectImporter.h"
@@ -72,7 +72,7 @@ namespace jasperengine::editor {
         // why Create is disabled for <location>/<name> ("" when it is not)
         static std::string createProblem(const std::string& name, const std::filesystem::path& location);
         hub::ProjectImporter& importer() { return import; }
-        // what a sweep of staging folders looks at (S46 R5): the folders projects are known to be
+        // what a sweep of staging folders looks at (S66 R5): the folders projects are known to be
         // in, and the user templates' staging folder
         static hub::staging::Scope leftoverScope();
         // Sweeps off the main thread, so start-up never waits for a removal: with `knownParents`

@@ -1,4 +1,4 @@
-"""S46 crash leftovers (docs/specs/S46-crash-leftovers.md, jasper://docs/editor-tools): an editor killed
+"""S66 crash leftovers (docs/specs/S66-crash-leftovers.md, jasper://docs/editor-tools): an editor killed
 in the middle of an import or a template copy leaves staging folders the next start removes.
 
 The copy is held by the editor's hook JASPER_TEST_STAGING_HOLD=<path> (it creates <path>.held and
@@ -171,9 +171,9 @@ async def test_a_live_owner_in_another_editor_is_never_touched():
                 call = asyncio.create_task(hub.ed.call_raw("import_project", {"source": str(scene.archive), "path": str(into), "timeout_seconds": 300}))
                 await wait_for(scene.held.exists, 120, "the import at the hold")
                 before = sorted(p.name for p in staging.rglob("*"))
-                swept = await second.call("clean_project_leftovers", remove=[])
+                swept = await second.call("clear_project_leftovers", remove=[])
                 second.check_eq(swept["removed"], [], "nothing of a running editor")
-                got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
+                got = await second.call_raw("clear_project_leftovers", {"remove": [str(staging)]})
                 second.check(got.is_error, f"a live owner's folder cannot be removed: {got.text}")
                 second.check_eq(got.structured["in_use"], [staging.as_posix()], "it is in use")
                 second.check_eq(got.structured["failed"][0]["path"], staging.as_posix(), "and that is why")
@@ -191,7 +191,7 @@ async def test_a_live_owner_in_another_editor_is_never_touched():
 
             # This project is under the system's temp folder, so it is no recent project and its
             # parent no known one: `remove` names the folder. Its owner is dead: the sweep takes it
-            got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
+            got = await second.call_raw("clear_project_leftovers", {"remove": [str(staging)]})
             second.check(not got.is_error, f"its owner died: {got.text}")
             second.check_eq(got.structured["removed"], [staging.as_posix()], "it goes")
             second.check_eq(sorted(os.listdir(into)), ["Packed"], "the folder and its marker")
@@ -201,13 +201,13 @@ async def test_a_live_owner_in_another_editor_is_never_touched():
 
 async def test_a_folder_without_a_marker_is_kept_and_reported():
     """R3, AC2: the old name without our marker may hold a user's data: every result lists it, nothing
-    removes it unasked, clean_project_leftovers does when asked. Its group is hidden until enabled."""
+    removes it unasked, clear_project_leftovers does when asked. Its group is hidden until enabled."""
     async with Editor(create=True, name="Old") as ed:
         listed = {t.name for t in await ed.tools(groups=None)}
-        ed.check("clean_project_leftovers" not in listed, "the tool's group is off by default")
+        ed.check("clear_project_leftovers" not in listed, "the tool's group is off by default")
         await ed.call("tool_groups", enable=["editor_tools"])
         listed = {t.name for t in await ed.tools(groups=None)}
-        ed.check("clean_project_leftovers" in listed, "tool_groups lists it")
+        ed.check("clear_project_leftovers" in listed, "tool_groups lists it")
 
         into = ed.scratch.root / "imports"
         into.mkdir()
@@ -222,23 +222,24 @@ async def test_a_folder_without_a_marker_is_kept_and_reported():
         ed.check_eq(Path(imported["path"]), into / "Packed")
         ed.check_eq([e["path"] for e in imported["leftovers"]], [old.as_posix()], "the import's result lists it")
         ed.check(imported["leftovers"][0]["reason"], "with the reason")
+        ed.check("clear_project_leftovers" in imported["next"], f"and says what to do: {imported}")
         ed.check((old / "my-work.txt").is_file(), "and keeps it")
 
         made = await ed.call("create_project", path=str(into / "New"), name="New", template="empty", unsaved="discard")
         ed.check_eq([e["path"] for e in made["leftovers"]], [old.as_posix()], "the template copy's result lists it")
 
-        swept = await ed.call("clean_project_leftovers")
+        swept = await ed.call("clear_project_leftovers")
         ed.check_eq(swept["removed"], [], "nothing removed unasked")
         ed.check_eq([e["path"] for e in swept["leftovers"]], [old.as_posix()], "the known parents' leftovers")
         ed.check((old / "my-work.txt").is_file(), "still there")
 
         for wrong in (into / "Mine", into / "Packed", into / "Gone.importing"):
-            got = await ed.call_raw("clean_project_leftovers", {"remove": [str(wrong)]})
+            got = await ed.call_raw("clear_project_leftovers", {"remove": [str(wrong)]})
             ed.check(got.is_error and wrong.as_posix() in got.text, f"only a listed leftover goes: {wrong}: {got.text}")
         ed.check((into / "Mine").is_dir() and (into / "Packed" / "project.yaml").is_file(), "a folder of the user's stays")
-        await ed.check_error("clean_project_leftovers", {"remove": ["relative.importing"]}, contains="absolute")
+        await ed.check_error("clear_project_leftovers", {"remove": ["relative.importing"]}, contains="absolute")
 
-        swept = await ed.call("clean_project_leftovers", remove=[str(old)])
+        swept = await ed.call("clear_project_leftovers", remove=[str(old)])
         ed.check_eq(swept["removed"], [old.as_posix()], "asked: it goes")
         ed.check_eq(swept["leftovers"], [], "none left")
         ed.check(not old.exists(), "the folder is gone")

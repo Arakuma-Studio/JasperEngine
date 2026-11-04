@@ -89,4 +89,4 @@ and the folders of copies still running (`<settings dir>/hub-staging/` notes tho
 run), one level deep. An older leftover elsewhere shows when you import into its folder.
 
 Agents: `import_project` and `create_project {template}` list leftovers in their result;
-`clean_project_leftovers` (group `editor_tools`) sweeps, lists and removes them.
+`clear_project_leftovers` (group `editor_tools`) sweeps, lists and removes them.

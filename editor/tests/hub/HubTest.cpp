@@ -445,7 +445,7 @@ TEST(ProjectTemplates, CatalogAndSaveAsTemplate) {
     EXPECT_TRUE(fs::exists(builtInMade / "Main.scene"));
 }
 
-// ---- S46: a copy killed in the middle (docs/specs/S46-crash-leftovers.md AC1)
+// ---- S66: a copy killed in the middle (docs/specs/S66-crash-leftovers.md AC1)
 
 #ifndef _WIN32
 namespace {
@@ -671,7 +671,6 @@ TEST(CrashLeftovers, ALiveOwnerInAnotherProcessIsNeverTouched) {
 
 TEST(CrashLeftovers, AGitImportKilledMidway) {
     if (runCrashChild()) return;
-    if (std::system("git --version > /dev/null 2>&1") != 0) GTEST_SKIP() << "no git";
     TestTempDir dir("crash-git");
     // an https URL (what an import accepts) git itself turns into this folder
     const fs::path repo = dir.path() / "game-repo";
@@ -703,7 +702,7 @@ TEST(CrashLeftovers, AGitImportKilledMidway) {
 }
 #endif
 
-// ---- S46: who owns a staging folder
+// ---- S66: who owns a staging folder
 
 namespace {
 
@@ -712,7 +711,7 @@ namespace {
         std::ofstream(folder / "data.txt") << "someone's data\n";
     }
 
-    bool reported(const staging::Sweep& swept, const fs::path& folder) {
+    bool listsLeftover(const staging::Sweep& swept, const fs::path& folder) {
         return std::any_of(swept.leftovers.begin(), swept.leftovers.end(), [&](const staging::Leftover& l) { return l.folder == folder; });
     }
 
@@ -781,9 +780,9 @@ TEST(StagingFolders, AFolderWithoutAMarkerIsKeptAndReported) {
         const staging::Scope scope{{parent}, {namedLikeOne}};
         const staging::Sweep swept = look == 0 ? staging::inspect(scope) : staging::sweep(scope);
         EXPECT_EQ(swept.leftovers.size(), 2u);
-        EXPECT_TRUE(reported(swept, old));
-        EXPECT_TRUE(reported(swept, parent / "Game.importing3"));
-        EXPECT_FALSE(reported(swept, namedLikeOne)) << "a project of the user's with such a name";
+        EXPECT_TRUE(listsLeftover(swept, old));
+        EXPECT_TRUE(listsLeftover(swept, parent / "Game.importing3"));
+        EXPECT_FALSE(listsLeftover(swept, namedLikeOne)) << "a project of the user's with such a name";
         EXPECT_FALSE(swept.leftovers.front().reason.empty());
         EXPECT_TRUE(swept.removed.empty());
         EXPECT_TRUE(fs::exists(old / "data.txt"));
@@ -825,8 +824,8 @@ TEST(StagingFolders, OnlyOurMarkerCounts) {
 
     const staging::Sweep swept = staging::sweep({{parent}, {}});
     EXPECT_TRUE(swept.removed.empty());
-    EXPECT_TRUE(reported(swept, mine));
-    EXPECT_TRUE(reported(swept, unknown));
+    EXPECT_TRUE(listsLeftover(swept, mine));
+    EXPECT_TRUE(listsLeftover(swept, unknown));
     EXPECT_EQ(swept.leftovers.size(), 2u);
     EXPECT_TRUE(fs::exists(mine / "data.txt"));
     EXPECT_TRUE(fs::exists(unknown / "data.txt"));
@@ -919,7 +918,7 @@ TEST(StagingFolders, TheJournalFollowsTheCopies) {
     TestTempDir::write(journal / "a.txt", FileUtils::pathToUtf8(old) + "\n");
     TestTempDir::write(journal / "b.txt", "not a staging folder\n");
     staging::Sweep swept = staging::sweep({});
-    EXPECT_TRUE(reported(swept, old));
+    EXPECT_TRUE(listsLeftover(swept, old));
     EXPECT_TRUE(fs::exists(journal / "a.txt"));
     EXPECT_FALSE(fs::exists(journal / "b.txt"));
     fs::remove_all(old);

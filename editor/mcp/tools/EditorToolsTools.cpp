@@ -11,7 +11,7 @@
 //
 // list_project_templates and import_project are core tools (ProjectTools.cpp's neighbours here,
 // registered by registerHubTools), and create_project takes a template. registerHubTools also has
-// clean_project_leftovers (S46), which works over the hub and is in this group.
+// clear_project_leftovers (S66), which works over the hub and is in this group.
 
 #include "McpTools.h"
 
@@ -475,7 +475,7 @@ void listProjectTemplatesTool(const CallPtr& call) {
     call->ok(std::to_string(templates.size()) + " project template(s): create_project {template} makes a project from one.", data);
 }
 
-// A staging folder nothing removes by itself: the agent decides, as the Hub's user does (S46 R3)
+// A staging folder nothing removes by itself: the agent decides, as the Hub's user does (S66 R3)
 Json leftoversJson(const std::vector<hub::staging::Leftover>& leftovers) {
     Json list = Json::array();
     for (const hub::staging::Leftover& leftover : leftovers) {
@@ -494,12 +494,12 @@ hub::staging::Scope leftoverScopeWith(const std::vector<fs::path>& folders) {
 void reportLeftovers(const fs::path& parent, std::string& summary, Json& data) {
     const std::vector<hub::staging::Leftover> leftovers = hub::staging::inspect(leftoverScopeWith({parent})).leftovers;
     if (leftovers.empty()) return;
-    summary += " " + std::to_string(leftovers.size()) +
-               " leftover staging folder(s) were kept, they may hold a user's files: see leftovers; clean_project_leftovers (group editor_tools) removes one.";
+    summary += " " + std::to_string(leftovers.size()) + " leftover folder(s) kept.";
+    data["next"] = "Leftovers may hold the user's files: tell the user. Once they agree, clear_project_leftovers {remove} (tool_groups: editor_tools) deletes one.";
     data["leftovers"] = leftoversJson(leftovers);
 }
 
-void cleanProjectLeftoversTool(const CallPtr& call) {
+void clearProjectLeftoversTool(const CallPtr& call) {
     const Json& args = call->args();
     std::vector<fs::path> requested;
     std::vector<fs::path> parents;
@@ -801,19 +801,18 @@ void registerHubTools(McpRegistry& registry) {
     }
     {
         ToolDef tool;
-        tool.name = "clean_project_leftovers";
-        tool.title = "Clean Project Leftovers";
+        tool.name = "clear_project_leftovers";
+        tool.title = "Clear Project Leftovers";
         tool.group = "editor_tools";
         tool.description =
-            "Staging folders (<name>.importing) of imports and template copies that stopped: removes those whose editor died, lists "
-            "those without an owner marker (leftovers: from an older editor, they may hold a user's files; never removed unasked) and "
-            "those a running editor uses (in_use). `remove` deletes listed leftovers. Looks beside the known projects and in the parents of `remove`.";
+            "Removes what stopped imports and template copies left behind in their <name>.importing folders, beside known projects "
+            "and in the parents of `remove`. A folder that may hold a user's files stays until `remove` names it: ask the user first.";
         tool.inputSchema = object({
-            {"remove", array(string(""), "Absolute paths of leftovers to delete with their files.")},
+            {"remove", array(string(""), "Absolute paths of listed leftovers to delete.")},
         });
         tool.annotations.destructive = true;
         tool.activity = ToolActivity::Control;
-        tool.handler = cleanProjectLeftoversTool;
+        tool.handler = clearProjectLeftoversTool;
         registry.addTool(std::move(tool));
     }
 }
