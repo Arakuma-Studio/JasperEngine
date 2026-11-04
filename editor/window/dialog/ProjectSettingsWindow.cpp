@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "window/ProjectWindow.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"
 #include "widget/ColorField.h"
@@ -36,6 +37,8 @@
 #include "command/CommandHistory.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/HtmlUiRenderSettingsCmd.h"
+#include "command/type/DeviceSettingsCmd.h"
+#include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
@@ -1082,6 +1085,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_threading = project->getThreadingSettings();
     m_shaderCreation = project->getShaderCreationSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
+    m_deviceSettings = project->getDeviceSettings();
     m_navigation = project->getNavigationSettings();
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
@@ -1898,6 +1902,8 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
 
         drawShaderCreationSettings();
 
+        drawUploadBudgetSettings();
+
         if (settingsui::beginRow("graphics.runtime_shaders")) {
             if (projectBeginSettingsRow("Runtime Shader Compilation", m_runtimeShadersEnabled != Project::defaultRuntimeShadersEnabled)) {
                 m_runtimeShadersEnabled = Project::defaultRuntimeShadersEnabled;
@@ -1996,7 +2002,223 @@ void ProjectSettingsWindow::drawQualitySettings() {
             if (!settingsui::beginRow(keys[i])) continue;
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
+
+        drawDeviceTierSettings();
     });
+}
+
+namespace {
+
+    // the value a cell starts from when a person overrides an inherited one
+    float suggestedDeviceOverride(DeviceOverride field) {
+        switch (field) {
+            case DeviceOverride::RenderScale: return 0.75f;
+            case DeviceOverride::MsaaSamples: return 1.0f;
+            case DeviceOverride::ShadowQuality: return 0.0f;
+            case DeviceOverride::ShadowDistance: return 50.0f;
+            case DeviceOverride::LodBias: return 0.75f;
+            case DeviceOverride::ShadowLodBias: return 0.75f;
+            case DeviceOverride::LitQuality: return 0.0f;
+            case DeviceOverride::TextureQuality: return 1.0f;
+            case DeviceOverride::TargetFrameRate: return 30.0f;
+            case DeviceOverride::MaxPixelLights: return 4.0f;
+            case DeviceOverride::ParticleBudget: return 16384.0f;
+            default: return 0.0f;
+        }
+    }
+
+    // One cell of the Device Tiers table: "-" inherits (click to override), else its widget;
+    // right-click inherits again
+    void drawDeviceTierCell(DeviceOverride field, std::optional<float>& cell) {
+        const DeviceOverrideInfo& info = DeviceOverrides::info(field);
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        if (!cell) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            if (ImGui::Selectable("-##Inherit")) cell = suggestedDeviceOverride(field);
+            ImGui::PopStyleColor();
+            ImGui::SetItemTooltip("Inherits the project's (or the scene's) value. Click to override it on this tier.");
+            return;
+        }
+        float value = *cell;
+        switch (field) {
+            case DeviceOverride::RenderScale:
+                ImGui::SliderFloat("##Cell", &value, 0.5f, 1.0f, "%.2f");
+                break;
+            case DeviceOverride::ShadowDistance:
+                ImGui::DragFloat("##Cell", &value, 1.0f, info.min, info.max, "%.0f m");
+                break;
+            case DeviceOverride::LodBias:
+            case DeviceOverride::ShadowLodBias:
+                ImGui::DragFloat("##Cell", &value, 0.01f, info.min, info.max, "%.2f");
+                break;
+            case DeviceOverride::MsaaSamples: {
+                static const char* const samples[] = {"Off", "2x", "4x"};
+                int index = value >= 4.0f ? 2 : (value >= 2.0f ? 1 : 0);
+                if (ImGui::Combo("##Cell", &index, samples, 3)) value = index == 2 ? 4.0f : (index == 1 ? 2.0f : 1.0f);
+                break;
+            }
+            case DeviceOverride::TextureQuality: {
+                static const char* const mips[] = {"Full (0)", "Half (1)", "Quarter (2)", "Eighth (3)"};
+                int index = std::clamp((int)value, 0, 3);
+                if (ImGui::Combo("##Cell", &index, mips, 4)) value = (float)index;
+                break;
+            }
+            case DeviceOverride::ShadowQuality:
+            case DeviceOverride::LitQuality: {
+                int index = std::clamp((int)value, 0, info.nameCount - 1);
+                if (ImGui::Combo("##Cell", &index, info.names, info.nameCount)) value = (float)index;
+                break;
+            }
+            case DeviceOverride::Bloom:
+            case DeviceOverride::SSAO:
+            case DeviceOverride::Volumetrics:
+                ImGui::Selectable("Off##Cell");
+                break;
+            default: {
+                int number = (int)value;
+                if (ImGui::InputInt("##Cell", &number, 0, 0)) value = (float)std::clamp(number, (int)info.min, (int)info.max);
+                break;
+            }
+        }
+        if (ImGui::BeginPopupContextItem("##CellMenu")) {
+            if (ImGui::MenuItem("Inherit")) cell.reset();
+            ImGui::EndPopup();
+        }
+        if (cell) {
+            cell = value;
+            ImGui::SetItemTooltip("%s Right-click: Inherit.", info.tooltip);
+        }
+    }
+
+}
+
+void ProjectSettingsWindow::drawDeviceTierSettings() {
+    const DeviceSettings defaults;
+    DeviceSettings& d = m_deviceSettings;
+
+    if (settingsui::beginRow("quality.lod_bias")) {
+        if (projectBeginSettingsRow("LOD Bias", d.lodBias != defaults.lodBias)) d.lodBias = defaults.lodBias;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::DragFloat("##QualityLodBias", &d.lodBias, 0.01f, 0.05f, 8.0f, "%.2f");
+        d.lodBias = std::clamp(d.lodBias, 0.05f, 8.0f);
+        endSettingsRow("Multiplies every mesh's LOD Bias: below 1 switches to coarser LODs nearer (Unity's QualitySettings.lodBias). "
+                       "A Device Tier's LOD Bias multiplies it again.");
+    }
+    if (settingsui::beginRow("quality.shadow_lod_bias")) {
+        if (projectBeginSettingsRow("Shadow LOD Bias", d.shadowLodBias != defaults.shadowLodBias)) d.shadowLodBias = defaults.shadowLodBias;
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::DragFloat("##QualityShadowLodBias", &d.shadowLodBias, 0.01f, 0.05f, 8.0f, "%.2f");
+        d.shadowLodBias = std::clamp(d.shadowLodBias, 0.05f, 8.0f);
+        endSettingsRow("Multiplies the LOD bias of what shadow maps draw.");
+    }
+
+    if (settingsui::sectionVisible("Thermal Response")) {
+        ImGui::SeparatorText("Thermal Response");
+        for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++) {
+            const DevicePlatformGroup group = (DevicePlatformGroup)g;
+            const std::string key = std::string("quality.thermal_response.") + DeviceNames::group(group);
+            if (!settingsui::beginRow(key.c_str())) continue;
+            const std::string label = std::string("Thermal Response (") + DeviceNames::groupLabel(group) + ")";
+            if (projectBeginSettingsRow(label.c_str(), d.thermalResponse[g] != defaults.thermalResponse[g]))
+                d.thermalResponse[g] = defaults.thermalResponse[g];
+            bool on = d.thermalResponse[g];
+            ImGui::Checkbox(("##ThermalResponse" + std::to_string(g)).c_str(), &on);
+            d.thermalResponse[g] = on;
+            endSettingsRow("When the device reports a Serious thermal state the render scale drops by 20% and the frame rate is "
+                           "capped at 30; at Critical the tier below's shadows and post-processing apply too. It recovers 30 s "
+                           "after the device cools down. Android and iOS report thermal states, macOS too; Windows, Linux and "
+                           "the web stay Nominal.");
+        }
+    }
+
+    if (!settingsui::sectionVisible("Device Tiers")) return;
+    ImGui::SeparatorText("Device Tiers");
+    const int g = std::clamp(m_deviceTierGroup, 0, DEVICE_PLATFORM_GROUP_COUNT - 1);
+    const DevicePlatformGroup group = (DevicePlatformGroup)g;
+    std::string keys[DEVICE_TIER_COUNT];
+    for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+        keys[t] = std::string("quality.device_tiers.") + DeviceNames::group(group) + "." + DeviceNames::tier((DeviceTier)t);
+    auto beginTierRow = [&keys]() { return settingsui::beginRow({keys[0].c_str(), keys[1].c_str(), keys[2].c_str(), keys[3].c_str()}); };
+
+    // the platform group the table edits, and what this machine detects
+    if (beginTierRow()) {
+        bool groupChanged = false;
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+            groupChanged = groupChanged || d.tiers[g][t] != defaults.tiers[g][t];
+        if (projectBeginSettingsRow("Platform", groupChanged, "Restore this platform's default tiers"))
+            d.tiers[g] = defaults.tiers[g];
+        static const char* const groupLabels[] = {"Desktop", "Mobile", "Web"};
+        ImGui::SetNextItemWidth(Theme::dpi(120.0f));
+        ImGui::Combo("##DeviceTierGroup", &m_deviceTierGroup, groupLabels, DEVICE_PLATFORM_GROUP_COUNT);
+        const DeviceDetection& detection = Device::getDetection();
+        if (detection.detected) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("This machine: %s", DeviceNames::tierLabel(detection.tier));
+            ImGui::SetItemTooltip("%s", detection.reason.c_str());
+        }
+        endSettingsRow("Each tier caps the project's (and the scene's) values on the devices that get it: a tier never raises "
+                       "quality. Players pick the tier from the GPU (docs/device-tiers.md); --device-tier and Device.setTier "
+                       "choose one, and the Game view's Device menu simulates one in Play. An empty cell (-) inherits.");
+    }
+
+    // a header of the tiers, then one row per setting
+    auto tierTable = [](const char* id) {
+        return ImGui::BeginTable(id, DEVICE_TIER_COUNT, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoPadOuterX);
+    };
+    if (beginTierRow()) {
+        projectBeginSettingsRow("");
+        if (tierTable("##DeviceTierHeader")) {
+            for (int t = 0; t < DEVICE_TIER_COUNT; t++) {
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(DeviceNames::tierLabel((DeviceTier)t));
+            }
+            ImGui::EndTable();
+        }
+    }
+    for (int f = 0; f < DEVICE_OVERRIDE_COUNT; f++) {
+        const DeviceOverride field = (DeviceOverride)f;
+        if (!beginTierRow()) continue;
+        bool changed = false;
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+            changed = changed || d.tiers[g][t].get(field) != defaults.tiers[g][t].get(field);
+        const DeviceOverrideInfo& info = DeviceOverrides::info(field);
+        if (projectBeginSettingsRow(info.label, changed)) {
+            for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+                d.tiers[g][t].set(field, defaults.tiers[g][t].get(field));
+        }
+        ImGui::PushID(f);
+        if (tierTable("##DeviceTierRow")) {
+            for (int t = 0; t < DEVICE_TIER_COUNT; t++) {
+                ImGui::TableNextColumn();
+                ImGui::PushID(t);
+                std::optional<float> cell = d.tiers[g][t].get(field);
+                drawDeviceTierCell(field, cell);
+                d.tiers[g][t].set(field, cell);
+                ImGui::PopID();
+            }
+            ImGui::EndTable();
+        }
+        ImGui::PopID();
+    }
+}
+
+void ProjectSettingsWindow::drawUploadBudgetSettings() {
+    if (!settingsui::sectionVisible("Upload Budget")) return;
+    ImGui::SeparatorText("Upload Budget");
+    const DeviceSettings defaults;
+    for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++) {
+        const DevicePlatformGroup group = (DevicePlatformGroup)g;
+        const std::string key = std::string("graphics.upload_budget_mb.") + DeviceNames::group(group);
+        if (!settingsui::beginRow(key.c_str())) continue;
+        const std::string label = std::string("Upload Budget MB (") + DeviceNames::groupLabel(group) + ")";
+        int& mb = m_deviceSettings.uploadBudgetMB[g];
+        if (projectBeginSettingsRow(label.c_str(), mb != defaults.uploadBudgetMB[g])) mb = defaults.uploadBudgetMB[g];
+        ImGui::SetNextItemWidth(-helpMarkerWidth());
+        ImGui::InputInt(("##UploadBudget" + std::to_string(g)).c_str(), &mb, 1, 8);
+        mb = std::clamp(mb, DeviceSettings::MIN_UPLOAD_BUDGET_MB, DeviceSettings::MAX_UPLOAD_BUDGET_MB);
+        endSettingsRow("Megabytes of texture and buffer data a frame uploads at most from loading threads; the rest waits for the "
+                       "next frames, so streaming does not hitch. A single larger upload goes alone in its frame.");
+    }
 }
 
 void ProjectSettingsWindow::drawTextureSettings() {
@@ -3833,7 +4055,7 @@ void ProjectSettingsWindow::pollInputListen() {
     }
 
     for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; key++) {
-        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false)) continue;
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false)) continue;   // shortcut-lint: allow Listen in this modal captures any key for a game binding
         const int engineKey = PlayInput::engineKey(static_cast<ImGuiKey>(key));
         if (engineKey != D_KEY_UNKNOWN) {
             addControl({InputDevice::Key, engineKey});
@@ -4543,6 +4765,12 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: the editor's documents follow at once
     if (m_htmlUiRender != m_project->getHtmlUiRenderSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new HtmlUiRenderSettingsCmd(m_project, m_htmlUiRender));
+    }
+    // undoable: the Device Tier table and the rest (the Game view simulates a tier with it)
+    if (m_deviceSettings != m_project->getDeviceSettings()) {
+        auto* command = new DeviceSettingsCmd(m_project, m_deviceSettings);
+        command->setNoMerge();
+        m_project->getProjectCommandHistory()->addCommand(command);
     }
     // undoable: every scene's crowds and grids read them at their next fixed tick
     if (m_navigation != m_project->getNavigationSettings()) {

@@ -17,6 +17,7 @@
 #include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
 #include "texture/MaterialPbr.h"
+#include "device/DeviceSettings.h"
 
 #include "json.hpp"
 
@@ -89,6 +90,9 @@ namespace jasperengine::player {
         LightMode lightMode = LightMode::AUTOMATIC;
         // per ShadowTiers platform
         std::array<ShadowTier, ShadowTiers::PLATFORM_COUNT> shadowTiers{};
+        // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the
+        // upload budget (spec S56): "device", what differs from the defaults
+        DeviceSettings device;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
         std::array<uint32_t, MAX_LAYERS> collision3D{};

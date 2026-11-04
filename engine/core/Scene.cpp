@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "component/ButtonComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/ScrollbarComponent.h"
 #include "script/ScriptRuntime.h"
 #include "Scene.h"
 #include "shader/ShaderGlobals.h"

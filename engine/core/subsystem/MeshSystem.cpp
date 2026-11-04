@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshSystem.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/BoneComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/MeshPolygonComponent.h"
 
 #include "Scene.h"
 #include "Engine.h"
@@ -20,6 +30,7 @@
 #include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/CookedTextures.h"
+#include "texture/Ktx2.h"
 #include "util/Angle.h"
 
 #include <algorithm>
@@ -37,18 +48,98 @@
 #include <map>
 #include <mutex>
 #include <set>
+#include <span>
 #include <sstream>
 #include <thread>
 #include <utility>
 #include "tiny_obj_loader.h"
 #include "tiny_gltf.h"
 #include "stb_image_resize2.h"
+#include "meshoptimizer.h"
 #include "pool/ObjModelData.h"
+#include "subsystem/GltfNormalize.h"
 
 using namespace jasperengine;
 
 namespace {
     thread_local int g_imageDecodeMaxDimension = 0;
+
+    // an OBJ face corner as loadOBJ lays it out (InterleavedBuffer: position, uv, normal, colour)
+    struct ObjCorner {
+        Vector3 position;
+        Vector2 texcoord;
+        Vector3 normal;
+        Vector4 color;
+    };
+    static_assert(sizeof(ObjCorner) == 12 * sizeof(float), "an OBJ corner is twelve packed floats");
+
+    // Welds binary-equal corners (meshopt_generateVertexRemap over every attribute), then orders
+    // each submesh's triangles for the vertex cache and overdraw, unless it blends (its triangle
+    // order is its draw order), and the vertices by first use. What draws does not change.
+    void optimizeObjCorners(std::vector<ObjCorner>& corners, std::vector<std::vector<uint32_t>>& submeshIndices,
+                            const std::vector<bool>& keepOrder){
+        if (corners.empty())
+            return;
+        std::vector<unsigned int> remap(corners.size());
+        const size_t unique = meshopt_generateVertexRemap(remap.data(), nullptr, corners.size(), corners.data(), corners.size(), sizeof(ObjCorner));
+        std::vector<ObjCorner> welded(unique);
+        meshopt_remapVertexBuffer(welded.data(), corners.data(), corners.size(), sizeof(ObjCorner), remap.data());
+        for (size_t s = 0; s < submeshIndices.size(); s++) {
+            std::vector<uint32_t>& indices = submeshIndices[s];
+            meshopt_remapIndexBuffer(indices.data(), indices.data(), indices.size(), remap.data());
+            if (indices.size() < 3 || indices.size() % 3 != 0 || (s < keepOrder.size() && keepOrder[s]))
+                continue;
+            meshopt_optimizeVertexCache(indices.data(), indices.data(), indices.size(), unique);
+            meshopt_optimizeOverdraw(indices.data(), indices.data(), indices.size(), &welded[0].position.x, unique, sizeof(ObjCorner), 1.05f);
+        }
+        // first use across the submeshes in their order, as one index buffer
+        std::vector<uint32_t> all;
+        for (const std::vector<uint32_t>& indices : submeshIndices)
+            all.insert(all.end(), indices.begin(), indices.end());
+        std::vector<unsigned int> fetch(unique);
+        const size_t used = meshopt_optimizeVertexFetchRemap(fetch.data(), all.data(), all.size(), unique);
+        corners.assign(used, ObjCorner());
+        meshopt_remapVertexBuffer(corners.data(), welded.data(), unique, sizeof(ObjCorner), fetch.data());
+        corners.resize(used);
+        for (std::vector<uint32_t>& indices : submeshIndices)
+            meshopt_remapIndexBuffer(indices.data(), indices.data(), indices.size(), fetch.data());
+    }
+
+    InstanceData gltfInstanceData(const GltfInstance& instance){
+        InstanceData data;
+        data.position = Vector3(instance.translation[0], instance.translation[1], instance.translation[2]);
+        data.rotation = Quaternion(instance.rotation[3], instance.rotation[0], instance.rotation[1], instance.rotation[2]);
+        data.scale = Vector3(instance.scale[0], instance.scale[1], instance.scale[2]);
+        return data;
+    }
+
+    Matrix4 gltfInstanceMatrix(const GltfInstance& instance){
+        const InstanceData data = gltfInstanceData(instance);
+        return Matrix4::translateMatrix(data.position) * data.rotation.getRotationMatrix() * Matrix4::scaleMatrix(data.scale);
+    }
+
+    // a direction a node transform can be baked into: float, or a normalized byte or short (the
+    // KHR_mesh_quantization normals and tangents GltfNormalize keeps for the GPU)
+    bool isBakeableDirection(const tinygltf::Accessor& accessor){
+        return accessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT ||
+               (accessor.normalized && (accessor.componentType == TINYGLTF_COMPONENT_TYPE_BYTE ||
+                                        accessor.componentType == TINYGLTF_COMPONENT_TYPE_SHORT));
+    }
+
+    // `count` components of an attribute as floats (glTF's normalization of signed integers)
+    void readGLTFComponents(const unsigned char* src, int componentType, int count, float* out){
+        for (int c = 0; c < count; c++){
+            if (componentType == TINYGLTF_COMPONENT_TYPE_BYTE){
+                out[c] = std::max((float)(int8_t)src[c] / 127.0f, -1.0f);
+            }else if (componentType == TINYGLTF_COMPONENT_TYPE_SHORT){
+                int16_t value;
+                std::memcpy(&value, src + c * 2, 2);
+                out[c] = std::max((float)value / 32767.0f, -1.0f);
+            }else{
+                std::memcpy(out + c, src + c * 4, 4);
+            }
+        }
+    }
 
     // loadGLTF's node walk (getLegacyRootTransform repeats it on a loaded model): each node's
     // parent (the last node listing it as a child, -1 for none) and the nodes that own a mesh, in
@@ -273,15 +364,21 @@ static std::string gltfCookedImagePath(const std::string& modelFilename, const t
 }
 
 // tinygltf's warnings less the ones about external images that ship cooked only (not found,
-// not loaded): those load from their cooked file
+// not loaded): those load from their cooked file; and less stb's "Unknown image format" for the
+// KTX2 and WebP images decodeGLTFImage decodes itself (it reports their own failures)
 static std::string withoutCookedImageWarnings(const std::string& warn, const tinygltf::Model& model, const std::string& modelFilename){
     std::vector<std::string> cooked;
-    for (const tinygltf::Image& image : model.images){
+    std::vector<std::string> decodedLater;
+    for (size_t i = 0; i < model.images.size(); i++){
+        const tinygltf::Image& image = model.images[i];
         std::string uri;
         if (image.image.empty() && !gltfCookedImagePath(modelFilename, image).empty() && tinygltf::URIDecode(image.uri, &uri, nullptr))
             cooked.push_back(uri);
+        const std::span<const uint8_t> bytes(image.image.data(), image.image.size());
+        if (GltfNormalize::isWebp(bytes.data(), bytes.size()) || Ktx2::isKtx2(bytes))
+            decodedLater.push_back("Unknown image format. STB cannot decode image header for image[" + std::to_string(i) + "]");
     }
-    if (cooked.empty())
+    if (cooked.empty() && decodedLater.empty())
         return warn;
     std::string out;
     std::istringstream lines(warn);
@@ -294,7 +391,10 @@ static std::string withoutCookedImageWarnings(const std::string& warn, const tin
                                    line.find("\"" + uri + "\"") != std::string::npos;
             return notFound || notLoaded;
         });
-        if (!aboutCooked)
+        const bool aboutDecoded = std::any_of(decodedLater.begin(), decodedLater.end(), [&line](const std::string& prefix){
+            return line.rfind(prefix, 0) == 0;
+        });
+        if (!aboutCooked && !aboutDecoded)
             out += line + "\n";
     }
     return out;
@@ -1275,20 +1375,34 @@ bool MeshSystem::fileExists(const std::string &abs_filename, void *) {
     return df.open(abs_filename.c_str()) == FileErrors::FILEDATA_OK;
 }
 
+bool MeshSystem::normalizeGLTF(tinygltf::Model& model, const std::string& filename, std::string* err){
+    GltfNormalizeResult result;
+    if (GltfNormalize::run(model, filename, result))
+        return true;
+    if (err)
+        *err = result.firstError();
+    return false;
+}
+
 bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename){
     std::string ext = FileData::getFilePathExtension(filename);
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    bool loaded = false;
     if (ext == "fbx"){
         std::vector<unsigned char> data;
         if (!readWholeFile(&data, err, getImportedModelPath(filename), nullptr) || data.empty()){
             return false;
         }
-        return loader.LoadBinaryFromMemory(model, err, warn, data.data(), static_cast<unsigned int>(data.size()), FileData::getBaseDir(filename));
+        loaded = loader.LoadBinaryFromMemory(model, err, warn, data.data(), static_cast<unsigned int>(data.size()), FileData::getBaseDir(filename));
+    }else if (ext == "glb"){
+        loaded = loader.LoadBinaryFromFile(model, err, warn, filename);
+    }else{
+        loaded = loader.LoadASCIIFromFile(model, err, warn, filename);
     }
-    if (ext == "glb"){
-        return loader.LoadBinaryFromFile(model, err, warn, filename);
-    }
-    return loader.LoadASCIIFromFile(model, err, warn, filename);
+    // what the parse gives, as core glTF (docs/specs/S53-model-import-cook.md R1)
+    if (!loaded || (err && !err->empty()))
+        return loaded;
+    return normalizeGLTF(*model, filename, err);
 }
 
 bool MeshSystem::parseGLTFFile(const std::string& filename, tinygltf::Model& model, std::string* err){
@@ -1526,13 +1640,32 @@ void MeshSystem::decodeGLTFImage(tinygltf::Image& image, size_t index, int maxDi
         return; // no encoded bytes (e.g. external/unsupported image)
     }
 
-    // Decode with tinygltf's own decoder (default RGBA8/16) so results match the serial path.
     std::vector<unsigned char> encoded = std::move(image.image);
     image.image.clear();
     std::string err;
     std::string warn;
-    if (!tinygltf::LoadImageData(&image, static_cast<int>(index), &err, &warn, 0, 0,
-                                 encoded.data(), static_cast<int>(encoded.size()), nullptr)) {
+    // what stb does not read (S53 R1, R6): KHR_texture_basisu's KTX2 through the Basis
+    // transcoder, EXT_texture_webp's WebP through the editor's decoder, both to RGBA8
+    // a WebP image in a game: GltfNormalize reported its texture (the cook transcodes it)
+    if (GltfNormalize::isWebp(encoded.data(), encoded.size()) && !GltfNormalize::hasWebpDecoder()) {
+        return;
+    }
+    std::vector<uint8_t> pixels;
+    int width = 0;
+    int height = 0;
+    if (GltfNormalize::decodeImage(encoded.data(), encoded.size(), pixels, width, height, err)) {
+        image.image = std::move(pixels);
+        image.width = width;
+        image.height = height;
+        image.component = 4;
+        image.bits = 8;
+        image.pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
+    } else if (!err.empty()) {
+        Log::error("Failed to decode GLTF image %zu: %s", index, err.c_str());
+        return;
+    } else if (!tinygltf::LoadImageData(&image, static_cast<int>(index), &err, &warn, 0, 0,
+                                        encoded.data(), static_cast<int>(encoded.size()), nullptr)) {
+        // tinygltf's own decoder (default RGBA8/16), so results match the serial path
         Log::error("Failed to decode GLTF image %zu: %s", index, err.c_str());
         return;
     }
@@ -1638,6 +1771,9 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
                 result->success = loader.LoadBinaryFromMemory(result->gltfModel.get(), &result->err, &result->warn, bytes.data(), (unsigned int)bytes.size(), baseDir);
             }else{
                 result->success = loader.LoadASCIIFromString(result->gltfModel.get(), &result->err, &result->warn, reinterpret_cast<const char*>(bytes.data()), (unsigned int)bytes.size(), baseDir);
+            }
+            if (result->success && result->err.empty()) {
+                result->success = normalizeGLTF(*result->gltfModel, filename, &result->err);
             }
             if (result->success) {
                 decodeGLTFImagesParallel(*result->gltfModel, 0); // background loads are full resolution
@@ -2306,8 +2442,9 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
     if (!model.gltfModel || !isValidGLTFIndex(accessor.bufferView, model.gltfModel->bufferViews)) {
         return -1;
     }
-    if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != TINYGLTF_TYPE_VEC3) {
-        return -1; // only float vec3 positions/normals are baked
+    // float vec3 positions and normals (and normalized integer normals, to floats) are baked
+    if (accessor.type != TINYGLTF_TYPE_VEC3 || (isNormal ? !isBakeableDirection(accessor) : accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT)) {
+        return -1;
     }
 
     const tinygltf::BufferView& srcView = model.gltfModel->bufferViews[accessor.bufferView];
@@ -2318,11 +2455,12 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
 
     const size_t count = accessor.count;
     const int stride = accessor.ByteStride(srcView);
-    if (count == 0 || stride < static_cast<int>(3 * sizeof(float))) {
+    const size_t elementSize = 3 * static_cast<size_t>(tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(accessor.componentType)));
+    if (count == 0 || stride < static_cast<int>(elementSize)) {
         return -1;
     }
     const size_t base = srcView.byteOffset + accessor.byteOffset;
-    if (base + (count - 1) * static_cast<size_t>(stride) + 3 * sizeof(float) > srcData.size()) {
+    if (base + (count - 1) * static_cast<size_t>(stride) + elementSize > srcData.size()) {
         Log::error("GLTF baked attribute range out of bounds");
         return -1;
     }
@@ -2331,7 +2469,8 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
     newBuffer.data.resize(count * 3 * sizeof(float));
     float* dst = reinterpret_cast<float*>(newBuffer.data.data());
     for (size_t i = 0; i < count; i++) {
-        const float* src = reinterpret_cast<const float*>(srcData.data() + base + i * static_cast<size_t>(stride));
+        float src[3];
+        readGLTFComponents(srcData.data() + base + i * static_cast<size_t>(stride), accessor.componentType, 3, src);
         Vector3 v(src[0], src[1], src[2]);
         Vector3 r = isNormal ? (normalMatrix * v).normalized() : (matrix * v);
         dst[i * 3 + 0] = r.x;
@@ -2360,7 +2499,7 @@ int MeshSystem::bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, c
     if (!model.gltfModel || !isValidGLTFIndex(accessor.bufferView, model.gltfModel->bufferViews)) {
         return -1;
     }
-    if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != TINYGLTF_TYPE_VEC4) {
+    if (!isBakeableDirection(accessor) || accessor.type != TINYGLTF_TYPE_VEC4) {
         return -1;
     }
 
@@ -2372,11 +2511,12 @@ int MeshSystem::bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, c
 
     const size_t count = accessor.count;
     const int stride = accessor.ByteStride(srcView);
-    if (count == 0 || stride < static_cast<int>(4 * sizeof(float))) {
+    const size_t elementSize = 4 * static_cast<size_t>(tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(accessor.componentType)));
+    if (count == 0 || stride < static_cast<int>(elementSize)) {
         return -1;
     }
     const size_t base = srcView.byteOffset + accessor.byteOffset;
-    if (base + (count - 1) * static_cast<size_t>(stride) + 4 * sizeof(float) > srcData.size()) {
+    if (base + (count - 1) * static_cast<size_t>(stride) + elementSize > srcData.size()) {
         Log::error("GLTF baked tangent range out of bounds");
         return -1;
     }
@@ -2386,7 +2526,8 @@ int MeshSystem::bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, c
     newBuffer.data.resize(count * 4 * sizeof(float));
     float* dst = reinterpret_cast<float*>(newBuffer.data.data());
     for (size_t i = 0; i < count; i++) {
-        const float* src = reinterpret_cast<const float*>(srcData.data() + base + i * static_cast<size_t>(stride));
+        float src[4];
+        readGLTFComponents(srcData.data() + base + i * static_cast<size_t>(stride), accessor.componentType, 4, src);
         Vector3 tangent = (tangentMatrix * Vector3(src[0], src[1], src[2])).normalized();
         dst[i * 4 + 0] = tangent.x;
         dst[i * 4 + 1] = tangent.y;
@@ -2652,7 +2793,9 @@ bool MeshSystem::canBakeGLTFMesh(const ModelComponent& model, int meshIndex, std
             }
             const tinygltf::Accessor& accessor = model.gltfModel->accessors[attribute.second];
             const int expectedType = attribute.first == "TANGENT" ? TINYGLTF_TYPE_VEC4 : TINYGLTF_TYPE_VEC3;
-            if (accessor.componentType != TINYGLTF_COMPONENT_TYPE_FLOAT || accessor.type != expectedType) {
+            const bool bakeable = attribute.first == "POSITION" ? accessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT
+                                                                : isBakeableDirection(accessor);
+            if (!bakeable || accessor.type != expectedType) {
                 return reject("A position, normal, or tangent attribute cannot be transformed safely");
             }
         }
@@ -2679,6 +2822,9 @@ bool MeshSystem::canMergeStaticModel(const ModelComponent& model, const MeshComp
         meshNodeCount++;
         if (node.skin >= 0) {
             return reject("Skinned models cannot be merged as static geometry");
+        }
+        if (node.extensions.count("EXT_mesh_gpu_instancing")) {
+            return reject("Models with GPU-instanced nodes (EXT_mesh_gpu_instancing) cannot be merged as static geometry");
         }
         if (!canBakeGLTFMesh(model, node.mesh, reason)) {
             return false;
@@ -2713,7 +2859,12 @@ bool MeshSystem::loadGLTFTexture(int textureIndex, ModelComponent& model, Textur
 
         tinygltf::Texture &tex = model.gltfModel->textures[textureIndex];
         if (!isValidGLTFIndex(tex.source, model.gltfModel->images)) {
-            Log::warn("Invalid GLTF image index %i for texture %i: %s", tex.source, textureIndex, textureName.c_str());
+            // a KTX2 or WebP source this build does not decode was reported by GltfNormalize
+            const bool reported = tex.source < 0 && (tex.extensions.count("KHR_texture_basisu") ||
+                tex.extensions.count("EXT_texture_webp") || tex.extensions.count("KHR_texture_webp"));
+            if (!reported) {
+                Log::warn("Invalid GLTF image index %i for texture %i: %s", tex.source, textureIndex, textureName.c_str());
+            }
             return true;
         }
 
@@ -5203,9 +5354,6 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         if (model.gltfModel->nodes[nodeIdx].skin >= 0) { meshNode = nodeIdx; break; }
     }
 
-    // the extensions it uses that are not read: once per model
-    reportGLTFExtensions(*model.gltfModel, filename);
-
     if (meshNodes.empty()) {
         Log::error("GLTF model has no mesh nodes: %s", filename.c_str());
         if (asyncLoad) {
@@ -5239,8 +5387,14 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
     const bool useNodeHierarchy = canUseChildEntities &&
         (!model.nodesIdMapping.empty() || (!skipEntities &&
             (!model.gltfModel->animations.empty() || model.gltfModel->skins.size() > 1 || forceNodeHierarchy)));
+    // an instanced node (EXT_mesh_gpu_instancing) draws its copies through its own entity's
+    // InstancedMeshComponent, its node transform on that entity, never baked into the vertices
+    bool anyNodeInstanced = false;
+    for (int nodeIdx : meshNodes) {
+        if (model.gltfModel->nodes[nodeIdx].extensions.count("EXT_mesh_gpu_instancing")) { anyNodeInstanced = true; break; }
+    }
     const bool useChildEntities = canUseChildEntities &&
-        (meshNodes.size() > 1 || useNodeHierarchy);
+        (meshNodes.size() > 1 || useNodeHierarchy || anyNodeInstanced);
 
     // Off-thread previews cannot safely build child/skeleton entities, so bake glTF node globals into
     // a flat static mesh instead. Skinned nodes are baked too, but a skinned mesh node's own transform
@@ -5438,6 +5592,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     getGLTFInverseBindMatrix(model, bakeSkin, 0);
             } else {
                 nodeBakeMatrix = getGLTFMeshGlobalMatrix(nodeIdx, model, nodesParent);
+                // a flattened preview draws an instanced node once, as its first instance
+                std::vector<GltfInstance> instances;
+                if (GltfNormalize::readInstances(*model.gltfModel, nodeIdx, instances) && !instances.empty()) {
+                    nodeBakeMatrix = nodeBakeMatrix * gltfInstanceMatrix(instances[0]);
+                }
             }
             nodeBakeNormalMatrix = nodeBakeMatrix.linear().inverse(1e-6f).transpose();
         } else if (bakeMeshOffset) {
@@ -5732,6 +5891,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 if (bakingFlatten && !vatGltf && (attrib.first == "JOINTS_0" || attrib.first == "WEIGHTS_0")) {
                     continue; // baked preview is static geometry; drop the skinning attributes
                 }
+                // (the bakes write floats, also from a quantized normal or tangent)
+                bool bakedToFloat = false;
                 if ((bakingFlatten || bakeMeshOffset) && (attrib.first == "POSITION" || attrib.first == "NORMAL")) {
                     const bool isNormal = attrib.first == "NORMAL";
                     int baked = synthView(gltfSynthKey(isNormal ? "normal" : "position", accessor, &nodeBakeMatrix), [&]() {
@@ -5741,6 +5902,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                         attrBufferView = baked;
                         attrByteOffset = 0;
                         byteStride = static_cast<int>(3 * sizeof(float));
+                        bakedToFloat = true;
                     }
                 }
                 if ((bakingFlatten || bakeMeshOffset) && attrib.first == "TANGENT") {
@@ -5751,6 +5913,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                         attrBufferView = baked;
                         attrByteOffset = 0;
                         byteStride = static_cast<int>(4 * sizeof(float));
+                        bakedToFloat = true;
                     }
                 }
                 // glTF also allows VEC3 colors; only the normalized integer ones need a copy
@@ -5773,7 +5936,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                 int elements = (accessor.type != TINYGLTF_TYPE_SCALAR) ? accessor.type : 1;
 
                 AttributeDataType dataType;
-                if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_BYTE) {
+                if (bakedToFloat || accessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
+                    dataType = AttributeDataType::FLOAT;
+                } else if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_BYTE) {
                     dataType = AttributeDataType::BYTE;
                 } else if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE) {
                     dataType = AttributeDataType::UNSIGNED_BYTE;
@@ -5785,14 +5950,20 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
                     // no vertex format binds a 32-bit integer (indices take their own path)
                     Log::warn("Not supported unsigned int of: %s", attrib.first.c_str());
                     continue;
-                } else if (accessor.componentType == TINYGLTF_COMPONENT_TYPE_FLOAT) {
-                    dataType = AttributeDataType::FLOAT;
                 } else {
                     Log::error("Unknown data type %i of %s", accessor.componentType, attrib.first.c_str());
                     continue;
                 }
 
-                bool attributeNormalized = accessor.normalized;
+                // a quantized normal padded to four components (KHR_mesh_quantization, kept by
+                // GltfNormalize): bound as BYTE4N or SHORT4N, the shaders read xyz
+                if (attrib.first == "NORMAL" && elements == 3 && accessor.normalized &&
+                        (dataType == AttributeDataType::BYTE || dataType == AttributeDataType::SHORT) &&
+                        byteStride >= 4 * tinygltf::GetComponentSizeInBytes(static_cast<uint32_t>(accessor.componentType))) {
+                    elements = 4;
+                }
+
+                bool attributeNormalized = !bakedToFloat && accessor.normalized;
                 if (colorConvertedToVec4) {
                     elements = 4;
                 }
@@ -6053,6 +6224,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             std::reverse(mesh.submeshes.data(), mesh.submeshes.data() + mesh.numSubmeshes);
             calculateMeshAABB(mesh);
             mesh.needReload = true;
+            // EXT_mesh_gpu_instancing (S53 R3): the node's copies are the child mesh's instances
+            std::vector<GltfInstance> instances;
+            if (GltfNormalize::readInstances(*model.gltfModel, nodeIdx, instances)) {
+                applyGLTFInstances(meshEntity, instances);
+            }
         }
 
     }
@@ -6642,6 +6818,7 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     }else{
         indexMap.resize(1);
     }
+    std::vector<ObjCorner> corners;
 
     for (size_t i = 0; i < shapes.size(); i++) {
         // Update progress for shape processing
@@ -6680,32 +6857,27 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
             for (size_t v = 0; v < fnum; v++) {
                 tinyobj::index_t idx = shapes[i].mesh.indices[index_offset + v];
 
-                indexMap[material_id].push_back(mesh.buffer.getCount());
+                indexMap[material_id].push_back(static_cast<uint32_t>(corners.size()));
 
                 // Each attribute keeps its own count, so a missing value is written, never skipped
                 const bool hasTexcoord = objIndexInRange(idx.texcoord_index, 2, attrib.texcoords.size());
                 const bool hasNormal = objIndexInRange(idx.normal_index, 3, attrib.normals.size());
                 const bool hasColor = objIndexInRange(idx.vertex_index, 3, attrib.colors.size());
 
-                mesh.buffer.addVector3(attVertex,
-                                    Vector3(attrib.vertices[3 * idx.vertex_index + 0],
-                                            attrib.vertices[3 * idx.vertex_index + 1],
-                                            attrib.vertices[3 * idx.vertex_index + 2]));
-
-                mesh.buffer.addVector2(attTexcoord, hasTexcoord ?
-                                    Vector2(attrib.texcoords[2 * idx.texcoord_index + 0],
-                                            1.0f - attrib.texcoords[2 * idx.texcoord_index + 1]) : Vector2::ZERO);
-
-                mesh.buffer.addVector3(attNormal, hasNormal ?
-                                    Vector3(attrib.normals[3 * idx.normal_index + 0],
-                                            attrib.normals[3 * idx.normal_index + 1],
-                                            attrib.normals[3 * idx.normal_index + 2]) : faceNormal);
-
-                mesh.buffer.addVector4(attColor, hasColor ?
-                                    Vector4(attrib.colors[3 * idx.vertex_index + 0],
-                                            attrib.colors[3 * idx.vertex_index + 1],
-                                            attrib.colors[3 * idx.vertex_index + 2],
-                                            1.0) : Vector4(1.0, 1.0, 1.0, 1.0));
+                ObjCorner corner;
+                corner.position = Vector3(attrib.vertices[3 * idx.vertex_index + 0],
+                                          attrib.vertices[3 * idx.vertex_index + 1],
+                                          attrib.vertices[3 * idx.vertex_index + 2]);
+                corner.texcoord = hasTexcoord ? Vector2(attrib.texcoords[2 * idx.texcoord_index + 0],
+                                                        1.0f - attrib.texcoords[2 * idx.texcoord_index + 1]) : Vector2::ZERO;
+                corner.normal = hasNormal ? Vector3(attrib.normals[3 * idx.normal_index + 0],
+                                                    attrib.normals[3 * idx.normal_index + 1],
+                                                    attrib.normals[3 * idx.normal_index + 2]) : faceNormal;
+                corner.color = hasColor ? Vector4(attrib.colors[3 * idx.vertex_index + 0],
+                                                  attrib.colors[3 * idx.vertex_index + 1],
+                                                  attrib.colors[3 * idx.vertex_index + 2],
+                                                  1.0) : Vector4(1.0, 1.0, 1.0, 1.0);
+                corners.push_back(corner);
             }
 
             index_offset += fnum;
@@ -6714,6 +6886,22 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
 
     if (invalidFaces > 0) {
         Log::warn("Model %s has %zu faces with out-of-range vertex indices, skipping them", filename.c_str(), invalidFaces);
+    }
+
+    // One vertex per face corner is what an OBJ face list gives: welded and ordered as a cooked
+    // mesh is (docs/specs/S53-model-import-cook.md R7)
+    {
+        std::vector<bool> keepOrder(indexMap.size(), false);
+        for (size_t i = 0; i < mesh.numSubmeshes && i < indexMap.size(); i++) {
+            keepOrder[i] = mesh.submeshes[i].material.alphaMode == MaterialAlphaMode::BLEND;
+        }
+        optimizeObjCorners(corners, indexMap, keepOrder);
+    }
+    for (const ObjCorner& corner : corners) {
+        mesh.buffer.addVector3(attVertex, corner.position);
+        mesh.buffer.addVector2(attTexcoord, corner.texcoord);
+        mesh.buffer.addVector3(attNormal, corner.normal);
+        mesh.buffer.addVector4(attColor, corner.color);
     }
 
     if (asyncLoad) {
@@ -6768,6 +6956,19 @@ bool MeshSystem::loadOBJ(Entity entity, const std::string filename, bool asyncLo
     model.loadedMergeStaticMeshes = model.mergeStaticMeshes;
 
     return true;
+}
+
+void MeshSystem::applyGLTFInstances(Entity entity, const std::vector<GltfInstance>& instances){
+    createInstancedMesh(entity);
+    InstancedMeshComponent& instmesh = scene->getComponent<InstancedMeshComponent>(entity);
+    instmesh.instances.clear();
+    instmesh.instances.reserve(instances.size());
+    for (const GltfInstance& instance : instances) {
+        instmesh.instances.push_back(gltfInstanceData(instance));
+    }
+    // the GPU instance buffer holds them all (the mesh loads after this)
+    instmesh.maxInstances = std::max(1u, static_cast<unsigned int>(instances.size()));
+    instmesh.needUpdateInstances = true;
 }
 
 void MeshSystem::createInstancedMesh(Entity entity){

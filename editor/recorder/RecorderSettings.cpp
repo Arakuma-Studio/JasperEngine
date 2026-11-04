@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <sstream>
 
 using namespace jasperengine;
@@ -304,6 +305,7 @@ std::vector<std::string> recorder::movieArguments(const std::string& encoder, Fo
     args.insert(args.end(), {"-pix_fmt", pixelFormat, "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709",
                              "-color_range", "tv"});
     if (format == Format::Mp4) args.insert(args.end(), {"-movflags", "+faststart"});
+    args.insert(args.end(), {"-f", format == Format::Mov ? "mov" : "mp4"});
     args.push_back(output.string());
     return args;
 }
@@ -316,6 +318,7 @@ std::vector<std::string> recorder::muxArguments(Format format, const fs::path& v
     } else {
         args.insert(args.end(), {"-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart"});
     }
+    args.insert(args.end(), {"-f", format == Format::Mov ? "mov" : "mp4"});
     args.push_back(output.string());
     return args;
 }
@@ -323,4 +326,85 @@ std::vector<std::string> recorder::muxArguments(Format format, const fs::path& v
 uint32_t recorder::audioFramesOf(int64_t frame, int frameRate, int sampleRate) {
     const auto at = [&](int64_t k) { return (int64_t)std::llround((double)k * (double)sampleRate / (double)frameRate); };
     return (uint32_t)(at(frame + 1) - at(frame));
+}
+
+std::vector<std::string> recorder::decodeCheckArguments(const fs::path& movie) {
+    return {"-hide_banner", "-nostdin", "-v", "error", "-nostats", "-progress", "pipe:1", "-i", movie.string(), "-map", "0:v:0", "-f", "null", "-"};
+}
+
+int64_t recorder::parseDecodedFrames(const std::string& output) {
+    int64_t frames = -1;
+    std::istringstream lines(output);
+    std::string line;
+    while (std::getline(lines, line)) {
+        if (line.rfind("frame=", 0) == 0) frames = std::strtoll(line.c_str() + 6, nullptr, 10);
+    }
+    return frames;
+}
+
+fs::path recorder::partialPath(const fs::path& output) {
+    fs::path name = output.stem();
+    name += ".partial";
+    name += output.extension();
+    return output.parent_path() / name;
+}
+
+uint64_t recorder::estimateRecordingBytes(const Settings& settings, int width, int height, int64_t frames) {
+    const double count = (double)(frames >= 0 ? frames : (int64_t)settings.frameRate * 60);
+    const double pixels = (double)width * (double)height * count;
+    if (settings.kind == Kind::ImageSequence) {
+        // RGBA at PNG's level 3: a game frame deflates to about a third
+        return (uint64_t)(pixels * 4.0 * 0.35);
+    }
+    // bits per pixel: the bitrates of movieArguments' hardware encoders (CRF lands near them), and
+    // ProRes 422 HQ's 220 Mb/s at 1080p30
+    const double bits = settings.format == Format::Mov ? 3.5 : (settings.quality == Quality::Low ? 0.05 : (settings.quality == Quality::Medium ? 0.1 : 0.2));
+    const double video = pixels * bits / 8.0;
+    if (!settings.captureAudio) return (uint64_t)video;
+    const double seconds = count / (double)std::max(settings.frameRate, 1);
+    const double wav = seconds * kAudioRate * kAudioChannels * 2.0;
+    const double muxedAudio = settings.format == Format::Mov ? wav : seconds * 192000.0 / 8.0;
+    return (uint64_t)(video * 2.0 + wav + muxedAudio);
+}
+
+std::string recorder::formatSize(uint64_t bytes) {
+    constexpr uint64_t kb = 1024, mb = kb * 1024, gb = mb * 1024;
+    char text[32];
+    if (bytes >= gb) std::snprintf(text, sizeof(text), "%.1f GB", (double)bytes / (double)gb);
+    else if (bytes >= mb) std::snprintf(text, sizeof(text), "%llu MB", (unsigned long long)(bytes / mb));
+    else std::snprintf(text, sizeof(text), "%llu KB", (unsigned long long)(bytes / kb));
+    return text;
+}
+
+std::string recorder::diskFullReason(uint64_t freeBytes) {
+    return "disk full, " + std::to_string(freeBytes / (1024 * 1024)) + " MB free";
+}
+
+bool recorder::isDiskFullMessage(const std::string& line) {
+    for (const char* words : {"No space left", "Disk quota exceeded", "not enough space", "ENOSPC"}) {
+        if (line.find(words) != std::string::npos) return true;
+    }
+    return false;
+}
+
+recorder::TestFaults recorder::parseTestFaults(const char* text) {
+    TestFaults faults;
+    if (!text) return faults;
+    std::istringstream items(text);
+    std::string item;
+    while (std::getline(items, item, ',')) {
+        const size_t mark = item.find_first_of("@=");
+        const std::string name = item.substr(0, mark);
+        const int64_t number = mark == std::string::npos ? 0 : std::strtoll(item.c_str() + mark + 1, nullptr, 10);
+        if (name == "audio") faults.audioWrite = number;
+        else if (name == "audio-header") faults.audioHeader = true;
+        else if (name == "video") faults.videoWrite = number;
+        else if (name == "encoder-kill") faults.encoderKill = number;
+        else if (name == "mux") faults.mux = true;
+        else if (name == "png") faults.pngWrite = number;
+        else if (name == "publish") faults.publish = true;
+        else if (name == "hold-limit") faults.holdLimitMs = number;
+        else if (name == "free") faults.freeBytes = number * 1024 * 1024;
+    }
+    return faults;
 }

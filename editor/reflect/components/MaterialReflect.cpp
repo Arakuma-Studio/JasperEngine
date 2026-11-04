@@ -179,6 +179,15 @@ namespace {
         return &static_cast<Material*>(material)->pbr.edit();
     }
 
+    // read, an unset one is its defaults and nothing is made
+    const void* extraPassPeek(const void* material) {
+        return &static_cast<const Material*>(material)->extraPass.get();
+    }
+
+    const void* pbrPeek(const void* material) {
+        return &static_cast<const Material*>(material)->pbr.get();
+    }
+
     constexpr FieldDesc kMaterialFields[] = {
         JE_FIELD(Material, name, .asset = AssetKind::Material),
         JE_FIELD(Material, baseColorFactor, .flags = ColorLinear, .label = "Base Color"),
@@ -221,10 +230,10 @@ namespace {
         JE_FIELD(Material, stencil, .structDesc = &kMaterialStencilStruct, .flags = ListWhole, .updateFlags = kMeshReload),
         JE_FIELD(Material, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kMeshReload, .min = -1.0f, .max = 15.0f),
         detail::makeField<MaterialPass>("extraPass", &extraPassRef,
-                                        FieldMeta{.flags = ListWhole, .updateFlags = kMeshReload | kTexture | UpdateFlags_Shader_Uniforms}),
+                                        FieldMeta{.flags = ListWhole, .updateFlags = kMeshReload | kTexture | UpdateFlags_Shader_Uniforms, .peek = &extraPassPeek}),
         JE_FIELD(Material, emissiveStrength),
         detail::makeField<MaterialPbrExtensions>("pbr", &pbrRef,
-                                                 FieldMeta{.ops = &ops::Value<MaterialPbrExtensions>, .structDesc = &kMaterialPbrStruct}),
+                                                 FieldMeta{.ops = &ops::Value<MaterialPbrExtensions>, .structDesc = &kMaterialPbrStruct, .peek = &pbrPeek}),
     };
 
 }

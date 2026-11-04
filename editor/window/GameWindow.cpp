@@ -10,6 +10,8 @@
 
 #include "imgui_internal.h"
 #include "Engine.h"
+#include "device/Device.h"
+#include "device/QualityResolver.h"
 #include "Platform.h"
 #include "Screen.h"
 #include "util/PlatformRules.h"
@@ -720,6 +722,9 @@ void editor::GameWindow::drawToolbar() {
         htmlUiDebuggerSceneId = NULL_PROJECT_SCENE;
     }
 
+    ImGui::SameLine(0, Theme::dpi(12.0f));
+    drawDeviceTierMenu();
+
     // Right side toggles, as icons when the view is too narrow for their names
     const char* debuggerLabel = "HTML UI Debugger##GameHtmlUiDebugger";
     const char* touchLabel = ICON_FA_MOBILE_SCREEN "##GameTouch";
@@ -870,6 +875,58 @@ void editor::GameWindow::drawCustomResolutionPopup() {
 
 // Device simulation (Unity's Device Simulator): a phone or tablet, how it is turned and the
 // language the game sees. Editor only: builds never see any of it.
+DeviceSimulation editor::GameWindow::getDeviceSimulation() const {
+    DeviceSimulation simulation;
+    if (settings.deviceTier >= 0)
+        simulation.tier = (DeviceTier)std::clamp(settings.deviceTier, 0, DEVICE_TIER_COUNT - 1);
+    if (settings.devicePlatform >= 0)
+        simulation.group = (DevicePlatformGroup)std::clamp(settings.devicePlatform, 0, DEVICE_PLATFORM_GROUP_COUNT - 1);
+    else if (Platform::getSimulation().device)
+        simulation.group = DevicePlatformGroup::Mobile;
+    if (settings.deviceThermal >= 0)
+        simulation.thermal = (ThermalState)std::clamp(settings.deviceThermal, 0, THERMAL_STATE_COUNT - 1);
+    return simulation;
+}
+
+void editor::GameWindow::drawDeviceTierMenu() {
+    const DeviceSimulation simulation = getDeviceSimulation();
+    std::string label = std::string("Device: ") + (simulation.tier ? DeviceNames::tierLabel(*simulation.tier) : "Auto");
+    if (settings.devicePlatform >= 0)
+        label += std::string(" | ") + DeviceNames::groupLabel(*simulation.group);
+    if (simulation.thermal)
+        label += std::string(" | ") + DeviceNames::thermalLabel(*simulation.thermal);
+    label += "##GameDeviceTier";
+    ImGui::SetNextItemWidth(std::min(ImGui::CalcTextSize(label.c_str(), nullptr, true).x + ImGui::GetFrameHeight() +
+                                     ImGui::GetStyle().FramePadding.x * 2.0f, Theme::dpi(260.0f)));
+    if (ImGui::BeginCombo("##GameDeviceTierCombo", label.c_str(), ImGuiComboFlags_HeightLarge)) {
+        auto item = [this](const char* name, int& field, int value) {
+            if (ImGui::Selectable(name, field == value)) {
+                field = value;
+                saveSettings();
+            }
+        };
+        ImGui::TextDisabled("Device Tier");
+        item("Auto##tier", settings.deviceTier, -1);
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++)
+            item((std::string(DeviceNames::tierLabel((DeviceTier)t)) + "##tier").c_str(), settings.deviceTier, t);
+        ImGui::Separator();
+        ImGui::TextDisabled("Platform");
+        item(Platform::getSimulation().device ? "Auto (Mobile)##platform" : "Auto (Desktop)##platform", settings.devicePlatform, -1);
+        for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++)
+            item((std::string(DeviceNames::groupLabel((DevicePlatformGroup)g)) + "##platform").c_str(), settings.devicePlatform, g);
+        ImGui::Separator();
+        ImGui::TextDisabled("Thermal State");
+        item("This Machine##thermal", settings.deviceThermal, -1);
+        for (int t = 0; t < THERMAL_STATE_COUNT; t++)
+            item((std::string(DeviceNames::thermalLabel((ThermalState)t)) + "##thermal").c_str(), settings.deviceThermal, t);
+        ImGui::EndCombo();
+    }
+    const DeviceDetection& detection = Device::getDetection();
+    ImGui::SetItemTooltip("Device simulation in Play: the Device Tier whose overrides apply (Project Settings > Quality > Device "
+                          "Tiers), the platform family whose table it reads and the thermal state the game sees. Auto applies no "
+                          "tier in the editor; this machine detects %s.", detection.detected ? detection.reason.c_str() : "nothing yet");
+}
+
 void editor::GameWindow::drawDeviceMenu() {
     const PlatformSimulation& simulation = Platform::getSimulation();
     const DeviceProfile* device = simulation.device;
@@ -1223,7 +1280,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[11][112];
+    char lines[12][112];
     int lineCount = 5;
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
@@ -1255,6 +1312,15 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     if (const DeviceProfile* device = Platform::getSimulation().device) {
         snprintf(lines[lineCount], sizeof(lines[lineCount]), "Device: %s, %s", device->name,
                  PlatformRules::orientationName(Platform::getSimulation().orientation));
+        lineCount++;
+    }
+    // the Device Tier in effect and the thermal response (S56)
+    {
+        const char* tier = Device::isTierApplied() ? DeviceNames::tierLabel(Device::getTier()) : "Auto (none applied)";
+        const ThermalState response = QualityResolver::getThermalResponse();
+        snprintf(lines[lineCount], sizeof(lines[lineCount]), "Device tier: %s (%s)  Thermal: %s%s", tier,
+                 DeviceNames::groupLabel(QualityResolver::getPlatformGroup()), DeviceNames::thermalLabel(Device::getThermalState()),
+                 response >= ThermalState::Serious ? ", responding" : "");
         lineCount++;
     }
     // Screen.safeArea, canvas units

@@ -13,6 +13,7 @@ import struct
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Audio Mixer"}
+CI = True
 TIMEOUT = 900
 
 MIXER = "audio/Main.mixer"   # a new project's assets folder is the project folder

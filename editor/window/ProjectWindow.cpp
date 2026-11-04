@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/AnimatorAssetDocument.h"
+#include "window/PoseAnimationWindow.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"

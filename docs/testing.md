@@ -19,6 +19,8 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Web gate | the web build in headless Chrome (WebGL2 on SwiftShader) | `tools/build.sh web`, then `tools/build.sh web-gate` | `build/test-results/web/` |
 | Android render gate | an APK on the Android emulator: logcat, GLES errors, and the screen against goldens (a lit 3D scene, 2D/UI, HTML UI) | `ANDROID_PROJECT=render-gate ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` (below; KVM servers A and C) | `build/android-emulator/<scene>/` |
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
+| Android packaging | what Build makes for Android, run for real: APK and App Bundle from the prebuilt player, the bundletool download (real URL), the debug and release keys, wrong passwords, `publish prepare`, then both installed on the emulator and their screens compared with the golden | `tools/ci/android_packaging.sh` (needs `tools/build.sh linux`, the Android player; KVM: server A) | `build/android-packaging/` |
+| iOS packaging | what Build makes for iOS on a Mac: the Xcode project through `xcodebuild`, installed and launched on a simulator device of its own (no window), a device build as far as signing, the IPA path without a developer account, `publish prepare` | `tools/ci/ios_packaging.sh` (needs the editor on a Mac with Xcode, `tools/players/ios_player.sh`; `IOS_PACKAGING_GOLDEN=1` compares the screen with `tools/fixtures/unified-lighting/golden/ios/screen.png`, from an iPhone 17 simulator) | `build/ios-packaging/` |
 | Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
@@ -58,9 +60,16 @@ every background mesh BVH build pending that long: the MCP tests use it to see t
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 `JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
+`JASPER_TEST_RECORDER_FAIL=<list>` forces Recorder failures (`editor/recorder/RecorderSettings.h`): `audio@N`,
+`audio-header`, `video@N`, `encoder-kill@N`, `mux`, `png@N`, `publish` (they read as a full disk),
+`hold-limit=<ms>` (the wait for a frame's loads) and `free=<MB>` (the free space seen); read once per
+recording, nothing when unset (`tools/mcp/tests/test_recorder_integrity.py`).
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
+its staging folder while that file exists, after creating `<path>.held`: the tests kill the editor
+there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/test_crash_leftovers.py`).
 
 ### HTML UI, MCP, smoke, web
 
@@ -78,7 +87,8 @@ loaded a model in the background while that file exists, so what else loads the 
   of a Chromium reference (`golden/browser/**`).
 - `tools/build.sh mcp-tests` runs `tools/mcp/run-tests.sh` in the Linux image against
   `build/linux/editor-install`. `MCP_SUITE=ci` (the default) runs the files that declare
-  `CI = True`; `MCP_SUITE=all` runs every file and needs the default fixture project, which is
+  `CI = True` (`tools/ci/check-mcp-ci-suite.py`, run by check-changed: every file is classified,
+  docs/mcp/README.md); `MCP_SUITE=all` runs every file and needs the default fixture project, which is
   not in git: `JASPER_FIXTURE`, else `build/fixture-unity` of the checkout or the main checkout,
   else `~/je/fixture-unity` (the build servers' copy), mounted at `/fixture`. The harness looks in
   the same places (`harness.default_fixture()`); without a fixture, the tests that need it skip
@@ -87,6 +97,9 @@ loaded a model in the background while that file exists, so what else loads the 
   `test_mesh_raycast.py`'s web latency gate. The Linux image carries the suite's test tools
   (lua-language-server, clangd, FFmpeg with AV1, chrome-headless-shell), so none of their tests
   skips there. See `docs/mcp/README.md` for writing MCP tests.
+- `test_audio_meter.py` takes no editor: it compiles `engine/tests/core/audio/AudioMeterProbe.cpp` with
+  `AudioMeter.cpp` and `TruePeak.cpp` alone (so it needs a C++ compiler; FFmpeg decodes the fixtures)
+  and compares the meter with pyloudnorm (`uv run --with`, pinned in the test).
 - An MCP test asserts behaviour; a wall-clock budget (a CLI start in 300 ms, a reload frame under
   16 ms, ...) goes through `harness.over_budget(what, measures, budget)`, which prints a `[bench]`
   line and fails only when `JASPER_MCP_PERF_SLACK` is set: a shared build server's load alone
@@ -349,6 +362,7 @@ continue to fail on any native crash.
 tools/check-changed                           # build and test what the change touches
 tools/check-changed --dry-run                 # the plan only
 tools/check-changed --base main               # another base (default: the merge base with oe-port, else main, origin/main)
+tools/check-changed --no-mcp                  # builds and unit tests only, said so in the summary and not cached
 tools/build.sh exec linux tools/check-changed # inside the Linux image (no web or Android build there)
 ```
 
@@ -523,7 +537,8 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
   `AutosaveEncodeBench` (S03), `VcsBench` (S29: status poll, snapshot swap, scene diff; the
-  main-thread encode is reported) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
+  main-thread encode is reported), `ChangedUpdateFlagsBench` (S71: 50 us a call per component) and
+  `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
   cost, `test_reflection.py::test_inspector_frame_cost`, reads the same variable) (ratios such as a report's overhead stay checked everywhere). The MCP
   texture storm's frame budget (`test_jobs_memory_ui.py`, S06 AC23) reads the same variable; it assumes
   a machine whose decode workers and software renderer do not share cores (8+ hardware threads):
@@ -687,7 +702,8 @@ to off there, and the exporter never sets them: a game configures and builds exa
 ```sh
 SANITIZE=address,undefined tools/build.sh unit-tests   # build/linux/core-tests-address-undefined, Debug
 SANITIZE=thread UNIT_TEST_ARGS='--gtest_filter=-*Gpu*' tools/build.sh unit-tests
-SANITIZE=address,undefined tools/build.sh linux        # an instrumented editor: build/linux/editor-address-undefined
+SANITIZE=address,undefined tools/build.sh linux        # an instrumented editor: build/linux/editor-address-undefined(-install)
+SANITIZE=address,undefined tools/build.sh mcp-tests tools/mcp/tests/test_protocol.py   # MCP tests on that install
 SANITIZE=address,undefined HTMLUI_TEST_ARGS='--gtest_filter=-*Golden*' tools/build.sh htmlui-tests
 ```
 
@@ -699,6 +715,14 @@ time budgets. `thread` with `address` is a configure error, as are `thread` and 
 and any sanitizer on Emscripten, Android or iOS. On MSVC, `address` switches to the DLL runtime,
 drops `/RTC1`, links with `/INCREMENTAL:NO`, defines `_DISABLE_STL_ANNOTATION`, and copies
 `clang_rt.asan_dynamic-x86_64.dll` next to every executable so they start from a plain shell.
+
+A sanitizer `linux` build installs like a normal one, unstripped (the reports need the symbols),
+into `build/linux/editor-<sanitizers>-install`: its build type is Debug by default, so the install
+rules' configurations (`JASPERENGINE_INSTALL_CONFIGURATIONS`) add Debug and RelWithDebInfo when
+`JASPERENGINE_SANITIZE` is on. `SANITIZE=... tools/build.sh mcp-tests` runs the harness on that install
+(`JASPER_EDITOR` names it, with TSan's `setarch` wrapper); a sanitizer report ends the editor, and so the test.
+Leak checking is off in that run: the editor's exit reports what Xvfb's unloaded GL driver kept, frames of an
+unmapped module that no suppression can name. The unit tests hold the leak check.
 
 `tools/build.sh` passes these runtime options on every run:
 `ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:strict_string_checks=1`,
@@ -773,6 +797,19 @@ edit rebuilds of one tree, with the host's load recorded) and `tools/perf/build_
   the editor, its Windows command-line twin and the editor test targets link it.
 - **Vendored libraries**: Jolt is unity-built where nothing ships (`JASPERENGINE_VENDORED_UNITY`);
   the others build source by source, and ccache serves them to every tree of a configuration.
+- **Header fan-out** (S72): `JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES`, defined on the engine's and
+  the editor's targets (and the editor's tests, through the editor's definitions), turns off the
+  includes `registry/EntityRegistry.h` and `object/GameObject.h` keep for code
+  outside the engine: a source there includes each component and object it uses
+  (`component/Transform.h`, `object/Mesh.h`), and a header that only names them takes
+  `ecs/ComponentFwd.h` or a forward declaration. A game's code, the exported template and the core
+  tests build without it and see everything as before. `tools/check_fanout.py` (run by
+  `tools/check-changed`; `--table` prints the numbers) fails when a component header rebuilds more
+  than 150 editor units, or the median one more than 80, from the tree's `ninja -t deps`.
+  `tools/check_headers.py` compiles each header alone, without the precompiled header; `tools/check-changed`
+  runs it on the headers a change edits. "Incomplete type" in a new source of `editor/` or `engine/core/`
+  means an include this file used to get by accident: add it there, not to a hub.
+
 - **C++-script games** (S30's Compile builds) build in a compile tree per kit in the user cache
   (`<cache>/jasperengine/compile-builds/<key>/`), shared by every project of that kit: the engine
   is compiled once and a game compiles its own units. A project's runtime settings (window,

@@ -7,6 +7,13 @@
 // Gamecrafters Guild Limited and contributors, MIT License (NOTICE.md).
 
 #include "ScenePicker.h"
+#include "component/AudioSourceComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/LightComponent.h"
+#include "component/MeshComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
+#include "component/CameraComponent.h"
 #include "IconPicker.h"
 
 #include "component/LineRendererComponent.h"

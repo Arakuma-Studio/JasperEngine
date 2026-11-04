@@ -8,6 +8,9 @@
 // 9.R8): its references are Animation Player entries {clip: path hint, guid}.
 
 #include "Project.h"
+#include "component/VertexAnimatorComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/PrefabComponent.h"
 #include "command/CommandHistory.h"
 #include "asset/AssetFileWrite.h"
 #include "EditorHost.h"

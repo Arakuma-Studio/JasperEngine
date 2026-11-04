@@ -615,6 +615,7 @@ bool editor::Exporter::writeGameConfig() {
     game.mobilePbrTier = project->getMobilePbrTier();
     game.lightMode = project->getLightMode();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
+    game.device = project->getDeviceSettings();
     game.tags = project->getTags();
     game.layerNames = project->getLayerNames();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {
@@ -1180,10 +1181,12 @@ bool editor::Exporter::finalizeIOS() {
     std::string error;
     std::vector<std::string> notes;
     std::vector<fs::path> artifacts;
-    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, error)) {
+    std::vector<BuildWarning> warnings;
+    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
         setError(error);
         return false;
     }
+    for (const BuildWarning& warning : warnings) warn(warning.code, warning.message);
     for (const std::string& note : notes) Out::info("%s", note.c_str());
     std::lock_guard<std::mutex> lock(progressMutex);
     result.notes = notes;

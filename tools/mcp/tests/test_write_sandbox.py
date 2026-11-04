@@ -15,6 +15,7 @@ from harness import Editor, skip, symlinks_permitted
 import pngdiff
 
 EDITOR = {"create": True, "name": "Write Sandbox"}
+CI = True
 
 OUT: dict = {}
 

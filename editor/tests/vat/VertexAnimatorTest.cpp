@@ -11,6 +11,7 @@
 // the edit-mode clock, and the Lua API through its bindings.
 
 #include <gtest/gtest.h>
+#include "component/ScriptComponent.h"
 
 #include "engine/physics/PhysicsTestScene.h"
 

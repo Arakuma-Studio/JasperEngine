@@ -4,6 +4,7 @@
 #ifndef CAMERA_COMPONENT_H
 #define CAMERA_COMPONENT_H
 
+#include "camera/CameraType.h"
 #include "math/Vector3.h"
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
@@ -19,12 +20,6 @@
 #define DEFAULT_PERSPECTIVE_FAR     200
 
 namespace jasperengine{
-
-    enum class CameraType{
-        CAMERA_UI,
-        CAMERA_ORTHO,
-        CAMERA_PERSPECTIVE
-    };
 
     enum FrustumPlane{
         FRUSTUM_PLANE_NEAR   = 0,

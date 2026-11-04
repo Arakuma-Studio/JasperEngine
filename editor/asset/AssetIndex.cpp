@@ -711,10 +711,11 @@ void AssetIndex::collectReferences(const Guid& target, const std::string& target
             for (const Guid& former : info.formerGuids) targets.insert(former);
         }
     }
+    const std::string directoryPrefix = targetPath.empty() ? std::string() : targetPath + "/";
     auto matches = [&](const DepEdge& edge) {
         if (!edge.target.isNull() && targets.count(edge.target)) return true;
         if (!targetPath.empty() && edge.targetPath == targetPath && (edge.target.isNull() || isTextEdge(edge.kind))) return true;
-        if (!targetPath.empty() && isTextEdge(edge.kind) && edge.targetPath.compare(0, targetPath.size() + 1, targetPath + "/") == 0) return true;
+        if (!directoryPrefix.empty() && isTextEdge(edge.kind) && edge.targetPath.compare(0, directoryPrefix.size(), directoryPrefix) == 0) return true;
         return false;
     };
     std::unordered_set<Guid> candidates;
@@ -727,17 +728,18 @@ void AssetIndex::collectReferences(const Guid& target, const std::string& target
         if (it != byTargetPath.end()) candidates.insert(it->second.begin(), it->second.end());
         // a directory: the text edges into it
         for (const auto& [path, list] : byTargetPath) {
-            if (path.compare(0, targetPath.size() + 1, targetPath + "/") == 0) candidates.insert(list.begin(), list.end());
+            if (path.compare(0, directoryPrefix.size(), directoryPrefix) == 0) candidates.insert(list.begin(), list.end());
         }
     }
     for (const auto& [guid, edges] : memory) {
         candidates.insert(guid);
     }
     std::vector<Guid> ordered(candidates.begin(), candidates.end());
+    const std::string noPath;
     std::sort(ordered.begin(), ordered.end(), [&](const Guid& a, const Guid& b) {
         auto pa = referrers.find(a), pb = referrers.find(b);
-        const std::string na = pa != referrers.end() ? pa->second.path : std::string();
-        const std::string nb = pb != referrers.end() ? pb->second.path : std::string();
+        const std::string& na = pa != referrers.end() ? pa->second.path : noPath;
+        const std::string& nb = pb != referrers.end() ? pb->second.path : noPath;
         return na != nb ? na < nb : a < b;
     });
     for (const Guid& guid : ordered) {

@@ -17,9 +17,9 @@ namespace jasperengine {
     };
 
     // The device tier the S57 lighting features scale with (screen-tile grid, contact shadows'
-    // resolution, Light Mode Automatic). S44's QualityResolver sets it from the GPU database
-    // (setTier); until then it is the platform's default (desktop High, web Medium, Android and
-    // iOS Low). Stored as ints: append only.
+    // resolution, Light Mode Automatic): S56's device tier where one applies (Device::getTier),
+    // else the platform's default (desktop High, web Medium, Android and iOS Low). Stored as
+    // ints: append only.
     enum class LightingTier : int {
         LOW,
         MEDIUM,
@@ -32,7 +32,7 @@ namespace jasperengine {
         // the default tier of a platform (Engine::Platform as an int: MacOS, iOS, Web, Android,
         // Linux, Windows)
         static LightingTier defaultTier(int platform);
-        // the tier this build draws at: the one set, else this platform's default
+        // the tier this build draws at: the one set, else the device's, else this platform's default
         static LightingTier getTier();
         static void setTier(LightingTier tier);
         static void resetTier();

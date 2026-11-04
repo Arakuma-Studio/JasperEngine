@@ -8,6 +8,7 @@
 // JASPER_TEST_PERF_SLACK (the benchmark server E: docs/testing.md).
 
 #include <gtest/gtest.h>
+#include "util/UiItemLocator.h"
 
 #include "support/EditorTestSupport.h"
 #include "support/TextureCorpus.h"

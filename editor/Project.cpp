@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "render/LayerViewCamera.h"
+#include "component/MirrorComponent.h"
+#include "script/LuaBinding.h"
+#include "subsystem/ActionSystem.h"
+#include "subsystem/AudioSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "component/ButtonComponent.h"
+#include "component/MeshPolygonComponent.h"
 #include "diag/HangWatchdog.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ScriptReloadService.h"
@@ -120,6 +128,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
 #include "input/InputActions.h"
@@ -1716,6 +1725,15 @@ void editor::Project::setHtmlUiRenderSettings(const HtmlUiRenderSettings& settin
 
 const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() const{
     return htmlUiRender;
+}
+
+void editor::Project::setDeviceSettings(const DeviceSettings& settings){
+    deviceSettings = settings;
+    Device::setProjectSettings(deviceSettings);
+}
+
+const DeviceSettings& editor::Project::getDeviceSettings() const{
+    return deviceSettings;
 }
 
 void editor::Project::setShadowTier(int platform, ShadowTier tier){
@@ -5680,6 +5698,7 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
+    setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
@@ -6093,7 +6112,8 @@ bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
     auto entitiesNode = sceneProject->playStateSnapshot["entities"];
     size_t insertAt = 0;
     for (const auto& entityNode : entitiesNode) {
-        std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
+        // a Mesh Play left as it was, moved or not, is kept: decoding it reloads it at the next frame
+        std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true, nullptr, true);
 
         // A script can destroy entities while playing and the decode recreates them, but
         // only the tracked list makes them visible to the editor again
@@ -7450,6 +7470,7 @@ void editor::Project::configureGenerator() {
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
@@ -9528,6 +9549,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     generator.setAtmosphereQuality(atmosphereQuality);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);

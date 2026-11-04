@@ -21,6 +21,7 @@
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/DeviceSettingsCmd.h"
 #include "DebugSettings.h"
 #include "Generator.h"
 #include "audio/AudioMixer.h"
@@ -596,6 +597,150 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
         return true;
     };
     return s;
+}
+
+// One key of the device settings (spec S56), applied as one undoable step (undo scope project):
+// `set` changes a copy, which a DeviceSettingsCmd applies when it differs
+Setting deviceSetting(const std::string& key, const std::string& type, const std::string& description,
+                      std::function<Json(const DeviceSettings&)> get, std::function<bool(DeviceSettings&, const Json&, std::string&)> set) {
+    Setting s;
+    s.key = key;
+    s.type = type;
+    s.description = description + " Undoable (undo scope project).";
+    s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getDeviceSettings()); };
+    s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        Project* p = ctx.project();
+        DeviceSettings changed = p->getDeviceSettings();
+        if (!set(changed, value, error)) return false;
+        if (apply && changed != p->getDeviceSettings()) {
+            auto* command = new DeviceSettingsCmd(p, changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the device settings could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
+// a tier's cells as JSON: every field, null where it inherits; enumerated cells by name
+Json deviceTierJson(const DeviceTierOverrides& tier) {
+    Json out = Json::object();
+    for (int f = 0; f < DEVICE_OVERRIDE_COUNT; f++) {
+        const DeviceOverride field = (DeviceOverride)f;
+        const DeviceOverrideInfo& info = DeviceOverrides::info(field);
+        const std::optional<float>& cell = tier.get(field);
+        if (!cell) {
+            out[info.key] = nullptr;
+        } else if (info.kind == DeviceOverrideInfo::Kind::Off) {
+            out[info.key] = false;
+        } else if (info.names) {
+            out[info.key] = lowerText(DeviceOverrides::format(field, *cell));
+        } else if (info.integer) {
+            out[info.key] = (int)*cell;
+        } else {
+            out[info.key] = *cell;
+        }
+    }
+    return out;
+}
+
+// merges {field: value | null} into a tier: a listed field is replaced, null inherits again
+bool mergeDeviceTier(DeviceTierOverrides& tier, const Json& value, std::string& error) {
+    if (!value.is_object()) {
+        error = "must be an object of cells ({\"render_scale\": 0.6, \"ssao\": false, \"msaa_samples\": null}); null inherits";
+        return false;
+    }
+    for (auto it = value.begin(); it != value.end(); ++it) {
+        DeviceOverride field;
+        if (!DeviceOverrides::fromKey(it.key(), field)) {
+            std::string keys;
+            for (int f = 0; f < DEVICE_OVERRIDE_COUNT; f++) keys += std::string(f ? ", " : "") + DeviceOverrides::info((DeviceOverride)f).key;
+            error = "\"" + it.key() + "\" is not a cell (" + keys + ")";
+            return false;
+        }
+        const Json& cell = it.value();
+        float number = 0.0f;
+        if (cell.is_null()) {
+            tier.set(field, std::nullopt);
+            continue;
+        }
+        if (cell.is_boolean()) {
+            if (DeviceOverrides::info(field).kind != DeviceOverrideInfo::Kind::Off || cell.get<bool>()) {
+                error = it.key() + (DeviceOverrides::info(field).kind == DeviceOverrideInfo::Kind::Off
+                                    ? ": a tier only turns it off (false); null inherits" : ": must be a number");
+                return false;
+            }
+        } else if (cell.is_string()) {
+            if (!DeviceOverrides::parse(field, cell.get<std::string>(), number, error)) return false;
+        } else if (cell.is_number()) {
+            number = cell.get<float>();
+            if (!DeviceOverrides::validate(field, number, error)) return false;
+        } else {
+            error = it.key() + ": must be a number, a name or null";
+            return false;
+        }
+        tier.set(field, number);
+    }
+    return true;
+}
+
+// Project Settings > Quality > Device Tiers and the rest of the device settings (spec S56)
+void addDeviceSettings(const std::function<void(Setting)>& add) {
+    for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++) {
+        const DevicePlatformGroup group = (DevicePlatformGroup)g;
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++) {
+            const DeviceTier tier = (DeviceTier)t;
+            add(deviceSetting(std::string("quality.device_tiers.") + DeviceNames::group(group) + "." + DeviceNames::tier(tier), "object",
+                std::string("The ") + DeviceNames::tierLabel(tier) + " tier's overrides on " + DeviceNames::groupLabel(group) +
+                " (docs/device-tiers.md): an object of cells merged in, null inherits the project's value; caps lower, never raise "
+                "(render_scale, msaa_samples, shadow_quality, shadow_distance, lit_quality, target_frame_rate, max_pixel_lights, "
+                "particle_budget), texture_quality drops at least, bloom/ssao/volumetrics false turns them off, lod_bias and "
+                "shadow_lod_bias multiply.",
+                [group, tier](const DeviceSettings& d) { return deviceTierJson(d.tier(group, tier)); },
+                [group, tier](DeviceSettings& d, const Json& v, std::string& e) { return mergeDeviceTier(d.tier(group, tier), v, e); }));
+        }
+        add(deviceSetting(std::string("quality.thermal_response.") + DeviceNames::group(group), "bool",
+            std::string("On ") + DeviceNames::groupLabel(group) + ", a Serious thermal state lowers the render scale by 20% and caps the "
+            "frame rate at 30; Critical also takes the tier below's shadows and post-processing; recovery after 30 s.",
+            [g](const DeviceSettings& d) { return Json((bool)d.thermalResponse[g]); },
+            [g](DeviceSettings& d, const Json& v, std::string& e) {
+                bool on;
+                if (!readBool(v, on, e)) return false;
+                d.thermalResponse[g] = on;
+                return true;
+            }));
+        add(deviceSetting(std::string("graphics.upload_budget_mb.") + DeviceNames::group(group), "int",
+            std::string("MB of queued texture and buffer uploads a ") + DeviceNames::groupLabel(group) +
+            " frame runs at most (a larger one goes alone); the rest waits for the next frames.",
+            [g](const DeviceSettings& d) { return Json(d.uploadBudgetMB[g]); },
+            [g](DeviceSettings& d, const Json& v, std::string& e) {
+                long long mb;
+                if (!readInt(v, DeviceSettings::MIN_UPLOAD_BUDGET_MB, DeviceSettings::MAX_UPLOAD_BUDGET_MB, mb, e)) return false;
+                d.uploadBudgetMB[g] = (int)mb;
+                return true;
+            }));
+    }
+    add(deviceSetting("quality.lod_bias", "number",
+        "Multiplies every mesh's LOD Bias (below 1 switches to coarser LODs nearer); a Device Tier's lod_bias multiplies it again.",
+        [](const DeviceSettings& d) { return Json(d.lodBias); },
+        [](DeviceSettings& d, const Json& v, std::string& e) {
+            double bias;
+            if (!readNumber(v, 0.05, 8.0, bias, e)) return false;
+            d.lodBias = (float)bias;
+            return true;
+        }));
+    add(deviceSetting("quality.shadow_lod_bias", "number",
+        "Multiplies the LOD bias of what shadow maps draw; a Device Tier's shadow_lod_bias multiplies it again.",
+        [](const DeviceSettings& d) { return Json(d.shadowLodBias); },
+        [](DeviceSettings& d, const Json& v, std::string& e) {
+            double bias;
+            if (!readNumber(v, 0.05, 8.0, bias, e)) return false;
+            d.shadowLodBias = (float)bias;
+            return true;
+        }));
 }
 
 // "mainThreadBudgetMs" -> "main_thread_budget_ms"
@@ -2637,6 +2782,8 @@ std::vector<Setting> mcpSettingsTable() {
         }
         // ---- graphics: shader creation (spec S32), from its reflection table
         addShaderCreationSettings(add);
+        // ---- quality: device tiers, LOD biases, thermal response; graphics: upload budget (S56)
+        addDeviceSettings(add);
         return t;
     }();
 }
@@ -2763,6 +2910,8 @@ const Placement placements[] = {
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.lod_bias", "Quality", "", "LOD Bias", "lod level of detail bias meshes distance"},
+    {"quality.shadow_lod_bias", "Quality", "", "Shadow LOD Bias", "lod level of detail shadows casters bias"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},
@@ -2856,6 +3005,44 @@ void shaderCreationRowPlacement(const std::string& key, SettingRow& row) {
         if (snakeCase(field.name) == name && field.label)
             row.label = field.label;
     }
+}
+
+// Quality > Device Tiers (quality.device_tiers.<group>.<tier>), Quality > Thermal Response
+// (quality.thermal_response.<group>), Graphics > Upload Budget (graphics.upload_budget_mb.<group>)
+bool deviceRowPlacement(const std::string& key, SettingRow& row) {
+    auto groupLabel = [](const std::string& name) {
+        DevicePlatformGroup group;
+        return DeviceNames::groupFromName(name.c_str(), group) ? std::string(DeviceNames::groupLabel(group)) : name;
+    };
+    static const std::string tiers = "quality.device_tiers.";
+    static const std::string thermal = "quality.thermal_response.";
+    static const std::string upload = "graphics.upload_budget_mb.";
+    if (key.rfind(tiers, 0) == 0) {
+        const std::string rest = key.substr(tiers.size());
+        const size_t dot = rest.find('.');
+        DeviceTier tier = DeviceTier::High;
+        DeviceNames::tierFromName(rest.substr(dot + 1).c_str(), tier);
+        row.page = "Quality";
+        row.section = "Device Tiers";
+        row.label = std::string(DeviceNames::tierLabel(tier)) + " (" + groupLabel(rest.substr(0, dot)) + ")";
+        row.keywords = "device tier gpu low medium high ultra render scale msaa shadows lod bias texture bloom ssao volumetrics frame rate lights particles";
+        return true;
+    }
+    if (key.rfind(thermal, 0) == 0) {
+        row.page = "Quality";
+        row.section = "Thermal Response";
+        row.label = "Thermal Response (" + groupLabel(key.substr(thermal.size())) + ")";
+        row.keywords = "thermal throttling heat battery render scale frame rate";
+        return true;
+    }
+    if (key.rfind(upload, 0) == 0) {
+        row.page = "Graphics";
+        row.section = "Upload Budget";
+        row.label = "Upload Budget MB (" + groupLabel(key.substr(upload.size())) + ")";
+        row.keywords = "upload budget streaming textures buffers hitch megabytes per frame";
+        return true;
+    }
+    return false;
 }
 
 void textureRowPlacement(const std::string& key, SettingRow& row) {
@@ -3004,7 +3191,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             shaderCreationRowPlacement(setting.key, row);
         } else if (setting.key.rfind("debug.", 0) == 0) {
             debugRowPlacement(setting.key, row);
-        } else {
+        } else if (!deviceRowPlacement(setting.key, row)) {
             row.page = setting.preference ? "General" : "Editor";
             row.label = titleCase(setting.key);
         }

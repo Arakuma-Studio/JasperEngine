@@ -30,6 +30,8 @@ import pngdiff
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "LinesTrailsTest"}
+CI_EXCLUDED = ("long-running (over 2 minutes on a loaded server: 14 tests compared in pixels); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 HERE = Path(__file__).resolve().parent

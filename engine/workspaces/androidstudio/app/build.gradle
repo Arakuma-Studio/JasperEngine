@@ -13,7 +13,7 @@ def jasperengineRootAbs = file(jasperengineRoot).toString()
 // read back from the APK (stable-ids.txt) so the editor's aapt2 link of a game gives the same ones
 // (tools/players/android_player.sh collects the outputs, and the ids from the APK)
 def jasperPlayer = project.findProperty("jasperPlayer") == "true"
-// -PjasperBackend=gles3|vulkan: the player's graphics backend (the engine's default otherwise)
+// -PjasperBackend=gles3: the player's graphics backend (the engine's default otherwise)
 def jasperBackend = project.findProperty("jasperBackend")
 // -PjasperPlayerVariant=<name>: the release player variant (full when not given)
 def jasperPlayerVariant = project.findProperty("jasperPlayerVariant")

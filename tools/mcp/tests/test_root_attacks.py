@@ -12,6 +12,7 @@ import yaml
 from harness import Editor, skip, symlinks_permitted
 
 EDITOR = {"create": True, "name": "Root Attacks"}
+CI = True
 TIMEOUT = 900
 
 

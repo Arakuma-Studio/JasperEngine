@@ -14,6 +14,7 @@
 #include "LuaBridgeAddon.h"
 
 #include "Engine.h"
+#include "device/Device.h"
 
 #include <climits>
 #include <cmath>
@@ -1537,6 +1538,24 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("LandscapeRight", DeviceOrientation::LandscapeRight)
         .addVariable("FaceUp", DeviceOrientation::FaceUp)
         .addVariable("FaceDown", DeviceOrientation::FaceDown)
+        .endNamespace();
+
+    // the quality tier a device gets (Device.tier, Device.setTier; docs/device-tiers.md)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("DeviceTier")
+        .addVariable("Low", DeviceTier::Low)
+        .addVariable("Medium", DeviceTier::Medium)
+        .addVariable("High", DeviceTier::High)
+        .addVariable("Ultra", DeviceTier::Ultra)
+        .endNamespace();
+
+    // the platform's thermal state (Device.thermalState, Device.onThermalStateChanged)
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ThermalState")
+        .addVariable("Nominal", ThermalState::Nominal)
+        .addVariable("Fair", ThermalState::Fair)
+        .addVariable("Serious", ThermalState::Serious)
+        .addVariable("Critical", ThermalState::Critical)
         .endNamespace();
 
     // Unity's DeviceType (System.getDeviceType)
@@ -3864,6 +3883,30 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("gameplayStopCrazyGames", [] () { return System::instance().gameplayStopCrazyGames(); })
         .addStaticFunction("loadingStartCrazyGames", [] () { return System::instance().loadingStartCrazyGames(); })
         .addStaticFunction("loadingStopCrazyGames", [] () { return System::instance().loadingStopCrazyGames(); })
+        .endClass();
+
+    // The device the game runs on (docs/device-tiers.md): its GPU, the Device Tier it gets, the
+    // thermal state and memory warnings
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Device>("Device")
+        // the Device Tier in effect (DeviceTier): setTier's, else the detected one
+        .addStaticProperty("tier", &Device::getTier)
+        // the GPU's name, as detection read it ("Adreno (TM) 650", "Apple A15 GPU")
+        .addStaticProperty("gpuName", &Device::getGpuName)
+        // why the device got its tier: "Adreno (TM) 650, rule name (adreno 650), tier Medium"
+        .addStaticProperty("tierReason", [] () { return Device::getDetection().reason; })
+        // whether a tier's overrides apply (false in the editor until a tier is simulated or set)
+        .addStaticProperty("tierApplied", &Device::isTierApplied)
+        // the platform's thermal state (ThermalState); Nominal on desktops and the web
+        .addStaticProperty("thermalState", &Device::getThermalState)
+        // a graphics menu's choice: this tier's overrides for the rest of the run
+        .addStaticFunction("setTier", &Device::setTier)
+        // back to the detected tier
+        .addStaticFunction("resetTier", &Device::resetTier)
+        // the thermal state changed: function(state) with the new ThermalState
+        .addStaticProperty("onThermalStateChanged", [] () { return &Device::onThermalStateChanged; }, [] (lua_State* L) { Device::onThermalStateChanged = L; })
+        // a low-memory warning was handled: the caches were cleared and textures keep a mip off
+        .addStaticProperty("onLowMemory", [] () { return &Device::onLowMemory; }, [] (lua_State* L) { Device::onLowMemory = L; })
         .endClass();
 
     luabridge::getGlobalNamespace(L)

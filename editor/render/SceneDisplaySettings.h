@@ -1,0 +1,40 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+#pragma once
+
+#include "navigation/NavigationOverlay.h"
+
+namespace jasperengine::editor{
+
+    struct SceneDisplaySettings {
+        bool showAllJoints       = false;
+        bool showAllBones        = false;
+        bool showAllBodies       = false;
+        bool hideCameraView      = false;
+        bool hideLightIcons      = false;
+        bool hideSoundIcons      = false;
+        bool hideContainerGuides = false;
+        bool showOrigin          = true;
+        bool showGrid3D          = true;
+        bool hideSelectionOutline = false;
+        bool disableFaceCulling  = false;
+        bool disableFog          = false;
+        // the Scene view draws without the volumetric clouds
+        bool disableClouds       = false;
+        // the scene's post-processing in the Scene view (off by default: the Game view shows it)
+        bool showPostProcessing  = false;
+        bool showGrid2D          = false;
+        float gridSpacing2D      = 50.0f;
+        float gridSpacing3D      = 1.0f;
+        bool snapToGrid          = false;
+        bool snapTile            = false;
+        bool snapRotation        = false;
+        float rotationSnapDegrees = 15.0f;
+        // every lattice's cage, not only the selected ones' (faint)
+        bool showAllLattices     = false;
+        // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
+        NavOverlaySettings navigation;
+    };
+
+}

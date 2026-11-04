@@ -159,3 +159,81 @@ Out of scope:
 
 - **Tier data quality** for phones is uneven. Default: rely on family patterns and heuristics, and
   the logged reason makes misclassification visible.
+
+## Decisions
+
+- **A tier never raises quality.** Every cell caps the project's or the scene's value (Render
+  Scale, MSAA, Shadow Quality, Shadow Distance, Lit Quality, Target Frame Rate, Max Pixel Lights,
+  Particle Budget), Texture Quality drops at least as many mips, and Bloom, SSAO and Volumetrics can
+  only be turned off. The LOD biases multiply (contract C4). This keeps R13 by construction: the
+  default High and Ultra columns are empty, and no cell can enable an effect a scene did not author
+  (nor ask a build for shadow variants it did not cook).
+- **The table has one column per tier per platform family** (Desktop, Mobile, Web: the families
+  the texture and atmosphere settings already use), not per OS. Android and iOS share Mobile.
+- **Shadow LOD Bias is a row too** (C4 resolves it), next to the project-wide `quality.lod_bias` and
+  `quality.shadow_lod_bias` (default 1). It is a thermal-critical cell, LOD Bias is not (content).
+- **The editor applies no detected tier.** Detection runs in the editor (get_device_info, the
+  Project Settings preview), but its views and tests render the project's values until the Game
+  view simulates a tier or a script calls `Device.setTier`. Otherwise every editor golden and MCP
+  test would depend on the machine's GPU (llvmpipe in CI detects Low). Players apply the detected
+  tier once their startup code calls `Device::configure` (the generated `main.cpp` and the prebuilt
+  player always do); unit tests never do.
+- **Game view simulation** is a toolbar preference (Device: tier, platform family, thermal state),
+  applied each frame of Play and ended by Play's stop. The platform family's Auto is Mobile while
+  the Game view simulates a phone. The thermal choice is not saved across editor sessions.
+- **Thermal Response is a setting per platform family**: on for Mobile, off for Desktop and Web.
+  macOS reports NSProcessInfo's state (R12) but does not act on it by default ("desktop ... stays
+  Nominal" in R6 is Windows, Linux and the web, which have no signal).
+- **Recovery** steps down one state per 30 s spent below the applied state, and any reading at or
+  above it restarts the wait. Stepping up is immediate. Critical with no tier applied takes High's
+  cells (the project's values count as Ultra).
+- **`Device.thermalState` and `onThermalStateChanged` are the platform's state**, so a game can react
+  itself; `get_device_info` reports the response's state (`thermal_response`) beside it.
+- **Memory pressure** keeps one more mip off streamed textures for the rest of the run
+  (`MAX_MEMORY_DROP` 1), clears the pools' unused entries (`Engine::clearUnusedPools`), and fires
+  `Device.onLowMemory` at the next frame (`Engine.onLowMemory` still fires at once, as before).
+  Several warnings in one frame are one response. Android counts `onTrimMemory` at RUNNING_LOW and
+  above except UI_HIDDEN (not pressure). The web warns when the wasm heap passes 90% of its maximum
+  or Chromium's `performance.memory` 90% of its limit, re-armed under 80%.
+- **Android**: the listener (API 29+) and the game thread's 2 s poll of `getCurrentThermalStatus` and,
+  from API 30, `getThermalHeadroom(10)` (at least 1: Serious, at least 0.85: Fair). The poll is the
+  fallback where the listener alone reports (API 29). Statuses map light to Fair, moderate to Serious,
+  severe and above to Critical. The state crosses JNI as static fields of `JasperPlatform`, the
+  pattern the display rotation already uses.
+- **GPU names** are matched normalized; the web reads WebGL's unmasked renderer through
+  `System::getGpuRendererName` (WEBGL_debug_renderer_info). ANGLE strings carry the PCI device id,
+  which the database's PC rows keep. Android's Vulkan ids are dropped (no string JE reads has them).
+  The Forge rows with an UNDEFINED preset are left out, and a name with several presets keeps the
+  lowest. Vendor defaults do not apply on the web (Safari's "Apple GPU").
+- **The re-map**: Forge `verylow` and `office` are Low, `low` Medium, `medium` High, `high` High,
+  `ultra` Ultra on every platform; `OVERRIDES` moves the Adreno 630 to 644 and 710 to Medium and the
+  Apple A14, A15 and M1 family to High (the script records each reason). Phones never get Ultra from
+  the data.
+- **The database is embedded** as `GpuTiersData.cpp`, written by the converter from the JSON (chunks
+  under MSVC's string-literal limit); `GpuTierTest` checks the embed equals the checked-in JSON and
+  `--check` says when either is stale. About 93 KB; parsed once at startup.
+- **MCP**: a new `device` group (2 tools within 1,500 characters). `set_device_simulation` is an editor
+  preference like `configure_game_view` (not undoable); the table goes through
+  `set_project_settings` with one key per family and tier whose value is an object of cells merged in
+  (12 keys instead of 168), each change one undo step.
+- **Upload pacing** budgets the bytes of MAKE_IMAGE and MAKE_BUFFER with data, UPDATE_IMAGE and
+  UPDATE_BUFFER. Waiting commands keep their order; a command on a handle a waiting one creates or
+  touches waits with it; a CUSTOM or pass command (the queue's "object loaded" callbacks) never
+  overtakes a waiting command, and everything after it waits; a second update of one handle in a frame
+  waits (sokol's once-a-frame rule). Cleanups carry the token of the commands queued before them, so
+  a deferred upload's pixels and a deferred destroy's dealloc wait for it. The committing thread is no
+  longer held while its batch's tail waits.
+
+## Deviations
+
+- **R8, "large textures with mips are created empty and filled per mip across frames where the
+  backend allows it"**: no backend allows it through sokol-gfx. An immutable image must be created
+  with all its data, and `sg_update_image` updates every mip of a dynamic image at once, once a
+  frame (`_sg_validate_update_image`, `_sg_validate_image_data`). Splitting would need a sokol patch
+  on all five backends. Instead a texture larger than the budget goes alone in its frame (R8's second
+  bullet), and cooked textures already stream small-first (S14's progressive tail).
+- **R8's budget covers the queue only**, as R8 says: what loading threads create or update. Textures a
+  scene load creates on the main thread are created in the call that needs them, so they are not
+  paced; routing them through the queue would change every synchronous creation's contract.
+- **R2's "vendor" input**: no backend sokol exposes gives a vendor id; the vendor is read from the
+  renderer name (and from ANGLE's PCI ids on the web).

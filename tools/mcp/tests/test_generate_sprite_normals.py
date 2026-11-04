@@ -25,7 +25,7 @@ the 2-frame APNG, the upstream golden ball):
 - get_asset_info / view_asset (sprite_normals, regenerate reproducing the pixels, a grid's {cells}, staleness after
   an edit of the source and the auto-sync's external_changes problem, normal_map on the source);
 - apply refused while playing (nothing written), a preview works then;
-- the tool description, the agent guide line and its 16 KB budget;
+- the tool description and how an agent reaches its guide;
 - (last: switches projects) a run when another project opens fails project_changed, nothing written anywhere.
 """
 
@@ -47,6 +47,8 @@ from harness import REPO, Editor, TestFailure, skip, symlinks_permitted
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "SpriteNormals"}
+CI_EXCLUDED = ("long-running (about 8 minutes on a loaded server: 23 tests generating normal maps); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 FIXTURES = REPO / "editor" / "spritenormals" / "tests" / "fixtures"
@@ -846,13 +848,16 @@ async def test_high_resolution_settings_presets_and_metrics(ed: Editor):
     check(rec["version"] == 2 and "version" not in rec["settings"] and rec["settings"]["resolution_scale"] == "auto", f"{rec}")
 
 
-async def test_description_and_guide_line(ed: Editor):
+async def test_description_and_guide(ed: Editor):
     tool = ed.tool("generate_sprite_normals")
     check(tool and "jasper://docs/sprite-normals" in tool.description, "the description points at the guide")
     size = len(tool.name) + len(tool.description) + len(json.dumps(tool.input_schema, separators=(",", ":")))
     check(size <= 1500, f"the definition stays lean: {size} characters")
-    check("generate_sprite_normals" in ed.instructions and len(ed.instructions.encode("utf-8")) <= 16384,
-          f"the agent guide names the tool within 16 KB ({len(ed.instructions.encode('utf-8'))} bytes)")
+    # the agent guide indexes areas and keeps only what an eval case needs: the route is the listing,
+    # this description and the docs index
+    docs = await ed.session.read_resource("jasper://docs")
+    check("jasper://docs/sprite-normals" in "".join(getattr(c, "text", "") or "" for c in docs.contents),
+          "the docs index lists the guide")
     got = await ed.session.read_resource("jasper://docs/sprite-normals")
     text = "".join(getattr(c, "text", "") or "" for c in got.contents)
     check("generate_sprite_normals" in text, "the guide is served")

@@ -71,6 +71,10 @@ namespace jasperengine::editor {
         ThreadingProjectSettings m_threading;
         ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
+        // Quality > Device Tiers and the rest of the device settings (S56), and the platform
+        // group the table shows
+        DeviceSettings m_deviceSettings;
+        int m_deviceTierGroup = 1;
         NavigationProjectSettings m_navigation;
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
@@ -239,6 +243,8 @@ namespace jasperengine::editor {
         bool drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path);
         void refreshShaderGlobalUses();
         void drawQualitySettings();
+        void drawDeviceTierSettings();
+        void drawUploadBudgetSettings();
         void drawTextureSettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();

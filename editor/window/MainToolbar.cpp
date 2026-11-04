@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "MainToolbar.h"
+#include "render/SceneRender.h"
+#include "window/PhysicsPlacementWindow.h"
 
 #include "imgui_internal.h"
 #include "App.h"

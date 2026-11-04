@@ -5,6 +5,7 @@
 // survives, [] unbinds, and a file that makes two commands share a chord resolves to the default.
 
 #include "shortcuts/ShortcutTestSupport.h"
+#include "shortcuts/ShortcutDispatcher.h"
 #include "shortcuts/ShortcutOverrides.h"
 
 #include "LogCapture.h"

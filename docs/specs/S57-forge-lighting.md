@@ -169,8 +169,8 @@ Out of scope:
 
 - **Light Mode** is a project setting, `graphics.light_mode` (Project Settings > Graphics > Light
   Mode): Automatic (default), Per Object, Tiled. Automatic is Tiled on the Medium tier and above
-  and Per Object on Low; the tier is `LightingTiers::getTier()`, the platform's default (desktop
-  High, web Medium, phones Low) until S56's resolver calls `LightingTiers::setTier`. A scene whose
+  and Per Object on Low; the tier is `LightingTiers::getTier()`: S56's device tier where one
+  applies, else the platform's default (desktop High, web Medium, phones Low). A scene whose
   lights are all directional stays Per Object whatever the mode (the overlap note with `draw-perf`'s
   `Dlo`): the tiles would hold the same lights, so sun-only scenes, the default scene among them,
   draw exactly as before.

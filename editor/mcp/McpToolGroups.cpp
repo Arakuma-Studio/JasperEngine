@@ -20,6 +20,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"diagnostics", "Jobs, memory, ECS, logging and crash/hang diagnostics."},
         {"editor_ux", "Undo history, command palette, layouts, search, bookmarks and Scene view tools."},
         {"profiling", "GPU/CPU timings, VRAM, frame passes and render statistics."},
+        {"device", "Device tiers: detected GPU tier and why, thermal and memory state, overrides in effect, Play simulation."},
         {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
         {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps and sampling."},

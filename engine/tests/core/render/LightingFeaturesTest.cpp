@@ -6,6 +6,7 @@
 // and the Hair shading model's block and variant.
 
 #include "render/ContactShadows.h"
+#include "device/Device.h"
 #include "render/LightingTiers.h"
 #include "render/OrderIndependentTransparency.h"
 #include "texture/Material.h"
@@ -44,6 +45,20 @@ TEST(LightingTiers, AutomaticIsTiledFromMediumAndPerObjectOnLow){
     EXPECT_EQ(mode, LightMode::PER_OBJECT);
     EXPECT_STREQ(LightingTiers::getModeName(LightMode::TILED), "tiled");
     EXPECT_FALSE(LightingTiers::modeFromName("forward", mode));
+}
+
+// S56: the device's tier decides where it applies; setTier still wins
+TEST(LightingTiers, FollowTheDeviceTier){
+    LightingTiers::resetTier();
+    Device::setTier(DeviceTier::Low);
+    EXPECT_EQ(LightingTiers::getTier(), LightingTier::LOW);
+    EXPECT_FALSE(LightingTiers::usesTiledLights());
+    Device::setTier(DeviceTier::Ultra);
+    EXPECT_EQ(LightingTiers::getTier(), LightingTier::ULTRA);
+    LightingTiers::setTier(LightingTier::MEDIUM);
+    EXPECT_EQ(LightingTiers::getTier(), LightingTier::MEDIUM);
+    LightingTiers::resetTier();
+    Device::resetTier();
 }
 
 TEST(ContactShadows, LightCoordinateIsBendsInNdc){

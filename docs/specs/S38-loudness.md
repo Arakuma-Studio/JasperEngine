@@ -366,4 +366,31 @@ None new (R19: the effect table already exposes parameters).
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+### M1 (`AudioMeter`, `TruePeak`)
+
+1. **API.** §6's sketch holds (`AudioMeter(rate, channels, options)`, `process`, `result`, the curves,
+   `TruePeak(channels)`, `LoudnessResult`), with what R1 and sound-layer's consumers also need:
+   `processPlanar`, `finish` and one-call `measure`/`measurePlanar` (file mode), `AudioMeterOptions`
+   (`mode`, `bands`); in the result `frames`, `channels`, `sampleRate`, `gatedBlocks`, `relativeGate`
+   (S35's `gated_seconds`), `nonFinite`, `meanSquare`, `bandsMeanSquare`, `subMeanSquare`. Values
+   sound-layer gave as NaN are `std::optional`. The curves are methods, always available, so
+   sound-layer's `curves` option is gone. A short-term curve point before 3 s is NaN (the curve is a
+   `std::vector<float>`).
+2. **`TruePeak::processSample(channel, sample)`** joins the sketch: the limiter (M2) needs the detector
+   one step at a time, as sound-layer's did. The filter runs in float, with its table by tap and then
+   phase, so its inner loop vectorizes without reordering a sum (R17's budget); each coefficient is
+   exact in a float.
+3. **Channel weights go beyond the 5.1 of R1:** 5.0 (L R C Ls Rs) weighs 1, 1, 1, 1.41, 1.41 (Tech 3341
+   case 6 and pyloudnorm need it) and 7.1 (L R C LFE Lb Rb Ls Rs) 1, 1, 1, 0, 1, 1, 1.41, 1.41 (BS.1770-4's
+   positions, and the LFE must not count). Other layouts weigh 1, as in sound-layer.
+4. **Two changes to sound-layer's code,** behind the same results. Every 10 ms the K-weighting and band
+   filters let go of a state under 1e-30, because a stream's digital silence otherwise leaves them in
+   denormals (a 35 % cost in silence measured on the Ryzen of server H; Intel's assists cost more, not
+   measured; `AudioMeter.FiltersSettleOnZeroInSilence`). And the windows are subtractions of a running
+   sum, so `result()` costs in proportion to the signal and not 40 or 300 times that (R12 reads it live).
+5. **`test_audio_meter.py` compiles its own probe** (`engine/tests/core/audio/AudioMeterProbe.cpp`, with
+   `AudioMeter.cpp` and `TruePeak.cpp` and nothing else), since nothing in the editor exposes the meter
+   before S36's `analyze_audio`. It needs a C++ compiler and FFmpeg, both in the Linux image. The link
+   is also the check that the library needs no SoLoud. The "`audio` fixture files" are
+   `engine/tests/core/fixtures/audio/` and the two other WAV files the repository has
+   (`pickup.wav`, `beep.wav`), plus signals built by the test.

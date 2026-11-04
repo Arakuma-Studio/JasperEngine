@@ -32,6 +32,7 @@ from harness import Editor, TestFailure
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "SpriteNormalsPaint"}
+CI = True
 TIMEOUT = 900
 
 SPR = "assets/sprites"

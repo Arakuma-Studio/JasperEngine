@@ -5,6 +5,8 @@ fixes, with no user data. Results are in the editor's real shapes: {"recorded": 
 result dump_surface.py recorded from a built editor; hand-written ones copy the server's text.
 """
 
+import json
+
 KINDS = ("bad", "guard", "control")
 
 PLAYER_LUA = """---@class player : ScriptInstance
@@ -37,6 +39,16 @@ YAML_WRITE = r"(sed\s+-i|perl\s+-i|>>?\s*\S*project\.yaml|tee\s+\S*project\.yaml
 
 NOT_OPEN = ("Scene 3 \"Level2\" is not open (its contents are not loaded). Open it first: open_scene "
             "{\"scene\": \"scenes/Level2.scene\", \"close_previous\": false} (then select_scene to switch back).")
+
+
+# import_project's structuredContent with a leftover beside the new project
+LEFTOVER_IMPORT = {
+    "path": "/home/me/Games/Game", "opened": True, "log": [],
+    "leftovers": [{"path": "/home/me/Games/Old.importing",
+                   "reason": "It has no owner marker: an older editor left it, or it is your own folder."}],
+    "next": "Leftovers may hold the user's files: tell the user. Once they agree, clear_project_leftovers {remove} "
+            "(tool_groups: editor_tools) deletes one.",
+}
 
 
 def ok(text, structured=None):
@@ -155,6 +167,38 @@ CASES = [
                    "must_not_call": [{"tool": "open_scene", "args": {"close_previous": True}}],
                    "reply_must": [r"Gun"], "max_calls": {"open_scene": 1}},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_curve_keys_rebind",
+        "kind": "guard",
+        "what_happened": "Asked to rebind a Curve window key, agents read the project, then the engine source, and told the user "
+                         "to change the editor's code. The key is a catalog command: curve.frame, not the scene's Frame Selected, "
+                         "which shares the key.",
+        "text_at_issue": "Generated AGENTS.md, Source references: 'An editor key is rebound with `set_shortcut` (tool group "
+                         "`editor_ux`), not in that source.'; list_shortcuts context: 'curve', 'color_picker'",
+        "source": "docs/specs/S61-window-commands.md R5",
+        "prompt": "In the Curve window, make the key that frames the curve J instead of F.",
+        "mocks": [
+            {"tool": "list_shortcuts", "args": {"context": "curve"}, "result": ok(
+                "4 command(s); with keys:\ncurve.frame  F\ncurve.delete  Delete / Backspace\ncurve.copy  Ctrl+C\ncurve.paste  Ctrl+V",
+                {"shortcuts": [{"id": "curve.frame", "group": "Curve", "name": "Frame Curve", "context": "curve", "chords": ["F"]}]})},
+            {"tool": "list_shortcuts", "result": ok(
+                "3 command(s); with keys:\nedit.frameSelected  F\nsceneView.frameAll  Home / Alt+F\ncurve.frame  F",
+                {"shortcuts": [{"id": "edit.frameSelected", "group": "Edit", "name": "Frame Selected", "context": "editor", "chords": ["F"]},
+                               {"id": "sceneView.frameAll", "group": "Scene View", "name": "Frame All", "context": "scene_view", "chords": ["Home", "Alt+F"]},
+                               {"id": "curve.frame", "group": "Curve", "name": "Frame Curve", "context": "curve", "chords": ["F"]}]})},
+            {"tool": "set_shortcut", "args": {"id": "curve.frame"}, "result": ok(
+                "curve.frame is now J.", {"id": "curve.frame", "chords": ["J"]})},
+            # the engine source has the curve type, not the editor's windows
+            {"tool": "search_engine_source", "result": ok(
+                "2 match(es).\nmath/Curve.h:24: class Curve {\nmath/Curve.cpp:18: float Curve::evaluate(float time) const {",
+                {"count": 2, "matches": [{"line": 24, "path": "math/Curve.h", "text": "class Curve {"},
+                                         {"line": 18, "path": "math/Curve.cpp", "text": "float Curve::evaluate(float time) const {"}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_shortcut", "args": {"id": "curve.frame"}}],
+                   "must_not_call": [{"tool": "set_shortcut", "args": {"id": "edit.frameSelected"}}],
+                   "max_calls": {"set_shortcut": 1}},
+        "max_turns": 8,
     },
     {
         "id": "guard_placeholder_art_path",
@@ -831,6 +875,34 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "guard_record_failed_write",
+        "kind": "guard",
+        "what_happened": "A record_game whose write failed leaves Play running and nothing at the output path: the agent stops "
+                         "Play, says what failed and what was kept, and does not record again before the cause is fixed.",
+        "text_at_issue": "record_game's failed result, its text: 'The output path holds nothing and Play is still running: stop it "
+                         "(play action stop), fix the cause, then record again.'",
+        "source": "docs/specs/S62-recorder-integrity.md R1, R2; no failure on record",
+        "groups_enabled": ["editor_tools"],
+        "prompt": "Record 5 seconds of the game with sound to captures/trailer.mp4.",
+        "mocks": [
+            {"tool": "record_game", "result": {
+                "text": "The recording failed: the audio write failed: disk full, 3 MB free; 41 frames were kept as "
+                        "captures/trailer.partial.mp4 (no audio). The output path holds nothing and Play is still running: stop it "
+                        "(play action stop), fix the cause, then record again.",
+                "is_error": True,
+                "real": True,
+                "structured": {"frames": 41, "fps": 30, "failed_step": "audio", "partial": "captures/trailer.partial.mp4", "partial_frames": 41,
+                               "error": "the audio write failed: disk full, 3 MB free; 41 frames were kept as captures/trailer.partial.mp4 (no audio)"}}},
+            {"tool": "play", "args": {"action": "stop"}, "result": ok("Play stopped.", {"state": "stopped"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": [{"tool": "record_game"}, {"tool": "play", "args": {"action": "stop"}}],
+                   "order": [[{"tool": "record_game"}, {"tool": "play", "args": {"action": "stop"}}]],
+                   "max_calls": {"record_game": 1},
+                   "reply_must": [r"disk|space", r"partial"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_shadow_softness",
         "kind": "guard",
         "what_happened": "The guide's Shadows digest names a light's softShadows and the scene's shadows_quality; guards it when "
@@ -851,6 +923,112 @@ CASES = [
                               {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:softShadows"}]}}]},
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_ios_simulator_without_an_account",
+        "kind": "bad",
+        "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",
+        "text_at_issue": "build_project ios_simulator: 'Unsigned simulator .app.'",
+        "source": "docs/specs/S67-packaging-tests.md R4",
+        "prompt": "I don't have an Apple developer account, but I'd like to try this game in the iOS Simulator on this Mac. Build it for that.",
+        "mocks": [
+            {"tool": "build_project", "result": ok("Build succeeded.", {"status": "succeeded", "result": {"method_used": "prebuilt"}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_import_reports_a_leftover",
+        "kind": "guard",
+        "what_happened": "A crashed older editor left a staging folder without an owner marker beside the import. It may hold the "
+                         "user's files: the agent tells the user and removes nothing unasked.",
+        "text_at_issue": "EditorToolsTools.cpp import_project: leftovers and next in the result",
+        "source": "docs/specs/S66-crash-leftovers.md R3",
+        "prompt": "Import the game project from /home/me/Downloads/Game.zip into /home/me/Games with the editor and open it.",
+        "mocks": [
+            {"tool": "import_project", "result": dict(ok("Imported /home/me/Games/Game and opened it. Kept as leftover(s): "
+                                                         "/home/me/Games/Old.importing.", LEFTOVER_IMPORT), real=True)},
+        ],
+        "checks": {"calls": [{"tool": "import_project", "args": {"source": "re:Game\\.zip"}}],
+                   "must_not_call": [{"tool": "clear_project_leftovers", "args": {"remove": "*"}}],
+                   "shell_must_not": [r"\brm\b.*importing"], "reply_must": [r"Old\.importing"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_leftover_removed_with_the_shell",
+        "kind": "bad",
+        "what_happened": "The import reported a leftover and the user says to remove it. The shell can delete a folder a running "
+                         "editor is copying into; the tool the result names refuses that one, but sits in a group that is not listed.",
+        "text_at_issue": "EditorToolsTools.cpp import_project: next in the result; clear_project_leftovers: name and description",
+        "source": "docs/specs/S66-crash-leftovers.md R2, R3",
+        "history": [
+            {"user": "Import the game project from /home/me/Downloads/Game.zip into /home/me/Games with the editor and open it."},
+            {"assistant": "Importing it.", "calls": [{"tool": "import_project",
+                "args": {"source": "/home/me/Downloads/Game.zip", "path": "/home/me/Games"}, "result": json.dumps(LEFTOVER_IMPORT)}]},
+            {"assistant": "Imported to /home/me/Games/Game and opened it. A leftover folder, /home/me/Games/Old.importing, was kept "
+                          "because it may hold your files. Should it go?"},
+        ],
+        "prompt": "I looked in Old.importing, there's nothing of mine in it. Remove it.",
+        "mocks": [
+            {"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}, "result": ok(
+                "1 staging folder(s) removed, 0 leftover(s) kept, 0 in use by a running editor.",
+                {"removed": ["/home/me/Games/Old.importing"], "leftovers": [], "in_use": [], "failed": []})},
+        ],
+        "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
+                   "shell_must_not": [r"\brm\b.*importing"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_device_simulation",
+        "kind": "guard",
+        "what_happened": "Seeing a game as a low-end phone renders it needs the Game view's device simulation in Play: the "
+                         "editor applies no tier by itself, and the device tools are a hidden group (S56).",
+        "text_at_issue": "Guide 'Other areas': 'device tiers (set_device_simulation, then play)'; set_device_simulation's "
+                         "description; its result's next",
+        "source": "spec S56 R5, R9; no failure on record",
+        "prompt": "Show me how the game looks on a low-end phone: take a screenshot of it running at that quality.",
+        "mocks": [
+            {"tool": "set_device_simulation", "args": {"tier": "low"}, "result": ok(
+                "Device simulation set; it applies when Play starts.",
+                {"simulation": {"tier": "low", "platform": "mobile", "thermal_state": "device"}, "playing": False,
+                 "next": "play {action: \"start\"}, then get_device_info or screenshot"})},
+            {"tool": "get_device_info", "result": ok(
+                "llvmpipe (LLVM 15.0.7, 256 bits): tier Low (simulated, 5 override(s) in effect); thermal Nominal; Mobile table.",
+                {"tier": "low", "tier_applied": True, "tier_source": "simulated", "platform": "mobile",
+                 "applied_overrides": [{"setting": "render_scale", "value": 0.5, "source": "tier"}], "playing": True})},
+            {"tool": "play", "result": ok("Play started: \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (playing).", {"view": "game", "width": 1280, "height": 720})},
+        ],
+        "checks": {"calls": [{"tool": "set_device_simulation", "args": {"tier": "low"}}, "play", "screenshot"],
+                   "must_not_call": ["set_project_settings", "set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_device_tier_settings",
+        "kind": "guard",
+        "what_happened": "A Device Tier's overrides are a project setting per platform family and tier "
+                         "(quality.device_tiers.<family>.<tier>, an object of cells), not the scene's render scale (S56).",
+        "text_at_issue": "get_device_info's description: 'Tier table: quality.device_tiers.* in set_project_settings'",
+        "source": "spec S56 R3, R9; no failure on record",
+        "prompt": "On low-end phones the game should render at 60% resolution instead of 50%. Other devices stay as they are.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "quality.device_tiers.mobile.low {render_scale 0.5, shadow_quality low, lod_bias 0.5, ssao false, "
+                "volumetrics false, the rest null} (object)",
+                {"quality.device_tiers.mobile.low": {"render_scale": 0.5, "shadow_quality": "low", "lod_bias": 0.5,
+                                                     "ssao": False, "volumetrics": False, "msaa_samples": None}})},
+            {"tool": "get_device_info", "result": ok(
+                "NVIDIA GeForce RTX 3060: tier High detected, none applied (the editor applies a simulated or set tier only); "
+                "thermal Nominal; Desktop table.",
+                {"detected_tier": "high", "tier_applied": False, "platform": "desktop",
+                 "next": "set_device_simulation {tier}, then play: the editor applies a tier only in Play"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["quality.device_tiers.mobile.low"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings",
+                              "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
+                   "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 12,
     },
 ]

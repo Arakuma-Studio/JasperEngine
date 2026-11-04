@@ -21,6 +21,8 @@
 
 #include "App.h"
 #include "search/SearchPalette.h"
+#include "widget/ColorPickerWindow.h"
+#include "widget/CurveField.h"
 #include "EditorVersion.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
@@ -690,6 +692,13 @@ void editorStatusTool(const CallPtr& call) {
     if (SearchPalette* palette = app.getSearchPalette()) {
         const SearchPalette::UiState state = palette->uiState();
         ui["search_palette"] = {{"open", state.open}, {"query", state.query}, {"results", state.results}, {"selected", state.selected}};
+    }
+    {
+        const ui::CurveWindow::UiState state = ui::CurveWindow::get().uiState();
+        ui["curve_window"] = {{"open", state.open}, {"focused", state.focused}, {"selected_keys", state.selectedKeys}, {"clipboard_keys", state.clipboardKeys},
+                              {"view", {{"t0", state.view.t0}, {"t1", state.view.t1}, {"v0", state.view.v0}, {"v1", state.view.v1}}}};
+        const ui::ColorPickerWindow& picker = ui::ColorPickerWindow::get();
+        ui["color_picker"] = {{"open", picker.isOpen()}, {"focused", picker.isFocused()}, {"sampling", picker.isSampling()}};
     }
 
     const SceneProject* selected = project->getSelectedScene();

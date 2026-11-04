@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "GraphicUtils.h"
+#include "component/RectTransformComponent.h"
+#include "component/TextComponent.h"
 #include "util/PngWriter.h"
 
 #include "Out.h"

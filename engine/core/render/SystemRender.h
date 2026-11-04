@@ -95,6 +95,15 @@ namespace jasperengine{
 
         static void commitQueue();
         static void executeQueue();
+        // Upload pacing of the queued creations and updates (spec S56 R8): the bytes a frame
+        // uploads at most (QualityResolver::uploadBudgetBytes), a monotonic token of everything
+        // queued so far and whether it has all run, and the commands left for a later frame
+        static void setUploadBudget(uint64_t bytes);
+        static uint64_t getUploadBudget();
+        static uint64_t getUploadToken();
+        static bool isUploadTokenComplete(uint64_t token);
+        static size_t getDeferredUploadCount();
+        static uint64_t getUploadBytesLastFrame();
         static void commit();
         // frames committed so far: work that may run once per frame keys on it
         static uint64_t getFrameCount();

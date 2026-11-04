@@ -4,6 +4,7 @@
 #include "LightingTiers.h"
 
 #include "Engine.h"
+#include "device/Device.h"
 
 #include <algorithm>
 #include <cstring>
@@ -35,6 +36,10 @@ LightingTier LightingTiers::defaultTier(int platform){
 LightingTier LightingTiers::getTier(){
     if (currentTier >= 0)
         return static_cast<LightingTier>(currentTier);
+    // the device's tier where one applies (S56: detected in a game, simulated or set in the
+    // editor); DeviceTier and LightingTier share their order
+    if (Device::isTierApplied())
+        return static_cast<LightingTier>(std::clamp(static_cast<int>(Device::getTier()), 0, 3));
     return defaultTier(static_cast<int>(Engine::getPlatform()));
 }
 

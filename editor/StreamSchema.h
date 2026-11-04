@@ -29,6 +29,49 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include "component/AudioSourceComponent.h"
+#include "navigation/NavCrowd.h"
+#include "navigation/GridPathfinder.h"
+#include "navigation/NavGridMap.h"
+#include "particles/LegacyParticleSystem.h"
+
+namespace jasperengine{
+    enum class ActionState;
+    enum class AnchorPreset;
+    enum class BuoyancyColumns;
+    enum class CloudsPreset;
+    enum class Collider2DType;
+    enum class Collider3DType;
+    enum class FluidOutput;
+    enum class FogColorMode;
+    enum class FogType;
+    enum class FogVolumeFalloff;
+    enum class FogVolumeShape;
+    enum class ForceFieldKind;
+    enum class ForceFieldShapeType;
+    enum class Joint2DType;
+    enum class Joint3DType;
+    enum class LatticeInterpolation;
+    enum class LatticeJiggleAnchor;
+    enum class LatticeMaskChannel;
+    enum class LatticeOutside;
+    enum class LatticeStage;
+    enum class LayoutGroupType;
+    enum class LightShading;
+    enum class LightType;
+    enum class LightUnit;
+    enum class NavAgentDriver;
+    enum class NavCollectObjects;
+    enum class NavGridSource;
+    enum class NavModifierInclusion;
+    enum class NavObstacleShape;
+    enum class NavUseGeometry;
+    enum class ProgressbarType;
+    enum class ScrollbarType;
+    enum class ShadowCaster2DShape;
+    enum class UIDocumentRenderMode;
+    enum class WaterVolumeWaves;
+}
 
 namespace jasperengine::editor {
 

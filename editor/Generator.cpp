@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "object/FluidSimulation.h"
+#include "component/PrefabComponent.h"
 #include "util/NativePlugins.h"
 #include "Factory.h"
 #include "App.h"
@@ -1722,7 +1724,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "## Source references\n\n";
     agentsContent += "The runtime API this project links against: `" + api + "` (use it first). Engine and editor source: "
                      "https://github.com/JasperRaccoon/JasperEngine, at the tag or commit of the editor version above (report it if you "
-                     "cannot match it). The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory.\n\n";
+                     "cannot match it). The `.scene`, `.prefab` and `project.yaml` formats are defined in its `editor/` directory. An editor "
+                     "key is rebound with `set_shortcut` (tool group `editor_ux`), not in that source.\n\n";
     agentsContent += "## Generated files\n\n";
     agentsContent += "The editor regenerates these on play and build; never edit them: the root `CMakeLists.txt`, `" + internal +
                      "/LocalPaths.cmake`, `" + internal + "/scene_scripts.cpp`, `" + internal + "/generated/`, `" + api + "/`. After "
@@ -2563,6 +2566,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         }
         mainContent += "    Engine::setTextureDefaults(" + groups[0] + ", " + groups[1] + ", " + groups[2] + ");\n";
     }
+
+    // the Device Tier the GPU gets and its overrides (Project Settings > Quality > Device Tiers),
+    // before any scene: what differs from the defaults, "{}" for a default project
+    mainContent += "    Device::configure(R\"JEDEVICE(" + deviceSettingsJson + ")JEDEVICE\");\n";
 
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";

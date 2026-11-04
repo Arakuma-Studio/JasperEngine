@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RagdollWizard.h"
+#include "component/Transform.h"
 
 #include "Catalog.h"
 #include "Project.h"

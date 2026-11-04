@@ -4,6 +4,8 @@
 #ifndef LuaBridgeAddon_h
 #define LuaBridgeAddon_h
 
+#include "lua.hpp"
+#include "LuaBridge.h"
 #include "Scene.h"
 #include "util/CanvasScaler.h"
 #include "util/TextEffects.h"
@@ -32,10 +34,30 @@
 #include "render/OrderIndependentTransparency.h"
 #include "component/CapsuleShadowCasterComponent.h"
 #include "texture/MaterialPbr.h"
+#include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
 #include "Log.h"
 #include "component/LineRendererComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "camera/CameraType.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "component/CameraComponent.h"
+#include "component/LightComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/ActionComponent.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/Joint2DComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/ReflectionProbeComponent.h"
 
 using namespace jasperengine;
 
@@ -140,6 +162,8 @@ namespace luabridge
     template<> struct Stack<ScreenOrientation> : EnumWrapper<ScreenOrientation>{};
     template<> struct Stack<DeviceOrientation> : EnumWrapper<DeviceOrientation>{};
     template<> struct Stack<DeviceType> : EnumWrapper<DeviceType>{};
+    template<> struct Stack<DeviceTier> : EnumWrapper<DeviceTier>{};
+    template<> struct Stack<ThermalState> : EnumWrapper<ThermalState>{};
     template<> struct Stack<NetworkReachability> : EnumWrapper<NetworkReachability>{};
     template<> struct Stack<HapticFeedback> : EnumWrapper<HapticFeedback>{};
     template<> struct Stack<SleepTimeout> : EnumWrapper<SleepTimeout>{};

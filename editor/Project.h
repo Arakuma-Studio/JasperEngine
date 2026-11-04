@@ -5,11 +5,10 @@
 
 #include "window/GameResolutions.h"
 #include "Scene.h"
+#include "render/SceneDisplaySettings.h"
 #include "Catalog.h"
-#include "render/SceneRender.h"
 #include "sceneview/SceneViewState.h"
 #include "command/CommandHistory.h"
-#include "render/preview/MaterialRender.h"
 #include "Conector.h"
 #include "Generator.h"
 #include "Configs.h"
@@ -36,6 +35,7 @@
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/LightingTiers.h"
+#include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
@@ -60,8 +60,17 @@
 #include <memory>
 #include <future>
 #include <mutex>
+#include "render/RenderUtil.h"
+#include "manager/SceneManager.h"
+
+namespace jasperengine{
+    struct AnimationPlayerClip;
+    struct ScriptEntry;
+}
 
 namespace jasperengine::editor{
+
+    class SceneRender;
     namespace prefabinternal { struct ScratchEntity; }
     struct BakedPrefab;
     namespace vcs {
@@ -388,24 +397,16 @@ namespace jasperengine::editor{
         NodeRecovery recovery;                    // the GameObject in the Prefab and its instances
     };
 
-    // A prefab instance unpacked by Project::unpackPrefabInstances, with what putting its
-    // prefab link back takes: the members stay in the scene, only the bookkeeping goes
-    struct PrefabUnpackRecord {
-        std::filesystem::path path;       // prefab asset the instance followed
-        size_t index = 0;                 // position in the asset's instance list for the scene
-        Prefab::Instance instance;        // members, registry mapping and overrides
-        bool hadComponent = false;
-        PrefabComponent component;        // the root's PrefabComponent
-        // The instances nested in it as they were: unpacking makes what the prefab
-        // overrides of them their own overrides (Project::promoteNestedAssetData)
-        struct NestedState {
-            Entity root = NULL_ENTITY;
-            std::map<Entity, Prefab::ObjectOverrides> overrides;
-            std::unordered_map<Entity, std::vector<Prefab::EntityMember>> removed;
-            std::filesystem::path path;   // the level at that root (a variant's base level)
-        };
-        std::vector<NestedState> nestedBefore;
+    // An instance nested in an unpacked one as it was: unpacking makes what the prefab overrides
+    // of it its own overrides (Project::promoteNestedAssetData)
+    struct PrefabNestedState {
+        Entity root = NULL_ENTITY;
+        std::map<Entity, Prefab::ObjectOverrides> overrides;
+        std::unordered_map<Entity, std::vector<Prefab::EntityMember>> removed;
+        std::filesystem::path path;   // the level at that root (a variant's base level)
     };
+
+    struct PrefabUnpackRecord;   // project/PrefabUnpackRecord.h
 
     // ---- Prefab Variants (editor/project/ProjectPrefabVariant.cpp, PREFABS.md 19) ----
 
@@ -866,6 +867,9 @@ namespace jasperengine::editor{
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
+        // Project Settings > Quality > Device Tiers, LOD biases, Thermal Response and Graphics >
+        // Upload Budget (spec S56): project.yaml's device block
+        DeviceSettings deviceSettings;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
         // graphics.light_mode: how lit meshes find their pixel lights (S57 R1)
@@ -1587,6 +1591,11 @@ namespace jasperengine::editor{
         // editor's documents at once and written into exports
         void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
         const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;
+        // the Device Tier table and the rest of the device settings (docs/device-tiers.md): the
+        // editor's QualityResolver takes them at once (its Game view simulates a tier in Play),
+        // exports bake them in (main.cpp's Device::configure, game.json's device)
+        void setDeviceSettings(const DeviceSettings& settings);
+        const DeviceSettings& getDeviceSettings() const;
         static bool isValidHtmlUiGlyphAtlasMiB(int mib);
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the
@@ -2856,7 +2865,7 @@ namespace jasperengine::editor{
         // includeBase: an instance of a variant unpacked one level becomes an instance of its
         // base, which takes what the variant overrides of it as its own (PREFABS.md 19)
         void promoteNestedAssetData(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
-            std::vector<PrefabUnpackRecord::NestedState>& before, const std::unordered_set<Entity>& skip, bool includeBase = false);
+            std::vector<PrefabNestedState>& before, const std::unordered_set<Entity>& skip, bool includeBase = false);
         // Prefab Mode (PrefabStage): the asset's members as a stage reads them (the GameObjects
         // the prefab adds to its nested instances become those instances' added GameObjects);
         // once decoded, the stage's references to stripped objects made the nested GameObjects'

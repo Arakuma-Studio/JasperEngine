@@ -28,6 +28,9 @@
 #include <set>
 #include <sstream>
 #include <unordered_set>
+#include "recorder/RecorderSettings.h"
+#include "ecs/View.h"
+#include "profiler/GpuMemory.h"
 
 // One stat per file on Linux (std::filesystem asks twice: time, then size); the time is built
 // as libstdc++'s last_write_time builds it, so the cache compares equal either way

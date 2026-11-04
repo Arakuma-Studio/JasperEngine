@@ -9,6 +9,8 @@
 // server, a release build) holds each to +5% of the legacy codec. Prints "[bench] reflect codec".
 
 #include "support/EditorTestSupport.h"
+#include "Stream.h"
+#include "profiler/GpuMemory.h"
 
 #include "reflect/Reflect.h"
 #include "reflect/legacy/LegacyCodecs.h"

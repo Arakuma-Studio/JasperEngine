@@ -2,6 +2,34 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "component/CameraShakerComponent.h"
+#include "pool/ShaderPool.h"
+#include "render/SceneRender.h"
+#include "spritenormals/SpriteNormalsWatcher.h"
+#include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
+#include "window/AssetPanels.h"
+#include "window/AudioMixerWindow.h"
+#include "window/AvatarWindow.h"
+#include "window/CodeEditor.h"
+#include "window/GameWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ImageViewerWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/LoadingWindow.h"
+#include "window/MainToolbar.h"
+#include "window/PhysicsPlacementWindow.h"
+#include "window/PlayInput.h"
+#include "window/PoseAnimationWindow.h"
+#include "window/ProjectWindow.h"
+#include "window/SceneWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "window/StatusBar.h"
+#include "window/SystemsWindow.h"
+#include "window/TerrainEditWindow.h"
+#include "window/TextureSynthesisWindow.h"
+#include "window/VertexAnimationBakerWindow.h"
+#include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
@@ -23,6 +51,7 @@
 #include "Backend.h"
 #include "manager/SceneManager.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
@@ -64,6 +93,7 @@
 #include "reload/HotReloadService.h"
 #include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
+#include "shortcuts/PanelClaims.h"
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
@@ -73,6 +103,7 @@
 #include "diag/HangWatchdog.h"
 #include "util/FileDialogs.h"
 #include "util/ProjectUtils.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 
 #include "EditorVersion.h"
@@ -340,7 +371,7 @@ editor::PlatformMenuItem catalogItem(const char* id, std::string label = {}, boo
                        !def->enabled || def->enabled());
     if (!item.enabled && def->disabledReason) item.tooltip = def->disabledReason();
     item.command.payload = def->menuPayload;
-    item.shortcut = catalog.menuShortcutText(id);
+    item.shortcut = catalog.menuShortcutText(editor::PanelClaims::editor().shownCommand(id));
     item.checked = checked;
     return item;
 }
@@ -787,6 +818,11 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
     if (projectHub.isOpen() && action != AppMenuCommand::NewProject && action != AppMenuCommand::OpenProject &&
         action != AppMenuCommand::ProjectHub && action != AppMenuCommand::Exit) {
         return;
+    }
+    // an Edit item picked in the menu: the focused panel's claim has it (the keys, the palette and
+    // agents come through the command, which asks the same)
+    if (const CommandDef* def = CommandCatalog::editor().findByMenuCommand(command.id, command.payload)) {
+        if (PanelClaims::editor().route(def->id)) return;
     }
     switch (action) {
         case AppMenuCommand::NewProject: {
@@ -1253,11 +1289,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             duplicateSelection();
             break;
         case AppMenuCommand::DeleteSelection:
-            if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
-            // the Animator window's selected state, sub-state machine, transition or layer
-            else if (animatorWindow->canDelete()) animatorWindow->removeSelection();
             // the Draw Spline tool's last knot, the edited spline's knots
-            else if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
+            if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
@@ -1464,7 +1497,8 @@ void editor::App::recordMenuItems(const PlatformMenuModel& menu){
                 }
                 const CommandDef* def = catalog.findByMenuCommand(item.command.id, item.command.payload);
                 if (!def || !catalog.menuPath(def->id).empty()) continue;
-                catalog.setMenuItem(def->id, itemPath, item.shortcut.empty() ? Chord() : catalog.bindings(def->id).front());
+                catalog.setMenuItem(def->id, itemPath,
+                                    item.shortcut.empty() ? Chord() : catalog.bindings(PanelClaims::editor().shownCommand(def->id)).front());
             }
         };
     walk(menu.menus, "");
@@ -2670,11 +2704,13 @@ void editor::App::show(){
 
     // S27: the Project Hub alone (as the loading window above): the editor's windows wait
     updateHubCreation();
+    if (projectHub.pollSweep()) requestRedraw();
     if (projectHub.isOpen()) {
         if (isInitialized) {
             ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_KeepAliveOnly);
         }
         projectHub.show();
+        UIProbe::flush();   // the Inspector flushes it otherwise, and it is not drawn here
         if (hubCreation) {
             ImGui::OpenPopup("Creating Project##hub");
         }
@@ -2732,6 +2768,7 @@ void editor::App::show(){
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
+        PanelClaims::editor().refresh();
     }
 
     // the selection changes of one frame are one undo step
@@ -3202,6 +3239,10 @@ void editor::App::loadStartupProject() {
         return;
     }
 
+    // S66: what an editor killed during an import or a template copy left, whatever opens now
+    hub::staging::setJournalDirectory(AppSettings::getConfigDirectory() / "hub-staging");
+    projectHub.startSweep(false);
+
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
         // `jasperengine-editor mcp --project/--create`: no fallback to the last project
@@ -3297,6 +3338,10 @@ void editor::App::setupRecorder() {
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
+    host.gameScene = [playScene]() -> Scene* {
+        const SceneProject* scene = playScene();
+        return scene ? scene->scene : nullptr;
+    };
     host.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
     host.gameViewSize = [this](int& w, int& h) {
         w = gameWindow->getWidth();
@@ -4070,6 +4115,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
     if (sceneProject.scene)
         sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
+    // and with the Game view's simulated Device Tier, platform family and thermal state (Play
+    // stop ends it: Engine::resetApplicationState)
+    Device::setSimulation(gameWindow->getDeviceSimulation());
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){

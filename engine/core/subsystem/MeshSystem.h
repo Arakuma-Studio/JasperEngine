@@ -7,17 +7,14 @@
 #include "SubSystem.h"
 
 
-#include "component/MeshComponent.h"
-#include "component/ModelComponent.h"
-#include "component/SpriteComponent.h"
-#include "component/MeshPolygonComponent.h"
-#include "component/CameraComponent.h"
-#include "component/InstancedMeshComponent.h"
-#include "component/TerrainComponent.h"
-#include "component/TilemapComponent.h"
-#include "component/Transform.h"
+#include "ecs/ComponentFwd.h"
 #include "math/Ray.h"
+#include "math/Rect.h"
+#include "texture/Material.h"
+#include "texture/MaterialPbr.h"
+#include "texture/Texture.h"
 #include "texture/TexturePack.h"
+#include "subsystem/GltfNormalize.h"
 
 #include "jobs/JobSystem.h"
 
@@ -26,6 +23,14 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
+#include "io/watch/FileIdentity.h"
+#include "math/Rect.h"
+#include "texture/Material.h"
+#include "texture/MaterialPbr.h"
+#include "texture/Texture.h"
+#include "util/OutOfLineValue.h"
 
 namespace tinygltf {
     struct Accessor;
@@ -36,6 +41,10 @@ namespace tinygltf {
 }
 
 namespace jasperengine{
+
+    struct InstanceData;
+    struct Submesh;
+    struct TerrainFoliageLayer;
 
     class JASPERENGINE_API MeshSystem : public SubSystem {
 
@@ -98,6 +107,8 @@ namespace jasperengine{
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
         // An FBX is read from its imported .glb, with texture URIs still relative to the FBX
         static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
+        // GltfNormalize::run on a parse; false with the error in `err` when the model cannot be used
+        static bool normalizeGLTF(tinygltf::Model& model, const std::string& filename, std::string* err);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
@@ -147,8 +158,6 @@ namespace jasperengine{
             const char* name = "";
         };
         bool loadGLTFLobeMap(ModelComponent& model, const GltfLobeMap& lobeMap, Texture& map, int& texCoord);
-        // one warning per extension a model uses and the engine does not read (an error when required)
-        static void reportGLTFExtensions(const tinygltf::Model& gltf, const std::string& filename);
         std::string getBufferName(int bufferViewIndex, ModelComponent& model);
         Matrix4 getGLTFNodeMatrix(int nodeIndex, ModelComponent& model);
         Matrix4 getGLTFMeshGlobalMatrix(int nodeIndex, ModelComponent& model, std::map<int, int>& nodesParent);
@@ -322,6 +331,8 @@ namespace jasperengine{
         static bool isMeshLoadHeld(const Scene* scene);
 
         void createInstancedMesh(Entity entity);
+        // an EXT_mesh_gpu_instancing node's copies as the entity's instances (S53 R3)
+        void applyGLTFInstances(Entity entity, const std::vector<GltfInstance>& instances);
         void removeInstancedMesh(Entity entity);
         bool hasInstancedMesh(Entity entity) const;
 

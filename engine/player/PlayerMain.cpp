@@ -320,6 +320,8 @@ JASPERENGINE_INIT void init() {
     if (game.lightMode != LightMode::AUTOMATIC) LightingTiers::setLightMode(game.lightMode);
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++)
         if (game.shadowTiers[platform] != ShadowTiers::defaultTier(platform)) ShadowTiers::setPlatformTier(platform, game.shadowTiers[platform]);
+    // the Device Tier the GPU gets applies from here on (spec S56)
+    Device::configure(game.device);
     if (!game.tags.empty()) TagManager::setTags(game.tags);
     for (size_t layer = 0; layer < game.layerNames.size(); layer++)
         if (!game.layerNames[layer].empty()) TagManager::setLayerName(static_cast<int>(layer), game.layerNames[layer]);

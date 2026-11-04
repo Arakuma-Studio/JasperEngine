@@ -4,6 +4,7 @@
 #include "ParticleWorld.h"
 
 #include "jobs/JobSystem.h"
+#include "device/QualityResolver.h"
 
 #include <algorithm>
 #include <chrono>
@@ -66,7 +67,9 @@ void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
         t.emissionScale = t.input.emissionScale;
         want += prog ? std::max<uint64_t>(t.runtime->count(), std::min(prog->capacityHint(), t.budget)) : 0u;
     }
-    if (want <= worldBudget)
+    // the device tier's Particle Budget caps the scene's (QualityResolver)
+    const uint32_t budget = QualityResolver::particleBudget(worldBudget);
+    if (want <= budget)
         return;
     // over the budget: the higher priorities first, within a priority the larger on screen;
     // each gets what it wants while the budget lasts, the rest a share of what is left
@@ -76,7 +79,7 @@ void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
         if (tasks[a].priority != tasks[b].priority) return tasks[a].priority > tasks[b].priority;
         return tasks[a].significance > tasks[b].significance;
     });
-    uint64_t remaining = worldBudget;
+    uint64_t remaining = budget;
     size_t i = 0;
     while (i < order.size()){
         // one priority tier
@@ -118,7 +121,7 @@ void ParticleWorld::simulate(std::vector<EmitterTask>& tasks, jobs::JobSystem* j
     jobs::JobSystem& js = jobsArg ? *jobsArg : jobs::system();
     lastStats = WorldStats();
     lastStats.emitters = (uint32_t)tasks.size();
-    lastStats.budget = worldBudget;
+    lastStats.budget = QualityResolver::particleBudget(worldBudget);
     if (tasks.empty()){
         lastStats.simulateMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
         return;
@@ -166,7 +169,7 @@ void ParticleWorld::simulate(std::vector<EmitterTask>& tasks, jobs::JobSystem* j
             lastStats.live += t.runtime->count();
         }
     }
-    lastStats.overBudget = lastStats.live > worldBudget;
+    lastStats.overBudget = lastStats.live > lastStats.budget;
     lastStats.simulateMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
 }
 
