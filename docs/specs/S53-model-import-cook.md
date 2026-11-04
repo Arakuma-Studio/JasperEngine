@@ -323,6 +323,8 @@ Out of scope:
 
 ## 8. Dependencies and conflicts
 
+- **Follow-ups overlap:** S65 (models whole on a game's loading thread) edits the same glTF and OBJ
+  load paths; the normalise step sits in the parse, shared by both threads.
 - **Doriax catch-up overlap:** `render-correctness` makes meshes without normals draw flat (a
   runtime fallback), and S53's Normals: Calculate is the import setting. Both stand. `mesh-memory`
   reshapes `MeshComponent` and submesh storage. S53's Read/Write release works on whatever storage

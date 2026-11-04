@@ -78,9 +78,19 @@ scripts (each has `--check`).
 2. Every bug fix has a regression test that failed without the fix: run it red first (stash or revert the fix) and
    record the command and result.
 3. Gate, from your worktree, after merging the current local `main` into your branch (`git merge main`; resolve
-   conflicts keeping both sides' intent): `slot tools/build.sh linux` with 0 new warnings; the full unit suite
-   (`slot tools/build.sh unit-tests`); your MCP test files plus `test_protocol.py`, `test_stubs.py` and
-   `test_docs.py` when tools, Lua or docs changed; web / android / htmlui / smoke as listed above when they apply.
+   conflicts keeping both sides' intent). AGENTS.md (rewritten on `main` on 2026-11-04: read it again) is the rule
+   book; in short:
+   - `WERROR=1 slot tools/build.sh linux` and `WERROR=1 slot tools/build.sh unit-tests` (the full unit suite), both
+     clean;
+   - your MCP test files plus `test_protocol.py`, `test_stubs.py` and `test_docs.py` when tools, Lua or docs
+     changed, then the whole default MCP suite with the slow tests
+     (`JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 slot tools/build.sh mcp-tests -j 2`; `MCP_SUITE=all` needs the
+     fixture project, which this host lacks: say so);
+   - web / android / htmlui / smoke as listed above when they apply;
+   - the lints of the areas you changed (`tools/check_raw_writes.py`, `tools/check_stream_keys.py`,
+     `tools/ci/check-hardcoded-shortcuts.py`, `tools/ci/check-notices.py`, `tools/check_agent_docs.py`).
+   There is no CI any more (the GitHub workflows were removed): nothing checks Windows, macOS or iOS code except
+   your reading. Say exactly what was not compiled. X programs run with `tools/with-xvfb.sh`, not `xvfb-run`.
 4. Docs: user docs under `docs/`, `docs/mcp/guide/*.md`, `docs/unity-glossary.md`, Lua API docs; MCP tool docs
    regenerated (`python3 tools/mcp/gen_tool_docs.py`, then `--check`), tool budget (`python3 tools/mcp/tool_budget.py
    --check tools/mcp/budget.json`; raise a limit only by the measured amount, with a comment); the agent guide stays

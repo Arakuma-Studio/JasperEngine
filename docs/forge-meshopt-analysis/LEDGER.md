@@ -47,6 +47,12 @@ With the Doriax catch-up (`docs/doriax-catchup/LEDGER.md`):
 - The agent guide is restructured only by `agent-authoring`. S53-S57 add at most one-line pointers, and
   their detail goes to `docs/mcp/guide/meshes.md`, `device.md` and the rendering page.
 
+With the follow-ups program (`FOLLOWUPS-LEDGER.md`, specs S61-S73):
+
+- S65 changes how `MeshSystem` loads glTF and OBJ on a game's loading thread. S53's normalise step runs in
+  the parse, before either path, so it serves both. Whoever lands second merges onto the first.
+- S72 cuts header fan-out across `editor/` and `engine/core/`: a merge hotspot, so merge `main` often.
+
 With the pixel-art program (`PIXEL-ART-LEDGER.md`): there is no shared feature. Its S52 sorting and sprite
 parameters sit inside `sprite-batching`, not S55.
 

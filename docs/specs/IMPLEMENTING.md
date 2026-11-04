@@ -2,7 +2,7 @@
 
 You implement ONE spec (`docs/specs/SNN-*.md`) completely and correctly, in your own git worktree,
 on your own branch. Several other implementers work in parallel on other specs in other worktrees;
-an integrator merges finished branches into `oe-port`, which is merged into `main` at the end.
+the integrator merges each finished branch into `main` and pushes it. Each program keeps its own ledger.
 
 ## Ground rules
 
@@ -18,14 +18,12 @@ an integrator merges finished branches into `oe-port`, which is merged into `mai
 3. **Quality bar:** production code that matches the surrounding style (naming, comment density,
    idioms; Unity-like names in user-facing UI). No TODO stubs, no dead code, no disabled tests.
    C++20. Every runtime feature works on all graphics backends and export targets (see README).
-4. **Tests are part of done:** unit tests (gtest — see S02; until S02's framework lands on
-   `oe-port`, put tests where S02 says they will live and register them with the existing test
-   CMake if needed), MCP tests in `tools/mcp/tests/` for agent-facing features, golden images for
+4. **Tests are part of done:** unit tests (gtest — see S02), MCP tests in `tools/mcp/tests/` for agent-facing features, golden images for
    rendering changes. Show red-before-green for bug fixes.
 5. **Code you cannot build here** (Windows, macOS, iOS): keep it compiling by careful reading,
    `#ifdef` discipline and following existing patterns; CI covers it later.
 6. **Commit often** on your branch with clear messages (`<area>: <what and why>`), at least after
-   each meaningful step that builds. Never commit to `oe-port` or `main`, never push, never rewrite
+   each meaningful step that builds. Never commit to `main`, never push, never rewrite
    other branches, never touch other worktrees.
 
 ## Definition of done (before you report back)
@@ -39,7 +37,7 @@ an integrator merges finished branches into `oe-port`, which is merged into `mai
    rendering or fonts; smoke test if you touched export, rendering, scenes or the runtime.
 3. Docs updated (user docs under `docs/`, MCP tool docs regenerated if tools changed — see
    `tools/mcp/gen_tool_docs.py` and the tool budget check `tools/mcp/tool_budget.py`).
-4. **Integrate latest `oe-port`:** `git merge oe-port` into your branch (other streams may have
+4. **Integrate latest `main`:** `git merge main` into your branch (other streams may have
    landed), resolve conflicts preserving both sides' intent, rebuild and re-run the gate. Commit.
 5. Final reply (≤250 words): branch name, final commit, what was implemented, deviations from the
    spec, test evidence summary, anything the integrator must know (migrations, follow-ups).

@@ -198,8 +198,25 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
 - `build/fixture-unity` (the MCP fixture project) is not available. MCP tests that need it are
   skipped, and reports must say so.
 
+### Landing gate (from `AGENTS.md`, rewritten upstream on 2026-11-04)
+
+Before a spec is merged into `main` and pushed, the merged tree passes:
+- `WERROR=1 tools/build.sh linux` and `WERROR=1 tools/build.sh unit-tests`;
+- the MCP suite: `MCP_SUITE=all` where the fixture exists. `build/fixture-unity` (TappyPlane)
+  isn't on this host, so tests that need it skip and the report lists them;
+- `web` and `android` builds when runtime code changed;
+- the area lints (raw writes, stream keys, shortcuts, notices), plus the regenerated `TOOLS.md`
+  and `tool_budget.py --check`.
+
+There is no CI.
+
 ## Log
 
+- 2026-11-04: Upstream rewrote `AGENTS.md` as the only manual (`CLAUDE.md` = `@AGENTS.md`)
+  and removed CI. It now requires `WERROR=1`, a `tools/mcp/eval` case for new MCP text, migration
+  fixtures, and the full suite before big pushes. `main` merged it and was pushed. The implementer
+  brief was updated, and the S41, S43 and S44 implementers were told to merge `main` and follow
+  the new rules.
 - 2026-11-04: The split with the Doriax catch-up program is agreed and recorded in both ledgers.
   - `dc/sprite-batching` (their program, started now) owns generic dynamic batching: sprites,
     small meshes and UI quads; 2D reordering; settled objects; buffers shared by content; and the
