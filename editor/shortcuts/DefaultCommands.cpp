@@ -235,6 +235,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
     b.menu("window.systems", "Systems", AppMenuCommand::ToggleSystems);
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
+    b.menu("window.animationStatistics", "Animation Statistics", AppMenuCommand::ToggleAnimationStatistics);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
     b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);
     b.menu("window.vcs.history", "History", AppMenuCommand::ToggleVcsHistory);

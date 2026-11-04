@@ -298,3 +298,19 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
   hold one and `.anim` must stay byte-stable through `toData()`. `Track::trailingEase` keeps it. R3's rule itself holds: a
   track with only that ease has `easings == nullptr`.
 - **R53, `get_asset_info` on `.anim`:** `stats` is under `clip`, with the rest of that tool's clip fields.
+- **D3, the field table:** `kClipReportFields` holds what `clipReportJson` and `clipOptimizeJson` print, each row with the
+  section it lives in, and more keys than D3's list (`reference`, `within_tolerance`, `joints`, ...), since the gtest holds the table and the
+  JSON equal. Reach Error, Pelvis Offset, Lock Drift and Slide are `makeSnapshot`'s (R36), not a clip's: they join with that stream.
+- **R24, `optimize`:** the block also has `source` (`"assets/anim/walk.anim"`, `"<model>#<clip>"`), what `source_sha1` is the hash of:
+  `anim-optimize-stale` cannot find it otherwise for an `.anim` source. An in-place reduction keeps the block it had, or names none:
+  the file it replaced is gone.
+- **R25, `anim-rotation-flip`:** `normalize` flips signs on slerp tracks, so a parsed clip can never hold D's negative dot. It fires on the signs
+  the parser saw (`ClipParseResult::rotationSignFlips`), on Hermite tracks, and on keys more than 160 degrees apart, where the short way round
+  is a coin toss.
+- **R22, measured limit:** every joint answers to its own limit (`clipJointLimits`), a foot's half included, not only the clip's max. An
+  override above `tolerance_mm` can therefore put the clip's max over it, on purpose; `optimize_animation`'s re-read bound applies without `joints`.
+- **D6, `compare_to`:** a clip only, as D6 says; the plan's `"source"` needs step 6's cook. Without `limits.error_mm` the limit is the clip's own record,
+  and with neither `within_tolerance` is null and nothing fails.
+- **D6, `root`:** switches that GameObject's Animation Player entries of the source to the new file in one scene undo step, the plan's meaning.
+- **`foot_sliding`, `transition`, `record_seconds`, `feet`, `move_speed`, `limits.foot_slide_mm`, `limits.pop_mm`:** in the schema now, answering
+  `not_available` until stream `debug` flips their row in `kChecks`. Nothing about the schema changes then.

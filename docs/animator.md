@@ -144,6 +144,10 @@ Completely stops them. **Write Bones: Exposed** writes only the bones listed (an
 attachments) to their GameObjects: the skins still follow every bone. The budget: 200 humanoids
 per frame (see `docs/perf/animator.md`).
 
+Under Exposed, the Scene view's skeleton overlay draws the evaluated pose, so bones follow the mesh even though
+their Transforms stay at rest; the Inspector says `Not written to this GameObject (Write Bones: Exposed)` on such a
+bone. A bone whose parent is no bone draws as a root marker.
+
 What it costs right now: Window > Analysis > Profiler shows the Animator under the **Animation**
 band of CPU Usage, and its monitors `Animators`, `Animators sampled`, `Animators culled`,
 `Anim Prepare ms`, `Anim Wave ms`, `Anim Finalize ms` and `Clip memory` (`get_frame_times {monitors}`

@@ -47,6 +47,7 @@
 #include "window/GameResolutions.h"
 #include "window/ConsoleWindow.h"
 #include "window/GameWindow.h"
+#include "window/AnimationStatisticsWindow.h"
 #include "window/JobsMemoryWindow.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
@@ -1509,6 +1510,9 @@ void focusWindowTool(const CallPtr& call) {
     } else if (window == "jobs_memory") {
         app.getJobsMemoryWindow()->setOpen(true);
         imguiName = JobsMemoryWindow::WINDOW_NAME;
+    } else if (window == "animation_statistics") {
+        app.getAnimationStatisticsWindow()->setOpen(true);
+        imguiName = AnimationStatisticsWindow::WINDOW_NAME;
     } else if (window == "profiler") {
         ProfilerWindow* profiler = app.getProfilerWindow();
         profiler->setOpen(true);
@@ -2023,7 +2027,7 @@ void registerViewTools(McpRegistry& registry) {
             "systems: returns each row's Enabled checkbox rect; pose_animation: pose {entity, path, index, play, tab}.";
         tool.inputSchema = object({
             {"window", stringEnum("", {"scene", "game", "console", "hierarchy", "inspector", "project", "animation", "pose_animation",
-                                       "terrain", "mcp", "systems", "jobs_memory", "profiler", "frame_debugger", "preferences",
+                                       "terrain", "mcp", "systems", "jobs_memory", "animation_statistics", "profiler", "frame_debugger", "preferences",
                                        "undo_history", "play_mode_changes", "texture_synthesis", "vertex_animation_baker", "sprite_normals"})},
             {"scene", sceneRef("window scene: whose tab.")},
             {"console", object({

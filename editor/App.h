@@ -84,6 +84,7 @@ namespace jasperengine::editor::vcs {
 namespace jasperengine::editor{
 
     class JobsMemoryWindow;
+    class AnimationStatisticsWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
@@ -255,6 +256,7 @@ namespace jasperengine::editor{
         MissingAssetsWindow* missingAssetsWindow;
         AssetReferencesWindow* assetReferencesWindow;
         JobsMemoryWindow* jobsMemoryWindow;
+        AnimationStatisticsWindow* animationStatisticsWindow;
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
@@ -655,6 +657,7 @@ namespace jasperengine::editor{
         TerrainEditWindow* getTerrainEditWindow() const;
         SystemsWindow* getSystemsWindow() const;
         JobsMemoryWindow* getJobsMemoryWindow() const;
+        AnimationStatisticsWindow* getAnimationStatisticsWindow() const;
         ProfilerWindow* getProfilerWindow() const { return profilerWindow; }
         FrameDebuggerWindow* getFrameDebuggerWindow() const { return frameDebuggerWindow; }
         UndoHistoryWindow* getUndoHistoryWindow() const { return undoHistoryWindow; }

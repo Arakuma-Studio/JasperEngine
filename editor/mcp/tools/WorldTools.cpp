@@ -5073,7 +5073,11 @@ Json modelInfoJson(const Target& target, Entity entity) {
     }
     Json bones = Json::array();
     for (const auto& item : model.bonesNameMapping) {
-        if (item.second != NULL_ENTITY && scene->isEntityCreated(item.second)) bones.push_back({{"name", item.first}, {"id", item.second}});
+        if (item.second == NULL_ENTITY || !scene->isEntityCreated(item.second)) continue;
+        // its parent bone's name; null for a root, whatever non-bone node it sits under
+        const Transform* transform = scene->findComponent<Transform>(item.second);
+        const bool parented = transform && transform->parent != NULL_ENTITY && scene->findComponent<BoneComponent>(transform->parent);
+        bones.push_back({{"name", item.first}, {"id", item.second}, {"parent", parented ? Json(scene->getEntityName(transform->parent)) : Json(nullptr)}});
     }
     Json animations = Json::array();
     ActionSystem* actions = scene->getSystem<ActionSystem>().get();
@@ -5850,7 +5854,7 @@ void registerWorldTools(McpRegistry& registry) {
 
     // ---------------------------------------------------------------- models
     add("get_model_info", "Get Model Info",
-        "What a Model loaded: file, loading, mesh GameObjects, bones, animation clips (tracks, length, loop), "
+        "What a Model loaded: file, loading, mesh GameObjects, bones (name, id, parent), animation clips (tracks, length, loop), "
         "morph targets, skeleton.",
         object({
             {"scene", sceneRef()},
