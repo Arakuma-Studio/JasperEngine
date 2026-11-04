@@ -7027,6 +7027,9 @@ void MeshSystem::update(double dt){
             createOrUpdateTerrain(terrain, mesh, transform);
             updateTerrainAutoRanges(terrain);
         }
+        if (terrain.editState){
+            flushTerrainEdit(terrain, std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count());
+        }
     }
     // T1 R42, DC10: a frame's edits reach their subscribers once, by terrain and map
     if (TerrainEditEvents::hasPending()){

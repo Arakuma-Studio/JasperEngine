@@ -337,6 +337,8 @@ namespace {
         JE_FIELD(TerrainComponent, heightMap, .updateFlags = kTerrain | kTerrainTexture | kFoliage),
         // cut and filled by operations, never picked by hand (S53 R12)
         JE_FIELD(TerrainComponent, holeMap, .flags = Hidden, .updateFlags = kTerrainTexture),
+        // the Inspector row and what it does at load land with the runtime edits (T1 R77)
+        JE_FIELD(TerrainComponent, allowRuntimeEdits, .flags = Hidden),
         JE_FIELD(TerrainComponent, autoSetRanges, .updateFlags = kTerrain),
         JE_FIELD(TerrainComponent, offset),
         JE_FIELD(TerrainComponent, terrainSize, .updateFlags = kTerrain | kFoliage, .unit = Unit::Meters, .min = 0.0f),
@@ -603,7 +605,7 @@ const ComponentDesc kInstancedMeshDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kTerrainKnownKeys[] = {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "holeMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
+    constexpr const char* kTerrainKnownKeys[] = {"allowRuntimeEdits", "autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "holeMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
 
 }
 

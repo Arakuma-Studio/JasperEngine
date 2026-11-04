@@ -1732,6 +1732,7 @@ set(JASPERENGINE_SRCS
     core/fluid/FluidPresets.cpp
     core/subsystem/AudioSystem.cpp
     core/subsystem/MeshSystem.cpp
+    core/subsystem/MeshSystemTerrainEdit.cpp
     core/subsystem/LatticeSystem.cpp
     core/subsystem/SplineSystem.cpp
     core/lattice/LatticeSolver.cpp

@@ -206,6 +206,7 @@ WriteResult OverlayMapStore::write(MapId map, TexelRect rect, std::span<const fl
                 }
             }
             mapState->dirty = unite(mapState->dirty, part);
+            mapState->unflushed = unite(mapState->unflushed, part);
         }
     }
     return WriteResult{true, "", 0};
@@ -501,6 +502,75 @@ WriteResult OverlayMapStore::commit() {
 
 void OverlayMapStore::discard() {
     clearAll();
+}
+
+WriteResult OverlayMapStore::flushToBase() {
+    std::vector<uint8_t> after;
+    for (const std::unique_ptr<MapState>& mapState : maps) {
+        if (mapState->created || mapState->removed || mapState->unflushed.empty()) continue;
+        const TexelRect unflushed = mapState->unflushed;
+        mapState->unflushed = TexelRect{};
+        for (auto& [key, tile] : mapState->tiles) {
+            if (intersect(tile.rect, unflushed).empty()) continue;
+            tileAfterBytes(*mapState, tile, after);
+            const WriteResult wrote = baseStore->writeBytes(mapState->id, tile.rect, after);
+            if (!wrote.ok) return wrote;
+            tile.shown = true;
+        }
+    }
+    return WriteResult{true, "", 0};
+}
+
+WriteResult OverlayMapStore::rewind() {
+    for (const std::unique_ptr<MapState>& mapState : maps) {
+        const MapFormat format = mapState->created ? mapState->format : baseStore->format(mapState->id);
+        const int count = floatChannels(mapState->id, format);
+        const int stride = bytesPerTexel(format);
+        for (auto& [key, tile] : mapState->tiles) {
+            const size_t texels = static_cast<size_t>(tile.rect.area());
+            for (size_t i = 0; i < texels; i++) {
+                decodeTexel(mapState->id, format, tile.before.data() + i * stride, tile.values.data() + i * count);
+            }
+            if (!tile.shown) continue;
+            const WriteResult wrote = baseStore->writeBytes(mapState->id, tile.rect, tile.before);
+            if (!wrote.ok) return wrote;
+            tile.shown = false;
+        }
+        mapState->unflushed = TexelRect{};
+    }
+    return WriteResult{true, "", 0};
+}
+
+bool OverlayMapStore::readBeforeBytes(MapId map, TexelRect rect, std::span<uint8_t> out) const {
+    const MapFormat format = currentFormat(map);
+    if (!format.exists || !format.bounds.contains(rect)) return false;
+    const int stride = bytesPerTexel(format);
+    if (out.size() < static_cast<size_t>(rect.area()) * stride) return false;
+
+    const MapState* mapState = findState(map);
+    if (mapState && mapState->created) {
+        fillCreatedBytes(*mapState, rect, out);
+        return true;
+    }
+    if (!baseStore->readBytes(map, rect, out)) return false;
+    if (!mapState || mapState->tiles.empty() || rect.empty()) return true;
+
+    const int firstX = tileOf(rect.x), lastX = tileOf(rect.right() - 1);
+    const int firstY = tileOf(rect.y), lastY = tileOf(rect.bottom() - 1);
+    for (int tileY = firstY; tileY <= lastY; tileY++) {
+        for (int tileX = firstX; tileX <= lastX; tileX++) {
+            auto found = mapState->tiles.find({tileX, tileY});
+            if (found == mapState->tiles.end()) continue;
+            const Tile& tile = found->second;
+            const TexelRect part = intersect(tile.rect, rect);
+            for (int y = part.y; y < part.bottom(); y++) {
+                std::memcpy(out.data() + (static_cast<size_t>(y - rect.y) * rect.w + (part.x - rect.x)) * stride,
+                            tile.before.data() + (static_cast<size_t>(y - tile.rect.y) * tile.rect.w + (part.x - tile.rect.x)) * stride,
+                            static_cast<size_t>(part.w) * stride);
+            }
+        }
+    }
+    return true;
 }
 
 void OverlayMapStore::clearAll() {

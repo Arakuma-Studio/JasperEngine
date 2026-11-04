@@ -26,7 +26,7 @@ namespace jasperengine::terrain {
     struct Shape {
         ShapeType type = ShapeType::All;
 
-        Vector2 center = Vector2(0.0f, 0.0f);   // Circle, Mask
+        Vector2 center = Vector2(0.0f, 0.0f);   // Circle, Mask; with nearestTexel, any shape
         float radius = 0.0f;                    // Circle, Polyline, Stroke
         Vector2 min = Vector2(0.0f, 0.0f);      // Rect
         Vector2 max = Vector2(0.0f, 0.0f);      // Rect
@@ -43,6 +43,13 @@ namespace jasperengine::terrain {
         int maskWidth = 0, maskHeight = 0;
         Vector2 size = Vector2(0.0f, 0.0f);     // Mask: its extent
         bool maskRound = false;                 // Mask: clipped to the inscribed ellipse, as a circular brush
+
+        // Polyline: a square brush dragged along it, measured on the larger axis from the nearest
+        // point. Its mask, when it has pixels, is sampled in that brush's frame (a ramp's stamp).
+        bool squareEnds = false;
+        // A brush's stamp that misses every sample still reaches the texel nearest center, as
+        // Circle and Stroke always do (T1 R17)
+        bool nearestTexel = false;
 
         // Stroke: what a stamp's pressure scales (T1 R37)
         bool pressureStrength = true;

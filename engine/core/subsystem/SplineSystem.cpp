@@ -434,6 +434,8 @@ struct SplineSystem::BuildJob{
 };
 
 struct SplineSystem::Resolve{
+    // the sum of the scene's terrains' surface revisions, at the last look
+    uint64_t surfaceRevisions = 0;
     uint64_t splineVersion = 0;
     uint64_t extrudeHash = 0;
     uint64_t instantiateHash = 0;
@@ -704,17 +706,21 @@ void SplineSystem::updateConsumers(Entity entity, SplineComponent& spline, Trans
         resolve.hasWorld = true;
         common = true;
     }
-    // a terrain under a conformed consumer was edited (MeshSystem clears the flag after us)
+    // a terrain under a conformed consumer was built again (MeshSystem clears the flag after us)
+    // or edited
     bool terrainChanged = false;
     if ((wantsExtrude && (extrude->conform != SplineConform::None || extrude->shape == SplineExtrudeShape::WaterBanks)) ||
         (wantsInstantiate && instantiate->conform != SplineConform::None)){
         auto terrains = scene->getComponentArray<TerrainComponent>();
+        uint64_t surfaceRevisions = 0;
         for (size_t t = 0; t < terrains->size(); t++){
-            if (terrains->getComponentFromIndex(t).needUpdateTerrain){
-                terrainChanged = true;
-                break;
-            }
+            const TerrainComponent& terrain = terrains->getComponentFromIndex(t);
+            terrainChanged = terrainChanged || terrain.needUpdateTerrain;
+            surfaceRevisions += terrain.surfaceRevision;
         }
+        // T1 R23: an edit keeps the node tree, and moves the surface all the same
+        terrainChanged = terrainChanged || surfaceRevisions != resolve.surfaceRevisions;
+        resolve.surfaceRevisions = surfaceRevisions;
     }
 
     if (wantsExtrude){

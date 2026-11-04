@@ -39,7 +39,8 @@ LocalBounds jasperengine::terrain::localBoundsOf(const MapLattice& lattice, cons
 ShapeEvaluator::ShapeEvaluator(const Shape& shape): shape(&shape) {
     const bool roundByDefault = shape.type == ShapeType::Circle || shape.type == ShapeType::Stroke;
     feather = shape.feather < 0.0f ? (roundByDefault ? 1.0f : 0.0f) : detClamp01(shape.feather);
-    if (shape.rotation != 0.0f && (shape.type == ShapeType::Rect || shape.type == ShapeType::Mask)) {
+    const bool polylineMask = shape.type == ShapeType::Polyline && !shape.maskPixels.empty();
+    if (shape.rotation != 0.0f && (shape.type == ShapeType::Rect || shape.type == ShapeType::Mask || polylineMask)) {
         const float angle = detRadians(shape.rotation);
         cosine = detCos(angle);
         sine = detSin(angle);
@@ -159,6 +160,8 @@ ShapeSample ShapeEvaluator::sample(float x, float z) const {
             const size_t segments = points.size() < 2 ? 1 : (shape->closed ? points.size() : points.size() - 1);
             float best = -1.0f;
             float bestAlong = 0.0f;
+            float bestX = 0.0f;
+            float bestZ = 0.0f;
             for (size_t i = 0; i < segments; i++) {
                 const Vector2& a = points[i];
                 const Vector2& b = points.size() < 2 ? points[i] : points[(i + 1) % points.size()];
@@ -172,14 +175,25 @@ ShapeSample ShapeEvaluator::sample(float x, float z) const {
                 if (best < 0.0f || distanceSquared < best) {
                     best = distanceSquared;
                     bestAlong = t;
+                    bestX = dx;
+                    bestZ = dz;
                 }
             }
-            const float distance = std::sqrt(best) / shape->radius;
+            const float distance = shape->squareEnds ? std::max(std::fabs(bestX), std::fabs(bestZ)) / shape->radius
+                                                     : std::sqrt(best) / shape->radius;
             if (distance > 1.0f) return result;
             result.inside = true;
             result.falloff = falloffOf(distance);
             result.weight = result.falloff;
             result.along = bestAlong;
+            if (!shape->maskPixels.empty()) {
+                const float localX = bestX / shape->radius;
+                const float localZ = bestZ / shape->radius;
+                const float rotatedX = localX * cosine - localZ * sine;
+                const float rotatedZ = localX * sine + localZ * cosine;
+                result.mask = maskAt(rotatedX * 0.5f + 0.5f, rotatedZ * 0.5f + 0.5f);
+                result.weight = result.falloff * result.mask;
+            }
             return result;
         }
     }

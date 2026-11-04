@@ -8,9 +8,15 @@
 #include "terrain/TerrainHoles.h"
 
 #include "Scene.h"
+#include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
+#include "component/SplineComponent.h"
+#include "component/SplineExtrudeComponent.h"
 #include "component/TerrainComponent.h"
+#include "component/Transform.h"
 #include "object/TerrainEdit.h"
 #include "subsystem/MeshSystem.h"
+#include "subsystem/SplineSystem.h"
 #include "support/AllocationCounter.h"
 #include "texture/Texture.h"
 #include "texture/TextureData.h"
@@ -19,6 +25,9 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <memory>
+#include <utility>
+#include <vector>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -56,6 +65,18 @@ namespace {
 
 }
 
+namespace {
+
+    // A node tree is only built with a camera to range it for
+    void addCamera(Scene& scene) {
+        const Entity camera = scene.createEntity();
+        scene.addComponent<Transform>(camera, {});
+        scene.addComponent<CameraComponent>(camera, {});
+        scene.setCamera(camera);
+    }
+
+}
+
 TEST(TerrainEdit, StoreReadsAndWritesTheComponentsMaps) {
     TerrainComponent terrain;
     makeTerrain(terrain, "t1-store");
@@ -81,10 +102,14 @@ TEST(TerrainEdit, StoreReadsAndWritesTheComponentsMaps) {
     ASSERT_TRUE(result.ok) << result.error;
     ASSERT_EQ(result.changed.size(), 1u);
 
-    EXPECT_TRUE(terrain.needUpdateTerrain) << "the map changed, so the terrain refreshes as a stroke does today";
+    // T1 R23: a height edit keeps the node tree; the image follows, and the surface revision and
+    // the foliage wait for the frame
+    EXPECT_FALSE(terrain.needUpdateTerrain);
     EXPECT_TRUE(terrain.needUpdateTexture);
-    EXPECT_TRUE(terrain.needUpdateFoliage);
-    EXPECT_FALSE(terrain.heightMapLoaded);
+    EXPECT_FALSE(terrain.needUpdateFoliage);
+    EXPECT_TRUE(terrain.heightMapLoaded);
+    ASSERT_NE(terrain.editState, nullptr);
+    EXPECT_TRUE(terrain.editState->surfaceMoved);
 
     // The query sees it at once, through the same pixels
     const SurfaceSample sample = querySurface(terrain, 0.0f, 0.0f);
@@ -313,18 +338,219 @@ TEST(TerrainEdit, EventsKeepScenesApart) {
 TEST(TerrainEdit, ZeroCostWhenUnused) {
     if (!testsupport::countsAllocations()) GTEST_SKIP() << "no allocation counter on this platform";
 
-    TerrainComponent terrain;
-    makeTerrain(terrain, "t1-zero-cost");
+    // T1 R53: one null pointer and one revision integer on the component
+    EXPECT_EQ(sizeof(TerrainComponent::editState), sizeof(std::shared_ptr<TerrainEditState>));
+    EXPECT_EQ(sizeof(TerrainComponent::surfaceRevision), sizeof(uint32_t));
 
-    // No edit: the frame's guard and a query allocate nothing, and the store never comes into it.
-    // T1 R53's whole-frame count over an unedited terrain comes with the node refit it guards.
-    const uint64_t before = testsupport::threadAllocations();
+    Scene scene;
+    const Entity entity = scene.createEntity();
+    scene.addComponent<Transform>(entity, {});
+    scene.addComponent<TerrainComponent>(entity, {});
+    scene.addComponent<MeshComponent>(entity, {});
+    TerrainComponent& terrain = scene.getComponent<TerrainComponent>(entity);
+    makeTerrain(terrain, "t1-zero-cost");
+    addCamera(scene);
+    MeshSystem& system = *scene.getSystem<MeshSystem>();
+    system.update(0.016);
+    ASSERT_TRUE(terrain.heightMapLoaded);
+    system.update(0.016);
+
+    // No edit: the frames over a built terrain allocate what they do without one, whatever the
+    // rest of the system's frame allocates, and a query allocates nothing
+    Scene bare;
+    addCamera(bare);
+    MeshSystem& bareSystem = *bare.getSystem<MeshSystem>();
+    bareSystem.update(0.016);
+    uint64_t start = testsupport::threadAllocations();
     for (int frame = 0; frame < 1000; frame++) {
-        if (TerrainEditEvents::hasPending()) TerrainEditEvents::flush(nullptr);
+        bareSystem.update(0.016);
+    }
+    const uint64_t withoutTerrain = testsupport::threadAllocations() - start;
+    start = testsupport::threadAllocations();
+    for (int frame = 0; frame < 1000; frame++) {
+        system.update(0.016);
+    }
+    EXPECT_EQ(testsupport::threadAllocations() - start, withoutTerrain);
+
+    start = testsupport::threadAllocations();
+    for (int frame = 0; frame < 1000; frame++) {
         const SurfaceSample sample = querySurface(terrain, 1.0f, 1.0f);
         ASSERT_TRUE(sample.present);
     }
-    EXPECT_EQ(testsupport::threadAllocations(), before);
+    EXPECT_EQ(testsupport::threadAllocations(), start);
+    EXPECT_EQ(terrain.editState, nullptr);
+    EXPECT_EQ(terrain.surfaceRevision, 0u);
+}
+
+namespace {
+
+    // A built node tree over a map with one texel raised, so ranges have something to notice
+    struct BuiltTerrain {
+        Scene scene;
+        Entity entity = NULL_ENTITY;
+
+        explicit BuiltTerrain(const std::string& name) {
+            entity = scene.createEntity();
+            scene.addComponent<Transform>(entity, {});
+            TerrainComponent component;
+            component.rootGridSize = 2;
+            component.levels = 3;
+            scene.addComponent<TerrainComponent>(entity, component);
+            scene.addComponent<MeshComponent>(entity, {});
+            makeTerrain(terrain(), name);
+            addCamera(scene);
+            system().update(0.016);
+        }
+
+        TerrainComponent& terrain() { return scene.getComponent<TerrainComponent>(entity); }
+        MeshSystem& system() { return *scene.getSystem<MeshSystem>(); }
+    };
+
+    std::vector<std::pair<float, float>> nodeRanges(const TerrainComponent& terrain) {
+        std::vector<std::pair<float, float>> ranges;
+        for (unsigned int i = 0; i < terrain.numNodes; i++) {
+            ranges.emplace_back(terrain.nodes[i].minHeight, terrain.nodes[i].maxHeight);
+        }
+        return ranges;
+    }
+
+}
+
+// AC18 (T1 R23): the tree stays, its ranges are what a full rebuild would give
+TEST(TerrainEdit, HeightEditDoesNotRebuild) {
+    BuiltTerrain built("t1-refit");
+    TerrainComponent& terrain = built.terrain();
+    ASSERT_TRUE(terrain.heightMapLoaded);
+    ASSERT_GT(terrain.numNodes, 0u);
+    const TerrainNode* nodes = terrain.nodes.data();
+    const unsigned int numNodes = terrain.numNodes;
+    const std::vector<std::pair<float, float>> before = nodeRanges(terrain);
+
+    TerrainComponentStore store(&built.scene, built.entity, terrain);
+    Op op;
+    op.type = OpType::Raise;
+    op.delta = 3.0f;
+    op.shape.type = ShapeType::Circle;
+    op.shape.center = Vector2(-5.0f, -5.0f);
+    op.shape.radius = 2.0f;
+    ASSERT_TRUE(apply(store, op).ok);
+
+    EXPECT_TRUE(terrain.heightMapLoaded) << "drawing is not gated off during a stroke";
+    EXPECT_FALSE(terrain.needUpdateTerrain);
+    built.system().update(0.016);
+    EXPECT_EQ(terrain.nodes.data(), nodes) << "the node memory was not made again";
+    EXPECT_EQ(terrain.numNodes, numNodes);
+    EXPECT_TRUE(terrain.heightMapLoaded);
+    EXPECT_EQ(terrain.surfaceRevision, 1u);
+
+    const std::vector<std::pair<float, float>> refitted = nodeRanges(terrain);
+    EXPECT_NE(refitted, before) << "the edit reached the ranges";
+
+    terrain.needUpdateTerrain = true;
+    built.system().update(0.016);
+    EXPECT_EQ(nodeRanges(terrain), refitted) << "as a full rebuild would give them";
+}
+
+// AC18 (T1 R23): at most four revisions a second during a stroke, and always one at its end
+TEST(TerrainEdit, StrokeHoldsTheRevisionRate) {
+    BuiltTerrain built("t1-revision-rate");
+    TerrainComponent& terrain = built.terrain();
+    terrain.needUpdateFoliage = false;
+    TerrainComponentStore store(&built.scene, built.entity, terrain);
+    Op op;
+    op.type = OpType::Raise;
+    op.delta = 0.5f;
+
+    beginTerrainStroke(terrain);
+    double now = 100.0;
+    int revisionsMade = 0;
+    for (int frame = 0; frame < 60; frame++) {
+        const uint32_t was = terrain.surfaceRevision;
+        op.type = frame % 2 == 0 ? OpType::Raise : OpType::Lower;   // it keeps moving, never clipped
+        ASSERT_TRUE(apply(store, op).ok);
+        built.system().flushTerrainEdit(terrain, now);
+        if (terrain.surfaceRevision != was) revisionsMade++;
+        now += 1.0 / 60.0;
+    }
+    EXPECT_LE(revisionsMade, 5) << "one second of frames, the first one included";
+    EXPECT_GE(revisionsMade, 3);
+
+    op.type = OpType::Raise;
+    ASSERT_TRUE(apply(store, op).ok);
+    endTerrainStroke(terrain);
+    const uint32_t atEnd = terrain.surfaceRevision;
+    built.system().flushTerrainEdit(terrain, now);
+    EXPECT_EQ(terrain.surfaceRevision, atEnd + 1) << "the last edit always counts";
+    EXPECT_TRUE(terrain.needUpdateFoliage) << "foliage follows the revision";
+    built.system().flushTerrainEdit(terrain, now + 1.0);
+    EXPECT_EQ(terrain.surfaceRevision, atEnd + 1) << "nothing moved since";
+}
+
+// AC18 (T1 R23): spline conform follows an edit that no longer rebuilds the terrain. Red without the
+// revision bump: needUpdateTerrain never rises, so the road would stay on the old surface.
+TEST(TerrainEdit, SplineConformSeesRevision) {
+    Scene scene;
+    const Entity ground = scene.createEntity();
+    scene.addComponent<Transform>(ground, {});
+    scene.addComponent<TerrainComponent>(ground, {});
+    TerrainComponent& terrain = scene.getComponent<TerrainComponent>(ground);
+    makeTerrain(terrain, "t1-conform");
+    terrain.needUpdateTerrain = false;
+
+    const Entity road = scene.createEntity();
+    scene.addComponent<Transform>(road, {});
+    SplineComponent spline;
+    spline::SplineKnot a;
+    a.position = Vector3(-6.0f, 0.0f, 0.0f);
+    a.radius = 1.0f;
+    spline::SplineKnot b = a;
+    b.position = Vector3(6.0f, 0.0f, 0.0f);
+    spline.spline.setKnots({a, b});
+    scene.addComponent<SplineComponent>(road, spline);
+    MeshComponent mesh;
+    mesh.numSubmeshes = 1;
+    scene.addComponent<MeshComponent>(road, mesh);
+    SplineExtrudeComponent extrude;
+    extrude.shape = SplineExtrudeShape::Crown;
+    extrude.conform = SplineConform::TerrainHeight;
+    scene.addComponent<SplineExtrudeComponent>(road, extrude);
+
+    SplineSystem& splines = *scene.getSystem<SplineSystem>();
+    MeshSystem& meshes = *scene.getSystem<MeshSystem>();
+
+    auto vertexBytes = [&]() {
+        std::vector<unsigned char> bytes;
+        for (Entity chunk : splines.getGeneratedEntities(road)) {
+            const MeshComponent& part = scene.getComponent<MeshComponent>(chunk);
+            const unsigned char* data = reinterpret_cast<const unsigned char*>(part.buffer.getData());
+            bytes.insert(bytes.end(), data, data + part.buffer.getSize());
+            const float y = scene.getComponent<Transform>(chunk).position.y;
+            const unsigned char* origin = reinterpret_cast<const unsigned char*>(&y);
+            bytes.insert(bytes.end(), origin, origin + sizeof(y));
+        }
+        return bytes;
+    };
+    auto frame = [&]() {
+        meshes.update(0.016);
+        splines.update(0.016);
+    };
+
+    frame();
+    splines.rebuildNow(road);
+    frame();
+    const std::vector<unsigned char> onTheOldSurface = vertexBytes();
+    ASSERT_FALSE(onTheOldSurface.empty());
+
+    TerrainComponentStore store(&scene, ground, terrain);
+    Op op;
+    op.type = OpType::Raise;
+    op.delta = 2.0f;
+    ASSERT_TRUE(apply(store, op).ok);
+    EXPECT_FALSE(terrain.needUpdateTerrain);
+    frame();
+    EXPECT_TRUE(splines.isRebuildPending(road) || vertexBytes() != onTheOldSurface) << "the spline noticed the surface moved";
+    splines.rebuildNow(road);
+    EXPECT_NE(vertexBytes(), onTheOldSurface) << "the road follows the raised ground";
 }
 
 TEST(TerrainEdit, NewTerrainDefaultsHaveOneHome) {
