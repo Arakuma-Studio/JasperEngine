@@ -38,6 +38,10 @@ async def spheres(ed: Editor) -> int:
                              position=[(i % 4) * 2 - 3, 0.5, (i // 4) * 2 - 3], select=False)
         S["balls"].append(ball["entity_id"])
     await ed.call("create_entity", scene=scene, type="plane", name="Floor", scale=[20, 1, 20], select=False)
+    # a still scene's cached shadow slots draw nothing, and settled() waits for a still scene
+    lights = harness.find_entities(await ed.call("find_entities", scene=scene, component="light"))
+    await ed.call("set_properties", scene=scene, entity=harness.entity_id_of(lights[0]),
+                  values={"light": {"shadowUpdateMode": "every_frame"}})
     await ed.call("wait", frames=30)
     S["scene"] = scene
     return scene

@@ -18,6 +18,8 @@
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
+using jasperengine::test::TestTempDir;
+using namespace jasperengine::editor::hub;
 namespace fs = std::filesystem;
 
 TEST(NewProjectShadowLodBias, TemplatesCoarsenShadowsOldProjectsKeepOne) {
