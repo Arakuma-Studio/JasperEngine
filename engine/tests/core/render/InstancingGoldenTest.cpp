@@ -16,6 +16,7 @@
 #include "object/Primitive.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
+#include "render/shadow/ShadowTypes.h"
 #include "component/MeshComponent.h"
 
 #include "GpuEnvironment.h"
@@ -27,6 +28,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
+#include <cstring>
+#include <string>
 #include <memory>
 #include <vector>
 
@@ -109,6 +112,61 @@ namespace {
             });
         }
 
+        // the frame's passes of a label (prefix "shadow": the shadow atlas, its static layer and
+        // the point atlas), their draws and instances
+        struct PassCounts { uint32_t draws = 0; uint32_t instances = 0; uint32_t viewTag = 0; bool found = false; };
+        static PassCounts passCounts(const char* label){
+            PassCounts counts;
+            const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+            for (const PassRecord& pass : list.passes){
+                if (!pass.executed || std::strcmp(pass.label, label) != 0)
+                    continue;
+                counts.draws += pass.draws;
+                counts.instances += pass.instances;
+                counts.viewTag = pass.viewTag;
+                counts.found = true;
+            }
+            return counts;
+        }
+
+        // an attachment of the frame's first pass of that label (the Frame Debugger's preview):
+        // attachment 0..3 colour, 4 depth (shown as depth); empty when it never came
+        static std::vector<uint8_t> passImage(const char* label, int attachment){
+            const PassCounts counts = passCounts(label);
+            PassPreviewRequest request;
+            request.viewTag = counts.viewTag;
+            request.label = label;
+            request.attachment = attachment;
+            request.mode = attachment == 4 ? 2 : 0;
+            request.maxSize = 512;
+            const uint64_t serial = SystemRender::getPassPreview().serial;
+            SystemRender::requestPassPreview(request);
+            std::vector<uint8_t> rgba;
+            for (int frame = 0; frame < 30; frame++){
+                GpuEnvironment::drawFrames(1);
+                const PassPreviewResult result = SystemRender::getPassPreview();
+                if (result.serial == serial)
+                    continue;
+                EXPECT_TRUE(result.ready) << label << ": " << result.reason;
+                if (result.ready && SystemRender::getPassPreviewTexture())
+                    readTexture(*SystemRender::getPassPreviewTexture(), result.width, result.height, rgba);
+                break;
+            }
+            SystemRender::cancelPassPreview();
+            return rgba;
+        }
+
+        static size_t differentPixels(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+            if (a.size() != b.size())
+                return a.size() + b.size();
+            size_t different = 0;
+            for (size_t i = 0; i < a.size(); i += 4){
+                if (std::memcmp(&a[i], &b[i], 3) != 0)
+                    different++;
+            }
+            return different;
+        }
+
         static std::vector<uint8_t> readTarget(){
             Framebuffer& target = GpuEnvironment::target();
             std::vector<uint8_t> rgba;
@@ -176,5 +234,53 @@ TEST_F(InstancingGoldenGpu, MeshOptOutDrawsAlone){
 
     ASSERT_TRUE(render()) << "the scene never finished loading";
     EXPECT_EQ(SystemRender::getDrawBatchStats().instancedDraws, 0u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// The shadow maps and the camera's depth passes batch too (R1): the sun's shadows redrawn every
+// frame (no shadow cache to keep them from the measured frame), the camera's depth pre-pass and
+// SSAO's depth pass on. With GPU Instancing on, those passes draw the same instances in fewer
+// draws, and their images (the shadow atlas's depth, the depth pre-pass's packed depth) and the
+// frame are the same pixel for pixel as with it off.
+TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
+    JASPER_REQUIRE_GPU();
+    sun.setShadowUpdateMode(ShadowUpdateMode::EVERY_FRAME);
+    scene.setDepthPrepassEnabled(true);
+    scene.setSSAOEnabled(true);
+    buildScene();
+
+    Engine::setGpuInstancingEnabled(false);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    const PassCounts shadowOff = passCounts("shadow");
+    const PassCounts depthOff = passCounts("depth pre-pass");
+    const std::vector<uint8_t> frameOff = readTarget();
+    const std::vector<uint8_t> shadowImageOff = passImage("shadow", 4);
+    const std::vector<uint8_t> depthImageOff = passImage("depth pre-pass", 0);
+
+    Engine::setGpuInstancingEnabled(true);
+    ASSERT_TRUE(render()) << "the batch variants never finished loading";
+    const PassCounts shadowOn = passCounts("shadow");
+    const PassCounts depthOn = passCounts("depth pre-pass");
+    const std::vector<uint8_t> frameOn = readTarget();
+    const std::vector<uint8_t> shadowImageOn = passImage("shadow", 4);
+    const std::vector<uint8_t> depthImageOn = passImage("depth pre-pass", 0);
+    std::printf("[instancing] shadow: %u draws (%u instances) off, %u (%u) on; depth pre-pass: %u (%u) off, %u (%u) on\n",
+                shadowOff.draws, shadowOff.instances, shadowOn.draws, shadowOn.instances,
+                depthOff.draws, depthOff.instances, depthOn.draws, depthOn.instances);
+
+    ASSERT_TRUE(shadowOff.found && shadowOn.found) << "the frame drew no shadow pass";
+    ASSERT_TRUE(depthOff.found && depthOn.found) << "the frame drew no depth pre-pass";
+    // the 36 grid Models in each: fewer draws, the same instances
+    EXPECT_LT(shadowOn.draws + 30, shadowOff.draws);
+    EXPECT_EQ(shadowOn.instances, shadowOff.instances);
+    EXPECT_GT(shadowOn.instances, shadowOn.draws);
+    EXPECT_LT(depthOn.draws + 30, depthOff.draws);
+    EXPECT_EQ(depthOn.instances, depthOff.instances);
+
+    ASSERT_FALSE(shadowImageOff.empty());
+    ASSERT_FALSE(depthImageOff.empty());
+    EXPECT_EQ(differentPixels(shadowImageOff, shadowImageOn), 0u) << "shadow atlas pixels that differ";
+    EXPECT_EQ(differentPixels(depthImageOff, depthImageOn), 0u) << "depth pre-pass pixels that differ";
+    EXPECT_EQ(differentPixels(frameOff, frameOn), 0u) << "frame pixels that differ";
     EXPECT_NO_ENGINE_ERRORS();
 }
