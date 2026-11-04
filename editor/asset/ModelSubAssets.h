@@ -23,11 +23,11 @@ namespace jasperengine::editor {
         std::string key;       // SubAssetKeys: "<kind>:<name>" or "<kind>#<index>"
     };
 
-    // What a player cannot hold of a model whatever its build (spec S45 R4): the real limits left,
-    // and over them a model loads incomplete or not at all. One entry per skin, mesh or file.
+    // What a player cannot hold of a model whatever its build (spec S65 R4): vertex inputs and GPU
+    // objects, over which a model loads incomplete. One entry per mesh or file.
     struct ModelLimit {
-        std::string what;      // "skin 'Armature'", "mesh 'Face'", "the file"
-        std::string kind;      // "bones", "blend shapes", "vertex and index buffers"
+        std::string what;      // "mesh 'Face'", "the file"
+        std::string kind;      // "blend shapes", "vertex and index buffers"
         size_t count = 0;
         size_t limit = 0;
     };

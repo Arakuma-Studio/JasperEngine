@@ -56,14 +56,6 @@ namespace {
 
     void scanGltfLimits(const Json& root, ModelContents& contents) {
         const Json empty = Json::array();
-        const Json& skins = root.contains("skins") && root["skins"].is_array() ? root["skins"] : empty;
-        for (size_t s = 0; s < skins.size(); s++) {
-            const size_t joints = skins[s].is_object() && skins[s].contains("joints") && skins[s]["joints"].is_array() ? skins[s]["joints"].size() : 0;
-            if (joints > MAX_BONES) {
-                contents.limits.push_back({gltfItemName(skins[s], "skin", s), "bones", joints, MAX_BONES});
-            }
-        }
-
         const Json& accessors = root.contains("accessors") && root["accessors"].is_array() ? root["accessors"] : empty;
         std::set<int> views;
         const auto addView = [&](const Json& accessor) {
@@ -223,9 +215,7 @@ namespace {
 std::string editor::modelLimitMessage(const std::string& model, const ModelLimit& limit) {
     std::string message = "Model " + model + ": " + limit.what + " has " + std::to_string(limit.count) + " " + limit.kind +
                           ", more than the maximum allowed (" + std::to_string(limit.limit) + ")";
-    if (limit.kind == "bones") {
-        message += ". A build of a scene that uses it compiles the game to hold them; loaded by a script in a prebuilt player it does not load";
-    } else if (limit.kind == "blend shapes") {
+    if (limit.kind == "blend shapes") {
         message += ": the ones over it are left out";
     } else {
         message += ": what does not fit does not draw";

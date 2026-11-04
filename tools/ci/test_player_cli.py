@@ -31,11 +31,11 @@ image of docker/runtime.Dockerfile:
   missing); built with the full player alone they warn W-PLAYER-VARIANT and use it; each
   variant's build and the full player's run headless to the same frame, pixel for pixel (not
   atmosphere: its clouds differ between two runs of one player).
-- model-capacity (S45 AC1, AC2): a script in the prebuilt players loads a model of more nodes, a mesh of
-  more primitives and an OBJ of more materials than a mesh holds inline, once as it is and once under
-  Engine.startAsyncThread (all a Lua script has of a loading thread): every node, primitive and
-  material in the Linux players, each frame as the other's (pngdiff --tolerance 24 --max-fraction
-  0.01), and in the web players (pthreads and single-thread), by the browser gate.
+- model-capacity (S65 AC1, AC2): a script in the prebuilt players loads a model of many nodes and an OBJ of
+  more materials than a mesh held, once as it is and once under Engine.startAsyncThread (all a Lua
+  script has of a loading thread): every node and material in the Linux players, each frame as the
+  other's (pngdiff --tolerance 24 --max-fraction 0.01), and in the web players (pthreads and
+  single-thread), by the browser gate. The OBJ needs dc/mesh-memory, which S65 lands after.
 - fallback (AC3): tools/fixtures/prefab-runtime (C++ scripts) reports `method: compile` and
   `compile_reason: C++ scripts (...)`, and here fails with `needs a C++ toolchain`; with
   --method prebuilt it fails listing the reasons.
@@ -370,7 +370,7 @@ def check_fallback(args, players: Path, out: Path) -> None:
 
 
 MODEL_PLATES = 40
-OBJ_PLATES = 20
+OBJ_PLATES = 24
 MODEL_CAPACITY_SCRIPT = """local UnifiedLighting = { properties = {} }
 local LOADING_THREAD = @LOADING_THREAD@
 
@@ -393,8 +393,6 @@ function UnifiedLighting:init()
     self.nodes = Model(scene)
     self.nodes.position = Vector3(0, 0, -2.5)
     self.nodes:loadModel("nodes.gltf")
-    self.mesh = Model(scene)
-    self.mesh:loadModel("mesh.gltf")
     self.obj = Model(scene)
     self.obj.position = Vector3(0, 0, 2.5)
     self.obj:loadModel("plates.obj")
@@ -409,19 +407,18 @@ function UnifiedLighting:onUpdate(dt)
         for i = 0, @PLATES@ - 1 do
             if self.scene:findEntity("Plate " .. i) ~= NULL_ENTITY then nodes = nodes + 1 end
         end
-        print(string.format("[MC] nodes=%d root=%d mesh=%d obj=%d", nodes, self.nodes:getNumSubmeshes(),
-            self.mesh:getNumSubmeshes(), self.obj:getNumSubmeshes()))
+        print(string.format("[MC] nodes=%d root=%d", nodes, self.nodes:getNumSubmeshes()))
+        print(string.format("[MC] obj=%d", self.obj:getNumSubmeshes()))
     end
 end
 
 return UnifiedLighting
 """
-MODEL_CAPACITY_WHOLE = f"[MC] nodes={MODEL_PLATES} root=0 mesh={MODEL_PLATES} obj={OBJ_PLATES}"
+MODEL_CAPACITY_WHOLE = (f"[MC] nodes={MODEL_PLATES} root=0", f"[MC] obj={OBJ_PLATES}")
 
 
-def write_plates_gltf(path: Path, count: int, each_on_its_node: bool) -> None:
-    """`count` plates in a row, a material and buffer views of their own each: a primitive each of
-    one mesh, or a node and mesh each ("Plate <n>")."""
+def write_plates_gltf(path: Path, count: int) -> None:
+    """`count` plates in a row, a node ("Plate <n>"), mesh, material and buffer views of their own each."""
     binary = bytearray()
     views, accessors, primitives, materials = [], [], [], []
 
@@ -441,12 +438,8 @@ def write_plates_gltf(path: Path, count: int, each_on_its_node: bool) -> None:
         primitives.append({"attributes": {"POSITION": position, "NORMAL": normal}, "indices": index, "material": p})
         materials.append({"pbrMetallicRoughness": {"baseColorFactor": [0.2 + 0.8 * p / count, 0.3, 1.0 - 0.8 * p / count, 1],
                                                    "metallicFactor": 0, "roughnessFactor": 1}})
-    if each_on_its_node:
-        meshes = [{"primitives": [primitive]} for primitive in primitives]
-        nodes = [{"mesh": p, "name": f"Plate {p}"} for p in range(count)]
-    else:
-        meshes = [{"primitives": primitives}]
-        nodes = [{"mesh": 0}]
+    meshes = [{"primitives": [primitive]} for primitive in primitives]
+    nodes = [{"mesh": p, "name": f"Plate {p}"} for p in range(count)]
     bin_name = path.with_suffix(".bin")
     bin_name.write_bytes(bytes(binary))
     path.write_text(json.dumps({
@@ -474,8 +467,7 @@ def model_capacity_project(target: Path, loading_thread: bool) -> Path:
     project = fresh_copy(FIXTURES / "unified-lighting", target)
     (project / "scripts" / "UnifiedLighting.lua").write_text(
         MODEL_CAPACITY_SCRIPT.replace("@LOADING_THREAD@", "true" if loading_thread else "false").replace("@PLATES@", str(MODEL_PLATES)))
-    write_plates_gltf(project / "assets" / "nodes.gltf", MODEL_PLATES, True)
-    write_plates_gltf(project / "assets" / "mesh.gltf", MODEL_PLATES, False)
+    write_plates_gltf(project / "assets" / "nodes.gltf", MODEL_PLATES)
     write_plates_obj(project / "assets" / "plates.obj", OBJ_PLATES)
     return project
 
@@ -500,12 +492,14 @@ def check_model_capacity(args, players: Path, out: Path) -> None:
         log = game.stdout + game.stderr
         if game.returncode != 0 or not shot.is_file():
             raise Failure(f"{name}: the player exited {game.returncode}\n{log[-3000:]}")
-        if MODEL_CAPACITY_WHOLE not in log:
-            found = [line for line in log.splitlines() if "[MC]" in line or "ERROR" in line.upper()]
-            raise Failure(f"{name}: the player did not log {MODEL_CAPACITY_WHOLE!r}: {found[:10]}")
         if pngdiff.flat(pngdiff.load(shot), tolerance=8):
             raise Failure(f"{name}: the frame is one colour (nothing drawn): {shot}")
-        print(f"ok: {name}: {MODEL_CAPACITY_WHOLE}")
+        for line in MODEL_CAPACITY_WHOLE:
+            if line in log:
+                print(f"ok: {name}: {line}")
+            else:
+                found = [text for text in log.splitlines() if "[MC]" in text or "ERROR" in text.upper()]
+                failures.append(f"{name}: the player did not log {line!r}: {found[:10]}")
         return shot
 
     with Xvfb():

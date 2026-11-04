@@ -124,7 +124,7 @@ namespace {
     std::string baseTextureOf(Project* project, Scene* scene, Entity entity, unsigned submesh) {
         if (!scene || entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return std::string();
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
-        if (!mesh || submesh >= mesh->submeshes.size()) return std::string();
+        if (!mesh || submesh >= MAX_SUBMESHES) return std::string();
         const Texture& base = mesh->submeshes[submesh].material.baseColorTexture;
         if (base.getPath().empty() || base.isFramebuffer()) return std::string();
         const std::string rel = mcp::McpValues::assetPathToJson(project, base.getPath());
@@ -488,7 +488,7 @@ void SpriteNormalsWindow::refreshProblems(Item& item) {
         } else {
             Scene* s = const_cast<Scene*>(scene);
             if (MeshComponent* mesh = s->findComponent<MeshComponent>(spec.entity)) {
-                key += "|" + (spec.submesh < mesh->submeshes.size() ? mesh->submeshes[spec.submesh].material.baseColorTexture.getPath() : std::string());
+                key += "|" + (spec.submesh < MAX_SUBMESHES ? mesh->submeshes[spec.submesh].material.baseColorTexture.getPath() : std::string());
             }
             if (SpriteComponent* sprite = s->findComponent<SpriteComponent>(spec.entity)) {
                 key += "|" + std::to_string(sprite->numFramesRect);
@@ -609,7 +609,7 @@ void SpriteNormalsWindow::autoTargetFor(const std::string& imagePath) {
     MeshComponent* mesh = sp->scene->findComponent<MeshComponent>(selection[0]);
     if (!mesh) return;
     const unsigned count = std::max(mesh->numSubmeshes, sp->scene->findComponent<SpriteComponent>(selection[0]) ? 1u : 0u);
-    for (unsigned s = 0; s < count; s++) {
+    for (unsigned s = 0; s < count && s < MAX_SUBMESHES; s++) {
         if (baseTextureOf(project, sp->scene, selection[0], s) == imagePath) {
             setAssignTarget(sceneId, selection[0], s);
             assign = false;
@@ -695,7 +695,7 @@ bool SpriteNormalsWindow::openForEntity(uint32_t sceneId, Entity entity, unsigne
     std::vector<std::string> notes;
     fs::path recipePng;
     MeshComponent* mesh = sp->scene->findComponent<MeshComponent>(entity);
-    if (mesh && submesh < mesh->submeshes.size()) {
+    if (mesh && submesh < MAX_SUBMESHES) {
         const std::string stored = mesh->submeshes[submesh].material.normalTexture.getPath();
         if (!stored.empty()) {
             const fs::path png = absoluteOf(project, mcp::McpValues::assetPathToJson(project, stored));

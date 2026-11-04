@@ -145,7 +145,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Decode external buffers
     if (node["eBuffers"]) {
         auto eBuffersNode = node["eBuffers"];
-        for (unsigned int i = 0; i < eBuffersNode.size(); i++) {
+        for (unsigned int i = 0; i < eBuffersNode.size() && i < mesh.eBuffers.size(); i++) {
             decodeExternalBuffer(mesh.eBuffers[i], eBuffersNode[i]);
         }
         mesh.numExternalBuffers = eBuffersNode.size();
@@ -154,7 +154,7 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     // Decode submeshes
     if (node["submeshes"]) {
         auto submeshesNode = node["submeshes"];
-        for(unsigned int i = 0; i < submeshesNode.size(); i++) {
+        for(unsigned int i = 0; i < submeshesNode.size() && i < mesh.submeshes.size(); i++) {
             mesh.submeshes[i] = decodeSubmesh(submeshesNode[i], &mesh.submeshes[i]);
         }
         mesh.numSubmeshes = submeshesNode.size();

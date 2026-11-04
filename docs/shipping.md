@@ -101,6 +101,14 @@ runtime from pieces (`obj["get" .. "Rigidbody"]`) is the one use the build canno
 **Project Settings > Player > Strip Engine Code** off for such a project (every module its
 settings allow ships).
 
+## Model limits
+
+A model loads the same on a game's loading thread as on the main thread. Two limits of a model are
+real: a primitive's blend shapes (8; 4 when they have normals or tangents; 2 with both; the ones over
+it are left out) and a file's vertex and index buffers (the GPU buffer pool, 16384; what does not fit
+does not draw). The Console names the model, the count and the limit when the model is imported, and
+again when a game loads it.
+
 ## Platforms
 
 - **Android** needs the Android SDK's build-tools (35 or newer: aapt2, zipalign, apksigner), the

@@ -85,7 +85,6 @@
 #define MAX_POINT_SHADOW_LIGHTS (MAX_POINT_SHADOW_ATLAS_SLOTS / SHADOW_CUBE_FACES)
 #endif
 
-// held inline by a mesh; more go on the heap (SpillArray)
 #ifndef MAX_SUBMESHES
 #define MAX_SUBMESHES 16
 #endif
@@ -126,7 +125,6 @@
 #define SSAO_KERNEL_SIZE 32
 #endif
 
-// held inline by a mesh; more go on the heap (SpillArray)
 #ifndef MAX_EXTERNAL_BUFFERS
 #define MAX_EXTERNAL_BUFFERS 30
 #endif

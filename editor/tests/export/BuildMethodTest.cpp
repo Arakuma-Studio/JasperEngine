@@ -99,23 +99,6 @@ TEST(BuildMethod, CapacitiesAboveThePlayersCompile) {
     EXPECT_EQ(choice.method, BuildMethod::Prebuilt);
 }
 
-// What a mesh holds inline is not a limit: a player puts more on the heap (spec S45 R3)
-TEST(BuildMethod, AModelPastAMeshsInlineCapacitiesStaysPrebuilt) {
-    Project project;
-    SceneProject& scene = addScene(project, 1);
-    scene.maxValues.maxSubmeshes = MAX_SUBMESHES + 100;
-    scene.maxValues.maxExternalBuffers = MAX_EXTERNAL_BUFFERS + 100;
-    BuildMethodChoice choice = Exporter::chooseBuildMethod(&project, linuxConfig(), nullptr);
-    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
-
-    // and the same against a player whose table says less
-    PlayerInfo player;
-    player.capacities["MAX_SUBMESHES"] = 16;
-    player.capacities["MAX_EXTERNAL_BUFFERS"] = 30;
-    choice = Exporter::chooseBuildMethod(&project, linuxConfig(), &player);
-    EXPECT_EQ(choice.method, BuildMethod::Prebuilt) << (choice.reasons.empty() ? "" : choice.reasons.front());
-}
-
 TEST(BuildMethod, AdMobAndForcedCompile) {
     Project project;
     addScene(project, 1);

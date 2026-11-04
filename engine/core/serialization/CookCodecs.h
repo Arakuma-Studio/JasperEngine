@@ -300,21 +300,6 @@ namespace jasperengine::cook {
         }
     };
 
-#ifndef JASPERENGINE_EDITOR
-    // (the editor's is its HybridArray)
-    template<typename T, size_t N>
-    struct Codec<SpillArray<T, N>> {
-        static void write(Writer& w, const SpillArray<T, N>& v) {
-            w.varint(v.size());
-            for (size_t i = 0; i < v.size(); i++) Codec<T>::write(w, v[i]);
-        }
-        static void read(Reader& r, SpillArray<T, N>& v) {
-            const uint64_t count = r.varint();
-            for (uint64_t i = 0; i < count && !r.failed(); i++) Codec<T>::read(r, v[static_cast<size_t>(i)]);
-        }
-    };
-#endif
-
     // the editor's grows past N (and is written whole); a game's holds N
     template<typename T, size_t N>
     struct Codec<HybridArray<T, N>> {
@@ -368,12 +353,6 @@ namespace jasperengine::cook {
     struct TextureVisit<HybridArray<T, N>> {
         static void visit(HybridArray<T, N>& v, const TextureVisitor& f) { for (size_t i = 0; i < v.size(); i++) TextureVisit<T>::visit(v[i], f); }
     };
-#ifndef JASPERENGINE_EDITOR
-    template<typename T, size_t N>
-    struct TextureVisit<SpillArray<T, N>> {
-        static void visit(SpillArray<T, N>& v, const TextureVisitor& f) { for (size_t i = 0; i < v.size(); i++) TextureVisit<T>::visit(v[i], f); }
-    };
-#endif
     template<typename A, typename B>
     struct TextureVisit<std::pair<A, B>> {
         static void visit(std::pair<A, B>& v, const TextureVisitor& f) { TextureVisit<A>::visit(v.first, f); TextureVisit<B>::visit(v.second, f); }

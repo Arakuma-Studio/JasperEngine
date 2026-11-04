@@ -284,7 +284,8 @@ namespace {
 
     MeshComponent* meshOf(Scene* scene, Entity entity, const PropertyParams& params){
         MeshComponent* mesh = scene ? scene->findComponent<MeshComponent>(entity) : nullptr;
-        if (!mesh || params.submesh < 0 || (unsigned int)params.submesh >= std::max(1u, mesh->numSubmeshes)){
+        if (!mesh || params.submesh < 0 || (unsigned int)params.submesh >= std::max(1u, mesh->numSubmeshes) ||
+            (size_t)params.submesh >= MAX_SUBMESHES){
             return nullptr;
         }
         return mesh;
@@ -292,7 +293,8 @@ namespace {
 
     bool hasSubmesh(EntityRegistry* registry, Entity entity, const PropertyParams& params){
         MeshComponent* mesh = registry ? registry->findComponent<MeshComponent>(entity) : nullptr;
-        return mesh && params.submesh >= 0 && (unsigned int)params.submesh < std::max(1u, mesh->numSubmeshes);
+        return mesh && params.submesh >= 0 && (unsigned int)params.submesh < std::max(1u, mesh->numSubmeshes) &&
+               (size_t)params.submesh < MAX_SUBMESHES;
     }
 
     template<typename T, T Material::*Field>
@@ -1368,7 +1370,7 @@ std::vector<anim::AnimatablePropertyInfo> anim::listAnimatableProperties(Scene* 
         if (pattern.find("submeshes[N]") != std::string::npos){
             MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
             if (!mesh) continue;
-            const unsigned int count = std::max(1u, mesh->numSubmeshes);
+            const unsigned int count = std::min<unsigned int>(std::max(1u, mesh->numSubmeshes), MAX_SUBMESHES);
             for (unsigned int s = 0; s < count; s++){
                 const std::string prefix = "submeshes[" + std::to_string(s) + "]";
                 const std::string property = prefix + pattern.substr(std::strlen("submeshes[N]"));

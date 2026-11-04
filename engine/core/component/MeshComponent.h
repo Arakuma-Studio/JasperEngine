@@ -396,12 +396,12 @@ namespace jasperengine{
 
         InterleavedBuffer buffer;
         IndexBuffer indices;
-        SpillArray<ExternalBuffer, MAX_EXTERNAL_BUFFERS> eBuffers;
+        HybridArray<ExternalBuffer, MAX_EXTERNAL_BUFFERS> eBuffers;
         unsigned int numExternalBuffers = 0;
 
         unsigned int vertexCount = 0;
 
-        SpillArray<Submesh, MAX_SUBMESHES> submeshes;
+        HybridArray<Submesh, MAX_SUBMESHES> submeshes;
         unsigned int numSubmeshes = 0;
 
         // Optional user-forked shader. Project-relative base path (no extension),
