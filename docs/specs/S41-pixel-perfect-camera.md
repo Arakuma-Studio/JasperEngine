@@ -756,3 +756,7 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
 20. **Editor checks and the main camera.** In the editor a Scene's camera is the view's own camera,
     so the Scene view's pixel tools and the "not the main camera" warning read the SceneProject's
     `mainCamera`.
+21. **The Engine's view and the main scene.** `Engine::setScene` with another scene (or none) and
+    `Engine::removeScene` of the main scene drop the Pixel Perfect Camera's view; the new main
+    scene's camera sets its own on its update. Without it a scene switch kept the old scene's
+    integer layout (`EngineViewLayoutTest.ThePixelPerfectViewGoesWithItsMainScene`).
