@@ -59,7 +59,7 @@ S65, S67, S68, S69, S70, S72 and S35-S40. Several ready big features may share o
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | In progress |
 | S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A | In progress |
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B | In progress |
-| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | In progress |
+| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, M | In progress |
 | S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | In progress |
@@ -104,6 +104,8 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 - 2026-11-04: MCP hints on errors go in the error text. S69's eval showed that for an error result Claude Code shows the model only the text, so `next` in `structuredContent` is never read there. This narrows the AGENTS.md "MCP text" rule; S69 updates that rule, and every program adding refusals should read this.
 
+- 2026-11-04: S65 waits for `dc/mesh-memory`: one test (`AnObjOfManyMaterialsLoadsWhole`, and the player's `obj=24` line) stays red until the capacities go. Note for mesh-memory: its flatten test must use a preview load, because S65 stops plain threads baking.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
@@ -133,3 +135,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S66 landed. Mac check found a real FSEvents hang and explained the `Layers` hash; re-merging. It also forked about 2,800 processes on the user's Mac by mistake for about 7 minutes; killed, told the user.
 - 2026-11-04: Mac check landed. The fork accident came from `mac_watch_stress.sh`: bash 3.2 rejects `read -t 0.5`, so each pass left a `tail` and a subshell behind. The script is gone from the Mac and its rewrite waits with `sleep 1`.
 - 2026-11-04: S71 landed.
+- 2026-11-04: S65 parked, tree done, waiting for `dc/mesh-memory`.
