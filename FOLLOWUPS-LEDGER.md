@@ -52,7 +52,7 @@ S65, S67, S68, S69, S70, S72 and S35-S40. Several ready big features may share o
 
 | Spec | What | Branch | Server | Status |
 |---|---|---|---|---|
-| Mac | Final `main` on macOS | `fix/mac-final-main` | M | In progress |
+| Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
@@ -112,6 +112,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 ## Done
 
+- Mac check: a real hang fixed: 1-9% of new FSEvents streams never report, and stopping one then hung forever. `start()` retries up to 3 streams, then polls. 0 hangs in 15 runs after, 1 before under load. The `Layers` hash difference is explained (17 of 3000 floats, at most 2 ULP: FMA contraction and one `sinf`), and that test now runs on Mac. Mac WERROR build: editor 2823 passed, 1 skipped; core 2849 passed, 16 skipped; 0 failed. S61's `PanelClaims` built and passed there; nobody has clicked the Mac menu. Open: polling watcher tests fail 5 of 10 under 14 CPU hogs (unchanged code); `Layers.PerformanceBudget` fails steadily on A (0.75 ms against 0.6 ms), passes on B; a test probe crashed 3 times with SIGBUS inside FSEvents, cause unknown.
 - S66: crash leftovers clean themselves up. Copies hold an S03 lock; a dead owner's folder is removed at start and before each copy; older folders without a marker are listed in the Hub and MCP, and Remove asks first. Build and 4/4 tests on the final merge; CI suite 1,267 passed on the previous merge, with 2 failures that pass alone on the same build (cause not established) plus the death test, since fixed. Eval: both cases 2/2, and 0/2 without their text. Not done: Show in Folder never clicked; a removal request with no import earlier in the conversation does not find the tool; no case covers it.
 - S61: a key acts on the focused panel (`PanelClaims`), and curve and eyedropper keys are rebindable. The bug was real: Delete in the Curve window deleted a selected GameObject. MCP 202-file selection 1291 passed; its 3 failures were fixed (one was S61's test; two were fixed by merging `main`); affected 10 files 132 passed; eval 2/2, and 0/2 without its text. Whole `check-changed` not green, because a root CMake line demands the whole suite; the next full pass covers it. macOS not built yet: next Mac run. Unit tests last ran before its final merges.
 - `fix/texture-synth-death-test`: root causes found with a core under gdb; test-only fix. Failures 182/840 before, 0/350 after, ASan 30/30. A 1-in-160 crash needs more runs than 350 to rule out, but `exit()` is gone, which was its cause. Inferred: the real Linux editor stops this work before exit.
@@ -129,3 +130,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S38 M1 landed; S36 and S37 started. S61's red runs: Delete in the Curve window really did delete GameObjects. It waits on `fix/texture-synth-death-test` and its eval case. Other programs on `main`: also Forge/meshoptimizer S53-S57 and engine-gaps.
 - 2026-11-04: S61 and the death test landed. S63's guard is green: 45 of 45 scenes match byte for byte, after fixing 3 more draw-history bugs. S67: real iOS and Android runs pass; its work found `android-emulator-test.sh` emptying its own expectations, so earlier passes without `--scene` proved less. A's disk reached 27 GB free: removed S66's tree and the dangling images (54 GB free now).
 - 2026-11-04: S66 landed. Mac check found a real FSEvents hang and explained the `Layers` hash; re-merging. It also forked about 2,800 processes on the user's Mac by mistake for about 7 minutes; killed, told the user.
+- 2026-11-04: Mac check landed. The fork accident came from `mac_watch_stress.sh`: bash 3.2 rejects `read -t 0.5`, so each pass left a `tail` and a subshell behind. The script is gone from the Mac and its rewrite waits with `sleep 1`.
