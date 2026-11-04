@@ -36,3 +36,7 @@ pressing Build for those targets must get a working app. Everything in the path 
   Settings (only the CLI could make a simulator build), and the editor finds an Xcode in `/Applications` when
   `xcode-select` is on the Command Line Tools, through `DEVELOPER_DIR` for its own tools.
 - `publish` now also refuses an unsigned App Bundle (no signature block in `META-INF`).
+- Android's Vulkan player is withdrawn: S30's table lists it, but `platform/android` makes only an EGL context, the
+  engine's CMake set no sokol backend for it, and `-PjasperBackend=vulkan` never compiled, which also failed `tools/build.sh
+  players` for Android and CI's `players-android`. Build Settings, `get_build_info` and `--backend` offer gles3 only, and CMake
+  says why. A real Android Vulkan backend is a feature of its own.

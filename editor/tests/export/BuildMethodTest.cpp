@@ -200,6 +200,14 @@ TEST(AndroidPackage, NativeLibrariesCompressedBelowApi23) {
     EXPECT_FALSE(platform::compressesNativeLibraries(package));
 }
 
+// ---------------------------------------------------------------- Android backends (S47)
+
+// platform/android makes an EGL context and nothing else, so no Vulkan player can be built: Build
+// Settings, get_build_info and --backend must not offer one
+TEST(AndroidPackage, OffersOnlyTheBackendItsPlatformLayerHas) {
+    EXPECT_EQ(platformBackends(BuildPlatform::Android), (std::vector<std::string>{"gles3"}));
+}
+
 // ---------------------------------------------------------------- Android signing (S47 R3)
 
 TEST(AndroidSigning, KeytoolsAnswersInWordsAUserCanActOn) {
