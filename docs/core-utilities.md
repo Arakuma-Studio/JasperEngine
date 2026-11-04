@@ -107,7 +107,7 @@ platform (`docs/editor/text-and-languages.md` for users):
   separator.
 - Text from outside: `TextEncoding::consoleToUtf8` (child output), vswhere through
   `CommandRunner::vswhere` (`-utf8`), Apple paths through `UTF8String`.
-- `tools/check_text_encoding.py` (CI's unit job) fails on `CP_ACP`, ANSI Win32 calls that take
+- `tools/check_text_encoding.py` (a lint to run when you change these areas; `--self-test` is its red control) fails on `CP_ACP`, ANSI Win32 calls that take
   text or paths, `cStringUsingEncoding:` other than UTF-8, and vswhere run outside its helper.
 
 ## Events
