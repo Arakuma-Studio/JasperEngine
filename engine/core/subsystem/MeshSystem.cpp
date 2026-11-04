@@ -6975,6 +6975,11 @@ void MeshSystem::resetModelToBindPose(Entity entity, ModelComponent& model){
 bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh){
     // the sheet: loaded once, and again when the pool has a newer version (a reimport); the
     // previous one stays drawn until the new one is there (no flicker)
+    // another sheet (the Inspector, a script, a drop): its frames from now on
+    if (sprite.sheetData && sprite.loadedSheet != sprite.sheet.path){
+        sprite.sheetData.reset();
+        sprite.builtFrame = -1;
+    }
     const uint64_t revision = SpriteSheetPool::revision();
     if (!sprite.sheetData || sprite.sheetRevision != revision){
         sprite.sheetRevision = revision;
@@ -6983,6 +6988,7 @@ bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh)
             std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path);
             if (sheet){
                 sprite.sheetData = std::move(sheet);
+                sprite.loadedSheet = sprite.sheet.path;
                 sprite.sheetGeneration = SpriteSheetPool::generation(sprite.sheet.path);
                 sprite.resolveFrameName = true;
                 sprite.needUpdateSprite = true;

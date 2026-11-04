@@ -13,6 +13,10 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/aseprite/AsepriteRender.cpp
     ${EDITOR_DIR}/pixelart/aseprite/AsepriteDescribe.cpp
     ${EDITOR_DIR}/pixelart/aseprite/AsepriteLocator.cpp
+    ${EDITOR_DIR}/pixelart/aseprite/AsepriteImport.cpp
+    ${EDITOR_DIR}/pixelart/aseprite/AsepriteImporter.cpp
+    ${EDITOR_DIR}/pixelart/aseprite/AsepriteCli.cpp
+    ${EDITOR_DIR}/reload/handlers/Aseprite.cpp
     ${EDITOR_DIR}/sprite/SpritePacker.cpp
 )
 
@@ -27,5 +31,8 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/pixelart/aseprite/AsepriteRender.cpp
         ${EDITOR_DIR}/pixelart/aseprite/AsepriteDescribe.cpp
         ${EDITOR_DIR}/pixelart/aseprite/AsepriteLocator.cpp
+        ${EDITOR_DIR}/pixelart/aseprite/AsepriteImport.cpp
+        ${EDITOR_DIR}/pixelart/aseprite/AsepriteImporter.cpp
+        ${EDITOR_DIR}/pixelart/aseprite/AsepriteCli.cpp
         ${EDITOR_DIR}/sprite/SpritePacker.cpp
 )

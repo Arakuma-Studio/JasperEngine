@@ -63,6 +63,7 @@ namespace jasperengine{
 
         // runtime, not saved
         std::shared_ptr<const SpriteSheetData> sheetData;
+        std::string loadedSheet;          // the `sheet` path sheetData was loaded for
         uint64_t sheetGeneration = 0;     // SpriteSheetPool's generation of sheetData
         uint64_t sheetRevision = 0;       // the pool revision last checked (a cheap per-frame "anything new?")
         int builtFrame = -1;              // the frame whose geometry the buffer holds

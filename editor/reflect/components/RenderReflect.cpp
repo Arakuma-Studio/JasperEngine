@@ -210,7 +210,14 @@ namespace {
         if (!ctx.registry) return Stream::encodeMeshComponent(mesh);
         const bool isModel = Stream::isModelBackedMesh(ctx.entity, ctx.registry, ctx.signature);
         const bool isGenerated = isModel || Stream::isGeneratedMesh(ctx.registry, ctx.signature);
-        return Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated);
+        YAML::Node node = Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated);
+        // a sheet sprite's page is its sheet's (S44 R48): never saved as the mesh's texture
+        const SpriteComponent* sprite = ctx.registry->findComponent<SpriteComponent>(ctx.entity);
+        if (sprite && !sprite->sheet.empty() && node["submeshes"] && node["submeshes"].IsSequence() && node["submeshes"].size() > 0) {
+            YAML::Node material = node["submeshes"][0]["material"];
+            if (material && material.IsMap()) material.remove("baseColorTexture");
+        }
+        return node;
     }
 
     void decodeMesh(const YAML::Node& node, void* comp, const DecodeContext& ctx) {
@@ -362,6 +369,10 @@ namespace {
         JE_FIELD(SpriteComponent, flipY, .updateFlags = kSprite),
         JE_FIELD(SpriteComponent, textureScaleFactor, .updateFlags = kSprite, .min = 0.0f),
         JE_FIELD(SpriteComponent, pivotPreset, .enumDesc = &enums::kPivotPreset, .updateFlags = kSprite, .label = "Pivot"),
+        // a sheet sprite's frames come from its sheet (S44): an .aseprite file or a texture
+        JE_FIELD(SpriteComponent, sheet, .updateFlags = kSprite, .asset = AssetKind::Any, .label = "Sprite Sheet"),
+        JE_FIELD(SpriteComponent, frame, .updateFlags = kSprite, .min = 0.0f),
+        JE_FIELD(SpriteComponent, frameName, .flags = ReadOnly | NoMcpWrite, .label = "Frame Name"),
         // frame definitions are animation metadata: they do not change the quad
         JE_FIELD(SpriteComponent, numFramesRect),
         JE_FIELD(SpriteComponent, framesRect, .count = JE_COUNT(SpriteComponent, numFramesRect)),
@@ -616,7 +627,7 @@ const ComponentDesc kTerrainDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "enabled", "flipY", "framesRect", "height", "pivotPreset", "textureScaleFactor", "width"};
+    constexpr const char* kSpriteKnownKeys[] = {"automaticFlipY", "enabled", "flipY", "frame", "frameName", "framesRect", "height", "pivotPreset", "sheet", "sheetGuid", "textureScaleFactor", "width"};
 
 }
 

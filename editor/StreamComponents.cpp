@@ -344,6 +344,14 @@ YAML::Node editor::Stream::encodeSpriteComponent(const SpriteComponent& sprite) 
     node["textureScaleFactor"] = YamlNumbers::text(sprite.textureScaleFactor);
     node["pivotPreset"] = pivotPresetToString(sprite.pivotPreset);
 
+    // a sheet sprite (S44 R48): the sheet decides its frames; the inline ones are not saved
+    if (!sprite.sheet.empty()) {
+        encodeAssetRef(node, "sheet", sprite.sheet);
+        node["frame"] = YamlNumbers::integerText(sprite.frame);
+        node["frameName"] = sprite.frameName;
+        return node;
+    }
+
     YAML::Node framesNode;
     for (unsigned int i = 0; i < sprite.numFramesRect; i++) {
         framesNode.push_back(encodeSpriteFrameData(sprite.framesRect[i]));
@@ -374,6 +382,18 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["flipY"]) sprite.flipY = YamlNumbers::as<bool>(node["flipY"]);
     if (node["textureScaleFactor"]) sprite.textureScaleFactor = YamlNumbers::as<float>(node["textureScaleFactor"]);
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
+    if (node["sheet"]) {
+        const AssetRef sheet = decodeAssetRef(node, "sheet");
+        if (sheet.path != sprite.sheet.path) {
+            sprite.sheetData.reset();
+            sprite.builtFrame = -1;
+        }
+        sprite.sheet = sheet;
+        sprite.resolveFrameName = true;
+        sprite.needUpdateSprite = true;
+    }
+    if (node["frame"]) sprite.frame = YamlNumbers::as<int>(node["frame"]);
+    if (node["frameName"]) sprite.frameName = node["frameName"].as<std::string>();
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];

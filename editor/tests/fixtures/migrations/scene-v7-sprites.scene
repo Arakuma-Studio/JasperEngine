@@ -1,0 +1,83 @@
+formatVersion: 7
+id: 4441
+name: Sprites v7
+scene:
+  backgroundColor: [0.25, 0.45, 0.65, 1]
+  shadowQuality: low
+  meshLodEnabled: false
+  meshLodThreshold: 1
+  depthPrepassEnabled: false
+  lightState: on
+  globalIlluminationIntensity: 0.2
+  globalIlluminationColor: [1, 1, 1]
+  ambientLight2DIntensity: 1
+  ambientLight2DColor: [1, 1, 1]
+  shadow2DQuality: low
+  ssaoEnabled: false
+  ssaoRadius: 0.5
+  ssaoIntensity: 1
+  ssaoBias: 0.025
+  ssrEnabled: false
+  ssrMaxDistance: 8
+  ssrThickness: 0.5
+  ssrMaxSteps: 48
+  ssrIntensity: 1
+  ssrBlur: 0
+  gravity2D: [0, -9.81]
+  gravity3D: [0, -9.81, 0]
+  fixedResolutionEnabled: false
+  fixedResolutionWidth: 640
+  fixedResolutionHeight: 360
+  fixedResolutionFilter: nearest
+  enableUIEvents: not_set
+sceneType: scene_3d
+mainCamera: 0
+maxValues:
+  maxSubmeshes: 0
+  maxTilemapTilesRect: 0
+  maxTilemapTiles: 0
+  maxExternalBuffers: 0
+  maxSpriteFrames: 0
+  maxBones: 0
+  maxColliders2D: 0
+  maxColliderPoints2D: 0
+  maxColliders3D: 0
+  maxColliderVertices3D: 0
+  maxColliderIndices3D: 0
+entities:
+  - type: Entity
+    entity: 1001
+    name: Hero
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      mesh:
+        submeshes:
+          - material:
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/hero.png
+                minFilter: nearest
+                magFilter: nearest
+      sprite:
+        enabled: true
+        width: 16
+        height: 24
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_center
+        framesRect:
+          - name: walk_0
+            rect: [0, 0, 16, 24]
+          - name: walk_1
+            rect: [16, 0, 16, 24]
+          - name: walk_2
+            rect: [32, 0, 16, 24]
+      spriteanimation:
+        loop: true
+        frames: [0, 1, 2]
+        framesTime: [100, 100, 120]

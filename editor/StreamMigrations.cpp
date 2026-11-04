@@ -693,6 +693,12 @@ namespace {
         logRibbonCurves(migrateRibbonCurves(root["members"], log), log);
     }
 
+    // Scene 7 -> 8, prefab 8 -> 9 (S44): sprites may name a sprite sheet (sheet, sheetGuid,
+    // frame, frameName); an older file has none, so nothing changes. The bump tells an older
+    // editor it cannot draw sheet sprites.
+    void sheetSpritesIdentity(YAML::Node&, MigrationLog&){
+    }
+
 }
 
 const char* StreamMigrations::versionKey(DocumentKind kind){
@@ -701,11 +707,11 @@ const char* StreamMigrations::versionKey(DocumentKind kind){
 
 int StreamMigrations::currentVersion(DocumentKind kind){
     switch (kind){
-        case DocumentKind::Scene: return 7;
+        case DocumentKind::Scene: return 8;
         case DocumentKind::Project: return 1;
         case DocumentKind::Material: return 1;
         // Prefab::FILE_VERSION
-        case DocumentKind::Prefab: return 8;
+        case DocumentKind::Prefab: return 9;
     }
     return 0;
 }
@@ -745,6 +751,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {4, 5, "splines (identity: an older scene has none)", sceneV4ToV5},
         {5, 6, "Animation Player controllers to Animators", sceneV5ToV6},
         {6, 7, "Line and Trail Renderer curves and gradients in the editor's curve form", sceneV6ToV7},
+        {7, 8, "sprite sheets (identity: an older scene has none)", sheetSpritesIdentity},
     };
     static const std::vector<Migration> project = {
         {0, 1, "stamp the project format version", projectV0ToV1},
@@ -759,6 +766,7 @@ const std::vector<Migration>& StreamMigrations::table(DocumentKind kind){
         {5, 6, "derived transform values no longer written", prefabV5ToV6},
         {6, 7, "Animation Player controllers to Animators", prefabV6ToV7},
         {7, 8, "Line and Trail Renderer curves and gradients in the editor's curve form", prefabV7ToV8},
+        {8, 9, "sprite sheets (identity: an older prefab has none)", sheetSpritesIdentity},
     };
 
     switch (kind){

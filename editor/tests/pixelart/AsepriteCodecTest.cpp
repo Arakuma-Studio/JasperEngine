@@ -185,9 +185,21 @@ TEST(AsepriteCodecTest, GoldenCorpus) {
         const Cel* cel = doc.cel(layer, 0);
         ASSERT_TRUE(cel && cel->tilemap);
         const Tilemap& tm = *cel->tilemap;
-        EXPECT_EQ(tm.columns, 13);
-        EXPECT_EQ(tm.rows, 16);
-        auto id = [&](int u, int v) { return tm.at(u, v) & tm.idMask; };
+        const Tileset* tilemapTileset = nullptr;
+        for (const Tileset& t : doc.tilesets) {
+            if (t.id == doc.layers[static_cast<size_t>(layer)].tilesetIndex) tilemapTileset = &t;
+        }
+        ASSERT_TRUE(tilemapTileset);
+        // asefile addresses tiles on the canvas grid (13 x 16 tiles of 20x16 here); the cel sits at
+        // (0, 16), one row down, and holds the tiles from there
+        EXPECT_EQ(doc.width / tilemapTileset->tileWidth + (doc.width % tilemapTileset->tileWidth ? 1 : 0), 13);
+        EXPECT_EQ(doc.height / tilemapTileset->tileHeight, 16);
+        auto id = [&](int u, int v) -> uint32_t {
+            const int cu = u - cel->x / tilemapTileset->tileWidth;
+            const int cv = v - cel->y / tilemapTileset->tileHeight;
+            if (cu < 0 || cv < 0 || cu >= tm.columns || cv >= tm.rows) return 0;
+            return tm.at(cu, cv) & tm.idMask;
+        };
         EXPECT_EQ(id(0, 0), 0u);
         EXPECT_EQ(id(0, 2), 4u);
         EXPECT_EQ(id(0, 3), 2u);

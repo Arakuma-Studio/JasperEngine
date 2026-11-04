@@ -117,6 +117,7 @@
 
 #include "texture/Texture.h"
 #include "texture/TextureCookQueue.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
@@ -5733,6 +5734,9 @@ void editor::Project::resetConfigs() {
     HotReloadService::get().stopWatching();
     if (TextureCookQueue::get().getProject() == this){
         TextureCookQueue::get().attach(nullptr);
+    }
+    if (pixelart::aseprite::AsepriteImporter::get().getProject() == this){
+        pixelart::aseprite::AsepriteImporter::get().attach(nullptr);
     }
     textureSettings = {};
     inspectedAssets.clear();

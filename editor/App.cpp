@@ -67,6 +67,7 @@
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -3698,6 +3699,10 @@ void editor::App::pollExternalChanges(){
         TextureCookQueue& cooks = TextureCookQueue::get();
         if (cooks.getProject() != &project) cooks.attach(&project);
         wake = cooks.update() || wake;
+        // .aseprite imports (S44): run on the Background lane, swapped in here
+        pixelart::aseprite::AsepriteImporter& imports = pixelart::aseprite::AsepriteImporter::get();
+        if (imports.getProject() != &project) imports.attach(&project);
+        wake = imports.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();

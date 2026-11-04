@@ -51,12 +51,12 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     YAML::Node root = YAML::Load("{name: Level1, entities: [{name: A}]}");
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_EQ(result.versionRead, 0);
-    EXPECT_EQ(result.versionCurrent, 7);
+    EXPECT_EQ(result.versionCurrent, 8);
     EXPECT_TRUE(result.migrated());
     EXPECT_FALSE(result.newer());
     ASSERT_TRUE(root.IsMap());
     EXPECT_EQ(root.begin()->first.Scalar(), "formatVersion");
-    EXPECT_EQ(root["formatVersion"].as<int>(), 7);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
     EXPECT_EQ(root["name"].as<std::string>(), "Level1");
     EXPECT_EQ(root["entities"][0]["name"].as<std::string>(), "A");
     EXPECT_EQ(root.size(), 3u);
@@ -64,7 +64,7 @@ TEST(StreamMigrations, MigrateStampsVersionFirst){
     // current: nothing to do
     const MigrationResult again = StreamMigrations::migrate(DocumentKind::Scene, root);
     EXPECT_FALSE(again.migrated());
-    EXPECT_EQ(again.versionRead, 7);
+    EXPECT_EQ(again.versionRead, 8);
 }
 
 TEST(StreamMigrations, NewerIsLeftUntouched){
@@ -73,8 +73,8 @@ TEST(StreamMigrations, NewerIsLeftUntouched){
     EXPECT_TRUE(result.newer());
     EXPECT_FALSE(result.migrated());
     EXPECT_EQ(root["formatVersion"].as<int>(), 99);
-    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 8),
-            "Written by a newer JasperEngine (scene format 8; this editor writes 7).");
+    EXPECT_EQ(StreamMigrations::newerFormatMessage(DocumentKind::Scene, 9),
+            "Written by a newer JasperEngine (scene format 9; this editor writes 8).");
 }
 
 TEST(StreamMigrations, OldPrefabsAreLeftToThePrefabLoader){

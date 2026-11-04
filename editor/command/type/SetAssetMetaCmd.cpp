@@ -3,6 +3,9 @@
 
 #include "SetAssetMetaCmd.h"
 
+#include <algorithm>
+#include <vector>
+
 #include "Out.h"
 #include "Project.h"
 #include "asset/AssetFileWrite.h"
@@ -115,16 +118,37 @@ namespace {
         static editor::SetAssetMetaCmd::WriteListener listener;
         return listener;
     }
+
+    // the importers that follow their own settings sections (an .aseprite file's, S44), by owner
+    std::vector<std::pair<const void*, editor::SetAssetMetaCmd::WriteListener>>& ownedWriteListeners(){
+        static std::vector<std::pair<const void*, editor::SetAssetMetaCmd::WriteListener>> listeners;
+        return listeners;
+    }
 }
 
 void editor::SetAssetMetaCmd::setWriteListener(WriteListener listener){
     metaWriteListener() = std::move(listener);
 }
 
+void editor::SetAssetMetaCmd::addWriteListener(const void* owner, WriteListener listener){
+    removeWriteListener(owner);
+    ownedWriteListeners().emplace_back(owner, std::move(listener));
+}
+
+void editor::SetAssetMetaCmd::removeWriteListener(const void* owner){
+    auto& listeners = ownedWriteListeners();
+    listeners.erase(std::remove_if(listeners.begin(), listeners.end(), [owner](const auto& l) { return l.first == owner; }), listeners.end());
+}
+
 bool editor::SetAssetMetaCmd::write(const YAML::Node& value, bool removeFileIfEmpty){
     const bool written = writeFile(value, removeFileIfEmpty);
     if (written && metaWriteListener()){
         metaWriteListener()(project, asset, key);
+    }
+    if (written){
+        // a copy: a listener may add or remove listeners
+        const auto listeners = ownedWriteListeners();
+        for (const auto& [owner, listener] : listeners) listener(project, asset, key);
     }
     return written;
 }

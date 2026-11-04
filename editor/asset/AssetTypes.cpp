@@ -51,6 +51,8 @@ namespace {
             {{AssetType::AnimatorController, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".controller"}},
             {{AssetType::AvatarMask, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".mask"}},
             {{AssetType::AnimationMontage, AssetIdentity::InFile, AssetPathBase::Assets, false, false}, {".montage"}},
+            // Aseprite files (S44): a meta beside them, their outputs are sub-assets
+            {{AssetType::AsepriteSprite, AssetIdentity::Sidecar, AssetPathBase::Assets, true, false}, {".aseprite", ".ase"}},
         };
         return table;
     }

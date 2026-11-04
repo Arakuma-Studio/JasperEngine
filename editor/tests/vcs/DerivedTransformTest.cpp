@@ -116,15 +116,15 @@ TEST(Stream, DerivedTransformNotWritten) {
     EXPECT_NE(resaved.find("scale: [2, 2, 2]"), std::string::npos);
     // the format version moved on, with the migration that drops them (then S18's identity 4 -> 5
     // and the Animation Player controllers' move to Animators, 5 -> 6 / prefab 6 -> 7, and the
-    // upstream curve form 6 -> 7 / prefab 7 -> 8)
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 7);
-    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 8);
-    EXPECT_EQ(Prefab::FILE_VERSION, 8);
+    // upstream curve form 6 -> 7 / prefab 7 -> 8, and the sprite sheets' identity 7 -> 8 / prefab 8 -> 9)
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Scene), 8);
+    EXPECT_EQ(StreamMigrations::currentVersion(DocumentKind::Prefab), 9);
+    EXPECT_EQ(Prefab::FILE_VERSION, 9);
     YAML::Node root = YAML::Load(old);
     const MigrationResult result = StreamMigrations::migrate(DocumentKind::Scene, root);
-    ASSERT_EQ(result.applied.size(), 4u);
+    ASSERT_EQ(result.applied.size(), 5u);
     EXPECT_EQ(result.versionRead, 3);
-    EXPECT_EQ(root["formatVersion"].as<int>(), 7);
+    EXPECT_EQ(root["formatVersion"].as<int>(), 8);
     expectNoDerivedKeys(YAML::Dump(root), "a migrated scene");
 }
 

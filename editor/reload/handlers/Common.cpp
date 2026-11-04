@@ -23,6 +23,8 @@ std::string reload::kindOf(const fs::path& path) {
     // a .cube LUT is a texture of the post-processing (S13: the renderer caches it by path)
     if (Util::isImageFile(text) || Util::isColorLutFile(text)) return "texture";
     if (Util::isModelFile(text) || ext == ".fbx") return "model";
+    // Aseprite files: imported again (S44 R22)
+    if (ext == ".aseprite" || ext == ".ase") return "aseprite";
     if (Util::isMaterialFile(text)) return "material";
     if (Util::isParticleEffectFile(text)) return "particles";
     if (Util::isShaderFile(text)) return "shader";

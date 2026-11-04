@@ -1214,7 +1214,11 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.submeshes[" << idx << "].material.alphaMode = static_cast<MaterialAlphaMode>(" << static_cast<int>(mesh.submeshes[s].material.alphaMode) << ");\n";
         code << ind << "mesh.submeshes[" << idx << "].material.emissiveFactor = " << formatVector3(mesh.submeshes[s].material.emissiveFactor) << ";\n";
 
-        code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        // a sheet sprite's page is its sheet's (S44 R48), resolved by the game
+        const SpriteComponent* sheetSprite = scene->findComponent<SpriteComponent>(entity);
+        if (s != 0 || !sheetSprite || sheetSprite->sheet.empty()){
+            code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        }
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.emissiveTexture, "mesh.submeshes[" + idx + "].material.emissiveTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.occlusionTexture, "mesh.submeshes[" + idx + "].material.occlusionTexture", projectPath);
@@ -1584,6 +1588,12 @@ std::string editor::Factory::createSpriteComponent(int indentSpaces, EntityRegis
     }
     if (sprite.numFramesRect > 0) {
         code << ind << "sprite.numFramesRect = " << sprite.numFramesRect << ";\n";
+    }
+    // a sheet sprite (S44): the sheet, its frame and that frame's name
+    if (!sprite.sheet.empty()) {
+        code << ind << "sprite.sheet = " << formatString(sprite.sheet.path) << ";\n";
+        code << ind << "sprite.frame = " << sprite.frame << ";\n";
+        code << ind << "sprite.frameName = " << formatString(sprite.frameName) << ";\n";
     }
     if (!sprite.enabled) code << ind << "sprite.enabled = false;\n";
     addComponentCode(code, ind, sceneName, entityName, entity, "SpriteComponent", "sprite", assignExisting);

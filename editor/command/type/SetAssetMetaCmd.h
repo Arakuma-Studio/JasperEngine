@@ -46,6 +46,9 @@ namespace jasperengine::editor{
         // import-settings edit changed): the project, the project-relative asset and the key
         using WriteListener = std::function<void(Project* project, const std::filesystem::path& asset, const std::string& key)>;
         static void setWriteListener(WriteListener listener);
+        // more listeners, one per owner (replaced when the owner adds again)
+        static void addWriteListener(const void* owner, WriteListener listener);
+        static void removeWriteListener(const void* owner);
 
         bool execute() override;
         void undo() override;
