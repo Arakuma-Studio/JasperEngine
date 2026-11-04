@@ -313,3 +313,84 @@ TEST(GitProvider, MergeDriverSetup) {
     EXPECT_NE(driver.find("'\\''s here"), std::string::npos);
     EXPECT_NE(driver.find(" merge-scene %O %A %B %P"), std::string::npos);
 }
+
+// The status bar's HEAD (docs/superpowers/specs/2026-11-04-code-editor-git-design.md 6.5): a
+// detached HEAD's tag, a merge and a rebase left unfinished, read from the git directory
+TEST(GitProvider, DetachedAndOperations) {
+    VcsSandbox box;
+    ASSERT_FALSE(box.git.empty());
+    const fs::path repo = box.gitRepo("repo", {{"a.txt", "base\n"}});
+    GitProvider provider(box.config(repo, repo));
+    VcsSnapshot snapshot = statusOf(provider);
+    EXPECT_FALSE(snapshot.branch.detached);
+    EXPECT_EQ(snapshot.branch.operation, VcsOperation::None);
+    EXPECT_EQ(headLabel(snapshot.branch), "main");
+
+    // detached at a tag, and at a commit no tag names
+    box.gitOk(repo, {"tag", "v1.0"});
+    writeFile(repo / "a.txt", "second\n");
+    box.gitOk(repo, {"commit", "-q", "-am", "second"});
+    box.gitOk(repo, {"checkout", "-q", "v1.0"});
+    snapshot = statusOf(provider);
+    EXPECT_TRUE(snapshot.branch.detached);
+    std::string tag;
+    ASSERT_TRUE(offMain([&]() { return provider.headTag(tag); }).ok);
+    EXPECT_EQ(tag, "v1.0");
+    snapshot.branch.tag = tag;
+    EXPECT_EQ(headLabel(snapshot.branch), "tag v1.0");
+    box.gitOk(repo, {"checkout", "-q", "main"});
+    box.gitOk(repo, {"checkout", "-q", "--detach", "HEAD"});
+    snapshot = statusOf(provider);
+    EXPECT_TRUE(snapshot.branch.detached);
+    EXPECT_FALSE(offMain([&]() { return provider.headTag(tag); }).ok);
+    EXPECT_EQ(headLabel(snapshot.branch), snapshot.branch.headOid.substr(0, 7));
+    box.gitOk(repo, {"checkout", "-q", "main"});
+
+    // a merge that stopped on a conflict
+    box.gitOk(repo, {"checkout", "-q", "-b", "other"});
+    writeFile(repo / "a.txt", "other\n");
+    box.gitOk(repo, {"commit", "-q", "-am", "other"});
+    box.gitOk(repo, {"checkout", "-q", "main"});
+    writeFile(repo / "a.txt", "main\n");
+    box.gitOk(repo, {"commit", "-q", "-am", "main"});
+    EXPECT_FALSE(box.run(box.git, repo, {"merge", "-q", "other"}).ok());
+    snapshot = statusOf(provider);
+    EXPECT_EQ(snapshot.branch.operation, VcsOperation::Merge);
+    EXPECT_EQ(headLabel(snapshot.branch), "main | MERGING");
+    ASSERT_NE(snapshot.find("a.txt"), nullptr);
+    EXPECT_TRUE(snapshot.find("a.txt")->conflict);
+    box.gitOk(repo, {"merge", "--abort"});
+    EXPECT_EQ(statusOf(provider).branch.operation, VcsOperation::None);
+
+    // a rebase that stopped on a conflict: its branch and step
+    box.gitOk(repo, {"checkout", "-q", "other"});
+    EXPECT_FALSE(box.run(box.git, repo, {"rebase", "main"}).ok());
+    snapshot = statusOf(provider);
+    EXPECT_EQ(snapshot.branch.operation, VcsOperation::Rebase);
+    EXPECT_EQ(snapshot.branch.operationBranch, "other");
+    EXPECT_EQ(snapshot.branch.operationStep, 1);
+    EXPECT_EQ(snapshot.branch.operationTotal, 1);
+    EXPECT_EQ(headLabel(snapshot.branch), "other | REBASE 1/1");
+    box.gitOk(repo, {"rebase", "--abort"});
+    EXPECT_EQ(statusOf(provider).branch.operation, VcsOperation::None);
+}
+
+TEST(GitProvider, HeadLabels) {
+    VcsBranchInfo branch;
+    branch.name = "main";
+    EXPECT_EQ(headLabel(branch), "main");
+    branch.operation = VcsOperation::CherryPick;
+    EXPECT_EQ(headLabel(branch), "main | CHERRY-PICKING");
+    branch.operation = VcsOperation::Revert;
+    EXPECT_EQ(headLabel(branch), "main | REVERTING");
+    branch.operation = VcsOperation::Bisect;
+    EXPECT_EQ(headLabel(branch), "main | BISECTING");
+    branch = VcsBranchInfo();
+    branch.detached = true;
+    branch.headOid = "0123456789abcdef";
+    EXPECT_EQ(headLabel(branch), "0123456");
+    branch.operation = VcsOperation::Rebase;
+    branch.operationBranch = "feature";
+    EXPECT_EQ(headLabel(branch), "feature | REBASE");
+    EXPECT_STREQ(vcsOperationName(VcsOperation::CherryPick), "cherry_pick");
+}

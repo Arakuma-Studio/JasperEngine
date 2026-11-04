@@ -75,6 +75,11 @@ namespace jasperengine::editor::vcs {
         WithIgnored = 1u << 1
     };
 
+    // A git operation left unfinished in the working tree (merge, rebase, ...): git status does
+    // not say, the files in the git directory do
+    enum class VcsOperation : uint8_t { None, Merge, Rebase, CherryPick, Revert, Bisect };
+    const char* vcsOperationName(VcsOperation operation);   // "", "merge", "rebase", "cherry_pick", "revert", "bisect"
+
     struct VcsBranchInfo {
         std::string name;           // "main"; svn: the URL below the repository root ("^/trunk")
         std::string headOid;        // git: the HEAD commit; svn: the working copy's revision
@@ -82,7 +87,16 @@ namespace jasperengine::editor::vcs {
         int ahead = 0;
         int behind = 0;
         bool detached = false;
+        std::string tag;            // git: the tag a detached HEAD is at; svn: a ^/tags/<tag> working copy
+        VcsOperation operation = VcsOperation::None;
+        int operationStep = 0;      // a rebase's progress (0: unknown)
+        int operationTotal = 0;
+        std::string operationBranch;   // the branch a rebase works on
     };
+
+    // The status bar's name of the HEAD, in git's prompt words: "main", "tag v1.2", "a1b2c3d",
+    // "feature | REBASE 2/5", "main | MERGING"
+    std::string headLabel(const VcsBranchInfo& branch);
 
     struct VcsLogEntry {
         std::string revision;

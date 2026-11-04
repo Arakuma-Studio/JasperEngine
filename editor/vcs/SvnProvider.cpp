@@ -363,6 +363,12 @@ VcsResult SvnProvider::branchInfo(VcsBranchInfo& out) {
     out.headOid = entry->attribute("revision");
     out.name = entry->childText("relative-url");
     if (out.name.empty()) out.name = entry->childText("url");
+    // a working copy of ^/tags/<tag>/...: named by its tag, as a detached git HEAD is
+    constexpr std::string_view tags = "^/tags/";
+    if (out.name.rfind(tags, 0) == 0) {
+        const std::string rest = out.name.substr(tags.size());
+        out.tag = rest.substr(0, rest.find('/'));
+    }
     return VcsResult::success();
 }
 
@@ -384,13 +390,14 @@ VcsResult SvnProvider::textDiff(const RepoPath& path, std::string_view rev, std:
     args.push_back("--");
     args.push_back(pegged(path));
     const ProcessResult result = svn(std::move(args));
-    if (result.ok() && !result.out.empty()) {
+    // a versioned file: its diff, empty when it has no changes
+    if (result.ok()) {
         out = result.out;
         return VcsResult::success();
     }
-    // an unversioned file: all of it is new
+    // an unversioned file (svn refuses to diff it): all of it is new
     std::string text;
-    if (!readFile(absoluteOf(cfg.repoRoot, path), text)) return result.ok() ? VcsResult::success() : resultOf(result);
+    if (!readFile(absoluteOf(cfg.repoRoot, path), text)) return resultOf(result);
     if (text.find('\0') != std::string::npos) {
         out = "Binary file " + path + " added\n";
         return VcsResult::success();

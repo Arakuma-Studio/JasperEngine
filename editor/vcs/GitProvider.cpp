@@ -323,6 +323,61 @@ void GitProvider::parsePorcelainV2(std::string_view output, VcsSnapshot& out) {
     }
 }
 
+fs::path GitProvider::gitDir() const {
+    std::lock_guard<std::mutex> lock(gitDirMutex);
+    if (!gitDirPath) {
+        const ProcessResult result = git({"rev-parse", "--absolute-git-dir"});
+        gitDirPath = result.ok() ? pathFromUtf8(trimmed(result.out)) : fs::path();
+    }
+    return *gitDirPath;
+}
+
+void GitProvider::readOperation(VcsBranchInfo& branch) const {
+    const fs::path dir = gitDir();
+    if (dir.empty()) return;
+    std::error_code ec;
+    auto exists = [&](const char* name) { return fs::exists(dir / name, ec); };
+    auto readNumber = [&](const fs::path& file) {
+        std::ifstream in(file);
+        int value = 0;
+        return (in >> value) ? value : 0;
+    };
+    auto readBranch = [&](const fs::path& file) {
+        std::ifstream in(file);
+        std::string ref;
+        std::getline(in, ref);
+        ref = trimmed(ref);
+        constexpr std::string_view heads = "refs/heads/";
+        return ref.rfind(heads, 0) == 0 ? ref.substr(heads.size()) : ref;
+    };
+    if (exists("rebase-merge")) {
+        branch.operation = VcsOperation::Rebase;
+        branch.operationStep = readNumber(dir / "rebase-merge" / "msgnum");
+        branch.operationTotal = readNumber(dir / "rebase-merge" / "end");
+        branch.operationBranch = readBranch(dir / "rebase-merge" / "head-name");
+    } else if (exists("rebase-apply")) {
+        branch.operation = VcsOperation::Rebase;
+        branch.operationStep = readNumber(dir / "rebase-apply" / "next");
+        branch.operationTotal = readNumber(dir / "rebase-apply" / "last");
+        branch.operationBranch = readBranch(dir / "rebase-apply" / "head-name");
+    } else if (exists("MERGE_HEAD")) {
+        branch.operation = VcsOperation::Merge;
+    } else if (exists("CHERRY_PICK_HEAD")) {
+        branch.operation = VcsOperation::CherryPick;
+    } else if (exists("REVERT_HEAD")) {
+        branch.operation = VcsOperation::Revert;
+    } else if (exists("BISECT_LOG")) {
+        branch.operation = VcsOperation::Bisect;
+    }
+}
+
+VcsResult GitProvider::headTag(std::string& out) {
+    const ProcessResult result = git({"describe", "--tags", "--exact-match", "HEAD"});
+    if (!result.ok()) return resultOf(result);
+    out = trimmed(result.out);
+    return out.empty() ? VcsResult::failure("no tag") : VcsResult::success();
+}
+
 VcsResult GitProvider::status(VcsSnapshot& out, uint32_t depth, const jobs::CancelToken* cancel) {
     std::vector<std::string> args = {"status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"};
     const bool ignored = (depth & WithIgnored) != 0;
@@ -332,6 +387,7 @@ VcsResult GitProvider::status(VcsSnapshot& out, uint32_t depth, const jobs::Canc
     const ProcessResult result = git(std::move(args), 0, {}, cancel);
     if (!result.ok()) return resultOf(result);
     parsePorcelainV2(result.out, out);
+    readOperation(out.branch);
     out.hasIgnored = ignored;
     // the lockable attribute: with the ignored set (a .gitattributes change) and the locks
     if (depth & (WithLocksAndRemote | WithIgnored)) readLockable(out);
@@ -428,6 +484,7 @@ VcsResult GitProvider::branchInfo(VcsBranchInfo& out) {
     const ProcessResult result = git({"status", "--porcelain=v2", "-z", "--branch", "--untracked-files=no", "--", projectPathspec()});
     if (!result.ok()) return resultOf(result);
     parsePorcelainV2(result.out, snapshot);
+    readOperation(snapshot.branch);
     out = snapshot.branch;
     return VcsResult::success();
 }

@@ -1022,6 +1022,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/vcs/scene/SceneCli.cpp
     ${EDITOR_DIR}/vcs/VcsEditorOps.cpp
     ${EDITOR_DIR}/vcs/SceneDiffTracker.cpp
+    ${EDITOR_DIR}/vcs/TextBaselines.cpp
 
     ${EDITOR_DIR}/htmlui/ContentSniffer.cpp
     ${EDITOR_DIR}/htmlui/GoogleFontsImporter.cpp

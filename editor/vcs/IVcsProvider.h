@@ -68,6 +68,8 @@ namespace jasperengine::editor::vcs {
         virtual VcsResult baseContent(const RepoPath& path, std::string_view rev, std::string& out) = 0;
         // A unified diff of the working file against `rev`
         virtual VcsResult textDiff(const RepoPath& path, std::string_view rev, std::string& out) = 0;
+        // The tag the (detached) HEAD is at; a failure when it is at none
+        virtual VcsResult headTag(std::string&) { return VcsResult::unsupported(); }
 
         virtual VcsResult stage(std::span<const RepoPath> paths) = 0;
         virtual VcsResult unstage(std::span<const RepoPath> paths) = 0;
