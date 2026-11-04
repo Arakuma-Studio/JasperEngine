@@ -102,7 +102,7 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
         node["verticesAABB"] = encodeAABB(mesh.verticesAABB);
     }
     // computed from the other two and the transform when the scene runs
-    if (!reflect::DocumentEncodeScope::active()) {
+    if (reflect::encodesComputedValues()) {
         node["worldAABB"] = encodeAABB(mesh.worldAABB);
     }
 
@@ -271,7 +271,7 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
 
     node["aabb"] = encodeAABB(ui.aabb);
     // computed from the aabb and the transform when the scene runs
-    if (!reflect::DocumentEncodeScope::active()) {
+    if (reflect::encodesComputedValues()) {
         node["worldAABB"] = encodeAABB(ui.worldAABB);
     }
 
@@ -608,7 +608,7 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     node["levels"] = terrain.levels;
 
     // Auto Ranges: set from the camera's far clip when the terrain runs (MeshSystem::updateTerrainAutoRanges)
-    if (!terrain.ranges.empty() && !(terrain.autoSetRanges && reflect::DocumentEncodeScope::active())) {
+    if (!terrain.ranges.empty() && (!terrain.autoSetRanges || reflect::encodesComputedValues())) {
         YAML::Node rangesNode;
         for (float range : terrain.ranges) {
             rangesNode.push_back(range);

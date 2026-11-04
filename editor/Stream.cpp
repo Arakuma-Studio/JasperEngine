@@ -3816,6 +3816,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 }
 
+YAML::Node editor::Stream::encodePlaySnapshot(const Project* project, const SceneProject* sceneProject) {
+    reflect::PlaySnapshotEncodeScope snapshot;
+    return encodeSceneProject(project, sceneProject);
+}
+
 YAML::Node editor::Stream::encodeSceneProject(const Project* project, const SceneProject* sceneProject) {
     // a scene file: without the values loading computes (S29 R20)
     reflect::DocumentEncodeScope document;

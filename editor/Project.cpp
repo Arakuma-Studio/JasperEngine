@@ -9526,7 +9526,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     registerSceneManager();
     registerPrefabManager();
 
-    result.snapshot = Stream::encodeSceneProject(nullptr, mainSceneProject);
+    result.snapshot = Stream::encodePlaySnapshot(nullptr, mainSceneProject);
     // with what describes its prefab instances, which Stop puts back with it
     result.prefabState = capturePlayPrefabState(mainSceneProject);
 

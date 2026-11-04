@@ -415,6 +415,17 @@ namespace jasperengine::editor::reflect {
         DocumentEncodeScope& operator=(const DocumentEncodeScope&) = delete;
         static bool active();
     };
+    // While one lives on a thread, a document holds what a frame computes that a file leaves out:
+    // the Play snapshot Stop restores (Stream::encodePlaySnapshot)
+    class PlaySnapshotEncodeScope {
+    public:
+        PlaySnapshotEncodeScope();
+        ~PlaySnapshotEncodeScope();
+        PlaySnapshotEncodeScope(const PlaySnapshotEncodeScope&) = delete;
+        PlaySnapshotEncodeScope& operator=(const PlaySnapshotEncodeScope&) = delete;
+    };
+    // Whether the encode on this thread holds what a frame computes: all but a scene or prefab file
+    bool encodesComputedValues();
     YAML::Node encode(const StructDesc& desc, const void* owner, const EncodeContext& ctx);
     // Decodes over the base value already in `comp`: absent keys keep it (OmitIfDefault ones take
     // the default), aliases are read, a value that does not read keeps the base and adds a skip

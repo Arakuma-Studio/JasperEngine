@@ -81,7 +81,9 @@ def first_difference(actual: str, expected: str) -> str:
 #   frame had made it).
 VIEW_MASKED = "<view>"
 GENERATED_MESH_COMPONENTS = ("sprite", "tilemap", "meshpolygon", "terrain", "splineextrude")
-GENERATED_MESH_CODE = re.compile(r"addComponent<(?:Sprite|Tilemap|MeshPolygon|Terrain|SplineExtrude)Component>")
+# (a prefab member's Mesh override names no Sprite; the prefab fixtures' overridden Meshes are Sprites')
+GENERATED_MESH_CODE = re.compile(r"addComponent<(?:Sprite|Tilemap|MeshPolygon|Terrain|SplineExtrude)Component>|getComponent<MeshComponent>\(prefabMembers_")
+CAMERA_CLIP_KEYS = ("leftClip", "rightClip", "bottomClip", "topClip", "aspect")
 DERIVED_CODE_DROPPED = re.compile(r"^\s*(?:mesh\.vertexCount = \d+|rigidbody(?:2d)?\.(?:needReloadBody|needUpdateColliders|newBody) = \w+);$")
 GENERATED_CODE_DROPPED = re.compile(r"^\s*mesh\.(?:submeshes\[\d+\]\.vertexCount = |buffer\.|indices\.)")
 
@@ -109,7 +111,7 @@ def scene_golden_as_now(golden: str) -> str:
             dropped.add(i)
         elif text == "worldAABB:":
             dropped.update(range(i, block_end(lines, i)))
-        elif text == "components:":
+        elif text == "components:" and indent_of(line) > 0:   # (a GameObject's; a prefab's root keeps its old block)
             end = block_end(lines, i)
             keys = {lines[k].strip()[:-1]: k for k in range(i + 1, end) if indent_of(lines[k]) == indent_of(line) + 2 and lines[k].strip().endswith(":")}
             if "terrain" in keys:
@@ -126,6 +128,37 @@ def scene_golden_as_now(golden: str) -> str:
                         dropped.add(k)
                     elif lines[k].strip() in ("aabb:", "verticesAABB:"):
                         dropped.update(range(k, block_end(lines, k)))
+    return "".join(line for i, line in enumerate(lines) if i not in dropped)
+
+
+def without_camera_clips(text: str) -> str:
+    """A saved file without the clips and aspect of an autoResize camera. The goldens masked them when
+    captured, so a golden has no value to compare with those of the one kind still written: a
+    camera that renders to a texture (its size is the texture's)."""
+    lines = text.splitlines(keepends=True)
+    dropped: set[int] = set()
+    for i, line in enumerate(lines):
+        if line.strip() == "camera:":
+            body = range(i + 1, block_end(lines, i))
+            if any(lines[k].strip() == "autoResize: true" for k in body):
+                dropped.update(k for k in body if lines[k].strip().startswith(tuple(key + ": " for key in CAMERA_CLIP_KEYS)))
+    return "".join(line for i, line in enumerate(lines) if i not in dropped)
+
+
+def code_without_camera_clips(text: str) -> str:
+    """Scene code without those values"""
+    lines = text.splitlines(keepends=True)
+    dropped: set[int] = set()
+    for i, line in enumerate(lines):
+        declared = re.match(r"^\s*CameraComponent (\w+);\s*$", line)
+        if not declared:
+            continue
+        name = declared.group(1)
+        end = i + 1
+        while end < len(lines) and lines[end].lstrip().startswith(name + "."):
+            end += 1
+        if any(lines[k].strip() == f"{name}.autoResize = true;" for k in range(i + 1, end)):
+            dropped.update(k for k in range(i + 1, end) if lines[k].lstrip().startswith(tuple(f"{name}.{key} = " for key in CAMERA_CLIP_KEYS)))
     return "".join(line for i, line in enumerate(lines) if i not in dropped)
 
 
@@ -196,11 +229,11 @@ def normalized_scene(text: str) -> str:
         if current:
             entries.append(current)
         out.extend(sorted(entries))
-    return "".join(out)
+    return without_camera_clips("".join(out))
 
 
 def normalized_source(text: str, project: Path) -> str:
-    return text.replace(str(project), "<project>").replace(project.as_posix(), "<project>")
+    return code_without_camera_clips(text.replace(str(project), "<project>").replace(project.as_posix(), "<project>"))
 
 
 def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str], golden_filter=None) -> None:
@@ -286,7 +319,7 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
         await ed.call("prefab_mode", action="save", allow_data_loss=True)
         await ed.call("prefab_mode", action="close", unsaved="discard")
         text = (project / rel).read_text(encoding="utf-8")
-        compare_or_update(GOLDEN / name / (rel + ".golden"), text, f"{name}/{rel}", mismatches,
+        compare_or_update(GOLDEN / name / (rel + ".golden"), without_camera_clips(text), f"{name}/{rel}", mismatches,
                           golden_filter=scene_golden_as_now)
     await ed.call("save_project")
     compare_or_update(GOLDEN / name / "project.yaml.golden", (project / "project.yaml").read_text(encoding="utf-8"),

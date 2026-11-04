@@ -441,6 +441,9 @@ namespace jasperengine::editor {
         // of the scene (SavedEntitiesCheck): a save, an autosave, a Play snapshot never lose one in
         // silence (docs/data-safety.md)
         static YAML::Node encodeSceneProject(const Project* project, const SceneProject* sceneProject);
+        // The document Stop restores: with what a frame computes that a file leaves out (the world
+        // bounds Stop puts back on the Meshes it keeps instead of decoding them, keepSameMeshes)
+        static YAML::Node encodePlaySnapshot(const Project* project, const SceneProject* sceneProject);
 
         // What encodeSceneProject and a prefab stage's encode throw for a GameObject they would
         // leave out (a save refused, S03: the document stays modified)
