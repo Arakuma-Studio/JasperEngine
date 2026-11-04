@@ -151,6 +151,8 @@ void Sprite::setPixelRotation(PixelRotation pixelRotation){
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
     if (spritecomp.pixelRotation != pixelRotation){
         spritecomp.pixelRotation = pixelRotation;
+        // its drawn matrix holds the policy (RenderSystem::pixelArtModel)
+        getComponent<Transform>().needUpdate = true;
         markChanged<SpriteComponent>();
     }
 }

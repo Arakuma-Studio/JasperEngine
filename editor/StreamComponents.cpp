@@ -381,7 +381,7 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     if (node["pivotPreset"]) sprite.pivotPreset = decodeEnum(node, "pivotPreset", StreamSchema::pivotPreset());
     if (node["pixelsPerUnit"]) sprite.pixelsPerUnit = std::max(0.0f, YamlNumbers::as<float>(node["pixelsPerUnit"]));
     if (node["pixelRotation"]){
-        const std::string rotation = YamlNumbers::as<std::string>(node["pixelRotation"]);
+        const std::string rotation = node["pixelRotation"].IsScalar() ? node["pixelRotation"].Scalar() : std::string();
         sprite.pixelRotation = rotation == "steps_90" ? PixelRotation::STEPS_90 : (rotation == "on_grid" ? PixelRotation::ON_GRID : PixelRotation::CAMERA);
     }
 

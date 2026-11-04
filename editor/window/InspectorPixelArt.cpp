@@ -16,7 +16,7 @@
 #include "reflect/Components.h"
 #include "subsystem/RenderSystem.h"
 #include "util/UIProbe.h"
-#include "window/Theme.h"
+#include "Theme.h"
 
 #include "imgui.h"
 

@@ -671,3 +671,64 @@ frame, 16×16 tiles, a nine-slice panel, a 5×7 bitmap text sheet).
 
 ## Deviations
 
+
+Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
+
+1. **Guide entry (the ledger's upstream-rule override).** The agent guide gets no `## Pixel art`
+   section: the upstream rules of 2026-11-04 give a new area one entry of the "Other areas" index.
+   It reads "pixel art (a camera's Pixel Perfect Camera component): jasper://docs/<area>". It
+   names no tool: `check_pixel_art` does not exist before S42, and `test_autosync.py` refuses a
+   guide name that does not exist; S42 adds it to the entry. Its eval cases are in
+   `tools/mcp/eval/cases.py` (`guard_pixel_perfect_camera`, `guard_game_view_pixel_scale`).
+2. **YAML key and fields.** The component's key is `pixelperfectcamera`, lowercase as every other
+   component key (the YAML and MCP key are one, `ComponentDesc::key`); the sketch's
+   `pixelPerfectCamera` is read as an alias. The reference resolution is stored as the struct's
+   two fields `referenceWidth` and `referenceHeight` (the sketch's `referenceResolution: [w, h]`);
+   Lua keeps `referenceResolution` as a `Vector2`. The read-only layout values are catalog
+   properties in the catalog's camelCase: `pixelRatio`, `baseWidth`, `baseHeight`, `targetWidth`,
+   `targetHeight`, `viewport`, `cropped`, `snappedPosition`, `subpixelOffset` (R23's `pixel_ratio`,
+   `base_resolution`, `target_resolution`).
+3. **The per-draw snap mode.** The vertex stage needs to know, per draw, whether to snap every
+   vertex or the pivot (or nothing: a shadow map, a pass without a Pixel Perfect Camera). It is a
+   `vec4 pixelSnapDraw` appended to the draw's own block (`u_vs_pbrParams`, `u_vs_depthParams`,
+   `u_vs_uiParams`) in `Pxs` variants only, `x` = 0 none, 1 every vertex, 2 the pivot; the pivot
+   is the MVP's origin column (`mvpMatrix[3]`, an instance's `mvpMatrix * i_matrix_col4`). The
+   include adds `pixelSnapApply(clip, mode, pivot)`. Particles have no per-draw block: they snap
+   when the frame's `pixelSnap.x > 0`, and `pixelSnapOffset.z` is 1 when the pass's view is on the
+   grid (no camera roll), so a quarter-turned quad snaps its corners (§6.2 had `zw 0`).
+4. **Direct mode (Upscale Render Texture off).** T = B there (no smoothing margin: sub-pixel
+   smoothing moves the projection, R12 "Off"). Stretch Fill needs the target's blit, so without it
+   the camera lays out and draws as Integer. Bars of another colour than the background cost one
+   pass: it clears the destination to the Letterbox Color and fills the viewport with the
+   background (an 8 x 8 texture of it), and the colour pass loads it.
+5. **Engine canvas.** `Engine::getCanvasWidth/Height` are integers: the canvas is B / PPU rounded
+   to whole units when the PPU does not divide the base; the camera's span is the exact T / PPU.
+6. **Test names and homes.** The GPU suites are `PixelPerfectGpu`, `PixelPerfectOffGpu` and
+   `PixelPerfectBenchGpu` (docs/testing.md: a GPU suite ends in `Gpu`), in
+   `engine/tests/core/pixelart/` with the CPU suites `PixelSnapTest`, `PixelPerfectLayoutTest`,
+   `EngineViewLayoutTest`, `SpritePpuTest`, `PixelSnapShaderTest`. The CPU compositor of AC4 is in
+   the GPU test itself: the GPU suites run in the engine's test tree, the editor tests have no
+   device.
+7. **AC3, the bias.** The disagreement of the unbiased rule is measured on the CPU only (the test
+   prints it): forcing the shader's bias to 0 would need a runtime switch in every snapped vertex.
+8. **AC4 reference.** The compositor draws ring sprites (one texel of border, so any flip or
+   quarter turn draws the same texels): a CENTER-pivoted 15 x 16 sprite at a half pixel, a
+   quarter-turned and a flipped 15 x 7 sprite and a floor of ten 16-pixel tiles. The nine-slice
+   panel and the text are left out: a CPU reference of their texels would need the UI's own
+   nine-slice and glyph rasterisation. They draw with the same rule (the UI `Pxs` variant).
+9. **AC6 sweep.** 74 camera positions (64 even ones plus the neighbourhoods of the rounding ties)
+   instead of 10,000: each needs a frame and a readback. The red control draws without the rule at
+   positions where the unsnapped edges straddle pixel centres.
+10. **AC9.** The Stretch Fill check is analytic (each interior pixel equals its texel, each seam
+    pixel lies between its two texels) instead of a golden image.
+11. **AC10.** The fixed-resolution size is checked through the colour pass's render area (the
+    pass list); SSAO, SSR, the lighting viewport, LOD and point sizes read the same
+    `fixedResolutionWidth/Height()`.
+12. **Rotation policy coverage.** 90 Degree Steps applies to sprites (their `pixelRotation`),
+    tilemaps and UI elements (the camera's policy); a sprite's `CAMERA` follows the camera.
+13. **Scene view.** The Pixel Zoom, Pixel Grid, Snap Preview and Pixel Move Snap flags default to
+    on and take effect only in a 2D scene whose main camera has an applicable Pixel Perfect
+    Camera. Snap Preview's grid is the view's pixels over the zoom's scale at any zoom. The camera
+    frames of R22 are drawn as an overlay of the Scene view (a 2D scene's UI camera has no frustum
+    gizmo).
+14. **Lua.** The handle has no `getGameObject()` (Camera already is one).

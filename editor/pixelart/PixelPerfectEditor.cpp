@@ -10,6 +10,7 @@
 #include "component/UIComponent.h"
 #include "subsystem/RenderSystem.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 

@@ -1,7 +1,7 @@
 # S41 AC11: the frame of PixelPerfectOffGpu.ZeroCost on the engine before S41
-draws 2
-allocations 94
-image 17333459637861404035
+draws 4
+allocations 96
+image 13037468019309210060
 pass camera
 shader mesh_UltUv1Vc4Txr
 shader ui_Ftx

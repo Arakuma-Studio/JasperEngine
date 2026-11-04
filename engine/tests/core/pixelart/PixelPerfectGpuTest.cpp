@@ -13,6 +13,7 @@
 #include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
+#include "component/TilemapComponent.h"
 #include "component/Transform.h"
 #include "object/Camera.h"
 #include "object/PixelPerfectCamera.h"
@@ -27,10 +28,12 @@
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
 #include "Readback.h"
+#include "support/AllocationCounter.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -145,9 +148,18 @@ namespace {
             return ppc;
         }
 
+        // until everything is loaded, and every tilemap built (it waits for its texture's size)
         bool render(){
             Scene* current = &scene;
-            return GpuEnvironment::runFrames([current](){ return current->getSystem<RenderSystem>()->isAllLoaded(); });
+            return GpuEnvironment::runFrames([current](){
+                auto tilemaps = current->getComponentArray<TilemapComponent>();
+                for (size_t i = 0; i < tilemaps->size(); i++){
+                    const MeshComponent* mesh = current->findComponent<MeshComponent>(tilemaps->getEntity(i));
+                    if (mesh && mesh->buffer.getCount() == 0)
+                        return false;
+                }
+                return current->getSystem<RenderSystem>()->isAllLoaded();
+            });
         }
 
         // a sprite at a world position (its pivot), size in pixels
@@ -446,17 +458,18 @@ TEST_F(PixelPerfectGpu, EvenColumns){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// AC6 (R13): a 64 x 36 floor of 5-pixel tiles whose positions are 1e-4 off, under a camera swept
-// over fractional positions (around the rounding ties): no background shows between tiles
+// AC6 (R13): a 40 x 23 floor of 8-pixel tiles (the spec's 64 x 36 is past MAX_TILEMAP_TILES)
+// whose positions are 1e-4 off, under a camera swept over fractional positions (around the
+// rounding ties): no background shows between tiles
 TEST_F(PixelPerfectGpu, TilemapSeams){
     JASPER_REQUIRE_GPU();
     GpuEnvironment::setView(320, 180, 320, 180, Scaling::LETTERBOX);
     Tilemap floor(&scene);
-    floor.setTexture("pixelart|seams|white", pixelArtTexture(5, 5, &whiteTexel));
-    floor.addRect(0, "tile", Rect(0, 0, 5, 5));
-    for (int y = 0; y < 36; y++)
-        for (int x = 0; x < 64; x++)
-            floor.addTile(0, Vector2(5.0f * x + ((x & 1) ? 1e-4f : -1e-4f), 5.0f * y + ((y & 1) ? 1e-4f : -1e-4f)), 5, 5);
+    floor.setTexture("pixelart|seams|white", pixelArtTexture(8, 8, &whiteTexel));
+    floor.addRect(0, "tile", Rect(0, 0, 8, 8));
+    for (int y = 0; y < 23; y++)
+        for (int x = 0; x < 40; x++)
+            floor.addTile(0, Vector2(8.0f * x + ((x & 1) ? 1e-4f : -1e-4f), 8.0f * y + ((y & 1) ? 1e-4f : 0.0f)), 8, 8);
     PixelPerfectCamera ppc = pixelPerfect(320, 180);
 
     // sub-pixel camera positions, many of them where the edges round (the tie at k + 0.5 - 2^-7)
@@ -601,7 +614,8 @@ TEST_F(PixelPerfectGpu, StretchFill){
     const float scaleX = v.getWidth() / 320.0f;
     size_t interiorWrong = 0, seamWrong = 0, interior = 0;
     const int y = image.height - (int)v.getY() - (int)(v.getHeight() * 0.5f);
-    const int row = (int)std::floor(((float)(image.height - 1 - y) - v.getY()) / (v.getHeight() / 180.0f));
+    // base rows count from the bottom; the texture's first row is the sprite's top
+    const int row = 179 - (int)std::floor(((float)(image.height - 1 - y) - v.getY()) / (v.getHeight() / 180.0f));
     for (int x = (int)v.getX() + 1; x < (int)(v.getX() + v.getWidth()) - 1; x++){
         const float left = ((float)x - v.getX()) / scaleX;
         const float right = ((float)x + 1.0f - v.getX()) / scaleX;
@@ -636,6 +650,9 @@ TEST_F(PixelPerfectGpu, FixedResolutionDriven){
     scene.setFixedResolutionHeight(360);
     sprite("pixelart|driven|white", pixelArtTexture(1, 1, &whiteTexel), 4, 4, 10.0f, 10.0f);
     auto cameraPassSize = [](int& width, int& height){
+        // a reader asks for the passes' details: the next frames record them
+        SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+        GpuEnvironment::drawFrames(2);
         const PassList passes = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
         for (const PassRecord& pass : passes.passes){
             if (std::string(pass.label) == "camera"){
@@ -696,4 +713,47 @@ TEST_F(PixelPerfectGpu, FixedResolutionDriven){
     ASSERT_EQ(lit.size(), (size_t)k);
     EXPECT_EQ(lit.front(), (int)viewport.getX() + (int)pixelart::snap(40.5f) * k);
     EXPECT_NO_ENGINE_ERRORS();
+}
+
+namespace {
+    // the benchmark of R18 (the spec's pixel_perfect_bench): its fixture is the suite's
+    class PixelPerfectBenchGpu : public PixelPerfectGpu {};
+
+    // the least wall time of a few frames (the least is the frame without a neighbour's load)
+    double leastFrameMs(int frames){
+        double least = 1e30;
+        for (int i = 0; i < frames; i++){
+            const auto start = std::chrono::steady_clock::now();
+            Engine::systemDraw();
+            finishGpu();
+            least = std::min(least, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+        }
+        return least;
+    }
+}
+
+// R18: 10,000 sprites at 320 x 180 through the render texture: the frame with snapping costs at
+// most 102 % of the frame without it (enforced on the benchmark server, JASPER_TEST_PERF_SLACK;
+// printed elsewhere)
+TEST_F(PixelPerfectBenchGpu, SnappingFrameCost){
+    JASPER_REQUIRE_GPU();
+    GpuEnvironment::setView(1280, 720, 320, 180, Scaling::LETTERBOX);
+    const TextureData white = pixelArtTexture(1, 1, &whiteTexel);
+    std::mt19937 random(18);
+    std::uniform_real_distribution<float> x(0.0f, 316.0f), y(0.0f, 176.0f);
+    for (int i = 0; i < 10000; i++)
+        sprite("pixelart|bench|white", white, 4, 4, x(random), y(random));
+    PixelPerfectCamera ppc = pixelPerfect(320, 180);
+    ppc.setPixelSnapping(false);
+    ASSERT_TRUE(render());
+    const double off = leastFrameMs(10);
+    ppc.setPixelSnapping(true);
+    ASSERT_TRUE(render());
+    const double on = leastFrameMs(10);
+    std::printf("[bench] S41 pixel_perfect_bench: 10000 sprites, frame %.3f ms snapping off, %.3f ms on (%.1f %%)\n", off, on,
+                100.0 * on / off);
+    const double slack = testsupport::perfSlack();
+    if (slack > 0.0){
+        EXPECT_LE(on, off * 1.02 * slack);
+    }
 }

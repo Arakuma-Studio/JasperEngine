@@ -22,6 +22,19 @@
 
 using namespace jasperengine;
 
+namespace {
+
+    Vector2 smoothingShift(const PixelPerfectDrive& drive, const Vector2& residual){
+        // R12: the image moves by whole screen pixels, s = round(f k), so every base pixel stays
+        // k x k: |s / k| <= 0.5 base pixel
+        if (!drive.smoothing)
+            return Vector2(0.0f, 0.0f);
+        const float k = (float)drive.layout.scale;
+        return Vector2(std::round(residual.x * k) / k, std::round(residual.y * k) / k);
+    }
+
+}
+
 bool RenderSystem::getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request){
     if (!scene || !scene->isComponentRegistered<PixelPerfectCameraComponent>())
         return false;
@@ -94,8 +107,12 @@ bool RenderSystem::makePixelPerfectDrive(Entity cameraEntity, const CameraCompon
         drive.layout.targetWidth = drive.layout.baseWidth;
         drive.layout.targetHeight = drive.layout.baseHeight;
     }
+    // the smoothing's move of the image from the camera's last residual (snapPixelPerfectView
+    // makes it again whenever the camera moves)
+    drive.shift = smoothingShift(drive, component.subpixelOffset);
     return true;
 }
+
 
 void RenderSystem::applyPixelPerfectClips(CameraComponent& camera, const PixelPerfectDrive& drive) const{
     // the camera spans T / PPU world units; with the smoothing margin its origin is one base
@@ -133,12 +150,8 @@ void RenderSystem::snapPixelPerfectView(CameraComponent& camera, const Transform
     const float ppu = (float)drive.pixelsPerUnit;
     const float residualX = delta.x * ppu;
     const float residualY = (camera.type == CameraType::CAMERA_UI ? -delta.y : delta.y) * ppu;
-    drive.shift = Vector2(0.0f, 0.0f);
+    drive.shift = smoothingShift(drive, Vector2(residualX, residualY));
     if (drive.smoothing){
-        // R12: the image moves by whole screen pixels, s = round(f k), so every base pixel stays
-        // k x k: |s / k| <= 0.5 base pixel
-        const float k = (float)drive.layout.scale;
-        drive.shift = Vector2(std::round(residualX * k) / k, std::round(residualY * k) / k);
         if (!drive.renderTexture && (drive.shift.x != 0.0f || drive.shift.y != 0.0f)){
             // direct mode: the projection moves the image (the target's blit does it otherwise)
             const Matrix4 move = Matrix4::translateMatrix(-2.0f * drive.shift.x / (float)drive.layout.baseWidth,
@@ -170,6 +183,9 @@ void RenderSystem::updatePixelPerfect(Entity mainCameraEntity){
         return;
     }
 
+    // last frame's drives, to see what changed (storage kept between calls: no allocation per frame)
+    static std::vector<PixelPerfectDrive> previous;
+    previous.assign(pixelPerfectDrives.begin(), pixelPerfectDrives.end());
     pixelPerfectDrives.clear();
     mainPixelPerfect = -1;
     // a running scene other than the Engine's first is a layer (R5); a scene the editor edits
@@ -201,6 +217,15 @@ void RenderSystem::updatePixelPerfect(Entity mainCameraEntity){
             PixelPerfectDrive drive;
             if (!makePixelPerfectDrive(entity, *camera, component, main && !layerScene, screenWidth, screenHeight, drive))
                 continue;
+            // the cached matrices hold the policy, the snap and the shift: a change makes them again
+            const PixelPerfectDrive* before = nullptr;
+            for (const PixelPerfectDrive& old : previous){
+                if (old.cameraEntity == entity)
+                    before = &old;
+            }
+            if (!before || before->rotation != drive.rotation || before->snapping != drive.snapping || before->smoothing != drive.smoothing ||
+                    before->renderTexture != drive.renderTexture || before->layout != drive.layout)
+                camera->needUpdate = true;
             component.active = true;
             component.layout = drive.layout;
             applyPixelPerfectClips(*camera, drive);

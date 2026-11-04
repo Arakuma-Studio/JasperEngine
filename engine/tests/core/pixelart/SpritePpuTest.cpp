@@ -17,7 +17,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstring>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -122,8 +124,13 @@ TEST(SpritePpuTest, TilemapQuadsArePixelsOverPixelsPerUnit){
     tilemap.addRect(0, "tile", Rect(0, 0, 16, 16));
     tilemap.addTile(0, Vector2(0, 0), 16, 16);
     tilemap.addTile(0, Vector2(16, 0), 16, 16);
-    scene.getSystem<MeshSystem>()->update(0);
+    // a tilemap builds once its texture's size is known (its load may finish on a worker)
     const MeshComponent& mesh = scene.getComponent<MeshComponent>(tilemap.getEntity());
+    for (int frame = 0; frame < 500 && mesh.buffer.getCount() == 0; frame++){
+        scene.getSystem<MeshSystem>()->update(0);
+        if (mesh.buffer.getCount() == 0)
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().x, 2.0f);
     EXPECT_FLOAT_EQ(mesh.aabb.getMaximum().y, 1.0f);
 }
