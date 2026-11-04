@@ -38,20 +38,20 @@ fixes at once.
 
 | Spec | What | Branch | Server | Status |
 |---|---|---|---|---|
-| Mac | Final `main` on macOS | `fix/mac-final-main` | M | Not started |
-| S41 | Curve window Delete and F; 5 rebindable keys | `feat/s41-window-commands` | H | Not started |
-| S42 | Recorder full disk and readback | `feat/s42-recorder-integrity` | A | Not started |
-| S43 | Sprite frames and weather map saves | `feat/s43-saved-output-determinism` | A | Not started |
-| S44 | Shader lists for closed scenes | `feat/s44-shader-lists` | B | Not started |
-| S45 | Partial model loads, OBJ materials | `feat/s45-model-capacity` | H | Not started |
-| S46 | Crash leftovers | `feat/s46-crash-leftovers` | H | Not started |
-| S47 | Android and iOS packaging, bundletool | `feat/s47-packaging-tests` | A, M | Not started |
-| S48 | Linked folders, one file one GUID | `feat/s48-linked-folders` | B | Not started |
-| S49 | Dialogs through `EditorModal` | `feat/s49-editor-modal` | B | Not started |
-| S50 | Auto-sync settles before the reply | `feat/s50-autosync-settle` | B | Not started |
-| S51 | A-3, Mesh update flags | `feat/s51-mesh-update-flags` | H | Not started |
-| S52 | 521-file header fan-out; sanitizer installs | `feat/s52-build-hygiene` | H | Not started |
-| S53 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s53-code-cleanups` | B | Not started |
+| Mac | Final `main` on macOS | `fix/mac-final-main` | M | In progress |
+| S41 | Curve window Delete and F; 5 rebindable keys | `feat/s41-window-commands` | H | In progress |
+| S42 | Recorder full disk and readback | `feat/s42-recorder-integrity` | A | In progress |
+| S43 | Sprite frames and weather map saves | `feat/s43-saved-output-determinism` | A | In progress |
+| S44 | Shader lists for closed scenes | `feat/s44-shader-lists` | B | In progress |
+| S45 | Partial model loads, OBJ materials | `feat/s45-model-capacity` | H | In progress |
+| S46 | Crash leftovers | `feat/s46-crash-leftovers` | H | In progress |
+| S47 | Android and iOS packaging, bundletool | `feat/s47-packaging-tests` | A, M | In progress |
+| S48 | Linked folders, one file one GUID | `feat/s48-linked-folders` | B | In progress |
+| S49 | Dialogs through `EditorModal` | `feat/s49-editor-modal` | B | In progress |
+| S50 | Auto-sync settles before the reply | `feat/s50-autosync-settle` | B | In progress |
+| S51 | A-3, Mesh update flags | `feat/s51-mesh-update-flags` | H | In progress |
+| S52 | 521-file header fan-out; sanitizer installs | `feat/s52-build-hygiene` | H | In progress |
+| S53 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s53-code-cleanups` | B | In progress |
 
 ### Sound layer
 
@@ -59,7 +59,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
-| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Not started |
+| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | In progress: M1 |
 | S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1 | Waiting |
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Waiting |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S38 M1; M5 needs S36 M1 | Waiting |
@@ -78,6 +78,13 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
   user, since they could hold data.
 - 2026-11-04: S53: the legacy oracle's output is frozen as golden files before it is deleted.
 
+- 2026-11-04: S47: Android Vulkan is no longer offered. It could never have compiled: no sokol backend is set for it,
+  and Android only creates an EGL context. Android uses GLES3. A real Android Vulkan backend is a separate feature (see Left).
+
+## Left over, not on the user's list
+
+- Android Vulkan backend (found by S47).
+
 ## Done
 
 Nothing yet.
@@ -85,3 +92,5 @@ Nothing yet.
 ## Log
 
 - 2026-11-04: Fetched origin: nothing new, `main` at `b4f7816ea`. Wrote specs S41-S53 and this ledger.
+- 2026-11-04: Started 15 agents, each in its own worktree: the Mac check, S38 M1, S41-S53.
+- 2026-11-04: Merged origin/main (`e8142a81e`, lean MCP surface; someone else is pushing to origin, so fetch before every landing). B's jobs per slot cut from 8 to 4 (load was 28 on 12 cores).
