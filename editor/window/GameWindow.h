@@ -29,6 +29,8 @@ namespace jasperengine::editor {
         // Drawn in the last show(): the view the engine should size the game for
         bool visible = false;
         bool maximizedShown = false;
+        // Maximize On Play's hint (the key that shows the editor again) fades out by then
+        double maximizeHintUntil = 0.0;
         bool focused = false;
         bool cursorInView = false;
         bool hostedLastFrame = false;
@@ -145,6 +147,12 @@ namespace jasperengine::editor {
         // sets them as if picked there (MCP configure_game_view)
         const GameViewSettings& getSettings();
         void applySettings(const GameViewSettings& newSettings);
+        // Maximize On Play (F11, Edit > Maximize On Play, the toolbar): the saved setting, acting
+        // at once during Play
+        void toggleMaximizeOnPlay();
+        bool isMaximizeOnPlay();
+        // the Game view fills the editor now (maximized in the last show())
+        bool isMaximizedNow() const { return maximizedShown; }
         static int getAspectCount();
         // the simulated device's safe rectangle in a game image of w x h pixels (MCP screenshot
         // safe_area_in_image); false without a device

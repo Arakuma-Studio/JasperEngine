@@ -132,7 +132,14 @@ namespace jasperengine::editor {
         AssetsCreateAudioMixer,
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
-        AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera
+        AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
+        // the Doriax catch-up's project-window: the one Create list, Duplicate, Maximize On Play
+        AssetsCreateCppSource,
+        AssetsCreateCppHeader,
+        AssetsCreatePhysicsMaterial,
+        AssetsCreatePhysicsMaterial2D,
+        AssetsDuplicate,
+        ToggleMaximizeOnPlay
     };
 
 }

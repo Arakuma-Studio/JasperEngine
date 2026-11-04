@@ -142,13 +142,20 @@ void editor::App::registerCommands(){
     enable("edit.undo", [undoEnabled]() { return undoEnabled(true); }, timelineKeys);
     enable("edit.redo", [undoEnabled]() { return undoEnabled(false); }, timelineKeys);
     enable("edit.selectAll", [this]() { return canSelectAll(); }, sceneKeys);
-    enable("edit.cut", [this]() { return canCutSelection(); }, sceneKeys);
-    enable("edit.copy", [this]() { return canCopySelection(); }, sceneKeys);
-    enable("edit.paste", [this]() { return canPasteSelection(false); }, sceneKeys);
+    // Unity's Edit menu acts on the focused window: the Project window's assets when it was last
+    // focused (its keys stay the project.* commands: the key gates below leave it alone)
+    auto assetsFocused = [this]() { return lastFocusedWindow == LastFocusedWindow::Resources; };
+    auto sceneKeysNotAssets = sceneKeysAnd([assetsFocused]() { return !assetsFocused(); });
+    enable("edit.cut", [this, assetsFocused]() { return assetsFocused() ? projectWindow->hasAssetSelection() : canCutSelection(); }, sceneKeysNotAssets);
+    enable("edit.copy", [this, assetsFocused]() { return assetsFocused() ? projectWindow->hasAssetSelection() : canCopySelection(); }, sceneKeysNotAssets);
+    enable("edit.paste", [this, assetsFocused]() { return assetsFocused() ? projectWindow->canPasteClipboard() : canPasteSelection(false); }, sceneKeysNotAssets);
     enable("edit.pasteAsChild", [this]() { return canPasteSelection(true); }, sceneKeys);
-    enable("edit.duplicate", [this]() { return canEditSelection(true); }, sceneKeysAnd(notAssetPanel));
+    enable("edit.duplicate", [this, assetsFocused]() { return assetsFocused() ? projectWindow->canDuplicate() : canEditSelection(true); },
+           sceneKeysAnd(notAssetPanel));
     // the Input Actions window, focused, deletes its selected map, action or binding
-    enable("edit.delete", [this]() { return canEditSelection(false) || inputActionsWindow->canDelete(); }, sceneKeysAnd(notAssetPanel));
+    enable("edit.delete", [this, assetsFocused]() {
+        return assetsFocused() ? projectWindow->hasAssetSelection() : (canEditSelection(false) || inputActionsWindow->canDelete());
+    }, sceneKeysAnd(notAssetPanel));
     // F2 renames inline in the Hierarchy when it has focus, else in the Inspector
     bind("edit.rename", [this](const CommandArgs& args) {
         if (args.source == CommandSource::Keyboard) {
@@ -180,11 +187,24 @@ void editor::App::registerCommands(){
          [this]() { return mainToolbar->canPause() && !mainToolbar->isPaused(); });
     bind("playmode.stop", [this](const CommandArgs&) { mainToolbar->stopSession(); },
          [this]() { return mainToolbar->canStopSession(); });
+    // F11 in the Game view too (Global): the key toggles the saved setting, at once during Play
+    bind("playmode.maximizeOnPlay", [this](const CommandArgs&) { gameWindow->toggleMaximizeOnPlay(); });
 
     // ---- Assets
     enable("assets.open", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.rename", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.delete", [this]() { return projectWindow->hasAssetSelection(); });
+    enable("assets.duplicate", [this]() { return projectWindow->canDuplicate(); });
+    // a Lua script lives in the Lua directory (the folder Assets > Create makes things in)
+    {
+        const CommandDef* existing = catalog.find("assets.createLuaScript");
+        if (existing) {
+            CommandDef def = *existing;
+            def.enabled = [this]() { return projectWindow->luaScriptRefusal(projectWindow->createTargetDirectory()).empty(); };
+            def.disabledReason = [this]() { return projectWindow->luaScriptRefusal(projectWindow->createTargetDirectory()); };
+            catalog.add(std::move(def));
+        }
+    }
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
     enable("assets.migrateReferences", notBusy);
     enable("assets.scenesInBuild", notBusy);
@@ -325,6 +345,8 @@ void editor::App::registerCommands(){
          [this]() { return projectWindow->hasAssetSelection(); }, projectKeys);
     bind("project.paste", [this](const CommandArgs&) { projectWindow->pasteClipboard(); },
          [this]() { return projectWindow->canPasteClipboard(); }, projectKeys);
+    bind("project.duplicate", [this](const CommandArgs&) { projectWindow->duplicateSelection(); },
+         [this]() { return projectWindow->canDuplicate(); }, projectKeys);
     bind("project.selectAll", [this](const CommandArgs&) { projectWindow->selectAllInListing(); }, nullptr, projectKeys);
     bind("project.delete", [this](const CommandArgs&) { projectWindow->requestDeleteSelection(); },
          [this]() { return projectWindow->hasAssetSelection(); }, projectKeys);
