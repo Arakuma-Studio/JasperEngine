@@ -123,8 +123,8 @@ std::string javaStringToUtf8(JNIEnv* env, jstring str) {
             cp = 0x10000u + ((cp - 0xD800u) << 10) + (chars[i + 1] - 0xDC00u);
             i++;
         }
-        // wchar_t is 32 bits on Android; toUTF8 replaces surrogates with U+FFFD
-        out += jasperengine::StringUtils::toUTF8(static_cast<wchar_t>(cp));
+        // toUTF8 replaces lone surrogates with U+FFFD
+        out += jasperengine::StringUtils::toUTF8(static_cast<char32_t>(cp));
     }
 
     env->ReleaseStringChars(str, chars);

@@ -7,12 +7,24 @@
 #include "Export.h"
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace jasperengine{
     class JASPERENGINE_API StringUtils{
     public:
-        static std::string toUTF8(wchar_t codepoint);
+        // One whole code point (char32_t: a 16-bit wchar_t cannot hold one beyond U+FFFF);
+        // surrogates and values above U+10FFFF give U+FFFD
+        static std::string toUTF8(char32_t codepoint);
+
+        // Strict UTF-8: no overlong forms, no encoded surrogates, nothing above U+10FFFF
+        static bool isValidUtf8(std::string_view text);
+        // text with one U+FFFD per byte that is not part of a valid sequence
+        static std::string repairUtf8(std::string_view text);
+        // Valid UTF-8 unchanged; otherwise, on Windows, the text read in the system's ANSI code
+        // page (what a program not in the UTF-8 code page writes: e.what(), a path), elsewhere
+        // repairUtf8
+        static std::string legacyToUtf8(std::string_view text);
 
         // Decodes UTF-8 into Unicode codepoints. Invalid sequences are replaced with U+FFFD and hadInvalid is set.
         static std::vector<uint32_t> decodeUtf8ToCodepoints(const std::string& text, bool& hadInvalid);

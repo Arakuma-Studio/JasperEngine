@@ -1358,7 +1358,7 @@ void UISystem::setInputFieldCursorFromLocalX(InputFieldComponent& inputfield, Te
     inputfield.needUpdateInputField = true;
 }
 
-bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, wchar_t codepoint){
+bool UISystem::handleInputFieldCharInput(InputFieldComponent& inputfield, TextComponent& text, UIComponent& ui, char32_t codepoint){
     if (inputfield.disabled){
         return false;
     }
@@ -3262,7 +3262,7 @@ bool UISystem::isInputFieldFocused(){
     return false;
 }
 
-bool UISystem::eventOnCharInput(wchar_t codepoint){
+bool UISystem::eventOnCharInput(char32_t codepoint){
     // what the event handlers destroy goes when the dispatch is over
     StructuralDeferScope deferScope(*scene);
     auto layouts = scene->getComponentArray<RectTransformComponent>();
