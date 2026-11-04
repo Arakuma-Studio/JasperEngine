@@ -414,7 +414,7 @@ TEST_F(SoundEventRuntimeTest, LayerIsOneInstanceOfMainVoices) {
     EXPECT_FALSE(sound.isPlaying());
     EXPECT_EQ(sound.getVoiceCount(), 0);
     EXPECT_EQ(stopped, 1);
-    EXPECT_EQ(lines.size(), 3u) << "no second start";
+    EXPECT_EQ(starts().size(), 3u) << "no second start";
 }
 
 // R10: stop() stops every layer

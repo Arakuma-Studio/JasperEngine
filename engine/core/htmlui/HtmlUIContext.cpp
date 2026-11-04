@@ -3,6 +3,7 @@
 
 #include "htmlui/HtmlTextEffects.h"
 #include "HtmlUIContext.h"
+#include "audio/AudioMarkers.h"
 
 #include "HtmlUI.h"
 #include "RmlRenderer.h"
@@ -83,6 +84,22 @@ namespace {
         const Rml::Style::ComputedValues& values = element->GetComputedValues();
         return values.background_color().alpha != 0 || values.has_decorator() || values.has_background_image();
     }
+
+#if JASPERENGINE_AUDIO_CAPTURE
+    // an element's click for a capture, in the capture phase: a page's stopPropagation does not hide it
+    class ClickMarkerListener : public Rml::EventListener {
+    public:
+        void ProcessEvent(Rml::Event& event) override{
+            if (!AudioMarkers::isEnabled())
+                return;
+            Rml::Element* target = event.GetTargetElement();
+            if (!target)
+                return;
+            const std::string id = target->GetId();
+            AudioMarkers::htmlClick(nullptr, id.empty() ? target->GetAddress(false, false) : "#" + id);
+        }
+    };
+#endif
 
     // htmlnavigate reaching the context root unprevented (phase-2 §3.11.2, hook H4)
     class NavigateListener : public Rml::EventListener {
@@ -288,6 +305,10 @@ Rml::ElementDocument* HtmlUIContext::loadDocument(const std::string& path){
         if (document && !navigateListener){
             navigateListener.reset(new NavigateListener(&navigateHandler));
             context->GetRootElement()->AddEventListener("htmlnavigate", navigateListener.get(), false);
+#if JASPERENGINE_AUDIO_CAPTURE
+            clickMarkerListener.reset(new ClickMarkerListener());
+            context->GetRootElement()->AddEventListener("click", clickMarkerListener.get(), true);
+#endif
         }
     }else{
         document = context->LoadDocument(path);

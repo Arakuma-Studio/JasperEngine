@@ -170,10 +170,15 @@ namespace jasperengine::editor {
         int sampleRate = 0;             // 0 = the device's
         std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
         int seed = 1;                   // the Sound Event generator's seed in a deterministic run
+        // Play's audio captures (docs/specs/S35-agent-audio.md): editor only, not exported
+        int captureMaxSeconds = 120;
+        int captureKeep = 3;
+        bool captureStems = false;
 
         bool operator==(const AudioSettings& other) const {
             return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
-                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && seed == other.seed;
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && seed == other.seed &&
+                   captureMaxSeconds == other.captureMaxSeconds && captureKeep == other.captureKeep && captureStems == other.captureStems;
         }
         bool operator!=(const AudioSettings& other) const { return !(*this == other); }
     };

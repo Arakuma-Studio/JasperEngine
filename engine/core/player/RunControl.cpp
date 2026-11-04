@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "RunControl.h"
+#include "audio/AudioCapture.h"
+#include "manager/SceneManager.h"
+#include "subsystem/AudioSystem.h"
+#include "PlatformConfig.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -26,6 +30,7 @@ using namespace jasperengine::player;
 namespace {
 
     struct State {
+        bool audioCaptureBegun = false;
         LaunchOptions options;
         bool active = false;
         bool counting = false;          // frames are being counted (from the ready frame with --after-ready)
@@ -170,6 +175,24 @@ void RunControl::engineStarted() {
     }
     if (s.options.failOnError && s.errorSink == 0 && Logger::isInitialized())
         s.errorSink = Logger::addSink(std::make_unique<ErrorWatchSink>());
+}
+
+void RunControl::beginAudioCapture() {
+#if JASPERENGINE_AUDIO_CAPTURE
+    State& s = state();
+    if (s.audioCaptureBegun || s.options.audioCapture.empty()) return;
+    s.audioCaptureBegun = true;
+    AudioCaptureOptions options;
+    options.root = s.options.audioCapture;
+    options.project = platformConfig().title;
+    options.scene = SceneManager::getCurrentSceneName();
+    options.seed = AudioSystem::getConfig().seed;
+    // no project settings here: the run's --quit-after ends it
+    options.maxSeconds = 3600;
+    options.keep = 20;
+    std::string error;
+    if (!AudioCapture::begin(options, &error)) Log::error("--audio-capture: %s", error.c_str());
+#endif
 }
 
 bool RunControl::isHeadless() {

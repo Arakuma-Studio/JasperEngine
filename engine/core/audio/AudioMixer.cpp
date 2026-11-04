@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AudioMixer.h"
+#include "AudioCapture.h"
 #include "AudioFilters.h"
 
 #include "Log.h"
@@ -856,6 +857,12 @@ bool AudioMixer::setFloat(const std::string& name, float value, float seconds, b
     }
     if (!setTarget(exposed->target, value, seconds, unscaled)) return false;
     if (exposed->remember) state().rememberDirty.insert(name);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioCapture::isActive()) {
+        AudioCapture::Line line("mixer");
+        line.text("action", "set_float").text("name", name).number("value", value, 6).number("seconds", seconds, 6);
+    }
+#endif
     return true;
 }
 
@@ -881,6 +888,12 @@ bool AudioMixer::clearFloat(const std::string& name){
         UserSettings::removeKey(key.c_str());
         state().rememberDirty.erase(name);
     }
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioCapture::isActive()) {
+        AudioCapture::Line line("mixer");
+        line.text("action", "clear_float").text("name", name);
+    }
+#endif
     return clearTarget(exposed->target);
 }
 
@@ -933,6 +946,15 @@ bool AudioMixer::transitionToSnapshots(const std::vector<std::string>& snapshots
     }
     s.currentSnapshot = defs.size() == 1 ? defs[0]->name : "";
     if (!(seconds > 0.0f)) applyAll(0.0);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioCapture::isActive()) {
+        AudioCapture::Line line("mixer");
+        line.text("action", "transition");
+        if (snapshots.size() == 1) line.text("snapshot", snapshots[0]);
+        else line.texts("snapshots", snapshots).numbers("weights", weights, 6);
+        line.number("seconds", seconds, 6).flag("unscaled", timeUnscaled);
+    }
+#endif
     return true;
 }
 
@@ -1063,6 +1085,29 @@ bool AudioMixer::setEffectBypass(const std::string& effectId, bool bypass){
     writeSlots(*owner);
     applyAll(0.0);
     return true;
+}
+
+std::vector<AudioMixer::GroupMeter> AudioMixer::getGroupMeters(){
+    ensureInitialized();
+    std::vector<GroupMeter> out;
+    for (const auto& group : state().groups) {
+        if (group->meter && group->bus && group->handle) out.push_back({group->id, group->name, group->meter.get()});
+    }
+    return out;
+}
+
+float AudioMixer::getGroupFader(const std::string& id){
+    GroupState* group = findState(id);
+    return group && group->appliedVolume >= 0.0f ? group->appliedVolume : 1.0f;
+}
+
+int AudioMixer::getGroupDepth(const std::string& id){
+    int depth = 1;
+    for (const GroupState* group = id.empty() ? nullptr : findState(id); group && !group->parentId.empty() && depth < 64;
+         group = findState(group->parentId)) {
+        depth++;
+    }
+    return depth;
 }
 
 float AudioMixer::getMeterDb(const std::string& group){

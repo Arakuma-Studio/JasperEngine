@@ -162,6 +162,8 @@ namespace jasperengine::editor::recorder {
         int height = 0;
         bool startedPlay = false;
         bool audio = false;
+        // the audio tap's subscription while it runs
+        int audioTap = 0;
         double previousFixedDelta = 0.0;
         std::chrono::steady_clock::time_point startTime;
         FfmpegInfo ffmpegInfo;

@@ -2937,6 +2937,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audio.maxRealVoices != defaults.maxRealVoices) audioNode["maxRealVoices"] = audio.maxRealVoices;
         if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
         if (audio.seed != defaults.seed) audioNode["seed"] = audio.seed;
+        if (audio.captureMaxSeconds != defaults.captureMaxSeconds) audioNode["captureMaxSeconds"] = audio.captureMaxSeconds;
+        if (audio.captureKeep != defaults.captureKeep) audioNode["captureKeep"] = audio.captureKeep;
+        if (audio.captureStems != defaults.captureStems) audioNode["captureStems"] = audio.captureStems;
         if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
         if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
         if (audioNode.size()) root["audio"] = audioNode;
@@ -3664,6 +3667,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (audioNode["maxRealVoices"]) audio.maxRealVoices = YamlNumbers::as<int>(audioNode["maxRealVoices"]);
             if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
             if (audioNode["seed"]) audio.seed = YamlNumbers::as<int>(audioNode["seed"]);
+            if (audioNode["captureMaxSeconds"]) audio.captureMaxSeconds = YamlNumbers::as<int>(audioNode["captureMaxSeconds"]);
+            if (audioNode["captureKeep"]) audio.captureKeep = YamlNumbers::as<int>(audioNode["captureKeep"]);
+            if (audioNode["captureStems"]) audio.captureStems = audioNode["captureStems"].as<bool>();
             if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
             if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
         }

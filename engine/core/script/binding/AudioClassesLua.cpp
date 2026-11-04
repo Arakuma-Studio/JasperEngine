@@ -11,6 +11,7 @@
 #include "LuaBridgeAddon.h"
 
 #include "Scene.h"
+#include "audio/AudioCapture.h"
 #include "component/AudioSourceComponent.h"
 #include "object/GameObject.h"
 #include "object/sound/Audio.h"
@@ -140,6 +141,8 @@ void LuaBinding::registerAudioClasses(lua_State* L) {
         .beginClass<Audio>("Audio")
         .addStaticFunction("play", &luaAudioTablePlay)
         .addStaticFunction("stopAll", &luaAudioTableStopAll)
+        .addStaticFunction("mark", +[](const std::string& label) { AudioCapture::mark(label, true); })
+        .addStaticFunction("isCapturing", +[]() { return AudioCapture::isActive(); })
         .endClass();
 #endif
 }

@@ -1490,6 +1490,9 @@ ToolResult playStartResult(McpContext& ctx, const McpJob& job, bool screenshotLa
     if (!data.is_object()) data = Json::object();
     data["job_id"] = job.id();
     std::string text;
+    if (const Project* project = ctx.project(); project && !project->getAudioCaptureError().empty()) {
+        data["audio_capture_error"] = project->getAudioCaptureError();
+    }
     const Json problems = data.value("problems", Json::array());
     Json scriptErrors = Json::array();
     for (const Json& entry : problems) {
@@ -1510,6 +1513,7 @@ ToolResult playStartResult(McpContext& ctx, const McpJob& job, bool screenshotLa
     }
     if (job.status() == JobStatus::Succeeded) {
         text = job.message() + " Started in " + std::to_string(data.value("startup_seconds", 0.0)).substr(0, 5) + " s.";
+        if (data.contains("audio_capture_error")) text += " Audio capture failed: " + data["audio_capture_error"].get<std::string>() + ".";
         if (!problems.empty()) {
             text += " Console problems since start:\n" + w3::formatConsoleText(problems, 4000);
         } else {

@@ -1138,6 +1138,14 @@ name gives an invalid handle and one warning per name per Play), `Audio.stopAll(
 (the voices of `Audio.play`, triggers and one-shots, all or those on `group` or below it;
 `AudioSystem.stopAll()` also stops the sources' main voices). Inside a physics callback they run at
 the frame's audio update: the handle is valid at once, `stopAll` answers 0.
+`Audio.mark(label)` writes a marker line (at most 200 bytes) at this sample of an audio capture and does
+nothing without one; `Audio.isCapturing()` -> boolean. Both exist in every build (a release player: no-op
+and false), so a script behaves the same everywhere.
+
+```lua run
+Audio.mark("doc test")
+assert(type(Audio.isCapturing()) == "boolean")
+```
 
 `SoundHandle` (a value naming one play): `isValid()`, `isPlaying()`, `stop()`, `pause()`, `resume()`,
 `fadeOut(seconds [, opts])` (`opts.pause`, `opts.unscaled`, as `AudioSource:fadeOut`),

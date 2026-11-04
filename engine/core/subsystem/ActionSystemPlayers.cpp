@@ -6,6 +6,7 @@
 
 #include "ActionSystem.h"
 #include "ActionSystemPlayersDetail.h"
+#include "audio/AudioMarkers.h"
 
 #include "Scene.h"
 #include "Log.h"
@@ -1321,6 +1322,9 @@ void ActionSystem::dispatchPlayerCallbacks(){
             }
             const bool subscribed = player->onEvent.hasSubscribers();
             const AnimationEvent event = callback.event;
+#if JASPERENGINE_AUDIO_CAPTURE
+            if (AudioMarkers::isEnabled()) AudioMarkers::animationEvent(scene, entity, event.functionName, event.state, event.time);
+#endif
             player->onEvent.call(event);
             // then the method of that name on the GameObject's Lua scripts (spec 3.5)
             const bool scripted = LuaBinding::callLuaScriptMethod(scene, entity, event.functionName, event.args);

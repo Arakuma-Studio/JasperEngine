@@ -4383,10 +4383,18 @@
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
 		4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
 		6A7118106D6EA9E025FF56AE /* SoundEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DB7019B39AF614012054DA5E /* SoundEvent.cpp */; };
+		1F70A85CE4C2584660C21362 /* AudioCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C533043340598FFEB3E01C43 /* AudioCapture.cpp */; };
+		50707794903ED9F888E17A6F /* AudioClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03C39FEABD7E9AF5A6AD76D3 /* AudioClock.cpp */; };
+		BE1B94E8CA4AED6045DC5673 /* AudioMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB2E17149A21B4C3142E753D /* AudioMarkers.cpp */; };
+		9CBFA681B54EAF3E19D00277 /* AudioTap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AAA5319CF6C73D44C2B8BBF7 /* AudioTap.cpp */; };
 		72B4DC6AE5B548B1BC832EBA /* SoundEventIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 123AC69CFE92F176D0A568E6 /* SoundEventIO.cpp */; };
 		A78CF1042BA5D64E45268DC4 /* SoundEventLibrary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 37B5B65C45EB9F453D8FDC9C /* SoundEventLibrary.cpp */; };
 		4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
 		11F1AE715F0A0614ECA469C6 /* SoundEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DB7019B39AF614012054DA5E /* SoundEvent.cpp */; };
+		7248B386B6B3783E88E1C9C6 /* AudioCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C533043340598FFEB3E01C43 /* AudioCapture.cpp */; };
+		88AE688C456E38145B2C4EEC /* AudioClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03C39FEABD7E9AF5A6AD76D3 /* AudioClock.cpp */; };
+		BB00620E76B48D4DD8574053 /* AudioMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB2E17149A21B4C3142E753D /* AudioMarkers.cpp */; };
+		BEBD103A6D5839CCA2DDA6EE /* AudioTap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AAA5319CF6C73D44C2B8BBF7 /* AudioTap.cpp */; };
 		B577E1E7BF70E31945BC7A4C /* SoundEventIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 123AC69CFE92F176D0A568E6 /* SoundEventIO.cpp */; };
 		D8FD68E66EE7FAEB0594B81D /* SoundEventLibrary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 37B5B65C45EB9F453D8FDC9C /* SoundEventLibrary.cpp */; };
 		4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
@@ -8604,6 +8612,10 @@
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
 		4A534E47238F638B6921C9C5 /* AudioMeter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMeter.cpp; sourceTree = "<group>"; };
 		DB7019B39AF614012054DA5E /* SoundEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEvent.cpp; sourceTree = "<group>"; };
+		C533043340598FFEB3E01C43 /* AudioCapture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioCapture.cpp; sourceTree = "<group>"; };
+		03C39FEABD7E9AF5A6AD76D3 /* AudioClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioClock.cpp; sourceTree = "<group>"; };
+		BB2E17149A21B4C3142E753D /* AudioMarkers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMarkers.cpp; sourceTree = "<group>"; };
+		AAA5319CF6C73D44C2B8BBF7 /* AudioTap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioTap.cpp; sourceTree = "<group>"; };
 		123AC69CFE92F176D0A568E6 /* SoundEventIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEventIO.cpp; sourceTree = "<group>"; };
 		37B5B65C45EB9F453D8FDC9C /* SoundEventLibrary.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEventLibrary.cpp; sourceTree = "<group>"; };
 		4A534E47B2A2155B16BB00CE /* TruePeak.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TruePeak.cpp; sourceTree = "<group>"; };
@@ -10099,6 +10111,10 @@
 				4A534E478C2A964FA571E181 /* AudioFileCheck.h */,
 				4A534E47238F638B6921C9C5 /* AudioMeter.cpp */,
 				DB7019B39AF614012054DA5E /* SoundEvent.cpp */,
+				C533043340598FFEB3E01C43 /* AudioCapture.cpp */,
+				03C39FEABD7E9AF5A6AD76D3 /* AudioClock.cpp */,
+				BB2E17149A21B4C3142E753D /* AudioMarkers.cpp */,
+				AAA5319CF6C73D44C2B8BBF7 /* AudioTap.cpp */,
 				123AC69CFE92F176D0A568E6 /* SoundEventIO.cpp */,
 				37B5B65C45EB9F453D8FDC9C /* SoundEventLibrary.cpp */,
 				4A534E47B2A2155B16BB00CE /* TruePeak.cpp */,
@@ -17803,6 +17819,10 @@
 				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
 				4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */,
 				6A7118106D6EA9E025FF56AE /* SoundEvent.cpp in Sources */,
+				1F70A85CE4C2584660C21362 /* AudioCapture.cpp in Sources */,
+				50707794903ED9F888E17A6F /* AudioClock.cpp in Sources */,
+				BE1B94E8CA4AED6045DC5673 /* AudioMarkers.cpp in Sources */,
+				9CBFA681B54EAF3E19D00277 /* AudioTap.cpp in Sources */,
 				72B4DC6AE5B548B1BC832EBA /* SoundEventIO.cpp in Sources */,
 				A78CF1042BA5D64E45268DC4 /* SoundEventLibrary.cpp in Sources */,
 				4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */,
@@ -18602,6 +18622,10 @@
 				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
 				4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */,
 				11F1AE715F0A0614ECA469C6 /* SoundEvent.cpp in Sources */,
+				7248B386B6B3783E88E1C9C6 /* AudioCapture.cpp in Sources */,
+				88AE688C456E38145B2C4EEC /* AudioClock.cpp in Sources */,
+				BB00620E76B48D4DD8574053 /* AudioMarkers.cpp in Sources */,
+				BEBD103A6D5839CCA2DDA6EE /* AudioTap.cpp in Sources */,
 				B577E1E7BF70E31945BC7A4C /* SoundEventIO.cpp in Sources */,
 				D8FD68E66EE7FAEB0594B81D /* SoundEventLibrary.cpp in Sources */,
 				4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */,

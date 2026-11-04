@@ -41,7 +41,7 @@ h264_amf and libopenh264. Without FFmpeg or an H.264 encoder Movie is disabled w
   Pause stops the capture; Step records one frame. The Game view shows "REC 00:12 · frame 734"
   (not in the recording).
 - Frames are never dropped: when the encoder falls behind, the editor waits for it.
-- **Capture Audio** mixes the game's sound offline in step with the frames (you hear nothing
+- **Capture Audio** takes the game's sound from the deterministic audio driver, in step with the frames (you hear nothing
   while it records; the window says so) and muxes it in at the end (AAC 192 kb/s in MP4, PCM in
   MOV). It needs the recording to start with Play; started mid-play, audio is off with a warning.
 - No frame shows a stand-in: a frame drawn while a shader, pipeline, texture or model was still

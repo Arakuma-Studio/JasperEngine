@@ -2238,6 +2238,34 @@ void ProjectSettingsWindow::drawAudioSettings() {
                                "A run with a device draws its own at each start.");
             }
 
+            if (settingsui::beginRow("audio.capture_max_seconds")) {
+                if (projectBeginSettingsRow("Capture Max Seconds", audio.captureMaxSeconds != defaults.captureMaxSeconds)) {
+                    audio.captureMaxSeconds = defaults.captureMaxSeconds;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioCaptureMax", &audio.captureMaxSeconds, 1.0f, 1, 3600);
+                audio.captureMaxSeconds = std::clamp(audio.captureMaxSeconds, 1, 3600);
+                endSettingsRow("Seconds of audio a Play's capture keeps; its events go on being logged after them.");
+            }
+
+            if (settingsui::beginRow("audio.capture_keep")) {
+                if (projectBeginSettingsRow("Capture Keep", audio.captureKeep != defaults.captureKeep)) {
+                    audio.captureKeep = defaults.captureKeep;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::DragInt("##AudioCaptureKeep", &audio.captureKeep, 1.0f, 1, 20);
+                audio.captureKeep = std::clamp(audio.captureKeep, 1, 20);
+                endSettingsRow("Capture sessions kept in the project; the oldest goes first.");
+            }
+
+            if (settingsui::beginRow("audio.capture_stems")) {
+                if (projectBeginSettingsRow("Capture Stems", audio.captureStems != defaults.captureStems)) {
+                    audio.captureStems = defaults.captureStems;
+                }
+                ImGui::Checkbox("##AudioCaptureStems", &audio.captureStems);
+                endSettingsRow("A capture also writes each mixer group's audio to its own WAV file.");
+            }
+
             if (settingsui::beginRow("audio.sample_rate")) {
                 if (projectBeginSettingsRow("Sample Rate", audio.sampleRate != defaults.sampleRate)) {
                     audio.sampleRate = defaults.sampleRate;

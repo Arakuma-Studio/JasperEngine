@@ -2483,6 +2483,13 @@ OVERRIDES.update({
                 'below it. The count stopped (0 inside a physics callback, where it runs at the audio update).',
                 'AudioSystem.stopAll also stops the sources\' main voices.'],
         'overloads': [([('group?', 'string')], 'integer')]},
+    ('Audio', 'mark'): {
+        'doc': ['Writes a marker line at this sample in the audio capture of the Play or player run; does nothing without one.',
+                'At most 200 bytes of label.'],
+        'overloads': [([('label', 'string')], '')]},
+    ('Audio', 'isCapturing'): {
+        'doc': ['True while this Play or player run writes an audio capture.'],
+        'overloads': [([], 'boolean')]},
     ('SoundHandle', 'fadeOut'): {
         'doc': ['To silence over `seconds`, then stops (opts.pause: pauses); the volume is put back.'],
         'overloads': [([('seconds', 'number'), ('opts?', 'AudioFadeOutOptions')], '')]},

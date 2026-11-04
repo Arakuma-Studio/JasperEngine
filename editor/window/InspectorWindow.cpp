@@ -109,6 +109,7 @@
 #include "Out.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "audio/AudioCapture.h"
 #include "subsystem/AudioSystem.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
@@ -9068,8 +9069,10 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         bool sceneIsStopped = sceneProject->playState == ScenePlayState::STOPPED;
         SoundPreviewRuntime& ap = soundPreviewRuntime;
         bool isThisPreview = ap.active && ap.sceneId == sceneProject->id && ap.entity == entity;
+        // a capture's mix is the Play's alone
+        const bool capturing = AudioCapture::isActive();
 
-        if (ap.active && (!isThisPreview || !sceneIsStopped || ap.filename != audio.filename)) {
+        if (ap.active && (!isThisPreview || !sceneIsStopped || capturing || ap.filename != audio.filename)) {
             stopSoundPreview(!isThisPreview || ap.filename != audio.filename);
             isThisPreview = false;
         }
@@ -9080,7 +9083,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         }
 
         ImGui::Separator();
-        ImGui::BeginDisabled(!sceneIsStopped || audio.filename.empty());
+        ImGui::BeginDisabled(!sceneIsStopped || audio.filename.empty() || capturing);
 
         if (isThisPreview && ap.playing) {
             if (ImGui::Button(ICON_FA_PAUSE "##audio_pause")) {
@@ -9093,6 +9096,9 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                 } else {
                     isThisPreview = true;
                 }
+            }
+            if (capturing && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("Audio preview is off while Play captures audio");
             }
         }
         ImGui::SameLine();

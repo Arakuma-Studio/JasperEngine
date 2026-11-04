@@ -169,6 +169,9 @@ namespace jasperengine {
         bool reducedMotion = false;
         std::function<void(Rml::ElementDocument*, const std::string&, const std::string&)> navigateHandler;
         std::unique_ptr<Rml::EventListener> navigateListener;   // on the context root (bubble phase)
+#if JASPERENGINE_AUDIO_CAPTURE
+        std::unique_ptr<Rml::EventListener> clickMarkerListener;   // on the context root (capture phase)
+#endif
         void applyThemes();
         // a primary press or touch no document took: the focused element loses the focus
         void releaseFocus();

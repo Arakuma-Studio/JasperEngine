@@ -1971,6 +1971,28 @@ std::vector<Setting> mcpSettingsTable() {
         }
         audioInt("audio.max_voices", "Voices playing at all (default 256); past it the least important (AudioSource priority) stops.", 1, 1000, &AudioSettings::maxVoices);
         audioInt("audio.seed", "The seed of Sound Event picks in a run without a device (default 1), so it repeats. A run with a device draws its own.", 0, 2147483647LL, &AudioSettings::seed);
+        audioInt("audio.capture_max_seconds", "Seconds of audio a Play's capture keeps (default 120); its events go on being logged after them.", 1, 3600, &AudioSettings::captureMaxSeconds);
+        audioInt("audio.capture_keep", "Capture sessions kept in the project (default 3); the oldest goes first.", 1, 20, &AudioSettings::captureKeep);
+        {
+            Setting s;
+            s.key = "audio.capture_stems";
+            s.type = "bool";
+            s.description = "A capture also writes each mixer group's audio to its own WAV file.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().captureStems); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "must be true or false";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.captureStems = value.get<bool>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "audio.sample_rate";
@@ -2765,6 +2787,9 @@ const Placement placements[] = {
     {"audio.max_voices", "Audio", "", "Max Voices", "voices polyphony priority"},
     {"audio.sample_rate", "Audio", "", "Sample Rate", "hz 22050 44100 48000 output frequency"},
     {"audio.seed", "Audio", "", "Random Seed", "seed sound event random shuffle deterministic repeat"},
+    {"audio.capture_max_seconds", "Audio", "Capture and QA", "Capture Max Seconds", "capture session length truncate"},
+    {"audio.capture_keep", "Audio", "Capture and QA", "Capture Keep", "capture sessions kept delete oldest"},
+    {"audio.capture_stems", "Audio", "Capture and QA", "Capture Stems", "capture stems groups wav"},
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},

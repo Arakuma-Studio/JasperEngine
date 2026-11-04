@@ -1176,6 +1176,15 @@ else()
     set(JASPERENGINE_PROFILER_DEFAULT OFF)
 endif()
 option(JASPERENGINE_PROFILER "Compile the CPU/GPU profiler, the frame pass recorder and the VRAM tracker" ${JASPERENGINE_PROFILER_DEFAULT})
+# Audio captures (core/audio/AudioCapture, AudioMarkers, spec S35): the editor, the unit tests and
+# desktop development players; a release player and the mobile and web ones (no path a harness
+# reads) leave them out, and their sites compile to nothing
+if(JASPERENGINE_PROFILER_DEFAULT AND NOT (EMSCRIPTEN OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "iOS"))
+    set(JASPERENGINE_AUDIO_CAPTURE_DEFAULT ON)
+else()
+    set(JASPERENGINE_AUDIO_CAPTURE_DEFAULT OFF)
+endif()
+option(JASPERENGINE_AUDIO_CAPTURE "Compile audio captures and their gameplay markers" ${JASPERENGINE_AUDIO_CAPTURE_DEFAULT})
 # Tracy remote profiling of a running development game (desktop and Android, libs/tracy)
 option(JASPERENGINE_TRACY "Send the profiler's zones, frames and plots to Tracy" OFF)
 if(JASPERENGINE_TRACY)
@@ -1327,11 +1336,15 @@ set(JASPERENGINE_SRCS
     core/input/InputActions.cpp
     core/input/InputRebind.cpp
     core/input/InputVirtualControls.cpp
+    core/audio/AudioCapture.cpp
+    core/audio/AudioClock.cpp
     core/audio/AudioEffects.cpp
     core/audio/AudioFileCheck.cpp
+    core/audio/AudioMarkers.cpp
     core/audio/AudioMeter.cpp
     core/audio/AudioMixer.cpp
     core/audio/AudioMixerIO.cpp
+    core/audio/AudioTap.cpp
     core/audio/SoundEvent.cpp
     core/audio/SoundEventIO.cpp
     core/audio/SoundEventLibrary.cpp
@@ -2058,6 +2071,7 @@ target_compile_definitions(jasperengine
         $<$<BOOL:${JASPERENGINE_PHYSICS_2D}>:JASPERENGINE_PHYSICS_2D>
         $<$<BOOL:${JASPERENGINE_PHYSICS_3D}>:JASPERENGINE_PHYSICS_3D>
         JASPERENGINE_PROFILER=$<BOOL:${JASPERENGINE_PROFILER}>
+        JASPERENGINE_AUDIO_CAPTURE=$<BOOL:${JASPERENGINE_AUDIO_CAPTURE}>
         JASPERENGINE_DEVELOPMENT_BUILD=$<OR:$<BOOL:${JASPERENGINE_DEVELOPMENT_BUILD}>,$<CONFIG:Debug>>
         JASPERENGINE_TRACY=$<BOOL:${JASPERENGINE_TRACY}>
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
@@ -2106,7 +2120,7 @@ endif()
 # The User-Agent's version ("JasperEngine/<version> (<platform>)"): on this one file only, so a
 # new version recompiles nothing else
 if(JASPERENGINE_EDITOR_VERSION)
-    set_property(SOURCE core/net/Http.cpp APPEND PROPERTY COMPILE_DEFINITIONS
+    set_property(SOURCE core/net/Http.cpp core/audio/AudioCapture.cpp APPEND PROPERTY COMPILE_DEFINITIONS
         "JASPERENGINE_VERSION_STRING=\"${JASPERENGINE_EDITOR_VERSION}\"")
 endif()
 

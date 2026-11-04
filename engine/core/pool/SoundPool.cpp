@@ -13,6 +13,7 @@
 #include "io/ResourcePack.h"
 #include "audio/AudioFileCheck.h"
 #include "audio/SoloudEngineFile.h"
+#include "subsystem/AudioSystem.h"
 
 #include "soloud.h"
 #include "soloud_wav.h"
@@ -105,7 +106,8 @@ SoundLoadResult SoundPool::loadClip(const std::string& filename, AudioLoadType r
         }
     }
 
-    if (Engine::isAsyncLoading()) {
+    // on the deterministic driver a start never waits a number of frames that varies
+    if (Engine::isAsyncLoading() && AudioSystem::getOutputMode() != AudioOutputMode::Deterministic) {
         std::lock_guard<std::mutex> lock(cacheMutex);
 
         if (shutdownRequested.load()) {

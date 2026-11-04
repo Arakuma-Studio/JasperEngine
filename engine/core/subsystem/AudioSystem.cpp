@@ -6,7 +6,10 @@
 #include "manager/SceneManager.h"
 
 #include "asset/AssetMap.h"
+#include "audio/AudioCapture.h"
+#include "audio/AudioClock.h"
 #include "audio/AudioMixer.h"
+#include "audio/AudioTap.h"
 #include "audio/SoundEventIO.h"
 #include "audio/SoundEventLibrary.h"
 #include "component/ButtonComponent.h"
@@ -35,7 +38,6 @@ using namespace jasperengine;
 
 bool AudioSystem::inited = false;
 bool AudioSystem::outputUnavailable = false;
-bool AudioSystem::offlineCapture = false;
 
 float AudioSystem::globalVolume = 1.0;
 
@@ -199,7 +201,8 @@ namespace {
 
     void traceVoiceLine(const AudioVoiceLine& line) {
         nlohmann::ordered_json json;
-        json["type"] = line.kind == AudioVoiceLine::Kind::Start ? "voice_start" : line.kind == AudioVoiceLine::Kind::Stop ? "voice_stop" : "voice_reject";
+        json["type"] = line.kind == AudioVoiceLine::Kind::Start ? "voice_start" : line.kind == AudioVoiceLine::Kind::Stop ? "voice_stop" :
+                       line.kind == AudioVoiceLine::Kind::Reject ? "voice_reject" : line.kind == AudioVoiceLine::Kind::Pause ? "voice_pause" : "voice_resume";
         json["sample"] = line.sample;
         if (line.reason[0]) json["reason"] = line.reason;
         if (line.handle) json["voice"] = line.handle;
@@ -229,16 +232,35 @@ namespace {
         if (voiceTraceOn) traceVoiceLine(line);
     }
 
-    void stopVoiceBecause(unsigned int handle, const char* reason, uint64_t byInstance) {
-        if (handle != 0 && voiceLinesWanted()) {
-            AudioVoiceLine line;
-            line.kind = AudioVoiceLine::Kind::Stop;
-            line.reason = reason;
-            line.handle = handle;
-            line.byInstance = byInstance;
-            emitVoiceLine(line);
+    // why the stops made while one lives happen: the voice lines' reason
+    struct StopReason {
+        static inline const char* current = "stop";
+        static inline uint64_t byInstance = 0;
+        const char* previous;
+        uint64_t previousBy;
+        explicit StopReason(const char* reason, uint64_t by = 0): previous(current), previousBy(byInstance) {
+            current = reason;
+            byInstance = by;
         }
+        ~StopReason() {
+            current = previous;
+            byInstance = previousBy;
+        }
+        StopReason(const StopReason&) = delete;
+        StopReason& operator=(const StopReason&) = delete;
+    };
+
+    void stopVoiceBecause(unsigned int handle, const char* reason, uint64_t byInstance) {
+        const StopReason because(reason, byInstance);
         AudioSystem::stopVoice(handle);
+    }
+
+    void pauseVoiceLine(unsigned int handle, bool paused) {
+        if (handle == 0 || !voiceLinesWanted()) return;
+        AudioVoiceLine line;
+        line.kind = paused ? AudioVoiceLine::Kind::Pause : AudioVoiceLine::Kind::Resume;
+        line.handle = handle;
+        emitVoiceLine(line);
     }
 
     uint64_t chooseSoundEventSeed() {
@@ -325,6 +347,25 @@ namespace {
     AudioConfig config;
     AudioBackend backend = AudioBackend::Auto;
     bool backendFromEnvironment = false;
+    // the deterministic driver is open, its clock, and who holds it (beginDeterministic)
+    bool deterministicDriver = false;
+    AudioClock deterministicClock;
+    int deterministicHolds = 0;
+    bool deterministicSwitched = false;
+    AudioBackend backendBeforeDeterministic = AudioBackend::Auto;
+    constexpr unsigned int deterministicRate = 48000;
+    constexpr unsigned int deterministicChunk = 512;
+    constexpr unsigned int deterministicChannels = 2;
+
+    void readBackendEnvironment() {
+        if (backendFromEnvironment) return;
+        backendFromEnvironment = true;
+        if (const char* env = std::getenv("JASPERENGINE_AUDIO_BACKEND")) {
+            if (std::strcmp(env, "nosound") == 0) backend = AudioBackend::NoSound;
+            else if (std::strcmp(env, "null") == 0) backend = AudioBackend::Null;
+            else if (std::strcmp(env, "deterministic") == 0) backend = AudioBackend::Deterministic;
+        }
+    }
     bool outputAvailable = false;
     bool listenerPaused = false;
 
@@ -460,6 +501,7 @@ void AudioSystem::setBackend(AudioBackend newBackend){
 }
 
 AudioBackend AudioSystem::getBackend(){
+    readBackendEnvironment();
     return backend;
 }
 
@@ -476,21 +518,14 @@ bool AudioSystem::init(){
             return false;
         }
 
-        if (!backendFromEnvironment) {
-            backendFromEnvironment = true;
-            if (const char* env = std::getenv("JASPERENGINE_AUDIO_BACKEND")) {
-                if (std::strcmp(env, "nosound") == 0) backend = AudioBackend::NoSound;
-                else if (std::strcmp(env, "null") == 0) backend = AudioBackend::Null;
-            }
-        }
+        readBackendEnvironment();
 
-        // --headless and --silent-audio open no device but mix as a device would, on the null
-        // driver pumped by the frames' unscaled time (docs/specs/S30-shipping.md R17): sounds play,
-        // end and fire their events, so the game's logic is that of a normal run
+        // --headless and --silent-audio open no device but mix as a device would, on the
+        // deterministic driver (docs/specs/S30-shipping.md R17): sounds play, end and fire their
+        // events, so the game's logic is that of a normal run, the same on every run
         AudioBackend opened = backend;
         if (platformConfig().silentAudio && opened == AudioBackend::Auto) {
-            opened = AudioBackend::Null;
-            Log::print("Audio output off (--silent-audio or --headless): mixing without output");
+            opened = AudioBackend::Deterministic;
         }
 
         SoLoud::Soloud& soloud = getSoloud();
@@ -499,6 +534,14 @@ bool AudioSystem::init(){
         SoLoud::result result = SoLoud::SO_NO_ERROR + 1;
 
         outputAvailable = false;
+        if (opened == AudioBackend::Deterministic) {
+            result = soloud.init(flags, SoLoud::Soloud::NULLDRIVER, deterministicRate, deterministicChunk, deterministicChannels);
+            if (result == SoLoud::SO_NO_ERROR) {
+                deterministicDriver = true;
+                deterministicClock.reset(deterministicRate);
+                Log::print("Audio: deterministic driver (%u Hz, game-time pump)", deterministicRate);
+            }
+        }
         if (opened == AudioBackend::Auto) {
             result = soloud.init(flags, SoLoud::Soloud::MINIAUDIO, rate);
             outputAvailable = result == SoLoud::SO_NO_ERROR;
@@ -506,10 +549,10 @@ bool AudioSystem::init(){
                 Log::warn("No audio output available (%s): mixing without output", soloud.getErrorString(result));
             }
         }
-        if (result != SoLoud::SO_NO_ERROR && opened != AudioBackend::Null) {
+        if (result != SoLoud::SO_NO_ERROR && opened != AudioBackend::Null && opened != AudioBackend::Deterministic) {
             result = soloud.init(flags, SoLoud::Soloud::NOSOUND, rate == SoLoud::Soloud::AUTO ? 44100 : rate);
         }
-        if (result != SoLoud::SO_NO_ERROR) {
+        if (result != SoLoud::SO_NO_ERROR && opened != AudioBackend::Deterministic) {
             // no threads (a Web build without pthreads): mixed on the main thread each frame
             result = soloud.init(flags, SoLoud::Soloud::NULLDRIVER, rate == SoLoud::Soloud::AUTO ? 44100 : rate, 1024);
         }
@@ -539,8 +582,8 @@ bool AudioSystem::isInited(){
 }
 
 void AudioSystem::mixManually(double seconds){
-    // a Recorder capture holds the null driver and mixes it itself (mixOffline), once a frame
-    if (!inited || offlineCapture || getSoloud().getBackendId() != SoLoud::Soloud::NULLDRIVER || !(seconds > 0.0)) return;
+    // the deterministic driver has its own pump, after the scenes' update
+    if (!inited || deterministicDriver || getSoloud().getBackendId() != SoLoud::Soloud::NULLDRIVER || !(seconds > 0.0)) return;
     SoLoud::Soloud& soloud = getSoloud();
     const unsigned int channels = std::max(1u, soloud.getBackendChannels());
     pumpSeconds += seconds;
@@ -556,6 +599,67 @@ void AudioSystem::mixManually(double seconds){
         soloud.mix(buffer.data(), now);
         samples -= now;
     }
+}
+
+AudioOutputMode AudioSystem::getOutputMode(){
+    if (inited) {
+        if (deterministicDriver) return AudioOutputMode::Deterministic;
+        return outputAvailable ? AudioOutputMode::Device : AudioOutputMode::NoOutput;
+    }
+    readBackendEnvironment();
+    if (backend == AudioBackend::Deterministic || (backend == AudioBackend::Auto && platformConfig().silentAudio)) return AudioOutputMode::Deterministic;
+    return isOutputAvailable() ? AudioOutputMode::Device : AudioOutputMode::NoOutput;
+}
+
+void AudioSystem::pumpDeterministic(double unscaledSeconds){
+    if (!deterministicDriver) return;
+    uint32_t frames = deterministicClock.advance(unscaledSeconds);
+    if (frames == 0) return;
+    static float buffer[deterministicChunk * deterministicChannels];
+    SoLoud::Soloud& soloud = getSoloud();
+    uint64_t first = deterministicClock.cursor() - frames;
+    while (frames > 0) {
+        const uint32_t now = std::min(frames, deterministicChunk);
+        soloud.mix(buffer, now);
+        mixedFrames += now;
+        AudioTap::publish(buffer, now, first);
+        first += now;
+        frames -= now;
+    }
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioCapture::isActive()) AudioCapture::frameMixed();
+#endif
+}
+
+uint64_t AudioSystem::getMixedFrames(){
+    return mixedFrames;
+}
+
+unsigned int AudioSystem::getDeterministicLatency(const std::string& groupId){
+    return 1u + (unsigned int)AudioMixer::getGroupDepth(groupId);
+}
+
+bool AudioSystem::beginDeterministic(){
+    if (deterministicHolds++ == 0) {
+        readBackendEnvironment();
+        deterministicSwitched = getOutputMode() != AudioOutputMode::Deterministic;
+        if (deterministicSwitched) {
+            backendBeforeDeterministic = backend;
+            backend = AudioBackend::Deterministic;
+            deInit();
+            outputUnavailable = false;
+        }
+    }
+    return init() && deterministicDriver;
+}
+
+void AudioSystem::endDeterministic(){
+    if (deterministicHolds == 0 || --deterministicHolds > 0) return;
+    if (!deterministicSwitched) return;
+    deterministicSwitched = false;
+    backend = backendBeforeDeterministic;
+    deInit();
+    outputUnavailable = false;
 }
 
 void AudioSystem::close(){
@@ -574,43 +678,11 @@ void AudioSystem::getVoiceCounts(uint32_t& active, uint32_t& max){
     max = getSoloud().getMaxActiveVoiceCount();
 }
 
-bool AudioSystem::beginOfflineCapture(unsigned int sampleRate, unsigned int channels){
-    // whatever plays now stops: the capture starts with the scene
-    deInit();
-    SoLoud::result result = getSoloud().init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER, sampleRate,
-                                             SoLoud::Soloud::AUTO, channels);
-    if (result != SoLoud::SOLOUD_ERRORS::SO_NO_ERROR) {
-        Log::warn("Offline audio capture unavailable (%s)", getSoloud().getErrorString(result));
-        return false;
-    }
-    getSoloud().setGlobalVolume(globalVolume);
-    inited = true;
-    offlineCapture = true;
-    // the mixer's buses, as init() makes them: the capture hears the groups, their effects and mutes
-    AudioMixer::onAudioInit();
-    return true;
-}
-
-void AudioSystem::endOfflineCapture(){
-    if (!offlineCapture) return;
-    deInit();
-    offlineCapture = false;
-}
-
-bool AudioSystem::isOfflineCapture(){
-    return offlineCapture;
-}
-
-void AudioSystem::mixOffline(float* out, unsigned int frames){
-    if (!offlineCapture || frames == 0) return;
-    getSoloud().mix(out, frames);
-    mixedFrames += frames;
-}
-
 void AudioSystem::deInit(){
     pumpSeconds = 0.0;
     pumpFrames = 0;
     mixedFrames = 0;
+    deterministicDriver = false;
     if (inited){
         AudioMixer::onAudioShutdown();
         getSoloud().deinit();
@@ -648,6 +720,15 @@ void AudioSystem::pruneVoices(){
 
 void AudioSystem::stopVoice(unsigned int handle){
     if (handle == 0) return;
+    // (a handle that ended or was stopped before has gone from the list)
+    if (voiceLinesWanted() && voices().count(handle)) {
+        AudioVoiceLine line;
+        line.kind = AudioVoiceLine::Kind::Stop;
+        line.reason = StopReason::current;
+        line.handle = handle;
+        line.byInstance = StopReason::byInstance;
+        emitVoiceLine(line);
+    }
     if (inited) getSoloud().stop(handle);
     voices().erase(handle);
 }
@@ -734,6 +815,7 @@ bool AudioSystem::loadSoundSample(AudioSourceComponent& audio){
         return false;
     }
 
+    const StopReason changed("clip_changed");
     // a changed load type (or a file that crossed the Auto size) loads the sample again
     if (audio.sample && SoundPool::resolveLoadType(audio.filename, audio.loadType) != audio.loadedType) {
         stopVoices(audio);
@@ -900,6 +982,7 @@ void AudioSystem::stopVoices(AudioSourceComponent& audio){
 }
 
 void AudioSystem::destroySound(AudioSourceComponent& audio){
+    const StopReason removed("removed");
     stopVoices(audio);
 
     audio.startTrigger = false;
@@ -930,9 +1013,18 @@ void AudioSystem::applyPause(AudioSourceComponent& audio){
     const bool pause = desiredPause(audio);
     audio.listenerPaused = listenerPaused && !audio.ignoreListenerPause;
     if (!inited || pause == audio.voicePaused) return;
-    if (audio.handle != 0) getSoloud().setPause(audio.handle, pause);
-    for (const AudioOneShot& layer : audio.mainLayers) getSoloud().setPause(layer.handle, pause);
-    for (const AudioOneShot& shot : audio.oneShots) getSoloud().setPause(shot.handle, pause);
+    if (audio.handle != 0) {
+        getSoloud().setPause(audio.handle, pause);
+        pauseVoiceLine(audio.handle, pause);
+    }
+    for (const AudioOneShot& layer : audio.mainLayers) {
+        getSoloud().setPause(layer.handle, pause);
+        pauseVoiceLine(layer.handle, pause);
+    }
+    for (const AudioOneShot& shot : audio.oneShots) {
+        getSoloud().setPause(shot.handle, pause);
+        pauseVoiceLine(shot.handle, pause);
+    }
     audio.voicePaused = pause;
 }
 
@@ -947,6 +1039,7 @@ void AudioSystem::applySoundPause() {
             const bool pause = paused || !schedulerEnabled || listenerPaused;
             if (voice.paused != pause) {
                 getSoloud().setPause(voice.handle, pause);
+                pauseVoiceLine(voice.handle, pause);
                 voice.paused = pause;
             }
         }
@@ -972,6 +1065,7 @@ bool AudioSystem::isListenerPaused(){
 }
 
 void AudioSystem::stopSceneSounds() {
+    const StopReason sceneStops("scene");
     auto audios = scene->getComponentArray<AudioSourceComponent>();
     for (int i = 0; i < audios->size(); i++) {
         AudioSourceComponent& audio = audios->getComponentFromIndex(i);
@@ -1000,6 +1094,7 @@ void AudioSystem::stopSceneSounds() {
 }
 
 void AudioSystem::stopAll(){
+    const StopReason everything("stop_all");
     if (inited){
         std::vector<unsigned int> all;
         for (const auto& [handle, record] : voices()) all.push_back(handle);
@@ -1145,8 +1240,9 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
         stopVoiceBecause(victim, "stolen_budget", 0);
     }
 
-    // a delay is SoLoud's delay of a voice not started yet; a clocked play has its own
-    const bool clocked = mainVoice && audio.enableClocked && extras.delayFrames == 0;
+    // a delay is SoLoud's delay of a voice not started yet; a clocked play has its own. On the
+    // deterministic driver every start of a frame is queued before that frame's mix, at its first sample
+    const bool clocked = mainVoice && audio.enableClocked && extras.delayFrames == 0 && !deterministicDriver;
     // the game time it was played at: SoLoud delays it from the first clocked start of the buffer
     unsigned int handle = AudioMixer::play(groupId, sample, use3D, position, volume, clocked, AudioMixer::getClockTime());
     if (handle == 0) return 0;
@@ -1178,9 +1274,14 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
         line.impactSpeed = extras.impactSpeed;
         line.gain = volume;
         line.pitch = audio.speed * extras.speedScale;
+        line.pan = audio.pan;
+        line.looping = (mainVoice && audio.looping) || extras.eventLoop;
+        line.spatial = use3D;
+        line.position = position;
         line.priority = priority;
         line.group = groupId;
         line.delayFrames = extras.delayFrames;
+        line.loadDelay = extras.loadDelay;
         emitVoiceLine(line);
     }
 
@@ -1514,6 +1615,7 @@ void AudioSystem::startPendingOneShots(AudioSourceComponent& audio, Entity entit
         extras.cause = cause;
         extras.trigger = shot.trigger;
         extras.impactSpeed = shot.impactSpeed;
+        extras.loadDelay = (uint32_t)std::llround(shot.waited * deterministicRate);
         extras.entity = entity;
         extras.clip = shot.filename.c_str();
         unsigned int handle = startVoice(audio, *result.data, volume, use3D, position, false, extras);
@@ -1561,6 +1663,7 @@ void AudioSystem::updatePointVoices(double unscaledDt, bool hasListener, const s
                 const bool pause = paused || listenerPaused;
                 if (pointVoices[i].paused != pause) {
                     getSoloud().setPause(pointVoices[i].handle, pause);
+                    pauseVoiceLine(pointVoices[i].handle, pause);
                     pointVoices[i].paused = pause;
                 }
                 i++;
@@ -1598,6 +1701,7 @@ void AudioSystem::updatePointVoices(double unscaledDt, bool hasListener, const s
         const Vector3 position = heard(shot.position);
         VoiceExtras extras;
         extras.owner = "point";
+        extras.loadDelay = (uint32_t)std::llround(shot.waited * deterministicRate);
         extras.clip = shot.filename.c_str();
         const unsigned int handle = startVoice(defaults, *result.data, shot.volume, hasListener, position, false, extras);
         if (handle == 0) continue;
@@ -1684,6 +1788,7 @@ void AudioSystem::updateFade(AudioSourceComponent& audio, double scaledDt, doubl
     fade = AudioFade();
     if (done.end == AudioFadeEnd::Stop) {
         const bool wasPlaying = audio.state != AudioSourceState::Stopped || audio.handle != 0;
+        const StopReason faded("fade_out");
         stopVoices(audio);
         audio.state = AudioSourceState::Stopped;
         if (wasPlaying) events.push_back({entity, EventStop});
@@ -1855,14 +1960,17 @@ void AudioSystem::update(double dt){
         // main voices of something else (the event was set, cleared or changed): they stop, and a
         // source left Playing starts over with what it has now
         if (audio.handle != 0 && (audio.mainEvent != nullptr) != eventMode) {
+            const StopReason changed("clip_changed");
             stopMainVoices(audio);
         } else if (audio.handle != 0 && eventMode && audio.mainEventName != audio.event.path) {
+            const StopReason changed("clip_changed");
             stopMainVoices(audio);
         }
 
         // no clip: nothing of its own plays (its one-shots still do, Unity's PlayOneShot needs no clip)
         const bool hasClip = !audio.filename.empty() && !eventMode;
         if (!hasClip && (audio.loaded || audio.sample || (audio.handle != 0 && !eventMode))) {
+            const StopReason changed("clip_changed");
             if (!eventMode) stopMainVoices(audio);
             releaseSample(audio);
         }
@@ -1876,6 +1984,7 @@ void AudioSystem::update(double dt){
         // is ignored. A source left Playing starts over on reactivation (play on awake).
         if (!audio.enabled || !scene->isEntityActiveInHierarchy(entity)) {
             if (audio.handle != 0 || !audio.oneShots.empty() || !audio.pendingOneShots.empty()) {
+                const StopReason disabled("disabled");
                 stopVoices(audio);
             }
             if (audio.state == AudioSourceState::Paused) {
@@ -1975,6 +2084,7 @@ void AudioSystem::update(double dt){
         if (eventMode || (hasClip && audio.loaded)){
             if (pendingStart){
                 const bool resume = audio.state == AudioSourceState::Paused && audio.handle != 0 && audio.startTrigger;
+                const bool playTriggered = audio.startTrigger;
                 audio.startTrigger = false;
 
                 // the file was hot reloaded: this play takes the new sample (one still
@@ -1999,7 +2109,9 @@ void AudioSystem::update(double dt){
                     events.push_back({entity, EventStart});
                 } else {
                     // play() on a playing source starts it over (its own voice only; spec A9)
+                    const char* cause = playTriggered ? "play" : audio.startCount > 0 ? "resume_restart" : "play_on_awake";
                     if (audio.handle != 0) {
+                        const StopReason replaced("replaced");
                         stopMainVoices(audio);
                     }
                     audio.state = AudioSourceState::Playing;
@@ -2012,6 +2124,7 @@ void AudioSystem::update(double dt){
                         clipVariation(audio, entity, audio.mainVolumeScale, audio.mainSpeedScale);
                         VoiceExtras extras;
                         extras.speedScale = audio.mainSpeedScale;
+                        extras.cause = cause;
                         extras.entity = entity;
                         extras.clip = audio.filename.c_str();
                         audio.handle = startVoice(audio, *audio.sample, (float)audio.volume * audio.mainVolumeScale, use3DAudio, worldPosition, true, extras);
@@ -2575,7 +2688,10 @@ void AudioSystem::updateFreeVoices(double scaledDt, double unscaledDt, bool hasL
 
         const bool pause = held || play.paused;
         if (pause != play.appliedPause) {
-            for (const FreeVoice& voice : play.voices) soloud.setPause(voice.handle, pause);
+            for (const FreeVoice& voice : play.voices) {
+                soloud.setPause(voice.handle, pause);
+                pauseVoiceLine(voice.handle, pause);
+            }
             play.appliedPause = pause;
         }
 
@@ -2593,7 +2709,7 @@ void AudioSystem::updateFreeVoices(double scaledDt, double unscaledDt, bool hasL
                 const AudioFade done = fade;
                 fade = AudioFade();
                 if (done.end == AudioFadeEnd::Stop) {
-                    for (const FreeVoice& voice : play.voices) stopVoice(voice.handle);
+                    for (const FreeVoice& voice : play.voices) stopVoiceBecause(voice.handle, "fade_out", 0);
                     releaseFreePlay(play);
                     continue;
                 }
@@ -2602,6 +2718,7 @@ void AudioSystem::updateFreeVoices(double scaledDt, double unscaledDt, bool hasL
                     play.volume = (float)done.restoreVolume;
                     for (const FreeVoice& voice : play.voices) {
                         soloud.setPause(voice.handle, true);
+                        pauseVoiceLine(voice.handle, true);
                         soloud.setVolume(voice.handle, play.volume * voice.volumeScale);
                     }
                     play.appliedPause = true;

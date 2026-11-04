@@ -19,6 +19,7 @@ any arithmetic, which is then double (Python floats), as the spec's draws are.
 
 from __future__ import annotations
 
+import array
 import json
 import math
 import struct
@@ -231,6 +232,38 @@ def write_tone(path, seconds: float = 0.3, frequency: float = 1000.0, amplitude:
                     for i in range(samples))
     header = b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, rate, rate * 2, 2, 16)
     path.write_bytes(header + b"data" + struct.pack("<I", len(data)) + data)
+
+
+def capture_sessions(project) -> list:
+    """The session directories of a Play's audio captures, oldest first."""
+    root = project / ".jasperengine/audio/captures"
+    return sorted(p for p in root.iterdir() if p.is_dir()) if root.is_dir() else []
+
+
+def read_session(directory) -> dict:
+    """session.json of a capture."""
+    return json.loads((directory / "session.json").read_text())
+
+
+def read_jsonl(path) -> list[dict]:
+    """A capture's events.jsonl or levels.jsonl, header line first."""
+    return [json.loads(line) for line in path.read_text().splitlines()]
+
+
+def read_float_wav(path) -> tuple[int, int, array.array]:
+    """(rate, channels, interleaved samples) of a capture's float32 WAV, read from its header's sizes."""
+    data = path.read_bytes()
+    assert data[:4] == b"RIFF" and data[8:12] == b"WAVE", path
+    at, rate, channels, samples = 12, 0, 0, array.array("f")
+    while at + 8 <= len(data):
+        chunk, size = data[at:at + 4], struct.unpack("<I", data[at + 4:at + 8])[0]
+        if chunk == b"fmt ":
+            kind, channels, rate = struct.unpack("<HHI", data[at + 8:at + 16])
+            assert kind == 3, f"{path} is not IEEE float: {kind}"
+        elif chunk == b"data":
+            samples.frombytes(data[at + 8:at + 8 + size])
+        at += 8 + size + (size & 1)
+    return rate, channels, samples
 
 
 TRACE_ENV = {"JASPERENGINE_AUDIO_TRACE": "1", "JASPERENGINE_AUDIO_BACKEND": "null"}

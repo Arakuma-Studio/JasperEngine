@@ -610,4 +610,27 @@ does not fix audio; checks report changed thresholds."
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **R8's latency is not one constant:** measured (`DeterministicDriverTest.LatencyIsOneSampleForEachBusOnTheWay`), a voice
+  reaches the output 1 sample late, plus 1 for each bus on its way: 2 through Master, 3 through a group under it. Each
+  `voice_start` has its `latency_samples`; `session.json`'s is Master's. The checks subtract the voice's.
+- **S37 landed its observer first.** The capture is a client of `AudioSystem::setVoiceObserver`, whose `AudioVoiceLine`
+  gained `pause`/`resume` kinds and `pan`, `looping`, `spatial`, `position` and `loadDelay`. `isDeterministic()` stays
+  S37's "mixed on a null driver" (a seed is `audio.seed` on the Null fallback too); `getOutputMode()` tells the new driver
+  apart. S37's voice lines stay in release players, where R13 wanted nothing: they cost one bool per site, and
+  `JASPERENGINE_AUDIO_TRACE` is useful there.
+- **`stopVoice` writes the stop line itself**, with the reason of a `StopReason` scope around the stop, so no stop has a
+  second path. `ended` is found after each mix, and is stamped at the end of the frame that ended it.
+- **An explicit `JASPERENGINE_AUDIO_BACKEND=null|nosound` does not capture by default** (R4 says "no device"): a test that
+  chose its backend keeps it; `arm` still captures.
+- **A failed write stops the capture**, keeping what was written: the error goes to the Console, `session.json` says
+  `state: "failed"` and `error`, the game goes on.
+- **A player's capture has no project settings:** `max_seconds` 3,600, `keep` 20; `--quit-after` ends it.
+- **R9's Recorder gets silence for a paused Play** (the pump mixes nothing, the frames go on), so sound and picture stay
+  in step; before, sounds paused with the scene while the offline mix went on, the same silence.
+- **The mixer's transitions hold while a Play on this driver is paused**, or how long a pause lasted would be in the mix.
+- **`ClockedVoicesStartAsFarApart...` plays at clock times itself:** with `mixOffline` gone no pump leaves a mix between two
+  frames. The device path's use of the mixer's clock is read, not tested.
+- **AC6 is `test_movie_audio_matches_capture` on MOV:** its audio is PCM; an MP4's AAC cannot equal anything sample for sample.
+- **`html_click` has no scene:** a context does not know its scene; `scene` is empty on these lines.
+- **`voice_start.position` and the group levels' fader** are the values as of the frame's start: a fader moving during a chunk
+  ramps in SoLoud but is one gain per chunk in the group's level and stem.

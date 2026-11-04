@@ -204,6 +204,7 @@ namespace {
             }
             const unsigned int slot = parent->next.fetch_add(1, std::memory_order_relaxed) % MeterFilter::blockCount;
             parent->blocks[slot].store(peak, std::memory_order_relaxed);
+            if (MeterFilter::captureHook) MeterFilter::captureHook(*parent, buffer, samples, bufferSize, channels);
         }
     };
 
@@ -247,6 +248,8 @@ SoLoud::FilterInstance* LimiterFilter::createInstance() {
 }
 
 // ---------------------------------------------------------------- MeterFilter
+
+MeterFilter::CaptureHook MeterFilter::captureHook = nullptr;
 
 MeterFilter::MeterFilter() {
     reset();

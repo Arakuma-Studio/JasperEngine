@@ -43,6 +43,9 @@ namespace jasperengine::player {
         // the scripts' arguments
         static void engineStarted();
 
+        // Engine::runFrame, once: --audio-capture's session starts with the start scene's first frame
+        static void beginAudioCapture();
+
         static bool isHeadless();
         // a frame option is in use (quit, ready wait, screenshot, error watch)
         static bool isActive();

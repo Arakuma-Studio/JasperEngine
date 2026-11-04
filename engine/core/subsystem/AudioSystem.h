@@ -48,9 +48,10 @@ namespace jasperengine{
 	// One line of what happened to a voice, for AudioSystem::setVoiceObserver: every field is the
 	// capture log's (docs/specs/S37-sound-events.md R14). Built only while an observer is set.
 	struct AudioVoiceLine {
-		enum class Kind { Start, Stop, Reject };
+		enum class Kind { Start, Stop, Reject, Pause, Resume };
 		Kind kind = Kind::Start;
-		// stop: "stop", "stop_all", "stolen_instance", "stolen_source", "stolen_budget". reject: "budget",
+		// stop: "stop", "ended", "replaced", "clip_changed", "disabled", "removed", "scene", "fade_out",
+		// "stop_all", "stolen_instance", "stolen_source", "stolen_budget". reject: "budget",
 		// "max_voices", "cooldown", "instance_limit", "missing_clip", "missing_event", "impact_gate"
 		const char* reason = "";
 		unsigned int handle = 0;
@@ -74,18 +75,29 @@ namespace jasperengine{
 		float impactSpeed = -1.0f;
 		float gain = 1.0f;
 		float pitch = 1.0f;
+		float pan = 0.0f;
+		bool looping = false;
+		bool spatial = false;
+		Vector3 position;
 		int priority = 128;
 		std::string group;
 		uint32_t delayFrames = 0;
+		// the frames it waited for its clip to load
+		uint32_t loadDelay = 0;
 		// the mixer's sample cursor in a deterministic run
 		uint64_t sample = 0;
 	};
 
 	// What SoLoud mixes into. Auto: the device, else NoSound (mixes in its own thread with no
 	// output: playback, events, fades and meters behave as on a device). Null: mixed on the main
-	// thread by AudioMixer::update, deterministic (tests); also the fallback where NoSound cannot
-	// run (no threads). JASPERENGINE_AUDIO_BACKEND=nosound|null|auto in the environment.
-	enum class AudioBackend { Auto, NoSound, Null };
+	// thread by AudioMixer::update (tests); also the fallback where NoSound cannot run (no threads).
+	// Deterministic: 48 kHz stereo mixed once a game frame, after the scenes' update, by the frame's
+	// unscaled time (--headless, --silent-audio, a Play that captures, a Recorder movie; no thread,
+	// every target). JASPERENGINE_AUDIO_BACKEND=nosound|null|deterministic|auto in the environment.
+	enum class AudioBackend { Auto, NoSound, Null, Deterministic };
+
+	// where the mix goes: a device, nowhere (NoSound or the Null fallback), or the deterministic driver
+	enum class AudioOutputMode { Device, NoOutput, Deterministic };
 
 	// a voice beyond what the source itself says (a Sound Event's values, clip variation)
 	struct AudioVoiceExtras {
@@ -101,6 +113,7 @@ namespace jasperengine{
 		const char* cause = "play";
 		const char* trigger = "";
 		float impactSpeed = -1.0f;
+		uint32_t loadDelay = 0;
 		Entity entity = NULL_ENTITY;
 		const char* clip = "";
 		const char* event = "";
@@ -117,8 +130,6 @@ namespace jasperengine{
 		static bool inited;
 		// set when no backend opened at all: it is not tried again
 		static bool outputUnavailable;
-		// the Recorder's capture holds SoLoud on its null driver
-		static bool offlineCapture;
 
 		static void deInit();
 
@@ -271,9 +282,24 @@ namespace jasperengine{
 		static AudioBackend getBackend();
 		// "MiniAudio", "NoSound", "null driver", "" before init
 		static std::string getBackendName();
-		// the Null backend: `seconds` of audio mixed now (AudioMixer::update does it each frame);
-		// nothing during an offline capture, whose caller mixes (mixOffline)
+		// the Null backend: `seconds` of audio mixed now (AudioMixer::update does it each frame)
 		static void mixManually(double seconds);
+
+		// ---- the deterministic driver (docs/specs/S35-agent-audio.md)
+		static AudioOutputMode getOutputMode();
+		// `seconds` of audio mixed now in chunks for AudioTap's clients: the frame's unscaled time, as
+		// the double Engine::runFrame computes (0 while the app, the simulation or the Play is paused)
+		static void pumpDeterministic(double unscaledSeconds);
+		// The frames mixed since the audio opened, on any null driver
+		static uint64_t getMixedFrames();
+		// the frames between a voice's stamp and its first sample in the mix: one for the voice and
+		// one for each bus on its way out, so it depends on the group ("": Master)
+		static unsigned int getDeterministicLatency(const std::string& groupId = "");
+		// A Play that captures and a Recorder movie hold the driver: the first hold opens it and the
+		// last one reopens what was selected before. Both re-initialise SoLoud, so voices stop: only
+		// at a Play's start and stop and a Recorder's start and end. False when it did not open.
+		static bool beginDeterministic();
+		static void endDeterministic();
 
 		// ---- Sound Events (docs/specs/S37-sound-events.md)
 		// Forgets every event's bag, sequence, cooldown and instances, the one-per-Play warnings and
@@ -359,16 +385,6 @@ namespace jasperengine{
 		// sounds playing now (getVoiceCount: not the mixer's buses) and the most that play at once
 		// (0, 0 before the output opens)
 		static void getVoiceCounts(uint32_t& active, uint32_t& max);
-
-		// Offline capture (the editor's Recorder, docs/specs/S27-editor-tools.md R29): SoLoud
-		// on its null driver at `sampleRate` x `channels`, nothing reaches the device; the
-		// caller mixes it in step with the game's fixed timestep. endOfflineCapture() drops
-		// it: the device output opens again on the next sound.
-		static bool beginOfflineCapture(unsigned int sampleRate, unsigned int channels);
-		static void endOfflineCapture();
-		static bool isOfflineCapture();
-		// the next `frames` sample frames of the mix, interleaved floats (frames x channels)
-		static void mixOffline(float* out, unsigned int frames);
 
         bool loadSound(AudioSourceComponent& audio);
 		void destroySound(AudioSourceComponent& audio);

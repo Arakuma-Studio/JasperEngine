@@ -27,6 +27,7 @@
 #include "component/CameraComponent.h"
 #include "component/ScriptComponent.h"
 #include "ecs/EntityManager.h"
+#include "audio/AudioMarkers.h"
 
 #include <algorithm>
 
@@ -160,6 +161,10 @@ void SceneManager::runFactory(uint32_t id) {
 
     SceneEntry* entry = findEntry(id);
     if (!entry) return;
+
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::sceneLoad(entry->name, "load");
+#endif
 
     // Copied for the same reason as in addChildScene: the factory runs scripts
     std::function<void()> loadFactory = entry->loadFactory;
@@ -769,6 +774,10 @@ bool SceneManager::addChildScene(uint32_t id) {
         Log::error("SceneManager: scene id %u not found", id);
         return false;
     }
+
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioMarkers::isEnabled()) AudioMarkers::sceneLoad(entry->name, "add");
+#endif
 
     // The factory runs scripts, which can register scenes and reallocate entries
     std::vector<uint32_t> sceneIds = entry->sceneIds;
