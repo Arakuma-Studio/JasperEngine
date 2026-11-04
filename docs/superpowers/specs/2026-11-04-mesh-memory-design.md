@@ -755,3 +755,14 @@ Recorded during the implementation (branch `dc/mesh-memory`).
 9. **Pixel-art S45** plans `std::vector` for `SpriteComponent::framesRect` and keeps `MAX_SPRITE_FRAMES` for
    Sprite Animation and Points. With this branch both are already growable (`GrowArray` has `resize`, which S45's
    generated code calls) and the macro is gone: S45 can keep `GrowArray` as it is.
+10. **MCP test homes.** `test_ecs.py` runs on the default fixture project, which CI has no copy of, so
+    `test_mesh_component_memory` lives in `test_jobs_memory.py` (a created project) beside
+    `test_pipeline_desc_record`, which compares 64 equal sprites with one instead of a fixed count (the editor's
+    own objects hold descriptions too).
+11. **Both path walkers append.** `reflect::resolve` and the property lookup the commands use
+    (`editor/reflect/Properties.cpp`) both accept the index one past the end of a growing array.
+12. **Templates** were regenerated with `tools/templates/make_project_templates.py` (generated files), so their
+    scenes have no `maxValues`; the generator gives them new scene ids and GUIDs, as every run does.
+13. **Measured sizes** (Linux, libstdc++, `MeshMemory.SizeofCeilings`): `SokolObject` 752 B (2,528 before),
+    `ObjectRender` 768 (2,544), `Submesh` 6,448 (11,776), `MeshComponent` 1,672 (204,928), `SpriteComponent` 72
+    (6,192), `TilemapComponent` 152 (125,992); a sprite's mesh with its arrays 8,128 B, 25x less.
