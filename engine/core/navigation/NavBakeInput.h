@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace jasperengine::nav {
@@ -158,6 +159,14 @@ namespace jasperengine::nav {
         std::vector<NavLinkInput> links;
         // the cost of each link cost area (index - FIRST_LINK_COST_AREA)
         std::vector<float> linkAreaCosts;
+
+        // S42: with NavCollectOptions::recordSources only (the editor's probe), the GameObject of
+        // each triangle, terrain and volume (NULL_ENTITY: one the collector made). Never hashed.
+        std::vector<Entity> triangleSources;
+        std::vector<Entity> terrainSources;
+        std::vector<Entity> volumeSources;
+        // NavCollectStats::excludedEntities, kept with the input the probe is given
+        std::vector<std::pair<Entity, std::string>> excludedEntities;
 
         // nav-space bounds of the surface (the y range bounds every tile's heightfield)
         float bmin[3] = {0, 0, 0};

@@ -111,6 +111,28 @@ async def test_search_engine_api(ed: Editor):
     await ed.check_error("read_engine_source", path="core/NoSuchFile.h", contains="search_engine_source")
 
 
+async def test_search_names_unlisted_tools(ed: Editor):
+    """A search for what a hidden group's tools do names them and the tool_groups call: agents look for
+    frame times in the API search and the Game view size in the settings search, and a client offers
+    the model only the tools it listed (eval cases bad_profiling_group, bad_game_view_resolution)."""
+    r = await ed.call("search_engine_api", query="profiler frame time draw calls stats")
+    names = [hit["tool"] for hit in r.get("editor_tools", [])]
+    ed.check("get_frame_times" in names, f"the profiling tools are named: {r.get('editor_tools')!r}")
+    ed.check('tool_groups {"enable": ["profiling"]}' in r.get("next", ""), f"next names the call: {r.get('next')!r}")
+    src = await ed.call("search_engine_source", query="drawCalls", max_results=5)
+    ed.check("get_frame_times" in [hit["tool"] for hit in src.get("editor_tools", [])], f"source search too: {src!r}")
+    settings = await ed.call("get_project_settings", search="game view resolution")
+    ed.check("configure_game_view" in [hit["tool"] for hit in settings.get("editor_tools", [])],
+             f"the settings search names the Game view tool (eval case bad_game_view_resolution): {settings!r}"[:400])
+    plain = await ed.call("search_engine_api", query="Sprite setTexture")
+    ed.check("editor_tools" not in plain, f"an API query names no tools: {plain.get('editor_tools')!r}")
+    await ed.call("tool_groups", enable=["profiling"])
+    listed = await ed.call("search_engine_api", query="profiler frame time draw calls stats")
+    ed.check("profiling" not in [hit["group"] for hit in listed.get("editor_tools", [])],
+             "a listed group's tools are found by the client's own tool search")
+    await ed.call("tool_groups", disable=["profiling"])
+
+
 async def test_prompts(ed: Editor):
     listed = await ed.session.list_prompts()
     names = {p.name for p in listed.prompts}

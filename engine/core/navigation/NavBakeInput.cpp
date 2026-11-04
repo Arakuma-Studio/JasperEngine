@@ -361,6 +361,8 @@ size_t NavBakeInput::memoryBytes() const {
     for (const std::vector<uint32_t>& bucket : tileTriangles)
         bytes += bucket.capacity() * sizeof(uint32_t);
     bytes += tileHashes.capacity() * sizeof(uint64_t);
+    bytes += (triangleSources.capacity() + terrainSources.capacity() + volumeSources.capacity()) * sizeof(Entity);
+    bytes += excludedEntities.capacity() * sizeof(std::pair<Entity, std::string>);
     return bytes;
 }
 
