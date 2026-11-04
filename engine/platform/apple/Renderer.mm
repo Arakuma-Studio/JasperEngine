@@ -5,6 +5,7 @@
 
 #include "Engine.h"
 #include "Screen.h"
+#include "device/Device.h"
 #include "JasperEngineApple.h"
 #include "../common/PlatformDefaults.h"
 #include "player/Launch.h"
@@ -118,6 +119,12 @@ static CGSize _screenSize;
 
 + (void)lowMemory {
     jasperengine::Engine::systemLowMemory();
+}
+
++ (void)thermalStateChanged {
+    // NSProcessInfoThermalStateNominal, Fair, Serious, Critical: Device's order
+    const NSProcessInfoThermalState state = [[NSProcessInfo processInfo] thermalState];
+    jasperengine::Device::reportThermalState((jasperengine::ThermalState)std::clamp((int)state, 0, jasperengine::THERMAL_STATE_COUNT - 1));
 }
 
 + (void)orientationChanged {

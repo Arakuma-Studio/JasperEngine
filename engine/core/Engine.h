@@ -405,6 +405,10 @@ namespace jasperengine {
         static int targetFrameRate;
         static int vSyncCount;
         static FramePacing framePacing;
+        // Engine.setTextureQuality's value (the pool drops QualityResolver's resolution of it)
+        static int textureQuality;
+        // the QualityResolver revision the frame pacing, texture quality and upload budget follow
+        static uint32_t qualityRevision;
         // last orientation systemOrientationChanged saw (0: none yet), and since when (system
         // time) a quarter turn waits for its view size (0: none waits)
         static int lastOrientation;
@@ -468,6 +472,9 @@ namespace jasperengine {
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
         static void applyFramePacing();
+        // a new device tier, thermal step or memory drop: the pacing, texture quality and upload
+        // budget again (once a frame, one compare when nothing changed)
+        static void applyQualityChanges();
         // desktop builds: JASPERENGINE_SIMULATE_SAFE_AREA as the platform's insets
         static void applySimulatedSafeArea();
         

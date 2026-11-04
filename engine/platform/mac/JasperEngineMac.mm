@@ -20,6 +20,9 @@
 #include "WindowMac.h"
 
 #include "Engine.h"
+#include "device/Device.h"
+
+#include <algorithm>
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
 #include "util/FrameLimiter.h"
@@ -83,6 +86,21 @@ namespace {
 
     WindowMac::create(config);
     WindowMac::setWindowDelegate((__bridge void*)self);
+
+    // Device.thermalState (spec S56): NSProcessInfo's, read now (which makes the notifications
+    // come) and on every change; the thermal response is off on desktops unless the project
+    // turns it on
+    auto reportThermal = []() {
+        const NSProcessInfoThermalState state = [[NSProcessInfo processInfo] thermalState];
+        Device::reportThermalState((ThermalState)std::clamp((int)state, 0, THERMAL_STATE_COUNT - 1));
+    };
+    reportThermal();
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSProcessInfoThermalStateDidChangeNotification object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(NSNotification* note) {
+        (void)note;
+        reportThermal();
+    }];
     WindowMac::setDrawableResizeCallback([](int, int) {
         Engine::systemViewChanged();
     });

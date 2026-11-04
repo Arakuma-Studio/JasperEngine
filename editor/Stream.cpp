@@ -11,6 +11,7 @@
 #include "stream/CurveCodec.h"
 #include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
+#include "mcp/McpValues.h"
 #include "EditorHost.h"
 #include "Out.h"
 #include "ShippingTypes.h"
@@ -2525,6 +2526,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
+    // device: what differs from the defaults of the Device Tier table and the rest (S56)
+    {
+        const nlohmann::json device = nlohmann::json::parse(project->getDeviceSettings().toJson());
+        if (!device.empty())
+            root["device"] = mcp::McpValues::jsonToYaml(device);
+    }
     {
         const HtmlUiRenderSettings& htmlUiRender = project->getHtmlUiRenderSettings();
         root["htmlUiGlyphAtlasMiB"] = htmlUiRender.glyphAtlasMiB;
@@ -3144,6 +3151,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["htmlUiMsaaSamples"].IsDefined()) {
         project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
+    }
+
+    // S56: a project saved before it has no device block, and gets the defaults
+    {
+        DeviceSettings device;
+        if (node["device"].IsDefined()) {
+            std::string deviceError;
+            if (!DeviceSettings::fromJson(mcp::McpValues::yamlToJson(node["device"]).dump(), device, deviceError)) {
+                Out::warning("project.yaml device: %s; the device settings take their defaults", deviceError.c_str());
+                device = DeviceSettings();
+            }
+        }
+        project->setDeviceSettings(device);
     }
 
     // S16: projects saved before them take the defaults

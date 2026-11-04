@@ -614,6 +614,7 @@ bool editor::Exporter::writeGameConfig() {
     game.transformAwareText = project->getHtmlUiRenderSettings().transformAwareText;
     game.mobilePbrTier = project->getMobilePbrTier();
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++) game.shadowTiers[platform] = ShadowTiers::getPlatformTier(platform);
+    game.device = project->getDeviceSettings();
     game.tags = project->getTags();
     game.layerNames = project->getLayerNames();
     for (int layer = 0; layer < MAX_LAYERS; layer++) {

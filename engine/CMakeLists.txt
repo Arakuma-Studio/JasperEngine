@@ -1345,6 +1345,11 @@ set(JASPERENGINE_SRCS
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
     core/Log.cpp
+    core/device/Device.cpp
+    core/device/DeviceSettings.cpp
+    core/device/GpuTierDatabase.cpp
+    core/device/GpuTiersData.cpp
+    core/device/QualityResolver.cpp
     core/diag/CrashHandler.cpp
     core/diag/CrashHandlerPosix.cpp
     core/diag/CrashHandlerWin.cpp

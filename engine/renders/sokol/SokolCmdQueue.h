@@ -56,6 +56,8 @@ namespace jasperengine {
 		SokolRenderCommand(TYPE::ENUM _type) : type(_type) {}
 
 		TYPE::ENUM type = TYPE::NOT_SET;
+		// the queue's sequence number (1 the first): the readiness token of what came before
+		uint64_t seq = 0;
 		// MAKE_BUFFER / MAKE_IMAGE: the JE_GPU_ALLOC_SCOPE the creation was queued in (the VRAM
 		// tracker sees the creation when it runs, on the main thread)
 		uint8_t allocCategory = 0xFF;
@@ -167,6 +169,8 @@ namespace jasperengine {
 		void (*cleanup_cb)(void* cleanup_data) = nullptr;
 		void* cleanup_data = nullptr;
 		int32_t frame_index = 0;
+		// the commands queued before it (their data, a destroy before its dealloc) run first
+		uint64_t token = 0;
 	};
 
 // ----------------------------------------------------------------------------------------------------
@@ -208,9 +212,36 @@ namespace jasperengine {
 
 		static void commit_commands();
 		static void flush_commands();
-		
+
+		// ---- upload pacing (spec S56 R8)
+
+		// bytes of image and buffer data a frame uploads at most (MAKE_IMAGE and MAKE_BUFFER with
+		// data, UPDATE_IMAGE, UPDATE_BUFFER); the first upload of a frame runs whatever its size
+		static void set_upload_budget(uint64_t bytes);
+		static uint64_t get_upload_budget();
+		// a monotonic token of everything queued so far, and whether all of it has run
+		static uint64_t get_upload_token();
+		static bool is_token_complete(uint64_t token);
+		// the commands waiting for a later frame's budget
+		static size_t get_deferred_count();
+		static uint64_t get_last_frame_upload_bytes();
+		// runs what waits regardless of the budget (shutdown)
+		static void drain();
+
+		// What one frame runs of `backlog`, in order, into `run`; what waits stays in `backlog`,
+		// in order. An upload past the budget waits (unless it is the frame's first: an item
+		// larger than the budget goes alone) with every upload after it, as does every command on a handle a waiting one
+		// creates, a second update of a handle in the frame, and from the first CUSTOM or pass
+		// command that would overtake a waiting one, everything after it (a CUSTOM marks an
+		// object loaded once its resources exist). Returns the bytes `run` uploads.
+		static uint64_t select_commands(std::vector<SokolRenderCommand>& backlog, uint64_t budget, std::vector<SokolRenderCommand>& run);
+		static uint64_t upload_bytes(const SokolRenderCommand& command);
+
 	private:
 		static void process_cleanups(int32_t frame_index);
+		static SokolRenderCommand& push_command(SokolRenderCommand::TYPE::ENUM type);
+		static void run_command(const SokolRenderCommand& command);
+		static void run_backlog(uint64_t budget);
 
 		static void dealloc_buffer_cb(void* cleanup_data) { sg_dealloc_buffer({(uint32_t)(uintptr_t)cleanup_data}); }
 		static void dealloc_image_cb(void* cleanup_data) { sg_dealloc_image({(uint32_t)(uintptr_t)cleanup_data}); }
@@ -229,6 +260,18 @@ namespace jasperengine {
 		static std::atomic<bool> m_commited;
 		static std::mutex m_execute_mutex;
 		static std::atomic<int32_t> m_frame_index;
+
+		// committed commands a frame's budget left for later (main thread, under m_execute_mutex)
+		static std::vector<SokolRenderCommand> m_backlog;
+		static std::vector<SokolRenderCommand> m_run;
+		static std::atomic<uint64_t> m_upload_budget;
+		static std::atomic<uint64_t> m_issued;
+		// every command up to this one has run
+		static std::atomic<uint64_t> m_completed;
+		// the last command of the batches that joined the backlog
+		static uint64_t m_backlog_end;
+		static std::atomic<size_t> m_deferred;
+		static std::atomic<uint64_t> m_last_frame_bytes;
 	};
 
 // ----------------------------------------------------------------------------------------------------
