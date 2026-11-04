@@ -434,6 +434,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         if(GRAPHIC_BACKEND STREQUAL "gles3")
             add_definitions("-DSOKOL_GLES3")
             set(OPENGL_LIB GLESv3)
+        else()
+            # platform/android makes an EGL context and nothing else
+            message(FATAL_ERROR "Android supports GRAPHIC_BACKEND gles3 only (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-D\"lua_getlocaledecpoint()='.'\"")
@@ -2039,6 +2042,34 @@ endif()
 jasperengine_skip_unity_build(
     REASON "file-local helpers or types named as in another engine source"
     SOURCES
+        core/subsystem/ActionSystemPlayers.cpp
+        core/animation/ClipBinding.cpp
+        core/media/VideoStream.cpp
+        core/pose/PoseDofs.cpp
+        core/shader/ShaderGlobals.cpp
+        core/animation/AnimationPlayerRuntime.cpp
+        core/animation/HumanoidClip.cpp
+        core/animation/UpstreamAnimFormats.cpp
+        core/audio/AudioEffects.cpp
+        core/audio/AudioMixer.cpp
+        core/camera/ShakePreset.cpp
+        core/diag/HangStackCapture.cpp
+        core/media/MediaByteSource.cpp
+        core/media/VideoFormats.cpp
+        core/object/TrailRenderer.cpp
+        core/pool/AnimatorAssetPool.cpp
+        core/pool/PhysicsMaterialPool.cpp
+        core/pool/TexturePool.cpp
+        core/pool/VertexAnimationPool.cpp
+        core/pose/HumanoidMap.cpp
+        core/script/binding/GameObjectClassesLua.cpp
+        core/script/binding/IOClassesLua.cpp
+        core/script/binding/NativeClassesLua.cpp
+        core/script/binding/NetClassesLua.cpp
+        core/subsystem/ActionSystemLayers.cpp
+        core/subsystem/CharacterController2DSystem.cpp
+        core/subsystem/PhysicsSystemJoints3D.cpp
+        core/subsystem/VertexAnimatorSystem.cpp
         core/Input.cpp
         core/animation/AnimatorAssetIO.cpp
         core/diag/CrashHandlerPosix.cpp
@@ -2061,6 +2092,10 @@ jasperengine_skip_unity_build(
         renders/sokol/SokolPassRecorder.cpp)
 jasperengine_target_unity_build(jasperengine)
 jasperengine_target_pch(jasperengine)
+
+# the engine's sources include the components they use (registry/EntityRegistry.h); a game's own
+# code, built without it, keeps all of them through Scene.h
+target_compile_definitions(jasperengine PRIVATE JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES)
 
 target_compile_definitions(jasperengine
     PUBLIC

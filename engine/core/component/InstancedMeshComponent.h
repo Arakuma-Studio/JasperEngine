@@ -6,6 +6,7 @@
 
 #include "Engine.h"
 #include "math/Rect.h"
+#include "buffer/ExternalBuffer.h"
 
 #include <vector>
 

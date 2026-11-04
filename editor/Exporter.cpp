@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "util/SafeWrite.h"
+#include "component/Joint2DComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/Rigidbody2DComponent.h"
+#include "component/RigidbodyComponent.h"
 #include "Exporter.h"
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
@@ -4039,6 +4043,13 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         normalizeNewlines(out);
         return true;
     };
+
+    // ./gradlew from a shell: the installed editor's copy of the engine has lost its exec bit
+    {
+        std::error_code permissionError;
+        fs::permissions(config.targetDir / "workspaces" / "androidstudio" / "gradlew",
+                        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, permissionError);
+    }
 
     const fs::path androidAppDir = config.targetDir / "workspaces" / "androidstudio" / "app";
     const fs::path buildGradlePath = androidAppDir / "build.gradle";

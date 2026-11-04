@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "BookmarksWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ProjectWindow.h"
 
 #include "Backend.h"
 #include "App.h"

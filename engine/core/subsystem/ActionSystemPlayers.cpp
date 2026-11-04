@@ -5,6 +5,7 @@
 // and binding, states, fades, queue, events, the rest term in the pose blend, edit-mode preview.
 
 #include "ActionSystem.h"
+#include "component/ModelComponent.h"
 #include "ActionSystemPlayersDetail.h"
 
 #include "Scene.h"
