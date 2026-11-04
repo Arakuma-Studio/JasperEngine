@@ -745,3 +745,14 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     | `pixel_perfect_bench` frame CPU, snapping on vs off (`PixelPerfectBenchGpu.SnappingFrameCost`) | ≤ 102 % | 40.600 ms vs 39.815 ms, 102.0 % |
     | `mesh.vert` per-vertex snap path, SPIR-V | ≤ 14 | 18 (item 16) |
     | GPU time, blit times on the reference devices | R17 | not measured: no reference GPU here |
+18. **AC13 coverage.** The GPU suites run on glcore (llvmpipe) here; GLES3, Vulkan, D3D11 and Metal
+    have no device on this host. The web half is the gate `GATE=pixel-perfect` (test project
+    `tools/test-projects/pixel-perfect`, Chrome at a device scale factor of 2, through a new
+    `chrome_flags` key of the gate baselines).
+19. **AC17 homes.** The round trip, the kept unknown keys and the unchanged re-save of a scene without
+    the component are `editor/tests/pixelart/PixelPerfectStreamTest.cpp`; the AllComponents fixture
+    gains the component's entity (1091) and the Sprite and Tilemap keys, so
+    `ReflectFixtures.AllComponentsScene` and the `CookedScene` round trips cover them.
+20. **Editor checks and the main camera.** In the editor a Scene's camera is the view's own camera,
+    so the Scene view's pixel tools and the "not the main camera" warning read the SceneProject's
+    `mainCamera`.
