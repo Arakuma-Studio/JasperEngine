@@ -16,6 +16,7 @@
 #include "component/ScriptComponent.h"
 #include "mcp/McpRefs.h"
 #include "util/ProjectChecks.h"
+#include "util/ScriptPropertyCache.h"
 #include "util/Util.h"
 #include "window/CodeEditor.h"
 
@@ -28,25 +29,6 @@ using namespace jasperengine::editor;
 namespace fs = std::filesystem;
 
 namespace {
-
-    // Where an entry's file lives (absolute): the Lua file, or the C++ header (the properties)
-    fs::path entryPropertyFile(Project* project, const ScriptEntry& entry) {
-        if (entry.type == ScriptType::LUA) {
-            return entry.path.empty() ? fs::path() : project->resolveLuaPath(entry.path).lexically_normal();
-        }
-        if (entry.headerPath.empty()) return {};
-        fs::path header = entry.headerPath;
-        if (header.is_relative()) header = project->getProjectPath() / header;
-        return header.lexically_normal();
-    }
-
-    fs::path entrySourceFile(Project* project, const ScriptEntry& entry) {
-        if (entry.type == ScriptType::LUA) return entryPropertyFile(project, entry);
-        if (entry.path.empty()) return {};
-        fs::path source = entry.path;
-        if (source.is_relative()) source = project->getProjectPath() / source;
-        return source.lexically_normal();
-    }
 
     std::vector<std::string> propertyNames(const ScriptEntry& entry) {
         std::vector<std::string> names;
@@ -93,6 +75,7 @@ void reload::reloadScripts(Context& ctx, const std::vector<fs::path>& filesIn, b
     if (changed.empty() && !all) return;
 
     std::set<fs::path> checkedLua;
+    ScriptPropertyCache cache;
     if (ctx.playing) {
         // S23's hook takes a Lua change now (a C++ one too when C++ reload is on), else it
         // waits for Play to stop; C++ otherwise waits for the next Play's build
@@ -117,13 +100,13 @@ void reload::reloadScripts(Context& ctx, const std::vector<fs::path>& filesIn, b
 
                 bool relevant = all;
                 for (const ScriptEntry& entry : component->scripts) {
-                    if (changed.count(entryPropertyFile(project, entry)) || changed.count(entrySourceFile(project, entry))) relevant = true;
+                    if (changed.count(project->scriptPropertyFile(entry)) || changed.count(project->scriptSourceFile(entry))) relevant = true;
                 }
                 if (!relevant) continue;
 
                 std::vector<ScriptEntry> scripts = component->scripts;
                 for (const ScriptEntry& entry : scripts) {
-                    const fs::path file = entryPropertyFile(project, entry);
+                    const fs::path file = project->scriptPropertyFile(entry);
                     std::error_code ec;
                     if (file.empty()) continue;
                     if (!fs::exists(file, ec)) {
@@ -146,7 +129,7 @@ void reload::reloadScripts(Context& ctx, const std::vector<fs::path>& filesIn, b
 
                 std::vector<std::vector<std::string>> before;
                 for (const ScriptEntry& entry : scripts) before.push_back(propertyNames(entry));
-                if (project->updateScriptProperties(sceneProject, entity, scripts)) {
+                if (project->updateScriptProperties(sceneProject, entity, scripts, "", "", &cache)) {
                     PropertyCmd<std::vector<ScriptEntry>> refresh(project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", scripts);
                     refresh.execute();
                     for (size_t i = 0; i < scripts.size(); i++) {

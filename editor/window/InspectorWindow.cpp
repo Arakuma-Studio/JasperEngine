@@ -39,6 +39,9 @@
 #include "component/VideoPlayerComponent.h"
 #include "util/FluidEditorTools.h"
 #include "util/UIProbe.h"
+#include "util/ScriptAttach.h"
+#include "util/ProjectChecks.h"
+#include "search/SearchScorer.h"
 #include "component/FluidSimulationComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "command/CommandHandle.h"
@@ -2280,11 +2283,16 @@ void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject,
             },
             [](){},
             [this, sceneProject, entities](){
-                openNewScriptDialog(sceneProject, entities);
+                openNewScriptDialog(sceneProject, entities, false);
             },
             ImGui::GetItemRectMin(),
             ImGui::GetItemRectMax()
         );
+        if (!project->isAnyScenePlaying()) {
+            componentAddDialog.setScripts(ScriptAttach::findProjectScripts(project), [this, sceneProject, entities](const ScriptCandidate& script) {
+                attachScriptFile(sceneProject, entities, script.file);
+            });
+        }
     }
     ImGui::EndDisabled();
 
@@ -2292,9 +2300,27 @@ void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject,
 
     // the popup opens below the button
     componentAddDialog.show();
+
+    // Unity: a script dropped on the Inspector goes on the selected GameObjects (where nothing
+    // smaller takes the drop: ImGui prefers the smallest target)
+    if (!readOnly && !project->isAnyScenePlaying()) {
+        ImGuiWindow* window = ImGui::GetCurrentWindow();
+        if (ImGui::BeginDragDropTargetCustom(window->InnerRect, ImGui::GetID("##inspector_script_drop"))) {
+            const ImGuiPayload* peek = ImGui::GetDragDropPayload();
+            std::vector<std::string> dropped;
+            if (peek && peek->IsDataType("resource_files")) dropped = Util::getStringsFromPayload(peek);
+            if (!dropped.empty() && ScriptAttach::isScriptFile(dropped[0])) {
+                if (ImGui::AcceptDragDropPayload("resource_files")) {
+                    attachScriptFile(sceneProject, entities, dropped[0]);
+                    ImGui::SetWindowFocus(InspectorWindow::WINDOW_NAME);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+    }
 }
 
-void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities){
+void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, const std::vector<Entity>& entities, bool existing){
     Entity firstEntity = entities.empty() ? NULL_ENTITY : entities[0];
     std::string defaultName = "NewScript";
     if (firstEntity != NULL_ENTITY) {
@@ -2302,68 +2328,116 @@ void editor::InspectorWindow::openNewScriptDialog(SceneProject* sceneProject, co
         if (!entityName.empty())
             defaultName = entityName + "Script";
     }
+    const uint32_t sceneId = sceneProject->id;
     scriptCreateDialog.open(
         sceneProject->scene,
         firstEntity,
         project->getProjectPath(),
         project->getLuaPath(),
         defaultName,
-        [this, sceneProject, entities](const std::filesystem::path& headerPath,
-                                    const std::filesystem::path& sourcePath,
-                                    const std::string& name,
-                                    ScriptType type) {
+        [this, sceneId, entities](const std::filesystem::path& headerPath,
+                                  const std::filesystem::path& sourcePath,
+                                  const std::string& name,
+                                  ScriptType type) {
+            SceneProject* sceneProject = project->getScene(sceneId);
+            if (!sceneProject) return;
 
-            editor::MultiPropertyCmd* multiCmd = new editor::MultiPropertyCmd();
-
-            for (const Entity& entity : entities) {
-                bool hasScriptComponent = false;
-                std::vector<ComponentType> existingComponents = Catalog::findComponents(sceneProject->scene, entity);
-                for (ComponentType ct : existingComponents) {
-                    if (ct == ComponentType::ScriptComponent) {
-                        hasScriptComponent = true;
-                        break;
-                    }
-                }
-
-                std::vector<ScriptEntry> newScripts;
-
-                if (!hasScriptComponent) {
-                    auto addCmd = std::make_unique<editor::AddComponentCmd>(project, sceneProject->id, entity, ComponentType::ScriptComponent);
-                    multiCmd->addCommand(std::move(addCmd));
-                } else {
-                    ScriptComponent& scriptComp = sceneProject->scene->getComponent<ScriptComponent>(entity);
-                    newScripts = scriptComp.scripts;
-                }
-
-                ScriptEntry entry;
-                entry.type = type;
-                entry.enabled = true;
-
-                if (type == ScriptType::CPP) {
-                    entry.headerPath = headerPath.string();
-                    entry.path = sourcePath.string();
-                    entry.className = name;
-                } else if (type == ScriptType::LUA) {
-                    entry.headerPath.clear();
-                    entry.path = sourcePath.string();
-                    entry.className = name; // module (file base) name
-                }
-
-                newScripts.push_back(entry);
-
-                project->updateScriptProperties(sceneProject, entity, newScripts);
-
-                auto propCmd = std::make_unique<editor::PropertyCmd<std::vector<ScriptEntry>>>(
-                    project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", newScripts
-                );
-                multiCmd->addCommand(std::move(propCmd));
+            ScriptEntry entry;
+            entry.type = type;
+            entry.enabled = true;
+            if (type == ScriptType::CPP) {
+                entry.headerPath = headerPath.string();
+                entry.path = sourcePath.string();
+                entry.className = name;
+            } else if (type == ScriptType::LUA) {
+                entry.headerPath.clear();
+                entry.path = sourcePath.string();
+                entry.className = name; // module (file base) name
             }
 
-            multiCmd->setNoMerge();
-            CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+            std::vector<Entity> skipped;
+            std::string error;
+            if (!ScriptAttach::attach(project, sceneProject, entities, entry, -1, skipped, error)) {
+                Out::warning("%s", error.c_str());
+            }
         },
-        [](){}
+        [](){},
+        existing
     );
+}
+
+void editor::InspectorWindow::attachScriptFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::filesystem::path& file){
+    ScriptAttach::attachFile(project, sceneProject, entities, file);
+}
+
+void editor::InspectorWindow::drawAddScriptPopup(SceneProject* sceneProject, const std::vector<Entity>& entities){
+    if (!ImGui::BeginPopup("script_add_menu")) return;
+
+    if (ImGui::IsWindowAppearing()) {
+        addScriptCandidates = ScriptAttach::findProjectScripts(project);
+        addScriptSearch[0] = '\0';
+        ImGui::SetKeyboardFocusHere();
+    }
+    ImGui::SetNextItemWidth(Theme::dpi(240.0f));
+    ImGui::InputTextWithHint("##script_search", ICON_FA_MAGNIFYING_GLASS " Search scripts", addScriptSearch, sizeof(addScriptSearch));
+    UIProbe::item("inspector.addScript.search");
+    const std::string query = search::normalize(addScriptSearch);
+
+    // the files the selected GameObjects already run
+    auto attachedToAll = [&](const ScriptCandidate& candidate) {
+        for (Entity entity : entities) {
+            const ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
+            if (!component) return false;
+            const fs::path file = candidate.type == ScriptType::LUA ? candidate.file : candidate.source;
+            const bool has = std::any_of(component->scripts.begin(), component->scripts.end(), [&](const ScriptEntry& entry) {
+                return entry.type == candidate.type && project->scriptSourceFile(entry) == file;
+            });
+            if (!has) return false;
+        }
+        return true;
+    };
+
+    ImGui::BeginChild("##script_list", ImVec2(Theme::dpi(320.0f), std::min(Theme::dpi(260.0f), ImGui::GetTextLineHeightWithSpacing() * (addScriptCandidates.size() + 1.0f))),
+                      false);
+    size_t shown = 0;
+    for (const ScriptCandidate& candidate : addScriptCandidates) {
+        if (!query.empty() && search::normalize(candidate.name).find(query) == std::string::npos) continue;
+        shown++;
+        const bool attached = attachedToAll(candidate);
+        const bool fits = entities.empty() || ScriptAttach::fitsEntity(candidate, sceneProject, entities[0]);
+        const std::string label = std::string(ICON_FA_FILE_CODE " ") + candidate.name + (candidate.type == ScriptType::LUA ? "  [Lua]" : "  [C++]") +
+                                  "##" + candidate.file.string();
+        ImGui::BeginDisabled(attached || !fits);
+        if (ImGui::Selectable(label.c_str(), false)) {
+            attachScriptFile(sceneProject, entities, candidate.file);
+            ImGui::CloseCurrentPopup();
+        }
+        UIProbe::item("inspector.addScript.row." + candidate.name);
+        ImGui::EndDisabled();
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            std::string tip = ProjectChecks::projectRelative(project->getProjectPath(), candidate.file);
+            if (attached) tip += "\nAlready attached";
+            else if (!fits) tip += "\nA subclass of " + candidate.baseClass + ": for GameObjects of that class";
+            ImGui::SetTooltip("%s", tip.c_str());
+        }
+    }
+    if (shown == 0) {
+        ImGui::TextDisabled(addScriptCandidates.empty() ? "No scripts in the project yet" : "No script matches");
+    }
+    ImGui::EndChild();
+
+    ImGui::Separator();
+    if (ImGui::Selectable(ICON_FA_PLUS " New Script...")) {
+        openNewScriptDialog(sceneProject, entities, false);
+        ImGui::CloseCurrentPopup();
+    }
+    UIProbe::item("inspector.addScript.new");
+    if (ImGui::Selectable(ICON_FA_FOLDER_OPEN " Browse...")) {
+        openNewScriptDialog(sceneProject, entities, true);
+        ImGui::CloseCurrentPopup();
+    }
+    UIProbe::item("inspector.addScript.browse");
+    ImGui::EndPopup();
 }
 
 Texture editor::InspectorWindow::getMaterialPreview(const Material& material, const std::string id, bool receiveIBL,
@@ -7208,6 +7282,35 @@ void editor::InspectorWindow::drawShaderFilesPopup(const std::string& popupName,
 }
 
 void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    // a model made of parts draws its parts' meshes: its own (empty) one changes nothing
+    std::vector<Entity> parts;
+    if (entities.size() == 1) {
+        const MeshComponent* mesh = sceneProject->scene->findComponent<MeshComponent>(entities[0]);
+        if (mesh && mesh->numSubmeshes == 0) parts = sceneProject->scene->getSystem<MeshSystem>()->getModelParts(entities[0]);
+    }
+    if (parts.empty()) {
+        drawMeshComponentFields(cpType, sceneProject, entities);
+        return;
+    }
+
+    beginTable(cpType, getLabelSize("Receive Shadows"), "mesh_parts");
+    propertyHeader("Geometry");
+    ImGui::TextWrapped("Geometry is on %zu part%s", parts.size(), parts.size() == 1 ? "" : "s");
+    if (ImGui::Button("Select Parts")) {
+        project->replaceSelectedEntities(sceneProject->id, parts);
+    }
+    UIProbe::item("inspector.mesh.selectParts");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Select the GameObjects holding this model's meshes, to edit them together");
+    }
+    endTable();
+
+    ImGui::BeginDisabled();
+    drawMeshComponentFields(cpType, sceneProject, entities);
+    ImGui::EndDisabled();
+}
+
+void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
     beginTable(cpType, getLabelSize("Receive Shadows"));
 
     // Static variables for shape parameters
@@ -11380,20 +11483,12 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
     prefabRowProperty = "scripts";
     propertyHeader("Scripts", -1, false, false);
     ImGui::Text("%zu", firstScriptComp.scripts.size());
-    if (drawSummaryAddButton(ICON_FA_PLUS " Add Script##script_add")) {
-        MultiPropertyCmd* multiCmd = new MultiPropertyCmd();
-        for (const Entity& entity : entities) {
-            ScriptComponent& sc = sceneProject->scene->getComponent<ScriptComponent>(entity);
-            std::vector<ScriptEntry> newScripts = sc.scripts;
-            ScriptEntry entry;
-            entry.type = ScriptType::CPP;
-            entry.enabled = true;
-            newScripts.push_back(entry);
-            multiCmd->addPropertyCmd<std::vector<ScriptEntry>>(project, sceneProject->id, entity, ComponentType::ScriptComponent, "scripts", newScripts);
-        }
-        multiCmd->setNoMerge();
-        CommandHandle::get(project->getSelectedSceneId())->addCommand(multiCmd);
+    const bool playing = project->isAnyScenePlaying();
+    if (drawSummaryAddButton(ICON_FA_PLUS " Add Script##script_add", 0.0f, !playing, "Stop Play to add scripts")) {
+        ImGui::OpenPopup("script_add_menu");
     }
+    UIProbe::item("inspector.addScript");
+    drawAddScriptPopup(sceneProject, entities);
     endTable();
 
     if (commonIndices.empty()) {
@@ -11573,6 +11668,11 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
             ImGui::SameLine();
             ImGui::TextUnformatted(script.className.c_str());
+            if (script.path.empty() && script.headerPath.empty()) {
+                // an entry saved without a file (Add Script made them once): it runs nothing
+                ImGui::SameLine();
+                ImGui::TextColored(Theme::Colors::WarningText, "No file: pick one or remove the entry");
+            }
 
             // in Play, where the script is in its lifecycle (as get_runtime_entity reports it)
             if (entities.size() == 1 && ScriptRuntime::hasStarted(sceneProject->scene)) {
@@ -11612,7 +11712,8 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                 ImGui::OpenPopup(("Edit Script##" + std::to_string(scriptIdx)).c_str());
             }
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Edit script details: class name, header and source files");
+                ImGui::SetTooltip(script.type == ScriptType::LUA ? "Edit script details: source file"
+                                                                 : "Edit script details: class name, header and source files");
             }
 
             ImGui::PopStyleVar();
@@ -11645,15 +11746,26 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
 
                 beginTable(cpType, getLabelSize("Source Path"), "edit_script_details");
 
-                // Class Name
-                propertyHeader("Class Name", secondColSize);
-                if (ImGui::InputText("##new_name", nameBuffer, sizeof(nameBuffer),
-                        ImGuiInputTextFlags_CallbackCharFilter,
-                        ScriptCreateDialog::classNameCharFilter)) {
-                    // Edit happening
-                }
-                if (ImGui::IsItemDeactivatedAfterEdit()) {
-                    changed = true;
+                if (script.type == ScriptType::LUA) {
+                    // a Lua script's name is its file name: it follows the Source File
+                    propertyHeader("Module", secondColSize);
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+                    ImGui::InputText("##new_name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_ReadOnly);
+                    ImGui::PopStyleColor();
+                    UIProbe::item("inspector.editScript.module");
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("The module name is the file name: pick another Source File to change it");
+                    }
+                } else {
+                    propertyHeader("Class Name", secondColSize);
+                    if (ImGui::InputText("##new_name", nameBuffer, sizeof(nameBuffer),
+                            ImGuiInputTextFlags_CallbackCharFilter,
+                            ScriptCreateDialog::classNameCharFilter)) {
+                        // Edit happening
+                    }
+                    if (ImGui::IsItemDeactivatedAfterEdit()) {
+                        changed = true;
+                    }
                 }
 
                 float openBtnWidth = ImGui::CalcTextSize(ICON_FA_FOLDER_OPEN).x + ImGui::GetStyle().FramePadding.x * 2.0f;
@@ -11785,11 +11897,17 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                     if (newName.empty()) {
                         newName = !hdrPath.empty() ? hdrPath.stem().string() : srcPath.stem().string();
                     }
+                    // a Lua module is named by its file (unchanged when the file is cleared)
+                    if (script.type == ScriptType::LUA && !srcPath.empty()) {
+                        newName = srcPath.stem().string();
+                        strncpy(nameBuffer, newName.c_str(), sizeof(nameBuffer) - 1);
+                        nameBuffer[sizeof(nameBuffer) - 1] = '\0';
+                    }
 
                     // Normalize to a valid C++ identifier - the same rule the Create
                     // Script dialog uses - since className is emitted verbatim as a
                     // class token by the code generator. Reflect it back in the field.
-                    if (!newName.empty()) {
+                    if (!newName.empty() && script.type != ScriptType::LUA) {
                         newName = Factory::toIdentifier(newName);
                         strncpy(nameBuffer, newName.c_str(), sizeof(nameBuffer) - 1);
                         nameBuffer[sizeof(nameBuffer) - 1] = '\0';

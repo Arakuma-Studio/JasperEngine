@@ -108,6 +108,31 @@ namespace jasperengine::editor{
         void recordMorphWeights(Scene* scene, const ModelComponent& model);
         void restoreMorphWeights(Scene* scene, const ModelComponent& model);
 
+        // The mesh-wide settings of the parts (shadows, lights, shaders...) the user set, carried by
+        // node to the parts a same-file rebuild makes, like the arrangement
+        struct PartMeshSettings {
+            NodeRef part;
+            bool castShadows = true;
+            bool receiveShadows = true;
+            bool staticShadowCaster = false;
+            bool receiveLights = true;
+            bool receiveIBL = true;
+            CullingMode cullingMode = CullingMode::BACK;
+            WindingOrder windingOrder = WindingOrder::CCW;
+            bool lodEnabled = false;
+            float lodBias = 1.0f;
+            bool transparent = false;
+            bool autoTransparency = true;
+            ShaderRef customShader;
+            ShaderRef customDepthShader;
+            bool renderInReflectionProbes = true;
+            bool shadowsBillboard = false;
+            ShaderUniformValues shaderUniforms;
+        };
+        std::vector<PartMeshSettings> savedPartSettings;
+        void recordPartMeshSettings(Scene* scene, const ModelComponent& model);
+        void restorePartMeshSettings(Scene* scene, const ModelComponent& model);
+
         static std::vector<Entity> collectModelDeleteRoots(Scene* scene, const ModelComponent& model);
         static bool isMappedMeshNode(const ModelComponent& model, Entity entity);
         static NodeRef makeNodeRef(const ModelComponent& model, int nodeIndex, bool bone);
