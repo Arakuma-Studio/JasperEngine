@@ -40833,6 +40833,46 @@
     8796093022208,
     true
    ],
+   "clips[N].clip": [
+    1,
+    8796093022208,
+    true
+   ],
+   "clips[N].footIK": [
+    0,
+    8796093022208,
+    true
+   ],
+   "clips[N].guid": [
+    1,
+    8796093022208,
+    true
+   ],
+   "clips[N].layer": [
+    8,
+    8796093022208,
+    true
+   ],
+   "clips[N].mirror": [
+    0,
+    8796093022208,
+    true
+   ],
+   "clips[N].name": [
+    1,
+    8796093022208,
+    true
+   ],
+   "clips[N].retarget": [
+    0,
+    8796093022208,
+    true
+   ],
+   "clips[N].wrap": [
+    15,
+    8796093022208,
+    true
+   ],
    "defaultClip": [
     1,
     0,
@@ -40875,6 +40915,16 @@
     35184372088832,
     true
    ],
+   "clipOverrides[N].original": [
+    1,
+    35184372088832,
+    true
+   ],
+   "clipOverrides[N].replacement": [
+    1,
+    35184372088832,
+    true
+   ],
    "controller": [
     18,
     35184372088832,
@@ -40903,6 +40953,141 @@
    "ik": [
     15,
     35184372088832,
+    true
+   ],
+   "ik[N].boneWeights": [
+    15,
+    0,
+    true
+   ],
+   "ik[N].bones": [
+    15,
+    35184372088832,
+    true
+   ],
+   "ik[N].clampAngle": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].contactParameter": [
+    1,
+    0,
+    true
+   ],
+   "ik[N].enabled": [
+    0,
+    0,
+    true
+   ],
+   "ik[N].footHeight": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].forwardAxis": [
+    5,
+    0,
+    true
+   ],
+   "ik[N].iterations": [
+    8,
+    0,
+    true
+   ],
+   "ik[N].layerMask": [
+    9,
+    0,
+    true
+   ],
+   "ik[N].maxFootAngle": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].name": [
+    1,
+    35184372088832,
+    true
+   ],
+   "ik[N].pelvis": [
+    1,
+    35184372088832,
+    true
+   ],
+   "ik[N].pole": [
+    16,
+    0,
+    true
+   ],
+   "ik[N].polePosition": [
+    5,
+    0,
+    true
+   ],
+   "ik[N].rayLength": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].rayStart": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].releaseTime": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].smoothing": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].speedThreshold": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].target": [
+    16,
+    0,
+    true
+   ],
+   "ik[N].targetPosition": [
+    5,
+    0,
+    true
+   ],
+   "ik[N].tolerance": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].type": [
+    13,
+    35184372088832,
+    true
+   ],
+   "ik[N].usePole": [
+    0,
+    0,
+    true
+   ],
+   "ik[N].useTargetRotation": [
+    0,
+    0,
+    true
+   ],
+   "ik[N].weight": [
+    2,
+    0,
+    true
+   ],
+   "ik[N].weightParameter": [
+    1,
+    0,
     true
    ],
    "retarget": [
@@ -41450,6 +41635,31 @@
   "CapsuleShadowCasterComponent": {
    "capsules": [
     15,
+    0,
+    true
+   ],
+   "capsules[N].bone": [
+    1,
+    0,
+    true
+   ],
+   "capsules[N].direction": [
+    13,
+    0,
+    true
+   ],
+   "capsules[N].length": [
+    2,
+    0,
+    true
+   ],
+   "capsules[N].offset": [
+    5,
+    0,
+    true
+   ],
+   "capsules[N].radius": [
+    2,
     0,
     true
    ],
@@ -46316,6 +46526,26 @@
     0,
     true
    ],
+   "customProfile[N]": [
+    15,
+    0,
+    true
+   ],
+   "customProfile[N].grounded": [
+    0,
+    0,
+    true
+   ],
+   "customProfile[N].hard": [
+    0,
+    0,
+    true
+   ],
+   "customProfile[N].position": [
+    4,
+    0,
+    true
+   ],
    "edgeDrop": [
     2,
     0,
@@ -46580,6 +46810,31 @@
    ],
    "spanOverrides": [
     15,
+    0,
+    true
+   ],
+   "spanOverrides[N]": [
+    15,
+    0,
+    true
+   ],
+   "spanOverrides[N].kind": [
+    13,
+    0,
+    true
+   ],
+   "spanOverrides[N].knot": [
+    9,
+    0,
+    true
+   ],
+   "spanOverrides[N].piece": [
+    9,
+    0,
+    true
+   ],
+   "spanOverrides[N].span": [
+    9,
     0,
     true
    ],
