@@ -782,4 +782,37 @@ Hot files shared with other branches: `editor/Stream.cpp`, `editor/window/Inspec
 
 ## Deviations
 
-None yet.
+Recorded during implementation (2026-11-04, branch `dc/unicode-text`).
+
+1. **No `SystemFontsMac.mm`.** CoreText and CoreFoundation are C APIs: the macOS lookup lives in
+   `editor/util/SystemFonts.cpp` (`#ifdef __APPLE__`), the user's language from
+   `CFLocaleCopyPreferredLanguages`. The editor links `CoreText` and `CoreFoundation`.
+2. **No font fixture file and no NOTICE entry.** `editor/tests/util/SystemFontsTest.cpp` builds its
+   fonts in memory (one square glyph per code point, a TrueType collection for the face tests), so
+   nothing third-party ships with the tests. Its tests are `SystemFonts.SearchOrder`,
+   `SettingNamesRoundTrip`, `ParsesFontconfigOutput`, `ChecksFontsAndCollections` (E9-E11),
+   `MergesIntoExistingFonts` (E10) and `PreferenceRoundTrips` (E12).
+3. **The font probe is per language** (kana for Japanese, Hangul for Korean, a Han character for
+   Chinese): Malgun Gothic, the Korean default on Windows, has no Han characters.
+4. **`editor_status` adds no text line** (lean MCP rules: hints go in `structuredContent`); its
+   `editor_fonts.state` is `idle` when no search started (a session without the editor UI), then
+   `searching`, `ready` or `none`.
+5. **MCP and settings path inputs read `\` as a separator too** (`McpRefs::resolveProjectPath`,
+   `readProjectFile` of the settings rows): decision 5 applied to what agents send, so
+   `textures\wood.png` from an agent on Windows names the same file on every platform (and M2
+   runs on Linux). A `..\` is caught by the existing `..` check.
+6. **`send_input` `per_unit`** got an eval case (`tools/mcp/eval/cases.py`,
+   `guard_typing_utf16_units`), as the lean MCP rules require of new tool text.
+7. **Logger truncation cuts between characters** (`logSubmit`): a 64 KB cut inside a multi-byte
+   character produced invalid UTF-8 after the repair step; test `LoggerTest.TruncationKeepsWholeCharacters`.
+8. **`Stack<char32_t>` for Lua** (`engine/core/script/LuaBridgeAddon.h`): LuaBridge had no stack
+   type for the character (nor for `wchar_t` before); Lua passes a one-character string or a code
+   point number to `Engine.onCharInput:call` and `UISystem:eventOnCharInput`.
+9. **`Module32FirstW`** in the Windows crash report (the modules list) as well as the session
+   paths: module paths are UTF-8 in the report whatever the code page.
+10. **W2** is `TextEncoding.ProjectWalksTakeNamesInAnyLanguage` and runs on every platform: on
+    Linux and macOS it guards the walks, on Windows it is the red control of the manifest.
+    `TextEncoding.ProcessRunsInTheUtf8CodePage` is W1 (Windows only). The tests of §6.1-§6.2 are
+    in `editor/tests/util/TextEncodingTest.cpp` (E1, E2, E4).
+11. **`InputTest`'s fixture records `char32_t`** (`engine/tests/htmlui/TestInput.cpp`); the
+    `wchar_t` handler compatibility is C3 in the core tests.
