@@ -455,3 +455,20 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 0, effect), "uieffect_fx_stripes");
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 3, effect), "uieffect_fx_stripes_FltStp");
 }
+
+// T3 R20, D2: bits are names plus an order, numbers taken at landing. This pins the number 'Thl' got on
+// each type; a stream landing before it moves them here and bumps the shader cache.
+TEST(ShaderKey, TerrainHolesBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::MESH), shaderPropertyBit(36));
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH), shaderPropertyBit(18));
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER), shaderPropertyBit(16));
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::MESH, 36, true), "Thl");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 18, true), "Thl");
+    EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 16, true), "Thl");
+    EXPECT_EQ(ShaderPool::getTerrainHolesProperty(ShaderType::UI), 0u);
+    // no fallback may drop it: a dropped hole would draw over the hole (T3 R34)
+    const uint64_t withFeatures = shaderPropertyBit(36) | ShaderPool::getShadowsHQProperty() | shaderPropertyBit(4);
+    for (uint64_t candidate : ShaderPool::getFallbackProperties(ShaderType::MESH, withFeatures)) {
+        EXPECT_NE(candidate & shaderPropertyBit(36), 0u);
+    }
+}

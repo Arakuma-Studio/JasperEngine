@@ -51,8 +51,14 @@ uniform u_fs_gbufferMaterial {
 #ifdef GBUFFER_STOCHASTIC
     #include "includes/stochastic.glsl"
 #endif
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
+#endif
 
 void main() {
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
+    #endif
     #ifdef GBUFFER_STOCHASTIC
         // the base colour's luminance weights, then the metallic-roughness taps with them (as
         // geometric without a base colour texture)

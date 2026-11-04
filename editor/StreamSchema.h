@@ -205,6 +205,10 @@ namespace jasperengine::editor {
         static const EnumTable<MaterialDepthTest>& materialDepthTest();
         static const EnumTable<MaterialDepthWrite>& materialDepthWrite();
         static const EnumTable<MaterialLighting>& materialLighting();
+        static const EnumTable<TerrainQualitySetting>& terrainQualitySetting();
+        static const EnumTable<TerrainOffscreenShadows>& terrainOffscreenShadows();
+        static const EnumTable<TerrainMacroMode>& terrainMacroMode();
+        static const EnumTable<TerrainCliffProjection>& terrainCliffProjection();
         static const EnumTable<MaterialPassOrder>& materialPassOrder();
         static const EnumTable<MaterialStencilCompare>& materialStencilCompare();
         static const EnumTable<MaterialStencilOp>& materialStencilOp();

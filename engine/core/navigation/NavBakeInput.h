@@ -95,12 +95,16 @@ namespace jasperengine::nav {
         int samples = 0;
         std::vector<float> heights;
         uint8_t recastArea = 1;
+        // T3 R23: (samples - 1)^2 flags, row by row: a lattice cell that overlaps a hole texel is
+        // left out of the bake. Empty without holes.
+        std::vector<uint8_t> holeCells;
         // finalize(): the inverse of toNav and the nav-space bounds
         Matrix4 fromNav;
         float bmin[3] = {0, 0, 0};
         float bmax[3] = {0, 0, 0};
 
         float heightAt(int i, int j) const { return heights[(size_t)j * (size_t)samples + (size_t)i]; }
+        bool isHoleCell(int i, int j) const { return !holeCells.empty() && holeCells[(size_t)j * (size_t)(samples - 1) + (size_t)i] != 0; }
         Vector3 localAt(int i, int j) const;
         // The sample cells [i0, i1) x [j0, j1) whose nav-space footprint may touch the nav box
         // [boxMin, boxMax]; false when none does

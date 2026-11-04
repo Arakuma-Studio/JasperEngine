@@ -1747,6 +1747,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemTerrain.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp

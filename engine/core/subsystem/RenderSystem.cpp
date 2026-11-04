@@ -3211,6 +3211,7 @@ SubmeshShaderInputs RenderSystem::getExtraPassShaderInputs(const SubmeshShaderIn
     inputs.pbrTransmission = false;
     inputs.terrainHex = false;
     inputs.terrainHexStochastic = false;
+    inputs.terrainHoles = false;
     return inputs;
 }
 
@@ -3267,7 +3268,7 @@ PbrVariant RenderSystem::getLoadedPbrVariant(const Submesh& submesh, PbrTier tie
 
 bool RenderSystem::pbrVariantMatches(const Submesh& submesh) const{
     const PbrVariant expected = getLoadedPbrVariant(submesh, loadedPbrTier);
-    const uint32_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE) |
+    const uint64_t environmentBits = MaterialPbr::getDefineBit(MaterialPbr::LIT_QUALITY_DEFINE) | MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_DEFINE) |
                                      MaterialPbr::getDefineBit(MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE);
     if (MaterialPbr::getDefineBits(expected.defines) != (submesh.litDefineBits & ~environmentBits))
         return false;
@@ -3624,6 +3625,7 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     // Painted layers that bring their own surface need the wider terrain path; a
     // terrain of plain color layers keeps the cheaper one it always had.
     inputs.terrainSurface = terrain && hasTerrainSurfaceLayers(*terrain);
+    inputs.terrainHoles = terrain && !terrain->holeMap.empty();
     inputs.instanced = instmesh != nullptr;
     // Opted in per field, not per band, so emptying the band (editor preview) neither
     // rebuilds the shader nor drops the variant from an export.
@@ -3963,6 +3965,13 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
             g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4,
             inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+    }
+
+    // T3 R20: every pass cuts the same holes, on every shader of the terrain
+    if (inputs.terrainHoles){
+        variant.properties |= ShaderPool::getTerrainHolesProperty(ShaderType::MESH);
+        variant.depthProperties |= ShaderPool::getTerrainHolesProperty(ShaderType::DEPTH);
+        variant.gbufferProperties |= ShaderPool::getTerrainHolesProperty(ShaderType::GBUFFER);
     }
 
     return variant;
@@ -5834,7 +5843,7 @@ bool RenderSystem::loadTerrainTextures(Entity entity, TerrainComponent& terrain,
         }
     }
 
-    return true;
+    return loadTerrainHoleTexture(terrain, render, shaderData);
 }
 
 bool RenderSystem::loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData){
@@ -5849,14 +5858,15 @@ bool RenderSystem::loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRen
     }
 
     render.addTexture(slotTex, ShaderStageType::VERTEX, textureRender);
-    return true;
+    return loadTerrainHoleTexture(terrain, render, shaderData);
 }
 
 bool RenderSystem::updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh){
     // a render target its maps show was made again (a fluid's output, a camera's after a view
     // loss): bound again, as meshes do (checkPBRFrabebufferUpdate)
     if (!terrain.needUpdateTexture){
-        bool outdated = terrain.heightMap.isFramebufferOutdated() || terrain.heightMap.isRenderOutdated();
+        bool outdated = terrain.heightMap.isFramebufferOutdated() || terrain.heightMap.isRenderOutdated() ||
+                        terrain.holeMap.isRenderOutdated();
         for (const Texture& blendMap : terrain.blendMaps)
             outdated = outdated || blendMap.isFramebufferOutdated() || blendMap.isRenderOutdated();
         if (outdated)
@@ -14802,6 +14812,13 @@ void RenderSystem::update(double dt){
                 // so can the lighting mode, which picks the stages evaluating the lights
                 if (mesh.loaded && mesh.submeshes[s].loadedLighting != mesh.submeshes[s].material.lighting){
                     mesh.needReload = true;
+                }
+
+                // T3 R29: the first cut and the last fill swap the variant, the loaded one drawing
+                // meanwhile (a stand-in for holes binds an all-solid map)
+                if (terrain && mesh.loaded && !mesh.needReload &&
+                        ((mesh.submeshes[s].shaderProperties & ShaderPool::getTerrainHolesProperty(ShaderType::MESH)) != 0) != !terrain->holeMap.empty()){
+                    mesh.needVariantReload = true;
                 }
 
                 // A layer gains or loses its own surface from the editor, a script or an AI

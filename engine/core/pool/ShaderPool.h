@@ -166,6 +166,9 @@ namespace jasperengine{
         // HAS_VAT_BONES) of MESH, DEPTH and GBUFFER, 0 for another type; getVatProperties: both
         static uint64_t getVatProperty(ShaderType shaderType, bool bones);
         static uint64_t getVatProperties(ShaderType shaderType);
+        // the variant bit of a terrain's holes (T3 R20: TERRAIN_HOLES) of MESH, DEPTH and GBUFFER, 0 for
+        // another type. Never in getFallbackProperties: a dropped hole would draw over the hole.
+        static uint64_t getTerrainHolesProperty(ShaderType shaderType);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint64_t getPropertiesFromKey(ShaderKey key);

@@ -106,6 +106,21 @@ namespace {
         return type == OpType::PaintDensity || type == OpType::EraseDensity;
     }
 
+    // T3 R27: what the map's holes open on the lattice of the default collider: a sample per height
+    // texel of the smaller side, at most 1025 (JoltShapeBuilder::defaultHeightFieldSamples)
+    int collisionSamplesOpen(const TerrainMapStore& store) {
+        const MapFormat holes = store.format(HOLE_MAP);
+        const MapFormat heights = store.format(HEIGHT_MAP);
+        if (!holes.exists || !heights.exists) return 0;
+        std::vector<uint8_t> texels(static_cast<size_t>(holes.bounds.area()));
+        if (!store.readBytes(HOLE_MAP, holes.bounds, texels)) return 0;
+        const int samples = std::clamp(std::min(heights.bounds.w, heights.bounds.h), 4, 1025);
+        std::vector<uint8_t> open;
+        std::vector<uint8_t> gaps;
+        openSquares(HoleMapView{texels.data(), holes.bounds.w, holes.bounds.h}, samples, 1.0f, 1.0f, open);
+        return noCollisionSamples(open, samples, gaps);
+    }
+
     bool isHoleOp(OpType type) {
         return type == OpType::CutHoles || type == OpType::FillHoles;
     }
@@ -1430,9 +1445,10 @@ namespace {
         entry.mapCreated = detail.mapCreated;
         entry.mapRemoved = detail.mapRemoved;
         if (detail.mapCreated) warn("map_created", "This op created the hole map.");
-        // Nothing draws a hole until S55's consumers land (S53 R12, DC3)
-        if (op.type == OpType::CutHoles && detail.changed > 0) {
-            warn("holes_not_rendered", "Holes are stored and answered by the surface query, but no renderer, collider or navmesh acts on them yet.");
+        entry.collisionSamplesOpen = collisionSamplesOpen(target);
+        // T3 R22, R27: a hole with no interior sample is drawn and opens nothing for a body
+        if (op.type == OpType::CutHoles && detail.changed > 0 && entry.collisionSamplesOpen == 0) {
+            warn("hole_no_collision", "This hole opens no collision sample: a body stays on the collider. Cut at least 3 collision cells across.");
         }
     }
 

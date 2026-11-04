@@ -176,11 +176,12 @@ namespace jasperengine{
         void destroyTerrainFoliage(Entity entity);
         bool loadFoliageMesh(Entity entity, const std::string& path);
         float sampleFoliageDensity(TerrainComponent& terrain, TerrainFoliageLayer& layer, float localX, float localZ);
-        void appendFoliageCell(TerrainComponent& terrain, TerrainFoliageLayer& layer, int cellX, int cellZ, std::vector<InstanceData>& instances);
         void updateFoliageLayer(TerrainComponent& terrain, TerrainFoliageLayer& layer, TerrainFoliageInstances& instances, const Vector3& viewLocal, bool preview);
         void updateTerrainFoliage(Entity entity, TerrainComponent& terrain, Transform& transform);
 
     public:
+        // the instances of one foliage cell, deterministic in its seed (public for T3's hole test)
+        void appendFoliageCell(TerrainComponent& terrain, TerrainFoliageLayer& layer, int cellX, int cellZ, std::vector<InstanceData>& instances);
         MeshSystem(Scene* scene);
         virtual ~MeshSystem();
 
@@ -332,7 +333,7 @@ namespace jasperengine{
 
         void resetModelToBindPose(Entity entity, ModelComponent& model);
 
-        bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint);
+        bool raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint, bool ignoreHoles = false);
         // Height and normal in terrain-local space, the surface the foliage scatter uses
         // (static and read-only: particle collisions call it from the job system's workers)
         static void sampleTerrainSurface(TerrainComponent& terrain, float localX, float localZ, float& height, Vector3& normal);

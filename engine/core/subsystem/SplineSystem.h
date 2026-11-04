@@ -42,7 +42,8 @@ namespace jasperengine{
         NonUniformScale,    // the GameObject's scale is not uniform: radius uses its largest axis
         NoTerrain,          // conform or WaterBanks without a terrain under the spline
         PoolEmpty,          // an Instantiate pool without a loadable entry
-        PrefabsNotInEditor  // prefab pieces are GameObjects in Play only
+        PrefabsNotInEditor, // prefab pieces are GameObjects in Play only
+        OverHole            // stations over a terrain hole: a road bridges it at the height map's height (T3 R26)
     };
 
     struct JASPERENGINE_API SplineWarning{
@@ -127,6 +128,7 @@ namespace jasperengine{
 
         void updateConsumers(Entity entity, SplineComponent& spline, Transform& transform);
         void updateAnimate(double dt);
+        void dropPiecesOverHoles(const SplineComponent& spline, BuildJob& job);
 
         bool collectStations(Entity entity, const SplineComponent& spline, const Transform& transform,
                              spline::SplineStationOptions& options, std::vector<spline::SplineStation>& stations,

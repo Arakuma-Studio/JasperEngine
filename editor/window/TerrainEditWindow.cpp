@@ -1486,7 +1486,7 @@ bool editor::TerrainEditWindow::findTerrainHit(Scene* scene, const Ray& ray, Ent
 
     Matrix4 inverseModel = transform.modelMatrix.inverse();
     if (!useHeightReference){
-        if (!scene->getSystem<MeshSystem>()->raycastTerrainSurface(ray, terrain, transform, worldPoint)){
+        if (!scene->getSystem<MeshSystem>()->raycastTerrainSurface(ray, terrain, transform, worldPoint, true)){
             return false;
         }
 

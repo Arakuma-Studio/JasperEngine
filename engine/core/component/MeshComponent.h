@@ -208,7 +208,7 @@ namespace jasperengine{
         // the built-in Lit's defines its colour variant was loaded with (the "builtin:lit#..."
         // reference, SubmeshShaderVariant::litDefines, as MaterialPbr::getDefineBits) and the
         // extension maps that variant binds, in slot order (u_pbrExtTexture0..2; COUNT: none)
-        uint32_t litDefineBits = 0;
+        uint64_t litDefineBits = 0;
         PbrMap pbrMaps[MaterialPbr::MAX_EXTENSION_MAPS] = {PbrMap::COUNT, PbrMap::COUNT, PbrMap::COUNT};
 
         int slotVSParams = -1;

@@ -11,6 +11,21 @@ using namespace jasperengine::terrain;
 
 namespace {
 
+    // The texels [first, last] of a map of size texels that lattice span [index, index + 1] of a
+    // spans-long lattice overlaps; touching at an edge is not overlapping. Integer arithmetic, so
+    // that lattice and map of the same size agree exactly
+    void texelSpan(int index, int spans, int size, int& first, int& last) {
+        const int64_t from = static_cast<int64_t>(index) * size;
+        const int64_t to = static_cast<int64_t>(index + 1) * size;
+        first = static_cast<int>(from / spans);
+        last = static_cast<int>((to + spans - 1) / spans) - 1;
+        if (last >= size) last = size - 1;
+    }
+
+    inline bool holeTexel(const HoleMapView& map, int x, int y) {
+        return map.texels[static_cast<size_t>(y) * map.width + x] < 128;
+    }
+
     // The rectangle in pieces no larger than a store's block (S53 R87)
     template<typename Visit>
     void forEachBlock(const TerrainMapStore& store, MapId map, TexelRect rect, Visit&& visit) {
@@ -25,6 +40,99 @@ namespace {
         }
     }
 
+}
+
+void jasperengine::terrain::openSquares(const HoleMapView& map, int samples, float mirrorX, float mirrorZ, std::vector<uint8_t>& open) {
+    const int spans = samples - 1;
+    open.assign(spans > 0 ? static_cast<size_t>(spans) * spans : 0, 0);
+    if (!map.texels || map.width <= 0 || map.height <= 0 || spans <= 0) return;
+    for (int j = 0; j < spans; j++) {
+        int firstY = 0, lastY = 0;
+        texelSpan(mirrorZ < 0.0f ? spans - 1 - j : j, spans, map.height, firstY, lastY);
+        for (int i = 0; i < spans; i++) {
+            int firstX = 0, lastX = 0;
+            texelSpan(mirrorX < 0.0f ? spans - 1 - i : i, spans, map.width, firstX, lastX);
+            bool allHoles = true;
+            for (int y = firstY; allHoles && y <= lastY; y++) {
+                for (int x = firstX; x <= lastX; x++) {
+                    if (!holeTexel(map, x, y)) {
+                        allHoles = false;
+                        break;
+                    }
+                }
+            }
+            open[static_cast<size_t>(j) * spans + i] = allHoles ? 1 : 0;
+        }
+    }
+}
+
+int jasperengine::terrain::noCollisionSamples(const std::vector<uint8_t>& open, int samples, std::vector<uint8_t>& out) {
+    out.assign(samples > 0 ? static_cast<size_t>(samples) * samples : 0, 0);
+    const int spans = samples - 1;
+    if (spans <= 0 || open.size() != static_cast<size_t>(spans) * spans) return 0;
+    int count = 0;
+    for (int y = 0; y < samples; y++) {
+        for (int x = 0; x < samples; x++) {
+            bool allOpen = true;
+            for (int j = std::max(y - 1, 0); allOpen && j <= std::min(y, spans - 1); j++) {
+                for (int i = std::max(x - 1, 0); i <= std::min(x, spans - 1); i++) {
+                    if (!open[static_cast<size_t>(j) * spans + i]) {
+                        allOpen = false;
+                        break;
+                    }
+                }
+            }
+            if (allOpen) {
+                out[static_cast<size_t>(y) * samples + x] = 1;
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+int jasperengine::terrain::navHoleCells(const HoleMapView& map, int samples, std::vector<uint8_t>& cells) {
+    const int spans = samples - 1;
+    cells.assign(spans > 0 ? static_cast<size_t>(spans) * spans : 0, 0);
+    if (!map.texels || map.width <= 0 || map.height <= 0 || spans <= 0) return 0;
+    int count = 0;
+    for (int j = 0; j < spans; j++) {
+        int firstY = 0, lastY = 0;
+        texelSpan(j, spans, map.height, firstY, lastY);
+        for (int i = 0; i < spans; i++) {
+            int firstX = 0, lastX = 0;
+            texelSpan(i, spans, map.width, firstX, lastX);
+            bool anyHole = false;
+            for (int y = firstY; !anyHole && y <= lastY; y++) {
+                for (int x = firstX; x <= lastX; x++) {
+                    if (holeTexel(map, x, y)) {
+                        anyHole = true;
+                        break;
+                    }
+                }
+            }
+            if (anyHole) {
+                cells[static_cast<size_t>(j) * spans + i] = 1;
+                count++;
+            }
+        }
+    }
+    return count;
+}
+
+int64_t jasperengine::terrain::countHoleTexels(const HoleMapView& map, int x0, int y0, int x1, int y1) {
+    if (!map.texels || map.width <= 0 || map.height <= 0) return 0;
+    x0 = std::max(x0, 0);
+    y0 = std::max(y0, 0);
+    x1 = std::min(x1, map.width);
+    y1 = std::min(y1, map.height);
+    int64_t count = 0;
+    for (int y = y0; y < y1; y++) {
+        for (int x = x0; x < x1; x++) {
+            if (holeTexel(map, x, y)) count++;
+        }
+    }
+    return count;
 }
 
 int jasperengine::terrain::rasterizeRegion(TerrainMapStore& store, const Shape& region, uint8_t value, TexelRect* changed,

@@ -118,6 +118,8 @@ namespace {
         // as the layer's other fields)
         JE_FIELD(TerrainSurfaceLayer, hexTiling, .updateFlags = kTerrainTexture),
         JE_FIELD(TerrainSurfaceLayer, hexRotation, .updateFlags = kTerrainTexture, .uiMin = 0.0f, .uiMax = 1.0f),
+        // T3 R11: a variant define (TERRAIN_CLIFF) and a uniform
+        JE_FIELD(TerrainSurfaceLayer, cliffProjection, .enumDesc = &enums::kTerrainCliffProjection, .updateFlags = kTerrainTexture, .tooltip = "Auto: the Quality tier's projection. Flat Only: never reads a side plane, for ground that never sits on a cliff."),
     };
 
     constexpr uint64_t kFoliage = UpdateFlags_Terrain_Foliage;
@@ -346,6 +348,22 @@ namespace {
         JE_FIELD(TerrainComponent, textureDetailTiles, .min = 0.0f),
         JE_FIELD(TerrainComponent, rootGridSize, .updateFlags = kTerrain | kMeshReload, .min = 1.0f),
         JE_FIELD(TerrainComponent, levels, .updateFlags = kTerrain | kMeshReload, .min = 1.0f),
+        // T3 R49: each picks a variant define or a uniform, which RenderSystem follows
+        JE_FIELD(TerrainComponent, quality, .enumDesc = &enums::kTerrainQualitySetting, .updateFlags = kTerrainTexture, .tooltip = "Auto: the project's Quality for the running platform."),
+        JE_FIELD(TerrainComponent, limitLayersPerPixel, .updateFlags = kTerrainTexture, .tooltip = "High only: draw the 4 strongest layers of each pixel."),
+        JE_FIELD(TerrainComponent, offscreenShadows, .enumDesc = &enums::kTerrainOffscreenShadows, .label = "Off-screen Shadows", .tooltip = "Terrain outside the view casts into the shadow maps. Auto: on at High and Medium."),
+        JE_FIELD(TerrainComponent, macroMode, .enumDesc = &enums::kTerrainMacroMode, .updateFlags = kTerrainTexture, .label = "Macro Variation", .tooltip = "Noise tints the ground with two colours. Base Map multiplies the layers by the base material's colour texture."),
+        JE_FIELD(TerrainComponent, macroScale, .updateFlags = kTerrainTexture, .unit = Unit::Meters, .min = 0.01f),
+        JE_FIELD(TerrainComponent, macroStrength, .updateFlags = kTerrainTexture, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainComponent, macroTintA, .updateFlags = kTerrainTexture),
+        JE_FIELD(TerrainComponent, macroTintB, .updateFlags = kTerrainTexture),
+        JE_FIELD(TerrainComponent, macroSlopeFade, .updateFlags = kTerrainTexture, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainComponent, resampleEnabled, .updateFlags = kTerrainTexture, .label = "Distance Resampling"),
+        JE_FIELD(TerrainComponent, resampleNear, .updateFlags = kTerrainTexture, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(TerrainComponent, resampleFar, .updateFlags = kTerrainTexture, .unit = Unit::Meters, .min = 0.0f),
+        JE_FIELD(TerrainComponent, resampleReduction, .updateFlags = kTerrainTexture, .min = 0.01f, .max = 1.0f),
+        JE_FIELD(TerrainComponent, heightBlendSharpness, .updateFlags = kTerrainTexture, .min = 0.0f, .max = 1.0f),
+        JE_FIELD(TerrainComponent, macroNormal, .updateFlags = kTerrainTexture, .label = "Macro Normal Map"),
         JE_FIELD(TerrainComponent, ranges, .flags = ListWhole | ListElements | ListTemplate, .updateFlags = kTerrain),
         JE_FIELD(TerrainComponent, blendMaps, .flags = ListWhole | ListElements | ListTemplate, .updateFlags = kTerrainTexture),
         JE_FIELD(TerrainComponent, surfaceLayers, .flags = ListWhole | ListTemplate, .updateFlags = kTerrainTexture),
@@ -603,7 +621,7 @@ const ComponentDesc kInstancedMeshDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kTerrainKnownKeys[] = {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "holeMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
+    constexpr const char* kTerrainKnownKeys[] = {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightBlendSharpness", "heightMap", "holeMap", "levels", "limitLayersPerPixel", "macroMode", "macroNormal", "macroScale", "macroSlopeFade", "macroStrength", "macroTintA", "macroTintB", "maxHeight", "offscreenShadows", "offset", "quality", "ranges", "resampleEnabled", "resampleFar", "resampleNear", "resampleReduction", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
 
 }
 

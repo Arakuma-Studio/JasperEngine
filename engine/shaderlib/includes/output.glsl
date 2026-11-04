@@ -20,6 +20,15 @@
     #include "includes/fog.glsl"
 #endif
 
+// A library shader on a terrain with holes (T3 R20): every colour leaves through the finalizers
+// below, so a shader of the library needs no line of its own for holes
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
+    #define OUTPUT_TERRAIN_HOLE() terrainDiscardHole()
+#else
+    #define OUTPUT_TERRAIN_HOLE()
+#endif
+
 // The display encoding of a shader's own linear colour (clamped at 0): with the
 // post-processing colour, its exposure, tone mapping, grade, vignette and dither
 vec3 encodeOutput(vec3 linearColor){
@@ -75,6 +84,7 @@ vec3 fadeByFog(vec3 linearColor, vec3 neutral){
 // (fadeByFog), instead of mixing it towards the fog colour, which an additive blend would
 // add on top
 vec4 finalizeBlendedColorAtFogDistance(vec4 linearColor, vec3 neutral, float fogDistance){
+    OUTPUT_TERRAIN_HOLE();
     vec3 color = fadeByFogAtFogDistance(linearColor.rgb, neutral, fogDistance);
     // a colour added to the target takes the post-processing colour as an added one; a filter
     // the target is multiplied by stays a plain factor (the target is graded already)
@@ -98,6 +108,7 @@ vec4 finalizeBlendedColor(vec4 linearColor, vec3 neutral){
 // white by its alpha (alpha 1 out), so the transparent parts leave what is behind
 // unchanged, and its fog fades to white.
 vec4 finalizeColorAtFogDistance(vec4 linearColor, float fogDistance){
+    OUTPUT_TERRAIN_HOLE();
     #if defined(BLEND_ADDITIVE)
         return finalizeBlendedColorAtFogDistance(linearColor, vec3(0.0), fogDistance);
     #elif defined(BLEND_MULTIPLY)
@@ -134,6 +145,7 @@ vec4 finalizeColor(vec4 linearColor){
 // alpha, so it draws exactly what the alpha blend draws (and a premultiplied texture the
 // shader un-premultiplied comes back as it was).
 vec4 finalizeStraightColorAtFogDistance(vec4 linearColor, float fogDistance){
+    OUTPUT_TERRAIN_HOLE();
     #if defined(BLEND_PREMULTIPLIED)
         vec3 color = linearColor.rgb;
         #ifdef HAS_FOG
@@ -165,6 +177,7 @@ vec3 applyFog(vec3 linearColor){
 // post-processing colour either: the scene colour has it already (a colour of the shader's
 // own goes through encodeOutput)
 vec4 finalizeFoggedColor(vec4 linearColor){
+    OUTPUT_TERRAIN_HOLE();
     #if defined(BLEND_MULTIPLY)
         vec3 color = mix(vec3(1.0), linearColor.rgb, linearColor.a);
         return vec4(linearTosRGB(max(color, vec3(0.0))), 1.0);
@@ -196,6 +209,7 @@ vec3 encodeColor(vec3 linearColor){
 // objects drawn before this one stay visible through it, which the scene colour (opaque
 // scene and sky only) cannot show.
 vec4 finalizeStraightColorOverScene(vec4 linearColor, vec3 behind, float behindWeight){
+    OUTPUT_TERRAIN_HOLE();
     #if defined(BLEND_ADDITIVE) || defined(BLEND_MULTIPLY)
         return finalizeStraightColor(linearColor);
     #else

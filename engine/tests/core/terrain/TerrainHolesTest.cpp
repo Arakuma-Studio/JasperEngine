@@ -5,12 +5,14 @@
 
 #include "TerrainTestSupport.h"
 
+#include "component/TerrainComponent.h"
 #include "terrain/TerrainHoles.h"
 #include "terrain/TerrainLayers.h"
 #include "terrain/TerrainSurface.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -68,7 +70,7 @@ TEST(TerrainHoles, CutFillAndQuery) {
     EXPECT_GT(entry.changedTexels, 0);
     EXPECT_EQ(entry.holeTexels, entry.changedTexels);
     EXPECT_FLOAT_EQ(entry.holeFraction, static_cast<float>(entry.holeTexels) / (SIZE * SIZE));
-    EXPECT_TRUE(first.hasWarning("holes_not_rendered"));
+    EXPECT_FALSE(first.hasWarning("holes_not_rendered")) << "T3 removed it: holes draw";
     ASSERT_EQ(first.createdMaps.size(), 1u);
     EXPECT_EQ(first.createdMaps[0], HOLE);
     ASSERT_EQ(first.changed.size(), 1u);
@@ -138,7 +140,7 @@ TEST(TerrainHoles, NoMapMeansNothingToFillAndAnExcludedCutMakesNone) {
     EXPECT_FALSE(store.format(HOLE).exists);
     EXPECT_GT(excluded.ops[0].filteredOut, 0);
     EXPECT_TRUE(excluded.hasWarning("filter_excluded_all"));
-    EXPECT_FALSE(excluded.hasWarning("holes_not_rendered"));
+    EXPECT_FALSE(excluded.hasWarning("hole_no_collision"));
 }
 
 TEST(TerrainHoles, DryRunChangesNothing) {
@@ -331,4 +333,155 @@ TEST(TerrainLayers, RemapRoundTripIsTheOriginalPaint) {
     back.order = {1, 2, 0};
     ASSERT_TRUE(apply(store, back).ok);
     EXPECT_EQ(readAllBytes(store, blend(0)), before);
+}
+
+// ---------------------------------------------------------------- T3 R19, R22, R23
+
+TEST(TerrainHoles, TexelRule) {
+    // A non-square map, every texel solid but (1, 0) and (2, 1)
+    const uint8_t texels[6] = {255, 0, 255, 255, 255, 0};
+    const HoleMapView view{texels, 3, 2};
+    EXPECT_FALSE(isHole(view, 0.33f, 0.25f));
+    EXPECT_TRUE(isHole(view, 1.0f / 3.0f + 0.0001f, 0.25f));
+    EXPECT_TRUE(isHole(view, 0.66f, 0.49f));
+    EXPECT_FALSE(isHole(view, 0.6667f, 0.25f)) << "the higher texel owns the edge";
+    EXPECT_TRUE(isHole(view, 1.0f, 1.0f)) << "the far corner is the last texel";
+    EXPECT_FALSE(isHole(view, 1.0001f, 1.0f)) << "past the corner is off the terrain";
+
+    const uint8_t hole = 0;
+    const HoleMapView one{&hole, 1, 1};
+    EXPECT_TRUE(isHole(one, 0.0f, 0.0f));
+    EXPECT_TRUE(isHole(one, 0.5f, 1.0f));
+    EXPECT_FALSE(isHole(one, -0.001f, 0.5f));
+
+    // the threshold is one half
+    const uint8_t values[2] = {127, 128};
+    const HoleMapView threshold{values, 2, 1};
+    EXPECT_TRUE(isHole(threshold, 0.25f, 0.5f));
+    EXPECT_FALSE(isHole(threshold, 0.75f, 0.5f));
+}
+
+namespace {
+
+    // A map of side texels with the texels [x0, x1) x [y0, y1) cut
+    std::vector<uint8_t> mapWithHole(int side, int x0, int y0, int x1, int y1) {
+        std::vector<uint8_t> texels(static_cast<size_t>(side) * side, SOLID_VALUE);
+        for (int y = y0; y < y1; y++) {
+            for (int x = x0; x < x1; x++) {
+                texels[static_cast<size_t>(y) * side + x] = HOLE_VALUE;
+            }
+        }
+        return texels;
+    }
+
+}
+
+TEST(TerrainHoles, LatticeSquaresAndSamples) {
+    // 8 squares per side over 8 texels: squares and texels are one to one
+    constexpr int SAMPLES = 9;
+    std::vector<uint8_t> texels = mapWithHole(8, 2, 3, 5, 6);
+    std::vector<uint8_t> open;
+    const auto squares = [&]() {
+        openSquares(HoleMapView{texels.data(), 8, 8}, SAMPLES, 1.0f, 1.0f, open);
+    };
+    squares();
+    for (int j = 0; j < 8; j++) {
+        for (int i = 0; i < 8; i++) {
+            EXPECT_EQ(open[static_cast<size_t>(j) * 8 + i] != 0, i >= 2 && i < 5 && j >= 3 && j < 6) << i << ", " << j;
+        }
+    }
+
+    // a 3 x 3 hole has 2 x 2 samples whose four squares are all open
+    std::vector<uint8_t> samples;
+    EXPECT_EQ(noCollisionSamples(open, SAMPLES, samples), 4);
+    for (int y = 0; y < SAMPLES; y++) {
+        for (int x = 0; x < SAMPLES; x++) {
+            EXPECT_EQ(samples[static_cast<size_t>(y) * SAMPLES + x] != 0, x >= 3 && x < 5 && y >= 4 && y < 6) << x << ", " << y;
+        }
+    }
+
+    // a 1 x 1 hole opens a square and no sample: nothing for a ball to fall through
+    texels = mapWithHole(8, 4, 4, 5, 5);
+    squares();
+    EXPECT_EQ(std::count(open.begin(), open.end(), 1), 1);
+    EXPECT_EQ(noCollisionSamples(open, SAMPLES, samples), 0);
+
+    // a 2 x 2 hole opens exactly the sample between its squares
+    texels = mapWithHole(8, 4, 4, 6, 6);
+    squares();
+    EXPECT_EQ(noCollisionSamples(open, SAMPLES, samples), 1);
+    EXPECT_NE(samples[5 * SAMPLES + 5], 0);
+
+    // at an edge a sample has 2 squares and at a corner 1
+    texels = mapWithHole(8, 0, 0, 2, 1);
+    squares();
+    // squares (0, 0) and (1, 0) are open: corner sample 0 has one square, sample (1, 0) has those two,
+    // and sample (2, 0) also has square (2, 0), which stands
+    EXPECT_EQ(noCollisionSamples(open, SAMPLES, samples), 2);
+    EXPECT_NE(samples[0], 0) << "corner";
+    EXPECT_NE(samples[1], 0) << "edge";
+    EXPECT_EQ(samples[2], 0);
+}
+
+TEST(TerrainHoles, MirroredLatticeReadsTheMirroredTexels) {
+    constexpr int SAMPLES = 9;
+    const std::vector<uint8_t> texels = mapWithHole(8, 0, 0, 2, 2);
+    const HoleMapView view{texels.data(), 8, 8};
+    std::vector<uint8_t> open;
+    openSquares(view, SAMPLES, -1.0f, 1.0f, open);
+    EXPECT_NE(open[0 * 8 + 7], 0);
+    EXPECT_NE(open[1 * 8 + 6], 0);
+    EXPECT_EQ(open[0 * 8 + 0], 0);
+    openSquares(view, SAMPLES, -1.0f, -1.0f, open);
+    EXPECT_NE(open[7 * 8 + 7], 0);
+    EXPECT_EQ(open[0 * 8 + 7], 0);
+}
+
+TEST(TerrainHoles, SquareOverNonAlignedTexelsNeedsThemAll) {
+    // 3 squares over 4 texels: square 1 overlaps texels 1 and 2 of each axis
+    const int SAMPLES = 4;
+    std::vector<uint8_t> texels = mapWithHole(4, 1, 1, 2, 3);
+    std::vector<uint8_t> open;
+    openSquares(HoleMapView{texels.data(), 4, 4}, SAMPLES, 1.0f, 1.0f, open);
+    EXPECT_EQ(open[1 * 3 + 1], 0) << "one column of its texels stands";
+    texels = mapWithHole(4, 1, 1, 3, 3);
+    const HoleMapView view{texels.data(), 4, 4};
+    openSquares(view, SAMPLES, 1.0f, 1.0f, open);
+    EXPECT_NE(open[1 * 3 + 1], 0);
+
+    // the same hole excludes every cell that touches it (R23): all nine
+    std::vector<uint8_t> cells;
+    EXPECT_EQ(navHoleCells(view, SAMPLES, cells), 9);
+
+    // a texel exactly under one cell excludes that cell only when lattice and map line up
+    const std::vector<uint8_t> aligned = mapWithHole(8, 4, 4, 5, 5);
+    const HoleMapView alignedView{aligned.data(), 8, 8};
+    EXPECT_EQ(navHoleCells(alignedView, 9, cells), 1);
+    EXPECT_NE(cells[4 * 8 + 4], 0);
+}
+
+TEST(TerrainHoles, CountsHoleTexelsInARectangle) {
+    const std::vector<uint8_t> texels = mapWithHole(8, 2, 2, 4, 4);
+    const HoleMapView view{texels.data(), 8, 8};
+    EXPECT_EQ(countHoleTexels(view, 0, 0, 8, 8), 4);
+    EXPECT_EQ(countHoleTexels(view, 3, 3, 20, 20), 1);
+    EXPECT_EQ(countHoleTexels(view, 4, 4, 8, 8), 0);
+    EXPECT_EQ(countHoleTexels(HoleMapView{}, 0, 0, 8, 8), 0);
+}
+
+// T3 R13: tiling is the layer's own, so a material keeps every way the layer is sampled (AC17)
+TEST(TerrainLayers, FromMaterialKeepsSampling) {
+    TerrainSurfaceLayer previous;
+    previous.uvScale = Vector2(2.0f, 3.0f);
+    previous.stochasticTiling = true;
+    previous.hexTiling = true;
+    previous.hexRotation = 0.25f;
+    previous.cliffProjection = TerrainCliffProjection::FLAT_ONLY;
+    const TerrainSurfaceLayer layer = terrainLayerFromMaterial(Material(), previous);
+    EXPECT_TRUE(layer.pbr);
+    EXPECT_EQ(layer.uvScale, previous.uvScale);
+    EXPECT_TRUE(layer.stochasticTiling);
+    EXPECT_TRUE(layer.hexTiling);
+    EXPECT_FLOAT_EQ(layer.hexRotation, 0.25f);
+    EXPECT_EQ(layer.cliffProjection, TerrainCliffProjection::FLAT_ONLY);
 }

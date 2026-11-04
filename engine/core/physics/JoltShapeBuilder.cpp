@@ -10,6 +10,8 @@
 #include "component/RigidbodyComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
+#include "object/TerrainEdit.h"
+#include "terrain/TerrainHoles.h"
 #include "subsystem/MeshSystem.h"
 #include "util/MeshTriangles.h"
 
@@ -287,6 +289,22 @@ JPH::ShapeRefC JoltShapeBuilder::buildHeightFieldShape(Scene* scene, TerrainComp
             Vector3 normal;
             meshSystem->sampleTerrainSurface(terrain, localX, localZ, height, normal);
             samples[x + (y * samplesSize)] = height;
+        }
+    }
+
+    // T3 R22: the collider's gap never includes drawn ground. A terrain without a map pays this test
+    if (!terrain.holeMap.empty()){
+        const terrain::HoleMapView holes = terrainSurfaceView(terrain).holes;
+        if (holes.texels){
+            std::vector<uint8_t> open;
+            std::vector<uint8_t> gaps;
+            terrain::openSquares(holes, static_cast<int>(samplesSize), mirrorX, mirrorZ, open);
+            terrain::noCollisionSamples(open, static_cast<int>(samplesSize), gaps);
+            for (size_t i = 0; i < gaps.size(); i++){
+                if (gaps[i]){
+                    samples[i] = JPH::HeightFieldShapeConstants::cNoCollisionValue;
+                }
+            }
         }
     }
 

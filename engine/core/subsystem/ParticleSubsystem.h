@@ -112,6 +112,11 @@ namespace jasperengine{
         // RenderSystem: a camera saw the system's bounds this frame
         void markVisible(Entity entity);
 
+        // the terrain under a world point, as a Terrain collision module reads it (T3 R26: none over a
+        // hole); public for its test, with gatherTerrains making the list it searches
+        void gatherTerrains();
+        static bool sampleTerrain(const void* context, const float point[3], float surface[3], float normal[3]);
+
     private:
         // binds (or rebinds) the component's effect; false when there is none to run
         bool ensureEffect(Entity entity, ParticleSystemComponent& particles);
@@ -119,14 +124,12 @@ namespace jasperengine{
         void prepareInput(Entity entity, ParticleSystemComponent& particles, Transform& transform, particles::EmitterInput& input);
         bool bodyVelocity(Entity entity, Vector3& velocity);
         void gatherFields();
-        void gatherTerrains();
         void dispatchEvents(ParticleSystemComponent& particles);
         void updateBounds(particles::ParticleSystemState& state);
         float significanceOf(const particles::ParticleSystemState& state, float& cameraDistance) const;
 
         static bool castWorldRay(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit);
         static bool castWorldRay2D(const void* context, const float from[3], const float to[3], float radius, uint32_t layers, particles::CollisionHit& hit);
-        static bool sampleTerrain(const void* context, const float point[3], float surface[3], float normal[3]);
 
         particles::ParticleWorld world;
         // the systems whose stop action runs at the end of this frame (Disable, Destroy, Callback)
