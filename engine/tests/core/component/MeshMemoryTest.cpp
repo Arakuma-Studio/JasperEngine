@@ -7,6 +7,8 @@
 
 #include <gtest/gtest.h>
 
+#include <cstdio>
+
 #include "Engine.h"
 #include "component/MeshComponent.h"
 #include "component/SpriteComponent.h"
@@ -17,6 +19,9 @@
 using namespace jasperengine;
 
 TEST(MeshMemory, SizeofCeilings) {
+    std::printf("[sizes] SokolObject %zu, ObjectRender %zu, Submesh %zu, MeshComponent %zu, SpriteComponent %zu, TilemapComponent %zu\n",
+                sizeof(SokolObject), sizeof(ObjectRender), sizeof(Submesh), sizeof(MeshComponent), sizeof(SpriteComponent),
+                sizeof(TilemapComponent));
     EXPECT_LE(sizeof(SokolObject), 1024u);
     EXPECT_LE(sizeof(ObjectRender), 1088u);
     EXPECT_LE(sizeof(Submesh), 7168u);
@@ -33,5 +38,6 @@ TEST(MeshMemory, SpriteCostsATwentiethOfBefore) {
     EXPECT_EQ(mesh.submeshes.stored(), 1u);
     EXPECT_EQ(mesh.bonesMatrix.stored(), 0u);
     EXPECT_EQ(mesh.eBuffers.stored(), 0u);
+    std::printf("[sizes] a sprite's mesh: %zu bytes with its arrays\n", sizeof(MeshComponent) + mesh.arrayHeapBytes());
     EXPECT_LE(sizeof(MeshComponent) + mesh.arrayHeapBytes(), 10240u);
 }
