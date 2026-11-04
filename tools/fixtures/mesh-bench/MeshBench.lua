@@ -35,6 +35,8 @@ function MeshBench:init()
     end
 
     scene:setGlobalIllumination(0.2, Vector3(0.6, 0.65, 0.8))
+    -- detail levels on (the shadow passes take them coarser: the project's Shadow LOD Bias)
+    scene.meshLodEnabled = true
 
     local camera = keep(Camera(scene))
     camera.type = CameraType.CAMERA_PERSPECTIVE

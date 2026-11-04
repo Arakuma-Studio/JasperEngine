@@ -228,6 +228,12 @@ From `jasper-render.md`, with file and line citations there:
 - **Shadow LOD Bias** is S56's `quality.shadow_lod_bias` (`QualityResolver::shadowLodBias()`, contract
   C4): a multiplier of the error a shadow pass accepts, which S55 applies the same way to point
   light faces (which now select levels at all), reflection probe faces and render-to-texture cameras.
+- **New projects take `quality.shadow_lod_bias: 0.5`** (owner decision): every built-in template sets
+  it (`tools/templates/make_project_templates.py`), so a new project's shadow maps, point light faces,
+  probes and render-to-texture cameras accept twice the error of their view: one detail level coarser
+  on curved surfaces, where a level halves the triangles and the deviation grows with the square of
+  the edges. A project.yaml without the key (every project made before) keeps S56's 1.0 and renders as
+  it did (`NewProjectShadowLodBias`). The mesh bench is generated with 0.5, as a new project.
 - **Static terrain casters:** a terrain with `staticShadowCaster` draws, in each shadow slot, a cut
   of its own selected from the slot's light camera (from above the cascade's centre by its radius,
   so bigger texels take coarser nodes); it no longer depends on the camera and stays in the S10
