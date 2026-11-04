@@ -230,6 +230,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
+    b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
@@ -391,6 +392,16 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("project.delete", "Delete Assets", C::Project, "Delete", "Backspace");
     b.add("project.rename", "Rename Asset", C::Project, "F2");
     b.gesture("project.resizeItems", "Resize Items", C::Project, "Ctrl+Mouse Wheel", "Change the icon size in 16 px steps");
+
+    b.group = "Sound Browser";
+    b.add("soundBrowser.focusSearch", "Search Sounds", C::SoundBrowser, "Ctrl+F");
+    b.add("soundBrowser.next", "Next Sound", C::SoundBrowser, "Down", "Right");
+    b.add("soundBrowser.previous", "Previous Sound", C::SoundBrowser, "Up", "Left");
+    b.add("soundBrowser.play", "Play or Stop Sound", C::SoundBrowser, "Space");
+    b.add("soundBrowser.playMatched", "Play Sound Loudness-Matched", C::SoundBrowser, "Shift+Space");
+    b.add("soundBrowser.use", "Use Sound", C::SoundBrowser, "Enter").description = "Selects it; a built-in clip is imported first";
+    b.add("soundBrowser.selectAll", "Select All Sounds", C::SoundBrowser, "Ctrl+A");
+    b.add("soundBrowser.stop", "Stop Sound or Clear Search", C::SoundBrowser, "Escape");
 
     b.group = "Sound Event";
     b.add("soundEvent.audition", "Audition x8", C::Editor).description = "The selected Sound Event's next 8 plays, rendered offline";

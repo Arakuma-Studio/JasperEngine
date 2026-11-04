@@ -89,12 +89,12 @@ async def test_problems(ed: Editor):
     ed.check("missing clip" in json.dumps(info["sound_event"]["problems"]), f"{info}")
 
     spread = await ed.call("edit_sound_event", path=EVENT)
-    ed.check("LU" in json.dumps(spread["problems"]), f"the loudness spread: {spread['problems']}")
+    ed.check("loudness spread" in json.dumps(spread["problems"]), f"the loudness spread: {spread['problems']}")
 
 
 async def test_match_levels_brings_the_clips_within_1_lu(ed: Editor):
     matched = await ed.call("edit_sound_event", path=EVENT, match_levels=True)
-    ed.check("LU" not in json.dumps(matched["problems"]), f"the spread is gone: {matched['problems']}")
+    ed.check("loudness spread" not in json.dumps(matched["problems"]), f"the spread is gone: {matched['problems']}")
     volumes = [c["volume_db"] for c in matched["values"]["clips"]]
     ed.check(volumes[1] > 0 > volumes[0], f"the quiet up, the loud down: {volumes}")
     await ed.call("undo", scope="project")

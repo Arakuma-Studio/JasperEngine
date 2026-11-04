@@ -1280,6 +1280,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
+    ${EDITOR_DIR}/audio/SoundDrop.cpp
     ${EDITOR_DIR}/mcp/tools/SoundEventTools.cpp
     ${EDITOR_DIR}/audio/AudioAnalysis.cpp
     ${EDITOR_DIR}/audio/AudioCompare.cpp

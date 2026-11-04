@@ -1,4 +1,4 @@
-# Audio: the mixer, sources, one-shots, fades, Sound Events
+# Audio: the mixer, sources, one-shots, fades
 
 Every Audio Source plays through a **mixer group**: a bus with a volume in dB, mute, solo, up to 8
 effects and a live meter, inside a tree under **Master**. The project has one **Audio Mixer** asset
@@ -272,50 +272,3 @@ ones are decoded); `AudioSystem.preload("sfx/coin.wav")` in a loading screen.
 - Unknown parameter, snapshot or group names never raise: `setFloat` returns false, `getFloat`
   and `getGroup` nil, each logged once.
 - `getEffect(1)` in Lua is the first effect (1-based); MCP `index` is 0-based.
-
-## 11. Sound Events and triggers
-
-A **Sound Event** (`.soundevent`, Unity's Audio Random Container) holds clips played by weight
-(`random`), `shuffle`, `sequence` or as `layer`s, with pitch, volume and delay ranges, a cooldown, an
-instance limit with stealing and an output group. Scenes refer to it by GUID (in its `.meta`), so
-`move_asset` it freely; a moved clip's path follows in the event, in the same undo step.
-
-Make one with `edit_sound_event`, then point an AudioSource at it with `set_properties`:
-
-```json
-{"path": "sounds/steps.soundevent", "create": true, "values": {
-  "mode": "shuffle", "clips": ["sounds/step_1.wav", "sounds/step_2.wav", "sounds/step_3.wav"],
-  "pitch_semitones": [-1, 1], "volume_db": [-3, 0], "cooldown_ms": 50, "max_instances": 4}}
-```
-
-| Key | Default | Range and meaning |
-|---|---|---|
-| `mode` | `shuffle` when made here | `random`, `shuffle`, `sequence`, `layer` |
-| `clips` | | 1 to 64: a path, a GUID or `{clip, weight (0..1000, random), volume_db (-60..12), pitch_semitones (-24..24), delay_ms (0..2000)}` |
-| `avoid_repeat` | true | random: the last clip is left out of the next pick |
-| `pitch_semitones`, `volume_db`, `delay_ms` | `[0, 0]` | `[min, max]`, one draw per play |
-| `output_group` | the playing source's | a mixer group by name (an `Audio.play` voice: its `group`, else Master) |
-| `max_instances` | 0 | live plays at once over every scene, 0..255 (0 = no limit) |
-| `steal` | `oldest` | at the limit: `oldest`, `quietest`, `newest`, `none` (reject) |
-| `cooldown_ms` | 0 | 0..60000: plays closer than this are rejected |
-| `priority` | 128 | 0..256; 128 = the playing source's |
-| `loop` | false | every voice loops |
-| `spatial` | the source's | `{min_distance, max_distance, attenuation, rolloff, doppler}` |
-| `type` | none | a sound type (`footstep`, `impact`, `ui`...) |
-
-- **Limits act in order:** cooldown, instance limit (a steal stops the old voices first), the source's
-  `maxVoices`, the global `audio.max_voices`.
-- **Same picks every run:** without a device (the null driver, `--headless`) picks use the project's
-  `audio.seed`, so `audition` shows what Play will do; with a device each run draws its own seed.
-- **AudioSource**: `event` (set, its clip is ignored, with no fallback), `playOn` (`ui_click`, `ui_press`,
-  `ui_hover`, `collision_2d`, `collision_3d`, `sensor_2d`, `sensor_3d`) plays a one-shot of its clip or
-  event, `minImpactSpeed` gates contacts and `fullVolumeImpactSpeed` scales their volume by speed.
-  `pitchRandomSemitones` and `volumeRandomDb` vary each start of a source without an event.
-- **Lua**: `Audio.play(eventOrClip [, opts])` returns a `SoundHandle`; `Audio.stopAll([group])`
-  (`jasper://docs/lua-api` 2.9).
-- **Seeing what played:** run with `JASPERENGINE_AUDIO_TRACE=1` and `read_console` shows every voice's start,
-  stop and rejection as `[audio] {json}`.
-
-Recipes: **footsteps** are a `shuffle` with small pitch and volume ranges and a `cooldown_ms`;
-**UI clicks** a `random` event on a Button's AudioSource with `playOn: ["ui_click"]`; **impacts** an event on
-a Rigidbody's AudioSource with `playOn: ["collision_3d"]`, `minImpactSpeed` and `fullVolumeImpactSpeed`.

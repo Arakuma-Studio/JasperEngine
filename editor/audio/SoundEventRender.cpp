@@ -3,7 +3,12 @@
 
 #include "SoundEventRender.h"
 
+#include "Project.h"
+#include "audio/AudioAnalysis.h"
+#include "audio/AudioImportRegistry.h"
 #include "audio/AudioMeter.h"
+#include "audio/ClipSource.h"
+#include "pool/SoundPool.h"
 #include "util/FileUtils.h"
 
 #include "soloud.h"
@@ -11,7 +16,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 #include <fstream>
 #include <memory>
 
@@ -24,21 +28,20 @@ namespace {
 
     constexpr double MATCH_PEAK_LIMIT_DBTP = -1.0;
 
-    std::unique_ptr<SoLoud::Wav> loadRenderClip(const fs::path& file) {
-        std::ifstream in(file, std::ios::binary | std::ios::ate);
+    // a clip as it plays: its file, with its import settings when it has any (as SoundPool wraps it)
+    std::shared_ptr<SoLoud::AudioSource> loadRenderClip(const std::string& clip, const SoundEventRender::Input& input) {
+        std::ifstream in((input.assetsRoot / FileUtils::pathFromUtf8(clip)).lexically_normal(), std::ios::binary | std::ios::ate);
         if (!in) return nullptr;
         const std::streamoff size = in.tellg();
         if (size <= 0) return nullptr;
         std::vector<unsigned char> bytes((size_t)size);
         in.seekg(0);
         if (!in.read(reinterpret_cast<char*>(bytes.data()), size)) return nullptr;
-        auto wav = std::make_unique<SoLoud::Wav>();
+        auto wav = std::make_shared<SoLoud::Wav>();
         if (wav->loadMem(bytes.data(), (unsigned int)bytes.size(), true, false) != SoLoud::SO_NO_ERROR) return nullptr;
-        return wav;
-    }
-
-    fs::path clipFile(const fs::path& assetsRoot, const std::string& path) {
-        return (assetsRoot / FileUtils::pathFromUtf8(path)).lexically_normal();
+        const auto settings = input.settings.find(clip);
+        if (settings == input.settings.end() || settings->second.isDefault()) return wav;
+        return std::make_shared<AudioClipSource>(std::move(wav), settings->second, bytes.data(), bytes.size());
     }
 
     void measureInto(const std::vector<float>& samples, double& lufs, double& peak) {
@@ -55,7 +58,21 @@ namespace {
 
 }
 
-bool SoundEventRender::render(const SoundEventDef& event, const std::string& key, const fs::path& assetsRoot, int count, uint64_t seed,
+SoundEventRender::Input SoundEventRender::prepare(const Project& project, const SoundEventDef& event) {
+    Input input;
+    input.assetsRoot = fs::absolute(project.getAssetsPath());
+    input.cacheDirectory = AudioAnalysis::cacheDirectory(project.getProjectPath());
+    for (const SoundEventClip& clip : event.clips) {
+        ClipImportSettings settings;
+        std::string error;
+        const fs::path asset = project.resolveAssetPath(FileUtils::pathFromUtf8(clip.clip.path));
+        if (AudioImportRegistry::resolve(project, asset, settings, error)) input.settings[clip.clip.path] = settings;
+        input.clipFiles.push_back(asset.lexically_normal());
+    }
+    return input;
+}
+
+bool SoundEventRender::render(const SoundEventDef& event, const std::string& key, const Input& input, int count, uint64_t seed,
                               std::vector<Rendition>& out, std::string& error) {
     out.clear();
     count = std::clamp(count, 1, MAX_COUNT);
@@ -68,8 +85,8 @@ bool SoundEventRender::render(const SoundEventDef& event, const std::string& key
     soloud.setPostClipScaler(1.0f);
     soloud.setGlobalVolume(1.0f);
 
-    std::vector<std::unique_ptr<SoLoud::Wav>> sources(event.clips.size());
-    for (size_t i = 0; i < event.clips.size(); i++) sources[i] = loadRenderClip(clipFile(assetsRoot, event.clips[i].clip.path));
+    std::vector<std::shared_ptr<SoLoud::AudioSource>> sources(event.clips.size());
+    for (size_t i = 0; i < event.clips.size(); i++) sources[i] = loadRenderClip(event.clips[i].clip.path, input);
 
     const size_t maxFrames = (size_t)std::llround(MAX_SECONDS * SAMPLE_RATE);
     std::vector<float> block((size_t)BLOCK_FRAMES * CHANNELS);
@@ -98,10 +115,11 @@ bool SoundEventRender::render(const SoundEventDef& event, const std::string& key
             const SoLoud::handle handle = soloud.play(*sources[index], (float)std::pow(10.0, voice.volumeDb / 20.0), 0.0f, true);
             soloud.setRelativePlaySpeed(handle, (float)speed);
             soloud.setLooping(handle, event.loop);
+            soloud.setLoopPoint(handle, SoundPool::getLoopPoint(sources[index].get(), 0.0));
             if (delay > 0) soloud.setDelaySamples(handle, delay);
             soloud.setPause(handle, false);
             voice.played = true;
-            passEnd = std::max(passEnd, (size_t)delay + (size_t)std::llround(sources[index]->getLength() / speed * SAMPLE_RATE));
+            passEnd = std::max(passEnd, (size_t)delay + (size_t)std::llround(SoundPool::getLength(sources[index].get()) / speed * SAMPLE_RATE));
             playing.push_back(handle);
             rendition.voices.push_back(voice);
         }
@@ -133,9 +151,9 @@ bool SoundEventRender::render(const SoundEventDef& event, const std::string& key
     return true;
 }
 
-SoundEventRender::ClipLevel SoundEventRender::measureClip(const fs::path& file) {
+SoundEventRender::ClipLevel SoundEventRender::measureClip(const std::string& clip, const Input& input) {
     ClipLevel level;
-    std::unique_ptr<SoLoud::Wav> wav = loadRenderClip(file);
+    std::shared_ptr<SoLoud::AudioSource> wav = loadRenderClip(clip, input);
     if (!wav) return level;
     SoLoud::Soloud soloud;
     if (soloud.init(0, SoLoud::Soloud::NULLDRIVER, SAMPLE_RATE, BLOCK_FRAMES, CHANNELS) != SoLoud::SO_NO_ERROR) return level;
@@ -156,7 +174,7 @@ SoundEventRender::ClipLevel SoundEventRender::measureClip(const fs::path& file) 
     return level;
 }
 
-bool SoundEventRender::matchLevels(SoundEventDef& event, const fs::path& assetsRoot, std::string& error) {
+bool SoundEventRender::matchLevels(SoundEventDef& event, const Input& input, std::string& error) {
     if (event.mode == SoundEventMode::Layer) {
         error = "Match Levels is for one clip at a time: a layer event's clips sound together";
         return false;
@@ -165,7 +183,7 @@ bool SoundEventRender::matchLevels(SoundEventDef& event, const fs::path& assetsR
     double sum = 0.0;
     int measured = 0;
     for (const SoundEventClip& clip : event.clips) {
-        ClipLevel level = measureClip(clipFile(assetsRoot, clip.clip.path));
+        ClipLevel level = measureClip(clip.clip.path, input);
         levels.push_back(level);
         if (level.loaded && level.lufs > -100.0) {
             sum += level.lufs;
@@ -187,41 +205,4 @@ bool SoundEventRender::matchLevels(SoundEventDef& event, const fs::path& assetsR
         event.clips[i].volumeDb = (float)std::clamp(target - level.lufs, -60.0, 12.0);
     }
     return true;
-}
-
-std::vector<std::string> SoundEventRender::analyze(const SoundEventDef& event, const fs::path& assetsRoot) {
-    std::vector<std::string> problems;
-    std::vector<ClipLevel> levels;
-    std::vector<double> lengths;
-    double lowest = 0.0, highest = -200.0;
-    for (const SoundEventClip& clip : event.clips) {
-        const fs::path file = clipFile(assetsRoot, clip.clip.path);
-        levels.push_back(measureClip(file));
-        std::unique_ptr<SoLoud::Wav> wav = loadRenderClip(file);
-        lengths.push_back(wav ? wav->getLength() : 0.0);
-        const ClipLevel& level = levels.back();
-        if (!level.loaded || level.lufs <= -100.0) continue;
-        const double played = level.lufs + (double)clip.volumeDb;
-        lowest = std::min(lowest, played);
-        highest = std::max(highest, played);
-    }
-    if (event.mode != SoundEventMode::Layer && highest > -200.0 && highest - lowest > 3.0) {
-        char text[96];
-        std::snprintf(text, sizeof(text), "the clips' loudness spreads over %.1f LU: match_levels brings them together", highest - lowest);
-        problems.push_back(text);
-    }
-    for (size_t i = 0; i < levels.size(); i++) {
-        if (event.mode == SoundEventMode::Layer && levels[i].loaded && levels[i].peakDbtp < -60.0) {
-            problems.push_back("clips[" + std::to_string(i) + "]: a silent layer (" + event.clips[i].clip.path + ")");
-        }
-        for (size_t j = i + 1; j < levels.size(); j++) {
-            if (!levels[i].loaded || !levels[j].loaded || event.clips[i].clip.path == event.clips[j].clip.path) continue;
-            if (std::fabs(levels[i].lufs - levels[j].lufs) < 0.05 && std::fabs(levels[i].peakDbtp - levels[j].peakDbtp) < 0.05 &&
-                std::fabs(lengths[i] - lengths[j]) < 0.001) {
-                problems.push_back("clips[" + std::to_string(i) + "] and clips[" + std::to_string(j) + "] are near-duplicates: " +
-                                   event.clips[i].clip.path + ", " + event.clips[j].clip.path);
-            }
-        }
-    }
-    return problems;
 }

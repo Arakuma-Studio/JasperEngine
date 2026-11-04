@@ -28,6 +28,7 @@
 #include "window/TerrainEditWindow.h"
 #include "window/TextureSynthesisWindow.h"
 #include "window/AudioMixerWindow.h"
+#include "window/SoundBrowserWindow.h"
 #include "window/VertexAnimationBakerWindow.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/SystemsWindow.h"
@@ -245,6 +246,7 @@ namespace jasperengine::editor{
         TerrainEditWindow* terrainEditWindow;
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
+        SoundBrowserWindow* soundBrowserWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;

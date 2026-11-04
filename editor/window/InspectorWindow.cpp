@@ -4,6 +4,9 @@
 #include "animation/AnimatorEditorHooks.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+
+#include "audio/SoundDrop.h"
+#include "window/SoundBrowserWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
@@ -9043,6 +9046,13 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                             }
                         }
                     }
+                }
+                // a built-in clip from the Sound Browser: imported first
+                if (const ImGuiPayload* builtin = ImGui::AcceptDragDropPayload(SoundBrowserWindow::BUILTIN_PAYLOAD)) {
+                    std::vector<std::string> sounds;
+                    std::string dropError;
+                    if (SoundDrop::resolve(project, builtin, sounds, dropError) && !sounds.empty()) setAudioFilename(sounds.front());
+                    if (!dropError.empty()) Out::warning("Sound drop: %s", dropError.c_str());
                 }
                 ImGui::EndDragDropTarget();
             }

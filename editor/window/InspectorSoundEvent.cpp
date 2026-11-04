@@ -15,6 +15,7 @@
 #include "audio/AudioMixer.h"
 #include "audio/SoundEventDocument.h"
 #include "audio/SoundEventRender.h"
+#include "audio/SoundSearch.h"
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
@@ -26,6 +27,7 @@
 #include "organisation/AssetLabels.h"
 #include "subsystem/AudioSystem.h"
 #include "util/FileUtils.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 
 #include "imgui.h"
@@ -46,7 +48,7 @@ namespace {
     struct SoundEventWork {
         SoundEventDef def;
         std::string key;
-        fs::path assetsRoot;
+        SoundEventRender::Input input;
         uint64_t seed = 1;
         std::string error;
         std::vector<SoundEventRender::Rendition> renditions;
@@ -135,7 +137,6 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
         ImGui::TextColored(Theme::Colors::WarningText, "Cannot read this Sound Event: %s", error.c_str());
         return;
     }
-    const fs::path assetsRoot = fs::absolute(project->getAssetsPath());
 
     auto save = [&](const SoundEventDef& changed, const char* name, const char* dragKey = nullptr) {
         std::string writeError;
@@ -386,8 +387,10 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
         auto found = std::make_shared<std::vector<std::string>>();
         view.analyzing = finished;
         view.analyzed = found;
-        std::thread([def, assetsRoot, finished, found]() {
-            *found = SoundEventRender::analyze(def, assetsRoot);
+        const SoundEventRender::Input input = SoundEventRender::prepare(*project, def);
+        std::thread([def, input, finished, found]() {
+            int analysed = 0;
+            *found = SoundSearch::eventProblems(def, input.clipFiles, input.cacheDirectory, analysed);
             finished->store(true);
         }).detach();
     }
@@ -403,10 +406,12 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
     const bool layer = def.mode == SoundEventMode::Layer;
     ImGui::BeginDisabled(layer || def.clips.empty() || view.matching != nullptr);
     if (ImGui::Button("Match Levels")) view.wantMatch = true;
+    UIProbe::item("soundEvent.matchLevels");
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(def.clips.empty() || view.audition != nullptr);
     if (ImGui::Button("Audition x8")) view.wantAudition = true;
+    UIProbe::item("soundEvent.audition");
     ImGui::EndDisabled();
     if (view.playing >= 0) {
         ImGui::SameLine();
@@ -418,10 +423,10 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
         if (!layer && !def.clips.empty() && !view.matching) {
             view.matching = std::make_shared<SoundEventWork>();
             view.matching->def = def;
-            view.matching->assetsRoot = assetsRoot;
+            view.matching->input = SoundEventRender::prepare(*project, def);
             std::shared_ptr<SoundEventWork> work = view.matching;
             std::thread([work]() {
-                SoundEventRender::matchLevels(work->def, work->assetsRoot, work->error);
+                SoundEventRender::matchLevels(work->def, work->input, work->error);
                 work->done = true;
             }).detach();
         }
@@ -441,11 +446,11 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
             view.audition = std::make_shared<SoundEventWork>();
             view.audition->def = def;
             view.audition->key = eventKey(project, asset);
-            view.audition->assetsRoot = assetsRoot;
+            view.audition->input = SoundEventRender::prepare(*project, def);
             view.audition->seed = (uint64_t)project->getAudioSettings().seed;
             std::shared_ptr<SoundEventWork> work = view.audition;
             std::thread([work]() {
-                SoundEventRender::render(work->def, work->key, work->assetsRoot, 8, work->seed, work->renditions, work->error);
+                SoundEventRender::render(work->def, work->key, work->input, 8, work->seed, work->renditions, work->error);
                 work->done = true;
             }).detach();
         }
@@ -475,6 +480,7 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
             for (const SoundEventRender::Voice& voice : renditions[i].voices) clips += (clips.empty() ? "" : ", ") + fs::path(voice.clip).filename().string();
             const std::string line = std::to_string(i + 1) + ". " + clips;
             if (ImGui::Selectable((line + "##rendition" + std::to_string(i)).c_str(), view.playing == i)) playAuditionVoice(view, i);
+            UIProbe::item("soundEvent.rendition." + std::to_string(i));
             ImGui::SameLine();
             ImGui::TextDisabled("%.1f LUFS", renditions[i].lufs);
         }
