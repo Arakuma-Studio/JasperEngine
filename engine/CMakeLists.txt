@@ -913,6 +913,10 @@ else()
     set(JASPERENGINE_LIB_TYPE STATIC)
 endif()
 
+# (the editor's export and Play builds pass their job cap; empty or 0: every CPU)
+set(JASPERENGINE_PARALLEL_BUILD_JOBS "" CACHE STRING "Parallel compile job limit of Visual Studio builds (/MP); empty or 0: every CPU")
+jasperengine_msvc_parallel_compile()
+
 if(WIN32)
     if(MSVC)
         add_compile_options(/bigobj)

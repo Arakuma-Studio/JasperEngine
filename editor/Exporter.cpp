@@ -1574,6 +1574,9 @@ bool editor::Exporter::configureBuild() {
         if (!platform.empty()) { argv.push_back("-A"); argv.push_back(platform); }
         if (!config.cmakeCCompiler.empty()) argv.push_back("-DCMAKE_C_COMPILER=" + toCMakePath(config.cmakeCCompiler));
         if (!config.cmakeCxxCompiler.empty()) argv.push_back("-DCMAKE_CXX_COMPILER=" + toCMakePath(config.cmakeCxxCompiler));
+        // the same cap as the build step's --parallel: cl's /MP under Visual Studio generators
+        // (jasperengine_msvc_parallel_compile)
+        argv.push_back("-DJASPERENGINE_PARALLEL_BUILD_JOBS=" + std::to_string(effectiveBuildJobs()));
     }
     argv.push_back("-DCMAKE_BUILD_TYPE=" + config.buildType);
     if (config.developmentBuild) argv.push_back("-DJASPERENGINE_DEVELOPMENT_BUILD=ON");
@@ -1627,6 +1630,11 @@ bool editor::Exporter::configureBuild() {
     return true;
 }
 
+unsigned int editor::Exporter::effectiveBuildJobs() const {
+    const unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
+    return std::min(jobs, Generator::getMaxParallelBuildJobs());
+}
+
 bool editor::Exporter::runBuild() {
     setProgressRaw("Compiling project...", BUILD_PROGRESS_START);
 
@@ -1634,8 +1642,7 @@ bool editor::Exporter::runBuild() {
 
     const fs::path buildDir = config.targetDir / buildDirName;
 
-    unsigned int jobs = config.buildJobs == 0 ? Generator::getAutomaticParallelBuildJobs() : config.buildJobs;
-    jobs = std::min(jobs, Generator::getMaxParallelBuildJobs());
+    const unsigned int jobs = effectiveBuildJobs();
 
     // the CMake that configured the tree (Web too: no emcmake picking its own any more)
     const std::string cmakeCmd = Generator::cmakeProgram();

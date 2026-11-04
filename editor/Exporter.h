@@ -288,6 +288,8 @@ namespace jasperengine::editor {
         bool checkTargetDir();
         bool prepareCacheTarget();
         bool configureBuild();
+        // the build's job count: ExportConfig::buildJobs (0: automatic), within the machine's cap
+        unsigned int effectiveBuildJobs() const;
         bool runBuild();
         bool collectDesktopArtifacts();
         bool collectWebArtifacts();
