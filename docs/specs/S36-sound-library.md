@@ -561,7 +561,7 @@ about 0.7 s.
   place every platform and export method passes before a clip plays, and a game with no table pays one failed open.
 - **`analyze_audio` and `search_sounds` wait 60 s, then hand over the job (R28)**, through `replyWhenJobDone`, with no
   `wait` parameter: the budget has no room for it, and images only travel in the reply. A job an agent polls has the items.
-- **A `kind event` filter finds nothing until S37 lands,** and `analyze_audio capture` reads sessions from disk with no
+- **A `kind event` filter finds nothing until S37 M6 lands** (its branch lists events in `SoundSearch`), and `analyze_audio capture` reads sessions from disk with no
   running capture known until S35 lands (tested on session directories written by the test).
 - **`test_audio_ogg` cuts ffmpeg's decode to the last page's granule.** The Vorbis spec makes the last page's granule the
   stream's length, and an encoder ends a clip that way. ffmpeg 4.4.2 (the image's) does not trim: it hands over whole

@@ -879,7 +879,8 @@ async def test_audio_import_table():
         ed.check_eq(len(tables), 1, "the table is in the build")
         table = json.loads(tables[0].read_text())
         ed.check_eq((table["format"], table["version"]), ("jasperengine.audio-imports", 1), "its format")
-        clip = table["clips"]["sfx/tone.wav"]
+        # relative to the assets folder, which a new project's root is
+        clip = table["clips"][rel]
         ed.check_eq((clip["trim_head_frames"], clip["gain_db"]), (12000, -6), "resolved to frames at the file's rate")
         manifest = json.loads(next(out.rglob("content-manifest.json")).read_text())
         ed.check(any(name.endswith("je-audio-imports.json") for name in manifest["files"]), "listed in the content manifest")
