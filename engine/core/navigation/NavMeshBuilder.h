@@ -50,7 +50,7 @@ namespace jasperengine::nav {
         bool ok = true;
         std::string error;
         double milliseconds = 0.0;
-        // what Recast warned about (S41 R4) and the layers dropped past the cap
+        // what Recast warned about (S53 R4) and the layers dropped past the cap
         std::vector<std::string> warnings;
     };
 

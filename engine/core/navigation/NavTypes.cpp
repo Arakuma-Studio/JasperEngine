@@ -129,7 +129,7 @@ int NavigationSettings::findArea(const std::string& name) const {
 int NavigationSettings::effectiveCarveTilesPerTick() const {
     if (carveTilesPerTick > 0)
         return std::min(carveTilesPerTick, 64);
-    // Auto: the tile builds a frame of the platform affords next to everything else (spec S41 R14)
+    // Auto: the tile builds a frame of the platform affords next to everything else (spec S53 R14)
 #if defined(__ANDROID__) || defined(__EMSCRIPTEN__) || (defined(__APPLE__) && TARGET_OS_IPHONE)
     return 2;
 #else

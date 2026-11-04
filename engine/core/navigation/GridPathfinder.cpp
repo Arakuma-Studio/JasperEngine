@@ -63,9 +63,28 @@ void GridReservations::release(uint32_t agent) {
 void GridReservations::reserve(uint32_t agent, const std::vector<int>& cells, uint32_t untilTick) {
     if (agent == 0)
         return;
-    release(agent);
-    std::vector<int> taken;
-    taken.reserve(cells.size());
+    // the agent's entry is reused, its cell list keeping its capacity: a walking agent's tick
+    // allocates nothing (spec S53 R19)
+    std::vector<int>* taken = nullptr;
+    for (auto& entry : held) {
+        if (entry.first == agent) {
+            taken = &entry.second;
+            break;
+        }
+    }
+    if (taken) {
+        for (int cell : *taken) {
+            if (cell >= 0 && (size_t)cell < holders.size() && holders[(size_t)cell] == agent) {
+                holders[(size_t)cell] = 0;
+                until[(size_t)cell] = 0;
+            }
+        }
+        taken->clear();
+    } else {
+        held.emplace_back(agent, std::vector<int>());
+        taken = &held.back().second;
+    }
+    taken->reserve(cells.size());
     for (int cell : cells) {
         if (cell < 0 || (size_t)cell >= holders.size())
             continue;
@@ -74,9 +93,8 @@ void GridReservations::reserve(uint32_t agent, const std::vector<int>& cells, ui
             continue;
         holders[(size_t)cell] = agent;
         until[(size_t)cell] = untilTick;
-        taken.push_back(cell);
+        taken->push_back(cell);
     }
-    held.emplace_back(agent, std::move(taken));
 }
 
 bool GridReservations::isReservedByOther(int cell, uint32_t agent, uint32_t tick) const {

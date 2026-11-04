@@ -64,7 +64,7 @@ namespace jasperengine::nav::detail {
         std::vector<unsigned int> ids;
     };
 
-    // The rcContext of a tile build (S41 R4): logging on, timers off. It keeps Recast's warnings
+    // The rcContext of a tile build (S53 R4): logging on, timers off. It keeps Recast's warnings
     // and errors in order, pointer values written as "?" (results stay deterministic) and without
     // the contour buffer's allocation notice. Nothing is allocated or formatted while Recast logs
     // nothing.

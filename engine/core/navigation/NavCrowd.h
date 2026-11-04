@@ -54,7 +54,7 @@ namespace jasperengine::nav {
         Failed
     };
 
-    // What the corridor of an agent with a valid target holds (S41 R6, D5): the way to the
+    // What the corridor of an agent with a valid target holds (S53 R6, D5): the way to the
     // target's polygon, its first 256 polygons (the search reached the target), or the way to
     // the polygon nearest an unreachable target
     enum class NavCrowdPath : uint8_t {
