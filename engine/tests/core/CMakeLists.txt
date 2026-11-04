@@ -15,6 +15,10 @@
 # tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
+# Title Art's tests (titleart/) need its module
+if(NOT JASPERENGINE_TITLE_ART)
+    list(FILTER CORE_TEST_SOURCES EXCLUDE REGEX "/titleart/")
+endif()
 
 # The allocation counter of the zero-allocation tests and the benches. It counts at malloc,
 # wrapped by GNU ld (it replaces the plain operator new with malloc), so it counts on Linux;

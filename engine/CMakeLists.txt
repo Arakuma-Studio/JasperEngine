@@ -46,6 +46,10 @@ option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crow
 # (docs/specs/S34-player-size.md); the editor, the tests and the full player have both.
 option(JASPERENGINE_HTMLUI "Compile the HTML UI" ON)
 option(JASPERENGINE_VIDEO "Compile the HTML UI's <video> (needs JASPERENGINE_HTMLUI)" ON)
+# Title Art (docs/specs/S80-title-art-core.md §6.15): the .titleart document, its renderer,
+# text, geometry, effects and runtime (engine/core/titleart, listed by TitleArtSources.cmake).
+# The editor's shared engine has it; OFF compiles nothing under engine/core/titleart.
+option(JASPERENGINE_TITLE_ART "Compile Title Art (engine/core/titleart)" ON)
 
 # =============================================================
 # STANDALONE PROJECT SETUP
@@ -1126,6 +1130,9 @@ endif()
 if(JASPERENGINE_SHARED AND NOT (JASPERENGINE_HTMLUI AND JASPERENGINE_VIDEO AND JASPERENGINE_RUNTIME_SHADERS))
     message(FATAL_ERROR "The editor's engine (JASPERENGINE_SHARED) has every module: JASPERENGINE_HTMLUI, JASPERENGINE_VIDEO and JASPERENGINE_RUNTIME_SHADERS stay ON")
 endif()
+if(JASPERENGINE_SHARED AND NOT JASPERENGINE_TITLE_ART)
+    message(FATAL_ERROR "The editor's engine (JASPERENGINE_SHARED) has Title Art: JASPERENGINE_TITLE_ART stays ON")
+endif()
 set(JASPERENGINE_HTMLUI_LIBS "")
 set(JASPERENGINE_VIDEO_LIBS "")
 if(JASPERENGINE_HTMLUI)
@@ -1896,6 +1903,11 @@ else()
         "^core/(htmlui/|debug/DebugOverlayResources|subsystem/UIDocumentSystem|object/ui/(UIDocument|UIElement|UIEvent|UIDataModel|UIValue|HtmlUI)|script/binding/HtmlUI|input/InputVirtualControls|util/ThorVGRuntime)")
     list(APPEND JASPERENGINE_SRCS core/htmlui/HtmlUIClock.cpp)
 endif()
+# Title Art (S80-S87): the module's sources, globbed per directory
+if(JASPERENGINE_TITLE_ART)
+    include(core/titleart/TitleArtSources.cmake)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TITLE_ART_SRCS})
+endif()
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
@@ -2012,6 +2024,11 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "the navigation sources: file-local Detour helpers and constants with the same names"
     SOURCES ${JASPERENGINE_NAVIGATION_SRCS})
+if(JASPERENGINE_TITLE_ART_SRCS)
+    jasperengine_skip_unity_build(
+        REASON "the Title Art sources: several streams' per-file helper sets with the same names"
+        SOURCES ${JASPERENGINE_TITLE_ART_SRCS})
+endif()
 if(JASPERENGINE_SPLINE_SRCS)
     jasperengine_skip_unity_build(
         REASON "the spline sources build with their own floating-point flags"
@@ -2055,6 +2072,7 @@ target_compile_definitions(jasperengine
         JASPERENGINE_NAVIGATION=$<BOOL:${JASPERENGINE_NAVIGATION}>
         JASPERENGINE_HTMLUI=$<BOOL:${JASPERENGINE_HTMLUI}>
         JASPERENGINE_VIDEO=$<BOOL:${JASPERENGINE_VIDEO}>
+        JASPERENGINE_TITLE_ART=$<BOOL:${JASPERENGINE_TITLE_ART}>
     PRIVATE
         $<$<BOOL:${JE_JOLT_OWN_POOL}>:JE_JOLT_OWN_POOL>
 )
