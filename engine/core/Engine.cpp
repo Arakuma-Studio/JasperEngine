@@ -122,6 +122,11 @@ int Engine::preferredCanvasHeight;
 Rect Engine::viewRect;
 
 Scaling Engine::scalingMode = Scaling::FITWIDTH;
+int Engine::pixelsPerUnit = 1;
+PixelPerfectViewRequest Engine::pixelPerfectRequest;
+pixelart::PixelPerfectLayout Engine::pixelPerfectLayout;
+int Engine::pixelPerfectForcedScale = 0;
+Vector2 Engine::viewShift = Vector2(0, 0);
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
@@ -550,6 +555,78 @@ Scaling Engine::getScalingMode(){
     return scalingMode;
 }
 
+void Engine::setPixelsPerUnit(int pixelsPerUnit){
+    Engine::pixelsPerUnit = std::clamp(pixelsPerUnit, 1, 256);
+}
+
+int Engine::getPixelsPerUnit(){
+    return pixelsPerUnit;
+}
+
+void Engine::setPixelPerfectView(const PixelPerfectViewRequest& request){
+    if (request == pixelPerfectRequest)
+        return;
+    pixelPerfectRequest = request;
+    if (viewLoaded)
+        systemViewChanged();
+}
+
+const PixelPerfectViewRequest& Engine::getPixelPerfectView(){
+    return pixelPerfectRequest;
+}
+
+const pixelart::PixelPerfectLayout& Engine::getPixelPerfectLayout(){
+    return pixelPerfectLayout;
+}
+
+pixelart::PixelPerfectLayout Engine::computePixelPerfectView(const PixelPerfectViewRequest& request, int screenWidth, int screenHeight,
+                                                             int forcedScale){
+    const int referenceWidth = request.referenceWidth > 0 ? request.referenceWidth : preferredCanvasWidth;
+    const int referenceHeight = request.referenceHeight > 0 ? request.referenceHeight : preferredCanvasHeight;
+    return pixelart::computePixelPerfectLayout(screenWidth, screenHeight, referenceWidth, referenceHeight, request.mode, forcedScale,
+                                               request.smoothing, request.pixelsPerUnit);
+}
+
+void Engine::setPixelPerfectForcedScale(int scale){
+    scale = std::max(0, scale);
+    if (scale == pixelPerfectForcedScale)
+        return;
+    pixelPerfectForcedScale = scale;
+    if (viewLoaded && pixelPerfectRequest.active)
+        systemViewChanged();
+}
+
+int Engine::getPixelPerfectForcedScale(){
+    return pixelPerfectForcedScale;
+}
+
+void Engine::setViewShift(Vector2 shift){
+    viewShift = shift;
+}
+
+Vector2 Engine::getViewShift(){
+    return viewShift;
+}
+
+void Engine::applyPixelPerfectView(int screenWidth, int screenHeight){
+    if (!pixelPerfectRequest.active){
+        pixelPerfectLayout = pixelart::PixelPerfectLayout();
+        viewShift = Vector2(0, 0);
+        return;
+    }
+    const pixelart::PixelPerfectLayout layout = computePixelPerfectView(pixelPerfectRequest, screenWidth, screenHeight, pixelPerfectForcedScale);
+    if (layout.baseWidth <= 0 || layout.baseHeight <= 0)
+        return;
+    if (layout.cropped && !pixelPerfectLayout.cropped)
+        Log::warn("Pixel Perfect Camera: the screen (%ix%i) is smaller than the reference (%ix%i): the image is cropped",
+                  screenWidth, screenHeight, layout.baseWidth, layout.baseHeight);
+    pixelPerfectLayout = layout;
+    // the canvas is in whole units: B / PPU, rounded when the PPU does not divide the base
+    canvasWidth = std::max(1, (int)std::lround(layout.canvasWidth));
+    canvasHeight = std::max(1, (int)std::lround(layout.canvasHeight));
+    viewRect = layout.viewport;
+}
+
 void Engine::setDefaultCanvasScaler(const CanvasScalerSettings& settings){
     Engine::defaultCanvasScaler = settings;
 
@@ -767,8 +844,8 @@ void Engine::systemFocusChanged(bool focused){
             systemKeyUp(key, false, 0);
     }
     const Vector2 mouse = Input::getMousePosition();
-    float screenX = viewRect.getX();
-    float screenY = viewRect.getY();
+    float screenX = viewRect.getX() + viewShift.x;
+    float screenY = viewRect.getY() + viewShift.y;
     if (canvasWidth != 0)
         screenX += (mouse.x / (float)canvasWidth) * viewRect.getWidth();
     if (canvasHeight != 0)
@@ -806,8 +883,8 @@ void Engine::setMousePosition(float x, float y){
     if (!viewLoaded)
         return;
 
-    float screenX = viewRect.getX();
-    float screenY = viewRect.getY();
+    float screenX = viewRect.getX() + viewShift.x;
+    float screenY = viewRect.getY() + viewShift.y;
     if (canvasWidth != 0)
         screenX += (x / (float)canvasWidth) * viewRect.getWidth();
     if (canvasHeight != 0)
@@ -1604,6 +1681,20 @@ void Engine::computeViewLayout(int screenWidth, int screenHeight, int preferredW
     canvasWidth = preferredWidth;
     canvasHeight = preferredHeight;
 
+    // the Pixel Perfect Camera's layout without one: the preferred canvas is the base, PPU 1
+    if (scalingMode == Scaling::INTEGER || scalingMode == Scaling::INTEGER_EXPAND){
+        const pixelart::PixelPerfectLayout layout = pixelart::computePixelPerfectLayout(screenWidth, screenHeight, preferredWidth,
+            preferredHeight, scalingMode == Scaling::INTEGER ? PixelUpscaleMode::INTEGER : PixelUpscaleMode::INTEGER_EXPAND, 0, false, 1);
+        if (layout.baseWidth > 0 && layout.baseHeight > 0){
+            canvasWidth = layout.baseWidth;
+            canvasHeight = layout.baseHeight;
+            viewRect = layout.viewport;
+        }else{
+            viewRect.setRect(0, 0, (float)screenWidth, (float)screenHeight);
+        }
+        return;
+    }
+
     //When canvas size is changed
     if (screenWidth != 0 && screenHeight != 0){
         if (scalingMode == Scaling::FITWIDTH){
@@ -1671,6 +1762,14 @@ void Engine::calculateCanvas(){
     computeViewLayout(System::instance().getScreenWidth(), System::instance().getScreenHeight(),
                       preferredCanvasWidth, preferredCanvasHeight, scalingMode,
                       Engine::canvasWidth, Engine::canvasHeight, unusedViewRect);
+    if (pixelPerfectRequest.active){
+        const pixelart::PixelPerfectLayout layout = computePixelPerfectView(pixelPerfectRequest, System::instance().getScreenWidth(),
+                                                                            System::instance().getScreenHeight(), pixelPerfectForcedScale);
+        if (layout.baseWidth > 0 && layout.baseHeight > 0){
+            Engine::canvasWidth = std::max(1, (int)std::lround(layout.canvasWidth));
+            Engine::canvasHeight = std::max(1, (int)std::lround(layout.canvasHeight));
+        }
+    }
 }
 
 // Project Settings > Player > Crash Handling: whether the crash handler and the hang watchdog are
@@ -1934,6 +2033,8 @@ void Engine::systemViewChanged(){
 
     computeViewLayout(screenWidth, screenHeight, preferredCanvasWidth, preferredCanvasHeight, scalingMode,
                       Engine::canvasWidth, Engine::canvasHeight, viewRect);
+    // a Pixel Perfect Camera's layout replaces it (S41 R3)
+    applyPixelPerfectView(screenWidth, screenHeight);
 
     if (framebuffer){
         const unsigned int fbWidth = static_cast<unsigned int>(std::max(screenWidth, 0));
@@ -2511,6 +2612,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.disableClouds = layer.disableClouds;
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
+        desc.snapPreviewScale = layer.snapPreviewScale;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);
@@ -2842,8 +2944,9 @@ std::vector<Scene*> Engine::getInputScenes(bool keys){
 
 bool Engine::transformCoordPos(float& x, float& y){
 
-    x = (x - viewRect.getX()) / viewRect.getWidth();
-    y = (y - viewRect.getY()) / viewRect.getHeight();
+    // the sub-pixel smoothing's shift of the drawn image (S41 R12)
+    x = (x - viewShift.x - viewRect.getX()) / viewRect.getWidth();
+    y = (y - viewShift.y - viewRect.getY()) / viewRect.getHeight();
     
     x = (float)Engine::getCanvasWidth() * x;
     y = (float)Engine::getCanvasHeight() * y;
@@ -3650,8 +3753,8 @@ void Engine::setTextInputArea(const Rect& canvasRect){
     // the inverse of transformCoordPos: canvas to the platform's screen pixels
     const float scaleX = viewRect.getWidth() / canvasWidth;
     const float scaleY = viewRect.getHeight() / canvasHeight;
-    System::instance().setTextInputArea(viewRect.getX() + canvasRect.getX() * scaleX,
-                                        viewRect.getY() + canvasRect.getY() * scaleY,
+    System::instance().setTextInputArea(viewRect.getX() + viewShift.x + canvasRect.getX() * scaleX,
+                                        viewRect.getY() + viewShift.y + canvasRect.getY() * scaleY,
                                         canvasRect.getWidth() * scaleX,
                                         canvasRect.getHeight() * scaleY);
 }

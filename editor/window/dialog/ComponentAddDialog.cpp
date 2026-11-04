@@ -67,6 +67,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::CameraComponent, "Renders the scene to the screen or a texture"},
             {ComponentType::CameraShakerComponent, "Shakes the camera (or this GameObject) from presets and trauma, never fighting what moves it"},
             {ComponentType::CameraFollowComponent, "Follows a target with damping, look-at, a 2D dead zone and bounds"},
+            {ComponentType::PixelPerfectCameraComponent, "Pixel art on this camera: whole-number scaling, one pixel size, every sprite on the pixel grid"},
             {ComponentType::LightComponent, "Directional, point or spot light"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},

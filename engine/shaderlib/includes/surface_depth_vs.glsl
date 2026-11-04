@@ -40,7 +40,16 @@ uniform u_vs_depthParams {
     mat4 modelMatrix;
     mat4 lightVPMatrix;
     mat4 mvpMatrix;
+    #ifdef PIXEL_SNAP
+        vec4 pixelSnapDraw; // as surface_vs.glsl's (0 in shadow maps)
+    #endif
 } depthParams;
+
+#ifdef PIXEL_SNAP
+    #define FRAME_VS
+    #include "includes/frame.glsl"
+    #include "includes/pixel_snap.glsl"
+#endif
 
 invariant gl_Position;
 
@@ -274,6 +283,14 @@ void main() {
     #endif
 
     gl_Position = depthParams.mvpMatrix * pos;
+    #ifdef PIXEL_SNAP
+        #ifdef HAS_INSTANCING
+            vec4 snapPivot = depthParams.mvpMatrix * i_matrix_col4;
+        #else
+            vec4 snapPivot = depthParams.mvpMatrix[3];
+        #endif
+        gl_Position = pixelSnapApply(gl_Position, depthParams.pixelSnapDraw.x, snapPivot);
+    #endif
 
     v_projZW = gl_Position.zw;
     #ifdef IS_VULKAN

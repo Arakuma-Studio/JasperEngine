@@ -22,6 +22,12 @@
 #define FRAME_VS
 #include "includes/frame.glsl"
 #include "includes/srgb.glsl"
+// a pixel-perfect camera's particles (S41, 'Pxs'): each particle's centre on the pixel grid, and a
+// quad turned by a multiple of 90 degrees with every corner on it (S49's Pixel Art module snaps
+// the lower-left corner of its pixel box with the same pixelSnapRound)
+#ifdef PIXEL_SNAP
+    #include "includes/pixel_snap.glsl"
+#endif
 
 uniform u_vs_particlesParams {
     mat4 modelMatrix;     // simulation space to world (the emitter's transform, or identity for World simulation)
@@ -202,6 +208,10 @@ void main() {
     vec3 normal;
     vec3 right = cameraRight;
     vec3 up = cameraUp;
+    #ifdef PIXEL_SNAP
+        vec3 snapCenter = vec3(0.0);
+        bool snapCorners = false;
+    #endif
 
 #if defined(PARTICLE_TRAIL)
     // a trail point: the centre pushed out sideways, across the tangent and the view
@@ -247,6 +257,9 @@ void main() {
         localNormal = align * localNormal;
     }
     worldPosition = (particlesParams.modelMatrix * vec4(i_particlePosition + local, 1.0)).xyz;
+    #ifdef PIXEL_SNAP
+        snapCenter = (particlesParams.modelMatrix * vec4(i_particlePosition, 1.0)).xyz;
+    #endif
     normal = particleSafeNormalize(mat3(particlesParams.modelMatrix) * localNormal, cameraBack);
     right = particleSafeNormalize(mat3(particlesParams.modelMatrix) * rotateByQuaternion(rotation, vec3(1.0, 0.0, 0.0)), cameraRight);
     up = particleSafeNormalize(mat3(particlesParams.modelMatrix) * rotateByQuaternion(rotation, vec3(0.0, 1.0, 0.0)), cameraUp);
@@ -312,6 +325,20 @@ void main() {
     #endif
     float c = cos(angle);
     float s = sin(angle);
+    #ifdef PIXEL_SNAP
+        // a quarter turn (on a view without roll) is drawn exactly on the grid: the step's axis
+        // (pixelSnapRotationStep, the rotated x axis is (c, -s)), and its corners snap one by one
+        snapCorners = abs(c * s) < 1e-4 && frame.pixelSnapOffset.z > 0.5;
+        #ifdef STRETCH
+            snapCorners = false;
+        #endif
+        if (snapCorners){
+            vec2 quarter = pixelSnapRotationStep(vec2(c, -s));
+            c = quarter.x;
+            s = -quarter.y;
+        }
+        snapCenter = center;
+    #endif
     vec2 rotated = vec2(c * corner.x + s * corner.y, -s * corner.x + c * corner.y);
     worldPosition = center + right * rotated.x + up * rotated.y + toCamera * (particlesParams.pivot.z * max(abs(size.x), abs(size.y)));
     // a rounded normal: lit sprites read as volumes
@@ -337,6 +364,13 @@ void main() {
     #endif
 
     gl_Position = frame.viewProjectionMatrix * vec4(worldPosition, 1.0);
+    #if defined(PIXEL_SNAP) && !defined(PARTICLE_TRAIL)
+        // a pass without a Pixel Perfect Camera has no grid (pixelSnap zero): nothing snaps
+        if (frame.pixelSnap.x > 0.0){
+            gl_Position = snapCorners ? pixelSnapClip(gl_Position)
+                                      : gl_Position + pixelSnapCenterDelta(frame.viewProjectionMatrix * vec4(snapCenter, 1.0));
+        }
+    #endif
 
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)

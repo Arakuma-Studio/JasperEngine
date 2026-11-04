@@ -2106,6 +2106,12 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
             camera->slide(slideX);
             camera->slideUp(slideY);
+            // Pixel Zoom: the world's pixel grid stays on whole view pixels (S41 R21)
+            if (pixelZoomActive(sceneProject)){
+                const Vector3 position = camera->getPosition();
+                camera->setPosition(pixelart::snapToViewPixels(position.x, currentZoom),
+                                    pixelart::snapToViewPixels(position.y, currentZoom), position.z);
+            }
         }
 
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Right) && isMouseInWindow && mouseWheel != 0.0f &&
@@ -2116,6 +2122,15 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
         }else if (!ImGui::IsMouseDown(ImGuiMouseButton_Right)){
             if (isMouseInWindow && mouseWheel != 0.0f){
                 float zoomFactor = 1.0f - (0.1f * mouseWheel);
+                // Pixel Zoom: 1/8x .. 32x in whole steps, one step per notch (S41 R21)
+                const bool pixelZoom = pixelZoomActive(sceneProject);
+                if (pixelZoom){
+                    SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject->sceneRender);
+                    const int ppu = project->getPixelsPerUnit();
+                    const float current = pixelart::pixelZoomScale(sceneRender2D->getZoom(), ppu);
+                    const float next = pixelart::stepPixelZoom(current, mouseWheel > 0.0f ? 1 : -1);
+                    zoomFactor = pixelart::zoomForPixelScale(next, ppu) / sceneRender2D->getZoom();
+                }
 
                 float mouseX = mousePos.x - windowPos.x;
                 float mouseY = mousePos.y - windowPos.y;
@@ -2127,6 +2142,11 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
 
                 SceneRender2D* sceneRender2D = static_cast<SceneRender2D*>(sceneProject->sceneRender);
                 sceneRender2D->zoomAtPosition(getWidth(sceneProject->id), getHeight(sceneProject->id), Vector2(mouseX, mouseY), zoomFactor);
+                if (pixelZoom){
+                    const float zoom = sceneRender2D->getZoom();
+                    const Vector3 position = camera->getPosition();
+                    camera->setPosition(pixelart::snapToViewPixels(position.x, zoom), pixelart::snapToViewPixels(position.y, zoom), position.z);
+                }
             }
         }
 

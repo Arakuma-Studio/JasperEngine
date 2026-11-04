@@ -158,6 +158,8 @@ namespace jasperengine{
         // phase 4's in-shader tier) of a shader type, 0 for a type that never applies it (UI,
         // depth, effects)
         static uint64_t getPostColorProperty(ShaderType shaderType);
+        // 'Pxs': the pixel-snapped vertex stage of MESH, DEPTH, UI and PARTICLES (S41); 0 for the others
+        static uint64_t getPixelSnapProperty(ShaderType shaderType);
         // the mesh variant bit of the High and Ultra shadow filters (USE_SHADOWS_HQ: the Vogel
         // disk, PCSS and the raw-depth view of the atlas; docs/rendering/shadows.md), set on a
         // variant that receives shadows when the shadow tier is High or above (MESH bit 33)

@@ -308,6 +308,7 @@ JASPERENGINE_INIT void init() {
         Engine::setThreadingSettings(game.threading);
     Engine::setCanvasSize(game.canvasWidth, game.canvasHeight);
     Engine::setScalingMode(game.scaling);
+    Engine::setPixelsPerUnit(game.pixelsPerUnit);
     Engine::setTextureStrategy(game.textureStrategy);
     Engine::setAtmosphereQualityDefaults(game.atmosphereQuality[0], game.atmosphereQuality[1], game.atmosphereQuality[2]);
     if (game.inputDeadzone != 0.15f) InputActions::setDefaultDeadzone(game.inputDeadzone);

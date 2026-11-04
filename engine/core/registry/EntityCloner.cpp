@@ -804,6 +804,16 @@ void prepare<SafeAreaComponent>(SafeAreaComponent& safeArea, Entity, CloneContex
 }
 
 template<>
+void prepare<PixelPerfectCameraComponent>(PixelPerfectCameraComponent& camera, Entity, CloneContext&) {
+    // the copy's layout is made by the next render update
+    const PixelPerfectCameraComponent defaults;
+    camera.layout = defaults.layout;
+    camera.snappedPosition = defaults.snappedPosition;
+    camera.subpixelOffset = defaults.subpixelOffset;
+    camera.active = false;
+}
+
+template<>
 void prepare<RectTransformComponent>(RectTransformComponent& layout, Entity, CloneContext& ctx) {
     layout.panel = ctx.remap(layout.panel);
     layout.needUpdateSizes = true;
@@ -1174,6 +1184,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<SpriteComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<SpriteAnimationComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<CameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<PixelPerfectCameraComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

@@ -68,6 +68,7 @@
 #include <cmath>
 #include "LayoutGroup.h"
 #include "object/ui/CanvasGroup.h"
+#include "object/PixelPerfectCamera.h"
 #include "AudioSource.h"
 #include "Engine.h"
 #include "ObjectManager.h"
@@ -1471,6 +1472,15 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .deriveClass<Camera, GameObject>("Camera")
         .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
         .addProperty("enabled", &Camera::isEnabled, &Camera::setEnabled)
+        // its Pixel Perfect Camera, nil without one (S41)
+        .addFunction("getPixelPerfectCamera", +[](Camera* self) -> std::optional<PixelPerfectCamera> {
+            Scene* scene = self->getScene();
+            if (!scene || !scene->isEntityCreated(self->getEntity()) ||
+                !scene->findComponent<PixelPerfectCameraComponent>(self->getEntity())){
+                return std::nullopt;
+            }
+            return PixelPerfectCamera(scene, self->getEntity());
+        })
         .addFunction("activate", &Camera::activate)
         .addFunction("setOrtho", &Camera::setOrtho)
         .addFunction("setPerspective", &Camera::setPerspective)
@@ -2119,6 +2129,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("findRectByString", &Tilemap::findRectByString)
         .addFunction("findTileByString", &Tilemap::findTileByString)
         .addProperty("textureScaleFactor", &Tilemap::getTextureScaleFactor, &Tilemap::setTextureScaleFactor)
+        .addProperty("pixelsPerUnit", &Tilemap::getPixelsPerUnit, &Tilemap::setPixelsPerUnit)
         .addFunction("addRect", 
             luabridge::overload<int, const std::string&, const std::string&, TextureFilter, Rect>(&Tilemap::addRect),
             luabridge::overload<int, const std::string&, const std::string&, Rect>(&Tilemap::addRect),
@@ -2719,6 +2730,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("height", &Sprite::getHeight, &Sprite::setHeight)
         .addProperty("flipY", &Sprite::isFlipY, &Sprite::setFlipY)
         .addProperty("textureScaleFactor", &Sprite::getTextureScaleFactor, &Sprite::setTextureScaleFactor)
+        .addProperty("pixelsPerUnit", &Sprite::getPixelsPerUnit, &Sprite::setPixelsPerUnit)
+        .addProperty("pixelRotation", &Sprite::getPixelRotation, &Sprite::setPixelRotation)
         .addProperty("textureRect", &Sprite::getTextureRect, (void(Sprite::*)(Rect))&Sprite::setTextureRect)
         .addFunction("setTextureRect",(void(Sprite::*)(float, float, float, float)) &Sprite::setTextureRect)
         .addProperty("pivotPreset", &Sprite::getPivotPreset, &Sprite::setPivotPreset)
@@ -2835,6 +2848,31 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("isFading", &CanvasGroup::isFading)
         .addFunction("getGameObject", &CanvasGroup::getGameObject)
         .addFunction("getCanvasGroupComponent", &CanvasGroup::getComponent<CanvasGroupComponent>)
+        .endClass();
+
+    // S41: the Pixel Perfect Camera (docs/mcp/guide/lua-api.md)
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<PixelPerfectCamera, EntityHandle>("PixelPerfectCamera")
+        .addConstructor <void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &PixelPerfectCamera::isEnabled, &PixelPerfectCamera::setEnabled)
+        .addProperty("referenceResolution", &PixelPerfectCamera::getReferenceResolution, &PixelPerfectCamera::setReferenceResolution)
+        .addProperty("upscaleMode", &PixelPerfectCamera::getUpscaleMode, &PixelPerfectCamera::setUpscaleMode)
+        .addProperty("upscaleRenderTexture", &PixelPerfectCamera::isUpscaleRenderTexture, &PixelPerfectCamera::setUpscaleRenderTexture)
+        .addProperty("pixelSnapping", &PixelPerfectCamera::isPixelSnapping, &PixelPerfectCamera::setPixelSnapping)
+        .addProperty("rotationMode", &PixelPerfectCamera::getRotationMode, &PixelPerfectCamera::setRotationMode)
+        .addProperty("subpixelSmoothing", &PixelPerfectCamera::isSubpixelSmoothing, &PixelPerfectCamera::setSubpixelSmoothing)
+        .addProperty("letterboxColor", &PixelPerfectCamera::getLetterboxColor, &PixelPerfectCamera::setLetterboxColor)
+        .addProperty("pixelRatio", &PixelPerfectCamera::getPixelRatio)
+        .addProperty("baseResolution", &PixelPerfectCamera::getBaseResolution)
+        .addProperty("targetResolution", &PixelPerfectCamera::getTargetResolution)
+        .addProperty("viewport", &PixelPerfectCamera::getViewport)
+        .addProperty("snappedPosition", &PixelPerfectCamera::getSnappedPosition)
+        .addProperty("subpixelOffset", &PixelPerfectCamera::getSubpixelOffset)
+        .addProperty("cropped", &PixelPerfectCamera::isCropped)
+        .addFunction("worldToPixel", &PixelPerfectCamera::worldToPixel)
+        .addFunction("pixelToWorld", &PixelPerfectCamera::pixelToWorld)
+        .addFunction("roundToPixel", &PixelPerfectCamera::roundToPixel)
+        .addFunction("getPixelPerfectCameraComponent", &PixelPerfectCamera::getComponent<PixelPerfectCameraComponent>)
         .endClass();
 
     luabridge::getGlobalNamespace(L)

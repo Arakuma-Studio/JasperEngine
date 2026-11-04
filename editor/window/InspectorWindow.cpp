@@ -8529,12 +8529,22 @@ void editor::InspectorWindow::drawSpriteComponent(ComponentType cpType, ScenePro
     RowSettings settingsPivot;
     settingsPivot.enumEntries = &entriesPivotPreset;
 
-    beginTable(cpType, getLabelSize("Texture Scale"));
+    // S41: texels per world unit (0: the project's) and the rotation policy under a Pixel Perfect Camera
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+    RowSettings settingsPixelRotation;
+    settingsPixelRotation.enumEntries = enumEntries(reflect::enums::kPixelRotation);
+    settingsPixelRotation.help = "Under a Pixel Perfect Camera: the camera's rotation policy, 90 Degree Steps or Rotate On Grid.";
+
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Enum, cpType, "pivotPreset", "Pivot", sceneProject, entities, settingsPivot);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
+    propertyRow(RowPropertyType::Enum, cpType, "pixelRotation", "Pixel Rotation", sceneProject, entities, settingsPixelRotation);
 
     endTable();
 
@@ -9315,11 +9325,16 @@ void editor::InspectorWindow::drawTilemapComponent(ComponentType cpType, ScenePr
     settingsTexScale.secondColSize = 6 * ImGui::GetFontSize();
     settingsTexScale.help = "Increase or decrease texture area by a factor";
 
-    beginTable(cpType, getLabelSize("Reserve Tiles"));
+    RowSettings settingsPpu;
+    settingsPpu.secondColSize = 6 * ImGui::GetFontSize();
+    settingsPpu.help = "Texels per world unit. 0 = Project (" + std::to_string(project->getPixelsPerUnit()) + ").";
+
+    beginTable(cpType, getLabelSize("Pixels Per Unit"));
     propertyRow(RowPropertyType::UInt, cpType, "width", "Width", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::UInt, cpType, "height", "Height", sceneProject, entities, settingsInt);
     propertyRow(RowPropertyType::Float, cpType, "textureScaleFactor", "Texture Scale", sceneProject, entities, settingsTexScale);
     propertyRowWithAutoButton(RowPropertyType::Bool, cpType, "flipY", "Flip Y", "automaticFlipY", "Automatic Flip Y", sceneProject, entities);
+    propertyRow(RowPropertyType::FloatPositive, cpType, "pixelsPerUnit", "Pixels Per Unit", sceneProject, entities, settingsPpu);
     propertyRow(RowPropertyType::UInt, cpType, "reserveTiles", "Reserve Tiles", sceneProject, entities, settingsInt);
     endTable();
 

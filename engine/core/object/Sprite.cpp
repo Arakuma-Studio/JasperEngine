@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Sprite.h"
+#include <algorithm>
 
 #include "component/ShadowCaster2DComponent.h"
 #include "util/Color.h"
@@ -130,6 +131,32 @@ void Sprite::setTextureScaleFactor(float textureScaleFactor){
         spritecomp.needUpdateSprite = true;
         markChanged<SpriteComponent>();
     }
+}
+
+void Sprite::setPixelsPerUnit(float pixelsPerUnit){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    pixelsPerUnit = std::max(0.0f, pixelsPerUnit);
+    if (spritecomp.pixelsPerUnit != pixelsPerUnit){
+        spritecomp.pixelsPerUnit = pixelsPerUnit;
+        spritecomp.needUpdateSprite = true;
+        markChanged<SpriteComponent>();
+    }
+}
+
+float Sprite::getPixelsPerUnit() const{
+    return getComponent<SpriteComponent>().pixelsPerUnit;
+}
+
+void Sprite::setPixelRotation(PixelRotation pixelRotation){
+    SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (spritecomp.pixelRotation != pixelRotation){
+        spritecomp.pixelRotation = pixelRotation;
+        markChanged<SpriteComponent>();
+    }
+}
+
+PixelRotation Sprite::getPixelRotation() const{
+    return getComponent<SpriteComponent>().pixelRotation;
 }
 
 float Sprite::getTextureScaleFactor() const{

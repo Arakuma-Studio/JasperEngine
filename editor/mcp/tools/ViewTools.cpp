@@ -954,6 +954,11 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"disable_fog", &SceneDisplaySettings::disableFog},
         {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
+        // S41 (in a scene with a Pixel Perfect Camera)
+        {"pixel_zoom", &SceneDisplaySettings::pixelZoom},
+        {"pixel_grid", &SceneDisplaySettings::pixelGrid},
+        {"pixel_snap_preview", &SceneDisplaySettings::pixelSnapPreview},
+        {"pixel_move_snap", &SceneDisplaySettings::pixelMoveSnap},
     };
     return flags;
 }

@@ -252,6 +252,10 @@ ComponentType editor::Catalog::getConflictingComponent(ComponentType type){
 }
 
 std::string editor::Catalog::getComponentConflict(EntityRegistry* registry, Entity entity, ComponentType type){
+    // a Pixel Perfect Camera goes on a camera (S41 R19)
+    if (type == ComponentType::PixelPerfectCameraComponent && registry && registry->isEntityCreated(entity) &&
+            !registry->findComponent<CameraComponent>(entity))
+        return "A Pixel Perfect Camera goes on a GameObject with a Camera (add a Camera first).";
     const ComponentType other = getConflictingComponent(type);
     if (other == ComponentType::Transform || !registry || !registry->isEntityCreated(entity))
         return "";

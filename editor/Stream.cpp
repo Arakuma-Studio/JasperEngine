@@ -2206,6 +2206,11 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
         sceneNode["showAllLattices"] = ds.showAllLattices;
+    // S41: written only when turned off (on by default)
+    if (!ds.pixelZoom) sceneNode["pixelZoom"] = false;
+    if (!ds.pixelGrid) sceneNode["pixelGrid"] = false;
+    if (!ds.pixelSnapPreview) sceneNode["pixelSnapPreview"] = false;
+    if (!ds.pixelMoveSnap) sceneNode["pixelMoveSnap"] = false;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -2236,6 +2241,10 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
+    ds.pixelZoom = node["pixelZoom"] ? YamlNumbers::as<bool>(node["pixelZoom"]) : true;
+    ds.pixelGrid = node["pixelGrid"] ? YamlNumbers::as<bool>(node["pixelGrid"]) : true;
+    ds.pixelSnapPreview = node["pixelSnapPreview"] ? YamlNumbers::as<bool>(node["pixelSnapPreview"]) : true;
+    ds.pixelMoveSnap = node["pixelMoveSnap"] ? YamlNumbers::as<bool>(node["pixelMoveSnap"]) : true;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
@@ -2539,11 +2548,14 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
             if (tier != ShadowTiers::defaultTier(platform))
                 tiers[Project::getShadowTierPlatformName(platform)] = StreamSchema::shadowTier().toString(tier);
         }
-        if (tiers.size() > 0){
-            YAML::Node graphics;
+        YAML::Node graphics;
+        if (tiers.size() > 0)
             graphics["shadowTier"] = tiers;
+        // graphics.pixelsPerUnit (S41), only away from 1
+        if (project->getPixelsPerUnit() != Project::defaultPixelsPerUnit)
+            graphics["pixelsPerUnit"] = project->getPixelsPerUnit();
+        if (graphics.size() > 0)
             root["graphics"] = graphics;
-        }
     }
 
     root["windowMode"] = windowModeToString(project->getWindowMode());
@@ -3168,6 +3180,14 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 tier = StreamSchema::shadowTier().fromString(value.Scalar());
         }
         project->setShadowTier(platform, tier);
+    }
+    // graphics.pixelsPerUnit (S41): absent is 1
+    {
+        const YAML::Node graphics = node["graphics"];
+        int pixelsPerUnit = Project::defaultPixelsPerUnit;
+        if (graphics && graphics.IsMap() && graphics["pixelsPerUnit"] && graphics["pixelsPerUnit"].IsScalar())
+            pixelsPerUnit = YamlNumbers::as<int>(graphics["pixelsPerUnit"]);
+        project->setPixelsPerUnit(pixelsPerUnit);
     }
 
     if (node["windowMode"]) {

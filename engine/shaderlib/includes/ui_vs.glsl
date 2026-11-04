@@ -13,7 +13,16 @@
 
 uniform u_vs_uiParams {
     mat4 mvpMatrix;
+    #ifdef PIXEL_SNAP
+        vec4 pixelSnapDraw; // x the draw's snap: 0 none, 1 every vertex, 2 the pivot (S41)
+    #endif
 } uiParams;
+
+#ifdef PIXEL_SNAP
+    #define FRAME_VS
+    #include "includes/frame.glsl"
+    #include "includes/pixel_snap.glsl"
+#endif
 
 in vec3 a_position;
 
@@ -49,6 +58,9 @@ void main() {
     #endif
 
     gl_Position = uiParams.mvpMatrix * vec4(a_position, 1.0);
+    #ifdef PIXEL_SNAP
+        gl_Position = pixelSnapApply(gl_Position, uiParams.pixelSnapDraw.x, uiParams.mvpMatrix[3]);
+    #endif
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)
         gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;

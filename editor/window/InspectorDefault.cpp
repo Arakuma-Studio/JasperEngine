@@ -451,6 +451,8 @@ editor::InspectorWindow::ComponentDrawer editor::InspectorWindow::componentDrawe
         case ComponentType::TouchAreaComponent: return &InspectorWindow::drawTouchAreaComponent;
         case ComponentType::RagdollComponent: return &InspectorWindow::drawRagdollComponent;
         case ComponentType::CanvasGroupComponent: return &InspectorWindow::drawCanvasGroupComponent;
+        // pixel art (InspectorPixelArt.cpp)
+        case ComponentType::PixelPerfectCameraComponent: return &InspectorWindow::drawPixelPerfectCameraComponent;
         default: return nullptr;
     }
 }

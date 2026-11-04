@@ -1,0 +1,252 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// S41 AC11 (R14): a 2D scene without a Pixel Perfect Camera and without an integer Scaling draws
+// exactly what it drew before S41: the same passes, the same number of draws, the same shader
+// variants, and no more allocations on the main thread in a steady frame. The reference
+// (fixtures/pixelart/zero_cost.txt) was recorded by this test on the engine before S41's changes
+// (JASPER_TEST_UPDATE_FIXTURES=1 rewrites it; only do that from an engine without S41).
+
+#include "Engine.h"
+#include "Scene.h"
+#include "component/MeshComponent.h"
+#include "component/UIComponent.h"
+#include "object/Camera.h"
+#include "object/Sprite.h"
+#include "object/Tilemap.h"
+#include "object/ui/Image.h"
+#include "object/ui/Text.h"
+#include "pool/ShaderPool.h"
+#include "render/RenderStats.h"
+#include "render/SystemRender.h"
+#include "subsystem/RenderSystem.h"
+#include "texture/TextureData.h"
+
+#include "GpuEnvironment.h"
+#include "LogCapture.h"
+#include "Readback.h"
+#include "TestPaths.h"
+#include "support/AllocationCounter.h"
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <cstdint>
+#include <fstream>
+#include <set>
+#include <sstream>
+#include <string>
+#include <vector>
+
+using namespace jasperengine;
+using namespace jasperengine::test;
+
+namespace {
+
+    // a 16 x 16 checker in two colours; the pixels outlive every texture made of them
+    const std::vector<uint8_t>& checkerPixels(){
+        static const std::vector<uint8_t> pixels = [](){
+            std::vector<uint8_t> rgba(16 * 16 * 4);
+            for (int y = 0; y < 16; y++){
+                for (int x = 0; x < 16; x++){
+                    const bool on = ((x + y) & 1) == 0;
+                    uint8_t* p = &rgba[(y * 16 + x) * 4];
+                    p[0] = on ? 255 : 0;
+                    p[1] = on ? 0 : 255;
+                    p[2] = 0;
+                    p[3] = 255;
+                }
+            }
+            return rgba;
+        }();
+        return pixels;
+    }
+
+    TextureData checkerData(){
+        return TextureData(16, 16, 16 * 16 * 4, ColorFormat::RGBA, 4, (void*)checkerPixels().data());
+    }
+
+    std::string fixturePath(){
+        return testPaths().sourceDir + "/fixtures/pixelart/zero_cost.txt";
+    }
+
+    // what the frame is made of: its passes in order, its draws, the variants its objects drew
+    // with (sorted), and the main thread's allocations in a steady frame
+    struct FrameRecord {
+        std::vector<std::string> passes;
+        uint32_t draws = 0;
+        std::vector<std::string> shaders;
+        uint64_t allocations = 0;
+        uint64_t image = 0;     // FNV-1a of the target's pixels
+    };
+
+    std::string serialize(const FrameRecord& record){
+        std::ostringstream out;
+        out << "draws " << record.draws << "\n";
+        out << "allocations " << record.allocations << "\n";
+        out << "image " << record.image << "\n";
+        for (const std::string& pass : record.passes)
+            out << "pass " << pass << "\n";
+        for (const std::string& shader : record.shaders)
+            out << "shader " << shader << "\n";
+        return out.str();
+    }
+
+    bool parse(const std::string& text, FrameRecord& record){
+        std::istringstream in(text);
+        std::string line;
+        bool any = false;
+        while (std::getline(in, line)){
+            if (line.empty() || line[0] == '#')
+                continue;
+            const size_t space = line.find(' ');
+            if (space == std::string::npos)
+                return false;
+            const std::string key = line.substr(0, space);
+            const std::string value = line.substr(space + 1);
+            any = true;
+            if (key == "draws")
+                record.draws = (uint32_t)std::stoul(value);
+            else if (key == "allocations")
+                record.allocations = std::stoull(value);
+            else if (key == "image")
+                record.image = std::stoull(value);
+            else if (key == "pass")
+                record.passes.push_back(value);
+            else if (key == "shader")
+                record.shaders.push_back(value);
+            else
+                return false;
+        }
+        return any;
+    }
+
+    class PixelPerfectOffGpu : public ::testing::Test {
+    protected:
+        Scene scene;
+        Camera camera{&scene};
+
+        void SetUp() override{
+            GpuEnvironment::setView(320, 180, 320, 180, Scaling::LETTERBOX);
+            scene.setBackgroundColor(0.1f, 0.1f, 0.2f, 1.0f);
+            camera.activate();
+            Engine::setScene(&scene);
+        }
+
+        void TearDown() override{
+            Engine::removeScene(&scene);
+        }
+    };
+
+}
+
+TEST_F(PixelPerfectOffGpu, ZeroCost){
+    JASPER_REQUIRE_GPU();
+
+    // sprites (one odd-sized with a CENTER pivot at a half pixel), a tilemap, a nine-slice
+    // Image and a Text: the drawables S41's snapping touches when it is on
+    Sprite hero(&scene);
+    hero.setTexture("pixelart|zero-cost|checker", checkerData());
+    hero.setSize(15, 16);
+    hero.setPivotPreset(PivotPreset::CENTER);
+    hero.setPosition(40.5f, 60.25f, 0.0f);
+
+    Sprite turned(&scene);
+    turned.setTexture("pixelart|zero-cost|checker", checkerData());
+    turned.setSize(16, 16);
+    turned.setPosition(120.0f, 40.0f, 0.0f);
+    turned.setRotation(0.0f, 0.0f, 37.0f);
+
+    Tilemap floor(&scene);
+    floor.setTexture("pixelart|zero-cost|checker", checkerData());
+    floor.addRect(0, "tile", Rect(0, 0, 16, 16));
+    for (int i = 0; i < 4; i++)
+        floor.addTile(0, Vector2(16.0f * i, 0.0f), 16, 16);
+    floor.setPosition(0.0f, 120.0f, 0.0f);
+
+    Image panel(&scene);
+    panel.setTexture("pixelart|zero-cost|checker", checkerData());
+    panel.setSize(48, 32);
+    panel.setPatchMargin(4);
+    panel.setPosition(200.0f, 20.0f, 0.0f);
+
+    Text label(&scene);
+    label.setText("S41");
+    label.setPosition(200.0f, 120.0f, 0.0f);
+
+    Scene* current = &scene;
+    ASSERT_TRUE(GpuEnvironment::runFrames([current](){
+        return current->getSystem<RenderSystem>()->isAllLoaded();
+    })) << "the scene never finished loading";
+
+    FrameRecord record;
+
+    // the steady frame's allocations on the main thread: the least of a few frames (a frame now
+    // and then grows a container the others reuse)
+    uint64_t least = UINT64_MAX;
+    for (int i = 0; i < 5; i++){
+        testsupport::ThreadAllocationCount count;
+        Engine::systemDraw();
+        least = std::min(least, count.count());
+    }
+    record.allocations = testsupport::countsAllocations() ? least : 0;
+
+    record.draws = Engine::getFrameStats().drawCalls;
+    const PassList passes = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+    for (const PassRecord& pass : passes.passes)
+        record.passes.push_back(pass.label);
+
+    {
+        Framebuffer& target = GpuEnvironment::target();
+        std::vector<uint8_t> rgba;
+        ASSERT_TRUE(readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba));
+        uint64_t hash = 1469598103934665603ull;
+        for (uint8_t byte : rgba){
+            hash ^= byte;
+            hash *= 1099511628211ull;
+        }
+        record.image = hash;
+    }
+
+    std::set<std::string> shaders;
+    auto meshes = scene.getComponentArray<MeshComponent>();
+    for (size_t i = 0; i < meshes->size(); i++){
+        const MeshComponent& mesh = meshes->getComponentFromIndex(i);
+        for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+            shaders.insert(ShaderPool::getShaderStr(ShaderType::MESH, mesh.submeshes[s].shaderProperties));
+            if (mesh.submeshes[s].depthShaderProperties != 0)
+                shaders.insert(ShaderPool::getShaderStr(ShaderType::DEPTH, mesh.submeshes[s].depthShaderProperties));
+        }
+    }
+    auto uis = scene.getComponentArray<UIComponent>();
+    for (size_t i = 0; i < uis->size(); i++)
+        shaders.insert(ShaderPool::getShaderStr(ShaderType::UI, uis->getComponentFromIndex(i).shaderProperties));
+    record.shaders.assign(shaders.begin(), shaders.end());
+
+    ASSERT_FALSE(record.passes.empty()) << "no pass was recorded for the frame";
+    ASSERT_GT(record.draws, 0u);
+
+    if (envFlag("JASPER_TEST_UPDATE_FIXTURES")){
+        std::ofstream out(fixturePath(), std::ios::binary | std::ios::trunc);
+        out << "# S41 AC11: the frame of PixelPerfectOffGpu.ZeroCost on the engine before S41\n" << serialize(record);
+        ASSERT_TRUE(out.good()) << fixturePath();
+        GTEST_SKIP() << "wrote " << fixturePath();
+    }
+
+    std::ifstream in(fixturePath(), std::ios::binary);
+    ASSERT_TRUE(in.good()) << "missing " << fixturePath();
+    std::stringstream text;
+    text << in.rdbuf();
+    FrameRecord before;
+    ASSERT_TRUE(parse(text.str(), before)) << fixturePath();
+
+    EXPECT_EQ(record.passes, before.passes) << serialize(record);
+    EXPECT_EQ(record.draws, before.draws);
+    EXPECT_EQ(record.shaders, before.shaders) << serialize(record);
+    EXPECT_EQ(record.image, before.image) << "the frame draws other pixels than before S41";
+    // no more than before (a frame may allocate less)
+    if (testsupport::countsAllocations()){
+        EXPECT_LE(record.allocations, before.allocations);
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}

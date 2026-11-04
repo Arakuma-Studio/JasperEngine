@@ -27,6 +27,8 @@
 #include "component/TerrainComponent.h"
 #include "component/TilemapComponent.h"
 #include "component/SpriteComponent.h"
+#include "component/PixelPerfectCameraComponent.h"
+#include "pixelart/PixelSnap.h"
 #include "component/Transform.h"
 #include "render/ObjectRender.h"
 #include "render/CameraRender.h"
@@ -122,6 +124,10 @@ namespace jasperengine{
 		Vector4 lightingInfo;           // x 3D shadow PCF tap radius
 		Vector4 fogColor_type;          // rgb fog colour, w type (0 linear, 1 exponential, 2 exponential squared)
 		Vector4 fogDensity_start_end;   // x density, z linear start, w linear end
+		// the pass's pixel-snap grid (S41, includes/pixel_snap.glsl; zero without one): xy T in base
+		// pixels, z flipY, w k; and xy the direct smoothing offset, z 1 when the view is on the grid
+		Vector4 pixelSnap;
+		Vector4 pixelSnapOffset;
 		// the fragment block of a variant with the post-processing colour (USE_POST_COLOR)
 		post_color_t postColor;
 	} frame_t;
@@ -242,6 +248,8 @@ namespace jasperengine{
 		Matrix4 modelMatrix;
 		Matrix4 lightVPMatrix;
 		Matrix4 mvpMatrix; // lightVPMatrix * modelMatrix
+		// a pixel-snapped variant's ('Pxs') snap of the draw: 0 none (shadow maps), 1 every vertex, 2 the pivot
+		Vector4 pixelSnapDraw;
 	} vs_depth_t;
 
 	typedef struct vs_gbuffer_t {
@@ -404,6 +412,9 @@ namespace jasperengine{
 		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
 		// fog, volumetric clouds)
 		bool atmosphereDepth = false;
+		// a camera of the scene draws through a Pixel Perfect Camera that snaps (S41): sprites,
+		// tilemaps (and their depth programs) take the 'Pxs' variants
+		bool pixelSnap = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -428,7 +439,8 @@ namespace jasperengine{
 		UBER_FILM_DAMAGE  = 1u << 15, // 'Fdm' film damage: hairs, scratches, dust, gate weave and mask
 		UBER_GRAIN_LENS   = 1u << 16, // 'Gln' the Lens film grain (with UBER_GRAIN)
 		UBER_GRAIN_FILMIC = 1u << 17, // 'Gfm' the Filmic film grain (with UBER_GRAIN)
-		UBER_FEATURE_COUNT = 18
+		UBER_SHARP_BILINEAR = 1u << 18, // 'Psb' the Pixel Perfect Camera's Stretch Fill (S41 R11)
+		UBER_FEATURE_COUNT = 19
 	};
 
 	// What a PostProcessingSettings turns on (shader library phase 4): the in-shader colour
@@ -542,6 +554,27 @@ namespace jasperengine{
 		bool terrainHex = false;
 		// and a layer takes Stochastic Tiling (TERRAIN_HEX_STOCHASTIC, with terrainHex only)
 		bool terrainHexStochastic = false;
+		// a pixel-art drawable (a Sprite or a Tilemap): snapped under a Pixel Perfect Camera (S41)
+		bool pixelArt = false;
+	};
+
+	// A camera that draws through a Pixel Perfect Camera this frame (S41, RenderSystemPixelArt.cpp)
+	struct PixelPerfectDrive {
+		Entity cameraEntity = NULL_ENTITY;
+		// the camera component it drives (refreshed once the frame's cameras are made)
+		const CameraComponent* camera = nullptr;
+		pixelart::PixelPerfectLayout layout;
+		// the base image goes into the fixed-resolution target at T and the blit scales it by k;
+		// otherwise the camera draws straight into the viewport on the same grid
+		bool renderTexture = false;
+		bool snapping = true;
+		PixelRotation rotation = PixelRotation::STEPS_90;
+		PixelUpscaleMode mode = PixelUpscaleMode::INTEGER;
+		int pixelsPerUnit = 1;
+		bool smoothing = false;
+		// the sub-pixel smoothing's move of the image, base pixels (x right, y up of the image)
+		Vector2 shift;
+		Vector4 letterboxColor = Vector4(0, 0, 0, 1);
 	};
 
 	// The shaders one submesh draws with
@@ -1179,6 +1212,12 @@ namespace jasperengine{
 			// drawn through the camera draw() used this frame: culling, detail levels,
 			// terrain cut, shadow cascades and mirrors are the frame's own
 			bool sharesPrimaryCamera = false;
+			// S41: the view's Pixel Perfect Camera (its layout on the view's target), and the Scene
+			// view's Snap Preview grid
+			PixelPerfectDrive pixelPerfect;
+			bool pixelPerfectActive = false;
+			bool snapPreview = false;
+			pixelart::SnapGrid snapPreviewGrid;
 
 			PassObjects objects;
 
@@ -1597,6 +1636,24 @@ namespace jasperengine{
 		// fixed-resolution blit when that is on, else one pass after the scene
 		bool uberLoaded = false;
 		uint32_t uberFeatures = 0;         // the variant loaded
+		// S41: what a Pixel Perfect Camera asks of the uber pass this frame (renderCameraPass):
+		// the source rect, the bars' colour and Stretch Fill's screen pixels per base pixel
+		Vector4 uberInnerUV = Vector4(1.0f, 0.0f, 1.0f, 0.0f);
+		const Vector4* uberClearColor = nullptr;
+		Vector2 uberSharpBilinear = Vector2(0.0f, 0.0f);
+		// the Pixel Perfect Cameras of this frame, and the main camera's (-1: none drives it)
+		std::vector<PixelPerfectDrive> pixelPerfectDrives;
+		int mainPixelPerfect = -1;
+		// objects load with the 'Pxs' bit (a snapping Pixel Perfect Camera in the scene)
+		bool pixelSnapVariants = false;
+		// the pass being drawn snaps (its grid, the frame block's)
+		bool passPixelSnap = false;
+		pixelart::SnapGrid passSnapGrid;
+		const PixelPerfectDrive* passPixelPerfect = nullptr;
+		// direct mode: the background colour as a texture, to fill the viewport inside the bars
+		TextureRender pixelPerfectFill;
+		uint32_t pixelPerfectFillColor = 0;
+		bool pixelPerfectFillCreated = false;
 		CameraRender uberPassRender;
 		ObjectRender uberRender;
 		std::shared_ptr<ShaderRender> uberShader;
@@ -1852,6 +1909,41 @@ namespace jasperengine{
 		bool isLight2DActive(Entity entity, const Light2DComponent& light) const;
 		bool isRenderingFlipped(const CameraComponent& camera) const;
 		bool isFixedResolutionActive() const;
+		// the fixed-resolution target's size: the Pixel Perfect Camera's T when one drives the
+		// main camera (S41 R4), else the scene's Fixed Resolution
+		unsigned int fixedResolutionWidth() const;
+		unsigned int fixedResolutionHeight() const;
+		TextureFilter fixedResolutionFilter() const;
+
+		// ---- S41: Pixel Perfect Camera (RenderSystemPixelArt.cpp)
+		// the cameras of the scene with an applicable Pixel Perfect Camera: their layout, the
+		// Engine's view request, their clips; the variants' 'Pxs' environment
+		void updatePixelPerfect(Entity mainCameraEntity);
+		// a Sprite or a Tilemap while the scene snaps: its submeshes take 'Pxs'
+		bool isPixelArtDrawable(Entity entity) const;
+		void refreshPixelPerfectCameras();
+		PixelPerfectDrive* findPixelPerfectDrive(Entity cameraEntity);
+		const PixelPerfectDrive* findPixelPerfectDrive(const CameraComponent& camera) const;
+		// the main camera's of the view being drawn (the Game view's own in a secondary view)
+		const PixelPerfectDrive* viewPixelPerfect() const;
+		bool makePixelPerfectDrive(Entity cameraEntity, const CameraComponent& camera, const PixelPerfectCameraComponent& component,
+		                           bool mainOfBaseLayer, int screenWidth, int screenHeight, PixelPerfectDrive& drive) const;
+		void applyPixelPerfectClips(CameraComponent& camera, const PixelPerfectDrive& drive) const;
+		// R8: the view at the camera's snapped position, its residual into the drive (shift)
+		void snapPixelPerfectView(CameraComponent& camera, const Transform& transform, PixelPerfectDrive& drive) const;
+		// R10 Steps90: the model with its rotation rounded to 90 degrees when the pass's policy says so
+		Matrix4 pixelArtModel(Entity entity, const Matrix4& model, const PixelPerfectDrive* drive) const;
+		// the pass's grid into the frame block (zero without one)
+		void fillPassPixelSnap(frame_t& frame, const CameraComponent& camera);
+		// a draw's mode for pixelSnapDraw.x: 0 none, 1 every vertex, 2 the pivot
+		float pixelSnapDrawMode(const Matrix4& mvp) const;
+		// u_vs_pbrParams of a draw (model, normal, mvp; and the snap mode of a 'Pxs' variant)
+		void applyObjectBlock(ObjectRender& render, int slot, uint64_t meshProperties, const Matrix4* objectBlock);
+		// the blit's source rect within a pixel-perfect target (its smoothing margin and shift)
+		Vector4 pixelPerfectInnerUV(const PixelPerfectDrive& drive) const;
+		// direct mode's bars: a pass that clears to the letterbox colour and fills the viewport with
+		// the background, before a colour pass that loads it
+		bool renderPixelPerfectBars(const PixelPerfectDrive& drive, const Rect& viewport);
 		void updateSwapchainRedirect();
 		void updateSceneColorRedirect(CameraComponent& mainCamera);
 		void updateMVP(size_t index, Transform& transform, CameraComponent& camera, Transform& cameraTransform);
@@ -2339,7 +2431,10 @@ namespace jasperengine{
 		bool ensureFixedResFramebuffer(unsigned int width, unsigned int height, TextureFilter filter);
 		// draws source over the real destination (Engine framebuffer in the editor,
 		// swapchain in exported builds)
-		void renderBlit(TextureRender* source, Rect viewport);
+		// clearColor: the bars' (a Pixel Perfect Camera's letterbox colour); innerUV: the source
+		// rect (scale x, offset x, scale y, offset y) the blit reads
+		void renderBlit(TextureRender* source, Rect viewport, const Vector4* clearColor = nullptr,
+		                const Vector4& innerUV = Vector4(1.0f, 0.0f, 1.0f, 0.0f));
 		// upscales fixedResFramebuffer to the view rect
 		void renderFixedResolutionBlit();
 
@@ -2478,6 +2573,14 @@ namespace jasperengine{
 			uint64_t targetsCreated = 0;    // layer targets created or resized since the scene started
 		};
 		const CanvasGroupRenderStats& getCanvasGroupRenderStats() const { return lastCanvasGroupRenderStats; }
+
+		// S41: the layout of the Pixel Perfect Camera driving the main camera (null: none), and
+		// whether the scene's objects draw pixel-snapped variants
+		const pixelart::PixelPerfectLayout* getPixelPerfectLayout() const;
+		bool hasPixelSnapVariants() const { return pixelSnapVariants; }
+		// what the Pixel Perfect Camera on that camera asks of a view (false: none, disabled, or a
+		// perspective camera): the editor's Game view and MCP lay a view out with it
+		static bool getPixelPerfectRequest(Scene* scene, Entity cameraEntity, PixelPerfectViewRequest& request);
 
 	private:
 		CanvasGroupRenderStats canvasGroupRenderStats;
@@ -2827,6 +2930,13 @@ namespace jasperengine{
 			float canvasHeight = 0.0f;
 			// off: no shadow maps are drawn for the view and its fragments read no shadow
 			bool shadows = true;
+			// the Scene view's Snap Preview (S41 R21): a scene with a Pixel Perfect Camera draws its
+			// snapped drawables on this view's own grid of base pixels (snapPreviewScale view pixels
+			// each, fractions for zooms below 1x); 0: no preview
+			float snapPreviewScale = 0.0f;
+			// a Pixel Perfect Camera on the view camera lays its image out on the view's target
+			// (the Game view): viewRect is then its viewport
+			bool pixelPerfect = true;
 		};
 		void drawView(uint32_t viewId, const ViewDesc& desc);
 		// frees what a view created
