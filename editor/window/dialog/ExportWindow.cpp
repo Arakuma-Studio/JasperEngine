@@ -803,15 +803,6 @@ void ExportWindow::drawDesktopKitRows() {
 }
 
 void ExportWindow::drawShaderSection() {
-    if (m_project && !m_shaderListStatus.complete() && !m_project->isGeneratedExportRunning()) {
-        ShaderListLimit oneScene;
-        oneScene.maxScenes = 1;
-        m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(oneScene);
-        if (m_shaderListStatus.complete()) {
-            refreshShaderSelection();
-        }
-    }
-
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("Shader variants compiled into the build");
     ImGui::SameLine();
@@ -847,10 +838,6 @@ void ExportWindow::drawShaderSection() {
 
     if (!m_shaderListStatus.complete()) {
         ImGui::TextDisabled("Reading %d closed scene(s) for this list...", (int)m_shaderListStatus.pendingScenes.size());
-    }
-    for (const UnreadableScene& scene : m_shaderListStatus.unreadableScenes) {
-        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Cannot read scene %s", scene.path.c_str());
-        ImGui::SetItemTooltip("%s\nThis list holds what it last knew of the scene.", scene.error.c_str());
     }
 
     ImGui::BeginChild("ShaderList", ImVec2(0, Theme::dpi(160.0f)), true);
@@ -1047,6 +1034,16 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         drawBackendSection();
     }
 
+    // a scene a frame, unfolded or not: a scene it cannot read is shown below, outside the section
+    if (m_project && !m_shaderListStatus.complete() && !m_project->isGeneratedExportRunning()) {
+        ShaderListLimit oneScene;
+        oneScene.maxScenes = 1;
+        m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(oneScene);
+        if (m_shaderListStatus.complete()) {
+            refreshShaderSelection();
+        }
+    }
+
     if (Theme::foldoutHeader("Shaders")) {
         drawShaderSection();
         ImGui::Spacing();
@@ -1070,6 +1067,10 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     }
     if (targetNotEmpty) {
         ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " The output directory is not empty: existing files will be overwritten");
+    }
+    for (const UnreadableScene& scene : m_shaderListStatus.unreadableScenes) {
+        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Cannot read scene %s: its shaders may be missing from the build", scene.path.c_str());
+        ImGui::SetItemTooltip("%s\nThe shader list holds what it last knew of this scene.", scene.error.c_str());
     }
 
     bool hasSavedScenes = false;
