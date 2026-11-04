@@ -31,6 +31,7 @@
 #include "window/CodeEditor.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/UISystem.h"
+#include "subsystem/RenderSystem.h"
 #include "htmlui/HtmlUiImportPanel.h"
 #include "util/EntityPayload.h"
 #include "util/CameraTextureLink.h"
