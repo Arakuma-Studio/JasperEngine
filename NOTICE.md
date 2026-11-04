@@ -307,3 +307,32 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Built-in palettes of the editor (S43)
+
+The editor's built-in palettes (`editor/resources/palettes/*.palette`, editor-only templates: a game
+holds only the copies a project makes of them) are colour data, credited here and in each file's
+`author` and `source` fields:
+
+| Palette | Author | Source | Licence or terms |
+|---|---|---|---|
+| The 27 ramps `fire` … `night` (`src/core/color.js` `PAL`), and `pixelfx-effects`, which holds them all | pixelfx | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 (`a84159688af3`) | MIT, Copyright (c) 2026 Patch |
+| The `hot`, `fire_cooling` and `smoke_thin` ramps of `pixelfx-effects` (`src/core/sim.js:13-16`) | pixelfx, adapted from Sprite Fusion's pixel art VFX | [pixelfx](https://github.com/patch-gg/pixelfx) 0.3.0 | MIT, Copyright (c) 2026 Patch and Copyright (c) 2026 Hugo Duprez |
+| `game-boy` (Game Boy (DMG)) | Nintendo (hardware) | [Lospec: Original Gameboy](https://lospec.com/palette-list/original-gameboy) | hardware colours; free to use, credited |
+| `pico-8` | Lexaloffle Games | [Lospec: PICO-8](https://lospec.com/palette-list/pico-8) | free to use, credited |
+| `cga` | IBM (hardware) | [Lospec: Color Graphics Adapter](https://lospec.com/palette-list/color-graphics-adapter) | hardware colours; free to use, credited |
+| `ega` | IBM (hardware) | [Lospec: Enhanced Graphics Adapter](https://lospec.com/palette-list/enhanced-graphics-adapter) | hardware colours; free to use, credited |
+| `commodore-64` (Pepto) | Philip "Pepto" Timmermann | [Commodore VIC-II Color Analysis (2001)](https://www.pepto.de/projects/colorvic/2001/) | free to use, credited |
+| `zx-spectrum` | Sinclair Research (hardware) | [Lospec: ZX Spectrum](https://lospec.com/palette-list/zx-spectrum) | hardware colours; free to use, credited |
+| `sweetie-16` | GrafxKid | [Lospec: Sweetie 16](https://lospec.com/palette-list/sweetie-16) | free to use, credited |
+| `endesga-32` | ENDESGA | [Lospec: Endesga 32](https://lospec.com/palette-list/endesga-32) | free to use, credited |
+| `resurrect-64` | Kerrie Lake | [Lospec: Resurrect 64](https://lospec.com/palette-list/resurrect-64) | free to use, credited |
+| `aap-64` | Adigun A. Polack | [Lospec: AAP-64](https://lospec.com/palette-list/aap-64) | free to use, credited |
+
+Test data: the Endesga 32 files under `editor/tests/fixtures/palettes/` (`lospec-endesga-32.*`) and
+the recorded Lospec answers under `tools/mcp/tests/fixtures/lospec-mirror/` are Lospec's own
+downloads of the palettes above. The palette importers follow GIMP's `gimppalette-load.c` layout as
+[Pixelorama](https://github.com/Orama-Interactive/Pixelorama) reads it (`src/Autoload/Palettes.gd`),
+and the ramp generator's Hue Shift mode ports Pixelorama's `src/Tools/DesignTools/Shading.gd`
+(MIT, Copyright (c) 2019-present Orama Interactive and contributors) with Godot's `Color` semantics
+(MIT, Copyright (c) 2014-present Godot Engine contributors).

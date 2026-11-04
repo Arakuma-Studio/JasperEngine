@@ -1,0 +1,11 @@
+GIMP Palette
+#Palette Name: Slots
+#Description: two empty slots
+#Colors: 6
+Columns: 3
+26	28	44	1a1c2c
+0	0	0	PixeloramaEmptySlot
+177	62	83	b13e53
+239	125	87	ef7d57
+0	0	0	PixeloramaEmptySlot
+255	205	117	ffcd75

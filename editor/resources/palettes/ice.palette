@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Ice",
+  "author": "pixelfx",
+  "description": "pixelfx's 'ice' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "ice"},
+  "columns": 8,
+  "colors": ["#0c1430", "#162c5c", "#1f4f94", "#2f7fcc", "#58b4ec", "#9bdcff", "#d8f4ff", "#ffffff"],
+  "ramps": [
+    {"name": "ice", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

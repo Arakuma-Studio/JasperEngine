@@ -1,0 +1,14 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "ZX Spectrum",
+  "author": "Sinclair Research",
+  "description": "The ZX Spectrum's 15 distinct colours: the 8 normal ones in hardware order, then the 7 bright ones (bright black is black); colours from Lospec's 'ZX Spectrum' (normal intensity 0xd8).",
+  "source": {"kind": "builtin", "id": "zx-spectrum", "url": "https://lospec.com/palette-list/zx-spectrum"},
+  "columns": 8,
+  "colors": [
+    "#000000", "#0000d8", "#d80000", "#d800d8", "#00d800", "#00d8d8", "#d8d800", "#d8d8d8",
+    "#0000ff", "#ff0000", "#ff00ff", "#00ff00", "#00ffff", "#ffff00", "#ffffff"
+  ],
+  "names": {"0": "black", "1": "blue", "2": "red", "3": "magenta", "4": "green", "5": "cyan", "6": "yellow", "7": "white", "8": "bright blue", "9": "bright red", "10": "bright magenta", "11": "bright green", "12": "bright cyan", "13": "bright yellow", "14": "bright white"}
+}

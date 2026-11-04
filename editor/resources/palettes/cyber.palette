@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Cyber",
+  "author": "pixelfx",
+  "description": "pixelfx's 'cyber' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "cyber"},
+  "columns": 8,
+  "colors": ["#041418", "#08303a", "#0c5260", "#108088", "#18b4b0", "#4ce8d8", "#b4fff0", "#ffffff"],
+  "ramps": [
+    {"name": "cyber", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

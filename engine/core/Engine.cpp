@@ -63,6 +63,7 @@
 #include "pool/AnimatorAssetPool.h"
 #include "pool/ShakePresetPool.h"
 #include "pool/PhysicsMaterialPool.h"
+#include "pixelart/PaletteSwap.h"
 #include "pool/VertexAnimationPool.h"
 #include "shader/RuntimeShaderCompiler.h"
 #include "native/NativeBridge.h"
@@ -1349,6 +1350,9 @@ void Engine::clearPools(){
     AnimatorAssetPool::clear();
     ShakePresetPool::clear();
     PhysicsMaterialPool::clear();
+    // the Palette Swap textures, then the palettes they were made from (S43)
+    pixelart::PaletteSwapCache::clear();
+    pixelart::PaletteLibrary::clear();
 }
 
 void Engine::clearUnusedPools(){

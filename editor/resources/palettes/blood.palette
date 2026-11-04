@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Blood",
+  "author": "pixelfx",
+  "description": "pixelfx's 'blood' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "blood"},
+  "columns": 7,
+  "colors": ["#14040a", "#3a0a14", "#6a101c", "#a01824", "#d42a30", "#ff5a50", "#ff9a8a"],
+  "ramps": [
+    {"name": "blood", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

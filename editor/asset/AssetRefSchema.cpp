@@ -92,6 +92,9 @@ namespace {
         row("shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::MaterialShader);
         row("extraPass.shader", Shape::Shader, AssetType::Shader, Base::Project, Kind::MaterialShader);
         row("extraPass.shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets, Kind::MaterialTexture);
+        // Palette Swap's bindings (S43): the source palette and each target palette
+        row("shaderPalettes{}.source", Shape::Asset, AssetType::Palette, Base::Assets, Kind::Other);
+        row("shaderPalettes{}.targets[].palette", Shape::Asset, AssetType::Palette, Base::Assets, Kind::Other);
         // the linked .material file (in a .material file: the file itself, not a reference)
         row("name", Shape::Asset, AssetType::Material, Base::Project, Kind::MeshMaterialFile);
         return rows;
@@ -469,6 +472,17 @@ namespace {
         if (MaterialPass* pass = material.extraPass.editIfSet()) {
             change.shader |= visit.shader(pass->shader, materialRow("extraPass.shader"), prefix + "extraPass.shader");
             change.texture |= visit.textureMap(pass->shaderTextures, materialRow("extraPass.shaderTextures{}"), prefix + "extraPass.shaderTextures.");
+        }
+        // the palette bindings, only on a material that has them; the draw binds a changed one itself
+        if (jasperengine::pixelart::ShaderPalettes* palettes = material.shaderPalettes.editIfSet()) {
+            for (auto& [uniform, binding] : *palettes) {
+                const std::string at = prefix + "shaderPalettes." + uniform + ".";
+                visit.asset(binding.source, materialRow("shaderPalettes{}.source"), at + "source");
+                for (size_t t = 0; t < binding.targets.size(); t++) {
+                    visit.asset(binding.targets[t].palette, materialRow("shaderPalettes{}.targets[].palette"),
+                                at + "targets[" + std::to_string(t) + "].palette");
+                }
+            }
         }
         if (!prefix.empty()) {
             visit.asset(material.name, materialRow("name"), prefix + "name");

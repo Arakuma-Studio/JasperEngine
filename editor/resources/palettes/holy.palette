@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Holy",
+  "author": "pixelfx",
+  "description": "pixelfx's 'holy' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "holy"},
+  "columns": 8,
+  "colors": ["#2a1c08", "#5a3e10", "#9a6c18", "#d8a428", "#ffd84a", "#fff09a", "#fffbe6", "#ffffff"],
+  "ramps": [
+    {"name": "holy", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

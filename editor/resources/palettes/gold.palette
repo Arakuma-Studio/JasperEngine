@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Gold",
+  "author": "pixelfx",
+  "description": "pixelfx's 'gold' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "gold"},
+  "columns": 8,
+  "colors": ["#1e1206", "#4a2c08", "#86520c", "#c48412", "#f0b424", "#ffe066", "#fff6c4", "#ffffff"],
+  "ramps": [
+    {"name": "gold", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

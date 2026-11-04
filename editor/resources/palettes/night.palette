@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Night",
+  "author": "pixelfx",
+  "description": "pixelfx's 'night' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "night"},
+  "columns": 6,
+  "colors": ["#07060d", "#0c0a18", "#131026", "#1b1734", "#241f44", "#2f2956"],
+  "ramps": [
+    {"name": "night", "colors": [0, 1, 2, 3, 4, 5]}
+  ]
+}

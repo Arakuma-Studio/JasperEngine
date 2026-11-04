@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Earth",
+  "author": "pixelfx",
+  "description": "pixelfx's 'earth' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "earth"},
+  "columns": 7,
+  "colors": ["#140e0a", "#2a1e14", "#47321e", "#69492a", "#8e6638", "#b88a52", "#dcb47c"],
+  "ramps": [
+    {"name": "earth", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

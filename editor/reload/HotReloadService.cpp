@@ -63,6 +63,7 @@ namespace {
         if (kind == "audio") noun = "audio clip";
         else if (kind == "ui") noun = "UI file";
         else if (kind == "particles") noun = "particle effect";
+        else if (kind == "palette") noun = "palette";
         return std::to_string(count) + " " + noun + (count == 1 ? "" : "s");
     }
 
@@ -345,7 +346,8 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         if (change.origin == ChangeOrigin::Editor) {
             // (an agent's write_file of a clip or a pose animation: their documents reload too,
             // and its load problems are the call's)
-            if (kind == "material" || kind == "texture" || kind == "animation") editorWritten[kind].push_back(change.path);
+            // (and a palette the Palette window or edit_palette wrote: the swaps drawn with it update)
+            if (kind == "material" || kind == "texture" || kind == "animation" || kind == "palette") editorWritten[kind].push_back(change.path);
             if (reload::isHtmlUiFile(watch::pathToUtf8(change.path))) editorWritten["ui"].push_back(change.path);
             continue;
         }
@@ -415,6 +417,7 @@ ApplyResult HotReloadService::apply(const ChangeSet& set, const ApplyOptions& op
         project->audioFilesChanged(paths);
     }
     reload::reloadParticleEffects(ctx, files(external, "particles"));
+    reload::reloadPalettes(ctx, both("palette"));
     reload::reloadFonts(ctx, files(external, "font"));
     reload::reloadAnimations(ctx, both("animation"), files(external, "model"), options.full);
     // another program's changes not reloaded yet (the dedupe above): the documents' own stamps

@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Metal",
+  "author": "pixelfx",
+  "description": "pixelfx's 'metal' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "metal"},
+  "columns": 8,
+  "colors": ["#0c0e14", "#1c2230", "#2e3648", "#4a5468", "#6e7a90", "#9aa6ba", "#d0d8e6", "#ffffff"],
+  "ramps": [
+    {"name": "metal", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

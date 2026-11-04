@@ -615,6 +615,23 @@ bool reflect::detail::shaderGlobalBindingsFromYaml(const FieldDesc&, const YAML:
     }
 }
 
+YAML::Node reflect::detail::shaderPalettesToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
+    return Stream::encodeShaderPalettes(*static_cast<const jasperengine::pixelart::ShaderPalettes*>(value));
+}
+
+bool reflect::detail::shaderPalettesFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
+    try {
+        *static_cast<jasperengine::pixelart::ShaderPalettes*>(value) = Stream::decodeShaderPalettes(node);
+        return true;
+    } catch (const YAML::Exception& e) {
+        return unreadable(node, e.msg, reason);
+    }
+}
+
+bool reflect::detail::skipEmptyShaderPalettes(const FieldDesc&, const void* value) {
+    return static_cast<const jasperengine::pixelart::ShaderPalettes*>(value)->empty();
+}
+
 bool reflect::detail::skipEmptyShaderGlobalBindings(const FieldDesc&, const void* value) {
     return static_cast<const jasperengine::ShaderGlobalBindings*>(value)->empty();
 }

@@ -2023,7 +2023,13 @@ namespace jasperengine{
 		// ShaderReference::getEnabledFeatures) pick a @texture's default[<DEFINE>]= default
 		bool loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
 		                               std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
-		                               const std::vector<std::string>& enabledFeatures = {});
+		                               const std::vector<std::string>& enabledFeatures = {},
+		                               const pixelart::ShaderPalettes* palettes = nullptr);
+		// the swap textures of the shader's @palette slots (S43 Palette Swap), from the
+		// material's bindings (none: the identity, which draws unchanged); update binds again
+		// only when a binding or the palette library changed (an edit, a hot reload)
+		void bindShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes);
+		void updateShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes);
 		// binds the resolved custom textures again (they changed or a render target was redrawn)
 		bool bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures);
 		static bool shaderTexturesOutdated(const ShaderLibraryBindings& bindings, const std::vector<std::pair<std::string, Texture>>& textures);

@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "name": "Test Swatches",
+  "swatches": [
+    {
+      "name": "White",
+      "linear": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "hdr": false
+    },
+    {
+      "name": "Black",
+      "linear": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "hdr": false
+    },
+    {
+      "name": "Half",
+      "linear": [
+        0.5,
+        0.2,
+        0.0,
+        0.4
+      ],
+      "hdr": false
+    },
+    {
+      "name": "Glow",
+      "linear": [
+        4.0,
+        2.0,
+        0.5,
+        1.0
+      ],
+      "hdr": true
+    }
+  ],
+  "gradients": []
+}

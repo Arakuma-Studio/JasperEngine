@@ -6,11 +6,16 @@
 
 #include "ShaderData.h"
 #include "math/Vector4.h"
+#include "pixelart/PaletteBinding.h"
 #include <string>
 #include <vector>
 #include <utility>
 #include <cstdint>
 #include <memory>
+
+namespace jasperengine::pixelart{
+    struct PaletteSwapTextures;
+}
 
 namespace jasperengine{
 
@@ -77,6 +82,18 @@ namespace jasperengine{
         bool cube = false;    // declared as a textureCube
     };
 
+    // A manifest @palette a loaded shader reads (a feature of it is on): its two texture slots,
+    // and the swap textures bound there, made from `bound` (the material's binding) at palette
+    // library `generation` (a change of either binds again: hot reload, an edit)
+    struct JASPERENGINE_API ShaderPaletteSlot{
+        std::string uniform;
+        std::pair<int, int> cells = {-1, -1};
+        std::pair<int, int> rows = {-1, -1};
+        std::shared_ptr<pixelart::PaletteSwapTextures> textures;
+        pixelart::PaletteBinding bound;
+        uint32_t generation = 0;
+    };
+
     // a texture uniform of a loaded shader that a texture global (ShaderGlobals) binds to: one
     // the manifest and the object's shaderTextures do not claim, named like a global
     struct JASPERENGINE_API GlobalTextureSlot{
@@ -104,6 +121,7 @@ namespace jasperengine{
         // load after the render state is resolved, 0 (its own colour) otherwise
         uint8_t postColorBlend = 0;
         std::vector<ShaderTextureSlot> textures;
+        std::vector<ShaderPaletteSlot> palettes;
         int slotFSSceneInputs = -1;
         unsigned int sceneInputsSize = 0;
         std::pair<int, int> slotSceneDepth = {-1, -1};
@@ -133,6 +151,7 @@ namespace jasperengine{
             slotPostColorLut = {-1, -1};
             postColorBlend = 0;
             textures.clear();
+            palettes.clear();
             slotFSSceneInputs = -1;
             sceneInputsSize = 0;
             slotSceneDepth = {-1, -1};

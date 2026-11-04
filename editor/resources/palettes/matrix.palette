@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Matrix",
+  "author": "pixelfx",
+  "description": "pixelfx's 'matrix' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "matrix"},
+  "columns": 8,
+  "colors": ["#020a04", "#05200c", "#0a3c16", "#106624", "#1a9a34", "#3cd650", "#a4ffa8", "#e8ffe8"],
+  "ramps": [
+    {"name": "matrix", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

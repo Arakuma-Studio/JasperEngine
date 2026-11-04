@@ -46,6 +46,7 @@
 #include "shader/ShaderGlobals.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "render/LineRibbonBuilder.h"
+#include "pixelart/PaletteSwap.h"
 #include <cstddef>
 #include <memory>
 #include <algorithm>
@@ -3982,7 +3983,7 @@ TextureRender* RenderSystem::getDefaultShaderTexture(int fallback, bool cube){
 
 bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, ShaderData& shaderData, ObjectRender& render,
                                              std::vector<std::pair<std::string, Texture>>& textures, const ShaderManifest* manifest,
-                                             const std::vector<std::string>& enabledFeatures){
+                                             const std::vector<std::string>& enabledFeatures, const pixelart::ShaderPalettes* palettes){
     bindings.clear();
 
     // the frame block, by name; both stages declare the same layout but for the post colour's
@@ -4066,6 +4067,21 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
         for (const auto& texture : textures)
             addTexture(texture.first, static_cast<int>(ShaderTextureDefault::WHITE));
     }
+    // the @palette slots of the variant's features (a feature off makes none: no texture, no work)
+    if (manifest){
+        for (const ShaderManifestPalette& palette : manifest->palettes){
+            if (!palette.isEnabled(enabledFeatures))
+                continue;
+            ShaderPaletteSlot slot;
+            slot.uniform = palette.uniform;
+            slot.cells = shaderData.getTextureIndexByName(palette.cellsTexture());
+            slot.rows = shaderData.getTextureIndexByName(palette.rowsTexture());
+            if (slot.cells.first != -1 && slot.rows.first != -1)
+                bindings.palettes.push_back(slot);
+        }
+        if (!bindings.palettes.empty())
+            bindShaderPalettes(bindings, render, palettes);
+    }
 
     // the global shader values (ShaderGlobals): the globals blocks, and every texture uniform
     // nothing above claims named like a global (engine textures are all u_*, which globals
@@ -4105,6 +4121,46 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     applyGlobalTextures(render, bindings);
 
     return bindShaderTextures(bindings, render, textures);
+}
+
+void RenderSystem::bindShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes){
+    const uint32_t generation = pixelart::PaletteLibrary::generation();
+    for (ShaderPaletteSlot& slot : bindings.palettes){
+        pixelart::PaletteBinding binding;
+        if (palettes){
+            for (const auto& entry : *palettes){
+                if (entry.first == slot.uniform)
+                    binding = entry.second;
+            }
+        }
+        std::vector<pixelart::Diagnostic> diagnostics;
+        slot.textures = binding.empty() ? pixelart::PaletteSwapCache::identity() : pixelart::PaletteSwapCache::acquire(binding, diagnostics);
+        for (const pixelart::Diagnostic& diagnostic : diagnostics){
+            if (diagnostic.severity == pixelart::Diagnostic::Severity::Error)
+                Log::warn("Palette Swap (%s): %s", slot.uniform.c_str(), diagnostic.message.c_str());
+        }
+        slot.bound = binding;
+        slot.generation = generation;
+        render.addTexture(slot.cells, ShaderStageType::FRAGMENT, &slot.textures->cells);
+        render.addTexture(slot.rows, ShaderStageType::FRAGMENT, &slot.textures->rows);
+    }
+}
+
+void RenderSystem::updateShaderPalettes(ShaderLibraryBindings& bindings, ObjectRender& render, const pixelart::ShaderPalettes* palettes){
+    const uint32_t generation = pixelart::PaletteLibrary::generation();
+    for (const ShaderPaletteSlot& slot : bindings.palettes){
+        pixelart::PaletteBinding binding;
+        if (palettes){
+            for (const auto& entry : *palettes){
+                if (entry.first == slot.uniform)
+                    binding = entry.second;
+            }
+        }
+        if (slot.generation != generation || !(slot.bound == binding)){
+            bindShaderPalettes(bindings, render, palettes);
+            return;
+        }
+    }
 }
 
 bool RenderSystem::bindShaderTextures(const ShaderLibraryBindings& bindings, ObjectRender& render, std::vector<std::pair<std::string, Texture>>& textures){
@@ -6627,10 +6683,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (!loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render)){
             return false;
         }
-        // shader library: the frame block and the material's custom textures
+        // shader library: the frame block, the material's custom textures and palettes
         if (!loadShaderLibraryBindings(mesh.submeshes[i].libraryBindings, shaderData, mesh.submeshes[i].render,
                                        mesh.submeshes[i].material.shaderTextures, mesh.submeshes[i].manifest.get(),
-                                       ShaderReference::getEnabledFeatures(mesh.submeshes[i].material.shader, mesh.submeshes[i].material.shaderFeatures))){
+                                       ShaderReference::getEnabledFeatures(mesh.submeshes[i].material.shader, mesh.submeshes[i].material.shaderFeatures),
+                                       &mesh.submeshes[i].material.shaderPalettes.get())){
             return false;
         }
         loadShadowTextures(shaderData, mesh.submeshes[i].render, mesh.receiveLights, p_receiveShadows);
@@ -8740,6 +8797,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             bool needUpdateFramebuffer = pbrFramebufferOutdated ||
                 (!libraryBindings.textures.empty() && shaderTexturesOutdated(libraryBindings, mesh.submeshes[i].material.shaderTextures));
 
+            // Palette Swap: a changed binding or a reloaded palette binds again in this frame
+            if (!libraryBindings.palettes.empty())
+                updateShaderPalettes(mesh.submeshes[i].libraryBindings, render, &mesh.submeshes[i].material.shaderPalettes.get());
             if (mesh.submeshes[i].needUpdateTexture || needUpdateFramebuffer){
                 ShaderData& shaderData = mesh.submeshes[i].shader.get()->shaderData;
                 const TextureBindMark bindMark = markTextureBinding();
@@ -15222,6 +15282,10 @@ void RenderSystem::drawFramePasses(){
     // the frame's shader clock (Engine::latchShaderTime), the one the CPU's waves read
     frameTime = Engine::getShaderTime();
     updateDynamicResolution();
+    // Palette Swap's shared textures no binding holds are freed after 2 s (nothing to do,
+    // and no clock read, while none exists)
+    if (pixelart::PaletteSwapCache::size() > 0)
+        pixelart::PaletteSwapCache::sweep(std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count());
 
 #ifdef JASPERENGINE_EDITOR
     passDrawsOverlays = false;

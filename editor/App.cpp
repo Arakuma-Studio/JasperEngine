@@ -5,6 +5,7 @@
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
+#include "pixelart/PaletteSwap.h"
 #include "util/ParticleMigrationReport.h"
 #include "AppMenuCommand.h"
 #include "util/NumericExpression.h"
@@ -4902,6 +4903,9 @@ void editor::App::prepareForProjectSwitch() {
     inputActionsWindow->reset();
     // the next project's .particles files are other files under the same paths
     particles::ParticleEffectLibrary::clear();
+    // and its palettes (S43): the swap textures first, they were made from them
+    jasperengine::pixelart::PaletteSwapCache::clear();
+    jasperengine::pixelart::PaletteLibrary::clear();
     ParticleMigrationReport::clear();
     dockspaceNeedsRebuild = true;
 }

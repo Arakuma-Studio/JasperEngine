@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Shadow",
+  "author": "pixelfx",
+  "description": "pixelfx's 'shadow' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "shadow"},
+  "columns": 8,
+  "colors": ["#050308", "#0f0a18", "#1c1230", "#2c1a4a", "#432468", "#5e3290", "#8048b8", "#a970e0"],
+  "ramps": [
+    {"name": "shadow", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

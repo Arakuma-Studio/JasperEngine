@@ -699,6 +699,42 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
             if (valid)
                 textures.push_back(texture);
 
+        }else if (directive == "palette"){
+            if (args.empty() || args[0].quoted || !isIdentifier(args[0].text)){
+                report(lineNumber, true, "@palette takes <uniform> [\"label\"] [feature=A,B]");
+                continue;
+            }
+            ShaderManifestPalette palette;
+            palette.line = lineNumber;
+            palette.uniform = args[0].text;
+            if (findPalette(palette.uniform) || findTexture(palette.uniform)){
+                report(lineNumber, true, "@palette '" + palette.uniform + "' declared twice");
+                continue;
+            }
+            bool valid = true;
+            for (size_t a = 1; a < args.size(); a++){
+                std::string key, value;
+                if (splitOption(args[a], key, value) && key == "feature"){
+                    size_t start = 0;
+                    while (start <= value.size()){
+                        const size_t comma = value.find(',', start);
+                        const std::string define = value.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+                        if (!define.empty())
+                            palette.features.push_back(define);
+                        if (comma == std::string::npos)
+                            break;
+                        start = comma + 1;
+                    }
+                }else if (args[a].quoted && palette.label.empty()){
+                    palette.label = args[a].text;
+                }else{
+                    report(lineNumber, true, "unexpected @palette argument '" + args[a].text + "'");
+                    valid = false;
+                }
+            }
+            if (valid)
+                palettes.push_back(palette);
+
         }else if (directive == "feature"){
             if (args.empty() || args[0].quoted || !ShaderReference::isValidDefine(args[0].text)){
                 report(lineNumber, true, "@feature takes an upper-case <DEFINE> [\"label\"] [default=on]");
@@ -807,6 +843,12 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
             report(texture.line, "@texture '" + texture.uniform + "' names undeclared feature '" + texture.feature + "'");
         if (!texture.featureDefaultDefine.empty() && !knownFeature(texture.featureDefaultDefine))
             report(texture.line, "@texture '" + texture.uniform + "' default[" + texture.featureDefaultDefine + "] names undeclared feature");
+    }
+    for (const ShaderManifestPalette& palette : palettes){
+        for (const std::string& feature : palette.features){
+            if (!knownFeature(feature))
+                report(palette.line, "@palette '" + palette.uniform + "' names undeclared feature '" + feature + "'");
+        }
     }
     for (const ShaderManifestStateRule& rule : stateRules){
         if (!knownFeature(rule.define))
@@ -954,6 +996,24 @@ const ShaderManifestTexture* ShaderManifest::findTexture(const std::string& unif
     return nullptr;
 }
 
+const ShaderManifestPalette* ShaderManifest::findPalette(const std::string& uniform) const{
+    for (const ShaderManifestPalette& palette : palettes){
+        if (palette.uniform == uniform)
+            return &palette;
+    }
+    return nullptr;
+}
+
+bool ShaderManifestPalette::isEnabled(const std::vector<std::string>& enabledFeatures) const{
+    if (features.empty())
+        return true;
+    for (const std::string& feature : features){
+        if (std::find(enabledFeatures.begin(), enabledFeatures.end(), feature) != enabledFeatures.end())
+            return true;
+    }
+    return false;
+}
+
 const ShaderManifestFeature* ShaderManifest::findFeature(const std::string& define) const{
     for (const ShaderManifestFeature& feature : features){
         if (feature.define == define)
@@ -1079,6 +1139,18 @@ void ShaderManifest::validateReflection(const std::vector<const ShaderData*>& va
         if (isCube != texture.cube){
             diagnostics.push_back({file, texture.line, true, "@texture '" + texture.uniform + "' is " +
                 (isCube ? "a textureCube: add 'cube'" : "a texture2D: remove 'cube'")});
+        }
+    }
+
+    for (const ShaderManifestPalette& palette : palettes){
+        for (const std::string& texture : {palette.cellsTexture(), palette.rowsTexture()}){
+            auto it = declaredTextures.find(texture);
+            if (it == declaredTextures.end()){
+                diagnostics.push_back({file, palette.line, true, "@palette '" + palette.uniform + "' needs the texture2D '" + texture +
+                    "' (includes/palette.glsl declares it)"});
+            }else if (it->second == TextureType::TEXTURE_CUBE){
+                diagnostics.push_back({file, palette.line, true, "@palette '" + palette.uniform + "': '" + texture + "' must be a texture2D"});
+            }
         }
     }
 

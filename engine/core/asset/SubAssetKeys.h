@@ -19,7 +19,8 @@ namespace jasperengine {
     //   "<kind>:<name>"   the name is non-empty and unique among that kind in the file
     //   "<kind>#<index>"  otherwise, the index among that kind in the file
     // A reference to a sub-asset uses the path hint "<container path>#<key>".
-    enum class SubAssetKind { Mesh, Material, Animation, Skin, Image };
+    // A palette (.palette, S43) is a container too: its ramps, "ramp:<name>" (an N x 1 strip).
+    enum class SubAssetKind { Mesh, Material, Animation, Skin, Image, PaletteRamp };
 
     inline const char* subAssetKindName(SubAssetKind kind) {
         switch (kind) {
@@ -28,13 +29,14 @@ namespace jasperengine {
             case SubAssetKind::Animation: return "animation";
             case SubAssetKind::Skin: return "skin";
             case SubAssetKind::Image: return "image";
+            case SubAssetKind::PaletteRamp: return "ramp";
         }
         return "mesh";
     }
 
     inline bool parseSubAssetKind(std::string_view text, SubAssetKind& kind) {
         static const SubAssetKind kinds[] = {SubAssetKind::Mesh, SubAssetKind::Material, SubAssetKind::Animation,
-                                             SubAssetKind::Skin, SubAssetKind::Image};
+                                             SubAssetKind::Skin, SubAssetKind::Image, SubAssetKind::PaletteRamp};
         for (SubAssetKind candidate : kinds) {
             if (text == subAssetKindName(candidate)) {
                 kind = candidate;
@@ -96,7 +98,7 @@ namespace jasperengine {
         return true;
     }
 
-    // True for the model file extensions that hold sub-assets (.gltf, .glb, .obj, any case)
+    // True for the file extensions that hold sub-assets (.gltf, .glb, .obj, .palette, any case)
     inline bool isSubAssetContainerPath(std::string_view path) {
         auto endsWith = [&](std::string_view ext) {
             if (path.size() < ext.size()) return false;
@@ -107,7 +109,7 @@ namespace jasperengine {
             }
             return true;
         };
-        return endsWith(".gltf") || endsWith(".glb") || endsWith(".obj");
+        return endsWith(".gltf") || endsWith(".glb") || endsWith(".obj") || endsWith(".palette");
     }
 
     // "<container>#<key>" -> container and key; false for a plain path. The container is a

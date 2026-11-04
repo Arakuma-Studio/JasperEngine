@@ -36,8 +36,14 @@ namespace jasperengine {
         AnimatorController = 20,    // a .controller Animator Controller (S21; its GUID in its JSON)
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
-        VertexAnimation = 23        // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
+        VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
+        // The pixel-art family's reserved values (PIXEL-ART-LEDGER.md): each keeps its number
+        // whatever order the specs land in, so a value between two may still be unused
+        Palette = 24                // a .palette palette (S43)
     };
+
+    // the highest value in use
+    constexpr uint8_t kLastAssetTypeValue = static_cast<uint8_t>(AssetType::Palette);
 
     // The lowercase names used by Lua (AssetRef.type), MCP and the editor ("texture", "model", ...)
     inline const char* assetTypeName(AssetType type) {
@@ -65,15 +71,18 @@ namespace jasperengine {
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
+            case AssetType::Palette: return "palette";
             case AssetType::Unknown: break;
         }
         return "unknown";
     }
 
     inline AssetType assetTypeFromName(std::string_view name) {
-        for (uint8_t value = 1; value <= static_cast<uint8_t>(AssetType::VertexAnimation); value++) {
+        for (uint8_t value = 1; value <= kLastAssetTypeValue; value++) {
             const AssetType type = static_cast<AssetType>(value);
-            if (name == assetTypeName(type)) {
+            const char* typeName = assetTypeName(type);
+            // a reserved value no spec has added yet has no name
+            if (std::string_view(typeName) != "unknown" && name == typeName) {
                 return type;
             }
         }

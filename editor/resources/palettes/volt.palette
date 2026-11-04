@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Volt",
+  "author": "pixelfx",
+  "description": "pixelfx's 'volt' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "volt"},
+  "columns": 7,
+  "colors": ["#24160a", "#5e3a0c", "#a8680f", "#e8a218", "#ffd23c", "#fff08a", "#ffffff"],
+  "ramps": [
+    {"name": "volt", "colors": [0, 1, 2, 3, 4, 5, 6]}
+  ]
+}

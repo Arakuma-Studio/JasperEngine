@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Arcane",
+  "author": "pixelfx",
+  "description": "pixelfx's 'arcane' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "arcane"},
+  "columns": 8,
+  "colors": ["#140a26", "#2b1252", "#481c88", "#6b2cc0", "#9a48ec", "#c684ff", "#ecc8ff", "#ffffff"],
+  "ramps": [
+    {"name": "arcane", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "format": "jasperengine.palette",
+  "version": 1,
+  "name": "pixelfx: Fire",
+  "author": "pixelfx",
+  "description": "pixelfx's 'fire' ramp, one of its 27 hue-shifted ramps, in its order (src/core/color.js PAL; MIT, Copyright (c) 2026 Patch).",
+  "source": {"kind": "builtin", "id": "fire"},
+  "columns": 8,
+  "colors": ["#1f0b10", "#4a1118", "#8c1d1c", "#cc3a1a", "#f2701f", "#ffae35", "#ffe27a", "#fff8d6"],
+  "ramps": [
+    {"name": "fire", "colors": [0, 1, 2, 3, 4, 5, 6, 7]}
+  ]
+}
