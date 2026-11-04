@@ -572,8 +572,8 @@ bool parseNavPoint(SceneProject* scene, const Json& value, const std::string& ke
         for (Entity surface : entitiesWith<NavMeshSurfaceComponent>(s)) {
             const NavMeshSurfaceComponent& component = s->getComponent<NavMeshSurfaceComponent>(surface);
             if (component.agentType != out.agent->agentType) continue;
-            up = NavBakeCollector::frameOf(s, surface).up();
-            scale = NavBakeCollector::unitScaleOf(s, component);
+            up = nav::NavBakeCollector::frameOf(s, surface).up();
+            scale = nav::NavBakeCollector::unitScaleOf(s, component);
             break;
         }
         out.position = out.position - up * (out.agent->baseOffset * scale);
