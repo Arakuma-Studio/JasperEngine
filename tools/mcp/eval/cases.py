@@ -930,6 +930,8 @@ CASES = [
                    "calls": [{"tool": "respond_dialog", "args": {"choice": "ok"}},
                              {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}}],
                    "reply_must": ["Hero"]},
+        "max_turns": 10,
+    },
     {
         "id": "guard_import_reports_a_leftover",
         "kind": "guard",
