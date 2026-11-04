@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "hub/ProjectHubWindow.h"
+#include "util/UiItemLocator.h"
+#include "player/LaunchOptions.h"
 
 #include "AppSettings.h"
 #include "Backend.h"

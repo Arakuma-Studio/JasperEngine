@@ -6,6 +6,7 @@
 // materials, and the in-memory edges of documents with unsaved edits.
 
 #include "Project.h"
+#include "component/MeshComponent.h"
 
 #include "Out.h"
 #include "DocumentFile.h"

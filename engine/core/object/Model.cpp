@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Model.h"
+#include "component/ModelComponent.h"
 
 #include "io/FileData.h"
 
