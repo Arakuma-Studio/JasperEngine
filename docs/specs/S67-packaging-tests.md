@@ -29,7 +29,7 @@ pressing Build for those targets must get a working app. Everything in the path 
 
 - R1 ("prebuilt or source export"): the end-to-end run is the prebuilt path, the one Build takes for Android. A project
   with native code is refused by Build with a pointer to the source export; that export is built by Android Studio or Gradle,
-  and `tools/build.sh android` and CI's `android` job cover the Gradle project.
+  and `tools/build.sh android` covers the Gradle project.
 - R4: with no team, a device build is a success with the warning `W-IOS-NO-TEAM`, not a failure: the output folder
   is replaced only on success, and the Xcode project and the unsigned device `.app` are what such a user needs.
 - Added beyond the spec, because R4 needs them from the editor: `build_project ios_simulator` and a Simulator switch in Build
