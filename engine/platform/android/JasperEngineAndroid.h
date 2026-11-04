@@ -74,12 +74,6 @@ public:
     virtual jasperengine::DeviceOrientation getDeviceOrientation() override;
     virtual void applyFramePacing(const jasperengine::FramePacing& pacing) override;
 
-    virtual void initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent) override;
-    virtual void setMaxAdContentRating(jasperengine::AdMobRating rating) override;
-    virtual void loadInterstitialAd(const std::string& adUnitID) override;
-    virtual bool isInterstitialAdLoaded() override;
-    virtual void showInterstitialAd() override;
-
 protected:
     virtual bool platformOpenURL(const std::string& url) override;
 };

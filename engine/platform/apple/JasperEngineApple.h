@@ -89,12 +89,6 @@ public:
     // the MTKView backend of macOS presents synchronized
     virtual bool canDisableVSync() override;
 
-    virtual void initializeAdMob(bool tagForChildDirectedTreatment, bool tagForUnderAgeOfConsent) override;
-    virtual void setMaxAdContentRating(jasperengine::AdMobRating rating) override;
-    virtual void loadInterstitialAd(const std::string& adUnitID) override;
-    virtual bool isInterstitialAdLoaded() override;
-    virtual void showInterstitialAd() override;
-
 protected:
     virtual bool platformOpenURL(const std::string& url) override;
 };

@@ -682,4 +682,4 @@ Recorded by the implementer; each is the closest correct alternative to the text
     (O), in the Scene View context. Hold Space (physics drop), Shift+drag (physics snap) and Esc
     (cancel a gesture, put Paint Dye down, clear the lattice points) stay local keys, listed as
     gesture rows. Texture Synthesis and Physics Placement are Window commands and layout panels;
-    Preferences > Lattice, General > UI Scale and Player > iOS/Android AdMob are registry rows.
+    Preferences > Lattice, General > UI Scale and Player > iOS/Android rows are registry rows.
