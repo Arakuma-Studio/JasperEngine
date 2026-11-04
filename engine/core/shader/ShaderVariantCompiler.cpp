@@ -652,6 +652,11 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         args.vert_file = "fluid.vert";
         args.frag_file = "fluid.frag";
         addFluidPropertyDefinitions(args.defines, properties);
+    }else if (shaderType == ShaderType::TITLE_ART){
+        // one program of Title Art's passes: the property bits are its number (TA_PROGRAM)
+        args.vert_file = "titleart.vert";
+        args.frag_file = "titleart.frag";
+        args.defines.push_back({"TA_PROGRAM", std::to_string(properties & 0xFFu)});
     }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
         args.vert_file = "fullscreen.vert";
         args.frag_file = "atmosphere_depth.frag";
