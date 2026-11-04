@@ -1560,10 +1560,11 @@ bool NavMesh::updateCarving(double budgetMs, bool& upToDate, int& tilesRebuilt) 
         if (elapsed >= budgetMs)
             break;
     }
-    if (changed) {
-        impl->tilesChanged();
+    // S55 R14: Detour reports the cache up to date in the call that builds its last touched tile,
+    // which the loop does not count: the overrides check every tile's reference instead
+    const bool overridden = impl->tilesChanged();
+    if (changed || overridden)
         impl->bump();
-    }
     return true;
 }
 
