@@ -51,7 +51,7 @@ make_project() {
 }
 make_project debug
 python3 tools/ci/freeze_unified_lighting.py "$OUT/debug"
-# the emulator's renderer has no ASTC: without ETC2 cooks its textured objects would not draw
+# the emulator's renderer has no ASTC: without ETC2 cooks these textures fail to load there
 printf 'texture:\n  androidEtc2Fallback: true\n' >> "$OUT/debug/project.yaml"
 make_project release '  keystore:' "    path: ../release.jks" '    alias: game'
 make_project release-ec '  keystore:' "    path: ../release-ec.p12" '    alias: ec'
