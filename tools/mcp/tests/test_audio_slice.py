@@ -112,6 +112,8 @@ async def test_pick_and_variation(ed: Editor):
     event = json.loads((ed.project / "assets/slice/chosen.soundevent").read_text())
     ed.check_eq(event["pitch_semitones"], [-1, 1], "variation's pitch")
     ed.check_eq(event["volume_db"], [-1.5, 0], "variation's volume")
+    r = await ed.call_raw("edit_sound_event", {"path": "assets/slice/heard.soundevent", "create": True, "audition": 2, "slice": {"source": rel}}, timeout=TIMEOUT)
+    ed.check(not r.is_error and len(r.value["renditions"]) == 2, f"audition renders the new event: {r.text}")
 
 
 async def test_a_source_without_licence_is_a_problem(ed: Editor):
@@ -131,6 +133,8 @@ async def test_refusals_write_nothing(ed: Editor):
     ed.check("pick 9" in err, err)
     err = await ed.call("edit_sound_event", path="assets/slice/r.soundevent", create=True, slice={"source": rel, "nonsense": 1}, expect_error=True)
     ed.check("slice.nonsense" in err, err)
+    err = await ed.call("edit_sound_event", path="assets/slice/r.soundevent", create=True, values={"loop": True}, slice={"source": rel}, expect_error=True)
+    ed.check("a second call" in err, err)
     err = await ed.call("edit_sound_event", path="assets/slice/r.soundevent", slice={"source": rel}, expect_error=True)
     ed.check("create: true" in err or "does not exist" in err, err)
     err = await ed.call("edit_sound_event", path="assets/slice/r.soundevent", create=True, slice={"source": "assets/slice/none.wav"}, expect_error=True)
