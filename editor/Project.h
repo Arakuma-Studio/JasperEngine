@@ -939,6 +939,7 @@ namespace jasperengine::editor{
         // applyDebugSettingsForPlay ran for the running Play (until it stops): changes apply live
         mutable bool debugSettingsInPlay = false;
         TerrainEditorSettings terrainEditorSettings;
+        uint64_t terrainEditorSettingsGeneration = 1;
         TextureProjectSettings textureSettings;
         std::vector<std::filesystem::path> inspectedAssets;
         PhysicsPlacementSettings physicsPlacementSettings;
@@ -1890,6 +1891,10 @@ namespace jasperengine::editor{
 
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;
+        // Replaces them as a whole (a project's workspace loaded, the project closed): the Terrain
+        // window reads them again, by the generation, before it writes its own values back
+        void setTerrainEditorSettings(const TerrainEditorSettings& settings);
+        uint64_t getTerrainEditorSettingsGeneration() const { return terrainEditorSettingsGeneration; }
 
         // Project Settings > Texture (S14 R24): per-family cook defaults, the Android ETC2 and
         // low-memory fallbacks, the runtime quality and budget per platform, the cook cache

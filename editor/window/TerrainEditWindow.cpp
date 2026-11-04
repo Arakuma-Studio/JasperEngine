@@ -3199,6 +3199,9 @@ static editor::TerrainToolCategory toolCategoryFor(editor::TerrainBrushMode mode
 }
 
 void editor::TerrainEditWindow::show(){
+    // the saved settings before the first frame writes the members back (opened from the menu or
+    // the layout, not only from the Inspector)
+    loadSettings();
     if (windowOpen){
         updateTargetFromSelection();
     }
@@ -3586,35 +3589,38 @@ void editor::TerrainEditWindow::show(){
     }
     ImGui::End();
 
-    TerrainEditorSettings& ts = project->getTerrainEditorSettings();
-    ts.brushMode = static_cast<int>(brushMode);
-    ts.brushShape = static_cast<int>(brushShape);
-    ts.brushFalloff = static_cast<int>(brushFalloff);
-    ts.brushSize = brushSize;
-    ts.brushStrength = brushStrength;
-    ts.brushRotation = brushRotation;
-    ts.brushMaskPath = brushMaskPath;
-    ts.flattenHeight = flattenHeight;
-    ts.terraceSteps = terraceSteps;
-    ts.noiseSize = noiseSize;
-    ts.heightMapResolution = heightMapResolution;
-    ts.blendMapResolution = blendMapResolution;
-    ts.densityMapResolution = densityMapResolution;
-    ts.normalizeBlendPaint = normalizeBlendPaint;
-    ts.heightMapStartAtMiddle = heightMapStartAtMiddle;
-    ts.flattenPickOnStroke = flattenPickOnStroke;
-    ts.paintUseMask = paintUseMask;
-    ts.paintMinSlope = paintMinSlope;
-    ts.paintMaxSlope = paintMaxSlope;
-    ts.paintMinHeight = paintMinHeight;
-    ts.paintMaxHeight = paintMaxHeight;
-    ts.placeAssetPath = placeAssetPath;
-    ts.placeInstanced = placeInstanced;
-    ts.placeSpacing = placeSpacing;
-    ts.placeMinScale = placeMinScale;
-    ts.placeMaxScale = placeMaxScale;
-    ts.placeRotationJitter = placeRotationJitter;
-    ts.placeAlignToNormal = placeAlignToNormal;
+    // only over the settings this window read: never constructor defaults or another project's
+    if (loadedSettingsGeneration == project->getTerrainEditorSettingsGeneration()){
+        TerrainEditorSettings& ts = project->getTerrainEditorSettings();
+        ts.brushMode = static_cast<int>(brushMode);
+        ts.brushShape = static_cast<int>(brushShape);
+        ts.brushFalloff = static_cast<int>(brushFalloff);
+        ts.brushSize = brushSize;
+        ts.brushStrength = brushStrength;
+        ts.brushRotation = brushRotation;
+        ts.brushMaskPath = brushMaskPath;
+        ts.flattenHeight = flattenHeight;
+        ts.terraceSteps = terraceSteps;
+        ts.noiseSize = noiseSize;
+        ts.heightMapResolution = heightMapResolution;
+        ts.blendMapResolution = blendMapResolution;
+        ts.densityMapResolution = densityMapResolution;
+        ts.normalizeBlendPaint = normalizeBlendPaint;
+        ts.heightMapStartAtMiddle = heightMapStartAtMiddle;
+        ts.flattenPickOnStroke = flattenPickOnStroke;
+        ts.paintUseMask = paintUseMask;
+        ts.paintMinSlope = paintMinSlope;
+        ts.paintMaxSlope = paintMaxSlope;
+        ts.paintMinHeight = paintMinHeight;
+        ts.paintMaxHeight = paintMaxHeight;
+        ts.placeAssetPath = placeAssetPath;
+        ts.placeInstanced = placeInstanced;
+        ts.placeSpacing = placeSpacing;
+        ts.placeMinScale = placeMinScale;
+        ts.placeMaxScale = placeMaxScale;
+        ts.placeRotationJitter = placeRotationJitter;
+        ts.placeAlignToNormal = placeAlignToNormal;
+    }
     if (!windowOpen){
         setOpen(false);
     }
@@ -3644,11 +3650,18 @@ void editor::TerrainEditWindow::setOpen(bool open){
 }
 
 void editor::TerrainEditWindow::openForEntity(Entity entity, uint32_t sceneId){
+    loadSettings();
     open();
     selectedSceneId = sceneId;
     selectedEntity = entity;
     updateFoliagePreview();
+}
 
+void editor::TerrainEditWindow::loadSettings(){
+    if (!project || loadedSettingsGeneration == project->getTerrainEditorSettingsGeneration()){
+        return;
+    }
+    loadedSettingsGeneration = project->getTerrainEditorSettingsGeneration();
     const TerrainEditorSettings& ts = project->getTerrainEditorSettings();
     brushMode     = static_cast<TerrainBrushMode>(ts.brushMode);
     toolCategory  = toolCategoryFor(brushMode);
@@ -3679,6 +3692,14 @@ void editor::TerrainEditWindow::openForEntity(Entity entity, uint32_t sceneId){
     placeMaxScale = std::max(placeMinScale, ts.placeMaxScale);
     placeRotationJitter = std::clamp(ts.placeRotationJitter, 0.0f, 1.0f);
     placeAlignToNormal = std::clamp(ts.placeAlignToNormal, 0.0f, 1.0f);
+}
+
+void editor::TerrainEditWindow::resetProjectState(){
+    brushActive = false;
+    endStroke();
+    selectedSceneId = 0;
+    selectedEntity = NULL_ENTITY;
+    loadedSettingsGeneration = 0;
 }
 
 bool editor::TerrainEditWindow::isOpen() const{
@@ -3958,6 +3979,8 @@ void editor::TerrainEditWindow::adjustBrushStrength(float factor){
 
 bool editor::TerrainEditWindow::scriptedStroke(uint32_t sceneId, Entity entity, const TerrainScriptedBrush& brush,
                                                const std::vector<Vector3>& localPoints, std::string& error, int* placed){
+    // the saved resolutions and settings, as the window would have them
+    loadSettings();
     if (placed){
         *placed = 0;
     }
