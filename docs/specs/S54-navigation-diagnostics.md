@@ -722,6 +722,12 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   Recast erodes whole cells (r = 0.5 m at 0.2 m cells is 3 cells plus the boundary span), so the
   baked square is 18.6 m wide (346 m^2). The test also checks the area equals the island's
   bounds' footprint within 1 %, which pins the labelling's arithmetic exactly.
+- S54 P1: `bench_nav_city` (S19's fixture) holds 2643 polygons in 400 tiles, not the ~20k R21-R23
+  assume, so a per-tile cost weighs 8 x more per polygon: the island tile table keeps only the
+  slots up to the last one in use, in 16 bits while every label index fits. Measured (5 runs,
+  `--workers 3`, a shared 8-core host): `city_islands_ms` 0.19, `islands_bytes_per_poly` 4.30,
+  `query_reject_disconnected_us` 0.54 (0 searches), `query_locate_p95_ms` 0.0022,
+  `findings_city_ms` 0.085, `query_path_p95_ms` 0.122 (unchanged budget).
 - S54 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
   (P3's; the two new sources) and `engine/core/navigation/NavBakeInput.cpp` (`memoryBytes` counts
   the sources).
