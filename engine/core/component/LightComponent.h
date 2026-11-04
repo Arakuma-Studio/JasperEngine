@@ -4,6 +4,7 @@
 #ifndef LIGHT_COMPONENT_H
 #define LIGHT_COMPONENT_H
 
+#include "registry/TagManager.h"
 #include "math/Vector3.h"
 #include "render/FramebufferRender.h"
 #include "texture/Texture.h"
