@@ -7,7 +7,9 @@
 // single-threaded web build the tiles are time-sliced on the main thread: no slice may exceed
 // the web bake budget (4 ms) + 2 ms. The navmesh files' hashes are logged: a threaded build gives
 // the same bytes (tools/web/gates/navigation.json holds them for both). Then an agent walks the
-// city and arrives (onDestinationReached), and a grid path is found.
+// city and arrives (onDestinationReached), and a grid path is found. Last, S53's carving fixture
+// (NavObstacleTest's walled gap, docs/specs/S53-navigation-fixes.md AC21): a carving box closes
+// the gap within the tile budget of Carve Tiles Per Tick, and opens it again when it goes.
 //
 //   BUILD_TYPE=Release WEB_PROJECT=navigation tools/build.sh web ; GATE=navigation tools/build.sh web-gate
 //   BUILD_TYPE=Release WEB_THREADS=1 WEB_PROJECT=navigation tools/build.sh web ; WEB_THREADS=1 GATE=navigation tools/build.sh web-gate
@@ -42,6 +44,12 @@ namespace {
     bool sent = false;
     int round = 0;
     bool reported = false;
+    // the carving fixture: its surface, the box closing its gap, and the step it is at
+    Entity gapFloor = NULL_ENTITY;
+    Entity blocker = NULL_ENTITY;
+    int carving = 0;
+    int carvingFrame = 0;
+    const Vector3 GAP_ORIGIN(-200.0f, 0.0f, 0.0f);
 
     uint64_t fnv(const std::vector<uint8_t>& bytes) {
         uint64_t hash = 1469598103934665603ull;
@@ -121,6 +129,86 @@ namespace {
         }
     }
 
+    // 30 x 10 m walled at x = 0 but for a 2 m gap, on a surface with Runtime Carving
+    void buildGap() {
+        Primitive* floor = new Primitive(&scene);
+        floor->createPlane(30.0f, 10.0f);
+        floor->setPosition(GAP_ORIGIN);
+        floor->setColor(0.5f, 0.6f, 0.5f);
+        gapFloor = floor->getEntity();
+        box(GAP_ORIGIN.x, 1.0f, -3.25f, 1.0f, 2.0f, 3.5f);
+        box(GAP_ORIGIN.x, 1.0f, 3.25f, 1.0f, 2.0f, 3.5f);
+        NavMeshSurfaceComponent surface;
+        surface.overrideCellSize = true;
+        surface.cellSize = 0.2f;
+        surface.overrideTileSize = true;
+        surface.tileSize = 32;
+        surface.runtimeCarving = true;
+        scene.addComponent<NavMeshSurfaceComponent>(gapFloor, surface);
+    }
+
+    // whether a path crosses the gap
+    bool gapOpen() {
+        return scene.getSystem<NavigationSystem>()->calculatePathOn(gapFloor, GAP_ORIGIN + Vector3(-10.0f, 0.0f, 0.0f),
+                                                                     GAP_ORIGIN + Vector3(10.0f, 0.0f, 0.0f)).status == nav::PathStatus::Complete;
+    }
+
+    // after the city: bake the gap, close it with a carving box, open it again
+    void runCarving() {
+        auto system = scene.getSystem<NavigationSystem>();
+        switch (carving) {
+            case 0:
+                carving = 1;
+                NavMeshSurface(&scene, gapFloor).bakeAsync();
+                return;
+            case 1:
+                if (system->isBaking(gapFloor))
+                    return;
+                if (!gapOpen()) {
+                    Log::error("[gate] nav carving: the baked gap is closed");
+                    carving = 5;
+                    return;
+                }
+                {
+                    blocker = empty(GAP_ORIGIN + Vector3(0.0f, 1.0f, 0.0f));
+                    NavMeshObstacleComponent obstacle;
+                    obstacle.size = Vector3(1.5f, 2.0f, 3.0f);
+                    obstacle.carve = true;
+                    obstacle.carveOnlyStationary = false;
+                    scene.addComponent<NavMeshObstacleComponent>(blocker, obstacle);
+                }
+                carving = 2;
+                carvingFrame = frame;
+                return;
+            case 2:
+                if (gapOpen()) {
+                    if (frame - carvingFrame > 120) {
+                        Log::error("[gate] nav carving: the box did not close the gap");
+                        carving = 5;
+                    }
+                    return;
+                }
+                Log::print("[gate] nav carving cut");
+                scene.destroyEntity(blocker);
+                carving = 3;
+                carvingFrame = frame;
+                return;
+            case 3:
+                if (!gapOpen()) {
+                    if (frame - carvingFrame > 120) {
+                        Log::error("[gate] nav carving: the gap did not open again");
+                        carving = 5;
+                    }
+                    return;
+                }
+                Log::print("[gate] nav carving restored");
+                carving = 4;
+                return;
+            default:
+                return;
+        }
+    }
+
     void buildAgentAndGrid() {
         walker = empty(Vector3(-30.0f, 0.0f, -30.0f));
         NavMeshAgentComponent agent;
@@ -192,6 +280,8 @@ namespace {
             reported = true;
             Log::print("[gate] nav agent arrived");
         }
+        if (reported)
+            runCarving();
     }
 
 }
@@ -208,6 +298,7 @@ JASPERENGINE_INIT void init(){
     sun.setIntensity(3.0f);
     buildCity();
     buildTopDown();
+    buildGap();
     buildAgentAndGrid();
     Engine::setScene(&scene);
     Engine::onUpdate.add("navigation-gate", std::function<void()>(onUpdate));
