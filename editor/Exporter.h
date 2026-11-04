@@ -309,6 +309,8 @@ namespace jasperengine::editor {
         bool loadAndSaveAllScenes();
         // runs checkHtmlUIReferences(...) on htmlUIDocuments; setError on a broken reference
         bool checkHtmlUIReferences();
+        // S37 R24: an event whose clip is missing is a build warning naming both
+        void checkSoundEventClips();
         bool copyGenerated();
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file

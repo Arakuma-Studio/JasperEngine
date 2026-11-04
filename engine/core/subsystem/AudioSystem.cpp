@@ -7,6 +7,8 @@
 
 #include "asset/AssetMap.h"
 #include "audio/AudioMixer.h"
+#include "audio/SoundEvent.h"
+#if JASPERENGINE_SOUND_LAYER
 #include "audio/SoundEventIO.h"
 #include "audio/SoundEventLibrary.h"
 #include "component/ButtonComponent.h"
@@ -14,6 +16,7 @@
 #include "jobs/JobSystem.h"
 #include "object/sound/Audio.h"
 #include "object/sound/SoundHandle.h"
+#endif
 #include "pool/SoundPool.h"
 #include "subsystem/PhysicsSystem.h"
 #include "Scene.h"
@@ -59,6 +62,7 @@ namespace {
 
     uint64_t nextSerial = 1;
 
+#if JASPERENGINE_SOUND_LAYER
     // ---- free voices (docs/specs/S37-sound-events.md R13)
 
     struct FreeVoice {
@@ -148,8 +152,11 @@ namespace {
         return false;
     }
 
+#endif
+
     // ---- Sound Events (docs/specs/S37-sound-events.md)
 
+#if JASPERENGINE_SOUND_LAYER
     // a live play of an event with a limit (R6.2), over every scene
     struct EventInstance {
         uint64_t id = 0;
@@ -166,8 +173,11 @@ namespace {
     }
 
     uint64_t nextInstance = 1;
+#endif
+
     // the frames mixed through the null driver since it opened, by the pump or a capture
     uint64_t mixedFrames = 0;
+#if JASPERENGINE_SOUND_LAYER
     bool soundEventSeedChosen = false;
 
     // one warning per clip, event or group per Play
@@ -175,6 +185,7 @@ namespace {
         static auto* set = new std::set<std::string>();
         return *set;
     }
+#endif
 
     std::function<void(const AudioVoiceLine&)>& voiceObserver() {
         static auto* observer = new std::function<void(const AudioVoiceLine&)>();
@@ -241,6 +252,7 @@ namespace {
         AudioSystem::stopVoice(handle);
     }
 
+#if JASPERENGINE_SOUND_LAYER
     uint64_t chooseSoundEventSeed() {
         if (!soundEventSeedChosen) {
             soundEventSeedChosen = true;
@@ -317,6 +329,7 @@ namespace {
         }
         return chosen;
     }
+#endif
     // the Null backend's pump: the frames it mixed and the time it was given since the audio opened.
     // Each frame mixes up to round(time x rate), so no rounding piles up (144 fps at 44.1 kHz is
     // 306.25 frames a frame: rounded each time, 48 ms a minute behind the game)
@@ -615,6 +628,7 @@ void AudioSystem::deInit(){
         AudioMixer::onAudioShutdown();
         getSoloud().deinit();
         voices().clear();
+#if JASPERENGINE_SOUND_LAYER
         eventInstances().clear();
         {
             std::lock_guard<std::recursive_mutex> lock(freeMutex());
@@ -622,6 +636,7 @@ void AudioSystem::deInit(){
                 if (play.used) releaseFreePlay(play);
             }
         }
+#endif
 
         inited = false;
     }
@@ -809,7 +824,7 @@ void AudioSystem::preloadSoundAssets(){
         AudioSourceComponent& audio = audios->getComponentFromIndex(i);
 
         // the source plays its event: its clip is not loaded
-        if (!audio.event.empty()) {
+        if (JASPERENGINE_SOUND_LAYER && !audio.event.empty()) {
             if (audio.loaded || audio.sample) releaseSample(audio);
             if (audio.preloadedEvent != audio.event.path) preloadEvent(audio);
             continue;
@@ -1191,17 +1206,32 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
     return handle;
 }
 
-// ---------------------------------------------------------------- Sound Events
-
-void AudioSystem::resetSoundEventRuntime(){
-    SoundEventLibrary::resetRuntime();
-    soundEventWarnings().clear();
-    eventInstances().clear();
-    soundEventSeedChosen = false;
-    std::lock_guard<std::recursive_mutex> lock(freeMutex());
-    deferredCalls().clear();
-    deferredPending.store(false, std::memory_order_relaxed);
+bool AudioSystem::makeSourceRoom(AudioSourceComponent& audio, uint64_t instance){
+    SoLoud::Soloud& soloud = getSoloud();
+    for (size_t s = 0; s < audio.oneShots.size();) {
+        if (!soloud.isValidVoiceHandle(audio.oneShots[s].handle)) {
+            voices().erase(audio.oneShots[s].handle);
+            audio.oneShots.erase(audio.oneShots.begin() + s);
+        } else {
+            s++;
+        }
+    }
+    const int cap = std::max(1, audio.maxVoices);
+    const int mainVoices = (audio.handle != 0 ? 1 : 0) + (int)audio.mainLayers.size();
+    while (mainVoices + (int)audio.oneShots.size() >= cap) {
+        // the oldest one-shot gives its place (spec A10), never one of the play that asks
+        auto oldest = audio.oneShots.end();
+        for (auto it = audio.oneShots.begin(); it != audio.oneShots.end(); ++it) {
+            if ((instance == 0 || it->instance != instance) && (oldest == audio.oneShots.end() || it->serial < oldest->serial)) oldest = it;
+        }
+        if (oldest == audio.oneShots.end()) return false;
+        stopVoiceBecause(oldest->handle, "stolen_source", instance);
+        audio.oneShots.erase(oldest);
+    }
+    return true;
 }
+
+// ---------------------------------------------------------------- Sound Events
 
 bool AudioSystem::isDeterministic(){
     return inited && getSoloud().getBackendId() == SoLoud::Soloud::NULLDRIVER;
@@ -1210,10 +1240,6 @@ bool AudioSystem::isDeterministic(){
 void AudioSystem::setVoiceObserver(std::function<void(const AudioVoiceLine&)> observer){
     voiceObserverSet = (bool)observer;
     voiceObserver() = std::move(observer);
-}
-
-uint64_t AudioSystem::getSoundEventSeed(){
-    return chooseSoundEventSeed();
 }
 
 void AudioSystem::logReject(const char* reason, Entity entity, const std::string& clip, const SoundEventAsset* event, const std::string& eventName,
@@ -1225,8 +1251,13 @@ void AudioSystem::logReject(const char* reason, Entity entity, const std::string
     line.scene = scene;
     line.entity = entity;
     line.clip = clip;
+#if JASPERENGINE_SOUND_LAYER
     line.event = event ? event->key : eventName;
     line.eventPath = event ? event->path : std::string();
+#else
+    (void)event;
+    (void)eventName;
+#endif
     line.owner = owner;
     line.cause = cause;
     line.trigger = trigger;
@@ -1234,6 +1265,22 @@ void AudioSystem::logReject(const char* reason, Entity entity, const std::string
     line.priority = priority;
     line.group = group;
     emitVoiceLine(line);
+}
+
+#if JASPERENGINE_SOUND_LAYER
+
+void AudioSystem::resetSoundEventRuntime(){
+    SoundEventLibrary::resetRuntime();
+    soundEventWarnings().clear();
+    eventInstances().clear();
+    soundEventSeedChosen = false;
+    std::lock_guard<std::recursive_mutex> lock(freeMutex());
+    deferredCalls().clear();
+    deferredPending.store(false, std::memory_order_relaxed);
+}
+
+uint64_t AudioSystem::getSoundEventSeed(){
+    return chooseSoundEventSeed();
 }
 
 const SoundEventAsset* AudioSystem::resolveSourceEvent(const std::string& name, Entity entity, const char* owner, const char* cause, const char* trigger, float impactSpeed){
@@ -1280,31 +1327,6 @@ void AudioSystem::clipVariation(AudioSourceComponent& audio, Entity entity, floa
     SoundEventRng rng(chooseSoundEventSeed(), "entity:" + std::to_string(entity), playIndex);
     if (pitch != 0.0f) speedScale = (float)((double)speedScale * std::pow(2.0, rng.range(-(double)pitch, (double)pitch) / 12.0));
     if (volume != 0.0f) volumeScale = (float)((double)volumeScale * std::pow(10.0, rng.range(-(double)volume, 0.0) / 20.0));
-}
-
-bool AudioSystem::makeSourceRoom(AudioSourceComponent& audio, uint64_t instance){
-    SoLoud::Soloud& soloud = getSoloud();
-    for (size_t s = 0; s < audio.oneShots.size();) {
-        if (!soloud.isValidVoiceHandle(audio.oneShots[s].handle)) {
-            voices().erase(audio.oneShots[s].handle);
-            audio.oneShots.erase(audio.oneShots.begin() + s);
-        } else {
-            s++;
-        }
-    }
-    const int cap = std::max(1, audio.maxVoices);
-    const int mainVoices = (audio.handle != 0 ? 1 : 0) + (int)audio.mainLayers.size();
-    while (mainVoices + (int)audio.oneShots.size() >= cap) {
-        // the oldest one-shot gives its place (spec A10), never one of the play that asks
-        auto oldest = audio.oneShots.end();
-        for (auto it = audio.oneShots.begin(); it != audio.oneShots.end(); ++it) {
-            if ((instance == 0 || it->instance != instance) && (oldest == audio.oneShots.end() || it->serial < oldest->serial)) oldest = it;
-        }
-        if (oldest == audio.oneShots.end()) return false;
-        stopVoiceBecause(oldest->handle, "stolen_source", instance);
-        audio.oneShots.erase(oldest);
-    }
-    return true;
 }
 
 AudioSystem::StartedPlay AudioSystem::startEvent(const SoundEventAsset& event, const EventPlay& play){
@@ -1444,12 +1466,39 @@ bool AudioSystem::startMainEvent(AudioSourceComponent& audio, Entity entity, boo
     return true;
 }
 
+#else // the module is out: nothing plays an event, every clip plays as it is
+
+void AudioSystem::resetSoundEventRuntime(){
+}
+
+void AudioSystem::preloadEvent(AudioSourceComponent&){
+}
+
+void AudioSystem::clipVariation(AudioSourceComponent&, Entity, float&, float&){
+}
+
+bool AudioSystem::startMainEvent(AudioSourceComponent&, Entity, bool, const Vector3&){
+    return false;
+}
+
+AudioSystem::StartedPlay AudioSystem::startEvent(const SoundEventAsset&, const EventPlay&){
+    return StartedPlay();
+}
+
+const SoundEventAsset* AudioSystem::resolveSourceEvent(const std::string&, Entity, const char*, const char*, const char*, float){
+    return nullptr;
+}
+
+#endif // JASPERENGINE_SOUND_LAYER
+
 bool AudioSystem::playOneShot(AudioSourceComponent& audio, const std::string& filename, float volumeScale){
     if (filename.empty()) return false;
     AudioPendingOneShot pending;
     pending.filename = filename;
     pending.volumeScale = std::max(0.0f, volumeScale);
+#if JASPERENGINE_SOUND_LAYER
     pending.isEvent = SoundEventLibrary::isEventName(filename);
+#endif
     audio.pendingOneShots.push_back(pending);
     return true;
 }
@@ -1718,6 +1767,7 @@ void AudioSystem::destroy(){
 }
 
 void AudioSystem::update(double dt){
+#if JASPERENGINE_SOUND_LAYER
     if (deferredPending.load(std::memory_order_relaxed)) {
         std::vector<std::function<void()>> calls;
         {
@@ -1727,6 +1777,7 @@ void AudioSystem::update(double dt){
         }
         for (const std::function<void()>& call : calls) call();
     }
+#endif
 
     preloadSoundAssets();
 
@@ -1755,10 +1806,12 @@ void AudioSystem::update(double dt){
     if (!triggerQueue.empty() || !contactQueue3D.empty()) drainTriggers();
 
     bool anyFree = false;
+#if JASPERENGINE_SOUND_LAYER
     {
         std::lock_guard<std::recursive_mutex> lock(freeMutex());
         for (const FreePlay& play : freePlays()) anyFree = anyFree || (play.used && play.owner == this);
     }
+#endif
 
     // nothing to place: the next frame's speeds start afresh
     if (audios->size() == 0 && pendingPointVoices.empty() && pointVoices.empty() && !anyFree) {
@@ -1852,7 +1905,7 @@ void AudioSystem::update(double dt){
         }
 
         // set, the event is what the source plays: its clip is ignored, with no fallback
-        const bool eventMode = !audio.event.empty();
+        const bool eventMode = JASPERENGINE_SOUND_LAYER && !audio.event.empty();
         // main voices of something else (the event was set, cleared or changed): they stop, and a
         // source left Playing starts over with what it has now
         if (audio.handle != 0 && (audio.mainEvent != nullptr) != eventMode) {
@@ -2169,6 +2222,8 @@ void AudioSystem::onComponentRemoved(Entity entity, ComponentId componentId) {
 		if (audio.boundPlayOn != 0) syncUiTriggers(audio, entity, 0);
 	}
 }
+
+#if JASPERENGINE_SOUND_LAYER
 
 // ---------------------------------------------------------------- triggers (R12)
 
@@ -2841,3 +2896,32 @@ int AudioSystem::freeGetVoiceCount(uint32_t id, uint32_t generation){
     }
     return count;
 }
+
+#else // the module is out: no subscriptions, no free voices
+
+void AudioSystem::syncUiTriggers(AudioSourceComponent& audio, Entity, uint32_t){
+    audio.boundPlayOn = 0;
+}
+
+void AudioSystem::syncPhysicsTriggers(uint32_t){
+}
+
+void AudioSystem::removeTriggerSubscriptions(){
+}
+
+void AudioSystem::drainTriggers(){
+}
+
+void AudioSystem::forgetFreeVoices(){
+}
+
+void AudioSystem::updateFreeVoices(double, double, bool, const std::function<Vector3(const Vector3&)>&, bool, bool&){
+}
+
+AudioSystem::PhysicsCallbackScope::PhysicsCallbackScope(){
+}
+
+AudioSystem::PhysicsCallbackScope::~PhysicsCallbackScope(){
+}
+
+#endif // JASPERENGINE_SOUND_LAYER

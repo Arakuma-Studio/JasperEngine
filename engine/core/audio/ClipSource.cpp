@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/AudioSourceComponent.h"
+
+#if JASPERENGINE_SOUND_LAYER
+
 #include "ClipSource.h"
 
 #include "soloud_wav.h"
@@ -442,3 +446,5 @@ SoLoud::result AudioClipSourceInstance::seek(SoLoud::time seconds, float* mixScr
 SoLoud::result AudioClipSourceInstance::rewind(){
     return seek(0.0, nullptr, 0);
 }
+
+#endif // JASPERENGINE_SOUND_LAYER

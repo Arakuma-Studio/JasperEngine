@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/AudioSourceComponent.h"
+
+#if JASPERENGINE_SOUND_LAYER
+
 #include "Audio.h"
 
 #include "object/EntityHandle.h"
@@ -21,3 +25,5 @@ SoundHandle Audio::play(const std::string& eventOrClip, const PlayOptions& optio
 int Audio::stopAll(const std::string& group) {
     return AudioSystem::stopFreeAndOneShots(group);
 }
+
+#endif // JASPERENGINE_SOUND_LAYER

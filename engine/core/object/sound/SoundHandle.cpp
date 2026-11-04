@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/AudioSourceComponent.h"
+
+#if JASPERENGINE_SOUND_LAYER
+
 #include "SoundHandle.h"
 
 #include "subsystem/AudioSystem.h"
@@ -34,3 +38,5 @@ Vector3 SoundHandle::getPosition() const { return AudioSystem::freeGetPosition(i
 void SoundHandle::setPosition(const Vector3& position) { AudioSystem::freeSetPosition(id, generation, position); }
 double SoundHandle::getTime() const { return AudioSystem::freeGetTime(id, generation); }
 int SoundHandle::getVoiceCount() const { return AudioSystem::freeGetVoiceCount(id, generation); }
+
+#endif // JASPERENGINE_SOUND_LAYER

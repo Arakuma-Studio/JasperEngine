@@ -80,6 +80,7 @@ namespace jasperengine::editor {
         std::vector<std::string> cppScripts;    // C++ script sources (project-relative)
         bool debugOverlayInBuilds = false;      // Project Settings > Debug: the overlay is an HTML UI document
         bool navigationInBuilds = true;         // Project Settings > Navigation > Include in Builds
+        bool audioImports = false;              // a clip has import settings: the export writes je-audio-imports.json
         bool stripEngineCode = true;            // Project Settings > Player > Strip Engine Code
         // what this scan made to read prefabs (their files' registries, instance previews)
         std::vector<std::shared_ptr<void>> owned;

@@ -469,6 +469,7 @@ bool editor::Exporter::runPrebuilt() {
     if (cancelled()) return false;
     if (!copyLua()) return false;
     if (!checkHtmlUIReferences()) return false;
+    checkSoundEventClips();
     if (cancelled()) return false;
     if (!cookTextures()) return false;
     if (cancelled()) return false;

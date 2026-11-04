@@ -12,6 +12,11 @@
 #include <string>
 #include <vector>
 
+// docs/specs/S37-sound-events.md 6.6: Sound Events, triggers, free voices and clip import settings
+#ifndef JASPERENGINE_SOUND_LAYER
+    #define JASPERENGINE_SOUND_LAYER 1
+#endif
+
 namespace SoLoud{
     class AudioSource;
 }
