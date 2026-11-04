@@ -109,13 +109,13 @@ void LuaBinding::registerAudioClasses(lua_State* L) {
 #ifndef DISABLE_LUA_BINDINGS
     luabridge::getGlobalNamespace(L)
         .beginNamespace("AudioPlayOn")
-        .addVariable("UIClick", (uint32_t)AudioPlayOn_UIClick)
-        .addVariable("UIPress", (uint32_t)AudioPlayOn_UIPress)
-        .addVariable("UIHover", (uint32_t)AudioPlayOn_UIHover)
-        .addVariable("Collision2D", (uint32_t)AudioPlayOn_Collision2D)
-        .addVariable("Collision3D", (uint32_t)AudioPlayOn_Collision3D)
-        .addVariable("Sensor2D", (uint32_t)AudioPlayOn_Sensor2D)
-        .addVariable("Sensor3D", (uint32_t)AudioPlayOn_Sensor3D)
+        .addVariable("UIClick", AudioPlayOn::AudioPlayOn_UIClick)
+        .addVariable("UIPress", AudioPlayOn::AudioPlayOn_UIPress)
+        .addVariable("UIHover", AudioPlayOn::AudioPlayOn_UIHover)
+        .addVariable("Collision2D", AudioPlayOn::AudioPlayOn_Collision2D)
+        .addVariable("Collision3D", AudioPlayOn::AudioPlayOn_Collision3D)
+        .addVariable("Sensor2D", AudioPlayOn::AudioPlayOn_Sensor2D)
+        .addVariable("Sensor3D", AudioPlayOn::AudioPlayOn_Sensor3D)
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)

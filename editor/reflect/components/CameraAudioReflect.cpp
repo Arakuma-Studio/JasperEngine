@@ -193,9 +193,9 @@ namespace {
         JE_FIELD(AudioSourceComponent, ignoreListenerPause, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio),
         // Sound Events and triggers (docs/specs/S37-sound-events.md R9), after upstream's fields
         JE_FIELD(AudioSourceComponent, event, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
-                 .asset = AssetKind::SoundEvent, .label = "Event", .drawer = "audio_event"),
+                 .asset = AssetKind::SoundEvent, .label = "Event"),
         JE_FIELD(AudioSourceComponent, playOn, .ops = &kAudioPlayOnOps, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
-                 .label = "Play On", .group = "Triggers", .drawer = "audio_play_on"),
+                 .label = "Play On", .group = "Triggers"),
         JE_FIELD(AudioSourceComponent, minImpactSpeed, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
                  .unit = Unit::MetersPerSecond, .min = 0.0f, .step = 0.1f, .format = "%.2f", .group = "Triggers", .visibleIf = &audioHasCollisionFlag),
         JE_FIELD(AudioSourceComponent, fullVolumeImpactSpeed, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,

@@ -1259,6 +1259,9 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/AudioSettingsCmd.cpp
     ${EDITOR_DIR}/audio/AudioMixerDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
+    ${EDITOR_DIR}/audio/SoundEventRender.cpp
+    ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/mcp/tools/SoundTools.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp

@@ -12,6 +12,7 @@
 #include "util/PngWriter.h"
 #include "DocumentFile.h"
 #include "audio/AudioMixerDocument.h"
+#include "audio/SoundEventDocument.h"
 #include "window/HumanoidConvertDialog.h"
 #include "util/BidiText.h"
 
@@ -1091,6 +1092,10 @@ void editor::ProjectWindow::renderCreateMenuItems() {
         assetsCreateAudioMixer();
         ImGui::CloseCurrentPopup();
     }
+    if (ImGui::MenuItem(ICON_FA_MUSIC " Create Sound Event")){
+        assetsCreateSoundEvent();
+        ImGui::CloseCurrentPopup();
+    }
     if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material")){
         assetsCreatePhysicsMaterial(false);
         ImGui::CloseCurrentPopup();
@@ -2025,6 +2030,12 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             }
 
             if (ImGui::BeginPopup("FileContextMenu")){
+                if (!file.isDirectory && Util::isAudioFile(file.name) && hasAudioSelection()) {
+                    if (ImGui::MenuItem(ICON_FA_MUSIC " Create Sound Event from Clips")) {
+                        assetsCreateSoundEventFromClips();
+                    }
+                    ImGui::Separator();
+                }
                 if (file.type == FileType::SCENE){
                     if (ImGui::MenuItem(ICON_FA_FOLDER_PLUS " Open (Add)")) {
                         project->openScene(currentPath / file.name, false);
@@ -4575,6 +4586,63 @@ void editor::ProjectWindow::assetsCreateAudioMixer() {
     std::string error;
     if (!AudioMixerDocument::commit(project, project->getProjectPath() / relative, AudioMixerIO::createDefault(), "", &error)) {
         Backend::getApp().registerAlert("Create Audio Mixer", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+void editor::ProjectWindow::assetsCreateSoundEvent() {
+    if (currentPath.empty()) {
+        return;
+    }
+    focusProjectPanel(this);
+    const fs::path relative = uniqueRelativePath(currentPath, "New Sound Event", ".soundevent");
+    SoundEventDef def;
+    def.mode = SoundEventMode::Shuffle;
+    std::string error;
+    if (!SoundEventDocument::commit(project, project->getProjectPath() / relative, def, "Create Sound Event", "", &error)) {
+        Backend::getApp().registerAlert("Create Sound Event", error);
+        return;
+    }
+    scanDirectory(currentPath);
+    const std::string fileName = relative.filename().string();
+    selectedFiles.clear();
+    selectedFiles.insert(fileName);
+    lastSelectedFile = fileName;
+    updateInspectedAsset(fileName);
+    startRename(fileName);
+}
+
+bool editor::ProjectWindow::hasAudioSelection() const {
+    for (const std::string& name : selectedFiles) {
+        if (Util::isAudioFile(name)) return true;
+    }
+    return false;
+}
+
+void editor::ProjectWindow::assetsCreateSoundEventFromClips() {
+    if (currentPath.empty() || !hasAudioSelection()) {
+        return;
+    }
+    focusProjectPanel(this);
+    SoundEventDef def;
+    def.mode = SoundEventMode::Shuffle;
+    for (const std::string& name : selectedFiles) {
+        if (!Util::isAudioFile(name)) continue;
+        SoundEventClip clip;
+        clip.clip = SoundEventDocument::clipRef(project, (currentPath / name).string(), nullptr);
+        def.clips.push_back(std::move(clip));
+    }
+    const fs::path relative = uniqueRelativePath(currentPath, "New Sound Event", ".soundevent");
+    std::string error;
+    if (!SoundEventDocument::commit(project, project->getProjectPath() / relative, def, "Create Sound Event from Clips", "", &error)) {
+        Backend::getApp().registerAlert("Create Sound Event from Clips", error);
         return;
     }
     scanDirectory(currentPath);

@@ -37,6 +37,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerShadowTools, "Shadows", "rendering_fx"},   // S10
     {registerConsoleTools, "Console", ""},
     {registerDataTools, "Saved data (PlayerPrefs)", "scripting"},   // upstream (script-data: UserSettings / PlayerPrefs)
+    {registerSoundTools, "Sound Events", "audio"},
     {registerAudioTools, "Audio Mixer", "audio"},   // upstream (audio-mixer): out of core to fit the budget (S31)
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},

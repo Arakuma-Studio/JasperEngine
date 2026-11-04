@@ -8949,7 +8949,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     beginTable(cpType, getLabelSize("Audio Clip"));
 
-    if (entities.size() == 1) {
+    if (!sceneProject->scene->getComponent<AudioSourceComponent>(entities.front()).event.empty()) {
+        // the event plays: its clip is ignored (S37 R9)
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Audio Clip");
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("(played by the event)");
+    } else if (entities.size() == 1) {
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
 
@@ -9061,6 +9068,8 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
     propertyRow(RowPropertyType::Enum, cpType, "state", "State", sceneProject, entities, stateSettings);
 
     endTable();
+
+    drawAudioEventRows(cpType, sceneProject, entities);
 
     if (entities.size() == 1) {
         Entity entity = entities[0];

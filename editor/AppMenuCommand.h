@@ -130,6 +130,8 @@ namespace jasperengine::editor {
         // upstream (audio-mixer, native-bridge, camera-shake): after S27's
         ToggleAudioMixer,             // Window > Audio > Audio Mixer
         AssetsCreateAudioMixer,
+        AssetsCreateSoundEvent,
+        AssetsCreateSoundEventFromClips,
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
         AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera

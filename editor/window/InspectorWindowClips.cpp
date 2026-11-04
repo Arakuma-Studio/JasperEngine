@@ -1551,6 +1551,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawShakePresetAsset(asset);
         return true;
     }
+    // a .soundevent: its editor (InspectorSoundEvent.cpp)
+    if (Util::isSoundEventFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawSoundEventAsset(asset);
+        return true;
+    }
     // a .mixer: its summary (audio-mixer spec 9)
     if (asset.extension() == AudioMixerIO::EXTENSION){
         std::error_code ec;

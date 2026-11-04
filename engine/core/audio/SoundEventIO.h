@@ -27,6 +27,8 @@ namespace jasperengine {
         // Every value out of its range, each as "<json path>: <reason>"; empty when the event is
         // valid. The one check the editor, MCP and the engine share.
         static std::vector<std::string> validate(const SoundEventDef& def);
+        // what `type` may be
+        static const std::vector<std::string>& soundTypes();
     };
 
 }

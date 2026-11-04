@@ -532,6 +532,10 @@ namespace jasperengine::editor {
         // Assets > Create > Audio Mixer: "New Audio Mixer.mixer" (Master only) in the current folder,
         // one project undo step, then renamed in place
         void assetsCreateAudioMixer();
+        void assetsCreateSoundEvent();
+        // a shuffle event of the selected audio files
+        void assetsCreateSoundEventFromClips();
+        bool hasAudioSelection() const;
         // Unity's Create > Physics Material / Physics Material 2D (the 2D preset: friction 0.4,
         // geometric mean / maximum)
         void assetsCreatePhysicsMaterial(bool preset2D);
