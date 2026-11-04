@@ -13,15 +13,17 @@
 
 using namespace jasperengine;
 
+#ifdef SCHEDULER_COUNT_ALLOCATIONS
 static size_t allocations = 0;
 static bool countAllocations = false;
-void* operator new(std::size_t size) {
+[[gnu::noinline]] void* operator new(std::size_t size) {
     if (countAllocations) ++allocations;
     if (void* ptr = std::malloc(size ? size : 1)) return ptr;
     throw std::bad_alloc();
 }
-void operator delete(void* ptr) noexcept { std::free(ptr); }
-void operator delete(void* ptr, std::size_t) noexcept { std::free(ptr); }
+[[gnu::noinline]] void operator delete(void* ptr) noexcept { std::free(ptr); }
+[[gnu::noinline]] void operator delete(void* ptr, std::size_t) noexcept { std::free(ptr); }
+#endif
 
 namespace jasperengine {
 void Log::error(const char*, ...) { std::abort(); }
@@ -91,6 +93,7 @@ static void correctness() {
     assert(scheduler.getLastTrace().size() == 2);
 }
 
+#ifdef SCHEDULER_COUNT_ALLOCATIONS
 static size_t allocationCount(size_t waves) {
     Scene scene;
     SystemScheduler scheduler;
@@ -103,18 +106,29 @@ static size_t allocationCount(size_t waves) {
     countAllocations = false;
     return allocations;
 }
+#endif
 
 int main(int argc, char** argv) {
     correctness();
-    const size_t one = allocationCount(1), twenty = allocationCount(20);
-    if (argc > 1 && std::string(argv[1]) == "--check-allocations") {
-        assert(one == twenty);
-        return 0;
-    }
-#ifdef CORE_CHECK_ONLY
-    return 0;
+    if (argc > 1) {
+        const std::string option(argv[1]);
+        if (option == "--check") return 0;
+        if (option == "--check-allocations") {
+#ifdef SCHEDULER_COUNT_ALLOCATIONS
+            assert(allocationCount(1) == allocationCount(20));
+            return 0;
+#else
+            std::fprintf(stderr, "Allocation counting is disabled; compile with run-scheduler.py --allocations.\n");
+            return 2;
 #endif
-    std::printf("allocations,%zu,%zu\n", one, twenty);
+        }
+        std::fprintf(stderr, "Unknown option: %s\n", option.c_str());
+        return 2;
+    }
+#ifdef SCHEDULER_COUNT_ALLOCATIONS
+    std::printf("allocations,%zu,%zu\n", allocationCount(1), allocationCount(20));
+    return 0;
+#elif !defined(CORE_CHECK_ONLY)
     for (bool exclusive : {false, true}) {
         Scene scene;
         SystemScheduler scheduler;
@@ -135,11 +149,8 @@ int main(int argc, char** argv) {
             wallNs = std::chrono::duration<double, std::nano>(std::chrono::steady_clock::now() - start).count();
             if (cpuNs < 50000000.0) repeats *= 2;
         } while (cpuNs < 50000000.0);
-        allocations = 0;
-        countAllocations = true;
-        frame(scheduler, scene);
-        countAllocations = false;
-        std::printf("%s,%.3f,%.3f,%zu,%zu,%.0f\n", exclusive ? "exclusive" : "declared",
-                    cpuNs / repeats, wallNs / repeats, allocations, repeats, cpuNs);
+        std::printf("%s,%.3f,%.3f,%zu,%.0f\n", exclusive ? "exclusive" : "declared",
+                    cpuNs / repeats, wallNs / repeats, repeats, cpuNs);
     }
+#endif
 }
