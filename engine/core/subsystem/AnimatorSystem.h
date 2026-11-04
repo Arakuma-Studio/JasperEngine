@@ -49,6 +49,16 @@ namespace jasperengine{
             size_t animators = 0;       // updated this frame
             size_t sampled = 0;         // evaluated and written
             size_t culled = 0;
+
+            Stats& operator+=(const Stats& other){
+                prepareMs += other.prepareMs;
+                waveMs += other.waveMs;
+                finalizeMs += other.finalizeMs;
+                animators += other.animators;
+                sampled += other.sampled;
+                culled += other.culled;
+                return *this;
+            }
         };
 
         AnimatorSystem(Scene* scene);
@@ -77,7 +87,11 @@ namespace jasperengine{
 
         // 0 workers or not: the wave's jobs (ParallelEqualsSerial, benchmarks)
         void setParallel(bool parallel);
+        // the last run (the update or a fixed step)
         const Stats& getStats() const { return stats; }
+        // what ran since the last call, both phases: time adds up, and the counts are one frame's,
+        // however many fixed steps it took (the profiler's monitors take them once per frame)
+        Stats takeFrameStats();
 
     private:
         struct Job{
@@ -89,6 +103,8 @@ namespace jasperengine{
 
         std::vector<Job> jobs;
         Stats stats;
+        Stats updateStats;
+        Stats fixedStats;
         bool parallel = true;
         uint64_t clipRevision = 0;
         uint64_t assetRevision = 0;

@@ -13,8 +13,10 @@
 #include "Scene.h"
 #include "System.h"
 #include "jobs/JobSystem.h"
+#include "pool/AnimationClipPool.h"
 #include "render/SystemRender.h"
 #include "script/LuaBinding.h"
+#include "subsystem/AnimatorSystem.h"
 #include "subsystem/UIDocumentSystem.h"
 
 #include "lua.hpp"
@@ -143,6 +145,13 @@ namespace {
         static MonitorHandle m9 = nullptr;
         static MonitorHandle m10 = nullptr;
         static MonitorHandle m11 = nullptr;
+        static MonitorHandle m12 = nullptr;
+        static MonitorHandle m13 = nullptr;
+        static MonitorHandle m14 = nullptr;
+        static MonitorHandle m15 = nullptr;
+        static MonitorHandle m16 = nullptr;
+        static MonitorHandle m17 = nullptr;
+        static MonitorHandle m18 = nullptr;
         const FrameTimeSample frame = FrameTimes::latest();
         counter(handle(m0, "FPS", MonitorUnit::Quantity), frame.fps);
         counter(handle(m1, "CPU frame ms", MonitorUnit::TimeMs), frame.cpuMs);
@@ -167,11 +176,22 @@ namespace {
             counter(handle(m10, "Buffer upload bytes", MonitorUnit::Memory), backend.bufferUploadBytes);
         }
         uint32_t htmlDraws = 0;
+        AnimatorSystem::Stats animation;
         for (Scene* scene : Engine::getSceneLayers()){
             if (auto documents = scene->getSystem<UIDocumentSystem>())
                 htmlDraws += documents->getRenderStats().drawCalls;
+            if (auto animators = scene->getSystem<AnimatorSystem>())
+                animation += animators->takeFrameStats();
         }
         counter(handle(m11, "HTML UI draws", MonitorUnit::Quantity), htmlDraws);
+        counter(handle(m12, "Animators", MonitorUnit::Quantity), (double)animation.animators);
+        counter(handle(m13, "Animators sampled", MonitorUnit::Quantity), (double)animation.sampled);
+        counter(handle(m14, "Animators culled", MonitorUnit::Quantity), (double)animation.culled);
+        counter(handle(m15, "Anim Prepare ms", MonitorUnit::TimeMs), animation.prepareMs);
+        counter(handle(m16, "Anim Wave ms", MonitorUnit::TimeMs), animation.waveMs);
+        counter(handle(m17, "Anim Finalize ms", MonitorUnit::TimeMs), animation.finalizeMs);
+        // the pool serves every scene, so this one is not a sum of theirs
+        counter(handle(m18, "Clip memory", MonitorUnit::Memory), (double)AnimationClipPool::loadedBytes());
         // the slower ones (a walk of every GPU allocation, /proc) four times a second, whatever
         // the frame rate
         const auto now = std::chrono::steady_clock::now();

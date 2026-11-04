@@ -651,6 +651,8 @@ void AnimatorSystem::finalize(Job& job, float dt){
 void AnimatorSystem::run(double dt, bool fixedPhase){
     auto animators = scene->getComponentArray<AnimatorComponent>();
     if (animators->size() == 0) return;
+    // the profiler's Animation band: this time is not the Scripts or Physics of Update and FixedUpdate
+    JE_PROFILE_SCOPE("Animation");
     stats = Stats();
     const double start = nowMs();
     {
@@ -711,6 +713,23 @@ void AnimatorSystem::run(double dt, bool fixedPhase){
     stats.prepareMs = prepared - start;
     stats.waveMs = waved - prepared;
     stats.finalizeMs = finished - waved;
+
+    // a frame may take several fixed steps: their time adds up, their counts do not
+    Stats& phase = fixedPhase ? fixedStats : updateStats;
+    phase.prepareMs += stats.prepareMs;
+    phase.waveMs += stats.waveMs;
+    phase.finalizeMs += stats.finalizeMs;
+    phase.animators = std::max(phase.animators, stats.animators);
+    phase.sampled = std::max(phase.sampled, stats.sampled);
+    phase.culled = std::max(phase.culled, stats.culled);
+}
+
+AnimatorSystem::Stats AnimatorSystem::takeFrameStats(){
+    Stats frame = updateStats;
+    frame += fixedStats;
+    updateStats = Stats();
+    fixedStats = Stats();
+    return frame;
 }
 
 void AnimatorSystem::update(double dt){

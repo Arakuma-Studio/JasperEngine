@@ -114,6 +114,9 @@ namespace jasperengine{
         static void releaseUnused(const std::string& path);
 
         static size_t size();
+        // the memoryBytes() of the clips cached now ("Animation.Clips" in memory::snapshot, the
+        // Clip memory monitor)
+        static uint64_t loadedBytes();
 
     };
 

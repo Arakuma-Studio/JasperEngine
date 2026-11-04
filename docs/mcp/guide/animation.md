@@ -150,6 +150,15 @@ sorted by path then channel, events by time). Writing the same data twice gives 
 - With `root`, a track may give `target` (a GameObject ref) instead of `path`: it is turned into
   the path from the root (results always show `path`).
 
+## What a clip costs
+
+`get_animation {clip, max_keys: 1}` and `get_asset_info {path}` (under `clip`) return `stats`:
+`runtime_bytes` (what the clip holds in memory, the number `Clip memory` adds up), `file_bytes` (null for a model clip), `keys`, `tracks`, `length_s` and
+`constant_tracks` (tracks of several keys that never move). Asking does not keep the clip loaded.
+Across the project: `get_memory_stats {prefix: "Animation.Clips"}` is what is loaded now, and
+`get_frame_times {monitors: ["Animators", "Animators sampled", "Animators culled", "Anim Prepare ms",
+"Anim Wave ms", "Anim Finalize ms", "Clip memory"]}` what the Animators cost per frame.
+
 ## Channels and keys
 
 edit_animation keys are objects `{time, value, ease}` (lattice: `points` instead of `value`):
@@ -419,7 +428,8 @@ changed it (else the file stays and the console says so).
 - glTF/FBX animations are read-only clips named `<model>#<animation>`
   (`assets/models/hero.gltf#Walk`; `#Animation <i>` for unnamed ones (`#<i>` is accepted too),
   `"Walk 2"` for a duplicate name). Reference them in `clips` like files; read them with
-  `get_animation {clip}` (`get_asset_info` on the model lists the animations). To edit one,
+  `get_animation {clip}` (`get_asset_info` on the model lists the animations, each with its
+  `keys` and `runtime_bytes`). To edit one,
   extract it: `edit_animation {clip: "assets/anim/walk.anim", create: {from:
   "assets/models/hero.gltf#Walk"}, root: "Hero"}`. With `root` whose Animation Player lists the
   model clip, those entries switch to the new file (state names kept) in the same call, one

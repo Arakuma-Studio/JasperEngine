@@ -290,4 +290,11 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
 
 ## Deviations
 
-None yet.
+- **R7, `Clip memory`:** read from `AnimationClipPool::loadedBytes()`, the R5 count, not from `AnimatorSystem::Stats`.
+  Stats are per scene and the pool is process-wide, so a sum over scenes would multiply it, and a scene with only Animation
+  Players has no Animator run to fill it. The other six are read from `Stats`, through `takeFrameStats()`: a frame's fixed
+  steps and its update, which `getStats()` (the last run only) cannot give.
+- **R3, the last key's ease:** a key's `ease` belongs to the segment it starts, so the last key's starts none, but a file can
+  hold one and `.anim` must stay byte-stable through `toData()`. `Track::trailingEase` keeps it. R3's rule itself holds: a
+  track with only that ease has `easings == nullptr`.
+- **R53, `get_asset_info` on `.anim`:** `stats` is under `clip`, with the rest of that tool's clip fields.
