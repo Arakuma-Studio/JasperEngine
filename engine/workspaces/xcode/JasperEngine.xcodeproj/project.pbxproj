@@ -713,6 +713,40 @@
 		715CB114288CD3F60049344B /* TerrainComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 715CB113288CD3F60049344B /* TerrainComponent.h */; };
 		715CB117288CD40E0049344B /* Terrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 715CB115288CD40E0049344B /* Terrain.cpp */; };
 		715CB118288CD40E0049344B /* Terrain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 715CB115288CD40E0049344B /* Terrain.cpp */; };
+		5452524E196AC7EDFB4C2A69 /* TerrainEdit.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EE2E21CCF598630C1 /* TerrainEdit.h */; };
+		5452524E143AD6092E4F2738 /* TerrainEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */; };
+		5452524E14FFF0F1D87ED435 /* TerrainEdit.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */; };
+		5452524ED02A76CC88034BB8 /* TerrainSurface.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E8C0EE5FFF25F3004 /* TerrainSurface.h */; };
+		5452524EA26F89A24A56CFF7 /* TerrainSurface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E76AB4CB8E6BC0502 /* TerrainSurface.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E67E57E3DEA16E999 /* TerrainSurface.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E76AB4CB8E6BC0502 /* TerrainSurface.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524EC929859B34CA2448 /* TerrainStroke.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E41E8ACF56291B1E7 /* TerrainStroke.h */; };
+		5452524E405948BC2A382BD8 /* TerrainStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E22E5C238D56BEB60 /* TerrainStroke.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E9E783E907D5B6F30 /* TerrainStroke.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E22E5C238D56BEB60 /* TerrainStroke.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E61BA6CE2864C5CCC /* TerrainShape.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EC52D6629E2B2284A /* TerrainShape.h */; };
+		5452524E50CFA39B883D7A1A /* TerrainShape.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E0A887F8437602CB9 /* TerrainShape.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E9DDCDF2617B74F24 /* TerrainShape.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E0A887F8437602CB9 /* TerrainShape.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E20F3B123C9746224 /* TerrainPlacement.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E4E0517A12C44CA62 /* TerrainPlacement.h */; };
+		5452524E974AB13A4C11D65A /* TerrainPlacement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524ED2A1EF93AD226CAF /* TerrainPlacement.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E1F9CECFFC74973E5 /* TerrainPlacement.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524ED2A1EF93AD226CAF /* TerrainPlacement.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524EDCF7A6E881F05F33 /* TerrainOps.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EE4604303FAEBF498 /* TerrainOps.h */; };
+		5452524ED322E98AA8DF61F8 /* TerrainOps.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC425BA5AEFAFDAEB /* TerrainOps.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E0A4668CA4112E8A3 /* TerrainOps.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EC425BA5AEFAFDAEB /* TerrainOps.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E99BCD5FB1B0A81D1 /* TerrainNoise.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E04D1361E8F0D9B9F /* TerrainNoise.h */; };
+		5452524E53B8E6834E13BD04 /* TerrainMapStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E08E5A1B26036AE56 /* TerrainMapStore.h */; };
+		5452524EC33984C90DDB934A /* TerrainLayers.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E89465B22069F7FA7 /* TerrainLayers.h */; };
+		5452524EE7BDEFD32086E359 /* TerrainHoles.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E76DA1B10D1FB29A5 /* TerrainHoles.h */; };
+		5452524E1E759FE1CF5F1DEB /* TerrainHoles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E0ADA8A73C15CA1D2 /* TerrainHoles.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E82275A9051F19187 /* TerrainHoles.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E0ADA8A73C15CA1D2 /* TerrainHoles.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524EA3A1070567D836B6 /* TerrainErosion.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EFE85D210DF11F4A2 /* TerrainErosion.h */; };
+		5452524ED78A747B65BF2016 /* TerrainErosion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EE1B81F8A18AB5223 /* TerrainErosion.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E5667045321BA4BB1 /* TerrainErosion.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524EE1B81F8A18AB5223 /* TerrainErosion.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E5B56370694005109 /* TerrainDeterministic.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EBC931386E1919EC0 /* TerrainDeterministic.h */; };
+		5452524ECFC8EF0489BA7958 /* RawMapStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524E7591957244AA0513 /* RawMapStore.h */; };
+		5452524EF1EC0BF596A3CB56 /* RawMapStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E855D281B1082DB4B /* RawMapStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E1676F76EDA8B8E78 /* RawMapStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E855D281B1082DB4B /* RawMapStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E99586F0766A6FEE2 /* OverlayMapStore.h in Headers */ = {isa = PBXBuildFile; fileRef = 5452524EC9F2759DE074F357 /* OverlayMapStore.h */; };
+		5452524E919481AD44CC8191 /* OverlayMapStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E0A8C2A2575BFF427 /* OverlayMapStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
+		5452524E17BFAE7B893BDD25 /* OverlayMapStore.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 5452524E0A8C2A2575BFF427 /* OverlayMapStore.cpp */; settings = {COMPILER_FLAGS = "-ffp-contract=off"; }; };
 		715CB119288CD40E0049344B /* Terrain.h in Headers */ = {isa = PBXBuildFile; fileRef = 715CB116288CD40E0049344B /* Terrain.h */; };
 		715CB11B288CD57A0049344B /* Material.h in Headers */ = {isa = PBXBuildFile; fileRef = 715CB11A288CD5790049344B /* Material.h */; };
 		7162FD1225963AE00075B97D /* Log.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7162FC2C25962A0E0075B97D /* Log.cpp */; };
@@ -5547,6 +5581,30 @@
 		7158F43E259C2C82006E55D3 /* Renderer.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = Renderer.mm; sourceTree = "<group>"; };
 		715CB113288CD3F60049344B /* TerrainComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainComponent.h; sourceTree = "<group>"; };
 		715CB115288CD40E0049344B /* Terrain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Terrain.cpp; sourceTree = "<group>"; };
+		5452524EE2E21CCF598630C1 /* TerrainEdit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainEdit.h; sourceTree = "<group>"; };
+		5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainEdit.cpp; sourceTree = "<group>"; };
+		5452524E8C0EE5FFF25F3004 /* TerrainSurface.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainSurface.h; sourceTree = "<group>"; };
+		5452524E76AB4CB8E6BC0502 /* TerrainSurface.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainSurface.cpp; sourceTree = "<group>"; };
+		5452524E41E8ACF56291B1E7 /* TerrainStroke.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainStroke.h; sourceTree = "<group>"; };
+		5452524E22E5C238D56BEB60 /* TerrainStroke.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainStroke.cpp; sourceTree = "<group>"; };
+		5452524EC52D6629E2B2284A /* TerrainShape.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainShape.h; sourceTree = "<group>"; };
+		5452524E0A887F8437602CB9 /* TerrainShape.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainShape.cpp; sourceTree = "<group>"; };
+		5452524E4E0517A12C44CA62 /* TerrainPlacement.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainPlacement.h; sourceTree = "<group>"; };
+		5452524ED2A1EF93AD226CAF /* TerrainPlacement.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainPlacement.cpp; sourceTree = "<group>"; };
+		5452524EE4604303FAEBF498 /* TerrainOps.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainOps.h; sourceTree = "<group>"; };
+		5452524EC425BA5AEFAFDAEB /* TerrainOps.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainOps.cpp; sourceTree = "<group>"; };
+		5452524E04D1361E8F0D9B9F /* TerrainNoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainNoise.h; sourceTree = "<group>"; };
+		5452524E08E5A1B26036AE56 /* TerrainMapStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainMapStore.h; sourceTree = "<group>"; };
+		5452524E89465B22069F7FA7 /* TerrainLayers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainLayers.h; sourceTree = "<group>"; };
+		5452524E76DA1B10D1FB29A5 /* TerrainHoles.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainHoles.h; sourceTree = "<group>"; };
+		5452524E0ADA8A73C15CA1D2 /* TerrainHoles.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainHoles.cpp; sourceTree = "<group>"; };
+		5452524EFE85D210DF11F4A2 /* TerrainErosion.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainErosion.h; sourceTree = "<group>"; };
+		5452524EE1B81F8A18AB5223 /* TerrainErosion.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TerrainErosion.cpp; sourceTree = "<group>"; };
+		5452524EBC931386E1919EC0 /* TerrainDeterministic.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TerrainDeterministic.h; sourceTree = "<group>"; };
+		5452524E7591957244AA0513 /* RawMapStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RawMapStore.h; sourceTree = "<group>"; };
+		5452524E855D281B1082DB4B /* RawMapStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RawMapStore.cpp; sourceTree = "<group>"; };
+		5452524EC9F2759DE074F357 /* OverlayMapStore.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OverlayMapStore.h; sourceTree = "<group>"; };
+		5452524E0A8C2A2575BFF427 /* OverlayMapStore.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = OverlayMapStore.cpp; sourceTree = "<group>"; };
 		715CB116288CD40E0049344B /* Terrain.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Terrain.h; sourceTree = "<group>"; };
 		715CB11A288CD5790049344B /* Material.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Material.h; sourceTree = "<group>"; };
 		7162F8CE259547DA0075B97D /* JasperEngine.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = JasperEngine.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -10355,6 +10413,35 @@
 			path = debug;
 			sourceTree = "<group>";
 		};
+		5452524E196FDEBB284DD19F /* terrain */ = {
+			isa = PBXGroup;
+			children = (
+				5452524E0A8C2A2575BFF427 /* OverlayMapStore.cpp */,
+				5452524EC9F2759DE074F357 /* OverlayMapStore.h */,
+				5452524E855D281B1082DB4B /* RawMapStore.cpp */,
+				5452524E7591957244AA0513 /* RawMapStore.h */,
+				5452524EBC931386E1919EC0 /* TerrainDeterministic.h */,
+				5452524EE1B81F8A18AB5223 /* TerrainErosion.cpp */,
+				5452524EFE85D210DF11F4A2 /* TerrainErosion.h */,
+				5452524E0ADA8A73C15CA1D2 /* TerrainHoles.cpp */,
+				5452524E76DA1B10D1FB29A5 /* TerrainHoles.h */,
+				5452524E89465B22069F7FA7 /* TerrainLayers.h */,
+				5452524E08E5A1B26036AE56 /* TerrainMapStore.h */,
+				5452524E04D1361E8F0D9B9F /* TerrainNoise.h */,
+				5452524EC425BA5AEFAFDAEB /* TerrainOps.cpp */,
+				5452524EE4604303FAEBF498 /* TerrainOps.h */,
+				5452524ED2A1EF93AD226CAF /* TerrainPlacement.cpp */,
+				5452524E4E0517A12C44CA62 /* TerrainPlacement.h */,
+				5452524E0A887F8437602CB9 /* TerrainShape.cpp */,
+				5452524EC52D6629E2B2284A /* TerrainShape.h */,
+				5452524E22E5C238D56BEB60 /* TerrainStroke.cpp */,
+				5452524E41E8ACF56291B1E7 /* TerrainStroke.h */,
+				5452524E76AB4CB8E6BC0502 /* TerrainSurface.cpp */,
+				5452524E8C0EE5FFF25F3004 /* TerrainSurface.h */,
+			);
+			path = terrain;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -10432,6 +10519,7 @@
 				4A534E470A099A4C30353C59 /* media */,
 				4A534E476646E8233CC78BAC /* native */,
 				4A534E47B1D2BFA5C64803C4 /* debug */,
+				5452524E196FDEBB284DD19F /* terrain */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -10799,6 +10887,8 @@
 				4A534E47E25A1D2272719AB1 /* CameraShaker.h */,
 				4A534E47CE10E825FF34974A /* VideoPlayer.cpp */,
 				4A534E477741740820D741F9 /* VideoPlayer.h */,
+				5452524EBA8B8DAAF3850A73 /* TerrainEdit.cpp */,
+				5452524EE2E21CCF598630C1 /* TerrainEdit.h */,
 			);
 			path = object;
 			sourceTree = "<group>";
@@ -14766,6 +14856,20 @@
 				71CC839726B8C4D800EEBB93 /* Light.h in Headers */,
 				717D9B4127337850002C0803 /* ParticleSystemComponent.h in Headers */,
 				715CB119288CD40E0049344B /* Terrain.h in Headers */,
+				5452524E196AC7EDFB4C2A69 /* TerrainEdit.h in Headers */,
+				5452524ED02A76CC88034BB8 /* TerrainSurface.h in Headers */,
+				5452524EC929859B34CA2448 /* TerrainStroke.h in Headers */,
+				5452524E61BA6CE2864C5CCC /* TerrainShape.h in Headers */,
+				5452524E20F3B123C9746224 /* TerrainPlacement.h in Headers */,
+				5452524EDCF7A6E881F05F33 /* TerrainOps.h in Headers */,
+				5452524E99BCD5FB1B0A81D1 /* TerrainNoise.h in Headers */,
+				5452524E53B8E6834E13BD04 /* TerrainMapStore.h in Headers */,
+				5452524EC33984C90DDB934A /* TerrainLayers.h in Headers */,
+				5452524EE7BDEFD32086E359 /* TerrainHoles.h in Headers */,
+				5452524EA3A1070567D836B6 /* TerrainErosion.h in Headers */,
+				5452524E5B56370694005109 /* TerrainDeterministic.h in Headers */,
+				5452524ECFC8EF0489BA7958 /* RawMapStore.h in Headers */,
+				5452524E99586F0766A6FEE2 /* OverlayMapStore.h in Headers */,
 				716803D32DF75EA200ED71BE /* ResourceProgress.h in Headers */,
 				716803D42DF75EA200ED71BE /* ThreadPoolManager.h in Headers */,
 				71CC839A26B8C4FD00EEBB93 /* FramebufferRender.h in Headers */,
@@ -17174,6 +17278,16 @@
 				71D74954296731F200348AB8 /* Tilemap.cpp in Sources */,
 				1721303B2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				715CB118288CD40E0049344B /* Terrain.cpp in Sources */,
+				5452524E143AD6092E4F2738 /* TerrainEdit.cpp in Sources */,
+				5452524EA26F89A24A56CFF7 /* TerrainSurface.cpp in Sources */,
+				5452524E405948BC2A382BD8 /* TerrainStroke.cpp in Sources */,
+				5452524E50CFA39B883D7A1A /* TerrainShape.cpp in Sources */,
+				5452524E974AB13A4C11D65A /* TerrainPlacement.cpp in Sources */,
+				5452524ED322E98AA8DF61F8 /* TerrainOps.cpp in Sources */,
+				5452524E1E759FE1CF5F1DEB /* TerrainHoles.cpp in Sources */,
+				5452524ED78A747B65BF2016 /* TerrainErosion.cpp in Sources */,
+				5452524EF1EC0BF596A3CB56 /* RawMapStore.cpp in Sources */,
+				5452524E919481AD44CC8191 /* OverlayMapStore.cpp in Sources */,
 				7128D08725BB033D00965B51 /* Input.cpp in Sources */,
 				434F4D5024FEFFC6A53E3035 /* InputManagerFormat.cpp in Sources */,
 				434F4D50F866BE1250EF4E4C /* InputVirtualControls.cpp in Sources */,
@@ -17982,6 +18096,16 @@
 				1721303D2FB012BD00390DC2 /* SoundPool.cpp in Sources */,
 				71451BD1270CA17F00712643 /* SpriteAnimation.cpp in Sources */,
 				715CB117288CD40E0049344B /* Terrain.cpp in Sources */,
+				5452524E14FFF0F1D87ED435 /* TerrainEdit.cpp in Sources */,
+				5452524E67E57E3DEA16E999 /* TerrainSurface.cpp in Sources */,
+				5452524E9E783E907D5B6F30 /* TerrainStroke.cpp in Sources */,
+				5452524E9DDCDF2617B74F24 /* TerrainShape.cpp in Sources */,
+				5452524E1F9CECFFC74973E5 /* TerrainPlacement.cpp in Sources */,
+				5452524E0A4668CA4112E8A3 /* TerrainOps.cpp in Sources */,
+				5452524E82275A9051F19187 /* TerrainHoles.cpp in Sources */,
+				5452524E5667045321BA4BB1 /* TerrainErosion.cpp in Sources */,
+				5452524E1676F76EDA8B8E78 /* RawMapStore.cpp in Sources */,
+				5452524E17BFAE7B893BDD25 /* OverlayMapStore.cpp in Sources */,
 				7128D08625BB033D00965B51 /* Input.cpp in Sources */,
 				434F4D505351D59BE40A891C /* InputManagerFormat.cpp in Sources */,
 				434F4D504533621485F625C7 /* InputVirtualControls.cpp in Sources */,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreateEntityCmd.h"
+#include "object/TerrainEdit.h"
 #include "spline/SplinePresets.h"
 
 #include "audio/AudioMixerDocument.h"
@@ -884,6 +885,7 @@ bool editor::CreateEntityCmd::execute(){
         scene->addComponent<Transform>(entity, {});
         scene->addComponent<MeshComponent>(entity, {});
         scene->addComponent<TerrainComponent>(entity, {});
+        applyNewTerrainDefaults(scene->getComponent<TerrainComponent>(entity));
 
     }else if (type >= EntityCreationType::SPLINE_EMPTY && type <= EntityCreationType::SPLINE_CIRCLE_2D){
 

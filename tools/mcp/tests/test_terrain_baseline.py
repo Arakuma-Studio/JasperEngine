@@ -1,6 +1,6 @@
-"""The terrain brushes and generators as the editor made them before S41's operation engine.
+"""The terrain brushes and generators as the editor made them before S53's operation engine.
 
-The fixture was recorded from the unmigrated editor (S41 DC11), so these tests are the regression
+The fixture was recorded from the unmigrated editor (S53 DC11), so these tests are the regression
 proof of the migration: green before it and green after it. To record again from a build known to
 be good: JASPER_TERRAIN_BASELINE_RECORD=1 tools/mcp/run-tests.sh tools/mcp/tests/test_terrain_baseline.py
 """
@@ -25,7 +25,7 @@ RECORDING = os.environ.get("JASPER_TERRAIN_BASELINE_RECORD") == "1"
 SIZE = 64
 RESOLUTION = 64
 MAX_HEIGHT = 16.0
-HEIGHT_TOLERANCE = 1  # 1/65535 (S41 R17)
+HEIGHT_TOLERANCE = 1  # 1/65535 (S53 R17)
 BYTE_TOLERANCE = 1    # 1/255
 
 # A drag across the map, turning once: every brush runs the same path

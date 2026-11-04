@@ -1,14 +1,16 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-#include "TerrainErosion.h"
+#include "terrain/TerrainErosion.h"
 
-#include "TerrainNoise.h"
+#include "terrain/TerrainNoise.h"
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 using namespace jasperengine;
+using namespace jasperengine::terrain;
 
 static constexpr int DROPLET_STEPS = 32;
 static constexpr float DROPLET_INERTIA = 0.05f;
@@ -25,15 +27,15 @@ static constexpr int ERODE_TAPS = (ERODE_RADIUS * 2 + 1) * (ERODE_RADIUS * 2 + 1
 namespace {
 
     struct HeightField{
-        std::vector<float>& heights;
-        int width;
-        int height;
-        editor::TerrainMapRegion region;
+        ErosionField field;
+        ErosionRegion region;
+
+        float& texel(int x, int y) const{
+            return field.heights[static_cast<size_t>(y - field.windowY) * field.windowWidth + (x - field.windowX)];
+        }
 
         float at(int x, int y) const{
-            x = std::clamp(x, 0, width - 1);
-            y = std::clamp(y, 0, height - 1);
-            return heights[static_cast<size_t>(y) * width + x];
+            return texel(std::clamp(x, 0, field.mapWidth - 1), std::clamp(y, 0, field.mapHeight - 1));
         }
 
         // Writes stay inside the stamp: outside it nothing would reach the map, and the
@@ -43,7 +45,7 @@ namespace {
             if (x < region.minX || y < region.minY || x > region.maxX || y > region.maxY){
                 return 0.0f;
             }
-            float& value = heights[static_cast<size_t>(y) * width + x];
+            float& value = texel(x, y);
             const float previous = value;
             value = std::clamp(value + amount, 0.0f, 1.0f);
             return value - previous;
@@ -52,13 +54,13 @@ namespace {
 
 }
 
-void editor::TerrainErosion::hydraulic(std::vector<float>& heights, int width, int height, const TerrainMapRegion& region,
-                                       float heightScale, int droplets, uint32_t seed, const FalloffFunc& falloff){
-    if (heights.empty() || width <= 2 || height <= 2 || droplets <= 0 || region.empty()){
+void TerrainErosion::hydraulic(const ErosionField& heights, const ErosionRegion& region, float heightScale, int droplets,
+                               uint32_t seed, ErosionWeightFn falloff, void* user){
+    if (!heights.heights || heights.mapWidth <= 2 || heights.mapHeight <= 2 || droplets <= 0 || region.empty()){
         return;
     }
 
-    HeightField field{heights, width, height, region};
+    HeightField field{heights, region};
     const float spanX = static_cast<float>(region.width() - 1);
     const float spanY = static_cast<float>(region.height() - 1);
 
@@ -84,7 +86,7 @@ void editor::TerrainErosion::hydraulic(std::vector<float>& heights, int width, i
         float water = 1.0f;
         float sediment = 0.0f;
 
-        if (falloff(static_cast<int>(posX), static_cast<int>(posY)) <= 0.0f){
+        if (falloff(user, static_cast<int>(posX), static_cast<int>(posY)) <= 0.0f){
             continue;
         }
 
@@ -125,7 +127,7 @@ void editor::TerrainErosion::hydraulic(std::vector<float>& heights, int width, i
                 break;
             }
 
-            const float weight = falloff(static_cast<int>(posX), static_cast<int>(posY));
+            const float weight = falloff(user, static_cast<int>(posX), static_cast<int>(posY));
             if (weight <= 0.0f){
                 break;
             }
@@ -178,13 +180,13 @@ void editor::TerrainErosion::hydraulic(std::vector<float>& heights, int width, i
     }
 }
 
-void editor::TerrainErosion::thermal(std::vector<float>& heights, int width, int height, const TerrainMapRegion& region,
-                                     float heightScale, float talus, float rate, const FalloffFunc& falloff){
-    if (heights.empty() || width <= 2 || height <= 2 || region.empty() || heightScale <= 0.0f || rate <= 0.0f){
+void TerrainErosion::thermal(const ErosionField& heights, const ErosionRegion& region, float heightScale, float talus, float rate,
+                             ErosionWeightFn falloff, void* user){
+    if (!heights.heights || heights.mapWidth <= 2 || heights.mapHeight <= 2 || region.empty() || heightScale <= 0.0f || rate <= 0.0f){
         return;
     }
 
-    HeightField field{heights, width, height, region};
+    HeightField field{heights, region};
     const float limit = talus / heightScale;
 
     // Neighbours are read from a copy so the pass doesn't depend on texel visit order.
@@ -193,7 +195,7 @@ void editor::TerrainErosion::thermal(std::vector<float>& heights, int width, int
     const int spanY = region.height();
     std::vector<float> source(static_cast<size_t>(spanX) * static_cast<size_t>(spanY));
     for (int y = 0; y < spanY; y++){
-        const float* row = heights.data() + static_cast<size_t>(region.minY + y) * width + region.minX;
+        const float* row = &field.texel(region.minX, region.minY + y);
         std::copy(row, row + spanX, source.begin() + static_cast<size_t>(y) * spanX);
     }
     auto sourceAt = [&](int x, int y){
@@ -202,7 +204,7 @@ void editor::TerrainErosion::thermal(std::vector<float>& heights, int width, int
 
     for (int y = region.minY; y <= region.maxY; y++){
         for (int x = region.minX; x <= region.maxX; x++){
-            const float weight = falloff(x, y);
+            const float weight = falloff(user, x, y);
             if (weight <= 0.0f){
                 continue;
             }

@@ -1636,6 +1636,9 @@ std::string editor::Factory::createTerrainComponent(int indentSpaces, EntityRegi
     const std::string ind = indentation(indentSpaces);
     code << ind << "TerrainComponent terrain;\n";
     code << formatTexture(indentSpaces, terrain.heightMap, "terrain.heightMap", projectPath);
+    if (!terrain.holeMap.empty()){
+        code << formatTexture(indentSpaces, terrain.holeMap, "terrain.holeMap", projectPath);
+    }
     code << ind << "terrain.blendMaps.resize(" << terrain.blendMaps.size() << ");\n";
     for (size_t i = 0; i < terrain.blendMaps.size(); i++){
         code << formatTexture(indentSpaces, terrain.blendMaps[i], "terrain.blendMaps[" + std::to_string(i) + "]", projectPath);

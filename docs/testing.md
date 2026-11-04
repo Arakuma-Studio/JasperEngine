@@ -120,7 +120,9 @@ loaded a model in the background while that file exists, so what else loads the 
   MeshRaycast rays against 1,000 meshes in WebAssembly and fails on a p99 over 4 ms (S26 AC17).
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
-  renderer uploads it as R32F or R16F there).
+  renderer uploads it as R32F or R16F there). `terrain-edit` runs the op sequences of
+  `TerrainGolden.*` in WebAssembly and fails when their digest differs from the one the native
+  core suite pins (S53 AC5).
 
 ### Compiled and prebuilt game builds (MCP, `JASPER_SLOW_BUILD=1`)
 

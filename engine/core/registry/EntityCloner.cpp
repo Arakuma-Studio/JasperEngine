@@ -346,6 +346,7 @@ void prepare<InstancedMeshComponent>(InstancedMeshComponent& instmesh, Entity, C
 template<>
 void prepare<TerrainComponent>(TerrainComponent& terrain, Entity, CloneContext& ctx) {
     remapFramebufferTexture(terrain.heightMap, ctx);
+    remapFramebufferTexture(terrain.holeMap, ctx);
     for (Texture& blendMap : terrain.blendMaps) {
         remapFramebufferTexture(blendMap, ctx);
     }

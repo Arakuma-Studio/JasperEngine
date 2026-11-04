@@ -190,7 +190,7 @@ std::vector<TextureSlot> TextureTypeInference::classify(const DepEdge& edge, con
         slots.push_back(TextureSlot::UI);
     }else if (parts.component == "PointsComponent"){
         slots.push_back(TextureSlot::Sprite);
-    }else if (parts.component == "TerrainComponent" && (parts.field == "heightMap" || endsWith(parts.field, "densityMap"))){
+    }else if (parts.component == "TerrainComponent" && (parts.field == "heightMap" || parts.field == "holeMap" || endsWith(parts.field, "densityMap"))){
         slots.push_back(TextureSlot::LinearData);
         slots.push_back(TextureSlot::CpuReadable);
     }else if (parts.component == "TerrainComponent" && parts.field.rfind("blendMap", 0) == 0){

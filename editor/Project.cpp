@@ -634,6 +634,7 @@ SceneResources editor::Project::collectResourcesInRegistry(EntityRegistry* regis
 
     visitComponents(registry->getComponentArray<TerrainComponent>(), [&](TerrainComponent& terrain) {
         addTexture(terrain.heightMap, false);
+        addTexture(terrain.holeMap, false);
         for (Texture& blendMap : terrain.blendMaps) {
             addTexture(blendMap, false);
         }

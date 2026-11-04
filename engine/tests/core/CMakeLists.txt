@@ -50,12 +50,32 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT JASPERENGINE_UNITY_BUILD)
         ${CMAKE_BINARY_DIR}/CMakeFiles/jasperengine.dir/core/diag/CrashHandlerPosix.cpp.o)
 endif()
 
+# The terrain goldens hash what TerrainGoldenSequences.h computes in the test's own unit: no
+# contraction there either, or arm64 would seed its maps differently (docs/specs/S53-terrain-authoring.md R8)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set_source_files_properties(
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainGoldenTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainStoreTest.cpp
+        PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+
 # Unity build: these tests keep file-local fixtures and helpers (TempDir, Marker, makeScene, ...)
 # named as in another test source (docs/specs/S33-build-speed.md M8)
 jasperengine_skip_unity_build(
     REASON "file-local fixtures or helpers named as in another test source"
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainBatchTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainEditTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainFilterTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainGoldenTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainHolesTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainOpsDepsTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainOpsKernelsTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainOpsTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainPlacementTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainStoreTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainSurfaceTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorHumanoidTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorRetargetTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorStateMachineTest.cpp
