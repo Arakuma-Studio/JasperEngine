@@ -22,48 +22,48 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    struct Dir {
+    struct ExportCopyDir {
         jasperengine::test::TestTempDir dir{"export-copy"};
         const fs::path& root = dir.path();
     };
 
-    void writeFile(const fs::path& path, const std::string& text) {
+    void writeExportCopyFile(const fs::path& path, const std::string& text) {
         fs::create_directories(path.parent_path());
         std::ofstream(path, std::ios::binary) << text;
     }
 
-    fs::perms permsOf(const fs::path& path) {
+    fs::perms exportCopyPerms(const fs::path& path) {
         return fs::status(path).permissions() & fs::perms::mask;
     }
 
 }
 
 TEST(ExportCopy, UnchangedFileGetsTheSourcesPermissions) {
-    Dir dir;
+    ExportCopyDir dir;
     const fs::path src = dir.root / "src", dst = dir.root / "dst";
-    writeFile(src / "workspaces" / "gradlew", "#!/bin/sh\n");
+    writeExportCopyFile(src / "workspaces" / "gradlew", "#!/bin/sh\n");
     fs::permissions(src / "workspaces" / "gradlew", fs::perms(0755), fs::perm_options::replace);
     // an older export: the same bytes without the execute bits
-    writeFile(dst / "workspaces" / "gradlew", "#!/bin/sh\n");
+    writeExportCopyFile(dst / "workspaces" / "gradlew", "#!/bin/sh\n");
     fs::permissions(dst / "workspaces" / "gradlew", fs::perms(0644), fs::perm_options::replace);
     const auto mtime = fs::last_write_time(dst / "workspaces" / "gradlew");
 
     std::error_code ec;
     Exporter::copyTreeIfChanged(src, dst, ec);
     ASSERT_FALSE(ec) << ec.message();
-    EXPECT_EQ(permsOf(dst / "workspaces" / "gradlew"), fs::perms(0755));
+    EXPECT_EQ(exportCopyPerms(dst / "workspaces" / "gradlew"), fs::perms(0755));
     // still unchanged for the incremental build
     EXPECT_EQ(fs::last_write_time(dst / "workspaces" / "gradlew"), mtime);
 }
 
 TEST(ExportCopy, EnsureExecutableAddsTheExecuteBits) {
-    Dir dir;
+    ExportCopyDir dir;
     const fs::path script = dir.root / "jasperengine.py";
-    writeFile(script, "#!/usr/bin/env python3\n");
+    writeExportCopyFile(script, "#!/usr/bin/env python3\n");
     fs::permissions(script, fs::perms(0640), fs::perm_options::replace);
     std::string error;
     EXPECT_TRUE(Exporter::ensureExecutable({script}, error)) << error;
-    EXPECT_EQ(permsOf(script), fs::perms(0751));
+    EXPECT_EQ(exportCopyPerms(script), fs::perms(0751));
     EXPECT_TRUE(::access(script.c_str(), X_OK) == 0);
 
     EXPECT_FALSE(Exporter::ensureExecutable({dir.root / "missing" / "gradlew"}, error));

@@ -16,7 +16,7 @@ using vcsfiles::Refresh;
 
 namespace {
 
-    std::string managed(const std::string& block) {
+    std::string managedVcsText(const std::string& block) {
         return block + vcsfiles::endMarker + "\n";
     }
 
@@ -25,7 +25,7 @@ namespace {
 TEST(VersionControlFiles, NewFileIsTheBlockAndTheEndMarker) {
     std::string out;
     EXPECT_EQ(vcsfiles::refresh(std::nullopt, vcsfiles::ignoreBlock(), FileKind::Ignore, out), Refresh::Write);
-    EXPECT_EQ(out, managed(vcsfiles::ignoreBlock()));
+    EXPECT_EQ(out, managedVcsText(vcsfiles::ignoreBlock()));
     EXPECT_EQ(out.rfind(vcsfiles::startMarker, 0), 0u);
 }
 
@@ -40,10 +40,10 @@ TEST(VersionControlFiles, UsersOwnFileIsLeftAlone) {
 
 TEST(VersionControlFiles, LinesBelowTheEndMarkerAreKeptByteForByte) {
     const std::string user = "\r\n# mine\r\nsecrets.env\r\n\r\n\r\nbuild/\r\n*.log";   // CRLF, blank lines, generated twins, no final newline
-    const std::string old = managed(vcsfiles::attributesBlock(true, false)) + user;
+    const std::string old = managedVcsText(vcsfiles::attributesBlock(true, false)) + user;
     std::string out;
     ASSERT_EQ(vcsfiles::refresh(old, vcsfiles::attributesBlock(false, true), FileKind::Attributes, out), Refresh::Write);
-    EXPECT_EQ(out, managed(vcsfiles::attributesBlock(false, true)) + user);
+    EXPECT_EQ(out, managedVcsText(vcsfiles::attributesBlock(false, true)) + user);
     // a refresh of the result is the result
     std::string again;
     vcsfiles::refresh(out, vcsfiles::attributesBlock(false, true), FileKind::Attributes, again);
@@ -56,7 +56,7 @@ TEST(VersionControlFiles, OlderFileKeepsOnlyTheUsersLines) {
                             "*.scene text eol=lf\n*.bundle    text eol=lf\n";
     std::string out;
     ASSERT_EQ(vcsfiles::refresh(old, vcsfiles::attributesBlock(false, false), FileKind::Attributes, out), Refresh::Write);
-    EXPECT_EQ(out, managed(vcsfiles::attributesBlock(false, false)) + "docs/** linguist-documentation\n\n*.foo  binary\n");
+    EXPECT_EQ(out, managedVcsText(vcsfiles::attributesBlock(false, false)) + "docs/** linguist-documentation\n\n*.foo  binary\n");
     EXPECT_EQ(out.find("filter=lfs"), std::string::npos) << out;
 }
 
@@ -68,7 +68,7 @@ TEST(VersionControlFiles, OlderIgnoreFileWithUserLinesBetweenTheEditors) {
     const std::string old = "\xEF\xBB\xBF" + block.substr(0, at) + "\n/MyCache/\n\n" + block.substr(at) + "my.local\n";
     std::string out;
     ASSERT_EQ(vcsfiles::refresh(old, block, FileKind::Ignore, out), Refresh::Write);
-    EXPECT_EQ(out, managed(block) + "/MyCache/\n\nmy.local\n");
+    EXPECT_EQ(out, managedVcsText(block) + "/MyCache/\n\nmy.local\n");
 }
 
 TEST(VersionControlFiles, EveryVariantsLinesAreKnown) {
@@ -78,7 +78,7 @@ TEST(VersionControlFiles, EveryVariantsLinesAreKnown) {
             // nothing of another variant counts as the user's
             vcsfiles::refresh(vcsfiles::attributesBlock(lfs, lockScenes), vcsfiles::attributesBlock(!lfs, !lockScenes),
                               FileKind::Attributes, out);
-            EXPECT_EQ(out, managed(vcsfiles::attributesBlock(!lfs, !lockScenes)));
+            EXPECT_EQ(out, managedVcsText(vcsfiles::attributesBlock(!lfs, !lockScenes)));
         }
     }
     EXPECT_TRUE(vcsfiles::knownGeneratedLines(FileKind::Ignore).count("build/"));

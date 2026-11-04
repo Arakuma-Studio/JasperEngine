@@ -16,7 +16,7 @@ namespace {
 
     // what CMake makes of a quoted argument's escapes (\\ \" \$), then what the compiler makes of
     // the C literal's (\ooo, as the helper writes them)
-    std::string decode(const std::string& written) {
+    std::string decodeCMakeCString(const std::string& written) {
         std::string cmake;
         for (size_t i = 0; i < written.size(); i++) {
             if (written[i] == '\\' && i + 1 < written.size()) i++;
@@ -48,7 +48,7 @@ TEST(CMakeText, EveryTitleComesBackAsTheSameBytes) {
                                  c == '.' || c == '-' || c == '\\';
             EXPECT_TRUE(allowed) << "'" << c << "' in " << body;
         }
-        EXPECT_EQ(decode(cmaketext::cStringDefinitionValue(title)), title) << title;
+        EXPECT_EQ(decodeCMakeCString(cmaketext::cStringDefinitionValue(title)), title) << title;
     }
 }
 

@@ -70,7 +70,9 @@ function(jasperengine_link_whole_archive target)
         elseif(APPLE)
             target_link_options(${target} PRIVATE "LINKER:-force_load,$<TARGET_FILE:${lib}>")
         else()
-            target_link_options(${target} PRIVATE "LINKER:--whole-archive" "$<TARGET_FILE:${lib}>" "LINKER:--no-whole-archive")
+            # one SHELL: item per library: CMake de-duplicates repeated options, which would drop
+            # the second library's --whole-archive
+            target_link_options(${target} PRIVATE "SHELL:-Wl,--whole-archive \"$<TARGET_FILE:${lib}>\" -Wl,--no-whole-archive")
         endif()
         add_dependencies(${target} ${lib})
     endforeach()

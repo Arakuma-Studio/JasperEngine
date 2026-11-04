@@ -27,22 +27,22 @@ using jasperengine::test::TestTempDir;
 namespace {
 
     // the person's editor: records what it opens and saves
-    class InteractiveHost : public EditorHost {
+    class RecentProjectsInteractiveHost : public EditorHost {
     public:
         bool recordsRecentProjects() const override { return true; }
     };
 
-    struct HostGuard {
-        explicit HostGuard(EditorHost* host) { setEditorHost(host); }
-        ~HostGuard() { setEditorHost(nullptr); }
+    struct RecentProjectsHostGuard {
+        explicit RecentProjectsHostGuard(EditorHost* host) { setEditorHost(host); }
+        ~RecentProjectsHostGuard() { setEditorHost(nullptr); }
     };
 
-    void release(Project& project) {
+    void releaseRecentProject(Project& project) {
         for (SceneProject& scene : project.getScenes()) CommandHandle::remove(scene.id);
         project.releaseScenes();
     }
 
-    std::vector<std::string> recentPaths(const YAML::Node& root) {
+    std::vector<std::string> recentProjectPaths(const YAML::Node& root) {
         std::vector<std::string> paths;
         for (const YAML::Node& entry : root["recent_projects"]) {
             paths.push_back(entry.IsMap() ? entry["path"].as<std::string>() : entry.as<std::string>());
@@ -50,22 +50,22 @@ namespace {
         return paths;
     }
 
-    bool same(const fs::path& a, const fs::path& b) {
+    bool sameRecentPath(const fs::path& a, const fs::path& b) {
         std::error_code ec;
         return !a.empty() && fs::equivalent(a, b, ec);
     }
 
-    bool lists(const std::vector<std::string>& paths, const fs::path& project) {
-        return std::any_of(paths.begin(), paths.end(), [&](const std::string& p) { return same(p, project); });
+    bool listsRecentProject(const std::vector<std::string>& paths, const fs::path& project) {
+        return std::any_of(paths.begin(), paths.end(), [&](const std::string& p) { return sameRecentPath(p, project); });
     }
 
     // a copy of a fixture project and the user's settings naming another project as the last one
-    struct Setup {
+    struct RecentProjectsSetup {
         TestTempDir dir{"recent-projects"};
         fs::path settings = dir / "settings.yaml";
         fs::path other = dir / "Other";
         fs::path project = dir / "Game";
-        Setup() {
+        RecentProjectsSetup() {
             fs::create_directories(other);
             fs::copy(fs::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/prefab-runtime", project, fs::copy_options::recursive);
             TestTempDir::write(settings, "last_project_path: " + other.generic_string() + "\nrecent_projects:\n  - " +
@@ -77,8 +77,8 @@ namespace {
 }
 
 TEST(RecentProjects, ToolProcessesLeaveSettingsAlone) {
-    HostGuard host(nullptr);
-    Setup setup;
+    RecentProjectsHostGuard host(nullptr);
+    RecentProjectsSetup setup;
     ASSERT_FALSE(getEditorHost().recordsRecentProjects());
     {
         Project project;
@@ -86,7 +86,7 @@ TEST(RecentProjects, ToolProcessesLeaveSettingsAlone) {
         // as a CLI export does: no record on load, then the export saves the project
         ASSERT_TRUE(project.loadProject(setup.project, true));
         ASSERT_TRUE(project.saveProject());
-        release(project);
+        releaseRecentProject(project);
     }
     fs::path temp;
     {
@@ -95,30 +95,30 @@ TEST(RecentProjects, ToolProcessesLeaveSettingsAlone) {
         project.setSkipProjectLock(true);
         ASSERT_TRUE(project.createTempProject("RecentProjectsTemp", true));
         temp = project.getProjectPath();
-        release(project);
+        releaseRecentProject(project);
     }
     std::error_code ec;
     fs::remove_all(temp, ec);
 
     const YAML::Node root = YAML::LoadFile(setup.settings.string());
-    EXPECT_TRUE(same(root["last_project_path"].as<std::string>(""), setup.other)) << YAML::Dump(root);
-    EXPECT_FALSE(lists(recentPaths(root), setup.project)) << YAML::Dump(root);
-    EXPECT_TRUE(lists(recentPaths(root), setup.other)) << YAML::Dump(root);
-    EXPECT_TRUE(same(AppSettings::getLastProjectPath(), setup.other));
+    EXPECT_TRUE(sameRecentPath(root["last_project_path"].as<std::string>(""), setup.other)) << YAML::Dump(root);
+    EXPECT_FALSE(listsRecentProject(recentProjectPaths(root), setup.project)) << YAML::Dump(root);
+    EXPECT_TRUE(listsRecentProject(recentProjectPaths(root), setup.other)) << YAML::Dump(root);
+    EXPECT_TRUE(sameRecentPath(AppSettings::getLastProjectPath(), setup.other));
 }
 
 TEST(RecentProjects, InteractiveEditorRecords) {
-    InteractiveHost interactive;
-    HostGuard host(&interactive);
-    Setup setup;
+    RecentProjectsInteractiveHost interactive;
+    RecentProjectsHostGuard host(&interactive);
+    RecentProjectsSetup setup;
     {
         Project project;
         project.setSkipProjectLock(true);
         ASSERT_TRUE(project.loadProject(setup.project, false));
         ASSERT_TRUE(project.saveProject());
-        release(project);
+        releaseRecentProject(project);
     }
     const YAML::Node root = YAML::LoadFile(setup.settings.string());
-    EXPECT_TRUE(same(root["last_project_path"].as<std::string>(""), setup.project)) << YAML::Dump(root);
-    EXPECT_TRUE(lists(recentPaths(root), setup.project)) << YAML::Dump(root);
+    EXPECT_TRUE(sameRecentPath(root["last_project_path"].as<std::string>(""), setup.project)) << YAML::Dump(root);
+    EXPECT_TRUE(listsRecentProject(recentProjectPaths(root), setup.project)) << YAML::Dump(root);
 }
