@@ -5,10 +5,12 @@
 #define CAMERA_H
 
 #include "GameObject.h"
-#include "component/CameraComponent.h"
 #include "math/Ray.h"
+#include "camera/CameraType.h"
 
 namespace jasperengine{
+
+    struct CameraComponent;
 
     class JASPERENGINE_API Camera: public GameObject{
 

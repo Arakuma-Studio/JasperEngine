@@ -11,6 +11,7 @@
 // (U6).
 
 #include <gtest/gtest.h>
+#include "object/ui/Polygon.h"
 
 #include "AppSettings.h"
 #include "Catalog.h"

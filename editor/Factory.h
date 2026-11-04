@@ -19,8 +19,22 @@
 #include <map>
 #include <unordered_map>
 #include "util/Prefab.h"
+#include "script/ScriptProperty.h"
+#include "buffer/Buffer.h"
 
 namespace fs = std::filesystem;
+
+namespace jasperengine{
+    enum class PivotPreset;
+    enum class RigidbodyMotionQuality;
+    enum class Collider2DType;
+    enum class Collider3DType;
+    enum class Collider3DSource;
+    enum class ActionState;
+    enum class AudioLoadType;
+    enum class ScriptType;
+    enum class ScriptPropertyType;
+}
 
 namespace jasperengine::editor{
 
