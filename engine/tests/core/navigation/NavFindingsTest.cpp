@@ -63,12 +63,9 @@ namespace {
             scene->addComponent<NavMeshLinkComponent>(dangling, link);
             bake(ground);
 
-            // nothing to collect in its volume: never baked, and its bake failed
+            // no layer to collect: never baked, and its bake failed
             unbaked = transformEntity(*scene, Vector3(), NULL_ENTITY, "Empty Surface");
-            NavMeshSurfaceComponent& empty = addSurface(*scene, unbaked);
-            empty.collectObjects = NavCollectObjects::VOLUME;
-            empty.volumeCenter = Vector3(0.0f, 0.0f, 500.0f);
-            empty.volumeSize = Vector3(4.0f, 4.0f, 4.0f);
+            addSurface(*scene, unbaked).includeLayers = 0;
             std::string error;
             EXPECT_FALSE(nav->bake(unbaked, NavBakeMode::FULL, error));
 
