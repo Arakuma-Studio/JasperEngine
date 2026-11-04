@@ -42,6 +42,8 @@ from harness import REPO, Editor, TestFailure
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "NormalsCli"}
+CI_EXCLUDED = ("long-running (about 90 s on a loaded server: 17 tests of the binary, and a project made through the editor); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 600
 
 FIXTURES = REPO / "editor" / "spritenormals" / "tests" / "fixtures" / "inputs"
