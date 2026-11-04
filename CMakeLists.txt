@@ -919,6 +919,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/ExternalCodeEditor.cpp
     ${EDITOR_DIR}/util/LuaApiData.cpp
     ${EDITOR_DIR}/util/NumericExpression.cpp
+    ${EDITOR_DIR}/util/LineDiff.cpp
     ${EDITOR_DIR}/util/ProjectChecks.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsJson.cpp
     ${EDITOR_DIR}/util/ShaderGlobalsUsage.cpp
@@ -1189,6 +1190,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
+    ${EDITOR_DIR}/window/widget/CustomTextEditorDiff.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
     ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp
     ${EDITOR_DIR}/window/widget/InputTextContextMenu.cpp
