@@ -477,17 +477,23 @@ TEST_F(PixelPerfectGpu, EvenColumns){
 }
 
 // AC6 (R13): a 40 x 23 floor of 8-pixel tiles (the spec's 64 x 36 is past MAX_TILEMAP_TILES)
-// whose positions are 1e-4 off, under a camera swept over fractional positions (around the
-// rounding ties): no background shows between tiles
+// whose positions are 1e-4 off (and 1e-2: a gap the rasterizer's sub-pixel grid keeps), under a
+// camera swept over fractional positions (around the rounding ties): no background shows between
+// tiles
 TEST_F(PixelPerfectGpu, TilemapSeams){
     JASPER_REQUIRE_GPU();
     GpuEnvironment::setView(320, 180, 320, 180, Scaling::LETTERBOX);
     Tilemap floor(&scene);
     tilesetFromMemory(floor, scene, "pixelart|seams|white", pixelArtTexture(8, 8, &whiteTexel));
     floor.addRect(0, "tile", Rect(0, 0, 8, 8));
-    for (int y = 0; y < 23; y++)
-        for (int x = 0; x < 40; x++)
-            floor.addTile(0, Vector2(8.0f * x + ((x & 1) ? 1e-4f : -1e-4f), 8.0f * y + ((y & 1) ? 1e-4f : 0.0f)), 8, 8);
+    // odd columns and rows pushed by +offset, even columns by -offset: gaps of up to 2 x offset
+    auto lay = [&floor](float offset){
+        floor.clearTiles();
+        for (int y = 0; y < 23; y++)
+            for (int x = 0; x < 40; x++)
+                floor.addTile(0, Vector2(8.0f * x + ((x & 1) ? offset : -offset), 8.0f * y + ((y & 1) ? offset : 0.0f)), 8, 8);
+    };
+    lay(1e-4f);
     PixelPerfectCamera ppc = pixelPerfect(320, 180);
 
     // sub-pixel camera positions, many of them where the edges round (the tie at k + 0.5 - 2^-7)
@@ -514,13 +520,17 @@ TEST_F(PixelPerfectGpu, TilemapSeams){
         }
         return holes;
     };
-    EXPECT_EQ(gaps(), 0u);
+    EXPECT_EQ(gaps(), 0u) << "1e-4 off";
+    lay(1e-2f);
+    EXPECT_EQ(gaps(), 0u) << "1e-2 off";
 
-    // red control: drawn without the rule (unsnapped edges 1e-4 apart leave holes at pixel centres)
+    // red control: drawn without the rule (no edge rounding, no snap), a pixel centre falls in a gap
+    // at some position of the sweep (its step, 1/64, is below the 0.02-pixel gaps). A gap of 2e-4
+    // pixels never shows: the rasterizer puts vertices on a 1/256-pixel grid.
     ppc.setPixelSnapping(false);
-    positions.clear();
-    for (float d : {-1e-4f, -5e-5f, 0.0f, 5e-5f})
-        positions.push_back(2.5f + d);
+    ASSERT_TRUE(render());
+    ASSERT_TRUE(render());
+    positions.resize(64);
     EXPECT_GT(gaps(), 0u);
     EXPECT_NO_ENGINE_ERRORS();
 }
