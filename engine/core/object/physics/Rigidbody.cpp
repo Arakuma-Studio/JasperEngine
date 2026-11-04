@@ -496,6 +496,16 @@ void Rigidbody::setAllowedDOFs(bool translationX, bool translationY, bool transl
     applyAllowedDOFs(allowedDOFs);
 }
 
+void Rigidbody::getAllowedDOFs(bool& translationX, bool& translationY, bool& translationZ, bool& rotationX, bool& rotationY, bool& rotationZ) const{
+    const uint8_t flags = getComponent<RigidbodyComponent>().allowedDOFs;
+    translationX = (flags & RigidbodyAllowedDOF_TranslationX) != 0;
+    translationY = (flags & RigidbodyAllowedDOF_TranslationY) != 0;
+    translationZ = (flags & RigidbodyAllowedDOF_TranslationZ) != 0;
+    rotationX = (flags & RigidbodyAllowedDOF_RotationX) != 0;
+    rotationY = (flags & RigidbodyAllowedDOF_RotationY) != 0;
+    rotationZ = (flags & RigidbodyAllowedDOF_RotationZ) != 0;
+}
+
 float Rigidbody::getMass() const{
     RigidbodyComponent& body = getComponent<RigidbodyComponent>();
 
@@ -706,6 +716,10 @@ void Rigidbody::setOverrideMassAndInertia(Vector3 solidBoxSize, float solidBoxDe
     body.solidBoxDensity = solidBoxDensity;
     body.overrideMassProperties = true;
     massChanged();
+}
+
+bool Rigidbody::isOverrideMassProperties() const{
+    return getComponent<RigidbodyComponent>().overrideMassProperties;
 }
 
 float Rigidbody::getGravityFactor() const{

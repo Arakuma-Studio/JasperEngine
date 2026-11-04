@@ -44,6 +44,10 @@ namespace jasperengine{
         bool loadOBJ(const std::string& filename);
         bool loadGLTF(const std::string& filename);
 
+        // the file it loaded ("" before a load)
+        std::string getFilename() const;
+        // the entity animations getAnimation(index) reaches
+        int getAnimationCount() const;
         Animation getAnimation(int index);
         Animation findAnimation(const std::string& name);
 

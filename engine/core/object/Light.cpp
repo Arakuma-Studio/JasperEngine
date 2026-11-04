@@ -72,6 +72,10 @@ Vector3 Light::getDirection() const{
     return lightcomp.direction;
 }
 
+Vector3 Light::getWorldDirection() const{
+    return getComponent<LightComponent>().worldDirection;
+}
+
 void Light::setColor(Vector3 color){
     LightComponent& lightcomp = getComponent<LightComponent>();
 
