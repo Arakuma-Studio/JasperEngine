@@ -52,7 +52,7 @@ namespace {
             scene->update(1.0 / 60.0);
             L = LuaBinding::getLuaState();
             ASSERT_NE(L, nullptr);
-            luabridge::push(L, VoxelVolume(scene.get(), owner));
+            ASSERT_TRUE(luabridge::push(L, VoxelVolume(scene.get(), owner)));
             lua_setglobal(L, "vol");
         }
 

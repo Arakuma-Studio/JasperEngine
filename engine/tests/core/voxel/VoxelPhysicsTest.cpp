@@ -13,6 +13,7 @@
 #include "math/Ray.h"
 #include "object/GameObject.h"
 #include "object/physics/Rigidbody.h"
+#include "physics/JoltShapeBuilder.h"
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/VoxelSystem.h"
 #include "../ecs/EcsTestUtil.h"
@@ -286,28 +287,65 @@ TEST_F(VoxelPhysics, RaycastSeesNewDataAtOncePhysicsAfterTheSwap) {
 }
 
 TEST_F(VoxelPhysics, BallRollsAcrossBlockSeam) {
-    // Risks: separate bodies share no active-edge data. Speed loss at most 5 %, height deviation 0.02 voxel.
+    // Risks: separate bodies share no active-edge data, so the roll is held against the same ball on
+    // one box with no seam: speed loss at most 5 %, height deviation 0.02 voxel.
+    const auto roll = [this](Entity body, float& endSpeed, float& lowest, float& highest) {
+        const JPH::BodyID id = scene->getComponent<RigidbodyComponent>(body).body;
+        bodies().SetLinearVelocity(id, JPH::Vec3(8.0f, 0.0f, 0.0f));
+        step(30);
+        lowest = 1e9f;
+        highest = -1e9f;
+        for (int i = 0; i < 180; i++) {
+            if (focus != NULL_ENTITY) setWorldPosition(focus, scene->getComponent<Transform>(body).worldPosition);
+            step();
+            if (i % 8 == 0) system->finishPendingWork();
+            lowest = std::min(lowest, heightOf(body));
+            highest = std::max(highest, heightOf(body));
+        }
+        endSpeed = bodies().GetLinearVelocity(id).GetX();
+    };
+
+    // The control: the same triangles as one mesh body, so the only difference is the seams
+    float controlSpeed = 0.0f, controlLow = 0.0f, controlHigh = 0.0f;
+    {
+        VolumeDesc flat = desc(256, 64, 256);
+        Store source(flat);
+        source.setBase(makeSolidGroundBase(32.0, 1.0, 0));
+        std::vector<Vector3> vertices;
+        std::vector<uint32_t> indices;
+        for (int z = 0; z < 16; z++) {
+            for (int x = 0; x < 16; x++) {
+                for (int y = 1; y <= 2; y++) {
+                    const auto mesh = meshOf(source, BlockKey{0, x, y, z}, 0, MeshMode::CollisionOnly);
+                    const uint32_t base = static_cast<uint32_t>(vertices.size());
+                    for (const MeshVertex& v : mesh->vertices) vertices.emplace_back(fixedToLocal(v.position[0], 1.0f), fixedToLocal(v.position[1], 1.0f), fixedToLocal(v.position[2] + 256 * 512, 1.0f));
+                    for (uint16_t index : mesh->indices) indices.push_back(base + index);
+                }
+            }
+        }
+        std::string error;
+        const JPH::ShapeRefC shape = JoltShapeBuilder::buildMeshShape(vertices, indices, &error, nullptr);
+        ASSERT_TRUE(shape != nullptr) << error;
+        const Entity floor = scene->createEntity();
+        scene->addComponent<Transform>(floor, {});
+        physics->createRigidbody(floor);
+        JPH::BodyID id = physics->createStaticBodyForShape(floor, shape.GetPtr());
+        ASSERT_FALSE(id.IsInvalid());
+        physics->finalizeBodies(std::span<JPH::BodyID>(&id, 1), physics->prepareBodies(std::span<JPH::BodyID>(&id, 1)));
+        const Entity ballOnFloor = ball(Vector3(40.0f, 32.5f, 584.0f));
+        step(10);
+        roll(ballOnFloor, controlSpeed, controlLow, controlHigh);
+    }
     ground("mem://seam", VoxelQuality::High, 256, 256);
     setWorldPosition(focus, Vector3(64.0f, 34.0f, 72.0f));
     const Entity body = ball(Vector3(40.0f, 32.5f, 72.0f));
     step(10);
     system->finishPendingWork();
-    Rigidbody handle(scene.get(), body);
-    bodies().SetLinearVelocity(scene->getComponent<RigidbodyComponent>(body).body, JPH::Vec3(8.0f, 0.0f, 0.0f));
-    step(5);
-    const float startSpeed = bodies().GetLinearVelocity(scene->getComponent<RigidbodyComponent>(body).body).GetX();
-    float lowest = 1e9f, highest = -1e9f;
-    for (int i = 0; i < 180; i++) {
-        setWorldPosition(focus, scene->getComponent<Transform>(body).worldPosition);
-        step();
-        if (i % 8 == 0) system->finishPendingWork();
-        const float y = heightOf(body);
-        lowest = std::min(lowest, y);
-        highest = std::max(highest, y);
-    }
-    const float endSpeed = bodies().GetLinearVelocity(scene->getComponent<RigidbodyComponent>(body).body).GetX();
-    EXPECT_GE(endSpeed, startSpeed * 0.95f * 0.8f);
-    EXPECT_LE(highest - lowest, 0.1f);
+    float speed = 0.0f, low = 0.0f, high = 0.0f;
+    roll(body, speed, low, high);
+    std::printf("[bench] ball over block seams: end speed %.3f (no seam %.3f), height range %.4f (no seam %.4f)\n", speed, controlSpeed, high - low, controlHigh - controlLow);
+    EXPECT_GE(speed, controlSpeed * 0.95f);
+    EXPECT_LE(high - low, (controlHigh - controlLow) + 0.02f);
 }
 
 namespace {
