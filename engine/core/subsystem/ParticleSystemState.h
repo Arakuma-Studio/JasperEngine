@@ -93,6 +93,10 @@ namespace jasperengine{
             RenderState state;
             uint32_t sceneInputs = 0;
             int sortPriority = 0;
+
+            // the sub-emitter children's, one per EmitterRuntime child (null where it has none):
+            // empty, with nothing made, for a system without sub-emitters
+            std::vector<std::unique_ptr<ParticleRenderData>> children;
         };
 
         struct ParticleSystemState {

@@ -269,6 +269,8 @@ namespace jasperengine { namespace particles {
                         const SpawnRequest* request, const EmitOverrides* overrides);
         void trailStage();
         void childrenStage(const EmitterInput& input);
+        // the children render between the same two ticks as their parent
+        void shareInterpolation();
         void raiseSubEmitters(SubEmitterTrigger trigger, uint32_t index, const float* normal);
         void raiseEntry(uint32_t entry, SubEmitterTrigger trigger, uint32_t index, const float* normal);
         void continueSeekTicks(const EmitterInput& input, SeekState& seek, double budgetMs);

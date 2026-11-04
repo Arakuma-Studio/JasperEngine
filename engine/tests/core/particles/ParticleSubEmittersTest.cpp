@@ -181,3 +181,13 @@ TEST(ParticleSubEmitters, PooledChildrenAllocateNothingWhenWarm){
     EXPECT_EQ(allocations.count(), 0u);
     EXPECT_GT(f.kid().count(), 0u);
 }
+
+TEST(ParticleSubEmitters, ChildrenRenderBetweenTheSameTicksAsTheirParent){
+    // BF23 F1: the interpolation factor a frame leaves on its parent is the children's, this frame
+    Family f(parent(SubEmitterTrigger::Birth, 1));
+    f.ticks(1);
+    f.runtime.advance(f.input, 1.5 / 30.0);
+    EXPECT_GT(f.runtime.interpolation(), 0.0f);
+    EXPECT_LT(f.runtime.interpolation(), 1.0f);
+    EXPECT_FLOAT_EQ(f.kid().interpolation(), f.runtime.interpolation());
+}

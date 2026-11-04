@@ -478,6 +478,16 @@ void EmitterRuntime::endFrame(){
         alpha = (float)std::clamp(accumulator / frameTick, 0.0, 1.0);
     else
         alpha = 1.0f;
+    shareInterpolation();
+}
+
+void EmitterRuntime::shareInterpolation(){
+    for (auto& c : children){
+        if (!c || !c->prog)
+            continue;
+        c->alpha = c->prog->interpolate ? alpha : 1.0f;
+        c->shareInterpolation();
+    }
 }
 
 void EmitterRuntime::setFrameTransforms(const EmitterInput& input, double fraction){
@@ -1462,7 +1472,6 @@ void EmitterRuntime::childrenStage(const EmitterInput& input){
             jobsOf(input).parallelFor(chunks, [child](size_t k){ child->updateChunk((uint32_t)k); });
         }
         child->finishTick(childInput);
-        child->alpha = alpha;
     }
 }
 
@@ -1508,6 +1517,7 @@ void EmitterRuntime::step(const EmitterInput& input){
     std::memcpy(prevFrame, curFrame, sizeof(prevFrame));
     accumulator = 0.0;
     alpha = 1.0f;
+    shareInterpolation();
 }
 
 void EmitterRuntime::beginSeek(const EmitterInput& input, double time, SeekState& s){
@@ -1560,6 +1570,7 @@ void EmitterRuntime::continueSeekTicks(const EmitterInput& input, SeekState& s, 
         // the remainder of the target drives the interpolation
         accumulator = std::max(0.0, s.target - s.total * s.tick);
         alpha = prog->interpolate ? (float)std::clamp(accumulator / s.tick, 0.0, 1.0) : 1.0f;
+        shareInterpolation();
     }
 }
 
@@ -1594,6 +1605,7 @@ void EmitterRuntime::seekStep(const EmitterInput& input, double tick){
 void EmitterRuntime::settleSeek(double remainder, double tick){
     accumulator = std::max(0.0, remainder);
     alpha = (prog && prog->interpolate && tick > 0.0) ? (float)std::clamp(accumulator / tick, 0.0, 1.0) : 1.0f;
+    shareInterpolation();
 }
 
 void EmitterRuntime::seek(const EmitterInput& input, double time){

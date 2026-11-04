@@ -703,13 +703,39 @@ bool ParticleSubsystem::castWorldRay2D(const void* context, const float from[3],
 #endif
 }
 
+namespace {
+
+    // an emitter's particles and its children's, each in its own simulation space, into a world box
+    void addEmitterBounds(const EmitterRuntime& emitter, bool withSelf, float lo[3], float hi[3], bool& any){
+        if (withSelf && emitter.hasBounds()){
+            float simLo[3], simHi[3];
+            emitter.bounds(simLo, simHi);
+            const float* m = emitter.simToWorld();
+            for (int corner = 0; corner < 8; corner++){
+                const float p[3] = {(corner & 1) ? simHi[0] : simLo[0], (corner & 2) ? simHi[1] : simLo[1], (corner & 4) ? simHi[2] : simLo[2]};
+                for (int k = 0; k < 3; k++){
+                    const float w = m[k] * p[0] + m[4 + k] * p[1] + m[8 + k] * p[2] + m[12 + k];
+                    lo[k] = std::min(lo[k], w);
+                    hi[k] = std::max(hi[k], w);
+                }
+            }
+            any = true;
+        }
+        for (size_t c = 0; c < emitter.childCount(); c++){
+            if (const EmitterRuntime* child = emitter.child(c))
+                addEmitterBounds(*child, true, lo, hi, any);
+        }
+    }
+
+}
+
 void ParticleSubsystem::updateBounds(ParticleSystemState& state){
     const ParticleEffectDocument& d = state.effect->document;
     float lo[3], hi[3];
-    const float* m = state.runtime.simToWorld();
+    for (int k = 0; k < 3; k++){ lo[k] = 3.0e38f; hi[k] = -3.0e38f; }
+    bool any = false;
     if (d.boundsMode == BoundsMode::Authored){
         // the authored box, in the emitter's space
-        for (int k = 0; k < 3; k++){ lo[k] = 3.0e38f; hi[k] = -3.0e38f; }
         const float c[3] = {d.boundsCenter.x, d.boundsCenter.y, d.boundsCenter.z};
         const float h[3] = {d.boundsSize.x * 0.5f, d.boundsSize.y * 0.5f, d.boundsSize.z * 0.5f};
         const float* e = state.transform;
@@ -721,25 +747,13 @@ void ParticleSubsystem::updateBounds(ParticleSystemState& state){
                 hi[k] = std::max(hi[k], w);
             }
         }
-        std::memcpy(state.boundsMin, lo, sizeof(lo));
-        std::memcpy(state.boundsMax, hi, sizeof(hi));
-        state.hasBounds = true;
-        return;
+        any = true;
     }
-    if (!state.runtime.hasBounds()){
+    // the authored box answers for this emitter only: its children keep their own particles' box
+    addEmitterBounds(state.runtime, d.boundsMode != BoundsMode::Authored, lo, hi, any);
+    if (!any){
         state.hasBounds = false;
         return;
-    }
-    float simLo[3], simHi[3];
-    state.runtime.bounds(simLo, simHi);
-    for (int k = 0; k < 3; k++){ lo[k] = 3.0e38f; hi[k] = -3.0e38f; }
-    for (int corner = 0; corner < 8; corner++){
-        const float p[3] = {(corner & 1) ? simHi[0] : simLo[0], (corner & 2) ? simHi[1] : simLo[1], (corner & 4) ? simHi[2] : simLo[2]};
-        for (int k = 0; k < 3; k++){
-            const float w = m[k] * p[0] + m[4 + k] * p[1] + m[8 + k] * p[2] + m[12 + k];
-            lo[k] = std::min(lo[k], w);
-            hi[k] = std::max(hi[k], w);
-        }
     }
     std::memcpy(state.boundsMin, lo, sizeof(lo));
     std::memcpy(state.boundsMax, hi, sizeof(hi));
