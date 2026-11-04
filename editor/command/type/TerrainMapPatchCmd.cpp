@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMapPatchCmd.h"
+#include "component/TerrainComponent.h"
 
 #include <utility>
 
