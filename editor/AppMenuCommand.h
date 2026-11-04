@@ -132,6 +132,9 @@ namespace jasperengine::editor {
         AssetsCreateAudioMixer,
         AssetsCreateSoundEvent,
         AssetsCreateSoundEventFromClips,
+        AssetsImportSoundEssentials,   // S36
+        AssetsCreatePlaceholderSound,  // S36
+        AssetsReanalyzeAudio,          // S36: the Project selection's cached measurements dropped
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
         AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera

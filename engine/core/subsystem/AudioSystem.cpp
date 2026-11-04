@@ -1083,7 +1083,7 @@ void AudioSystem::apply3dParameters(AudioSourceComponent& audio, unsigned int ha
     soloud.set3dSourceParameters(handle, position.x, position.y, position.z, velocity.x, velocity.y, velocity.z);
 }
 
-void AudioSystem::applyVoiceParameters(AudioSourceComponent& audio, unsigned int handle, bool mainVoice, bool use3D, float speedScale, bool eventLoop){
+void AudioSystem::applyVoiceParameters(AudioSourceComponent& audio, unsigned int handle, bool mainVoice, bool use3D, float speedScale, bool eventLoop, SoLoud::AudioSource* sample){
     SoLoud::Soloud& soloud = getSoloud();
     const float speed = audio.speed * speedScale;
     soloud.setRelativePlaySpeed(handle, speed > 0.0f ? speed : 0.0001f);
@@ -1094,9 +1094,10 @@ void AudioSystem::applyVoiceParameters(AudioSourceComponent& audio, unsigned int
     }
     if (mainVoice) {
         soloud.setLooping(handle, audio.looping || eventLoop);
-        soloud.setLoopPoint(handle, audio.loopingPoint);
+        soloud.setLoopPoint(handle, SoundPool::getLoopPoint(sample ? sample : audio.sample.get(), audio.loopingPoint));
     } else if (eventLoop) {
         soloud.setLooping(handle, true);
+        soloud.setLoopPoint(handle, SoundPool::getLoopPoint(sample, 0.0));
     }
     soloud.setProtectVoice(handle, audio.protectVoice);
     soloud.setInaudibleBehavior(handle, audio.inaudibleBehaviorMustTick, audio.inaudibleBehaviorKill);
@@ -1151,7 +1152,7 @@ unsigned int AudioSystem::startVoice(AudioSourceComponent& audio, SoLoud::AudioS
     unsigned int handle = AudioMixer::play(groupId, sample, use3D, position, volume, clocked, AudioMixer::getClockTime());
     if (handle == 0) return 0;
 
-    applyVoiceParameters(audio, handle, mainVoice, use3D, extras.speedScale, extras.eventLoop);
+    applyVoiceParameters(audio, handle, mainVoice, use3D, extras.speedScale, extras.eventLoop, &sample);
     if (use3D) {
         apply3dParameters(audio, handle, position, Vector3(0, 0, 0), extras.spatial);
     }
@@ -1979,11 +1980,16 @@ void AudioSystem::update(double dt){
 
                 // the file was hot reloaded: this play takes the new sample (one still
                 // playing finishes on the old, which its other sources hold)
+                // (or its import settings changed: the sample is another entry of the pool)
                 if (!resume && !eventMode && audio.sampleGeneration != SoundPool::generation(audio.filename)) {
-                    if (std::shared_ptr<SoLoud::AudioSource> fresh = SoundPool::get(audio.sampleKey)) {
-                        audio.sample = fresh;
+                    const SoundLoadResult fresh = SoundPool::loadClip(audio.filename, audio.loadType);
+                    if (fresh.data) {
+                        const std::string previousKey = audio.sampleKey;
+                        audio.sample = fresh.data;
+                        audio.sampleKey = fresh.id;
                         audio.sampleGeneration = SoundPool::generation(audio.filename);
                         audio.length = SoundPool::getLength(audio.sample.get());
+                        if (previousKey != fresh.id) SoundPool::remove(previousKey);
                     }
                 }
 
@@ -2086,9 +2092,9 @@ void AudioSystem::update(double dt){
         }
 
         if (audio.needUpdate) {
-            if (audio.handle != 0) applyVoiceParameters(audio, audio.handle, true, use3DAudio, audio.mainSpeedScale, audio.mainEvent && audio.mainEvent->loop);
-            for (const AudioOneShot& layer : audio.mainLayers) applyVoiceParameters(audio, layer.handle, true, use3DAudio, layer.speedScale, layer.event && layer.event->loop);
-            for (const AudioOneShot& shot : audio.oneShots) applyVoiceParameters(audio, shot.handle, false, use3DAudio, shot.speedScale, shot.event && shot.event->loop);
+            if (audio.handle != 0) applyVoiceParameters(audio, audio.handle, true, use3DAudio, audio.mainSpeedScale, audio.mainEvent && audio.mainEvent->loop, audio.mainEventSample.get());
+            for (const AudioOneShot& layer : audio.mainLayers) applyVoiceParameters(audio, layer.handle, true, use3DAudio, layer.speedScale, layer.event && layer.event->loop, layer.sample.get());
+            for (const AudioOneShot& shot : audio.oneShots) applyVoiceParameters(audio, shot.handle, false, use3DAudio, shot.speedScale, shot.event && shot.event->loop, shot.sample.get());
         }
 
         // 3D voices follow the source (its one-shots too, Unity)

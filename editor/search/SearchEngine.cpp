@@ -23,7 +23,7 @@ namespace {
     }
 
     constexpr SearchKind ALL_KINDS[] = {SearchKind::Command, SearchKind::Panel, SearchKind::Setting,
-                                        SearchKind::Component, SearchKind::GameObject, SearchKind::Asset};
+                                        SearchKind::Component, SearchKind::GameObject, SearchKind::Asset, SearchKind::Sound};
 
 }
 
@@ -35,6 +35,7 @@ const char* jasperengine::editor::searchKindName(SearchKind kind) {
         case SearchKind::Component: return "component";
         case SearchKind::GameObject: return "gameobject";
         case SearchKind::Asset: return "asset";
+        case SearchKind::Sound: return "sound";
     }
     return "command";
 }
@@ -47,6 +48,7 @@ const char* jasperengine::editor::searchKindTitle(SearchKind kind) {
         case SearchKind::Component: return "Component";
         case SearchKind::GameObject: return "GameObject";
         case SearchKind::Asset: return "Asset";
+        case SearchKind::Sound: return "Sounds";
     }
     return "Command";
 }
@@ -67,6 +69,7 @@ int jasperengine::editor::searchKindPriority(SearchKind kind) {
         case SearchKind::Component: return 45;
         case SearchKind::GameObject: return 40;
         case SearchKind::Asset: return 35;
+        case SearchKind::Sound: return 30;
     }
     return 0;
 }
@@ -112,6 +115,11 @@ ParsedSearchQuery jasperengine::editor::parseSearchQuery(std::string_view query)
     std::transform(lowerText.begin(), lowerText.end(), lowerText.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     if (lowerText.starts_with("asset:")) {
         parsed.kind = SearchKind::Asset;
+        parsed.text = trimmed(std::string_view(text).substr(6));
+        return parsed;
+    }
+    if (lowerText.starts_with("sound:")) {
+        parsed.kind = SearchKind::Sound;
         parsed.text = trimmed(std::string_view(text).substr(6));
         return parsed;
     }

@@ -422,6 +422,8 @@ namespace jasperengine::editor{
         void drawSoundEventAsset(const std::filesystem::path& asset);
         // AudioSource: the Event, Play On, impact and Variation rows and their warnings
         void drawAudioEventRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // an audio file: its measurements, import settings, provenance and audition (InspectorAudioClip.cpp)
+        void drawAudioClipAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
         void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo

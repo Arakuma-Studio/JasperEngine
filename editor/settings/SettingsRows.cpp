@@ -2027,6 +2027,27 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        {
+            Setting s;
+            s.key = "audio.credits_file";
+            s.type = "bool";
+            s.description = "Exports write licenses/THIRD-PARTY-AUDIO.txt, the licences of the shipped clips with a provenance.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().creditsFile); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "true or false";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.creditsFile = value.get<bool>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+
         // ---- scripting
         {
             Setting s;

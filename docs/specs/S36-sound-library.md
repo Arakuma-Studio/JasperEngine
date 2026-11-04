@@ -524,6 +524,30 @@ None (R29).
   clip of any licence (64 bounded renders, no model, no audio copied), the reference recorded in
   `provenance.reference`.
 
+## Progress
+
+- The squashed library commit is 22.9 MiB of files: 927 clips, manifest v4, analysis v1, 11 licence files (R34).
+
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **The class is `AudioClipSource` (R10)**, in `engine/core/audio/ClipSource.{h,cpp}`: `jasperengine::ClipSource` is already an
+  enum of the animation clips (`animation/AnimationClip.h`). S37, S39 and S40 read "ClipSource" as this class.
+- **`AssetMeta::isKnown` is unchanged (R8).** The spec asked it to list `provenance`, but that list holds the sections
+  `AssetMeta` writes itself, and `setSection` refuses them. Being unknown is what keeps `provenance` byte for byte.
+- **Files and their `.meta` go through `WriteFilesCmd` (R15, R18).** `generate_sound` and built-in imports write the
+  clip and a complete `.meta` (minted GUID, or the existing one and its other sections) as items of one command: one
+  undo step that needs no second command, and no moment with a clip that has a GUID but no sections. `AssetOps` has no
+  create operation. `set_audio_import_settings` and the Inspector use `SetAssetMetaCmd` as R9 says.
+- **R4 cache of a clip as it plays.** The file `<sha1>-i<hash>-v<N>.json` holds the whole played analysis (R3), so
+  sound-layer's per-file list of four played regions is gone, and with it its eviction.
+- **`AudioImportTable::find` returns a copy (`std::optional`), not a pointer.** The pool's load jobs read the table while
+  the main thread sets it.
+- **The table loads on the first `SoundPool::loadClip` (R12),** once per process, not at engine start: that is the one
+  place every platform and export method passes before a clip plays, and a game with no table pays one failed open.
+- **`analyze_audio` and `search_sounds` wait 60 s, then hand over the job (R28)**, through `replyWhenJobDone`, with no
+  `wait` parameter: the budget has no room for it, and images only travel in the reply. A job an agent polls has the items.
+- **A `kind event` filter finds nothing until S37 lands,** and `analyze_audio capture` reads sessions from disk with no
+  running capture known until S35 lands (tested on session directories written by the test).
+- **Importing mixed sources.** `import_files` refuses built-in references mixed with other sources: a call has one plan
+  and one undo step.
+

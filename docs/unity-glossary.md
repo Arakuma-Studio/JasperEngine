@@ -360,7 +360,9 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | Lowpass / Highpass / Echo / SFX Reverb / ParamEQ / Distortion / Flange / Duck Volume effects | mixer effects `lowpass`, `highpass`, `bandpass`, `echo`, `reverb`, `equalizer`, `distortion`, `flanger`, `lofi`, `bassboost`, `duck`, `limiter` (up to 8 per group) |
 | `AudioSource.PlayOneShot(clip, volumeScale)` | `sound:playOneShot(path [, volumeScale])` (up to `maxVoices` overlapping voices) |
 | `AudioSource.PlayClipAtPoint(clip, position, volume)` | `AudioSource.playClipAtPoint(scene, path, position [, volume [, group]])` |
-| AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, no clip import settings |
+| AudioClip Load Type Decompress On Load / Compressed In Memory / Streaming | `AudioSource.loadType` (`AudioLoadType.DecompressOnLoad` / `CompressedInMemory` / `Streaming`, default `Auto`: streams files of 1 MiB and more): per source, not a clip import setting |
+| `AudioImporter` | `.meta` section `import.audioImporter` (Inspector's Import Settings, MCP `set_audio_import_settings`) |
+| AudioClip import settings | `type`, `gain_db`, `trim_head_ms`, `trim_tail_ms`, `fade_in_ms`, `fade_out_ms`, `loop_start_ms`, `loop_end_ms`; the engine plays them in Play and in exports (see [mcp/guide/sound.md](mcp/guide/sound.md)) |
 | `AudioSource.pitch` | `pitch` (= `speed`) |
 | `AudioSource.priority`, Project Settings Real / Virtual Voices | `priority` (0..256, 128); Project Settings > Audio Max Real Voices (32) and Max Voices (256) |
 | `AudioSource.ignoreListenerPause`, `AudioListener.pause`, `AudioListener.volume` | the same names (`AudioListener.volume` = `AudioSystem.globalVolume`) |
