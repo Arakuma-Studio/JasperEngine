@@ -4379,6 +4379,7 @@
 		4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
 		4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4799D5B065A0FD015C /* AudioMeter.h */; };
 		4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EA336A0838677E68 /* TruePeak.h */; };
+		4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E474365841B0820D5A8 /* NearestName.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8584,6 +8585,7 @@
 		4A534E47B2A2155B16BB00CE /* TruePeak.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TruePeak.cpp; sourceTree = "<group>"; };
 		4A534E4799D5B065A0FD015C /* AudioMeter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioMeter.h; sourceTree = "<group>"; };
 		4A534E47EA336A0838677E68 /* TruePeak.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TruePeak.h; sourceTree = "<group>"; };
+		4A534E474365841B0820D5A8 /* NearestName.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = NearestName.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10532,6 +10534,7 @@
 				4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */,
 				4A534E47310D1BCA96AE12EB /* CanvasScaler.h */,
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
+				4A534E474365841B0820D5A8 /* NearestName.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -15257,6 +15260,7 @@
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
 				4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */,
 				4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */,
+				4A534E47F70E7AE87350F4F9 /* NearestName.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
