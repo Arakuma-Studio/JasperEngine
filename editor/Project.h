@@ -1439,6 +1439,7 @@ namespace jasperengine::editor{
     private:
         // see getInspectedAsset()
         std::filesystem::path inspectedAsset;
+        SceneProject* materialAssetScene = nullptr;
 
     public:
         // Unity's activeObject (animation clips spec 9.R30): the asset the Inspector shows, set by
@@ -2357,6 +2358,11 @@ namespace jasperengine::editor{
         // unless the policy accepts the loss
         SaveResult writeMaterialFile(const std::filesystem::path& relativePath, const Material& material,
                                      DegradedSavePolicy policy = DegradedSavePolicy::Refuse, std::string* error = nullptr);
+        // The text of a .material with its identity, for an undoable write of it
+        std::string materialFileText(const std::filesystem::path& file, const Material& material);
+        // The Inspector's scene for a .material's rows: getScene answers to its id, no scene list
+        // holds it, so nothing else ever draws, saves or closes it
+        void setMaterialAssetScene(SceneProject* sceneProject) { materialAssetScene = sceneProject; }
         // The edges of the loaded documents, unsaved edits included (the index overlay)
         void collectMemoryEdges(std::unordered_map<Guid, std::vector<DepEdge>>& edges);
         // After assets moved: the path hints of the loaded documents follow their GUIDs

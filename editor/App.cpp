@@ -2722,7 +2722,8 @@ void editor::App::show(){
         const bool placementBusy = physicsPlacementWindow->isBusy(project.getSelectedSceneId());
         // the Animator window edits project assets (its selection in the Inspector too)
         if (projectWindow->isFocused() || jobsMemoryWindow->isFocused() || animatorWindow->isFocused() ||
-                (focusedWindowName() == InspectorWindow::WINDOW_NAME && animatorWindow->inspectorShowsSelection())) {
+                (focusedWindowName() == InspectorWindow::WINDOW_NAME &&
+                 (animatorWindow->inspectorShowsSelection() || inspectorWindow->showsMaterialAsset()))) {
             lastFocusedWindow = LastFocusedWindow::Resources;
         } else if (codeEditor->isFocused()) {
             lastFocusedWindow = LastFocusedWindow::Code;

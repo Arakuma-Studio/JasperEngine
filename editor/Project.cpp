@@ -8139,6 +8139,9 @@ editor::SceneProject* editor::Project::getScene(uint32_t sceneId) {
     if (SceneProject* stageScene = findPrefabStageScene(sceneId)) {
         return stageScene;
     }
+    if (materialAssetScene && materialAssetScene->id == sceneId) {
+        return materialAssetScene;
+    }
     return findPlayRuntimeScene(sceneId);
 }
 
@@ -8149,6 +8152,9 @@ const editor::SceneProject* editor::Project::getScene(uint32_t sceneId) const {
     }
     if (const SceneProject* stageScene = findPrefabStageScene(sceneId)) {
         return stageScene;
+    }
+    if (materialAssetScene && materialAssetScene->id == sceneId) {
+        return materialAssetScene;
     }
     return findPlayRuntimeScene(sceneId);
 }

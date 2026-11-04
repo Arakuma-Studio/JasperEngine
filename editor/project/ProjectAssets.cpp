@@ -284,6 +284,14 @@ Guid editor::Project::prepareDocumentIdentity(YAML::Node& root, const fs::path& 
     return guid;
 }
 
+std::string editor::Project::materialFileText(const fs::path& file, const Material& material) {
+    Material bound = material;
+    bindMaterialAssetRefs(bound);
+    YAML::Node root = Stream::encodeMaterial(bound);
+    prepareDocumentIdentity(root, file);
+    return DocumentFiles::materialText(root, file) + "\n";
+}
+
 editor::SaveResult editor::Project::writeMaterialFile(const fs::path& relativePath, const Material& material,
                                                     DegradedSavePolicy policy, std::string* error) {
     const fs::path relative = normalizeToProjectRelative(relativePath);

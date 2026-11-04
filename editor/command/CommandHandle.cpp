@@ -8,9 +8,23 @@
 using namespace jasperengine;
 
 std::map<size_t, editor::CommandHistory*>  editor::CommandHandle::historys;
+bool editor::CommandHandle::redirecting = false;
+size_t editor::CommandHandle::redirectFrom = 0;
+size_t editor::CommandHandle::redirectTo = 0;
 
+
+editor::CommandHandle::Redirect::Redirect(size_t from, size_t to){
+    redirecting = true;
+    redirectFrom = from;
+    redirectTo = to;
+}
+
+editor::CommandHandle::Redirect::~Redirect(){
+    redirecting = false;
+}
 
 editor::CommandHistory* editor::CommandHandle::get(size_t sceneId){
+    if (redirecting && sceneId == redirectFrom) sceneId = redirectTo;
     if (!historys.count(sceneId)){
         historys[sceneId] = new CommandHistory(sceneId);
     }

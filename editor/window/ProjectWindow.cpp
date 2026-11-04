@@ -2025,6 +2025,15 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             }
 
             if (ImGui::BeginPopup("FileContextMenu")){
+                if (file.type == FileType::MATERIAL || Util::isParticleEffectFile(file.name)){
+                    // a double-click shows these in the Inspector: their text stays reachable
+                    const bool openText = ImGui::MenuItem(ICON_FA_FILE_CODE " Open as Text");
+                    UIProbe::item("project.menu.open_as_text");
+                    if (openText) {
+                        codeEditor->openFile((currentPath / file.name).string(), true);
+                    }
+                    ImGui::Separator();
+                }
                 if (file.type == FileType::SCENE){
                     if (ImGui::MenuItem(ICON_FA_FOLDER_PLUS " Open (Add)")) {
                         project->openScene(currentPath / file.name, false);
@@ -4714,6 +4723,15 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         editor::getEditorHost().openInputActions(filePath);
     } else if (file.type == FileType::COLOR_LUT) {
         assignColorLut(filePath);  // the open scene's Color Grading LUT
+    } else if (file.type == FileType::MATERIAL || Util::isParticleEffectFile(filePath.string())) {
+        // Unity: selected and shown in the Inspector (the context menu has Open as Text)
+        selectedFiles.clear();
+        selectedFiles.insert(file.name);
+        lastSelectedFile = file.name;
+        project->setInspectedAsset(filePath.lexically_normal());
+        if (InspectorWindow* inspector = Backend::getApp().getInspectorWindow()) {
+            inspector->requestFocus();
+        }
     } else if (filePath.extension() == AudioMixerIO::EXTENSION) {
         editor::getEditorHost().openAudioMixerWindow(filePath);
     } else {

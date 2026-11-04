@@ -704,11 +704,7 @@ bool loadMaterialFile(const fs::path& file, Material& material, std::string& err
 // The file's text with its identity (S04: the GUID it has, or a new one for a new file),
 // formatVersion first and the existing file's unknown root keys kept (docs/data-safety.md)
 std::string materialFileContent(Project* project, const fs::path& file, const Material& material) {
-    Material bound = material;
-    project->bindMaterialAssetRefs(bound);
-    YAML::Node root = Stream::encodeMaterial(bound);
-    project->prepareDocumentIdentity(root, file);
-    return DocumentFiles::materialText(root, file) + "\n";
+    return project->materialFileText(file, material);
 }
 
 // A material file that did not load completely is written only with allow_data_loss: false
