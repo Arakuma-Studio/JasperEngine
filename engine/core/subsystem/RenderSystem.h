@@ -2047,8 +2047,6 @@ namespace jasperengine{
 		static bool materialRendersOutdated(const Submesh& submesh);
 		static bool shaderTexturesRenderOutdated(const std::vector<std::pair<std::string, Texture>>& textures);
 		uint32_t rebindEpochSeen = 0;
-		// whether the loaded variant has the lobes, maps and hex tiling the material asks for now
-		bool pbrVariantMatches(const Submesh& submesh) const;
 		// LightComponent::resolvedColor and resolvedIntensity of every light (photometric units,
 		// colour temperature, the scene's EV100), where they changed
 		void resolveLights();
@@ -2738,6 +2736,17 @@ namespace jasperengine{
 		// on the new variants and warm them (spec S32 R4, R8), and the reload waits for those too
 		void needReloadMeshVariants();
 		bool meshVariantShadersReady(Entity entity, MeshComponent& mesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain);
+		// the inputs a load of the submesh would resolve now, from its attributes of the last load
+		SubmeshShaderInputs getCurrentSubmeshInputs(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
+		                                            const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader) const;
+		// the variant a load of the submesh would take now, from its attributes of the last load
+		// (as loadMesh resolves it, with a FluidSimulation's output lent to submesh 0)
+		SubmeshShaderVariant getCurrentSubmeshVariant(Entity entity, const MeshComponent& mesh, unsigned int index, const TerrainComponent* terrain,
+		                                              const InstancedMeshComponent* instmesh, bool hasMirror, const std::string& sceneMeshShader,
+		                                              const MeshShaderEnvironment& environment) const;
+		// whether the loaded submesh draws that variant in every pass it builds (colour with its
+		// Lit defines and extension maps, depth, G-buffer, the material's extra pass)
+		static bool loadedVariantMatches(const Submesh& submesh, const SubmeshShaderVariant& variant, const SubmeshShaderVariant* extraPass);
 		void needReloadPostProcess();
 		void needUpdatePostProcessUniforms();
 		// the scene's PostProcessingSettings changed (Scene::setPostProcessing)
