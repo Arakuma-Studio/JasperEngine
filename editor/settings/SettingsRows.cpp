@@ -192,7 +192,7 @@ bool readProjectFile(SettingsContext& ctx, const Json& value, fs::path& out, std
         return true;
     }
     // a backslash is a separator on every platform (Stream::portablePath)
-    std::replace(text.begin(), text.end(), '\\', '/');
+    text = FileUtils::portablePath(text);
     fs::path absolute;
     if (!mcp::McpRefs::resolveProjectPath(ctx.project(), text, absolute, error, true)) return false;
     out = FileUtils::pathFromUtf8(text).lexically_normal();

@@ -1337,8 +1337,7 @@ Matrix4 editor::Stream::decodeMatrix4(const YAML::Node& node) {
 }
 
 std::string editor::Stream::portablePath(std::string path) {
-    std::replace(path.begin(), path.end(), '\\', '/');
-    return path;
+    return FileUtils::portablePath(std::move(path));
 }
 
 std::string editor::Stream::portablePath(const std::filesystem::path& path) {

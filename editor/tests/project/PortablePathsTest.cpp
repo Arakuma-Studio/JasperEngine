@@ -134,3 +134,18 @@ TEST(PortablePaths, MaterialFileStoresPicksWithSlashes) {
     for (SceneProject& scene : project.getScenes()) CommandHandle::remove(scene.id);
     project.releaseScenes();
 }
+
+// A sub-asset's key names a node of the model: a backslash in it is part of the name, only the
+// container's path is made portable
+TEST(PortablePaths, SubAssetKeysKeepTheirBackslashes) {
+    EXPECT_EQ(Stream::portablePath(std::string("models\\hero.glb#mesh:Body\\Skin")), "models/hero.glb#mesh:Body\\Skin");
+    EXPECT_EQ(Stream::portablePath(std::string("models\\hero.glb#material#2")), "models/hero.glb#material#2");
+    // a '#' that is no sub-asset key is part of the file name
+    EXPECT_EQ(Stream::portablePath(std::string("notes\\take#2.txt")), "notes/take#2.txt");
+
+    YAML::Node node;
+    Stream::encodeAssetRef(node, "mesh", AssetRef("models\\hero.glb#mesh:Body\\Skin"));
+    EXPECT_EQ(node["mesh"].as<std::string>(), "models/hero.glb#mesh:Body\\Skin");
+    EXPECT_EQ(Stream::decodeAssetRef(YAML::Load("mesh: models\\hero.glb#mesh:Body\\Skin\n"), "mesh").path,
+              "models/hero.glb#mesh:Body\\Skin");
+}

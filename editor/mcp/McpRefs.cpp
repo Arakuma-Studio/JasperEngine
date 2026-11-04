@@ -436,7 +436,7 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& requested,
     }
     // Agents send UTF-8; a backslash is a separator on every platform, as in project files
     // (Stream::portablePath): textures\wood.png names the same file on Linux as on Windows
-    std::replace(relative.begin(), relative.end(), '\\', '/');
+    relative = FileUtils::portablePath(relative);
     const fs::path rel = FileUtils::pathFromUtf8(relative).lexically_normal();
     if (relative.empty() || rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) {
         error = "\"" + relative + "\" must be a project-relative path (not absolute).";
