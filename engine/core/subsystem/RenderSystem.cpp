@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "component/AudioSourceComponent.h"
+#include "component/BoneComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/ShadowCaster2DComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/TextComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/MeshPolygonComponent.h"
 #include "profiler/Profile.h"
 #include "profiler/FrameTimes.h"
 #include "TransformPropagation.h"

@@ -3,6 +3,7 @@
 
 
 #include "Polygon.h"
+#include "component/PolygonComponent.h"
 #include "shader/ShaderGlobals.h"
 #include "shader/ShaderManifest.h"
 

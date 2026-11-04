@@ -21,7 +21,7 @@ particles, terrain, navigation, the shader library) is one widget: a swatch that
   sRGB; **Copy** puts `#RRGGBB` on the clipboard). The A slider when the field has alpha.
 - **Intensity** for HDR fields: stops (powers of two) over the colour; the RGB values stay 0-1.
 - The bar at the bottom compares the original (left; click to go back to it) and the new colour.
-- **Eyedropper** (the pipette button, or I): click anywhere on the screen to take that colour, in
+- **Eyedropper** (the pipette button, or I, `colorPicker.eyedropper` in **Edit > Shortcuts...**): click anywhere on the screen to take that colour, in
   any editor window or outside the editor. A loupe magnifies the pixels under the pointer. Esc or
   a right-click stops without a change. Inside the Scene and Game views it reads the rendered
   image itself, so the value is exact.

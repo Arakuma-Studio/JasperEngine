@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RagdollWizardDialog.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "external/IconsFontAwesome6.h"

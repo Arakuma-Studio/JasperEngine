@@ -4374,6 +4374,12 @@
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
 		4A534E47A2C24EA2C9A98F2B /* WaterLayering.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A3C926279EC37FB5 /* WaterLayering.h */; };
+		4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
+		4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
+		4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
+		4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
+		4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4799D5B065A0FD015C /* AudioMeter.h */; };
+		4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EA336A0838677E68 /* TruePeak.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8576,6 +8582,10 @@
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
 		4A534E47A3C926279EC37FB5 /* WaterLayering.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = WaterLayering.h; sourceTree = "<group>"; };
+		4A534E47238F638B6921C9C5 /* AudioMeter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMeter.cpp; sourceTree = "<group>"; };
+		4A534E47B2A2155B16BB00CE /* TruePeak.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TruePeak.cpp; sourceTree = "<group>"; };
+		4A534E4799D5B065A0FD015C /* AudioMeter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioMeter.h; sourceTree = "<group>"; };
+		4A534E47EA336A0838677E68 /* TruePeak.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TruePeak.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10060,6 +10070,10 @@
 				4A534E47797D7C3F52743130 /* SoloudEngineFile.h */,
 				4A534E47E1B079449B612515 /* AudioFileCheck.cpp */,
 				4A534E478C2A964FA571E181 /* AudioFileCheck.h */,
+				4A534E47238F638B6921C9C5 /* AudioMeter.cpp */,
+				4A534E47B2A2155B16BB00CE /* TruePeak.cpp */,
+				4A534E4799D5B065A0FD015C /* AudioMeter.h */,
+				4A534E47EA336A0838677E68 /* TruePeak.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -15245,6 +15259,8 @@
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
 				4A534E47A2C24EA2C9A98F2B /* WaterLayering.h in Headers */,
+				4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */,
+				4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17742,6 +17758,8 @@
 				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
 				4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */,
 				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
+				4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */,
+				4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18533,6 +18551,8 @@
 				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
 				4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */,
 				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
+				4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */,
+				4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

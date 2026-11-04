@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <unordered_map>
 #include <vector>
 
 namespace jasperengine::nav {
@@ -48,8 +49,8 @@ namespace jasperengine::nav {
     private:
         std::vector<uint32_t> holders;
         std::vector<uint32_t> until;
-        // the cells each agent holds (to release them)
-        std::vector<std::pair<uint32_t, std::vector<int>>> held;
+        // keyed by agent: moving agents replace their claims every fixed tick
+        std::unordered_map<uint32_t, std::vector<int>> held;
     };
 
     struct GridQuery {
