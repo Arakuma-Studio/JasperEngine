@@ -23,9 +23,9 @@ include(${CMAKE_CURRENT_SOURCE_DIR}/engine/cmake/JasperLinker.cmake)
 # Debug and RelWithDebInfo; set before any target, engine/ and the vendored libraries included)
 jasperengine_select_linker(OFF)
 
-# Same as CI (.github/workflows/ci.yml): git describe --tags --match 'v[0-9]*' --always --dirty.
+# git describe --tags --match 'v[0-9]*' --always --dirty.
 # Only version tags count, so the doriax-base fork-point tag never names a build.
-# CI passes JASPERENGINE_EDITOR_VERSION explicitly; local builds ask git here.
+# JASPERENGINE_EDITOR_VERSION overrides it; otherwise ask git here.
 if(NOT JASPERENGINE_EDITOR_VERSION)
     find_package(Git QUIET)
     if(GIT_FOUND)
@@ -1656,9 +1656,8 @@ endif()
 #
 # EXCLUDE_FROM_ALL keeps it out of the default ("all") build, so local and IDE
 # builds only produce jasperengine-editor. Release builds compile it explicitly by
-# name (`cmake --build --target jasperengine-editor-cmd`, see
-# .github/workflows/ci.yml); the install rule below still installs it because
-# CI builds it before installing.
+# name (`cmake --build --target jasperengine-editor-cmd`); the install rule below
+# still installs it because they build it before installing.
 if(WIN32)
     # Its own icon because both executables install to the same folder
     jasperengine_add_windows_resource(

@@ -328,6 +328,20 @@ class Chunk:
         self.label = label or file.name
 
 
+def _files_matching(files: list[Path], filt: list[str]) -> list[Path]:
+    """The files with a test -k selects: a worker costs an interpreter and the harness's import, which
+    a file with nothing to run should not. Listed in a process of its own, since some files set the
+    environment as they load; when a file cannot load, every file stays and its worker reports it."""
+    cmd = [sys.executable, str(Path(__file__).resolve()), "--list"]
+    for k in filt:
+        cmd += ["-k", k]
+    p = subprocess.run(cmd + [str(f) for f in files], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    if p.returncode != 0:
+        return files
+    names = {line.split("::", 1)[0] for line in p.stdout.splitlines() if "::" in line}
+    return [f for f in files if f.name in names]
+
+
 def _gpu_env() -> dict[str, str]:
     """JASPER_MCP_GPU_LANE=1 (a run under tools/gpu/env.sh on the GPU server): the variables that
     put an editor on the NVIDIA GPU, which only the chunks of the lane "gpu" get."""
@@ -404,6 +418,8 @@ def main() -> int:
             for n, _ in tests:
                 print(f"{f.name}::{n}")
         return 0
+    if args.k and not chunks:
+        files = _files_matching(files, args.k)
 
     # -j N: the longest files first (by the last unfiltered run's times; files without one first,
     # in their order), so no long file starts last and alone. Each file runs in a process and
