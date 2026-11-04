@@ -8,6 +8,8 @@
 
 #include "util/Util.h"
 #include "asset/AssetOps.h"
+#include "asset/AssetFileWrite.h"
+#include "project/SceneFileIdentity.h"
 #include "Out.h"
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
@@ -222,11 +224,23 @@ bool editor::CopyFileCmd::execute(){
             // the editor's own .trash (the deny-by-default guard of an MCP call's scope)
             safewrite::EditorInternal ownTrash(fdata.backup.parent_path());
             FileUtils::createDirectories(fdata.backup.parent_path(), ec);
+            // a scene replaced in place stays the scene it was: its id and name, as its GUID
+            uint32_t targetSceneId = 0;
+            std::string targetSceneName;
+            bool keepSceneIdentity = false;
+            if (Util::isSceneFile(FileUtils::pathToUtf8(target))) {
+                std::string text;
+                keepSceneIdentity = assetio::readFile(target, text) && sceneid::readSceneHeader(text, targetSceneId, targetSceneName);
+            }
             // the backup path is new (uniqueTrashPath): nothing is overwritten
             std::string error;
             if (!FileUtils::copyPath(target, fdata.backup, false, ec)) {
                 error = ec ? ec.message() : "backup failed";
             } else if (!replaceFile(source, target, error)) {
+                FileUtils::removePath(fdata.backup, ec);
+            } else if (keepSceneIdentity && !sceneid::rewriteSceneHeader(target, targetSceneId, targetSceneName, &error)) {
+                std::string ignored;
+                replaceFile(fdata.backup, target, ignored);
                 FileUtils::removePath(fdata.backup, ec);
             }
             if (!error.empty()) {
@@ -250,7 +264,7 @@ bool editor::CopyFileCmd::execute(){
                     }
                 }
             }
-            result = AssetOps::copy(*project, source, fdata.destination, &copyGuids);
+            result = AssetOps::copy(*project, source, fdata.destination, &copyGuids, &copyScenes);
         } else {
             fdata.destination = fdata.targetDirectory / fdata.filename;
             result = AssetOps::move(*project, source, fdata.destination);

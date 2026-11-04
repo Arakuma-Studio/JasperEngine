@@ -6,6 +6,7 @@
 #include "command/Command.h"
 #include "command/CommandNames.h"
 #include "Project.h"
+#include "asset/AssetOps.h"
 #include "animation/AnimationClipDocument.h"
 #include "vat/VatAssetFiles.h"
 #include <map>
@@ -36,6 +37,8 @@ namespace jasperengine::editor{
         bool overwrite = false;
         // the GUIDs the copies got (by project-relative path), given again by a redo
         std::map<std::string, std::string> copyGuids;
+        // the scene ids and names the copied scenes got, given again by a redo
+        std::map<std::string, AssetOps::SceneCopy> copyScenes;
         // moves: .anim files whose preview/source paths followed (animation clips spec 9.R26)
         std::vector<ClipHintEdit> clipHintEdits;
         // .vat.glb image URIs rewritten for their new directory (vat/VatAssetFiles.h), and the moves

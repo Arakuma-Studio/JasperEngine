@@ -4,15 +4,103 @@
 #include "SceneSaveDialog.h"
 #include "external/IconsFontAwesome6.h"
 #include "Backend.h"
+#include "Theme.h"
+#include "util/UIProbe.h"
 #include <algorithm>
+#include <cstring>
+#include <utility>
 #include <vector>
 
 namespace jasperengine {
 namespace editor {
 
+namespace {
+
+    // Names Windows refuses, whatever the extension
+    bool isReservedWindowsName(std::string stem) {
+        std::transform(stem.begin(), stem.end(), stem.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+        static const char* reserved[] = {"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
+                                         "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"};
+        for (const char* name : reserved) {
+            if (stem == name) return true;
+        }
+        return false;
+    }
+
+}
+
+std::string SceneSaveDialog::withSceneExtension(const std::string& name) {
+    if (name.empty()) return name;
+    return fs::path(name).extension() == ".scene" ? name : name + ".scene";
+}
+
+std::string SceneSaveDialog::nameProblem(const fs::path& projectPath, const fs::path& folder, const std::string& name,
+        const std::function<std::string(const fs::path&)>& pathProblem) {
+    if (name.empty() || name == ".scene") {
+        return "Type a name for the scene.";
+    }
+    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
+        return "The name cannot contain / or \\: pick the folder in the tree above.";
+    }
+    if (name == "." || name == ".." || name.find(':') != std::string::npos) {
+        return "The name cannot be a path: pick the folder in the tree above.";
+    }
+    for (unsigned char c : name) {
+        if (c < 32 || std::strchr("<>\"|?*", c)) {
+            return "The name cannot contain < > \" | ? * or control characters (Windows refuses them).";
+        }
+    }
+    const std::string fileName = withSceneExtension(name);
+    if (fileName.back() == '.' || fileName.back() == ' ' || name.back() == '.' || name.back() == ' ') {
+        return "The name cannot end with a dot or a space (Windows refuses it).";
+    }
+    if (isReservedWindowsName(fs::path(fileName).stem().string()) || isReservedWindowsName(fs::path(fileName).stem().stem().string())) {
+        return "\"" + fs::path(fileName).stem().string() + "\" is a name Windows reserves.";
+    }
+    const fs::path fullPath = (folder / fileName).lexically_normal();
+    const fs::path relative = fullPath.lexically_relative(projectPath.lexically_normal());
+    if (relative.empty() || *relative.begin() == "..") {
+        return "Scenes are saved inside the project folder.";
+    }
+    return pathProblem ? pathProblem(fullPath) : std::string();
+}
+
+void SceneSaveDialog::finishSave(const fs::path& fullPath) {
+    m_isOpen = false;
+    m_cancelRequested = false;
+    auto onSave = std::exchange(m_onSave, nullptr);
+    m_onCancel = nullptr;
+    m_pathProblem = nullptr;
+    if (onSave) onSave(fullPath);
+}
+
+void SceneSaveDialog::finishCancel() {
+    m_isOpen = false;
+    m_cancelRequested = false;
+    auto onCancel = std::exchange(m_onCancel, nullptr);
+    m_onSave = nullptr;
+    m_pathProblem = nullptr;
+    if (onCancel) onCancel();
+}
+
+void SceneSaveDialog::close() {
+    if (m_isOpen) {
+        finishCancel();
+    }
+}
+
+void SceneSaveDialog::abandon() {
+    m_isOpen = false;
+    m_cancelRequested = false;
+    m_onSave = nullptr;
+    m_onCancel = nullptr;
+    m_pathProblem = nullptr;
+}
+
 void SceneSaveDialog::open(const fs::path& projectPath, const fs::path& initialDirectory, const std::string& defaultName,
         std::function<void(const fs::path&)> onSave,
-        std::function<void()> onCancel) {
+        std::function<void()> onCancel,
+        std::function<std::string(const fs::path&)> pathProblem) {
     m_isOpen = true;
     m_projectPath = projectPath;
 
@@ -33,8 +121,10 @@ void SceneSaveDialog::open(const fs::path& projectPath, const fs::path& initialD
     }
 
     m_selectedPath = selectedPath.lexically_normal().string();
-    m_onSave = onSave;
-    m_onCancel = onCancel;
+    m_onSave = std::move(onSave);
+    m_onCancel = std::move(onCancel);
+    m_pathProblem = std::move(pathProblem);
+    m_cancelRequested = false;
 
     strncpy(m_fileNameBuffer, defaultName.c_str(), sizeof(m_fileNameBuffer) - 1);
     m_fileNameBuffer[sizeof(m_fileNameBuffer) - 1] = '\0';
@@ -97,26 +187,28 @@ void SceneSaveDialog::show() {
         ImGui::TextUnformatted("Scene Name");
         ImGui::SetNextItemWidth(-1);
         ImGui::InputText("##fileName", m_fileNameBuffer, sizeof(m_fileNameBuffer));
+        UIProbe::item("sceneSave.name");
 
         const fs::path saveDir = fs::relative(m_selectedPath, m_projectPath);
         const std::string saveIn = (saveDir.empty() || saveDir == ".") ? "Project" : "Project/" + saveDir.generic_string();
         ImGui::TextWrapped("Save in: %s", saveIn.c_str());
 
-        std::string fileName = m_fileNameBuffer;
+        const std::string typed = m_fileNameBuffer;
+        const std::string fileName = withSceneExtension(typed);
+        const fs::path fullPath = (fs::path(m_selectedPath) / fileName).lexically_normal();
+        const std::string problem = nameProblem(m_projectPath, fs::path(m_selectedPath), typed, m_pathProblem);
+        const bool canSave = problem.empty();
 
-        // Check if the filename has the correct extension
-        if (!fileName.empty() && fileName.find(".scene") == std::string::npos) {
-            fileName += ".scene";
-            strncpy(m_fileNameBuffer, fileName.c_str(), sizeof(m_fileNameBuffer) - 1);
-            m_fileNameBuffer[sizeof(m_fileNameBuffer) - 1] = '\0';
-        }
-
-        bool canSave = !fileName.empty();
-        fs::path fullPath = fs::path(m_selectedPath) / fileName;
-        bool fileExists = fs::exists(fullPath);
-
-        if (fileExists) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), "A scene with this name already exists and will be replaced.");
+        if (!problem.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
+            ImGui::TextWrapped("%s", problem.c_str());
+            ImGui::PopStyleColor();
+            UIProbe::item("sceneSave.problem");
+        } else {
+            std::error_code ec;
+            if (fs::exists(fullPath, ec)) {
+                ImGui::TextColored(Theme::Colors::WarningText, "%s exists and will be replaced.", fileName.c_str());
+            }
         }
 
         ImGui::Separator();
@@ -126,28 +218,24 @@ void SceneSaveDialog::show() {
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
         ImGui::BeginDisabled(!canSave);
-        if (ImGui::Button("Save", ImVec2(120, 0))) {
-            if (m_onSave) {
-                m_onSave(fullPath);
-            }
-            m_isOpen = false;
-            m_cancelRequested = false;
-
-            ImGui::CloseCurrentPopup();
-        }
+        const bool savePressed = ImGui::Button("Save", ImVec2(120, 0)) ||
+            (canSave && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Enter, false));
+        UIProbe::item("sceneSave.save");
         ImGui::EndDisabled();
-
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0)) || m_cancelRequested ||
-            (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
-            m_isOpen = false;
-            m_cancelRequested = false;
-
-            if (m_onCancel) {
-                m_onCancel();
-            }
-
+        bool finished = false;
+        if (savePressed && canSave) {
             ImGui::CloseCurrentPopup();
+            finishSave(fullPath);
+            finished = true;
+        }
+
+        if (!finished) {
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(120, 0)) || m_cancelRequested ||
+                (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+                ImGui::CloseCurrentPopup();
+                finishCancel();
+            }
         }
 
         ImGui::EndPopup();
@@ -157,14 +245,8 @@ void SceneSaveDialog::show() {
         // update our state and make sure to call the cancel callback
         // This happens if user presses ESC or clicks outside the modal
         if (m_isOpen) {
-            m_isOpen = false;
-            m_cancelRequested = false;
-
-            // If dialog was closed without explicit button press,
-            // we still need to call the cancel callback
-            if (m_onCancel) {
-                m_onCancel();
-            }
+            // closed without a button (Escape, a click outside): that is Cancel
+            finishCancel();
         }
     }
 }

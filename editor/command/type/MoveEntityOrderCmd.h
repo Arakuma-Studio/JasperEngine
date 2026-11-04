@@ -50,6 +50,9 @@ namespace jasperengine::editor{
     public:
         MoveEntityOrderCmd(Project* project, uint32_t sceneId, Entity source, Entity target, InsertionType type);
 
+        // "" unless a GameObject with a Transform would go before or after one without (refused:
+        // only the list would change), else why
+        static std::string transformAnchorProblem(EntityRegistry* registry, Entity source, Entity target, InsertionType type);
         // Unity: the GameObjects of a prefab instance (its members, nested instance roots
         // included) cannot be reordered, reparented or moved out of it; the prefab asset is
         // restructured in Prefab Mode. Added GameObjects and instance roots move freely (an

@@ -14099,7 +14099,9 @@ void RenderSystem::updateSwapchainRedirect(){
     if (redirect != swapchainRedirect){
         swapchainRedirect = redirect;
         // the flip is baked in the MVP matrices
-        scene->getComponent<CameraComponent>(scene->getCamera()).needUpdate = true;
+        if (CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera())){
+            camera->needUpdate = true;
+        }
     }
 }
 
