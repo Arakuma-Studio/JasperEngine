@@ -196,7 +196,10 @@ std::string StringUtils::repairUtf8(std::string_view text) {
 std::string StringUtils::legacyToUtf8(std::string_view text) {
     if (isValidUtf8(text)) return std::string(text);
 #ifdef _WIN32
-    // the system's ANSI code page: under the UTF-8 manifest GetACP() is UTF-8 itself
+    // a process in the UTF-8 code page writes no ANSI text: what is not UTF-8 is broken text
+    // (a cut string, a child's bytes), repaired below; read as ANSI it would become other letters
+    if (GetACP() == CP_UTF8) return repairUtf8(text);
+    // the system's ANSI code page (before Windows 10 1903 the process runs in it)
     static const UINT codePage = []() {
         DWORD value = 0;
         const int got = GetLocaleInfoEx(LOCALE_NAME_SYSTEM_DEFAULT, LOCALE_IDEFAULTANSICODEPAGE | LOCALE_RETURN_NUMBER,

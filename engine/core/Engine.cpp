@@ -93,6 +93,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <filesystem>
 #include <map>
 #include <functional>
 #include <optional>
@@ -1773,7 +1774,9 @@ namespace {
         // build's macro, both through the platform configuration)
         // (the configuration lives for the whole run, so its text does)
         config.product = platformConfig().title.empty() ? "JasperEngine Game" : platformConfig().title.c_str();
-        config.root = system->getCrashReportPath();
+        // the platform's path is UTF-8 (a narrow fs::path would read it in the ANSI code page)
+        const std::string crashReportPath = system->getCrashReportPath();
+        config.root = std::filesystem::path(std::u8string(crashReportPath.begin(), crashReportPath.end()));
         config.includeLogTail = setting(platform.crashLogTail, platform.builtCrashLogTail);
         config.dumpKind = setting(platform.crashDumpWithHeap, platform.builtCrashDumpWithHeap) ? diag::crash::DumpKind::WithHeap
                                                                                                   : diag::crash::DumpKind::Small;

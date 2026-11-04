@@ -21,9 +21,8 @@ namespace jasperengine{
         static bool isValidUtf8(std::string_view text);
         // text with one U+FFFD per byte that is not part of a valid sequence
         static std::string repairUtf8(std::string_view text);
-        // Valid UTF-8 unchanged; otherwise, on Windows, the text read in the system's ANSI code
-        // page (what a program not in the UTF-8 code page writes: e.what(), a path), elsewhere
-        // repairUtf8
+        // Valid UTF-8 unchanged; otherwise, on Windows in the ANSI code page (before 10 1903), the
+        // text read in that code page (e.what(), a path); everywhere else repairUtf8
         static std::string legacyToUtf8(std::string_view text);
 
         // Decodes UTF-8 into Unicode codepoints. Invalid sequences are replaced with U+FFFD and hadInvalid is set.
