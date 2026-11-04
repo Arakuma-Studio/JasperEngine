@@ -42,6 +42,8 @@ namespace jasperengine::watch {
 #endif
 #if defined(JASPERENGINE_WATCH_FSEVENTS)
     std::unique_ptr<FileWatcher> createFsEventsBackend();
+    // Tests: the next `count` streams report nothing, as one fseventsd does not serve
+    JASPERENGINE_API void setFsEventsDeadStreamsForTesting(int count);
 #endif
     std::unique_ptr<FileWatcher> createPollingBackend(std::chrono::milliseconds interval);
     std::unique_ptr<FileWatcher> createNullBackend();
