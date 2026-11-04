@@ -647,8 +647,6 @@ class Editor:
     keep      keep the scratch dir even on success
     ui_probe  the editor writes the rectangles of the widgets it names (editor/util/UIProbe.h), read
               by ui_items() / ui_rect(): UI tests click widgets wherever the layout puts them
-    scratch   start in this scratch dir (Scratch.make) instead of a new one: what an editor before
-              this one left in its settings folder stays; the caller removes it
     """
 
     def __init__(self, project: str | Path | None = None, *, create: bool = False, name: str = "Scratch",
@@ -657,7 +655,7 @@ class Editor:
                  extra_args: list[str] | None = None, env: dict[str, str] | None = None,
                  settings: dict[str, Any] | None = None, startup_timeout: float = 180.0,
                  call_timeout: float = 300.0, keep: bool | None = None, label: str = "",
-                 scratch_prefix: str | None = None, ui_probe: bool = False, scratch: "Scratch | None" = None):
+                 scratch_prefix: str | None = None, ui_probe: bool = False):
         if url is None and project is None and not create and os.environ.get("JASPER_MCP_URL"):
             url = os.environ["JASPER_MCP_URL"]
         if fake is None:
@@ -681,8 +679,7 @@ class Editor:
         self.scratch_prefix = scratch_prefix
         self.ui_probe = ui_probe
 
-        self.scratch: Scratch | None = scratch
-        self.own_scratch = scratch is None
+        self.scratch: Scratch | None = None
         self.session: ClientSession | None = None
         self.init_result: Any = None
         self.instructions: str = ""
@@ -726,17 +723,14 @@ class Editor:
             streams = await self._stack.enter_async_context(streamable_http_client(self.url, http_client=http))
         else:
             extra = {"prefix": self.scratch_prefix} if self.scratch_prefix else {}
-            if self.own_scratch:
-                self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings, **extra)
+            self.scratch = Scratch.make(self.project_src, create=self.create, settings=self.extra_settings, **extra)
             display = None
             inherit = self.xvfb_mode == "none"
             if self.xvfb_mode == "harness":
                 self._xvfb = Xvfb()
                 display = self._xvfb.start()
-            # a scratch dir an earlier editor used has its project
-            create = self.create and not (self.scratch.project / "project.yaml").exists()
             argv, env, cwd = launch_spec(
-                self.scratch, create=create, name=self.name, command=self.command,
+                self.scratch, create=self.create, name=self.name, command=self.command,
                 display=display, extra_args=self.extra_args, inherit_display=inherit, extra_env=self.extra_env,
                 ui_probe=self.ui_probe)
             self.argv = argv
@@ -787,7 +781,7 @@ class Editor:
         if self._stderr_file:
             self._stderr_file.close()
             self._stderr_file = None
-        if self.scratch and self.own_scratch:
+        if self.scratch:
             if self.failed or self.keep:
                 print(f"[harness] scratch kept: {self.scratch.root}", file=sys.stderr)
             else:
@@ -1030,53 +1024,6 @@ class Editor:
 
 # ---------------------------------------------------------------------------
 # Raw stdio access (protocol-level tests)
-
-
-class GuiEditor:
-    """The editor's GUI (no `mcp` subcommand) under a private Xvfb, reached over its HTTP MCP server."""
-
-    def __init__(self, root: Path, args: list[str], settings: dict, env: dict[str, str] | None = None):
-        self.root, self.args, self.settings, self.extra_env = root, args, settings, env or {}
-        self.proc: subprocess.Popen | None = None
-        self.xvfb: Xvfb | None = None
-        self.ed: Editor | None = None
-
-    async def __aenter__(self) -> Editor:
-        port = free_port()
-        cwd = self.root / f"gui-{port}"
-        home = cwd / "home"
-        home.mkdir(parents=True)
-        settings = {"window": {"width": 1280, "height": 720},
-                    "mcp": {"http_enabled": True, "http_port": port, "http_token": HTTP_TOKEN}}
-        settings.update(self.settings)
-        (cwd / "settings.yaml").write_text(yaml.safe_dump(settings, sort_keys=False))
-        self.xvfb = Xvfb()
-        display = self.xvfb.start()
-        env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") and k not in ("WAYLAND_DISPLAY", "JASPER_MCP_URL")}
-        env.update({"DISPLAY": display, "HOME": str(home), "LIBGL_ALWAYS_SOFTWARE": "1"})
-        env.update(self.extra_env)
-        self.log = open(cwd / "editor.log", "w")
-        self.proc = subprocess.Popen(editor_command() + self.args, cwd=str(cwd), env=env,
-                                     stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
-        await wait_for_port(port, timeout=180)
-        self.ed = Editor(url=f"http://127.0.0.1:{port}/mcp", token=HTTP_TOKEN)
-        await self.ed.__aenter__()
-        return self.ed
-
-    async def __aexit__(self, *exc) -> None:
-        if self.ed:
-            with contextlib.suppress(Exception):
-                await self.ed.__aexit__(None, None, None)
-        if self.proc and self.proc.poll() is None:
-            self.proc.terminate()
-            try:
-                await asyncio.to_thread(self.proc.wait, 60)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
-                await asyncio.to_thread(self.proc.wait, 30)
-        if self.xvfb:
-            self.xvfb.stop()
-        self.log.close()
 
 
 class RawEditor:

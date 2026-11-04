@@ -2,7 +2,9 @@
 in the middle of an import or a template copy leaves staging folders the next start removes.
 
 The copy is held by the editor's hook JASPER_TEST_STAGING_HOLD=<path> (it creates <path>.held and
-waits while <path> exists) and killed with SIGKILL there, so nothing depends on timing.
+waits while <path> exists) and killed with SIGKILL there, so nothing depends on timing. The editors
+are real GUI ones showing the Project Hub, each started in a working folder the next can share:
+the settings folder is what connects a start to the crash before it.
 """
 
 from __future__ import annotations
@@ -19,15 +21,12 @@ import time
 import zipfile
 from pathlib import Path
 
-from harness import Editor, GuiEditor, Scratch, TestFailure
+import harness
+import yaml
+from harness import Editor, TestFailure, free_port, wait_for_port
 
 CI = True
 TIMEOUT = 900
-
-
-def check(condition, message: str) -> None:
-    if not condition:
-        raise TestFailure(message)
 
 
 async def wait_for(predicate, seconds: float, what: str) -> None:
@@ -39,85 +38,137 @@ async def wait_for(predicate, seconds: float, what: str) -> None:
 
 
 def write_project_zip(path: Path) -> None:
-    """A project two scenes big, one folder down: extraction stops at the hold after one entry"""
+    """A project a few files big, one folder down: extraction stops at the hold after one entry"""
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
         z.writestr("Packed/project.yaml", "name: Packed\n")
         z.writestr("Packed/scenes/One.txt", "one\n")
         z.writestr("Packed/scenes/Two.txt", "two\n")
 
 
-class Held:
-    """An editor whose copies wait at the hold, in a scratch dir that outlives it"""
+class HubEditor:
+    """The editor's GUI with --hub under a private Xvfb, reached over HTTP MCP, in the working folder
+    `cwd`, which keeps its settings folder from one editor to the next."""
 
-    def __init__(self, scratch: Scratch):
-        self.hold = scratch.root / "staging-hold"
-        self.held = Path(str(self.hold) + ".held")
-        self.hold.write_text("hold\n")
-        self.ed = Editor(create=True, name="Held", scratch=scratch, env={"JASPER_TEST_STAGING_HOLD": str(self.hold)})
+    def __init__(self, cwd: Path, env: dict[str, str] | None = None, settings: dict | None = None):
+        self.cwd, self.extra_env, self.settings = cwd, env or {}, settings or {}
+        self.proc: subprocess.Popen | None = None
+        self.xvfb: harness.Xvfb | None = None
+        self.ed: Editor | None = None
 
-    async def __aenter__(self) -> "Held":
+    async def __aenter__(self) -> "HubEditor":
+        port = free_port()
+        home = self.cwd / "home"
+        home.mkdir(parents=True, exist_ok=True)
+        # the whole X screen: the probe's window pixels are xdotool's screen pixels. create_project
+        # over MCP, with no project open, goes under the default export folder
+        settings = {"window": {"width": 1600, "height": 900, "maximized": True},
+                    "mcp": {"http_enabled": True, "http_port": port, "http_token": harness.HTTP_TOKEN},
+                    "export": {"default_dir": str(self.cwd)}}
+        settings.update(self.settings)
+        (self.cwd / "settings.yaml").write_text(yaml.safe_dump(settings, sort_keys=False))
+        self.xvfb = harness.Xvfb()
+        self.display = self.xvfb.start()
+        env = {k: v for k, v in os.environ.items() if not k.startswith("XDG_") and k not in ("WAYLAND_DISPLAY", "JASPER_MCP_URL")}
+        env.update({"DISPLAY": self.display, "HOME": str(home), "LIBGL_ALWAYS_SOFTWARE": "1"})
+        env.update(self.extra_env)
+        self.log = open(self.cwd / f"editor-{port}.log", "w")
+        self.proc = subprocess.Popen(harness.editor_command() + ["--hub"], cwd=str(self.cwd), env=env,
+                                     stdout=self.log, stderr=subprocess.STDOUT, start_new_session=True)
+        await wait_for_port(port, timeout=180)
+        self.ed = Editor(url=f"http://127.0.0.1:{port}/mcp", token=harness.HTTP_TOKEN)
         await self.ed.__aenter__()
         return self
 
-    async def __aexit__(self, *exc) -> None:
-        self.hold.unlink(missing_ok=True)
-        await self.ed.__aexit__(*exc)
+    def kill9(self) -> None:
+        """No clean-up runs; the lock is free when this returns"""
+        os.kill(self.proc.pid, signal.SIGKILL)
+        self.proc.wait(60)
 
-    async def kill9_during(self, tool: str, args: dict) -> None:
-        """Starts the tool, waits for its copy at the hold, kills the editor there"""
+    async def __aexit__(self, *exc) -> None:
+        if self.ed:
+            with contextlib.suppress(BaseException):
+                await self.ed.__aexit__(None, None, None)
+        if self.proc.poll() is None:
+            self.proc.terminate()
+            try:
+                await asyncio.to_thread(self.proc.wait, 60)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                await asyncio.to_thread(self.proc.wait, 30)
+        self.xvfb.stop()
+        self.log.close()
+
+
+class Scene:
+    """A working folder, a zip to import and the hold of the editors that should stop in their copy"""
+
+    def __init__(self):
+        self.root = Path(tempfile.mkdtemp(prefix="jasper-leftovers-"))
+        self.cwd = self.root / "editor"
+        self.cwd.mkdir()
+        self.archive = self.root / "Packed.zip"
+        write_project_zip(self.archive)
+        self.into = self.root / "imports"
+        self.into.mkdir()
+        self.hold = self.root / "staging-hold"
+        self.held = Path(str(self.hold) + ".held")
+
+    def held_editor(self) -> HubEditor:
+        self.hold.write_text("hold\n")
         self.held.unlink(missing_ok=True)
-        call = asyncio.create_task(self.ed.call_raw(tool, args))
+        return HubEditor(self.cwd, env={"JASPER_TEST_STAGING_HOLD": str(self.hold)})
+
+    def remove(self) -> None:
+        shutil.rmtree(self.root, ignore_errors=True)
+
+    async def kill9_during(self, hub: HubEditor, tool: str, args: dict) -> None:
+        """Starts the tool, waits for its copy at the hold, kills the editor there"""
+        call = asyncio.create_task(hub.ed.call_raw(tool, args))
         await wait_for(self.held.exists, 120, f"{tool} at the hold")
-        owner = json.loads((self.ed.project / ".jasperengine" / "user" / "editor.lock").read_text())
-        os.kill(owner["pid"], signal.SIGKILL)
+        hub.kill9()
         with contextlib.suppress(BaseException):
             await asyncio.wait_for(call, 30)
-        await self.ed.close()
 
 
 async def test_the_next_start_removes_what_a_kill_left():
     """AC1: kill -9 in the middle of an import and of a template copy, in folders the settings know
     nothing else about; the next start removes both, and the same import then takes the plain names."""
-    scratch = Scratch.make(create=True)
+    scene = Scene()
     try:
-        archive = scratch.root / "Packed.zip"
-        write_project_zip(archive)
-        into = scratch.root / "imports"
-        into.mkdir()
-        made = scratch.root / "made"
-        made.mkdir()
-        async with Held(scratch) as held:
-            await held.kill9_during("import_project", {"source": str(archive), "path": str(into), "timeout_seconds": 300})
-        check((into / "Packed.importing").is_dir(), f"kill -9 left the import's staging folder: {sorted(os.listdir(into))}")
-        async with Held(scratch) as held:
-            await held.kill9_during("create_project", {"path": str(made / "New"), "name": "New", "template": "3d", "unsaved": "discard"})
-        check((made / "New.importing").is_dir(), f"kill -9 left the copy's staging folder: {sorted(os.listdir(made))}")
+        into = scene.into
+        async with scene.held_editor() as hub:
+            await scene.kill9_during(hub, "import_project", {"source": str(scene.archive), "path": str(into), "timeout_seconds": 300})
+        if not (into / "Packed.importing").is_dir():
+            raise TestFailure(f"kill -9 left the import's staging folder: {sorted(os.listdir(into))}")
+        made = scene.cwd / "made"
+        async with scene.held_editor() as hub:
+            await scene.kill9_during(hub, "create_project", {"path": str(made / "New"), "name": "New", "template": "3d", "unsaved": "discard"})
+        if not (made / "New.importing").is_dir():
+            raise TestFailure(f"kill -9 left the copy's staging folder: {sorted(os.listdir(made))}")
 
-        async with Editor(create=True, name="Next", scratch=scratch) as ed:
+        async with HubEditor(scene.cwd) as hub:
+            ed = hub.ed
             await wait_for(lambda: not (into / "Packed.importing").exists() and not (made / "New.importing").exists(), 60,
-                           f"the start to remove the staging folders: {sorted(os.listdir(into))} {sorted(os.listdir(made))}")
+                           "the start to remove the staging folders")
             ed.check_eq(sorted(os.listdir(into)), [], "nothing else stays beside the import")
             ed.check_eq(sorted(os.listdir(made)), [], "nothing else stays beside the copy")
-            got = await ed.call("import_project", source=str(archive), path=str(into), timeout_seconds=300)
+            got = await ed.call("import_project", source=str(scene.archive), path=str(into), timeout_seconds=300)
             ed.check_eq(Path(got["path"]), into / "Packed", "the imported name has no number")
             ed.check_eq(sorted(os.listdir(into)), ["Packed"], "only the project")
     finally:
-        scratch.remove()
+        scene.remove()
 
 
 async def test_a_live_owner_in_another_editor_is_never_touched():
     """AC2: an editor at work in a folder; another one sweeps it and imports beside it. The folder
     stays, whole, until its owner dies; then the same look removes it."""
-    scratch = Scratch.make(create=True)
+    scene = Scene()
     try:
-        archive = scratch.root / "Packed.zip"
-        write_project_zip(archive)
-        into = scratch.root / "imports"
-        into.mkdir()
+        into = scene.into
         staging = into / "Packed.importing"
-        async with Held(scratch) as held:
-            call = asyncio.create_task(held.ed.call_raw("import_project", {"source": str(archive), "path": str(into), "timeout_seconds": 300}))
-            await wait_for(held.held.exists, 120, "the import at the hold")
+        async with scene.held_editor() as hub:
+            call = asyncio.create_task(hub.ed.call_raw("import_project", {"source": str(scene.archive), "path": str(into), "timeout_seconds": 300}))
+            await wait_for(scene.held.exists, 120, "the import at the hold")
             before = sorted(p.name for p in staging.rglob("*"))
             async with Editor(create=True, name="Second") as second:
                 swept = await second.call("clean_project_leftovers", remove=[])
@@ -128,30 +179,23 @@ async def test_a_live_owner_in_another_editor_is_never_touched():
                 second.check_eq(got.structured["failed"][0]["path"], staging.as_posix(), "and that is why")
                 second.check_eq(sorted(p.name for p in staging.rglob("*")), before, "not a file touched")
 
-                imported = await second.call("import_project", source=str(archive), path=str(into), timeout_seconds=300)
+                imported = await second.call("import_project", source=str(scene.archive), path=str(into), timeout_seconds=300)
                 second.check_eq(Path(imported["path"]), into / "Packed", "the second editor's import goes through")
                 second.check("leftovers" not in imported, f"a live folder is not a leftover: {imported}")
                 second.check_eq(sorted(p.name for p in staging.rglob("*")), before, "not a file touched by the import's sweep")
 
-                owner = json.loads((held.ed.project / ".jasperengine" / "user" / "editor.lock").read_text())
-                os.kill(owner["pid"], signal.SIGKILL)
+                hub.kill9()
                 with contextlib.suppress(BaseException):
                     await asyncio.wait_for(call, 30)
 
                 # This project is under the system's temp folder, so it is no recent project and its
-                # parent no known one: `remove` names the folder. The client sees the editor's pipe close
-                # before the system has closed the rest of its files, the lock among them: in use for a
-                # moment longer, then its owner is dead and the sweep takes it
-                deadline = time.monotonic() + 30
+                # parent no known one: `remove` names the folder. Its owner is dead: the sweep takes it
                 got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
-                while got.is_error and got.structured["in_use"] and time.monotonic() < deadline:
-                    await asyncio.sleep(0.05)
-                    got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
                 second.check(not got.is_error, f"its owner died: {got.text}")
                 second.check_eq(got.structured["removed"], [staging.as_posix()], "it goes")
                 second.check_eq(sorted(os.listdir(into)), ["Packed"], "the folder and its marker")
     finally:
-        scratch.remove()
+        scene.remove()
 
 
 async def test_a_folder_without_a_marker_is_kept_and_reported():
@@ -202,23 +246,22 @@ async def test_a_folder_without_a_marker_is_kept_and_reported():
 async def test_the_hub_shows_a_leftover_with_its_buttons():
     """R3: in the Hub, a marker-less folder is listed with Show in Folder and Remove. Remove asks first:
     Keep changes nothing, Delete removes the folder and its row."""
-    root = Path(tempfile.mkdtemp(prefix="jasper-leftovers-"))
+    scene = Scene()
     try:
-        games = root / "Games"
+        games = scene.root / "Games"
         old = games / "Old Game.importing"
         old.mkdir(parents=True)
         (old / "my-work.txt").write_text("my work\n")
-        probe = root / "ui-probe.json"
+        probe = scene.root / "ui-probe.json"
 
         def items() -> dict:
             with contextlib.suppress(OSError, ValueError):
                 return json.loads(probe.read_text()).get("items", {})
             return {}
 
-        # the whole X screen: the probe's window pixels are xdotool's screen pixels
-        hub = GuiEditor(root, ["--hub"], {"editor": {"hub_last_location": str(games)}, "window": {"width": 1600, "height": 900, "maximized": True}}, env={"JASPER_UI_PROBE": str(probe)})
-        async with hub as gui:
-            env = dict(os.environ, DISPLAY=hub.xvfb.display)
+        async with HubEditor(scene.cwd, env={"JASPER_UI_PROBE": str(probe)}, settings={"editor": {"hub_last_location": str(games)}}) as hub:
+            gui = hub.ed
+            env = dict(os.environ, DISPLAY=hub.display)
 
             async def click(name: str) -> None:
                 x0, y0, x1, y1 = items()[name]
@@ -243,4 +286,4 @@ async def test_the_hub_shows_a_leftover_with_its_buttons():
             await wait_for(lambda: not old.exists(), 30, "Delete to remove the folder")
             await wait_for(lambda: not any(name.startswith("hub.leftover") for name in items()), 30, "the row to go")
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        scene.remove()
