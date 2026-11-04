@@ -45,3 +45,49 @@ and Jobs windows. `CurveEditor.cpp:528-540` reads F, Delete/Backspace, Ctrl+C an
 
 ## 6. Risks & defaults
 A panel focused but with nothing selected: Delete does nothing and does not fall through to the scene (Unity behaves so).
+
+## Deviations
+
+**R1 reproduced.** Red on the unchanged build (`tools/mcp/tests/test_window_commands.py`, real keys under Xvfb): Delete
+deleted the selected GameObject (entities 3 -> 2), F moved the Scene view's camera, and Ctrl+C / Ctrl+V with the pointer
+over the Scene view pasted a GameObject (3 -> 4). So this was a real loss of work, not only an inference.
+
+**Decisions.**
+- The mechanism is `editor/shortcuts/PanelClaims.h`. Beyond the six verbs of R2 it also covers Paste As Child, Select All
+  and Rename: left out, they still reached the scene (F2, Ctrl+A, and the menu's Paste As Child) from a claiming panel.
+- A panel with its own catalog command for a verb keeps the key on that command: `edit.frameSelected`'s key is quiet while
+  the panel has focus, so AC3's "the old key no longer frames" holds even though F is still Frame Selected's binding. The
+  Edit menu shows the panel's binding while the claim is active, which also moves macOS's key equivalent with it.
+- Holders: Curve, Color Picker, Gradient Editor, Input Actions, Animator, Jobs & Memory, Project, Console (its list),
+  Sprite Normal Map, Animation (clip mode), Pose Animation (also a Scene view posing for it). `notAssetPanel` and
+  `sceneKeys` are gone: the claims say the same. Consequences: Edit > Delete, Copy, Cut, Paste, Select All and Rename now work
+  in the Project window; Delete and F in the Console's list, the Color window and the Gradient Editor no longer reach the scene.
+- The Curve window's keys act while it has focus. They used to act under the pointer too (`hovered`), which is how a key
+  could reach two panels; `docs/editor/curves.md` says focus now.
+- The Scene view's hover keeps its other keys, except `sceneView.deleteMeasure`: under the pointer it no longer takes Delete
+  from a claiming panel.
+- The Sprite Normal Map window's F became the claim's Frame handler, and with it focused the `tools.*` keys (W, E, G, X...)
+  are off: they fired together with that window's own letters.
+- `editor_status` gained `ui.curve_window` and `ui.color_picker`: agents and tests need them to check these keys.
+- The generated AGENTS.md's Source references says an editor key is rebound with `set_shortcut`: without it agents asked to
+  rebind a key went to the editor's source (eval case `guard_curve_keys_rebind`, 0/2 without the sentence, 2/2 with it; a line
+  in the guide's Other areas did not move them, 0/2).
+
+**R4 audit.** Every key poll of these keys under `editor/`:
+
+| Where | Keys | Verdict |
+|---|---|---|
+| `widget/CurveEditor.cpp` | F, Delete, Backspace, Ctrl+C, Ctrl+V | removed: catalog `curve.*`, through the claim |
+| `widget/ColorPickerWindow.cpp` | I | removed: catalog `colorPicker.eyedropper` |
+| `window/SpriteNormalsWindow.cpp` | F | removed: the claim's Frame handler |
+| `window/SpriteNormalsWindow.cpp` | V, X and its other bare letters | kept, lint reason: the tool window's own keys while focused (bare letters, not Ctrl+V/X; `tools.*` are off there) |
+| `window/InputActionsWindow.cpp:931` | any | kept, lint reason: Listen captures any key for a game binding |
+| `window/dialog/ProjectSettingsWindow.cpp` (Listen) | any | kept, lint reason added: a modal's Listen |
+| `window/ProjectWindowSearch.cpp` | letters, digits | kept, lint reason added: type-ahead, no modifiers |
+| `window/dialog/ComponentAddDialog.cpp` | Backspace | kept: a local navigation key of a popup, where the dispatcher fires nothing (lint's `LOCAL_KEYS`) |
+| `window/widget/CustomTextEditor.cpp` | Ctrl+C/X/V/F/D, Backspace, Delete | kept: the Code Editor's text keys; Editor commands do not fire there (lint `SKIPPED`) |
+| `window/widget/SelectableTextView.cpp` | Ctrl+A, Ctrl+C | kept: a text view's selection (lint `SKIPPED`) |
+| `window/PlayInput.cpp` | all | kept: forwards keys to the game (lint `SKIPPED`) |
+| `shortcuts/ShortcutsWindow.cpp` | any | kept: captures a chord, the dispatcher is held meanwhile (lint `SKIPPED`) |
+| `sceneview/SceneViewToolbar.cpp:724`, `window/SceneWindow.cpp` | held V; held W/A/S/D/Q/E | kept: `IsKeyDown` gestures (measure snap, fly), not presses; read-only catalog rows |
+
