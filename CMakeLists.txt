@@ -686,7 +686,9 @@ else()
 endif()
 set_source_files_properties(${JASPERENGINE_SPRITENORMALS_NO_FMA_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_NO_FMA_FLAGS}")
 
+include(${EDITOR_DIR}/terrain/TerrainEditorSources.cmake)
 set(JASPERENGINE_EDITOR_SOURCES
+    ${JASPERENGINE_TERRAIN_EDITOR_SOURCES}
     ${EDITOR_DIR}/main.cpp
     ${EDITOR_DIR}/cli/CommandLine.cpp
     ${EDITOR_DIR}/cli/SchemaArgs.cpp
@@ -1283,7 +1285,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/PrefabOverrideCmd.cpp
     ${EDITOR_DIR}/command/type/ReplacePrefabCmd.cpp
     ${EDITOR_DIR}/command/type/ForkShaderCmd.cpp
-    ${EDITOR_DIR}/command/type/TerrainMapPatchCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
+    ${EDITOR_DIR}/command/type/TerrainTextureEditCmd.cpp
     ${EDITOR_DIR}/command/type/WriteFilesCmd.cpp
     ${EDITOR_DIR}/command/type/RemoveFilesCmd.cpp
     ${EDITOR_DIR}/command/type/LatticePointsCmd.cpp
@@ -1361,6 +1364,11 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/search/AssetQuery.cpp
         ${EDITOR_DIR}/shortcuts/Chord.cpp
         ${EDITOR_DIR}/spline/SplineEditor.cpp
+        ${EDITOR_DIR}/command/type/TerrainMapDeltaCmd.cpp
+        ${JASPERENGINE_TERRAIN_EDITOR_SOURCES}
+        ${EDITOR_DIR}/tests/terrain/TerrainMapDeltaCmdTest.cpp
+        ${EDITOR_DIR}/tests/terrain/TerrainMapPersistenceTest.cpp
+        ${EDITOR_DIR}/tests/terrain/TerrainStrokeSessionTest.cpp
         ${EDITOR_DIR}/tests/PhysicsPlacementWorkspaceTest.cpp
         ${EDITOR_DIR}/tests/ProjectSaveTest.cpp
         ${EDITOR_DIR}/tests/animation/AnimationClipAssetsTest.cpp

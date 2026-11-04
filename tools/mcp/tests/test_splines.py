@@ -10,6 +10,7 @@ Runs in one new project; tests run in order and share the editor.
 
 from __future__ import annotations
 
+import asyncio
 import difflib
 import importlib.util
 import math
@@ -126,6 +127,42 @@ async def test_road_on_terrain(ed: Editor):
     for g, a in zip(ground, again):
         ed.check(abs(g - a) < 1e-4, f"one undo restores the terrain: {a} vs {g}")
     await ed.call("redo")
+
+
+async def test_conform_follows_sculpt(ed: Editor):
+    """T1 AC18: a sculpt keeps the terrain's node tree, and a road conformed to it still follows."""
+    s = await setup(ed)
+    made = await ed.call("edit_spline", create={"name": "Follower"}, space="world",
+                         stroke={"points": [[-30, 50, 40], [0, 50, 40], [30, 50, 40]], "snap": "terrain", "tolerance": 0.25})
+    road = made["entity"]["id"]
+    await ed.call("build_spline", entity=road, extrude={"shape": "crown", "conform": "terrain_height"})
+
+    async def road_height():
+        for _ in range(200):
+            hits = (await ed.call("raycast_meshes", origin=[0.0, 200.0, 40.0], direction=[0.0, -1.0, 0.0], all=True))["hits"]
+            built = [h for h in hits if h["entity"] != s["terrain"] and not h["pending"]]
+            if built:
+                return built[0]["point"][1]
+            await asyncio.sleep(0.1)
+        raise AssertionError("the road is not under the probe")
+
+    before = await road_height()
+    sculpted = await ed.call("sculpt_terrain", entity=s["terrain"], space="world", strokes=[
+        {"mode": "raise", "points": [[0, 40]], "size": 12.0, "strength": 1.0, "seconds_per_point": 3.0}])
+    ed.check(sculpted["strokes"], f"the sculpt ran: {sculpted}")
+    info = (await ed.call("sample_terrain", entity=s["terrain"], grid=0))["info"]
+    ed.check(info.get("mesh_built"), f"no rebuild is pending: {info}")
+
+    after = before
+    for _ in range(200):
+        after = await road_height()
+        if after > before + 1.0:
+            break
+        await asyncio.sleep(0.1)
+    ed.check(after > before + 1.0, f"the road followed the raised ground: {before} to {after}")
+
+    await ed.call("undo")
+    await ed.call("delete_entities", entities=[road])
 
 
 async def test_edit_undo(ed: Editor):

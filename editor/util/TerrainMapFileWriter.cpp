@@ -74,6 +74,16 @@ size_t TerrainMapFileWriter::failedCount(){
     return failedJobs.size();
 }
 
+std::vector<std::string> TerrainMapFileWriter::failedPaths(){
+    std::unique_lock<std::mutex> lock(mutex);
+    std::vector<std::string> paths;
+    paths.reserve(failedJobs.size());
+    for (const auto& [path, job] : failedJobs){
+        paths.push_back(path);
+    }
+    return paths;
+}
+
 TerrainMapFileWriter::~TerrainMapFileWriter(){
     {
         std::unique_lock<std::mutex> lock(mutex);

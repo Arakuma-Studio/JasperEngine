@@ -1621,3 +1621,29 @@ the sketch's names, which all still exist unless a line below says otherwise.
 - **D-17 `import_heightmap` takes decoded heights.** The engine's op holds the normalized values, their size and
   nothing about files: finding and decoding a file is `TerrainRawIO` and the handler (R61, R68), which come with the
   rest of T1. A size other than the map's is refused here, naming the structural path the handler takes (R1, R61).
+- **D-18 `MeshTriangles::isGeometryLoading` keeps reading `needUpdateTerrain`.** R23 names it among the readers
+  of the revision, but it asks whether geometry is still being built, which a refit never makes true. Its callers
+  (physics shapes, placement worlds) build from the surface when they build. `SplineSystem` and foliage read the
+  revision.
+- **D-19 Foliage is flagged by the revision, not compared to it.** `flushTerrainEdit` raises `needUpdateFoliage` when
+  it advances `surfaceRevision`: same rate, and the existing refill path is the one consumer.
+- **D-20 `Shape` gains `squareEnds` and `nearestTexel`; a Polyline samples a mask when it has pixels.** R17 needs a
+  ramp under a square or masked brush, and today's fallback to the nearest texel on every brush shape, not only round
+  ones. `forEachSample`'s forced texel now takes what the shape gives at its centre, so a sub-texel masked brush
+  weighs by the mask's centre. Unset, nothing changes for any op.
+- **D-21 `TerrainMapRef` gains `HoleMap`,** so `EditorTerrainStore::createMap` can name a hole map's file by R32.
+  `TerrainTextureEditCmd` moved out of `TerrainEditWindow.cpp` to `editor/command/type/` with the map helpers it
+  needs moved to `TerrainMapUtils`: the store, the commands and AC62's test all need them without a window.
+- **D-22 The first stroke on a map the terrain does not own stays one structural step.** R32's copy to a
+  `terrain_edit_*` happens when the stroke opens, and that stroke undoes through `TerrainTextureEditCmd`, whose
+  snapshots compress (R28), as it did before. Later strokes are deltas. The spline bake still writes the map it finds
+  (R32's copy is the brush's), as it did: a bake has no first-edit step to join yet, and `edit_terrain` should decide
+  this for both when it lands.
+- **D-23 `erase_objects`' brush keeps its test on the window's side.** It is a containment test over entities with
+  nothing to compute a plan from; R21's plan is `place_objects`.
+- **D-24 Mouse placement stamps come from `StrokeResampler` with no time.** R21 asks for one attempt per spaced stamp,
+  and holding still adds no attempts (R35's held stamps are a deposit's, not a scatter's). Scripted placement keeps one
+  attempt per point: those points are its stamps, so `sculpt_terrain` counts stay what they were.
+- **D-25 The allocation counter reaches `jasperengine-editor-tests`,** with bytes and the largest allocation added.
+  AC15 and AC20 need it for code that lives in the editor.
+
