@@ -976,6 +976,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/PreviewParticles.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+    ${EDITOR_DIR}/animation/ClipReport.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
     ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
     ${EDITOR_DIR}/animation/ClipTangents.cpp
@@ -1369,6 +1370,7 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/tests/animation/AnimationWindowClipTest.cpp
         ${EDITOR_DIR}/tests/animation/AnimatorEditorTest.cpp
         ${EDITOR_DIR}/tests/animation/ClipConvertersTest.cpp
+        ${EDITOR_DIR}/tests/animation/ClipReportTest.cpp
         ${EDITOR_DIR}/tests/animation/InspectorClipPrefabTest.cpp
         ${EDITOR_DIR}/tests/animation/PlayerModelLayoutTest.cpp
         ${EDITOR_DIR}/tests/command/CommandHistoryHookTest.cpp

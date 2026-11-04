@@ -871,6 +871,14 @@ middle button pan, and dragging in the ruler scrubs. While the window has focus 
 its empty state) showing, Delete, Backspace, `Ctrl+D` and F2 act on the window, never on the
 selected GameObject.
 
+## What a clip costs in memory
+
+A loaded clip keeps its keys in shared arrays: tracks with the same key times share one array of
+times, and a track whose segments are all linear stores no eases. `get_animation` and `get_asset_info`
+report the result as `stats.runtime_bytes`, Jobs & Memory lists what is loaded as `Animation.Clips`,
+and the profiler has it as the `Clip memory` monitor. They are one number. `.anim` files do not
+change: this is only how a loaded clip is held.
+
 ## Not in this version
 
 For the Animator's features (sub-state machines, 2D and direct blend trees, IK, root motion,

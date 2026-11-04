@@ -290,5 +290,13 @@ Read-only, MIT. Study, re-implement in our style, credit in `NOTICE.md`.
 
 ## Deviations
 
+- **R7, `Clip memory`:** read from `AnimationClipPool::loadedBytes()`, the R5 count, not from `AnimatorSystem::Stats`.
+  Stats are per scene and the pool is process-wide, so a sum over scenes would multiply it, and a scene with only Animation
+  Players has no Animator run to fill it. The other six are read from `Stats`, through `takeFrameStats()`: a frame's fixed
+  steps and its update, which `getStats()` (the last run only) cannot give.
+- **R3, the last key's ease:** a key's `ease` belongs to the segment it starts, so the last key's starts none, but a file can
+  hold one and `.anim` must stay byte-stable through `toData()`. `Track::trailingEase` keeps it. R3's rule itself holds: a
+  track with only that ease has `easings == nullptr`.
+- **R53, `get_asset_info` on `.anim`:** `stats` is under `clip`, with the rest of that tool's clip fields.
 - **R8, where the rows drain.** R8 says "during the Animator's finalize". The waiting rows drain in the Finalize step but before any Animator's own finalize, in two passes over all Animators (values, then the rows that run callbacks). Inside each Animator's finalize, an event handler of the first Animator would read last frame's Lua fields of the second, which `main` did not do on one thread. Order documented in `docs/animator.md`, "Order of a frame".
 - **R8, which rows stay in the wave.** Decided per row, from an allow-list (`AnimatableProperty::workerSafe`, off by default), not only by "two Animators on one row": `sprite.frame` (may `Texture::load`), `rigidbody2d.enabled` (the Box2D world) and shader parameters and uniforms (the manifest cache and its lock) always wait for the main thread. A workerSafe row waits too when another Animator writes its entity in any way (bone, channel, skin, property row, its Animator component), the whole entity rather than only the same row, because dirty flags and `Transform::needUpdate` are shared within one.

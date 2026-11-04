@@ -942,6 +942,7 @@ void getAssetInfoTool(const CallPtr& call) {
         }
         if (info.is_null()) data["error"] = error;
         else {
+            if (info.contains("animations")) clip_tools::addModelClipStats(file, info["animations"]);
             data["model"] = info;
             if (info.contains("meshes")) {
                 text += ", " + std::to_string(info["meshes"].size()) + " mesh(es), " + std::to_string(info["materials"].size()) +
@@ -3799,9 +3800,9 @@ void registerAssetTools(McpRegistry& registry) {
         tool.title = "Get Asset Info";
         tool.description =
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
-            "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
+            "regenerate arguments); model meshes, materials, animations (keys, runtime_bytes), nodes (an FBX: of its glTF conversion, fbx_import.state); "
             "WAV format/duration; .material fields, "
-            ".anim clip settings, tracks, events, users; .vat clips, staleness, users; "
+            ".anim clip settings, tracks, events, users, stats; .vat clips, staleness, users; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});
         tool.annotations.readOnly = true;
