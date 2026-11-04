@@ -68,6 +68,9 @@ namespace jasperengine::editor::mcp::w3 {
 
     // ------------------------------------------------------------ views (ViewTools.cpp)
 
+    // True when the PNG is one colour, within noise (a blank render); `colour`: its first pixel, "#rrggbb"
+    bool isFlatPng(const std::vector<uint8_t>& png, std::string& colour);
+
     struct CaptureRequest {
         std::string view = "game";       // game | scene | editor
         Json scene;                      // scene reference (scene view), null: selected/playing
