@@ -26,6 +26,14 @@ namespace jasperengine::editor {
 
     class Project;
     struct SceneProject;
+    class NavigationOverlay;
+
+    // What the overlay draws for a query: its path (corners, status, gap) and its ends
+    struct NavQueryDraw {
+        nav::NavPath path;
+        Vector3 from, to;
+        bool hasFrom = false, hasTo = false;
+    };
 
     class NavigationEditor {
     public:
@@ -106,13 +114,14 @@ namespace jasperengine::editor {
         // the grid cell under a ray (false: it misses the grid's plane)
         static bool cellUnderRay(Scene* scene, Entity grid, const Ray& ray, nav::GridCell& cell);
 
-        // ---- the overlay's query path (visualize_navigation path), world points
-        void setQueryPath(uint32_t sceneId, std::vector<Vector3> points) { queryPaths[sceneId] = std::move(points); }
-        const std::vector<Vector3>& getQueryPath(uint32_t sceneId) const {
-            static const std::vector<Vector3> none;
-            auto it = queryPaths.find(sceneId);
-            return it != queryPaths.end() ? it->second : none;
-        }
+        // ---- the overlay's query (the Path Tester, visualize_navigation path; S42 R25): start
+        // green, end red, a Complete path magenta, a Partial one orange with a red gap to the end
+        void setQueryDraw(uint32_t sceneId, NavQueryDraw draw);
+        void clearQueryDraw(uint32_t sceneId);
+        // null: nothing to draw in the scene
+        const NavQueryDraw* getQueryDraw(uint32_t sceneId) const;
+        // the scene's AI Navigation overlay (getTileLabels); null before its Scene view drew it
+        NavigationOverlay* overlayOf(uint32_t sceneId);
 
         // The export preflight and the CLI check (spec R42): every surface of the loaded scenes
         // that is not baked, cannot be read or is out of date, as findings (tool "navigation")
@@ -146,7 +155,7 @@ namespace jasperengine::editor {
         };
         std::vector<DirtyCache> dirtyCache;
 
-        std::map<uint32_t, std::vector<Vector3>> queryPaths;
+        std::map<uint32_t, NavQueryDraw> queryDraws;
         struct LinkDrag {
             bool active = false;
             uint32_t sceneId = 0;

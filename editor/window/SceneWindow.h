@@ -164,6 +164,9 @@ namespace jasperengine::editor {
         void frameEntities(uint32_t viewSceneId, uint32_t entitySceneId, const std::vector<Entity>& entities);
         // The selection Frame Selected works on in the Scene view of sceneId
         bool hasFrameableSelection(uint32_t sceneId);
+        // Frames world bounds in the Scene view of sceneId, as Frame Selected frames (eased by
+        // Camera Easing; an agent's caller finishes the tween): visualize_navigation's frame
+        void frameBounds(uint32_t sceneId, const AABB& worldBounds);
         // Frame All (Alt+F, Home): what the view shows and can pick, in any scene type (S26 R18)
         void frameAll(uint32_t sceneId);
         // The numpad views (3D): the camera looks along direction (Front: +Z)

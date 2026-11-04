@@ -2287,6 +2287,10 @@ void editor::SceneWindow::focusOnEntities(SceneProject* sceneProject, const std:
     focusOnBounds(sceneProject, bounds);
 }
 
+void editor::SceneWindow::frameBounds(uint32_t sceneId, const AABB& worldBounds) {
+    focusOnBounds(project->getScene(sceneId), worldBounds);
+}
+
 void editor::SceneWindow::focusOnBounds(SceneProject* sceneProject, const AABB& bounds) {
     if (!sceneProject || !sceneProject->sceneRender) return;
 

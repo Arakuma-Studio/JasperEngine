@@ -19,6 +19,7 @@
 
 #include <map>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace jasperengine {
@@ -34,6 +35,8 @@ namespace jasperengine::editor {
     // Saved with the workspace (per scene, with the Scene view's display settings)
     struct NavOverlaySettings {
         enum class Paths { None, Selected, All };
+        // what the navmesh's triangles are tinted by (S42 R27)
+        enum class ColorBy { Areas, Islands, Tiles };
 
         bool enabled = true;
         bool showNavMesh = true;
@@ -44,11 +47,18 @@ namespace jasperengine::editor {
         bool showAvoidance = false;
         bool showLinks = true;
         bool showObstacles = true;
+        // ---- S42 diagnostics (R27, R38: written only when not default)
+        ColorBy colorBy = ColorBy::Areas;
+        // collected triangles steeper than the agent type's Max Slope
+        bool showSteepSlopes = false;
+        // "12.4 ms · 210 polys · 18.5 KB" at every visible tile
+        bool showTileLabels = false;
 
         bool operator==(const NavOverlaySettings& other) const {
             return enabled == other.enabled && showNavMesh == other.showNavMesh && showTileBounds == other.showTileBounds &&
                    showHeightMesh == other.showHeightMesh && showGrid == other.showGrid && showPaths == other.showPaths &&
-                   showAvoidance == other.showAvoidance && showLinks == other.showLinks && showObstacles == other.showObstacles;
+                   showAvoidance == other.showAvoidance && showLinks == other.showLinks && showObstacles == other.showObstacles &&
+                   colorBy == other.colorBy && showSteepSlopes == other.showSteepSlopes && showTileLabels == other.showTileLabels;
         }
         bool operator!=(const NavOverlaySettings& other) const { return !(*this == other); }
     };
@@ -56,6 +66,18 @@ namespace jasperengine::editor {
     // only what differs from the defaults ("navigation" under the scene's view settings)
     YAML::Node encodeNavOverlaySettings(const NavOverlaySettings& settings);
     void decodeNavOverlaySettings(const YAML::Node& node, NavOverlaySettings& settings);
+
+    // One tile's label of the last update (Show Tile Labels): its last build in this session
+    struct NavTileLabel {
+        Entity surface = NULL_ENTITY;
+        int x = 0, y = 0;
+        // "12.4 ms · 210 polys · 18.5 KB" ("– ms" when not built since the navmesh loaded)
+        std::string text;
+        // the tile's centre, at the top of its bounds
+        Vector3 world;
+        // its inputs changed since the bake (outlined orange)
+        bool dirty = false;
+    };
 
     class NavigationOverlay {
     public:
@@ -70,6 +92,9 @@ namespace jasperengine::editor {
         // what the last update drew (tests, visualize_navigation)
         size_t getTriangleCount() const { return drawnTriangles; }
         size_t getLineCount() const { return drawnLines; }
+        // the last update's visible tile labels (Show Tile Labels; the Scene view draws them as
+        // ImGui text, visualize_navigation lists them)
+        const std::vector<NavTileLabel>& getTileLabels() const { return tileLabels; }
 
     private:
         struct SurfaceDraw {
@@ -97,6 +122,7 @@ namespace jasperengine::editor {
         LineRenderer* lines = nullptr;
         size_t drawnTriangles = 0;
         size_t drawnLines = 0;
+        std::vector<NavTileLabel> tileLabels;
 
         Mesh* newMesh();
         LineRenderer* newLines(unsigned int maxLines);
