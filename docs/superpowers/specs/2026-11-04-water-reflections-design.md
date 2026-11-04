@@ -616,7 +616,7 @@ Sanitizer run of `jasperengine-core-tests --gtest_filter=Water*:SceneTime*` once
     shader library doc regenerated, `check_agent_docs.py` clean if the guide changed.
 11. Screenshots (Scene view and Game view, isolated editor) of: planar reflection on/off, fish under a refracting lake
     before/after, Gerstner crests, attached to the PR.
-12. `tools/check-changed` passes on a build server.
+12. `tools/check-changed` passes.
 
 ## 12. Files likely touched
 
