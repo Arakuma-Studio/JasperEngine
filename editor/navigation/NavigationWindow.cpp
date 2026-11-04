@@ -267,13 +267,13 @@ void NavigationWindow::drawSurfaces() {
                 cell(sceneProject.scene->getEntityName(entity), "name");
                 ImGui::TableNextColumn();
                 const bool baking = status.state == NavBakeState::BAKING || navEditor.isBaking(sceneProject.id, entity);
-                const NavigationEditor::LastBake* last = navEditor.lastBake(sceneProject.id, entity);
+                const NavigationEditor::LastBake* failed = navEditor.lastBake(sceneProject.id, entity);
                 if (baking) {
                     ImGui::ProgressBar(status.progress, ImVec2(-1, 0));
-                } else if (last && !last->ok && !last->cancelled) {
+                } else if (failed && !failed->ok && !failed->cancelled) {
                     // the session's last bake failed (S53 R3): until a bake succeeds
                     ImGui::TextColored(Theme::Colors::ErrorText, "Bake failed");
-                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", last->error.c_str());
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", failed->error.c_str());
                 } else if (status.state == NavBakeState::NOT_BAKED) {
                     ImGui::TextUnformatted(status.loadError.empty() ? "Not baked" : "Not baked (unreadable asset)");
                 } else {

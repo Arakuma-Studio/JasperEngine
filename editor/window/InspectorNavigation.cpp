@@ -346,16 +346,16 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
     ImGui::EndDisabled();
 
     // the last bake of this session (S53 R3): a failure until a bake succeeds, or its warnings
-    if (const NavigationEditor::LastBake* last = navEditor.lastBake(sceneProject->id, entity)) {
-        if (!last->ok && !last->cancelled) {
-            ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::ErrorText);
-            ImGui::TextWrapped("Bake failed: %s", last->error.c_str());
-            ImGui::PopStyleColor();
-        } else if (last->ok && !last->warnings.empty()) {
-            ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
-            ImGui::TextWrapped("Baked with %d warning(s); see the Console", (int)last->warnings.size());
-            ImGui::PopStyleColor();
-        }
+    const NavigationEditor::LastBake* editorBake = navEditor.lastBake(sceneProject->id, entity);
+    const bool failureShown = editorBake && !editorBake->ok && !editorBake->cancelled;
+    if (failureShown) {
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::ErrorText);
+        ImGui::TextWrapped("Bake failed: %s", editorBake->error.c_str());
+        ImGui::PopStyleColor();
+    } else if (editorBake && editorBake->ok && !editorBake->warnings.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
+        ImGui::TextWrapped("Baked with %d warning(s); see the Console", (int)editorBake->warnings.size());
+        ImGui::PopStyleColor();
     }
 
     // the state line, then the stale-bake warning (R32)
@@ -387,7 +387,8 @@ void editor::InspectorWindow::drawNavMeshSurfaceComponent(ComponentType cpType, 
             std::snprintf(line, sizeof(line), "Last bake %s: %s", last->cancelled ? "cancelled" : "failed",
                           last->error.empty() ? nav::bakeErrorName(last->errorCode) : last->error.c_str());
             ImGui::PushTextWrapPos(0.0f);
-            ImGui::TextColored(Theme::Colors::ErrorText, "%s", line);
+            // (the same failure is the "Bake failed" line above already: only its hint here)
+            if (!(failureShown && editorBake->error == last->error)) ImGui::TextColored(Theme::Colors::ErrorText, "%s", line);
             if (!last->hint.empty()) ImGui::TextDisabled("%s", last->hint.c_str());
             ImGui::PopTextWrapPos();
         }
