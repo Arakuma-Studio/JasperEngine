@@ -267,7 +267,7 @@ decoder (73.5), bcdec (9.8) and the KTX2 reader (14.0), budget 120 KB, and 31.3 
 decodes, fallback plans and the cooked index. The web build adds 232.6 KB against R21's 250 KB
 (823 KB before S14b): Basis Universal's transcoder 145.2 KB (the D5 paths only, at `-O2`;
 `engine/libs/basisu/README.jasper.md`), Zstandard 37.3 KB and the texture runtime 50.1 KB (both at
-`-Os`); spec S14 deviation 23 has what was taken out. CI holds it to 240 KB.
+`-Os`); spec S14 deviation 23 has what was taken out. The limit is 240 KB.
 
 ## Libraries
 
