@@ -3,16 +3,17 @@
 
 // Every component the reflection codec writes encodes and decodes as its hand-written codec did
 // (docs/specs/S08-reflection.md AC3, AC4): for 500 seeded random instances (NaN, infinities and
-// -0 included) the YAML text is the same byte for byte, and decoding that text over a random base
-// (every other time with a random subset of its keys) gives the same values, floats compared
-// bitwise. The hand-written codecs are kept verbatim in editor/tests/reflect/legacy.
-//
-// editor/tests/reflect/parity_golden freezes what those codecs give for these samples: the first
-// samples in full, and a digest of all of them.
+// -0 included) the YAML text, and the text of what decoding it over a random base gives (every
+// other time with a random subset of its keys), is the frozen data in
+// editor/tests/reflect/parity_golden. The hand-written codecs wrote that data and are gone
+// (docs/specs/S73-code-cleanups.md R2). A field added to a table adds its key there:
+// JASPER_TEST_UPDATE_GOLDEN=1 rewrites the files, and no other line of a sample moves.
 
 #include "reflect/ReflectTestSupport.h"
-#include "reflect/legacy/LegacyCodecs.h"
 
+#include "Stream.h"
+#include "component/FluidSimulationComponent.h"
+#include "component/LatticeFollowerComponent.h"
 #include "reflect/Reflect.h"
 
 #include <gtest/gtest.h>
@@ -124,34 +125,8 @@ namespace reflect_parity_test {
         return copy;
     }
 
-    // The hand-written decode as S03 ran it (StreamLoad::decodeComponent): each key whose value
-    // threw is left out (S03 finds them one by one from the error's position; here, the keys that
-    // throw on their own) and the decode runs again
-    template<typename T, typename Decode>
-    T legacyDecode(Decode decode, YAML::Node node, const T* base) {
-        try {
-            return decode(node, base);
-        } catch (const YAML::Exception&) {
-        }
-        YAML::Node kept(YAML::NodeType::Map);
-        for (auto it = node.begin(); it != node.end(); ++it) {
-            YAML::Node single(YAML::NodeType::Map);
-            single[it->first.Scalar()] = it->second;
-            try {
-                (void)decode(single, base);
-                kept[it->first.Scalar()] = it->second;
-            } catch (const YAML::Exception&) {
-            }
-        }
-        try {
-            return decode(kept, base);
-        } catch (const YAML::Exception&) {
-        }
-        return decode(YAML::Node(YAML::NodeType::Map), base);
-    }
-
     template<typename T>
-    void encodeMatches(ComponentType type, YAML::Node (*legacy)(const T&), uint32_t seed, const std::string& name) {
+    void encodeMatches(ComponentType type, uint32_t seed, const std::string& name) {
         const reflect::ComponentDesc& desc = *reflect::find(type);
         ASSERT_TRUE(desc.codec == nullptr) << desc.cppName << " has its own codec";
         FrozenParity frozen(name + ".encode");
@@ -161,16 +136,13 @@ namespace reflect_parity_test {
             T comp{};
             owned.keep(&comp);
             random.fillStruct(desc.body, &comp);
-            const std::string expected = YAML::Dump(legacy(comp));
-            const std::string actual = YAML::Dump(reflect::encode(desc, &comp, reflect::EncodeContext{}));
-            ASSERT_EQ(actual, expected) << desc.cppName << " sample " << i;
-            ASSERT_TRUE(frozen.check(i, expected)) << desc.cppName;
+            ASSERT_TRUE(frozen.check(i, YAML::Dump(reflect::encode(desc, &comp, reflect::EncodeContext{})))) << desc.cppName;
         }
         frozen.finish();
     }
 
     template<typename T>
-    void decodeMatches(ComponentType type, YAML::Node (*legacyEncode)(const T&), T (*legacy)(const YAML::Node&, const T*), uint32_t seed, const std::string& name) {
+    void decodeMatches(ComponentType type, uint32_t seed, const std::string& name) {
         const reflect::ComponentDesc& desc = *reflect::find(type);
         FrozenParity frozen(name + ".decode");
         OwnedFramebuffers owned;
@@ -182,43 +154,33 @@ namespace reflect_parity_test {
             owned.keep(&base);
             random.fillStruct(desc.body, &authored);
             random.fillStruct(desc.body, &base);
-            const std::string authoredText = YAML::Dump(legacyEncode(authored));
-            ASSERT_EQ(YAML::Dump(reflect::encode(desc, &authored, reflect::EncodeContext{})), authoredText) << desc.cppName << " sample " << i;
+            const std::string authoredText = YAML::Dump(reflect::encode(desc, &authored, reflect::EncodeContext{}));
             frozen.note(authoredText);
             YAML::Node node = YAML::Load(authoredText);
             if (i % 2) node = withoutKeys(node, random);
 
-            const T expected = legacyDecode<T>(legacy, node, &base);
             T actual = base;
             reflect::DecodeReport report;
             reflect::DecodeContext ctx;
             ctx.old = &base;
             reflect::decode(desc, node, &actual, ctx, report);
-            owned.keep(&expected);
             owned.keep(&actual);
-
-            std::string difference;
-            ASSERT_TRUE(sameSavedValues(desc.body, &expected, &actual, difference))
-                << desc.cppName << " sample " << i << ": " << difference << " differs, decoding\n" << YAML::Dump(node);
-            const std::string expectedText = YAML::Dump(legacyEncode(expected));
-            ASSERT_EQ(YAML::Dump(legacyEncode(actual)), expectedText) << desc.cppName << " sample " << i;
-            ASSERT_EQ(YAML::Dump(reflect::encode(desc, &actual, reflect::EncodeContext{})), expectedText) << desc.cppName << " sample " << i;
-            ASSERT_TRUE(frozen.check(i, expectedText)) << desc.cppName;
+            ASSERT_TRUE(frozen.check(i, YAML::Dump(reflect::encode(desc, &actual, reflect::EncodeContext{}))))
+                << desc.cppName << ", decoding\n" << YAML::Dump(node);
         }
         frozen.finish();
     }
 
 
-#define PARITY(Name, Type, Encode, Decode) \
-    TEST(ReflectParity, Name##EncodeMatchesLegacy) { \
-        encodeMatches<Type>(ComponentType::Type, &LegacyCodecs::Encode, 1000u * static_cast<uint32_t>(ComponentType::Type), #Name); \
+#define PARITY(Name, Type) \
+    TEST(ReflectParity, Name##EncodeMatchesFrozen) { \
+        encodeMatches<Type>(ComponentType::Type, 1000u * static_cast<uint32_t>(ComponentType::Type), #Name); \
     } \
-    TEST(ReflectParity, Name##DecodeMatchesLegacy) { \
-        decodeMatches<Type>(ComponentType::Type, &LegacyCodecs::Encode, &LegacyCodecs::Decode, \
-                            7919u * static_cast<uint32_t>(ComponentType::Type) + 17u, #Name); \
+    TEST(ReflectParity, Name##DecodeMatchesFrozen) { \
+        decodeMatches<Type>(ComponentType::Type, 7919u * static_cast<uint32_t>(ComponentType::Type) + 17u, #Name); \
     }
 
-#define PARITY_COMPONENT(Name) PARITY(Name, Name##Component, encode##Name##Component, decode##Name##Component)
+#define PARITY_COMPONENT(Name) PARITY(Name, Name##Component)
 
 PARITY_COMPONENT(Light)
 PARITY_COMPONENT(Light2D)
@@ -236,11 +198,10 @@ PARITY_COMPONENT(LatticeFollower)
 TEST(ReflectParity, FluidBackColorAwayFromItsDefault) {
     FluidSimulationComponent fluid;
     fluid.backColor = Vector3(0.0f, 9845.456f, 7931.2134f);
-    const YAML::Node legacy = LegacyCodecs::encodeFluidSimulationComponent(fluid);
-    EXPECT_TRUE(legacy["backColor"].IsDefined()) << YAML::Dump(legacy);
-    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::FluidSimulationComponent, &fluid)), YAML::Dump(legacy));
+    const YAML::Node encoded = reflect::encodeValue(ComponentType::FluidSimulationComponent, &fluid);
+    EXPECT_TRUE(encoded["backColor"].IsDefined()) << YAML::Dump(encoded);
     FrozenParity frozen("FluidBackColor.encode");
-    EXPECT_TRUE(frozen.check(0, YAML::Dump(legacy)));
+    EXPECT_TRUE(frozen.check(0, YAML::Dump(encoded)));
     frozen.finish();
     fluid.backColor.x = -INFINITY;
     EXPECT_FALSE(reflect::encodeValue(ComponentType::FluidSimulationComponent, &fluid)["backColor"].IsDefined());
@@ -256,17 +217,16 @@ PARITY_COMPONENT(RectTransform)
 PARITY_COMPONENT(LayoutGroup)
 PARITY_COMPONENT(Text)
 PARITY_COMPONENT(Image)
-PARITY(Transform, Transform, encodeTransform, decodeTransform)
+PARITY(Transform, Transform)
 // a document (a scene or prefab file) leaves out the derived world values (S29 R20); every other
-// encode is the legacy text
+// encode writes them
 TEST(ReflectParity, TransformDocumentEncodeLeavesOutDerivedValues) {
     Transform transform;
     transform.position = Vector3(1, 2, 3);
     transform.worldPosition = Vector3(4, 5, 6);
-    YAML::Node legacy = LegacyCodecs::encodeTransform(transform);
-    EXPECT_EQ(YAML::Dump(reflect::encodeValue(ComponentType::Transform, &transform)), YAML::Dump(legacy));
+    YAML::Node whole = reflect::encodeValue(ComponentType::Transform, &transform);
     FrozenParity frozen("TransformWhole.encode");
-    EXPECT_TRUE(frozen.check(0, YAML::Dump(legacy)));
+    EXPECT_TRUE(frozen.check(0, YAML::Dump(whole)));
     frozen.finish();
     YAML::Node written;
     {
@@ -275,12 +235,12 @@ TEST(ReflectParity, TransformDocumentEncodeLeavesOutDerivedValues) {
     }
     for (const char* key : {"worldPosition", "worldRotation", "worldScale", "localMatrix", "modelMatrix", "normalMatrix"}) {
         EXPECT_FALSE(written[key].IsDefined()) << key;
-        legacy.remove(key);
+        whole.remove(key);
     }
-    EXPECT_EQ(YAML::Dump(written), YAML::Dump(legacy));
+    EXPECT_EQ(YAML::Dump(written), YAML::Dump(whole));
 }
 // (Joint2D and Joint3D: upstream's joint codecs since SYNC#4, a key a file leaves out decoding to
-// the legacy joint's value, editor/reflect/components/TransformPhysicsReflect.cpp kJoint2DCodec /
+// the old joint's value, editor/reflect/components/TransformPhysicsReflect.cpp kJoint2DCodec /
 // kJoint3DCodec; their round trips: CookedScene, ReflectFixtures.AllComponentsScene)
 PARITY_COMPONENT(Action)
 PARITY_COMPONENT(Tween)
@@ -297,8 +257,8 @@ PARITY_COMPONENT(RotateTracks)
 PARITY_COMPONENT(ScaleTracks)
 
 // PostProcessingSettings (R15): the scene's post-processing block written and read through its
-// reflection fields gives the text and values of the hand-written codec
-TEST(ReflectParity, PostProcessingMatchesLegacy) {
+// reflection fields gives the text and values the hand-written codec gave
+TEST(ReflectParity, PostProcessingMatchesFrozen) {
     const reflect::StructDesc& desc = reflect::postProcessingStruct();
     ASSERT_EQ(desc.fields.size(), PostProcessingSettings::getFields().size());
     EXPECT_LT(PostProcessingSettings::getFields().size(), reflect::postProcessingFieldCapacity());
@@ -308,18 +268,13 @@ TEST(ReflectParity, PostProcessingMatchesLegacy) {
         RandomValues random(424242u + static_cast<uint32_t>(i));
         PostProcessingSettings settings;
         random.fillStruct(desc, &settings);
-        const std::string expected = YAML::Dump(LegacyCodecs::encodePostProcessing(settings));
-        ASSERT_EQ(YAML::Dump(Stream::encodePostProcessing(settings)), expected) << "sample " << i;
-        ASSERT_TRUE(encoded.check(i, expected));
+        const std::string text = YAML::Dump(Stream::encodePostProcessing(settings));
+        ASSERT_TRUE(encoded.check(i, text));
 
-        YAML::Node node = YAML::Load(expected);
+        YAML::Node node = YAML::Load(text);
         if (i % 2 && node.IsMap()) node = withoutKeys(node, random);
-        const PostProcessingSettings legacy = LegacyCodecs::decodePostProcessing(node);
         const PostProcessingSettings decoded = Stream::decodePostProcessing(node);
-        ASSERT_EQ(YAML::Dump(LegacyCodecs::encodePostProcessing(decoded)), YAML::Dump(LegacyCodecs::encodePostProcessing(legacy)))
-            << "sample " << i << ", decoding\n" << YAML::Dump(node);
-        ASSERT_EQ(YAML::Dump(Stream::encodePostProcessing(decoded)), YAML::Dump(LegacyCodecs::encodePostProcessing(legacy))) << "sample " << i;
-        ASSERT_TRUE(decodedFrozen.check(i, YAML::Dump(LegacyCodecs::encodePostProcessing(legacy))));
+        ASSERT_TRUE(decodedFrozen.check(i, YAML::Dump(Stream::encodePostProcessing(decoded)))) << "decoding\n" << YAML::Dump(node);
     }
     encoded.finish();
     decodedFrozen.finish();

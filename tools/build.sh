@@ -38,7 +38,7 @@
 # instead of building docker/<target>.Dockerfile (CI's prebuilt images).
 # unit-tests: UNIT_TEST_ARGS goes to both test binaries (e.g. --gtest_filter=Vector3.*), RUN=0
 # builds only, UNIT_SUITE=core or editor builds and runs one of the two; JASPER_TEST_UPDATE_GOLDEN=1
-# rewrites the core goldens (glcore only) and the reflection snapshot; JASPER_REFLECT_WRITE_FIXTURE=1
+# rewrites the core goldens (glcore only), the reflection snapshot and the parity data; JASPER_REFLECT_WRITE_FIXTURE=1
 # regenerates tools/fixtures/reflection-parity/AllComponents.scene (docs/specs/S08-reflection.md);
 # JASPER_BENCH_ENTITIES sets the reflection codec benchmark's scene size (ReflectCodecBench).
 # linux, web, unit-tests, htmlui-tests: CXX_STANDARD=<n> builds at another supported C++ standard

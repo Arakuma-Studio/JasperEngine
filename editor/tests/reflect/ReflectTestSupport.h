@@ -5,7 +5,7 @@
 
 // Random component values for the reflection tests (docs/specs/S08-reflection.md AC3, AC4): every
 // field of a table set to a random value of its type (NaN, infinities and -0 included unless
-// finiteOnly), and comparisons of two components field by field.
+// finiteOnly).
 //
 // The values are data: editor/tests/reflect/parity_golden holds what they encode to. So they are
 // the same on every compiler (std::mt19937's output is standard, the std:: distributions' results
@@ -226,26 +226,6 @@ namespace jasperengine::editor::test {
             fill(field, field.ops, field.ref(owner));
         }
         scope = structScope;
-    }
-
-    // Every saved field equal, floats bitwise (NaN equals the same NaN), with the first
-    // difference's path
-    inline bool sameSavedValues(const reflect::StructDesc& desc, const void* a, const void* b, std::string& difference,
-                                const std::string& prefix = std::string()) {
-        for (const reflect::FieldDesc& field : desc.fields) {
-            if (!reflect::isSaved(field)) continue;
-            void* x = field.ref(const_cast<void*>(a));
-            void* y = field.ref(const_cast<void*>(b));
-            if (field.kind == reflect::Kind::Struct && field.structDesc) {
-                if (!sameSavedValues(*field.structDesc, x, y, difference, prefix + field.name + ".")) return false;
-                continue;
-            }
-            if (!field.ops->equals || !field.ops->equals(x, y, -1.0f)) {
-                difference = prefix + field.name;
-                return false;
-            }
-        }
-        return true;
     }
 
     // The framebuffers the camera values a test made own (CameraComponent allocates one, which only

@@ -10,9 +10,9 @@
 
 file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/reflect/legacy/*.cpp)
-# the reflection codec's benchmark against the legacy codecs (docs/specs/S08-reflection.md R17)
+    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp)
+# the reflection codec's benchmark against the frozen numbers of the codecs it replaced
+# (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
