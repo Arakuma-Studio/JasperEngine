@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LoadingWindow.h"
+#include "EditorModal.h"
 #include "Backend.h"
 #include "Theme.h"
 #include "resources/icons/jasperengine-logo_png.h"
@@ -119,7 +120,8 @@ void LoadingWindow::drawProgressModal(const OverallBuildProgress& progress) {
                             ImGuiWindowFlags_NoSavedSettings |
                             ImGuiWindowFlags_AlwaysAutoResize;
 
-    if (ImGui::BeginPopupModal("Loading", nullptr, flags)) {
+    // a progress indicator that closes by itself: nothing for an agent to answer (EditorModal)
+    if (EditorModal::begin("Loading", nullptr, flags, EditorModal::Role::Progress)) {
         if (progress.hasActiveBuilds) {
             if (ImGui::TreeNode("resource_list", "Preparing %d assets", progress.totalBuilds)) {
                 std::vector<ResourceBuildInfo> allBuilds = ResourceProgress::getAllActiveBuilds();

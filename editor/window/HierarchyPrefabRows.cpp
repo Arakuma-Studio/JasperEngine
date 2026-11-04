@@ -7,6 +7,7 @@
 // dropped on an instance root with Alt held). See editor/project/PREFABS.md, sections 13-14.
 
 #include "HierarchyWindow.h"
+#include "EditorModal.h"
 #include "pose/PoseEditSession.h"
 
 #include "App.h"
@@ -293,7 +294,7 @@ void editor::HierarchyWindow::showReplacePrefabPopup() {
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     ImGui::SetNextWindowSize(ImVec2(Theme::dpi(460.0f), Theme::dpi(440.0f)), ImGuiCond_Appearing);
     bool open = true;
-    if (!ImGui::BeginPopupModal(POPUP, &open, ImGuiWindowFlags_NoSavedSettings)) {
+    if (!EditorModal::begin(POPUP, &open, ImGuiWindowFlags_NoSavedSettings)) {
         return;
     }
     SceneProject* sceneProject = project->getScene(replaceTargets.sceneId);
@@ -311,12 +312,21 @@ void editor::HierarchyWindow::showReplacePrefabPopup() {
         const PrefabComponent* component = sceneProject->scene->findComponent<PrefabComponent>(roots.front());
         current = component ? component->path : std::string();
         ImGui::Text("Replace the prefab of '%s'", sceneProject->scene->getEntityName(roots.front()).c_str());
+        EditorModal::message("Replace the prefab of '" + sceneProject->scene->getEntityName(roots.front()) + "' (now " + current +
+                             "): pick the new prefab in the list");
         ImGui::TextDisabled("Now: %s%s", current.c_str(), project->isMissingPrefab(sceneProject->id, roots.front()) ? " (missing)" : "");
     } else {
         ImGui::Text("Replace the prefab of %zu instances", roots.size());
+        EditorModal::message("Replace the prefab of " + std::to_string(roots.size()) + " instances: pick the new prefab in the list");
     }
     ImGui::Spacing();
 
+    // an agent names the row a human clicks
+    std::vector<std::string> prefabOptions;
+    for (const std::filesystem::path& candidate : replaceCandidates) {
+        if (roots.size() != 1 || candidate.generic_string() != current) prefabOptions.push_back(candidate.generic_string());
+    }
+    EditorModal::enumField("prefab", replaceChoice, prefabOptions);
     UIUtils::searchInput("##ReplacePrefabSearch", "Search prefabs", replaceFilter, sizeof(replaceFilter), ImGui::IsWindowAppearing(), nullptr, -1.0f);
     const std::string filter = lowered(replaceFilter);
 
@@ -374,24 +384,27 @@ void editor::HierarchyWindow::showReplacePrefabPopup() {
     // Unity's PrefabReplacingSettings
     const char* matchNames[] = {"By Name", "By Hierarchy", "Root only"};
     int match = static_cast<int>(replaceSettings.match);
+    if (EditorModal::enumField("match_overrides", match, {"By Name", "By Hierarchy", "Root only"})) {
+        replaceSettings.match = static_cast<PrefabReplaceSettings::Match>(match);
+    }
     ImGui::SetNextItemWidth(Theme::dpi(160.0f));
     if (ImGui::Combo("Match Overrides", &match, matchNames, IM_ARRAYSIZE(matchNames))) {
         replaceSettings.match = static_cast<PrefabReplaceSettings::Match>(match);
     }
     ImGui::SetItemTooltip("How the overrides find their GameObject in the new prefab: the same name path from the root, the same child index path, or only the root");
-    ImGui::Checkbox("Keep Overrides", &replaceSettings.keepOverrides);
+    EditorModal::checkbox("Keep Overrides", "keep_overrides", &replaceSettings.keepOverrides);
     ImGui::SetItemTooltip("Off: only the default overrides (name, position, rotation) stay");
     ImGui::SameLine();
-    ImGui::Checkbox("Rename Root", &replaceSettings.renameRoot);
+    EditorModal::checkbox("Rename Root", "rename_root", &replaceSettings.renameRoot);
     ImGui::SetItemTooltip("A root still named after its old prefab takes the new prefab's name");
 
     const float buttonWidth = Theme::dpi(100.0f);
     ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonWidth * 2.0f - style.ItemSpacing.x);
     ImGui::BeginDisabled(replaceChoice.empty());
-    const bool replace = ImGui::Button("Replace", ImVec2(buttonWidth, 0));
+    const bool replace = EditorModal::button("Replace", "yes", ImVec2(buttonWidth, 0));
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         ImGui::CloseCurrentPopup();
     } else if (replace) {
         CommandHandle::get(replaceTargets.sceneId)->addCommandNoMerge(
@@ -481,9 +494,11 @@ void editor::HierarchyWindow::showRestructurePopup() {
     }
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (!ImGui::BeginPopupModal(POPUP, nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!EditorModal::begin(POPUP, nullptr, ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
         return;
     }
+    EditorModal::message(std::string(MoveEntityOrderCmd::PREFAB_RESTRUCTURE_MESSAGE) +
+                         (shown.name.empty() ? std::string() : " ('" + shown.name + "' belongs to " + shown.prefab.generic_string() + ")"));
     ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + Theme::dpi(380.0f));
     ImGui::TextUnformatted(MoveEntityOrderCmd::PREFAB_RESTRUCTURE_MESSAGE);
     if (!shown.name.empty()) {
@@ -497,10 +512,10 @@ void editor::HierarchyWindow::showRestructurePopup() {
     ImGui::Dummy(ImVec2(Theme::dpi(380.0f) - buttonWidth * 2.0f - ImGui::GetStyle().ItemSpacing.x * 2.0f, 0.0f));
     ImGui::SameLine();
     ImGui::BeginDisabled(shown.prefab.empty());
-    const bool open = ImGui::Button("Open Prefab", ImVec2(buttonWidth, 0));
+    const bool open = EditorModal::button("Open Prefab", "yes", ImVec2(buttonWidth, 0));
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         ImGui::CloseCurrentPopup();
     } else if (open) {
         ImGui::CloseCurrentPopup();

@@ -18,6 +18,7 @@
 #include "window/ProjectWindow.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 
@@ -191,9 +192,11 @@ void MissingAssetsWindow::drawPicker() {
         pickerOpen = false;
     }
     ImGui::SetNextWindowSize(Theme::dpi(ImVec2(480.0f, 360.0f)), ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal("Choose Asset##missing_assets_picker", nullptr)) {
+    if (!EditorModal::begin("Choose Asset##missing_assets_picker", nullptr)) {
         return;
     }
+    EditorModal::message(std::string("Choose a ") + assetTypeName(pickerType) + " asset: values.path picks it.");
+    EditorModal::error(pickerMiss);
     char filter[256];
     snprintf(filter, sizeof(filter), "%s", pickerFilter.c_str());
     ImGui::SetNextItemWidth(-1.0f);
@@ -210,19 +213,25 @@ void MissingAssetsWindow::drawPicker() {
         std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         if (needle.empty() || lower.find(needle) != std::string::npos) candidates.push_back(info);
     });
+    // the list is what a human clicks; an agent names the row, as the values of a field
+    std::string typed;
+    const bool named = EditorModal::pathField("path", typed);
+    if (named) pickerMiss.clear();
     ImGui::BeginChild("##candidates", ImVec2(0, -ImGui::GetFrameHeightWithSpacing()), ImGuiChildFlags_Borders);
     for (const AssetDatabase::AssetInfo& info : candidates) {
-        if (ImGui::Selectable(info.path.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick) && pickerDone) {
+        const bool clicked = ImGui::Selectable(info.path.c_str(), false, ImGuiSelectableFlags_AllowDoubleClick);
+        if ((clicked || (named && info.path == typed)) && pickerDone) {
             pickerDone(info);
             pickerDone = nullptr;
             ImGui::CloseCurrentPopup();
         }
     }
+    if (named && pickerDone) pickerMiss = "No " + std::string(assetTypeName(pickerType)) + " asset is at " + typed + ".";
     if (candidates.empty()) {
         ImGui::TextDisabled("No %s asset matches", assetTypeName(pickerType));
     }
     ImGui::EndChild();
-    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+    if (EditorModal::button("Cancel", "cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
         pickerDone = nullptr;
         ImGui::CloseCurrentPopup();
     }

@@ -43,6 +43,7 @@
 #include "Theme.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <array>
@@ -1270,12 +1271,13 @@ void editor::InspectorWindow::drawCreateCrowdDialog(){
     }
 
     ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * 26.0f, 0.0f), ImGuiCond_Appearing);
-    if (!ImGui::BeginPopupModal(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
+    if (!EditorModal::begin(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
         return;
     }
     if (!document){
         errorText(error.empty() ? std::string("The Vertex Animation is gone") : error);
-        if (ImGui::Button("Close", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
+        EditorModal::message(error.empty() ? std::string("The Vertex Animation is gone") : error);
+        if (EditorModal::button("Close", "ok", ImVec2(120, 0))) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
         return;
     }
@@ -1286,12 +1288,15 @@ void editor::InspectorWindow::drawCreateCrowdDialog(){
 
     ImGui::TextDisabled("%s into %s", fs::path(document->path()).filename().string().c_str(),
                         sceneProject ? sceneProject->name.c_str() : "(no scene)");
+    EditorModal::message("Create a crowd of " + fs::path(document->path()).filename().string() + " in " +
+                         (sceneProject ? sceneProject->name : std::string("(no scene)")) + ".");
     ImGui::SetNextItemWidth(field);
-    ImGui::InputInt("Count##crowd_count", &crowd.count, 10, 100);
+    EditorModal::inputInt("Count##crowd_count", "count", &crowd.count, 10, 100);
     crowd.count = std::clamp(crowd.count, 1, ev::MAX_CROWD);
     UIProbe::item("crowd.count");
 
     int area = crowd.area == ev::CrowdArea::Disc ? 1 : 0;
+    if (EditorModal::enumField("area", area, {"Box", "Disc"})) crowd.area = area == 1 ? ev::CrowdArea::Disc : ev::CrowdArea::Box;
     ImGui::SetNextItemWidth(field);
     if (ImGui::Combo("Area##crowd_area", &area, "Box\0Disc\0")){
         crowd.area = area == 1 ? ev::CrowdArea::Disc : ev::CrowdArea::Box;
@@ -1299,12 +1304,15 @@ void editor::InspectorWindow::drawCreateCrowdDialog(){
     UIProbe::item("crowd.area");
     ImGui::SetNextItemWidth(field);
     if (crowd.area == ev::CrowdArea::Box){
+        EditorModal::field("width", crowd.width);
+        EditorModal::field("depth", crowd.depth);
         float size[2] = {crowd.width, crowd.depth};
         if (ImGui::DragFloat2("Size (X, Z)##crowd_size", size, 0.1f, 0.0f, 10000.0f, "%.1f m")){
             crowd.width = std::max(size[0], 0.0f);
             crowd.depth = std::max(size[1], 0.0f);
         }
     }else{
+        EditorModal::field("diameter", crowd.width);
         ImGui::DragFloat("Diameter##crowd_size", &crowd.width, 0.1f, 0.0f, 10000.0f, "%.1f m");
         crowd.width = std::max(crowd.width, 0.0f);
     }
@@ -1317,6 +1325,7 @@ void editor::InspectorWindow::drawCreateCrowdDialog(){
     ImGui::SetItemTooltip("The area's center in the scene (the crowd GameObject's position)");
 
     // the ground: the selected GameObject's surface or the plane through the center
+    if (surface != NULL_ENTITY) EditorModal::field("on_selected_surface", state.crowdOnSurface);
     if (ImGui::RadioButton("Ground plane##crowd_plane", !state.crowdOnSurface)) state.crowdOnSurface = false;
     ImGui::SetItemTooltip("Instances stand on the horizontal plane through the center");
     ImGui::SameLine();
@@ -1330,10 +1339,11 @@ void editor::InspectorWindow::drawCreateCrowdDialog(){
     }
 
     ImGui::SetNextItemWidth(field);
+    EditorModal::field("min_spacing", crowd.minSpacing);
     ImGui::DragFloat("Min Spacing##crowd_spacing", &crowd.minSpacing, 0.01f, 0.0f, 100.0f, "%.2f m");
     crowd.minSpacing = std::max(crowd.minSpacing, 0.0f);
     UIProbe::item("crowd.spacing");
-    ImGui::Checkbox("Random Yaw##crowd_yaw", &crowd.randomYaw);
+    EditorModal::checkbox("Random Yaw##crowd_yaw", "random_yaw", &crowd.randomYaw);
     ImGui::SetNextItemWidth(field);
     ImGui::DragFloatRange2("Scale##crowd_scale", &crowd.scaleMin, &crowd.scaleMax, 0.01f, 0.01f, 100.0f, "%.2f", "%.2f");
     ImGui::SetNextItemWidth(field);
@@ -1344,6 +1354,7 @@ void editor::InspectorWindow::drawCreateCrowdDialog(){
     for (size_t i = 0; i < data.clips.size() && i < MAX_ROWS; i++){
         ImGui::PushID((int)i);
         ImGui::SetNextItemWidth(field);
+        EditorModal::field(("weight_" + data.clips[i].name).c_str(), state.crowdWeights[i]);
         ImGui::DragFloat(data.clips[i].name.c_str(), &state.crowdWeights[i], 0.5f, 0.0f, 1000.0f, "%.1f");
         state.crowdWeights[i] = std::max(state.crowdWeights[i], 0.0f);
         UIProbe::item("crowd.weight." + std::to_string(i));
@@ -1351,21 +1362,23 @@ void editor::InspectorWindow::drawCreateCrowdDialog(){
     }
     if (data.clips.empty()) ImGui::TextDisabled("No clips");
 
-    ImGui::Checkbox("Random Start##crowd_random_start", &crowd.randomStart);
+    EditorModal::checkbox("Random Start##crowd_random_start", "random_start", &crowd.randomStart);
     ImGui::SetItemTooltip("Each instance starts at a random time of its clip (out of step)");
     ImGui::SameLine();
-    ImGui::Checkbox("Instance Events##crowd_events", &crowd.instanceEvents);
+    EditorModal::checkbox("Instance Events##crowd_events", "instance_events", &crowd.instanceEvents);
     ImGui::SetItemTooltip("Fire clip events for every instance (costs work per instance each frame)");
     int seed = (int)crowd.seed;
     ImGui::SetNextItemWidth(field);
-    if (ImGui::InputInt("Seed##crowd_seed", &seed)) crowd.seed = (uint32_t)std::max(seed, 0);
+    if (EditorModal::inputInt("Seed##crowd_seed", "seed", &seed)) crowd.seed = (uint32_t)std::max(seed, 0);
     UIProbe::item("crowd.seed");
 
     const bool canCreate = sceneProject && sceneProject->scene && sceneProject->sceneType == SceneType::SCENE_3D &&
                            sceneProject->playState == ScenePlayState::STOPPED;
+    EditorModal::error(!state.crowdResult.empty() && !state.crowdResultOk ? state.crowdResult :
+                       canCreate ? std::string() : std::string("Open a 3D scene (and stop the game) to create a crowd in it"));
     ImGui::Separator();
     ImGui::BeginDisabled(!canCreate);
-    if (ImGui::Button(ICON_FA_PEOPLE_GROUP " Create##crowd_create", ImVec2(140, 0))){
+    if (EditorModal::button(ICON_FA_PEOPLE_GROUP " Create##crowd_create", "ok", ImVec2(140, 0))){
         crowd.vat = document->path();
         crowd.surface = state.crowdOnSurface ? surface : NULL_ENTITY;
         crowd.clipWeights.clear();
@@ -1391,7 +1404,7 @@ void editor::InspectorWindow::drawCreateCrowdDialog(){
         ImGui::SetTooltip("Open a 3D scene (and stop the game) to create a crowd in it");
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel##crowd_cancel", ImVec2(120, 0))){
+    if (EditorModal::button("Cancel##crowd_cancel", "cancel", ImVec2(120, 0))){
         ImGui::CloseCurrentPopup();
     }
     if (!state.crowdResult.empty() && !state.crowdResultOk){
