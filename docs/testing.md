@@ -65,6 +65,9 @@ recording, nothing when unset (`tools/mcp/tests/test_recorder_integrity.py`).
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
+its staging folder while that file exists, after creating `<path>.held`: the tests kill the editor
+there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/test_crash_leftovers.py`).
 
 ### HTML UI, MCP, smoke, web
 
