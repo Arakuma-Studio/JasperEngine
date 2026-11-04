@@ -170,7 +170,11 @@ async def test_export_leaves_recent_projects_alone():
     other.mkdir()
     settings = cwd / "settings.yaml"
     settings.write_text(yaml.safe_dump({"last_project_path": str(other), "recent_projects": [str(other)]}))
-    ok(run(cwd, "export", "--project", "../../proj", "--out", "../../exports/recent", "--backend", "opengl"),
+    # the temporary folder elsewhere: a project inside it is the editor's temporary project, never recorded
+    temp = S["tmp"] / "systemp"
+    temp.mkdir()
+    ok(run(cwd, "export", "--project", "../../proj", "--out", "../../exports/recent", "--backend", "opengl",
+           extra_env={"TMPDIR": str(temp)}),
        "export with the person's settings in the working directory")
     data = yaml.safe_load(settings.read_text()) or {}
     recent = [entry["path"] if isinstance(entry, dict) else entry for entry in data.get("recent_projects") or []]

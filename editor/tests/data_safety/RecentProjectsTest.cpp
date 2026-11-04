@@ -16,6 +16,8 @@
 #include "yaml-cpp/yaml.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -59,13 +61,37 @@ namespace {
         return std::any_of(paths.begin(), paths.end(), [&](const std::string& p) { return sameRecentPath(p, project); });
     }
 
+    // The system temporary folder moved into the test's folder: a project in the temporary folder is
+    // the editor's temporary project, which is never recorded (Project::isTempProject)
+    class RecentProjectsTempFolder {
+    public:
+        explicit RecentProjectsTempFolder(const fs::path& folder) {
+            fs::create_directories(folder);
+            if (const char* old = std::getenv(name)) previous = old;
+            set(folder.string().c_str());
+        }
+        ~RecentProjectsTempFolder() { set(previous ? previous->c_str() : nullptr); }
+    private:
+#if defined(_WIN32)
+        static constexpr const char* name = "TMP";
+        static void set(const char* value) { _putenv_s(name, value ? value : ""); }
+#else
+        static constexpr const char* name = "TMPDIR";
+        static void set(const char* value) { value ? ::setenv(name, value, 1) : ::unsetenv(name); }
+#endif
+        std::optional<std::string> previous;
+    };
+
     // a copy of a fixture project and the user's settings naming another project as the last one
     struct RecentProjectsSetup {
         TestTempDir dir{"recent-projects"};
+        RecentProjectsTempFolder temp{dir / "tmp"};
         fs::path settings = dir / "settings.yaml";
         fs::path other = dir / "Other";
         fs::path project = dir / "Game";
         RecentProjectsSetup() {
+            std::error_code ec;
+            EXPECT_TRUE(fs::equivalent(fs::temp_directory_path(), dir / "tmp", ec));
             fs::create_directories(other);
             fs::copy(fs::path(JASPER_TEST_REPO_DIR) / "tools/fixtures/prefab-runtime", project, fs::copy_options::recursive);
             TestTempDir::write(settings, "last_project_path: " + other.generic_string() + "\nrecent_projects:\n  - " +
