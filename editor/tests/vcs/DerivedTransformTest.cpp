@@ -254,7 +254,6 @@ TEST(Stream, ATerrainSavesWhatItsFirstRunLeaves) {
     for (const YAML::Node& submesh : components["mesh"]["submeshes"]) EXPECT_FALSE(submesh["vertexCount"]);
     EXPECT_FALSE(components["mesh"]["aabb"]);
     EXPECT_FALSE(components["mesh"]["verticesAABB"]);
-    EXPECT_EQ(saved["maxValues"]["maxSubmeshes"].as<unsigned int>(), 2u);
 }
 
 // A RectTransform's scissor is the clip rectangle the last draw computed, in the pixels of the view

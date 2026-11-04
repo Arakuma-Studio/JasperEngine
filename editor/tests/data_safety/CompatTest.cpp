@@ -101,19 +101,38 @@ namespace {
         return out;
     }
 
-    // The input's lines without the transforms' derived values, which saves no longer write
-    // (scene format 4, docs/specs/S29-version-control.md R20)
+    // The input's lines without the values saves no longer write, on both sides: the transforms'
+    // derived values (scene format 4, docs/specs/S29-version-control.md R20), a RectTransform's
+    // scissor, and what a frame computes (docs/specs/S63-saved-output-determinism.md): a canvas-sized
+    // camera's clips and aspect, a Light's world direction, the bounds and vertex counts of a mesh
+    // that generates its geometry, a Mesh's world bounds, a Terrain's Auto Ranges
     std::string withoutDerivedTransform(const std::string& text) {
-        // and a RectTransform's scissor, the clip rectangle of the last draw (no longer written either)
         static const char* const keys[] = {"worldPosition:", "worldRotation:", "worldScale:", "localMatrix:", "modelMatrix:", "normalMatrix:",
-                                           "scissor:"};
+                                           "scissor:", "leftClip:", "rightClip:", "bottomClip:", "topClip:", "aspect:", "worldDirection:",
+                                           "vertexCount:"};
+        static const char* const blocks[] = {"aabb:", "verticesAABB:", "worldAABB:", "ranges:"};
+        const auto startsWith = [](const std::string& line, size_t start, const char* key) {
+            return start != std::string::npos && line.compare(start, std::char_traits<char>::length(key), key) == 0;
+        };
         std::istringstream in(text);
         std::string line, out;
+        size_t blockIndent = std::string::npos;
         while (std::getline(in, line)) {
             const size_t start = line.find_first_not_of(' ');
+            if (blockIndent != std::string::npos) {
+                // its lines are deeper, or list items at its own depth
+                if (start != std::string::npos && (start > blockIndent || (start == blockIndent && line[start] == '-'))) continue;
+                blockIndent = std::string::npos;
+            }
             bool derived = false;
             for (const char* key : keys) {
-                if (start != std::string::npos && line.compare(start, std::char_traits<char>::length(key), key) == 0) derived = true;
+                if (startsWith(line, start, key)) derived = true;
+            }
+            for (const char* key : blocks) {
+                if (startsWith(line, start, key)) {
+                    derived = true;
+                    blockIndent = start;
+                }
             }
             if (!derived) out += line + "\n";
         }
@@ -160,6 +179,8 @@ TEST(Compat, CorpusRoundTrip) {
                                    // a model's images are textures by id (the model file's path on the
                                    // machine that saved it), which a bare decode cannot load
                                    original.find("|gltf-image|") == std::string::npos &&
+                                   // a Terrain's maps and submeshes take what its first run gives them
+                                   original.find("\n      terrain:") == std::string::npos &&
                                    // old Particle Systems (S20 D9's, origin/main's version 2) become
                                    // inline effects on their targets: their GameObjects change
                                    (original.find("particlesystem:") == std::string::npos || original.find("inlineEffect:") != std::string::npos);

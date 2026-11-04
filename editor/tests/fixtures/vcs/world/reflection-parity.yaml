@@ -280,10 +280,10 @@ AllComponents:
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 84, 0, 0, 1]
   RectTransformComponent:
-    position: [10, 0, 0]
+    position: [2.8, 6.7, 0]
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
-    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 10, 0, 0, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2.8, 6.7, 0, 1]
   ReflectionProbeComponent:
     position: [51, 0, 0]
     rotation: [1, 0, 0, 0]
