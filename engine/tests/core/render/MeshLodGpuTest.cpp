@@ -141,11 +141,29 @@ TEST_F(MeshLodGpu, AQuantizedModelsAttributesGuideItsLevels){
         MeshComponent* mesh = scene.findComponent<MeshComponent>(entity);
         if (!mesh)
             continue;
+        // an attribute of the submesh's own, or of a buffer it reads (as the level builder finds it)
+        auto typeOf = [mesh](unsigned int s, AttributeType type, AttributeDataType& out){
+            auto own = mesh->submeshes[s].attributes.find(type);
+            if (own != mesh->submeshes[s].attributes.end()){
+                out = own->second.getDataType();
+                return true;
+            }
+            for (int b = 0; b < mesh->numExternalBuffers; b++){
+                if (Attribute* attribute = mesh->eBuffers[b].getAttribute(type)){
+                    out = attribute->getDataType();
+                    return true;
+                }
+            }
+            if (Attribute* attribute = mesh->buffer.getAttribute(type)){
+                out = attribute->getDataType();
+                return true;
+            }
+            return false;
+        };
         for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
-            auto normal = mesh->submeshes[s].attributes.find(AttributeType::NORMAL);
-            auto uv = mesh->submeshes[s].attributes.find(AttributeType::TEXCOORD1);
-            if (normal == mesh->submeshes[s].attributes.end() || normal->second.getDataType() == AttributeDataType::FLOAT ||
-                    uv == mesh->submeshes[s].attributes.end() || uv->second.getDataType() == AttributeDataType::FLOAT)
+            AttributeDataType normalType, uvType;
+            if (!typeOf(s, AttributeType::NORMAL, normalType) || normalType == AttributeDataType::FLOAT ||
+                    !typeOf(s, AttributeType::TEXCOORD1, uvType) || uvType == AttributeDataType::FLOAT)
                 continue;
             found = true;
             MeshLodSource source;

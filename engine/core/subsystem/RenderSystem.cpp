@@ -8397,11 +8397,13 @@ void RenderSystem::advanceLodView(LodView& view, double& clock){
     view.fades = true;
 }
 
-// a change rebuilds the instance views; the stats of the frame drawn last are done
+// a change rebuilds the instance views (the view's frame and fade clock move on in draw(): an
+// update without a draw is no frame of the view's)
 void RenderSystem::updateMainLodView(CameraComponent& camera, Transform& cameraTransform){
     LodView view = computeLodView(camera, cameraTransform);
+    view.fades = true;
     view.frame = rv().lodView.frame;
-    advanceLodView(view, rv().lodClock);
+    view.fadeDeltaTime = rv().lodView.fadeDeltaTime;
 
     if (view.enabled != rv().lodView.enabled || view.threshold != rv().lodView.threshold || view.bias != rv().lodView.bias ||
         view.origin != rv().lodView.origin || view.perUnit != rv().lodView.perUnit || view.constant != rv().lodView.constant ||
@@ -8409,8 +8411,6 @@ void RenderSystem::updateMainLodView(CameraComponent& camera, Transform& cameraT
         instanceViewsDirty = true;
     }
     rv().lodView = view;
-    rv().lodStatsDone = rv().lodStats;
-    rv().lodStats = LodFrameStats();
 }
 
 LodFrameStats RenderSystem::getLodStats() const{
@@ -15955,6 +15955,10 @@ void RenderSystem::render2DShadows(){
 }
 
 void RenderSystem::draw(){
+    // the main view's next frame: its fades move on, the last frame's detail level stats are done
+    advanceLodView(primaryView.lodView, primaryView.lodClock);
+    primaryView.lodStatsDone = primaryView.lodStats;
+    primaryView.lodStats = LodFrameStats();
     // the FLATTEN Canvas Group layers of the last frame: stats, unused targets released
     trimCanvasLayers();
     // UI particles whose Canvas Group alpha changed after this frame's update (the UI draw
