@@ -758,9 +758,14 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
 - S55 P3: without a path, `velocity = v` moves the agent at `v` only as far as its acceleration lets
   the crowd's velocity follow in one tick (Detour's velocity request integrates within
   `maxAcceleration`); AC22's no-path case runs with an acceleration that reaches `v` in a tick.
-- S55 P3: AC18's zero allocations per tick needed the S19 tick's own buffers kept between ticks (the
-  sorted agent list, the crowd slot owners, the dispatched events, sorted without `stable_sort`'s
-  temporary buffer); the event order is unchanged (entity, then queue order).
+- S55 P3: AC18's zero allocations per tick also needed the dispatched events' buffer kept between
+  ticks and sorted without `stable_sort`'s temporary buffer (S53 R19 keeps the agent order and the
+  crowd slot owners); the event order is unchanged (entity, then queue order).
+- S55 P3: the one search that classifies a failure (R27) is left out of S53's
+  `getPathQueryCount()`, which counts the searches scripts and tools run (S53 R6: a crowd agent's
+  path state never searches; a failure's reason does, once per failure).
+- S55 P3: P2's R15 drop of a path without Auto Repath fires `onPathFailed` through the same
+  classification (`failPath`), so its reason is the `BlockedByArea` AC25 expects.
 
 ## Progress (implementation notes, keep updated)
 
@@ -776,3 +781,15 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
   `activated` / `occupied`, `visualize_navigation` `show.area_overrides`, `get_runtime_entity` link,
   modifier and obstacle fields; tests in `NavAreaOverrideTest.cpp`, `NavigationEditorTest.cpp`,
   `test_navigation_gameplay.py` (door and bridge, handles, overlay screenshot).
+- S55 P3: `NavCrowd` corridor and velocity access (`setCorridor`, `getCorridor`, `isCorridorValid`,
+  `overrideVelocity`, `requestMoveVelocity`, with `getSteeringTarget`, `getCorridorPath`,
+  `getNextOffMeshLink`), the `NavigationSystem` agent section (R19-R24), failure reasons through
+  `failPath` / `classifyFailure` at every `onPathFailed` (R27), the stuck watchdog (R25, R26),
+  `Event::detail` and `Stuck` (R29), the component's stuck fields, `stuckTime`, `lastPathFailure`,
+  `onStuck` and the two-argument `onPathFailed`, the `NavMeshAgent` handle and its Lua members (the
+  reason a string, R28), `EntityCloner`, reflection / codec / factory / Inspector rows (Stuck
+  Detection foldout, runtime lines), `get_navigation_info` `last_failure` / `stuck_seconds`,
+  `get_runtime_entity` agent fields; tests in `NavAgentApiTest.cpp`, `NavCrowdTest.cpp`
+  (`GameplayZeroCost`, `GameplayReplay`), `NavigationEditorTest.cpp` (agent rows of AC29),
+  `test_navigation_gameplay.py` (`test_path_failed_callbacks`, the Guard of the doors test); NavBench
+  `stuck_100_extra_ms`.
