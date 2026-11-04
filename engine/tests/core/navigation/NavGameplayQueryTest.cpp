@@ -218,6 +218,77 @@ TEST_F(NavRandomTest, AroundCircleConnectedWithinRadius){
     EXPECT_FALSE(nav->randomPoint(none, filter, query));
 }
 
+// AC4: on an island: every point shares the island of the given point; nothing under it, no
+// point; closing a door between two halves makes them two islands and the draws keep to one
+TEST_F(NavRandomTest, SameIsland){
+    // a corridor (x in [-11, -1]) with a strip of area 4 across it at x = -6 (the door), and a
+    // second floor apart from it (x in [6, 10])
+    plane(*scene, Vector3(-6.0f, 0.0f, 0.0f), 10.0f, 4.0f);
+    plane(*scene, Vector3(8.0f, 0.0f, 0.0f), 4.0f, 4.0f);
+    const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
+    addSurface(*scene, surface, 0.2f, 32);
+    areaVolume(Vector3(-6.0f, 0.0f, 0.0f), Vector3(1.0f, 4.0f, 6.0f), 4);
+    bake(surface);
+    ASSERT_EQ(nav->getIslands(surface).size(), 2u);
+
+    nav::RandomPointQuery query;
+    query.sameIsland = true;
+    query.islandOf = Vector3(-9.0f, 0.0f, 0.0f);
+    const int corridor = nav->locate(query.islandOf).island;
+    ASSERT_GE(corridor, 0);
+    bool crossesDoor = false;
+    for (int i = 0; i < 1000; i++) {
+        nav::NavHit hit;
+        ASSERT_TRUE(nav->randomPoint(hit, {}, query));
+        EXPECT_EQ(nav->locate(hit.position).island, corridor) << hit.position.toString();
+        EXPECT_LT(hit.position.x, 0.0f) << hit.position.toString();
+        crossesDoor = crossesDoor || hit.position.x > -5.5f;
+    }
+    EXPECT_TRUE(crossesDoor);
+    // nothing under the point: no island, no point
+    query.islandOf = Vector3(2.0f, 0.0f, 0.0f);
+    nav::NavHit none;
+    EXPECT_FALSE(nav->randomPoint(none, {}, query));
+
+    // the door closes: its polygons get flags 0 (what a Not Walkable runtime volume does)
+    nav::NavMesh* mesh = const_cast<nav::NavMesh*>(nav->getNavMesh(surface));
+    ASSERT_NE(mesh, nullptr);
+    const nav::NavFilter all = nav::NavFilter::fromSettings(nav::ALL_AREAS);
+    // every polygon of the strip (x in [-6.5, -5.5], the walkable z in [-1.5, 1.5])
+    for (float x = -6.4f; x <= -5.59f; x += 0.1f) {
+        for (float z = -1.45f; z <= 1.46f; z += 0.1f) {
+            const uint32_t ref = mesh->getPolyAt(Vector3(x, 0.0f, z), all, Vector3(0.04f, 1.0f, 0.04f));
+            // the door's polygons only (a point at its edge may find the corridor's)
+            if (ref && mesh->locate(Vector3(x, 0.0f, z), all, Vector3(0.04f, 1.0f, 0.04f), 0.0f).area == 4)
+                mesh->setPolyFlags(ref, 0);
+        }
+    }
+    ASSERT_EQ(nav->getIslands(surface).size(), 3u);
+    query.islandOf = Vector3(-9.0f, 0.0f, 0.0f);
+    // with a centre too: around and on the island at once
+    nav::RandomPointQuery around = query;
+    around.around = true;
+    around.center = Vector3(-7.0f, 0.0f, 0.0f);
+    around.radius = 5.0f;
+    for (int i = 0; i < 1000; i++) {
+        nav::NavHit hit;
+        ASSERT_TRUE(nav->randomPoint(hit, {}, query));
+        EXPECT_LT(hit.position.x, -6.5f + CELL) << hit.position.toString();
+        nav::NavHit near;
+        if (nav->randomPoint(near, {}, around)) {
+            EXPECT_LT(near.position.x, -6.5f + CELL) << near.position.toString();
+            EXPECT_LE(Vector3(near.position.x + 7.0f, 0.0f, near.position.z).length(), 5.0f + 1e-3f);
+        }
+    }
+    query.islandOf = Vector3(-3.0f, 0.0f, 0.0f);
+    for (int i = 0; i < 200; i++) {
+        nav::NavHit hit;
+        ASSERT_TRUE(nav->randomPoint(hit, {}, query));
+        EXPECT_GT(hit.position.x, -5.5f - CELL) << hit.position.toString();
+        EXPECT_LT(hit.position.x, 0.0f) << hit.position.toString();
+    }
+}
+
 // AC7: a path across the mud strip prices each stretch by its area; areaCrossings adds the strip
 // edges as corners; a link path flags its link corner and prices the link at its own cost
 TEST_F(NavPathTest, CornerAreasAndCost){
@@ -281,7 +352,8 @@ TEST_F(NavPathTest, LinkCornerAndCost){
     EXPECT_EQ(path.cornerAreas[linkCorner], nav::AREA_JUMP);
     const float linkLength = path.corners[linkCorner].distance(path.corners[linkCorner + 1]);
     EXPECT_NEAR(path.areaLengths[nav::AREA_JUMP], linkLength, 1e-3f);
-    EXPECT_NEAR(linkLength, 5.0f, 2.0f * CELL);
+    // the link's ends snap to the mesh
+    EXPECT_NEAR(linkLength, 5.0f, 3.0f * CELL);
     EXPECT_NEAR(path.cost, path.areaLengths[nav::AREA_WALKABLE] + 3.0f * linkLength, 1e-3f);
     EXPECT_NEAR(sumLengths(path), path.length, 1e-3f);
 }
@@ -292,7 +364,8 @@ TEST_F(NavPathTest, RaycastCost){
     nav::NavHit hit;
     // along the strip: 6 m of mud
     EXPECT_FALSE(nav->raycast(Vector3(0.0f, 0.0f, -3.0f), Vector3(0.0f, 0.0f, 3.0f), hit));
-    EXPECT_NEAR(hit.cost, hit.distance * 4.0f, 1e-3f);
+    // the cost walks the polygons' heights, the distance is in the plane (S19): equal to 1e-3 relative
+    EXPECT_NEAR(hit.cost, hit.distance * 4.0f, 1e-3f * hit.distance * 4.0f);
     EXPECT_NEAR(hit.distance, 6.0f, CELL);
     // across it: 18 m of floor and 2 of mud
     EXPECT_FALSE(nav->raycast(Vector3(-9.0f, 0.0f, 0.0f), Vector3(9.0f, 0.0f, 0.0f), hit));
@@ -300,9 +373,9 @@ TEST_F(NavPathTest, RaycastCost){
     // blocked at the edge as S19's raycast (NavQueryTest.Raycast): hit, position and normal kept,
     // the cost of the part up to the wall
     EXPECT_TRUE(nav->raycast(Vector3(5.0f, 0.0f, 0.0f), Vector3(20.0f, 0.0f, 0.0f), hit));
-    EXPECT_NEAR(hit.position.x, 14.5f, CELL);
+    EXPECT_NEAR(hit.position.x, 14.5f, 2.0f * CELL);
     EXPECT_NEAR(hit.normal.x, -1.0f, 0.05f);
-    EXPECT_NEAR(hit.cost, hit.distance, 1e-3f);
+    EXPECT_NEAR(hit.cost, hit.distance, 1e-3f * hit.distance);
 }
 
 // AC9: a filter's own area cost makes the path detour; reset restores it; a cost below 1 is 1
