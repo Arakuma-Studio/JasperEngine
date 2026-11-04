@@ -6346,8 +6346,10 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         resetConfigs();
 
         // Clear the last project path in settings when creating a new temp project (a
-        // project elsewhere becomes it when saved below)
-        AppSettings::setLastProjectPath(std::filesystem::path());
+        // project elsewhere becomes it when saved below); a tool's process leaves the user's alone
+        if (editor::getEditorHost().recordsRecentProjects()) {
+            AppSettings::setLastProjectPath(std::filesystem::path());
+        }
 
         projectPath = path;
         refreshTrustedRoots();
@@ -6762,7 +6764,7 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
         return false;
     }
 
-    if (!isTempProject()){
+    if (!isTempProject() && editor::getEditorHost().recordsRecentProjects()){
         AppSettings::addToRecentProjects(path, false, getName());
         AppSettings::setLastProjectPath(path);
     }
@@ -6899,7 +6901,7 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         editor::getEditorHost().updateResourcesPath();
 
         // Save this as the last opened project (the Project Hub's record gets its name, S27 R21)
-        if (updateLastOpened && !isTempProject()) {
+        if (updateLastOpened && !isTempProject() && editor::getEditorHost().recordsRecentProjects()) {
             AppSettings::addToRecentProjects(projectPath, false, getName());
             AppSettings::setLastProjectPath(projectPath);
         }

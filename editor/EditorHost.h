@@ -72,6 +72,10 @@ namespace jasperengine::editor {
         virtual void requestProjectChange(std::function<void()> change);
         virtual void resetLastActivatedScene();
         virtual bool shouldSyncEngineApi() const;
+        // Whether opening and saving projects records them as the user's recent and last project
+        // (editor settings). Only a person's interactive editor does: false for the command line,
+        // agents' editors (stdio MCP, headless) and benchmarks, which work on scratch copies.
+        virtual bool recordsRecentProjects() const;
         virtual void updateResourcesPath();
         virtual void updateWindowTitle(const std::string& projectName);
         virtual void stopTransientPreviews();
