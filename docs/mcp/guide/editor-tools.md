@@ -4,8 +4,8 @@ Served as `jasper://docs/editor-tools`. The user documentation is `docs/editor/c
 `curves.md`, `project-hub.md` and `recorder.md`; the design is
 `docs/specs/S27-editor-tools.md`. `record_game`, `sample_view_color`, `edit_swatches`,
 `list_curve_presets` and `evaluate_curve` are the `editor_tools` group (`tool_groups` enable
-`["editor_tools"]` lists them); `create_project {template}`, `list_project_templates` and
-`import_project` are core.
+`["editor_tools"]` lists them), with `clean_project_leftovers`; `create_project {template}`,
+`list_project_templates` and `import_project` are core.
 
 ## Colours
 
@@ -54,8 +54,15 @@ with sRGB 0-1 colours, at most 8 keys of each. Errors name the path (`keys[2][4]
 - `import_project {source, path}`: a `.zip` or a Git URL (`https://`, `ssh://`,
   `user@host:path`) into the folder `path`, then opens it. A refused archive (absolute paths,
   `..`, links, too big) or a failed clone leaves nothing behind.
+- A killed editor's staging folders (`<name>.importing`, with an owner marker
+  `<name>.importing.lock`) are removed at the next start and before each import or template copy;
+  a running editor's are never touched. Folders with such a name and no marker may hold a user's
+  files: nothing removes them unasked, and `import_project` and `create_project {template}` list
+  them in `leftovers` (`[{path, reason}]`). `clean_project_leftovers {remove?: [path]}` sweeps
+  the known project folders and the parents of `remove`, deletes what you name from its
+  `leftovers`, and returns `{removed, leftovers, in_use, failed}`. Ask the user before removing one.
 - While the editor shows the Project Hub without a project, project tools answer "No project is
-  open"; `create_project`, `open_project` and `import_project` work.
+  open"; `create_project`, `open_project`, `import_project` and `clean_project_leftovers` work.
 
 ## Recording the game
 

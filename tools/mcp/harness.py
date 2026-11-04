@@ -733,8 +733,10 @@ class Editor:
             if self.xvfb_mode == "harness":
                 self._xvfb = Xvfb()
                 display = self._xvfb.start()
+            # a scratch dir an earlier editor used has its project
+            create = self.create and not (self.scratch.project / "project.yaml").exists()
             argv, env, cwd = launch_spec(
-                self.scratch, create=self.create, name=self.name, command=self.command,
+                self.scratch, create=create, name=self.name, command=self.command,
                 display=display, extra_args=self.extra_args, inherit_display=inherit, extra_env=self.extra_env,
                 ui_probe=self.ui_probe)
             self.argv = argv

@@ -3202,6 +3202,10 @@ void editor::App::loadStartupProject() {
         return;
     }
 
+    // S46: what an editor killed during an import or a template copy left, whatever opens now
+    hub::staging::setJournalDirectory(AppSettings::getConfigDirectory() / "hub-staging");
+    projectHub.startSweep(false);
+
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
         // `jasperengine-editor mcp --project/--create`: no fallback to the last project
@@ -3691,6 +3695,7 @@ void editor::App::pollExternalChanges(){
     wake = ScriptStatus::get().update() || wake;
     wake = ScriptReloadService::get().busy() || wake;
     wake = htmlui::HtmlUiAutoImport::get().update(&project) || wake;
+    wake = projectHub.pollSweep() || wake;
     // the asset database's walk a watcher batch started (S04 refresh, no poll)
     project.updateAssetScan();
     // texture cooks (S14 R8): planned and cooked on the Background lane, swapped in here

@@ -20,6 +20,7 @@
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <set>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -93,10 +94,49 @@ void ProjectHubWindow::open(Page which) {
     if (projectName[0] == '\0') copyText(projectName, "New Project");
     if (location[0] == '\0') copyPath(location, defaultLocation());
     if (importLocation[0] == '\0') copyPath(importLocation, defaultLocation());
+    startSweep(true);
 }
 
 void ProjectHubWindow::close() {
     visible = false;
+}
+
+hub::staging::Scope ProjectHubWindow::leftoverScope() {
+    hub::staging::Scope scope;
+    std::set<fs::path> parents = {defaultLocation(), hub::templates::userDirectory(AppSettings::getConfigDirectory()) / ".staging"};
+    for (const hub::RecentProject& project : AppSettings::getRecentProjectRecords()) {
+        parents.insert(project.path.parent_path());
+        scope.projects.push_back(project.path);
+    }
+    scope.parents.assign(parents.begin(), parents.end());
+    return scope;
+}
+
+void ProjectHubWindow::startSweep(bool knownParents) {
+    if (sweepTask.valid()) {
+        sweepAgain = true;
+        return;
+    }
+    const hub::staging::Scope scope = knownParents ? leftoverScope() : hub::staging::Scope();
+    sweepTask = std::async(std::launch::async, [scope, removals = std::move(removalRequests)]() {
+        SweepDone done;
+        for (const fs::path& folder : removals) hub::staging::removeLeftover(folder, done.removalError);
+        done.leftovers = hub::staging::sweep(scope).leftovers;
+        return done;
+    });
+    removalRequests.clear();
+}
+
+bool ProjectHubWindow::pollSweep() {
+    if (!sweepTask.valid() || sweepTask.wait_for(std::chrono::seconds(0)) != std::future_status::ready) return false;
+    SweepDone done = sweepTask.get();
+    leftovers = std::move(done.leftovers);
+    leftoverMessage = std::move(done.removalError);
+    if (sweepAgain) {
+        sweepAgain = false;
+        startSweep(true);
+    }
+    return true;
 }
 
 Texture* ProjectHubWindow::thumbnail(const std::string& key, const fs::path& file) {
@@ -191,6 +231,47 @@ void ProjectHubWindow::drawNavigation() {
     ImGui::EndChild();
 }
 
+void ProjectHubWindow::drawLeftovers() {
+    if (leftovers.empty()) {
+        if (!leftoverMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", leftoverMessage.c_str());
+        return;
+    }
+    const std::string header = "Leftover Folders (" + std::to_string(leftovers.size()) + ")###hubLeftovers";
+    if (!ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen)) return;
+    ImGui::TextWrapped("A stopped import or template copy may have left these, and they may hold your files, so the Hub does not remove them by itself.");
+    if (!leftoverMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", leftoverMessage.c_str());
+    const bool working = sweepTask.valid();
+    for (const hub::staging::Leftover& leftover : leftovers) {
+        ImGui::PushID(leftover.folder.generic_string().c_str());
+        ImGui::BeginGroup();
+        ImGui::TextUnformatted(FileUtils::pathToUtf8(leftover.folder).c_str());
+        ImGui::TextDisabled("%s", leftover.reason.c_str());
+        ImGui::EndGroup();
+        ImGui::BeginDisabled(working);
+        if (ImGui::SmallButton("Show in Folder")) {
+            std::string error;
+            if (!Platform::openWithSystemDefault(FileUtils::pathToUtf8(leftover.folder), &error)) leftoverMessage = error;
+        }
+        ImGui::SameLine();
+        if (removalToConfirm == leftover.folder) {
+            ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "Delete this folder and all its files?");
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Delete")) {
+                removalRequests.push_back(leftover.folder);
+                removalToConfirm.clear();
+                startSweep(true);
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Keep")) removalToConfirm.clear();
+        } else if (ImGui::SmallButton("Remove")) {
+            removalToConfirm = leftover.folder;
+        }
+        ImGui::EndDisabled();
+        ImGui::PopID();
+    }
+    ImGui::Separator();
+}
+
 void ProjectHubWindow::drawProjects() {
     ImGui::TextUnformatted("Projects");
     ImGui::SetNextItemWidth(Theme::dpi(260.0f));
@@ -202,6 +283,7 @@ void ProjectHubWindow::drawProjects() {
     if (ImGui::Combo("##hubSort", &sortIndex, kSorts, 2)) sort = (hub::recent::Sort)sortIndex;
     if (!projectsMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f), "%s", projectsMessage.c_str());
     ImGui::Separator();
+    drawLeftovers();
 
     std::vector<hub::RecentProject> records = AppSettings::getRecentProjectRecords();
     const std::vector<hub::RecentProject> rows = hub::recent::listed(records, sort, search.data());
@@ -397,6 +479,7 @@ void ProjectHubWindow::drawOpen() {
 void ProjectHubWindow::drawImport() {
     ImGui::TextUnformatted("Import");
     ImGui::Separator();
+    drawLeftovers();
     const bool running = import.running();
     ImGui::BeginDisabled(running);
     if (ImGui::Button("From Zip...")) {
@@ -429,6 +512,7 @@ void ProjectHubWindow::drawImport() {
         std::string error;
         importOpened = false;
         if (!import.start(source, parent, AppSettings::getVersionControlSettings().gitPath, error)) openMessage = error;
+        startSweep(true);   // what stays in that folder shows here
     }
     ImGui::EndDisabled();
     ImGui::EndDisabled();

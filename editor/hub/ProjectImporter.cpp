@@ -167,7 +167,7 @@ bool importer::extractZip(const fs::path& zip, const fs::path& destination, cons
             error = "cancelled";
             return false;
         }
-        staging::holdForTest();
+        hub::staging::holdForTest();
     }
     return true;
 }
@@ -201,8 +201,14 @@ bool importer::importZip(const fs::path& zip, const fs::path& parent, const ZipL
         error = "the target folder " + parent.string() + " does not exist";
         return false;
     }
+    hub::staging::sweep({{parent}, {}});
     const std::string stem = zip.stem().string();
-    const fs::path staging = stagingFolder(parent, stem.empty() ? "Project" : stem);
+    hub::staging::Claim claim(parent, stem.empty() ? "Project" : stem);
+    if (!claim.ok()) {
+        error = claim.error();
+        return false;
+    }
+    const fs::path staging = claim.folder();
     if (!extractZip(zip, staging, limits, progress, error)) {
         removeQuietly(staging);
         return false;
@@ -297,7 +303,13 @@ bool importer::importGit(const std::string& url, const fs::path& parent, const s
         error = problem;
         return false;
     }
-    const fs::path staging = stagingFolder(parent, name.empty() ? "Project" : name);
+    hub::staging::sweep({{parent}, {}});
+    hub::staging::Claim claim(parent, name.empty() ? "Project" : name);
+    if (!claim.ok()) {
+        error = claim.error();
+        return false;
+    }
+    const fs::path staging = claim.folder();
     std::atomic<bool> stop{false};
     auto run = [&](const std::vector<std::string>& args, const fs::path& cwd, float base, float span, int& exitCode) {
         vcs::ProcessSpec spec;
@@ -341,7 +353,7 @@ bool importer::importGit(const std::string& url, const fs::path& parent, const s
         error = "git clone failed (exit " + std::to_string(exitCode) + ")";
         return false;
     }
-    staging::holdForTest();
+    hub::staging::holdForTest();
     // LFS objects when the project uses LFS and git-lfs is there
     std::ifstream attributes(staging / ".gitattributes");
     std::stringstream text;

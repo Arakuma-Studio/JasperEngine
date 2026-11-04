@@ -184,12 +184,13 @@ bool templates::materialize(const ProjectTemplate& info, const fs::path& target,
     // target as it was (absent, or the empty folder the user made)
     fs::path place = fs::absolute(target, ec).lexically_normal();
     if (!place.has_filename()) place = place.parent_path();
-    const fs::path staging = stagingFolder(place.parent_path(), place.filename().string());
-    fs::create_directories(staging, ec);
-    if (ec) {
-        error = "cannot create " + staging.string() + ": " + ec.message();
+    hub::staging::sweep({{place.parent_path()}, {}});
+    hub::staging::Claim claim(place.parent_path(), place.filename().string());
+    if (!claim.ok()) {
+        error = claim.error();
         return false;
     }
+    const fs::path staging = claim.folder();
     auto fail = [&](const std::string& why) {
         removeAll(staging);
         error = why;
@@ -214,7 +215,7 @@ bool templates::materialize(const ProjectTemplate& info, const fs::path& target,
             const io::WriteResult written =
                 io::writeFileAtomic(staging / fs::path(file.relative), std::string_view(reinterpret_cast<const char*>(file.data), file.size));
             if (!written.ok()) return fail(written.message);
-            staging::holdForTest();
+            hub::staging::holdForTest();
         }
         return publish();
     }
@@ -232,7 +233,7 @@ bool templates::materialize(const ProjectTemplate& info, const fs::path& target,
         if (!copyOneFile(it->path(), staging / relative, ec)) {
             return fail("cannot copy " + rel + ": " + ec.message());
         }
-        staging::holdForTest();
+        hub::staging::holdForTest();
     }
     return publish();
 }
@@ -259,14 +260,16 @@ bool templates::saveProjectAsTemplate(const fs::path& project, const fs::path& u
     // built where the catalog does not look (it reads <userDir>/*/template.json) and renamed in
     // whole: a crash midway leaves no half template, and the name stays free
     const fs::path stagingRoot = userDir / ".staging";
-    const fs::path staging = stagingFolder(stagingRoot, id);
-    fs::create_directories(staging, ec);
-    if (ec) {
-        error = "cannot create " + staging.string() + ": " + ec.message();
+    hub::staging::sweep({{stagingRoot}, {}});
+    hub::staging::Claim claim(stagingRoot, id);
+    if (!claim.ok()) {
+        error = claim.error();
         return false;
     }
+    const fs::path staging = claim.folder();
     auto fail = [&](const std::string& why) {
         removeAll(staging);
+        claim.release();
         fs::remove(stagingRoot, ec);   // when nothing else is in it
         error = why;
         return false;
@@ -290,7 +293,7 @@ bool templates::saveProjectAsTemplate(const fs::path& project, const fs::path& u
         if (!copyOneFile(it->path(), staging / relative, ec)) {
             return fail("cannot copy " + relative.generic_string() + ": " + ec.message());
         }
-        staging::holdForTest();
+        hub::staging::holdForTest();
     }
     ProjectTemplate info;
     info.id = id;
@@ -307,6 +310,7 @@ bool templates::saveProjectAsTemplate(const fs::path& project, const fs::path& u
         if (!written.ok()) return fail(written.message);
     }
     if (!io::renameWithRetry(staging, target, ec)) return fail("cannot move the template to " + target.string() + ": " + ec.message());
+    claim.release();
     fs::remove(stagingRoot, ec);   // when nothing else is in it
     return true;
 }
