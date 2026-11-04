@@ -16,6 +16,7 @@ the sandbox stops misdirected writes and link tricks, not a malicious agent, sin
 
 | File | Resource | Contents |
 |---|---|---|
+| [dialogs.md](dialogs.md) | `jasper://docs/dialogs` | modal dialogs and file pickers: what `editor_status.dialog` reports, `respond_dialog` with `values`, refusals, headless pickers |
 | [lua-scripting.md](lua-scripting.md) | `jasper://docs/lua-scripting` | writing a Lua script: a complete script, property types, events, properties vs methods, time, what Lua lacks (the guide's Lua section is its digest) |
 | [lua-api.md](lua-api.md) | `jasper://docs/lua-api` | Lua script structure, property types, events, every bound class used in gameplay, enums, pitfalls, hot reload (`onReload`) and editor scripts (checked against `engine/core/script/binding/*`; its ```lua blocks by `tools/lua_api/doctest.py`, ```lua run blocks by `tools/mcp/tests/test_lua_api_json.py`) |
 | (generated) | `jasper://docs/lua-api-reference` | every Lua class, method, property and enum, generated from `lua-api.json` by `tools/lua_api` (the data itself: `jasper://lua-api`, one class `jasper://lua-api?class=<Name>`) |

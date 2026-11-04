@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <climits>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -36,6 +37,9 @@ EditorDialogValue EditorDialogValue::ofNumber(double value) {
 
 namespace {
 
+    // until the frame that takes an answer's values has run
+    constexpr int NO_PRESS_FRAME = INT_MAX;
+
     struct Choice {
         std::string choice;
         std::string label;
@@ -63,8 +67,8 @@ namespace {
         ImGuiID pendingWindow = 0;
         std::string pendingChoice;
         std::map<std::string, EditorDialogValue> pendingValues;
-        int pendingFrame = -1;      // the frame of its values
-        int pressFrame = -1;        // the frame of its button: the one after the values, whose checks ran
+        bool pendingDrawn = false;  // the modal has been drawn since the answer: its values have gone in
+        int pressFrame = 0;         // the frame of its button: the one after the values, whose checks ran
         std::string answerError;
         int unsettledFrames = 0;
     };
@@ -227,6 +231,11 @@ bool EditorModal::begin(const char* name, bool* p_open, ImGuiWindowFlags flags, 
     }
     Entry entry;
     entry.window = ImGui::GetCurrentWindow()->ID;
+    if (s.pendingWindow == entry.window && !s.pendingDrawn) {
+        s.pendingDrawn = true;
+        // no values to wait for: this frame's button
+        if (s.pressFrame == 0) s.pressFrame = ImGui::GetFrameCount();
+    }
     entry.title = titleOf(name);
     entry.hasCloseButton = p_open != nullptr;
     entry.role = role;
@@ -393,7 +402,8 @@ void EditorModal::endFrame() {
             unsettled = true;
             continue;
         }
-        if (s.hasTop || !(window->Flags & ImGuiWindowFlags_Modal) || !window->Active || window->Hidden) continue;
+        // (not Hidden: an auto-sized window is Hidden in its first frame, while it already draws its body)
+        if (s.hasTop || !(window->Flags & ImGuiWindowFlags_Modal) || !window->Active) continue;
         auto found = std::find_if(s.drawn.begin(), s.drawn.end(), [window](const Entry& e) { return e.window == window->ID; });
         if (found != s.drawn.end() && found->role == Role::Progress) continue;
         if (found != s.drawn.end()) {
@@ -419,16 +429,21 @@ void EditorModal::endFrame() {
         s.pendingWindow = 0;
         return;
     }
+    if (!s.pendingDrawn) return;
     const int frame = ImGui::GetFrameCount();
-    // a value that found no field: the frame after its answer has drawn the modal's whole body
-    if (!s.pendingValues.empty() && frame > s.pendingFrame) {
-        std::vector<std::string> names;
-        for (const auto& [name, value] : s.pendingValues) names.push_back(name);
-        s.answerError = "\"" + s.top.title + "\" no longer shows the field(s) " + joined(names) + ": not set.";
-        s.pendingValues.clear();
+    // the frame that took the values has run its checks on them: the button is the next frame's
+    if (s.pressFrame == NO_PRESS_FRAME) {
+        s.pressFrame = frame + 1;
+        // a value that found no field in the body just drawn
+        if (!s.pendingValues.empty()) {
+            std::vector<std::string> names;
+            for (const auto& [name, value] : s.pendingValues) names.push_back(name);
+            s.answerError = "\"" + s.top.title + "\" no longer shows the field(s) " + joined(names) + ": not set.";
+            s.pendingValues.clear();
+        }
     }
-    // an answer is pressed by the frame it came in, or the one after its values, or the next one;
-    // a modal gone by then, or a button greyed out by then, drops it
+    // an answer is pressed by its frame or the next one; a modal gone by then, or a button greyed out
+    // by then, drops it
     if (!s.pendingChoice.empty() && frame > s.pressFrame) {
         const Choice* choice = findChoice(s.top, s.pendingChoice);
         const std::string label = choice ? choice->label : s.pendingChoice;
@@ -515,8 +530,8 @@ bool EditorModal::answer(const std::string& choice, const std::map<std::string, 
     s.pendingWindow = s.top.window;
     s.pendingChoice = choice;
     s.pendingValues = values;
-    s.pendingFrame = ImGui::GetFrameCount();
-    s.pressFrame = s.pendingFrame + (values.empty() ? 0 : 1);
+    s.pendingDrawn = false;
+    s.pressFrame = values.empty() ? 0 : NO_PRESS_FRAME;
     s.answerError.clear();
     return true;
 }
