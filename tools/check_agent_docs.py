@@ -7,7 +7,7 @@ Plain Python, no editor and no packages. Exits 1, listing every problem, when:
 - a backticked repository path does not exist (`tools/build.sh`, `editor/mcp/`, `NOTICE.md`;
   build outputs under build/, globs and <placeholders> are not paths);
 - a `tools/build.sh <target>` names a target the script's usage does not accept;
-- CLAUDE.md does not start with the line @AGENTS.md;
+- CLAUDE.md is anything but the single line @AGENTS.md;
 - a rules file has no front matter with paths:.
 --root checks another copy of the repository (the red control of the tests).
 """
@@ -92,8 +92,8 @@ def check(root: Path) -> list[str]:
             if not front or not re.search(r"^paths:", front.group(1), re.M):
                 problems.append(f"{rel}: no front matter with paths:")
     claude = root / "CLAUDE.md"
-    if claude.exists() and claude.read_text(encoding="utf-8").splitlines()[:1] != ["@AGENTS.md"]:
-        problems.append("CLAUDE.md does not start with @AGENTS.md")
+    if claude.exists() and claude.read_text(encoding="utf-8").splitlines() != ["@AGENTS.md"]:
+        problems.append("CLAUDE.md is not the single line @AGENTS.md")
     return problems
 
 
