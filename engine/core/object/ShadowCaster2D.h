@@ -5,6 +5,7 @@
 #define SHADOWCASTER2D_H
 
 #include "GameObject.h"
+#include "component/ShadowCaster2DComponent.h"
 
 namespace jasperengine{
 

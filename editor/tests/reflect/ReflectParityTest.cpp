@@ -8,6 +8,9 @@
 // bitwise. The hand-written codecs are kept verbatim in editor/tests/reflect/legacy.
 
 #include "reflect/ReflectTestSupport.h"
+#include "Stream.h"
+#include "spritenormals/SpriteNormalsField.h"
+#include "JasperEngine.h"
 #include "reflect/legacy/LegacyCodecs.h"
 
 #include "reflect/Reflect.h"

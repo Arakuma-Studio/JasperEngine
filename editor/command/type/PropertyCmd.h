@@ -12,7 +12,6 @@
 #include "Scene.h"
 #include "math/Vector3.h"
 #include "ecs/Entity.h"
-#include "component/Transform.h"
 #include "Catalog.h"
 #include "animation/ClipRecordHooks.h"
 #include <cstdlib>

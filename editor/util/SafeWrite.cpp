@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "SafeWrite.h"
+#include "buffer/Buffer.h"
+#include "htmlui/compat/runtime/DecoratorCommon.h"
+#include "io/File.h"
+#include "net/CurlApi.h"
 
 #include "util/FileUtils.h"
 #include "io/watch/FileWatchService.h"

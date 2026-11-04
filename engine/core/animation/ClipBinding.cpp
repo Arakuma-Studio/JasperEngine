@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ClipBinding.h"
+#include "component/MeshComponent.h"
 
 #include "animation/AnimationClip.h"
 #include "component/Transform.h"
