@@ -7,6 +7,11 @@
 #include "ParticleTestUtil.h"
 
 #include "AllocationCounter.h"
+#include "Scene.h"
+#include "object/ParticleSystem.h"
+#include "particles/ParticleEffectLibrary.h"
+#include "particles/ParticleWorld.h"
+#include "subsystem/ParticleSubsystem.h"
 
 #include <gtest/gtest.h>
 
@@ -182,6 +187,107 @@ TEST(ParticleSubEmitters, PooledChildrenAllocateNothingWhenWarm){
     EXPECT_GT(f.kid().count(), 0u);
 }
 
+// BF23 F2: what the stats and the budget read counts the children
+
+TEST(ParticleSubEmitters, WorldStatsCountChildrenWhenOnlyTheyAreAlive){
+    Family f(parent(SubEmitterTrigger::Death, 3));
+    ParticleWorld world;
+    std::vector<EmitterTask> tasks(1);
+    tasks[0].runtime = &f.runtime;
+    tasks[0].dt = 1.0 / 30.0;
+    for (int frame = 0; frame < 30; frame++) world.simulate(tasks);
+    ASSERT_EQ(f.runtime.count(), 0u) << "the parents died at 0.5 s";
+    ASSERT_EQ(f.kid().count(), 30u);
+    EXPECT_EQ(world.stats().live, 30u);
+}
+
+TEST(ParticleSubEmitters, SystemStatsCountChildrenWhenOnlyTheyAreAlive){
+    ParticleEffectDocument kid;
+    kid.tickRate = 30;
+    kid.main.startLifetime = MinMaxCurve(10.0f);
+    kid.emission.rateOverTime = MinMaxCurve(0.0f);
+    ParticleEffectLibrary::set("fx/f2-child.particles", kid);
+    Scene scene;
+    ParticleSystem system(&scene);
+    system.setPlayOnAwake(false);
+    ASSERT_TRUE(system.setInlineEffect(R"({"version": 1, "duration": 5, "looping": false, "seed": 4, "maxParticles": 100, "tickRate": 30,
+        "subEmitters": [{"trigger": "death", "effect": "fx/f2-child.particles", "emitCount": 2}],
+        "modules": [{"type": "main", "startLifetime": 0.2, "startSpeed": 0},
+                    {"type": "emission", "rateOverTime": 0, "bursts": [{"time": 0, "count": 5}]},
+                    {"type": "subEmitters"}]})"));
+    system.play();
+    system.step(15);
+    ParticleSubsystem& subsystem = *scene.getSystem<ParticleSubsystem>();
+    const particles::ParticleSystemState* state = subsystem.getState(system.getEntity());
+    ASSERT_NE(state, nullptr);
+    ASSERT_EQ(state->runtime.count(), 0u) << "the parents are dead";
+    ASSERT_EQ(state->runtime.child(0)->count(), 10u);
+    EXPECT_EQ(subsystem.getStats(system.getEntity()).live, 10u) << "get_particle_stats' particle_count";
+    EXPECT_EQ(system.getParticleCount(), 10u) << "Lua's particleCount, and what an Action's controller waits for";
+    ParticleEffectLibrary::clear();
+}
+
+TEST(ParticleSubEmitters, BudgetShareCountsChildren){
+    // the first system's children hold 900 of a world budget of 1 000, and it comes first: the
+    // second, which wants 500, gets what is left
+    Family holder(parent(SubEmitterTrigger::Birth, 90));
+    holder.ticks(1);
+    ASSERT_EQ(holder.kid().count(), 900u);
+
+    ParticleEffectDocument other;
+    other.tickRate = 30;
+    other.maxParticles = 500;
+    other.main.startLifetime = MinMaxCurve(1.0f);
+    other.emission.rateOverTime = MinMaxCurve(500.0f);
+    EmitterRuntime wants;
+    wants.bind(compileOrFail(other));
+    wants.reset(3);
+    wants.play();
+    ASSERT_GE(wants.program()->capacityHint(), 500u);
+
+    ParticleWorld world;
+    world.setBudget(1000);
+    std::vector<EmitterTask> tasks(2);
+    tasks[0].runtime = &holder.runtime;
+    tasks[1].runtime = &wants;
+    tasks[0].priority = 1;
+    world.shareBudget(tasks);
+    EXPECT_EQ(tasks[0].budget, 910u);
+    EXPECT_EQ(tasks[1].budget, 90u);
+    EXPECT_LT(tasks[1].emissionScale, 1.0f);
+}
+
+TEST(ParticleSubEmitters, AChildIsNotCappedByItsParentsMaxParticles){
+    // Max Particles is each emitter's own: a parent of 10 does not hold its children to 10
+    ParticleEffectDocument d = parent(SubEmitterTrigger::Birth, 50);
+    d.maxParticles = 10;
+    Family f(d);
+    ParticleWorld world;
+    std::vector<EmitterTask> tasks(1);
+    tasks[0].runtime = &f.runtime;
+    tasks[0].dt = 1.0 / 30.0;
+    world.simulate(tasks);
+    ASSERT_EQ(f.runtime.count(), 10u);
+    EXPECT_EQ(f.kid().count(), 500u);
+}
+
+TEST(ParticleSubEmitters, SiblingsShareTheBudget){
+    // two entries that each ask for 500: a budget of 600 is shared, it is not given to each
+    ParticleEffectDocument d = parent(SubEmitterTrigger::Birth, 50);
+    d.subEmitters.push_back(d.subEmitters[0]);
+    Family f(d);
+    ParticleWorld world;
+    world.setBudget(600);
+    std::vector<EmitterTask> tasks(1);
+    tasks[0].runtime = &f.runtime;
+    tasks[0].dt = 1.0 / 30.0;
+    world.simulate(tasks);
+    ASSERT_EQ(f.runtime.count(), 10u);
+    ASSERT_EQ(f.runtime.childCount(), 2u);
+    EXPECT_EQ(f.runtime.count() + f.runtime.child(0)->count() + f.runtime.child(1)->count(), 600u);
+    EXPECT_FALSE(world.stats().overBudget);
+}
+
 TEST(ParticleSubEmitters, ChildrenRenderBetweenTheSameTicksAsTheirParent){
     // BF23 F1: the interpolation factor a frame leaves on its parent is the children's, this frame
     Family f(parent(SubEmitterTrigger::Birth, 1));
@@ -190,4 +296,12 @@ TEST(ParticleSubEmitters, ChildrenRenderBetweenTheSameTicksAsTheirParent){
     EXPECT_GT(f.runtime.interpolation(), 0.0f);
     EXPECT_LT(f.runtime.interpolation(), 1.0f);
     EXPECT_FLOAT_EQ(f.kid().interpolation(), f.runtime.interpolation());
+}
+
+TEST(ParticleSubEmitters, TotalsWalkTheTree){
+    Family f(parent(SubEmitterTrigger::Birth, 3));
+    f.ticks(1);
+    EXPECT_EQ(f.runtime.totalCount(), 40u);
+    EXPECT_EQ(f.runtime.totalCapacity(), f.runtime.capacity() + f.kid().capacity());
+    EXPECT_EQ(f.runtime.totalMaxParticles(), 1024u + 4096u);
 }

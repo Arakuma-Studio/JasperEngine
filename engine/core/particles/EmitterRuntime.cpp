@@ -373,6 +373,30 @@ bool EmitterRuntime::isEmitting() const{
     return playState != PlayState::Stopped && emitting;
 }
 
+uint32_t EmitterRuntime::totalCount() const{
+    uint32_t total = channels.count;
+    for (const auto& c : children){
+        if (c) total += c->totalCount();
+    }
+    return total;
+}
+
+uint32_t EmitterRuntime::totalCapacity() const{
+    uint32_t total = channels.capacity();
+    for (const auto& c : children){
+        if (c) total += c->totalCapacity();
+    }
+    return total;
+}
+
+uint32_t EmitterRuntime::totalMaxParticles() const{
+    uint32_t total = prog ? prog->maxParticles : 0u;
+    for (const auto& c : children){
+        if (c) total += c->totalMaxParticles();
+    }
+    return total;
+}
+
 bool EmitterRuntime::isAlive() const{
     if (channels.count > 0 || trailStore.usedRings() > 0)
         return true;
@@ -1442,6 +1466,8 @@ void EmitterRuntime::appearance(uint32_t i, float color[4], float& size, float& 
 }
 
 void EmitterRuntime::childrenStage(const EmitterInput& input){
+    // the tree shares its budget: what the parent and the earlier entries hold, a child has not
+    uint32_t held = channels.count;
     for (size_t c = 0; c < children.size(); c++){
         EmitterRuntime* child = children[c].get();
         if (!child || !child->prog)
@@ -1450,7 +1476,7 @@ void EmitterRuntime::childrenStage(const EmitterInput& input){
         EmitterInput childInput = input;
         childInput.transform = tickTransform;
         childInput.seed = child->seed;
-        childInput.budget = input.budget > channels.count ? input.budget - channels.count : 0u;
+        childInput.budget = input.budget > held ? input.budget - held : 0u;
         child->playState = PlayState::Playing;
         std::memcpy(child->prevFrame, tickTransform, sizeof(tickTransform));
         std::memcpy(child->curFrame, tickTransform, sizeof(tickTransform));
@@ -1472,6 +1498,7 @@ void EmitterRuntime::childrenStage(const EmitterInput& input){
             jobsOf(input).parallelFor(chunks, [child](size_t k){ child->updateChunk((uint32_t)k); });
         }
         child->finishTick(childInput);
+        held += child->totalCount();
     }
 }
 

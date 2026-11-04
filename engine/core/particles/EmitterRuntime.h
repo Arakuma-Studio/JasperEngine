@@ -200,6 +200,11 @@ namespace jasperengine { namespace particles {
         // ---- results
         uint32_t count() const { return channels.count; }
         uint32_t capacity() const { return channels.capacity(); }
+        // the same with its sub-emitter children's, down the tree: what stats and the budget count
+        uint32_t totalCount() const;
+        uint32_t totalCapacity() const;
+        // the most the tree may hold: each emitter is held to its own Max Particles
+        uint32_t totalMaxParticles() const;
         float interpolation() const { return alpha; }
         // the length of the last tick (the time between the previous and the current channels)
         float lastTickSeconds() const { return lastTick; }

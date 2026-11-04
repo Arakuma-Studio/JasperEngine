@@ -58,15 +58,17 @@ double particles::cullingStep(CullingMode mode, bool looping, bool visible, doub
 }
 
 void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
-    // what each wants: its steady-state population (or what it holds now)
+    // what each wants: its steady-state population (or what it holds now, children included);
+    // its budget covers its children, each emitter still held to its own Max Particles
+    const uint32_t total = worldBudget;
     uint64_t want = 0;
     for (EmitterTask& t : tasks){
         const ParticleProgram* prog = t.runtime ? t.runtime->program() : nullptr;
-        t.budget = prog ? std::min(prog->maxParticles, t.input.budget) : 0u;
+        t.budget = prog ? std::min({t.runtime->totalMaxParticles(), t.input.budget, total}) : 0u;
         t.emissionScale = t.input.emissionScale;
-        want += prog ? std::max<uint64_t>(t.runtime->count(), std::min(prog->capacityHint(), t.budget)) : 0u;
+        want += prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(prog->capacityHint(), t.budget)) : 0u;
     }
-    if (want <= worldBudget)
+    if (want <= total)
         return;
     // over the budget: the higher priorities first, within a priority the larger on screen;
     // each gets what it wants while the budget lasts, the rest a share of what is left
@@ -76,7 +78,7 @@ void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
         if (tasks[a].priority != tasks[b].priority) return tasks[a].priority > tasks[b].priority;
         return tasks[a].significance > tasks[b].significance;
     });
-    uint64_t remaining = worldBudget;
+    uint64_t remaining = total;
     size_t i = 0;
     while (i < order.size()){
         // one priority tier
@@ -86,7 +88,7 @@ void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
         while (j < order.size() && tasks[order[j]].priority == tasks[order[i]].priority){
             EmitterTask& t = tasks[order[j]];
             const ParticleProgram* prog = t.runtime->program();
-            tierWant += prog ? std::max<uint64_t>(t.runtime->count(), std::min(prog->capacityHint(), t.budget)) : 0u;
+            tierWant += prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(prog->capacityHint(), t.budget)) : 0u;
             tierSignificance += std::max(t.significance, 1e-4f);
             j++;
         }
@@ -95,7 +97,7 @@ void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
         for (size_t k = i; k < j; k++){
             EmitterTask& t = tasks[order[k]];
             const ParticleProgram* prog = t.runtime->program();
-            const uint64_t need = prog ? std::max<uint64_t>(t.runtime->count(), std::min(prog->capacityHint(), t.budget)) : 0u;
+            const uint64_t need = prog ? std::max<uint64_t>(t.runtime->totalCount(), std::min(prog->capacityHint(), t.budget)) : 0u;
             uint64_t share;
             if (fill >= 1.0){
                 share = need;
@@ -163,10 +165,10 @@ void ParticleWorld::simulate(std::vector<EmitterTask>& tasks, jobs::JobSystem* j
     for (EmitterTask& t : tasks){
         if (t.runtime){
             t.runtime->endFrame();
-            lastStats.live += t.runtime->count();
+            lastStats.live += t.runtime->totalCount();
         }
     }
-    lastStats.overBudget = lastStats.live > worldBudget;
+    lastStats.overBudget = lastStats.live > lastStats.budget;
     lastStats.simulateMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
 }
 

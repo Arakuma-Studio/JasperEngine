@@ -358,7 +358,7 @@ bool ParticleSubsystem::isEmitting(Entity entity){
 
 uint32_t ParticleSubsystem::getParticleCount(Entity entity){
     ParticleSystemState* state = getState(entity);
-    return state ? state->runtime.count() : 0u;
+    return state ? state->runtime.totalCount() : 0u;
 }
 
 double ParticleSubsystem::getTime(Entity entity){
@@ -423,8 +423,8 @@ ParticleSystemStats ParticleSubsystem::getStats(Entity entity){
         return stats;
     const EmitterRuntime& r = state->runtime;
     stats.valid = true;
-    stats.live = r.count();
-    stats.capacity = r.capacity();
+    stats.live = r.totalCount();
+    stats.capacity = r.totalCapacity();
     stats.budget = state->budget;
     stats.emissionScale = state->emissionScale;
     stats.ticks = state->ticks;
@@ -908,7 +908,7 @@ void ParticleSubsystem::update(double dt){
         // a camera saw it last frame (a new system counts as seen until it has bounds; so does
         // an empty one: nothing of it is drawn to be seen, and its old bounds would hold it
         // paused for good once stopped and cleared)
-        const bool visible = inRange && (!state.hasBounds || state.runtime.count() == 0 || frame <= state.visibleFrame + 1);
+        const bool visible = inRange && (!state.hasBounds || state.runtime.totalCount() == 0 || frame <= state.visibleFrame + 1);
         uint32_t maxTicks = kMaxTicksPerFrame;
         // Unscaled Time (the effect's or the component's): Time.timeScale does not slow it (UI,
         // pause menus)
@@ -950,7 +950,7 @@ void ParticleSubsystem::update(double dt){
         state.budget = tasks[t].budget;
         state.emissionScale = tasks[t].emissionScale;
         state.simulateMicros = perEmitter;
-        frameAlive += state.runtime.count();
+        frameAlive += state.runtime.totalCount();
         updateBounds(state);
         dispatchEvents(particles);
     }
