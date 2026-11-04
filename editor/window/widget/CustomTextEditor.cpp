@@ -424,6 +424,8 @@ void CustomTextEditor::addEngineAPISuggestions() {
     for (const auto& sym : apiSymbols) {
         if (isEngineApiConstructorSymbol(sym)) continue;
         if (isLua && sym.kind && std::string(sym.kind) == "CppMethod") continue;
+        // and a Lua-only one (Engine.deltatime: Engine::getDeltatime() in C++) does not compile
+        if (!isLua && sym.luaOnly) continue;
 
         SuggestionKind sk = SuggestionKind::Variable;
         auto it = kindMap.find(sym.kind);
