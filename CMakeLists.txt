@@ -1315,6 +1315,8 @@ endif()
 include(${EDITOR_DIR}/navigation/NavigationEditorSources.cmake)
 # the editor tools (S27): colour picker, curve and gradient fields, Project Hub, Recorder
 include(${EDITOR_DIR}/EditorToolsSources.cmake)
+# Title Art (S80-S87): its own globbed lists, so the title specs add editor files without meeting here
+include(${EDITOR_DIR}/titleart/TitleArtEditorSources.cmake)
 
 # The engine build C++ script libraries must be made for (S23 toolchain fingerprint): the
 # editor version, on this one file (as on the engine's ToolchainFingerprint.cpp)

@@ -1895,3 +1895,41 @@ rest of S82 lands in 6B.
    prebakes at export instead).
 6. **Reconciled: the light and max blend modes are S80's** (they were S83 R12's conditional
    addition), so wave 6B has them from S80's headers.
+7. **Implementation (foundation): the document is its schema-normalized JSON tree.** `TitleArtDoc`
+   (`engine/core/titleart/TitleArtDoc.h`) holds the normalized `ordered_json` tree instead of one
+   C++ struct per §6.1 object. `TitleArtSchema` is the only description of the members: normalize
+   fills, types, clamps and orders every object by it, the writer only formats, `TitleArtOps` and
+   exposed targets address the tree by the §6.2 paths, and `TitleArtHash` takes each member's
+   cache scope from it (`SchemaMember::hash`). So a member a later spec registers (S81 `runtime`,
+   S85 `stretch`, S86 `style_3d`, S87's sparse `translations`) gets defaults, clamping, canonical
+   writing, validation, did-you-mean and hashing from one table row, with no struct, reader or
+   writer to extend. Consumers read typed values through the decoders of `TitleArtDoc.h` (Color,
+   Vec2, Gradient, Curve, AssetRef, Transform) and `ParamValues`.
+8. **Implementation: names.** The problem type is `TitleProblem` (S85's name; §6.3 said `Problem`).
+   `FieldOverride` lives in `TitleArtDoc.h` and `applyFieldOverrides` in `TitleArtIO.h`, beside the
+   field API (`setTitleArtField`, `expandFieldShorthand`). `TitleTextLayout` is a class (S85 passes
+   it by reference) whose `layout(layer, overrides)` returns `LaidOutText`; §6.6's public geometry
+   queries (`outlines`, `rimBands`, `contentBounds`, `reachBounds`, the element masks) are on
+   `geometry::TitleGeometry` (`geometry/TitleGeometry.h`); `text/GlyphOutlines.*` stays the
+   module's internal hb-draw reader. The step list S86 appends to is `TitleStepList`
+   (`render/TitleRenderJob.h`).
+9. **Implementation: `TitlePreviewQueue`.** Keys are strings (S82's SHA-1 and S84's SHA-256 keys
+   both fit; equal keys share one job), a request names an owner (`cancelAll(owner)`, S80's form;
+   S82's argument-less sketch is that with the window's owner id) and a factory, so device loss
+   re-requests every job from it; `result(id)` returns the finished job, whose type the submitter
+   knows (its texture), instead of a `texture(id)`. An over-budget step runs alone and the queue
+   then rests ceil(cost / budget) − 1 frames (S82 R67).
+10. **Implementation: checks and schema metadata.** `CheckDef::kind` also has `document_pixels` and
+    `estimate` (S85 §6.7.2), and a pixel check without a renderer reports `SKIP` (check --titles
+    runs headless). `SchemaMember` also carries `glyphSafety` (S81 R31 sets it per style member).
+11. **Implementation: the vendored libraries wire in with their first user.** The foundation adds
+    the `JASPERENGINE_TITLE_ART` option, the module's globbed source lists
+    (`engine/core/titleart/TitleArtSources.cmake`, `editor/titleart/TitleArtEditorSources.cmake`)
+    and the compile definition; ThorVG for `JASPERENGINE_TITLE_ART`, Clipper2, dropping
+    `HB_NO_DRAW` and their `engine/notices.json` rows land with the geometry and text code that
+    uses them, so no build links a library nothing calls.
+12. **Implementation: later specs' ops and imports register.** `TitleArtOps::registerOp(name,
+    handler)` gives a reserved name (or a new one) its handler, run inside S80's batch with the
+    same `TitleOpContext` helpers and all-or-nothing rule; `registerCreateImporter(extension, fn)`
+    serves `edit_title {create: {from}}`. `add_effect`'s optional `layer` means the only top-level
+    layer of a one-layer document.

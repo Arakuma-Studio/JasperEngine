@@ -40,7 +40,7 @@ namespace jasperengine::editor{
 
         inline static bool isFontFile(const std::string& path) {
              static const std::unordered_set<std::string> fontExtensions = {
-                ".ttf", ".otf"
+                ".ttf", ".otf", ".ttc"
             };
 
             const std::string ext = fileExtension(path);
@@ -204,6 +204,11 @@ namespace jasperengine::editor{
             return fileExtension(path) == ".vat";
         }
 
+        // Title Art documents (S80); their baked PNGs ("logo.titleart.png") are images
+        inline static bool isTitleArtFile(const std::string& path) {
+            return fileExtension(path) == ".titleart";
+        }
+
         // the GUID-tracked JSON assets of the animation system: clips, Vertex Animations, Avatar
         // Masks, Animator Controllers (their references follow by GUID: remapClipFilePath)
         inline static bool isGuidJsonAssetFile(const std::string& path) {
@@ -222,7 +227,7 @@ namespace jasperengine::editor{
             return isImageFile(path) || isModelFile(path) || isFontFile(path) || isAudioFile(path) ||
                    isHtmlFile(path) || isCssFile(path) || isColorLutFile(path) || isParticleEffectFile(path) || isPoseAnimationFile(path) ||
                    isAnimationClipFile(path) || isAnimatorAssetFile(path) ||
-                   isShakePresetFile(path);
+                   isShakePresetFile(path) || isTitleArtFile(path);
         }
 
         inline static bool isScriptFile(const std::string& path) {
