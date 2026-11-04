@@ -6,6 +6,7 @@ editor/cli/CommandLine.cpp :: std::ofstream out(log, std::ios::app); :: hook log
 
 # not a document
 editor/AppSettings.cpp :: std::ofstream f(probe); :: write probe of the settings directory, removed at once
+editor/Project.cpp :: std::ofstream probe(file, std::ios::binary | std::ios::app); :: asset-root preflight: opens a file the change will rewrite for appending to learn it is writable, writes nothing
 editor/htmlui/HttpClient.cpp :: std::ofstream out(config, std::ios::binary); :: private temporary curl config, removed after the request
 editor/vcs/SvnProvider.cpp :: std::ofstream out(file, std::ios::binary | std::ios::trunc); :: private temporary --targets list for one svn call, removed after it
 editor/vcs/SvnProvider.cpp :: std::ofstream out(messageFile, std::ios::binary | std::ios::trunc); :: private temporary commit message file for svn commit -F, removed after it

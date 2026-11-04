@@ -33,6 +33,9 @@ namespace jasperengine::editor {
         Project* projectPtr = nullptr;
         ConsoleWindow* consoleWindowPtr = nullptr;
         bool playing = false;
+        // what a setting did beyond its value (MCP set_project_settings: the asset roots' relocation
+        // under "relocation"); null when nobody reads it
+        mcp::Json* report = nullptr;
 
         Project* project() const { return projectPtr; }
         ConsoleWindow* consoleWindow() const { return consoleWindowPtr; }
