@@ -315,6 +315,15 @@ namespace jasperengine{
         void setPhysicalLightEV100(float ev100);
         float getPhysicalLightEV100() const;
 
+        // capsule shadows (spec S57 R2): the lit variants take them while on (they reload);
+        // intensity 0..1, softness 0..2 (the penumbra's widening per metre along the light)
+        void setCapsuleShadowsEnabled(bool enabled);
+        bool isCapsuleShadowsEnabled() const;
+        void setCapsuleShadowIntensity(float intensity);
+        float getCapsuleShadowIntensity() const;
+        void setCapsuleShadowSoftness(float softness);
+        float getCapsuleShadowSoftness() const;
+
         void setAmbientLight2D(float intensity, Vector3 color);
         void setAmbientLight2D(float intensity);
         void setAmbientLight2D(Vector3 color);

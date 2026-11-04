@@ -1669,6 +1669,11 @@ set(JASPERENGINE_SRCS
     core/render/shadow/ShadowSlotPlanner.cpp
     core/render/shadow/ShadowTiers.cpp
     core/render/shadow/ShadowTypes.cpp
+    core/render/CapsuleShadows.cpp
+    core/render/ContactShadows.cpp
+    core/render/LightingTiers.cpp
+    core/render/OrderIndependentTransparency.cpp
+    core/render/TiledLights.cpp
     core/script/AsyncOwner.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
@@ -1744,6 +1749,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemLighting.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp

@@ -85,7 +85,9 @@ float getLightConeAttenuation(Light light, vec3 pointToLight)
 
 int getSpotMaskTile(int lightIndex)
 {
-    #ifdef LIGHTS_SPOT_MASKS
+    #if defined(LIGHTS_SPOT_MASKS) && defined(LIGHTS_TILED)
+        return (int(tiledLightsTexel(tiledLightRecord(lightIndex) + 3).w) >> 9) & 7;
+    #elif defined(LIGHTS_SPOT_MASKS)
         return (int(objectLights.spot_shadow[lightIndex].w) >> 9) & 7;
     #else
         return (int(lighting.eyePos.w) >> (3 * lightIndex)) & 7;

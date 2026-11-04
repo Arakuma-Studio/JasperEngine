@@ -138,6 +138,7 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 

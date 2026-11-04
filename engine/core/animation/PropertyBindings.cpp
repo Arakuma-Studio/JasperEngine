@@ -51,6 +51,7 @@
 #include "component/SafeAreaComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
@@ -624,6 +625,7 @@ namespace {
         rows.push_back(enabledRow<TextEffectComponent>("texteffect"));
         rows.push_back(enabledRow<VideoPlayerComponent>("videoplayer"));
         rows.push_back(enabledRow<SafeAreaComponent>("safearea"));
+        rows.push_back(enabledRow<CapsuleShadowCasterComponent>("capsuleshadowcaster"));
         // oe-port's components with the Inspector's enabled checkbox (their Lua setters, where they
         // have one, only set the flag)
         rows.push_back(enabledRow<ForceFieldComponent>("forcefield"));

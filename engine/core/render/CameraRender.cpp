@@ -39,6 +39,10 @@ void CameraRender::setColorActions(LoadAction load, StoreAction store, Vector4 c
     backend.setColorActions(load, store, clearColor);
 }
 
+void CameraRender::setColorActions(int attachment, LoadAction load, StoreAction store, Vector4 clearColor){
+    backend.setColorActions(attachment, load, store, clearColor);
+}
+
 void CameraRender::setDepthStencilActions(LoadAction load, StoreAction store, float clearDepth, uint8_t clearStencil){
     backend.setDepthStencilActions(load, store, clearDepth, clearStencil);
 }

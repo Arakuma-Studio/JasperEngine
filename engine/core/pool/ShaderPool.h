@@ -166,6 +166,10 @@ namespace jasperengine{
         // HAS_VAT_BONES) of MESH, DEPTH and GBUFFER, 0 for another type; getVatProperties: both
         static uint64_t getVatProperty(ShaderType shaderType, bool bones);
         static uint64_t getVatProperties(ShaderType shaderType);
+        // S57's MESH bits: 'Til' (Light Mode Tiled), 'Cap' (capsule shadows), 'Cts' (contact
+        // shadows) and 'Oit' (an alpha-blended submesh's OIT accumulation render)
+        enum class LightingFeature { TILED_LIGHTS, CAPSULE_SHADOWS, CONTACT_SHADOWS, OIT };
+        static uint64_t getLightingProperty(LightingFeature feature);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint64_t getPropertiesFromKey(ShaderKey key);

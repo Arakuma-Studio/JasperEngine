@@ -34,6 +34,8 @@ namespace jasperengine{
         TextureFormatSupport textureFormats;
         bool renderRG16F = false, blendRG16F = false, filterRG16F = false;
         bool renderR16F = false, blendR16F = false, filterR16F = false;
+        // RGBA16F and R16F colour attachments can be multisampled (the OIT targets under MSAA)
+        bool msaaRGBA16F = false, msaaR16F = false;
         // the largest side of a 2D texture (0: unknown)
         int maxTextureSize2D = 0;
     };

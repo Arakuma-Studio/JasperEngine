@@ -23,12 +23,12 @@ namespace jasperengine{
         // framebuffers use a single color attachment across 6 faces.
         sg_view colorAttachmentViews[MAX_COLOR_ATTACHMENTS][6];
         sg_view depthAttachmentView;
-        // MSAA (createFramebuffer(FramebufferDesc)): colorTexture[0] is the resolve image
-        sg_view resolveAttachmentView;
+        // MSAA (createFramebuffer(FramebufferDesc)): colorTexture[a] is attachment a's resolve image
+        sg_view resolveAttachmentViews[MAX_COLOR_ATTACHMENTS];
 
         TextureRender colorTexture[MAX_COLOR_ATTACHMENTS];
         TextureRender depthTexture;
-        TextureRender msaaColorTexture;
+        TextureRender msaaColorTexture[MAX_COLOR_ATTACHMENTS];
 
         int numColorAttachments;
         int sampleCount;

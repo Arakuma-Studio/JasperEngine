@@ -25,8 +25,12 @@
 #endif
 
 #if defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
-    defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR)
+    defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HAIR)
     #define PBR_EXT_LOBES
+#endif
+
+#ifdef PBR_HAIR
+    #include "includes/hair.glsl"
 #endif
 
 #ifdef PBR_IRIDESCENCE
@@ -125,6 +129,15 @@
         #define pbrIridescenceMap() pbrExtMap1()
     #else
         #define pbrIridescenceMap() pbrExtMap2()
+    #endif
+#endif
+#if defined(PBR_HAIR_MAP) && defined(PBR_EXT_MAP0)
+    #if PBR_SLOT_HAIR == 0
+        #define pbrHairMap() pbrExtMap0()
+    #elif PBR_SLOT_HAIR == 1
+        #define pbrHairMap() pbrExtMap1()
+    #else
+        #define pbrHairMap() pbrExtMap2()
     #endif
 #endif
 #if defined(PBR_CLEARCOAT_NORMAL_MAP) && defined(PBR_EXT_MAP0)
@@ -237,6 +250,10 @@ struct PbrExtInfo{
     float thickness;
     vec3 attenuationColor;
     float attenuationDistance;   // 0: no absorption
+
+    #ifdef PBR_HAIR
+        vec3 hairT;              // the strand's direction (unit, along the surface)
+    #endif
 };
 
 PbrExtInfo pbrExtInfo;
@@ -364,8 +381,42 @@ MaterialInfo pbrExtSurface(MaterialInfo info, NormalInfo normalInfo){
         pbrExtInfo.transmissionFactor = clamp(pbrExtInfo.transmissionFactor, 0.0, 1.0);
     #endif
 
+    #ifdef PBR_HAIR
+        // the strand: the tangent turned by the rotation (hair2.zw: its cosine and sine), or the
+        // flow map's tangent-space direction (RG, [-1, 1] stored as [0, 1])
+        vec2 strand = pbrExt.hair2.zw;
+        #ifdef pbrHairMap
+            vec2 flow = pbrHairMap().rg * 2.0 - 1.0;
+            if (dot(flow, flow) > 1e-6)
+                strand = normalize(vec2(flow.x * strand.x - flow.y * strand.y, flow.x * strand.y + flow.y * strand.x));
+        #endif
+        #if defined(HAS_TANGENTS) || defined(HAS_UV_SET1)
+            vec3 hairTangent = normalInfo.t;
+            vec3 hairBitangent = normalInfo.b;
+        #else
+            vec3 hairHelper = abs(normalInfo.n.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+            vec3 hairTangent = normalize(cross(hairHelper, normalInfo.n));
+            vec3 hairBitangent = cross(normalInfo.n, hairTangent);
+        #endif
+        pbrExtInfo.hairT = normalize(hairTangent * strand.x + hairBitangent * strand.y);
+    #endif
+
     return info;
 }
+
+#ifdef PBR_HAIR
+    // one pixel light on the strands (includes/hair.glsl): hair0 rgb the primary highlight's
+    // colour, w its shift; hair1 the secondary's (tinted by the albedo); hair2 xy their exponents
+    void pbrExtHairDirect(MaterialInfo info, vec3 intensity, vec3 n, vec3 l, vec3 h, inout vec3 diffuse, inout vec3 specular){
+        float wrapped = clamp(mix(0.25, 1.0, dot(n, l)), 0.0, 1.0);
+        diffuse += intensity * wrapped * (info.albedoColor / M_PI);
+        vec3 t1 = hairShiftTangent(pbrExtInfo.hairT, n, pbrExt.hair0.w);
+        vec3 t2 = hairShiftTangent(pbrExtInfo.hairT, n, pbrExt.hair1.w);
+        vec3 highlights = pbrExt.hair0.rgb * hairStrandSpecular(t1, h, pbrExt.hair2.x) +
+                          pbrExt.hair1.rgb * info.baseColor * hairStrandSpecular(t2, h, pbrExt.hair2.y);
+        specular += intensity * wrapped * highlights;
+    }
+#endif
 
 // f90 of the base with KHR_materials_specular (after the base's own)
 #ifdef PBR_SPECULAR
@@ -431,6 +482,11 @@ vec3 pbrExtFresnel(MaterialInfo info, float VdotH){
 // specular sums and the lobes' own
 void pbrExtDirect(MaterialInfo info, vec3 intensity, vec3 pointToLight, vec3 n, vec3 v, vec3 l, vec3 h,
                   float NdotL, float NdotV, float NdotH, float VdotH, inout vec3 diffuse, inout vec3 specular){
+    #ifdef PBR_HAIR
+        // the Hair shading model lights strands, not the base's microfacets (includes/hair.glsl)
+        pbrExtHairDirect(info, intensity, n, l, h, diffuse, specular);
+        return;
+    #endif
     vec3 F = pbrExtFresnel(info, VdotH);
     diffuse += intensity * NdotL * (1.0 - pbrExtInfo.specularWeight * F) * (info.albedoColor / M_PI);
 

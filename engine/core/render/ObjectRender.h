@@ -63,6 +63,16 @@ namespace jasperengine {
         // Bindings may be swapped (replaceVertexBuffer, setIndexBuffer, addTexture) between
         // beginDraw and draw. Not mixed with endLoad on the same object
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
+        // Another variant of source's shader (the same vertex inputs, textures and blocks) drawn
+        // on source's vertex layout, bindings and render state: the OIT accumulation render of a
+        // submesh (RenderSystem). Creates no pipeline; beginAccumulationDraw makes its own
+        bool loadAlike(const ObjectRender& source, ShaderRender* shader);
+        // source's bindings as they are now (its material textures after a rebind)
+        void shareBindings(const ObjectRender& source);
+        // the weighted blended OIT accumulation draw: colorType's (PIP_RTT, PIP_MSAA) pipeline into
+        // RGBA16F and R16F targets, one blend state for both, no depth write (mirrored: the face
+        // winding reversed, as beginDraw's)
+        bool beginAccumulationDraw(PipelineType colorType, bool mirrored = false);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face, built on
         // first use and released by destroy() (the editor's Scene view debug toggle; ignored
