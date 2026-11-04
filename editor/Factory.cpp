@@ -1948,6 +1948,7 @@ std::string editor::Factory::createRigidbody2DComponent(int indentSpaces, Entity
         if (collider.receiver != defCollider.receiver) {
             code << ind << target << ".receiver = " << formatEntity(collider.receiver, entityVarNames) << ";\n";
         }
+        if (!collider.slice.empty()) code << ind << target << ".slice = " << formatString(collider.slice) << ";\n";
     }
 
     if (!body.enabled) code << ind << "rigidbody2d.enabled = false;\n";

@@ -898,4 +898,37 @@ regenerated; the cooked scene format carries them through the generated field ta
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+Recorded by the implementation (`feature/s44-aseprite-import`):
+
+- **Old palette chunks.** The 6-bit palette chunk is `0x000B` (Aseprite's decoder and its
+  `FLI_COLOR`); §4/R1 call it `0x0011`. Both are read. Its 6-bit values are widened by bit
+  replication (`(v << 2) | (v >> 4)`), as Aseprite does, not by `v × 255 / 63` (10 values differ by 1).
+- **Hue and Saturation.** The default is Aseprite's current (1.3.15+) `set_sat`; the asefile
+  goldens and `blend_saturation_bug` predate that fix, so `RenderOptions::legacyHsl` (CLI
+  `--legacy-hsl`) reproduces 1.3.12 and earlier, and those goldens are checked with it.
+- **Groups.** `RenderOptions::groups` (`FromFile`, `Flatten`, `Compose`): Aseprite's own CLI
+  `--sheet` export never composes group opacity or blend, so goldens made with it use `Flatten`;
+  the importer uses `FromFile` (what the artist saw).
+- **Guide.** No `## Pixel art` digest section: the upstream MCP rules (merged into this branch)
+  give an area one "Other areas" entry; S44's is "sprites and .aseprite files (set_sprite_frames
+  sheet): jasper://docs/sprites", with eval case `bad_aseprite_by_hand`.
+- **AC12's `create_entity` from the asset** is `set_sprite_frames {create, sheet}`: the same code
+  as the drop (`AsepriteSpriteSetup`), so no new `create_entity` parameter. It names the
+  GameObject from `create.name`, and gives no layer children (the drop does both).
+- **`playTag`** is stepped by `MeshSystem` on the Sprite's own runtime fields with the sheet's
+  durations instead of a Sprite Animation action entity: a Lua `Sprite` wrapper owns its action's
+  entity, so a tag would stop with the wrapper. Behaviour is R38's (direction, repeat, speed, no
+  128-frame limit, no clip events).
+- **Pixels per unit.** S41 is not on main: `pixelsPerUnit: project` resolves to 1 (R11).
+- **Colours.** No `Rgba8`/OKLab types (S43's): `PixelImage` uses `PixelRgba` (`std::array<uint8_t, 4>`);
+  overloads for S43's `Rgba8` are left to whichever lands second.
+- **Format numbers.** Scene 7 → 8 and prefab 8 → 9 (identity migrations, fixture
+  `editor/tests/fixtures/migrations/scene-v7-sprites.scene`, `SpriteSheetMigrationTest`).
+- **Compression `project`.** Pages are added to the export's S14 texture cook keyed by their
+  `je-imported/` path (sprite type); `none` ships the PNG pages.
+- **Compat gate.** `tools/pixelart/aseprite_compat.py` is not written: no Aseprite install was
+  available to develop or run it against. Features without a real-Aseprite golden are listed in
+  `editor/tests/fixtures/aseprite/README.md` and `docs/aseprite.md`.
+- **Sprite Preview.** Compare at 1x draws both frames at the preview's integer zoom (S41's Game
+  view scale is not on main); the background is a checkerboard or a picked colour, not the
+  scene's.

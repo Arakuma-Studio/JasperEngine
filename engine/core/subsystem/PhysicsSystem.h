@@ -291,6 +291,8 @@ namespace jasperengine{
 		// Rebuilds the dirty colliders of the body (all of them with `all`: a new body or a
 		// changed scale), then its mass once
 		bool syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all);
+		// the colliders following a sprite slice take its box on the shown frame (S44 R17)
+		void updateSliceColliders2D(Entity entity, Rigidbody2DComponent& body);
 		void createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
 		// true when the pieces were made again (not from the cache); logs the problems when `log`
 		bool computeCollider2DPieces(Collider2D& collider, const Vector2& entityScale, bool log, size_t index, const std::string& entityName);

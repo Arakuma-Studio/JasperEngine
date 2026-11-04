@@ -122,9 +122,9 @@ namespace jasperengine::editor::pixelart::aseprite {
         int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
 
         // a frame index sequence as one property track of step keys at the cumulative durations
-        anim::ClipTrackData frameTrack(const std::string& path, const std::vector<int>& sequence, const std::vector<int>& frameIndex,
+        ClipTrackData frameTrack(const std::string& path, const std::vector<int>& sequence, const std::vector<int>& frameIndex,
                                        const std::vector<uint32_t>& durations) {
-            anim::ClipTrackData track;
+            ClipTrackData track;
             track.path = path;
             track.channel = ClipChannel::Property;
             track.component = "sprite";
@@ -846,7 +846,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             for (size_t c = 0; c < sources.size(); c++) {
                 const Source& src = sources[c];
                 const std::string key = src.tag < 0 ? subAssetIndexKey(SubAssetKind::Animation, 0) : tagKeys[static_cast<size_t>(src.tag)];
-                anim::ClipData clip;
+                ClipData clip;
                 int g = 0;
                 uint64_t total = 0;
                 for (int f : src.sequence) {
@@ -875,7 +875,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                 for (int f : src.sequence) {
                     for (const Pending& e : events) {
                         if (e.frame != f) continue;
-                        anim::ClipEventData ev;
+                        ClipEventData ev;
                         ev.time = static_cast<float>(static_cast<double>(ms) / 1000.0);
                         ev.function = e.function;
                         for (const auto& a : e.args) {

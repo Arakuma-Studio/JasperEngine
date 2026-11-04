@@ -24,6 +24,8 @@
 #include "math/Vector2.h"
 #include "sprite/SpriteSheet.h"
 
+#include <string_view>
+
 namespace jasperengine{
 
     struct JASPERENGINE_API SpriteFrameQuad{
@@ -51,6 +53,16 @@ namespace jasperengine{
     };
 
     JASPERENGINE_API SpriteFrameQuad spriteFrameQuad(const SpriteFrame& frame, const SpriteFrameGeometryInput& input);
+
+    // a rect in the frame's source pixels (y down: a slice's box) in the sprite's local units,
+    // placed as the frame's pixels are drawn: x, y the corner with the lowest coordinates
+    JASPERENGINE_API Rect spriteFrameLocalRect(const SpriteFrame& frame, const SpriteFrameGeometryInput& input, const Rect& pixels);
+
+    // a sheet sprite's slice on its shown frame in local units (Sprite:getSlice, slice colliders):
+    // its box, centre (zero without one) and pivot (the box's corner without one); false when the
+    // sheet has no such slice or it is hidden on that frame
+    JASPERENGINE_API bool spriteSliceLocalRect(const SpriteComponent& sprite, const SpriteSheetData& sheet, bool uiCamera,
+                                               std::string_view name, Rect& bounds, Rect* center = nullptr, Vector2* pivot = nullptr);
 
     // a preset's pivot in source pixels, y up from the bottom-left (createSprite's pivotPos);
     // FRAME: the frame's pivot converted to y up

@@ -1151,6 +1151,10 @@ YAML::Node editor::Stream::encodeRigidbody2DComponent(const Rigidbody2DComponent
         if (collider.receiver != NULL_ENTITY) {
             shapeNode["receiver"] = collider.receiver;
         }
+        // S44: written only when set (an older editor keeps it as unknown data)
+        if (!collider.slice.empty()) {
+            shapeNode["slice"] = collider.slice;
+        }
 
         YAML::Node pointsNode;
         for (const Vector2& point : collider.points) {
@@ -1238,6 +1242,8 @@ Rigidbody2DComponent editor::Stream::decodeRigidbody2DComponent(const YAML::Node
             if (shapeNode["maskBits"]) collider.maskBits = YamlNumbers::as<uint16_t>(shapeNode["maskBits"]);
             if (shapeNode["groupIndex"]) collider.groupIndex = YamlNumbers::as<int16_t>(shapeNode["groupIndex"]);
             collider.receiver = shapeNode["receiver"] ? YamlNumbers::as<Entity>(shapeNode["receiver"]) : NULL_ENTITY;
+            collider.slice = shapeNode["slice"] ? shapeNode["slice"].as<std::string>() : std::string();
+            collider.sliceVisible = false;
 
             // "vertices": files of before
             const YAML::Node pointsNode = shapeNode["points"] ? shapeNode["points"] : shapeNode["vertices"];

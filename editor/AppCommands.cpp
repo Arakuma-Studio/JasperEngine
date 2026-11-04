@@ -16,6 +16,7 @@
 #include "pose/PoseViewportLogic.h"
 #include "window/AnimationWindowClip.h"
 #include "window/PoseAnimationWindow.h"
+#include "window/SpritePreviewWindow.h"
 #include "navigation/NavigationEditor.h"
 #include "sceneview/SceneViewController.h"
 #include "shortcuts/DefaultCommands.h"
@@ -337,6 +338,7 @@ void editor::App::registerCommands(){
     // ---- Animation window (clip mode) and Pose Animation window: their own commands
     AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
     poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
+    spritePreviewWindow->bindCommands(catalog, [this]() { return spritePreviewWindow->isFocused(); });
 
     ShortcutOverrides::load(ShortcutOverrides::defaultFile(), catalog);
 }
@@ -409,6 +411,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
     if (clipWindowTakesKeys()) state.panels.push_back(ShortcutContext::Animation);
     if (poseKeysActive()) state.panels.push_back(ShortcutContext::PoseAnimation);
+    if (spritePreviewWindow->isFocused()) state.panels.push_back(ShortcutContext::SpritePreview);
     return state;
 }
 

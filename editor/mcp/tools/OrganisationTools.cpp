@@ -793,10 +793,10 @@ void registerOrganisationTools(McpRegistry& registry) {
         tool.group = GROUP;
         tool.description =
             "The command catalog: {id, group, name, context, chords, default_chords, overridden, read_only, menu_path, "
-            "menu_shortcut, conflicts, shadowed_by}. Contexts: global, editor, scene_view, hierarchy, project, console, animation, pose_animation. Ctrl means Cmd on macOS.";
+            "menu_shortcut, conflicts, shadowed_by}. Contexts: global, editor, scene_view, hierarchy, project, console, animation, pose_animation, sprite_preview. Ctrl means Cmd on macOS.";
         tool.inputSchema = object({
             {"group", string("File, Edit, Tools, Scene View...")},
-            {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console", "animation", "pose_animation"})},
+            {"context", stringEnum("", {"global", "editor", "scene_view", "hierarchy", "project", "console", "animation", "pose_animation", "sprite_preview"})},
             {"conflicts_only", withDefault(boolean(""), false)}
         });
         tool.annotations.readOnly = true;

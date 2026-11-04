@@ -48,6 +48,9 @@
 #include "component/UIDocumentComponent.h"
 #include "texture/CookedTextures.h"
 #include "texture/TextureExport.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
+#include "asset/ImportedAssets.h"
+#include "sprite/SpriteSheetPool.h"
 #include "util/StringUtils.h"
 
 #include "stb_image.h"
@@ -2699,7 +2702,111 @@ bool editor::Exporter::writeAssetMap() {
     return true;
 }
 
+bool editor::Exporter::gatherImportedAssets() {
+    importedRecords.clear();
+    using pixelart::aseprite::AsepriteImporter;
+    using pixelart::aseprite::ImportRecord;
+    // the importer belongs to the main thread: asked there until every file's import is in
+    std::vector<std::string> paths;
+    bool first = true;
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(10);
+    for (;;) {
+        std::promise<size_t> asked;
+        auto future = asked.get_future();
+        editor::getEditorHost().enqueueMainThreadTask([this, &paths, &asked, first]() {
+            AsepriteImporter& importer = AsepriteImporter::get();
+            if (importer.getProject() != project) importer.attach(project);
+            if (first) {
+                project->getAssetDatabase().forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+                    if (info.type == AssetType::AsepriteSprite) paths.push_back((project->getProjectPath() / info.path).string());
+                });
+                for (const std::string& path : paths) {
+                    if (!importer.record(path) && !importer.isPending(path)) importer.reimport(path);
+                }
+            }
+            importer.update();
+            size_t pending = 0;
+            for (const std::string& path : paths) pending += importer.isPending(path) ? 1 : 0;
+            if (pending == 0) {
+                for (const std::string& path : paths) importedRecords.push_back(importer.record(path));
+            }
+            asked.set_value(pending);
+        });
+        const size_t pending = future.get();
+        first = false;
+        if (pending == 0) break;
+        if (isCancelled()) {
+            setError("Build cancelled");
+            return false;
+        }
+        if (std::chrono::steady_clock::now() > deadline) {
+            setError("Cannot export: " + std::to_string(pending) + " Aseprite file(s) are still importing");
+            return false;
+        }
+        setDetail("Importing " + std::to_string(pending) + " Aseprite file(s)");
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+    for (size_t i = 0; i < importedRecords.size(); i++) {
+        const std::shared_ptr<const ImportRecord>& record = importedRecords[i];
+        if (!record || !record->ok) {
+            const std::string rel = editor::FileUtils::pathToUtf8(fs::path(paths[i]).lexically_relative(project->getProjectPath()));
+            setError("Cannot export: " + rel + " could not be imported" +
+                     (record ? ": " + record->error.kind + ": " + record->error.message : std::string()));
+            return false;
+        }
+    }
+    return true;
+}
+
+namespace {
+    // "je-imported/<k[0:2]>/<k>/": where an import's files go in an export (the sheet records name
+    // their pages so)
+    std::string exportedImportDir(const jasperengine::editor::pixelart::aseprite::ImportRecord& record) {
+        return std::string(jasperengine::ImportedAssets::kImportedDir) + "/" + record.key.substr(0, 2) + "/" + record.key + "/";
+    }
+}
+
+bool editor::Exporter::copyImportedAssets(const fs::path& assetsDst) {
+    std::error_code ec;
+    fs::remove_all(assetsDst / ImportedAssets::kImportedDir, ec);
+    if (importedRecords.empty()) return true;
+    nlohmann::json files = nlohmann::json::object();
+    auto ship = [&](const fs::path& from, const std::string& to) {
+        const fs::path dest = assetsDst / editor::FileUtils::pathFromUtf8(to);
+        fs::create_directories(dest.parent_path(), ec);
+        fs::copy_file(from, dest, fs::copy_options::overwrite_existing, ec);
+        if (ec) setError("Failed to copy " + to + ": " + ec.message());
+        return !ec;
+    };
+    for (const auto& record : importedRecords) {
+        const std::string dir = exportedImportDir(*record);
+        if (!ship(record->sheetFile(), dir + "sheet.json")) return false;
+        files[ImportedAssets::reference(record->assetPath, "sheet")] = dir + "sheet.json";
+        for (size_t p = 0; p < record->pages.size(); p++) {
+            const std::string page = dir + "page" + std::to_string(p) + ".png";
+            // a page cooked with the project's sprite rules ships as its je-cooked/ file only
+            if (!cookedTextureSources.count(page) && !ship(record->pageFile(p), page)) return false;
+            files[ImportedAssets::reference(record->assetPath, "image#" + std::to_string(p))] = page;
+        }
+        for (const pixelart::aseprite::ImportRecord::Clip& clip : record->clips) {
+            if (!ship(record->dir / clip.file, dir + clip.file)) return false;
+            files[ImportedAssets::reference(record->assetPath, clip.key)] = dir + clip.file;
+        }
+    }
+    const nlohmann::json index = {{"format", ImportedAssets::kIndexFormat}, {"version", ImportedAssets::kIndexVersion}, {"files", files}};
+    const fs::path target = assetsDst / ImportedAssets::kImportedDir / "index.json";
+    io::AtomicWriteOptions options;
+    options.skipIfUnchanged = true;     // a re-export keeps the build cache's file time
+    const io::WriteResult written = io::writeFileAtomic(target, index.dump(1) + "\n", options);
+    if (!written.ok()) {
+        setError("Failed to write " + target.string() + ": " + written.message);
+        return false;
+    }
+    return true;
+}
+
 bool editor::Exporter::cookTextures() {
+    if (!gatherImportedAssets()) return false;
     setProgress("Cooking textures...", 0.33f);
     cookedTextureSources.clear();
 
@@ -2725,6 +2832,24 @@ bool editor::Exporter::cookTextures() {
     if (!gatheredFuture.get()) {
         setError("Texture import settings: " + gatherError);
         return false;
+    }
+    // S44: the pages of imports set to compression "project" cook as the project's sprites do,
+    // under their je-imported/ path (which the sheet records name)
+    for (const auto& record : importedRecords) {
+        const nlohmann::json texture = record->settings.value("texture", nlohmann::json::object());
+        if (!texture.is_object() || texture.value("compression", std::string("none")) != "project") continue;
+        for (size_t p = 0; p < record->pages.size(); p++) {
+            TextureCookInputs in;
+            in.assetPath = exportedImportDir(*record) + "page" + std::to_string(p) + ".png";
+            in.projectRelative = record->assetPath + " (page " + std::to_string(p) + ")";
+            in.absolute = record->pageFile(p);
+            in.settings.type = TextureImportType::Sprite;
+            in.settings.inferredFrom = record->assetPath;
+            in.hasSettings = true;
+            in.inference.type = TextureImportType::Sprite;
+            in.inference.reason = record->assetPath;
+            inputs[in.assetPath] = std::move(in);
+        }
     }
     if (inputs.empty()) {
         std::error_code ec;
@@ -2793,6 +2918,15 @@ bool editor::Exporter::copyAssets() {
             setError("\"" + firstComponent + "\" is reserved for the cooked textures. Rename " + entry.path().string());
             return false;
         }
+
+        // The imported assets' directory (S44)
+        if (firstComponent == ImportedAssets::kImportedDir) {
+            setError("\"" + firstComponent + "\" is reserved for the imported assets. Rename " + entry.path().string());
+            return false;
+        }
+
+        // An .aseprite file ships as its import (copyImportedAssets), never itself
+        if (SpriteSheetPool::isAsepritePath(relPath.generic_string())) continue;
 
         // The exporter writes the asset map there (S04)
         if (relPath == AssetMap::fileName) {
@@ -2886,7 +3020,7 @@ bool editor::Exporter::copyAssets() {
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
     }
 
-    return true;
+    return copyImportedAssets(assetsDst);
 }
 
 bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& destination) {

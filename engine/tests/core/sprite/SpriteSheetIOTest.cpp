@@ -7,6 +7,7 @@
 #include <gtest/gtest.h>
 
 #include "TestSystem.h"
+#include "AllocationCounter.h"
 #include "asset/ImportedAssets.h"
 #include "sprite/SpriteSheetIO.h"
 #include "sprite/SpriteSheetPool.h"
@@ -151,8 +152,8 @@ TEST(SpriteSheetIOTest, TagPlayback){
     EXPECT_EQ(seq(SpriteTagDirection::PING_PONG, 3), (std::vector<int>{2}));
 }
 
-// AC20: 2,000 frames parse in 5 ms on a desktop (enforced when JASPER_PERF_STRICT is set: a
-// shared build machine's load alone misses it)
+// AC20: 2,000 frames parse in 5 ms on a desktop (enforced with the benchmark server's
+// perfSlack(); printed elsewhere: a shared build machine's load alone misses it)
 TEST(SpriteSheetIOTest, SpriteSheetBench){
     const std::string text = writeSheet(sampleSheet(2000));
     const auto start = std::chrono::steady_clock::now();
@@ -161,7 +162,9 @@ TEST(SpriteSheetIOTest, SpriteSheetBench){
     ASSERT_TRUE(parsed.ok());
     EXPECT_EQ(parsed.sheet->frames.size(), 2000u);
     std::printf("[bench] SpriteSheetBench: 2000-frame parse %.2f ms (budget 5 ms desktop)\n", ms);
-    if (std::getenv("JASPER_PERF_STRICT")) EXPECT_LT(ms, 5.0);
+    if (testsupport::perfSlack() > 0.0) {
+        EXPECT_LT(ms, 5.0 * testsupport::perfSlack());
+    }
 }
 
 // AC20: the editor's provider and an export's index.json resolve the same keys

@@ -3,6 +3,9 @@
 
 #include "SpriteFrameGeometry.h"
 
+#include <algorithm>
+#include <cmath>
+
 namespace jasperengine{
 
     Vector2 spriteFramePivot(const SpriteFrame& frame, PivotPreset preset){
@@ -21,6 +24,49 @@ namespace jasperengine{
             case PivotPreset::FRAME: return Vector2(frame.pivot.x, h - frame.pivot.y);
         }
         return Vector2(0.0f, 0.0f);
+    }
+
+    Rect spriteFrameLocalRect(const SpriteFrame& frame, const SpriteFrameGeometryInput& input, const Rect& pixels){
+        // the quad of a frame trimmed to exactly `pixels` is that rect's place
+        SpriteFrame cut = frame;
+        cut.offset = Vector2(pixels.getX(), pixels.getY());
+        cut.rect = Rect(0.0f, 0.0f, pixels.getWidth(), pixels.getHeight());
+        SpriteFrameGeometryInput in = input;
+        in.pageWidth = 0;
+        in.pageHeight = 0;
+        const SpriteFrameQuad quad = spriteFrameQuad(cut, in);
+        return Rect(std::min(quad.x0, quad.x1), std::min(quad.y0, quad.y1), std::abs(quad.x1 - quad.x0), std::abs(quad.y1 - quad.y0));
+    }
+
+    bool spriteSliceLocalRect(const SpriteComponent& sprite, const SpriteSheetData& sheet, bool uiCamera,
+                              std::string_view name, Rect& bounds, Rect* center, Vector2* pivot){
+        const int index = sheet.findSlice(name);
+        if (index < 0 || sheet.frames.empty()) return false;
+        const int frameIndex = std::clamp(sprite.frame, 0, sheet.frameCount() - 1);
+        const SpriteSliceKey* key = sheet.slices[static_cast<size_t>(index)].keyAt(frameIndex);
+        if (!key) return false;
+        const SpriteFrame& frame = sheet.frames[static_cast<size_t>(frameIndex)];
+        SpriteFrameGeometryInput input;
+        input.width = sprite.width;
+        input.height = sprite.height;
+        input.pivot = sprite.pivotPreset;
+        input.pixelsPerUnit = sheet.pixelsPerUnit;
+        input.pixelRatio = sheet.pixelRatio;
+        input.flipY = sprite.flipY;
+        input.uiCamera = uiCamera;
+        bounds = spriteFrameLocalRect(frame, input, key->bounds);
+        if (center){
+            *center = key->hasCenter ? spriteFrameLocalRect(frame, input, Rect(key->bounds.getX() + key->center.getX(), key->bounds.getY() + key->center.getY(),
+                                                                              key->center.getWidth(), key->center.getHeight()))
+                                     : Rect(0.0f, 0.0f, 0.0f, 0.0f);
+        }
+        if (pivot){
+            const Vector2 at = key->hasPivot ? Vector2(key->bounds.getX() + key->pivot.x, key->bounds.getY() + key->pivot.y)
+                                             : Vector2(key->bounds.getX(), key->bounds.getY());
+            const Rect point = spriteFrameLocalRect(frame, input, Rect(at.x, at.y, 0.0f, 0.0f));
+            *pivot = Vector2(point.getX(), point.getY());
+        }
+        return true;
     }
 
     SpriteFrameQuad spriteFrameQuad(const SpriteFrame& frame, const SpriteFrameGeometryInput& input){

@@ -6972,6 +6972,48 @@ void MeshSystem::resetModelToBindPose(Entity entity, ModelComponent& model){
     }
 }
 
+namespace{
+    // Sprite:playTag (S44 R38): the tag's frames for the sheet's durations, at the tag's speed;
+    // a zero-duration frame shows for one update
+    void stepSheetSpriteTag(SpriteComponent& sprite, double dt){
+        if (!sprite.sheetData || sprite.tagFrames.empty()){
+            return;
+        }
+        const SpriteSheetData& sheet = *sprite.sheetData;
+        const double step = dt * 1000.0 * sprite.tagSpeed;
+        if (step <= 0.0){
+            return;
+        }
+        sprite.tagElapsedMs += step;
+        if (sprite.tagStep >= sprite.tagFrames.size()){
+            sprite.tagStep = 0;
+        }
+        while (true){
+            const int f = sprite.tagFrames[sprite.tagStep];
+            const double duration = (f >= 0 && f < sheet.frameCount()) ? (double)sheet.frames[(size_t)f].durationMs : 0.0;
+            if (sprite.tagElapsedMs < duration){
+                break;
+            }
+            if (sprite.tagStep + 1 >= sprite.tagFrames.size()){
+                if (!sprite.tagLoop){
+                    // finished: the last frame stays
+                    sprite.tagPlaying = false;
+                    sprite.tagElapsedMs = 0.0;
+                    break;
+                }
+                sprite.tagStep = 0;
+            }else{
+                sprite.tagStep++;
+            }
+            sprite.tagElapsedMs -= duration;
+            if (duration <= 0.0){
+                break;
+            }
+        }
+        sprite.frame = sprite.tagFrames[sprite.tagStep];
+    }
+}
+
 bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh){
     // the sheet: loaded once, and again when the pool has a newer version (a reimport); the
     // previous one stays drawn until the new one is there (no flicker)
@@ -7281,6 +7323,9 @@ void MeshSystem::update(double dt){
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
+            if (sprite.tagPlaying){
+                stepSheetSpriteTag(sprite, dt);
+            }
             createOrUpdateSprite(sprite, mesh);
         }
     }

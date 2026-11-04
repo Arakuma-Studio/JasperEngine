@@ -22,14 +22,22 @@ void reload::reloadAseprite(Context& ctx, const std::vector<fs::path>& files) {
     for (const fs::path& path : files) {
         std::optional<pixelart::aseprite::ImportRequest> request = importer.requestOf(path.string());
         if (!request) continue;
-        ctx.service.startJob("aseprite", path, [request = *request]() -> HotReloadService::AdoptFn {
+        const std::string rel = ctx.service.relative(path);
+        ctx.service.startJob("aseprite", path, [request = *request, rel]() -> HotReloadService::AdoptFn {
             std::shared_ptr<pixelart::aseprite::ImportRecord> record = pixelart::aseprite::AsepriteImporter::runImport(request);
-            return [record](std::string& error) {
+            return [record, rel](std::string& error) {
                 if (!record->ok) {
-                    error = record->error.message;
+                    error = record->error.kind + ": " + record->error.message + (record->error.fix.empty() ? "" : " (" + record->error.fix + ")");
                     return false;
                 }
                 pixelart::aseprite::AsepriteImporter::get().adopt(record);
+                // the import's warnings reach the next MCP call's external_changes.problems, as a
+                // clip's load warnings do
+                for (const pixelart::PixelProblem& warning : record->warnings) {
+                    HotReloadService::get().addLateProblem({{"path", rel}, {"severity", "warning"},
+                                                            {"message", warning.kind + ": " + warning.message +
+                                                                        (warning.fix.empty() ? "" : " (" + warning.fix + ")")}});
+                }
                 return true;
             };
         });

@@ -132,7 +132,8 @@ namespace jasperengine::editor {
         AssetsCreateAudioMixer,
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
-        AddCameraShakerToMainCamera   // GameObject > Add Camera Shaker to Main Camera
+        AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
+        ToggleSpritePreview           // Window > 2D > Sprite Preview (S44)
     };
 
 }

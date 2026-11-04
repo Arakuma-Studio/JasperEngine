@@ -16,6 +16,12 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/pixelart/aseprite/AsepriteImport.cpp
     ${EDITOR_DIR}/pixelart/aseprite/AsepriteImporter.cpp
     ${EDITOR_DIR}/pixelart/aseprite/AsepriteCli.cpp
+    ${EDITOR_DIR}/pixelart/aseprite/AsepriteContactSheet.cpp
+    ${EDITOR_DIR}/pixelart/aseprite/AsepriteSpriteSetup.cpp
+    ${EDITOR_DIR}/pixelart/aseprite/AsepriteEditorHooks.cpp
+    ${EDITOR_DIR}/window/AsepriteImporterView.cpp
+    ${EDITOR_DIR}/window/SpritePreviewWindow.cpp
+    ${EDITOR_DIR}/mcp/tools/SpriteTools.cpp
     ${EDITOR_DIR}/reload/handlers/Aseprite.cpp
     ${EDITOR_DIR}/sprite/SpritePacker.cpp
 )
@@ -23,7 +29,7 @@ list(APPEND JASPERENGINE_EDITOR_SOURCES
 # Unity build: the codec's sources keep file-local reader, writer and composer types, its
 # blenders file-local helpers named after Aseprite's (blend_multiply, ...), the packer its bin
 jasperengine_skip_unity_build(
-    REASON "the .aseprite codec, the Aseprite locator and the packer: file-local Reader/Writer/Composer/bin types and helpers"
+    REASON "the .aseprite codec, the Aseprite locator and the packer: file-local Reader/Writer/Composer/bin types and helpers; the importer view: file-scope using-directives"
     SOURCES
         ${EDITOR_DIR}/pixelart/aseprite/AsepriteRead.cpp
         ${EDITOR_DIR}/pixelart/aseprite/AsepriteWrite.cpp
@@ -34,5 +40,8 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/pixelart/aseprite/AsepriteImport.cpp
         ${EDITOR_DIR}/pixelart/aseprite/AsepriteImporter.cpp
         ${EDITOR_DIR}/pixelart/aseprite/AsepriteCli.cpp
+        ${EDITOR_DIR}/pixelart/aseprite/AsepriteContactSheet.cpp
+        ${EDITOR_DIR}/pixelart/aseprite/AsepriteSpriteSetup.cpp
+        ${EDITOR_DIR}/window/AsepriteImporterView.cpp
         ${EDITOR_DIR}/sprite/SpritePacker.cpp
 )

@@ -25,6 +25,9 @@
 #include "util/JoltPhysicsAux.h"
 #include "util/MeshTriangles.h"
 #include "component/RagdollComponent.h"
+#include "sprite/SpriteFrameGeometry.h"
+#include "component/CameraComponent.h"
+#include "component/SpriteComponent.h"
 #include "pool/PhysicsMaterialPool.h"
 #include "physics/PhysicsMaterial.h"
 #endif
@@ -1470,6 +1473,10 @@ std::vector<std::vector<Vector2>> PhysicsSystem::getCollider2DPiecesLocal(Entity
 
 void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t i, const Vector2& entityScale, int layer){
     Collider2D& shapeData = body.colliders[i];
+    // a slice hidden on this frame (or not known yet): no shape until it shows
+    if (!shapeData.slice.empty() && !shapeData.sliceVisible){
+        return;
+    }
 
     const float radiusScale = maxScaleXY(absScale2D(entityScale));
 
@@ -1676,9 +1683,48 @@ void PhysicsSystem::createCollider2DShapes(Entity entity, Rigidbody2DComponent& 
     }
 }
 
+void PhysicsSystem::updateSliceColliders2D(Entity entity, Rigidbody2DComponent& body){
+    const SpriteComponent* sprite = scene->findComponent<SpriteComponent>(entity);
+    if (!sprite || !sprite->sheetData){
+        return;
+    }
+    bool uiCamera = false;
+    if (const CameraComponent* camera = scene->findComponent<CameraComponent>(scene->getCamera())){
+        uiCamera = camera->type == CameraType::CAMERA_UI;
+    }
+    for (Collider2D& collider : body.colliders){
+        if (collider.slice.empty()){
+            continue;
+        }
+        Rect bounds(0.0f, 0.0f, 0.0f, 0.0f);
+        const bool visible = spriteSliceLocalRect(*sprite, *sprite->sheetData, uiCamera, collider.slice, bounds);
+        const bool same = visible == collider.sliceVisible && (!visible || (bounds.getX() == collider.sliceBounds.getX() &&
+                          bounds.getY() == collider.sliceBounds.getY() && bounds.getWidth() == collider.sliceBounds.getWidth() &&
+                          bounds.getHeight() == collider.sliceBounds.getHeight()));
+        if (same && collider.type == Collider2DType::POLYGON){
+            continue;
+        }
+        collider.sliceVisible = visible;
+        collider.sliceBounds = bounds;
+        collider.type = Collider2DType::POLYGON;
+        collider.points.clear();
+        if (visible){
+            const float x0 = bounds.getX(), y0 = bounds.getY();
+            const float x1 = x0 + bounds.getWidth(), y1 = y0 + bounds.getHeight();
+            collider.points = {Vector2(x0, y0), Vector2(x1, y0), Vector2(x1, y1), Vector2(x0, y1)};
+        }
+        collider.dirty = true;
+        body.needUpdateColliders = true;
+    }
+}
+
 bool PhysicsSystem::syncRigidbody2DColliders(Entity entity, Rigidbody2DComponent& body, bool all){
     if (!b2Body_IsValid(body.body)){
         return false;
+    }
+    body.hasSliceColliders = std::any_of(body.colliders.begin(), body.colliders.end(), [](const Collider2D& c) { return !c.slice.empty(); });
+    if (body.hasSliceColliders){
+        updateSliceColliders2D(entity, body);
     }
 
     const Vector2 entityScale = entityWorldScale2D(scene, entity);
@@ -4042,6 +4088,9 @@ void PhysicsSystem::fixedUpdate(double dt){
 		Entity entity = bodies2d->getEntity(i);
 		Signature signature = scene->getSignature(entity);
 
+        if (body.hasSliceColliders){
+            updateSliceColliders2D(entity, body);
+        }
         if (!b2Body_IsValid(body.body) || body.needReloadBody || body.needUpdateColliders || body.needApplyMass || entityWorldScale2D(scene, entity) != body.loadedScale){
             loadRigidbody2D(entity);
         }

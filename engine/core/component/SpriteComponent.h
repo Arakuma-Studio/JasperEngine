@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace jasperengine{
 
@@ -68,6 +69,16 @@ namespace jasperengine{
         uint64_t sheetRevision = 0;       // the pool revision last checked (a cheap per-frame "anything new?")
         int builtFrame = -1;              // the frame whose geometry the buffer holds
         bool resolveFrameName = true;     // find `frame` by `frameName` on the next sheet load
+
+        // Sprite:playTag (R38): a sheet tag stepped by MeshSystem with the sheet's durations, no
+        // frame limit; runtime, not saved
+        std::string playingTag;           // "" = none
+        std::vector<int> tagFrames;       // the tag's playback (direction and repeat unrolled)
+        bool tagLoop = false;             // repeat 0: the sequence over and over
+        bool tagPlaying = false;          // false: finished or stopped (playingTag stays the last tag)
+        size_t tagStep = 0;
+        double tagElapsedMs = 0.0;
+        float tagSpeed = 1.0f;
     };
     
 }

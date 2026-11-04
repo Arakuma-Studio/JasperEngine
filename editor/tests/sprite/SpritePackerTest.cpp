@@ -7,6 +7,7 @@
 // usage of a generated corpus and the layout time of 2,000 frames.
 
 #include "sprite/SpritePacker.h"
+#include "support/EditorTestSupport.h"
 
 #include <gtest/gtest.h>
 
@@ -453,5 +454,7 @@ TEST(SpritePackerTest, SpritePackerBench) {
                 items.size(), pageSizes.size(), ms);
     ASSERT_TRUE(ok) << error.message;
     EXPECT_EQ(pages.size(), items.size());
-    if (std::getenv("JASPER_PERF_STRICT")) EXPECT_LT(ms, 100.0);
+    if (jasperengine::editor::test::perfSlack() > 0.0) {
+        EXPECT_LT(ms, 100.0 * jasperengine::editor::test::perfSlack());
+    }
 }

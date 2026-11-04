@@ -16,6 +16,7 @@
 #include "lattice/LatticePresets.h"
 #include "window/dialog/ScriptCreateDialog.h"
 #include "window/dialog/ShaderForkDialog.h"
+#include "window/AsepriteImporterView.h"
 #include "window/TextureImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
@@ -190,6 +191,7 @@ namespace jasperengine::editor{
     private:
         // the Project window's texture files: their import settings (S14)
         std::unique_ptr<TextureImporterView> textureImporter;
+        std::unique_ptr<AsepriteImporterView> asepriteImporter;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;
@@ -823,6 +825,8 @@ namespace jasperengine::editor{
         void drawCanvasGroupInheritedLine(SceneProject* sceneProject, Entity entity);
         void drawSafeAreaComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawImageComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
+        // a sheet sprite's frame, Open in Aseprite, slice colliders, sprite properties (S44)
+        void drawSheetSpriteSection(ComponentType cpType, SceneProject* sceneProject, Entity entity);
         void drawSpriteComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTilemapComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawTerrainComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

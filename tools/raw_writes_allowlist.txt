@@ -47,6 +47,7 @@ editor/Exporter.cpp :: fs::copy_file(src / "shaderlib.h" :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(resolveProjectFile(project, source), target :: export staging (S30)
 editor/Exporter.cpp :: if (!ec) fs::copy_file(source, target :: export staging (S30)
 editor/Exporter.cpp :: fs::copy_file(glbPath, importPath :: export staging (S30): the FBX imports a build ships
+editor/Exporter.cpp :: fs::copy_file(from, dest, fs::copy_options::overwrite_existing, ec); :: export staging (S44): an import's cached sheet, pages and clips copied into assets/je-imported/ (index.json is written atomically)
 editor/ExporterPrebuilt.cpp :: fs::copy_file(icon, contentDir / "icon.png" :: prebuilt staging: <dest>.staging-<pid>, or the build cache's content/ for Web and Android, both emptied when the build starts; <dest> only changes in swapStagingIntoPlace
 editor/ExporterPrebuilt.cpp :: fs::copy_file(player->dir / "THIRD-PARTY-NOTICES.txt", contentDir :: prebuilt staging, as the icon above
 editor/ExporterPrebuilt.cpp :: fs::copy_file(contentDir / "THIRD-PARTY-NOTICES.txt", stagingDir :: prebuilt staging: <dest>.staging-<pid>, discarded on failure, swapped in whole

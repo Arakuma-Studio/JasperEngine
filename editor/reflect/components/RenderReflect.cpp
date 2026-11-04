@@ -212,7 +212,8 @@ namespace {
         const bool isGenerated = isModel || Stream::isGeneratedMesh(ctx.registry, ctx.signature);
         YAML::Node node = Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated);
         // a sheet sprite's page is its sheet's (S44 R48): never saved as the mesh's texture
-        const SpriteComponent* sprite = ctx.registry->findComponent<SpriteComponent>(ctx.entity);
+        // (the registry's lookups are not const; nothing is changed through it)
+        const SpriteComponent* sprite = const_cast<EntityRegistry*>(ctx.registry)->findComponent<SpriteComponent>(ctx.entity);
         if (sprite && !sprite->sheet.empty() && node["submeshes"] && node["submeshes"].IsSequence() && node["submeshes"].size() > 0) {
             YAML::Node material = node["submeshes"][0]["material"];
             if (material && material.IsMap()) material.remove("baseColorTexture");

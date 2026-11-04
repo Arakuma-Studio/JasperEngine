@@ -5,6 +5,7 @@
 
 #include "Scene.h"
 #include "animation/CanvasGroupTracks.h"
+#include "sprite/SpriteSheet.h"
 #include "component/AudioSourceComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/BuoyancyComponent.h"
