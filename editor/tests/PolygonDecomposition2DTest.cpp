@@ -6,7 +6,6 @@
 // self-intersection, errors, determinism and the 500-point timing.
 
 #include <gtest/gtest.h>
-#include "object/ui/Polygon.h"
 
 #include "physics/PolygonDecomposition2D.h"
 

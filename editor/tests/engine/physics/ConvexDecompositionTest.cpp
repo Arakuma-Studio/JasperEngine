@@ -6,7 +6,6 @@
 // and the background jobs (polling, cancel of a running job, retry, many threads at once).
 
 #include <gtest/gtest.h>
-#include "object/Mesh.h"
 
 #include "physics/ConvexDecomposition.h"
 

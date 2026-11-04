@@ -14,7 +14,6 @@
 
 #include <gtest/gtest.h>
 #include "stream/UpstreamParticles.h"
-#include "object/ui/Image.h"
 
 #include "vat/VatImportFixtures.h"
 

@@ -2024,6 +2024,34 @@ endif()
 jasperengine_skip_unity_build(
     REASON "file-local helpers or types named as in another engine source"
     SOURCES
+        core/subsystem/ActionSystemPlayers.cpp
+        core/animation/ClipBinding.cpp
+        core/media/VideoStream.cpp
+        core/pose/PoseDofs.cpp
+        core/shader/ShaderGlobals.cpp
+        core/animation/AnimationPlayerRuntime.cpp
+        core/animation/HumanoidClip.cpp
+        core/animation/UpstreamAnimFormats.cpp
+        core/audio/AudioEffects.cpp
+        core/audio/AudioMixer.cpp
+        core/camera/ShakePreset.cpp
+        core/diag/HangStackCapture.cpp
+        core/media/MediaByteSource.cpp
+        core/media/VideoFormats.cpp
+        core/object/TrailRenderer.cpp
+        core/pool/AnimatorAssetPool.cpp
+        core/pool/PhysicsMaterialPool.cpp
+        core/pool/TexturePool.cpp
+        core/pool/VertexAnimationPool.cpp
+        core/pose/HumanoidMap.cpp
+        core/script/binding/GameObjectClassesLua.cpp
+        core/script/binding/IOClassesLua.cpp
+        core/script/binding/NativeClassesLua.cpp
+        core/script/binding/NetClassesLua.cpp
+        core/subsystem/ActionSystemLayers.cpp
+        core/subsystem/CharacterController2DSystem.cpp
+        core/subsystem/PhysicsSystemJoints3D.cpp
+        core/subsystem/VertexAnimatorSystem.cpp
         core/Input.cpp
         core/animation/AnimatorAssetIO.cpp
         core/diag/CrashHandlerPosix.cpp

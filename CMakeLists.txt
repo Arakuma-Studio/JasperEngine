@@ -1340,6 +1340,34 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "file-local helpers or types named as in another editor source"
     SOURCES
+        ${EDITOR_DIR}/util/AssetDatabase.cpp
+        ${EDITOR_DIR}/util/NativePlugins.cpp
+        ${EDITOR_DIR}/window/AvatarWindow.cpp
+        ${EDITOR_DIR}/Out.cpp
+        ${EDITOR_DIR}/StreamSchema.cpp
+        ${EDITOR_DIR}/vat/VatAssetWriter.cpp
+        ${EDITOR_DIR}/vat/VatImportWrite.cpp
+        ${EDITOR_DIR}/window/InspectorAnimLayers.cpp
+        ${EDITOR_DIR}/window/InspectorWindowVat.cpp
+        ${EDITOR_DIR}/spritenormals/SpriteNormalsApply.cpp
+        ${EDITOR_DIR}/spritenormals/SpriteNormalsCheck.cpp
+        ${EDITOR_DIR}/util/VideoTextureLink.cpp
+        ${EDITOR_DIR}/vat/VatAssetFiles.cpp
+        ${EDITOR_DIR}/vat/VatBakeSession.cpp
+        ${EDITOR_DIR}/vat/VatBakeTypes.cpp
+        ${EDITOR_DIR}/vat/VatCli.cpp
+        ${EDITOR_DIR}/vat/VatDocument.cpp
+        ${EDITOR_DIR}/vat/VatFrontEnd.cpp
+        ${EDITOR_DIR}/vat/VatSceneActions.cpp
+        ${EDITOR_DIR}/vat/import/OpenVat.cpp
+        ${EDITOR_DIR}/window/AnimationWindowClipDraw.cpp
+        ${EDITOR_DIR}/window/InspectorWindowAnimLayers.cpp
+        ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
+        ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
+        ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
+        ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
+        ${EDITOR_DIR}/widget/CurveEditorOps.cpp
+        ${EDITOR_DIR}/widget/GradientEditorOps.cpp
         ${EDITOR_DIR}/animation/AnimationClipController.cpp
         ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
         ${EDITOR_DIR}/animation/AnimatorAssetDocument.cpp
@@ -1468,7 +1496,8 @@ function(configure_jasperengine_editor_target target_name)
     jasperengine_skip_unity_build(
         REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
         SOURCES ${EDITOR_DIR}/util/Clipboard.cpp ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
-                ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp)
+                ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+                ${EDITOR_DIR}/platform/ScreenColorX11.cpp ${EDITOR_DIR}/platform/LaunchKeysX11.cpp ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp)
     jasperengine_target_warnings(${target_name})
     jasperengine_target_unity_build(${target_name})
     get_target_property(targetType ${target_name} TYPE)

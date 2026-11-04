@@ -7,7 +7,6 @@
 // stubs that run on this machine (the real Deck is not tested here).
 
 #include "support/TestTempDir.h"
-#include "settings/SettingsRegistry.h"
 
 #include "AppSettings.h"
 #include "player/ContentManifest.h"

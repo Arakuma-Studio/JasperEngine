@@ -10,7 +10,6 @@
 // own time.
 
 #include <gtest/gtest.h>
-#include "ecs/View.h"
 
 #include "util/Color.h"
 #include "widget/CurveEditorOps.h"
