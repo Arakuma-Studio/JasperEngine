@@ -128,3 +128,10 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   render-correctness, water-reflections, scripting, agent-authoring, build-toolchain and mobile-shipping have
   committed work and are in red/green runs; the others have code written and wait for their first build. Nothing
   merged yet.
+- 2026-11-04 14:xx: the host disk filled (0 B free): every worktree's full gate leaves about 40 GB of build trees.
+  Freed 58 GB (a 29 GB scratch copy, Docker's build cache, an unused 24 GB swap file, the main checkout's baseline
+  build); disk rules added to the brief; the lead deletes a feature's build trees once it merges. `slot` reworked
+  twice for fairness: slot 1 serves the critical path (mesh-memory, unicode-text, water-reflections), the other
+  slot the longest-waiting job; queued jobs resubmitted with their original queue time (`DC_SINCE`). Merged 65
+  upstream commits (follow-ups S61, S66, S71, S38 M1) into `main`. Closest to landing: mesh-memory (final gate),
+  unicode-text (linux WERROR clean, unit 5676 run / 0 failed), runtime-core (linux WERROR clean).
