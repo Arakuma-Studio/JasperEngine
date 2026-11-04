@@ -671,4 +671,32 @@ Docs: `docs/mcp/guide/shaders.md`, `physics.md`, `lua-api.md`, `scene-view.md`, 
 
 ## 14. Deviations
 
-None yet (recorded here during implementation).
+Recorded during implementation (branch `dc/water-reflections`):
+
+1. **Primary-view reflection passes have no camera entity.** The spec planned system camera entities as
+   `createMirrorCamera` makes. They are `WaterReflectionPass` objects of the `RenderView` (as `MirrorView` is for the
+   editor's views) for every view, drawn from `drawCameras` right before the scene camera's pass, with the next free
+   terrain view; `update()` sets `hasMultipleCameras` while any can draw, so the shared MVPs are rewritten per pass as
+   for other cameras. Reason: no scene entities to create, serialize-proof and reuse across views; the same code serves
+   games and the editor.
+2. **fork_shader `material` has no `path` (.material file) form.** A `.material` write is a project-scope undo step,
+   which cannot join the scene's fork command in one step. Fork on a GameObject's submesh (its linked `.material`
+   follows the editor's usual linking rules) instead.
+3. **A water's PLANAR_REFLECTION draws inside REFLECTION** (as CAUSTICS inside REFRACTION): a water without REFLECTION
+   registers no reflection pass, and the Inspector row says to turn Reflection on.
+4. **`get_render_stats` keys:** `planar_reflections` {planes, passes, fallbacks, width, height} and
+   `scene_color_copies` {copies, recopies} (the spec named `scene_inputs.color_recopies`; the tool had no
+   `scene_inputs` object).
+5. **`planar_reflection_layers` in MCP** is `"everything"`, `"nothing"`, a list of layer names (or indices), or the
+   mask's number, as a camera's culling mask reads.
+6. **The first queued reader copies again** when the hierarchy loop already took the copy for an in-place reader (a
+   points or UI reader drawn before the queue) and the queue drew since: the copy then holds the queue's earlier
+   draws too. Counts toward the four copies.
+7. **Agent guide:** no line added. The lead's decision keeps guidance in `docs/mcp/guide/shaders.md` (Water, Planar
+   reflections, Layering, Forks); two eval cases (`bad_water_fork_role`, `guard_water_planar_reflection`) cover the
+   new tool text. The live eval needs Orquester accounts and was not run; `test_grade.py` passes.
+8. **Sorting with pixel-art S52:** S52 orders the transparent queue by (Sorting Layer rank, Order in Layer,
+   `sortPriority`, distance, order). The water rank goes right after `sortPriority` and before distance, so
+   S52's merge only puts its two keys in front (the comparator says so in a comment).
+9. **Animate water** is written to the workspace only when off (default on), so workspace files of untouched scenes
+   do not change.
