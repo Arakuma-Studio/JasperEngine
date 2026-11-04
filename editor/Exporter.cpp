@@ -4044,6 +4044,13 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         return true;
     };
 
+    // ./gradlew from a shell: the installed editor's copy of the engine has lost its exec bit
+    {
+        std::error_code permissionError;
+        fs::permissions(config.targetDir / "workspaces" / "androidstudio" / "gradlew",
+                        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, permissionError);
+    }
+
     const fs::path androidAppDir = config.targetDir / "workspaces" / "androidstudio" / "app";
     const fs::path buildGradlePath = androidAppDir / "build.gradle";
     const fs::path manifestPath = androidAppDir / "src" / "main" / "AndroidManifest.xml";

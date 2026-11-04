@@ -873,6 +873,19 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_ios_simulator_without_an_account",
+        "kind": "bad",
+        "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",
+        "text_at_issue": "build_project ios_simulator: 'Unsigned simulator .app.'",
+        "source": "docs/specs/S67-packaging-tests.md R4",
+        "prompt": "I don't have an Apple developer account, but I'd like to try this game in the iOS Simulator on this Mac. Build it for that.",
+        "mocks": [
+            {"tool": "build_project", "result": ok("Build succeeded.", {"status": "succeeded", "result": {"method_used": "prebuilt"}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_import_reports_a_leftover",
         "kind": "guard",
         "what_happened": "A crashed older editor left a staging folder without an owner marker beside the import. It may hold the "
