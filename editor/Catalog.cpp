@@ -39,7 +39,6 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/TextEffectComponent.h"
-#include "util/TextEffects.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/ImageComponent.h"

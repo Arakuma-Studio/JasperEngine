@@ -6,7 +6,6 @@
 #include "Out.h"
 
 #include <algorithm>
-#include "profiler/GpuMemory.h"
 
 using namespace jasperengine::editor;
 

@@ -44,7 +44,6 @@
 #include <mutex>
 #include <thread>
 #include "util/FileUtils.h"
-#include "util/UiItemLocator.h"
 #include "component/TilemapComponent.h"
 
 using namespace jasperengine;

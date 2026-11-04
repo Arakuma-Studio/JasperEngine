@@ -24,7 +24,6 @@
 #include "component/RagdollComponent.h"
 #include "component/LineRendererComponent.h"
 #include "component/TrailRendererComponent.h"
-#include "render/LineRibbonBuilder.h"
 
 using namespace jasperengine;
 

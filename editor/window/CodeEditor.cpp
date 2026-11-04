@@ -25,7 +25,6 @@
 #include <cmath>
 #include <cstring>
 #include <unordered_set>
-#include "script/ScriptEvent.h"
 #include "component/ScriptComponent.h"
 
 using namespace jasperengine;

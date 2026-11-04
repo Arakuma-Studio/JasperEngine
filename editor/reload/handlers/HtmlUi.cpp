@@ -20,7 +20,6 @@
 
 #include <algorithm>
 #include <set>
-#include "unity/UnityYaml.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

@@ -12,7 +12,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include "spritenormals/SpriteMedia.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

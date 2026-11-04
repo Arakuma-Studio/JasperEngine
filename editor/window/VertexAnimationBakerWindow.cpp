@@ -39,7 +39,6 @@
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
-#include "htmlui/HtmlUiImportQueue.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

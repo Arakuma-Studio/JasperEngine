@@ -16,8 +16,6 @@
 #include <chrono>
 #include <condition_variable>
 #include <thread>
-#include "util/TerrainMapFileWriter.h"
-#include "profiler/GpuMemory.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

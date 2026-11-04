@@ -17,7 +17,6 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
-#include "particles/ParticleCompiler.h"
 
 namespace fs = std::filesystem;
 

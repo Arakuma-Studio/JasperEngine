@@ -4,7 +4,6 @@
 #include "SavedSearchRows.h"
 
 #include "search/AssetQuery.h"
-#include "spritenormals/SpriteNormalsField.h"
 
 using namespace jasperengine::editor;
 

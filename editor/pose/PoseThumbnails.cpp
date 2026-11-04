@@ -17,8 +17,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include "util/TerrainMapFileWriter.h"
-#include "profiler/GpuMemory.h"
 
 using namespace jasperengine;
 

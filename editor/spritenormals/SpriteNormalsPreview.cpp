@@ -10,8 +10,6 @@
 #include <cmath>
 #include <cstdio>
 #include <thread>
-#include "spritenormals/SpriteMedia.h"
-#include "object/ui/Image.h"
 
 namespace jasperengine::editor::spritenormals {
 

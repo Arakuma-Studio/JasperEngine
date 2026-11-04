@@ -9,17 +9,6 @@
 #include "McpRefs.h"
 
 #include "App.h"
-#include "window/AnimationWindow.h"
-#include "window/CodeEditor.h"
-#include "window/ConsoleWindow.h"
-#include "window/GameWindow.h"
-#include "window/HierarchyWindow.h"
-#include "window/InspectorWindow.h"
-#include "window/PlayInput.h"
-#include "window/ProjectWindow.h"
-#include "window/SceneWindow.h"
-#include "window/SystemsWindow.h"
-#include "window/TerrainEditWindow.h"
 
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::mcp;

@@ -11,8 +11,6 @@
 #include <cstring>
 #include <optional>
 #include <unordered_set>
-#include "unity/UnityYaml.h"
-#include "script/ScriptEvent.h"
 
 using namespace jasperengine::editor;
 

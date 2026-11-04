@@ -4,7 +4,6 @@
 #include "DirectionRender.h"
 
 #include "Configs.h"
-#include "camera/CameraType.h"
 #include "component/LightComponent.h"
 
 using namespace jasperengine;

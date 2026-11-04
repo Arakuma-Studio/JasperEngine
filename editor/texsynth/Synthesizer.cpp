@@ -16,8 +16,6 @@
 #include <mutex>
 #include <system_error>
 #include <thread>
-#include "jobs/Task.h"
-#include "object/ui/Image.h"
 
 namespace jasperengine::editor::texsynth::detail {
 

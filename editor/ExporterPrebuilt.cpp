@@ -34,7 +34,6 @@
 #include <algorithm>
 #include <fstream>
 #include <set>
-#include "Factory.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

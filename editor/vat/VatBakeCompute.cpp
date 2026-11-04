@@ -10,7 +10,6 @@
 #include <limits>
 #include <map>
 #include <unordered_map>
-#include "animation/AnimatorPose.h"
 
 using namespace jasperengine;
 using namespace jasperengine::vat;

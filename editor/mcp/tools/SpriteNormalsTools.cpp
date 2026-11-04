@@ -42,10 +42,6 @@
 #include <fstream>
 #include <iterator>
 #include <set>
-#include "object/Sprite.h"
-#include "object/Tilemap.h"
-#include "profiler/GpuMemory.h"
-#include "object/ui/Polygon.h"
 
 namespace jasperengine::editor::mcp {
 

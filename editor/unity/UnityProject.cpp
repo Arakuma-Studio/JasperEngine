@@ -5,7 +5,6 @@
 
 #include <fstream>
 #include <sstream>
-#include "Project.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor::unity;

@@ -55,7 +55,6 @@
 #include "component/UIComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/WaterVolumeComponent.h"
-#include "util/HybridArray.h"
 #include "component/ScriptComponent.h"
 #include "component/LineRendererComponent.h"
 

@@ -33,7 +33,6 @@
 #include <cstring>
 #include <filesystem>
 #include <set>
-#include "spritenormals/SpriteNormalsField.h"
 
 using namespace jasperengine;
 

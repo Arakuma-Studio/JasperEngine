@@ -52,8 +52,6 @@
 #include <cfloat>
 #include <cstdlib>
 #include <cstring>
-#include "math/simd/SimdFloat4.h"
-#include "registry/PhysicsLayers.h"
 #include "window/ProjectWindow.h"
 
 namespace jasperengine::editor {

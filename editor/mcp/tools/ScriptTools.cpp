@@ -77,7 +77,6 @@
 #include <set>
 #include <sstream>
 #include <thread>
-#include "stream/UpstreamParticles.h"
 
 namespace jasperengine::editor::mcp {
 

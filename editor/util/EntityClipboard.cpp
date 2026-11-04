@@ -25,7 +25,6 @@
 #include "component/ActionComponent.h"
 #include "component/Transform.h"
 #include "component/UIComponent.h"
-#include "profiler/GpuMemory.h"
 #include "component/PrefabComponent.h"
 #include "component/MeshComponent.h"
 

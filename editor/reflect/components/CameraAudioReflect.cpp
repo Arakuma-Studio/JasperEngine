@@ -9,7 +9,6 @@
 #include "pool/SoundPool.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
-#include "camera/CameraType.h"
 
 namespace jasperengine::editor::reflect {
 

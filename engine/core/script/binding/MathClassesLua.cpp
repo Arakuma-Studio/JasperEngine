@@ -28,8 +28,6 @@
 #include "particles/ParticleValues.h"
 
 #include <optional>
-#include "object/physics/Rigidbody.h"
-#include "object/physics/Rigidbody2D.h"
 
 using namespace jasperengine;
 

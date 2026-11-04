@@ -28,8 +28,6 @@
 #include <set>
 #include <system_error>
 #include <utility>
-#include "util/UiItemLocator.h"
-#include "htmlui/widgets/VirtualWindowCore.h"
 
 using namespace jasperengine;
 

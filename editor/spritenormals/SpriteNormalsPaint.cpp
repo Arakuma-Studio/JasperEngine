@@ -15,7 +15,6 @@
 #include <fstream>
 #include <iterator>
 #include "util/FileUtils.h"
-#include "object/ui/Image.h"
 
 namespace fs = std::filesystem;
 using nlohmann::json;

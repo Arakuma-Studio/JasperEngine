@@ -12,7 +12,6 @@
 #include "util/ProjectChecks.h"
 #include "util/ProjectUtils.h"
 #include "util/Util.h"
-#include "spritenormals/SpriteNormalsSession.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

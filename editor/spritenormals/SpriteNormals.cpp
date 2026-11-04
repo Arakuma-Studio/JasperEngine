@@ -22,9 +22,6 @@
 #include <new>
 #include <thread>
 #include <unordered_map>
-#include "reload/handlers/ReloadHandlers.h"
-#include "util/UiItemLocator.h"
-#include "object/ui/Image.h"
 
 namespace jasperengine::editor::spritenormals {
 

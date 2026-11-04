@@ -11,7 +11,6 @@
 #include "spline/SplineEditor.h"
 
 #include <map>
-#include "navigation/NavGridBrush.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

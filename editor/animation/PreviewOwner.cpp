@@ -7,7 +7,6 @@
 #include "registry/EntityRegistry.h"
 
 #include <algorithm>
-#include "profiler/GpuMemory.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

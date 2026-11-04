@@ -4,7 +4,6 @@
 #include "McpCall.h"
 
 #include "McpServer.h"
-#include "mcp/McpContext.h"
 
 using namespace jasperengine::editor::mcp;
 

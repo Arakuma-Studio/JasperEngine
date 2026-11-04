@@ -17,7 +17,6 @@
 #include "window/dialog/ComponentAddDialog.h"
 
 #include <initializer_list>
-#include "stream/UpstreamParticles.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/ModelComponent.h"

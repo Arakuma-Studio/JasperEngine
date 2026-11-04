@@ -6,7 +6,6 @@
 #include "Out.h"
 
 #include <algorithm>
-#include "profiler/GpuMemory.h"
 #include "component/PrefabComponent.h"
 
 using namespace jasperengine;

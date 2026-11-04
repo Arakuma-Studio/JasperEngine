@@ -30,7 +30,6 @@
 
 #include "imgui_internal.h"
 #include "window/HierarchyWindow.h"
-#include "window/CodeEditor.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
 #include "window/ProjectWindow.h"

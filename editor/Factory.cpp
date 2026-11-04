@@ -35,8 +35,6 @@
 #include "resources/sky/Daylight_Box_Left_png.h"
 #include "resources/sky/Daylight_Box_Right_png.h"
 #include "resources/sky/Daylight_Box_Top_png.h"
-#include "buffer/IndexBuffer.h"
-#include "buffer/InterleavedBuffer.h"
 #include "component/ActionComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BuoyancyComponent.h"
@@ -76,8 +74,6 @@
 #include "component/UIComponent.h"
 #include "component/VertexAnimatorComponent.h"
 #include "component/WaterVolumeComponent.h"
-#include "particles/ParticleModules.h"
-#include "util/SpriteFrameData.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/PrefabComponent.h"
 #include "component/ScriptComponent.h"
@@ -85,8 +81,6 @@
 #include "component/TextEffectComponent.h"
 #include "component/TrailRendererComponent.h"
 #include "component/VideoPlayerComponent.h"
-#include "render/LineRibbonBuilder.h"
-#include "util/TextEffects.h"
 
 using namespace jasperengine;
 

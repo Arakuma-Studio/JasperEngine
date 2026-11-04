@@ -59,7 +59,6 @@
 #include <cmath>
 #include "component/TextComponent.h"
 #include "component/TranslateTracksComponent.h"
-#include "physics/PlacementSession.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "component/MeshPolygonComponent.h"
 #include "component/PolygonComponent.h"

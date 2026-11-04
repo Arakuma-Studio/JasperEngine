@@ -8,7 +8,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
-#include "camera/CameraType.h"
 #include "component/ProgressbarComponent.h"
 
 using namespace jasperengine;

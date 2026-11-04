@@ -9,7 +9,6 @@
 #include <algorithm>
 #include <cstdlib>
 #include <memory>
-#include "profiler/GpuMemory.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

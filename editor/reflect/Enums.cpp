@@ -27,7 +27,6 @@
 #include "component/AudioSourceComponent.h"
 #include "component/FogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
-#include "render/shadow/ShadowTypes.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/Joint2DComponent.h"
 #include "component/LayoutGroupComponent.h"

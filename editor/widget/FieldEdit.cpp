@@ -4,7 +4,6 @@
 #include "FieldEdit.h"
 
 #include "command/CommandHistory.h"
-#include "htmlui/compat/css/RewriteSession.h"
 
 using namespace jasperengine::editor;
 

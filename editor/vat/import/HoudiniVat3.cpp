@@ -26,7 +26,6 @@
 #include <map>
 #include <set>
 #include <unordered_map>
-#include "texture/Texture.h"
 
 namespace fs = std::filesystem;
 using namespace jasperengine;

@@ -28,7 +28,6 @@
 #include <functional>
 #include <map>
 #include <memory>
-#include "util/UiItemLocator.h"
 #include "component/PrefabComponent.h"
 
 using namespace jasperengine;

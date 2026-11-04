@@ -8,7 +8,6 @@
 
 #include <fstream>
 #include <sstream>
-#include "profiler/GpuMemory.h"
 
 namespace jasperengine::editor::vcs {
 

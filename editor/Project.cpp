@@ -144,7 +144,6 @@
 #include "component/SpriteAnimationComponent.h"
 #include "script/LuaBinding.h"
 #include "subsystem/ActionSystem.h"
-#include "subsystem/AtmosphereRenderer.h"
 #include "subsystem/AudioSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"

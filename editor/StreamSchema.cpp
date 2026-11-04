@@ -37,8 +37,6 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "component/WaterVolumeComponent.h"
-#include "particles/LegacyParticleSystem.h"
-#include "camera/CameraType.h"
 #include "component/ScriptComponent.h"
 
 using namespace jasperengine;

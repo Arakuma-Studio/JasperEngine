@@ -14,7 +14,6 @@
 #include <map>
 #include <sstream>
 #include <array>
-#include "math/Rect.h"
 
 using namespace jasperengine;
 

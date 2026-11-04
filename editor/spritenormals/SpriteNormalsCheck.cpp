@@ -23,7 +23,6 @@
 #include <optional>
 #include <set>
 #include <string>
-#include "profiler/Profiler.h"
 
 namespace fs = std::filesystem;
 using nlohmann::json;

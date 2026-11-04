@@ -10,7 +10,6 @@
 #include <cmath>
 #include <filesystem>
 #include <system_error>
-#include "spline/SplineCurve.h"
 
 using namespace jasperengine;
 

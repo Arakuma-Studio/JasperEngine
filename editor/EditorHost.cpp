@@ -5,10 +5,6 @@
 
 #include "Out.h"
 #include "util/Scheduler.h"
-#include "window/CodeEditor.h"
-#include "window/ImageViewerWindow.h"
-#include "window/InspectorWindow.h"
-#include "window/ProjectWindow.h"
 
 using namespace jasperengine::editor;
 

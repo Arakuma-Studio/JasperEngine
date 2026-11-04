@@ -6,8 +6,6 @@
 #include "Configs.h"
 #include "component/MeshComponent.h"
 #include "component/Transform.h"
-#include "texture/Material.h"
-#include "camera/CameraType.h"
 #include "component/LightComponent.h"
 
 using namespace jasperengine;

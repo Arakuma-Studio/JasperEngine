@@ -15,7 +15,6 @@
 #include <filesystem>
 #include <map>
 #include <memory>
-#include "pose/PoseUiLogic.h"
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
