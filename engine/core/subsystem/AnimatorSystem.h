@@ -49,6 +49,7 @@ namespace jasperengine{
             size_t animators = 0;       // updated this frame
             size_t sampled = 0;         // evaluated and written
             size_t culled = 0;
+            size_t footRaycasts = 0;    // Foot IK's ground rays
         };
 
         AnimatorSystem(Scene* scene);

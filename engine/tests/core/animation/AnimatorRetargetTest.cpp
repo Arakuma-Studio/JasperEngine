@@ -12,6 +12,8 @@
 
 #include "Engine.h"
 #include "component/RigidbodyComponent.h"
+#include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "object/Model.h"
 #include "pose/HumanBones.h"
@@ -224,6 +226,44 @@ TEST_F(AnimatorFootIK, SlopeGrounding){
         EXPECT_NEAR(sole, ground(ankle.z), 0.01f) << (i == 0 ? "left" : "right") << " sole on the ramp";
     }
     EXPECT_LT(position(hips).y, 1.0f) << "the pelvis dropped for the lower foot";
+}
+
+// AC6 (R15): Cull Update Transforms has no pose while culled, so no IK reads the ground
+TEST_F(AnimatorFootIK, CulledCastsNoRays){
+    ramp();
+    AnimatorComponent& component = rig();
+    // a skin to cull by, and a camera whose frustum excludes everything (its planes all face away)
+    const Entity mesh = node(root, "Mesh", Vector3(0, 0, 0));
+    scene.addComponent<MeshComponent>(mesh, {});
+    ModelComponent model;
+    ModelSkinBinding skin;
+    skin.mesh = mesh;
+    skin.joints = {hips};
+    skin.inverseBindMatrices = {Matrix4()};
+    model.skinBindings.push_back(skin);
+    scene.addComponent<ModelComponent>(root, model);
+    scene.getComponent<ModelComponent>(root).needUpdateModel = false;
+    const Entity camera = scene.createEntity();
+    scene.addComponent<Transform>(camera, {});
+    scene.addComponent<CameraComponent>(camera, {});
+    CameraComponent& c = scene.getComponent<CameraComponent>(camera);
+    for (int p = 0; p < 6; p++) c.frustumPlanes[p] = Plane(Vector3(0, 1, 0), -1000.0f);
+    c.farClip = 1.0f;
+
+    step(0.0);
+    ASSERT_TRUE(instance().bound);
+    component.cullingMode = AnimatorCullingMode::AlwaysAnimate;
+    frame();
+    EXPECT_EQ(system().getStats().footRaycasts, 2u) << "a ray per foot";
+    EXPECT_TRUE(instance().ik[0].hit);
+
+    component.cullingMode = AnimatorCullingMode::CullUpdateTransforms;
+    for (int i = 0; i < 5; i++){
+        frame();
+        EXPECT_GT(system().getStats().culled, 0u);
+        EXPECT_EQ(system().getStats().footRaycasts, 0u) << "frame " << i;
+        EXPECT_FALSE(instance().ik[0].hit);
+    }
 }
 
 TEST_F(AnimatorFootIK, FootLockNoSlide){

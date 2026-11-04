@@ -358,10 +358,12 @@ void AnimatorSystem::ikInputs(AnimatorComponent& component, anim::AnimatorInstan
         if (c.type == AnimatorIKType::FootIK){
             run.hit = false;
 #ifdef JASPERENGINE_PHYSICS_3D
-            if (run.hasFoot && c.enabled){
+            // culled (Cull Update Transforms): no pose, so no IK reads the ground
+            if (run.hasFoot && c.enabled && context.sample){
                 const Vector3 up = context.rootWorldRotation * Vector3(0, 1, 0);
                 const Vector3 origin = run.footWorld + up * c.rayStart;
                 RayReturn hit = Physics::raycast(scene, origin, up * -1.0f, c.rayStart + c.rayLength, c.layerMask);
+                stats.footRaycasts++;
                 if (hit.hit){
                     run.hit = true;
                     run.hitPoint = context.rootWorldInverse * hit.point;
