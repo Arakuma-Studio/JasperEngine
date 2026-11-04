@@ -16,7 +16,7 @@
 
 using namespace jasperengine;
 
-TEST(SceneTimeTest, AdvancesByTheDelta){
+TEST(SceneTime, AdvancesByTheDelta){
     Scene scene;
     EXPECT_DOUBLE_EQ(scene.getSceneTime(), 0.0);
     scene.advanceSceneTime(0.25);
@@ -31,7 +31,7 @@ TEST(SceneTimeTest, AdvancesByTheDelta){
     EXPECT_FLOAT_EQ(Water::getTime(&scene), 0.75f);
 }
 
-TEST(SceneTimeTest, HeldWhilePaused){
+TEST(SceneTime, HeldWhilePaused){
     Scene scene;
     scene.advanceSceneTime(1.0);
     scene.setSceneTimePaused(true);
@@ -46,7 +46,7 @@ TEST(SceneTimeTest, HeldWhilePaused){
     EXPECT_DOUBLE_EQ(scene.getSceneTime(), 2.5);
 }
 
-TEST(SceneTimeTest, PinnedShaderTimeOverrides){
+TEST(SceneTime, PinnedShaderTimeOverrides){
     Scene scene;
     scene.advanceSceneTime(3.0);
     Engine::setPinnedShaderTime(7.25);

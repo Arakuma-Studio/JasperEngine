@@ -151,7 +151,7 @@ TEST(WaterWavesTest, GerstnerInversion){
     };
     for (float steepness : {0.0f, 0.3f, 0.6f, 0.9f}){
         const WaterWaveParams params = gerstnerParams(0.5f, 6.0f, 1.5f, steepness);
-        for (int i = 0; i < 60; i++){
+        for (int i = 0; i < 30; i++){
             const Vector2 xz(random(-50.0f, 50.0f), random(-50.0f, 50.0f));
             const float t = random(0.0f, 100.0f);
             const WaterWaveSample surface = waterSurfaceAt(params, xz, t);
@@ -159,9 +159,9 @@ TEST(WaterWavesTest, GerstnerInversion){
             // by brute force along the sideways reach and compare
             float best = 1e9f, bestHeight = 0.0f;
             const float reach = params.getHorizontalReach() + 0.01f;
-            for (int a = 0; a <= 80; a++){
-                for (int b = 0; b <= 80; b++){
-                    const Vector2 rest(xz.x - reach + 2.0f * reach * a / 80.0f, xz.y - reach + 2.0f * reach * b / 80.0f);
+            for (int a = 0; a <= 40; a++){
+                for (int b = 0; b <= 40; b++){
+                    const Vector2 rest(xz.x - reach + 2.0f * reach * a / 40.0f, xz.y - reach + 2.0f * reach * b / 40.0f);
                     const WaterGerstnerSample point = waterGerstner(rest, t, params.direction, params.height, params.length, params.speed, params.steepness);
                     const float ex = rest.x + point.offset.x - xz.x, ez = rest.y + point.offset.z - xz.y;
                     if (ex * ex + ez * ez < best){

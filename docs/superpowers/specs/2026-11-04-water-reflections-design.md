@@ -571,7 +571,7 @@ failing output in the PR). The others test new features (their red is the featur
 | core gtest (GPU) | `WaterLayeringGpu.TransparentUnderRefractingWaterStaysVisible` **red** | an alpha-blended red quad 0.5 under a refracting water over a grey floor: the quad's pixel has red above the floor-only reference by > 40/255 (today: equal) |
 | core gtest (GPU) | `WaterLayeringGpu.TransparentUnderWaterNearerThanItsCentre` **red** | the red quad under a 40 m lake, nearer the camera than the lake's transform: its pixel is tinted by the water (blue channel raised vs. the quad drawn alone over the floor; today the quad is drawn over the water untinted) |
 | core gtest (GPU) | `WaterLayeringGpu.OverlappingRefractingWatersSeeEachOther` **red** | a refracting pool 2 m above a refracting lake, camera above: a pixel inside the pool shows the lake's colour (differs from the pool over the bed alone by > 20/255); `colorRecopies == 1` |
-| core gtest | `WaterLayeringTest.Rank` | `waterRank` for eye above/below, beyond/eye side/straddling/outside, nested pool over lake (ranks lake 1, fish 0, pool -1), null box, self excluded |
+| core gtest | `WaterLayering.Rank` | `waterRank` for eye above/below, beyond/eye side/straddling/outside, nested pool over lake (ranks lake 1, fish 0, pool -1), null box, self excluded |
 | core gtest (GPU) | `WaterShadingGpu.ShadowEdgeFollowsSmoothSurface` **red** | per-pixel water (`normalStrength` 2, light normal bias 2) under a box's straight shadow edge, pinned time: the shadowed-pixel mask (ratio to the same scene with `receiveShadows` off < 0.8) differs from the `normalStrength` 0 mask in < 0.5% of the band's pixels (today: more) |
 | core gtest (GPU) | `WaterShadingGpu.CausticsDarkInSurfaceShadow` **red** | CAUSTICS with REFRACTION, a box shadowing part of the surface: bed brightness inside the surface shadow with CAUSTICS on / off within 2% (today: > 5% brighter) |
 | core gtest (GPU) | `WaterFeaturesGpu.FeaturesOffMatchesTheShaderBeforeThem` (existing) | still exact on glcore (no regression for default materials) |
@@ -582,7 +582,7 @@ failing output in the PR). The others test new features (their red is the featur
 | core gtest | `WaterWavesTest.GerstnerInversion` | `waterSurfaceAt` finds rest points with `|rest + offset.xz - xz| < 1e-4 L` for steepness 0..0.9, random points |
 | core gtest | `WaterWavesTest.GlslTwinPinned` (extended) | both GLSL functions' SHA-256 |
 | core gtest (GPU) | `WaterWavesGpuTest.GerstnerMatchesCpu` | GPU displaced positions of a 32x32 rest grid; CPU `waterSurfaceAt` at each displaced XZ gives the GPU height within 1e-3 A + 1e-4 |
-| core gtest | `SceneTimeTest.*` | advances by the scaled delta; holds while time-paused; pinned shader time overrides; `Water::getTime(scene)` follows it |
+| core gtest | `SceneTime.*` | advances by the scaled delta; holds while time-paused; pinned shader time overrides; `Water::getTime(scene)` follows it |
 | core gtest | `ShaderManifestTest.RoleDirective` | `@role water|underwater` parsed; unknown and duplicate are errors |
 | core gtest | `WaterTest.ForkWithRoleIsWater` | a fork manifest (in-memory fork reader) with `@role water` makes `getSurfaces`, `readWaves` and `updateUnderwater` treat it as water, with its own defaults |
 | editor gtest | `StreamSceneSettingsTest.PlanarReflections` | round trip of the six keys; defaults omitted; a scene without them loads with defaults |

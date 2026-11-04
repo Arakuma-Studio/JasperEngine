@@ -30,7 +30,7 @@ namespace {
 
 }
 
-TEST(WaterLayeringTest, Rank){
+TEST(WaterLayering, Rank){
     const std::vector<WaterLayer> lake = {layer(1, 0.0f, 0.2f, 20.0f)};
     const Vector3 above(0.0f, 5.0f, 8.0f);
     const Vector3 under(0.0f, -3.0f, 8.0f);
@@ -54,7 +54,7 @@ TEST(WaterLayeringTest, Rank){
     EXPECT_EQ(waterRank(box(0.0f, -1.0f, 0.0f, 0.5f), above, lake, 1), 0);
 }
 
-TEST(WaterLayeringTest, NestedPoolOverLake){
+TEST(WaterLayering, NestedPoolOverLake){
     // a pool 2 m above a lake, a fish in the pool, seen from above: the lake first (behind the
     // pool's surface), the fish (behind the pool, in front of the lake), the pool last
     const std::vector<WaterLayer> waters = {layer(1, 0.0f, 0.1f, 20.0f), layer(2, 2.0f, 0.1f, 2.0f)};
@@ -71,7 +71,7 @@ TEST(WaterLayeringTest, NestedPoolOverLake){
     EXPECT_GT(fish, pool);
 }
 
-TEST(WaterLayeringTest, ClampedAndFinite){
+TEST(WaterLayering, ClampedAndFinite){
     std::vector<WaterLayer> many;
     for (int i = 0; i < 20; i++)
         many.push_back(layer((Entity)(i + 1), 10.0f + i, 0.0f, 50.0f));
