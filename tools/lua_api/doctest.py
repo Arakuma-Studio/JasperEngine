@@ -1,6 +1,7 @@
 # (c) Eduardo Doria and contributors
 # SPDX-License-Identifier: MIT
-"""The Lua doc test (S23 R29a): every ```lua block of docs/mcp/guide/*.md and docs/**/lua*.md
+"""The Lua doc test (S23 R29a): every ```lua block of docs/mcp/guide/*.md, docs/**/lua*.md and
+docs/voxels.md (T6 AC53)
 
   - compiles (luac -p when it is on PATH; the MCP test compiles through check_script otherwise),
   - names only members that exist: `Class.member` of a bound class or enum, and `obj:method(...)`
@@ -37,6 +38,9 @@ def doc_files(root):
     for path in sorted(glob.glob(os.path.join(root, 'docs', '**', '*.md'), recursive=True)):
         if os.path.basename(path).lower().startswith('lua') and path not in files:
             files.append(path)
+    voxels = os.path.join(root, 'docs', 'voxels.md')
+    if os.path.exists(voxels):
+        files.append(voxels)
     return files
 
 

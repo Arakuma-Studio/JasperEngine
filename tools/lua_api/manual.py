@@ -10,7 +10,12 @@ bindings; a symbol the bindings do not list is added. search_engine_api returns 
 _ANIME_PARAMS = ('params: properties to animate (opacity, translateX/Y, scale, rotate, any CSS property in camelCase, '
                  '"--custom") with a value, {from=, to=} or keyframes, plus duration, delay, ease ("outCubic", '
                  '"outElastic(1, .6)"), loop, alternate, autoplay, onBegin, onUpdate, onComplete (ms)')
+_VOXEL_OPTIONS = '{blend = metres, material = slot, weight = 0-1, falloff = 0-1, amount = 0-1, iterations = 1-8}'
 MANUAL_SYMBOLS = [
+    ('VoxelVolume', 'dig', 'Method', 'VoxelVolume:dig(shape, ' + _VOXEL_OPTIONS + ') -> VoxelEditReport'),
+    ('VoxelVolume', 'fill', 'Method', 'VoxelVolume:fill(shape, ' + _VOXEL_OPTIONS + ') -> VoxelEditReport'),
+    ('VoxelVolume', 'smooth', 'Method', 'VoxelVolume:smooth(shape, ' + _VOXEL_OPTIONS + ') -> VoxelEditReport'),
+    ('VoxelVolume', 'paint', 'Method', 'VoxelVolume:paint(shape, ' + _VOXEL_OPTIONS + ') -> VoxelEditReport'),
     ('anime', 'animate', 'StaticMethod',
      'anime.animate(targets, params) -> AnimeAnimation; targets: CSS selector, UIElement, table or a list; ' + _ANIME_PARAMS),
     ('anime', 'createTimeline', 'StaticMethod',

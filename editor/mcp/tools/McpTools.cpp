@@ -64,6 +64,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerGraphTools, "Graphs", "scripting"},   // S23
     {registerGameplayTools, "Gameplay: input, character controller, water", "gameplay"},   // S22
     {registerSplineTools, "Splines: roads, walls, placement, terrain and water", "splines"},   // S18
+    {registerVoxelTools, "Voxel Volumes", "voxels"},   // T6
     {registerEditorToolsTools, "Editor tools: recorder, colour sampling, swatches, curves", "editor_tools"},   // S27
     {registerParticleTools, "Particles: effects and playback", "particles"},   // S20
     {registerOrganisationTools, "Search, shortcuts, layouts, labels, saved searches and bookmarks", "organisation"},   // S25
