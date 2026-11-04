@@ -4373,6 +4373,7 @@
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
+		4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8574,6 +8575,7 @@
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
+		4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VulkanRobustness.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10594,6 +10596,7 @@
 				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
 				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
 				4A534E4737234843A0260B98 /* UIDrawColor.h */,
+				4A534E47E4CB01C31BC1D923 /* VulkanRobustness.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -15241,6 +15244,7 @@
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
+				4A534E47D0AB41A2D07C3A21 /* VulkanRobustness.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
