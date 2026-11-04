@@ -12,6 +12,7 @@
 #include "RmlRenderer.h"
 #include "Input.h"
 #include "UIWorldRaycast.h"
+#include "component/CameraComponent.h"
 #include "component/MeshComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "object/Camera.h"
