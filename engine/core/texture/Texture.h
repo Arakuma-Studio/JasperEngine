@@ -117,6 +117,9 @@ namespace jasperengine{
             // calling thread. A renderer reads it around a material's binding: one that took a
             // stand-in binds again once an image can be made (TexturePool::getReadyEpoch).
             static uint32_t getStandInCount();
+            // getRender's answers on this thread for an image still loading: a draw that got one
+            // showed nothing of that image (a frame that must show it looks at this)
+            static uint32_t getLoadingAnswerCount();
             // Its GPU texture has new pixels to show (stale), or was made again in place since this
             // Texture took it: a binding made of it is out of date (TexturePool::getRebindEpoch)
             bool isRenderOutdated() const;

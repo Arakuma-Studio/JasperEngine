@@ -2,6 +2,34 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "component/CameraShakerComponent.h"
+#include "pool/ShaderPool.h"
+#include "render/SceneRender.h"
+#include "spritenormals/SpriteNormalsWatcher.h"
+#include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
+#include "window/AssetPanels.h"
+#include "window/AudioMixerWindow.h"
+#include "window/AvatarWindow.h"
+#include "window/CodeEditor.h"
+#include "window/GameWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ImageViewerWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/LoadingWindow.h"
+#include "window/MainToolbar.h"
+#include "window/PhysicsPlacementWindow.h"
+#include "window/PlayInput.h"
+#include "window/PoseAnimationWindow.h"
+#include "window/ProjectWindow.h"
+#include "window/SceneWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "window/StatusBar.h"
+#include "window/SystemsWindow.h"
+#include "window/TerrainEditWindow.h"
+#include "window/TextureSynthesisWindow.h"
+#include "window/VertexAnimationBakerWindow.h"
+#include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
@@ -3310,6 +3338,10 @@ void editor::App::setupRecorder() {
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
+    host.gameScene = [playScene]() -> Scene* {
+        const SceneProject* scene = playScene();
+        return scene ? scene->scene : nullptr;
+    };
     host.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
     host.gameViewSize = [this](int& w, int& h) {
         w = gameWindow->getWidth();

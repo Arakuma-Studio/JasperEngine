@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "DirectionRender.h"
+#include "component/LightComponent.h"
 
 #include "Configs.h"
 

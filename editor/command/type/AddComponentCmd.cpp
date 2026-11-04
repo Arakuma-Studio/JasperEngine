@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "AddComponentCmd.h"
+#include "component/SplineComponent.h"
+#include "component/TrailRendererComponent.h"
 #include "component/ActionComponent.h"
 #include "component/ParticleSystemComponent.h"
 

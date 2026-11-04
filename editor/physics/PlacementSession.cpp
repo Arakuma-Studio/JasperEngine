@@ -5,6 +5,9 @@
 // docs/superpowers/specs/2026-10-23-physics-placement-design.md sections 5.4, 6, 7.4, 8.1 and 9.
 
 #include "PlacementSession.h"
+#include "component/TerrainComponent.h"
+#include "component/Transform.h"
+#include "component/MeshComponent.h"
 
 #include "App.h"
 #include "EditorHost.h"

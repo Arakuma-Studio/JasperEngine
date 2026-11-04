@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "component/PanelComponent.h"
 
 #include "lua.hpp"
 

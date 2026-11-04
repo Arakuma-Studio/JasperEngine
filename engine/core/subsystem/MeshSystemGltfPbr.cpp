@@ -8,6 +8,7 @@
 // values come in two textures gets one map packed from them on a job (TexturePack).
 
 #include "MeshSystem.h"
+#include "component/ModelComponent.h"
 #include "pool/ModelPool.h"
 
 #include "Log.h"
