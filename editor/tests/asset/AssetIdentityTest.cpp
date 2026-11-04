@@ -618,6 +618,8 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::MeshComponent, "submeshes[].material.pbr.sheen.map"}, {C::MeshComponent, "submeshes[].material.pbr.anisotropy.map"},
         {C::MeshComponent, "submeshes[].material.pbr.iridescence.map"}, {C::MeshComponent, "submeshes[].material.pbr.transmission.map"},
         {C::MeshComponent, "submeshes[].material.pbr.specular.map"},
+        // S57's Hair lobe: its flow map
+        {C::MeshComponent, "submeshes[].material.pbr.hair.flowMap"},
         {C::UIComponent, "texture"}, {C::UIComponent, "customShader"}, {C::UIComponent, "shaderTextures{}"},
         {C::ButtonComponent, "textureNormal"}, {C::ButtonComponent, "textureHovered"}, {C::ButtonComponent, "texturePressed"}, {C::ButtonComponent, "textureDisabled"},
         {C::TextComponent, "font"},

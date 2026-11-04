@@ -5,6 +5,7 @@
 
 #include "reflect/legacy/LegacyCodecs.h"
 #include "util/LightPhotometry.h"
+#include "render/OrderIndependentTransparency.h"
 
 #include "Stream.h"
 #include "StreamSchema.h"
@@ -60,6 +61,11 @@ YAML::Node LegacyCodecs::encodeLightComponent(const LightComponent& light) {
     if (light.shadowSourceRadius != defaults.shadowSourceRadius) node["shadowSourceRadius"] = light.shadowSourceRadius;
     if (light.shadowUpdateMode != defaults.shadowUpdateMode)
         node["shadowUpdateMode"] = StreamSchema::shadowUpdateMode().toString(light.shadowUpdateMode);
+    // contact shadows (S57), written only away from their defaults
+    if (light.contactShadows != defaults.contactShadows) node["contactShadows"] = light.contactShadows;
+    if (light.contactShadowLength != defaults.contactShadowLength) node["contactShadowLength"] = light.contactShadowLength;
+    if (light.contactShadowThickness != defaults.contactShadowThickness) node["contactShadowThickness"] = light.contactShadowThickness;
+    if (light.contactShadowSampleCount != defaults.contactShadowSampleCount) node["contactShadowSampleCount"] = light.contactShadowSampleCount;
     // the volumetric fog's share of the light (omitted at its default)
     if (light.volumetricIntensity != LightComponent().volumetricIntensity)
         node["volumetricIntensity"] = light.volumetricIntensity;
@@ -111,6 +117,10 @@ LightComponent LegacyCodecs::decodeLightComponent(const YAML::Node& node, const 
     light.shadowAngularDiameter = node["shadowAngularDiameter"] ? YamlNumbers::as<float>(node["shadowAngularDiameter"]) : defaults.shadowAngularDiameter;
     light.shadowSourceRadius = node["shadowSourceRadius"] ? YamlNumbers::as<float>(node["shadowSourceRadius"]) : defaults.shadowSourceRadius;
     light.shadowUpdateMode = node["shadowUpdateMode"] ? decodeEnum(node, "shadowUpdateMode", StreamSchema::shadowUpdateMode()) : defaults.shadowUpdateMode;
+    light.contactShadows = node["contactShadows"] ? YamlNumbers::as<bool>(node["contactShadows"]) : defaults.contactShadows;
+    light.contactShadowLength = node["contactShadowLength"] ? YamlNumbers::as<float>(node["contactShadowLength"]) : defaults.contactShadowLength;
+    light.contactShadowThickness = node["contactShadowThickness"] ? YamlNumbers::as<float>(node["contactShadowThickness"]) : defaults.contactShadowThickness;
+    light.contactShadowSampleCount = node["contactShadowSampleCount"] ? YamlNumbers::as<int>(node["contactShadowSampleCount"]) : defaults.contactShadowSampleCount;
     light.volumetricIntensity = node["volumetricIntensity"] ? YamlNumbers::as<float>(node["volumetricIntensity"]) : LightComponent().volumetricIntensity;
     light.intensityUnit = node["intensityUnit"] ? decodeEnum(node, "intensityUnit", StreamSchema::lightUnit()) : LightUnit::ENGINE;
     light.useColorTemperature = node["useColorTemperature"] ? YamlNumbers::as<bool>(node["useColorTemperature"]) : false;
@@ -519,6 +529,11 @@ YAML::Node LegacyCodecs::encodeCameraComponent(const CameraComponent& camera) {
     node["framebufferWidth"] = camera.framebufferWidth;
     node["framebufferHeight"] = camera.framebufferHeight;
     node["framebufferFilter"] = textureFilterToString(camera.framebufferFilter);
+    // the transparency mode (S57), written only away from its defaults
+    const CameraComponent defaults;
+    if (camera.transparencyMode != defaults.transparencyMode)
+        node["transparencyMode"] = OrderIndependentTransparency::getModeName(camera.transparencyMode);
+    if (camera.oitWeightScale != defaults.oitWeightScale) node["oitWeightScale"] = camera.oitWeightScale;
 
     return node;
 }
@@ -554,6 +569,12 @@ CameraComponent LegacyCodecs::decodeCameraComponent(const YAML::Node& node, cons
     if (node["framebufferWidth"]) camera.framebufferWidth = YamlNumbers::as<unsigned int>(node["framebufferWidth"]);
     if (node["framebufferHeight"]) camera.framebufferHeight = YamlNumbers::as<unsigned int>(node["framebufferHeight"]);
     if (node["framebufferFilter"]) camera.framebufferFilter = decodeEnum(node, "framebufferFilter", StreamSchema::textureFilter());
+    if (node["transparencyMode"]) {
+        TransparencyMode mode;
+        if (OrderIndependentTransparency::modeFromName(node["transparencyMode"].Scalar().c_str(), mode))
+            camera.transparencyMode = mode;
+    }
+    if (node["oitWeightScale"]) camera.oitWeightScale = YamlNumbers::as<float>(node["oitWeightScale"]);
 
     if (node["enabled"]) camera.enabled = YamlNumbers::as<bool>(node["enabled"]);
 

@@ -23,6 +23,7 @@
 #include "cook/SceneCooker.h"
 #include "reflect/Reflect.h"
 #include "serialization/CookedScene.h"
+#include "serialization/SceneSettingsCodec.h"
 #include "serialization/codecs/CustomCodecs.h"
 #include "util/ProjectUtils.h"
 
@@ -351,6 +352,45 @@ TEST(CookedScene, TweenCurveKeepsModesAndWraps) {
     EXPECT_EQ(old.keys[1].value, 1.0f);
     EXPECT_EQ(old.keys[1].mode, 0u);
     EXPECT_EQ(old.postWrapMode, CurveWrapMode::Clamp);
+}
+
+// S57: the scene's capsule shadows survive a cook, and a 1.0 settings record (without them)
+// leaves their defaults
+TEST(CookedScene, SceneSettingsKeepCapsuleShadows) {
+    DecodedScene source = emptyScene();
+    Scene* scene = source.scene->scene;
+    scene->setCapsuleShadowsEnabled(true);
+    scene->setCapsuleShadowIntensity(0.6f);
+    scene->setCapsuleShadowSoftness(1.25f);
+
+    jasperengine::cook::StringTable strings;
+    jasperengine::cook::Writer w(strings, [](Entity e) { return static_cast<uint32_t>(e); });
+    jasperengine::cook::writeSceneSettings(w, *scene);
+    const std::vector<uint8_t>& bytes = w.data();
+    auto entityOf = [](uint32_t id) { return static_cast<Entity>(id); };
+
+    DecodedScene loaded = emptyScene();
+    jasperengine::cook::Reader r(std::span<const uint8_t>(bytes.data(), bytes.size()), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r, *loaded.scene->scene);
+    ASSERT_FALSE(r.failed()) << r.error();
+    EXPECT_TRUE(loaded.scene->scene->isCapsuleShadowsEnabled());
+    EXPECT_FLOAT_EQ(loaded.scene->scene->getCapsuleShadowIntensity(), 0.6f);
+    EXPECT_FLOAT_EQ(loaded.scene->scene->getCapsuleShadowSoftness(), 1.25f);
+
+    // the 1.0 record: the same bytes without the three appended values
+    jasperengine::cook::StringTable none;
+    jasperengine::cook::Writer appended(none, [](Entity e) { return static_cast<uint32_t>(e); });
+    appended.boolean(true);
+    appended.f32(0.0f);
+    appended.f32(0.0f);
+    ASSERT_GT(bytes.size(), appended.data().size());
+    DecodedScene old = emptyScene();
+    jasperengine::cook::Reader r10(std::span<const uint8_t>(bytes.data(), bytes.size() - appended.data().size()), strings.strings(), entityOf);
+    jasperengine::cook::readSceneSettings(r10, *old.scene->scene);
+    ASSERT_FALSE(r10.failed()) << r10.error();
+    EXPECT_FALSE(old.scene->scene->isCapsuleShadowsEnabled());
+    EXPECT_FLOAT_EQ(old.scene->scene->getCapsuleShadowIntensity(), 1.0f);
+    EXPECT_FLOAT_EQ(old.scene->scene->getCapsuleShadowSoftness(), 0.25f);
 }
 
 TEST(RuntimeFields, Generated) {
