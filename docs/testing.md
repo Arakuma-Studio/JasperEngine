@@ -792,6 +792,20 @@ The Chrome for Testing headless shell in `docker/web.Dockerfile` and `uv` in
 `docker/linux.Dockerfile` are pinned by version and sha256 and bumped by hand, as are the MCP
 harness's packages (`tools/mcp/requirements.txt`).
 
+## Known gaps
+
+What the suites do not cover today, and what closing each gap would take. Each needs money, a
+device or a decision; recorded by BF23 (`docs/specs/BF23-authoring-audit-fixes.md`, section 4).
+
+| Gap | Evidence | What it would take |
+|---|---|---|
+| No native compile check for generated HLSL and MSL | There is no CI, and `tools/check-changed` has no `fxc`, `dxc` or `metal` step | A check someone runs on a Windows and a macOS machine |
+| Nothing runs on Windows or macOS unless a person does | `AGENTS.md`: there is no CI | A machine for each, or accepting it |
+| Particle goldens run on glcore and Vulkan only | `docs/specs/S20-particles.md`, "Goldens" under Deviations | Devices for Metal, D3D11 and GLES3 |
+| Mobile particle performance rows are unmeasured | `docs/perf/particles.md`, "Not measured here" | A person with reference phones |
+| S20's "Web: est. X ms" hint was never built | `docs/specs/S20-particles.md` (Risks), no match in `editor/window/InspectorParticles.cpp` | Delivered by S54's `cost` table |
+| The agent guide has about 110 bytes free, and S35, S53 and S54 all want some | `tools/mcp/budget.json`, `guide`; estimated, not measured | The second to land moves its own detail out, per `docs/mcp/conventions.md`. Measure with `tool_budget.py --groups all` |
+
 ## Record (S02)
 
 Measured on build server B (Docker, GCC 11.4) while S02 landed. Later specs append their own
