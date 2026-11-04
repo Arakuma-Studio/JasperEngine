@@ -11,6 +11,7 @@
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
+#include "pixelart/PixelPerfectEditor.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "lattice/LatticeSceneTools.h"
 #include "pose/PoseViewportLogic.h"
@@ -254,6 +255,17 @@ void editor::App::registerCommands(){
     };
     onView("sceneView.hideSelection", [](SceneViewController& view, SceneProject& scene) { view.hideSelection(scene); });
     onView("sceneView.showAll", [](SceneViewController& view, SceneProject& scene) { view.showAll(scene); });
+    // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
+    auto pixelScene = [this]() {
+        const SceneProject* scene = project.getSelectedScene();
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelPerfect(scene->scene);
+    };
+    bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);
+    }, pixelScene, noDrag);
+    bind("sceneView.pixelZoomGame", [this](const CommandArgs&) {
+        if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, sceneWindow->gamePixelZoom(*scene));
+    }, pixelScene, noDrag);
     onView("sceneView.togglePickLock", [](SceneViewController& view, SceneProject& scene) { view.togglePickLockSelection(scene); });
     onView("sceneView.measure", [](SceneViewController& view, SceneProject& scene) { view.setMeasuring(scene, !view.isMeasuring(scene.id)); });
     onView("sceneView.deleteMeasure", [](SceneViewController& view, SceneProject& scene) { view.deleteMeasure(scene, view.selectedMeasure(scene.id)); },

@@ -14,7 +14,7 @@ using namespace jasperengine::pixelart;
 
 namespace {
 
-    struct Row {
+    struct LayoutRow {
         int screenWidth, screenHeight, referenceWidth, referenceHeight;
         PixelUpscaleMode mode;
         int forcedScale;
@@ -27,7 +27,7 @@ namespace {
         bool cropped;
     };
 
-    const Row kRows[] = {
+    const LayoutRow kLayoutRows[] = {
         {320, 180, 320, 180, PixelUpscaleMode::INTEGER, 0, false, 1,   1, 320, 180, 320, 180, {0, 0, 320, 180}, 320.0f, 180.0f, false},
         {320, 180, 384, 216, PixelUpscaleMode::INTEGER_EXPAND, 0, true, 1,   1, 384, 216, 386, 218, {-32, -18, 384, 216}, 384.0f, 216.0f, true},
         {320, 180, 256, 224, PixelUpscaleMode::STRETCH_FILL, 0, false, 1,   1, 256, 224, 256, 224, {32, -22, 256, 224}, 256.0f, 224.0f, true},
@@ -73,8 +73,8 @@ namespace {
 }
 
 TEST(PixelPerfectLayoutTest, Table){
-    static_assert(sizeof(kRows) / sizeof(kRows[0]) == 40);
-    for (const Row& row : kRows){
+    static_assert(sizeof(kLayoutRows) / sizeof(kLayoutRows[0]) == 40);
+    for (const LayoutRow& row : kLayoutRows){
         SCOPED_TRACE(::testing::Message() << row.screenWidth << "x" << row.screenHeight << " ref " << row.referenceWidth << "x"
                      << row.referenceHeight << " mode " << (int)row.mode << " forced " << row.forcedScale << " smoothing "
                      << row.smoothing << " ppu " << row.ppu);

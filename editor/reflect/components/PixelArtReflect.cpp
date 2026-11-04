@@ -13,24 +13,24 @@ namespace jasperengine::editor::reflect {
 namespace enums {
 
     namespace {
-        constexpr int v(PixelUpscaleMode mode) { return static_cast<int>(mode); }
-        constexpr int v(PixelRotation rotation) { return static_cast<int>(rotation); }
+        constexpr int pixelArtValue(PixelUpscaleMode mode) { return static_cast<int>(mode); }
+        constexpr int pixelArtValue(PixelRotation rotation) { return static_cast<int>(rotation); }
 
         constexpr EnumItem kPixelUpscaleModeItems[] = {
-            {v(PixelUpscaleMode::INTEGER), "integer", "Integer (Letterbox)", "PixelUpscaleMode::INTEGER"},
-            {v(PixelUpscaleMode::INTEGER_EXPAND), "integer_expand", "Integer (Expand)", "PixelUpscaleMode::INTEGER_EXPAND"},
-            {v(PixelUpscaleMode::STRETCH_FILL), "stretch_fill", "Stretch Fill", "PixelUpscaleMode::STRETCH_FILL"},
+            {pixelArtValue(PixelUpscaleMode::INTEGER), "integer", "Integer (Letterbox)", "PixelUpscaleMode::INTEGER"},
+            {pixelArtValue(PixelUpscaleMode::INTEGER_EXPAND), "integer_expand", "Integer (Expand)", "PixelUpscaleMode::INTEGER_EXPAND"},
+            {pixelArtValue(PixelUpscaleMode::STRETCH_FILL), "stretch_fill", "Stretch Fill", "PixelUpscaleMode::STRETCH_FILL"},
         };
 
         constexpr EnumItem kPixelRotationItems[] = {
-            {v(PixelRotation::CAMERA), "camera", "Camera", "PixelRotation::CAMERA"},
-            {v(PixelRotation::STEPS_90), "steps_90", "90 Degree Steps", "PixelRotation::STEPS_90"},
-            {v(PixelRotation::ON_GRID), "on_grid", "Rotate On Grid", "PixelRotation::ON_GRID"},
+            {pixelArtValue(PixelRotation::CAMERA), "camera", "Camera", "PixelRotation::CAMERA"},
+            {pixelArtValue(PixelRotation::STEPS_90), "steps_90", "90 Degree Steps", "PixelRotation::STEPS_90"},
+            {pixelArtValue(PixelRotation::ON_GRID), "on_grid", "Rotate On Grid", "PixelRotation::ON_GRID"},
         };
     }
 
-    const EnumDesc kPixelUpscaleMode{"PixelUpscaleMode", kPixelUpscaleModeItems, v(PixelUpscaleMode::INTEGER)};
-    const EnumDesc kPixelRotation{"PixelRotation", kPixelRotationItems, v(PixelRotation::CAMERA)};
+    const EnumDesc kPixelUpscaleMode{"PixelUpscaleMode", kPixelUpscaleModeItems, pixelArtValue(PixelUpscaleMode::INTEGER)};
+    const EnumDesc kPixelRotation{"PixelRotation", kPixelRotationItems, pixelArtValue(PixelRotation::CAMERA)};
 
 }
 

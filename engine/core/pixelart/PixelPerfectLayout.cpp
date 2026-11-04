@@ -32,6 +32,7 @@ namespace jasperengine::pixelart {
     PixelPerfectLayout computePixelPerfectLayout(int screenWidth, int screenHeight, int referenceWidth,
             int referenceHeight, PixelUpscaleMode mode, int forcedScale, bool smoothing, int pixelsPerUnit){
         PixelPerfectLayout layout;
+        layout.viewport = Rect(0.0f, 0.0f, 0.0f, 0.0f);
         if (referenceWidth <= 0 || referenceHeight <= 0 || screenWidth <= 0 || screenHeight <= 0)
             return layout;
         const int ppu = std::max(1, pixelsPerUnit);

@@ -159,6 +159,10 @@ PixelRotation Sprite::getPixelRotation() const{
     return getComponent<SpriteComponent>().pixelRotation;
 }
 
+Vector2 Sprite::getWorldSize() const{
+    return spriteWorldSize(getComponent<SpriteComponent>());
+}
+
 float Sprite::getTextureScaleFactor() const{
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
     

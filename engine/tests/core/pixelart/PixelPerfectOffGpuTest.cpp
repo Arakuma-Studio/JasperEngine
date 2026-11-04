@@ -44,7 +44,7 @@ using namespace jasperengine::test;
 namespace {
 
     // a 16 x 16 checker in two colours; the pixels outlive every texture made of them
-    const std::vector<uint8_t>& checkerPixels(){
+    const std::vector<uint8_t>& zeroCostCheckerPixels(){
         static const std::vector<uint8_t> pixels = [](){
             std::vector<uint8_t> rgba(16 * 16 * 4);
             for (int y = 0; y < 16; y++){
@@ -62,17 +62,17 @@ namespace {
         return pixels;
     }
 
-    TextureData checkerData(){
-        return TextureData(16, 16, 16 * 16 * 4, ColorFormat::RGBA, 4, (void*)checkerPixels().data());
+    TextureData zeroCostChecker(){
+        return TextureData(16, 16, 16 * 16 * 4, ColorFormat::RGBA, 4, (void*)zeroCostCheckerPixels().data());
     }
 
-    std::string fixturePath(){
+    std::string zeroCostFixturePath(){
         return testPaths().sourceDir + "/fixtures/pixelart/zero_cost.txt";
     }
 
     // what the frame is made of: its passes in order, its draws, the variants its objects drew
     // with (sorted), and the main thread's allocations in a steady frame
-    struct FrameRecord {
+    struct ZeroCostFrame {
         std::vector<std::string> passes;
         uint32_t draws = 0;
         std::vector<std::string> shaders;
@@ -80,7 +80,7 @@ namespace {
         uint64_t image = 0;     // FNV-1a of the target's pixels
     };
 
-    std::string serialize(const FrameRecord& record){
+    std::string serializeZeroCost(const ZeroCostFrame& record){
         std::ostringstream out;
         out << "draws " << record.draws << "\n";
         out << "allocations " << record.allocations << "\n";
@@ -92,7 +92,7 @@ namespace {
         return out.str();
     }
 
-    bool parse(const std::string& text, FrameRecord& record){
+    bool parseZeroCost(const std::string& text, ZeroCostFrame& record){
         std::istringstream in(text);
         std::string line;
         bool any = false;
@@ -129,6 +129,8 @@ namespace {
         void SetUp() override{
             GpuEnvironment::setView(320, 180, 320, 180, Scaling::LETTERBOX);
             scene.setBackgroundColor(0.1f, 0.1f, 0.2f, 1.0f);
+            // a 2D game's camera: UI type, spanning the canvas
+            camera.setType(CameraType::CAMERA_UI);
             camera.activate();
             Engine::setScene(&scene);
         }
@@ -146,26 +148,26 @@ TEST_F(PixelPerfectOffGpu, ZeroCost){
     // sprites (one odd-sized with a CENTER pivot at a half pixel), a tilemap, a nine-slice
     // Image and a Text: the drawables S41's snapping touches when it is on
     Sprite hero(&scene);
-    hero.setTexture("pixelart|zero-cost|checker", checkerData());
+    hero.setTexture("pixelart|zero-cost|checker", zeroCostChecker());
     hero.setSize(15, 16);
     hero.setPivotPreset(PivotPreset::CENTER);
     hero.setPosition(40.5f, 60.25f, 0.0f);
 
     Sprite turned(&scene);
-    turned.setTexture("pixelart|zero-cost|checker", checkerData());
+    turned.setTexture("pixelart|zero-cost|checker", zeroCostChecker());
     turned.setSize(16, 16);
     turned.setPosition(120.0f, 40.0f, 0.0f);
     turned.setRotation(0.0f, 0.0f, 37.0f);
 
     Tilemap floor(&scene);
-    floor.setTexture("pixelart|zero-cost|checker", checkerData());
+    floor.setTexture("pixelart|zero-cost|checker", zeroCostChecker());
     floor.addRect(0, "tile", Rect(0, 0, 16, 16));
     for (int i = 0; i < 4; i++)
         floor.addTile(0, Vector2(16.0f * i, 0.0f), 16, 16);
     floor.setPosition(0.0f, 120.0f, 0.0f);
 
     Image panel(&scene);
-    panel.setTexture("pixelart|zero-cost|checker", checkerData());
+    panel.setTexture("pixelart|zero-cost|checker", zeroCostChecker());
     panel.setSize(48, 32);
     panel.setPatchMargin(4);
     panel.setPosition(200.0f, 20.0f, 0.0f);
@@ -179,7 +181,7 @@ TEST_F(PixelPerfectOffGpu, ZeroCost){
         return current->getSystem<RenderSystem>()->isAllLoaded();
     })) << "the scene never finished loading";
 
-    FrameRecord record;
+    ZeroCostFrame record;
 
     // the steady frame's allocations on the main thread: the least of a few frames (a frame now
     // and then grows a container the others reuse)
@@ -227,22 +229,22 @@ TEST_F(PixelPerfectOffGpu, ZeroCost){
     ASSERT_GT(record.draws, 0u);
 
     if (envFlag("JASPER_TEST_UPDATE_FIXTURES")){
-        std::ofstream out(fixturePath(), std::ios::binary | std::ios::trunc);
-        out << "# S41 AC11: the frame of PixelPerfectOffGpu.ZeroCost on the engine before S41\n" << serialize(record);
-        ASSERT_TRUE(out.good()) << fixturePath();
-        GTEST_SKIP() << "wrote " << fixturePath();
+        std::ofstream out(zeroCostFixturePath(), std::ios::binary | std::ios::trunc);
+        out << "# S41 AC11: the frame of PixelPerfectOffGpu.ZeroCost on the engine before S41\n" << serializeZeroCost(record);
+        ASSERT_TRUE(out.good()) << zeroCostFixturePath();
+        GTEST_SKIP() << "wrote " << zeroCostFixturePath();
     }
 
-    std::ifstream in(fixturePath(), std::ios::binary);
-    ASSERT_TRUE(in.good()) << "missing " << fixturePath();
+    std::ifstream in(zeroCostFixturePath(), std::ios::binary);
+    ASSERT_TRUE(in.good()) << "missing " << zeroCostFixturePath();
     std::stringstream text;
     text << in.rdbuf();
-    FrameRecord before;
-    ASSERT_TRUE(parse(text.str(), before)) << fixturePath();
+    ZeroCostFrame before;
+    ASSERT_TRUE(parseZeroCost(text.str(), before)) << zeroCostFixturePath();
 
-    EXPECT_EQ(record.passes, before.passes) << serialize(record);
+    EXPECT_EQ(record.passes, before.passes) << serializeZeroCost(record);
     EXPECT_EQ(record.draws, before.draws);
-    EXPECT_EQ(record.shaders, before.shaders) << serialize(record);
+    EXPECT_EQ(record.shaders, before.shaders) << serializeZeroCost(record);
     EXPECT_EQ(record.image, before.image) << "the frame draws other pixels than before S41";
     // no more than before (a frame may allocate less)
     if (testsupport::countsAllocations()){

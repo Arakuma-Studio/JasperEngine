@@ -2732,6 +2732,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("textureScaleFactor", &Sprite::getTextureScaleFactor, &Sprite::setTextureScaleFactor)
         .addProperty("pixelsPerUnit", &Sprite::getPixelsPerUnit, &Sprite::setPixelsPerUnit)
         .addProperty("pixelRotation", &Sprite::getPixelRotation, &Sprite::setPixelRotation)
+        .addProperty("worldSize", &Sprite::getWorldSize)
         .addProperty("textureRect", &Sprite::getTextureRect, (void(Sprite::*)(Rect))&Sprite::setTextureRect)
         .addFunction("setTextureRect",(void(Sprite::*)(float, float, float, float)) &Sprite::setTextureRect)
         .addProperty("pivotPreset", &Sprite::getPivotPreset, &Sprite::setPivotPreset)

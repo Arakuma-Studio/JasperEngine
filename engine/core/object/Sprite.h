@@ -64,6 +64,8 @@ namespace jasperengine{
         float getPixelsPerUnit() const;
         void setPixelRotation(PixelRotation pixelRotation);
         PixelRotation getPixelRotation() const;
+        // the quad in world units (width and height over its Pixels Per Unit)
+        Vector2 getWorldSize() const;
 
         void setTextureRect(float x, float y, float width, float height);
         void setTextureRect(Rect textureRect);
