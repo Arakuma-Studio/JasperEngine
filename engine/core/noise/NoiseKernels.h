@@ -46,7 +46,7 @@ namespace jasperengine { namespace noise {
 
     // A uniform grid, width * depth values, row by row: the position of (i, j) is R23's formula
     JASPERENGINE_API void basisGrid2D(const BasisParams& params, int64_t startX, int64_t startZ, int width, int depth, double unitsPerTexel, float* out, Backend backend = Backend::Native);
-    // width * height * depth values, y then z then x outermost last, on the lattice (no half step, R21)
+    // width * height * depth values, x fastest, then y, then z, on the lattice (no half step, R21)
     JASPERENGINE_API void basisGrid3D(const BasisParams& params, int64_t startX, int64_t startY, int64_t startZ, int width, int height, int depth, double unitsPerVoxel, float* out, Backend backend = Backend::Native);
 
     // Single points on the one-lane back end, bit-identical to the batches (R3)

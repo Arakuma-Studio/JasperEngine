@@ -1,0 +1,159 @@
+{
+  "formatVersion": 1,
+  "kind": "noise",
+  "kindVersion": 1,
+  "nextId": 10,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "domain_transform",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {
+        "scale": [
+          1.0,
+          1.0,
+          6.0
+        ],
+        "offset": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "rotation_y": 0.0
+      }
+    },
+    {
+      "id": "n2",
+      "type": "domain_warp",
+      "position": [
+        240.0,
+        0.0
+      ],
+      "params": {
+        "basis": "perlin",
+        "dimensions": "2d",
+        "frequency": 1.5,
+        "amplitude": 0.12,
+        "octaves": 2,
+        "seed_offset": 5
+      }
+    },
+    {
+      "id": "n4",
+      "type": "ridged",
+      "position": [
+        480.0,
+        0.0
+      ],
+      "params": {
+        "basis": "simplex",
+        "dimensions": "2d",
+        "frequency": 3.0,
+        "octaves": 3,
+        "lacunarity": 2.0,
+        "gain": 0.35,
+        "seed_offset": 0
+      }
+    },
+    {
+      "id": "n6",
+      "type": "remap",
+      "position": [
+        720.0,
+        0.0
+      ],
+      "params": {
+        "from_min": 0.1,
+        "from_max": 0.8,
+        "to_min": 0.15,
+        "to_max": 0.8,
+        "clamp": true
+      }
+    },
+    {
+      "id": "n8",
+      "type": "output_height",
+      "position": [
+        960.0,
+        0.0
+      ],
+      "params": {
+        "unit": "normalized"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e3",
+      "from": {
+        "node": "n1",
+        "port": "out"
+      },
+      "to": {
+        "node": "n2",
+        "port": "coord"
+      }
+    },
+    {
+      "id": "e5",
+      "from": {
+        "node": "n2",
+        "port": "out"
+      },
+      "to": {
+        "node": "n4",
+        "port": "coord"
+      }
+    },
+    {
+      "id": "e7",
+      "from": {
+        "node": "n4",
+        "port": "out"
+      },
+      "to": {
+        "node": "n6",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e9",
+      "from": {
+        "node": "n6",
+        "port": "out"
+      },
+      "to": {
+        "node": "n8",
+        "port": "in"
+      }
+    }
+  ],
+  "variables": [],
+  "groups": [],
+  "viewport": {
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "zoom": 1.0
+  },
+  "metadata": {
+    "noise": {
+      "space": "terrain"
+    },
+    "preset": {
+      "id": "dunes",
+      "name": "Dunes",
+      "description": "Long parallel dunes across the wind.",
+      "tags": [
+        "sand",
+        "arid"
+      ],
+      "terrain_size": 2000.0,
+      "max_height": 80.0
+    }
+  }
+}

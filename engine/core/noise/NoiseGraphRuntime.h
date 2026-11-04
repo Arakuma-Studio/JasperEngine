@@ -37,7 +37,7 @@ namespace jasperengine { namespace noise {
     };
 
     // A 3D region: samples on the lattice, float(double(start + i) * unitsPerVoxel) with no half step,
-    // so a coarse sample is the fine sample at its position (R21). Layout: x fastest, then z, then y.
+    // so a coarse sample is the fine sample at its position (R21). Layout: x fastest, then y, then z.
     struct Grid3Domain {
         int64_t startX = 0, startY = 0, startZ = 0;
         int width = 0, height = 0, depth = 0;
@@ -74,8 +74,11 @@ namespace jasperengine { namespace noise {
         void reserve(size_t bytes) { if (storage.size() * sizeof(float) < bytes) storage.resize((bytes + sizeof(float) - 1) / sizeof(float)); }
         float* data() { return storage.data(); }
         size_t bytes() const { return storage.size() * sizeof(float); }
+        // The evaluator's table of buffer pointers, kept here so a warm scratch never allocates
+        float** table(size_t count) { if (pointers.size() < count) pointers.resize(count); return pointers.data(); }
     private:
         std::vector<float> storage;
+        std::vector<float*> pointers;
     };
 
     struct EvalContext {
@@ -140,7 +143,7 @@ namespace jasperengine { namespace noise {
         Interval rangeOver(int output, const float boxMin[3], const float boxMax[3]) const;
         // Per scratch: buffers * 4096 * 4 bytes (R52)
         size_t scratchBytes() const;
-        size_t bufferCount() const;
+        size_t bufferCount() const;     // what a chunk holds at most, for the report: BuffersAreReused
         size_t opCount() const;
         // Texels of padding the output's region is evaluated with (R22)
         int paddingOf(int output) const;

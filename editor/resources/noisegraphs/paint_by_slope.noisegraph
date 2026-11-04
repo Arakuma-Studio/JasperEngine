@@ -1,0 +1,92 @@
+{
+  "formatVersion": 1,
+  "kind": "noise",
+  "kindVersion": 1,
+  "nextId": 6,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "terrain_height",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {}
+    },
+    {
+      "id": "n2",
+      "type": "slope_mask",
+      "position": [
+        240.0,
+        0.0
+      ],
+      "params": {
+        "min_angle": 28.0,
+        "max_angle": 90.0,
+        "falloff": 6.0
+      }
+    },
+    {
+      "id": "n4",
+      "type": "output_layer",
+      "position": [
+        480.0,
+        0.0
+      ],
+      "params": {
+        "layer": 1,
+        "optional": false
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e3",
+      "from": {
+        "node": "n1",
+        "port": "out"
+      },
+      "to": {
+        "node": "n2",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e5",
+      "from": {
+        "node": "n2",
+        "port": "out"
+      },
+      "to": {
+        "node": "n4",
+        "port": "weight"
+      }
+    }
+  ],
+  "variables": [],
+  "groups": [],
+  "viewport": {
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "zoom": 1.0
+  },
+  "metadata": {
+    "noise": {
+      "space": "terrain"
+    },
+    "preset": {
+      "id": "paint_by_slope",
+      "name": "Paint By Slope",
+      "description": "Paints steep ground with layer 1 and leaves the heights alone.",
+      "tags": [
+        "utility",
+        "paint"
+      ],
+      "terrain_size": 1000.0,
+      "max_height": 200.0,
+      "hidden": true
+    }
+  }
+}

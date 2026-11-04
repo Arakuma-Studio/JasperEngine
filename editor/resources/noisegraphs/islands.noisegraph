@@ -1,0 +1,316 @@
+{
+  "formatVersion": 1,
+  "kind": "noise",
+  "kindVersion": 1,
+  "nextId": 25,
+  "nodes": [
+    {
+      "id": "n1",
+      "type": "terrain_uv",
+      "position": [
+        0.0,
+        0.0
+      ],
+      "params": {}
+    },
+    {
+      "id": "n2",
+      "type": "math",
+      "position": [
+        240.0,
+        0.0
+      ],
+      "params": {
+        "op": "subtract",
+        "b": 0.5
+      }
+    },
+    {
+      "id": "n4",
+      "type": "math",
+      "position": [
+        240.0,
+        200.0
+      ],
+      "params": {
+        "op": "subtract",
+        "b": 0.5
+      }
+    },
+    {
+      "id": "n6",
+      "type": "math",
+      "position": [
+        480.0,
+        0.0
+      ],
+      "params": {
+        "op": "multiply",
+        "b": 1.0
+      }
+    },
+    {
+      "id": "n9",
+      "type": "math",
+      "position": [
+        480.0,
+        200.0
+      ],
+      "params": {
+        "op": "multiply",
+        "b": 1.0
+      }
+    },
+    {
+      "id": "n12",
+      "type": "math",
+      "position": [
+        720.0,
+        0.0
+      ],
+      "params": {
+        "op": "add",
+        "b": 0.0
+      }
+    },
+    {
+      "id": "n15",
+      "type": "remap",
+      "position": [
+        960.0,
+        0.0
+      ],
+      "params": {
+        "from_min": 0.06,
+        "from_max": 0.24,
+        "to_min": 1.0,
+        "to_max": 0.0,
+        "clamp": true
+      }
+    },
+    {
+      "id": "n17",
+      "type": "fbm",
+      "position": [
+        960.0,
+        200.0
+      ],
+      "params": {
+        "basis": "simplex",
+        "dimensions": "2d",
+        "frequency": 4.0,
+        "octaves": 6,
+        "lacunarity": 2.0,
+        "gain": 0.5,
+        "seed_offset": 0
+      }
+    },
+    {
+      "id": "n18",
+      "type": "remap",
+      "position": [
+        1200.0,
+        200.0
+      ],
+      "params": {
+        "from_min": -0.6,
+        "from_max": 0.6,
+        "to_min": 0.25,
+        "to_max": 1.0,
+        "clamp": true
+      }
+    },
+    {
+      "id": "n20",
+      "type": "math",
+      "position": [
+        1440.0,
+        0.0
+      ],
+      "params": {
+        "op": "multiply",
+        "b": 1.0
+      }
+    },
+    {
+      "id": "n23",
+      "type": "output_height",
+      "position": [
+        1680.0,
+        0.0
+      ],
+      "params": {
+        "unit": "normalized"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "e3",
+      "from": {
+        "node": "n1",
+        "port": "u"
+      },
+      "to": {
+        "node": "n2",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e5",
+      "from": {
+        "node": "n1",
+        "port": "v"
+      },
+      "to": {
+        "node": "n4",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e7",
+      "from": {
+        "node": "n2",
+        "port": "out"
+      },
+      "to": {
+        "node": "n6",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e8",
+      "from": {
+        "node": "n2",
+        "port": "out"
+      },
+      "to": {
+        "node": "n6",
+        "port": "b"
+      }
+    },
+    {
+      "id": "e10",
+      "from": {
+        "node": "n4",
+        "port": "out"
+      },
+      "to": {
+        "node": "n9",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e11",
+      "from": {
+        "node": "n4",
+        "port": "out"
+      },
+      "to": {
+        "node": "n9",
+        "port": "b"
+      }
+    },
+    {
+      "id": "e13",
+      "from": {
+        "node": "n6",
+        "port": "out"
+      },
+      "to": {
+        "node": "n12",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e14",
+      "from": {
+        "node": "n9",
+        "port": "out"
+      },
+      "to": {
+        "node": "n12",
+        "port": "b"
+      }
+    },
+    {
+      "id": "e16",
+      "from": {
+        "node": "n12",
+        "port": "out"
+      },
+      "to": {
+        "node": "n15",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e19",
+      "from": {
+        "node": "n17",
+        "port": "out"
+      },
+      "to": {
+        "node": "n18",
+        "port": "in"
+      }
+    },
+    {
+      "id": "e21",
+      "from": {
+        "node": "n18",
+        "port": "out"
+      },
+      "to": {
+        "node": "n20",
+        "port": "a"
+      }
+    },
+    {
+      "id": "e22",
+      "from": {
+        "node": "n15",
+        "port": "out"
+      },
+      "to": {
+        "node": "n20",
+        "port": "b"
+      }
+    },
+    {
+      "id": "e24",
+      "from": {
+        "node": "n20",
+        "port": "out"
+      },
+      "to": {
+        "node": "n23",
+        "port": "in"
+      }
+    }
+  ],
+  "variables": [],
+  "groups": [],
+  "viewport": {
+    "offset": [
+      0.0,
+      0.0
+    ],
+    "zoom": 1.0
+  },
+  "metadata": {
+    "noise": {
+      "space": "terrain"
+    },
+    "preset": {
+      "id": "islands",
+      "name": "Islands",
+      "description": "A landmass that always falls to sea level at the border.",
+      "tags": [
+        "coast"
+      ],
+      "terrain_size": 2000.0,
+      "max_height": 200.0
+    }
+  }
+}
