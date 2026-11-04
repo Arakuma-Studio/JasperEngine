@@ -6,6 +6,7 @@
 // keeps them, and that one edit is one undo step.
 
 #include "organisation/AssetLabels.h"
+#include "Project.h"
 #include "organisation/LabelOperations.h"
 #include "organisation/OrganisationCommands.h"
 #include "organisation/OrganisationTestProject.h"

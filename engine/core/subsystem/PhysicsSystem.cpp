@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PhysicsSystem.h"
+#include "component/Joint3DComponent.h"
 #include "Scene.h"
 #include "physics/JoltShapeBuilder.h"
 #include "subsystem/MeshSystem.h"

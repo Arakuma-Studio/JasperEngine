@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "InputField.h"
+#include "component/InputFieldComponent.h"
+#include "util/Color.h"
 
 #include "component/PolygonComponent.h"
 #include "component/TextComponent.h"
