@@ -197,10 +197,9 @@ bool TitleGpu::ensureProgram(uint32_t number, std::string* error) {
         if (error) *error = "the title art shader " + ShaderPool::getShaderStr(ShaderType::TITLE_ART, number) + " could not be built";
         return false;
     }
-    if (!p.requested) {
-        p.shader = ShaderPool::get(ShaderType::TITLE_ART, number);
-        p.requested = true;
-    }
+    // asked again until it is built: the runtime compiler takes the requests a frame brings
+    p.shader = ShaderPool::get(ShaderType::TITLE_ART, number);
+    p.requested = true;
     if (!p.shader || !p.shader->isCreated()) return false;
     if (!ensurePlaceholder()) {
         if (error) *error = "the title art placeholder texture could not be made";
