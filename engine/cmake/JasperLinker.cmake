@@ -59,3 +59,19 @@ endfunction()
 macro(jasperengine_select_linker shipped)
     _jasperengine_choose_linker(${shipped})
 endmacro()
+
+# jasperengine_link_whole_archive(<target> <static library>...): every member of each library is
+# linked into <target>, not only those its code references (the editor's shared engine carries all of
+# Box2D and Jolt for C++ scripts). The libraries stay in <target>'s link libraries for ordering.
+function(jasperengine_link_whole_archive target)
+    foreach(lib IN LISTS ARGN)
+        if(MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC")
+            target_link_options(${target} PRIVATE "/WHOLEARCHIVE:$<TARGET_FILE:${lib}>")
+        elseif(APPLE)
+            target_link_options(${target} PRIVATE "LINKER:-force_load,$<TARGET_FILE:${lib}>")
+        else()
+            target_link_options(${target} PRIVATE "LINKER:--whole-archive" "$<TARGET_FILE:${lib}>" "LINKER:--no-whole-archive")
+        endif()
+        add_dependencies(${target} ${lib})
+    endforeach()
+endfunction()
