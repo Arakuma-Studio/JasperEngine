@@ -33,6 +33,7 @@ namespace fs = std::filesystem;
 using namespace jasperengine;
 using namespace jasperengine::editor;
 using namespace jasperengine::editor::test;
+using namespace jasperengine::test;
 using GJson = GltfDocument::Json;
 
 namespace {
