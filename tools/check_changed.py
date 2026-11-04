@@ -41,6 +41,10 @@ unit and MCP tests that can see it; the full suite is for pushes to origin main 
    Android builds are left out, and said to be (their images are the host's to run).
 7. After the Linux editor's build: every header the change edits still compiles alone
    (tools/check_headers.py) and no component header passes the fan-out limits (tools/check_fanout.py).
+8. When a header under engine/core, engine/CMakeLists.txt or what ALL_TRIGGERS names changes: the
+   engine builds with every optional module off (tools/check-physics-off.sh all-off). The editor's
+   engine has every module, so nothing else here sees a source that lost a header only a module's
+   code gave it; a game's Compile build and the smaller prebuilt players do.
 """
 
 from __future__ import annotations
@@ -90,6 +94,9 @@ SELF_TESTS = {"tools/check_changed.py": "tools/test_check_changed.py", "tools/ch
 # an MCP test file, or what classifies it, changes: every file must stay classified for the CI suite
 CI_SUITE_GUARD = "tools/ci/check-mcp-ci-suite.py"
 CI_SUITE_GUARD_TRIGGERS = ("tools/mcp/tests/test_*.py", "tools/mcp/run_tests.py", CI_SUITE_GUARD)
+# the engine with every optional module off: a header's include can reach a source only through a
+# module's code, and the editor's engine, which has them all, never shows it
+MODULES_OFF_CHECK = "tools/check-physics-off.sh"
 # C/C++ and what the engine's builds read
 CXX = (".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp", ".mm", ".m")
 HEADER = (".h", ".hh", ".hpp", ".hxx", ".inl", ".ipp")
@@ -104,7 +111,7 @@ ANDROID_DIRS = ("engine/platform/android/*", "engine/project/android/*", "tools/
 # game, which no editor coverage sees; and those that compile one, for what the compile path reads
 # (the full gate compiles for every change)
 GAME_BUILD_FILES = ("test_html_ui_export.py", "test_html_ui_video_export.py", "test_call_cli.py")
-COMPILE_FILES = ("test_build.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py")
+COMPILE_FILES = ("test_build.py", "test_compile_without_modules.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py")
 COMPILE_PATHS = ("engine/CMakeLists.txt", "engine/project/*", "engine/player/*", "engine/platform/*", "engine/core/player/*",
                  "engine/core/diag/*", "editor/Exporter*", "editor/Generator*", "editor/players/*", "tools/players/*")
 TEST_DEF = re.compile(r"^\s*(TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*(\w+)\s*,", re.M)
@@ -244,6 +251,7 @@ class Plan:
     mcp_files: list[str] = field(default_factory=list)
     mcp_reasons: dict[str, str] = field(default_factory=dict)
     mcp_notes: list[str] = field(default_factory=list)
+    modules_off: str = ""                                    # the file that asks for MODULES_OFF_CHECK
 
     def add_build(self, name: str, why: str) -> None:
         if name not in self.builds:
@@ -264,6 +272,8 @@ def plan_builds(files: list[str], plan: Plan) -> None:
         if match(f, CI_SUITE_GUARD_TRIGGERS) and CI_SUITE_GUARD not in plan.self_tests:
             plan.self_tests.append(CI_SUITE_GUARD)
     everything = [f for f in files if match(f, ALL_TRIGGERS)]
+    plan.modules_off = next((f for f in files if f in ("engine/CMakeLists.txt", MODULES_OFF_CHECK)
+                             or (f.startswith("engine/core/") and f.endswith(HEADER))), everything[0] if everything else "")
     if everything:
         for b in ("linux", "unit-tests", "web", "android"):
             plan.add_build(b, f"{everything[0]} changed (builds everything)")
@@ -778,6 +788,8 @@ def describe(changes: Changes, plan: Plan, cmap_info: str) -> str:
     lines += [f"  {n}" for n in plan.unit_notes if not plan.unit_all]
     if plan.self_tests:
         lines.append("tool tests: " + ", ".join(plan.self_tests))
+    if plan.modules_off:
+        lines.append(f"the engine with every module off ({plan.modules_off} changed)")
     if plan.htmlui_all or plan.unit_htmlui:
         lines.append("HTML UI tests: " + ("all" if plan.htmlui_all else f"suites {plan.unit_htmlui}"))
     if plan.mcp_all:
@@ -892,12 +904,15 @@ def main(argv: list[str], root: Path | None = None) -> int:
         runner.run(f"build {b}", ["tools/build.sh", b], env)
     # the header gates: they read the Linux editor's tree, whose paths are the image's
     # (a checkout without them: an older branch's, --root)
+    in_tree = (lambda *c: list(c)) if in_image() else (lambda *c: ["tools/build.sh", "exec", "linux", *c])
     if "linux" in plan.builds and (ROOT / "tools/check_fanout.py").is_file() and (args.keep_going or not runner.failed):
-        in_tree = (lambda *c: list(c)) if in_image() else (lambda *c: ["tools/build.sh", "exec", "linux", *c])
         headers = sorted(f for f in changes.files if f.endswith(HEADER) and f not in changes.deleted)
         if headers:
             runner.run(f"headers compile alone ({len(headers)} edited)", in_tree("python3", "-I", "tools/check_headers.py", *headers))
         runner.run("header fan-out limits", in_tree("python3", "-I", "tools/check_fanout.py"))
+    if plan.modules_off and (ROOT / MODULES_OFF_CHECK).is_file() and (args.keep_going or not runner.failed):
+        jobs = os.environ["JOBS"] if os.environ.get("JOBS", "").isdigit() else str(os.cpu_count() or 4)
+        runner.run("the engine with every module off", in_tree("env", "WERROR=1", "bash", MODULES_OFF_CHECK, "-j", jobs, "all-off"))
     # 3. unit tests
     if (args.keep_going or not runner.failed) and "unit-tests" in plan.builds:
         if plan.unit_all:
