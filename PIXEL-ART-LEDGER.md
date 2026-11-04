@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | paused: overlaps with `dc/sprite-batching` |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -200,6 +200,15 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
 
 ## Log
 
+- 2026-11-04: `origin/main` brought the Doriax catch-up program (`docs/doriax-catchup/LEDGER.md`,
+  19 specs in `docs/superpowers/specs/`). Its `sprite-batching` spec duplicates most of S52
+  (dynamic sprite batching, 2D reordering, shared buffers, batch stats), so S52 was stopped before
+  any code was written.
+  - Proposed to that program's lead: they keep generic batching. S52 narrows to Sorting
+    Layers/Groups, a Sprite Batch bulk API, and keeping the pixel-art per-sprite parameters
+    batch-compatible. It lands after their sprite-batching. Waiting for their reply.
+  - Other overlaps flagged to them: `mesh-memory` and S44 (`SpriteComponent` frames);
+    `ui-components` and S45 (9-slice); `unicode-text` and S51; `agent-authoring` and the guide.
 - 2026-11-04: Wave 5A implementation started: S41, S43, S44 and S52, each in
   `.worktrees/sNN` on its feature branch from `main` 7fe6b0b36. Each implementer follows
   `.worktrees/IMPLEMENTER-BRIEF.md` (local, not committed). A baseline unit-test run of `main` is
