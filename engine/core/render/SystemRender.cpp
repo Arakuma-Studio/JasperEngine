@@ -10,6 +10,7 @@
 #include "sokol/SokolPipelineRecord.h"
 #include "ShaderRender.h"
 #include "sokol/SokolSystem.h"
+#include "sokol/SokolObject.h"
 #include "Engine.h"
 #include "Log.h"
 

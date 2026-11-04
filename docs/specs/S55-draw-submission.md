@@ -181,3 +181,86 @@ From `jasper-render.md`, with file and line citations there:
   batch with identical overrides.
 - **Per-instance probes and lightmaps:** when per-instance data can't express them, the draw stays
   unbatched.
+
+## Decisions
+
+- **Batching is decided by content, not predicted by a key.** In a pass's opaque queue
+  (`SystemRender::beginDrawBatch` / `endDrawBatch`), `SokolDrawBatch` holds each draw from
+  `beginDraw` to `draw` (its pipeline, a copy of its bindings and of every uniform block it
+  applied). A held draw that has the same pipeline, bindings, elements and every uniform byte as
+  the open batch's first draw, except its object block (`u_vs_pbrParams`, `u_vs_depthParams`),
+  joins it; anything else closes the batch. A batch of one is drawn exactly as it would have been.
+  Per-entity lights, reflection probes, material overrides and LOD levels therefore split batches
+  by themselves (§9's default), and nothing the key forgets can merge two different draws.
+- **Bit-identical instances.** An instance carries the draw's own matrices: the model's first three
+  rows (a model matrix whose last row is not 0 0 0 1 draws alone), the normal matrix's first three
+  columns, the full model-view-projection (10 vectors; depth: model rows, MVP and one extra vector,
+  8). The instanced shader rebuilds the same `mat4`s, so batched and unbatched draws compute the
+  same expressions on the same values (`InstancingGoldenGpu` compares the images pixel for pixel).
+  The colour/tint is not per instance: draws with different material bytes never batch.
+- **The shader switch** is `includes/object_params.glsl` / `object_depth_params.glsl`: under
+  `HAS_AUTO_INSTANCING` ('Aui', MESH bit 36, DEPTH bit 18) `pbrParams` / `depthParams` are a macro over
+  the instance attributes, else the uniform block as before. `mesh.vert`, `depth.vert`,
+  `surface_vs.glsl` and `surface_depth_vs.glsl` include them, so the built-in Lit and every library
+  shader batch without change. A fork keeps its own block: `linkBatchVariant` sees the block still in
+  the variant's reflection and the submesh draws alone. The variant's uniform slots are mapped to
+  the source's by name, so slot numbering may differ.
+- **Batch variants are pipeline variants on their own `ObjectRender`s** (`Submesh::batchRender`,
+  `batchDepthRender`), made through the S32 async path. A load does not wait for their shaders: the
+  submesh draws alone and the mesh reloads when they are built (`needVariantReload`). Exports
+  precompile them (`ShaderVariantCollector`).
+- **One instance stream buffer a frame** (sokol `sg_append_buffer`, 256 KB growing by doubling up to
+  64 MB when a frame needed more). A batch that does not fit, or whose variant pipeline is not ready,
+  draws its instances one by one.
+- **Constants (R3):** with GPU Instancing on, a pipeline already applied is not applied again and a
+  uniform block whose bytes equal those last applied to its slot since that pipeline is skipped
+  (sokol keeps them; it asks again only after `sg_apply_pipeline`). Off, every call goes to sokol as
+  before (R10).
+- **GPU Instancing off restores the previous submission (R10):** no batch variants are loaded (no
+  memory, no pipelines), no draw is held, nothing is skipped, the queues keep today's order. The
+  visible-list culling (R4) and the shadow geometry (R5) do not depend on it: they remove only work
+  that draws nothing or lands under the shadow map's texel.
+- **Settings:** `graphics.gpu_instancing` (Project Settings > Graphics > GPU Instancing) and
+  `quality.shadow_lod_bias` (Quality > Shadow LOD Bias, 0-3), one `DrawSubmissionSettings`, undoable
+  (`DrawSubmissionSettingsCmd`), written to `project.yaml` (`graphics.gpuInstancing`,
+  `graphics.shadowLodBias`) only when not the defaults, into exports by the generated main
+  (`Engine::setGpuInstancingEnabled`, `Engine::setShadowLodBias`). C4: the integrator wires the bias
+  to S56's `QualityResolver`.
+- **Allow GPU Instancing** is per Mesh renderer (Unity has it per material), saved only when off.
+- **Shadow LOD Bias** adds levels to what the pass's own view selects (`LodView::levelBias`), in
+  shadow slots, point light faces (which now select levels at all), reflection probe faces and
+  render-to-texture cameras. It is part of the S10 caster revision.
+- **Static terrain casters:** a terrain with `staticShadowCaster` draws, in each shadow slot, a cut
+  of its own selected from the slot's light camera (from above the cascade's centre by its radius,
+  so bigger texels take coarser nodes); it no longer depends on the camera and stays in the S10
+  static layer. A dynamic terrain caster draws the camera's cut without the nodes outside the slot.
+- **Shadow index buffers** are made on a submesh's first shadow draw (so only with shadows on),
+  shared by every submesh over the same GPU buffers, for the built-in position-only depth program
+  of a mesh that does not deform; LOD levels keep their own indices.
+- **Visible lists:** `VisibleList::cull` (on `jobs::parallelFor`, inline below 128 candidates and on
+  single-threaded web) tests plain meshes' bounds once per pass and the submeshes of a mesh whose
+  rest bounds are where it draws (no skinning, morph targets, lattices, Vertex Animation or
+  billboards). Instanced meshes, terrains, tilemaps and the editor's per-pass overrides keep
+  `drawMesh`'s own test. Shadow slots look their casters up once per frame.
+- **Stats (R7)** are output-only fields of `get_render_stats` (`draw_calls_by_pass` is an object: the
+  `draw_calls` key already held the total), the Game view's Stats overlay, `scene:getRenderStats()`
+  and the benchmark's `render` and `renderCpuMs`.
+- **C3 (S54 LOD fade):** each instance carries a LOD fade (`ObjectRender::setNextDrawBatch`'s
+  `lodFade`, 0 now; `objectLodFade()` in the shaders). A fading draw's dither pipeline differs from
+  the plain one, so fading and non-fading draws never share a batch.
+
+## Deviations
+
+- **R2 (renumbered scope, Update 1):** S55 does not sort. The opaque queues keep today's order
+  (priority, nearest first; `draw-perf`'s sort when it lands), and within each priority the draws of
+  one batch key (pipeline, material, mesh) are brought together at the first's place
+  (`VisibleList::groupBatches`), so batches are runs of the queue. AC2's `DrawSortTest` checks that
+  grouping. S54's fading draws sort after the others once S54 gives the queue their fade: no fade
+  exists in this branch to order by.
+- **R3's pipeline skip** is this branch's own until `draw-perf`'s tracker lands; then the uniform
+  cache keys on that tracker's applied pipeline instead of `SokolPipelineCache::appliedEpoch`.
+- **Never instanced, for dynamic batching (`sprite-batching`):** single-submesh meshes of up to 64
+  vertices drawn with the built-in shader, whatever else `sprite-batching` would refuse in them.
+- **R6 "stale data is never drawn"** is held for instance views (their draws skip a frame while their
+  upload waits) and terrain nodes; a skinned mesh whose bones upload waits draws the pose before.
+- **Shadow index buffers are made at load time**, not cooked: S53's cook does not write them.

@@ -8156,8 +8156,8 @@ void RenderSystem::updateSubmeshBounds(MeshComponent& mesh){
         if ((indexType != AttributeDataType::UNSIGNED_INT && indexType != AttributeDataType::UNSIGNED_SHORT) ||
                 !readable(position.buffer, position.attribute, 12) || !readable(index.buffer, index.attribute, indexSize))
             continue;
-        const SubmeshGeometryKey key{position.buffer->getRender()->backend.get().id, position.attribute->getOffset(),
-                                     index.buffer->getRender()->backend.get().id, index.attribute->getOffset(), index.attribute->getCount()};
+        const SubmeshGeometryKey key{position.buffer->getRender()->backend.get().id, (uint32_t)position.attribute->getOffset(),
+                                     index.buffer->getRender()->backend.get().id, (uint32_t)index.attribute->getOffset(), index.attribute->getCount()};
         auto cached = cache.find(key);
         if (cached != cache.end()){
             submesh.localBounds = cached->second;
@@ -8205,8 +8205,8 @@ std::shared_ptr<ShadowIndexBuffer> RenderSystem::shadowIndexBuffer(MeshComponent
             !readable(position.buffer, position.attribute, 12) || !readable(index.buffer, index.attribute, wide ? 4 : 2))
         return result;
 
-    const SubmeshGeometryKey key{position.buffer->getRender()->backend.get().id, position.attribute->getOffset(),
-                                 index.buffer->getRender()->backend.get().id, index.attribute->getOffset(), index.attribute->getCount()};
+    const SubmeshGeometryKey key{position.buffer->getRender()->backend.get().id, (uint32_t)position.attribute->getOffset(),
+                                 index.buffer->getRender()->backend.get().id, (uint32_t)index.attribute->getOffset(), index.attribute->getCount()};
     auto found = shared.find(key);
     if (found != shared.end()){
         if (std::shared_ptr<ShadowIndexBuffer> existing = found->second.lock())
@@ -9181,6 +9181,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         if (terrain){
             terrainNodes = &terrainViewData(entity, *terrain, terrainView);
             updateTerrainNodesBuffer(*terrainNodes);
+            // its nodes' upload waits for the next frame: not drawn from the previous ones (spec S55 R6)
+            if (terrainNodes->needUpdateNodesBuffer)
+                return false;
         }
 
         // model, normal and mvp matrices of this pass (one uniform block)
@@ -9583,6 +9586,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
         if (terrain){
             terrainNodes = &terrainViewData(entity, *terrain, mainTerrainView());
             updateTerrainNodesBuffer(*terrainNodes);
+            // (as drawMesh: never the previous upload's nodes)
+            if (terrainNodes->needUpdateNodesBuffer)
+                return false;
         }
 
         for (int i = 0; i < mesh.numSubmeshes; i++){

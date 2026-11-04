@@ -1520,6 +1520,14 @@
    "component": "mesh",
    "group": "",
    "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
    "read_only": false
@@ -4244,6 +4252,14 @@
    "component": "mesh",
    "group": "",
    "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
    "read_only": false
@@ -4400,6 +4416,14 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
    "read_only": false
   },
   {
@@ -6842,6 +6866,14 @@
    "component": "mesh",
    "group": "",
    "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
    "label": "Render in Probes",
    "path": "renderInReflectionProbes",
    "read_only": false
@@ -7088,6 +7120,14 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
    "read_only": false
   },
   {
@@ -7548,6 +7588,14 @@
    "kind": "Bool",
    "label": "Detail Levels",
    "path": "lodEnabled",
+   "read_only": false
+  },
+  {
+   "component": "mesh",
+   "group": "",
+   "kind": "Bool",
+   "label": "Allow GPU Instancing",
+   "path": "allowGpuInstancing",
    "read_only": false
   },
   {
