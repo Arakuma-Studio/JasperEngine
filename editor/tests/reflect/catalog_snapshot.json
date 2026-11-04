@@ -10802,6 +10802,7 @@
    "key": "mesh",
    "known_keys": [
     "aabb",
+    "allowGpuInstancing",
     "autoTransparency",
     "bonesMatrix",
     "buffer",
@@ -10834,6 +10835,11 @@
    ],
    "name": "MeshComponent",
    "properties_of_default": {
+    "allowGpuInstancing": [
+     0,
+     8,
+     true
+    ],
     "autoTransparency": [
      0,
      8,
@@ -19596,6 +19602,11 @@
     ]
    },
    "properties_without_component": {
+    "allowGpuInstancing": [
+     0,
+     8,
+     true
+    ],
     "autoTransparency": [
      0,
      8,
@@ -42533,6 +42544,11 @@
    ]
   },
   "MeshComponent": {
+   "allowGpuInstancing": [
+    0,
+    8,
+    true
+   ],
    "autoTransparency": [
     0,
     8,
