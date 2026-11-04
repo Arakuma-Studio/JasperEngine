@@ -56,13 +56,20 @@ TEST_F(TitleTargetPoolTest, DepthAndSamplesInKey) {
         TargetRef plain = pool.acquire(colour(256, 256));
         ASSERT_TRUE(plain);
     }
-    // the idle 1x target does not serve a 4x request: its own key
+    // the idle 1x target serves neither a 4x request nor one with depth: each its own key
+    TargetKey fourX = colour(256, 256);
+    fourX.samples = 4;
+    {
+        TargetRef four = pool.acquire(fourX);
+        ASSERT_TRUE(four);
+        EXPECT_EQ(four.as<FakeTarget>()->key.samples, 4);
+    }
     TargetRef deep = pool.acquire(msaa);
     ASSERT_TRUE(deep);
     EXPECT_EQ(deep.as<FakeTarget>()->key.samples, 4);
     EXPECT_EQ(deep.as<FakeTarget>()->key.depth, TitleDepthFormat::Depth);
-    EXPECT_EQ(allocator.made, 2);
-    EXPECT_EQ(pool.stats().depthOrMsaaAcquires, 1u);
+    EXPECT_EQ(allocator.made, 3);
+    EXPECT_EQ(pool.stats().depthOrMsaaAcquires, 2u);
     EXPECT_EQ(pool.stats().bytesLive, targetBytes(msaa));
     EXPECT_EQ(targetBytes(msaa), (size_t)256 * 256 * (8 * 4 + 8 + 4 * 4)) << "4 samples, a resolve and a depth per sample";
     deep.reset();

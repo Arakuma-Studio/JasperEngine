@@ -512,14 +512,33 @@ namespace {
 
         const std::vector<const SchemaMember*>& members = schema.membersOf(*kind);
         Json out = Json::object();
+        Json::object_t& read = object.get_ref<Json::object_t&>();
+        Json::object_t& written = out.get_ref<Json::object_t&>();
+        written.reserve(members.size() + 2);
+        // a canonical object holds the members in table order: look at the next one first
+        size_t hint = 0;
+        size_t found = 0;
         for (const SchemaMember* m : members) {
-            auto it = object.find(m->key);
-            const bool present = it != object.end();
+            Json* slot = nullptr;
+            if (hint < read.size() && (read.begin() + (long)hint)->first == m->key) {
+                slot = &(read.begin() + (long)hint++)->second;
+            } else {
+                for (size_t i = 0; i < read.size(); i++) {
+                    auto entry = read.begin() + (long)i;
+                    if (entry->first == m->key) {
+                        slot = &entry->second;
+                        hint = i + 1;
+                        break;
+                    }
+                }
+            }
+            const bool present = slot != nullptr;
+            found += present;
             if (kind->sparse && !present &&
                 std::find(kind->alwaysWritten.begin(), kind->alwaysWritten.end(), m->key) == kind->alwaysWritten.end()) {
                 continue;
             }
-            Json value = present ? std::move(*it) : memberDefault(*m);
+            Json value = present ? std::move(*slot) : memberDefault(*m);
             // a scalar's path is only built for a warning (normalize visits every member)
             std::string at = isScalar(m->type) ? std::string() : jsonPathMember(path, m->key);
             std::string message;
@@ -534,11 +553,13 @@ namespace {
                 context.warn(at, message);
             }
             // the keys are the schema's, unique: append without ordered_map's search
-            out.get_ref<Json::object_t&>().emplace_back(m->key, std::move(value));
+            written.emplace_back(m->key, std::move(value));
         }
         // unknown members follow, in the order read (reserved ones included)
-        for (auto it = object.begin(); it != object.end(); ++it) {
-            if (!out.contains(it.key())) out[it.key()] = std::move(it.value());
+        if (found < read.size()) {
+            for (auto& entry : read) {
+                if (!out.contains(entry.first)) written.emplace_back(entry.first, std::move(entry.second));
+            }
         }
         object = std::move(out);
         if (baseKind.finish) baseKind.finish(object, path, context);
@@ -772,6 +793,7 @@ namespace {
 
 std::string titleart::writeTitleArtJson(const Json& value, int indent) {
     std::string out;
+    out.reserve(4096);
     writeValue(value, indent, out);
     return out;
 }
