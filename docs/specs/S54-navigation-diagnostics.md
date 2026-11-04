@@ -744,6 +744,11 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   Tests: `test_navigation_diagnostics.py`, `test_checks.py::test_cli_navigation_findings`,
   `test_navigation.py::test_tools_listed_with_schemas` (group hidden, annotations); eval cases
   `guard_navigation_*`.
+- S54 P2: `bake_navigation`'s job message was overwritten by its "baking" progress when every start
+  was refused (the reasons and hint never reached the text); the progress is set before the loop,
+  the same hunk as S53 P2's (`nav/s41-p2`). `nav/s41-p2` after 11ed93a92 is not merged here: it
+  conflicts in P1/P3 files too; its `get_navigation_info` `last_bake` (the editor's record) and this
+  package's (the bake report, R32) meet in `NavigationTools.cpp` at the integration.
 - S54 P1 (branch `nav/s42-p1`): the contract (`nav: S42 contract`, aba8fb7e8) carries the whole
   §6 sketch with working bodies. Done: R1-R10 (failure detection in `NavMesh::findPath`, the
   ranking, `isReachable`'s island reject, islands by union-find cached per revision, coverage,
