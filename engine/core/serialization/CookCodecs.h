@@ -21,7 +21,8 @@
 #include "math/Vector4.h"
 #include "script/ScriptProperty.h"
 #include "texture/Texture.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
+#include "util/StableArray.h"
 
 #include <array>
 #include <map>
@@ -300,29 +301,30 @@ namespace jasperengine::cook {
         }
     };
 
-    // the editor's grows past N (and is written whole); a game's holds N
-    template<typename T, size_t N>
-    struct Codec<HybridArray<T, N>> {
-        static void write(Writer& w, const HybridArray<T, N>& v) {
-            w.varint(v.size());
-            for (size_t i = 0; i < v.size(); i++) Codec<T>::write(w, v[i]);
+    // a component's growing arrays: what they hold, read back up to ARRAY_INDEX_LIMIT elements (the
+    // rest of a damaged file's count is read and dropped)
+    template<typename Array, typename T>
+    struct GrowingArrayCodec {
+        static void write(Writer& w, const Array& v) {
+            w.varint(v.stored());
+            for (size_t i = 0; i < v.stored(); i++) Codec<T>::write(w, v[i]);
         }
-        static void read(Reader& r, HybridArray<T, N>& v) {
+        static void read(Reader& r, Array& v) {
             const uint64_t count = r.varint();
             for (uint64_t i = 0; i < count && !r.failed(); i++) {
-#ifdef JASPERENGINE_EDITOR
-                Codec<T>::read(r, v[static_cast<size_t>(i)]);
-#else
-                if (i < N) {
+                if (i < ARRAY_INDEX_LIMIT) {
                     Codec<T>::read(r, v[static_cast<size_t>(i)]);
                 } else {
                     T dropped{};
                     Codec<T>::read(r, dropped);
                 }
-#endif
             }
         }
     };
+    template<typename T>
+    struct Codec<GrowArray<T>> : GrowingArrayCodec<GrowArray<T>, T> {};
+    template<typename T>
+    struct Codec<StableArray<T>> : GrowingArrayCodec<StableArray<T>, T> {};
 
     // ---------------------------------------------------------------- fields
 
@@ -349,9 +351,13 @@ namespace jasperengine::cook {
     struct TextureVisit<std::array<T, N>> {
         static void visit(std::array<T, N>& v, const TextureVisitor& f) { for (T& e : v) TextureVisit<T>::visit(e, f); }
     };
-    template<typename T, size_t N>
-    struct TextureVisit<HybridArray<T, N>> {
-        static void visit(HybridArray<T, N>& v, const TextureVisitor& f) { for (size_t i = 0; i < v.size(); i++) TextureVisit<T>::visit(v[i], f); }
+    template<typename T>
+    struct TextureVisit<GrowArray<T>> {
+        static void visit(GrowArray<T>& v, const TextureVisitor& f) { for (size_t i = 0; i < v.stored(); i++) TextureVisit<T>::visit(v[i], f); }
+    };
+    template<typename T>
+    struct TextureVisit<StableArray<T>> {
+        static void visit(StableArray<T>& v, const TextureVisitor& f) { for (size_t i = 0; i < v.stored(); i++) TextureVisit<T>::visit(v[i], f); }
     };
     template<typename A, typename B>
     struct TextureVisit<std::pair<A, B>> {

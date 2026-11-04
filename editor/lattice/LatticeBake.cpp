@@ -371,7 +371,7 @@ namespace{
                     return false;
                 }
                 const MeshComponent& mesh = scene->getComponent<MeshComponent>(mapped->second);
-                const size_t slots = std::min(gltf.meshes[(size_t)meshIndex].primitives.size(), mesh.submeshes.size());
+                const size_t slots = gltf.meshes[(size_t)meshIndex].primitives.size();
                 if (mesh.numSubmeshes != slots){
                     reason = stale;
                     return false;
@@ -397,7 +397,7 @@ namespace{
         for (int node : meshNodes){
             const int meshIndex = gltf.nodes[(size_t)node].mesh;
             if ((size_t)meshIndex >= gltf.meshes.size()) continue;
-            for (size_t p = 0; p < gltf.meshes[(size_t)meshIndex].primitives.size() && slots.size() < mesh.submeshes.size(); p++){
+            for (size_t p = 0; p < gltf.meshes[(size_t)meshIndex].primitives.size(); p++){
                 slots.push_back({node, (int)p});
             }
         }

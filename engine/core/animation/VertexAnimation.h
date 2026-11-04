@@ -49,7 +49,7 @@ namespace jasperengine::vat{
     // custom glTF vertex attribute: the vertex's index in the payload (float, exact below 2^24)
     constexpr const char* VAT_INDEX_ATTRIBUTE = "_VAT_INDEX";
     constexpr int VAT_MAX_CLIPS = 64;
-    // VAT bones live in the payload texture, not the 128-matrix skinning array (MAX_BONES): the
+    // VAT bones live in the payload texture, not the skinning palette (MeshComponent::bonesMatrix): the
     // limit is the glTF JOINTS_0 uint16 range (rigid destruction exports have hundreds of pieces)
     constexpr int VAT_MAX_BONES = 65535;
     constexpr int VAT_MAX_VERTICES = 1 << 24;

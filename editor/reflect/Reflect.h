@@ -218,6 +218,9 @@ namespace jasperengine::editor::reflect {
         void (*insert)(void* array, size_t index, const void* value);
         void (*erase)(void* array, size_t index);
         void (*move)(void* array, size_t from, size_t to);
+        // a component array that grows when an index past its end is written (GrowArray,
+        // StableArray): a path may name one past its last element, which appends one
+        bool appendsByIndex = false;
     };
 
     struct FieldDesc {

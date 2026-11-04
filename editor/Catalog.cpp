@@ -372,7 +372,7 @@ bool editor::Catalog::mayHoldReferences(EntityRegistry* registry, Entity entity,
             if (!mesh) {
                 return false;
             }
-            for (size_t s = 0; s < mesh->submeshes.size(); s++) {
+            for (size_t s = 0; s < mesh->numSubmeshes; s++) {
                 const Material& material = mesh->submeshes[s].material;
                 for (const Texture* texture : {&material.baseColorTexture, &material.emissiveTexture,
                         &material.metallicRoughnessTexture, &material.occlusionTexture, &material.normalTexture}) {

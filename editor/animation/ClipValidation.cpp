@@ -616,7 +616,7 @@ ClipValidationReport ClipValidation::validate(const ClipData& data, EntityRegist
             case ClipChannel::Morph: {
                 const MeshComponent* mesh = registry->findComponent<MeshComponent>(entity);
                 bool morphs = false;
-                for (unsigned int s = 0; mesh && s < mesh->numSubmeshes && s < mesh->submeshes.size(); s++){
+                for (unsigned int s = 0; mesh && s < mesh->numSubmeshes; s++){
                     morphs = morphs || mesh->submeshes[s].hasMorphTarget;
                 }
                 if (!morphs){

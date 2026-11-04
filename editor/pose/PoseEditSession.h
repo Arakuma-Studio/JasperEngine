@@ -200,7 +200,7 @@ namespace jasperengine::editor{
         // bounds the render system derives from the bones (the scene file stores them too)
         struct SavedMesh{
             Entity entity = NULL_ENTITY;
-            HybridArray<Matrix4, MAX_BONES> bonesMatrix;
+            GrowArray<Matrix4> bonesMatrix;
             AABB skinnedAABB;
             AABB worldAABB;
             bool needUpdateAABB = false;

@@ -1,13 +1,12 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// A build without the editor gives one MeshComponent MAX_SUBMESHES submeshes and MAX_EXTERNAL_BUFFERS
-// buffers (the editor's HybridArray grows). The main thread gives each mesh node of a model its own
-// mesh, so a model of many small nodes fits. Off the main thread the nodes bake into one mesh
-// (MeshSystem::loadGLTF's flatten path: a preview, a game's loading thread), over those limits for
-// many of them: a primitive left without some of its buffers drew with no position, logged an error
-// per attribute and made a pipeline with a hole in its attributes (Debug's sokol validation:
-// VALIDATE_PIPELINEDESC_NO_CONT_ATTRS). What does not fit is left out whole. glcore and Vulkan.
+// A mesh holds as many submeshes and buffers as its model has (mesh-memory spec): no capacity in a
+// game or the editor. The main thread gives each mesh node of a model its own mesh; off the main
+// thread the nodes bake into one mesh (MeshSystem::loadGLTF's flatten path: a preview, a game's
+// loading thread), which held at most 16 submeshes and 30 buffers before and left the rest out.
+// Whole primitives either way (a primitive without some of its buffers drew with no position and
+// made a pipeline with a hole in its attributes). glcore and Vulkan.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -43,21 +42,6 @@ namespace {
 
     std::string khronosFile(const std::string& sample){
         return std::string(JASPER_TEST_REPO_DIR "/engine/tests/render/assets/khronos/") + sample + "/glTF-Binary/" + sample + ".glb";
-    }
-
-    // mean over the pixels of the largest channel difference (0..255)
-    double meanDifference(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
-        if (a.size() != b.size() || a.empty())
-            return 255.0;
-        double sum = 0.0;
-        const size_t pixels = a.size() / 4;
-        for (size_t i = 0; i < pixels; i++){
-            int largest = 0;
-            for (int c = 0; c < 3; c++)
-                largest = std::max(largest, std::abs((int)a[i * 4 + c] - (int)b[i * 4 + c]));
-            sum += largest;
-        }
-        return sum / (double)pixels;
     }
 
     std::vector<uint8_t> readTarget(){
@@ -224,7 +208,7 @@ TEST_P(ManyNodeModel, APreviewOffTheMainThreadLogsNoErrorAndDraws){
     previewOnAStrand(khronosFile(sample), [&](Preview& preview){
         const MeshComponent& mesh = preview.scene.getComponent<MeshComponent>(preview.model.getEntity());
         EXPECT_GT(mesh.numSubmeshes, 0u) << sample;
-        EXPECT_LE(mesh.numExternalBuffers, (unsigned int)mesh.eBuffers.size()) << sample;
+        EXPECT_LE(mesh.numExternalBuffers, (unsigned int)mesh.eBuffers.stored()) << sample;
         expectWholePrimitives(mesh, sample);
 
         Framebuffer* framebuffer = preview.camera.getFramebuffer();
@@ -275,28 +259,27 @@ TEST_P(ManyNodeModel, InASceneEveryPrimitiveLoads){
 
 INSTANTIATE_TEST_SUITE_P(Khronos, ManyNodeModel, ::testing::Values("SpecularTest", "AnisotropyRotationTest", "AnisotropyStrengthTest"));
 
-// A mesh of a model truly over its buffers, loaded in a scene (a script's model the export could not
-// count): that is an error, once, and the primitives that fit draw as a model of those alone
-TEST(ModelCapacityGpu, APrimitiveOverTheBufferCapacityIsLeftOutWhole){
+// A model of more primitives and buffers than any fixed capacity held (40 plates: 40 submeshes,
+// 160 buffers) loads whole on the main thread, without an error
+TEST(ModelCapacityGpu, AModelOverTheOldCapacitiesLoadsWhole){
     JASPER_REQUIRE_GPU();
     TempDir dir;
-    const int fit = MAX_EXTERNAL_BUFFERS / 4;
-    ASSERT_LT(fit + 1, MAX_SUBMESHES) << "the submeshes' limit would come first";
-    const std::string fits = writePlates(dir, "fits", fit);
-    const std::string over = writePlates(dir, "over", fit + 1);
-
-    unsigned int submeshes = 0;
-    const std::vector<uint8_t> reference = drawModel(fits, submeshes);
-    EXPECT_EQ(submeshes, (unsigned int)fit);
-    EXPECT_NO_ENGINE_ERRORS();
+    const std::string plates = writePlates(dir, "plates", 40);
     const LogCapture log;
-    const int unfed = ObjectRender::getUnfedVertexInputLoads();
+    unsigned int submeshes = 0;
+    drawModel(plates, submeshes);
+    EXPECT_EQ(submeshes, 40u);
+    EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
+}
 
-    const std::vector<uint8_t> frame = drawModel(over, submeshes);
-    EXPECT_EQ(submeshes, (unsigned int)fit) << "a primitive without all its buffers stays";
-    EXPECT_EQ(ObjectRender::getUnfedVertexInputLoads(), unfed) << "a pipeline left a vertex input without its buffer";
-    EXPECT_LT(meanDifference(frame, reference), 0.25) << "the plates that fit do not draw as a model of those alone";
-    EXPECT_EQ(log.count(D_LOG_ERROR, "Cannot load submesh attribute"), 0u) << log.describeErrors();
-    EXPECT_EQ(log.errors().size(), 1u) << "the model's one error:\n" << log.describeErrors();
-    EXPECT_EQ(log.count(D_LOG_ERROR, "external buffers"), 1u) << log.describeErrors();
+// The preview baked into one mesh off the main thread keeps every primitive of a 50-primitive model
+TEST(ModelCapacityGpu, APreviewOffTheMainThreadKeepsEveryPrimitive){
+    JASPER_REQUIRE_GPU();
+    const LogCapture log;
+    previewOnAStrand(khronosFile("AnisotropyStrengthTest"), [&](Preview& preview){
+        const MeshComponent& mesh = preview.scene.getComponent<MeshComponent>(preview.model.getEntity());
+        EXPECT_EQ(mesh.numSubmeshes, 50u);
+        expectWholePrimitives(mesh, "AnisotropyStrengthTest");
+    });
+    EXPECT_EQ(log.count(D_LOG_WARN, "left out"), 0u);
 }

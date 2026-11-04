@@ -294,6 +294,10 @@ namespace jasperengine {
         // sizeof the component type, and the bytes of its pages
         virtual size_t componentSize() const = 0;
         virtual size_t componentBytes() const = 0;
+        // what the components hold in arrays of their own outside the pages (a type with a
+        // `size_t arrayHeapBytes() const` member: a mesh's submeshes, a sprite's frames), 0 for
+        // the others. One pass over the components: diagnostics only (get_ecs_stats, Systems)
+        virtual size_t arrayHeapBytes() = 0;
 
         // Compacts and re-sorts when needed (the first index observation does it)
         JE_ECS_INLINE void settle(){
@@ -930,6 +934,21 @@ namespace jasperengine {
 
         size_t componentBytes() const override {
             return components.bytes();
+        }
+
+        size_t arrayHeapBytes() override {
+            if constexpr (requires(const T& component) { component.arrayHeapBytes(); }) {
+                size_t bytes = 0;
+                const size_t count = size();
+                for (size_t i = 0; i < count; i++) {
+                    if (const T* component = findComponentFromIndex(i)) {
+                        bytes += component->arrayHeapBytes();
+                    }
+                }
+                return bytes;
+            } else {
+                return 0;
+            }
         }
 
         // Pages of a settled array: page p holds the components [p * pageCapacity(), ...),

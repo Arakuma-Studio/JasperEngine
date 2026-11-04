@@ -434,8 +434,8 @@ std::string whatIs(SceneProject* scene, Entity entity) {
 // The colour texture of a submesh as a project file: false with why ("its texture is not a file")
 bool submeshTexture(Project* project, SceneProject* scene, Entity entity, unsigned submesh, std::string& rel, std::string& why) {
     MeshComponent* mesh = scene->scene->findComponent<MeshComponent>(entity);
-    if (!mesh || submesh >= MAX_SUBMESHES) {
-        why = "it has no mesh";
+    if (!mesh || submesh >= std::max(mesh->numSubmeshes, 1u)) {
+        why = mesh ? "it has no submesh " + std::to_string(submesh) : std::string("it has no mesh");
         return false;
     }
     const Texture& base = mesh->submeshes[submesh].material.baseColorTexture;
@@ -717,7 +717,7 @@ Json applyArgs(Project* project, const NormalsCall& state, const std::vector<std
         }
         // every submesh drawing this texture (a tilemap's tileset may be on several)
         const unsigned count = std::max(mesh->numSubmeshes, 1u);
-        for (unsigned i = 0; i < count && i < MAX_SUBMESHES; i++) {
+        for (unsigned i = 0; i < count; i++) {
             std::string rel, why;
             if (submeshTexture(project, scene, state.sourceEntity, i, rel, why) && rel == state.targets[t].colorPath) {
                 values["submeshes[" + std::to_string(i) + "].material.normalTexture"] = textureValue(normal, i);
@@ -1216,7 +1216,7 @@ void generateSpriteNormalsTool(const CallPtr& call) {
     if (state->sourceEntity != NULL_ENTITY) {
         SceneProject* sp = project->getScene(state->sourceScene);
         MeshComponent* mesh = sp->scene->findComponent<MeshComponent>(state->sourceEntity);
-        const unsigned count = state->sourceKind == MeshKind::Tilemap ? std::min<unsigned>(mesh->numSubmeshes, MAX_SUBMESHES) : 1;
+        const unsigned count = state->sourceKind == MeshKind::Tilemap ? mesh->numSubmeshes : 1;
         std::set<std::string> seen;
         std::string firstWhy;
         for (unsigned i = 0; i < count; i++) {

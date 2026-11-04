@@ -132,7 +132,11 @@ FieldRef reflect::resolve(const StructDesc& desc, void* owner, std::string_view 
             if (!parseIndex(path, pos, index) || pos >= path.size() || path[pos] != ']') return fail(error, PathError::Syntax);
             pos++;
             if (element || field->kind != Kind::Array || !field->arrayOps) return fail(error, PathError::NotIndexable);
-            if (index >= field->arrayOps->size(ref)) return fail(error, PathError::IndexOutOfRange);
+            // one past the last element appends to an array that grows by index (the Inspector's
+            // Add buttons, an agent adding a frame); never further, nor past ARRAY_INDEX_LIMIT
+            const size_t count = field->arrayOps->size(ref);
+            const bool append = field->arrayOps->appendsByIndex && index == count && index < ARRAY_INDEX_LIMIT;
+            if (index >= count && !append) return fail(error, PathError::IndexOutOfRange);
             ref = field->arrayOps->at(ref, index);
             ops = field->elementOps;
             element = true;

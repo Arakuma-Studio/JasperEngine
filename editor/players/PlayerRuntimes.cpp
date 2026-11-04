@@ -98,7 +98,7 @@ std::string PlayerInfo::toJson() const {
     out["engineVersion"] = engineVersion;
     out["gitSha"] = gitSha;
     out["contentFormatVersion"] = contentFormatVersion;
-    out["capacities"] = capacities;
+    if (!capacities.empty()) out["capacities"] = capacities;
     out["features"] = features;
     out["variant"] = variant;
     out["notices"] = notices;

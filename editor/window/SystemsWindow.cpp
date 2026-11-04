@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -192,24 +193,30 @@ void SystemsWindow::drawTrace(SceneProject* sceneProject){
 
 void SystemsWindow::drawFooter(SceneProject* sceneProject){
     Scene* scene = sceneProject->scene;
-    size_t holes = 0, dirty = 0, bytes = scene->getMetadataBytes(), used = 0;
+    size_t holes = 0, dirty = 0, bytes = scene->getMetadataBytes(), heap = 0, used = 0;
+    // what each type's components hold in arrays of their own (one pass: while the window draws)
+    std::vector<size_t> heapOf(scene->getComponentTypeCount(), 0);
     for (size_t id = 0; id < scene->getComponentTypeCount(); id++){
-        const ComponentArrayBase* array = scene->getComponentArray((ComponentId)id);
+        ComponentArrayBase* array = scene->getComponentArray((ComponentId)id);
         holes += array->getHoleCount();
         dirty += array->isOrderDirty() ? 1 : 0;
         bytes += array->componentBytes() + array->overheadBytes();
+        heapOf[id] = array->arrayHeapBytes();
+        heap += heapOf[id];
         used += array->size() > 0 ? 1 : 0;
     }
     const size_t entities = scene->getEntityCount();
     const size_t systemEntities = scene->getSystemEntityCount();
     ImGui::Text("Entities: %zu (%zu user, %zu system)", entities, entities - systemEntities, systemEntities);
     ImGui::Text("Component types: %zu / %zu (%zu in use)", scene->getComponentTypeCount(), kMaxComponentTypes, used);
-    ImGui::Text("Pending holes: %zu   Arrays to re-sort: %zu   ECS memory: %s", holes, dirty, bytesLabel(bytes).c_str());
+    ImGui::Text("Pending holes: %zu   Arrays to re-sort: %zu   ECS memory: %s (+ %s in component arrays)", holes, dirty,
+                bytesLabel(bytes).c_str(), bytesLabel(heap).c_str());
     if (ImGui::TreeNode("Components per type")){
         for (size_t id = 0; id < scene->getComponentTypeCount(); id++){
             const ComponentArrayBase* array = scene->getComponentArray((ComponentId)id);
             if (array->size() > 0){
-                ImGui::Text("%s: %zu", componentLabel(scene, (ComponentId)id).c_str(), array->size());
+                ImGui::Text("%s: %zu (%s each, %s in arrays)", componentLabel(scene, (ComponentId)id).c_str(), array->size(),
+                            bytesLabel(array->componentSize()).c_str(), bytesLabel(heapOf[id]).c_str());
             }
         }
         ImGui::TreePop();

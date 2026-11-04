@@ -33,7 +33,7 @@
 #include "subsystem/ActionSystem.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
 
 #include <algorithm>
 #include <chrono>
@@ -67,7 +67,7 @@ struct AnimationClipController::Snapshot{
     };
     struct SavedMesh{
         Entity entity = NULL_ENTITY;
-        HybridArray<Matrix4, MAX_BONES> bonesMatrix;
+        GrowArray<Matrix4> bonesMatrix;
         AABB skinnedAABB;
         AABB worldAABB;
         bool needUpdateAABB = false;

@@ -179,3 +179,30 @@ async def test_3d_bodies_and_joint(ed: Editor):
         ed.check(heights[1] < 3.5, f"the unconstrained control falls under the same real simulation: {heights}")
     finally:
         await ed.call("play", action="stop", fixed_fps=0, auto_pause=False)
+
+
+async def test_tilemap_past_old_capacity(ed: Editor):
+    """A tilemap holds as many tiles as it draws (16,383), not the old 2,048 (mesh-memory D7)."""
+    sid = await scene(ed, "2d", "BigGrid")
+    texture = "assets/big-grid.png"
+    image_file(ed, texture)
+    grid = "\n".join(["a" * 70] * 30)
+    made = await ed.call("edit_tilemap", scene=sid, create={"name": "Big"}, texture=texture,
+                         tileset={"columns": 2, "rows": 1, "names": ["grass", "stone"]}, cell_size=[4, 4],
+                         ops=[{"op": "paint", "grid": grid, "legend": {"a": "grass"}}])
+    tilemap = made["tilemap"]["id"]
+    actual = await ed.call("get_tilemap", scene=sid, entity=tilemap)
+    ed.check_eq(actual["tiles"], 2100, "2,100 tiles are kept")
+    over = "\n".join(["a" * 128] * 128)
+    await ed.check_error("edit_tilemap", scene=sid, entity=tilemap,
+                         ops=[{"op": "paint", "grid": over, "legend": {"a": "grass"}}], contains="16383")
+
+
+async def test_sprite_frames_past_old_capacity(ed: Editor):
+    """A sprite takes 200 frames (the old capacity was 128)."""
+    sid = await scene(ed, "2d", "ManyFrames")
+    texture = "assets/many-frames.png"
+    image_file(ed, texture)
+    frames = [{"name": f"f{i}", "rect": [i % 8, 0, 1, 1]} for i in range(200)]
+    sprite = await ed.call("set_sprite_frames", scene=sid, create={"name": "Many"}, texture=texture, frames=frames)
+    ed.check_eq(len(sprite["frames"]), 200, "every frame is kept")

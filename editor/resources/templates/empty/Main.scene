@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: e867718d6315e8ef737003da477de7bf
-id: 4152549459
+guid: 5b404207006a08d1386dcf0ed03d5b09
+id: 1524315949
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -34,18 +34,6 @@ scene:
   enableUIEvents: not_set
 sceneType: scene_3d
 mainCamera: 0
-maxValues:
-  maxSubmeshes: 0
-  maxTilemapTilesRect: 0
-  maxTilemapTiles: 0
-  maxExternalBuffers: 0
-  maxSpriteFrames: 0
-  maxBones: 0
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: sky
   - type: blit

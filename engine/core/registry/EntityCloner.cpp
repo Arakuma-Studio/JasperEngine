@@ -145,14 +145,15 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     resetBuffer(mesh.buffer);
     resetBuffer(mesh.indices);
     const bool keepsModelData = ctx.modelMeshes.count(sourceEntity) != 0;
-    for (unsigned int i = 0; i < mesh.numExternalBuffers && i < mesh.eBuffers.size(); i++) {
+    // every element held, also past the counts: each carries GPU handles of the original's
+    for (size_t i = 0; i < mesh.eBuffers.stored(); i++) {
         resetBuffer(mesh.eBuffers[i]);
         // bytes in the file data of a model not copied along may go with the original
-        if (!keepsModelData && !mesh.eBuffers[i].ownsData() && mesh.eBuffers[i].getData()) {
+        if (i < mesh.numExternalBuffers && !keepsModelData && !mesh.eBuffers[i].ownsData() && mesh.eBuffers[i].getData()) {
             mesh.eBuffers[i].copyToOwnData();
         }
     }
-    for (unsigned int i = 0; i < mesh.numSubmeshes && i < mesh.submeshes.size(); i++) {
+    for (size_t i = 0; i < mesh.submeshes.stored(); i++) {
         Submesh& submesh = mesh.submeshes[i];
         submesh.render = ObjectRender();
         submesh.depthRender = ObjectRender();
@@ -178,6 +179,7 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     }
     mesh.bonesBuffer = BufferRender();
     mesh.bonesTexture = TextureRender();
+    mesh.bonesUploadRows = 0;
     mesh.needUpdateBones = true;
     mesh.needUpdateBuffer = false;
     mesh.needUpdateShaderUniforms = false;

@@ -219,7 +219,7 @@ namespace {
                 continue;
             if (slot.submesh >= 0){
                 MeshComponent* mesh = scene->findComponent<MeshComponent>(slot.entity);
-                if (!mesh || slot.submesh >= (int)MAX_SUBMESHES)
+                if (!mesh || slot.submesh >= (int)std::max(mesh->numSubmeshes, 1u))
                     continue;
                 Submesh& submesh = mesh->submeshes[slot.submesh];
                 if (Texture* texture = meshSlot(submesh.material, slot.property, false))
@@ -618,7 +618,7 @@ namespace {
         const std::string& property = player.targetMaterialProperty.empty() ? std::string("baseColorTexture") : player.targetMaterialProperty;
         if (MeshComponent* mesh = scene->findComponent<MeshComponent>(targetEntity)){
             const unsigned int count = std::max(mesh->numSubmeshes, 1u);
-            for (unsigned int s = 0; s < count && s < MAX_SUBMESHES; s++){
+            for (unsigned int s = 0; s < count; s++){
                 if (player.targetSubmesh >= 0 && (int)s != player.targetSubmesh)
                     continue;
                 Submesh& submesh = mesh->submeshes[s];

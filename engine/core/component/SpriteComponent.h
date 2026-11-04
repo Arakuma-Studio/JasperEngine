@@ -5,7 +5,7 @@
 #define SPRITE_COMPONENT_H
 
 #include "util/SpriteFrameData.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
 #include "Engine.h"
 
 namespace jasperengine{
@@ -35,7 +35,9 @@ namespace jasperengine{
         float textureScaleFactor = 0.0;
 
         unsigned int numFramesRect = 0;
-        HybridArray<SpriteFrameData, MAX_SPRITE_FRAMES> framesRect;
+        GrowArray<SpriteFrameData> framesRect;
+        // what its arrays hold outside the component (ComponentArray::arrayHeapBytes)
+        size_t arrayHeapBytes() const { return framesRect.storageBytes(); }
 
         PivotPreset pivotPreset = PivotPreset::BOTTOM_LEFT;
 

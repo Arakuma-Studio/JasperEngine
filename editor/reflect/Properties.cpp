@@ -124,7 +124,11 @@ namespace {
                 size_t index = 0;
                 if (!parseIndex(path, pos, index) || pos >= path.size() || path[pos] != ']') return PropertyData();
                 pos++;
-                if (field->kind != Kind::Array || !field->arrayOps || index >= field->arrayOps->size(ref)) return PropertyData();
+                if (field->kind != Kind::Array || !field->arrayOps) return PropertyData();
+                // one past the last element appends to an array that grows by index (as reflect::resolve)
+                const size_t count = field->arrayOps->size(ref);
+                const bool append = field->arrayOps->appendsByIndex && index == count && index < ARRAY_INDEX_LIMIT;
+                if (index >= count && !append) return PropertyData();
                 def = elementDefault(*field, def);
                 ref = field->arrayOps->at(ref, index);
                 ops = field->elementOps;

@@ -5,7 +5,7 @@
 #define POINTS_COMPONENT_H
 
 #include "util/SpriteFrameData.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
 #include "buffer/ExternalBuffer.h"
 #include "render/ObjectRender.h"
 #include "render/ShaderRender.h"
@@ -48,7 +48,9 @@ namespace jasperengine{
         std::vector<PointRenderData> renderPoints; //must be sorted
 
         unsigned int numFramesRect = 0;
-        HybridArray<SpriteFrameData, MAX_SPRITE_FRAMES> framesRect;
+        GrowArray<SpriteFrameData> framesRect;
+        // what its arrays hold outside the component (ComponentArray::arrayHeapBytes)
+        size_t arrayHeapBytes() const { return framesRect.storageBytes(); }
 
         unsigned int maxPoints = 100;
         unsigned int numVisible = 0;

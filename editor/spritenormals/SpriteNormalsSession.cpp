@@ -215,7 +215,7 @@ namespace jasperengine::editor::spritenormals {
             if (sprite) {
                 int w = 0, h = 0;
                 bool sized = false;
-                for (unsigned i = 0; i < sprite->numFramesRect && i < MAX_SPRITE_FRAMES; i++) {
+                for (unsigned i = 0; i < sprite->numFramesRect; i++) {
                     Rect r = sprite->framesRect[i].rect;
                     if (r.getWidth() <= 0.0f || r.getHeight() <= 0.0f) continue;
                     if (r.isNormalized()) {
@@ -1175,9 +1175,9 @@ namespace jasperengine::editor::spritenormals {
                 }
             }
         }
-        if (scene && entity != NULL_ENTITY && delays.size() > MAX_SPRITE_FRAMES) {
+        if (scene && entity != NULL_ENTITY && delays.size() > ARRAY_INDEX_LIMIT) {
             add(warnings, "too_many_frames", "",
-                "The animation has " + std::to_string(delays.size()) + " frames; a Sprite holds at most " + std::to_string(MAX_SPRITE_FRAMES) + ".",
+                "The animation has " + std::to_string(delays.size()) + " frames; a Sprite holds at most " + std::to_string(ARRAY_INDEX_LIMIT) + ".",
                 "Trim the animation, or use the atlas with your own frames.");
         }
         if (scene && entity != NULL_ENTITY && settings.directx) {

@@ -299,7 +299,7 @@ void Points::addSpriteFrame(int id, const std::string& name, Rect rect){
             pointscomp.needReload = true;
         }
     }else{
-        Log::error("Cannot set frame id %s less than 0 or greater than %zu", name.c_str(), pointscomp.framesRect.size());
+        Log::error("Cannot set frame %s at id %i: ids go from 0 to %zu", name.c_str(), id, ARRAY_INDEX_LIMIT - 1);
     }
 }
 
@@ -311,7 +311,7 @@ void Points::addSpriteFrame(const std::string& name, float x, float y, float wid
     if (pointscomp.framesRect.validIndex(id)){
         addSpriteFrame(id, name, Rect(x, y, width, height));
     }else{
-        Log::error("Cannot set frame %s. Sprite frames reached limit of %zu", name.c_str(), pointscomp.framesRect.size());
+        Log::error("Cannot add frame %s: at most %zu frames", name.c_str(), ARRAY_INDEX_LIMIT);
     }
 }
 

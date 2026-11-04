@@ -188,7 +188,6 @@
 		17995BF83003C3A800411B78 /* JasperEngineGameController.mm in Sources */ = {isa = PBXBuildFile; fileRef = 17995BF63003C3A800411B78 /* JasperEngineGameController.mm */; };
 		17995BFA3003C40000411B78 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17995BF93003C40000411B78 /* GameController.framework */; };
 		17995BFD3003C4F600411B78 /* GameController.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 17995BF93003C40000411B78 /* GameController.framework */; };
-		17A4DD6D2F5E4F8800C1BFC6 /* HybridArray.h in Headers */ = {isa = PBXBuildFile; fileRef = 17A4DD6C2F5E4F8800C1BFC6 /* HybridArray.h */; };
 		17C554F82FB903B0008804C2 /* ModelPool.h in Headers */ = {isa = PBXBuildFile; fileRef = 17C554F62FB903B0008804C2 /* ModelPool.h */; };
 		17C554F92FB903B0008804C2 /* ModelPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C554F72FB903B0008804C2 /* ModelPool.cpp */; };
 		17C554FA2FB903B0008804C2 /* ModelPool.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 17C554F72FB903B0008804C2 /* ModelPool.cpp */; };
@@ -4373,6 +4372,11 @@
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
+		4A534E4733689B48DEC9E956 /* HeapTrim.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4700E50D6CC27ABC36 /* HeapTrim.cpp */; };
+		4A534E474586B68050D02466 /* HeapTrim.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4700E50D6CC27ABC36 /* HeapTrim.cpp */; };
+		4A534E4799335E2BD23D7D89 /* HeapTrim.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471EB0AC923124B223 /* HeapTrim.h */; };
+		4A534E476CD2AA483BCBCA07 /* GrowArray.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4799EC5AF629083BC1 /* GrowArray.h */; };
+		4A534E47B252695D7B90F977 /* StableArray.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C4F45D33EE25F2E9 /* StableArray.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -4941,7 +4945,6 @@
 		17995BF53003C3A800411B78 /* JasperEngineGameController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = JasperEngineGameController.h; sourceTree = "<group>"; };
 		17995BF63003C3A800411B78 /* JasperEngineGameController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = JasperEngineGameController.mm; sourceTree = "<group>"; };
 		17995BF93003C40000411B78 /* GameController.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GameController.framework; path = System/Library/Frameworks/GameController.framework; sourceTree = SDKROOT; };
-		17A4DD6C2F5E4F8800C1BFC6 /* HybridArray.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = HybridArray.h; sourceTree = "<group>"; };
 		17C554F62FB903B0008804C2 /* ModelPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ModelPool.h; sourceTree = "<group>"; };
 		17C554F72FB903B0008804C2 /* ModelPool.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = ModelPool.cpp; sourceTree = "<group>"; };
 		71C005A2D2E7A0100C91BA00 /* MeshLodPool.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MeshLodPool.h; sourceTree = "<group>"; };
@@ -8574,6 +8577,10 @@
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
+		4A534E4700E50D6CC27ABC36 /* HeapTrim.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = HeapTrim.cpp; sourceTree = "<group>"; };
+		4A534E471EB0AC923124B223 /* HeapTrim.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = HeapTrim.h; sourceTree = "<group>"; };
+		4A534E4799EC5AF629083BC1 /* GrowArray.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GrowArray.h; sourceTree = "<group>"; };
+		4A534E47C4F45D33EE25F2E9 /* StableArray.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = StableArray.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10355,6 +10362,15 @@
 			path = debug;
 			sourceTree = "<group>";
 		};
+		4A534E47FD9CD85331CEC557 /* memory */ = {
+			isa = PBXGroup;
+			children = (
+				4A534E4700E50D6CC27ABC36 /* HeapTrim.cpp */,
+				4A534E471EB0AC923124B223 /* HeapTrim.h */,
+			);
+			path = memory;
+			sourceTree = "<group>";
+		};
 		7162FC2A25962A0E0075B97D /* core */ = {
 			isa = PBXGroup;
 			children = (
@@ -10432,6 +10448,7 @@
 				4A534E470A099A4C30353C59 /* media */,
 				4A534E476646E8233CC78BAC /* native */,
 				4A534E47B1D2BFA5C64803C4 /* debug */,
+				4A534E47FD9CD85331CEC557 /* memory */,
 			);
 			path = core;
 			sourceTree = "<group>";
@@ -10475,7 +10492,6 @@
 				71ABBD28277A3210001CE3AF /* DefaultFont.h */,
 				175DCE6A30255343008C19EC /* DefaultFontArabic.h */,
 				71BE620D25B1DB37006D6E02 /* FunctionSubscribe.h */,
-				17A4DD6C2F5E4F8800C1BFC6 /* HybridArray.h */,
 				7105CAA62AD61BD5007C91BA /* JoltPhysicsAux.h */,
 				71451BF2270CA3EA00712643 /* SpriteFrameData.h */,
 				71ABBD27277A3210001CE3AF /* STBText.h */,
@@ -10518,6 +10534,8 @@
 				4A534E47ABFE3CB4E3CFD085 /* TextEffects.h */,
 				4A534E47310D1BCA96AE12EB /* CanvasScaler.h */,
 				4A534E47778D99DE934432D4 /* PlatformRules.h */,
+				4A534E4799EC5AF629083BC1 /* GrowArray.h */,
+				4A534E47C4F45D33EE25F2E9 /* StableArray.h */,
 			);
 			path = util;
 			sourceTree = "<group>";
@@ -14612,7 +14630,6 @@
 				715253542CD057C400D294D8 /* Sphere.h in Headers */,
 				71E544FE284D5BB700C68FAB /* Animation.h in Headers */,
 				175DCCB3300FA1C2008C19EC /* ReflectionProbeComponent.h in Headers */,
-				17A4DD6D2F5E4F8800C1BFC6 /* HybridArray.h in Headers */,
 				713E581527BA9D1300376680 /* PolygonComponent.h in Headers */,
 				7157764E2B050C230049C970 /* FontPool.h in Headers */,
 				710506B0297F4483002DD23C /* Primitive.h in Headers */,
@@ -15241,6 +15258,9 @@
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
+				4A534E4799335E2BD23D7D89 /* HeapTrim.h in Headers */,
+				4A534E476CD2AA483BCBCA07 /* GrowArray.h in Headers */,
+				4A534E47B252695D7B90F977 /* StableArray.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17738,6 +17758,7 @@
 				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
 				4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */,
 				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
+				4A534E4733689B48DEC9E956 /* HeapTrim.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18529,6 +18550,7 @@
 				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
 				4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */,
 				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
+				4A534E474586B68050D02466 /* HeapTrim.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
