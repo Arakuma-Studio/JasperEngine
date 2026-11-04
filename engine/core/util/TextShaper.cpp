@@ -28,14 +28,22 @@ namespace {
 
         hb_buffer_add_utf32(buffer, codepoints.data(), (int)codepoints.size(), (unsigned int)offset, (int)length);
         //direction and script are already resolved for this run, only language is guessed
-        hb_buffer_set_direction(buffer, rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR);
+        const bool vertical = options.direction == ShapeDirection::Vertical;
+        hb_buffer_set_direction(buffer, vertical ? HB_DIRECTION_TTB : (rtl ? HB_DIRECTION_RTL : HB_DIRECTION_LTR));
         hb_buffer_set_script(buffer, (hb_script_t)script);
         if (!options.language.empty()){
             hb_buffer_set_language(buffer, hb_language_from_string(options.language.c_str(), (int)options.language.size()));
         }
         hb_buffer_guess_segment_properties(buffer);
 
-        hb_feature_t features[4];
+        //the usual case (no extra features) keeps to the stack
+        hb_feature_t fixedFeatures[4];
+        std::vector<hb_feature_t> extraFeatures;
+        hb_feature_t* features = fixedFeatures;
+        if (!options.features.empty()){
+            extraFeatures.resize(4 + options.features.size());
+            features = extraFeatures.data();
+        }
         unsigned int featureCount = 0;
         if (!options.kerning){
             features[featureCount++] = {HB_TAG('k', 'e', 'r', 'n'), 0, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END};
@@ -47,7 +55,12 @@ namespace {
             features[featureCount++] = {HB_TAG('d', 'l', 'i', 'g'), 0, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END};
         }
 
-        hb_shape(faces[face]->getHbFont(), buffer, featureCount ? features : NULL, featureCount);
+        for (const ShapeFeature& feature : options.features){
+            features[featureCount++] = {feature.tag, feature.value, HB_FEATURE_GLOBAL_START, HB_FEATURE_GLOBAL_END};
+        }
+
+        hb_font_t* font = (face < options.fonts.size() && options.fonts[face]) ? options.fonts[face] : faces[face]->getHbFont();
+        hb_shape(font, buffer, featureCount ? features : NULL, featureCount);
 
         unsigned int count = 0;
         hb_glyph_info_t* infos = hb_buffer_get_glyph_infos(buffer, &count);
@@ -65,6 +78,7 @@ namespace {
             glyph.xOffset = positions[i].x_offset * faceScale;
             glyph.yOffset = positions[i].y_offset * faceScale;
             glyph.xAdvance = positions[i].x_advance * faceScale;
+            glyph.yAdvance = positions[i].y_advance * faceScale;
             glyph.line = line;
 
             shaped.push_back(glyph);
@@ -105,10 +119,13 @@ namespace {
             for (size_t i = first; i < shaped.size(); i++){
                 if (i + 1 == shaped.size() || shaped[i + 1].cluster != shaped[i].cluster){
                     const uint32_t codepoint = shaped[i].cluster < codepoints.size() ? codepoints[shaped[i].cluster] : 0;
+                    //vertical text advances down: the spacing lengthens -yAdvance
+                    float& advance = vertical ? shaped[i].yAdvance : shaped[i].xAdvance;
+                    const float sign = vertical ? -1.0f : 1.0f;
                     if (!TextShaper::isDefaultIgnorable(codepoint))
-                        shaped[i].xAdvance += options.letterSpacing;
+                        advance += sign * options.letterSpacing;
                     if (codepoint == 0x0020 || codepoint == 0x00A0 || codepoint == 0x1361)
-                        shaped[i].xAdvance += options.wordSpacing;
+                        advance += sign * options.wordSpacing;
                 }
             }
         }
@@ -323,6 +340,12 @@ void TextShaper::shapeRange(const std::vector<const FontFace*>& faces, const std
                             unsigned int line, const ShapeOptions& options, std::vector<ShapedGlyph>& out){
     if (length == 0 || faces.empty() || offset > codepoints.size() || length > codepoints.size() - offset)
         return;
+
+    //top to bottom has no bidi reordering: one run in logical order, itemized by face and script
+    if (options.direction == ShapeDirection::Vertical){
+        shapeRunItems(faces, scales, codepoints, offset, length, false, line, options, out);
+        return;
+    }
 
     // Printable ASCII has a single LTR bidi run in an LTR (or auto/LTR-default)
     // paragraph. Keep the usual font/script itemization and HarfBuzz shaping, but

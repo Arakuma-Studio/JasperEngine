@@ -11,14 +11,26 @@
 #include <string>
 #include <vector>
 
+//HarfBuzz font, opaque as in FontFace.h
+struct hb_font_t;
+
 namespace jasperengine {
 
     class FontFace;
 
     // a glyph the shaper picked, already in visual order inside its line; offsets and
     // advance in pixels (font units times the face's scale), cluster = index of the first
-    // codepoint it came from (shared when a ligature covers several)
-    struct ShapedGlyph { uint16_t face; bool rtl; uint32_t glyphIndex; float xOffset, yOffset, xAdvance; size_t cluster; unsigned int line; };
+    // codepoint it came from (shared when a ligature covers several). yAdvance is 0 in
+    // horizontal text; vertical text (ShapeDirection::Vertical) advances down by -yAdvance
+    // (HarfBuzz's y-up sign) and its offsets place the glyph's horizontal origin.
+    struct ShapedGlyph { uint16_t face; bool rtl; uint32_t glyphIndex; float xOffset, yOffset, xAdvance; size_t cluster; unsigned int line; float yAdvance = 0.0f; };
+
+    // HarfBuzz's direction for a range: left to right / bidi (today's), or top to bottom (TTB:
+    // the font's vertical forms through vert/vrt2 and its vertical metrics, no bidi reordering)
+    enum class ShapeDirection : uint8_t { Horizontal, Vertical };
+
+    // an OpenType feature over the whole range, on top of the defaults (`value` 0 turns one off)
+    struct ShapeFeature { uint32_t tag; uint32_t value; };
 
     struct ShapeOptions {
         bool kerning = true;          // false: hb feature "kern" = 0
@@ -31,6 +43,12 @@ namespace jasperengine {
         // glyphs move right by (the space before it)
         std::vector<float> justifyAdvance;
         std::vector<float> justifyOffset;
+        ShapeDirection direction = ShapeDirection::Horizontal;
+        std::vector<ShapeFeature> features;   // after kerning's and letter spacing's own, so they win
+        // per face of the chain (empty, or a null entry: the face's own FontFace::getHbFont()), the
+        // font to shape with instead: a sub-font of that face with variation coordinates (Title
+        // Art's variable fonts), scaled like the face's (font units)
+        std::vector<hb_font_t*> fonts;
     };
 
     // HarfBuzz + SheenBidi shaping over a fallback chain (moved out of STBText): bidi runs
