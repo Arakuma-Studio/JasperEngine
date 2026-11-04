@@ -897,6 +897,7 @@ CASES = [
     },
     {
         "id": "guard_sound_slice_takes",
+        "groups_enabled": ["audio"],
         "files": {"assets/sfx/footsteps_all.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
         "kind": "guard",
         "what_happened": "S36 M9: a file holding several takes should become a shuffle Sound Event through edit_sound_event slice, "
@@ -905,6 +906,9 @@ CASES = [
         "source": "S36 M9 (sound-layer phase 7)",
         "prompt": "assets/sfx/footsteps_all.wav has about ten footstep takes one after another. Set up assets/sfx/footsteps.soundevent so each play picks a different take.",
         "mocks": [
+            {"tool": "get_asset_info", "result": ok(
+                "assets/sfx/footsteps_all.wav: audio, 9.40 s, -18.0 LUFS-M; 10 onsets.",
+                {"path": "assets/sfx/footsteps_all.wav", "type": "audio", "data": {"audio": {"duration_s": 9.4, "momentary_max": -18.0}}})},
             {"tool": "edit_sound_event", "result": ok(
                 "Created assets/sfx/footsteps.soundevent: shuffle, 10 clip(s). One undo step. No problems.",
                 {"event": "assets/sfx/footsteps.soundevent", "problems": [], "slices": [{"n": 1, "path": "assets/sfx/footsteps_01.wav"}]})},

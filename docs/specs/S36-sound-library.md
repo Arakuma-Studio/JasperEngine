@@ -567,8 +567,9 @@ about 0.7 s.
   stream's length, and an encoder ends a clip that way. ffmpeg 4.4.2 (the image's) does not trim: it hands over whole
   decoded packets. Verified on 61 of the 967 OGGs, sampled evenly (`je-evidence/s36/ogg-overrun.log`): libsndfile, which
   decodes through libvorbisfile, returned exactly the granule on 61 of 61, while ffmpeg returned 41 to 978 frames more on
-  61 of 61 (221,056 against 220,500 on `spaceEngineLow_000.ogg`). Where both decode, a mono file's samples match within
-  3e-7. The editor loads each at the granule, as libsndfile does, so the overrun is ffmpeg's.
+  61 of 61 (221,056 against 220,500 on `spaceEngineLow_000.ogg`). ffmpeg 6.1.1 on this host instead returns 128 frames fewer on
+  `wood.ogg` and `error.ogg`, so ffmpeg's end depends on its version. Where both decode, every channel matches libsndfile
+  within 3e-7. The editor loads each at the granule, as libsndfile does, so the difference is ffmpeg's and not ours.
 - **This branch merges `feat/s37-sound-events` (M9).** `edit_sound_event` and S37's writer are S37 M1 and M5, which were on
   its branch and not on `main`, so the branch holds S37 M1-M5 and whichever of the two lands second has nothing to merge
   but its own commits.
@@ -587,10 +588,10 @@ about 0.7 s.
   At 0.075, seeds 1 to 8 called 15 of the 16 families near-duplicates (`test_audio_design`, red run `je-evidence/s36/it11.mcp.log`),
   whose advice is empty: a preset's seeds are close by design.
 - **The agent guide gains a Sound section**, in place of "sound (analyze_audio)" among its other areas. On the first eval, agents
-  with only core listed made no sound tool call in 10 of 10 samples, writing a WAV by script or giving up. The section
-  took `guard_sound_slice_takes` from 0/2 to 3/4. It did not move the prompts that read as file work: placeholder, layered, fit,
-  search and "too quiet" stayed at 0 of 10 samples with the audio group hidden, even when told to enable it, and pass 10 of 10
-  once it is listed. So those five cases set `groups_enabled` and measure the tools' text; discovery remains a known gap.
+  with only core listed made no sound tool call in 10 of 10 samples, writing a WAV by script or giving up. The section took
+  the slice prompt from 0 of 2 to 2 of 4. The prompts that read as file work (placeholder, layered, fit, search, "too quiet")
+  stayed at 0 of 10 with the audio group hidden, even told in the guide to enable it, and reach 10 of 10 once it is listed.
+  So all six sound cases set `groups_enabled` and measure the tools' text. An agent finding the group by itself remains a known gap.
 - **`edit_sound_event`'s `slice` is an open object in the schema, its keys checked in the handler.** A closed one costs about
   300 characters, and S37 §6.1 reserves 150.
 - **`preview` reports `source.licensed`, not the licence's fields.** The event's reply says what is unknown in `problems`.

@@ -116,11 +116,10 @@ apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_qu
 step; allow_data_loss): jasper://docs/<area>.
 
 ## Sound
-The editor makes, finds and fixes sound files: no scripts, no audio bytes, no web. First
-tool_groups {"enable": ["audio"]}. Then: a sound to make: generate_sound, a placeholder of a preset (impact wood,
-ui_click...; like: one that fits a clip, whatever its licence). A real recording: search_sounds finds built-in CC0
-clips for import_files. A clip too quiet or clicking: analyze_audio measures it (you cannot hear),
-set_audio_import_settings fixes it for every source. Takes in one file: edit_sound_event slice. jasper://docs/sound.
+The editor makes, finds and fixes sound files: no scripts, no audio bytes, no web (group audio). A sound to make:
+generate_sound (like: one fitting a clip). A real recording: search_sounds, then import_files. Too quiet or
+clicking: analyze_audio (you cannot hear), set_audio_import_settings. Takes in one file: edit_sound_event slice.
+jasper://docs/sound.
 )JE";
 }
 
