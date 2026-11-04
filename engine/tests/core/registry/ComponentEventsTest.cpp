@@ -44,7 +44,7 @@ namespace {
     // one owner-less subscriber (an add(tag, lambda) of a C++ script, which no owner key removes)
     template<typename Event>
     void subscribe(Event& event) {
-        event.add(kTag, [](auto...) {});
+        event.add(kTag, [](auto&&...) {});
     }
 
     template<typename Ret, typename... Args>
