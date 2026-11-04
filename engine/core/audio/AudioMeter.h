@@ -22,6 +22,10 @@ namespace jasperengine{
 
         void set(const double coefficients[5]);
         double process(double x);
+        // In digital silence the state rings down into denormals and can stay there in a limit cycle,
+        // which costs many times the CPU on some processors. This lets go of a state that small; every
+        // 10 ms is often enough, long before it gets there, and leaves process() without a branch.
+        void settle();
     };
 
     // One channel's BS.1770-4 K-weighting (shelf, then high-pass)
@@ -31,6 +35,8 @@ namespace jasperengine{
 
         void init(unsigned int sampleRate);
         double process(double x);
+        // AudioBiquad::settle
+        void settle();
     };
 
     // One channel's octave band bank: 10 bands centred on AudioMeter::bandCentre (4th-order
@@ -42,6 +48,8 @@ namespace jasperengine{
         void init(unsigned int sampleRate);
         // y[0..BANDS-1] the bands, y[BANDS] the sub band
         void process(double x, double y[BANDS + 1]);
+        // AudioBiquad::settle
+        void settle();
 
     private:
         // up to two high-pass and two low-pass sections (4th-order Butterworth each)
@@ -52,6 +60,7 @@ namespace jasperengine{
             bool empty = false;
 
             double process(double x);
+            void settle();
         };
 
         Band bands[BANDS];

@@ -693,19 +693,29 @@ TEST(AudioMeter, AQuietWindowAfterALoudStretchKeepsItsLevel) {
     EXPECT_NEAR(curve[649], -60.0, kLufsTolerance);
 }
 
-// a filter in digital silence settles on exact zero: denormals would cost a stream a hundred times
-// the CPU for as long as the silence lasts
+// a filter in digital silence, settled every 10 ms as the meter does, reaches exact zero and not a
+// denormal or a limit cycle
 TEST(AudioMeter, FiltersSettleOnZeroInSilence) {
     AudioKWeighting filter;
     filter.init(kRate);
     filter.process(1.0);
-    for (unsigned int i = 0; i < 60 * kRate; i++) {
-        filter.process(0.0);
+    for (unsigned int block = 0; block < 6000; block++) {
+        for (unsigned int i = 0; i < kRate / 100; i++) {
+            filter.process(0.0);
+        }
+        filter.settle();
     }
     EXPECT_EQ(filter.shelf.z1, 0.0);
     EXPECT_EQ(filter.shelf.z2, 0.0);
     EXPECT_EQ(filter.highPass.z1, 0.0);
     EXPECT_EQ(filter.highPass.z2, 0.0);
+}
+
+// the meter does settle them: a signal's level is unchanged by it, however quiet the tail
+TEST(AudioMeter, SettlingChangesNoLevelOverTheFloor) {
+    const LoudnessResult r = measureStereo({{5.0, -110.0}});
+    ASSERT_TRUE(r.momentaryMax);
+    EXPECT_NEAR(*r.momentaryMax, -110.0, kLufsTolerance);
 }
 
 // and digital silence reads as silence after any amount of signal

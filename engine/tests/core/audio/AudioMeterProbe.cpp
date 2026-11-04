@@ -41,7 +41,10 @@ static bool readFloatWav(const char* path, std::vector<float>& samples, unsigned
             return false;
         }
         if (std::memcmp(bytes.data() + position, "fmt ", 4) == 0 && size >= 16) {
-            if (readLittle(body, 2) != 3 || readLittle(body + 14, 2) != 32) {
+            // FFmpeg writes float32 as WAVE_FORMAT_EXTENSIBLE, the real tag at offset 24
+            const uint32_t tag = readLittle(body, 2);
+            const uint32_t subFormat = (tag == 0xFFFE && size >= 26) ? readLittle(body + 24, 2) : tag;
+            if (subFormat != 3 || readLittle(body + 14, 2) != 32) {
                 return false;
             }
             channels = readLittle(body + 2, 2);

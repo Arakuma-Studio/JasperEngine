@@ -383,10 +383,10 @@ None new (R19: the effect table already exposes parameters).
 3. **Channel weights go beyond the 5.1 of R1:** 5.0 (L R C Ls Rs) weighs 1, 1, 1, 1.41, 1.41 (Tech 3341
    case 6 and pyloudnorm need it) and 7.1 (L R C LFE Lb Rb Ls Rs) 1, 1, 1, 0, 1, 1, 1.41, 1.41 (BS.1770-4's
    positions, and the LFE must not count). Other layouts weigh 1, as in sound-layer.
-4. **Two changes to sound-layer's code,** behind the same results:
-   the K-weighting and band filters flush states under 1e-30 to zero, because a stream's digital
-   silence otherwise leaves them in denormals (a hundred times the CPU, for as long as the silence
-   lasts; `AudioMeter.FiltersSettleOnZeroInSilence`); and the windows are subtractions of a running
+4. **Two changes to sound-layer's code,** behind the same results. Every 10 ms the K-weighting and band
+   filters let go of a state under 1e-30, because a stream's digital silence otherwise leaves them in
+   denormals (a 35 % cost in silence measured on the Ryzen of server H; Intel's assists cost more, not
+   measured; `AudioMeter.FiltersSettleOnZeroInSilence`). And the windows are subtractions of a running
    sum, so `result()` costs in proportion to the signal and not 40 or 300 times that (R12 reads it live).
 5. **`test_audio_meter.py` compiles its own probe** (`engine/tests/core/audio/AudioMeterProbe.cpp`, with
    `AudioMeter.cpp` and `TruePeak.cpp` and nothing else), since nothing in the editor exposes the meter

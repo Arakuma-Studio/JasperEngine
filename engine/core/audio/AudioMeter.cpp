@@ -57,11 +57,6 @@ static int64_t floorDivide(int64_t a, int64_t b){
     return (a % b != 0 && a < 0) ? q - 1 : q;
 }
 
-// Under this a filter's state is -600 dB, far under the meter's floor, and it is let go: in digital
-// silence it would ring down into denormals and could stay there in a limit cycle, where every
-// operation takes many times as long.
-static const double FILTER_STATE_FLOOR = 1e-30;
-
 // RBJ cookbook sections, prewarped by the bilinear transform
 static void lowPassSection(double* c, double frequency, double q, double rate){
     double w = 2.0 * METER_PI * frequency / rate;
@@ -95,12 +90,17 @@ double AudioBiquad::process(double x){
     double y = b0 * x + z1;
     z1 = b1 * x - a1 * y + z2;
     z2 = b2 * x - a2 * y;
-    // both at once: flushing one disturbs the other, which keeps a limit cycle going at the floor
-    if (std::fabs(z1) < FILTER_STATE_FLOOR && std::fabs(z2) < FILTER_STATE_FLOOR) {
+    return y;
+}
+
+void AudioBiquad::settle(){
+    // -600 dB, far under the meter's floor. Both at once: flushing one disturbs the other, which
+    // keeps a limit cycle going at this level.
+    const double floor = 1e-30;
+    if (std::fabs(z1) < floor && std::fabs(z2) < floor) {
         z1 = 0.0;
         z2 = 0.0;
     }
-    return y;
 }
 
 void AudioKWeighting::init(unsigned int sampleRate){
@@ -117,6 +117,11 @@ double AudioKWeighting::process(double x){
     return highPass.process(shelf.process(x));
 }
 
+void AudioKWeighting::settle(){
+    shelf.settle();
+    highPass.settle();
+}
+
 double AudioOctaveBank::Band::process(double x){
     if (empty) {
         return 0.0;
@@ -125,6 +130,12 @@ double AudioOctaveBank::Band::process(double x){
         x = stages[i].process(x);
     }
     return x;
+}
+
+void AudioOctaveBank::Band::settle(){
+    for (int i = 0; i < count; i++) {
+        stages[i].settle();
+    }
 }
 
 void AudioOctaveBank::initBand(Band& band, double low, double high, unsigned int sampleRate){
@@ -161,6 +172,13 @@ void AudioOctaveBank::process(double x, double y[BANDS + 1]){
         y[b] = bands[b].process(x);
     }
     y[BANDS] = sub.process(x);
+}
+
+void AudioOctaveBank::settle(){
+    for (Band& band : bands) {
+        band.settle();
+    }
+    sub.settle();
 }
 
 void AudioMeter::kWeighting(unsigned int sampleRate, double shelf[5], double highPass[5]){
@@ -322,6 +340,12 @@ void AudioMeter::frame(const double* x, bool padding){
         energyBefore.push_back(energyBefore.back() + subBlockSum);
         subBlockSum = 0.0;
         subBlockEnd = (uint64_t)boundary(completeSubBlocks() + 1);
+        for (Channel& channel : state) {
+            channel.kWeighting.settle();
+            if (options.bands) {
+                channel.bands.settle();
+            }
+        }
     }
 }
 

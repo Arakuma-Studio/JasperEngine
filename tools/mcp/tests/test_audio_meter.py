@@ -107,7 +107,9 @@ def build_probe(work: Path) -> Path:
 
 
 def meter_values(probe: Path, paths: list) -> list:
-    out = subprocess.run([str(probe), *map(str, paths)], check=True, capture_output=True, text=True, timeout=300)
+    out = subprocess.run([str(probe), *map(str, paths)], capture_output=True, text=True, timeout=300)
+    if out.returncode != 0:
+        raise TestFailure(f"the meter's probe exited with {out.returncode}: {out.stderr[-2000:]}")
     return [json.loads(line) for line in out.stdout.splitlines()]
 
 
@@ -135,6 +137,8 @@ def compare(paths: list, probe: Path) -> None:
     reference = pyloudnorm_values(paths)
     if len(measured) != len(paths) or len(reference) != len(paths):
         raise TestFailure(f"{len(paths)} files, {len(measured)} measured, {len(reference)} from pyloudnorm")
+    if sum(value is not None for value in reference) < 3:
+        raise TestFailure(f"pyloudnorm measured almost nothing: {reference}")
     failures = []
     for path, ours, theirs in zip(paths, measured, reference):
         value = ours["integrated"]
