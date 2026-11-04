@@ -32,7 +32,7 @@
 # DOCKER_GPU=1 runs the container with the host's NVIDIA GPU (see below and tools/gpu/env.sh).
 # GRAPHIC_BACKEND=vulkan builds the linux editor for Vulkan (build/linux/editor-vulkan), and
 # runs the core tests' GPU suites on Vulkan (lavapipe) for unit-tests.
-# SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests) builds with
+# SANITIZE=address,undefined or SANITIZE=thread (linux, unit-tests, htmlui-tests, mcp-tests) builds with
 # those sanitizers into build/linux/<dir>-<sanitizers>; UNITY=1 unity-builds (<dir>-unity);
 # WERROR=1 makes warnings of our targets errors. JASPER_DOCKER_IMAGE=<id|tag> runs that image
 # instead of building docker/<target>.Dockerfile (CI's prebuilt images).
@@ -203,8 +203,8 @@ SANITIZE_LIST=""
 SANITIZE_SUFFIX=""
 if [[ -n "${SANITIZE:-}" ]]; then
     case "$TARGET" in
-        linux|unit-tests|htmlui-tests) ;;
-        *) echo "SANITIZE is for linux, unit-tests and htmlui-tests" >&2; exit 1 ;;
+        linux|unit-tests|htmlui-tests|mcp-tests) ;;
+        *) echo "SANITIZE is for linux, unit-tests, htmlui-tests and mcp-tests" >&2; exit 1 ;;
     esac
     IFS=', ' read -r -a sanitizers <<< "$SANITIZE"
     for s in "${sanitizers[@]}"; do
@@ -403,6 +403,9 @@ linux)
     fi
     EDITOR_DIR="$EDITOR_DIR$VARIANT"
     ENGINE_DIR="engine$VARIANT"
+    # (a sanitizer's reports need the symbols)
+    INSTALL_STRIP="--strip"
+    [[ -n "$SANITIZE_LIST" ]] && INSTALL_STRIP=""
     run bash -euo pipefail -c "
         python3 tools/check-cxx-subset.py
         python3 tools/check-pollers.py
@@ -410,7 +413,7 @@ linux)
             -DJASPERENGINE_WERROR=$WERROR_VALUE \
             -DCMAKE_INSTALL_PREFIX=$OUT/$EDITOR_DIR-install $CCACHE_FLAGS
         cmake --build $OUT/$EDITOR_DIR --target $EDITOR_TARGET $JOBS_FLAG
-        cmake --install $OUT/$EDITOR_DIR --strip
+        cmake --install $OUT/$EDITOR_DIR $INSTALL_STRIP
         # RmlUi stays inside the shared engine (engine/libs/rmlui/hidden-symbols.map)
         leaked=\$(nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -c 'Rml::' || true)
         if [[ \$leaked != 0 ]]; then
@@ -656,7 +659,10 @@ mcp-tests)
     SUITE="${MCP_SUITE:-ci}"
     [[ "$SUITE" == ci || "$SUITE" == all ]] || { echo "MCP_SUITE must be ci or all" >&2; exit 1; }
     [[ "$SUITE" == all && -z "${JASPER_FIXTURE:-}" ]] && { echo "MCP_SUITE=all needs the fixture project: JASPER_FIXTURE, build/fixture-unity or ~/je/fixture-unity" >&2; exit 1; }
-    [[ -x "$ROOT/build/linux/editor-install/bin/jasperengine-editor" ]] || { echo "No editor at build/linux/editor-install; run tools/build.sh linux" >&2; exit 1; }
+    # (SANITIZE: the install of that build, `SANITIZE=... tools/build.sh linux`; TSan's start needs its wrapper)
+    EDITOR_INSTALL="build/linux/editor$SANITIZE_SUFFIX-install"
+    [[ -x "$ROOT/$EDITOR_INSTALL/bin/jasperengine-editor" ]] || { echo "No editor at $EDITOR_INSTALL; run ${SANITIZE:+SANITIZE=$SANITIZE }tools/build.sh linux" >&2; exit 1; }
+    [[ -n "$SANITIZE_SUFFIX" ]] && ENV_FLAGS+=(-e "JASPER_EDITOR=${TEST_WRAP:+$TEST_WRAP }/src/$EDITOR_INSTALL/bin/jasperengine-editor")
     SUITE_FLAGS="--suite $SUITE"
     [[ "$SUITE" == all ]] && SUITE_FLAGS=""
     # (each argument quoted once more: the command runs through bash -c)
