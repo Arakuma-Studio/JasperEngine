@@ -864,7 +864,7 @@ void ActionSystem::accumulateClip(const AnimationClip& clip, anim::ClipBindings&
     }
 }
 
-bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged){
+bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged, bool animInCall){
     anim::AnimationPlayerRuntime& runtime = anim::playerRuntime(player);
     const uint64_t revision = scene->hierarchyRevision();
 
@@ -931,7 +931,7 @@ bool ActionSystem::preparePlayer(Entity entity, AnimationPlayerComponent& player
         if (fetch){
             std::string error;
             bool loading = false;
-            std::shared_ptr<const AnimationClip> clip = state.clip.empty() ? nullptr : AnimationClipPool::pollOrLoad(state.poolKey, loading, &error);
+            std::shared_ptr<const AnimationClip> clip = state.clip.empty() ? nullptr : AnimationClipPool::pollOrLoad(state.poolKey, loading, &error, animInCall);
             if (loading){
                 // a model sub-clip building on the thread pool (async loading): the player waits
                 // for it as for its models (time stops, calls are kept); a bound clip plays on meanwhile
@@ -1350,7 +1350,8 @@ void ActionSystem::samplePlayer(Entity entity){
     if (!player) return;
     anim::playerRuntime(*player);
     playerMaskPoolChanged = true;   // generations decide
-    if (!preparePlayer(entity, *player, 0.0f, true)) return;
+    // the caller reads the pose when this returns
+    if (!preparePlayer(entity, *player, 0.0f, true, true)) return;
 
     clearPoseBlend();
     anim::AnimationPlayerRuntime& runtime = *player->runtime;

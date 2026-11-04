@@ -430,12 +430,17 @@ namespace{
 
 }
 
-std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error){
+std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::string& path, bool& loading, std::string* error, bool animInCall){
     loading = false;
     if (path.empty() || !Engine::isAsyncLoading()) return getOrLoad(path, error);
     // a .anim takes no lock another thread holds: without threads it needs no frames to wait for
     // the pump (a sub-clip's builder may wait for a loading model, so it keeps its job)
-    if (!anim::isSubClipReference(path) && noThreads()) return getOrLoad(path, error);
+    if (!anim::isSubClipReference(path) && (animInCall || noThreads())){
+        std::shared_ptr<const AnimationClip> clip = getOrLoad(path, error);
+        // a job of an earlier poll is not asked for again
+        if (clip) forgetAsyncLoad(getKey(path));
+        return clip;
+    }
 
     const std::string key = getKey(path);
     if (std::shared_ptr<const AnimationClip> cached = get(path)){

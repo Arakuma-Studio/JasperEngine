@@ -107,8 +107,8 @@ namespace jasperengine{
         bool prepare(Entity entity, AnimatorComponent& component, float dt, Job& job);
         bool loadController(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance);
         // (re)binds when needed; false while waiting (models loading, clips loading)
-        bool ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance);
-        void pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool& rebind, bool& loading);
+        bool ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall = false);
+        void pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall, bool& rebind, bool& loading);
         bool visible(const anim::AnimatorInstance& instance) const;
         void ikInputs(AnimatorComponent& component, anim::AnimatorInstance& instance, const anim::AnimatorUpdateContext& context);
         void writePose(const AnimatorComponent& component, anim::AnimatorInstance& instance);

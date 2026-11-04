@@ -192,7 +192,7 @@ bool AnimatorSystem::loadController(Entity entity, AnimatorComponent& component,
     return true;
 }
 
-void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool& rebind, bool& loadingAny){
+void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall, bool& rebind, bool& loadingAny){
     for (size_t i = 0; i < instance.clips.size(); i++){
         anim::AnimatorClipSlot& slot = instance.clips[i];
         if (slot.path.empty()) continue;
@@ -202,7 +202,7 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
         if (!fetch) continue;
         bool loading = false;
         std::string error;
-        std::shared_ptr<const AnimationClip> clip = AnimationClipPool::pollOrLoad(slot.path, loading, &error);
+        std::shared_ptr<const AnimationClip> clip = AnimationClipPool::pollOrLoad(slot.path, loading, &error, animInCall);
         loadingAny = loadingAny || loading;
         if (clip){
             const bool changed = clip != slot.clip;
@@ -238,7 +238,7 @@ void AnimatorSystem::pollClips(Entity entity, AnimatorComponent& component, anim
     }
 }
 
-bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance){
+bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, anim::AnimatorInstance& instance, bool animInCall){
     if (!instance.controller) return false;
     // a failed bind (another Animator owned an entity) is tried again once a second
     bool rebind = !instance.bound && (!instance.bindFailed || instance.clock >= instance.rebindRetry);
@@ -253,7 +253,7 @@ bool AnimatorSystem::ensureBound(Entity entity, AnimatorComponent& component, an
         if (model->loadedFilename != entry.second) rebind = true;
     }
     bool clipsLoading = false;
-    pollClips(entity, component, instance, rebind, clipsLoading);
+    pollClips(entity, component, instance, animInCall, rebind, clipsLoading);
     // a first bind waits for the clips on the thread pool: the states' time starts with all of
     // them, as when they load here (a bound Animator plays on, its new clips bind when they come)
     if (!instance.bound && clipsLoading) return false;
@@ -746,7 +746,8 @@ bool AnimatorSystem::preview(Entity entity, float dt, std::string* error){
         return false;
     }
     revisionChanged = AnimationClipPool::revision() != clipRevision || AnimatorAssetPool::revision() != assetRevision;
-    if (!ensureBound(entity, *component, instance)){
+    // the caller reads the pose when this returns
+    if (!ensureBound(entity, *component, instance, true)){
         if (error) *error = instance.bindFailed ? "another Animator animates its bones" : "loading (models or clips)";
         return false;
     }

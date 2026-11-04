@@ -136,6 +136,18 @@ namespace {
 
 }
 
+// S74 R16: sample() shows its pose in the call, as without async loading
+TEST_F(Player, SampleLoadsAnAnimInTheCallInAsyncLoading){
+    AnimationPlayer object = player({{"slide", slide("Arm", 3.0f)}});
+    const bool wasAsync = Engine::isAsyncLoading();
+    Engine::setAsyncLoading(true);
+    object.play("slide");
+    object.getState("slide").setTime(0.5f);
+    object.sample();
+    Engine::setAsyncLoading(wasAsync);
+    EXPECT_NEAR(x(arm), 1.5f, 1e-5f);
+}
+
 // AC8 (S74 R17): an idle player, one that never played and one holding its last pose, allocates
 // nothing per frame and marks nothing dirty
 TEST_F(Player, IdleAllocatesNothingAndMarksNothingDirty){

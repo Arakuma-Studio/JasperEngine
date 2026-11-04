@@ -94,8 +94,10 @@ namespace jasperengine{
         // .anim without threads (web without pthreads: a job would wait for the frame's pump), is
         // getOrLoad on this thread, with the same result. Players and scene preloads poll it once a
         // frame; invalidate, invalidateModel and clear forget the builds in flight (the next poll
-        // starts another).
-        static std::shared_ptr<const AnimationClip> pollOrLoad(const std::string& path, bool& loading, std::string* error = nullptr);
+        // starts another). `animInCall`: a caller that must show the pose in this call (an
+        // editor preview, AnimationPlayer's sample) gets a .anim on this thread in any mode.
+        static std::shared_ptr<const AnimationClip> pollOrLoad(const std::string& path, bool& loading, std::string* error = nullptr,
+                                                               bool animInCall = false);
 
         // 0 when never loaded
         static uint64_t getGeneration(const std::string& path);

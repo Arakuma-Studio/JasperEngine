@@ -235,7 +235,7 @@ namespace jasperengine{
 
 		// loads the states' clips, follows models and the hierarchy (rebinding); false while
 		// waiting for a model under the root to load (R10)
-		bool preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged);
+		bool preparePlayer(Entity entity, AnimationPlayerComponent& player, float dt, bool poolChanged, bool animInCall = false);
 		void advancePlayer(Entity entity, AnimationPlayerComponent& player, float dt);
 		void startQueuedState(Entity entity, AnimationPlayerComponent& player, const anim::QueuedState& head, float offset, float dt);
 		void samplePlayerStates(Entity entity, AnimationPlayerComponent& player);

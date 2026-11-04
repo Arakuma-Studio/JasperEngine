@@ -517,12 +517,12 @@ namespace {
 
     // the heap in use (this thread's arena: what a build here leaves shows), -1 where it cannot be read
     long long heapInUse(){
-#if defined(JE_BENCH_HEAP_BYTES) && defined(__GLIBC__) && __GLIBC_PREREQ(2, 33)
-        return (long long)mallinfo2().uordblks;
-#elif defined(JE_BENCH_HEAP_BYTES)
-        return (long long)mallinfo().uordblks;
-#else
+#if !defined(JE_BENCH_HEAP_BYTES)
         return -1;
+#elif defined(__GLIBC__) && (__GLIBC__ > 2 || __GLIBC_MINOR__ >= 33)
+        return (long long)mallinfo2().uordblks;
+#else
+        return (long long)mallinfo().uordblks;
 #endif
     }
 

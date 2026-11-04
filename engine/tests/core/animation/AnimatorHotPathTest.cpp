@@ -213,6 +213,19 @@ TEST_F(AnimatorHotPath, SnapshotWithAWeightFadeInTheSameFrame){
     expectSameAfterInterruption();
 }
 
+// R16: a preview shows its pose in the call, as without async loading (the editor's mode)
+TEST_F(AnimatorHotPath, PreviewLoadsAnAnimInTheCall){
+    animator(controllerFile("preview", controller({}, {state("Base", clip("base", turn("Hips", 30.0f)))})));
+    const bool wasAsync = Engine::isAsyncLoading();
+    Engine::setAsyncLoading(true);
+    std::string error;
+    const bool shown = system().preview(root, 0.5f, &error);
+    Engine::setAsyncLoading(wasAsync);
+    ASSERT_TRUE(shown) << error;
+    EXPECT_TRUE(instance().bound);
+    EXPECT_NEAR(std::fabs(rotation(hips).dot(aboutX(15.0f))), 1.0f, 1e-5f);
+}
+
 // AC7 (R16): a first use through the thread pool starts where one through the calling thread
 // does, even when one of its clips arrives later than another: time does not run without them
 TEST_F(AnimatorHotPath, ThreadPoolFirstUseMatchesTheCallingThread){
