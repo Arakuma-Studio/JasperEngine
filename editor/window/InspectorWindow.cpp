@@ -7054,7 +7054,28 @@ void editor::InspectorWindow::drawScenePostProcess(SceneProject* sceneProject){
 
             // the library's post-process shaders (@shader postprocess), a project file, or a fork
             const std::string passId = "post_process_" + std::to_string(i);
-            drawLibraryShaderCombo(passes[i].shader, ShaderType::POSTPROCESS, setShader, "Edit Shader Files##" + passId);
+            // a fork of the pass's library shader (library:underwater keeps its switch, @role)
+            auto onForkLibrary = [this, sceneId, i](const std::string& library){
+                std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(library);
+                const std::string defaultName = (manifest && !manifest->name.empty()) ? manifest->name : ShaderReference::getLibraryName(library);
+                shaderForkDialog.open(project, ShaderType::POSTPROCESS, defaultName,
+                    [this, sceneId, i, library](const std::filesystem::path& directory, const std::string& name, bool forkIncludes){
+                        SceneProject* currentScene = project->getScene(sceneId);
+                        if (!currentScene || !currentScene->scene)
+                            return;
+                        std::vector<PostProcessPass> newPasses = Catalog::getSceneProperty<std::vector<PostProcessPass>>(currentScene->scene, "post_process");
+                        if (i >= newPasses.size() || ShaderReference::getBase(newPasses[i].shader) != library)
+                            return;
+                        // the fork keeps the pass's values (the same members)
+                        auto makePropertyCmd = [this, sceneId, i, newPasses](const std::string& forkBase) mutable {
+                            newPasses[i].shader = forkBase;
+                            return std::make_unique<ScenePropertyCmd<std::vector<PostProcessPass>>>(project, sceneId, "post_process", newPasses);
+                        };
+                        commitShaderFork(sceneId, std::make_unique<ForkShaderCmd>(project, ShaderType::POSTPROCESS, makePropertyCmd, directory,
+                                                                                 name, forkIncludes, library));
+                    }, nullptr, library);
+            };
+            drawLibraryShaderCombo(passes[i].shader, ShaderType::POSTPROCESS, setShader, "Edit Shader Files##" + passId, nullptr, onForkLibrary);
             drawShaderRowContents(passes[i].shader, setShader, onFork, passId);
 
             drawPostProcessPassFields(sceneProject, passes, i);

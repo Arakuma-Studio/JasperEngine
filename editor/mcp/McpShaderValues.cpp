@@ -238,6 +238,15 @@ Json McpValues::manifestToJson(const std::string& reference, const ShaderManifes
         out["cost_note"] = Catalog::getShaderSceneInputsSummary(manifest) + ": " + Catalog::getSceneInputsCost(possibleSceneInputs, true) +
                            (detail ? ". " + Catalog::getSceneInputsCost(possibleSceneInputs) : std::string("."));
     }
+    // what the engine treats it as (@role): water floats bodies and answers Water queries, underwater switches
+    if (manifest.role != ShaderRole::NONE)
+        out["role"] = manifest.role == ShaderRole::WATER ? "water" : "underwater";
+    // a planar reflection (@require planarreflection): a camera pass per water height
+    if (manifest.getPossibleRequire() & ShaderRequire_PlanarReflection) {
+        const std::string planar = "planar reflection: the scene drawn again, mirrored, once per water height a camera sees "
+                                   "(scene setting planar_reflection_resolution; off draws none)";
+        out["cost_note"] = out.contains("cost_note") ? out["cost_note"].get<std::string>() + " " + planar + "." : planar + ".";
+    }
     if (!detail) {
         Json features = Json::array();
         for (const ShaderManifestFeature& feature : manifest.features) features.push_back(feature.define);

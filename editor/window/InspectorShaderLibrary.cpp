@@ -12,6 +12,7 @@
 #include "App.h"
 #include "Backend.h"
 #include "command/CommandHandle.h"
+#include "command/type/ForkShaderCmd.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
 #include "external/IconsFontAwesome6.h"
@@ -302,7 +303,8 @@ namespace {
 
 void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                                      const std::function<void(const std::string&)>& setShader,
-                                                     const std::string& popupName, const char* builtInLabel){
+                                                     const std::string& popupName, const char* builtInLabel,
+                                                     const std::function<void(const std::string&)>& onForkLibrary){
     const char* builtIn = builtInLabel ? builtInLabel : (type == ShaderType::MESH ? "Lit (built-in)" : "Built-in");
 
     std::string preview = builtIn;
@@ -326,6 +328,7 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
     // the files popup opens after the combo closes: opened from inside the combo's own popup
     // window, its id would not match the BeginPopup of the row (drawShaderFilesPopup)
     bool openFiles = false;
+    bool forkLibrary = false;
     ImGui::SetNextItemWidth(-1);
     if (ImGui::BeginCombo(("##shader_picker_" + popupName).c_str(), preview.c_str())) {
         if (ImGui::Selectable(builtIn, currentShader.empty()) && !currentShader.empty())
@@ -358,8 +361,20 @@ void editor::InspectorWindow::drawLibraryShaderCombo(const std::string& currentS
             openFiles = true;
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("A shader of this project: pick its .vert and .frag files");
+        // a copy of the library shader in the project, keeping its rows and its role
+        if (onForkLibrary && ShaderReference::isLibrary(currentShader)) {
+            std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
+            const std::string name = (manifest && !manifest->name.empty()) ? manifest->name : currentShader;
+            if (ImGui::Selectable(("Fork \"" + name + "\"...").c_str()))
+                forkLibrary = true;
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Copy %s into this project to edit it; the copy keeps its parameters, features and what the engine does with it (water floats bodies, the underwater pass switches)",
+                                  currentShader.c_str());
+        }
         ImGui::EndCombo();
     }
+    if (forkLibrary)
+        onForkLibrary(ShaderReference::getBase(currentShader));
     if (ShaderReference::isLibrary(currentShader) && ImGui::IsItemHovered()) {
         std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(currentShader);
         if (manifest && manifest->getPossibleSceneInputs())
@@ -827,7 +842,23 @@ bool editor::InspectorWindow::drawMaterialShaderRows(ComponentType cpType, Scene
     propertyHeader("Shader", -1, false, true);
     if (mixed)
         ImGui::TextDisabled("(different shaders)");
-    drawLibraryShaderCombo(mixed ? std::string() : currentShader, ShaderType::MESH, setShader, popupName);
+    // a fork of the library shader in one step: the files, and every selected submesh on it
+    auto onForkLibrary = [this, sceneId, entities, cpType, shaderProperty, onValueChanged = settingsMaterial.onValueChanged](const std::string& library){
+        std::shared_ptr<const ShaderManifest> manifest = ShaderManifests::get(library);
+        const std::string defaultName = (manifest && !manifest->name.empty()) ? manifest->name : ShaderReference::getLibraryName(library);
+        shaderForkDialog.open(project, ShaderType::MESH, defaultName,
+            [this, sceneId, entities, cpType, shaderProperty, onValueChanged, library](const std::filesystem::path& directory, const std::string& name, bool forkIncludes){
+                auto makePropertyCmd = [this, sceneId, entities, cpType, shaderProperty, onValueChanged](const std::string& forkBase){
+                    auto multi = std::make_unique<MultiPropertyCmd>();
+                    for (Entity entity : entities)
+                        multi->addPropertyCmd<std::string>(project, sceneId, entity, cpType, shaderProperty, forkBase, onValueChanged);
+                    return std::unique_ptr<Command>(std::move(multi));
+                };
+                commitShaderFork(sceneId, std::make_unique<ForkShaderCmd>(project, ShaderType::MESH, makePropertyCmd, directory, name,
+                                                                         forkIncludes, library));
+            }, nullptr, library);
+    };
+    drawLibraryShaderCombo(mixed ? std::string() : currentShader, ShaderType::MESH, setShader, popupName, nullptr, onForkLibrary);
     const Util::CustomShaderPaths paths = (!currentShader.empty() && !ShaderReference::isLibrary(currentShader))
         ? project->resolveCustomShaderFiles(currentShader) : Util::CustomShaderPaths();
     drawShaderFilesPopup(popupName, setShader, paths.vert, paths.frag);

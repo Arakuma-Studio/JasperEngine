@@ -666,9 +666,11 @@ namespace jasperengine::editor{
         // @category (with @description tooltips) and "Custom file..." (the Edit Shader Files
         // popup named popupName, which the caller draws)
         // builtInLabel names the empty entry instead ("None" for an extra pass)
+        // onForkLibrary, when given: a "Fork" item while a library shader is picked, called with it
         void drawLibraryShaderCombo(const std::string& currentShader, ShaderType type,
                                     const std::function<void(const std::string&)>& setShader, const std::string& popupName,
-                                    const char* builtInLabel = nullptr);
+                                    const char* builtInLabel = nullptr,
+                                    const std::function<void(const std::string&)>& onForkLibrary = nullptr);
         // The manifest rows of `shader` for one GameObject, into the current table: feature
         // checkboxes, keyword combos, parameters (colour pickers editing sRGB, sliders for
         // ranges, checkboxes for toggles, drag fields) and texture slots, hiding the ones
