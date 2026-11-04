@@ -10,7 +10,7 @@ from harness import Editor
 
 BASE = "/var/tmp" if os.path.isdir("/var/tmp") and os.access("/var/tmp", os.W_OK) else None
 EDITOR = {"create": True, "name": "Outside Tmp", "scratch_prefix": (BASE + "/jasper-mcp-outside-") if BASE else "jasper-mcp-outside-"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 TIMEOUT = 900
 
 

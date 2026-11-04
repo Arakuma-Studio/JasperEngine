@@ -7,7 +7,7 @@ actions work again once the focus goes.
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "html-ui"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 
 TIMEOUT = 900
 

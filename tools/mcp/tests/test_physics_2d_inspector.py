@@ -17,7 +17,7 @@ import time
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Physics 2D Inspector", "xvfb": "harness", "ui_probe": True}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 TIMEOUT = 900
 
 

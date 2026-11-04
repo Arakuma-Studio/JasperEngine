@@ -6,7 +6,7 @@ and Play stop destroys it (its onDestroy runs) and leaves nothing behind."""
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Persistence"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 
 MANAGER = """---@class Manager : ScriptInstance
 local Manager = {}

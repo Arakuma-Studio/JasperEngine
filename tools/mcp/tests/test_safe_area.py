@@ -14,7 +14,7 @@ from harness import Editor
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Safe Area"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 
 CANVAS = (390, 844)
 IPHONE_13 = {"width": 1170, "height": 2532, "portrait": (0, 141, 0, 102), "landscape": (141, 0, 141, 63)}

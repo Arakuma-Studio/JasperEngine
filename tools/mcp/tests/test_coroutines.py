@@ -6,7 +6,7 @@ traceback and ends Play, and Play stop leaves nothing behind."""
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Coroutines"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 
 MOVER = """---@class CoMover : ScriptInstance
 local CoMover = { properties = {} }

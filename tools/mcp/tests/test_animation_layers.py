@@ -16,7 +16,7 @@ import harness
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 TIMEOUT = 900
 
 MASK = "assets/anim/arm.mask"

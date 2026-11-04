@@ -13,7 +13,7 @@ from pathlib import Path
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Script Data"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 TIMEOUT = 600
 
 RUNDATA = ".jasperengine/user/rundata"

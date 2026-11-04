@@ -13,7 +13,8 @@ from pathlib import Path
 from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "Lifecycle Export"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI_EXCLUDED = ("long-running (about an hour on a loaded server: its test builds and runs a real Desktop player); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 
 SCRIPT = """local Parity = {}

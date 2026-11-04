@@ -11,7 +11,7 @@ from harness import Editor
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "UI Scaling"}
-CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
+CI = True
 
 S: dict = {}
 
