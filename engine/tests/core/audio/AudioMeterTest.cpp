@@ -549,6 +549,20 @@ TEST(AudioMeter, TheRunsOfTheFiltersEqualTheirSamples) {
         ASSERT_EQ(filtered[i], b.process(run[i])) << i;
     }
 
+    AudioKWeighting c;
+    AudioKWeighting d;
+    AudioKWeighting e;
+    c.init(kMeterRate);
+    d.init(kMeterRate);
+    e.init(kMeterRate);
+    std::vector<double> paired = run;
+    std::vector<double> silent(run.size(), 0.0);
+    c.processRuns(d, paired.data(), silent.data(), paired.size());
+    for (size_t i = 0; i < run.size(); i++) {
+        ASSERT_EQ(paired[i], e.process(run[i])) << i;
+        ASSERT_EQ(silent[i], 0.0) << i;
+    }
+
 }
 
 TEST(AudioMeter, BandsOffLeaveTheirFieldsAtTheFloor) {

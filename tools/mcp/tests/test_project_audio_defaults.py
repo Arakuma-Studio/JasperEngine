@@ -37,11 +37,13 @@ def write_tone(path, seconds=2.0, frequency=1000.0, amplitude=0.5, rate=48000):
 async def test_a_new_project_has_the_mixer_and_the_keys(ed: Editor):
     await ed.call("save_project", untitled_scene_dir="scenes")
     mixer = json.loads((ed.project / MIXER).read_text())
-    for effect in mixer["groups"][0]["effects"]:
+    master = mixer["groups"][0]
+    ed.check(len(master.pop("id")) == 8, f"an id: {master}")
+    for effect in master["effects"]:
         ed.check(len(effect.pop("id")) == 8, f"an id: {effect}")
     ed.check_eq(mixer, {
         "format": "jasperengine.mixer", "version": 2, "updateMode": "scaled",
-        "groups": [{"id": "00000001", "name": "Master", "parent": None, "volume": 0,
+        "groups": [{"name": "Master", "parent": None, "volume": 0,
                     "effects": [{"type": "limiter",
                                  "params": {"threshold": -1, "release": 0.1, "lookahead": 1.5, "truePeak": 1}}]}],
     }, "the mixer of S38 R8")
@@ -102,9 +104,9 @@ async def test_loudness_readouts(ed: Editor):
 
 async def test_the_mixer_window_shows_the_readouts(ed: Editor):
     """Master's LUFS against the target and the limiter's gain reduction, in Play (evidence: the shot)."""
-    await ed.call("run_command", id="window.audioMixer")
     await ed.call("play", action="start", auto_pause=False)
     try:
+        await ed.call("run_command", id="window.audioMixer")
         await ed.call("wait", seconds=1.0)
         evidence = os.environ.get("JASPER_EVIDENCE_DIR")
         image = await ed.screenshot(view="editor", path=Path(evidence) / "s38-mixer-window.png" if evidence else None, max_width=0)

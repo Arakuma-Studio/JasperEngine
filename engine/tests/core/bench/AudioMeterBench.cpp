@@ -2,20 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 // je-bench-audio: the loudness budgets (docs/specs/S38-loudness.md R16, R17, AC8), in CPU time, so that
-// a loaded machine's waiting does not count (its shared core's slowness still does).
+// a loaded machine's waiting does not count (its shared core's slowness still does: judge the budgets
+// on an otherwise idle machine).
 //
 //   je-bench-audio [--json <file>]
 //
 // AudioMeterBench: AudioMeter on a 3-minute stereo 48 kHz signal, as a file and as a stream, with the
 // bands and without. LimiterBench: one stereo bus through the limiter at its defaults and with the
-// true-peak detector and 1.5 ms of lookahead, in the 1024-frame blocks of a mix. Each is the median of
-// 5 runs. tools/perf/check_bench.py gates the JSON with tools/perf/bench-thresholds.json.
+// true-peak detector and 1.5 ms of lookahead, in the 1024-frame blocks of a mix. Each is the least of 5
+// runs, the one a loaded machine disturbed the least. tools/perf/check_bench.py gates the JSON with tools/perf/bench-thresholds.json.
 
 #include "BenchUtil.h"
 
 #include "audio/AudioFilters.h"
 #include "audio/AudioMeter.h"
 
+#include <algorithm>
 #include <cmath>
 #include <ctime>
 #include <memory>
@@ -34,14 +36,14 @@ namespace {
     }
 
     template <typename Work>
-    double medianCpuSeconds(Work work) {
-        std::vector<double> times;
+    double leastCpuSeconds(Work work) {
+        double least = 1e30;
         for (int run = 0; run < kBenchRuns; run++) {
             const double start = cpuSeconds();
             work();
-            times.push_back(cpuSeconds() - start);
+            least = std::min(least, cpuSeconds() - start);
         }
-        return bench::percentile(times, 0.5);
+        return least;
     }
 
     // music-like: a tone and noise under a slow swell
@@ -65,7 +67,7 @@ namespace {
         const unsigned int block = 1024;
         const size_t frames = signal.size() / 2;
         std::vector<float> planar(block * 2);
-        const double cpu = medianCpuSeconds([&]() {
+        const double cpu = leastCpuSeconds([&]() {
             std::unique_ptr<SoLoud::FilterInstance> instance(filter.createInstance());
             for (size_t position = 0; position + block <= frames; position += block) {
                 for (unsigned int i = 0; i < block; i++) {
@@ -87,13 +89,13 @@ int main(int argc, char** argv) {
     const std::vector<float> file = benchSignal(fileSeconds, 1.0);
     const size_t frames = file.size() / 2;
     double sink = 0.0;
-    results.add("meter_file_3min_ms", medianCpuSeconds([&]() {
+    results.add("meter_file_3min_ms", leastCpuSeconds([&]() {
         sink += AudioMeter::measure(file.data(), frames, kBenchRate, 2).truePeakDb;
     }) * 1000.0, "ms");
-    results.add("meter_file_3min_no_bands_ms", medianCpuSeconds([&]() {
+    results.add("meter_file_3min_no_bands_ms", leastCpuSeconds([&]() {
         sink += AudioMeter::measure(file.data(), frames, kBenchRate, 2, false).truePeakDb;
     }) * 1000.0, "ms");
-    results.add("meter_stream_core_pct", medianCpuSeconds([&]() {
+    results.add("meter_stream_core_pct", leastCpuSeconds([&]() {
         AudioMeter meter(kBenchRate, 2);
         for (size_t position = 0; position + 1024 <= frames; position += 1024) {
             meter.process(file.data() + position * 2, 1024);

@@ -38,6 +38,9 @@ namespace jasperengine{
         void init(unsigned int sampleRate);
         double process(double x);
         void processRun(double* samples, size_t count);
+        // two channels' runs at once: an IIR filter's speed is the wait for its own last output, and
+        // that wait can be shared. `other` has the same coefficients.
+        void processRuns(AudioKWeighting& other, double* samples, double* otherSamples, size_t count);
         // AudioBiquad::settle
         void settle();
     };
@@ -259,6 +262,7 @@ namespace jasperengine{
         TruePeak truePeakFilter;
         AudioSpectrumBands spectrum;
         std::vector<float> run;
+        // channel c at c * RUN_FRAMES
         std::vector<double> weightedRun;
 
         // frames through the K-weighting (padding included), frames of the signal

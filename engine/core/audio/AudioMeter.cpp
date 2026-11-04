@@ -137,6 +137,33 @@ void AudioKWeighting::processRun(double* samples, size_t count){
     highPass.processRun(samples, count);
 }
 
+// the same biquad, run over two channels in step
+static void processBiquadPair(AudioBiquad& a, AudioBiquad& b, double* x0, double* x1, size_t count){
+    const double cb0 = a.b0, cb1 = a.b1, cb2 = a.b2, ca1 = a.a1, ca2 = a.a2;
+    double s1[2] = {a.z1, b.z1};
+    double s2[2] = {a.z2, b.z2};
+    for (size_t i = 0; i < count; i++) {
+        const double x[2] = {x0[i], x1[i]};
+        double y[2];
+        for (int c = 0; c < 2; c++) {
+            y[c] = cb0 * x[c] + s1[c];
+            s1[c] = cb1 * x[c] - ca1 * y[c] + s2[c];
+            s2[c] = cb2 * x[c] - ca2 * y[c];
+        }
+        x0[i] = y[0];
+        x1[i] = y[1];
+    }
+    a.z1 = s1[0];
+    b.z1 = s1[1];
+    a.z2 = s2[0];
+    b.z2 = s2[1];
+}
+
+void AudioKWeighting::processRuns(AudioKWeighting& other, double* samples, double* otherSamples, size_t count){
+    processBiquadPair(shelf, other.shelf, samples, otherSamples, count);
+    processBiquadPair(highPass, other.highPass, samples, otherSamples, count);
+}
+
 void AudioKWeighting::settle(){
     shelf.settle();
     highPass.settle();
@@ -332,6 +359,12 @@ uint64_t AudioSpectrumBands::windowedFrames() const{
     return windows * (uint64_t)(size / 2);
 }
 
+static double eighthPower(double x){
+    const double square = x * x;
+    const double fourth = square * square;
+    return fourth * fourth;
+}
+
 void AudioSpectrumBands::energy(double out[BANDS + 1]) const{
     const double rate = (double)sampleRate;
     const auto warped = [rate](double hz) { return std::tan(METER_PI * hz / rate); };
@@ -353,9 +386,9 @@ void AudioSpectrumBands::energy(double out[BANDS + 1]) const{
                 continue;
             }
             const double at = warped(rate * (double)bin / (double)size);
-            double attenuation = 1.0 + std::pow(lowEdge / at, 8.0);
+            double attenuation = 1.0 + eighthPower(lowEdge / at);
             if (hasHigh) {
-                attenuation *= 1.0 + std::pow(at / highEdge, 8.0);
+                attenuation *= 1.0 + eighthPower(at / highEdge);
             }
             sum += power[k] / attenuation;
         }
@@ -439,7 +472,7 @@ AudioMeter::AudioMeter(unsigned int sampleRate, unsigned int channels, const Aud
     }
     truePeakFilter = TruePeak(channels);
     run.assign((size_t)channels * RUN_FRAMES, 0.0f);
-    weightedRun.assign(RUN_FRAMES, 0.0);
+    weightedRun.assign((size_t)channels * RUN_FRAMES, 0.0);
 
     energyBefore.push_back(0.0);
     subBlockEnd = (uint64_t)boundary(1);
@@ -487,12 +520,12 @@ size_t AudioMeter::runFramesNow(size_t frames) const{
 }
 
 void AudioMeter::processRun(size_t frames, bool padding){
-    double energy = 0.0;
     for (unsigned int c = 0; c < channels; c++) {
         Channel& channel = state[c];
         const float* samples = run.data() + (size_t)c * RUN_FRAMES;
+        double* weighted = weightedRun.data() + (size_t)c * RUN_FRAMES;
         for (size_t i = 0; i < frames; i++) {
-            weightedRun[i] = samples[i];
+            weighted[i] = samples[i];
         }
 
         if (!padding) {
@@ -501,7 +534,7 @@ void AudioMeter::processRun(size_t frames, bool padding){
             double squares = 0.0;
             uint64_t over = 0;
             for (size_t i = 0; i < frames; i++) {
-                const double x = weightedRun[i];
+                const double x = weighted[i];
                 const double magnitude = std::fabs(x);
                 channelPeak = std::max(channelPeak, magnitude);
                 over += magnitude >= CLIP_LEVEL ? 1 : 0;
@@ -514,15 +547,33 @@ void AudioMeter::processRun(size_t frames, bool padding){
             channel.energy += squares;
             truePeak = std::max(truePeak, (double)truePeakFilter.processChannel(c, samples, frames, (float)truePeak));
         }
+    }
 
-        if (channel.weight != 0.0) {
-            channel.kWeighting.processRun(weightedRun.data(), frames);
-            double squares = 0.0;
-            for (size_t i = 0; i < frames; i++) {
-                squares += weightedRun[i] * weightedRun[i];
-            }
-            energy += channel.weight * squares;
+    // K-weighting: in pairs of channels, a channel that does not count (an LFE) left out
+    unsigned int previous = channels;
+    for (unsigned int c = 0; c < channels; c++) {
+        if (state[c].weight == 0.0) continue;
+        if (previous == channels) {
+            previous = c;
+            continue;
         }
+        state[previous].kWeighting.processRuns(state[c].kWeighting, weightedRun.data() + (size_t)previous * RUN_FRAMES,
+                                               weightedRun.data() + (size_t)c * RUN_FRAMES, frames);
+        previous = channels;
+    }
+    if (previous != channels) {
+        state[previous].kWeighting.processRun(weightedRun.data() + (size_t)previous * RUN_FRAMES, frames);
+    }
+
+    double energy = 0.0;
+    for (unsigned int c = 0; c < channels; c++) {
+        if (state[c].weight == 0.0) continue;
+        const double* weighted = weightedRun.data() + (size_t)c * RUN_FRAMES;
+        double squares = 0.0;
+        for (size_t i = 0; i < frames; i++) {
+            squares += weighted[i] * weighted[i];
+        }
+        energy += state[c].weight * squares;
     }
 
     subBlockSum += energy;
