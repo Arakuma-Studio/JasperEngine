@@ -7,6 +7,7 @@
 // merges by its id, and memoryBytes reports what the deltas hold.
 
 #include "command/Command.h"
+#include "ecs/Entity.h"
 #include "terrain/TreeStore.h"
 
 #include <cstdint>

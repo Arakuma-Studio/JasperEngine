@@ -96,8 +96,8 @@ bool editor::TreeDataFile::flush(Project* project, uint32_t sceneId, Entity terr
     std::vector<uint8_t> bytes;
     encode(*store, bytes);
     const fs::path target = project->resolveAssetPath(component->treeData.str());
-    const WriteResult written = writeFileAtomic(target, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
-    if (!written.ok()) {
+    const io::WriteResult written = io::writeFileAtomic(target, std::string_view(reinterpret_cast<const char*>(bytes.data()), bytes.size()));
+    if (written.error != io::WriteError::None) {
         if (error) *error = "Could not write " + target.string() + ": " + written.message;
         return false;
     }

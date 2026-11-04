@@ -113,7 +113,7 @@ TEST(StreamTerrainFoliage, SaveAndLoadRoundTrip) {
     EXPECT_EQ(YAML::Dump(Stream::encodeTerrainComponent(loaded)), YAML::Dump(first));
     ASSERT_EQ(loaded.treePrototypes.size(), 1u);
     EXPECT_EQ(loaded.treePrototypes[0].id, 7u);
-    EXPECT_EQ(loaded.treePrototypes[0].shadowLodMask, 0x83);
+    EXPECT_EQ(loaded.treePrototypes[0].shadowLodMask, 0x83u);
     EXPECT_EQ(loaded.treePrototypes[0].collision, TerrainTreeCollision::Capsule);
     EXPECT_FLOAT_EQ(loaded.foliageLayers[0].minDrawDistance, 12.0f);
     EXPECT_EQ(loaded.treeData.str(), "terrain/island.jetrees");

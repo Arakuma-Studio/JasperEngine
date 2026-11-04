@@ -253,18 +253,18 @@ namespace {
                     if (normalPass) material.shaderFeatures.push_back("IMPOSTOR_NORMAL");
                     mesh.needReload = true;
                 }
-                material.shaderParams.setVector4("baseColor", material.baseColorFactor);
-                material.shaderParams.setVector4("viewRight", Vector4(right.x, right.y, right.z, 0.0f));
-                material.shaderParams.setVector4("viewUp", Vector4(up.x, up.y, up.z, 0.0f));
-                material.shaderParams.setVector4("viewForward", Vector4(forward.x, forward.y, forward.z, 0.0f));
-                material.shaderParams.setFloat("alphaCutoff", 0.5f);
+                ShaderUniforms::set(material.shaderParams, "baseColor", material.baseColorFactor);
+                ShaderUniforms::set(material.shaderParams, "viewRight", Vector4(right.x, right.y, right.z, 0.0f));
+                ShaderUniforms::set(material.shaderParams, "viewUp", Vector4(up.x, up.y, up.z, 0.0f));
+                ShaderUniforms::set(material.shaderParams, "viewForward", Vector4(forward.x, forward.y, forward.z, 0.0f));
+                ShaderUniforms::set(material.shaderParams, "alphaCutoff", Vector4(0.5f, 0.0f, 0.0f, 0.0f));
             }
         }
     }
 
     void finishPrototype(BakeState& state) {
         const int prototype = state.request.prototypes[state.prototypeCursor];
-        SceneProject* sceneProject = state.project->getScene(state.request.sceneId);
+        editor::SceneProject* sceneProject = state.project->getScene(state.request.sceneId);
         TerrainComponent& terrain = sceneProject->scene->getComponent<TerrainComponent>(state.request.terrain);
         const std::string meshPath = terrain.treePrototypes[prototype].meshPath.str();
 
@@ -301,10 +301,10 @@ namespace {
                       albedoFile = state.project->resolveAssetPath(result.albedoPath), normalFile = state.project->resolveAssetPath(result.normalPath)]() {
             std::vector<uint8_t> png;
             if (editor::ImpostorBaker::encodePng(albedo, width, height, png)) {
-                writeFileAtomic(albedoFile, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()));
+                io::writeFileAtomic(albedoFile, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()));
             }
             if (editor::ImpostorBaker::encodePng(normal, width, height, png)) {
-                writeFileAtomic(normalFile, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()));
+                io::writeFileAtomic(normalFile, std::string_view(reinterpret_cast<const char*>(png.data()), png.size()));
             }
         };
         if (jobs::hasSystem()) {

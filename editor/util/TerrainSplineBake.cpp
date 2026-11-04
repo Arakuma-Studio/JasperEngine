@@ -490,8 +490,8 @@ std::vector<uint32_t> editor::TerrainSplineBake::treesInFootprint(const terrain:
     return ids;
 }
 
-static bool clearSplineTrees(Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity){
-    SceneProject* sceneProject = project->getScene(sceneId);
+static bool clearSplineTrees(editor::Project* project, uint32_t sceneId, Entity splineEntity, Entity terrainEntity){
+    editor::SceneProject* sceneProject = project->getScene(sceneId);
     Scene* scene = sceneProject->scene;
     const SplineComponent* spline = scene->findComponent<SplineComponent>(splineEntity);
     const Transform* terrainTransform = scene->findComponent<Transform>(terrainEntity);
@@ -525,7 +525,7 @@ static bool clearSplineTrees(Project* project, uint32_t sceneId, Entity splineEn
     }
     terrain::TreeDelta delta;
     store->apply(removed, {}, {}, &delta);
-    CommandHandle::get(sceneId)->addCommand(new TreeEditCmd(project, sceneId, terrainEntity,
+    editor::CommandHandle::get(sceneId)->addCommand(new editor::TreeEditCmd(project, sceneId, terrainEntity,
         "Erase Trees (" + scene->getEntityName(terrainEntity) + ")", std::move(delta)));
     return true;
 }

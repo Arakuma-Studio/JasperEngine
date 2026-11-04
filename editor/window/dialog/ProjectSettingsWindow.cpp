@@ -939,10 +939,11 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_uiScale = project->getUIScale();
     m_textureStrategyIndex = findTextureStrategyIndex(project->getTextureStrategy());
     m_vsyncEnabled = project->isVSyncEnabled();
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < 3; i++) {
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
         m_foliageQuality[i] = (int)project->getFoliageQuality()[i];
         m_foliageDistance[i] = project->getFoliageDistanceScale()[i];
+    }
     m_textureSettings = project->getTextureSettings();
     m_playerLogging = project->getPlayerLogging();
     m_playerCrash = project->getPlayerCrash();

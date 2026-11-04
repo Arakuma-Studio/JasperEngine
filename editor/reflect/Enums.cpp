@@ -572,13 +572,13 @@ namespace {
     };
 
     constexpr EnumItem kTerrainTreeWindMaskItems[] = {
-        {"Height", v(TerrainTreeWindMask::Height)},
-        {"Vertex Color", v(TerrainTreeWindMask::VertexColor)},
+        {v(TerrainTreeWindMask::Height), "Height", "Height", "TerrainTreeWindMask::Height", "height"},
+        {v(TerrainTreeWindMask::VertexColor), "VertexColor", "Vertex Color", "TerrainTreeWindMask::VertexColor", "vertex_color"},
     };
 
     constexpr EnumItem kTerrainTreeCollisionItems[] = {
-        {"None", v(TerrainTreeCollision::None)},
-        {"Capsule", v(TerrainTreeCollision::Capsule)},
+        {v(TerrainTreeCollision::None), "None", "None", "TerrainTreeCollision::None", "none"},
+        {v(TerrainTreeCollision::Capsule), "Capsule", "Capsule", "TerrainTreeCollision::Capsule", "capsule"},
     };
 
     constexpr EnumItem kPivotPresetItems[] = {

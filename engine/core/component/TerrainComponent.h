@@ -188,7 +188,7 @@ namespace jasperengine{
         std::vector<float> lodDistances; //where LOD 1, 2, 3 start, world units
         float bendFactor = 0.5f;
         TerrainTreeWindMask windMask = TerrainTreeWindMask::Height;
-        uint8_t shadowLodMask = 0x7F; //bit n: mesh LOD n casts; bit 7: the impostor casts
+        unsigned int shadowLodMask = 0x7F; //bit n: mesh LOD n casts; bit 7: the impostor casts
         TerrainTreeCollision collision = TerrainTreeCollision::None;
         float collisionRadius = 0.5f;
         float collisionHeight = 4.0f;

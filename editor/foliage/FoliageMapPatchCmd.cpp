@@ -32,7 +32,7 @@ void editor::FoliageMapPatchCmd::write(const std::vector<uint8_t>& bytes) {
     if (map.index >= 0 && map.index < static_cast<int>(component->foliageLayers.size())) {
         Texture& texture = component->foliageLayers[map.index].densityMap;
         if (texture.hasData() && !texture.getPath(0).empty()) {
-            const TextureData& data = texture.getData();
+            TextureData& data = texture.getData();
             const size_t size = static_cast<size_t>(data.getWidth()) * data.getHeight() * data.getChannels() * TextureData::getBytesPerChannel(data.getColorFormat());
             const unsigned char* pixels = static_cast<const unsigned char*>(data.getData());
             TerrainMapUtils::writeFile(project, texture.getPath(0), data.getWidth(), data.getHeight(), data.getChannels(),

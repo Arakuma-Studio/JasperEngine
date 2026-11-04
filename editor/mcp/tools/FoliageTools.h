@@ -6,12 +6,17 @@
 // What T1's tools call for foliage (T5: no tool of its own): the terrain an MCP call means, the
 // bake_impostors op, the overlays and sample_terrain's foliage key.
 
+#include "ecs/Entity.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpJson.h"
 #include "terrain/TerrainOps.h"
 
 #include <optional>
 #include <vector>
+
+namespace jasperengine {
+    class Scene;
+}
 
 namespace jasperengine::editor {
     class Project;

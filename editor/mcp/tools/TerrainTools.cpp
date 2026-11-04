@@ -281,6 +281,7 @@ namespace {
 namespace jasperengine::editor::mcp {
 
 void registerTerrainTools(McpRegistry& registry) {
+    using namespace schema;
     registerFoliageOps();
     // T5 R56: editor only, so Lua's applyOps does not know it
     ImpostorBaker::registerOp();
@@ -300,10 +301,10 @@ void registerTerrainTools(McpRegistry& registry) {
             {"ops", Json{{"type", "array"}, {"maxItems", 256}, {"items", Json{{"type", "object"},
                 {"properties", {{"op", string("scatter_by_rules, clear_foliage, place_trees, remove_trees, bake_impostors...")},
                                 {"shape", anyObject("all, circle, rect or polyline.")}}},
-                {"required", Json::array({"op"})}}}}},
+                {"required", Json::array({Json("op")})}}}}},
             {"dry_run", withDefault(boolean(""), false)},
             {"wait", withDefault(boolean("A job waits for its end."), true)},
-            {"timeout_seconds", number("", 0)}
+            {"timeout_seconds", number("", 0, 3600)}
         }, {"ops"});
         tool.handler = editTerrainTool;
         registry.addTool(std::move(tool));
@@ -312,7 +313,7 @@ void registerTerrainTools(McpRegistry& registry) {
         ToolDef tool;
         tool.name = "visualize_terrain";
         tool.title = "Visualize Terrain";
-        tool.readOnly = true;
+        tool.annotations.readOnly = true;
         tool.description =
             "Show a terrain overlay in the Scene view (none hides it), frame the terrain and return a Scene view PNG with the "
             "overlay's legend and the camera. The view stays as set; no project data changes. Overlay names: jasper://docs/terrain.";

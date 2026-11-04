@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "foliage/FoliageOpRunner.h"
+#include "spline/SplineEvaluator.h"
 
 #include "Project.h"
 #include "command/CommandHandle.h"
@@ -111,11 +112,11 @@ void editor::FoliageOpRunner::fillHost(Project* project, uint32_t sceneId, Entit
         const Transform* transform = scene->findComponent<Transform>(splineEntity);
         if (!transform) continue;
         std::vector<Vector2> line;
-        const float length = spline.spline.getLength();
+        const float length = spline::length(spline.spline);
         const int samples = std::clamp(static_cast<int>(length / 2.0f) + 2, 2, 2048);
         for (int s = 0; s < samples; s++) {
             const float t = static_cast<float>(s) / static_cast<float>(samples - 1);
-            const Vector3 world = transform->modelMatrix * spline.spline.evaluatePosition(t);
+            const Vector3 world = transform->modelMatrix * spline::evaluatePosition(spline.spline, t);
             const Vector3 local = inverse * world;
             line.emplace_back(local.x, local.z);
         }
@@ -123,8 +124,12 @@ void editor::FoliageOpRunner::fillHost(Project* project, uint32_t sceneId, Entit
     }
 
     // the Terrain's instanced children (Paint Trees' hosts), convert_placed_to_trees' sources
-    for (Entity child : scene->getEntityChildren(entity)) {
-        const InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(child);
+    auto instancedMeshes = scene->getComponentArray<InstancedMeshComponent>();
+    for (int i = 0; i < instancedMeshes->size(); i++) {
+        const Entity child = instancedMeshes->getEntity(i);
+        const InstancedMeshComponent* instmesh = &instancedMeshes->getComponentFromIndex(i);
+        const Transform* parent = scene->findComponent<Transform>(child);
+        if (!parent || parent->parent != entity) continue;
         const ModelComponent* model = scene->findComponent<ModelComponent>(child);
         const Transform* transform = scene->findComponent<Transform>(child);
         if (!instmesh || !model || !transform || instmesh->foliage) continue;
@@ -136,7 +141,7 @@ void editor::FoliageOpRunner::fillHost(Project* project, uint32_t sceneId, Entit
         }
         for (const InstanceData& instance : instmesh->instances) {
             FoliageOpHost::PlacedInstance entry;
-            const Vector3 local = transform->getLocalMatrix() * instance.position;
+            const Vector3 local = transform->localMatrix * instance.position;
             entry.position[0] = local.x;
             entry.position[1] = local.y;
             entry.position[2] = local.z;

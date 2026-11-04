@@ -7,6 +7,7 @@
 // their ComponentDesc's codec (editor/reflect/components). The rest of the scene file is Stream.cpp.
 
 #include "Stream.h"
+#include "terrain/FoliageTypes.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
 #include "StreamSchema.h"
@@ -700,7 +701,7 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     }
 
     // T5 R60: a key only when it says something a load's default would not
-    const TerrainComponent terrainDefaults;
+    const TerrainComponent terrainDefaults{};
     if (terrain.detailDistance != terrainDefaults.detailDistance) node["detailDistance"] = terrain.detailDistance;
     if (terrain.detailDensity != terrainDefaults.detailDensity) node["detailDensity"] = terrain.detailDensity;
     if (terrain.treeDistance != terrainDefaults.treeDistance) node["treeDistance"] = terrain.treeDistance;
@@ -813,7 +814,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     }
 
     // T5 R60, F12: a missing key is the default an old scene has
-    const TerrainComponent terrainDefaults;
+    const TerrainComponent terrainDefaults{};
     terrain.detailDistance = decodeFinite(node["detailDistance"], terrainDefaults.detailDistance);
     terrain.detailDensity = decodeFinite(node["detailDensity"], terrainDefaults.detailDensity);
     terrain.treeDistance = decodeFinite(node["treeDistance"], terrainDefaults.treeDistance);
@@ -826,7 +827,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     terrain.windBending = decodeFinite(node["windBending"], terrainDefaults.windBending);
     terrain.treePrototypes.clear();
     if (node["treePrototypes"] && node["treePrototypes"].IsSequence()) {
-        for (std::size_t i = 0; i < node["treePrototypes"].size() && i < terrain::FOLIAGE_MAX_PROTOTYPES; i++) {
+        for (std::size_t i = 0; i < node["treePrototypes"].size() && i < static_cast<std::size_t>(jasperengine::terrain::FOLIAGE_MAX_PROTOTYPES); i++) {
             if (!node["treePrototypes"][i] || node["treePrototypes"][i].IsNull()) continue;
             terrain.treePrototypes.push_back(decodeTerrainTreePrototype(node["treePrototypes"][i]));
         }
