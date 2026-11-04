@@ -19,12 +19,14 @@
 #include "texture/Texture.h"
 #include "texture/TextureData.h"
 
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <gtest/gtest.h>
 #include <memory>
 #include <string>
+#include <thread>
 
 namespace foliagetest {
 
@@ -116,11 +118,14 @@ namespace foliagetest {
             foliage->update(dt);
         }
 
-        void settle(int frames = 2000) {
-            for (int i = 0; i < frames; i++) {
+        // A missing mesh fails on the IO thread: its answer takes as long as it takes
+        void settle() {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(120);
+            while (std::chrono::steady_clock::now() < deadline) {
                 frame();
                 if (!foliage->hasPendingUpdates()) return;
                 foliage->waitForJobs();
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
             }
             FAIL() << "foliage did not settle";
         }

@@ -15,10 +15,10 @@ using namespace foliagetest;
 
 namespace {
 
-    std::shared_ptr<nav::NavBakeInput> collectAt(FoliageFixture& fixture, Entity surface, nav::NavCollectStats* stats = nullptr) {
+    std::shared_ptr<nav::NavBakeInput> collectAt(FoliageFixture& fixture, Entity surface, nav::NavCollectStats* stats = nullptr, bool mayBeEmpty = false) {
         std::string error;
         std::shared_ptr<nav::NavBakeInput> input = nav::NavBakeCollector::collect(fixture.scene.get(), surface, error, stats);
-        EXPECT_TRUE(input != nullptr) << error;
+        EXPECT_TRUE(mayBeEmpty || input != nullptr) << error;
         return input;
     }
 
@@ -96,6 +96,8 @@ TEST(NavBakeFoliage, ModifierExcludesTrees) {
     fixture.scene->addComponent<NavMeshModifierComponent>(fixture.entity, modifier);
     const Entity surface = surfaceOn(fixture);
     nav::NavCollectStats stats;
-    collectAt(fixture, surface, &stats);
+    // the modifier leaves the Terrain itself out, too: there may be nothing to bake
+    collectAt(fixture, surface, &stats, true);
     EXPECT_EQ(stats.instances, 0) << "the Terrain's policy decides for its trees";
+    EXPECT_GT(stats.excluded, 0);
 }

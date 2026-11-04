@@ -63,6 +63,7 @@ namespace {
     }
 
     double cull100k(int workers) {
+        jobs::shutdown();
         jobs::Config config;
         config.workers = workers;
         jobs::initialize(config);
@@ -99,6 +100,7 @@ namespace {
             });
             samples.push_back(bench::secondsSince(start) * 1.0e3);
         }
+        jobs::shutdown();
         jobs::initialize(jobs::Config{});
         return bench::percentile(samples, 0.5);
     }

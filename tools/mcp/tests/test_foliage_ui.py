@@ -75,13 +75,26 @@ async def test_mass_place_job_and_cancel(ed: Editor):
     await ui.click_item("Mass Place Trees...", WINDOW)
     await ui.frames(5)
     await ui.click_item("Preview Count")
-    await ui.frames(30)
+    ed.check(await ui.find("trees would be placed", frames=120) is not None, "the count comes back")
+    ed.check_eq(await common.tree_count(ed, sid, terrain), 0, "a preview writes nothing")
+
     await ui.click_item("Place")
-    await ui.frames(5)
-    cancel = await ui.find("Cancel", frames=4)
+    await ui.frames(2)
+    cancel = await ui.find("Cancel##mass", frames=2)
+    cancelled = False
     if cancel:
         await ui.click(ui.centre(cancel.get("rect", cancel)))
-    await ui.frames(30)
+        cancelled = await ui.find("Cancelled.", frames=120) is not None
     count = await common.tree_count(ed, sid, terrain)
-    await ed.call("wait", seconds=30, frames=30)
-    ed.check(count >= 0, "the editor stays up through a job and its Cancel")
+    if cancelled:
+        ed.check_eq(count, 0, "a cancelled run changes nothing")
+        await ui.click_item("Place")
+    # to its end: one undo step
+    for _ in range(600):
+        await ui.frames(2)
+        count = await common.tree_count(ed, sid, terrain)
+        if count > 0:
+            break
+    ed.check(count > 0, "the job planted")
+    await ed.call("undo", scene=sid)
+    ed.check_eq(await common.tree_count(ed, sid, terrain), 0, "one undo step")

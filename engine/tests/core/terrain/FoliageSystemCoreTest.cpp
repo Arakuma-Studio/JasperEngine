@@ -26,7 +26,7 @@ TEST(FoliageSystemCore, SameHashWithZeroOneAndFourWorkers) {
         config.workers = workers[i];
         jobs::initialize(config);
         FoliageFixture fixture;
-        for (int frame = 0; frame < 5000 && fixture.foliage->hasPendingUpdates() + 1; frame++) {
+        for (int frame = 0; frame < 5000; frame++) {
             fixture.frame();
             jobs::pump(4.0);
             if (frame > 2 && !fixture.foliage->hasPendingUpdates()) break;

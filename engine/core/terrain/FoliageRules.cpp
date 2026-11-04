@@ -161,7 +161,7 @@ bool FoliageRuleSurface::passes(const FoliageRuleSet& rules, float localX, float
     if (normalOut) std::copy(up, up + 3, normalOut);
     if (rules.slope) {
         const float normalY = std::clamp(up[1], -1.0f, 1.0f);
-        if (normalY > detCos(detRadians(rules.slope->min)) || normalY < detCos(detRadians(rules.slope->max))) {
+        if ((rules.slope->min > 0.0f && normalY > detCos(detRadians(rules.slope->min))) || normalY < detCos(detRadians(rules.slope->max))) {
             return reject(&FoliageRejections::slope);
         }
     }

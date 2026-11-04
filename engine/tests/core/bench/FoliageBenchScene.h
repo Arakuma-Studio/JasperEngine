@@ -21,12 +21,14 @@
 #include "texture/Texture.h"
 #include "texture/TextureData.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace foliagebench {
@@ -166,10 +168,12 @@ namespace foliagebench {
         }
 
         void settle() {
-            for (int i = 0; i < 20000 && (i == 0 || foliage->hasPendingUpdates()); i++) {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(300);
+            do {
                 frame(FRAME_SECONDS);
                 foliage->waitForJobs();
-            }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            } while (foliage->hasPendingUpdates() && std::chrono::steady_clock::now() < deadline);
         }
 
         // R44's path: 5 units a second, turning 30 degrees a second

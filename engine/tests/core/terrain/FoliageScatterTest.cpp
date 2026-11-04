@@ -142,7 +142,7 @@ namespace {
 
 TEST(FoliageScatter, GoldenHashOnEveryTarget) {
     const uint64_t hash = hashFixture();
-    EXPECT_EQ(hash, 0xf5fb70854e752a4dull) << "actual 0x" << std::hex << hash;
+    EXPECT_EQ(hash, 0xd32745bfa2c90c1dull) << "actual 0x" << std::hex << hash;
 }
 
 TEST(FoliageScatter, GoldenHashWithSeedChanges) {
@@ -156,6 +156,18 @@ TEST(FoliageScatter, GoldenHashWithSeedChanges) {
         hash = foliageHash(instances, hash);
     }
     EXPECT_EQ(hash, 0x550905a32769a533ull) << "actual 0x" << std::hex << hash;
+}
+
+// A flat Terrain's normal is exactly up: a layer with no Min Slope places on it
+TEST(FoliageScatter, FlatGroundPlaces) {
+    std::vector<uint8_t> height(static_cast<size_t>(FIXTURE_MAP) * FIXTURE_MAP * 2, 0);
+    std::vector<uint8_t> density(static_cast<size_t>(FIXTURE_MAP) * FIXTURE_MAP, 255);
+    FoliageCellInput input = fixture().input(FoliageLayerParams{}, 0, 0);
+    input.heightMap.texels = height.data();
+    input.densityMap.texels = density.data();
+    std::vector<FoliageInstance> out;
+    scatterFoliageCell(input, out);
+    EXPECT_GT(out.size(), 0u);
 }
 
 TEST(FoliageScatter, LegacyParity) {

@@ -241,7 +241,9 @@ void jasperengine::terrain::scatterFoliageCell(const FoliageCellInput& input, st
     const bool constantColor = std::equal(layer.healthyColor, layer.healthyColor + 4, layer.dryColor);
 
     // F2: comparing cosines takes no acos, and the range still means degrees. A larger slope has a smaller cosine.
-    const float cosineMinSlope = detCos(detRadians(layer.minSlope));
+    // detCos(0) lands a hair under 1, and a flat Terrain's normal is exactly (0, 1, 0): no lower bound
+    // means no lower bound, as the std::cos of the path this replaced gave
+    const float cosineMinSlope = layer.minSlope > 0.0f ? detCos(detRadians(layer.minSlope)) : 2.0f;
     const float cosineMaxSlope = detCos(detRadians(layer.maxSlope));
 
     const unsigned int cellHashX = static_cast<unsigned int>(input.cellX + input.regionOffsetX);
