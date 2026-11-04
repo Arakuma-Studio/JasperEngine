@@ -398,6 +398,7 @@ namespace jasperengine::editor{
         uint64_t scriptCommandsRevision = 0;
         PlatformMenuModel lastMenuModel;
         void registerCommands();
+        void registerPanelClaims();
         void syncScriptCommands();
         ShortcutState shortcutState() const;
         void processShortcuts();

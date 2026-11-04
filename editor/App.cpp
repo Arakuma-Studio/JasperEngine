@@ -66,6 +66,7 @@
 #include "reload/HotReloadService.h"
 #include "search/SearchPalette.h"
 #include "shortcuts/DefaultCommands.h"
+#include "shortcuts/PanelClaims.h"
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
@@ -342,7 +343,7 @@ editor::PlatformMenuItem catalogItem(const char* id, std::string label = {}, boo
                        !def->enabled || def->enabled());
     if (!item.enabled && def->disabledReason) item.tooltip = def->disabledReason();
     item.command.payload = def->menuPayload;
-    item.shortcut = catalog.menuShortcutText(id);
+    item.shortcut = catalog.menuShortcutText(editor::PanelClaims::editor().shownCommand(id));
     item.checked = checked;
     return item;
 }
@@ -789,6 +790,11 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
     if (projectHub.isOpen() && action != AppMenuCommand::NewProject && action != AppMenuCommand::OpenProject &&
         action != AppMenuCommand::ProjectHub && action != AppMenuCommand::Exit) {
         return;
+    }
+    // an Edit item picked in the menu: the focused panel's claim has it (the keys, the palette and
+    // agents come through the command, which asks the same)
+    if (const CommandDef* def = CommandCatalog::editor().findByMenuCommand(command.id, command.payload)) {
+        if (PanelClaims::editor().route(def->id)) return;
     }
     switch (action) {
         case AppMenuCommand::NewProject: {
@@ -1255,11 +1261,8 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             duplicateSelection();
             break;
         case AppMenuCommand::DeleteSelection:
-            if (inputActionsWindow->canDelete()) inputActionsWindow->requestDelete();
-            // the Animator window's selected state, sub-state machine, transition or layer
-            else if (animatorWindow->canDelete()) animatorWindow->removeSelection();
             // the Draw Spline tool's last knot, the edited spline's knots
-            else if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
+            if (!SplineSceneTools::deleteRequested(&project)) deleteSelection();
             break;
         case AppMenuCommand::Documentation:
         case AppMenuCommand::ReportIssue: {
@@ -1466,7 +1469,8 @@ void editor::App::recordMenuItems(const PlatformMenuModel& menu){
                 }
                 const CommandDef* def = catalog.findByMenuCommand(item.command.id, item.command.payload);
                 if (!def || !catalog.menuPath(def->id).empty()) continue;
-                catalog.setMenuItem(def->id, itemPath, item.shortcut.empty() ? Chord() : catalog.bindings(def->id).front());
+                catalog.setMenuItem(def->id, itemPath,
+                                    item.shortcut.empty() ? Chord() : catalog.bindings(PanelClaims::editor().shownCommand(def->id)).front());
             }
         };
     walk(menu.menus, "");
@@ -2734,6 +2738,7 @@ void editor::App::show(){
         }else{
             lastFocusedWindow = LastFocusedWindow::AnySceneWindow;
         }
+        PanelClaims::editor().refresh();
     }
 
     // the selection changes of one frame are one undo step
