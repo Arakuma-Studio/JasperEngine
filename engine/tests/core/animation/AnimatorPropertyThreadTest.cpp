@@ -499,7 +499,10 @@ TEST_F(AnimatorPropertyThread, ACallbackMayRemoveAnAnimator){
         characters.push_back(entity);
     }
     removeHook = [this](){
-        if (scene.findComponent<AnimatorComponent>(characters[1])) scene.removeComponent<AnimatorComponent>(characters[1]);
+        if (!scene.findComponent<AnimatorComponent>(characters[1])) return;
+        scene.removeComponent<AnimatorComponent>(characters[1]);
+        // what any index read in a script's call would do: the hole closes, the third one moves
+        scene.getComponentArray<AnimatorComponent>()->compact();
     };
     lua_register(L, "removeTheSecondAnimator", &callRemoveHook);
     lua_rawgeti(L, LUA_REGISTRYINDEX, glows[0]);
