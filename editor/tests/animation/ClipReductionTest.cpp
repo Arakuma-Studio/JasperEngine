@@ -181,7 +181,7 @@ TEST(ClipReduction, KeepsLengthAndEveryEventAndNeverRemovesATrack){
     ClipEventData event;
     event.time = 0.5f;
     event.function = "onStep";
-    event.args.push_back(anim::numberArg(3.0));
+    event.args.push_back(numberArg(3.0));
     source.events.push_back(event);
     const anim::ClipReductionResult result = anim::reduceClip(source, rig, tolerance(5.0));
     ASSERT_TRUE(result.ok) << result.error;
