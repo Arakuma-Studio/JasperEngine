@@ -602,6 +602,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.createHtmlDocument", "HTML Document"),
         menuSeparator(),
         catalogItem("assets.createAudioMixer", "Audio Mixer"),
+        catalogItem("assets.createPlaceholderSound", "Placeholder Sound..."),
         menuSeparator(),
         catalogItem("assets.createPoseAnimation", "Pose Animation"),
         menuSeparator(),
@@ -628,6 +629,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.import"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
+        catalogItem("assets.importSoundEssentials"),
         menuSubmenu("Version Control", {
             catalogItem("assets.vcs.commit"),
             catalogItem("assets.vcs.revert"),
@@ -1124,6 +1126,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
+            break;
+        case AppMenuCommand::AssetsImportSoundEssentials:
+            projectWindow->assetsImportSoundEssentials();
+            break;
+        case AppMenuCommand::AssetsCreatePlaceholderSound:
+            projectWindow->assetsCreatePlaceholderSound();
+            break;
+        case AppMenuCommand::AssetsReanalyzeAudio:
+            projectWindow->assetsReanalyzeAudio(projectWindow->getSelectedFiles());
             break;
         case AppMenuCommand::AssetsCreateAudioMixer:
             projectWindow->assetsCreateAudioMixer();

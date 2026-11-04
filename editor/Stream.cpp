@@ -2938,6 +2938,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
         if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
         if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
+        if (audio.creditsFile != defaults.creditsFile) audioNode["creditsFile"] = audio.creditsFile;
         if (audioNode.size()) root["audio"] = audioNode;
     }
 
@@ -3664,6 +3665,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
             if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
             if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
+            if (audioNode["creditsFile"]) audio.creditsFile = audioNode["creditsFile"].as<bool>();
         }
         // also without a node: a project opened after another one does not keep its mixer
         project->setAudioSettings(audio);

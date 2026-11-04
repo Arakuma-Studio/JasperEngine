@@ -738,7 +738,7 @@ void AudioSystem::applyVoiceParameters(AudioSourceComponent& audio, unsigned int
     }
     if (mainVoice) {
         soloud.setLooping(handle, audio.looping);
-        soloud.setLoopPoint(handle, audio.loopingPoint);
+        soloud.setLoopPoint(handle, SoundPool::getLoopPoint(audio.sample.get(), audio.loopingPoint));
     }
     soloud.setProtectVoice(handle, audio.protectVoice);
     soloud.setInaudibleBehavior(handle, audio.inaudibleBehaviorMustTick, audio.inaudibleBehaviorKill);
@@ -1240,11 +1240,16 @@ void AudioSystem::update(double dt){
 
                 // the file was hot reloaded: this play takes the new sample (one still
                 // playing finishes on the old, which its other sources hold)
+                // (or its import settings changed: the sample is another entry of the pool)
                 if (!resume && audio.sampleGeneration != SoundPool::generation(audio.filename)) {
-                    if (std::shared_ptr<SoLoud::AudioSource> fresh = SoundPool::get(audio.sampleKey)) {
-                        audio.sample = fresh;
+                    const SoundLoadResult fresh = SoundPool::loadClip(audio.filename, audio.loadType);
+                    if (fresh.data) {
+                        const std::string previousKey = audio.sampleKey;
+                        audio.sample = fresh.data;
+                        audio.sampleKey = fresh.id;
                         audio.sampleGeneration = SoundPool::generation(audio.filename);
                         audio.length = SoundPool::getLength(audio.sample.get());
+                        if (previousKey != fresh.id) SoundPool::remove(previousKey);
                     }
                 }
 

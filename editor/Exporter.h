@@ -355,6 +355,10 @@ namespace jasperengine::editor {
         // film damage or the Lens / Filmic grain (S13: adapted MIT shader code)
         bool writeEffectLicense();
         bool copyLicenses();
+        // licenses/THIRD-PARTY-AUDIO.txt (with its build warnings) when a shipped clip has a provenance
+        bool writeAudioCredits();
+        // assets/je-audio-imports.json when any shipped clip has import settings
+        bool writeAudioImports();
         // the paths the export writes the notices to, relative to its root
         static const char* effectLicensePath();
         static const char* fluidLicensePath();

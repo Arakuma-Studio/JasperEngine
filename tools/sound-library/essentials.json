@@ -1,0 +1,595 @@
+{
+ "format": "jasperengine-sound-essentials-selection",
+ "version": 1,
+ "licence": "CC0-1.0",
+ "author": "Kenney (www.kenney.nl)",
+ "source": "kenney",
+ "packs": [
+  {
+   "id": "interface-sounds",
+   "title": "Interface Sounds",
+   "url": "https://kenney.nl/media/pages/assets/interface-sounds/fa43c1dd4d-1677589452/kenney_interface-sounds.zip",
+   "landing": "https://kenney.nl/assets/interface-sounds",
+   "sha256": "f2193d072726d6758a5f7871b2dcc54dcce0d5c35c6f0a62f92549b327c81232",
+   "bytes": 834536
+  },
+  {
+   "id": "ui-audio",
+   "title": "UI Audio",
+   "url": "https://kenney.nl/media/pages/assets/ui-audio/490d233f68-1677590494/kenney_ui-audio.zip",
+   "landing": "https://kenney.nl/assets/ui-audio",
+   "sha256": "946fc23a63d535d693eb31b2eabb80c8c28d6351e2186b344ceb71b2cb1d5eb6",
+   "bytes": 411949
+  },
+  {
+   "id": "impact-sounds",
+   "title": "Impact Sounds",
+   "url": "https://kenney.nl/media/pages/assets/impact-sounds/87b4ddecda-1677589768/kenney_impact-sounds.zip",
+   "landing": "https://kenney.nl/assets/impact-sounds",
+   "sha256": "029d734af1582474edf3a694d1b0cebc97c1c152f2f39fa34d4c2bafc5de77f8",
+   "bytes": 800850
+  },
+  {
+   "id": "sci-fi-sounds",
+   "title": "Sci-Fi Sounds",
+   "url": "https://kenney.nl/media/pages/assets/sci-fi-sounds/6b296f9ecf-1677589334/kenney_sci-fi-sounds.zip",
+   "landing": "https://kenney.nl/assets/sci-fi-sounds",
+   "sha256": "119340f351a5098ad814f78719438c0da355a9ce8a4c8a3af6a8d48aa3d49e04",
+   "bytes": 5875104
+  },
+  {
+   "id": "digital-audio",
+   "title": "Digital Audio",
+   "url": "https://kenney.nl/media/pages/assets/digital-audio/216eac4753-1677590265/kenney_digital-audio.zip",
+   "landing": "https://kenney.nl/assets/digital-audio",
+   "sha256": "24e6ce28b76a6d8c89cff4d331e0965ff5c3de8a73c612028e9d363cc64e4f06",
+   "bytes": 990367
+  },
+  {
+   "id": "rpg-audio",
+   "title": "RPG Audio",
+   "url": "https://kenney.nl/media/pages/assets/rpg-audio/8e99002d76-1677590336/kenney_rpg-audio.zip",
+   "landing": "https://kenney.nl/assets/rpg-audio",
+   "sha256": "6dbeaf8544da958d8f2adcb4a4a4b76c1ade34a05f8ab9edccd327da7375f38b",
+   "bytes": 964837
+  },
+  {
+   "id": "music-jingles",
+   "title": "Music Jingles",
+   "url": "https://kenney.nl/media/pages/assets/music-jingles/f37e530b9e-1677590399/kenney_music-jingles.zip",
+   "landing": "https://kenney.nl/assets/music-jingles",
+   "sha256": "b729ba57959bd58793d2c5cafa348aaf2655d354f3da35ec4729e03ec77197b8",
+   "bytes": 1239525
+  }
+ ],
+ "clips": [
+  {
+   "id": "ui/click",
+   "pack": "interface-sounds",
+   "member": "Audio/click_001.ogg",
+   "type": "click",
+   "kind": "transient",
+   "tags": [
+    "ui",
+    "button"
+   ],
+   "description": "Short button click",
+   "import": {
+    "fade_in_ms": 0.5,
+    "fade_out_ms": 20
+   }
+  },
+  {
+   "id": "ui/tick",
+   "pack": "interface-sounds",
+   "member": "Audio/tick_001.ogg",
+   "type": "tick",
+   "kind": "transient",
+   "tags": [
+    "ui",
+    "scroll"
+   ],
+   "description": "Light tick, for scrolling or a slider step",
+   "import": {
+    "fade_in_ms": 0.1
+   }
+  },
+  {
+   "id": "ui/toggle",
+   "pack": "interface-sounds",
+   "member": "Audio/toggle_001.ogg",
+   "type": "click",
+   "kind": "transient",
+   "tags": [
+    "ui",
+    "switch"
+   ],
+   "description": "Switch toggled on or off"
+  },
+  {
+   "id": "ui/hover",
+   "pack": "ui-audio",
+   "member": "Audio/rollover2.ogg",
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "hover"
+   ],
+   "description": "Soft blip when the pointer moves over a control",
+   "import": {
+    "fade_out_ms": 12
+   }
+  },
+  {
+   "id": "ui/select",
+   "pack": "interface-sounds",
+   "member": "Audio/select_001.ogg",
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "select"
+   ],
+   "description": "Menu item selected",
+   "import": {
+    "fade_in_ms": 1
+   }
+  },
+  {
+   "id": "ui/confirm",
+   "pack": "interface-sounds",
+   "member": "Audio/confirmation_001.ogg",
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "confirm",
+    "success"
+   ],
+   "description": "Confirmation, a short rising tone"
+  },
+  {
+   "id": "ui/back",
+   "pack": "interface-sounds",
+   "member": "Audio/back_001.ogg",
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "back",
+    "cancel"
+   ],
+   "description": "Back or cancel, a short falling tone"
+  },
+  {
+   "id": "ui/error",
+   "pack": "interface-sounds",
+   "member": "Audio/error_001.ogg",
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "error",
+    "deny"
+   ],
+   "description": "Error or denied action",
+   "import": {
+    "fade_in_ms": 1
+   }
+  },
+  {
+   "id": "ui/open",
+   "pack": "interface-sounds",
+   "member": "Audio/maximize_001.ogg",
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "open"
+   ],
+   "description": "Panel or window opening"
+  },
+  {
+   "id": "ui/close",
+   "pack": "interface-sounds",
+   "member": "Audio/minimize_001.ogg",
+   "type": "ui",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "close"
+   ],
+   "description": "Panel or window closing"
+  },
+  {
+   "id": "ui/pop",
+   "pack": "interface-sounds",
+   "member": "Audio/drop_001.ogg",
+   "type": "pop",
+   "kind": "transient",
+   "tags": [
+    "ui",
+    "drop"
+   ],
+   "description": "Pop when an item is dropped into place",
+   "import": {
+    "fade_in_ms": 0.5,
+    "fade_out_ms": 20
+   }
+  },
+  {
+   "id": "ui/glitch",
+   "pack": "interface-sounds",
+   "member": "Audio/glitch_001.ogg",
+   "type": "glitch",
+   "kind": "glitch",
+   "tags": [
+    "ui",
+    "digital"
+   ],
+   "description": "Short digital glitch"
+  },
+  {
+   "id": "ui/chime",
+   "pack": "interface-sounds",
+   "member": "Audio/glass_001.ogg",
+   "type": "chime",
+   "kind": "tonal",
+   "tags": [
+    "ui",
+    "glass",
+    "ping"
+   ],
+   "description": "Glassy ping",
+   "import": {
+    "fade_in_ms": 1
+   }
+  },
+  {
+   "id": "footstep/concrete_1",
+   "pack": "impact-sounds",
+   "member": "Audio/footstep_concrete_000.ogg",
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "concrete",
+    "hard"
+   ],
+   "description": "Footstep on concrete",
+   "import": {
+    "fade_out_ms": 20
+   }
+  },
+  {
+   "id": "footstep/concrete_2",
+   "pack": "impact-sounds",
+   "member": "Audio/footstep_concrete_001.ogg",
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "concrete",
+    "hard"
+   ],
+   "description": "Footstep on concrete, second variation",
+   "import": {
+    "fade_out_ms": 20
+   }
+  },
+  {
+   "id": "footstep/grass_1",
+   "pack": "impact-sounds",
+   "member": "Audio/footstep_grass_000.ogg",
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "grass",
+    "soft"
+   ],
+   "description": "Footstep on grass"
+  },
+  {
+   "id": "footstep/grass_2",
+   "pack": "impact-sounds",
+   "member": "Audio/footstep_grass_001.ogg",
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "grass",
+    "soft"
+   ],
+   "description": "Footstep on grass, second variation"
+  },
+  {
+   "id": "footstep/wood_1",
+   "pack": "impact-sounds",
+   "member": "Audio/footstep_wood_000.ogg",
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "wood"
+   ],
+   "description": "Footstep on wood"
+  },
+  {
+   "id": "footstep/wood_2",
+   "pack": "impact-sounds",
+   "member": "Audio/footstep_wood_001.ogg",
+   "type": "footstep",
+   "kind": "transient",
+   "tags": [
+    "wood"
+   ],
+   "description": "Footstep on wood, second variation"
+  },
+  {
+   "id": "impact/light",
+   "pack": "impact-sounds",
+   "member": "Audio/impactGeneric_light_000.ogg",
+   "type": "impact",
+   "kind": "transient",
+   "tags": [
+    "light",
+    "generic"
+   ],
+   "description": "Light generic impact",
+   "import": {
+    "fade_in_ms": 0.5,
+    "fade_out_ms": 20
+   }
+  },
+  {
+   "id": "impact/metal",
+   "pack": "impact-sounds",
+   "member": "Audio/impactMetal_medium_000.ogg",
+   "type": "impact",
+   "kind": "transient",
+   "tags": [
+    "metal"
+   ],
+   "description": "Medium impact on metal",
+   "import": {
+    "fade_out_ms": 20
+   }
+  },
+  {
+   "id": "impact/wood",
+   "pack": "impact-sounds",
+   "member": "Audio/impactWood_medium_000.ogg",
+   "type": "impact",
+   "kind": "transient",
+   "tags": [
+    "wood"
+   ],
+   "description": "Medium impact on wood"
+  },
+  {
+   "id": "impact/glass",
+   "pack": "impact-sounds",
+   "member": "Audio/impactGlass_medium_000.ogg",
+   "type": "impact",
+   "kind": "transient",
+   "tags": [
+    "glass"
+   ],
+   "description": "Medium impact on glass"
+  },
+  {
+   "id": "impact/thump",
+   "pack": "impact-sounds",
+   "member": "Audio/impactSoft_heavy_000.ogg",
+   "type": "thump",
+   "kind": "transient",
+   "tags": [
+    "soft",
+    "heavy",
+    "landing"
+   ],
+   "description": "Heavy soft thump, for a landing"
+  },
+  {
+   "id": "hurt/punch",
+   "pack": "impact-sounds",
+   "member": "Audio/impactPunch_medium_000.ogg",
+   "type": "hurt",
+   "kind": "transient",
+   "tags": [
+    "punch",
+    "body"
+   ],
+   "description": "Punch landing on a body"
+  },
+  {
+   "id": "shoot/laser_small",
+   "pack": "sci-fi-sounds",
+   "member": "Audio/laserSmall_000.ogg",
+   "type": "shoot",
+   "kind": "transient",
+   "tags": [
+    "laser",
+    "scifi"
+   ],
+   "description": "Small laser shot",
+   "import": {
+    "fade_in_ms": 0.5,
+    "fade_out_ms": 5
+   }
+  },
+  {
+   "id": "shoot/laser_retro",
+   "pack": "sci-fi-sounds",
+   "member": "Audio/laserRetro_000.ogg",
+   "type": "shoot",
+   "kind": "transient",
+   "tags": [
+    "laser",
+    "retro"
+   ],
+   "description": "Retro laser shot"
+  },
+  {
+   "id": "explosion/crunch",
+   "pack": "sci-fi-sounds",
+   "member": "Audio/explosionCrunch_000.ogg",
+   "type": "explosion",
+   "kind": "transient",
+   "tags": [
+    "explosion",
+    "scifi"
+   ],
+   "description": "Crunchy sci-fi explosion"
+  },
+  {
+   "id": "explosion/low",
+   "pack": "sci-fi-sounds",
+   "member": "Audio/lowFrequency_explosion_000.ogg",
+   "type": "boom",
+   "kind": "transient",
+   "tags": [
+    "explosion",
+    "low",
+    "sub"
+   ],
+   "description": "Low, deep explosion boom"
+  },
+  {
+   "id": "jump/phase",
+   "pack": "digital-audio",
+   "member": "Audio/phaseJump3.ogg",
+   "type": "jump",
+   "kind": "tonal",
+   "tags": [
+    "jump",
+    "retro"
+   ],
+   "description": "Retro jump"
+  },
+  {
+   "id": "pickup/coins",
+   "pack": "rpg-audio",
+   "member": "Audio/handleCoins2.ogg",
+   "type": "pickup",
+   "kind": "transient",
+   "tags": [
+    "coins",
+    "money"
+   ],
+   "description": "Handful of coins"
+  },
+  {
+   "id": "pickup/chime",
+   "pack": "interface-sounds",
+   "member": "Audio/confirmation_002.ogg",
+   "type": "pickup",
+   "kind": "tonal",
+   "tags": [
+    "chime",
+    "success"
+   ],
+   "description": "Pickup chime"
+  },
+  {
+   "id": "pickup/powerup",
+   "pack": "music-jingles",
+   "member": "Audio/Steel jingles/jingles_STEEL00.ogg",
+   "type": "pickup",
+   "kind": "tonal",
+   "tags": [
+    "powerup",
+    "steel_drum"
+   ],
+   "description": "Power-up jingle on steel drum"
+  },
+  {
+   "id": "swish/cloth",
+   "pack": "rpg-audio",
+   "member": "Audio/cloth1.ogg",
+   "type": "swish",
+   "kind": "swell",
+   "tags": [
+    "cloth",
+    "movement"
+   ],
+   "description": "Cloth movement swish"
+  },
+  {
+   "id": "door/scifi_open",
+   "pack": "sci-fi-sounds",
+   "member": "Audio/doorOpen_000.ogg",
+   "type": "door",
+   "kind": "swell",
+   "tags": [
+    "door",
+    "open",
+    "scifi"
+   ],
+   "description": "Sci-fi door opening"
+  },
+  {
+   "id": "door/scifi_close",
+   "pack": "sci-fi-sounds",
+   "member": "Audio/doorClose_000.ogg",
+   "type": "door",
+   "kind": "swell",
+   "tags": [
+    "door",
+    "close",
+    "scifi"
+   ],
+   "description": "Sci-fi door closing"
+  },
+  {
+   "id": "door/wood_close",
+   "pack": "rpg-audio",
+   "member": "Audio/doorClose_2.ogg",
+   "type": "door",
+   "kind": "transient",
+   "tags": [
+    "door",
+    "close",
+    "wood"
+   ],
+   "description": "Wooden door closing"
+  },
+  {
+   "id": "stinger/win_8bit",
+   "pack": "music-jingles",
+   "member": "Audio/8-Bit jingles/jingles_NES00.ogg",
+   "type": "stinger",
+   "kind": "tonal",
+   "tags": [
+    "win",
+    "8bit",
+    "jingle"
+   ],
+   "description": "8-bit win jingle"
+  },
+  {
+   "id": "stinger/hit",
+   "pack": "music-jingles",
+   "member": "Audio/Hit jingles/jingles_HIT01.ogg",
+   "type": "stinger",
+   "kind": "tonal",
+   "tags": [
+    "hit",
+    "jingle"
+   ],
+   "description": "Short hit jingle"
+  },
+  {
+   "id": "stinger/pizzicato",
+   "pack": "music-jingles",
+   "member": "Audio/Pizzicato jingles/jingles_PIZZI00.ogg",
+   "type": "stinger",
+   "kind": "tonal",
+   "tags": [
+    "pizzicato",
+    "jingle"
+   ],
+   "description": "Pizzicato strings jingle",
+   "import": {
+    "fade_out_ms": 12
+   }
+  }
+ ]
+}

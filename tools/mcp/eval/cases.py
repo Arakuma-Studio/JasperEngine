@@ -800,4 +800,72 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "bad_sound_too_quiet_no_measure",
+        "kind": "bad",
+        "what_happened": "Sound-layer sessions: agents cannot hear, guessed a clip's level from a user's words and rewrote the "
+                         "bytes or set a voice volume, never measuring it or using the clip's own import settings.",
+        "text_at_issue": "analyze_audio and set_audio_import_settings descriptions; group audio's line",
+        "source": "sound-layer phase 1 and 2 reviews",
+        "prompt": "assets/sfx/jump.wav is too quiet and it clicks at its start. Fix that clip; every sound source that plays "
+                  "it should get the fix.",
+        "mocks": [
+            {"tool": "analyze_audio", "result": ok(
+                "1. assets/sfx/jump.wav: -31.2 LUFS-M, TP -14.0 dBTP, transient (jump); starts at -6.0 dB re its peak",
+                {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "kind": "transient", "type": "jump",
+                            "loudness": {"momentary_max": -31.2}, "peak": {"true_peak_dbtp": -14.0},
+                            "notes": [{"id": "loudness_target", "text": "momentary max -31.2 LUFS is 13.2 LU under the jump target (-18 LUFS)"},
+                                      {"id": "edge_click", "text": "starts at -6.0 dB re its peak: clicks every time it plays; "
+                                                                   "fade_in_ms 0.5 in its import settings fixes it",
+                                       "fix": {"fade_in_ms": 0.5}}]}],
+                 "errors": [], "image": None})},
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/sfx/jump.wav: -18.2 LUFS-M, 0.180 s",
+                {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "settings": {"gain_db": 13, "fade_in_ms": 0.5},
+                            "analysis": {"momentary_max": -18.2, "notes": []}}]})},
+        ],
+        "checks": {"calls": [{"tool": "analyze_audio"}, {"tool": "set_audio_import_settings", "args": {"settings": {"fade_in_ms": "*"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_placeholder_sound",
+        "kind": "guard",
+        "what_happened": "Sound-layer sessions: with no audio file at hand, an agent should make a placeholder instead of "
+                         "writing bytes by hand or searching the web.",
+        "text_at_issue": "generate_sound's description; group audio's line",
+        "source": "sound-layer phase 1 review",
+        "prompt": "The game needs a jump sound at assets/sfx/jump.wav and I have no audio files. Make one that will do for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset jump (type jump, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/jump.wav: 0.31 s, -18.1 LUFS-M, TP -3.2 dBTP, tonal (jump) [seed 77, gain +2.10 dB]",
+                {"files": [{"path": "assets/sfx/jump.wav", "preset": "jump", "seed": 77}], "type": "jump", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "jump"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_builtin_sound_search",
+        "kind": "guard",
+        "what_happened": "An agent asked for a real recorded sound looked for one on the web, though 967 CC0 clips ship with the editor.",
+        "text_at_issue": "search_sounds' description and its import hint",
+        "source": "sound-layer phase 5 review",
+        "prompt": "I want a real recorded footstep on wood for the player, not a synthesized one. Put one in assets/sfx. No internet here.",
+        "mocks": [
+            {"tool": "search_sounds", "result": ok(
+                "3 sound(s):\n1. essentials:footstep/wood_1 (clip) footstep transient, 310 ms, -20.1 LUFS-M; labels footstep, wood\n"
+                "2. library:footstep/kenney_wood_1 (clip) footstep transient, 280 ms, -21.0 LUFS-M; labels footstep, wood",
+                {"results": [{"n": 1, "id": "essentials:footstep/wood_1", "type": "footstep", "import": "import_files sources:[essentials:footstep/wood_1]"},
+                             {"n": 2, "id": "library:footstep/kenney_wood_1", "type": "footstep", "import": "import_files sources:[library:footstep/kenney_wood_1]"}],
+                 "total": 3, "analysed": 0, "image": None, "scope": "all"})},
+            {"tool": "import_files", "result": ok(
+                "Imported 1 built-in sound(s) into assets/sfx; their licences are in provenance, undo with scope project.",
+                {"imported": ["assets/sfx/footstep/wood_1.ogg"], "skipped": []})},
+        ],
+        "checks": {"calls": [{"tool": "search_sounds"}, {"tool": "import_files", "args": {"sources": "*", "to_dir": "re:assets/sfx"}}],
+                   "must_not_call": ["generate_sound"]},
+        "max_turns": 10,
+    },
 ]

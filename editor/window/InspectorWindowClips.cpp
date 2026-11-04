@@ -1558,6 +1558,13 @@ bool editor::InspectorWindow::drawInspectedAsset(){
         drawAudioMixerAsset(asset);
         return true;
     }
+    // an audio file: measurements, import settings, provenance, audition (InspectorAudioClip.cpp)
+    if (Util::isAudioFile(file)){
+        std::error_code ec;
+        if (!fs::is_regular_file(asset, ec)) return false;
+        drawAudioClipAsset(asset);
+        return true;
+    }
     // a video (.mp4, .m4v, .mov, .webm, .mkv): probe, platform matrix, preview (InspectorVideo.cpp)
     if (VideoFormats::isPlayableExtension(file)){
         std::error_code ec;

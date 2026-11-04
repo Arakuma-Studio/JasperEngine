@@ -126,6 +126,10 @@ bool editor::SetAssetMetaCmd::write(const YAML::Node& value, bool removeFileIfEm
     if (written && metaWriteListener()){
         metaWriteListener()(project, asset, key);
     }
+    // a clip's import settings: the voices of a running Play take them from their next start
+    if (written && key == "import.audioImporter"){
+        project->audioFilesChanged({metaPath()});
+    }
     return written;
 }
 

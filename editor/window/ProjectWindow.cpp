@@ -99,6 +99,9 @@
 #include <atomic>
 #include <algorithm>
 #include <unordered_set>
+#include "audio/AudioAnalysis.h"
+#include "audio/AudioImages.h"
+#include "audio/AudioWaveform.h"
 #include "stb_image_write.h"
 #include "stb_image_resize2.h"
 
@@ -331,6 +334,42 @@ static void makeMontageIcon(int size, std::vector<uint8_t>& rgba) {
     rgba = image.getPixels();
 }
 
+bool editor::ProjectWindow::writeAudioThumbnail(const fs::path& sourcePath, const fs::path& thumbnailPath) {
+    AudioWaveform::Data wave;
+    std::string error;
+    if (!AudioWaveform::ofFile(sourcePath, AudioAnalysis::cacheDirectory(project->getProjectPath()), wave, error) || wave.empty()) {
+        return false;
+    }
+    const int size = THUMBNAIL_SIZE;
+    const AudioImages::Palette::Rgb background = AudioImages::Palette::LANE_BACKGROUND;
+    const AudioImages::Palette::Rgb colour = AudioImages::Palette::WAVE;
+    std::vector<unsigned char> rgba((size_t)size * size * 4);
+    for (size_t i = 0; i < rgba.size(); i += 4) {
+        rgba[i] = background.r;
+        rgba[i + 1] = background.g;
+        rgba[i + 2] = background.b;
+        rgba[i + 3] = 255;
+    }
+    for (int x = 0; x < size; x++) {
+        const int column = x * AudioWaveform::COLUMNS / size;
+        int low = 32767, high = -32768;
+        for (unsigned int c = 0; c < wave.channels; c++) {
+            low = std::min(low, (int)wave.min(c, column));
+            high = std::max(high, (int)wave.max(c, column));
+        }
+        const int top = std::clamp(size / 2 - high * size / 2 / 32767, 0, size - 1);
+        const int bottom = std::clamp(size / 2 - low * size / 2 / 32767, top, size - 1);
+        for (int y = top; y <= bottom; y++) {
+            unsigned char* pixel = rgba.data() + ((size_t)y * size + x) * 4;
+            pixel[0] = colour.r;
+            pixel[1] = colour.g;
+            pixel[2] = colour.b;
+        }
+    }
+    fs::create_directories(thumbnailPath.parent_path());
+    return writePng(thumbnailPath, size, size, 4, rgba.data(), size * 4, io::Durability::Cache);
+}
+
 editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path& filePath) {
     const std::string extension = filePath.extension().string();
 
@@ -348,6 +387,9 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     }
     if (editor::Util::isPoseAnimationFile(extension)) {
         return editor::FileType::POSE_ANIMATION;
+    }
+    if (editor::Util::isAudioFile(extension)) {
+        return editor::FileType::AUDIO;
     }
     // .anim clips keep their icon: no thumbnail render (animation clips spec 9.R53)
 
@@ -1089,6 +1131,14 @@ void editor::ProjectWindow::renderCreateMenuItems() {
     }
     if (ImGui::MenuItem(ICON_FA_SLIDERS " Create Audio Mixer")){
         assetsCreateAudioMixer();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_VOLUME_HIGH " Create Placeholder Sound...")){
+        assetsCreatePlaceholderSound();
+        ImGui::CloseCurrentPopup();
+    }
+    if (ImGui::MenuItem(ICON_FA_VOLUME_HIGH " Import Sound Essentials")){
+        assetsImportSoundEssentials();
         ImGui::CloseCurrentPopup();
     }
     if (ImGui::MenuItem(ICON_FA_CIRCLE_HALF_STROKE " Create Physics Material")){
@@ -2193,6 +2243,16 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                     ImGui::Separator();
                 }
 
+                if (!file.isDirectory && file.type == FileType::AUDIO){
+                    if (ImGui::MenuItem(ICON_FA_ROTATE " Reanalyze")) {
+                        std::vector<fs::path> chosen = getSelectedFiles();
+                        if (std::find(chosen.begin(), chosen.end(), currentPath / file.name) == chosen.end()) chosen = {currentPath / file.name};
+                        assetsReanalyzeAudio(chosen);
+                    }
+                    ImGui::SetItemTooltip("Drop the cached measurements of the selected clips: they are measured again");
+                    ImGui::Separator();
+                }
+
                 if (!file.isDirectory && FbxImporter::isFbxFile(file.name)){
                     if (ImGui::MenuItem(ICON_FA_ROTATE " Reimport")) {
                         project->importFbxModel(currentPath / file.name, true);
@@ -2333,6 +2393,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
     if (showDeleteConfirmation){
         ImGui::OpenPopup("Delete Confirmation");
     }
+
+    drawPlaceholderSoundDialog();
 
     if (ImGui::BeginPopupModal("Delete Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize)){
         ImGui::Text("Are you sure you want to delete the following items?");
@@ -2692,7 +2754,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
-            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION) {
+            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION || fileEntry.type == FileType::AUDIO) {
             queueThumbnailGeneration(path, fileEntry.type);
         }
         // its asset labels (S25)
@@ -3274,9 +3336,10 @@ void editor::ProjectWindow::thumbnailStep() {
 
         try {
         // Generate thumbnail
-        if (thumbFile.type == FileType::IMAGE) {
+        if (thumbFile.type == FileType::IMAGE || thumbFile.type == FileType::AUDIO) {
             fs::path thumbnailPath = project->getThumbnailPath(thumbFile.path);
-            bool thumbnailWritten = writeImageThumbnail(thumbFile.path, thumbnailPath);
+            bool thumbnailWritten = thumbFile.type == FileType::IMAGE ? writeImageThumbnail(thumbFile.path, thumbnailPath)
+                                                                      : writeAudioThumbnail(thumbFile.path, thumbnailPath);
 
             if (thumbnailWritten) {
                 {

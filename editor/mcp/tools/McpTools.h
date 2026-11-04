@@ -48,6 +48,7 @@ namespace jasperengine::editor::mcp {
     void registerDataTools(McpRegistry& registry);
     // AudioTools.cpp: audio_mixer (the project's Audio Mixer asset)
     void registerAudioTools(McpRegistry& registry);
+    void registerSoundTools(McpRegistry& registry);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
     void registerMaterialsLightingTools(McpRegistry& registry);
