@@ -54,6 +54,14 @@ namespace jasperengine::editor::ui {
         void commit();
         void cancel();
 
+        // the window has the keyboard focus (App: the Color Picker context and its claim on the
+        // edit commands)
+        bool isFocused() const { return target != 0 && windowFocused; }
+        // the catalog's colorPicker.eyedropper: not with a control in use or while one is going on
+        bool canEyedropper() const;
+        void eyedropper();
+        bool isSampling() const { return sampling || macPicking; }
+
         // the libraries, user ones first (reread from the files)
         const std::vector<SwatchLibrary>& libraries();
         void reloadLibraries();
@@ -82,6 +90,7 @@ namespace jasperengine::editor::ui {
         // the target field was drawn this frame (else its window is gone: the session commits)
         int lastSeenFrame = -1;
         bool focusOnOpen = false;
+        bool windowFocused = false;
         bool standalone = false;
 
         colormath::SliderMode sliderMode = colormath::SliderMode::Rgb255;
