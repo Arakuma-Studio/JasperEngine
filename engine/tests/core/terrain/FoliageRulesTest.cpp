@@ -122,8 +122,10 @@ TEST(FoliageRules, SlopeHeightLayerRules) {
     EXPECT_TRUE(none.trees.empty());
     EXPECT_GT(none.rejected.slope, 0);
 
+    // from 0: the forward difference clamps at the map's far edge, so the last texel reads flat, as
+    // the surface query does
     FoliageTreeScatter fits = scatter;
-    fits.rules.slope = FilterRange{5.0f, 20.0f};
+    fits.rules.slope = FilterRange{0.0f, 20.0f};
     EXPECT_EQ(scatterTreesByRules(*store, fits, {}).trees.size(), all.trees.size());
 
     // height is terrain-local: the ramp reaches 50
@@ -238,7 +240,7 @@ TEST(FoliageRules, GoldenHashOnEveryTarget) {
     scatter.rules.minSpacing = 3.0f;
     const FoliageTreeScatterResult result = scatterTreesByRules(*store, scatter, {});
     EXPECT_GT(result.trees.size(), 0u);
-    EXPECT_EQ(result.hash, 0x0ull) << "actual 0x" << std::hex << result.hash;
+    EXPECT_EQ(result.hash, 0x5c6872872df93554ull) << "actual 0x" << std::hex << result.hash;
     EXPECT_EQ(scatterTreesByRules(*store, scatter, {}).hash, result.hash);
 }
 

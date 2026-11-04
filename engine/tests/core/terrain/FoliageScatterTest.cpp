@@ -4,7 +4,7 @@
 // T5 AC1, AC6, AC12: the placement kernel. The hash constants are the same on every target (R2); a
 // changed constant means a changed placement, which needs a new foliageAlgorithmVersion.
 
-#include "math/Angle.h"
+#include "util/Angle.h"
 #include "math/Quaternion.h"
 #include "math/Vector3.h"
 #include "terrain/FoliageScatter.h"
@@ -239,7 +239,7 @@ namespace {
 
 TEST(FoliageScatter, GoldenHashOnEveryTarget) {
     const uint64_t hash = hashFixture();
-    EXPECT_EQ(hash, 0x0ull) << "actual 0x" << std::hex << hash;
+    EXPECT_EQ(hash, 0xf5fb70854e752a4dull) << "actual 0x" << std::hex << hash;
 }
 
 TEST(FoliageScatter, GoldenHashWithSeedChanges) {
@@ -252,7 +252,7 @@ TEST(FoliageScatter, GoldenHashWithSeedChanges) {
         scatterFoliageCell(fixture().input(layer, 2, -3), instances);
         hash = foliageHash(instances, hash);
     }
-    EXPECT_EQ(hash, 0x0ull) << "actual 0x" << std::hex << hash;
+    EXPECT_EQ(hash, 0x550905a32769a533ull) << "actual 0x" << std::hex << hash;
 }
 
 TEST(FoliageScatter, LegacyParity) {

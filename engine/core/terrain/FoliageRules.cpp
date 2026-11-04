@@ -189,12 +189,38 @@ void jasperengine::terrain::foliageSetTreeSurface(TreeRecord& record, float terr
     record.height = terrainMaxHeight != 0.0f ? surfaceHeight / terrainMaxHeight : 0.0f;
 }
 
-void jasperengine::terrain::foliageInstanceFromTree(const TreeRecord& record, float terrainSize, float terrainMaxHeight, uint8_t windBend, FoliageInstance& out) {
+void jasperengine::terrain::foliageInstanceFromTree(const TreeRecord& record, float terrainSize, float terrainMaxHeight, uint8_t windBend, const float* surfaceNormal, FoliageInstance& out) {
     out.position[0] = foliageTreeLocalX(record, terrainSize);
     out.position[1] = record.height * terrainMaxHeight + record.yOffset;
     out.position[2] = foliageTreeLocalZ(record, terrainSize);
     out.scale = record.scale;
-    std::memcpy(out.rotation, record.rotation, sizeof(out.rotation));
+    const float share = treeAlignShare(record.flags);
+    if (surfaceNormal && share > 0.0f) {
+        // the stored yaw under a tilt towards the surface, the product foliageOrientation makes
+        const float length = std::sqrt(surfaceNormal[2] * surfaceNormal[2] + surfaceNormal[0] * surfaceNormal[0]);
+        if (length > 1.1920929e-07f) {
+            const float halfTilt = foliageAcos(surfaceNormal[1]) * 0.5f * share;
+            const float sine = detSin(halfTilt);
+            const float tx = surfaceNormal[2] / length * sine;
+            const float tz = -surfaceNormal[0] / length * sine;
+            const float tw = detCos(halfTilt);
+            const float y = static_cast<float>(record.rotation[1]) / 32767.0f;
+            const float w = static_cast<float>(record.rotation[3]) / 32767.0f;
+            const float x0 = static_cast<float>(record.rotation[0]) / 32767.0f;
+            const float z0 = static_cast<float>(record.rotation[2]) / 32767.0f;
+            const float rotation[4] = {
+                tw * x0 + tx * w - tz * y,
+                tw * y + tz * x0 - tx * z0,
+                tw * z0 + tz * w + tx * y,
+                tw * w - tz * z0 - tx * x0
+            };
+            foliageQuantizeRotation(rotation, out.rotation);
+        } else {
+            std::memcpy(out.rotation, record.rotation, sizeof(out.rotation));
+        }
+    } else {
+        std::memcpy(out.rotation, record.rotation, sizeof(out.rotation));
+    }
     std::memcpy(out.color, record.color, sizeof(out.color));
     out.heightRatio = record.heightRatio;
     // what tells one tree from another, stable across resizes and edits
@@ -346,13 +372,12 @@ FoliageTreeScatterResult jasperengine::terrain::scatterTreesByRules(const Terrai
                 record.yOffset = 0.0f;
                 record.scale = scatter.jitter.minScale + randomFoliage(hashScale) * scaleRange;
                 float rotation[4];
-                foliageOrientation(randomFoliage(hashYaw) * scatter.jitter.yaw, scatter.jitter.alignToNormal, normal, rotation);
+                foliageOrientation(randomFoliage(hashYaw) * scatter.jitter.yaw, 0.0f, normal, rotation);
                 foliageQuantizeRotation(rotation, record.rotation);
                 record.prototypeId = prototype;
                 const float ratio = scatter.jitter.minHeightRatio + randomFoliage(hashRatio) * ratioRange;
                 record.heightRatio = static_cast<uint8_t>(std::clamp(std::floor(ratio * 128.0f + 0.5f), 1.0f, 255.0f));
-                record.flags = TREE_SNAP_TO_TERRAIN;
-                if (scatter.jitter.alignToNormal > 0.0f) record.flags |= TREE_ALIGN_TO_NORMAL;
+                record.flags = TREE_SNAP_TO_TERRAIN | treeAlignFlags(scatter.jitter.alignToNormal);
                 std::memcpy(record.color, white, sizeof(record.color));
                 result.trees.push_back(record);
             }
@@ -391,7 +416,10 @@ FoliageDensityScatterResult jasperengine::terrain::scatterDensityByRules(const T
         return result;
     }
 
-    const float absolute = scatter.layerDensity > 0.0f ? detClamp01(scatter.density / scatter.layerDensity) : 0.0f;
+    // on the map's own steps, so a remove of what an add wrote comes back to exactly 0
+    const float wanted = scatter.layerDensity > 0.0f ? detClamp01(scatter.density / scatter.layerDensity) : 0.0f;
+    const float top = format.bitsPerChannel >= 16 ? 65535.0f : 255.0f;
+    const float absolute = static_cast<float>(quantizeChannel(wanted, format.bitsPerChannel)) / top;
     const MapLattice lattice = latticeOf(store, map, format);
     for (int y = 0; y < rect.h; y++) {
         if (stop && stop(stopUser)) {

@@ -161,8 +161,9 @@ namespace jasperengine::terrain {
     inline float foliageTreeLocalX(const TreeRecord& record, float terrainSize) { return (record.u - 0.5f) * terrainSize; }
     inline float foliageTreeLocalZ(const TreeRecord& record, float terrainSize) { return (record.v - 0.5f) * terrainSize; }
 
-    // The record as an instance: drawn in terrain-local space (T5 F3)
-    JASPERENGINE_API void foliageInstanceFromTree(const TreeRecord& record, float terrainSize, float terrainMaxHeight, uint8_t windBend, FoliageInstance& out);
+    // The record as an instance: drawn in terrain-local space (T5 F3). surfaceNormal: where the
+    // record leans towards its surface (null: upright, or a record with no lean)
+    JASPERENGINE_API void foliageInstanceFromTree(const TreeRecord& record, float terrainSize, float terrainMaxHeight, uint8_t windBend, const float* surfaceNormal, FoliageInstance& out);
 
     // Canonical hash of the scattered records' bytes (ids stay out: they depend on what came before)
     JASPERENGINE_API uint64_t foliageTreesHash(std::span<const TreeRecord> trees, uint64_t previous = 0xcbf29ce484222325ull);

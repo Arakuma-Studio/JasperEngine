@@ -44,6 +44,20 @@ namespace jasperengine::terrain {
         TREE_ALIGN_TO_NORMAL = 1 << 1,
         TREE_HIDDEN_BY_HOLE = 1 << 2
     };
+    // The upper five bits of flags: the share of the tilt towards the surface, in 31sts. The stored
+    // rotation holds only the yaw, and the tilt comes from the surface when the tree is drawn, so
+    // re-snap never rewrites a rotation: undoing a sculpt gives the original bytes (T5 R25).
+    inline constexpr int TREE_ALIGN_SHARE_SHIFT = 3;
+
+    inline constexpr uint8_t treeAlignFlags(float share) {
+        if (!(share > 0.0f)) return 0;
+        const int steps = static_cast<int>((share > 1.0f ? 1.0f : share) * 31.0f + 0.5f);
+        return steps > 0 ? static_cast<uint8_t>(TREE_ALIGN_TO_NORMAL | (steps << TREE_ALIGN_SHARE_SHIFT)) : uint8_t(0);
+    }
+
+    inline constexpr float treeAlignShare(uint8_t flags) {
+        return (flags & TREE_ALIGN_TO_NORMAL) ? static_cast<float>(flags >> TREE_ALIGN_SHARE_SHIFT) / 31.0f : 0.0f;
+    }
 
     // The stored tree, 40 bytes (T5 F3)
     struct TreeRecord {
@@ -52,7 +66,7 @@ namespace jasperengine::terrain {
         float height;           // cached surface, 0..1 of maxHeight
         float yOffset;          // world units above the surface
         float scale;
-        int16_t rotation[4];
+        int16_t rotation[4];    // the yaw; a tilt towards the surface comes from flags
         uint16_t prototypeId;
         uint8_t heightRatio;
         uint8_t flags;          // TreeRecordFlags

@@ -630,12 +630,11 @@ namespace {
             record.yOffset = yOffset;
             record.scale = scale;
             float rotation[4];
-            foliageOrientation(yawDegrees / 360.0f, align, up, rotation);
+            foliageOrientation(yawDegrees / 360.0f, 0.0f, up, rotation);
             foliageQuantizeRotation(rotation, record.rotation);
             record.prototypeId = prototype.id;
             record.heightRatio = static_cast<uint8_t>(std::clamp(std::floor(ratio * 128.0f + 0.5f), 1.0f, 255.0f));
-            record.flags = TREE_SNAP_TO_TERRAIN;
-            if (align > 0.0f) record.flags |= TREE_ALIGN_TO_NORMAL;
+            record.flags = TREE_SNAP_TO_TERRAIN | treeAlignFlags(align);
             if (surface.hole(x, z)) record.flags |= TREE_HIDDEN_BY_HOLE;
             std::memset(record.color, 255, sizeof(record.color));
             added.push_back(record);
