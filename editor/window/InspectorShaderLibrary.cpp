@@ -210,14 +210,20 @@ namespace {
     // scene's Planar Reflections draw for it, and that it costs a camera pass per water height
     void planarReflectionInfoRow(Scene* scene, const std::string& shader, const std::vector<std::string>& features) {
         std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
-        if (!scene || !manifest || !(manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, features)) & ShaderRequire_PlanarReflection))
+        const std::vector<std::string> enabled = ShaderReference::getEnabledFeatures(shader, features);
+        if (!scene || !manifest || !(manifest->resolveRequire(enabled) & ShaderRequire_PlanarReflection))
             return;
         static const char* const sizes[] = {"Off", "a quarter", "half", "full"};
         const PlanarReflectionResolution resolution = scene->getPlanarReflectionResolution();
+        // a water draws its planar reflection inside its Reflection
+        const bool withoutReflection = manifest->role == ShaderRole::WATER &&
+            std::find(enabled.begin(), enabled.end(), "REFLECTION") == enabled.end();
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(1);
         ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
-        if (resolution == PlanarReflectionResolution::OFF)
+        if (withoutReflection)
+            ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Planar reflection: turn Reflection on too (it draws inside it)");
+        else if (resolution == PlanarReflectionResolution::OFF)
             ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Planar reflection: Off in this scene, the sky or probe reflection is drawn");
         else
             ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Planar reflection: the scene again at %s resolution, one pass per water height", sizes[(int)resolution]);
