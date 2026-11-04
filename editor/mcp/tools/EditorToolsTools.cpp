@@ -494,7 +494,10 @@ hub::staging::Scope leftoverScopeWith(const std::vector<fs::path>& folders) {
 void reportLeftovers(const fs::path& parent, std::string& summary, Json& data) {
     const std::vector<hub::staging::Leftover> leftovers = hub::staging::inspect(leftoverScopeWith({parent})).leftovers;
     if (leftovers.empty()) return;
-    summary += " " + std::to_string(leftovers.size()) + " leftover folder(s) kept.";
+    // the paths in the text too: a client may show the model the text alone
+    summary += " Kept as leftover(s):";
+    for (const hub::staging::Leftover& leftover : leftovers) summary += " " + FileUtils::pathToGenericUtf8(leftover.folder);
+    summary += ".";
     data["next"] = "Leftovers may hold the user's files: tell the user. Once they agree, clear_project_leftovers {remove} (tool_groups: editor_tools) deletes one.";
     data["leftovers"] = leftoversJson(leftovers);
 }

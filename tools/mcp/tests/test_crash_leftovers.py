@@ -218,7 +218,10 @@ async def test_a_folder_without_a_marker_is_kept_and_reported():
 
         archive = ed.scratch.root / "Packed.zip"
         write_project_zip(archive)
-        imported = await ed.call("import_project", source=str(archive), path=str(into), timeout_seconds=300)
+        raw = await ed.call_raw("import_project", {"source": str(archive), "path": str(into), "timeout_seconds": 300})
+        ed.check(not raw.is_error, raw.text)
+        imported = raw.structured
+        ed.check(old.as_posix() in raw.text, f"a client that shows only the text sees the folder: {raw.text}")
         ed.check_eq(Path(imported["path"]), into / "Packed")
         ed.check_eq([e["path"] for e in imported["leftovers"]], [old.as_posix()], "the import's result lists it")
         ed.check(imported["leftovers"][0]["reason"], "with the reason")
