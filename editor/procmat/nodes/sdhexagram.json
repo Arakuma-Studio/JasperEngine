@@ -1,0 +1,62 @@
+{
+ "code": [],
+ "description": "A hexagram described as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdHexagram"
+ ],
+ "id": "sdhexagram",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdHexagram",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The hexagram as a signed distance function",
+   "expr": "sdHexagram($uv - 0.5 - vec2($cx, $cy), $r)",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "description": "The radius of the hexagram",
+   "label": "Radius",
+   "max": 1,
+   "min": 0,
+   "name": "r",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.2,
+   "description": "The position of the center on the X axis",
+   "label": "Center X",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cx",
+   "short_description": "Center.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": -0.25,
+   "description": "The position of the center on the Y axis",
+   "label": "Center Y",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cy",
+   "short_description": "Center.y",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdHexagram",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdhexagram.mmg"
+ },
+ "type_version": 1
+}

@@ -1,0 +1,96 @@
+{
+ "code": [],
+ "description": "Draws white scratches on a black background",
+ "format": 1,
+ "functions": [
+  "old_scratches"
+ ],
+ "id": "scratches",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Scratches",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows white scratches on a black background",
+   "expr": "old_scratches($uv, int($layers), vec2($length, $width), $waviness, $angle, $randomness, vec2(float($seed), 0.0))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.25,
+   "description": "The length of scratches (the shorter the scratches,the more they will be)",
+   "label": "Length",
+   "max": 1,
+   "min": 0.1,
+   "name": "length",
+   "short_description": "Length",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The width of scratches",
+   "label": "Width",
+   "max": 1,
+   "min": 0.1,
+   "name": "width",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 4,
+   "description": "The number of scratches layers",
+   "label": "Layers",
+   "max": 10,
+   "min": 1,
+   "name": "layers",
+   "short_description": "Layers",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The waviness of scratches",
+   "label": "Waviness",
+   "max": 1,
+   "min": 0,
+   "name": "waviness",
+   "short_description": "Waviness",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The average angle of the scratches (0 generates horizontal scratches)",
+   "label": "Angle",
+   "max": 180,
+   "min": -180,
+   "name": "angle",
+   "short_description": "Angle",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The randomness of the scratches angles",
+   "label": "Randomness",
+   "max": 1,
+   "min": 0,
+   "name": "randomness",
+   "short_description": "Randomness",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/scratches.mmg"
+ },
+ "type_version": 1
+}

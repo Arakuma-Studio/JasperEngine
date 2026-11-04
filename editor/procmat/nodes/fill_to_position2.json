@@ -1,0 +1,61 @@
+{
+ "code": [
+  "vec2 $(name_uv)_c = fract($in($uv).xy+0.5*$in($uv).zw);"
+ ],
+ "description": "A fill companion node that fills each area with a grayscale value that depends on its position",
+ "format": 1,
+ "functions": [],
+ "id": "fill_to_position2",
+ "inputs": [
+  {
+   "default": "vec4(0.0)",
+   "description": "The input fill data, to be connected to the output of a Fill node",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "fill"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Fill to Position",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated output image",
+   "expr": "$axis",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 2,
+   "description": "The position value to be used:\n- X for horizontal axis\n- Y for vertical axis\n- Radial for distance to center",
+   "label": "",
+   "name": "axis",
+   "short_description": "Position",
+   "type": "enum",
+   "values": [
+    {
+     "name": "X",
+     "value": "$(name_uv)_c.x"
+    },
+    {
+     "name": "Y",
+     "value": "$(name_uv)_c.y"
+    },
+    {
+     "name": "Radial",
+     "value": "length($(name_uv)_c-vec2(0.5))"
+    }
+   ]
+  }
+ ],
+ "short_description": "Fill to position",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fill_to_position2.mmg"
+ },
+ "type_version": 1
+}

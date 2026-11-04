@@ -1,0 +1,59 @@
+{
+ "code": [],
+ "description": "Maps its input into a circle",
+ "format": 1,
+ "functions": [],
+ "id": "circle_map",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "The input image to be remapped",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Circle Map",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the remapped image",
+   "expr": "$in#(vec2(fract($repeat*atan($uv.y-0.5, $uv.x-0.5)*0.15915494309), min(0.99999, 2.0/$radius*length($uv-vec2(0.5)))))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "The radius of the circle where the input is mapped",
+   "label": "Radius",
+   "max": 1.5,
+   "min": 0,
+   "name": "radius",
+   "short_description": "Radius",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The number of repetitions of the input image around the circle",
+   "label": "Repeat",
+   "max": 16,
+   "min": 0,
+   "name": "repeat",
+   "short_description": "Repeat",
+   "step": 1,
+   "type": "float"
+  }
+ ],
+ "short_description": "Circle Map",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/circle_map.mmg"
+ },
+ "type_version": 1
+}

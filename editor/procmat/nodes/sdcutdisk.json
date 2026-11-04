@@ -1,0 +1,72 @@
+{
+ "code": [],
+ "description": "A cut disk described as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdCutDisk"
+ ],
+ "id": "sdcutdisk",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdCutDisk",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The cut disk as a signed distance function",
+   "expr": "sdCutDisk($uv - 0.5 - vec2($cx, $cy), $r, clamp($h / 4.0, -$r, $r))",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "description": "Radius of the cut disk",
+   "label": "Radius",
+   "max": 1,
+   "min": 0,
+   "name": "r",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": -0.5,
+   "description": "Position of the cut of the disk",
+   "label": "Cut Height",
+   "max": 1,
+   "min": -1,
+   "name": "h",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.2,
+   "description": "The position of the center on the X axis",
+   "label": "Center X",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cx",
+   "short_description": "Center.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": -0.25,
+   "description": "The position of the center on the Y axis",
+   "label": "Center Y",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cy",
+   "short_description": "Center.y",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdCutDisk",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdcutdisk.mmg"
+ },
+ "type_version": 1
+}

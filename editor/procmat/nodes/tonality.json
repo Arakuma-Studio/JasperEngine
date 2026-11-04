@@ -1,0 +1,61 @@
+{
+ "code": [],
+ "description": "Remaps a grayscale image tonality using a curve",
+ "format": 1,
+ "functions": [],
+ "id": "tonality",
+ "inputs": [
+  {
+   "default": "$uv.x",
+   "description": "The input grayscale image",
+   "label": "",
+   "name": "input#",
+   "short_description": "Input#",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Tonality",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The remapped grayscale image",
+   "expr": "$curve($input#($uv))",
+   "label": "Output#",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "points": [
+     {
+      "ls": 0,
+      "rs": 1,
+      "x": 0,
+      "y": 0
+     },
+     {
+      "ls": 1,
+      "rs": 0,
+      "x": 1,
+      "y": 1
+     }
+    ],
+    "type": "Curve"
+   },
+   "description": "The tonality curve to which the input is remapped",
+   "label": "",
+   "name": "curve",
+   "short_description": "Curve",
+   "type": "curve"
+  }
+ ],
+ "short_description": "Tonality",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/tonality.mmg"
+ },
+ "type_version": 1
+}

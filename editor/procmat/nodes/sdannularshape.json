@@ -1,0 +1,61 @@
+{
+ "code": [],
+ "description": "Creates an annular shape from a shape described as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdRipples"
+ ],
+ "id": "sdannularshape",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The input shape, defined as a signed distance function",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "sdf2d"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdAnnularShape",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated layered shape",
+   "expr": "sdRipples($in($uv), $r, int($ripples))",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The width of each generated ripple",
+   "label": "Width",
+   "max": 1,
+   "min": 0,
+   "name": "r",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The number of generated ripples",
+   "label": "Ripples",
+   "max": 16,
+   "min": 0,
+   "name": "ripples",
+   "short_description": "Ripples",
+   "step": 1,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdAnnularShape",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdannularshape.mmg"
+ },
+ "type_version": 1
+}

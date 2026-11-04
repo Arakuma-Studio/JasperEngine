@@ -1,0 +1,82 @@
+{
+ "code": [
+  "float $(name_uv)_step = clamp(($in($uv) - ($value))/max(0.0001, $width)+0.5, 0.0, 1.0);",
+  "float $(name_uv)_false = clamp((min($(name_uv)_step, 1.0-$(name_uv)_step) * 2.0) / (1.0 - $contrast), 0.0, 1.0);",
+  "float $(name_uv)_true = 1.0-$(name_uv)_false;"
+ ],
+ "description": "Outputs the tone range around a specified value,",
+ "format": 1,
+ "functions": [],
+ "id": "tones_range",
+ "inputs": [
+  {
+   "default": "($uv.x + $uv.y) / 2.0",
+   "description": "The input image",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Tones Range",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated high contrast image",
+   "expr": "$(name_uv)_$invert",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "description": "The center value of the selection",
+   "label": "Value",
+   "max": 1,
+   "min": 0,
+   "name": "value",
+   "short_description": "Value",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.25,
+   "description": "The width (in tones space) of the selection area",
+   "label": "Width",
+   "max": 1,
+   "min": 0,
+   "name": "width",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "Adjusts the falloff of the output",
+   "label": "Contrast",
+   "max": 1,
+   "min": 0,
+   "name": "contrast",
+   "short_description": "Contrast",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "description": "Invert the generated image if set",
+   "label": "Invert",
+   "name": "invert",
+   "short_description": "Invert",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Tones Range",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/tones_range.mmg"
+ },
+ "type_version": 1
+}

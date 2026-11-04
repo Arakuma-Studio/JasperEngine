@@ -1,0 +1,60 @@
+{
+ "code": [
+  "vec2 $(name_uv)_uv = floor($uv*$size);"
+ ],
+ "description": "Generates a grid made of black and white squares",
+ "format": 1,
+ "functions": [
+  "rand"
+ ],
+ "id": "noise2",
+ "inputs": [
+  {
+   "default": "$density",
+   "label": "2:",
+   "name": "density_in",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Noise",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the noise pattern",
+   "expr": "step(rand($(name_uv)_uv+vec2($seed)), $density_in($(name_uv)_uv))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 8,
+   "description": "The grid size",
+   "first": 2,
+   "label": "Grid Size",
+   "last": 12,
+   "name": "size",
+   "short_description": "Size",
+   "type": "size"
+  },
+  {
+   "default": 0.5,
+   "description": "The density of white squares",
+   "label": "Density",
+   "max": 1,
+   "min": 0,
+   "name": "density",
+   "short_description": "Density",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Noise pattern",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/noise2.mmg"
+ },
+ "type_version": 1
+}

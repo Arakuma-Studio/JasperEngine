@@ -1,0 +1,80 @@
+{
+ "code": [
+  "vec4 $(name_uv)_rbga = $in($(uv));",
+  "vec3 $(name_uv)_hsv = rgb_to_hsv($(name_uv)_rbga.rgb);",
+  "$(name_uv)_hsv.x += $(hue);",
+  "$(name_uv)_hsv.y = clamp($(name_uv)_hsv.y*$(saturation), 0.0, 1.0);",
+  "$(name_uv)_hsv.z = clamp($(name_uv)_hsv.z*$(value), 0.0, 1.0);",
+  "\t"
+ ],
+ "description": "Adjusts the Hue, Saturation and Value of its input",
+ "format": 1,
+ "functions": [
+  "hsv_to_rgb",
+  "rgb_to_hsv"
+ ],
+ "id": "adjust_hsv",
+ "inputs": [
+  {
+   "default": "vec4($uv.x, $uv.y, 0.0, 1.0)",
+   "description": "The input image",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Adjust HSV",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the image with adjusted Hue, Saturation and Value",
+   "expr": "vec4(hsv_to_rgb($(name_uv)_hsv), $(name_uv)_rbga.a)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The Hue adjustment",
+   "label": "Hue",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "hue",
+   "short_description": "Hue",
+   "step": 0,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The Saturation adjustment",
+   "label": "Saturation",
+   "max": 2,
+   "min": 0,
+   "name": "saturation",
+   "short_description": "Saturation",
+   "step": 0,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The Value adjustment",
+   "label": "Value",
+   "max": 2,
+   "min": 0,
+   "name": "value",
+   "short_description": "Value",
+   "step": 0,
+   "type": "float"
+  }
+ ],
+ "short_description": "Adjust HSV",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/adjust_hsv.mmg"
+ },
+ "type_version": 1
+}

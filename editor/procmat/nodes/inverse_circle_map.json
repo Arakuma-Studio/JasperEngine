@@ -1,0 +1,40 @@
+{
+ "code": [
+  "float $(name_uv)_a = TAU*$uv.x;"
+ ],
+ "description": "Unwraps its input from a circle. The opposite of Circle Map.",
+ "format": 1,
+ "functions": [
+  "TAU"
+ ],
+ "id": "inverse_circle_map",
+ "inputs": [
+  {
+   "default": "vec4($uv, 0.0, 1.0)",
+   "description": "The input image to be remapped",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Inverse Circle Map",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the remapped image",
+   "expr": "$in#((vec2(0.5)+0.5*fract($uv.y)*vec2(cos($(name_uv)_a), sin($(name_uv)_a))))",
+   "label": "Output#",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Inverse Circle Map",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/inverse_circle_map.mmg"
+ },
+ "type_version": 1
+}

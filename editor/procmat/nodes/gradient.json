@@ -1,0 +1,87 @@
+{
+ "code": [
+  "float $(name_uv)_r = 0.5+(cos($rotate*0.01745329251)*($uv.x-0.5)+sin($rotate*0.01745329251)*($uv.y-0.5))/(cos(abs(mod($rotate, 90.0)-45.0)*0.01745329251)*1.41421356237);"
+ ],
+ "description": "",
+ "format": 1,
+ "functions": [],
+ "id": "gradient",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Gradient",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "An image showing the gradient",
+   "expr": "$gradient($mirror ? 2.0*(0.5-abs(fract($(name_uv)_r*$repeat)-0.5)) : fract($(name_uv)_r*$repeat))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1.0,
+   "description": "Number of repetitions of the gradient",
+   "label": "Repeat",
+   "max": 32.0,
+   "min": 1.0,
+   "name": "repeat",
+   "short_description": "Repeat",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": 0.0,
+   "description": "Angle of the gradient pattern",
+   "label": "Rotate",
+   "max": 180.0,
+   "min": -180.0,
+   "name": "rotate",
+   "short_description": "Rotate",
+   "step": 0.1,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "description": "Mirrors the gradient",
+   "label": "Mirror",
+   "name": "mirror",
+   "short_description": "Mirrors the gradient",
+   "type": "boolean"
+  },
+  {
+   "default": {
+    "interpolation": 1,
+    "points": [
+     {
+      "a": 1.0,
+      "b": 0.0,
+      "g": 0.0,
+      "pos": 0.0,
+      "r": 0.0
+     },
+     {
+      "a": 1.0,
+      "b": 1.0,
+      "g": 1.0,
+      "pos": 1.0,
+      "r": 1.0
+     }
+    ],
+    "type": "Gradient"
+   },
+   "description": "Gradient to be spread on the image",
+   "label": "",
+   "name": "gradient",
+   "short_description": "Gradient",
+   "type": "gradient"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/gradient.mmg"
+ },
+ "type_version": 1
+}

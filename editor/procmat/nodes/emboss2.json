@@ -1,0 +1,235 @@
+{
+ "connections": [
+  {
+   "from": "598",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "buffer_2",
+   "to_port": 0
+  },
+  {
+   "from": "buffer_2",
+   "from_port": 0,
+   "to": "598",
+   "to_port": 0
+  }
+ ],
+ "description": "Creates highlights and shadows from an input heightmap",
+ "format": 1,
+ "id": "emboss2",
+ "inputs": [
+  {
+   "description": "The input height map",
+   "group_size": 0.0,
+   "label": "Input",
+   "name": "port0",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Emboss",
+ "nodes": [
+  {
+   "id": "598",
+   "parameters": {
+    "amount": 5.0,
+    "angle": 0.0,
+    "size": 9.0,
+    "width": 1.0
+   },
+   "seed": 24130.0,
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "0.0",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [
+     "float $(name)_fct(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tfloat pixels = max(1.0, $width);",
+     "\tfloat e = 1.0/$size;",
+     "\tfloat rv = 0.0;",
+     "\tfor (float dx = -pixels; dx <= pixels; dx += 1.0) {",
+     "\t\tfor (float dy = -pixels; dy <= pixels; dy += 1.0) {",
+     "\t\t\tif (abs(dx) > 0.5 || abs(dy) > 0.5) {",
+     "\t\t\t\trv += $in(uv+e*vec2(dx, dy))*cos(atan(dy, dx)-$angle*3.14159265359/180.0)/length(vec2(dx, dy));",
+     "\t\t\t}",
+     "\t\t}",
+     "\t}",
+     "\treturn $amount*rv/pixels+0.5;",
+     "}"
+    ],
+    "outputs": [
+     {
+      "expr": "$(name)_fct($uv, _seed_variation_, _controlled_variation_)",
+      "type": "f"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 9.0,
+      "first": 6.0,
+      "label": "Size",
+      "last": 12.0,
+      "name": "size",
+      "type": "size"
+     },
+     {
+      "default": 0.0,
+      "label": "Angle",
+      "max": 180.0,
+      "min": -180.0,
+      "name": "angle",
+      "step": 0.1,
+      "type": "float"
+     },
+     {
+      "default": 1.0,
+      "label": "Amount",
+      "max": 10.0,
+      "min": 0.0,
+      "name": "amount",
+      "step": 0.1,
+      "type": "float"
+     },
+     {
+      "default": 1.0,
+      "label": "Width",
+      "max": 5.0,
+      "min": 1.0,
+      "name": "width",
+      "step": 1.0,
+      "type": "float"
+     }
+    ]
+   }
+  },
+  {
+   "id": "buffer_2",
+   "parameters": {
+    "f32": false,
+    "filter": true,
+    "mipmap": true,
+    "size": 9.0
+   },
+   "seed": 0.0,
+   "type": "buffer",
+   "version": 2
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated image",
+   "group_size": 0.0,
+   "label": "Output",
+   "name": "port0",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 9.0,
+   "description": "The resolution of the input image",
+   "first": 6.0,
+   "label": "Size",
+   "last": 12.0,
+   "links": [
+    {
+     "node": "598",
+     "param": "size"
+    },
+    {
+     "node": "buffer_2",
+     "param": "size"
+    }
+   ],
+   "name": "param0",
+   "short_description": "Size",
+   "type": "size"
+  },
+  {
+   "default": 0.0,
+   "description": "The angle of the simulated light",
+   "label": "Angle",
+   "links": [
+    {
+     "node": "598",
+     "param": "angle"
+    }
+   ],
+   "max": 180.0,
+   "min": -180.0,
+   "name": "param1",
+   "short_description": "Angle",
+   "step": 0.1,
+   "type": "float"
+  },
+  {
+   "default": 5.0,
+   "description": "The strength of the emboss effect",
+   "label": "Amount",
+   "links": [
+    {
+     "node": "598",
+     "param": "amount"
+    }
+   ],
+   "max": 10.0,
+   "min": 0.0,
+   "name": "param2",
+   "short_description": "Strength",
+   "step": 0.1,
+   "type": "float"
+  },
+  {
+   "default": 1.0,
+   "description": "The width (in pixels) of the area sampled for each pixel",
+   "label": "Width",
+   "links": [
+    {
+     "node": "598",
+     "param": "width"
+    }
+   ],
+   "max": 5.0,
+   "min": 1.0,
+   "name": "param3",
+   "short_description": "Width",
+   "step": 1.0,
+   "type": "float"
+  },
+  {
+   "default": null,
+   "description": "Use 32-bit buffer when sampling the input. Reduces banding artifacts but could result in higher video memory usage.",
+   "first": 4,
+   "label": "32 Bits",
+   "last": 13,
+   "links": [
+    {
+     "node": "buffer_2",
+     "param": "f32"
+    }
+   ],
+   "name": "param4",
+   "type": "size"
+  }
+ ],
+ "short_description": "Emboss",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/emboss2.mmg"
+ },
+ "type_version": 1
+}

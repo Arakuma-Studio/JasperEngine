@@ -1,0 +1,59 @@
+{
+ "code": [],
+ "description": "An edge detect filter that detects edges horizontally and vertically and draws them in white on a black background",
+ "format": 1,
+ "functions": [],
+ "id": "edge_detect_2",
+ "inputs": [
+  {
+   "default": "vec3(0.0)",
+   "description": "The input image",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgb"
+  }
+ ],
+ "instance": [
+  "float $(name)_fct(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec2 e = vec2(1.0/$size, 0.0);",
+  "\tvec3 rv = 4.0*$in(uv);",
+  "\trv -= $in(uv+e.xy);",
+  "\trv -= $in(uv-e.xy);",
+  "\trv -= $in(uv+e.yx);",
+  "\trv -= $in(uv-e.yx);",
+  "\trv = abs(rv);",
+  "\treturn max(rv.x, max(rv.y ,rv.z))*$size;",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "AA Edge Detect",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated outlines",
+   "expr": "clamp($(name)_fct($uv, _seed_variation_, _controlled_variation_), 0.0, 1.0)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 9,
+   "description": "The resolution of the input image",
+   "first": 4,
+   "label": "Size",
+   "last": 12,
+   "name": "size",
+   "short_description": "Size",
+   "type": "size"
+  }
+ ],
+ "short_description": "Edge Detect",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/edge_detect_2.mmg"
+ },
+ "type_version": 1
+}

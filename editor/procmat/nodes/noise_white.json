@@ -1,0 +1,44 @@
+{
+ "code": [],
+ "description": "Generates white noise in a given resolution",
+ "format": 1,
+ "functions": [
+  "white_noise"
+ ],
+ "id": "noise_white",
+ "inputs": [],
+ "instance": [
+  "float $(name)_f(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\treturn white_noise(uv, 1.0/$(size), $(seed));",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "White Noise",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the noise pattern",
+   "expr": "$(name)_f($(uv), _seed_variation_, _controlled_variation_)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 11,
+   "description": "The grid size",
+   "first": 4,
+   "label": "Grid Size",
+   "last": 13,
+   "name": "size",
+   "short_description": "Size",
+   "type": "size"
+  }
+ ],
+ "short_description": "White Noise",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/noise_white.mmg"
+ },
+ "type_version": 1
+}

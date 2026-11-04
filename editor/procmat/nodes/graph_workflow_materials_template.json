@@ -1,0 +1,233 @@
+{
+ "connections": [
+  {
+   "from": "uniform_2",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 3.0
+  },
+  {
+   "from": "uniform_greyscale_3_2",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 0.0
+  },
+  {
+   "from": "uniform_greyscale_3",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 1.0
+  },
+  {
+   "from": "uniform_greyscale_4",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 2.0
+  },
+  {
+   "from": "uniform_3",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 0.0
+  },
+  {
+   "from": "combine",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 1.0
+  },
+  {
+   "from": "uniform",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 2.0
+  }
+ ],
+ "description": "",
+ "format": 1,
+ "id": "graph_workflow_materials_template",
+ "inputs": [],
+ "kind": "graph",
+ "name": "Template",
+ "nodes": [
+  {
+   "id": "uniform_greyscale_3_2",
+   "parameters": {
+    "color": 1.0
+   },
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "uniform_greyscale_4",
+   "parameters": {
+    "color": 0.0
+   },
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "uniform_greyscale_3",
+   "parameters": {
+    "color": 0.5
+   },
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "uniform_2",
+   "parameters": {
+    "color": {
+     "a": 1.0,
+     "b": 0.0,
+     "g": 0.501961,
+     "r": 0.501961,
+     "type": "Color"
+    }
+   },
+   "type": "uniform"
+  },
+  {
+   "id": "uniform_3",
+   "parameters": {
+    "color": {
+     "a": 1.0,
+     "b": 0.494118,
+     "g": 0.494118,
+     "r": 0.494118,
+     "type": "Color"
+    }
+   },
+   "type": "uniform"
+  },
+  {
+   "id": "combine",
+   "parameters": {
+    "color": {
+     "a": 1.0,
+     "b": 1.0,
+     "g": 1.0,
+     "r": 1.0,
+     "type": "Color"
+    },
+    "name": 0.0
+   },
+   "type": "combine"
+  },
+  {
+   "id": "uniform",
+   "parameters": {
+    "color": {
+     "a": 1.0,
+     "b": 0.0,
+     "g": 0.0,
+     "r": 0.0,
+     "type": "Color"
+    }
+   },
+   "type": "uniform"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 4.0,
+   "label": "Albedo",
+   "name": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "ORM",
+   "name": "ORM",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Emission",
+   "name": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Normal",
+   "name": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "a": 1.0,
+    "b": 0.494118,
+    "g": 0.494118,
+    "r": 0.494118,
+    "type": "Color"
+   },
+   "label": "Albedo",
+   "links": [
+    {
+     "node": "uniform_3",
+     "param": "color"
+    }
+   ],
+   "name": "param0",
+   "type": "color"
+  },
+  {
+   "default": 0.5,
+   "label": "Roughness",
+   "links": [
+    {
+     "node": "uniform_greyscale_3",
+     "param": "color"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param1",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.0,
+   "label": "Metallic",
+   "links": [
+    {
+     "node": "uniform_greyscale_4",
+     "param": "color"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param2",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": {
+    "a": 1.0,
+    "b": 0.0,
+    "g": 0.0,
+    "r": 0.0,
+    "type": "Color"
+   },
+   "label": "Emission",
+   "links": [
+    {
+     "node": "uniform",
+     "param": "color"
+    }
+   ],
+   "name": "param3",
+   "type": "color"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "material_maker/library/base.json"
+ },
+ "type_version": 1
+}

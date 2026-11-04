@@ -1,0 +1,133 @@
+{
+ "code": [
+  "vec2 $(name_uv)_bezier = sdBezier($uv, vec2($ax+0.5, $ay+0.5), vec2($bx+0.5, $by+0.5), vec2($cx+0.5, $cy+0.5));",
+  "vec2 $(name_uv)_uv = vec2($(name_uv)_bezier.x, $(name_uv)_bezier.y/$width+0.5);",
+  "vec2 $(name_uv)_uvtest = step(vec2(0.5), abs($(name_uv)_uv-vec2(0.5)));",
+  "$(name_uv)_uv = mix(vec2(fract($repeat*$(name_uv)_uv.x), $(name_uv)_uv.y), vec2(0.0), max($(name_uv)_uvtest.x, $(name_uv)_uvtest.y));",
+  ""
+ ],
+ "description": "Quadratic bezier curve with image mapping",
+ "format": 1,
+ "functions": [
+  "sdBezier"
+ ],
+ "id": "curve",
+ "inputs": [
+  {
+   "default": "vec4(vec3(step(abs($uv.y-0.5), 0.4999)), 1.0)",
+   "description": "Input pattern to be drawn along the curve",
+   "label": "",
+   "name": "in",
+   "short_description": "Pattern",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Curve",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "An image showing the specified curve",
+   "expr": "$in($(name_uv)_uv)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": -0.3,
+   "description": "Position on X axis of the first control point",
+   "label": "AX",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "ax",
+   "short_description": "A.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": -0.1,
+   "description": "Position on Y axis of the first control point",
+   "label": "AY",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "ay",
+   "short_description": "A.y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Position on X axis of the second control point",
+   "label": "BX",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "bx",
+   "short_description": "B.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.2,
+   "description": "Position on Y axis of the second control point",
+   "label": "BY",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "by",
+   "short_description": "B.y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.3,
+   "description": "Position on X axis of the third control point",
+   "label": "CX",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cx",
+   "short_description": "C.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": -0.1,
+   "description": "Position on Y axis of the third control point",
+   "label": "CY",
+   "max": 0.5,
+   "min": -0.5,
+   "name": "cy",
+   "short_description": "C.y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "Width of the curve pattern",
+   "label": "Width",
+   "max": 0.5,
+   "min": 0,
+   "name": "width",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "Number of repetitions of the input pattern",
+   "label": "Repeat",
+   "max": 16,
+   "min": 1,
+   "name": "repeat",
+   "short_description": "Repeat",
+   "step": 1,
+   "type": "float"
+  }
+ ],
+ "short_description": "Curve",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/curve.mmg"
+ },
+ "type_version": 1
+}

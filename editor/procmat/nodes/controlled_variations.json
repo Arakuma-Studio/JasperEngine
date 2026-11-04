@@ -1,0 +1,80 @@
+{
+ "code": [
+  "#for",
+  "vec4 $(name_uv)_cv_# = _controlled_variation_;",
+  "$(name_uv)_cv_#.$variable = $v#;",
+  "#end"
+ ],
+ "description": "Generates controlled variations for its input",
+ "format": 1,
+ "functions": [],
+ "id": "controlled_variations",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "The input image",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Controlled Variations",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a variation of the input",
+   "expr": "$in.variation($uv, _seed_variation_, $(name_uv)_cv_#)",
+   "label": "Output1",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.0,
+   "description": "Variable value",
+   "label": "",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "v#",
+   "short_description": "Value",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.0,
+   "description": "Variable name",
+   "label": "Variable",
+   "name": "variable",
+   "short_description": "Variable",
+   "type": "enum",
+   "values": [
+    {
+     "name": "$?1",
+     "value": "x"
+    },
+    {
+     "name": "$?2",
+     "value": "y"
+    },
+    {
+     "name": "$?3",
+     "value": "z"
+    },
+    {
+     "name": "$?4",
+     "value": "w"
+    }
+   ]
+  }
+ ],
+ "short_description": "Controlled Variations",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/controlled_variations.mmg"
+ },
+ "type_version": 1
+}

@@ -1,0 +1,58 @@
+{
+ "code": [],
+ "description": "Sharpens it input image",
+ "format": 1,
+ "functions": [],
+ "id": "sharpen",
+ "inputs": [
+  {
+   "default": "vec3(0.0)",
+   "description": "The input image",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgb"
+  }
+ ],
+ "instance": [
+  "vec3 $(name)_fct(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec2 e = vec2(1.0/$size, 0.0);",
+  "\tvec3 rv = 5.0*$in(uv);",
+  "\trv -= $in(uv+e.xy);",
+  "\trv -= $in(uv-e.xy);",
+  "\trv -= $in(uv+e.yx);",
+  "\trv -= $in(uv-e.yx);",
+  "\treturn rv;",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "Sharpen",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated sharpened image",
+   "expr": "$(name)_fct($uv, _seed_variation_, _controlled_variation_)",
+   "label": "Output",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 9,
+   "description": "The resolution of the input image",
+   "first": 4,
+   "label": "Size",
+   "last": 12,
+   "name": "size",
+   "short_description": "Size",
+   "type": "size"
+  }
+ ],
+ "short_description": "Sharpen",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sharpen.mmg"
+ },
+ "type_version": 1
+}

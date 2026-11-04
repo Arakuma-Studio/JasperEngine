@@ -1,0 +1,237 @@
+{
+ "code": [],
+ "description": "Swaps the channels of its RGBA input",
+ "format": 1,
+ "functions": [],
+ "id": "swap_channels",
+ "inputs": [
+  {
+   "default": "vec4(1.0)",
+   "description": "The input RGBA image",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Swap Channels",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The output RGBA image",
+   "expr": "vec4($out_r,$out_g,$out_b,$out_a)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 2,
+   "description": "The input channel to be assigned to the Red channel",
+   "label": "R",
+   "name": "out_r",
+   "short_description": "Red",
+   "type": "enum",
+   "values": [
+    {
+     "name": "0",
+     "value": "0.0"
+    },
+    {
+     "name": "1",
+     "value": "1.0"
+    },
+    {
+     "name": "R",
+     "value": "$in($uv).r"
+    },
+    {
+     "name": "-R",
+     "value": "1.0-$in($uv).r"
+    },
+    {
+     "name": "G",
+     "value": "$in($uv).g"
+    },
+    {
+     "name": "-G",
+     "value": "1.0-$in($uv).g"
+    },
+    {
+     "name": "B",
+     "value": "$in($uv).b"
+    },
+    {
+     "name": "-B",
+     "value": "1.0-$in($uv).b"
+    },
+    {
+     "name": "A",
+     "value": "$in($uv).a"
+    },
+    {
+     "name": "-A",
+     "value": "1.0-$in($uv).a"
+    }
+   ]
+  },
+  {
+   "default": 4,
+   "description": "The input channel to be assigned to the Green channel",
+   "label": "G",
+   "name": "out_g",
+   "short_description": "Green",
+   "type": "enum",
+   "values": [
+    {
+     "name": "0",
+     "value": "0.0"
+    },
+    {
+     "name": "1",
+     "value": "1.0"
+    },
+    {
+     "name": "R",
+     "value": "$in($uv).r"
+    },
+    {
+     "name": "-R",
+     "value": "1.0-$in($uv).r"
+    },
+    {
+     "name": "G",
+     "value": "$in($uv).g"
+    },
+    {
+     "name": "-G",
+     "value": "1.0-$in($uv).g"
+    },
+    {
+     "name": "B",
+     "value": "$in($uv).b"
+    },
+    {
+     "name": "-B",
+     "value": "1.0-$in($uv).b"
+    },
+    {
+     "name": "A",
+     "value": "$in($uv).a"
+    },
+    {
+     "name": "-A",
+     "value": "1.0-$in($uv).a"
+    }
+   ]
+  },
+  {
+   "default": 6,
+   "description": "The input channel to be assigned to the Blue channel",
+   "label": "B",
+   "name": "out_b",
+   "short_description": "Blue",
+   "type": "enum",
+   "values": [
+    {
+     "name": "0",
+     "value": "0.0"
+    },
+    {
+     "name": "1",
+     "value": "1.0"
+    },
+    {
+     "name": "R",
+     "value": "$in($uv).r"
+    },
+    {
+     "name": "-R",
+     "value": "1.0-$in($uv).r"
+    },
+    {
+     "name": "G",
+     "value": "$in($uv).g"
+    },
+    {
+     "name": "-G",
+     "value": "1.0-$in($uv).g"
+    },
+    {
+     "name": "B",
+     "value": "$in($uv).b"
+    },
+    {
+     "name": "-B",
+     "value": "1.0-$in($uv).b"
+    },
+    {
+     "name": "A",
+     "value": "$in($uv).a"
+    },
+    {
+     "name": "-A",
+     "value": "1.0-$in($uv).a"
+    }
+   ]
+  },
+  {
+   "default": 8,
+   "description": "The input channel to be assigned to the Alpha channel",
+   "label": "A",
+   "name": "out_a",
+   "short_description": "Alpha",
+   "type": "enum",
+   "values": [
+    {
+     "name": "0",
+     "value": "0.0"
+    },
+    {
+     "name": "1",
+     "value": "1.0"
+    },
+    {
+     "name": "R",
+     "value": "$in($uv).r"
+    },
+    {
+     "name": "-R",
+     "value": "1.0-$in($uv).r"
+    },
+    {
+     "name": "G",
+     "value": "$in($uv).g"
+    },
+    {
+     "name": "-G",
+     "value": "1.0-$in($uv).g"
+    },
+    {
+     "name": "B",
+     "value": "$in($uv).b"
+    },
+    {
+     "name": "-B",
+     "value": "1.0-$in($uv).b"
+    },
+    {
+     "name": "A",
+     "value": "$in($uv).a"
+    },
+    {
+     "name": "-A",
+     "value": "1.0-$in($uv).a"
+    }
+   ]
+  }
+ ],
+ "short_description": "Swap channels",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/swap_channels.mmg"
+ },
+ "type_version": 1
+}

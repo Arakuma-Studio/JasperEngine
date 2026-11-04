@@ -1,0 +1,114 @@
+{
+ "code": [],
+ "description": "Draws a white shape on a black background",
+ "format": 1,
+ "functions": [
+  "shape_circle",
+  "shape_curved_star",
+  "shape_polygon",
+  "shape_rays",
+  "shape_star"
+ ],
+ "id": "shape",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "An input map that affects the shape size",
+   "label": "3:",
+   "name": "radius_map",
+   "short_description": "Size map",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "An input map that affects the edge width",
+   "label": "",
+   "name": "edge_map",
+   "short_description": "Edge map",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Shape",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a white shape on a black background",
+   "expr": "shape_$(shape)($(uv), $(sides)+1.0e-5, $(radius)*$radius_map($uv), $(edge)*$edge_map($uv))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The type of shape drawn by this node",
+   "label": "Shape",
+   "name": "shape",
+   "short_description": "Shape",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Circle",
+     "value": "circle"
+    },
+    {
+     "name": "Polygon",
+     "value": "polygon"
+    },
+    {
+     "name": "Star",
+     "value": "star"
+    },
+    {
+     "name": "Curved Star",
+     "value": "curved_star"
+    },
+    {
+     "name": "Rays",
+     "value": "rays"
+    }
+   ]
+  },
+  {
+   "default": 3,
+   "description": "The number of sides of the generated shape (unused for Circle)",
+   "label": "Sides",
+   "max": 32,
+   "min": 2,
+   "name": "sides",
+   "short_description": "Sides count",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The size of the generated shape",
+   "label": "Radius",
+   "max": 1,
+   "min": 0,
+   "name": "radius",
+   "short_description": "Shape size",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.2,
+   "description": "The edge width of the generated shape",
+   "label": "Edge",
+   "max": 1,
+   "min": 0,
+   "name": "edge",
+   "short_description": "Edge width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/shape.mmg"
+ },
+ "type_version": 1
+}

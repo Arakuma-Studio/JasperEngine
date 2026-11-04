@@ -1,0 +1,115 @@
+{
+ "code": [
+  "vec4 $(name_uv)_rbga = $in($(uv));",
+  "vec3 $(name_uv)_hsv = rgb_to_hsv($(name_uv)_rbga.rgb);",
+  "$(name_uv)_hsv.x = fract($(name_uv)_hsv.x+$(hue)*$all*($hmap($uv)-0.5));",
+  "$(name_uv)_hsv.y = clamp($(name_uv)_hsv.y+$(saturation)*$all*($smap($uv)-0.5), 0.0, 1.0);",
+  "$(name_uv)_hsv.z = clamp($(name_uv)_hsv.z+$(value)*$all*($vmap($uv)-0.5), 0.0, 1.0);",
+  "\t"
+ ],
+ "description": "Alters the Hue, Saturation and Value of its input using 3 map inputs",
+ "format": 1,
+ "functions": [
+  "hsv_to_rgb",
+  "rgb_to_hsv"
+ ],
+ "id": "alter_hsv",
+ "inputs": [
+  {
+   "default": "vec4($uv.x, $uv.y, 0.0, 1.0)",
+   "description": "The input image",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  },
+  {
+   "default": "0.5",
+   "description": "The alteration map for hue",
+   "label": "",
+   "name": "hmap",
+   "short_description": "hue map",
+   "type": "f"
+  },
+  {
+   "default": "0.5",
+   "description": "The alteration map for value",
+   "label": "",
+   "name": "vmap",
+   "short_description": "Value map",
+   "type": "f"
+  },
+  {
+   "default": "0.5",
+   "description": "The alteration map for saturation",
+   "label": "",
+   "name": "smap",
+   "short_description": "Saturation map",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Alter HSV",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the image with adjusted Hue, Saturation and Value",
+   "expr": "vec4(hsv_to_rgb($(name_uv)_hsv), $(name_uv)_rbga.a)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "The alteration intensity for hue, value and saturation",
+   "label": "All",
+   "max": 1,
+   "min": 0,
+   "name": "all",
+   "short_description": "All",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The alteration intensity for hue",
+   "label": "Hue",
+   "max": 1,
+   "min": 0,
+   "name": "hue",
+   "short_description": "Hue",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The alteration intensity for value",
+   "label": "Value",
+   "max": 1,
+   "min": 0,
+   "name": "value",
+   "short_description": "Value",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The alteration intensity for saturation",
+   "label": "Saturation",
+   "max": 1,
+   "min": 0,
+   "name": "saturation",
+   "short_description": "Saturation",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Alter HSV",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/alter_hsv.mmg"
+ },
+ "type_version": 1
+}

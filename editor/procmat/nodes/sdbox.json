@@ -1,0 +1,74 @@
+{
+ "code": [],
+ "description": "A rectangle described as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sd_box"
+ ],
+ "id": "sdbox",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdBox",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated signed distance function",
+   "expr": "sd_box($uv-vec2($cx+0.5, $cy+0.5), vec2($w, $h))",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "description": "The width of the box",
+   "label": "Width",
+   "max": 1,
+   "min": 0,
+   "name": "w",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The height of the box",
+   "label": "Height",
+   "max": 1,
+   "min": 0,
+   "name": "h",
+   "short_description": "Height",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The position of the center of the box on the X axis",
+   "label": "Center X",
+   "max": 1,
+   "min": -1,
+   "name": "cx",
+   "short_description": "Center.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The position of the center of the box on the Y axis",
+   "label": "Center Y",
+   "max": 1,
+   "min": -1,
+   "name": "cy",
+   "short_description": "Center.y",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdBox",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdbox.mmg"
+ },
+ "type_version": 1
+}

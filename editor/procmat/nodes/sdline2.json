@@ -1,0 +1,96 @@
+{
+ "code": [
+  "vec2 $(name_uv)_sdl = sdLine($uv, vec2($ax+0.5, $ay+0.5), vec2($bx+0.5, $by+0.5));"
+ ],
+ "description": "A line or a capsule shape described as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdLine"
+ ],
+ "id": "sdline2",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "A profile for the shape, generated (for example) by a Tonality node.",
+   "label": "",
+   "name": "profile",
+   "short_description": "Profile",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdLine",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The shape as signed distance function",
+   "expr": "$(name_uv)_sdl.x-$r*$profile(vec2($(name_uv)_sdl.y, 0.5))",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The position on the X axis of the first point of the line",
+   "label": "A X",
+   "max": 1,
+   "min": -1,
+   "name": "ax",
+   "short_description": "A.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The position on the Y axis of the first point of the line",
+   "label": "A Y",
+   "max": 1,
+   "min": -1,
+   "name": "ay",
+   "short_description": "A.y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The position on the X axis of the second point of the line",
+   "label": "B X",
+   "max": 1,
+   "min": -1,
+   "name": "bx",
+   "short_description": "B.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The position on the Y axis of the second point of the line",
+   "label": "B Y",
+   "max": 1,
+   "min": -1,
+   "name": "by",
+   "short_description": "B.y",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The width of the capsule shape around the line",
+   "label": "Width",
+   "max": 1,
+   "min": 0,
+   "name": "r",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdLine",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdline2.mmg"
+ },
+ "type_version": 1
+}

@@ -1,0 +1,222 @@
+{
+ "connections": [
+  {
+   "from": "fbm",
+   "from_port": 0.0,
+   "to": "circle_map",
+   "to_port": 0.0
+  },
+  {
+   "from": "shape_2",
+   "from_port": 0.0,
+   "to": "scale",
+   "to_port": 0.0
+  },
+  {
+   "from": "scale",
+   "from_port": 0.0,
+   "to": "warp_2",
+   "to_port": 0.0
+  },
+  {
+   "from": "fbm_2",
+   "from_port": 0.0,
+   "to": "warp_2",
+   "to_port": 1.0
+  },
+  {
+   "from": "warp_2",
+   "from_port": 0.0,
+   "to": "warp",
+   "to_port": 0.0
+  },
+  {
+   "from": "circle_map",
+   "from_port": 0.0,
+   "to": "warp",
+   "to_port": 1.0
+  },
+  {
+   "from": "shape_2_2",
+   "from_port": 0.0,
+   "to": "warp_3",
+   "to_port": 0.0
+  },
+  {
+   "from": "circle_map",
+   "from_port": 0.0,
+   "to": "warp_3",
+   "to_port": 1.0
+  },
+  {
+   "from": "warp_3",
+   "from_port": 0.0,
+   "to": "blend",
+   "to_port": 0.0
+  },
+  {
+   "from": "warp",
+   "from_port": 0.0,
+   "to": "blend",
+   "to_port": 1.0
+  },
+  {
+   "from": "blend",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 0.0
+  }
+ ],
+ "description": "",
+ "format": 1,
+ "id": "graph_workflow_shapes_splat",
+ "inputs": [],
+ "kind": "graph",
+ "name": "Splat",
+ "nodes": [
+  {
+   "id": "fbm_2",
+   "parameters": {
+    "iterations": 3.0,
+    "noise": 1.0,
+    "persistence": 0.8,
+    "scale_x": 4.0,
+    "scale_y": 4.0
+   },
+   "type": "fbm"
+  },
+  {
+   "id": "scale",
+   "parameters": {
+    "cx": 0.0,
+    "cy": 0.0,
+    "scale_x": 1.32,
+    "scale_y": 1.0
+   },
+   "type": "scale"
+  },
+  {
+   "id": "warp",
+   "parameters": {
+    "amount": 0.21,
+    "eps": 0.01,
+    "mode": 0.0
+   },
+   "type": "warp"
+  },
+  {
+   "id": "warp_2",
+   "parameters": {
+    "amount": 0.06,
+    "eps": 0.1,
+    "mode": 0.0
+   },
+   "type": "warp"
+  },
+  {
+   "id": "shape_2",
+   "parameters": {
+    "edge": 0.01,
+    "radius": 0.13,
+    "shape": 0.0,
+    "sides": 2.0
+   },
+   "type": "shape"
+  },
+  {
+   "id": "shape_2_2",
+   "parameters": {
+    "edge": 0.01,
+    "radius": 0.1,
+    "shape": 0.0,
+    "sides": 1.0
+   },
+   "type": "shape"
+  },
+  {
+   "id": "circle_map",
+   "parameters": {
+    "radius": 1.5,
+    "repeat": 1.0
+   },
+   "seed": -54158.0,
+   "type": "circle_map"
+  },
+  {
+   "id": "fbm",
+   "parameters": {
+    "iterations": 3.0,
+    "noise": 0.0,
+    "persistence": 1.0,
+    "scale_x": 32.0,
+    "scale_y": 8.0
+   },
+   "type": "fbm"
+  },
+  {
+   "id": "warp_3",
+   "parameters": {
+    "amount": 0.06,
+    "eps": 0.01,
+    "mode": 0.0
+   },
+   "type": "warp"
+  },
+  {
+   "id": "blend",
+   "parameters": {
+    "amount": 1.0,
+    "blend_type": 9.0
+   },
+   "type": "blend"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "port0",
+   "name": "port0",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.1,
+   "label": "Impact size",
+   "links": [
+    {
+     "node": "shape_2_2",
+     "param": "radius"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param0",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.21,
+   "label": "Explosiveness",
+   "links": [
+    {
+     "node": "warp",
+     "param": "amount"
+    }
+   ],
+   "max": 1,
+   "min": 0,
+   "name": "param1",
+   "step": 0.005,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "material_maker/library/base.json"
+ },
+ "type_version": 1
+}

@@ -1,0 +1,86 @@
+{
+ "connections": [
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "convert_colorspace",
+   "to_port": 0
+  },
+  {
+   "from": "convert_colorspace",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  }
+ ],
+ "description": "Converts from a specified color space to RGB",
+ "format": 1,
+ "id": "convert_to_rgb",
+ "inputs": [
+  {
+   "description": "Input (Selected colorspace)",
+   "group_size": 0,
+   "label": "XYZA",
+   "name": "XYZA",
+   "type": "rgba"
+  }
+ ],
+ "kind": "graph",
+ "name": "Convert to RGB",
+ "nodes": [
+  {
+   "id": "convert_colorspace",
+   "parameters": {
+    "colorspace": 1,
+    "direction": 1
+   },
+   "seed": 0,
+   "type": "convert_colorspace"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Output (RGBA)",
+   "group_size": 0,
+   "label": "RGBA",
+   "name": "RGBA",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 1,
+   "description": "Colorspace of the input. Select RGB to pass through the input unchanged.",
+   "label": "From",
+   "links": [
+    {
+     "node": "convert_colorspace",
+     "param": "colorspace"
+    }
+   ],
+   "name": "param0",
+   "type": "enum",
+   "values": [
+    {
+     "name": "RGB (no-op)",
+     "value": "rgb"
+    },
+    {
+     "name": "HSV",
+     "value": "hsv"
+    },
+    {
+     "name": "YUV",
+     "value": "yuv"
+    }
+   ]
+  }
+ ],
+ "short_description": "Convert to RGB",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/convert_to_rgb.mmg"
+ },
+ "type_version": 1
+}
