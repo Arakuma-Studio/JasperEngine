@@ -121,6 +121,10 @@ loaded a model in the background while that file exists, so what else loads the 
 - The other test projects with a gate: `atmosphere` (S12), `post-fx` (S13) and `terrain`, a
   terrain displaced by a 16-bit heightmap, which WebGL2 and GLES3 cannot sample as R16 (the
   renderer uploads it as R32F or R16F there).
+- A baseline's `chrome_flags` are extra Chrome flags: `GATE=pixel-perfect` (after
+  `WEB_PROJECT=pixel-perfect tools/build.sh web`) runs at a device scale factor of 2 and checks that
+  a Pixel Perfect Camera sizes the canvas backing store at its CSS size times `devicePixelRatio` and
+  draws it pixelated (S41 AC13).
 
 ### Compiled and prebuilt game builds (MCP, `JASPER_SLOW_BUILD=1`)
 

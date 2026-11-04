@@ -22,7 +22,7 @@ baseline's isolated; a line of the baseline's "console" list ({"text", "level"}:
 warning, error) missing, at another console level, or (with "ordered": true) out of order. An
 error the "console" list names is expected and fails nothing. A baseline may also give "query" (items added to the
 page URL's query), "seconds" (the run length when --seconds is not given), "capture_timeout" (seconds the screenshot may take), "init_script" (JavaScript run before the page's own scripts), "eval" with "eval_expect" (substrings
-its value must contain), and "allow": substrings of console lines and uncaught exceptions that are expected (a
+its value must contain), "chrome_flags" (extra Chrome flags, e.g. a device scale factor), and "allow": substrings of console lines and uncaught exceptions that are expected (a
 deliberate crash) and fail nothing. Exit 2 when the gate itself cannot run (no Chrome, no page target).
 
 --until-line TEXT ends the run at the first console line containing TEXT (a game that prints when it
@@ -350,7 +350,7 @@ def main() -> int:
          # a container has neither the user namespaces of Chrome's sandbox nor a large /dev/shm
          "--no-sandbox", "--disable-dev-shm-usage",
          "--window-size=1280,720", "--no-first-run", "--no-default-browser-check", "--mute-audio",
-         *args.chrome_flag, "about:blank"],
+         *baseline.get("chrome_flags", []), *args.chrome_flag, "about:blank"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     try:
