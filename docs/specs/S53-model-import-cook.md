@@ -343,3 +343,94 @@ Out of scope:
 - **Cook time on huge projects:** the queue is background, and export waits with progress.
 - **Lua scanning for Read/Write** may miss a dynamic call. Default: a project setting
   `mesh.keep_cpu_data_for_scripts`, on when any script uses the mesh-reading API.
+
+## Decisions (s41-loader: R1-R7, R15, R27, R28's decoder size)
+
+1. **One step, in place.** `GltfNormalize::run` (`engine/core/subsystem/GltfNormalize.h`) runs right
+   after every tinygltf parse: `MeshSystem::loadGLTFFile` (the synchronous load and
+   `parseGLTFFile`, so sub-clips too), the background parse (`loadModelFileOnWorker`), particle mesh
+   shapes and the Vertex Animation import. It changes the parsed model so the rest of the loader reads
+   core glTF: widened streams go into one appended buffer named `GltfNormalize`, widened accessors
+   keep their index (their `bufferView` and type change), baked UVs are new accessors. Node, mesh,
+   primitive, material and animation counts never change.
+2. **tinygltf patch** (marked "JasperEngine patch"): a buffer with `EXT_/KHR_meshopt_compression`
+   `"fallback": true` and no uri loads no data (in a .gltf too), and only buffer 0 can take a GLB's BIN
+   chunk; another uri-less buffer is a parse error naming it. Before, every uri-less buffer got a copy
+   of the BIN chunk's first bytes.
+3. **Validation before the decoder** (R2): the extension's rules (stride 4..256 and a multiple of 4
+   for attributes, 2 or 4 for indices, whole triangles, filter strides, `count * byteStride ==
+   bufferView.byteLength`), the compressed range inside its buffer, views into a placeholder must be
+   compressed, at most 512 MB decoded per model (`kMaxDecodedBytes`), and decoded indices below the
+   primitive's vertex count. Every refusal names the file and the bufferView (or primitive). An
+   authored fallback (gltfpack `-cf`) is used as it is, without decoding. The COLOR filter is accepted
+   on `KHR_meshopt_compression` only.
+4. **Quantized formats kept on the GPU:** normalized TANGENT and COLOR VEC4 (BYTE4N, UBYTE4N, SHORT4N,
+   USHORT4N), normalized TEXCOORD VEC2 of 16 bits (SHORT2N, USHORT2N), and normalized VEC3 BYTE/SHORT
+   normals whose stride has room for a fourth component (bound as BYTE4N/SHORT4N, the shaders read xyz).
+   Positions are always widened to floats (bounds, picking, physics and LODs read floats), as are
+   integer UVs, two-byte UVs, morph deltas, instance transforms and animation outputs. Node-transform
+   baking (previews, Merge Static Meshes) now also takes normalized normals and tangents.
+5. **KHR_texture_transform** is baked per UV set: one transform moves the set; a second on set 0 moves
+   to a new set 1 when no texture or primitive of the material uses set 1; anything more uses the
+   first texture's transform with a warning naming the material. The extension's `texCoord` override
+   becomes the texture's set.
+6. **KHR_texture_basisu:** the extension's image becomes the texture's source where the Basis
+   transcoder is built (editor, web players, tests). A native player keeps the fallback `source`, or
+   reports an error with `cookFixes` when there is none (the cook transcodes it).
+7. **EXT_mesh_gpu_instancing:** an instanced node always gets its own child entity (its node transform
+   on it, never baked into vertices) with an `InstancedMeshComponent` holding the instances
+   (`maxInstances` = their count). Merge Static Meshes refuses such a model with the reason; a
+   flattened preview draws the node once, as its first instance.
+8. **MSFT_lod:** the lower levels' nodes (and their subtrees) lose their mesh in the normalised model,
+   so only level 0 draws; `GltfNormalizeResult::lodChains` (and `GltfNormalize::readLodChains` on a
+   model before normalising) keep the chain with `MSFT_screencoverage` for the cook. `MSFT_lod` on a
+   material is ignored (level 0's material draws).
+9. **An unread required extension** is an Error diagnostic, and the model still loads as before (its
+   data is readable core glTF); data the loader cannot decode (corrupt meshopt, Draco in a game) fails
+   the load. The error that fails a load is logged once by the caller ("Can't load GLTF model ...");
+   every other finding once per model by `run`.
+10. **Draco and WebP** decoders register from the editor's objects at start-up
+    (`editor/util/GltfEditorDecoders.cpp`, a static registration), so every editor executable and the
+    editor tests have them and the engine library never links them. `GltfNormalizeResult::
+    needsEditorDecoders` and an Info diagnostic with `cookFixes` tell the cook to always cook such a file.
+11. **OBJ** (R7): binary-equal corners welded (`meshopt_generateVertexRemap` over the 48-byte
+    interleaved vertex, so colour too), then per submesh vertex cache and overdraw (1.05) order unless
+    the submesh blends, then first-use vertex order over all submeshes.
+12. **Particle mesh shapes** of a quantized mesh take the transform of the node that draws it (its
+    dequantization); other meshes keep their own space, as before.
+13. **The lattice bake** still refuses compressed files: it rewrites the source file.
+14. **meshoptimizer v1.3** is the tag's `src/` unchanged (`clusterizer.cpp`, `remesher.cpp` and the
+    header differ from the old snapshot; every file the engine calls is identical). On the web,
+    `vertexcodec.cpp` and `vertexfilter.cpp` build with `-msimd128` when `JASPERENGINE_WASM_SIMD` is on
+    (the default); the OFF build stays scalar.
+15. **The decoder's size (R28)**, measured as the release web player compiles it (em++ -O3, the
+    three decoder sources alone exporting the seven `meshopt_decode*` functions, the web image's
+    Emscripten): 16,014 bytes of wasm and 3,897 bytes gzip -9 with simd128, 8,330 and 3,316 scalar;
+    under the 8 KB gzipped budget. The normalise step's own code comes on top and is not part of it.
+
+### The loader's API for s41-importer
+
+- `GltfNormalize::normalize(model, filename, result)` after a tinygltf parse in the cook (no Console,
+  no registry); `run` is the same plus both. Read `result.ok`, `result.diagnostics`,
+  `result.lodChains` (R4), `result.handledExtensions` and `result.needsEditorDecoders` (R6: always
+  cook).
+- The normalised model still has the meshopt extension objects on its bufferViews and the decoded
+  data in the former placeholder buffers: write fresh buffers and views in a cooked glb, never the
+  parse's `extensions` of views and buffers.
+- `ModelLoadDiagnostics::get(path)` / `hasErrors(path)` / `models()` / `revision()`: each model's last
+  load (`GltfDiagnostic`: severity, extension, part, message, fix, cookFixes), keyed by
+  `MeshSystem::getModelFilenameKey`. Export fails on an Error (R5); the Inspector row, the badge and
+  `inspect_models` show `text()` or the fields.
+- `GltfNormalize::supportedExtensions()` / `isSupportedExtension(name)`: includes `JE_mesh_lods`
+  (contract C1), which the loader passes through untouched.
+
+## Deviations (s41-loader)
+
+1. **R1, "otherwise pass it to the material as an existing UV transform":** materials have no UV
+   transform, and adding one is a shader change on every backend for a case exporters rarely write.
+   The second transform of a UV set is baked into the free second UV set instead (Decision 5); only
+   beyond that is the first transform used, with a warning.
+2. **R5's Inspector, badge and `inspect_models` parts** are s41-importer's (R18, R22); this stream
+   provides and tests the API they read (`ModelLoadDiagnostics`) and the Console part.
+3. **AC11 (loading):** a cooked glb is a glb, so players load it through this same step; the export
+   and smoke-test parts are s41-importer's.

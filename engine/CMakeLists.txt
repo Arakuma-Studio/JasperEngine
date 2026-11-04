@@ -1267,6 +1267,14 @@ endif()
 if(NOT MSVC)
     target_compile_options(meshoptimizer PRIVATE -ffp-contract=off)
 endif()
+# The glTF loader's meshopt decoder (docs/specs/S53-model-import-cook.md R27): WebAssembly has no
+# run-time SIMD detection, so the codec and filters take simd128 at build time, with the particle
+# kernels' switch (JASPERENGINE_WASM_SIMD, core/particles/ParticleSources.cmake; OFF stays scalar).
+# Only these two files: the simplifier keeps the scalar maths the LOD and placement tests pin.
+if(EMSCRIPTEN AND (NOT DEFINED JASPERENGINE_WASM_SIMD OR JASPERENGINE_WASM_SIMD))
+    set_source_files_properties(libs/meshoptimizer/vertexcodec.cpp libs/meshoptimizer/vertexfilter.cpp
+        DIRECTORY libs/meshoptimizer PROPERTIES COMPILE_OPTIONS -msimd128)
+endif()
 
 # One C++ standard for every object of the binary: libc++ template definitions instantiated
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into
@@ -1737,6 +1745,7 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/MeshSystemGltfPbr.cpp
+    core/subsystem/GltfNormalize.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/WaterSystem.cpp
     core/subsystem/AtmosphereRenderer.cpp

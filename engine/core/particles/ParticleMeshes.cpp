@@ -8,6 +8,7 @@
 #include "io/File.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
+#include "subsystem/GltfNormalize.h"
 
 #include "tiny_gltf.h"
 #include "tiny_obj_loader.h"
@@ -186,10 +187,55 @@ namespace {
         return true;
     }
 
+    // a quantized mesh's vertices through its node's transform (scale, rotation, offset; a
+    // matrix node as its columns), its normals through the rotation and the inverse scale
+    void dequantize(ParticleMeshData& out, const tinygltf::Node& node){
+        double m[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+        if (node.matrix.size() == 16){
+            std::copy(node.matrix.begin(), node.matrix.end(), m);
+        }else{
+            const double t[3] = {node.translation.size() == 3 ? node.translation[0] : 0.0, node.translation.size() == 3 ? node.translation[1] : 0.0,
+                                 node.translation.size() == 3 ? node.translation[2] : 0.0};
+            const double sc[3] = {node.scale.size() == 3 ? node.scale[0] : 1.0, node.scale.size() == 3 ? node.scale[1] : 1.0,
+                                  node.scale.size() == 3 ? node.scale[2] : 1.0};
+            double x = 0, y = 0, z = 0, w = 1;
+            if (node.rotation.size() == 4){ x = node.rotation[0]; y = node.rotation[1]; z = node.rotation[2]; w = node.rotation[3]; }
+            const double r[9] = {1 - 2 * (y * y + z * z), 2 * (x * y + z * w), 2 * (x * z - y * w),
+                                 2 * (x * y - z * w), 1 - 2 * (x * x + z * z), 2 * (y * z + x * w),
+                                 2 * (x * z + y * w), 2 * (y * z - x * w), 1 - 2 * (x * x + y * y)};
+            for (int c = 0; c < 3; c++){
+                for (int row = 0; row < 3; row++)
+                    m[c * 4 + row] = r[c * 3 + row] * sc[c];
+            }
+            m[12] = t[0]; m[13] = t[1]; m[14] = t[2];
+        }
+        // the normal matrix: columns of the linear part divided by their squared lengths
+        double n[9];
+        for (int c = 0; c < 3; c++){
+            const double length2 = m[c * 4] * m[c * 4] + m[c * 4 + 1] * m[c * 4 + 1] + m[c * 4 + 2] * m[c * 4 + 2];
+            for (int row = 0; row < 3; row++)
+                n[c * 3 + row] = length2 > 0.0 ? m[c * 4 + row] / length2 : 0.0;
+        }
+        for (size_t v = 0; v + ParticleMeshData::kFloatsPerVertex <= out.vertices.size(); v += ParticleMeshData::kFloatsPerVertex){
+            float* p = &out.vertices[v];
+            const double px = p[0], py = p[1], pz = p[2], nx = p[3], ny = p[4], nz = p[5];
+            for (int row = 0; row < 3; row++){
+                p[row] = (float)(m[row] * px + m[4 + row] * py + m[8 + row] * pz + m[12 + row]);
+                p[3 + row] = (float)(n[row] * nx + n[3 + row] * ny + n[6 + row] * nz);
+            }
+            const float length = std::sqrt(p[3] * p[3] + p[4] * p[4] + p[5] * p[5]);
+            if (length > 0.0f){
+                p[3] /= length; p[4] /= length; p[5] /= length;
+            }
+        }
+    }
+
     bool gltfMesh(const std::string& path, int index, ParticleMeshData& out, std::string* error){
         tinygltf::Model model;
         tinygltf::TinyGLTF loader;
         loader.SetFsCallbacks({&fileExists, &tinygltf::ExpandFilePath, &readWholeFile, &tinygltf::WriteWholeFile, &fileSize});
+        // the shapes take geometry only: images stay undecoded (a KTX2 or WebP one too)
+        loader.SetImagesAsIs(true);
         std::string err, warn;
         const bool binary = FileData::getFilePathExtension(path) == "glb";
         const bool ok = binary ? loader.LoadBinaryFromFile(&model, &err, &warn, path) : loader.LoadASCIIFromFile(&model, &err, &warn, path);
@@ -197,8 +243,29 @@ namespace {
             if (error) *error = err.empty() ? "cannot read " + path : err;
             return false;
         }
+        // the meshes stored as integers (KHR_mesh_quantization): their scale and offset are the
+        // transform of the node that draws them, so the shape takes it (the others keep the mesh's
+        // own space, as before)
+        std::vector<int> quantizedNodes(model.meshes.size(), -1);
+        for (size_t n = 0; n < model.nodes.size(); n++){
+            const int mesh = model.nodes[n].mesh;
+            if (mesh < 0 || mesh >= (int)model.meshes.size() || quantizedNodes[mesh] >= 0 || model.meshes[mesh].primitives.empty())
+                continue;
+            auto position = model.meshes[mesh].primitives[0].attributes.find("POSITION");
+            if (position != model.meshes[mesh].primitives[0].attributes.end() && position->second >= 0 &&
+                    position->second < (int)model.accessors.size() &&
+                    model.accessors[position->second].componentType != TINYGLTF_COMPONENT_TYPE_FLOAT)
+                quantizedNodes[mesh] = (int)n;
+        }
+        // compressed and quantized streams as core glTF (docs/specs/S53-model-import-cook.md R1)
+        GltfNormalizeResult normalized;
+        if (!GltfNormalize::run(model, path, normalized)){
+            if (error) *error = normalized.firstError();
+            return false;
+        }
         int seen = 0;
-        for (const tinygltf::Mesh& mesh : model.meshes){
+        for (size_t meshIndex = 0; meshIndex < model.meshes.size(); meshIndex++){
+            const tinygltf::Mesh& mesh = model.meshes[meshIndex];
             for (const tinygltf::Primitive& primitive : mesh.primitives){
                 if (seen++ != index)
                     continue;
@@ -240,6 +307,8 @@ namespace {
                         return false;
                     }
                 }
+                if (quantizedNodes[meshIndex] >= 0)
+                    dequantize(out, model.nodes[quantizedNodes[meshIndex]]);
                 if (!hasNormals)
                     computeNormals(out);
                 return true;
