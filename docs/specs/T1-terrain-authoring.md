@@ -1646,4 +1646,8 @@ the sketch's names, which all still exist unless a line below says otherwise.
   attempt per point: those points are its stamps, so `sculpt_terrain` counts stay what they were.
 - **D-25 The allocation counter reaches `jasperengine-editor-tests`,** with bytes and the largest allocation added.
   AC15 and AC20 need it for code that lives in the editor.
+- **D-26 AC13's byte tolerance is one step per stroke.** R17's 1/255 holds for a stamp, and `test_terrain_baseline.py`'s blend and
+  density maps are written by two strokes, each rounding (R11) where the unmigrated editor truncated. The second stroke starts up to a
+  step away and can end two off, so that test allows two steps on at most 5 % of the values (measured: at most 3.4 %, on density), and it prints the share. The fixture was
+  not recorded again, and heights keep their 1/65535.
 
