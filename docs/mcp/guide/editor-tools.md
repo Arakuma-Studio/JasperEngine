@@ -71,7 +71,16 @@ the Recorder window's resolution); `audio: true` mixes the game's sound in (from
 only). The result is the sidecar (`frames, fps, width, height, encoder, scene, take,
 startFrame, warnings, wallSeconds`) with `files` or `movie`; `<output>.recording.json` holds the
 same. `cancel_job` stops early and still finalises. A `play` `fixed_fps` is replaced while
-recording and restored after (`overrode_fixed_fps`).
+recording and restored after (`overrode_fixed_fps`). `estimated_bytes` and `free_bytes` report the
+start's free-space check; when the estimate does not fit, `warnings` says so and it records anyway.
+
+A success is a good recording: no frame shows a stand-in (a frame waits, in game time, for what it
+draws to load) and the output's name holds only a complete file. The first failed write stops the
+recording and the job is `failed`, with Play still running (stop it yourself): `error` says what
+and why ("the audio write failed: disk full, 3 MB free"), `failed_step` is `audio`, `video`, `mux`,
+`png`, `publish`, `readback` or `loading`, the output path holds nothing, and `partial` /
+`partial_frames` name what was kept (`<name>.partial.<ext>`, or `<folder>.partial/` for a sequence)
+when it decodes; without them nothing was kept.
 
 From a shell: `jasperengine-editor call --project P --wait-job record_game --frames 90 --format mp4 --output out.mp4`.
 

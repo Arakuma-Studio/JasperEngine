@@ -113,10 +113,11 @@ void recordGameTool(const CallPtr& call) {
         Json files = Json::array();
         for (const fs::path& file : result.files) files.push_back(FileUtils::pathToGenericUtf8(file));
         if (settings.kind == recorder::Kind::ImageSequence) data["files"] = files;
-        else data["movie"] = FileUtils::pathToGenericUtf8(result.output);
+        else if (result.ok) data["movie"] = FileUtils::pathToGenericUtf8(result.output);
         data["sidecar"] = FileUtils::pathToGenericUtf8(result.sidecar);
         if (result.overriddenFixedFps > 0.0) data["overrode_fixed_fps"] = result.overriddenFixedFps;
-        if (job->cancelRequested()) {
+        // (a failed write is a failure, stopped or not)
+        if (job->cancelRequested() && result.failedStep.empty()) {
             job->markCancelled("Stopped after " + std::to_string(result.frames) + " frame(s); the output is finalised.");
             return;
         }

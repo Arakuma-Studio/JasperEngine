@@ -1506,6 +1506,11 @@ size_t TextureDataPool::getLoadingCount(){
     return count;
 }
 
+size_t TextureDataPool::getUnclaimedCount(){
+    std::lock_guard<std::mutex> lock(cacheMutex);
+    return basisJobs.size() + pendingBuilds.size() + backgroundBuilds.size();
+}
+
 std::vector<std::string> TextureDataPool::getLoadingIds(size_t max){
     std::lock_guard<std::mutex> lock(cacheMutex);
     std::vector<std::string> out;
