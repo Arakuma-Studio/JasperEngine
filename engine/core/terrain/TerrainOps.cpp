@@ -1018,7 +1018,7 @@ namespace {
                     evaluateFilter(target, op.filter, lattice, block, weights);
                 }
 
-                // The kernels work relative to the map's corner; S56's signed texels stay out of them
+                // The kernels work relative to the map's corner; T4's signed texels stay out of them
                 const int cornerX = format.bounds.x;
                 const int cornerY = format.bounds.y;
                 ErosionField field;
@@ -1430,7 +1430,7 @@ namespace {
         entry.mapCreated = detail.mapCreated;
         entry.mapRemoved = detail.mapRemoved;
         if (detail.mapCreated) warn("map_created", "This op created the hole map.");
-        // Nothing draws a hole until S55's consumers land (S53 R12, DC3)
+        // Nothing draws a hole until T3's consumers land (T1 R12, DC3)
         if (op.type == OpType::CutHoles && detail.changed > 0) {
             warn("holes_not_rendered", "Holes are stored and answered by the surface query, but no renderer, collider or navmesh acts on them yet.");
         }

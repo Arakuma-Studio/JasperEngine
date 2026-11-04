@@ -4,7 +4,7 @@
 #ifndef OVERLAY_MAP_STORE_H
 #define OVERLAY_MAP_STORE_H
 
-// S53 R3, DC1, DC2, DC6: a transaction over any store. Commit, dry run, strokes, Esc, delta capture
+// T1 R3, DC1, DC2, DC6: a transaction over any store. Commit, dry run, strokes, Esc, delta capture
 // and live spline sessions are all this object: 64x64 tiles copied on first write, float working
 // values so gentle stamps are not lost to rounding, and the stored bytes from before.
 
@@ -51,7 +51,7 @@ namespace jasperengine::terrain {
         void visitTiles(const TileVisitor& visitor) const;
 
         size_t tileCount() const;
-        // The heap this transaction holds in tiles (S53 R26's bound)
+        // The heap this transaction holds in tiles (T1 R26's bound)
         size_t memoryBytes() const;
 
         TerrainFrame frame() const override;

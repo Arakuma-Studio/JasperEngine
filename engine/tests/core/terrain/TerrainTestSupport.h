@@ -4,7 +4,7 @@
 #ifndef TESTS_TERRAIN_SUPPORT_H
 #define TESTS_TERRAIN_SUPPORT_H
 
-// Maps and stores the terrain engine's tests share (docs/specs/S53-terrain-authoring.md §7)
+// Maps and stores the terrain engine's tests share (docs/specs/T1-terrain-authoring.md §7)
 
 #include "terrain/OverlayMapStore.h"
 #include "terrain/RawMapStore.h"
@@ -76,7 +76,7 @@ namespace terraintest {
         return applyOps(store, std::span<const Op>(&op, 1), options);
     }
 
-    // S53 R86, AC68: what S56's store looks like to the engine: signed texels on an (i * h) lattice,
+    // T1 R86, AC68: what T4's store looks like to the engine: signed texels on an (i * h) lattice,
     // small blocks, refused rectangles, tiles created on write that undo removes. Backed by a
     // RawMapStore shifted by half the map, so its bytes can be compared with the plain store's.
     class FakeTiledStore final : public TerrainMapStore {

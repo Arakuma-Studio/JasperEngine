@@ -11,7 +11,7 @@ using namespace jasperengine::terrain;
 
 namespace {
 
-    // The rectangle in pieces no larger than a store's block (S53 R87)
+    // The rectangle in pieces no larger than a store's block (T1 R87)
     template<typename Visit>
     void forEachBlock(const TerrainMapStore& store, MapId map, TexelRect rect, Visit&& visit) {
         const TexelRect preferred = store.preferredBlock(map);

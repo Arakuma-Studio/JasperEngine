@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// What the terrain folder may depend on, and that it is the one query (S53 R1, R8, R14; AC1, AC12), by
+// What the terrain folder may depend on, and that it is the one query (T1 R1, R8, R14; AC1, AC12), by
 // reading the sources as SokolPatchMarkers does
 
 #include <gtest/gtest.h>

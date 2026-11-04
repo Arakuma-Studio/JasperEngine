@@ -9,7 +9,7 @@
 #
 # Each .cpp goes into the two Sources phases that compile Terrain.cpp (the iOS and macOS engine
 # targets), each .h into its Headers phase, under the group of its directory (made when missing).
-# The folder's sources get -ffp-contract=off, as CMake gives them (docs/specs/S53-terrain-authoring.md
+# The folder's sources get -ffp-contract=off, as CMake gives them (docs/specs/T1-terrain-authoring.md
 # R8). Object ids are derived from the file path ("TRRN" + sha1), so a merge with another branch's
 # additions only has to keep both lines. --check exits 1 when something is missing.
 

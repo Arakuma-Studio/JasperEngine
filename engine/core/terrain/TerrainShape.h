@@ -4,7 +4,7 @@
 #ifndef TERRAIN_SHAPE_H
 #define TERRAIN_SHAPE_H
 
-// Where an operation applies (S53 R5, R6): shapes and filters, in terrain-local units, evaluated at
+// Where an operation applies (T1 R5, R6): shapes and filters, in terrain-local units, evaluated at
 // each texel's sample. Neither knows what the operation does.
 
 #include "Export.h"
@@ -44,7 +44,7 @@ namespace jasperengine::terrain {
         Vector2 size = Vector2(0.0f, 0.0f);     // Mask: its extent
         bool maskRound = false;                 // Mask: clipped to the inscribed ellipse, as a circular brush
 
-        // Stroke: what a stamp's pressure scales (S53 R37)
+        // Stroke: what a stamp's pressure scales (T1 R37)
         bool pressureStrength = true;
         bool pressureSize = false;
 
@@ -76,7 +76,7 @@ namespace jasperengine::terrain {
     };
 
     // The local position of a map's texels. Worked out once from the map's whole extent, so a texel
-    // lands on one position whichever block it is computed in (S53 R86, R87).
+    // lands on one position whichever block it is computed in (T1 R86, R87).
     struct MapLattice {
         float originX = 0.0f, originZ = 0.0f;
         float stepX = 1.0f, stepZ = 1.0f;
@@ -139,7 +139,7 @@ namespace jasperengine::terrain {
     JASPERENGINE_API void evaluateFilter(const TerrainMapStore& store, const Filter& filter, const MapLattice& lattice, TexelRect block,
                                          std::span<float> weights, MapReader reader = nullptr, void* readerUser = nullptr);
 
-    // A range test with S53 R6's band: 1 in the middle, smooth to 0 over softness * width / 2 inside
+    // A range test with T1 R6's band: 1 in the middle, smooth to 0 over softness * width / 2 inside
     // each end, and 0 outside. Hard at softness 0.
     JASPERENGINE_API float softRange(float value, float low, float high, float softness);
 

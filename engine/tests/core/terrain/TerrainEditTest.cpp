@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The component side (S53 R3, R42, R53, R91; AC39, AC64, AC72)
+// The component side (T1 R3, R42, R53, R91; AC39, AC64, AC72)
 
 #include "TerrainTestSupport.h"
 
@@ -58,7 +58,7 @@ namespace {
 
 TEST(TerrainEdit, StoreReadsAndWritesTheComponentsMaps) {
     TerrainComponent terrain;
-    makeTerrain(terrain, "s53-store");
+    makeTerrain(terrain, "t1-store");
     TerrainComponentStore store(nullptr, 1, terrain);
 
     const MapFormat format = store.format(HEIGHT);
@@ -108,7 +108,7 @@ TEST(TerrainEdit, StoreReadsAndWritesTheComponentsMaps) {
 
 TEST(TerrainEdit, CreatesAndRemovesMaps) {
     TerrainComponent terrain;
-    makeTerrain(terrain, "s53-create");
+    makeTerrain(terrain, "t1-create");
     terrain.foliageLayers.resize(1);
     TerrainComponentStore store(nullptr, 1, terrain);
 
@@ -132,7 +132,7 @@ TEST(TerrainEdit, CreatesAndRemovesMaps) {
     EXPECT_FALSE(refused.ok);
     EXPECT_NE(refused.error.find("foliage layer"), std::string::npos) << refused.error;
 
-    // Holes end to end, through the field S55 extends
+    // Holes end to end, through the field T3 extends
     EXPECT_TRUE(terrain.holeMap.empty());
     const TerrainOpResult cut = apply(store, circleOp(OpType::CutHoles, 0.0f, 0.0f, 3.0f));
     ASSERT_TRUE(cut.ok) << cut.error;
@@ -151,11 +151,11 @@ TEST(TerrainEdit, CreatesAndRemovesMaps) {
 TEST(TerrainEdit, EventsFireOncePerFrameForEveryRoute) {
     Scene scene;
     TerrainComponent terrain;
-    makeTerrain(terrain, "s53-events");
+    makeTerrain(terrain, "t1-events");
     terrain.blendMaps.resize(1);
-    giveMap(terrain.blendMaps[0], "s53-events-blend", 4, 8, 0);
+    giveMap(terrain.blendMaps[0], "t1-events-blend", 4, 8, 0);
     terrain.foliageLayers.resize(1);
-    giveMap(terrain.foliageLayers[0].densityMap, "s53-events-density", 1, 8, 0);
+    giveMap(terrain.foliageLayers[0].densityMap, "t1-events-density", 1, 8, 0);
     const Entity entity = 42;
     TerrainComponentStore store(&scene, entity, terrain);
 
@@ -258,7 +258,7 @@ TEST(TerrainEdit, EventsFireOncePerFrameForEveryRoute) {
 TEST(TerrainEdit, EventsDeliverFromMeshSystemUpdate) {
     Scene scene;
     TerrainComponent terrain;
-    makeTerrain(terrain, "s53-events-update");
+    makeTerrain(terrain, "t1-events-update");
     TerrainComponentStore store(&scene, 7, terrain);
     int deliveries = 0;
     Subscription subscription = TerrainEditEvents::subscribe(&scene, [&](Entity, MapId, TexelRect) { deliveries++; });
@@ -278,7 +278,7 @@ TEST(TerrainEdit, EventsKeepScenesApart) {
     Scene sceneA;
     Scene sceneB;
     TerrainComponent terrain;
-    makeTerrain(terrain, "s53-events-scenes");
+    makeTerrain(terrain, "t1-events-scenes");
     TerrainComponentStore storeA(&sceneA, 5, terrain);
     TerrainComponentStore storeB(&sceneB, 5, terrain);   // the same entity number in another scene
 
@@ -314,10 +314,10 @@ TEST(TerrainEdit, ZeroCostWhenUnused) {
     if (!testsupport::countsAllocations()) GTEST_SKIP() << "no allocation counter on this platform";
 
     TerrainComponent terrain;
-    makeTerrain(terrain, "s53-zero-cost");
+    makeTerrain(terrain, "t1-zero-cost");
 
     // No edit: the frame's guard and a query allocate nothing, and the store never comes into it.
-    // S53 R53's whole-frame count over an unedited terrain comes with the node refit it guards.
+    // T1 R53's whole-frame count over an unedited terrain comes with the node refit it guards.
     const uint64_t before = testsupport::threadAllocations();
     for (int frame = 0; frame < 1000; frame++) {
         if (TerrainEditEvents::hasPending()) TerrainEditEvents::flush(nullptr);
@@ -328,7 +328,7 @@ TEST(TerrainEdit, ZeroCostWhenUnused) {
 }
 
 TEST(TerrainEdit, NewTerrainDefaultsHaveOneHome) {
-    // Nothing yet differs from the struct's defaults: S55 R53 and S57 F12 add theirs in this function
+    // Nothing yet differs from the struct's defaults: T3 R53 and T5 F12 add theirs in this function
     TerrainComponent plain;
     TerrainComponent made;
     applyNewTerrainDefaults(made);

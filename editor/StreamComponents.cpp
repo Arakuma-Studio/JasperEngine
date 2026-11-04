@@ -574,7 +574,7 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     YAML::Node node;
     node["enabled"] = terrain.enabled;
     node["heightMap"] = encodeTexture(terrain.heightMap);
-    // only a terrain with holes says so: an old scene saves back byte-identical (S53 R81)
+    // only a terrain with holes says so: an old scene saves back byte-identical (T1 R81)
     if (!terrain.holeMap.empty()) node["holeMap"] = encodeTexture(terrain.holeMap);
     YAML::Node blendMapsNode;
     for (const Texture& blendMap : terrain.blendMaps) {

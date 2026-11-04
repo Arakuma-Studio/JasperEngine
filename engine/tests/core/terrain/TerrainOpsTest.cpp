@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The engine around its kernels: all-or-nothing, results, quantization, seams (S53 R4, R7-R11, R40,
+// The engine around its kernels: all-or-nothing, results, quantization, seams (T1 R4, R7-R11, R40,
 // R89; AC2, AC3, AC6, AC7, AC63, AC70)
 
 #include "TerrainTestSupport.h"
@@ -469,7 +469,7 @@ TEST(TerrainOps, MapHashTracksContent) {
 
 namespace {
 
-    // A registered op: what S57's ops look like from here
+    // A registered op: what T5's ops look like from here
     struct TestUndo final : TerrainStoreUndoHook {
         explicit TestUndo(int* trees): trees(trees) {}
         void undo() override { (*trees)--; }

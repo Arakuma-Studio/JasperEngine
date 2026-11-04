@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// Determinism (S53 R8, AC5): the op sequences' hashes hold on every platform and thread count.
+// Determinism (T1 R8, AC5): the op sequences' hashes hold on every platform and thread count.
 // JASPER_TEST_UPDATE_GOLDEN=1 rewrites golden/op_hashes.json and the digest the wasm gate compares
 // (tools/web/gates/terrain-edit.json); a changed hash there is a changed output, which needs a reason.
 
@@ -59,7 +59,7 @@ namespace {
 
     std::string gateText(const std::string& digest) {
         return "{\n"
-               "  \"description\": \"tools/test-projects/terrain-edit (WEB_PROJECT=terrain-edit tools/build.sh web): S53 AC5, TerrainGolden's op sequences on a fixed seed map, hashed in wasm. The digest below is pinned from the native core suite (TerrainGolden.Hashes checks it matches golden/op_hashes.json), so this gate fails when a kernel's bytes differ from x86-64. The canvas only says the engine ran that far.\",\n"
+               "  \"description\": \"tools/test-projects/terrain-edit (WEB_PROJECT=terrain-edit tools/build.sh web): T1 AC5, TerrainGolden's op sequences on a fixed seed map, hashed in wasm. The digest below is pinned from the native core suite (TerrainGolden.Hashes checks it matches golden/op_hashes.json), so this gate fails when a kernel's bytes differ from x86-64. The canvas only says the engine ran that far.\",\n"
                "  \"rgb\": [\n    40,\n    200,\n    90\n  ],\n"
                "  \"tolerance\": 40,\n"
                "  \"isolated\": true,\n"

@@ -2150,7 +2150,7 @@ jasperengine_skip_unity_build(
     REASON "the Animator's pose kernels: no floating-point contraction, per unit"
     SOURCES ${JASPERENGINE_ANIMATOR_SRCS})
 
-# the terrain operation engine and its query (docs/specs/S53-terrain-authoring.md R8): a map's bytes
+# the terrain operation engine and its query (docs/specs/T1-terrain-authoring.md R8): a map's bytes
 # are the same on every CPU only without floating-point contraction
 if(MSVC)
     set_source_files_properties(${JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS "/fp:precise")

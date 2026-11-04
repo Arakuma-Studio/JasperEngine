@@ -4,8 +4,8 @@
 #ifndef TERRAIN_LAYERS_H
 #define TERRAIN_LAYERS_H
 
-// S53 R92, S55 R15: the one mapping from a surface layer to where its paint is stored. A blend map
-// weights three layers in its RGB; S55 extends this for layers 10-12 (inverted alpha), so nothing
+// T1 R92, T3 R15: the one mapping from a surface layer to where its paint is stored. A blend map
+// weights three layers in its RGB; T3 extends this for layers 10-12 (inverted alpha), so nothing
 // else may do this arithmetic or assume nine layers.
 
 namespace jasperengine::terrain {

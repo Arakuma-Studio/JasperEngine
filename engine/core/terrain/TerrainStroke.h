@@ -4,7 +4,7 @@
 #ifndef TERRAIN_STROKE_H
 #define TERRAIN_STROKE_H
 
-// S53 R33-R35: samples of a drag become stamps, so a stroke's result does not depend on the event
+// T1 R33-R35: samples of a drag become stamps, so a stroke's result does not depend on the event
 // rate. Stamps fall at arc-length multiples of spacing along the sampled path; only holding still
 // adds stamps over time.
 

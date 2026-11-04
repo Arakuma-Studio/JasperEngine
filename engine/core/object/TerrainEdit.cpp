@@ -25,7 +25,7 @@ namespace {
         return data.getData() ? &data : nullptr;
     }
 
-    // A hole map is R8 (S55 R52). Any other pixels draw no holes, as a map that fails to load does.
+    // A hole map is R8 (T3 R52). Any other pixels draw no holes, as a map that fails to load does.
     void fillHoles(SurfaceView& view, TerrainComponent& terrain) {
         if (terrain.holeMap.empty()) return;
         TextureData* pixels = loadedPixels(terrain.holeMap);
@@ -54,7 +54,7 @@ namespace {
         return nullptr;
     }
 
-    // What a map change means to the terrain until node refit replaces it (S53 R23): the flags and
+    // What a map change means to the terrain until node refit replaces it (T1 R23): the flags and
     // the GPU image a brush stroke sets today
     void markMapChanged(TerrainComponent& terrain, MapId map) {
         switch (map.kind) {
@@ -174,7 +174,7 @@ void jasperengine::snapshotTerrainSurface(TerrainComponent& terrain, TerrainSurf
 }
 
 void jasperengine::applyNewTerrainDefaults(TerrainComponent& terrain) {
-    // S53 sets nothing a struct default does not: S55 R53 and S57 F12 add theirs here
+    // T1 sets nothing a struct default does not: T3 R53 and T5 F12 add theirs here
     (void)terrain;
 }
 

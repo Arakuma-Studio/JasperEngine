@@ -4,7 +4,7 @@
 #ifndef TERRAIN_DETERMINISTIC_H
 #define TERRAIN_DETERMINISTIC_H
 
-// The arithmetic every terrain kernel shares (S53 R8): the same bytes in the same order give the
+// The arithmetic every terrain kernel shares (T1 R8): the same bytes in the same order give the
 // same result on every target and thread count, so no wall clock, no global RNG, no
 // std::*_distribution, and no libm beyond sqrt, floor, ceil, round and fabs (those are exact or
 // correctly rounded everywhere; sin, cos and pow are not). Sources including this header build with
@@ -81,7 +81,7 @@ namespace jasperengine::terrain {
         return detSmooth(detClamp01((value - edge0) / (edge1 - edge0)));
     }
 
-    // One value in [0, 1] per integer cell, the same everywhere: random_noise's field (S53 R19)
+    // One value in [0, 1] per integer cell, the same everywhere: random_noise's field (T1 R19)
     inline float detHash01(int x, int y, uint32_t seed) {
         uint32_t h = seed ^ 0x9E3779B9u;
         h ^= static_cast<uint32_t>(x) + 0x85EBCA6Bu + (h << 6) + (h >> 2);

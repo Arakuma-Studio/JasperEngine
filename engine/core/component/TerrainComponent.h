@@ -198,7 +198,7 @@ namespace jasperengine{
         int rootGridSize = 2;
         int levels = 6;
 
-        // R8, 0 = hole, 255 = solid (S55 R18); absent means no holes, and no cost anywhere
+        // R8, 0 = hole, 255 = solid (T3 R18); absent means no holes, and no cost anywhere
         Texture holeMap;
 
         bool needUpdateTerrain = true;

@@ -4,7 +4,7 @@
 #ifndef TESTS_TERRAIN_GOLDEN_SEQUENCES_H
 #define TESTS_TERRAIN_GOLDEN_SEQUENCES_H
 
-// S53 AC5: the op sequences TerrainGolden.* pins, on a fixed seed map. The core suite compares them on
+// T1 AC5: the op sequences TerrainGolden.* pins, on a fixed seed map. The core suite compares them on
 // every CI platform, and tools/test-projects/terrain-edit runs the same list in wasm, so this header
 // includes nothing of the test framework.
 

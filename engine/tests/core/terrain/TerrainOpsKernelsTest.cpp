@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// One test per op of S53 §6 Table 1, against values worked out by hand on a small map (AC3)
+// One test per op of T1 §6 Table 1, against values worked out by hand on a small map (AC3)
 
 #include "TerrainTestSupport.h"
 

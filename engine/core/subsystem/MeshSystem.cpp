@@ -7028,7 +7028,7 @@ void MeshSystem::update(double dt){
             updateTerrainAutoRanges(terrain);
         }
     }
-    // S53 R42, DC10: a frame's edits reach their subscribers once, by terrain and map
+    // T1 R42, DC10: a frame's edits reach their subscribers once, by terrain and map
     if (TerrainEditEvents::hasPending()){
         TerrainEditEvents::flush(scene);
     }

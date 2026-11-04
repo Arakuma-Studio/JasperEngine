@@ -4,7 +4,7 @@
 #ifndef RAW_MAP_STORE_H
 #define RAW_MAP_STORE_H
 
-// S53 R3: a store over plain buffers, owned or borrowed: tests, generation and the pure functions of
+// T1 R3: a store over plain buffers, owned or borrowed: tests, generation and the pure functions of
 // the spline bake. Each map sits at texel 0 over a centred square of terrainSize.
 
 #include "Export.h"

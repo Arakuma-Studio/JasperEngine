@@ -1,4 +1,4 @@
-# engine/core/terrain (S53 R1, R8): the operation engine, its stores and the surface query. The
+# engine/core/terrain (T1 R1, R8): the operation engine, its stores and the surface query. The
 # sources build with no floating-point contraction, so a map's bytes are the same on every CPU, and
 # outside unity batches, since those flags would reach their neighbours.
 set(JASPERENGINE_TERRAIN_SRCS

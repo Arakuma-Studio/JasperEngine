@@ -4,8 +4,8 @@
 #ifndef TERRAIN_MAP_STORE_H
 #define TERRAIN_MAP_STORE_H
 
-// What the operation engine reads and writes (S53 R2, R86, programme D4): rectangles of height,
-// blend, hole and density data in texels. Callers never touch a texture, so a tiled store (S56), a
+// What the operation engine reads and writes (T1 R2, R86, programme D4): rectangles of height,
+// blend, hole and density data in texels. Callers never touch a texture, so a tiled store (T4), a
 // raw buffer (tests, generation) and an overlay (a transaction) are the same to every kernel.
 //
 // Texels are signed and a map's extent is format(map).bounds, not [0, W): ops place texels only
@@ -35,7 +35,7 @@ namespace jasperengine::terrain {
         bool operator!=(const MapId& other) const { return !(*this == other); }
     };
 
-    // Signed origin (S56), w and h >= 0
+    // Signed origin (T4), w and h >= 0
     struct TexelRect {
         int x = 0, y = 0, w = 0, h = 0;
 
@@ -99,8 +99,8 @@ namespace jasperengine::terrain {
         virtual void redo() = 0;
     };
 
-    // R86: undo and redo of what a store created on write (S56's auto-created tiles), and of the
-    // non-map data a registered op wrote (S57's TreeStore, R89)
+    // R86: undo and redo of what a store created on write (T4's auto-created tiles), and of the
+    // non-map data a registered op wrote (T5's TreeStore, R89)
     class TerrainStoreUndoHook {
     public:
         virtual ~TerrainStoreUndoHook() = default;
@@ -136,8 +136,8 @@ namespace jasperengine::terrain {
         // terrain has no density map for a foliage layer it does not have)
         virtual bool canCreateMap(MapId map, std::string* why) const { (void)map; (void)why; return true; }
 
-        // The last fill removes the hole map (S53 R12). A store may keep its maps (S55 R29's
-        // holeMapHolds, S56's per-tile maps): canRemoveMap answers before anything commits, and a
+        // The last fill removes the hole map (T1 R12). A store may keep its maps (T3 R29's
+        // holeMapHolds, T4's per-tile maps): canRemoveMap answers before anything commits, and a
         // map that stays keeps its bytes. Not abstract: most stores never remove a map.
         virtual bool canRemoveMap(MapId map) const { (void)map; return false; }
         virtual WriteResult removeMap(MapId map) { (void)map; return WriteResult{false, "this store keeps its maps", 0}; }
@@ -151,7 +151,7 @@ namespace jasperengine::terrain {
         // integer coordinate
         virtual Vector2 texelOfWorld(MapId map, float localX, float localZ) const = 0;
 
-        // The unit a large edit works in (S56's tile rectangle); kernels hold no more than this
+        // The unit a large edit works in (T4's tile rectangle); kernels hold no more than this
         // plus a margin at once. The single-map store answers the whole map.
         virtual TexelRect preferredBlock(MapId map) const = 0;
         // Null: use the overlay (R87)

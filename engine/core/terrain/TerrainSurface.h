@@ -4,7 +4,7 @@
 #ifndef TERRAIN_SURFACE_H
 #define TERRAIN_SURFACE_H
 
-// The one implementation of the terrain's surface: height, normal, is-hole and ray (S53 R14-R16,
+// The one implementation of the terrain's surface: height, normal, is-hole and ray (T1 R14-R16,
 // programme D5). It matches what the terrain vertex shader draws: texel centres at (i + 0.5) / N,
 // bilinear, clamped to the edge, within 1e-4 (S18:530, S26:467). Normals are a forward difference at
 // one texel, which foliage and physics were placed with.
@@ -31,10 +31,10 @@ namespace jasperengine::terrain {
     struct SurfaceSample {
         float height = 0.0f;
         Vector3 normal = Vector3(0.0f, 1.0f, 0.0f);
-        bool hole = false;      // defined height and normal stay under it (S55 R26)
+        bool hole = false;      // defined height and normal stay under it (T3 R26)
         bool inside = false;    // the point is on the terrain; outside clamps to the edge
         bool present = false;   // a map answered; without one, height 0 and up
-        bool exact = true;      // false: answered from an overview, not the map (S56 R24)
+        bool exact = true;      // false: answered from an overview, not the map (T4 R24)
     };
 
     // Normalized height of the red channel of one texel, 8 or 16-bit (little-endian)
@@ -64,11 +64,11 @@ namespace jasperengine::terrain {
     JASPERENGINE_API float sampleHeight(const SurfaceView& view, float localX, float localZ);
     // A march along origin + direction * t, t in [0, maxT], refined at the first crossing. point is
     // on the surface. skipHoles passes through a crossing inside a hole and goes on along the ray;
-    // brush rays leave it false, so a hole can be filled (S55 R25).
+    // brush rays leave it false, so a hole can be filled (T3 R25).
     JASPERENGINE_API bool raycastSurface(const SurfaceView& view, const Vector3& origin, const Vector3& direction, float maxT,
                                          bool skipHoles, Vector3& point, float& t);
 
-    // The abstract form for regions and worlds (S53 R93; S57 FoliageRegion, S56 R24)
+    // The abstract form for regions and worlds (T1 R93; T5 FoliageRegion, T4 R24)
     class TerrainSurfaceQuery {
     public:
         virtual ~TerrainSurfaceQuery() = default;
@@ -77,7 +77,7 @@ namespace jasperengine::terrain {
         virtual bool raycast(const Vector3& origin, const Vector3& direction, float maxT, bool skipHoles, Vector3& point, float& t) const = 0;
     };
 
-    // The query over one view (S53 R93's single-map implementation)
+    // The query over one view (T1 R93's single-map implementation)
     class JASPERENGINE_API SurfaceViewQuery final : public TerrainSurfaceQuery {
     public:
         explicit SurfaceViewQuery(const SurfaceView& view): view(view) {}

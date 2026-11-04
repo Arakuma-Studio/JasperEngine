@@ -4,9 +4,9 @@
 #ifndef TERRAIN_EDIT_H
 #define TERRAIN_EDIT_H
 
-// The ECS side of the terrain engine (S53 R3, R14, R42, R91, R93): what engine/core/terrain cannot
+// The ECS side of the terrain engine (T1 R3, R14, R42, R91, R93): what engine/core/terrain cannot
 // know because it knows no component. Callers query the surface and write maps through here, and
-// the seams of later specs meet here (S56 adds its world lookup to querySurface).
+// the seams of later specs meet here (T4 adds its world lookup to querySurface).
 
 #include "Export.h"
 #include "ecs/Entity.h"
@@ -39,7 +39,7 @@ namespace jasperengine {
     // false. Read-only: particle collisions call it from workers.
     JASPERENGINE_API terrain::SurfaceSample querySurface(TerrainComponent& terrain, float localX, float localZ);
 
-    // A world ray against the surface, loading the height map if it must. skipHoles: S53 R16
+    // A world ray against the surface, loading the height map if it must. skipHoles: T1 R16
     JASPERENGINE_API bool raycastTerrain(TerrainComponent& terrain, const Transform& transform, const Ray& ray, bool skipHoles, Vector3& worldPoint);
 
     // R93: the abstract form over one component, for whoever takes a TerrainSurfaceQuery
@@ -54,7 +54,7 @@ namespace jasperengine {
         TerrainComponent* component;
     };
 
-    // R93, S57 R7: the query's copied-texel form, which a job may read while the map changes on the
+    // R93, T5 R7: the query's copied-texel form, which a job may read while the map changes on the
     // main thread. view points into this object: keep it alive, and do not copy it.
     struct JASPERENGINE_API TerrainSurfaceSnapshot {
         TerrainSurfaceSnapshot() = default;
@@ -69,7 +69,7 @@ namespace jasperengine {
 
     // R91: the one place a new terrain gets its defaults, called by every route that makes one for a
     // person or an agent. A struct default stays what an old scene loads with, so the settings only
-    // new terrains should have go here (S55 R53, S57 F12).
+    // new terrains should have go here (T3 R53, T5 F12).
     JASPERENGINE_API void applyNewTerrainDefaults(TerrainComponent& terrain);
 
     // R13: remap_layers moved the paint; this moves the layers, in the same step. order holds the new
