@@ -1062,8 +1062,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Tool Groups";
         tool.description =
-            "List the tool groups; enable/disable lists a group in this session's tools/list (core always is). "
-            "Every tool is callable by name whether listed or not, also in batch.";
+            "List the tool groups and what each holds; enable/disable lists a group's tools in this session (core "
+            "always is).";
         tool.inputSchema = object({
             {"enable", array(string(""), "")},
             {"disable", array(string(""), "")}
