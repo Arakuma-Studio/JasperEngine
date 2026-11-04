@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 6fb91de16ffdce0c18aeb12de3bc79bd
-id: 2577792747
+guid: 04641458e96bada0d2e8ad2c07228df8
+id: 1099605158
 name: Main
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
@@ -41,11 +41,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
     properties: 3075

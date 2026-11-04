@@ -105,6 +105,8 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Gradient Sky](#librarygradient_sky) `library:gradient_sky` | sky | Sky | none | - |
 | [Heat Haze](#libraryheat_haze) `library:heat_haze` | mesh | Effects | none | alpha |
 | [Hologram](#libraryhologram) `library:hologram` | mesh | Effects | none | additive |
+| [Tree Impostor](#libraryimpostor) `library:impostor` | mesh | Nature | pixel, vertex, none | opaque |
+| [Impostor Bake](#libraryimpostor_bake) `library:impostor_bake` | mesh | Internal | none | opaque |
 | [Lattice Stretch](#librarylattice_stretch) `library:lattice_stretch` | mesh | Effects | none | opaque |
 | [Line Flipbook](#libraryline_flipbook) `library:line_flipbook` | lines | Effects | none | additive |
 | [Matcap](#librarymatcap) `library:matcap` | mesh | Stylized | none | opaque |
@@ -113,6 +115,7 @@ alpha blended, Decal's Multiply makes it multiply. A material value always wins.
 | [Panner](#librarypanner) `library:panner` | mesh | Effects | none | opaque |
 | [Panoramic Sky](#librarypanoramic_sky) `library:panoramic_sky` | sky | Sky | none | - |
 | [Particle](#libraryparticle) `library:particle` | points | Particles | none | alpha (Auto) |
+| [Particles](#libraryparticles) `library:particles` | particles | Particles | none | alpha (Auto) |
 | [Pixelate](#librarypixelate) `library:pixelate` | postprocess | Post-processing | none | - |
 | [Posterize](#libraryposterize) `library:posterize` | postprocess | Post-processing | none | - |
 | [Procedural Sky](#libraryprocedural_sky) `library:procedural_sky` | sky | Sky | none | - |
@@ -162,7 +165,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 
 | Texture | Default | Description |
 |---|---|---|
-| `u_baseTexture` | white | Base map |
+| `u_baseTexture` | white; built-in particle with `PARTICLE_TEXTURE` | Base map |
 
 | Feature | Default | Description |
 |---|---|---|
@@ -171,6 +174,7 @@ Base colour times base map, optionally times vertex colour, without lighting; op
 | `SOFT` | off | Soft intersections (fade where it meets geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
 | `STOCHASTIC` | off | Stochastic Tiling |
+| `PARTICLE_TEXTURE` | off | Built-in soft particle texture (when no base map is set) |
 
 ## Lit
 
@@ -898,6 +902,27 @@ Leaves and grass: wind sway in the vertex stage (masked by the vertex colour's r
 |---|---|---|
 | `WIND_MASK` | `WIND_MASK_VERTEX_COLOR`, `WIND_MASK_HEIGHT` | Wind mask |
 
+<a id="libraryimpostor"></a>
+### Tree Impostor (`library:impostor`)
+
+The last LOD of a tree prototype: one quad per instance, facing the camera around Y, showing the baked view nearest the camera and lit through the baked normals. Baked by Bake Impostor in Paint Trees or edit_terrain's bake_impostors.
+
+- **Type**: mesh (a material's shader); category Nature.
+- **Lighting**: per pixel (default), per vertex, none.
+- **Inputs**: `uv1`, `color`.
+- **Default state**: blend opaque, cull off (both faces).
+- **Depth program**: yes (shadows and depth follow its vertices and clipping).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `baseColor` | colour | (1, 1, 1, 1) | Base colour |
+| `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Albedo atlas (alpha: cutout) |
+| `u_normalTexture` | flat normal | Normal atlas (a: ambient occlusion) |
+
 <a id="librarywater"></a>
 ### Water (`library:water`)
 
@@ -1137,6 +1162,38 @@ Point-sprite particles: texture (sprite-sheet rect per point) times the particle
 | `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
 | `NEAR_FADE` | off | Camera near fade |
 
+<a id="libraryparticles"></a>
+### Particles (`library:particles`)
+
+The particle system shader: the particle texture (sprite-sheet frame, blended into the next with Frame Blending) times the particle colour, lit as the Renderer asks (unlit, per-vertex lit or six-way smoke lighting), plus its emission; with alpha-as-light glow, noise erosion over the particle's life, soft intersections and a camera near fade. Draws in the Renderer's blend mode; no depth write. Soft particles read the scene depth: on mobile that is an extra depth pass of the opaque meshes in every camera that sees them (none when SSAO or SSR already made one).
+
+- **Type**: particles; category Particles.
+- **Reads the scene**: the scene depth (a depth pre-pass, unless SSAO, SSR or a depth-reading post pass already runs one), in the camera passes that draw it.
+- **Default state**: depth write off.
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `tint` | colour | (1, 1, 1, 1) | Tint |
+| `glowColor` | HDR colour | (2, 1.3, 0.6, 1) | Glow colour (HDR) (with `GLOW`) |
+| `glowScale` | range 0 to 4 | 1 | Glow alpha scale (with `GLOW`) |
+| `glowPower` | range 0.1 to 8 | 3 | Glow falloff power (with `GLOW`) |
+| `erosionSoftness` | range 0.01 to 0.5 | 0.08 | Erosion edge softness (with `EROSION`) |
+| `erosionTiling` | float | 1 | Erosion noise tiling (per particle) (with `EROSION`) |
+| `softness` | float | 0.5 | Softness (world units) (with `SOFT`) |
+| `nearFadeStart` | float | 0.3 | Near fade: invisible at (world units from the camera) (with `NEAR_FADE`) |
+| `nearFadeEnd` | float | 1.5 | Near fade: whole from (world units from the camera) (with `NEAR_FADE`) |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_erosionTexture` | gray | Erosion noise (red channel) (with `EROSION`) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `GLOW` | off | Glow (alpha as light) |
+| `EROSION` | off | Erosion (the particle's alpha dissolves it through a noise texture) |
+| `SOFT` | off | Soft particles (fade where they meet geometry; reads the scene depth) |
+| `NEAR_FADE` | off | Camera near fade |
+
 ## Sky
 
 <a id="librarygradient_sky"></a>
@@ -1318,6 +1375,35 @@ The view from inside a water: the scene fades into the water with the distance t
 | `visibility` | float | 6 | Visibility (world units: the clearest colour keeps 37%) |
 | `waterLevel` | float | 0 | Surface height (world Y; the engine sets it under a water) |
 | `followWater` | toggle | on | Follow water (colours from the water the camera is in) |
+
+## Internal
+
+<a id="libraryimpostor_bake"></a>
+### Impostor Bake (`library:impostor_bake`)
+
+What Bake Impostor renders a tree with: its base colour unlit, or with IMPOSTOR_NORMAL its normal in the view's frame, with the cutout's alpha in both.
+
+- **Type**: mesh (a material's shader); category Internal.
+- **Lighting**: none (default).
+- **Inputs**: `normals`, `uv1`.
+- **Default state**: blend opaque, cull off (both faces).
+- **Depth program**: no (the built-in one).
+
+| Property | Kind | Default | Description |
+|---|---|---|---|
+| `baseColor` | colour | (1, 1, 1, 1) | Base colour |
+| `alphaCutoff` | range 0 to 1 | 0.5 | Alpha cutoff |
+| `viewRight` | vector4 | (1, 0, 0, 0) | The view's right, world |
+| `viewUp` | vector4 | (0, 1, 0, 0) | The view's up, world |
+| `viewForward` | vector4 | (0, 0, 1, 0) | Towards the camera, world |
+
+| Texture | Default | Description |
+|---|---|---|
+| `u_baseTexture` | white | Base map (alpha: cutout) |
+
+| Feature | Default | Description |
+|---|---|---|
+| `IMPOSTOR_NORMAL` | off | Write the normal |
 
 ## Outline and stencil
 

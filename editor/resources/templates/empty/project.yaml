@@ -5,6 +5,14 @@ canvasHeight: 720
 scalingMode: fitwidth
 textureStrategy: none
 vsync: true
+foliageQuality:
+  desktop: high
+  mobile: low
+  web: low
+foliageDistance:
+  desktop: 1
+  mobile: 0.5
+  web: 0.5
 htmlUiMsaaSamples: 4
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
@@ -16,7 +24,7 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 4152549459
+startSceneId: 493197316
 scenes:
   - filepath: Main.scene
-    filepathGuid: e867718d6315e8ef737003da477de7bf
+    filepathGuid: 680eafb04b6e8e4ebf4e3eed24c8716b

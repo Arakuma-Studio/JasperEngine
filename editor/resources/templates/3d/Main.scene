@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 4dd511a95b3ee7ce57572cca66647b43
-id: 1755752265
+guid: 2ec4200abcc70a900a766c785c8109fa
+id: 3445249014
 name: Main
 scene:
   backgroundColor: [0.25, 0.45, 0.65, 1]
@@ -41,11 +41,6 @@ maxValues:
   maxExternalBuffers: 0
   maxSpriteFrames: 0
   maxBones: 128
-  maxColliders2D: 0
-  maxColliderPoints2D: 0
-  maxColliders3D: 0
-  maxColliderVertices3D: 0
-  maxColliderIndices3D: 0
 shaderKeys:
   - type: mesh
     properties: 1112
@@ -205,13 +200,13 @@ entities:
               emissiveTexCoord: 0
               normalTexCoord: 0
               name: materials/Ground.material
-              nameGuid: 6b5b73c5ae5af2d5f6728cde5eafc7be
+              nameGuid: 441cdcb8148ed0f92fbc8b2b7ded1cd6
             textureRect: [0, 0, 1, 1]
             primitiveType: triangles
             vertexCount: 6
             faceCulling: true
             textureShadow: false
-            overrideFields: 8589905919
+            overrideFields: 17179840511
             hasTexCoord1: true
             hasTexCoord2: false
             hasNormalMap: false
