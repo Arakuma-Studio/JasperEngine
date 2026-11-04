@@ -16,7 +16,8 @@ using namespace jasperengine::terrain;
 
 namespace {
 
-    FoliageOpHost* foliageCurrentHost = nullptr;
+    // the runner applies an op on a job thread, and two Terrains may run theirs at once
+    thread_local FoliageOpHost* foliageCurrentHost = nullptr;
 
     OpParam numberParam(double value) {
         OpParam param;

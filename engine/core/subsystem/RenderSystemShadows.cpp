@@ -1418,6 +1418,10 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
     passShadows = &target;
 
     const std::vector<ShadowSlot>& slots = collectShadowSlots();
+    buildFoliageShadowLists(&target, 1, fadeEyePosition);
+    for (const auto& foliageEntry : foliageLists){
+        if (foliageEntry.first.first == &target) uploadFoliageList(*foliageEntry.second);
+    }
 
     uint64_t shadowHash = 1469598103934665603ULL;
     for (const ShadowSlot& shadow : slots){
@@ -1445,6 +1449,8 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
     for (int i = 0; i < instmeshes->size(); i++){
         InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
         Entity entity = instmeshes->getEntity(i);
+        if (instmesh.foliage)
+            continue;
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         Transform* transform = scene->findComponent<Transform>(entity);
 

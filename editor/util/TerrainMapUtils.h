@@ -94,7 +94,7 @@ namespace jasperengine::editor{
         static std::string getContainerPropertyName(const TerrainMapRef& ref);
         static bool hasLoadedData(Texture& texture);
         static bool writeFile(Project* project, const std::string& relativePath, int width, int height, int channels, int bytesPerChannel, const std::vector<unsigned char>& pixels);
-        static void refresh(SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref);
+        static void refresh(SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, const TerrainMapRegion* region = nullptr);
         // The map's file is an asset (Unity's TerrainData): every other loaded terrain bound
         // to the same file takes the new content, a prefab's other instances included
         static void refreshSharing(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);

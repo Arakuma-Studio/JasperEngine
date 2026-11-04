@@ -78,6 +78,20 @@
     "empty_tick_us": {"max": 1.1, "spec": "R25 empty scene fixedUpdate < 1 us"},
     "empty_tick_allocations": {"max": 0, "spec": "R25 no allocation"}
   },
+  "je-bench-foliage": {
+    "scatter_attempt_ns": {"max": 250, "spec": "T5 R41 one placement attempt"},
+    "placement_cell_full_density_ms": {"max": 0.35, "spec": "T5 R41 a full-density cell (1,280 attempts), desktop"},
+    "cull_100k_0_workers_ms": {"max": 3.0, "spec": "T5 R41 cull of 100,000 visible instances, 0 workers"},
+    "cull_100k_4_workers_ms": {"max": 1.2, "spec": "T5 R41 the same with 4 workers"},
+    "frame_moving_p99_ms": {"max": 1.5, "spec": "T5 R41 foliage main thread, moving camera"},
+    "frame_still_us": {"max": 50, "spec": "T5 R41 a still frame"},
+    "empty_scene_us": {"max": 1, "spec": "T5 R41 a scene with no foliage, mean"},
+    "empty_scene_allocations": {"max": 0, "spec": "T5 R41 with zero allocations"},
+    "stamp_8_trees_ms": {"max": 2.0, "spec": "T5 R45 a stamp adding 8 trees"},
+    "cells_rebuilt_100_trees": {"max": 9, "spec": "T5 R45 adding 100 trees to one cell"},
+    "stored_tree_bytes": {"max": 40, "spec": "T5 R42 a stored tree"},
+    "memory_total_mb": {"max": 128, "spec": "T5 R42 desktop, CPU and GPU, without meshes and impostors"}
+  },
   "je-bench-splines": {
     "evaluate_at_distance_ns": {"max": 60, "spec": "R18 evaluateAtDistance on a 100-knot spline"},
     "closest_point_100_knots_us": {"max": 6, "spec": "R18 closestPoint on a 100-knot spline"},

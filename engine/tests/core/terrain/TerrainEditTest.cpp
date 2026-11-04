@@ -83,7 +83,8 @@ TEST(TerrainEdit, StoreReadsAndWritesTheComponentsMaps) {
 
     EXPECT_TRUE(terrain.needUpdateTerrain) << "the map changed, so the terrain refreshes as a stroke does today";
     EXPECT_TRUE(terrain.needUpdateTexture);
-    EXPECT_TRUE(terrain.needUpdateFoliage);
+    // T5 R26: foliage takes the dirty rectangle from TerrainEditEvents; the flag is the whole-Terrain fallback
+    EXPECT_FALSE(terrain.needUpdateFoliage);
     EXPECT_FALSE(terrain.heightMapLoaded);
 
     // The query sees it at once, through the same pixels

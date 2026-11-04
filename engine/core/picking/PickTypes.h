@@ -25,7 +25,9 @@ namespace jasperengine {
         TERRAIN,    // a terrain's height field surface
         UI,         // a RectTransform's rect (or a UI element's bounds)
         BOUNDS,     // bounds only: points, lines, particles, 2D occluders, meshes without CPU data or still preparing
-        ICON        // an editor icon (lights, cameras, audio, probes), tested in screen space by the editor
+        ICON,       // an editor icon (lights, cameras, audio, probes), tested in screen space by the editor
+        TREE,       // a Terrain's tree, through its LOD0's triangles (T5 R35)
+        DETAIL      // a Terrain's detail instance: opt-in, on resident cells only
     };
 
     // PickFilter::kinds bits, one per PickKind
@@ -35,7 +37,10 @@ namespace jasperengine {
     inline constexpr uint32_t PICK_UI       = 1u << (uint32_t)PickKind::UI;
     inline constexpr uint32_t PICK_BOUNDS   = 1u << (uint32_t)PickKind::BOUNDS;
     inline constexpr uint32_t PICK_ICON     = 1u << (uint32_t)PickKind::ICON;
-    inline constexpr uint32_t PICK_ALL      = PICK_MESH | PICK_INSTANCE | PICK_TERRAIN | PICK_UI | PICK_BOUNDS | PICK_ICON;
+    inline constexpr uint32_t PICK_TREE     = 1u << (uint32_t)PickKind::TREE;
+    inline constexpr uint32_t PICK_DETAIL   = 1u << (uint32_t)PickKind::DETAIL;
+    // not grass: it doesn't block default rays
+    inline constexpr uint32_t PICK_ALL      = PICK_MESH | PICK_INSTANCE | PICK_TERRAIN | PICK_UI | PICK_BOUNDS | PICK_ICON | PICK_TREE;
 
     // EntityMetadata::editorFlags (editor only: never saved, cloned into Play or seen by Lua)
     inline constexpr uint8_t EDITOR_HIDDEN      = 1u << 0;  // Scene view visibility off (the Hierarchy's eye)
@@ -86,6 +91,9 @@ namespace jasperengine {
         float distance = 0.0f;
         // a BOUNDS hit standing in for a mesh whose BVH is still building
         bool pending = false;
+        // TREE: the tree (entity is its Terrain); -1 / 0 otherwise. DETAIL: the layer in prototype
+        uint64_t foliageId = 0;
+        int32_t prototype = -1;
     };
 
 }

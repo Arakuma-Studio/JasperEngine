@@ -67,9 +67,14 @@ jasperengine_skip_unity_build(
     REASON "file-local fixtures or helpers named as in another test source"
     SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/animation/AnimatorBlendTreeTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/navigation/NavBakeFoliageTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/render/FoliageGpuTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageCullTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageLuaTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliagePhysicsTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageRulesTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageScatterTest.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/terrain/FoliageSystemCoreTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TreeStoreTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainBatchTest.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/terrain/TerrainEditTest.cpp
@@ -202,7 +207,9 @@ add_executable(je-bench-nav ${CMAKE_CURRENT_SOURCE_DIR}/bench/NavBench.cpp ${COR
 # je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
 add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
+# je-bench-foliage: foliage's budgets (T5 R41, R42, R45, docs/perf/foliage.md)
+add_executable(je-bench-foliage ${CMAKE_CURRENT_SOURCE_DIR}/bench/FoliageBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-foliage)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})

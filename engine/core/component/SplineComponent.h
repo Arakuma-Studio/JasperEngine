@@ -39,6 +39,7 @@ namespace jasperengine{
         float paintFalloff = 1.0f;          // world units of fade past the band
         float paintNoise = 0.0f;            // 0-1: edge break-up of the painted band
         bool clearFoliage = false;
+        bool clearTrees = false;            // T5 R29: the bake removes the Terrain's trees in the footprint
         uint32_t foliageMask = 0xFFFFFFFFu; // bit n clears foliage layer n
         Entity terrain = NULL_ENTITY;       // NULL_ENTITY: the first terrain under the spline
     };

@@ -52,7 +52,12 @@ uniform u_fs_gbufferMaterial {
     #include "includes/stochastic.glsl"
 #endif
 
+#include "includes/foliage_dither.glsl"
+
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     #ifdef GBUFFER_STOCHASTIC
         // the base colour's luminance weights, then the metallic-roughness taps with them (as
         // geometric without a base colour texture)

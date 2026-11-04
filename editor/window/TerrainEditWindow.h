@@ -11,6 +11,7 @@
 #include "imgui.h"
 
 #include <chrono>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -61,6 +62,8 @@ namespace jasperengine::editor{
         // boundary and (when the falloff has a gradient) the half-strength contour.
         std::vector<Vector3> outerPoints;
         std::vector<Vector3> innerPoints;
+        // T5 R46: pairs of points, the selected prototype's collision capsule at the cursor
+        std::vector<Vector3> capsuleLines;
     };
 
     struct TerrainMapSnapshot{
@@ -108,6 +111,7 @@ namespace jasperengine::editor{
 
     struct ActiveStroke{
         bool active = false;
+        bool treeStroke = false; // T5: the panel's brush
         // The stroke as one undo step: Esc (or Ctrl+Z) before the mouse is released puts the
         // map back and drops what a placement stroke made (S24 R12)
         InteractiveEdit edit;
@@ -140,6 +144,8 @@ namespace jasperengine::editor{
         int workingHeight = 0;
         // Texels written so far, cut into the undo patch when the stroke ends
         TerrainMapRegion dirtyRegion;
+        // what this frame's stamps wrote: foliage re-snaps only under it (T5 R25, R26)
+        TerrainMapRegion frameRegion;
         // Placement strokes write entities instead of a map, so none of the texture state applies
         bool placement = false;
         // Fixed at stroke start, cleared if the asset turns out not to be instanceable
@@ -156,6 +162,8 @@ namespace jasperengine::editor{
         int heightReferenceBytesPerChannel = 1;
         std::vector<unsigned char> heightReferencePixels;
     };
+
+    class TerrainFoliagePanel;
 
     class TerrainEditWindow{
     private:
@@ -207,6 +215,7 @@ namespace jasperengine::editor{
         std::string placeAssetPath;
         bool placeInstanced;
         float placeSpacing;
+        std::unique_ptr<TerrainFoliagePanel> foliagePanel;
         float placeMinScale;
         float placeMaxScale;
         float placeRotationJitter;

@@ -11,6 +11,7 @@
 #include "Project.h"
 #include "component/SplineComponent.h"
 #include "spline/SplineStation.h"
+#include "terrain/TreeStore.h"
 #include "util/TerrainMapUtils.h"
 
 #include <cstdint>
@@ -66,6 +67,8 @@ namespace jasperengine::editor{
         // ---- the pure bake (tests drive it without a Project)
 
         // The route: stations resampled to at most half a texel apart (D8)
+        // T5 R29: the trees within reach of a terrain-local XZ polyline
+        static std::vector<uint32_t> treesInFootprint(const terrain::TreeStore& store, float terrainSize, const std::vector<Vector2>& line, float reach);
         static void routeStations(const std::vector<spline::SplineStation>& stations, float texelSize,
                                   std::vector<spline::SplineStation>& route);
         // Flatten the heights within the footprint; closedOutline (world XZ, a closed spline's

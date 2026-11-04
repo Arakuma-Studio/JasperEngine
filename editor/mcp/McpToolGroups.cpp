@@ -22,7 +22,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"profiling", "GPU/CPU timings, VRAM, frame passes and render statistics."},
         {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
-        {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps and sampling."},
+        {"terrain", "Terrain brushes (sculpt, paint), declarative edits, foliage (trees, details), height/blend maps and sampling (jasper://docs/terrain)."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},
         {"particles", "Particle processors, forces, trails, sub-emitters and render modes."},
         {"animation", "Blend spaces, state machines, layers, IK, retargeting and curves."},

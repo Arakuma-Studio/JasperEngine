@@ -53,7 +53,7 @@ void editor::TerrainMapPatchCmd::apply(const std::vector<unsigned char>& regionP
 
     TerrainMapUtils::writeFile(project, patch.path, patch.mapWidth, patch.mapHeight, patch.channels, bytesPerChannel,
                                std::vector<unsigned char>(pixels, pixels + mapBytes));
-    TerrainMapUtils::refresh(sceneProject, entity, ref);
+    TerrainMapUtils::refresh(sceneProject, entity, ref, &patch.region);
 
     // Painting writes the map's file, an asset like Unity's TerrainData: no override, every
     // terrain using that file follows

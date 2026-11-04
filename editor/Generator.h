@@ -231,6 +231,9 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        std::array<FoliageQuality, 3> foliageQuality = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+        bool foliageQualityUncapped = true;
+        std::array<float, 3> foliageDistanceScale = {1.0f, 1.0f, 1.0f};
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
@@ -370,6 +373,8 @@ namespace jasperengine::editor {
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        void setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool uncapped) { foliageQuality = quality; foliageQualityUncapped = uncapped; }
+        void setFoliageDistanceScale(const std::array<float, 3>& scale) { foliageDistanceScale = scale; }
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
         // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()

@@ -143,6 +143,7 @@
 #include "texture/Framebuffer.h"
 #include "ecs/Entity.h"
 #include "render/AtmosphereQuality.h"
+#include "render/FoliageQuality.h"
 #include <atomic>
 #include <mutex>
 #include <unordered_set>
@@ -423,6 +424,13 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static FoliageQuality foliageQualityDefaults[3];
+        static bool foliageQualityUncapped;
+        static bool foliageQualityOverridden;
+        static FoliageQuality foliageQualityOverride;
+        static float foliageDistanceDefaults[3];
+        static bool foliageDistanceOverridden;
+        static float foliageDistanceOverride;
 
         static Semaphore drawSemaphore;
 
@@ -625,6 +633,24 @@ namespace jasperengine {
         // back to the platform default (the editor calls it when Play stops)
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
+
+        // Foliage Quality (T5 R21): scales and caps, never writes a Terrain. uncapped: a project from
+        // before the field, High everywhere with no instance or draw cap, so it looks the same (F12).
+        static void setFoliageQualityDefaults(FoliageQuality desktop, FoliageQuality mobile, FoliageQuality web, bool uncapped = false);
+        static FoliageQuality getFoliageQualityDefault(Platform platform);
+        static void setFoliageQuality(FoliageQuality quality);
+        static FoliageQuality getFoliageQuality();
+        static void resetFoliageQuality();
+        // the tier in effect has no caps: no game override, and a project that never said
+        static bool isFoliageQualityUncapped();
+
+        // Foliage Distance (T5 R66): the one global multiplier of Draw, Min Draw, Tree and Billboard
+        // Start distances, per platform group, with a game's override. 0 removes foliage.
+        static void setFoliageDistanceScaleDefaults(float desktop, float mobile, float web);
+        static float getFoliageDistanceScaleDefault(Platform platform);
+        static void setFoliageDistanceScale(float scale);
+        static float getFoliageDistanceScale();
+        static void resetFoliageDistanceScale();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();

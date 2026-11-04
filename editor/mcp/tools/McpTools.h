@@ -58,6 +58,7 @@ namespace jasperengine::editor::mcp {
     void registerBuildTools(McpRegistry& registry);
     void registerPublishTools(McpRegistry& registry);   // S30
     void registerWorldTools(McpRegistry& registry);
+    void registerTerrainTools(McpRegistry& registry);
     // AnimatorTools.cpp: edit_animator (Animator Controllers, anim layers spec 11.5)
     void registerAnimatorTools(McpRegistry& registry);
     void registerLatticeTools(McpRegistry& registry);

@@ -88,6 +88,8 @@ const EnumMap<Scaling> scalingModes[] = {
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
+const EnumMap<FoliageQuality> foliageQualities[] = {
+    {"low", FoliageQuality::LOW}, {"medium", FoliageQuality::MEDIUM}, {"high", FoliageQuality::HIGH}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
@@ -1689,6 +1691,49 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        // T5 R21, R66: what foliage scales and caps per platform group, and its one distance multiplier
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.foliage_quality_desktop", "quality.foliage_quality_mobile", "quality.foliage_quality_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "enum";
+            s.values = enumNames(foliageQualities);
+            s.description = std::string("Foliage Quality (detail density, instance and draw caps, impostor blending: low, medium, high) of ") + groups[group] + ".";
+            s.get = [group](SettingsContext& ctx) { return Json(enumName(foliageQualities, ctx.project()->getFoliageQuality()[group])); };
+            s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                FoliageQuality quality;
+                if (!parseEnum(foliageQualities, value, quality, error)) return false;
+                if (apply) {
+                    std::array<FoliageQuality, 3> all = ctx.project()->getFoliageQuality();
+                    all[group] = quality;
+                    ctx.project()->setFoliageQuality(all);
+                }
+                return true;
+            };
+            add(s);
+        }
+        for (int group = 0; group < 3; group++) {
+            static const char* const keys[3] = {"quality.foliage_distance_desktop", "quality.foliage_distance_mobile", "quality.foliage_distance_web"};
+            static const char* const groups[3] = {"Windows, macOS and Linux games and the editor's views", "Android and iOS games", "HTML5 games"};
+            Setting s;
+            s.key = keys[group];
+            s.type = "number";
+            s.description = std::string("Foliage Distance of ") + groups[group] + ": multiplies every Terrain's Draw, Min Draw, Tree and Billboard Start distances; 0 removes foliage (Lua: Engine.foliageDistanceScale).";
+            s.get = [group](SettingsContext& ctx) { return Json(ctx.project()->getFoliageDistanceScale()[group]); };
+            s.set = [group](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.0, 10.0, v, error)) return false;
+                if (apply) {
+                    std::array<float, 3> all = ctx.project()->getFoliageDistanceScale();
+                    all[group] = static_cast<float>(v);
+                    ctx.project()->setFoliageDistanceScale(all);
+                }
+                return true;
+            };
+            add(s);
+        }
+
         // ---- player logging
         {
             Setting s;
@@ -2743,6 +2788,12 @@ const Placement placements[] = {
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.foliage_quality_desktop", "Quality", "", "Foliage Quality (Desktop)", "grass trees details impostors"},
+    {"quality.foliage_quality_mobile", "Quality", "", "Foliage Quality (Mobile)", "grass trees details impostors"},
+    {"quality.foliage_quality_web", "Quality", "", "Foliage Quality (Web)", "grass trees details impostors"},
+    {"quality.foliage_distance_desktop", "Quality", "", "Foliage Distance (Desktop)", "grass trees details draw distance"},
+    {"quality.foliage_distance_mobile", "Quality", "", "Foliage Distance (Mobile)", "grass trees details draw distance"},
+    {"quality.foliage_distance_web", "Quality", "", "Foliage Distance (Web)", "grass trees details draw distance"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},

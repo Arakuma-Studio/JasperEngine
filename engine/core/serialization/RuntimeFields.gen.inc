@@ -531,6 +531,17 @@ const FieldEntry kStruct_TerrainFoliageLayer_fields[] = {
     JE_RF(TerrainFoliageLayer, drawDistance, 0xbd8cf49du, Float),
     JE_RF(TerrainFoliageLayer, seed, 0x4cccda81u, UInt),
     JE_RF(TerrainFoliageLayer, castShadows, 0x0656f2b8u, Bool),
+    JE_RF(TerrainFoliageLayer, minDrawDistance, 0xba814ef2u, Float),
+    JE_RF(TerrainFoliageLayer, minHeightRatio, 0xe4f0a5abu, Float),
+    JE_RF(TerrainFoliageLayer, maxHeightRatio, 0x78ccd455u, Float),
+    JE_RF(TerrainFoliageLayer, healthyColor, 0x770f65f5u, Vector4),
+    JE_RF(TerrainFoliageLayer, dryColor, 0x55c7efe1u, Vector4),
+    JE_RF(TerrainFoliageLayer, noiseSpread, 0xdb52250au, Float),
+    JE_RF(TerrainFoliageLayer, windBend, 0x316d2a8cu, Float),
+    JE_RF(TerrainFoliageLayer, densityFalloffStart, 0xed6059d5u, Float),
+    JE_RF(TerrainFoliageLayer, farDensity, 0xe376394au, Float),
+    JE_RF(TerrainFoliageLayer, densityScale, 0xa4a101b3u, Float),
+    JE_RF(TerrainFoliageLayer, algorithmVersion, 0x00c90c36u, UInt),
 };
 const StructTable kStruct_TerrainFoliageLayer{"TerrainFoliageLayer", kStruct_TerrainFoliageLayer_fields, std::size(kStruct_TerrainFoliageLayer_fields)};
 void Codec<TerrainFoliageLayer>::write(Writer& w, const TerrainFoliageLayer& value) { writeStruct(w, kStruct_TerrainFoliageLayer, &value); }
@@ -731,6 +742,7 @@ const FieldEntry kStruct_SplineTerrainSettings_fields[] = {
     JE_RF(SplineTerrainSettings, paintFalloff, 0x9fde3ed0u, Float),
     JE_RF(SplineTerrainSettings, paintNoise, 0xb24a7800u, Float),
     JE_RF(SplineTerrainSettings, clearFoliage, 0x9ddd40aeu, Bool),
+    JE_RF(SplineTerrainSettings, clearTrees, 0xfd1b4e77u, Bool),
     JE_RF(SplineTerrainSettings, foliageMask, 0x70db1fa9u, UInt),
     JE_RF_ENTITY(SplineTerrainSettings, terrain, 0x1975f77bu, Entity),
 };

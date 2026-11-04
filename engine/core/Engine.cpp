@@ -125,6 +125,13 @@ Scaling Engine::scalingMode = Scaling::FITWIDTH;
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+FoliageQuality Engine::foliageQualityDefaults[3] = {FoliageQuality::HIGH, FoliageQuality::HIGH, FoliageQuality::HIGH};
+bool Engine::foliageQualityUncapped = true;
+bool Engine::foliageQualityOverridden = false;
+FoliageQuality Engine::foliageQualityOverride = FoliageQuality::HIGH;
+float Engine::foliageDistanceDefaults[3] = {1.0f, 1.0f, 1.0f};
+bool Engine::foliageDistanceOverridden = false;
+float Engine::foliageDistanceOverride = 1.0f;
 CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
@@ -874,6 +881,77 @@ void Engine::resetAtmosphereQuality(){
 
 bool Engine::isAtmosphereQualityOverridden(){
     return atmosphereQualityOverridden;
+}
+
+void Engine::setFoliageQualityDefaults(FoliageQuality desktop, FoliageQuality mobile, FoliageQuality web, bool uncapped){
+    foliageQualityDefaults[0] = desktop;
+    foliageQualityDefaults[1] = mobile;
+    foliageQualityDefaults[2] = web;
+    foliageQualityUncapped = uncapped;
+}
+
+FoliageQuality Engine::getFoliageQualityDefault(Platform platform){
+    switch (platform){
+        case Platform::Android:
+        case Platform::iOS:
+            return foliageQualityDefaults[1];
+        case Platform::Web:
+            return foliageQualityDefaults[2];
+        default:
+            return foliageQualityDefaults[0];
+    }
+}
+
+void Engine::setFoliageQuality(FoliageQuality quality){
+    foliageQualityOverride = quality;
+    foliageQualityOverridden = true;
+}
+
+FoliageQuality Engine::getFoliageQuality(){
+    return foliageQualityOverridden ? foliageQualityOverride : getFoliageQualityDefault(getPlatform());
+}
+
+void Engine::resetFoliageQuality(){
+    foliageQualityOverridden = false;
+}
+
+bool Engine::isFoliageQualityUncapped(){
+    return foliageQualityUncapped && !foliageQualityOverridden;
+}
+
+void Engine::setFoliageDistanceScaleDefaults(float desktop, float mobile, float web){
+    foliageDistanceDefaults[0] = desktop;
+    foliageDistanceDefaults[1] = mobile;
+    foliageDistanceDefaults[2] = web;
+}
+
+float Engine::getFoliageDistanceScaleDefault(Platform platform){
+    switch (platform){
+        case Platform::Android:
+        case Platform::iOS:
+            return foliageDistanceDefaults[1];
+        case Platform::Web:
+            return foliageDistanceDefaults[2];
+        default:
+            return foliageDistanceDefaults[0];
+    }
+}
+
+void Engine::setFoliageDistanceScale(float scale){
+    if (!std::isfinite(scale)){
+        Log::warn("Engine.foliageDistanceScale ignores a value that is not finite");
+        return;
+    }
+    foliageDistanceOverride = std::clamp(scale, 0.0f, 10.0f);
+    foliageDistanceOverridden = true;
+}
+
+float Engine::getFoliageDistanceScale(){
+    return foliageDistanceOverridden ? foliageDistanceOverride : getFoliageDistanceScaleDefault(getPlatform());
+}
+
+void Engine::resetFoliageDistanceScale(){
+    foliageDistanceOverridden = false;
 }
 
 GraphicBackend Engine::getGraphicBackend(){

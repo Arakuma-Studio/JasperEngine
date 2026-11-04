@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "foliage/FoliageOpRunner.h"
+#include "util/ImpostorBaker.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
@@ -3773,6 +3775,9 @@ void editor::App::engineRender(){
     ScriptReloadService::get().update();
     // navigation bakes of the stopped scenes: landed and saved (.navmesh) as they finish
     NavigationEditor::get().update(&project);
+    // T5: Mass Place's and edit_terrain's jobs land here; a bake renders a view a frame
+    FoliageOpRunner::updateAll();
+    ImpostorBaker::update();
     // generated normal maps whose sources changed (badges, the opt-in auto-regenerate)
     spriteNormalsWatcher->tick();
     project.updateGeneratedSources();
@@ -5374,7 +5379,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
     // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v44";
+    // v45: foliage's compact instance, wind and dither (T5: MESH 'Cin' 'Wnd' 'Dth', DEPTH and GBUFFER
+    //      too, in mesh.vert and its siblings), library:impostor.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v45";
 }
 
 void editor::App::pushTabNotificationStyle(){

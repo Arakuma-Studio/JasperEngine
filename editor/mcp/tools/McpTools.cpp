@@ -49,6 +49,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerBuildTools, "Build and export", ""},
     {registerPublishTools, "Shipping: player runtimes and releases", "shipping"},   // S30
     {registerWorldTools, "World: terrain, tilemaps, sprites, animation, particles, physics, UI, models", ""},
+    {registerTerrainTools, "Terrain: declarative edits and overlays", "terrain"},
     {registerLatticeTools, "Lattices (free-form deformation)", "animation"},   // upstream (lattice deformer)
     {registerPoseTools, "Pose animation", "animation"},   // upstream (Pose Animation)
     {registerVatTools, "Vertex animation", "animation"},   // upstream (Vertex Animation Textures)

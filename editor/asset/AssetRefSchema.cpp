@@ -130,6 +130,11 @@ namespace {
         }
         row(C::TerrainComponent, "foliageLayers[].meshPath", Shape::Asset, AssetType::Model, Base::Assets);
         row(C::TerrainComponent, "foliageLayers[].densityMap", Shape::Texture, AssetType::Texture, Base::Assets);
+        row(C::TerrainComponent, "treeData", Shape::Asset, AssetType::TreeData, Base::Assets);
+        row(C::TerrainComponent, "treePrototypes[].meshPath", Shape::Asset, AssetType::Model, Base::Assets);
+        row(C::TerrainComponent, "treePrototypes[].lodMeshes[]", Shape::Asset, AssetType::Model, Base::Assets);
+        row(C::TerrainComponent, "treePrototypes[].impostorAlbedo", Shape::Texture, AssetType::Texture, Base::Assets);
+        row(C::TerrainComponent, "treePrototypes[].impostorNormal", Shape::Texture, AssetType::Texture, Base::Assets);
         // terrains saved before blend maps and surface layers
         row(C::TerrainComponent, "blendMap", Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneComponent, true);
         row(C::TerrainComponent, "textureLayers[]", Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneComponent, true);
@@ -586,6 +591,20 @@ namespace {
                 if (densityChanged || meshChanged) {
                     terrain.needUpdateFoliage = true;
                 }
+            }
+            for (size_t i = 0; i < terrain.treePrototypes.size(); i++) {
+                TerrainTreePrototype& prototype = terrain.treePrototypes[i];
+                const std::string prefix = "treePrototypes[" + std::to_string(i) + "].";
+                bool changed = visit.asset(prototype.meshPath, componentRow(C::TerrainComponent, "treePrototypes[].meshPath"), prefix + "meshPath");
+                for (size_t l = 0; l < prototype.lodMeshes.size(); l++) {
+                    changed |= visit.asset(prototype.lodMeshes[l], componentRow(C::TerrainComponent, "treePrototypes[].lodMeshes[]"), prefix + "lodMeshes[" + std::to_string(l) + "]");
+                }
+                changed |= visit.texture(prototype.impostorAlbedo, componentRow(C::TerrainComponent, "treePrototypes[].impostorAlbedo"), prefix + "impostorAlbedo");
+                changed |= visit.texture(prototype.impostorNormal, componentRow(C::TerrainComponent, "treePrototypes[].impostorNormal"), prefix + "impostorNormal");
+                if (changed) terrain.needUpdateFoliage = true;
+            }
+            if (visit.asset(terrain.treeData, componentRow(C::TerrainComponent, "treeData"), "treeData")) {
+                terrain.needUpdateFoliage = true;
             }
             // the node tree and the physics heightfield are built from the map
             if (heightMapChanged) {

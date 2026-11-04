@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "foliage/TreeDataFile.h"
 #include "diag/HangWatchdog.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ScriptReloadService.h"
@@ -1635,6 +1636,29 @@ void editor::Project::setAtmosphereQuality(const std::array<AtmosphereQuality, 3
 
 const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() const{
     return atmosphereQuality;
+}
+
+void editor::Project::setFoliageQuality(const std::array<FoliageQuality, 3>& quality, bool declared){
+    foliageQuality = quality;
+    foliageQualityDeclared = declared;
+    Engine::setFoliageQualityDefaults(quality[0], quality[1], quality[2], !declared);
+}
+
+const std::array<FoliageQuality, 3>& editor::Project::getFoliageQuality() const{
+    return foliageQuality;
+}
+
+bool editor::Project::isFoliageQualityDeclared() const{
+    return foliageQualityDeclared;
+}
+
+void editor::Project::setFoliageDistanceScale(const std::array<float, 3>& scale){
+    foliageDistanceScale = scale;
+    Engine::setFoliageDistanceScaleDefaults(scale[0], scale[1], scale[2]);
+}
+
+const std::array<float, 3>& editor::Project::getFoliageDistanceScale() const{
+    return foliageDistanceScale;
 }
 
 void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
@@ -5599,6 +5623,9 @@ void editor::Project::resetEngineConfigs(bool executeViewChanged) {
     Engine::setSimulationHeld(false);
     // a game may have turned it off
     Engine::setAsyncLoading(true);
+    // T5 R21, R66: a game's choice lasts as long as its Play
+    Engine::resetFoliageQuality();
+    Engine::resetFoliageDistanceScale();
     // Input is static: no level, edge or delta of the last Play reaches the next
     Input::resetFrameState();
     InputActions::unload();
@@ -5662,6 +5689,8 @@ void editor::Project::resetConfigs() {
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setAtmosphereQuality(defaultAtmosphereQuality);
+    setFoliageQuality(defaultFoliageQuality, false);
+    setFoliageDistanceScale(defaultFoliageDistanceScale);
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
@@ -6346,6 +6375,9 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
         editor::getEditorHost().prepareForProjectSwitch();
 
         resetConfigs();
+        // T5 R21, R66: a project made now says what its platforms draw; one without the key is older
+        setFoliageQuality(newProjectFoliageQuality);
+        setFoliageDistanceScale(newProjectFoliageDistanceScale);
 
         // Clear the last project path in settings when creating a new temp project (a
         // project elsewhere becomes it when saved below)
@@ -6591,7 +6623,7 @@ const char* versionControlIgnore =
 // merge runs. With LFS the binaries are LFS objects and lockable (git lfs lock); scenes, prefabs
 // and meta files never are LFS objects (docs/specs/S29-version-control.md R21).
 const char* const versionControlBinaryPatterns[] = {
-    "*.png", "*.jpg", "*.jpeg", "*.tga", "*.ktx", "*.dds", "*.glb", "*.gltf", "*.fbx", "*.obj",
+    "*.png", "*.jpg", "*.jpeg", "*.tga", "*.ktx", "*.dds", "*.glb", "*.gltf", "*.fbx", "*.obj", "*.jetrees",
     "*.ogg", "*.wav", "*.mp3", "*.ttf", "*.otf"
 };
 // binaries LFS adds (art sources, HDR images, cooked textures, video)
@@ -7439,6 +7471,8 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
+    generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
@@ -9517,6 +9551,8 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setFoliageQuality(foliageQuality, !foliageQualityDeclared);
+    generator.setFoliageDistanceScale(foliageDistanceScale);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
@@ -9722,6 +9758,8 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 SceneManager::setLoadingDelay(loadingSettings.delay);
                 SceneManager::setLoadingTimeout(loadingSettings.timeout);
                 // Project Settings > Debug: the overlay of a development build, before the scripts start
+                // T5 R62: a clone's store comes from the file, so the file holds what the Terrain has now
+                TreeDataFile::flushAll(this);
                 applyDebugSettingsForPlay();
                 // so Engine::onSceneLoaded fires, as for the exported start scene
                 SceneManager::setCurrentScene(sceneId);

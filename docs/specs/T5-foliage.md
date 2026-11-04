@@ -917,3 +917,46 @@ claim for a GPU can come from this host, and a report must say so.
 - **Sibling specs were written at the same time.** All six were read and matched afterwards. T1's names win
   for `TerrainMapStore`, `TerrainSurfaceQuery`, operation registration and overlay source where a later change
   differs, and this spec's sketches follow with no change in behaviour.
+
+## Deviations
+
+Recorded by the implementation, each with what it does instead and why.
+
+1. **`FoliageMapPatch` instead of a `SurfaceView` window.** T1's `SurfaceView` samples a whole component on
+   the main thread and has no window. A placement job copies its cell's rectangle of the height, density and
+   noise maps into a patch and samples it with the same arithmetic, equal to the bit to whole-map sampling
+   (`FoliageScatter.PatchesMatchTheWholeMap`). Holes are a shared whole-map copy, refreshed on a hole edit,
+   and read through T1's `isHole`.
+2. **The smallest `edit_terrain`, `visualize_terrain`, `TerrainOverlay` and `sample_terrain` region.** T1's
+   rest had not landed when T5 needed them (T1 R58, R59). They are in `editor/mcp/tools/TerrainTools.cpp` and
+   `editor/foliage/TerrainOverlay`, with T1's names; `edit_terrain` accepts only registered ops. Whoever lands
+   second keeps T1's and registers T5's ops and overlay sources into it.
+3. **Compound shapes on the main thread.** At most two cells a frame, and in the same frame on a runtime
+   removal (the risk table's default): Jolt's shape build off the main thread is not on every target.
+4. **Runtime clones load the flushed file** instead of sharing the store's pointer. `shareTreeStore` and
+   copy on first write exist for duplicated Terrains; a Play clone goes through its loader so its path is the
+   one an exported game runs.
+5. **AC7 compares within one run.** The pre-T5 golden could not be committed first, since this branch starts
+   after T1's foundation changed the terrain draw. `FoliageGpu.LegacyLayerLooksTheSame` draws T5's layer and
+   the same placement on a legacy Instanced Mesh with the old fade, and holds them to AC7's bounds.
+6. **A fourth hook in `RenderSystem`.** `selectMeshDraw` needs a branch of its own for a foliage slot's
+   instance range, beyond F1's three.
+7. **The bake renders two passes** (unlit colour and world normal) with `library:impostor_bake` rather than
+   reading the G-buffer: that path works on the backends and on the lite player alike.
+8. **Point-light shadow faces use the main camera's list** (`instanceView` -1). A list per face would cost
+   six culls for a light that rarely reaches foliage.
+9. **`noise_mask` is refused until T2 lands.** `host.noiseMask` is the hook, and `FoliageRules.NoiseMask`
+   passes with a caller's buffer.
+10. **Dither on built-in Lit, `library:foliage` and `library:impostor` only.** A custom surface shader keeps
+    its own alpha; it fades with distance through its discard.
+11. **`TreeRecord.rotation` stores the yaw; the lean's share is in the upper five flag bits.** The tilt is
+    derived at a cell's build, so the undo of a sculpt restores the store's bytes (AC21).
+12. **The "Terrain Settings: Foliage" section lives in the panel.** T1 R59's Terrain Settings tool is absent;
+    when it lands the section moves there, with the same fields.
+13. **R65, R66's "lands first" path.** `minDrawDistance`, Foliage Distance and `Engine.foliageDistanceScale`
+    are implemented here; agent-authoring's `detailRanges` is not on the branch, so AC42's second half is for
+    whichever lands second.
+14. **Details on a brush frame.** `TerrainMapUtils::refresh` takes the region a stamp wrote and publishes it as
+    `TerrainEditEvents`; a restored snapshot has no region and refills every cell.
+15. **Tree obstacles do not need Physics 3D.** The collector's cylinder builder is compiled in without it,
+    since a navmesh is not a physics feature.

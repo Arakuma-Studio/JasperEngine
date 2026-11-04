@@ -2851,6 +2851,9 @@ void editor::SceneRender::updateTerrainBrushCursor(){
     // over the terrain surface by updateCursor.
     addLoop(cursor.outerPoints, Vector4(1.0f, 0.78f, 0.22f, 1.0f));
     addLoop(cursor.innerPoints, Vector4(0.75f, 0.58f, 0.16f, 1.0f));
+    for (size_t i = 0; i + 1 < cursor.capsuleLines.size(); i += 2){
+        terrainBrushLines->addLine(cursor.capsuleLines[i], cursor.capsuleLines[i + 1], Vector4(0.45f, 0.9f, 0.45f, 1.0f));
+    }
 
     terrainBrushLines->setVisible(true);
 }

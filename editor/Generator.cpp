@@ -2543,6 +2543,19 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     };
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
+    // Foliage Quality and Foliage Distance per platform group (T5 R21, R66)
+    auto foliageQualityName = [](FoliageQuality quality) -> std::string {
+        switch (quality) {
+            case FoliageQuality::LOW: return "FoliageQuality::LOW";
+            case FoliageQuality::MEDIUM: return "FoliageQuality::MEDIUM";
+            case FoliageQuality::HIGH: return "FoliageQuality::HIGH";
+        }
+        return "FoliageQuality::HIGH";
+    };
+    mainContent += "    Engine::setFoliageQualityDefaults(" + foliageQualityName(foliageQuality[0]) + ", " + foliageQualityName(foliageQuality[1]) + ", " +
+                   foliageQualityName(foliageQuality[2]) + ", " + (foliageQualityUncapped ? "true" : "false") + ");\n";
+    mainContent += "    Engine::setFoliageDistanceScaleDefaults(" + std::to_string(foliageDistanceScale[0]) + "f, " + std::to_string(foliageDistanceScale[1]) + "f, " +
+                   std::to_string(foliageDistanceScale[2]) + "f);\n";
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);

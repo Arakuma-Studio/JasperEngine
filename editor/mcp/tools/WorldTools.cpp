@@ -7,6 +7,7 @@
 // point lists of polygons / shadow casters / line renderers.
 #include "util/ProjectUtils.h"
 #include "McpTools.h"
+#include "FoliageTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
 #include "AnimationKeys.h"
@@ -519,7 +520,8 @@ Json terrainInfo(Project* project, Scene* scene, Entity entity) {
     for (Texture& map : terrain.blendMaps) blendMaps.push_back(McpValues::assetPathToJson(project, map.getPath()));
     Json foliage = Json::array();
     for (const TerrainFoliageLayer& layer : terrain.foliageLayers) {
-        foliage.push_back({{"mesh", McpValues::assetPathToJson(project, layer.meshPath)}, {"density", layer.density}});
+        foliage.push_back({{"mesh", McpValues::assetPathToJson(project, layer.meshPath)}, {"density", layer.density},
+                           {"drawn", scene->getSystem<MeshSystem>()->getFoliageInstanceCount(entity, static_cast<int>(foliage.size()))}});
     }
     const float half = terrain.terrainSize * 0.5f;
     return Json{
@@ -908,6 +910,22 @@ void sampleTerrainTool(const CallPtr& call) {
         }
         data["grid"] = {{"size", n}, {"rows_from", "local -z to +z"}, {"columns_from", "local -x to +x"},
                         {"world_heights", rows}, {"min", lo}, {"max", hi}, {"mean", sum / static_cast<float>(n * n)}};
+    }
+    if (args.value("foliage", false)) {
+        // T5 R55: over T1's region (world or local, as the call's space)
+        std::optional<FoliageRegionXZ> region;
+        if (has(args, "region")) {
+            const Json& box = args["region"];
+            if (!box.is_object() || !box.contains("min") || !box.contains("max") || !box["min"].is_array() || !box["max"].is_array() || box["min"].size() != 2 || box["max"].size() != 2) {
+                call->fail("region must be {min: [x, z], max: [x, z]}.");
+                return;
+            }
+            const float offsetX = world ? transform.worldPosition.x : 0.0f;
+            const float offsetZ = world ? transform.worldPosition.z : 0.0f;
+            region = FoliageRegionXZ{box["min"][0].get<float>() - offsetX, box["min"][1].get<float>() - offsetZ,
+                                     box["max"][0].get<float>() - offsetX, box["max"][1].get<float>() - offsetZ};
+        }
+        data["foliage"] = foliageStatsJson(target.project, target.scene, target.entity, region);
     }
     call->ok("Sampled terrain \"" + scene->getEntityName(target.entity) + "\".", data);
 }
@@ -5506,7 +5524,9 @@ void registerWorldTools(McpRegistry& registry) {
             {"entity", entityRef("Default: the only terrain.")},
             {"points", array(array(numberItem, ""), "[x, z] points.")},
             {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
-            {"grid", integer("Default 9 without points.", 0, 65)}
+            {"grid", integer("Default 9 without points.", 0, 65)},
+            {"region", anyObject("{min:[x,z],max:[x,z]}")},
+            {"foliage", withDefault(boolean("Details and trees in region."), false)}
         }),
         sampleTerrainTool, true, true);
     group.clear();

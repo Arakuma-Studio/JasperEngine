@@ -62,8 +62,8 @@ namespace {
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
     // bits 0-31, bit 32, the lattice deformer ('Ltc'), bit 33, S10's high shadow filters ('Shq'),
-    // and bits 34-35, the Vertex Animation ('Vat', 'Vab')
-    const uint64_t meshValidMask = 0xFFFFFFFFFULL;
+    // bits 34-35, the Vertex Animation ('Vat', 'Vab'), and bits 36-38, T5's foliage ('Cin', 'Wnd', 'Dth')
+    const uint64_t meshValidMask = 0x7FFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -193,7 +193,7 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 35 (the Vertex Animation's) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 38 (T5's foliage) goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
@@ -406,7 +406,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(36) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(39) | shaderPropertyBit(63), "mesh_UltNor"},
         // bit 33, S10's high shadow filters
         {ShaderType::MESH, 0x51 | shaderPropertyBit(33), "mesh_UltShwNorShq"},
         // bit 32, the first past the 32 older keys use, is the lattice deformer
@@ -420,7 +420,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::GBUFFER, shaderPropertyBit(15), "gbuffer_Vab"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVab"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabCinWndDth"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
@@ -454,4 +454,26 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 1, effect), "uieffect_fx_stripes_Flt");
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 0, effect), "uieffect_fx_stripes");
     EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::UI_EFFECT, 3, effect), "uieffect_fx_stripes_FltStp");
+}
+
+// T5 AC44: appended bits; a shader file on disk names these, so nothing may renumber them
+TEST(ShaderKey, CompactInstanceBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, 1ULL << 36), "mesh_Cin") ;
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::DEPTH, 1ULL << 18), "depth_Cin");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::GBUFFER, 1ULL << 16), "gbuffer_Cin");
+    EXPECT_NE(ShaderPool::getFoliageProperties(ShaderType::MESH, true, false, false) & (1ULL << 36), 0u);
+}
+
+TEST(ShaderKey, FoliageWindBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, 1ULL << 37), "mesh_Wnd");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::DEPTH, 1ULL << 19), "depth_Wnd");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::GBUFFER, 1ULL << 17), "gbuffer_Wnd");
+    EXPECT_NE(ShaderPool::getFoliageProperties(ShaderType::MESH, false, true, false) & (1ULL << 37), 0u);
+}
+
+TEST(ShaderKey, FoliageDitherBitIsPinned) {
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::MESH, 1ULL << 38), "mesh_Dth");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::DEPTH, 1ULL << 20), "depth_Dth");
+    EXPECT_EQ(ShaderPool::getShaderStr(ShaderType::GBUFFER, 1ULL << 18), "gbuffer_Dth");
+    EXPECT_NE(ShaderPool::getFoliageProperties(ShaderType::MESH, false, false, true) & (1ULL << 38), 0u);
 }

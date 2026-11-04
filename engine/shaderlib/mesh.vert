@@ -114,7 +114,12 @@ in vec3 a_position;
     out vec3 v_vertexLight;
 #endif
 
-#ifdef HAS_INSTANCING
+#include "includes/foliage_instance.glsl"
+#include "includes/foliage_wind.glsl"
+#ifdef USE_FOLIAGE_DITHER
+    out float v_foliageFade;
+#endif
+#if defined(HAS_INSTANCING) && !defined(HAS_COMPACT_INSTANCE)
     in vec4 i_matrix_col1;
     in vec4 i_matrix_col2;
     in vec4 i_matrix_col3;
@@ -177,7 +182,16 @@ vec3 getTangent(mat4 boneTransform){
 }
 #endif
 
+#if defined(HAS_VERTEX_COLOR_VEC3) || defined(HAS_VERTEX_COLOR_VEC4)
+    #define FOLIAGE_VERTEX_RED a_color.r
+#else
+    #define FOLIAGE_VERTEX_RED 1.0
+#endif
+
 void main() {
+    #ifdef HAS_COMPACT_INSTANCE
+        compactInstanceSetup();
+    #endif
     // the baked vertex animation first (HAS_VAT): it takes the place of morph targets and skinning
     vatEvaluate();
     mat4 boneTransform = getBoneTransform();
@@ -215,6 +229,13 @@ void main() {
         vec4 pos = instanceMatrix * getPosition(boneTransform);
     #else
         vec4 pos = getPosition(boneTransform);
+    #endif
+
+    #ifdef USE_FOLIAGE_WIND
+        pos.xyz = foliageWindSway(pos.xyz, i_matrix_col4.xyz, a_position.y, FOLIAGE_VERTEX_RED);
+    #endif
+    #ifdef USE_FOLIAGE_DITHER
+        v_foliageFade = foliageFadeFactor(i_matrix_col4.xyz);
     #endif
 
     #ifdef USE_INSTANCE_FADE

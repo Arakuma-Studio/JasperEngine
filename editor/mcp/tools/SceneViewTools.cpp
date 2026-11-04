@@ -86,6 +86,11 @@ Json hitJson(Project* project, const ScenePickEntry& entry) {
                 {"point", McpValues::toJson(entry.hit.point)}, {"normal", McpValues::toJson(entry.hit.normal)},
                 {"distance", entry.hit.distance}, {"pending", entry.hit.pending}};
     out["path"] = scene ? McpRefs::entityPath(scene, entry.entity) : std::string();
+    if (entry.hit.kind == PickKind::TREE || entry.hit.kind == PickKind::DETAIL) {
+        // T5 R35: the GameObject is the Terrain, these say what on it
+        out["prototype"] = entry.hit.prototype;
+        if (entry.hit.kind == PickKind::TREE) out["tree_id"] = entry.hit.foliageId;
+    }
     return out;
 }
 

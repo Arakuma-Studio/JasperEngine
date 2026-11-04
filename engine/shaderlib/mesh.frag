@@ -245,7 +245,12 @@ const float M_PI = 3.141592653589793;
 // the post-processing colour (USE_POST_COLOR; after lit_frame.glsl, which holds its parameters)
 #include "includes/post_color.glsl"
 
+#include "includes/foliage_dither.glsl"
+
 void main() {
+    #ifdef USE_FOLIAGE_DITHER
+        foliageDitherDiscard();
+    #endif
     #ifdef PBR_HEX_ACTIVE
         pbrHexSetup();
     #endif

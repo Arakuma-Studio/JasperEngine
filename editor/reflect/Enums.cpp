@@ -571,6 +571,16 @@ namespace {
         {v(ParticleEmitterShape::Cone), "Cone", "Cone", "ParticleEmitterShape::Cone", "cone"},
     };
 
+    constexpr EnumItem kTerrainTreeWindMaskItems[] = {
+        {"Height", v(TerrainTreeWindMask::Height)},
+        {"Vertex Color", v(TerrainTreeWindMask::VertexColor)},
+    };
+
+    constexpr EnumItem kTerrainTreeCollisionItems[] = {
+        {"None", v(TerrainTreeCollision::None)},
+        {"Capsule", v(TerrainTreeCollision::Capsule)},
+    };
+
     constexpr EnumItem kPivotPresetItems[] = {
         {v(PivotPreset::CENTER), "center", "Center", "PivotPreset::CENTER"},
         {v(PivotPreset::TOP_CENTER), "top_center", "Top Center", "PivotPreset::TOP_CENTER"},
@@ -748,6 +758,8 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kMaterialStencilOp{"MaterialStencilOp", kMaterialStencilOpItems, v(MaterialStencilOp::KEEP)};
     const EnumDesc kParticleEmitterShape{"ParticleEmitterShape", kParticleEmitterShapeItems, v(ParticleEmitterShape::Box)};
     const EnumDesc kPivotPreset{"PivotPreset", kPivotPresetItems, v(PivotPreset::BOTTOM_LEFT)};
+    const EnumDesc kTerrainTreeWindMask{"TerrainTreeWindMask", kTerrainTreeWindMaskItems, v(TerrainTreeWindMask::Height)};
+    const EnumDesc kTerrainTreeCollision{"TerrainTreeCollision", kTerrainTreeCollisionItems, v(TerrainTreeCollision::None)};
     const EnumDesc kPrimitiveType{"PrimitiveType", kPrimitiveTypeItems, v(PrimitiveType::TRIANGLES)};
     const EnumDesc kProgressbarType{"ProgressbarType", kProgressbarTypeItems, v(ProgressbarType::HORIZONTAL)};
     const EnumDesc kReflectionProbeMode{"ReflectionProbeMode", kReflectionProbeModeItems, v(ReflectionProbeMode::STATIC)};

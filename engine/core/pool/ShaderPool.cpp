@@ -649,9 +649,9 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 36;
-        case ShaderType::DEPTH:  return 18;
-        case ShaderType::GBUFFER: return 16;
+        case ShaderType::MESH:   return 39;
+        case ShaderType::DEPTH:  return 21;
+        case ShaderType::GBUFFER: return 19;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -735,6 +735,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // and 34, after S10's 'Shq')
             case 34: return shortName ? "Vat" : "Vertex Animation";
             case 35: return shortName ? "Vab" : "Vertex Animation Bones";
+            // foliage (T5 F3, F6, F8): the 32-byte instance, the wind block, the fade by dither
+            case 36: return shortName ? "Cin" : "Compact Instance";
+            case 37: return shortName ? "Wnd" : "Foliage Wind";
+            case 38: return shortName ? "Dth" : "Foliage Dither";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -761,6 +765,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 16: return shortName ? "Vat" : "Vertex Animation";
             case 17: return shortName ? "Vab" : "Vertex Animation Bones";
+            case 18: return shortName ? "Cin" : "Compact Instance";
+            case 19: return shortName ? "Wnd" : "Foliage Wind";
+            case 20: return shortName ? "Dth" : "Foliage Dither";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -784,6 +791,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 14: return shortName ? "Vat" : "Vertex Animation";
             case 15: return shortName ? "Vab" : "Vertex Animation Bones";
+            case 16: return shortName ? "Cin" : "Compact Instance";
+            case 17: return shortName ? "Wnd" : "Foliage Wind";
+            case 18: return shortName ? "Dth" : "Foliage Dither";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {
@@ -1753,6 +1763,17 @@ uint64_t ShaderPool::getMeshProperties(
     prop |= (vat && !vatBones) ? getVatProperty(ShaderType::MESH, false) : 0;
     prop |= vatBones         ? getVatProperty(ShaderType::MESH, true) : 0;
 
+    return prop;
+}
+
+uint64_t ShaderPool::getFoliageProperties(ShaderType shaderType, bool compact, bool wind, bool dither){
+    int first = 36;
+    if (shaderType == ShaderType::DEPTH) first = 18;
+    else if (shaderType == ShaderType::GBUFFER) first = 16;
+    uint64_t prop = 0;
+    prop |= compact ? shaderPropertyBit(first) : 0;
+    prop |= wind    ? shaderPropertyBit(first + 1) : 0;
+    prop |= dither  ? shaderPropertyBit(first + 2) : 0;
     return prop;
 }
 

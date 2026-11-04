@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainMapUtils.h"
+#include "object/TerrainEdit.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 
@@ -85,7 +86,7 @@ bool editor::TerrainMapUtils::writeFile(Project* project, const std::string& rel
     return true;
 }
 
-void editor::TerrainMapUtils::refresh(SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref){
+void editor::TerrainMapUtils::refresh(SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, const TerrainMapRegion* region){
     if (!sceneProject){
         return;
     }
@@ -94,16 +95,27 @@ void editor::TerrainMapUtils::refresh(SceneProject* sceneProject, Entity entity,
         return;
     }
 
+    // T5 R25, R26: a known rectangle re-snaps or refills only the cells under it; without one
+    // (a snapshot restored) every cell is rebuilt
+    const bool regional = region && !region->empty();
     if (ref.target == TerrainMapTarget::HeightMap){
         terrain->heightMapLoaded = false;
         terrain->needUpdateTerrain = true;
         terrain->needUpdateTexture = true;
         // Instances sit on the surface, so a sculpt moves them.
-        terrain->needUpdateFoliage = true;
+        if (!regional) terrain->needUpdateFoliage = true;
     }else if (ref.target == TerrainMapTarget::BlendMap){
         terrain->needUpdateTexture = true;
-    }else{
+    }else if (!regional){
         terrain->needUpdateFoliage = true;
+    }
+    if (regional){
+        terrain::MapId map;
+        map.kind = ref.target == TerrainMapTarget::HeightMap ? terrain::MapKind::Height
+            : ref.target == TerrainMapTarget::BlendMap ? terrain::MapKind::Blend : terrain::MapKind::Density;
+        map.index = ref.layer;
+        TerrainEditEvents::publish(sceneProject->scene, entity, map,
+            terrain::TexelRect{region->minX, region->minY, region->width(), region->height()});
     }
 
     if (Texture* texture = findTexture(*terrain, ref)){

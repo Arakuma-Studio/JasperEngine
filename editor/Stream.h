@@ -550,6 +550,8 @@ namespace jasperengine::editor {
         static TerrainSurfaceLayer decodeTerrainSurfaceLayer(const YAML::Node& node);
         static YAML::Node encodeTerrainFoliageLayer(const TerrainFoliageLayer& layer);
         static TerrainFoliageLayer decodeTerrainFoliageLayer(const YAML::Node& node);
+        static YAML::Node encodeTerrainTreePrototype(const TerrainTreePrototype& prototype);
+        static TerrainTreePrototype decodeTerrainTreePrototype(const YAML::Node& node);
         static YAML::Node encodeTerrainComponent(const TerrainComponent& terrain);
         static TerrainComponent decodeTerrainComponent(const YAML::Node& node, const TerrainComponent* oldTerrain = nullptr);
 

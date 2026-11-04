@@ -3628,6 +3628,12 @@ SubmeshShaderInputs RenderSystem::getSubmeshShaderInputs(const MeshComponent& me
     // Opted in per field, not per band, so emptying the band (editor preview) neither
     // rebuilds the shader nor drops the variant from an export.
     inputs.instanceFade = instmesh && instmesh->distanceFade;
+    if (instmesh && instmesh->foliage){
+        inputs.compactInstance = !instmesh->foliageExpanded;
+        // a material already on library:foliage keeps its own wind, so it doesn't sway twice (F8)
+        inputs.foliageWind = inputs.compactInstance && instmesh->foliageWind && ShaderReference::getBase(shader) != "library:foliage";
+        inputs.foliageDither = instmesh->foliageDither && shaderSupportsFoliageDither(shader);
+    }
     inputs.mirror = mirror;
     // LatticeRender::prepare decides it each frame (a terrain is never deformed)
     inputs.lattice = mesh.lattice.count > 0 && !terrain;
@@ -3894,6 +3900,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
                     p_alphaMask, p_alphaOpaque, p_instanceFade, p_terrainSurface,
                     p_vertexLights, lightCapacity, p_stochastic, p_lattice,
                     inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+    variant.properties |= ShaderPool::getFoliageProperties(ShaderType::MESH, inputs.compactInstance, inputs.foliageWind, inputs.foliageDither);
     // the post-processing colour (phase 4): the scene's, for every colour variant
     if (environment.postColor)
         variant.properties |= ShaderPool::getPostColorProperty(ShaderType::MESH);
@@ -3947,6 +3954,11 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.morphNormal, inputs.morphTangent, inputs.terrain, inputs.instanced,
             p_depthAlphaMask, p_instanceFade, d_normals, d_vertexColorVec3, d_vertexColorVec4, d_uv1, d_textureRect,
             d_stochastic, p_lattice, inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+        variant.depthProperties |= ShaderPool::getFoliageProperties(ShaderType::DEPTH, inputs.compactInstance, inputs.foliageWind, inputs.foliageDither);
+        // the wind's mask reads what the colour pass reads
+        if (inputs.foliageWind && !manifest){
+            variant.depthProperties |= ShaderPool::getDepthMeshProperties(false, false, false, false, false, false, false, false, false, false, inputs.vertexColor3, inputs.vertexColor4);
+        }
     }
 
     // the G-buffer shader feeds the SSR geometry pass (MRT: packed depth + view-space
@@ -3963,6 +3975,10 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
             inputs.terrain, inputs.instanced, inputs.metallicRoughnessTexture, p_terrainSurface && inputs.normal,
             g_stochastic, p_lattice, p_lattice && inputs.vertexColor3, p_lattice && inputs.vertexColor4,
             inputs.vat != VatVariant::NONE, inputs.vat == VatVariant::BONES);
+        variant.gbufferProperties |= ShaderPool::getFoliageProperties(ShaderType::GBUFFER, inputs.compactInstance, inputs.foliageWind, inputs.foliageDither);
+        if (inputs.foliageWind){
+            variant.gbufferProperties |= ShaderPool::getGBufferMeshProperties(false, false, false, false, false, false, false, false, false, false, false, false, inputs.vertexColor3, inputs.vertexColor4);
+        }
     }
 
     return variant;
@@ -6556,6 +6572,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (p_instanceFade){
             mesh.submeshes[i].slotVSFade = shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE);
         }
+        mesh.submeshes[i].slotVSFoliage = (meshProperties & ShaderPool::getFoliageProperties(ShaderType::MESH, false, true, true)) ?
+            shaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FOLIAGE) : -1;
         if (hasFog){
             mesh.submeshes[i].slotFSFog = shaderData.getUniformBlockIndex(UniformBlockType::FS_FOG);
         }
@@ -6818,6 +6836,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             if (p_instanceFade){
                 mesh.submeshes[i].slotVSDepthFade = depthShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FADE);
             }
+            mesh.submeshes[i].slotVSDepthFoliage = (variant.depthProperties & ShaderPool::getFoliageProperties(ShaderType::DEPTH, false, true, true)) ?
+                depthShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FOLIAGE) : -1;
             // the sprite rect an alpha-clipping depth program's UV goes through ('Txr')
             if (mesh.submeshes[i].hasTextureRect){
                 mesh.submeshes[i].slotVSDepthSprite = depthShaderData.getUniformBlockIndex(UniformBlockType::SPRITE_VS_PARAMS);
@@ -6984,6 +7004,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             ShaderData& gbufferShaderData = mesh.submeshes[i].gbufferShader.get()->shaderData;
 
             mesh.submeshes[i].slotVSGBufferParams = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_VS_PARAMS);
+            mesh.submeshes[i].slotVSGBufferFoliage = (variant.gbufferProperties & ShaderPool::getFoliageProperties(ShaderType::GBUFFER, false, true, true)) ?
+                gbufferShaderData.getUniformBlockIndex(UniformBlockType::PBR_VS_FOLIAGE) : -1;
             mesh.submeshes[i].slotFSGBufferMaterial = gbufferShaderData.getUniformBlockIndex(UniformBlockType::GBUFFER_FS_MATERIAL);
             gbufferShaderData.getUniformBlockMembers("u_fs_gbufferMaterial", mesh.submeshes[i].sizeFSGBufferMaterial);
 
@@ -8236,6 +8258,8 @@ unsigned int RenderSystem::selectMeshLod(const MeshComponent& mesh, const LodVie
 // culled slice of every instanced mesh for the main camera and each shadow slot;
 // runs when a list or a camera changed, so a still frame uploads nothing
 void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& mainCameraTransform){
+    buildFoliageLists(&primaryView, mainCamera, mainCameraTransform, rv().lodView, true);
+
     if (!instanceViewsDirty)
         return;
     instanceViewsDirty = false;
@@ -8250,6 +8274,8 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
     auto instmeshes = scene->getComponentArray<InstancedMeshComponent>();
     for (int i = 0; i < instmeshes->size(); i++){
         InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
+        if (instmesh.foliage)
+            continue;
         MeshComponent* mesh = scene->findComponent<MeshComponent>(instmeshes->getEntity(i));
         Transform* transform = scene->findComponent<Transform>(instmeshes->getEntity(i));
         if (!mesh || !transform || !mesh->loaded){
@@ -8380,6 +8406,10 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
 
 // instances and detail level a pass draws a mesh with; false when there is nothing to draw
 bool RenderSystem::selectMeshDraw(Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw){
+    if (instmesh && instmesh->foliage){
+        draw.instanceCount = foliageDrawCount(*instmesh, instanceView);
+        return draw.instanceCount != 0;
+    }
     if (instmesh){
         const InstanceViewRange* range = (instanceView >= 0) ? &instanceRange(entity, *instmesh, instanceView) : nullptr;
         draw.instanceCount = range ? range->count() : instmesh->numVisible;
@@ -8413,6 +8443,10 @@ void RenderSystem::bindInstances(ObjectRender& render, InstancedMeshComponent& i
 
 // a culled view draws each level bucket of its slice; anything else draws every instance at one level
 void RenderSystem::drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount){
+    if (instmesh && instmesh->foliage){
+        drawFoliageSubmesh(render, entity, mesh, submeshIndex, *instmesh, instanceView);
+        return;
+    }
     Submesh& submesh = mesh.submeshes[submeshIndex];
     const MeshLodData* lodData = submesh.lodData.get();
     bool lodReady = lodData && lodData->numLevels > 1 && submesh.lodIndices.getRender()->isCreated();
@@ -8536,6 +8570,7 @@ void RenderSystem::updateInstanceBuffers(){
     }
 
     uploadInstanceViews(rv());
+    uploadFoliageViews();
 }
 
 // the culled lists a view rebuilt, each into its own buffer
@@ -14688,7 +14723,8 @@ void RenderSystem::update(double dt){
             TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
 
             InstancedMeshComponent* instmesh = scene->findComponent<InstancedMeshComponent>(entity);
-            if (instmesh){
+            // a foliage prototype has no instances of its own: its bounds and lists are FoliageSystem's
+            if (instmesh && !instmesh->foliage){
                 if (instmesh->distanceFade){
                     // The range is a model-space distance, so the eye moves into that space
                     // instead: scaling the range into world space breaks on a scaled mesh.
@@ -15471,6 +15507,7 @@ void RenderSystem::drawCameras(bool includeMain){
             if (terrainView != 0){
                 selectCameraTerrain(camera, *cameraTransformPtr, terrainView);
             }
+            buildFoliageCameraList(camera, *cameraTransformPtr, terrainView);
             cameraLighting = &getCameraShadows(cameraEntity);
             prepareCameraShadows(*cameraLighting, camera, *cameraTransformPtr, terrainView, true);
             buildCameraShadowInstances(*cameraLighting);
@@ -15486,7 +15523,9 @@ void RenderSystem::drawCameras(bool includeMain){
         pass.renderToTexture = camera.renderToTexture;
         pass.terrainView = terrainView;
         passShadows = cameraLighting;
+        foliagePassView = terrainView;
         renderCameraPass(pass);
+        foliagePassView = 0;
         passShadows = nullptr;
     }
 
@@ -15530,6 +15569,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     Transform& cameraTransform = *pass.cameraTransform;
     const bool isMainCamera = pass.isMain;
     const int terrainView = pass.terrainView;
+    foliagePassEye = pass.cameraTransform->worldPosition;
     // layers this camera draws (Unity Camera.cullingMask)
     const uint32_t cullingMask = camera.cullingMask;
 
@@ -17537,6 +17577,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
     }
 
     collectShadowSlots();
+    buildFoliageLists(&view, camera, cameraTransform, view.lodView, false);
 
     // what the lists depend on besides the batches themselves
     uint64_t shadowHash = 1469598103934665603ULL;
@@ -17574,6 +17615,8 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
     for (int i = 0; i < instmeshes->size(); i++){
         InstancedMeshComponent& instmesh = instmeshes->getComponentFromIndex(i);
         Entity entity = instmeshes->getEntity(i);
+        if (instmesh.foliage)
+            continue;
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         Transform* transform = scene->findComponent<Transform>(entity);
 

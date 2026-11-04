@@ -58,6 +58,9 @@ namespace jasperengine {
         Vector3 barycentric;
         PickKind kind = PickKind::MESH;
         bool pending = false;
+        // TREE: the tree's id and prototype, with entity the Terrain; DETAIL: the layer in prototype
+        uint64_t foliageId = 0;
+        int32_t prototype = -1;
 
         operator bool() const { return hit; }
         RayReturn toRayReturn() const;
@@ -78,6 +81,8 @@ namespace jasperengine {
         static constexpr uint32_t TERRAIN = PICK_TERRAIN;
         static constexpr uint32_t UI = PICK_UI;
         static constexpr uint32_t BOUNDS = PICK_BOUNDS;
+        static constexpr uint32_t TREE = PICK_TREE;
+        static constexpr uint32_t DETAIL = PICK_DETAIL;
         static constexpr uint32_t ALL = PICK_ALL & ~PICK_ICON;
 
         // Closest hit on a layer of layerMask. With a Ray, distance is the fraction of
@@ -107,6 +112,9 @@ namespace jasperengine {
 
         // The narrow phase of one SceneBvh leaf: the ray (unit direction, at most
         // maxDistance) against what the leaf's kind is drawn as. Main thread.
+        // A mesh's triangles under a matrix of the caller's: foliage's instances, which have no leaves
+        JASPERENGINE_API bool testMeshAt(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Matrix4& model, const Vector3& origin, const Vector3& direction,
+                                         float maxDistance, const PickFilter& filter, PickHit& hit);
         JASPERENGINE_API bool testLeaf(SceneBvh& bvh, const SceneBvh::Leaf& leaf, const Vector3& origin, const Vector3& direction,
                                        float maxDistance, const PickFilter& filter, PickHit& hit);
 
