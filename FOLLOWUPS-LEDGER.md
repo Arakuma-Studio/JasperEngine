@@ -43,7 +43,7 @@ Overlaps: S65 stops at the loading thread, because `dc/mesh-memory` removes the 
 
 AGENTS.md (2026-11-04) requires the full suite before a push to `origin main` when the push needs it,
 such as a big feature; a small change does not. There is no CI, so nothing else checks a push. Big here:
-S65, S67, S68, S69, S70 and S35-S40. S72 was moved off this list: it changes includes, not behaviour. Several ready big features may share one full pass, on a local
+S65, S68, S69, S70 and S35-S40. Moved off this list: S72, which changes includes, not behaviour, and S67, whose code changes are small and were tested end to end for real; the next full pass still covers both. Several ready big features may share one full pass, on a local
 `main` holding all of them. The Mac runs after each group.
 
 ## Status
@@ -62,7 +62,7 @@ S65, S67, S68, S69, S70 and S35-S40. S72 was moved off this list: it changes inc
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B | In progress |
 | S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
-| S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, M | In progress |
+| S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
 | S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | In progress |
 | S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | In progress |
 | S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B | In progress |
@@ -119,6 +119,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 ## Done
 
+- S67: Android and iOS packaging really run. Fixed: prebuilt iOS games never linked; exported `gradlew` was not executable; EC bundles could not sign; `android-emulator-test.sh` emptied its own expectations, so earlier passes without `--scene` proved less. Android release and development APK and AAB install, run, golden 0.00%. iOS simulator, both flavours, golden 0.00%. Eval 2/2, 0/2 without its text. Open: a signed IPA needs an Apple account; a source export's debug build fails the emulator's GLES check with `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` although its picture matches at 0.00% (emulator's driver suspected, not proven; check on a real phone); Gradle source exports use the debug key; iOS not rerun on the final merge, which touched none of its files.
 - S62: a recording that reports success is a good one. Every write is checked, the first failure stops recording while Play continues, output is published atomically, a partial stays only if it decodes. A frame waits for its loads in game time. Red on the old build: stand-in frames at game frames 10-12, injected failures reported as success. 27/27 recorder tests on the merge, including a real full 64 MB tmpfs; decoded audio matches the old reference. Whole `check-changed` hit its limit one merge back at 173 of 181 files (1108 passed); its 5 failures and 8 unfinished files pass by hand, load as the cause inferred. Eval 2/2, 0/2 without its text. Not compiled: Windows, macOS.
 - S72: a component header rebuilds a median of 29 editor files instead of 451, worst 143 instead of 454. Game code keeps the umbrella. `check_fanout.py` and `check_headers.py` guard it. Sanitizer builds install and run MCP tests, leak checks off. Open: web, Android, unity, Mac and sanitizer builds last passed on earlier merges, not the final one; Windows never compiled; `AtomicFile` timing tests fail on loaded H and pass alone.
 - S71: measured first: a Mesh's update flags cost 1083 µs a call on main; now 1.3 µs, same flags, every component under 2 µs. Stop also keeps a Mesh a Play only moved, which was never on main. Stop on 600 boxes went from 2.2x rebuilding them to 1.52x (changed) and 1.03x (moved). `CanvasGroupTest` budgets moved to `perfSlack()`, so that test no longer skips under load. `check-changed` passed one merge back; at the final commit a full build, 63 unit and 33 MCP tests. Open: the skipped reload shows no CPU saving under llvmpipe; not measured on a real GPU. A changed Mesh costs about 0.6 ms more on Stop.
@@ -149,3 +150,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S69 found a crash already on `main`: under load, a second editor on a locked project segfaults in 61 of 64 launches, in `Project::getSelectedEntities`, instead of exiting with code 3. Fixing on its own branch.
 - 2026-11-04: S72 landed.
 - 2026-11-04: S62 landed. Fixed AGENTS.md on `main`: S72 named `Scene.h` and `Project.h` bare, which broke `test_red_controls`; I had skipped the MCP pass for S72.
+- 2026-11-04: S67 landed. A's disk should recover: its 72 GB tree is gone.
