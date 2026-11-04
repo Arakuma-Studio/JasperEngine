@@ -63,8 +63,8 @@ S65, S68, S69, S70 and S35-S40. Moved off this list: S72, which changes includes
 | S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
-| S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | In progress |
-| S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | In progress |
+| S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | Ready; in the full suite |
+| S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | Ready; in the full suite |
 | S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B | In progress |
 | S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | Done |
 | S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | Done |
@@ -151,3 +151,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S72 landed.
 - 2026-11-04: S62 landed. Fixed AGENTS.md on `main`: S72 named `Scene.h` and `Project.h` bare, which broke `test_red_controls`; I had skipped the MCP pass for S72.
 - 2026-11-04: S67 landed. A's disk should recover: its 72 GB tree is gone.
+- 2026-11-04: First full suite started on `int/full-pass-1` (`eb9f93aca`): `main` + S68 + S69 + the lock crash fix. Logs in `je-remote/logs/full-eb9f93aca`.
