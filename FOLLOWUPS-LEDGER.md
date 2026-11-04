@@ -109,7 +109,6 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
-- GitHub refuses this host's Orquester SSH key since about 09:30 UTC 2026-11-04, though the key is still listed on the account. Git goes over HTTPS with the `gh` login for now (`je-remote/ghgit.sh`).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
 
 ## Done
@@ -136,3 +135,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: Mac check landed. The fork accident came from `mac_watch_stress.sh`: bash 3.2 rejects `read -t 0.5`, so each pass left a `tail` and a subshell behind. The script is gone from the Mac and its rewrite waits with `sleep 1`.
 - 2026-11-04: S71 landed.
 - 2026-11-04: S65 parked, tree done, waiting for `dc/mesh-memory`.
+- 2026-11-04: Correction: I told the user GitHub SSH was still refused and the key needed checking on their side. That was stale: I had last tested it at 09:50 UTC. It works (retested 14:20), and the key never needed anything. The refusal was real but temporary: other sessions on this host logged the same error until at least 11:10 UTC. Cause unknown. Git is back on the normal SSH remote.
