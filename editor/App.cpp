@@ -74,6 +74,7 @@
 #include "diag/HangWatchdog.h"
 #include "util/FileDialogs.h"
 #include "util/ProjectUtils.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 
 #include "EditorVersion.h"
@@ -2674,11 +2675,13 @@ void editor::App::show(){
 
     // S27: the Project Hub alone (as the loading window above): the editor's windows wait
     updateHubCreation();
+    if (projectHub.pollSweep()) requestRedraw();
     if (projectHub.isOpen()) {
         if (isInitialized) {
             ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_KeepAliveOnly);
         }
         projectHub.show();
+        UIProbe::flush();   // the Inspector flushes it otherwise, and it is not drawn here
         if (hubCreation) {
             ImGui::OpenPopup("Creating Project##hub");
         }
@@ -3206,6 +3209,10 @@ void editor::App::loadStartupProject() {
         requestRedraw();
         return;
     }
+
+    // S66: what an editor killed during an import or a template copy left, whatever opens now
+    hub::staging::setJournalDirectory(AppSettings::getConfigDirectory() / "hub-staging");
+    projectHub.startSweep(false);
 
     const mcp::McpLaunchOptions& mcpOptions = mcp::mcpLaunchOptions();
     if (!mcpOptions.project.empty() || !mcpOptions.createDir.empty()) {
