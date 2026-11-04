@@ -5,13 +5,15 @@
 #define BENCH_FOLIAGEBENCHSCENE_H
 
 // T5 R44's benchmark scene, made by code with no assets: je-bench-foliage's numbers and
-// FoliageBudget's counts come from the same one. The meshes are paths that do not load: what is
-// measured is placement, culling and the store, and counts do not depend on them.
+// FoliageBudget's counts come from the same one. The meshes are a crossed quad written to a
+// temporary file: what is measured is placement, culling and the store, not the meshes.
 
 #include "Scene.h"
+#include "component/MeshComponent.h"
 #include "component/TerrainComponent.h"
 #include "component/Transform.h"
 #include "object/Camera.h"
+#include "object/Terrain.h"
 #include "math/Plane.h"
 #include "render/FoliageQuality.h"
 #include "subsystem/FoliageSystem.h"
@@ -25,6 +27,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <string>
@@ -87,9 +91,19 @@ namespace foliagebench {
         return value;
     }
 
+    // two crossed quads standing on the origin
+    inline std::string crossMesh() {
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "je-foliage-bench-cross.obj";
+        std::ofstream out(path);
+        out << "v -1 0 0\nv 1 0 0\nv 1 4 0\nv -1 4 0\nv 0 0 -1\nv 0 0 1\nv 0 4 1\nv 0 4 -1\nvn 0 0 1\nvn 1 0 0\n"
+               "f 1//1 2//1 3//1\nf 1//1 3//1 4//1\nf 5//2 6//2 7//2\nf 5//2 7//2 8//2\n";
+        return path.string();
+    }
+
     struct Scene1 {
         std::unique_ptr<Scene> scene;
         Camera* camera = nullptr;
+        std::unique_ptr<Terrain> terrainObject;
         Entity entity = NULL_ENTITY;
         FoliageSystem* foliage = nullptr;
 
@@ -99,9 +113,8 @@ namespace foliagebench {
             scene->setCamera(camera->getEntity());
             setPose(0);
 
-            entity = scene->createEntity();
-            scene->addComponent<Transform>(entity);
-            scene->addComponent<TerrainComponent>(entity);
+            terrainObject = std::make_unique<Terrain>(scene.get());
+            entity = terrainObject->getEntity();
             TerrainComponent& terrain = component();
             terrain.terrainSize = WORLD;
             terrain.maxHeight = 60.0f;
@@ -109,13 +122,15 @@ namespace foliagebench {
             terrain.treeDistance = 1000.0f;
             terrain.billboardStart = 80.0f;
             giveMap(terrain.heightMap, name + "-height", HEIGHT_MAP, 16, fractalHeight);
-            terrain.heightMapLoaded = true;
-            terrain.needUpdateTerrain = false;
+            terrain.heightMap.setReleaseDataAfterLoad(false);
+            terrain.needUpdateTexture = true;
+            terrain.needUpdateTerrain = true;
 
+            const std::string mesh = crossMesh();
             const float densities[4] = {4.0f, 2.0f, 1.0f, 0.5f};
             for (int i = 0; i < 4; i++) {
                 TerrainFoliageLayer layer;
-                layer.meshPath = AssetRef("t5-bench-detail-" + std::to_string(i) + ".obj");
+                layer.meshPath = AssetRef(mesh);
                 layer.density = densities[i];
                 layer.maxSlope = 60.0f;
                 layer.drawDistance = 120.0f;
@@ -128,11 +143,11 @@ namespace foliagebench {
             for (unsigned int i = 0; i < 3; i++) {
                 TerrainTreePrototype prototype;
                 prototype.id = i + 1;
-                prototype.meshPath = AssetRef("t5-bench-tree-" + std::to_string(i) + ".obj");
+                prototype.meshPath = AssetRef(mesh);
                 terrain.treePrototypes.push_back(prototype);
             }
             foliage = scene->getSystem<FoliageSystem>().get();
-            frame(0.0);
+            foliage->update(0.0);
             plant();
         }
 
@@ -176,13 +191,52 @@ namespace foliagebench {
             } while (foliage->hasPendingUpdates() && std::chrono::steady_clock::now() < deadline);
         }
 
+        // A column on every view of an atlas, as a bake would leave
+        void addImpostors() {
+            constexpr int ATLAS = 128;
+            const auto atlas = [](Texture& texture, const std::string& id, unsigned char value) {
+                const size_t bytes = static_cast<size_t>(ATLAS) * ATLAS * 4;
+                unsigned char* raw = static_cast<unsigned char*>(std::malloc(bytes));
+                for (size_t i = 0; i < bytes; i += 4) {
+                    const int x = static_cast<int>(i / 4) % ATLAS;
+                    raw[i] = raw[i + 1] = raw[i + 2] = value;
+                    raw[i + 3] = (x % (ATLAS / 2) > ATLAS / 8 && x % (ATLAS / 2) < ATLAS * 3 / 8) ? 255 : 0;
+                }
+                TextureData data(ATLAS, ATLAS, static_cast<unsigned int>(bytes), ColorFormat::RGBA, 4, raw);
+                data.setDataOwned(false);
+                texture.setData(id, data);
+                texture.getData().setDataOwned(true);
+            };
+            TerrainComponent& terrain = component();
+            for (size_t i = 0; i < terrain.treePrototypes.size(); i++) {
+                TerrainTreePrototype& prototype = terrain.treePrototypes[i];
+                atlas(prototype.impostorAlbedo, "t5-bench-albedo-" + std::to_string(i), 200);
+                atlas(prototype.impostorNormal, "t5-bench-normal-" + std::to_string(i), 128);
+                prototype.impostorViews = 4;
+                prototype.impostorBoundsCenter = Vector3(0.0f, 2.0f, 0.0f);
+                prototype.impostorSize = Vector2(2.0f, 4.0f);
+            }
+            terrain.needUpdateFoliage = true;
+        }
+
+        // With no device nothing uploads the prototypes, and the views skip what is not loaded:
+        // the bench measures the cull, so it says they are
+        void markLoadedWithoutDevice() {
+            for (const Entity prototype : foliage->getEntities(entity)) {
+                scene->getComponent<MeshComponent>(prototype).loaded = true;
+            }
+        }
+
         // R44's path: 5 units a second, turning 30 degrees a second
         void setPose(int index) {
             const double seconds = index * FRAME_SECONDS;
             const float yaw = static_cast<float>(seconds * 30.0 * 3.14159265358979 / 180.0);
             Transform& transform = scene->getComponent<Transform>(camera->getEntity());
-            transform.worldPosition = Vector3(static_cast<float>(seconds * 5.0), 40.0f, 0.0f);
+            const Vector3 eye(static_cast<float>(seconds * 5.0), 40.0f, 0.0f);
+            transform.worldPosition = eye;
             forward = Vector3(std::sin(yaw), -0.1f, std::cos(yaw));
+            camera->setPosition(eye.x, eye.y, eye.z);
+            camera->setTarget(eye.x + forward.x, eye.y + forward.y, eye.z + forward.z);
         }
 
         Vector3 forward = Vector3(0.0f, -0.1f, 1.0f);

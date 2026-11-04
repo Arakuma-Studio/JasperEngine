@@ -258,11 +258,13 @@ TEST(FoliageTreesCore, UndoRestoresTheBytes) {
     std::vector<uint8_t> original(static_cast<size_t>(MAP) * MAP * 2);
     ASSERT_TRUE(store.readBytes(height, whole, original));
 
-    // the first re-snap writes each record's cached surface; what it wrote is what undo must give back
-    std::vector<uint8_t> untouched = original;
-    ASSERT_TRUE(store.writeBytes(height, whole, untouched).ok);
-    untouched[0] ^= 0x01;
-    ASSERT_TRUE(store.writeBytes(height, whole, untouched).ok);
+    // the trees start with no cached surface: a sculpt and its undo write it, and what that gave is
+    // what a later undo must give back
+    std::vector<float> raised(static_cast<size_t>(MAP) * MAP, 0.9f);
+    ASSERT_TRUE(store.write(height, whole, raised).ok);
+    TerrainEditEvents::flush(fixture.scene.get());
+    fixture.frame(0.2);
+    fixture.settle();
     ASSERT_TRUE(store.writeBytes(height, whole, original).ok);
     TerrainEditEvents::flush(fixture.scene.get());
     fixture.frame(0.2);
@@ -270,7 +272,6 @@ TEST(FoliageTreesCore, UndoRestoresTheBytes) {
     std::vector<uint8_t> before;
     fixture.foliage->getTreeStore(fixture.entity)->encode(before);
 
-    std::vector<float> raised(static_cast<size_t>(MAP) * MAP, 0.9f);
     ASSERT_TRUE(store.write(height, whole, raised).ok);
     TerrainEditEvents::flush(fixture.scene.get());
     fixture.frame(0.2);
@@ -451,4 +452,30 @@ TEST(FoliageSystemCore, MemoryRecordsFollowTheStats) {
         EXPECT_EQ(recordOf("foliage-cpu") - before, bytes);
     }
     EXPECT_EQ(recordOf("foliage-cpu"), before);
+}
+
+// Trees written before the Terrain's size is known are not all in cell (0, 0) once it is
+TEST(FoliageTreesCore, TreesPlantedBeforeTheTerrainLoadsLandInTheirCells) {
+    FoliageFixture fixture;
+    TerrainTreePrototype prototype;
+    prototype.id = 5;
+    prototype.meshPath = AssetRef("t5-no-such-tree.obj");
+    fixture.terrain().treePrototypes.push_back(prototype);
+    fixture.terrain().heightMapLoaded = false;
+    fixture.foliage->update(0.016);
+
+    std::shared_ptr<TreeStore> store = fixture.foliage->getOrCreateTreeStore(fixture.entity);
+    ASSERT_NE(store, nullptr);
+    TreeDelta delta;
+    const std::vector<TreeRecord> added = {treeAt(-40.0f, -40.0f, 5), treeAt(40.0f, 40.0f, 5)};
+    store->apply({}, added, {}, &delta);
+    fixture.foliage->treesChanged(fixture.entity, delta);
+
+    fixture.settle();
+    int cells = 0;
+    fixture.foliage->forEachResidentCell(fixture.entity, [&](int cellX, int, std::span<const FoliageInstance> instances, std::span<const uint32_t>) {
+        EXPECT_EQ(instances.size(), 1u) << "cell " << cellX;
+        cells++;
+    });
+    EXPECT_EQ(cells, 2);
 }

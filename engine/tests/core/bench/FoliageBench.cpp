@@ -133,6 +133,7 @@ int main(int argc, char** argv) {
 
     Scene1 bench_scene("je-bench-foliage");
     bench_scene.settle();
+    bench_scene.markLoadedWithoutDevice();
 
     // the frame's main-thread work on R44's path
     FoliageViewList list;

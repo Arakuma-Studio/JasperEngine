@@ -1402,6 +1402,13 @@ struct FoliageSystem::Impl {
             return;
         }
 
+        // tree cells are in terrain units: built before the size was known, or from another size,
+        // they are in the wrong place
+        if (state.terrainSize != terrain.terrainSize) {
+            state.cellsReady = false;
+            state.indexing.reset();
+            state.indexTask = jobs::Task<std::shared_ptr<TreeCellMap>>();
+        }
         state.terrainSize = terrain.terrainSize;
         state.terrainMaxHeight = terrain.maxHeight;
         state.model = transform.modelMatrix;
@@ -1972,8 +1979,11 @@ struct FoliageSystem::Impl {
                     const unsigned int submeshes = std::max(mesh.numSubmeshes, 1u);
                     const bool overDraws = list.draws + submeshes > maxDraws;
                     if (overDraws) list.capped = true;
-                    const bool allowMesh = !overDraws && meshTrees + range.count <= maxMesh;
-                    if (!allowMesh && !settings.hasImpostor) list.capped = true;
+                    // R15: past Max Mesh Trees a cell draws impostors; with none baked its trees stay meshes,
+                    // at their lowest LOD, to Tree Distance. The panel warns of what that costs.
+                    const bool overMeshCap = meshTrees + range.count > maxMesh;
+                    if (overMeshCap && !settings.hasImpostor) list.capped = true;
+                    const bool allowMesh = !overDraws && (!overMeshCap || !settings.hasImpostor);
                     FoliageTreeBands bands = selectFoliageTreeBands(settings, entry.nearest, entry.farthest, allowMesh);
 
                     if (request.shadow) {
