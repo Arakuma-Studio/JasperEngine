@@ -114,13 +114,13 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | Spec reconciliation | done | One bit table, one landing order, T1's names win |
 | Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to T1-T6 |
 | Spec revision for the upstream changes | done | `terrain` 10 tools, `voxels` 4, no format bump, no new budget exceptions |
-| T1 foundation | in progress | Seams everything else builds on |
+| T1 foundation | in progress | Committed work is on integration, provisional until verified |
 | T1 implementation | not started | |
-| T2 implementation | not started | |
-| T3 implementation | not started | |
+| T2 implementation | in progress | `.worktrees/t2` |
+| T3 implementation | in progress | `.worktrees/t3` |
 | T4 implementation | not started | After T1 and T3 |
-| T5 implementation | not started | |
-| T6 implementation | not started | |
+| T5 implementation | in progress | `.worktrees/t5` |
+| T6 implementation | in progress | `.worktrees/t6` |
 | Merge `terrain/integration` to `main`, merge `origin/main`, push | not started | |
 
 ## Log
@@ -135,4 +135,9 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - Owner flagged remote changes. `origin/main` had 28 new commits: pixel-art specs S41-S52, 19 Doriax specs, lean MCP rules,
   an AGENTS.md rewrite and removal of all CI. Renumbered our specs to T1-T6, merged, restarted the baseline, and started a
   revision of the specs. Doriax's agent-authoring and render-correctness overlap terrain and foliage.
+- Baseline: Linux, web and Android builds pass; `HumanoidModel.PerformanceBudget` fails; `CanvasGroupTest.PerformanceBudgets` skips
+  (the gate counts it as a failure); the MCP suite did not run (runner refused files "left out of CI").
+- The foundation took about 10 hours. Main cause: the coordinator made every stream wait on it, leaving half the host idle
+  from 08:03. Stopped waiting: T2, T3, T5 and T6 start now on the foundation's committed work; queue changed to 3 slots of 3 jobs.
+- `origin/main` moved 95 more commits and took S53-S73, so the specs moved to their own T1-T6 series. Merged.
 - Specs revised for no CI, the lean MCP rules and the Doriax overlap. Six near-duplicate tools merged away.
