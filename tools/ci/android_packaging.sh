@@ -49,6 +49,7 @@ make_project() {
     } >> "$OUT/$name/project.yaml"
 }
 make_project debug
+python3 tools/ci/freeze_unified_lighting.py "$OUT/debug"
 make_project release '  keystore:' "    path: ../release.jks" '    alias: game'
 make_project release-ec '  keystore:' "    path: ../release-ec.p12" '    alias: ec'
 make_project wrong-alias '  keystore:' "    path: ../release.jks" '    alias: nosuchkey'

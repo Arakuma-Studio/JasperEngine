@@ -5,7 +5,7 @@
 #
 #   1. Simulator: the editor's Xcode project built by xcodebuild into an unsigned .app; a simulator
 #      device of this script's own (created, booted headless, deleted after: no window) installs and
-#      launches it, the game reaches its ready line and a screenshot shows it (not a blank
+#      launches it, the game draws with Metal, reaches its ready line and a screenshot shows it (not a blank
 #      screen; compared with tools/fixtures/unified-lighting/golden/ios/screen.png with
 #      IOS_PACKAGING_GOLDEN=1, the renderer the golden was taken on).
 #   2. Device, no team: the build compiles and links for arm64 iOS, stops before signing, warns
@@ -71,6 +71,7 @@ build() {  # project, output, more arguments
         > "$OUT/logs/$output.log" 2>&1
 }
 make_project game
+python3 tools/ci/freeze_unified_lighting.py "$OUT/game"
 make_project team '  teamId: ABCDE12345'
 
 # ---- 1. the simulator
@@ -103,26 +104,41 @@ xcrun simctl boot "$UDID"
 xcrun simctl bootstatus "$UDID" -b > "$OUT/logs/simulator-boot.log" 2>&1 || fail "the simulator did not boot"
 xcrun simctl install "$UDID" "$APP" || fail "simctl install"
 ok "installed"
-# (the launched app's environment comes from SIMCTL_CHILD_; stdout is where the engine logs here)
+# the engine logs to the unified log on iOS (AppleLogSink); stdout has only what scripts print
+EXECUTABLE="$(plutil -extract CFBundleExecutable raw "$APP/Info.plist")"
+xcrun simctl spawn "$UDID" log stream --level info --style compact --predicate "process == \"$EXECUTABLE\"" > "$OUT/logs/game-log.txt" 2>&1 &
+LOG_STREAM=$!
+cleanup() {
+    kill "$LOG_STREAM" >/dev/null 2>&1 || true
+    xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true
+    xcrun simctl delete "$UDID" >/dev/null 2>&1 || true
+}
+sleep 2
+# (the launched app's environment comes from SIMCTL_CHILD_)
 SIMCTL_CHILD_JASPERENGINE_READY_SIGNAL=1 xcrun simctl launch --stdout="$OUT/logs/game-stdout.txt" --stderr="$OUT/logs/game-stderr.txt" \
     "$UDID" "$BUNDLE" > "$OUT/logs/launch.txt" 2>&1 || { cat "$OUT/logs/launch.txt"; fail "simctl launch"; }
 ok "launched: $(cat "$OUT/logs/launch.txt")"
 waited=0
-until grep -qs "Engine presented:" "$OUT/logs/game-stdout.txt" "$OUT/logs/game-stderr.txt"; do
+until grep -qs "Engine ready:" "$OUT/logs/game-log.txt"; do
     sleep 2
     waited=$((waited + 2))
     if (( waited > 300 )); then
-        tail -n 20 "$OUT/logs/game-stdout.txt" "$OUT/logs/game-stderr.txt" || true
-        fail "no 'Engine presented:' line after ${waited}s"
+        tail -n 20 "$OUT/logs/game-log.txt" "$OUT/logs/game-stdout.txt" "$OUT/logs/game-stderr.txt" || true
+        fail "no 'Engine ready:' line after ${waited}s"
     fi
 done
-ok "the engine is ready and presented frames after ${waited}s"
-sleep 3
+grep -q "Graphics: Metal" "$OUT/logs/game-log.txt" || fail "the game does not say it draws with Metal"
+ok "the engine is ready after ${waited}s: $(grep -m1 "Engine ready:" "$OUT/logs/game-log.txt" | sed 's/.*Engine ready/Engine ready/')"
+# ('Engine presented:' is Android's: here some seconds of frames after the ready line)
+sleep 5
 xcrun simctl io "$UDID" screenshot "$OUT/screen.png" > "$OUT/logs/screenshot.txt" 2>&1 || { cat "$OUT/logs/screenshot.txt"; fail "simctl io screenshot"; }
 xcrun simctl spawn "$UDID" launchctl list > "$OUT/logs/launchctl.txt" 2>&1 || true
 grep -q "UIKitApplication:$BUNDLE" "$OUT/logs/launchctl.txt" || fail "the game is no longer running"
 GOLDEN_ARGS=()
-[[ "${IOS_PACKAGING_GOLDEN:-0}" == 1 ]] && GOLDEN_ARGS=(--golden tools/fixtures/unified-lighting/golden/ios/screen.png)
+if [[ "${IOS_PACKAGING_GOLDEN:-0}" == 1 ]]; then
+    mkdir -p tools/fixtures/unified-lighting/golden/ios
+    GOLDEN_ARGS=(--golden tools/fixtures/unified-lighting/golden/ios/screen.png)
+fi
 python3 tools/android-screen-check.py "$OUT/screen.png" ${GOLDEN_ARGS[@]+"${GOLDEN_ARGS[@]}"} | tee "$OUT/logs/screen-check.txt" || fail "the screen check"
 xcrun simctl terminate "$UDID" "$BUNDLE" || true
 cleanup
