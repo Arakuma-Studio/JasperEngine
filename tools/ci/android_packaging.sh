@@ -160,4 +160,8 @@ GOLDEN=tools/fixtures/unified-lighting/golden/android
 FORBID=(--forbid "Failed to load cooked texture")
 tools/android-emulator-test.sh "$OUT/debug-apk/UnifiedLighting.apk" --out "$OUT/emulator-apk" --timeout 600 --relaunch --golden "$GOLDEN" "${FORBID[@]}"
 tools/android-emulator-test.sh "$OUT/debug-aab/UnifiedLighting.aab" --bundletool "$OUT/bundletool.jar" --out "$OUT/emulator-aab" --timeout 600 --golden "$GOLDEN" "${FORBID[@]}"
+# (a run that lost its expectations would pass on whatever the screen held after some seconds)
+for run in emulator-apk emulator-aab; do
+    grep -q "^found .*Engine presented:" "$OUT/$run/result.txt" || { echo "FAIL: $run never saw 'Engine presented:'" >&2; exit 1; }
+done
 echo "PASS: Android packaging (APK and bundle: built, signed, installed, run, compared)"

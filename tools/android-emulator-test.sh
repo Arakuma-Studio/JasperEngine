@@ -25,7 +25,8 @@
 #                       the activity in the same process (the manifest does not handle fontScale),
 #                       and the engine starts again in it. The run then needs a new view (the
 #                       engine's 'Graphics:' line), the process still running and no crash; the
-#                       font scale is restored after.
+#                       font scale is restored after. The screenshot is the one before it: the
+#                       relaunched scene is still loading after the new view.
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
@@ -86,7 +87,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,78p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,79p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -178,7 +179,7 @@ fi
 # after what the scenes log as they start; the presented line after it)
 (( READY )) && EXPECTS+=("I/JasperEngine: Engine ready:")
 [[ -n "$GOLDEN" ]] && EXPECTS+=("I/JasperEngine: Engine presented:")
-printf '%s\n' ${EXPECTS[@]+"${EXPECTS[@]}"} > "$ROOT/$OUT/expect.txt"
+printf '%s\n' ${EXPECTS[@]+"${EXPECTS[@]}"} > "$ROOT/$OUT/expect-all.txt"
 printf '%s\n' ${FORBIDS[@]+"${FORBIDS[@]}"} > "$ROOT/$OUT/forbid.txt"
 
 TTY_FLAGS=()
@@ -289,7 +290,8 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
         # one launch: SCENE (empty: no --scene) in DIR, its screenshot SHOT; 1 when it failed
         run() {
             mkdir -p "$DIR"
-            sed "s/{scene}/$SCENE/g" "$OUT/expect.txt" > "$DIR/expect.txt"
+            # (another file: without --scene DIR is OUT, and sed would empty what it reads)
+            sed "s/{scene}/$SCENE/g" "$OUT/expect-all.txt" > "$DIR/expect.txt"
             adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
             adb logcat -c
             adb shell setprop debug.jasperengine.scene "\"$SCENE\""
@@ -310,6 +312,8 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                 (( SECONDS - start > WAIT )) && break
                 sleep 2
             done
+            # what the screen shows now: with --golden, at least 30 frames after the ready line
+            adb exec-out screencap -p > "$DIR/$SHOT" 2>/dev/null || true
             # an activity relaunched in the same process: the engine starts again in it
             relaunched=""
             if [[ "$RELAUNCH" == 1 && -z "$crashes" ]]; then
@@ -341,8 +345,6 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                     relaunched="found        relaunched in process $pid: a new view, still running"
                 fi
             fi
-            # what the screen shows now: with --golden, at least 30 frames after the ready line
-            adb exec-out screencap -p > "$DIR/$SHOT" 2>/dev/null || true
             adb logcat -d -v tag > "$DIR/logcat.txt"
             adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
 
