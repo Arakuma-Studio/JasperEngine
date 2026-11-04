@@ -113,9 +113,10 @@ async def test_scripts_call_box2d_and_jolt(ed: Editor):
     await ed.console_since(None, limit=1)
     r = await ed.call_raw("play", {"action": "start", "scene": scene, "timeout_seconds": 1100}, timeout=1200)
     ed.check(not r.is_error, f"play starts: {r.text[:800]}")
-    await ed.call("wait", frames=5)
-    lines = [e["message"] for e in await ed.console_since(None, limit=2000) if "PhysicsLibs hull=" in e.get("message", "")]
-    ed.check(lines, "the script ran")
+    await ed.call("wait", frames=30)
+    messages = [e.get("message", "") for e in await ed.console_since(None, limit=2000)]
+    lines = [m for m in messages if "PhysicsLibs hit=" in m]
+    ed.check(lines, "the script ran; the Console: " + "\n".join(m[:300] for m in messages[-40:]))
     found = re.search(r"hit=(\d+) edges=(\d+) state=(\d+) allocated=(\d+)", lines[0])
     ed.check(found is not None, f"the libraries answered: {lines[0]}")
     hit, edges, state, allocated = (int(g) for g in found.groups())

@@ -7,8 +7,9 @@ tools/mcp/tests/test_cpp_physics_libs.py also runs the script).
 
 Copies tools/fixtures/prefab-runtime (it has attached C++ scripts), adds to one of them a
 function calling Box2D and Jolt (Jolt's allocator is data MSVC links only through dllimport),
-and runs `check --cpp`: the plugin is configured, compiled and linked as Play does, so a symbol
-the engine library does not export fails the link. Exit 0 when it links.
+and runs compile_scripts in a one-shot editor (`call --project`, which also gives the project its
+engine API headers): the plugin is configured, compiled and linked as Play does, so a symbol the
+engine library does not export fails the link. Exit 0 when it links.
 """
 
 from __future__ import annotations
@@ -70,17 +71,18 @@ def main() -> int:
         shutil.copytree(FIXTURE, project)
         source = project / "cpp" / "CppSpawner.cpp"
         source.write_text(source.read_text() + PROBE)
-        result = subprocess.run([editor, "check", "--project", str(project), "--cpp", "--format", "json"],
-                                capture_output=True, text=True, timeout=3600)
+        result = subprocess.run([editor, "call", "--json", "--quiet", "--project", str(project), "--timeout", "3600",
+                                 "compile_scripts", '{"timeout_seconds": 3000}'],
+                                capture_output=True, text=True, timeout=3700)
         try:
-            report = json.loads(result.stdout)
-        except json.JSONDecodeError:
-            print(f"check --cpp printed no JSON (exit {result.returncode}):\n{result.stdout[-4000:]}\n{result.stderr[-4000:]}")
+            envelope = json.loads(result.stdout.splitlines()[0])
+        except (IndexError, json.JSONDecodeError):
+            print(f"call printed no JSON (exit {result.returncode}):\n{result.stdout[-4000:]}\n{result.stderr[-4000:]}")
             return 1
-        errors = [f for f in report.get("findings", []) if f.get("severity") == "error"]
-        if result.returncode != 0 or errors:
+        structured = envelope.get("structured") or {}
+        if result.returncode != 0 or not structured.get("success"):
             print(f"FAIL: the script does not link Box2D and Jolt through the engine library (exit {result.returncode}):")
-            print(json.dumps(errors or report, indent=2)[-6000:])
+            print(json.dumps(structured.get("errors") or envelope, indent=2)[-6000:])
             return 1
         print("ok   a C++ script calling Box2D and Jolt links against the editor's engine library")
         return 0
