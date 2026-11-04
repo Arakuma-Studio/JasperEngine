@@ -139,8 +139,9 @@ std::shared_ptr<StampField> jasperengine::voxel::voxelizeMesh(std::span<const fl
         const double pa[3] = {a.x, a.y, a.z}, pb[3] = {b.x, b.y, b.z}, pc[3] = {c.x, c.y, c.z};
         for (int axis = 0; axis < 3; axis++) {
             const int u = axisU[axis], v = axisV[axis];
-            const int u0 = std::max(static_cast<int>(std::ceil(lo[u])), 0), u1 = std::min(static_cast<int>(std::floor(hi[u])), dims[u] - 1);
-            const int v0 = std::max(static_cast<int>(std::ceil(lo[v])), 0), v1 = std::min(static_cast<int>(std::floor(hi[v])), dims[v] - 1);
+            // floor and ceil: the columns are nudged off the lattice, so one just outside the box may be inside
+            const int u0 = std::max(static_cast<int>(std::floor(lo[u])), 0), u1 = std::min(static_cast<int>(std::ceil(hi[u])), dims[u] - 1);
+            const int v0 = std::max(static_cast<int>(std::floor(lo[v])), 0), v1 = std::min(static_cast<int>(std::ceil(hi[v])), dims[v] - 1);
             for (int cv = v0; cv <= v1; cv++) {
                 for (int cu = u0; cu <= u1; cu++) {
                     double w = 0.0;

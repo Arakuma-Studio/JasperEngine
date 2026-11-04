@@ -53,7 +53,7 @@ namespace {
         }
 
         float height(float x, float z) const override {
-            return terrain::sampleHeight(snapshot.view, x + offset.x, z + offset.z) * snapshot.view.maxHeight + offset.y;
+            return terrain::sampleHeight(snapshot.view, x + offset.x, z + offset.z) - offset.y;
         }
 
         void gradient(float x, float z, float& dhdx, float& dhdz) const override {

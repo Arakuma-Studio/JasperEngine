@@ -78,7 +78,6 @@ TEST(VoxelVoxelize, UsedAsAStampMatchesThePrimitive) {
     std::vector<uint32_t> indices;
     sphereMesh(5.0, 32, 48, positions, indices);
     VoxelizeOptions options;
-    options.bandVoxels = 4.0;
     const std::shared_ptr<StampField> field = voxelizeMesh(positions, indices, options);
     Store fromMesh(desc(64, 64, 64));
     Store primitive(desc(64, 64, 64));

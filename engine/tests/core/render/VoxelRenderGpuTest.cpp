@@ -52,6 +52,7 @@ namespace {
             Engine::setPinnedShaderTime(1.0);
             scene.setBackgroundColor(0.55f, 0.68f, 0.82f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
+            camera.activate();
             sun.setType(LightType::DIRECTIONAL);
             sun.setDirection(-0.5f, -1.0f, -0.35f);
             sun.setIntensity(2.0f);

@@ -30,7 +30,9 @@ namespace jasperengine::voxel {
         }
         // A vertex position in voxels; within the columns' flush region and near the seed
         bool vertexCulled(double x, double y, double z) const {
-            const int cx = static_cast<int>(x), cz = static_cast<int>(z);
+            // A vertex on the volume's far side belongs to the last column
+            const int cx = static_cast<int>(x) < sizeX ? static_cast<int>(x) : sizeX - 1;
+            const int cz = static_cast<int>(z) < sizeZ ? static_cast<int>(z) : sizeZ - 1;
             if (!columnCulled(cx, cz)) return false;
             const double difference = y - static_cast<double>(seedAt(cx, cz));
             return difference <= heightToleranceVoxels && difference >= -static_cast<double>(heightToleranceVoxels);

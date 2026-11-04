@@ -16,6 +16,9 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <thread>
+
 using namespace jasperengine;
 using namespace voxeltest;
 
@@ -63,6 +66,9 @@ TEST_F(VoxelSystemFixture, UploadBudgetPerFrame) {
     bool hitMeshCap = false;
     for (int frame = 0; frame < 2000 && !system->isVolumeReady(owner); frame++) {
         scene->update(1.0 / 60.0);
+        // Frames here take no time: the jobs need some to finish, as they would have in a real one,
+        // and enough finish between two frames to reach the cap
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
         const VoxelStats stats = system->getStats(owner);
         EXPECT_LE(stats.uploadMeshesThisFrame, low.uploadMeshesPerFrame);
         // One mesh always goes, however big; beyond it the bytes hold

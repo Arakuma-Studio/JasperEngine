@@ -12,6 +12,7 @@
 #include "component/VoxelVolumeComponent.h"
 #include "object/TerrainEdit.h"
 #include "object/voxel/GroundQuery.h"
+#include "pool/TextureDataPool.h"
 #include "subsystem/VoxelSystem.h"
 #include "../ecs/EcsTestUtil.h"
 
@@ -56,6 +57,8 @@ namespace {
             system.reset();
             scene.reset();
             asset.reset();
+            // The pool keeps pixels by id, and these die with the fixture
+            TextureDataPool::remove("voxel-terrain-height");
         }
 
         float surfaceHeight() const { return 128.0f / 255.0f * 40.0f; }
