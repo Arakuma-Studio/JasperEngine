@@ -72,6 +72,7 @@ TEST(TerrainOps, DryRunReturnsTheSameNumbers) {
     EXPECT_NE(mapHash(store, HEIGHT), before);
 
     ASSERT_EQ(preview.changed.size(), real.changed.size());
+    ASSERT_FALSE(real.changed.empty());
     EXPECT_EQ(preview.changed[0].rect, real.changed[0].rect);
     EXPECT_EQ(preview.changed[0].texels, real.changed[0].texels);
     EXPECT_EQ(preview.ops[0].changedTexels, real.ops[0].changedTexels);
