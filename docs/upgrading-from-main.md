@@ -180,7 +180,7 @@ The Linux player is checked twice: compiled from the export, and built with the 
 `tools/build.sh players` first). The fixture does not use Vertex Animation Textures (in `oe-port`
 since SYNC#3).
 
-Run it (Docker; the build servers through `rb.sh`):
+Run it (Docker):
 
 ```sh
 tools/build.sh linux                                  # this editor
@@ -199,7 +199,7 @@ tools/ci/upgrade_from_main/check.sh
 git add tools/test-projects/upgrade-from-main && git commit -m "upgrade test: fixture from origin/main <sha>"
 ```
 
-`--old-src <checkout>` builds an existing checkout instead (a build server's copy, with `--commit
-<sha>` naming its commit), `--old-editor <editor-install> --commit <sha>` uses an editor already
+`--old-src <checkout>` builds an existing checkout instead (with `--commit <sha>` naming its
+commit), `--old-editor <editor-install> --commit <sha>` uses an editor already
 built. A feature that only the newer `origin/main` has fails the check until it is synced: list it
 under "Features that need a sync" above.

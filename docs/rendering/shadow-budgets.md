@@ -48,7 +48,7 @@ timers of the profiling stream (S15) once it lands: `get_shadow_stats` reports `
 Build server D (16 vCPU, shared with other builds; Docker, Mesa llvmpipe for OpenGL), October
 2026. GPU times on the reference devices have not been measured yet: the build servers have no
 GPU, and the GPU pass timers (S15) are not on `oe-port`. Until they are, the tiers' GPU budget rows
-are unverified, and the numbers below are what CI can check.
+are unverified, and the numbers below are what a software renderer can check.
 
 **Zero cost (AC15).** `tools/fixtures/shadows-off` (a lit scene: a sun without shadows, a ground and
 five boxes) through `tools/smoke-test.sh` with `JASPERENGINE_FRAME_STATS=1`, on `oe-port` before

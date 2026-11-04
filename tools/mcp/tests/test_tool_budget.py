@@ -2,7 +2,7 @@
 this editor and fails, naming the tool, when a tool outgrows its limit.
 
 - the gate itself: a run of `tool_budget.py --check` (its own editor, every group listed)
-  exits 0: the default listing (core) within 100,000 characters and 150 tools, each group within
+  exits 0: the default listing (core) within 99,000 characters and 150 tools, each group within
   its limits, each tool within 1,500 characters or its exceptions entry;
 - red control: with JASPER_MCP_SELFTEST_GROUP=2000 the selftest group's tool has a
   2,000-character description, and the same run exits 1 naming selftest_echo;
@@ -10,7 +10,7 @@ this editor and fails, naming the tool, when a tool outgrows its limit.
 - budget.json: every group of the group table may have an entry, no entry names a group the
   table lacks (checked by the gate run), and every exception has a reason;
 - the agent guide (initialize.instructions): the gate run also checks it against budget.json's
-  "guide" entry (16,384 bytes in all, at least 1,500 of them left as headroom, 1,500 per "## "
+  "guide" entry (8,192 bytes in all, at least 1,500 of them left as headroom, 1,500 per "## "
   section); check_guide() on made-up guides fails on each limit, naming the section, and on a
   guide that eats into the headroom.
 """
@@ -125,11 +125,11 @@ async def test_guide_rules():
 
 async def test_budget_file_shape():
     budget = tool_budget.load_budget()
-    assert budget["guide"]["bytes"] == 16384 and budget["guide"]["section_bytes"] == 1500, budget["guide"]
+    assert budget["guide"]["bytes"] == 8192 and budget["guide"]["section_bytes"] == 1500, budget["guide"]
     assert budget["guide"]["headroom_bytes"] == 1500, budget["guide"]
     for key in ("default_listing", "group_default", "tool_default", "groups", "exceptions", "core_trades"):
         assert key in budget, f"budget.json lacks {key}"
-    assert budget["default_listing"] == {"chars": 100000, "tools": 150}, budget["default_listing"]
+    assert budget["default_listing"] == {"chars": 99000, "tools": 150}, budget["default_listing"]
     assert budget["group_default"] == {"chars": 15000, "tools": 12}, budget["group_default"]
     assert budget["tool_default"] == 1500
     for name, entry in budget["exceptions"].items():
