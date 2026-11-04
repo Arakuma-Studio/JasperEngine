@@ -526,7 +526,7 @@ None (R29).
 
 ## Progress
 
-- The squashed library commit is 22.9 MiB of files: 927 clips, manifest v4, analysis v1, 11 licence files (R34).
+- The squashed library commit is 21.5 MiB of files (`du -sb editor/resources/sound-library/library`: 22,538,857 bytes): 927 clips, manifest v4, analysis v1, 11 licence files (R34).
 
 ## Deviations
 
@@ -548,6 +548,12 @@ None (R29).
   `wait` parameter: the budget has no room for it, and images only travel in the reply. A job an agent polls has the items.
 - **A `kind event` filter finds nothing until S37 lands,** and `analyze_audio capture` reads sessions from disk with no
   running capture known until S35 lands (tested on session directories written by the test).
+- **`test_audio_ogg` cuts ffmpeg's decode to the last page's granule.** The Vorbis spec makes the last page's granule the
+  stream's length, and an encoder ends a clip that way. ffmpeg 4.4.2 (the image's) does not trim: it hands over whole
+  decoded packets. Verified on 61 of the 967 OGGs, sampled evenly (`je-evidence/s36/ogg-overrun.log`): libsndfile, which
+  decodes through libvorbisfile, returned exactly the granule on 61 of 61, while ffmpeg returned 41 to 978 frames more on
+  61 of 61 (221,056 against 220,500 on `spaceEngineLow_000.ogg`). Where both decode, a mono file's samples match within
+  3e-7. The editor loads each at the granule, as libsndfile does, so the overrun is ffmpeg's.
 - **Importing mixed sources.** `import_files` refuses built-in references mixed with other sources: a call has one plan
   and one undo step.
 

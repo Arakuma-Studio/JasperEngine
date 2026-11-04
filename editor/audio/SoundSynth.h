@@ -70,27 +70,32 @@ namespace jasperengine::editor {
             uint32_t state;
         };
 
-        // The 13 presets: coin, laser, explosion, powerup, hurt, jump, blip (sfxr), then click,
-        // pluck, bell, whoosh, riser, thump (recipes)
+        // The 17 presets: coin, laser, explosion, powerup, hurt, jump, blip (sfxr), then click, pluck,
+        // bell, whoosh, riser, thump (recipes), then ui_click, swoosh, impact, pop (layered, SoundDesign)
         static const std::vector<Preset>& presets();
         static const Preset* find(const std::string& name);
-        // the 13 and "random"
+        // the 17 and "random"
         static std::vector<std::string> names();
         // SoLoud::SfxrParams by field name, with sfxr's own slider ranges
         static const std::vector<Param>& sfxrParams();
         // The parameters a preset takes
         static const std::vector<Param>& paramsOf(const Preset& preset);
 
-        // The preset "random" stands for: the first xorshift32 output of the seed, modulo 13
+        // How many presets "random" picks among: the sfxr presets and the recipes. The layered ones
+        // came later, and a seed keeps the preset it always picked.
+        static constexpr size_t RANDOM_PRESETS = 13;
+
+        // The preset "random" stands for: the first xorshift32 output of the seed, modulo RANDOM_PRESETS
         static const Preset& pick(uint32_t seed);
 
         // params is an object of overrides, each a known name within its range; the error names
         // the valid list
         static bool checkParams(const Preset& preset, const Json& params, std::string& error);
 
-        // The raw signal (mono, its own level, faded in and out) of a preset with checked params
+        // The raw signal (mono, its own level, faded in and out) of a preset with checked params.
+        // family: a layered preset's (SoundDesign::families; empty: its first)
         static bool render(const Preset& preset, uint32_t seed, const Json& params, std::vector<float>& samples,
-                           unsigned int& sampleRate, std::string& error);
+                           unsigned int& sampleRate, std::string& error, const std::string& family = std::string());
 
         struct Output {
             const Preset* preset = nullptr;
@@ -108,7 +113,7 @@ namespace jasperengine::editor {
 
         // A preset (not "random": pick() it first) with checked params, at targetLufs momentary max
         static bool generate(const Preset& preset, uint32_t seed, const Json& params, double targetLufs, Output& out,
-                             std::string& error);
+                             std::string& error, const std::string& family = std::string());
     };
 
 }

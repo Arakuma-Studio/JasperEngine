@@ -69,7 +69,7 @@ end
 function clipLength:onUpdate()
     if self.done then return end
     local source = AudioSource(self.scene, self.entity)
-    local length = source.length
+    local length = source:getLength()
     if length > 0 then
         print(string.format("CLIPLEN %.3f", length))
         self.done = true

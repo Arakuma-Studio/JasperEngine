@@ -522,6 +522,12 @@ bool SoundSearch::isLoop(const Entry& entry) {
     return entry.analysed && (entry.soundKind == SoundTypes::LOOP || entry.loopRegion);
 }
 
+SoundSearch::Entry SoundSearch::entryOfAnalysis(const Json& cached) {
+    Entry entry;
+    setFeatures(entry, cached, AudioAnalysis::Labels());
+    return entry;
+}
+
 double SoundSearch::distance(const Entry& a, const Entry& b) {
     if (!a.analysed || !b.analysed || !std::isfinite(a.centroidHz) || !std::isfinite(b.centroidHz) || !std::isfinite(a.flatness) ||
         !std::isfinite(b.flatness)) {

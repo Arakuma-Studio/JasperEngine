@@ -683,6 +683,79 @@ int AudioImages::sheetHeight(int items, int width) {
     return SHEET_GAP + rows * (SHEET_LABEL_HEIGHT + 2 * lane + SHEET_GAP);
 }
 
+AudioImages::Image AudioImages::renderCompare(const CompareInput& input, int width) {
+    const int TITLE = 16, BALANCE = 120, ENVELOPE = 96, AXIS = 16;
+    const double FLOOR = -60.0;
+    Image image;
+    width = std::clamp(width, MIN_WIDTH, MAX_WIDTH);
+    blank(image, width, TITLE + BALANCE + ENVELOPE + AXIS);
+    Canvas canvas(image);
+    drawTitle(canvas, 0, 0, width, TITLE, input.title);
+
+    auto yOf = [FLOOR](double db, int y0, int h) { return y0 + (int)std::lround(std::clamp(db / FLOOR, 0.0, 1.0) * (h - 1)); };
+
+    // -- balance
+    const int balanceY = TITLE;
+    canvas.fill(0, balanceY, width, BALANCE, LANE_BACKGROUND);
+    for (double db : {-20.0, -40.0}) canvas.hline(0, width - 1, yOf(db, balanceY, BALANCE), GRID);
+    const int bands = (int)std::min(input.referenceBandsDb.size(), input.resultBandsDb.size());
+    for (int b = 0; b < bands; b++) {
+        const int x0 = b * width / std::max(bands, 1);
+        const int x1 = (b + 1) * width / std::max(bands, 1);
+        const int bar = std::max(1, (x1 - x0 - 2) / 2);
+        const int yr = yOf(input.referenceBandsDb[(size_t)b], balanceY, BALANCE);
+        const int yc = yOf(input.resultBandsDb[(size_t)b], balanceY, BALANCE);
+        canvas.fill(x0 + 1, yr, bar, balanceY + BALANCE - yr, DIM_TEXT);
+        canvas.fill(x0 + 1 + bar, yc, bar, balanceY + BALANCE - yc, WAVE);
+    }
+    canvas.text(4, balanceY + 2, "bands: reference grey, result colour", TEXT);
+
+    // -- envelopes
+    const int envelopeY = TITLE + BALANCE;
+    canvas.fill(0, envelopeY, width, ENVELOPE, LANE_BACKGROUND);
+    for (double db : {-20.0, -40.0}) canvas.hline(0, width - 1, yOf(db, envelopeY, ENVELOPE), GRID);
+    const size_t points = std::max(input.referenceEnvelopeDb.size(), input.resultEnvelopeDb.size());
+    const double duration = (double)points * input.frameSeconds;
+    auto curve = [&](const std::vector<double>& db, Rgb colour) {
+        for (size_t k = 1; k < db.size() && points > 1; k++) {
+            const int x0 = (int)((k - 1) * (size_t)(width - 1) / (points - 1));
+            const int x1 = (int)(k * (size_t)(width - 1) / (points - 1));
+            canvas.line(x0, yOf(db[k - 1], envelopeY, ENVELOPE), x1, yOf(db[k], envelopeY, ENVELOPE), colour);
+        }
+    };
+    curve(input.referenceEnvelopeDb, DIM_TEXT);
+    curve(input.resultEnvelopeDb, WAVE);
+    canvas.text(4, envelopeY + 2, "envelope from the head", TEXT);
+
+    drawTimeAxis(canvas, TITLE + BALANCE + ENVELOPE, width, AXIS, 0.0, duration);
+    return image;
+}
+
+AudioImages::Image AudioImages::renderSlices(const AudioAnalysis::Signal& signal, const std::string& title, const std::vector<SliceMark>& slices, int width) {
+    const int TITLE = 16, WAVEFORM = 128, SLICES = 24, AXIS = 16;
+    Image image;
+    width = std::clamp(width, MIN_WIDTH, MAX_WIDTH);
+    blank(image, width, TITLE + WAVEFORM + SLICES + AXIS);
+    Canvas canvas(image);
+    drawTitle(canvas, 0, 0, width, TITLE, title);
+    drawWaveform(canvas, 0, TITLE, width, WAVEFORM, signal);
+    const int y = TITLE + WAVEFORM;
+    canvas.fill(0, y, width, SLICES, LANE_BACKGROUND);
+    const double duration = std::max(signal.seconds(), 1e-6);
+    int n = 0;
+    for (const SliceMark& slice : slices) {
+        n++;
+        const int x0 = (int)std::lround(slice.startSeconds / duration * (width - 1));
+        const int x1 = std::max(x0 + 1, (int)std::lround(slice.endSeconds / duration * (width - 1)));
+        canvas.fill(x0, y + 2, x1 - x0, SLICES - 4, n % 2 == 0 ? GRID : LABEL_BACKGROUND);
+        canvas.text(x0 + 2, y + (SLICES - GLYPH) / 2, "S" + std::to_string(n), TEXT, x0, x1);
+        if (slice.fadeIn) canvas.vline(x0, y, y + SLICES - 1, CLIPPED);
+        if (slice.fadeOut) canvas.vline(x1 - 1, y, y + SLICES - 1, CLIPPED);
+    }
+    drawTimeAxis(canvas, y + SLICES, width, AXIS, 0.0, signal.seconds());
+    return image;
+}
+
 AudioImages::Image AudioImages::sheet(const std::vector<SheetItem>& items, int width) {
     Image image;
     width = std::clamp(width, MIN_WIDTH, MAX_WIDTH);

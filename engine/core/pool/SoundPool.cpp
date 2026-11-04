@@ -12,8 +12,10 @@
 #include "io/File.h"
 #include "io/ResourcePack.h"
 #include "audio/AudioFileCheck.h"
+#if JASPERENGINE_SOUND_LAYER
 #include "audio/AudioImport.h"
 #include "audio/ClipSource.h"
+#endif
 #include "audio/SoloudEngineFile.h"
 
 #include "soloud.h"
@@ -90,6 +92,12 @@ namespace {
     // the sample with the clip's import settings, when they change its samples
     std::shared_ptr<SoLoud::AudioSource> withImportSettings(std::shared_ptr<SoLoud::AudioSource> sample, const std::string& filename,
                                                             const unsigned char* bytes, size_t size){
+#if !JASPERENGINE_SOUND_LAYER
+        (void)filename;
+        (void)bytes;
+        (void)size;
+        return sample;
+#else
         const std::optional<ClipImportSettings> settings = AudioImportTable::find(filename);
         if (!settings || settings->playsAsFile() || !sample){
             return sample;
@@ -108,6 +116,7 @@ namespace {
         auto clip = std::make_shared<AudioClipSource>(std::move(sample), *settings, bytes, size);
         clip->setSingleInstance(false);
         return clip;
+#endif
     }
 
 }
@@ -122,8 +131,10 @@ std::shared_ptr<SoLoud::AudioSource> SoundPool::decode(const std::string& id, co
 
 SoundLoadResult SoundPool::loadClip(const std::string& filename, AudioLoadType requested){
     // a game's import settings, before its first clip (the editor registers a project's itself)
+#if JASPERENGINE_SOUND_LAYER
     static std::once_flag importsLoaded;
     std::call_once(importsLoaded, [](){ AudioImportTable::load(AudioImportTable::FILE_NAME); });
+#endif
     const AudioLoadType loadType = resolveLoadType(filename, requested);
     const std::string id = key(filename, loadType);
     auto& shared = getMap()[id];
@@ -455,11 +466,15 @@ bool SoundPool::loadTypeFromName(const std::string& name, AudioLoadType& type){
 
 std::string SoundPool::key(const std::string& filename, AudioLoadType resolved){
     const std::string base = filename + "#" + loadTypeName(resolved);
+#if JASPERENGINE_SOUND_LAYER
     const std::optional<ClipImportSettings> settings = AudioImportTable::find(filename);
     if (!settings || settings->playsAsFile()) return base;
     char hash[24];
     std::snprintf(hash, sizeof(hash), "#i%016llx", (unsigned long long)settings->hash());
     return base + hash;
+#else
+    return base;
+#endif
 }
 
 void SoundPool::parseClipRef(const std::string& ref, std::string& filename, AudioLoadType& type){
@@ -489,14 +504,21 @@ void SoundPool::parseClipRef(const std::string& ref, std::string& filename, Audi
 double SoundPool::getLength(SoLoud::AudioSource* sample){
     if (auto* wav = dynamic_cast<SoLoud::Wav*>(sample)) return wav->getLength();
     if (auto* stream = dynamic_cast<SoLoud::WavStream*>(sample)) return stream->getLength();
+#if JASPERENGINE_SOUND_LAYER
     if (auto* clip = dynamic_cast<AudioClipSource*>(sample)) return clip->getLength();
+#endif
     return 0.0;
 }
 
 double SoundPool::getLoopPoint(SoLoud::AudioSource* sample, double requested){
     if (requested != 0.0) return requested;
+#if JASPERENGINE_SOUND_LAYER
     auto* clip = dynamic_cast<AudioClipSource*>(sample);
     return clip ? clip->getDefaultLoopPoint() : 0.0;
+#else
+    (void)sample;
+    return 0.0;
+#endif
 }
 
 std::vector<SoundPoolEntry> SoundPool::getEntries(){
@@ -509,7 +531,9 @@ std::vector<SoundPoolEntry> SoundPool::getEntries(){
         entry.length = getLength(sample.get());
         // what the clip holds is its sample's: the wrapper adds a voice's state, no bytes
         SoLoud::AudioSource* held = sample.get();
+#if JASPERENGINE_SOUND_LAYER
         if (auto* clip = dynamic_cast<AudioClipSource*>(held)) held = clip->getSample().get();
+#endif
         if (auto* wav = dynamic_cast<SoLoud::Wav*>(held)) {
             entry.memoryBytes = (size_t)wav->mSampleCount * wav->mChannels * sizeof(float);
         } else if (auto* stream = dynamic_cast<SoLoud::WavStream*>(held)) {

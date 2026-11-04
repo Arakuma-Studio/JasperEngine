@@ -330,7 +330,8 @@ def cmd_measure(args):
         failures.append(f"total size {total} bytes > {MAX_TOTAL_BYTES}")
     if failures:
         raise BuildError("hard filters failed:\n  " + "\n  ".join(failures))
-    (out / MANIFEST).write_text(manifest_text(build_manifest(sel, packs, out, measured)), encoding="utf-8", newline="\n")
+    with open(out / MANIFEST, "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(manifest_text(build_manifest(sel, packs, out, measured)))
     print(f"measure: {len(measured)} clips pass the filters; {total} bytes of audio; wrote {out / MANIFEST}")
 
 

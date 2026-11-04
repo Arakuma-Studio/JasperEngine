@@ -873,6 +873,42 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_sound_layered_family",
+        "kind": "guard",
+        "what_happened": "S36 M8: the layered presets are chosen by name and character; an agent asked for a wooden hit should "
+                         "use impact with family wood rather than a thump recipe tuned by hand.",
+        "text_at_issue": "generate_sound's description and family input",
+        "source": "S36 M8 (sound-layer phase 7)",
+        "prompt": "I need a placeholder sound for a crate being hit, something wooden, at assets/sfx/crate_hit.wav.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/crate_hit.wav: 0.19 s, -18.0 LUFS-M, TP -4.1 dBTP, transient (impact) [seed 5, gain +3.20 dB]",
+                {"files": [{"path": "assets/sfx/crate_hit.wav", "preset": "impact", "family": "wood", "seed": 5}], "type": "impact", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "impact", "family": "wood"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+    },
+    {
+        "id": "guard_sound_fit_like",
+        "kind": "guard",
+        "what_happened": "S36 M10: asked for a placeholder like an existing clip, an agent should fit one with like instead of "
+                         "picking a preset by eye or copying the file, which keeps its licence problem.",
+        "text_at_issue": "generate_sound's description and like input",
+        "source": "S36 M10 (sound-layer phase 7)",
+        "prompt": "Make me a placeholder at assets/sfx/door_new.wav that sounds like assets/sfx/door_licensed.ogg, but which we can ship without its licence worries for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/door_new.wav: 0.41 s, -18.0 LUFS-M, TP -3.0 dBTP, transient (impact) [seed 1, gain +1.40 dB]\n"
+                "fit to assets/sfx/door_licensed.ogg: distance 1.42 (similar; defaults 3.10) after 64 renders",
+                {"files": [{"path": "assets/sfx/door_new.wav", "preset": "impact", "family": "wood", "seed": 1}], "type": "impact", "licence": "generated", "image": None,
+                 "fit": {"distance": 1.42, "grade": "similar", "renders": 64}})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"like": "assets/sfx/door_licensed.ogg"}}],
+                   "must_not_call": ["write_file", "import_files", "copy_asset"]},
+    },
+    {
         "id": "guard_placeholder_sound",
         "kind": "guard",
         "what_happened": "Sound-layer sessions: with no audio file at hand, an agent should make a placeholder instead of "

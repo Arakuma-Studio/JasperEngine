@@ -183,6 +183,10 @@ namespace jasperengine::editor {
         // ATTACK_WINDOW_SECONDS of the sound or all of it when shorter. SoundSynth's fade-in and the
         // notes' click-safe fade-in.
         static size_t safeFadeInFrames(const std::vector<double>& squares, double rate, size_t longest);
+        // Does an edge sample v (d its outward step) click against silence: loud against the file's
+        // peak, audible on its own and no zero crossing (SoundTypes.h's `-- defects`)
+        static bool edgeSampleClicks(double v, double d, double peak);
+
         // The level a trim cuts into at `frame`: the largest |sample| over the
         // channels within SoundTypes::CUT_WINDOW_MS of it, in dB re the file's sample peak
         // (AudioMeter::SILENCE_DB for a silent file)

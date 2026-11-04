@@ -198,6 +198,9 @@ namespace jasperengine::editor {
         static std::string attackOf(const Entry& entry);
         static bool isTonal(const Entry& entry);
         static bool isLoop(const Entry& entry);
+        // An entry with the features of a cached analysis, for distance() between files that are in no index
+        static Entry entryOfAnalysis(const Json& cached);
+
         // similar_to's distance between two entries' features: with
         // d1 = log2(max(duration_s, 0.01)) / 4, d2 = log2(max(attack_ms, 0.5)) / 4,
         // d3 = log2(max(centroid_hz, 1) / 1000) / 2, d4 = flatness, d5 = pitch confidence,

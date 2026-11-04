@@ -24,7 +24,8 @@
 // <video> element, a script names video or the media API. The runtime shader compiler is needed
 // when a script can ask for a shader variant the export did not cook: it names a shader-relevant
 // entry point (ShaderNeutralApi), a script property has a shader-relevant type, or a script makes
-// a dynamic access. Navigation follows Project Settings > Navigation > Include in Builds.
+// a dynamic access. Navigation follows Project Settings > Navigation > Include in Builds; the sound
+// layer, a clip whose import settings change what it plays.
 
 #include "mcp/McpJson.h"
 #include "ecs/Entity.h"
@@ -80,6 +81,7 @@ namespace jasperengine::editor {
         std::vector<std::string> cppScripts;    // C++ script sources (project-relative)
         bool debugOverlayInBuilds = false;      // Project Settings > Debug: the overlay is an HTML UI document
         bool navigationInBuilds = true;         // Project Settings > Navigation > Include in Builds
+        bool audioImportTable = false;          // the export writes je-audio-imports.json (a clip with import settings)
         bool stripEngineCode = true;            // Project Settings > Player > Strip Engine Code
         // what this scan made to read prefabs (their files' registries, instance previews)
         std::vector<std::shared_ptr<void>> owned;

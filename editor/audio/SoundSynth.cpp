@@ -3,6 +3,8 @@
 
 #include "SoundSynth.h"
 
+#include "SoundDesign.h"
+
 #include "AudioAnalysis.h"
 #include "SoundTypes.h"
 #include "WavWriter.h"
@@ -419,6 +421,9 @@ double SoundSynth::Random::bipolar() {
 // ======================================================================== presets
 
 const std::vector<SoundSynth::Preset>& SoundSynth::presets() {
+    // the same six for every layered preset; force has no default (absent: the seed draws it)
+    static const std::vector<Param> LAYERED_PARAMS = {
+        {"pitch_st", -12, 12, 0}, {"length", 0.25, 4, 1}, {"brightness", -1, 1, 0}, {"room", -1, 1, 0}, {"drive", -1, 1, 0}, {"force", -1, 1, 0}};
     static const std::vector<Preset> list = {
         {"coin", "pickup", SoLoud::Sfxr::COIN, {}},
         {"laser", "shoot", SoLoud::Sfxr::LASER, {}},
@@ -440,6 +445,10 @@ const std::vector<SoundSynth::Preset>& SoundSynth::presets() {
         {"thump", "thump", -1, {
             {"freq_hz", 30, 150, 55}, {"drop_hz", 0, 200, 70}, {"decay_ms", 20, 1000, 150}, {"click", 0, 1, 0.3},
             {"length_ms", 100, 2000, 400}}},
+        {"ui_click", "click", -1, LAYERED_PARAMS},
+        {"swoosh", "whoosh", -1, LAYERED_PARAMS},
+        {"impact", "impact", -1, LAYERED_PARAMS},
+        {"pop", "pop", -1, LAYERED_PARAMS},
     };
     return list;
 }
@@ -473,7 +482,7 @@ const std::vector<SoundSynth::Param>& SoundSynth::paramsOf(const Preset& preset)
 
 const SoundSynth::Preset& SoundSynth::pick(uint32_t seed) {
     Random random(seed);
-    return presets()[random.next() % presets().size()];
+    return presets()[random.next() % RANDOM_PRESETS];
 }
 
 bool SoundSynth::checkParams(const Preset& preset, const Json& params, std::string& error) {
@@ -520,10 +529,13 @@ bool SoundSynth::checkParams(const Preset& preset, const Json& params, std::stri
 }
 
 bool SoundSynth::render(const Preset& preset, uint32_t seed, const Json& params, std::vector<float>& samples,
-                        unsigned int& sampleRate, std::string& error) {
+                        unsigned int& sampleRate, std::string& error, const std::string& family) {
     if (preset.isSfxr()) {
         sampleRate = SFXR_RATE;
         if (!renderSfxr(preset, seed, params, samples, error)) return false;
+    } else if (SoundDesign::isLayered(preset.name)) {
+        sampleRate = SoundDesign::SAMPLE_RATE;
+        if (!SoundDesign::render(preset.name, family, seed, params, samples, error)) return false;
     } else {
         sampleRate = RECIPE_RATE;
         Random random(seed);
@@ -557,10 +569,10 @@ bool SoundSynth::render(const Preset& preset, uint32_t seed, const Json& params,
 }
 
 bool SoundSynth::generate(const Preset& preset, uint32_t seed, const Json& params, double targetLufs, Output& out,
-                          std::string& error) {
+                          std::string& error, const std::string& family) {
     std::vector<float> samples;
     unsigned int rate = 0;
-    if (!render(preset, seed, params, samples, rate, error)) return false;
+    if (!render(preset, seed, params, samples, rate, error, family)) return false;
 
     const LoudnessResult raw = AudioMeter::measure(samples.data(), samples.size(), rate, 1, false);
     if (!raw.momentaryMax || raw.samplePeakDb < SILENT_PEAK_DBFS || *raw.momentaryMax <= AudioMeter::SILENCE_DB) {

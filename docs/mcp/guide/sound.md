@@ -67,9 +67,30 @@ target give the same bytes in one editor version. Each sound is brought to its t
 | `whoosh` | whoosh | `low_hz`, `high_hz`, `q`, `length_ms` |
 | `riser` | riser | `start_hz`, `end_hz`, `noise`, `length_ms` |
 | `thump` | thump | `freq_hz`, `drop_hz`, `decay_ms`, `click`, `length_ms` |
+| `ui_click` | click | layered: `pitch_st`, `length`, `brightness`, `room`, `drive`, `force` |
+| `swoosh` | whoosh | as above |
+| `impact` | impact | as above |
+| `pop` | pop | as above |
 
-`random` picks one by the seed. A name out of range or not in the list is refused, naming the valid ones. Builds
-warn about placeholders (`W-AUDIO-PLACEHOLDER`): replace them before release.
+`random` picks one by the seed, among the first 13. A name out of range or not in the list is refused, naming the
+valid ones. Builds warn about placeholders (`W-AUDIO-PLACEHOLDER`): replace them before release.
+
+**Families.** A layered preset is layers summed, then a chain, and `family` fixes its character (the first is the
+default): `ui_click` `tink`, `snap`, `mouse`, `glass`, `soft`; `swoosh` `fast`, `big`, `thin`; `impact` `wood`, `metal`,
+`stone`, `soft`, `heavy`; `pop` `bubble`, `cork`, `soft`. A seed varies how hard it is struck (`force`, -1 to 1, or fix
+it), its timing and a little pitch, so variations read as takes of one sound. `pitch_st` is -12 to 12, `length` 0.25 to 4,
+`brightness`, `room` and `drive` -1 to 1.
+
+**Variety.** Several variations report `variety`: their distances (as `search_sounds similar_to`), the nearest pair,
+`near_duplicates` and a verdict: `one_palette`, `wide` (they read as different sounds) or `near_duplicates` (use other
+seeds or a different force).
+
+**Like this.** `generate_sound {preset, like}` fits a recipe or a layered preset to a project clip, `essentials:` or
+`library:` id as it plays: up to 64 renders against its band balance, envelope, length and attack. `seed` defaults to 1,
+`params` are the search's, `family` fixes the family. Loops, speech, silence, more than 8 s, sfxr presets and `random` are
+refused. Any licence is accepted: only measurements reach the result, which is `generated`, with the reference
+in `provenance.reference`. `fit` has `distance`, `grade` (`close` to 1, `similar` to 2, else `rough`), `start_distance`
+and the differences in words. The distance says how alike the measurements are, not whether the result sounds right.
 
 ## Built-in sounds and licences
 

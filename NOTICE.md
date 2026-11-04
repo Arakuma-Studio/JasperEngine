@@ -76,6 +76,8 @@ Layout of the HTML/CSS UI:
 
 Sounds: the editor embeds 40 CC0 clips by Kenney (`editor/resources/sound-library/essentials/`, each pack's licence in `licenses/`) and installs a CC0 starter library of 927 clips by Kenney and Freesound users next to itself (`editor/resources/sound-library/library/`, licences in `licenses/`, per clip author, URL and licence in `manifest.json`). No player carries them: a game holds only the clips a project imported, credited in its `licenses/THIRD-PARTY-AUDIO.txt`. The editor also compiles SoLoud's sfxr (`engine/libs/soloud/src/audiosource/sfxr/`, part of SoLoud, zlib/libpng) for placeholder sounds; players do not.
 
+The layered placeholder presets (`generate_sound`, `editor/audio/SoundDesign.cpp`): idea from earshot (MIT), reimplemented; no code of it is here.
+
 Test data: the html5lib tree-construction tests (MIT, `engine/tests/htmlui/fixtures/compat/html5lib/LICENSE`). Taffy's layout test fixtures (MIT, `engine/tests/htmlui/fixtures/taffy/LICENSE-taffy.txt`). The audio tests' Ogg Vorbis clip is Kenney's "Sci-Fi Sounds" 1.0 (CC0, `engine/tests/core/fixtures/audio/License-kenney.txt`); their FLAC and MP3 sweeps are FFmpeg encodes of a synthetic source (tests only, never shipped).
 
 Icons of the HTML/CSS UI:
