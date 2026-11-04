@@ -12,6 +12,7 @@
 #include "object/Light.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/VoxelSystem.h"
+#include "TestTempDir.h"
 #include "voxel/TransvoxelMesher.h"
 #include "voxel/VoxelEdit.h"
 
@@ -22,6 +23,7 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 
@@ -47,6 +49,7 @@ namespace {
         Camera camera{&scene};
         Light sun{&scene};
         std::shared_ptr<VoxelAsset> asset;
+        TestTempDir textureDir;
 
         void SetUp() override {
             Engine::setPinnedShaderTime(1.0);
@@ -65,7 +68,9 @@ namespace {
             Engine::setPinnedShaderTime(-1.0);
         }
 
-        // Four slots in four colours, painted so every kind of vertex set is on the sphere
+        // Four slots of four textures, in stripes a few voxels wide on the side the camera sees: cells with
+        // 3 and 4 slots are on screen, which is what the tiers treat differently (R51), and the maps go
+        // through the array and the projections rather than a white fallback
         Entity paintedSphere(VoxelQuality quality, const std::string& name) {
             GeneratorDesc generator;
             asset = VoxelAssets::create(name, []{
@@ -74,17 +79,22 @@ namespace {
                 desc.levels = 1;
                 return desc;
             }(), generator, 4);
-            EditOp ops[4];
-            ops[0].kind = EditKind::Add;
-            ops[0].shape.center = Vec3d{32.0, 32.0, 32.0};
-            ops[0].shape.radius = 22.0;
-            ops[0].material = 0;
-            for (int i = 1; i < 4; i++) {
-                ops[i].kind = EditKind::Paint;
-                ops[i].shape.center = Vec3d{32.0 + 18.0 * std::cos(i * 2.1), 42.0, 32.0 + 18.0 * std::sin(i * 2.1)};
-                ops[i].shape.radius = 12.0;
-                ops[i].material = i;
-                ops[i].falloff = 0.5;
+            std::vector<EditOp> ops;
+            EditOp sphere;
+            sphere.kind = EditKind::Add;
+            sphere.shape.center = Vec3d{32.0, 32.0, 32.0};
+            sphere.shape.radius = 22.0;
+            sphere.material = 0;
+            ops.push_back(sphere);
+            for (int i = 0; i < 12; i++) {
+                EditOp stripe;
+                stripe.kind = EditKind::Paint;
+                stripe.shape.kind = ShapeKind::Box;
+                stripe.shape.center = Vec3d{12.0 + i * 3.5, 32.0, 50.0};
+                stripe.shape.halfExtents = Vec3d{1.5, 26.0, 14.0};
+                stripe.material = 1 + i % 3;
+                stripe.weight = 0.6;
+                ops.push_back(stripe);
             }
             EXPECT_TRUE(applyEdit(*asset->store, ops).ok);
             const Entity entity = scene.createEntity();
@@ -94,11 +104,24 @@ namespace {
             component.quality = quality;
             component.collision = false;
             component.focus = camera.getEntity();
-            const Vector3 colours[4] = {Vector3(0.8f, 0.2f, 0.2f), Vector3(0.2f, 0.8f, 0.2f), Vector3(0.2f, 0.2f, 0.8f), Vector3(0.9f, 0.8f, 0.2f)};
-            for (const Vector3& colour : colours) {
+            const uint8_t colours[4][3] = {{200, 60, 50}, {60, 190, 70}, {60, 80, 210}, {230, 200, 60}};
+            for (int i = 0; i < 4; i++) {
+                // A coarse checker in the slot's colour, whose height channel (alpha) follows it
+                std::vector<uint8_t> pixels(64 * 64 * 4);
+                for (int y = 0; y < 64; y++) {
+                    for (int x = 0; x < 64; x++) {
+                        const bool on = ((x / 8) + (y / 8) + i) % 2 == 0;
+                        uint8_t* texel = &pixels[static_cast<size_t>(y * 64 + x) * 4];
+                        for (int c = 0; c < 3; c++) texel[c] = static_cast<uint8_t>(colours[i][c] * (on ? 1.0 : 0.6));
+                        texel[3] = 255;
+                    }
+                }
+                const std::string path = textureDir.path().string() + "/slot" + std::to_string(i) + ".png";
+                EXPECT_TRUE(writePng(path, pixels, 64, 64));
                 VoxelMaterialSlot slot;
                 slot.name = "slot";
-                slot.layer.colorFactor = colour;
+                slot.layer.colorTexture.setPath(path);
+                slot.layer.uvScale = Vector2(0.08f, 0.08f);
                 component.materialSlots.push_back(slot);
             }
             scene.addComponent<VoxelVolumeComponent>(entity, component);
@@ -145,7 +168,12 @@ namespace {
                 return system->isVolumeReady(owner) && render->isAllLoaded();
             }, 600);
             GpuEnvironment::drawFrames(3);
-            return ready && scene.getSystem<RenderSystem>()->isAllLoaded();
+            if (!ready || !render->isAllLoaded()) {
+                const VoxelStats stats = system->getStats(owner);
+                std::printf("[gpu] not settled: ready %d, chunks %d, jobs %d, uploads %d, error '%s'\n", system->isVolumeReady(owner) ? 1 : 0, stats.chunks, stats.jobsPending, stats.uploadMeshesThisFrame, system->getError(owner).c_str());
+                for (const std::string& line : render->describeNotLoaded()) std::printf("[gpu] not loaded: %s\n", line.c_str());
+            }
+            return ready && render->isAllLoaded();
         }
 
         void expectGolden(const std::string& name) {
@@ -159,6 +187,7 @@ namespace {
 }
 
 TEST_F(VoxelRenderGpu, TierGoldens) {
+    JASPER_REQUIRE_GPU();
     const struct {
         VoxelQuality quality;
         const char* golden;
@@ -169,12 +198,17 @@ TEST_F(VoxelRenderGpu, TierGoldens) {
         camera.setTarget(32.0f, 32.0f, 32.0f);
         ASSERT_TRUE(settled(owner)) << tier.golden;
         expectGolden(tier.golden);
+        // The tiers must really differ on this content: a golden that any tier would match pins nothing
+        if (tier.quality != VoxelQuality::High && !std::getenv("JASPER_TEST_UPDATE_GOLDEN")) {
+            EXPECT_FALSE(compareTargetWithGolden("voxel_tier_high", CompareOptions{}).passed) << tier.golden;
+        }
         scene.destroyEntity(owner);
         GpuEnvironment::drawFrames(2);
     }
 }
 
 TEST_F(VoxelRenderGpu, LodSeamGolden) {
+    JASPER_REQUIRE_GPU();
     const Entity owner = wavyGround("mem://gpu-seam", VoxelQuality::High, 3);
     camera.setPosition(60.0f, 90.0f, 60.0f);
     camera.setTarget(120.0f, 40.0f, 120.0f);
@@ -191,6 +225,7 @@ TEST_F(VoxelRenderGpu, LodSeamGolden) {
 }
 
 TEST_F(VoxelRenderGpu, ShadowsNoLeak) {
+    JASPER_REQUIRE_GPU();
     sun.setDirection(-0.8f, -0.25f, -0.2f);
     sun.setShadows(true);
     const Entity owner = wavyGround("mem://gpu-shadow", VoxelQuality::High, 3);

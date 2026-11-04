@@ -70,6 +70,8 @@ namespace jasperengine::editor {
         // Puts an undo state back, or forward with the state finish returned
         static void applyUndo(Scene* scene, Entity owner, const VoxelGenerateUndo& undo, bool undoing);
 
+        VoxelGeneration() = default;
+
     private:
         struct State;
         std::shared_ptr<State> state;

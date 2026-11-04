@@ -132,6 +132,24 @@ namespace {
 
 }
 
+std::shared_ptr<const BaseSource> VoxelSystem::makeTerrainBaseFor(Entity owner, Entity terrainEntity){
+    const VolumeState* state = stateOf(owner);
+    VoxelVolumeComponent* component = scene->findComponent<VoxelVolumeComponent>(owner);
+    TerrainComponent* terrain = terrainEntity != NULL_ENTITY && scene->isEntityCreated(terrainEntity) ? scene->findComponent<TerrainComponent>(terrainEntity) : nullptr;
+    const Transform* terrainTransform = terrain ? scene->findComponent<Transform>(terrainEntity) : nullptr;
+    const Transform* volumeTransform = scene->findComponent<Transform>(owner);
+    if (!state || !state->store || !component || !terrainTransform || !volumeTransform) return nullptr;
+    std::vector<int> slots(terrain->surfaceLayers.size(), 0);
+    for (size_t i = 0; i < component->materialSlots.size(); i++){
+        const int layer = component->materialSlots[i].linkedTerrainLayer;
+        if (layer >= 0 && static_cast<size_t>(layer) < slots.size()) slots[static_cast<size_t>(layer)] = static_cast<int>(i);
+    }
+    TerrainBaseOptions options;
+    options.voxelSize = state->store->desc().voxelSize;
+    options.overlapDepth = resolvedOverlap(*component, static_cast<float>(options.voxelSize));
+    return makeTerrainBase(std::make_shared<SnapshotTerrainSource>(*terrain, volumeToTerrain(*volumeTransform, *terrainTransform), std::move(slots)), options);
+}
+
 void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& component){
     const Entity wanted = (component.terrain != NULL_ENTITY && scene->isEntityCreated(component.terrain) && scene->findComponent<TerrainComponent>(component.terrain))
         ? component.terrain : NULL_ENTITY;
@@ -142,19 +160,8 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
         TerrainComponent& terrain = scene->getComponent<TerrainComponent>(wanted);
         const Transform* terrainTransform = scene->findComponent<Transform>(wanted);
         const Transform* volumeTransform = scene->findComponent<Transform>(state.owner);
-        const float voxelSize = state.store->desc().voxelSize;
         if (volumeTransform && terrainTransform && state.asset && state.asset->generator.kind == "terrain"){
-            // R35: the base reads the terrain, through a copy a job may hold
-            std::vector<int> slots(terrain.surfaceLayers.size(), 0);
-            for (size_t i = 0; i < component.materialSlots.size(); i++){
-                const int layer = component.materialSlots[i].linkedTerrainLayer;
-                if (layer >= 0 && static_cast<size_t>(layer) < slots.size()) slots[static_cast<size_t>(layer)] = static_cast<int>(i);
-            }
-            auto source = std::make_shared<SnapshotTerrainSource>(terrain, volumeToTerrain(*volumeTransform, *terrainTransform), std::move(slots));
-            TerrainBaseOptions options;
-            options.voxelSize = voxelSize;
-            options.overlapDepth = resolvedOverlap(component, voxelSize);
-            state.store->setBase(makeTerrainBase(source, options));
+            state.store->setBase(makeTerrainBaseFor(state.owner, wanted));
             state.asset->baseResolved = true;
         }
         if (component.terrainCut == VoxelTerrainCut::Automatic && !state.holdingTerrainMap){
@@ -208,16 +215,7 @@ void VoxelSystem::attachTerrain(VolumeState& state, VoxelVolumeComponent& compon
             if (!box.empty()){
                 // The base reads a copy of the terrain, taken again for the new heights
                 if (state.asset && state.asset->generator.kind == "terrain"){
-                    std::vector<int> slots(terrain.surfaceLayers.size(), 0);
-                    for (size_t i = 0; i < component.materialSlots.size(); i++){
-                        const int layer = component.materialSlots[i].linkedTerrainLayer;
-                        if (layer >= 0 && static_cast<size_t>(layer) < slots.size()) slots[static_cast<size_t>(layer)] = static_cast<int>(i);
-                    }
-                    auto source = std::make_shared<SnapshotTerrainSource>(terrain, offset, std::move(slots));
-                    TerrainBaseOptions options;
-                    options.voxelSize = voxelSize;
-                    options.overlapDepth = resolvedOverlap(component, voxelSize);
-                    state.store->replaceBase(makeTerrainBase(source, options));
+                    state.store->replaceBase(makeTerrainBaseFor(state.owner, wanted));
                     for (int level = 0; level < state.store->levels(); level++){
                         const int span = BLOCK_SIZE << level;
                         for (int z = box.min.z / span; z <= box.max.z / span; z++){

@@ -161,6 +161,8 @@ namespace jasperengine{
         // The whole volume changed: asset swapped, generator regenerated
         void reloadVolume(Entity owner);
 
+        // R35: a base over a Terrain, through a copy a job may hold; null if the entity has no Terrain.
+        std::shared_ptr<const voxel::BaseSource> makeTerrainBaseFor(Entity owner, Entity terrain);
         // ---- runtime saves (R79)
         bool saveChanges(Entity owner, const std::string& slot, std::string& error);
         bool loadChanges(Entity owner, const std::string& slot, std::string& error);
