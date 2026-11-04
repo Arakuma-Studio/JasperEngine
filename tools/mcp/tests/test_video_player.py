@@ -43,6 +43,7 @@ from harness import Editor, skip
 from htmlui_pixels import Shot
 
 EDITOR = {"create": True, "name": "Video Player"}
+CI = True
 TIMEOUT = 900
 
 S: dict = {}

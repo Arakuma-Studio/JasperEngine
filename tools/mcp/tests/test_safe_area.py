@@ -14,6 +14,7 @@ from harness import Editor
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Safe Area"}
+CI = True
 
 CANVAS = (390, 844)
 IPHONE_13 = {"width": 1170, "height": 2532, "portrait": (0, 141, 0, 102), "landscape": (141, 0, 141, 63)}
