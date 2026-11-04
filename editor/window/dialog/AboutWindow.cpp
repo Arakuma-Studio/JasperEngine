@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AboutWindow.h"
+#include "window/EditorModal.h"
 
 #include "Backend.h"
 #include "EditorVersion.h"
@@ -50,7 +51,7 @@ void AboutWindow::show() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    if (ImGui::BeginPopupModal("About JasperEngine##AboutModal", &m_isOpen, flags)) {
+    if (EditorModal::begin("About JasperEngine##AboutModal", &m_isOpen, flags)) {
         if (!m_isOpen) {
             ImGui::CloseCurrentPopup();
         } else {
@@ -73,12 +74,13 @@ void AboutWindow::drawAbout() {
     centeredText("Version: " JASPERENGINE_EDITOR_VERSION);
     centeredText("Developed by JasperDev");
     centeredText("Based on Doriax by Eduardo Doria and contributors");
+    EditorModal::message("JasperEngine editor " JASPERENGINE_EDITOR_VERSION);
 
     ImGui::Separator();
 
     float okWidth = Theme::dpi(buttonWidth);
     ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - okWidth));
-    if (ImGui::Button("OK", ImVec2(okWidth, 0)) ||
+    if (EditorModal::button("OK", "ok", ImVec2(okWidth, 0)) ||
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();

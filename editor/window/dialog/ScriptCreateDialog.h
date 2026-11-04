@@ -69,6 +69,8 @@ private:
                             ScriptType type);
 
     void selectExistingFile(bool selectHeader);
+    // what the picker's answer does, also when an agent gives the path as a field
+    void acceptExistingFile(const fs::path& selectedPath, bool selectHeader);
 
 public:
     void open(Scene* scene,

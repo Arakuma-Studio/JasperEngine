@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "window/EditorModal.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"
 #include "widget/ColorField.h"
@@ -1147,7 +1148,9 @@ void ProjectSettingsWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              projectNoScrollFlags;
 
-    bool popupOpen = ImGui::BeginPopupModal("Project Settings##ProjectSettingsModal", &m_isOpen, flags);
+    // OK applies only what the page changed, over the project's settings as they are then, so an
+    // agent's concurrent set_project_settings survives it (phase 2 M4): no refusal of edits meanwhile
+    bool popupOpen = EditorModal::begin("Project Settings##ProjectSettingsModal", &m_isOpen, flags, EditorModal::Role::MergesEdits);
 
     if (popupOpen) {
         if (!m_isOpen) {
@@ -1223,7 +1226,7 @@ void ProjectSettingsWindow::drawSettings() {
     const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
-    if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
         if (applySettings()) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
@@ -1244,7 +1247,7 @@ void ProjectSettingsWindow::drawSettings() {
 
     ImGui::SameLine();
     // Escape cancels a Listen of the Input page first
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) ||
         (!listening && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();

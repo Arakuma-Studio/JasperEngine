@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabsWindow.h"
+#include "window/EditorModal.h"
 #include "Theme.h"
 #include "Backend.h"
 #include "App.h"
@@ -109,10 +110,11 @@ void PrefabsWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              prefabsNoScrollFlags;
 
-    if (ImGui::BeginPopupModal("Prefabs##PrefabsModal", &m_isOpen, flags)) {
+    if (EditorModal::begin("Prefabs##PrefabsModal", &m_isOpen, flags)) {
         if (!m_isOpen) {
             ImGui::CloseCurrentPopup();
         } else {
+            EditorModal::message("The project's Prefabs. create_prefab and the prefab tools do the same without this window.");
             drawPrefabs();
         }
         ImGui::EndPopup();
@@ -296,7 +298,7 @@ void PrefabsWindow::drawPrefabs() {
     // Unity-style footer: buttons on the right, primary first.
     ImGui::SetCursorPos(ImVec2(style.WindowPadding.x + std::max(0.0f, footerWidth - buttonsWidth), footerY));
 
-    if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
         applyPrefabs();
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
@@ -304,7 +306,7 @@ void PrefabsWindow::drawPrefabs() {
 
     ImGui::SameLine();
 
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) ||
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
