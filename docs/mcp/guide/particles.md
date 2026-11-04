@@ -151,7 +151,7 @@ particles of systems whose External Forces module shares one of its layers.
 ## Performance
 
 Budgets: the world keeps at most its particle budget alive, sub-emitter children included (higher
-`priority` effects keep more),
+`priority` effects keep more; `particles.world_budget` in `set_project_settings`, 0 for the platform's default),
 Automatic culling pauses off-screen emitters and catches up when they come back, Distance LOD
 thins far ones. Collision against the world (`collision.collisionType: world`) is the costly module:
 Medium quality caches planes and caps the ray casts per tick (`maxQueriesPerTick`). Sorting

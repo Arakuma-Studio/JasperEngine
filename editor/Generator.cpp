@@ -2294,7 +2294,7 @@ bool editor::Generator::hasSceneSource(uint32_t sceneId, const std::string& scen
     return std::getline(file, header) && header == Factory::sceneSourceHeader;
 }
 
-void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier, const ShaderCreationProjectSettings& shaderCreation, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings, const AudioSettings& audioSettings, const DebugSettings& debugSettings){
+void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& scenes, std::string libName, const std::vector<SceneScriptSource>& scriptFiles, const std::vector<editor::PrefabSceneInfo>& prefabs, const fs::path& projectPath, const fs::path& projectInternalPath, const fs::path& assetsPath, const fs::path& luaPath, const std::vector<fs::path>& scriptDirs, int cxxStandard, Scaling scalingMode, TextureStrategy textureStrategy, unsigned int canvasWidth, unsigned int canvasHeight, bool vsyncEnabled, const WindowSettings& windowSettings, const LoadingSettings& loadingSettings, const TagsAndLayers& tagsAndLayers, int htmlUiMsaaSamples, const ThreadingProjectSettings& threading, const HtmlUiRenderSettings& htmlUiRender, PbrTier mobilePbrTier, const ShaderCreationProjectSettings& shaderCreation, bool allowInsecureHttp, const std::vector<ShaderGlobalDecl>& shaderGlobals, const PlayerSettings& playerSettings, const AudioSettings& audioSettings, const DebugSettings& debugSettings, uint32_t particleWorldBudget){
     // the generated sources (main.cpp, scene and prefab factories) live in the editor's internal
     // folder, which an MCP call's deny-by-default guard refuses otherwise (util/SafeWrite.h)
     safewrite::EditorInternal ownInternal(projectInternalPath);
@@ -2317,6 +2317,8 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "#include \"shader/ShaderManifest.h\"\n";
     mainContent += "#include \"shader/ShaderVariantCompiler.h\"\n";
     mainContent += "#include \"render/shadow/ShadowTiers.h\"\n";
+    if (particleWorldBudget != 0)
+        mainContent += "#include \"particles/ParticleWorld.h\"\n";
     mainContent += "#include <fstream>\n";
     mainContent += "#include <iterator>\n";
     mainContent += "#endif\n";
@@ -2668,6 +2670,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "    PhysicsSystem::setWorldCapacity3D(" + std::to_string(tagsAndLayers.maxBodies3D) + ", " +
                    std::to_string(tagsAndLayers.maxBodyPairs3D) + ", " + std::to_string(tagsAndLayers.maxContactConstraints3D) + ");\n";
     mainContent += "#endif\n";
+
+    // World Particle Budget, before any scene: left at the platform's default when not set
+    if (particleWorldBudget != 0)
+        mainContent += "    particles::ParticleWorld::setProjectBudget(" + std::to_string(particleWorldBudget) + ");\n";
 
     // Project Settings > Audio: the voices, then the mixer (its remembered values come back
     // before any sound plays)

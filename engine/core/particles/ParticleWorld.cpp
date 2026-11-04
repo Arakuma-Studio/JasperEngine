@@ -25,7 +25,27 @@ uint32_t particles::defaultWorldBudget(){
 #endif
 }
 
-ParticleWorld::ParticleWorld(): worldBudget(defaultWorldBudget()){
+namespace {
+
+    uint32_t projectWorldBudget = 0;
+
+}
+
+ParticleWorld::ParticleWorld(): worldBudget(0){
+}
+
+uint32_t ParticleWorld::budget() const{
+    if (worldBudget != 0)
+        return worldBudget;
+    return projectWorldBudget != 0 ? projectWorldBudget : defaultWorldBudget();
+}
+
+void ParticleWorld::setProjectBudget(uint32_t budget){
+    projectWorldBudget = budget;
+}
+
+uint32_t ParticleWorld::projectBudget(){
+    return projectWorldBudget;
 }
 
 double particles::cullingStep(CullingMode mode, bool looping, bool visible, double dt, int tickRate, CullState& state, uint32_t& maxTicks){
@@ -60,7 +80,7 @@ double particles::cullingStep(CullingMode mode, bool looping, bool visible, doub
 void ParticleWorld::shareBudget(std::vector<EmitterTask>& tasks) const{
     // what each wants: its steady-state population (or what it holds now, children included);
     // its budget covers its children, each emitter still held to its own Max Particles
-    const uint32_t total = worldBudget;
+    const uint32_t total = budget();
     uint64_t want = 0;
     for (EmitterTask& t : tasks){
         const ParticleProgram* prog = t.runtime ? t.runtime->program() : nullptr;
@@ -120,7 +140,7 @@ void ParticleWorld::simulate(std::vector<EmitterTask>& tasks, jobs::JobSystem* j
     jobs::JobSystem& js = jobsArg ? *jobsArg : jobs::system();
     lastStats = WorldStats();
     lastStats.emitters = (uint32_t)tasks.size();
-    lastStats.budget = worldBudget;
+    lastStats.budget = budget();
     if (tasks.empty()){
         lastStats.simulateMicros = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - start).count();
         return;

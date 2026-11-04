@@ -117,3 +117,20 @@ async def test_param_edit_keeps_particles(ed: Editor):
     restarted = await stats(ed)
     ed.check(restarted["time"] < before["time"] or restarted["particle_count"] != before["particle_count"],
              f"a structural edit restarts: {before} -> {restarted}")
+
+
+async def test_world_budget_setting(ed: Editor):
+    """BF23 F3: the project setting reaches the running world's stats, and 0 gives the default back."""
+    s = await setup(ed)
+    got = await ed.call("get_project_settings", keys=["particles.world_budget"])
+    ed.check("particles.world_budget" in str(got), f"the row: {got}")
+    await ed.check_error("set_project_settings", values={"particles.world_budget": -1}, contains="between")
+    await ed.call("set_project_settings", values={"particles.world_budget": 1000})
+    try:
+        await ed.call("play", action="start", scene=s["scene"], fixed_fps=60)
+        await ed.call("wait", frames=10)
+        world = (await ed.call("get_particle_stats"))["world"]
+        ed.check_eq(world["budget"], 1000, f"{world}")
+    finally:
+        await ed.call("play", action="stop", fixed_fps=0)
+        await ed.call("set_project_settings", values={"particles.world_budget": 0})

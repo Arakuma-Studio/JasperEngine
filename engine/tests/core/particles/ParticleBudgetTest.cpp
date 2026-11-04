@@ -159,3 +159,15 @@ TEST(ParticleBudget, CatchUpRunsTheMissedTicks){
     // the frame's tick and 0.5 s of the missed second
     EXPECT_EQ(ticks, 16u);
 }
+
+TEST(ParticleBudget, TheProjectBudgetIsForWorldsWithoutTheirOwn){
+    ParticleWorld follows;
+    ParticleWorld own;
+    own.setBudget(5000);
+    EXPECT_EQ(follows.budget(), defaultWorldBudget());
+    ParticleWorld::setProjectBudget(1000);
+    EXPECT_EQ(follows.budget(), 1000u) << "a world already made follows it";
+    EXPECT_EQ(own.budget(), 5000u);
+    ParticleWorld::setProjectBudget(0);
+    EXPECT_EQ(follows.budget(), defaultWorldBudget());
+}

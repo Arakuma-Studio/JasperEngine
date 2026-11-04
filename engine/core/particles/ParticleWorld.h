@@ -61,8 +61,13 @@ namespace jasperengine { namespace particles {
     public:
         ParticleWorld();
 
+        // this world's own budget, over the project's
         void setBudget(uint32_t budget){ worldBudget = budget; }
-        uint32_t budget() const { return worldBudget; }
+        uint32_t budget() const;
+        // Project Settings > World Particle Budget, for every world without its own (0: the
+        // platform's default); read each frame, so a change reaches the scenes that are running
+        static void setProjectBudget(uint32_t budget);
+        static uint32_t projectBudget();
 
         // runs the frame of every task (their runtimes advance by task.dt)
         void simulate(std::vector<EmitterTask>& tasks, jobs::JobSystem* jobs = nullptr);
