@@ -8,6 +8,7 @@
 
 #include "RenderSystem.h"
 #include "RenderSystemShared.h"
+#include "device/QualityResolver.h"
 #include "Scene.h"
 #include "Engine.h"
 #include "Log.h"
@@ -110,6 +111,8 @@ void RenderSystem::updateShadowTier(){
             shadowTier = ShadowTiers::getPlatformTier(static_cast<int>(Engine::getPlatform()));
             break;
     }
+    // the device tier's cap (and a Critical thermal step's, the tier below's)
+    shadowTier = QualityResolver::shadowTier(shadowTier);
 
     // a build with no shader compiler has the High filters only where its export cooked them
     // (spec S10 R25): above that it renders the Medium tier
@@ -169,6 +172,7 @@ float RenderSystem::lightShadowDistance(const LightComponent& light, const Camer
         distance = scene->getShadowDistance();
     if (!(distance > 0.0f))
         distance = shadowTierSettings().shadowDistance;
+    distance = QualityResolver::shadowDistance(distance);
     if (camera.farClip > camera.nearClip)
         distance = std::min(distance, camera.farClip);
     return distance;
@@ -578,6 +582,7 @@ void RenderSystem::updateShadowCasters(){
         revision.add(mesh.shadowCasterRevision);
         revision.add(mesh.lodEnabled);
         revision.add(mesh.lodBias);
+        revision.add(QualityResolver::lodBias() * QualityResolver::shadowLodBias());
         revision.add(mesh.shadowsBillboard);
         revision.add(transform->billboard);
         bool morphs = false;
@@ -1032,10 +1037,11 @@ bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& rend
 RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
-    // shadow LOD (spec S54 R7): the light's own error budget, coarser by the project's Shadow LOD
-    // Bias (quality.shadow_lod_bias, about one level by default); casters snap, never fade
-    view.threshold = SHADOW_LOD_TEXELS * Engine::getShadowLodBias();
-    view.bias = Engine::getLodBias();
+    // shadow LOD (spec S54 R7): the light's own error budget, about one level coarser than the
+    // camera's rule (SHADOW_LOD_COARSER) over the project's and the device tier's Shadow LOD Bias
+    // (QualityResolver, contract C4: above 1 keeps detail); casters snap, never fade
+    view.threshold = SHADOW_LOD_TEXELS * SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    view.bias = QualityResolver::lodBias();
 
     const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
     const Matrix4& projection = shadowCamera.lightProjectionMatrix;
@@ -1613,8 +1619,8 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
         }else{
             // a point light's face: the light's own budget at the face's texels, as a slot's
             shadowLod.enabled = scene->isMeshLodEnabled();
-            shadowLod.threshold = SHADOW_LOD_TEXELS * Engine::getShadowLodBias();
-            shadowLod.bias = Engine::getLodBias();
+            shadowLod.threshold = SHADOW_LOD_TEXELS * SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
+            shadowLod.bias = QualityResolver::lodBias();
             shadowLod.origin = shadowCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);
             shadowLod.perUnit = 2.0f / (std::abs(shadowCamera.lightProjectionMatrix[1][1]) * std::max(passResolution.y, 1.0f));
         }

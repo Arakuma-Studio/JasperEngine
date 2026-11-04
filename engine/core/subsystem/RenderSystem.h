@@ -863,7 +863,7 @@ namespace jasperengine{
 			float perUnit = 0;   // perspective: units per pixel at distance 1
 			float constant = 0;  // orthographic: units per pixel
 			float threshold = 1;
-			float bias = 1;      // the project's LOD Bias (Engine::getLodBias), times each mesh's
+			float bias = 1;      // the project's and device tier's LOD Bias (QualityResolver), times each mesh's
 			float viewHeight = 1; // pixels (Cull Below Screen Height)
 			bool enabled = false;
 			// a camera view whose plan fades (planMeshLod): the main camera of draw() or of an
@@ -1736,6 +1736,10 @@ namespace jasperengine{
 		uint64_t postProcessGlobalsVersion = 0; // ShaderGlobals version the pass values bind
 		// the scene's PostProcessingSettings changed since they were applied (phase 4)
 		bool postProcessingDirty = true;
+		// the QualityResolver revision the post-processing tiers, the LOD picks and the SSAO
+		// variants follow (a device tier, a thermal step)
+		uint32_t qualityRevisionSeen = 0;
+		bool qualitySSAO = false;
 		// what the applied settings turn on (getPostProcessingTiers), and their colour LUTs
 		PostProcessingTiers postTiers;
 		// MeshShaderEnvironment::postColor the objects load with (the variant bit)

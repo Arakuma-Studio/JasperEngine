@@ -16,6 +16,7 @@
 #include <linux/input-event-codes.h>
 #include <swappy/swappyGL.h>
 #include <algorithm>
+#include <chrono>
 #include <atomic>
 #include <cstddef>
 #include <memory>
@@ -35,6 +36,7 @@
 #include "util/StringUtils.h"
 #include "../common/PlatformDefaults.h"
 #include "player/Launch.h"
+#include "device/Device.h"
 
 #include <sys/system_properties.h>
 #include <cstdlib>
@@ -765,6 +767,29 @@ int NativeEngine::getDeviceDegrees(){
     return getJniEnv()->GetStaticIntField(mJniData.platformClsRef, mJniData.platformDeviceDegrees);
 }
 
+void NativeEngine::updateDeviceSignals(){
+    if (!mJniData.platformClsRef) return;
+    JNIEnv* env = getJniEnv();
+    if (!env) return;
+    const double now = std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    if (mJniData.platformGetThermalState && now - mLastThermalPoll >= 2.0) {
+        mLastThermalPoll = now;
+        env->CallStaticIntMethod(mJniData.platformClsRef, mJniData.platformGetThermalState, mJniData.gameActivityObjRef);
+        if (env->ExceptionCheck()) env->ExceptionClear();
+    }
+    if (mJniData.platformThermalState) {
+        const int state = env->GetStaticIntField(mJniData.platformClsRef, mJniData.platformThermalState);
+        jasperengine::Device::reportThermalState((jasperengine::ThermalState)std::clamp(state, 0, jasperengine::THERMAL_STATE_COUNT - 1));
+    }
+    if (mJniData.platformTrimMemoryCount) {
+        const int count = env->GetStaticIntField(mJniData.platformClsRef, mJniData.platformTrimMemoryCount);
+        if (count != mTrimMemoryCount) {
+            mTrimMemoryCount = count;
+            jasperengine::Device::reportLowMemory();
+        }
+    }
+}
+
 bool NativeEngine::refreshDisplayRotation(){
     if (!mJniData.platformClsRef || !mJniData.platformDisplayRotation) return false;
     JNIEnv* env = getJniEnv();
@@ -1123,6 +1148,17 @@ void NativeEngine::setupPlatformJNI(JNIEnv* env){
         env->ExceptionClear();
         mJniData.platformSafeAreaInfo = NULL;
     }
+    mJniData.platformThermalState = env->GetStaticFieldID(mJniData.platformClsRef, "thermalState", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformThermalState = NULL;
+    }
+    mJniData.platformTrimMemoryCount = env->GetStaticFieldID(mJniData.platformClsRef, "trimMemoryCount", "I");
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        mJniData.platformTrimMemoryCount = NULL;
+    }
+    mJniData.platformGetThermalState = withActivity("getThermalState", ")I");
 
     // Player > Android > Fullscreen as the export wrote it into MainActivity (true without it)
     jmethodID isFullscreenGame = env->GetMethodID(mJniData.gameActivityClsRef, "isFullscreenGame", "()Z");
@@ -1485,6 +1521,9 @@ void NativeEngine::doFrame() {
     // event comes at the start of this frame's update). During a quarter turn that waits for its
     // surface size Screen holds them for that size (Engine::isOrientationPending)
     updateSafeArea();
+
+    // the thermal state and memory warnings since the last frame (spec S56)
+    updateDeviceSignals();
 
     jasperengine::Engine::systemDraw();
 

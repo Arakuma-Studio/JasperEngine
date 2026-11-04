@@ -406,6 +406,10 @@ namespace jasperengine {
         static int targetFrameRate;
         static int vSyncCount;
         static FramePacing framePacing;
+        // Engine.setTextureQuality's value (the pool drops QualityResolver's resolution of it)
+        static int textureQuality;
+        // the QualityResolver revision the frame pacing, texture quality and upload budget follow
+        static uint32_t qualityRevision;
         // last orientation systemOrientationChanged saw (0: none yet), and since when (system
         // time) a quarter turn waits for its view size (0: none waits)
         static int lastOrientation;
@@ -424,8 +428,6 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
-        static float lodBias;
-        static float shadowLodBias;
 
         static Semaphore drawSemaphore;
 
@@ -471,6 +473,9 @@ namespace jasperengine {
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
         static void applyFramePacing();
+        // a new device tier, thermal step or memory drop: the pacing, texture quality and upload
+        // budget again (once a frame, one compare when nothing changed)
+        static void applyQualityChanges();
         // desktop builds: JASPERENGINE_SIMULATE_SAFE_AREA as the platform's insets
         static void applySimulatedSafeArea();
         
@@ -628,14 +633,6 @@ namespace jasperengine {
         // back to the platform default (the editor calls it when Play stops)
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
-        // Mesh detail levels (Project Settings > Quality, quality.lod_bias and
-        // quality.shadow_lod_bias; spec S54 R5, R7): LOD Bias multiplies every mesh's (above 1
-        // keeps detail longer, default 1), Shadow LOD Bias multiplies the error the shadow maps
-        // hide (above 1 casts with coarser levels; default 2, about one level coarser)
-        static void setLodBias(float bias);
-        static float getLodBias();
-        static void setShadowLodBias(float bias);
-        static float getShadowLodBias();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();

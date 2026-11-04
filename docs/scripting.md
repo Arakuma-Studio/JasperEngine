@@ -261,6 +261,28 @@ print(mesh.currentLod)
 A fading object draws twice for the fade's duration; with `scene.crossFade` off no fade shader
 is built or shipped.
 
+## Device tiers: Device
+
+`Device` is the device the game runs on (`docs/device-tiers.md`):
+
+- the Device Tier it gets: `Device.tier` (a `DeviceTier`), `Device.gpuName`, `Device.tierReason`,
+  and `Device.tierApplied`;
+- a graphics menu's choice: `Device.setTier(DeviceTier.Low)`, then `Device.resetTier()` to go back;
+- the platform's thermal state: `Device.thermalState` (a `ThermalState`) and the event
+  `Device.onThermalStateChanged(state)`;
+- `Device.onLowMemory`, after the engine cleared its caches for a low-memory warning.
+
+In the editor, a tier applies only in Play, and only when the Game view's Device menu simulates
+one or a script calls `Device.setTier`. Subscriptions end with Play, like the `Engine` events.
+
+```lua
+Device.onThermalStateChanged = function(state)
+    if state >= ThermalState.Serious then
+        Log.print("hot device, tier " .. tostring(Device.tier))
+    end
+end
+```
+
 ## The Lua API as data
 
 One parser (`tools/lua_api`) reads the Lua bindings at build time and writes `lua-api.json`.

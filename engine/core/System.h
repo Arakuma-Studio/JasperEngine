@@ -333,6 +333,9 @@ namespace jasperengine {
         virtual DeviceType getDeviceType();
         // physical memory in MiB, 0 when unknown
         virtual int getSystemMemorySize();
+        // the GPU's name where the render device's own is masked (the web: WebGL's unmasked
+        // renderer, WEBGL_debug_renderer_info); "" elsewhere, where Device reads the device name
+        virtual std::string getGpuRendererName();
         // logical processors, at least 1
         int getProcessorCount();
         // true only in the editor's Play mode

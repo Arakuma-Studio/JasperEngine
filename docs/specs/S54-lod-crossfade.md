@@ -264,13 +264,15 @@ would expect, the safest default and the best UX").
 - **Snaps beyond the spec's list:** a forced level (`Mesh.forceLod`), and a change of the mesh's
   level set (its levels arriving or being rebuilt), so a fade never runs between levels that are
   no longer the ones it started with. The GPU test harness also waits for pending levels.
-- **Shadow LOD (R7).** `quality.shadow_lod_bias` (default 2) multiplies the light's error budget;
+- **Shadow LOD (R7).** The light's error budget is two shadow texels times `SHADOW_LOD_COARSER`
+  (2, about one level coarser than the camera's rule) over S56's `QualityResolver::shadowLodBias()`
+  (default 1, above 1 keeps detail as LOD Bias does);
   point-light faces now select levels with a light-relative view like projective slots;
   render-to-texture and mirror cameras select one level for their own view; probe captures keep
   LOD 0 (one level, the best for a capture that is kept).
-- **Quality values (C4).** Until S56's `QualityResolver`, `quality.lod_bias` and
-  `quality.shadow_lod_bias` are project settings feeding `Engine::setLodBias` /
-  `setShadowLodBias` (editor and exported games).
+- **Quality values (C4).** LOD selection multiplies `QualityResolver::lodBias()` (S56: the project's
+  `quality.lod_bias` times the device tier's) into each mesh's bias once, through `LodView::bias`;
+  shadows divide by `shadowLodBias()`.
 - **Draw Modes (R11).** Saved per scene with the workspace (`drawMode`, `showStats`), driven by MCP
   through `set_scene_camera {display: {draw_mode, show_stats}}`. Colours LOD 0 green, 1 blue,
   2 amber, 3 red (`lodLevelColor`, for S53's LOD bar too).

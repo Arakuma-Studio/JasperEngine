@@ -35,6 +35,7 @@
 #include "physics/PlacementSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
+#include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
@@ -857,9 +858,6 @@ namespace jasperengine::editor{
         bool vsyncEnabled;
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
-        // Quality > LOD Bias and Shadow LOD Bias (quality.lod_bias, quality.shadow_lod_bias)
-        float lodBias;
-        float shadowLodBias;
         PlayerLoggingSettings playerLogging;
         // Input: the actions asset Play and the game start with (project-relative, empty for
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
@@ -868,6 +866,9 @@ namespace jasperengine::editor{
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
+        // Project Settings > Quality > Device Tiers, LOD biases, Thermal Response and Graphics >
+        // Upload Budget (spec S56): project.yaml's device block
+        DeviceSettings deviceSettings;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
         WindowMode windowMode;
@@ -1475,8 +1476,6 @@ namespace jasperengine::editor{
         static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
-        static constexpr float defaultLodBias = 1.0f;
-        static constexpr float defaultShadowLodBias = 2.0f;
         static constexpr int defaultHtmlUiMsaaSamples = 4;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
@@ -1560,15 +1559,6 @@ namespace jasperengine::editor{
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality);
         const std::array<AtmosphereQuality, 3>& getAtmosphereQuality() const;
 
-        // Quality > LOD Bias (multiplies every mesh's: above 1 keeps detail longer) and Shadow LOD
-        // Bias (multiplies the error shadow maps hide: 2 casts about one level coarser), for the
-        // editor's views (Engine::setLodBias, setShadowLodBias) and the exported games (spec S54
-        // C4: the stand-in for S56's quality tiers); values above 0
-        void setLodBias(float bias);
-        float getLodBias() const;
-        void setShadowLodBias(float bias);
-        float getShadowLodBias() const;
-
         // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
         void setPlayerLogging(const PlayerLoggingSettings& settings);
         const PlayerLoggingSettings& getPlayerLogging() const;
@@ -1597,6 +1587,11 @@ namespace jasperengine::editor{
         // editor's documents at once and written into exports
         void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
         const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;
+        // the Device Tier table and the rest of the device settings (docs/device-tiers.md): the
+        // editor's QualityResolver takes them at once (its Game view simulates a tier in Play),
+        // exports bake them in (main.cpp's Device::configure, game.json's device)
+        void setDeviceSettings(const DeviceSettings& settings);
+        const DeviceSettings& getDeviceSettings() const;
         static bool isValidHtmlUiGlyphAtlasMiB(int mib);
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the

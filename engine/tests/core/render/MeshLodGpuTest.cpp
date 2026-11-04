@@ -13,6 +13,8 @@
 #include "object/Primitive.h"
 #include "pool/MeshLodPool.h"
 #include "pool/ShaderPool.h"
+#include "device/QualityResolver.h"
+#include "device/DeviceSettings.h"
 #include "subsystem/RenderSystem.h"
 
 #include "GpuEnvironment.h"
@@ -401,4 +403,25 @@ TEST_F(LodFadeGpu, TheTwoLevelsOfAFadeLeaveNoHole){
     }
     ASSERT_GT(both, 1000u);
     EXPECT_EQ(holes, 0u) << "pixels both levels cover that neither drew";
+}
+
+// C4: the device tier's LOD Bias (QualityResolver, S56) multiplies into the selection once
+TEST_F(LodFadeGpu, TheDeviceTiersLodBiasReachesTheSelection){
+    JASPER_REQUIRE_GPU();
+    build(true);
+    struct Restore{ ~Restore(){ QualityResolver::reset(); } } restore;
+    // a tier (Ultra: otherwise the project) halving the LOD Bias: twice the error is hidden, so the
+    // sphere drops to LOD 1
+    DeviceSettings settings;
+    settings.tier(QualityResolver::getPlatformGroup(), DeviceTier::Ultra).set(DeviceOverride::LodBias, 0.5f);
+    QualityResolver::setSettings(settings);
+    QualityResolver::setTier(DeviceTier::Ultra);
+    ASSERT_FLOAT_EQ(QualityResolver::lodBias(), 0.5f);
+    GpuEnvironment::drawFrames(3);
+    EXPECT_EQ(sphere.getCurrentLod(), 1) << "the tier's bias reached the selection";
+    // the project's own LOD Bias multiplies with it: 2 x 0.5 is the sphere's LOD 0 again
+    settings.lodBias = 2.0f;
+    QualityResolver::setSettings(settings);
+    GpuEnvironment::drawFrames(3);
+    EXPECT_EQ(sphere.getCurrentLod(), 0) << "one multiplication of both biases, not two";
 }

@@ -11,6 +11,7 @@
 #include "stream/CurveCodec.h"
 #include "util/ShaderGlobalsJson.h"
 #include "AppSettings.h"
+#include "mcp/McpValues.h"
 #include "EditorHost.h"
 #include "Out.h"
 #include "ShippingTypes.h"
@@ -2497,13 +2498,6 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
         root["atmosphereQuality"] = quality;
     }
-    // Quality > LOD Bias and Shadow LOD Bias, omitted at their defaults
-    if (project->getLodBias() != Project::defaultLodBias || project->getShadowLodBias() != Project::defaultShadowLodBias) {
-        YAML::Node lod;
-        if (project->getLodBias() != Project::defaultLodBias) lod["bias"] = project->getLodBias();
-        if (project->getShadowLodBias() != Project::defaultShadowLodBias) lod["shadowBias"] = project->getShadowLodBias();
-        root["lodQuality"] = lod;
-    }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
         YAML::Node input;
@@ -2540,6 +2534,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["playerCrash"] = crashNode;
     }
     root["htmlUiMsaaSamples"] = project->getHtmlUiMsaaSamples();
+    // device: what differs from the defaults of the Device Tier table and the rest (S56)
+    {
+        const nlohmann::json device = nlohmann::json::parse(project->getDeviceSettings().toJson());
+        if (!device.empty())
+            root["device"] = mcp::McpValues::jsonToYaml(device);
+    }
     {
         const HtmlUiRenderSettings& htmlUiRender = project->getHtmlUiRenderSettings();
         root["htmlUiGlyphAtlasMiB"] = htmlUiRender.glyphAtlasMiB;
@@ -3101,14 +3101,6 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
     }
 
     {
-        // omitted at the defaults
-        const YAML::Node lod = node["lodQuality"];
-        const bool map = lod.IsDefined() && lod.IsMap();
-        project->setLodBias(map ? decodePositiveFinite(lod["bias"], Project::defaultLodBias) : Project::defaultLodBias);
-        project->setShadowLodBias(map ? decodePositiveFinite(lod["shadowBias"], Project::defaultShadowLodBias) : Project::defaultShadowLodBias);
-    }
-
-    {
         const YAML::Node input = node["input"];
         project->setUnreadableInputNode("");
         project->setInputActionsMigration(InputActionsMigration());
@@ -3167,6 +3159,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
 
     if (node["htmlUiMsaaSamples"].IsDefined()) {
         project->setHtmlUiMsaaSamples(YamlNumbers::as<int>(node["htmlUiMsaaSamples"]));
+    }
+
+    // S56: a project saved before it has no device block, and gets the defaults
+    {
+        DeviceSettings device;
+        if (node["device"].IsDefined()) {
+            std::string deviceError;
+            if (!DeviceSettings::fromJson(mcp::McpValues::yamlToJson(node["device"]).dump(), device, deviceError)) {
+                Out::warning("project.yaml device: %s; the device settings take their defaults", deviceError.c_str());
+                device = DeviceSettings();
+            }
+        }
+        project->setDeviceSettings(device);
     }
 
     // S16: projects saved before them take the defaults

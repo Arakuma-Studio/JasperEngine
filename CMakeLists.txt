@@ -826,6 +826,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProfilerTools.cpp
     ${EDITOR_DIR}/mcp/tools/MeshLodTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DeviceTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
     ${EDITOR_DIR}/mcp/McpDataSafety.cpp
     ${EDITOR_DIR}/mcp/tools/EntityTools.cpp
@@ -1274,6 +1275,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/DeviceSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp
     ${EDITOR_DIR}/command/type/CreateMaterialFileCmd.cpp

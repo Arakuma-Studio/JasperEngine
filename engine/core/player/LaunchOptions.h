@@ -42,6 +42,8 @@ namespace jasperengine::player {
         int height = 0;
         std::string scene;
         std::string logLevel;
+        // --device-tier: low, medium, high or ultra instead of the detected tier ("" detects)
+        std::string deviceTier;
         // what follows "--" (a strict parse), or every argument the options do not know (a
         // lenient one): the Lua System.args
         std::vector<std::string> scriptArgs;

@@ -85,7 +85,7 @@ async def test_create_from_templates(ed: Editor):
             ed.check_eq([undone["mesh_lod_cross_fade"], undone["mesh_lod_cross_fade_duration"]], [True, 0.5],
                         "one undo step restores both settings")
             biases = (await ed.call("get_project_settings", keys=["quality.lod_bias", "quality.shadow_lod_bias"]))["settings"]
-            ed.check_eq([biases["quality.lod_bias"], biases["quality.shadow_lod_bias"]], [1.0, 2.0], "the LOD biases' defaults")
+            ed.check_eq([biases["quality.lod_bias"], biases["quality.shadow_lod_bias"]], [1.0, 1.0], "the LOD biases' defaults")
         names = [n["name"] for n in tree["nodes"]]
         if template == "empty":
             ed.check("Directional Light" not in names and "Skybox" not in names, f"empty: only a camera: {names}")

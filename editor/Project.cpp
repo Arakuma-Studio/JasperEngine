@@ -120,6 +120,7 @@
 #include "component/UIDocumentComponent.h"
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"
 #include "input/InputActions.h"
@@ -1636,28 +1637,6 @@ const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() 
     return atmosphereQuality;
 }
 
-void editor::Project::setLodBias(float bias){
-    if (!std::isfinite(bias) || bias <= 0.0f)
-        return;
-    lodBias = bias;
-    Engine::setLodBias(bias);
-}
-
-float editor::Project::getLodBias() const{
-    return lodBias;
-}
-
-void editor::Project::setShadowLodBias(float bias){
-    if (!std::isfinite(bias) || bias <= 0.0f)
-        return;
-    shadowLodBias = bias;
-    Engine::setShadowLodBias(bias);
-}
-
-float editor::Project::getShadowLodBias() const{
-    return shadowLodBias;
-}
-
 void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
     playerLogging = settings;
 }
@@ -1738,6 +1717,15 @@ void editor::Project::setHtmlUiRenderSettings(const HtmlUiRenderSettings& settin
 
 const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() const{
     return htmlUiRender;
+}
+
+void editor::Project::setDeviceSettings(const DeviceSettings& settings){
+    deviceSettings = settings;
+    Device::setProjectSettings(deviceSettings);
+}
+
+const DeviceSettings& editor::Project::getDeviceSettings() const{
+    return deviceSettings;
 }
 
 void editor::Project::setShadowTier(int platform, ShadowTier tier){
@@ -5683,8 +5671,6 @@ void editor::Project::resetConfigs() {
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setAtmosphereQuality(defaultAtmosphereQuality);
-    setLodBias(defaultLodBias);
-    setShadowLodBias(defaultShadowLodBias);
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
@@ -5694,6 +5680,7 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
+    setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
@@ -7462,9 +7449,9 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
-    generator.setLodBias(lodBias, shadowLodBias);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);
@@ -9541,9 +9528,9 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
-    generator.setLodBias(lodBias, shadowLodBias);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
+    generator.setDeviceSettingsJson(deviceSettings.toJson());
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
     generator.setMacOSFrameworks(macOSProjectSettings.frameworks);
     generator.setUIScale(uiScale);

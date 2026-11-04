@@ -644,6 +644,8 @@ void SokolSystem::shutdown(){
     // thumbnail job, an editor closing right after it opened): executed first, as the next
     // frame would have, or flush_commands waits forever for the render semaphore they hold
     SokolCmdQueue::execute_commands();
+    // and what the upload budget left for later frames
+    SokolCmdQueue::drain();
     SokolCmdQueue::flush_commands();
     SokolCmdQueue::wait_for_flush();
     SokolCmdQueue::finish();

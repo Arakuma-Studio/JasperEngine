@@ -46,8 +46,9 @@ settings.
 | Cull Below Screen Height | 0 | The mesh is not drawn when it is shorter than this share of the view (0: never). It fades out with Cross Fade on |
 
 **Project Settings > Quality:** **LOD Bias** (1) multiplies every mesh's Detail Bias.
-**Shadow LOD Bias** (2) multiplies the error the shadow maps hide: 2 casts shadows from about one
-level coarser than the camera would pick.
+**Shadow LOD Bias** (1) does the same for what shadow maps draw: shadows already cast from about
+one level coarser than the camera would pick, and 2 brings them back to the camera's rule. A
+Device Tier multiplies both again (`docs/device-tiers.md`).
 
 ## What a fade costs
 

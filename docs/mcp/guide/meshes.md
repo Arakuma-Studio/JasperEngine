@@ -29,7 +29,7 @@ cross-fade with a dither for `mesh_lod_cross_fade_duration` seconds (0.5) when
   `lodFadeTransitionWidth` of each level's distance band; Instanced Meshes always do),
   `lodCullBelow` (Cull Below Screen Height, a share of the view's height; 0 never culls).
 - **Project-wide** (`set_project_settings`): `quality.lod_bias` multiplies every mesh's bias,
-  `quality.shadow_lod_bias` the error shadow maps hide (2: about one level coarser).
+  `quality.shadow_lod_bias` the shadow maps' (they cast about one level coarser at 1).
 - Lua: `mesh:forceLod(level)` (-1: automatic again), `mesh.currentLod`, `scene.crossFade`.
 - **See the levels in the Scene view:** `set_scene_camera {display: {draw_mode: "lod_level"}}`
   tints each mesh by its level (`wireframe`, `shaded_wireframe`, `overdraw` and `shaded` too;

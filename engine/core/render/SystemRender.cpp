@@ -10,6 +10,7 @@
 #include "sokol/SokolPipelineRecord.h"
 #include "ShaderRender.h"
 #include "sokol/SokolSystem.h"
+#include "sokol/SokolCmdQueue.h"
 #include "Engine.h"
 #include "Log.h"
 
@@ -211,6 +212,30 @@ void SystemRender::commitQueue(){
 
 void SystemRender::executeQueue(){
     SokolSystem::executeQueue();
+}
+
+void SystemRender::setUploadBudget(uint64_t bytes){
+    SokolCmdQueue::set_upload_budget(bytes);
+}
+
+uint64_t SystemRender::getUploadBudget(){
+    return SokolCmdQueue::get_upload_budget();
+}
+
+uint64_t SystemRender::getUploadToken(){
+    return SokolCmdQueue::get_upload_token();
+}
+
+bool SystemRender::isUploadTokenComplete(uint64_t token){
+    return SokolCmdQueue::is_token_complete(token);
+}
+
+size_t SystemRender::getDeferredUploadCount(){
+    return SokolCmdQueue::get_deferred_count();
+}
+
+uint64_t SystemRender::getUploadBytesLastFrame(){
+    return SokolCmdQueue::get_last_frame_upload_bytes();
 }
 
 namespace {

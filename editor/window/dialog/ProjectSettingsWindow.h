@@ -39,9 +39,6 @@ namespace jasperengine::editor {
         bool m_vsyncEnabled = true;
         // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
         int m_atmosphereQuality[3] = {3, 1, 1};
-        // Quality > LOD Bias and Shadow LOD Bias
-        float m_lodBias = 1.0f;
-        float m_shadowLodBias = 2.0f;
         // Texture (S14 R24)
         TextureProjectSettings m_textureSettings;
         PlayerLoggingSettings m_playerLogging;
@@ -74,6 +71,10 @@ namespace jasperengine::editor {
         ThreadingProjectSettings m_threading;
         ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
+        // Quality > Device Tiers and the rest of the device settings (S56), and the platform
+        // group the table shows
+        DeviceSettings m_deviceSettings;
+        int m_deviceTierGroup = 1;
         NavigationProjectSettings m_navigation;
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
@@ -241,6 +242,8 @@ namespace jasperengine::editor {
         bool drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path);
         void refreshShaderGlobalUses();
         void drawQualitySettings();
+        void drawDeviceTierSettings();
+        void drawUploadBudgetSettings();
         void drawTextureSettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();

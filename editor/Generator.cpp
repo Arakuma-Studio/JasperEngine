@@ -2543,11 +2543,6 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     };
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
-    // the detail levels' biases (Project Settings > Quality), only away from the engine's defaults
-    if (lodBias != 1.0f)
-        mainContent += "    Engine::setLodBias(" + Factory::formatFloat(lodBias) + ");\n";
-    if (shadowLodBias != 2.0f)
-        mainContent += "    Engine::setShadowLodBias(" + Factory::formatFloat(shadowLodBias) + ");\n";
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);
@@ -2563,6 +2558,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         }
         mainContent += "    Engine::setTextureDefaults(" + groups[0] + ", " + groups[1] + ", " + groups[2] + ");\n";
     }
+
+    // the Device Tier the GPU gets and its overrides (Project Settings > Quality > Device Tiers),
+    // before any scene: what differs from the defaults, "{}" for a default project
+    mainContent += "    Device::configure(R\"JEDEVICE(" + deviceSettingsJson + ")JEDEVICE\");\n";
 
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";

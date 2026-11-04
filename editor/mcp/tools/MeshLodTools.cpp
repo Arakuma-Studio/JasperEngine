@@ -6,6 +6,7 @@
 // JE_mesh_lods read) and rasterized on the CPU in a job; a GameObject is drawn by the real
 // renderer, once per forced level, through the Scene view.
 
+#include "device/QualityResolver.h"
 #include "McpTools.h"
 #include "PlayViewCommon.h"
 
@@ -553,7 +554,7 @@ void finishEntityCapture(const EntityCapturePtr& capture, const std::string& fai
     const float worldScale = transform ? std::max({std::fabs(transform->worldScale.x), std::fabs(transform->worldScale.y), std::fabs(transform->worldScale.z)}) : 1.0f;
     const Vector3 extent = mesh->worldAABB.isNull() ? Vector3(0, 0, 0) : mesh->worldAABB.getSize();
     const float worldHeight = std::max(extent.x, std::max(extent.y, extent.z));
-    const float bias = mesh->lodBias * Engine::getLodBias();
+    const float bias = mesh->lodBias * QualityResolver::lodBias();
 
     Json levels = Json::array();
     std::string text = "GameObject " + std::to_string(capture->entity) + ": " + std::to_string(mesh->numLods) + " level(s).";
