@@ -408,6 +408,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     // includes/vat.glsl: Bones mode ('Vab') wins when a key has both
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
+    if (prop & ShaderPool::getLodFadeProperty()) defs.push_back({"USE_LOD_FADE", "1"});    // 'Lfd'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {

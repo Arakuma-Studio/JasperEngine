@@ -1032,7 +1032,10 @@ bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& rend
 RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
-    view.threshold = SHADOW_LOD_TEXELS;
+    // shadow LOD (spec S54 R7): the light's own error budget, coarser by the project's Shadow LOD
+    // Bias (quality.shadow_lod_bias, about one level by default); casters snap, never fade
+    view.threshold = SHADOW_LOD_TEXELS * Engine::getShadowLodBias();
+    view.bias = Engine::getLodBias();
 
     const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
     const Matrix4& projection = shadowCamera.lightProjectionMatrix;
@@ -1604,8 +1607,18 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
     // view, point faces draw everything
     auto drawShadowCasters = [&](LightComponent& light, int lightIndex, int cameraIndex, int instanceView, int casters){
         const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
-        const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : LodView();
-        const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
+        LodView shadowLod;
+        if (instanceView >= 0){
+            shadowLod = shadowLodView(light, lightIndex, cameraIndex, instanceView - 1);
+        }else{
+            // a point light's face: the light's own budget at the face's texels, as a slot's
+            shadowLod.enabled = scene->isMeshLodEnabled();
+            shadowLod.threshold = SHADOW_LOD_TEXELS * Engine::getShadowLodBias();
+            shadowLod.bias = Engine::getLodBias();
+            shadowLod.origin = shadowCamera.lightViewMatrix.inverse() * Vector3(0, 0, 0);
+            shadowLod.perUnit = 2.0f / (std::abs(shadowCamera.lightProjectionMatrix[1][1]) * std::max(passResolution.y, 1.0f));
+        }
+        const LodView* lodView = &shadowLod;
         const uint32_t casterMask = shadowCameraMask & light.cullingMask;
         for (int i = 0; i < meshes->size(); i++){
             MeshComponent& mesh = meshes->getComponentFromIndex(i);

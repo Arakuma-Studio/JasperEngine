@@ -605,6 +605,16 @@ namespace jasperengine::editor{
                     return scene->getMeshLodThreshold();
                 }
             }
+            else if (propertyName == "mesh_lod_cross_fade") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isMeshLodCrossFade();
+                }
+            }
+            else if (propertyName == "mesh_lod_cross_fade_duration") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getMeshLodCrossFadeDuration();
+                }
+            }
             else if (propertyName == "depth_prepass_enabled") {
                 if constexpr (std::is_same_v<T, bool>) {
                     return scene->isDepthPrepassEnabled();
@@ -834,6 +844,12 @@ namespace jasperengine::editor{
             else if (propertyName == "mesh_lod_threshold") {
                 if constexpr (std::is_same_v<T, float>) return d.meshLodThreshold;
             }
+            else if (propertyName == "mesh_lod_cross_fade") {
+                if constexpr (std::is_same_v<T, bool>) return d.meshLodCrossFade;
+            }
+            else if (propertyName == "mesh_lod_cross_fade_duration") {
+                if constexpr (std::is_same_v<T, float>) return d.meshLodCrossFadeDuration;
+            }
             else if (propertyName == "depth_prepass_enabled") {
                 if constexpr (std::is_same_v<T, bool>) return d.depthPrepassEnabled;
             }
@@ -1036,6 +1052,16 @@ namespace jasperengine::editor{
             else if (propertyName == "mesh_lod_threshold") {
                 if constexpr (std::is_same_v<T, float>) {
                     scene->setMeshLodThreshold(value);
+                }
+            }
+            else if (propertyName == "mesh_lod_cross_fade") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setMeshLodCrossFade(value);
+                }
+            }
+            else if (propertyName == "mesh_lod_cross_fade_duration") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setMeshLodCrossFadeDuration(value);
                 }
             }
             else if (propertyName == "depth_prepass_enabled") {

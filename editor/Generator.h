@@ -231,6 +231,9 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        // Project Settings > Quality: LOD Bias and Shadow LOD Bias
+        float lodBias = 1.0f;
+        float shadowLodBias = 2.0f;
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
@@ -370,6 +373,8 @@ namespace jasperengine::editor {
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
+        void setLodBias(float bias, float shadowBias) { lodBias = bias; shadowLodBias = shadowBias; }
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }
         // the navigation settings the game starts with (generateNavigationSettingsCode); set before configure()

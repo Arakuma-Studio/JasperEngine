@@ -857,6 +857,9 @@ namespace jasperengine::editor{
         bool vsyncEnabled;
         // Quality > Atmosphere Quality: desktop, mobile, web
         std::array<AtmosphereQuality, 3> atmosphereQuality;
+        // Quality > LOD Bias and Shadow LOD Bias (quality.lod_bias, quality.shadow_lod_bias)
+        float lodBias;
+        float shadowLodBias;
         PlayerLoggingSettings playerLogging;
         // Input: the actions asset Play and the game start with (project-relative, empty for
         // none) and the deadzone of AXIS and VECTOR2 actions without their own
@@ -1472,6 +1475,8 @@ namespace jasperengine::editor{
         static constexpr TextureStrategy defaultTextureStrategy = TextureStrategy::NONE;
         static constexpr bool defaultVSyncEnabled = true;
         static constexpr std::array<AtmosphereQuality, 3> defaultAtmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        static constexpr float defaultLodBias = 1.0f;
+        static constexpr float defaultShadowLodBias = 2.0f;
         static constexpr int defaultHtmlUiMsaaSamples = 4;
         // htmlUiGlyphAtlasMiB: 0 (the platform's default) or this range
         static constexpr int minHtmlUiGlyphAtlasMiB = 4;
@@ -1554,6 +1559,15 @@ namespace jasperengine::editor{
         // games; the editor's views run the desktop one (Engine::setAtmosphereQualityDefaults)
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality);
         const std::array<AtmosphereQuality, 3>& getAtmosphereQuality() const;
+
+        // Quality > LOD Bias (multiplies every mesh's: above 1 keeps detail longer) and Shadow LOD
+        // Bias (multiplies the error shadow maps hide: 2 casts about one level coarser), for the
+        // editor's views (Engine::setLodBias, setShadowLodBias) and the exported games (spec S54
+        // C4: the stand-in for S56's quality tiers); values above 0
+        void setLodBias(float bias);
+        float getLodBias() const;
+        void setShadowLodBias(float bias);
+        float getShadowLodBias() const;
 
         // Player > Logging: what an exported game logs (JASPERENGINE_LOG_* in its CMake)
         void setPlayerLogging(const PlayerLoggingSettings& settings);

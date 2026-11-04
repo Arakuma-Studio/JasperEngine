@@ -236,6 +236,12 @@ namespace jasperengine{
         void setMeshLodThreshold(float pixels);
         float getMeshLodThreshold() const;
 
+        // Cross Fade and Cross-fade Duration (seconds, 0.05..2) of the detail levels
+        void setMeshLodCrossFade(bool crossFade);
+        bool isMeshLodCrossFade() const;
+        void setMeshLodCrossFadeDuration(float seconds);
+        float getMeshLodCrossFadeDuration() const;
+
         void setDepthPrepassEnabled(bool enabled);
         bool isDepthPrepassEnabled() const;
 

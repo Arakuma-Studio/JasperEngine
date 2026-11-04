@@ -630,6 +630,12 @@ uint64_t ShaderPool::getVatProperty(ShaderType shaderType, bool bones){
     }
 }
 
+// MESH bit 36 ('Lfd'): the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in
+// the variant fading draws use; S55 starts its own bits after it
+uint64_t ShaderPool::getLodFadeProperty(){
+    return shaderPropertyBit(36);
+}
+
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
@@ -649,7 +655,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 36;
+        case ShaderType::MESH:   return 37;
         case ShaderType::DEPTH:  return 18;
         case ShaderType::GBUFFER: return 16;
         case ShaderType::UI:     return 5;
@@ -735,6 +741,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // and 34, after S10's 'Shq')
             case 34: return shortName ? "Vat" : "Vertex Animation";
             case 35: return shortName ? "Vab" : "Vertex Animation Bones";
+            // the LOD cross-fade's dither, for fading draws only (getLodFadeProperty)
+            case 36: return shortName ? "Lfd" : "Lod Fade";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {

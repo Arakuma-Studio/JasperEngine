@@ -5,7 +5,7 @@ name: Main
 scene:
   backgroundColor: [0.525, 0.525, 0.525, 1]
   shadowQuality: auto
-  meshLodEnabled: false
+  meshLodEnabled: true
   meshLodThreshold: 1
   depthPrepassEnabled: false
   lightState: off

@@ -34,6 +34,8 @@ namespace {
         "KHR_materials_emissive_strength", "KHR_materials_unlit",
         // metadata only: nothing to draw differently
         "KHR_xmp", "KHR_xmp_json_ld",
+        // a cooked model's baked detail levels (MeshLodPool::readGltfLevels, spec S54 C1)
+        "JE_mesh_lods",
     };
 
     // one report per model and message (a model loads again on every scene that has it)

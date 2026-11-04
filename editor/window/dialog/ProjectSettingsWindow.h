@@ -39,6 +39,9 @@ namespace jasperengine::editor {
         bool m_vsyncEnabled = true;
         // Quality > Atmosphere Quality (desktop, mobile, web) as AtmosphereQuality values
         int m_atmosphereQuality[3] = {3, 1, 1};
+        // Quality > LOD Bias and Shadow LOD Bias
+        float m_lodBias = 1.0f;
+        float m_shadowLodBias = 2.0f;
         // Texture (S14 R24)
         TextureProjectSettings m_textureSettings;
         PlayerLoggingSettings m_playerLogging;

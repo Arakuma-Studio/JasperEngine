@@ -2542,6 +2542,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     };
     mainContent += "    Engine::setAtmosphereQualityDefaults(" + qualityName(atmosphereQuality[0]) + ", " + qualityName(atmosphereQuality[1]) + ", " +
                    qualityName(atmosphereQuality[2]) + ");\n";
+    // the detail levels' biases (Project Settings > Quality), only away from the engine's defaults
+    if (lodBias != 1.0f)
+        mainContent += "    Engine::setLodBias(" + Factory::formatFloat(lodBias) + ");\n";
+    if (shadowLodBias != 2.0f)
+        mainContent += "    Engine::setShadowLodBias(" + Factory::formatFloat(shadowLodBias) + ");\n";
 
     // Project Settings > Input: the deadzone, then the default Input Actions asset
     mainContent += inputSettingsInitSource(inputActionsAsset, inputDeadzone);

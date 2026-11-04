@@ -125,6 +125,8 @@ Scaling Engine::scalingMode = Scaling::FITWIDTH;
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+float Engine::lodBias = 1.0f;
+float Engine::shadowLodBias = 2.0f;
 CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
@@ -837,6 +839,24 @@ Platform Engine::getPlatform(){
 #endif
 }
 
+void Engine::setLodBias(float bias){
+    if (std::isfinite(bias) && bias > 0.0f)
+        lodBias = bias;
+}
+
+float Engine::getLodBias(){
+    return lodBias;
+}
+
+void Engine::setShadowLodBias(float bias){
+    if (std::isfinite(bias) && bias > 0.0f)
+        shadowLodBias = bias;
+}
+
+float Engine::getShadowLodBias(){
+    return shadowLodBias;
+}
+
 void Engine::setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web){
     atmosphereQualityDefaults[0] = desktop;
     atmosphereQualityDefaults[1] = mobile;
@@ -926,10 +946,11 @@ void Engine::beginFrameStats(){
     currentFrameStats = FrameStats();
 }
 
-void Engine::addDrawStats(uint32_t instances, uint64_t triangles){
+void Engine::addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;
     currentFrameStats.triangles += triangles;
+    currentFrameStats.vertices += vertices;
 }
 
 uint32_t Engine::getPendingDrawCalls(){
@@ -2511,6 +2532,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.disableClouds = layer.disableClouds;
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
+        desc.drawMode = (ViewDrawMode)layer.drawMode;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);

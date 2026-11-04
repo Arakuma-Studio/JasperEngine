@@ -8,6 +8,7 @@
 #include "ToolsLayer.h"
 #include "UILayer.h"
 #include "RenderUtil.h"
+#include "SceneDrawModes.h"
 #include "navigation/NavigationOverlay.h"
 #include "command/Command.h"
 #include "command/CommandHistory.h"
@@ -53,6 +54,9 @@ namespace jasperengine::editor{
         bool showAllLattices     = false;
         // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
         NavOverlaySettings navigation;
+        // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view
+        ViewDrawMode drawMode = ViewDrawMode::SHADED;
+        bool showStats = false;
     };
 
     struct CameraObjects{
@@ -302,6 +306,13 @@ namespace jasperengine::editor{
 
         // --- splines: the edited spline's knots, handles and radius band, the Draw Spline
         // tool's stroke, the knot gizmo's drag (editor/spline/SplineSceneRender.cpp) ---
+        // the Wireframe and Shaded Wireframe Draw Modes' wires (depth tested in 3D views)
+        LineRenderer* wireframeLines = nullptr;
+        SceneWireframe wireframe;
+        void updateWireframeOverlay();
+    public:
+        bool isWireframeTruncated() const { return wireframe.isTruncated(); }
+    private:
         LineRenderer* splineOverlayLines = nullptr; // tools scene: over the geometry
         LineRenderer* splineDepthLines = nullptr;   // this scene: depth tested (3D views)
         struct SplineDrag{

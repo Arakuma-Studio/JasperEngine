@@ -941,6 +941,8 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_vsyncEnabled = project->isVSyncEnabled();
     for (int i = 0; i < 3; i++)
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
+    m_lodBias = project->getLodBias();
+    m_shadowLodBias = project->getShadowLodBias();
     m_textureSettings = project->getTextureSettings();
     m_playerLogging = project->getPlayerLogging();
     m_playerCrash = project->getPlayerCrash();
@@ -1982,6 +1984,32 @@ void ProjectSettingsWindow::drawQualitySettings() {
         for (int i = 0; i < 3; i++) {
             if (!settingsui::beginRow(keys[i])) continue;
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
+        }
+
+        // the mesh detail levels' biases (docs/lod.md)
+        struct BiasRow {
+            const char* key;
+            const char* label;
+            const char* id;
+            float* value;
+            float fallback;
+            const char* tooltip;
+        };
+        const BiasRow biasRows[2] = {
+            {"quality.lod_bias", "LOD Bias", "##LodBias", &m_lodBias, Project::defaultLodBias,
+             "Multiplies every mesh's Detail Bias: above 1 keeps detail longer (more triangles), below 1 drops it sooner."},
+            {"quality.shadow_lod_bias", "Shadow LOD Bias", "##ShadowLodBias", &m_shadowLodBias, Project::defaultShadowLodBias,
+             "Multiplies the error shadow maps hide: above 1 casts shadows with coarser detail levels (2: about one level "
+             "coarser than the camera's rule), 1 the same rule as the camera."}};
+        for (const BiasRow& row : biasRows) {
+            if (!settingsui::beginRow(row.key)) continue;
+            if (projectBeginSettingsRow(row.label, *row.value != row.fallback)) {
+                *row.value = row.fallback;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputFloat(row.id, row.value, 0.1f, 0.5f, "%.2f");
+            *row.value = std::isfinite(*row.value) ? std::min(std::max(*row.value, 0.01f), 100.0f) : row.fallback;
+            endSettingsRow(row.tooltip);
         }
     });
 }
@@ -4339,6 +4367,8 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setVSyncEnabled(m_vsyncEnabled);
     m_project->setAtmosphereQuality({(AtmosphereQuality)m_atmosphereQuality[0], (AtmosphereQuality)m_atmosphereQuality[1],
                                      (AtmosphereQuality)m_atmosphereQuality[2]});
+    m_project->setLodBias(m_lodBias);
+    m_project->setShadowLodBias(m_shadowLodBias);
     m_project->setTextureSettings(m_textureSettings);
     m_project->setPlayerLogging(m_playerLogging);
     m_project->setPlayerCrash(m_playerCrash);

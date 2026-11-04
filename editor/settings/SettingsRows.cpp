@@ -1689,6 +1689,36 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        // the detail levels' biases (spec S54 C4: the keys S56's quality tiers take over)
+        {
+            Setting s;
+            s.key = "quality.lod_bias";
+            s.type = "number";
+            s.description = "LOD Bias: multiplies every mesh's detail bias (above 1 keeps detail longer, below 1 drops it sooner; default 1).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getLodBias()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.01, 100.0, v, error)) return false;
+                if (apply) ctx.project()->setLodBias(static_cast<float>(v));
+                return true;
+            };
+            add(s);
+        }
+        {
+            Setting s;
+            s.key = "quality.shadow_lod_bias";
+            s.type = "number";
+            s.description = "Shadow LOD Bias: multiplies the error shadow maps hide (above 1 casts with coarser levels; default 2, about one level coarser).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getShadowLodBias()); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                double v;
+                if (!readNumber(value, 0.01, 100.0, v, error)) return false;
+                if (apply) ctx.project()->setShadowLodBias(static_cast<float>(v));
+                return true;
+            };
+            add(s);
+        }
+
         // ---- player logging
         {
             Setting s;
@@ -2743,6 +2773,8 @@ const Placement placements[] = {
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.lod_bias", "Quality", "", "LOD Bias", "mesh detail levels lod"},
+    {"quality.shadow_lod_bias", "Quality", "", "Shadow LOD Bias", "mesh detail levels lod shadows"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},

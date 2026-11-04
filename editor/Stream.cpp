@@ -2206,6 +2206,10 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
         sceneNode["showAllLattices"] = ds.showAllLattices;
+    if (ds.drawMode != ViewDrawMode::SHADED)
+        sceneNode["drawMode"] = drawModeKey(ds.drawMode);
+    if (ds.showStats)
+        sceneNode["showStats"] = ds.showStats;
     sceneNode["showGrid2D"]           = ds.showGrid2D;
     encodePositiveFinite(sceneNode, "gridSpacing2D", ds.gridSpacing2D);
     encodePositiveFinite(sceneNode, "gridSpacing3D", ds.gridSpacing3D);
@@ -2237,6 +2241,10 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
+    ds.drawMode = ViewDrawMode::SHADED;
+    if (node["drawMode"] && node["drawMode"].IsScalar())
+        drawModeFromKey(node["drawMode"].as<std::string>(), ds.drawMode);
+    ds.showStats = node["showStats"] ? YamlNumbers::as<bool>(node["showStats"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);
     if (node["showGrid2D"])           ds.showGrid2D           = YamlNumbers::as<bool>(node["showGrid2D"]);
     if (node["gridSpacing2D"])        ds.gridSpacing2D        = decodePositiveFinite(node["gridSpacing2D"], ds.gridSpacing2D);
@@ -2488,6 +2496,13 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         quality["mobile"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[1]);
         quality["web"] = StreamSchema::atmosphereQuality().toString(project->getAtmosphereQuality()[2]);
         root["atmosphereQuality"] = quality;
+    }
+    // Quality > LOD Bias and Shadow LOD Bias, omitted at their defaults
+    if (project->getLodBias() != Project::defaultLodBias || project->getShadowLodBias() != Project::defaultShadowLodBias) {
+        YAML::Node lod;
+        if (project->getLodBias() != Project::defaultLodBias) lod["bias"] = project->getLodBias();
+        if (project->getShadowLodBias() != Project::defaultShadowLodBias) lod["shadowBias"] = project->getShadowLodBias();
+        root["lodQuality"] = lod;
     }
     // Project Settings > Input, omitted at its defaults
     if (!project->getInputActionsAsset().empty() || project->getInputDeadzone() != Project::defaultInputDeadzone) {
@@ -3083,6 +3098,14 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
         }
         project->setAtmosphereQuality(quality);
+    }
+
+    {
+        // omitted at the defaults
+        const YAML::Node lod = node["lodQuality"];
+        const bool map = lod.IsDefined() && lod.IsMap();
+        project->setLodBias(map ? decodePositiveFinite(lod["bias"], Project::defaultLodBias) : Project::defaultLodBias);
+        project->setShadowLodBias(map ? decodePositiveFinite(lod["shadowBias"], Project::defaultShadowLodBias) : Project::defaultShadowLodBias);
     }
 
     {
@@ -4326,6 +4349,11 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["shadowCascadeBlend"] = scene->isShadowCascadeBlend();
     sceneNode["meshLodEnabled"] = scene->isMeshLodEnabled();
     sceneNode["meshLodThreshold"] = scene->getMeshLodThreshold();
+    // written only away from their defaults (scenes saved before them re-save unchanged)
+    if (scene->isMeshLodCrossFade() != SceneSettings().meshLodCrossFade)
+        sceneNode["meshLodCrossFade"] = scene->isMeshLodCrossFade();
+    if (scene->getMeshLodCrossFadeDuration() != SceneSettings().meshLodCrossFadeDuration)
+        sceneNode["meshLodCrossFadeDuration"] = scene->getMeshLodCrossFadeDuration();
     sceneNode["depthPrepassEnabled"] = scene->isDepthPrepassEnabled();
     // written only when not the default (half), so scenes saved before it existed re-save unchanged
     if (scene->getSceneColorScale() != SceneSettings().sceneColorScale)
@@ -4443,12 +4471,14 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setShadowDistance(node["shadowDistance"] ? YamlNumbers::as<float>(node["shadowDistance"]) : SceneSettings().shadowDistance);
     scene->setShadowFadeFraction(node["shadowFadeFraction"] ? YamlNumbers::as<float>(node["shadowFadeFraction"]) : SceneSettings().shadowFadeFraction);
     scene->setShadowCascadeBlend(node["shadowCascadeBlend"] ? YamlNumbers::as<bool>(node["shadowCascadeBlend"]) : SceneSettings().shadowCascadeBlend);
-    if (node["meshLodEnabled"]) {
-        scene->setMeshLodEnabled(YamlNumbers::as<bool>(node["meshLodEnabled"]));
-    }
+    // every scene saved since mesh LOD existed writes it; one saved before has LOD off, as it was
+    // then (the default is on since spec S54 R1, R19)
+    scene->setMeshLodEnabled(node["meshLodEnabled"] ? YamlNumbers::as<bool>(node["meshLodEnabled"]) : false);
     if (node["meshLodThreshold"]) {
         scene->setMeshLodThreshold(decodeFinite(node["meshLodThreshold"], scene->getMeshLodThreshold()));
     }
+    scene->setMeshLodCrossFade(node["meshLodCrossFade"] ? YamlNumbers::as<bool>(node["meshLodCrossFade"]) : SceneSettings().meshLodCrossFade);
+    scene->setMeshLodCrossFadeDuration(decodeFinite(node["meshLodCrossFadeDuration"], SceneSettings().meshLodCrossFadeDuration));
     if (node["depthPrepassEnabled"]) {
         scene->setDepthPrepassEnabled(YamlNumbers::as<bool>(node["depthPrepassEnabled"]));
     }

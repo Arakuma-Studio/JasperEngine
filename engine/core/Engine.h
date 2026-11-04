@@ -227,6 +227,7 @@ namespace jasperengine {
             uint32_t drawCalls = 0;
             uint32_t instances = 0;
             uint64_t triangles = 0;
+            uint64_t vertices = 0;
         };
 
         // How many GPU objects of each kind can be alive at once (sokol's resource pools, each
@@ -423,6 +424,8 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static float lodBias;
+        static float shadowLodBias;
 
         static Semaphore drawSemaphore;
 
@@ -625,6 +628,14 @@ namespace jasperengine {
         // back to the platform default (the editor calls it when Play stops)
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
+        // Mesh detail levels (Project Settings > Quality, quality.lod_bias and
+        // quality.shadow_lod_bias; spec S54 R5, R7): LOD Bias multiplies every mesh's (above 1
+        // keeps detail longer, default 1), Shadow LOD Bias multiplies the error the shadow maps
+        // hide (above 1 casts with coarser levels; default 2, about one level coarser)
+        static void setLodBias(float bias);
+        static float getLodBias();
+        static void setShadowLodBias(float bias);
+        static float getShadowLodBias();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
@@ -635,7 +646,8 @@ namespace jasperengine {
         static double getFrameCpuTime();
 
         static void beginFrameStats();
-        static void addDrawStats(uint32_t instances, uint64_t triangles);
+        // vertices: the vertex shader runs, indices or vertices drawn times the instances
+        static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
         static const FrameStats& getFrameStats();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
@@ -800,6 +812,8 @@ namespace jasperengine {
             int atmosphereQuality = -1;
             // casts and receives the scene's shadows (off: an inactive Scene view pane, S26 R20)
             bool shadows = true;
+            // the Scene view's Draw Mode (RenderSystem::ViewDrawMode; 0 Shaded)
+            uint8_t drawMode = 0;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

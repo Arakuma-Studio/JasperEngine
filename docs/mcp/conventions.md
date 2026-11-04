@@ -100,6 +100,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `editor_ux` | S24 (`get_undo_history`, `get_play_changes`, `apply_play_changes`, `discard_play_changes`), S08 (`get_inspector_layout`), S25 (`search_editor`, `run_command`, `list_shortcuts`, `set_shortcut`, `edit_layout_presets`, `edit_asset_labels`, `edit_saved_searches`, `edit_bookmarks`), S26, `find_ui_item` (UI tests), upstream's ui-scaling-text / safe-area `configure_game_view` (out of core to fit the budget) |
 | `profiling` | S15 |
 | `rendering_fx` | S11 (`get_material_variant`, `set_light_unit`), S12, S13 |
+| `meshes` | S53 (model import and cook, render budgets), S54 (`capture_model_lods`) |
 | `splines` | S18 |
 | `terrain` | S31: `sculpt_terrain`, `set_terrain_maps`, `sample_terrain` (out of core to fit the budget) |
 | `navigation` | S19 |

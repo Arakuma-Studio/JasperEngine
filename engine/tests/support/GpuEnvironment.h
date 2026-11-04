@@ -33,8 +33,8 @@ namespace jasperengine { namespace test {
         // screen = the target size in pixels, canvas = the preferred canvas size
         static void setView(int screenWidth, int screenHeight, int canvasWidth, int canvasHeight, Scaling scaling);
 
-        // Engine::systemDraw until ready() holds and no shader or pipeline is pending (spec S32),
-        // then 2 more frames; false if it never did within maxFrames frames and a minute
+        // Engine::systemDraw until ready() holds, no shader or pipeline is pending (spec S32) and
+        // no mesh waits for its detail levels (spec S54), then 2 more frames; false if it never did within maxFrames frames and a minute
         static bool runFrames(std::function<bool()> ready, int maxFrames = 300);
         static void drawFrames(int count);
 

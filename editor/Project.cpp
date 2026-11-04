@@ -1636,6 +1636,28 @@ const std::array<AtmosphereQuality, 3>& editor::Project::getAtmosphereQuality() 
     return atmosphereQuality;
 }
 
+void editor::Project::setLodBias(float bias){
+    if (!std::isfinite(bias) || bias <= 0.0f)
+        return;
+    lodBias = bias;
+    Engine::setLodBias(bias);
+}
+
+float editor::Project::getLodBias() const{
+    return lodBias;
+}
+
+void editor::Project::setShadowLodBias(float bias){
+    if (!std::isfinite(bias) || bias <= 0.0f)
+        return;
+    shadowLodBias = bias;
+    Engine::setShadowLodBias(bias);
+}
+
+float editor::Project::getShadowLodBias() const{
+    return shadowLodBias;
+}
+
 void editor::Project::setPlayerLogging(const PlayerLoggingSettings& settings){
     playerLogging = settings;
 }
@@ -5661,6 +5683,8 @@ void editor::Project::resetConfigs() {
     textureStrategy = defaultTextureStrategy;
     vsyncEnabled = defaultVSyncEnabled;
     setAtmosphereQuality(defaultAtmosphereQuality);
+    setLodBias(defaultLodBias);
+    setShadowLodBias(defaultShadowLodBias);
     playerLogging = PlayerLoggingSettings();
     inputActionsAsset.clear();
     setInputDeadzone(defaultInputDeadzone);
@@ -7437,6 +7461,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setLodBias(lodBias, shadowLodBias);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
@@ -9515,6 +9540,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setLodBias(lodBias, shadowLodBias);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);

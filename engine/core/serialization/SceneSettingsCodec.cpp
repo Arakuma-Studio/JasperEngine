@@ -126,6 +126,9 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     for (ShaderType type : kDefaultShaderTypes) write(w, scene.getDefaultShaderRef(type));
     write(w, scene.getPostProcessPasses());
     write(w, scene.getPostProcessing());
+    // format 1.1
+    w.boolean(scene.isMeshLodCrossFade());
+    w.f32(scene.getMeshLodCrossFadeDuration());
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
@@ -201,4 +204,9 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     PostProcessingSettings postProcessing;
     read(r, postProcessing);
     if (postProcessing != PostProcessingSettings()) scene.setPostProcessing(postProcessing);
+    // format 1.1 (a 1.0 scene keeps the defaults)
+    if (!r.atEnd()) {
+        scene.setMeshLodCrossFade(r.boolean());
+        scene.setMeshLodCrossFadeDuration(r.f32());
+    }
 }

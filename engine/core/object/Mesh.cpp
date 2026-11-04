@@ -13,6 +13,7 @@
 #include "animation/VertexAnimatorRuntime.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -438,6 +439,58 @@ float Mesh::getLodBias() const{
     MeshComponent& mesh = getComponent<MeshComponent>();
 
     return mesh.lodBias;
+}
+
+void Mesh::setLodFadeMode(LodFadeMode mode){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    if (mesh.lodFadeMode != mode){
+        mesh.lodFadeMode = mode;
+        // a mesh that may fade loads its fade shaders (RenderSystem::prepareLodFade)
+        mesh.needReload = true;
+    }
+}
+
+LodFadeMode Mesh::getLodFadeMode() const{
+    return getComponent<MeshComponent>().lodFadeMode;
+}
+
+void Mesh::setLodAnimateCrossFading(bool animate){
+    getComponent<MeshComponent>().lodAnimateCrossFading = animate;
+}
+
+bool Mesh::isLodAnimateCrossFading() const{
+    return getComponent<MeshComponent>().lodAnimateCrossFading;
+}
+
+void Mesh::setLodFadeTransitionWidth(float width){
+    if (std::isfinite(width))
+        getComponent<MeshComponent>().lodFadeTransitionWidth = std::clamp(width, 0.0f, 1.0f);
+}
+
+float Mesh::getLodFadeTransitionWidth() const{
+    return getComponent<MeshComponent>().lodFadeTransitionWidth;
+}
+
+void Mesh::setLodCullBelow(float share){
+    if (std::isfinite(share))
+        getComponent<MeshComponent>().lodCullBelow = std::clamp(share, 0.0f, 1.0f);
+}
+
+float Mesh::getLodCullBelow() const{
+    return getComponent<MeshComponent>().lodCullBelow;
+}
+
+void Mesh::forceLod(int level){
+    getComponent<MeshComponent>().lodForced = std::clamp(level, -1, MAX_MESH_LODS - 1);
+}
+
+int Mesh::getForcedLod() const{
+    return getComponent<MeshComponent>().lodForced;
+}
+
+int Mesh::getCurrentLod() const{
+    return getComponent<MeshComponent>().lodFade.plan.dominant();
 }
 
 void Mesh::setReceiveShadows(bool receiveShadows){
