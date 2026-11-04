@@ -1,4 +1,4 @@
-# S53 — Code cleanups: generated AssetRefSchema, frozen parity data, dead code, a counter
+# S73 — Code cleanups: generated AssetRefSchema, frozen parity data, dead code, a counter
 
 **Depends on.** S08, S04, S32. Touches `editor/asset/AssetRefSchema.*`, `editor/reflect/`, `editor/tests/reflect/legacy/`, `editor/Stream.h`,
 `engine/core/animation/UpstreamAnimFormats.cpp`, `engine/renders/sokol/SokolAsyncCreate.cpp`.

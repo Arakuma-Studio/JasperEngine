@@ -1,4 +1,4 @@
-# S49 — Every modal dialog can be seen and answered by an agent
+# S69 — Every modal dialog can be seen and answered by an agent
 
 **Depends on.** S31, MCP core tools. Reference: sound-layer `editor/window/EditorModal.{h,cpp}`, `test_editor_modals.py`,
 `2026-10-19-sound-layer-cleanup-b-design.md` §2.3, in `je-wt/snd-ro`. Touches 71 `BeginPopupModal` sites in 36 files; merge hotspot, so
@@ -21,7 +21,7 @@ choices or message, so an agent gets stuck on most of them.
 - R5. File pickers (native or ImGui) report a clear message and accept `values.path` where a path is the answer.
 - R6. Humans see no change: same layout, same keys.
 - R7. Headless: a modal opened in a headless editor is still answerable, and a frame is forced if needed.
-- R8. Stay within `tools/mcp/budget.json`; regenerate `docs/mcp/TOOLS.md`; put guidance in `docs/mcp/guide/`.
+- R8. Follow AGENTS.md "MCP text": new tool text needs a case in `tools/mcp/eval/cases.py` that fails without it; stay within `tools/mcp/budget.json`; regenerate `docs/mcp/TOOLS.md`; put guidance in `docs/mcp/guide/`.
 
 ## 3. Acceptance
 - AC1. A test that opens each modal it can drive (table of all sites in the test: driven or stated why not), checks `editor_status`

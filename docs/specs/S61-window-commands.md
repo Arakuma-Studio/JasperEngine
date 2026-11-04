@@ -1,4 +1,4 @@
-# S41 — Window-scoped commands: a key acts on the panel that has focus, and every panel key is rebindable
+# S61 — Window-scoped commands: a key acts on the panel that has focus, and every panel key is rebindable
 
 **Depends on.** S25 (`CommandCatalog`, `ShortcutDispatcher`, contexts), S27 (curve editor, colour picker). Touches
 `editor/AppCommands.cpp`, `editor/shortcuts/`, `editor/widget/CurveEditor.cpp`, `editor/widget/ColorPickerWindow.cpp`.

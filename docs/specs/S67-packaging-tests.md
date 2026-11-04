@@ -1,4 +1,4 @@
-# S47 — Android and iOS packaging are tested end to end
+# S67 — Android and iOS packaging are tested end to end
 
 **Depends on.** S30. Touches `editor/platform/AndroidPackager.*`, `editor/platform/AndroidTools.*`, iOS export, `tools/ci/`, `tools/android-emulator-test.sh`.
 Android work runs on server A (KVM), iOS on the Mac (M).
@@ -17,7 +17,7 @@ pressing Build for those targets must get a working app. Everything in the path 
 - R4. iOS: an export produces an Xcode project that builds with `xcodebuild` for the simulator, installs, launches and shows the
   game on the Mac. A device build gets as far as signing, with a clear message when no team is set. The IPA path is exercised
   as far as possible without a developer account, and the rest is stated.
-- R5. These run as scripts in `tools/ci/`, and their CI jobs exist. They need no human.
+- R5. These run as scripts in `tools/ci/` and need no human. There is no CI (workflows removed on 2026-11-04), so the scripts are run by hand.
 - R6. Every bug found is fixed here with a red test where a unit test can catch it.
 
 ## 3. Acceptance

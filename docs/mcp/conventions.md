@@ -6,7 +6,7 @@ tool definition in every session, and it can only use what it can understand fro
 description and schema. Gates in `tools/mcp/tests/` enforce the rules marked *(gated)*.
 
 This page is stable: specs add tools against it. A change to a rule goes through S31's owner
-and updates this page, the gates and `.claude/rules/mcp.md` together.
+and updates this page and the gates together.
 
 ## Checklist for a new tool
 

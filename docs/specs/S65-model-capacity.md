@@ -1,4 +1,4 @@
-# S45 — Models load whole: no primitive or material is dropped
+# S65 — Models load whole: no primitive or material is dropped
 
 **Depends on.** BF19, S30/S34 (prebuilt players, capacities). Touches `engine/core/subsystem/MeshSystem.cpp`, `engine/core/util/`
 (`HybridArray`), OBJ loader, `editor/Exporter*.cpp`.
@@ -14,10 +14,9 @@ too many materials is cut off with an error. Users expect the model they importe
 - R2. Loading on a game's loading thread gives the same hierarchy and pixels as loading on the main thread. The bake into
   one mesh is no longer a lossy fallback: either the node tree is prepared off-thread and committed on the main thread, or
   an equivalent. Choose the simplest design that is correct on all backends.
-- R3. No fixed capacity silently loses geometry. A mesh's submeshes can exceed `MAX_SUBMESHES` in every build (heap
-  spill past the inline capacity is acceptable; the inline case stays allocation-free and costs nothing more). Same for
-  `MAX_EXTERNAL_BUFFERS` where a model can hit it. An export's capacity table stays valid; prebuilt players need no rebuild
-  per project for this.
+- R3. No fixed capacity silently loses geometry. The Doriax catch-up program's `dc/mesh-memory`
+  (`docs/superpowers/specs/2026-11-04-mesh-memory-design.md`) removes the capacities themselves, so this spec does not. It owns R1's
+  tests and R2 and lands on top of mesh-memory, or merges with it if it lands first.
 - R4. Where a real limit remains (GPU, format), the error names the model, the count and the limit, and the editor shows it
   at import, not only at runtime.
 - R5. Budget: a project with no large models keeps its player size and frame cost, within S34's and S07's budgets.
