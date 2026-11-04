@@ -1933,3 +1933,60 @@ rest of S82 lands in 6B.
     same `TitleOpContext` helpers and all-or-nothing rule; `registerCreateImporter(extension, fn)`
     serves `edit_title {create: {from}}`. `add_effect`'s optional `layer` means the only top-level
     layer of a one-layer document.
+13. **Implementation (renderer): the 2D title's element frames are y-up.** Their textures keep
+    layer-space rows bottom first (row 0 the frame's lowest row), so Pachislop's element passes
+    (seeds' Sobel normal, bevel normals, reflection, satin and pattern directions) run with their
+    own y-up formulas instead of having y negated in `fields.glsl` and `element.glsl`; the mask and
+    picture uploads reverse the provider's rows and the place pass maps the frame into the node
+    target's rows (§6.3's memory rows hold for every target; node targets stay rows-down).
+    `TitleArtScenesGpu.OriginAsymmetric` checks the result on both paths.
+14. **Implementation: regions of interest align to the node's anchor.** A 2D layer's ROI aligns
+    to 64 px from its position's whole output pixel, not from the canvas origin, and its cached
+    pixels are keyed by its content hash (`LayerHashes::content`, added: node minus its own
+    placement) and the position's fraction of a pixel: a whole-pixel move re-places the cached
+    node byte for byte (R42's two passes). A node clipped by the region, with a clip group,
+    canvas-space masks or an effect that reads canvas positions (`TitlePassContext::
+    usesCanvasPosition`) is keyed by its position instead.
+15. **Implementation: title frames snap to a 64 mask-px grid** from the layer origin (§6.7's frame
+    plus pad rounded outward), so a small rim or bevel change keeps the frame and every other
+    element's cached masks and fields.
+16. **Implementation: the flood's first step is 2^(k-1), k = ceil(log2(R + 2)).** Steps 2^(k-1),
+    ..., 1 reach 2^k - 1 >= R + 1 px; with the extra step-1 pass that is k + 1 passes, R43's
+    count (R27's "first step 2^ceil(log2(R + 2))" would take one more pass than R43 allows).
+17. **Implementation: Add composes with `LIGHT_PREMULTIPLIED`** (colour added, coverage unioned),
+    blend.glsl's add, so the fixed-function and shader paths of Add agree; `ADDITIVE_PREMULTIPLIED`
+    adds alpha. `BlendMode::ERASE_PREMULTIPLIED` (ZERO, ONE_MINUS_SRC_ALPHA) is added for the
+    knockout; blend.glsl has internal `erase` (19) and `subtract` (20) for the 2D stack and the
+    glow split on devices that render RGBA16F without blending it.
+18. **Implementation: scalar field blurs stay direct.** The height's soften and the Fit cover blurs
+    are separable texelFetch loops sized by the radius (at most 97 taps at sigma 32): a pyramid
+    would resample the RGBA8 fallback's 16-bit fixed point byte by byte. Satin, mask feathers and
+    the effects' blur use the pyramid above sigma 6.
+19. **Implementation: the text and geometry seam is `TitleContentProvider`** (`render/TitleContent.h`):
+    elements (with a glyph-cell cluster filter), coverage at a frame, a layer's own pixels (image
+    layers, `artwork` vectors), the glyph boxes of spans and shape-mask outlines. The renderer starts
+    with the process default (`setDefaultTitleContentProvider`), which the module's adapter over
+    `geometry::TitleGeometry` and `TitleTextLayout` registers; without one, text, shape, vector and
+    image layers report `geometry_unavailable` and draw nothing. The renderer tests use an analytic
+    provider.
+20. **Implementation: interface additions.** `TitleRenderStep::ready` (a step waits while its
+    program compiles; `TitleRenderJob::waiting()`) and `passes` (an effect's kernel step runs
+    several); `RenderRequest::output` (`TitleOutputFormat`: 8-bit dithered sRGB, 16-bit sRGB,
+    premultiplied sRGB for displays, or the linear accumulator for S81's live compose);
+    `RendererStats::floodPasses` / `floodPassesUnbounded`; `TitleArtRenderer::setContentProvider`,
+    `cacheEntries`, `poolStats`, `simulateDeviceLossForTesting`; `TITLE_ART_TEST_UNBOUNDED_FIELDS`.
+21. **Implementation: device loss fails the job in flight** with `device_lost` (its targets are
+    gone); the renderer drops pool, caches and programs at once and the owner (the preview queue,
+    the bake) begins again. A job does not restart itself: its step list was planned against caches
+    that no longer exist.
+22. **Implementation: `TitleImage::alphaBounds` is the drawn region** (the image's rect). Exact alpha
+    bounds come from the readback the bake and the checks make; a preview never syncs the GPU.
+23. **Implementation: the glow output** is the full composite minus the ink composite, colour only,
+    written as light (alpha = the largest channel, straight colour) so the PNG drawn additively over
+    the ink output gives the light back.
+24. **Implementation: Fit cover seeds hold centres only**; a circle's radius is read back from the
+    distance field at its centre (the RGBA8 fallback's seeds have no room for a radius).
+25. **Implementation: glyph cells.** The back part is the cell's rims with the layer's effects and
+    masks, the front part its face alone; the cell's image is front over back.
+26. **Implementation: element seeds add the document's as seed + (document seed - 1)**, so the
+    default document seed 1 renders Pachislop's patterns, textures and dry brush.

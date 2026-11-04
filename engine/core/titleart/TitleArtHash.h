@@ -44,6 +44,10 @@ namespace jasperengine::titleart {
         uint64_t masks = 0;         // the layer's masks
         uint64_t placement = 0;     // position (and what only places the cached stack)
         uint64_t node = 0;          // all of these, children, sources, blend and opacity, canvas
+        // what the layer's own pixels show wherever it is: stack, effects and masks, its
+        // children's node hashes and its sources', without its own placement, blend and opacity
+        // (the renderer's node cache re-places them on a whole-pixel move, R42)
+        uint64_t content = 0;
     };
 
     struct TitleArtHashes {
