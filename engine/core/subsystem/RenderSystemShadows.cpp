@@ -1607,6 +1607,11 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
         const LodView shadowLod = (instanceView >= 0) ? shadowLodView(light, lightIndex, cameraIndex, instanceView - 1) : LodView();
         const LodView* lodView = (instanceView >= 0) ? &shadowLod : nullptr;
         const uint32_t casterMask = shadowCameraMask & light.cullingMask;
+        // Dynamic Batching: casters of one depth state draw as one (depth only: in any order)
+        beginBatchPass(BatchPass::SHADOW, BatchMode::GROUP, nullptr, nullptr, PIP_SHADOW_DEPTH, shadowCamera.lightViewProjectionMatrix,
+                       shadowCamera.nearFar.y, shadowCamera.frustumPlanes);
+        batchPass.instanceView = instanceView;
+        batchPass.lodView = lodView;
         for (int i = 0; i < meshes->size(); i++){
             MeshComponent& mesh = meshes->getComponentFromIndex(i);
             if (!(casters & (mesh.staticShadowCaster ? 1 : 2)))
@@ -1648,9 +1653,16 @@ void RenderSystem::renderShadowMaps(bool projective, bool point){
                 vsDepthParams = {model, lightVP, lightVP * model};
             }
 
-            drawMeshDepth(entity, mesh, *transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
-                          instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            // (a billboard's shadow faces the light: its own view matrix, drawn alone)
+            if (transform->billboard && mesh.shadowsBillboard){
+                drawMeshDepth(entity, mesh, *transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
+                              instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            }else{
+                submitMeshDepth(entity, mesh, *transform, shadowCamera.nearFar.y, shadowCamera.frustumPlanes, vsDepthParams,
+                                instmesh, terrain, tilemap, false, PIP_SHADOW_DEPTH, instanceView, lodView);
+            }
         }
+        endBatchPass();
     };
 
     // what one slot of an atlas does this frame

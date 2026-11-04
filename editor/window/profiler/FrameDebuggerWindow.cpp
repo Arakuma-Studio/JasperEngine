@@ -10,6 +10,7 @@
 #include "Theme.h"
 #include "render/RenderUtil.h"
 #include "render/SystemRender.h"
+#include "render/DrawBatcher.h"
 
 #include "imgui.h"
 
@@ -203,7 +204,18 @@ void FrameDebuggerWindow::drawPassTree(){
             if (hasDraws && open){
                 for (uint32_t d = 0; d < pass.numDraws && pass.firstDraw + d < passes.draws.size(); d++){
                     const DrawRecord& draw = passes.draws[pass.firstDraw + d];
-                    ImGui::BulletText("%s  %u elements x%u", draw.shader[0] ? draw.shader : draw.pipeline, draw.elements, draw.instances);
+                    if (draw.batchItems > 0){
+                        // Dynamic Batching: the objects of the draw, and (Unity's Frame Debugger) why its
+                        // first one was not batched with the draw before it
+                        ImGui::BulletText("Dynamic Batch (%u objects)  %s  %u elements", (unsigned int)draw.batchItems,
+                                          draw.shader[0] ? draw.shader : draw.pipeline, draw.elements);
+                        if (draw.batchBreak != 0 && ImGui::IsItemHovered()){
+                            ImGui::SetTooltip("Why this draw call can't be batched with the previous one: %s",
+                                              getBatchBreakName((BatchBreak)draw.batchBreak));
+                        }
+                    }else{
+                        ImGui::BulletText("%s  %u elements x%u", draw.shader[0] ? draw.shader : draw.pipeline, draw.elements, draw.instances);
+                    }
                 }
                 ImGui::TreePop();
             }

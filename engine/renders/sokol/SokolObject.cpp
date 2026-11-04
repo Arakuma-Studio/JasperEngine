@@ -506,10 +506,11 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
             attrOffset = 0;
         }
         
-        if (bufferToBindSlot.count({vbuf.id, bufferOffset}) == 0){
+        const BufferInfo info{vbuf.id, bufferOffset, stride, perInstance};
+        if (bufferToBindSlot.count(info) == 0){
             bind.vertex_buffers[bindSlotIndex] = vbuf;
             bind.vertex_buffer_offsets[bindSlotIndex] = bufferOffset;
-            bufferToBindSlot[{vbuf.id, bufferOffset}] = bindSlotIndex;
+            bufferToBindSlot[info] = bindSlotIndex;
 
             pipeline_desc.layout.buffers[bindSlotIndex].stride = stride;
 
@@ -520,7 +521,7 @@ void SokolObject::addAttribute(int slot, BufferRender* buffer, unsigned int elem
             bindSlotIndex++;
         }
 
-        size_t indexBuf = bufferToBindSlot[{vbuf.id, bufferOffset}];
+        size_t indexBuf = bufferToBindSlot[info];
 
         pipeline_desc.layout.attrs[slot].buffer_index = indexBuf;
         pipeline_desc.layout.attrs[slot].offset = attrOffset;
@@ -547,6 +548,38 @@ void SokolObject::setIndexBuffer(sg_buffer buffer, size_t byteOffset){
 void SokolObject::resetIndexBuffer(){
     bind.index_buffer = loadIndexBuffer;
     bind.index_buffer_offset = (int)loadIndexOffset;
+}
+
+void SokolObject::retargetVertexBuffer(uint32_t fromBufferId, sg_buffer toBuffer){
+    if (fromBufferId == toBuffer.id)
+        return;
+    std::vector<std::pair<BufferInfo, size_t>> moved;
+    for (auto it = bufferToBindSlot.begin(); it != bufferToBindSlot.end();){
+        if (it->first.id == fromBufferId){
+            moved.push_back(*it);
+            it = bufferToBindSlot.erase(it);
+        }else{
+            ++it;
+        }
+    }
+    for (std::pair<BufferInfo, size_t>& entry : moved){
+        bind.vertex_buffers[entry.second] = toBuffer;
+        bind.vertex_buffer_offsets[entry.second] = (int)entry.first.offset;
+        entry.first.id = toBuffer.id;
+        bufferToBindSlot[entry.first] = entry.second;
+    }
+}
+
+void SokolObject::retargetIndexBuffer(uint32_t fromBufferId, sg_buffer toBuffer){
+    if (loadIndexBuffer.id == fromBufferId)
+        loadIndexBuffer = toBuffer;
+    if (bind.index_buffer.id == fromBufferId)
+        bind.index_buffer = toBuffer;
+}
+
+void SokolObject::getTextureBinding(std::pair<int, int> slot, uint32_t& view, uint32_t& sampler) const{
+    view = (slot.first >= 0 && slot.first < SG_MAX_VIEW_BINDSLOTS) ? bind.views[slot.first].id : 0;
+    sampler = (slot.second >= 0 && slot.second < SG_MAX_SAMPLER_BINDSLOTS) ? bind.samplers[slot.second].id : 0;
 }
 
 void SokolObject::addStorageBuffer(int slot, ShaderStageType stage, BufferRender* buffer){
@@ -980,6 +1013,8 @@ bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexTyp
 }
 
 bool SokolObject::beginDraw(const PipelineState& state){
+    // a batcher's held draws first (SokolSystem::setDeferredFlush)
+    SokolSystem::beforeForeignDraw();
     uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     drawWaiting = false;
@@ -1017,6 +1052,8 @@ bool SokolObject::beginDraw(const PipelineState& state){
 }
 
 bool SokolObject::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
+    // a batcher's held draws first (SokolSystem::setDeferredFlush)
+    SokolSystem::beforeForeignDraw();
     uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
     sg_pipeline selectedPipeline = pipelineOf(pipType);

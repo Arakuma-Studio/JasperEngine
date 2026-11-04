@@ -82,6 +82,10 @@ namespace jasperengine{
         uint32_t elements = 0;
         uint32_t instances = 0;
         uint32_t baseElement = 0;
+        // Dynamic Batching: the objects this draw drew (0: not a batch draw), and why its first
+        // one did not join the draw before it (a BatchBreak, 0: it did or it is not a batch draw)
+        uint16_t batchItems = 0;
+        uint8_t batchBreak = 0;
     };
 
     // the GPU timer of the device (sokol_gpu_timer.h)

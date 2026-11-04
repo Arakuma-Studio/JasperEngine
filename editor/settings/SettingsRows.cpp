@@ -1662,6 +1662,8 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        add(boolSetting("graphics.dynamic_batching", "Consecutive Sprites, small meshes and UI elements that share a material draw as one draw call (Unity's Dynamic Batching). The same image; off draws each one alone, for comparison.",
+                        [](Project& p) { return p.isDynamicBatching(); }, [](Project& p, bool v) { p.setDynamicBatching(v); }));
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
         add(boolSetting("quality.vsync", "VSync in the built player.",
@@ -2738,6 +2740,7 @@ const Placement placements[] = {
     {"graphics.shadow_tier.web", "Graphics", "Shadows", "Web Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.android", "Graphics", "Shadows", "Android Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.ios", "Graphics", "Shadows", "iOS Shadow Tier", "shadow quality"},
+    {"graphics.dynamic_batching", "Graphics", "", "Dynamic Batching", "batching batches draw calls saved by batching sprites"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},

@@ -18,6 +18,8 @@
 #include "Theme.h"
 #include "subsystem/UIDocumentSystem.h"
 #include "subsystem/CameraControlSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "render/RenderUtil.h"
 #include "registry/PhysicsLayers.h"
 #include "Widgets.h"
 #include "external/IconsFontAwesome6.h"
@@ -1223,7 +1225,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[11][112];
+    char lines[12][112];
     int lineCount = 5;
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
@@ -1262,6 +1264,19 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     snprintf(lines[lineCount], sizeof(lines[lineCount]), "Safe area: %g,%g %gx%g", std::round(safe.getX()), std::round(safe.getY()),
              std::round(safe.getWidth()), std::round(safe.getHeight()));
     lineCount++;
+    // Dynamic Batching (Unity's Stats: Batches, Saved by batching) of the scene's last frame in the
+    // view the game draws
+    if (sceneProject && sceneProject->scene){
+        std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>();
+        // (the game's own frame while it plays, else the Game view's)
+        const uint32_t tag = sceneProject->playState != ScenePlayState::STOPPED ? SystemRender::FRAME_STATS_FRAME : GAME_VIEW_ID;
+        const RenderSystem::BatchFrame* batching = render ? render->getBatchFrame(tag) : nullptr;
+        if (batching && batching->stats.enabled){
+            snprintf(lines[lineCount], sizeof(lines[lineCount]), "Batches: %u   Saved by batching: %u", batching->stats.batches,
+                     batching->stats.savedByBatching());
+            lineCount++;
+        }
+    }
     // the scene's HTML UI documents (their offscreen passes are not in the counters above)
     UIDocumentSystem* documents = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<UIDocumentSystem>().get() : nullptr;
     if (documents && documents->hasDocuments()) {

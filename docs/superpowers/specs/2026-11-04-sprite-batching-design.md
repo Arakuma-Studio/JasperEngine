@@ -670,4 +670,70 @@ Hot spots for parallel branches: `RenderSystem.cpp` (`drawMesh`, `renderCameraPa
 
 ## Deviations
 
-(None yet. The implementer records any here.)
+Recorded by the implementer (2026-11-04/05).
+
+### Hooks for pixel-art S52 (lead decision, LEDGER "Pixel-art program")
+
+S52 lands after this branch and builds on two hooks:
+
+1. **A sort key the batcher respects.** `BatchItem::sortKey` (`engine/core/render/DrawBatcher.h`) is
+   the draw's bucket. The batcher never moves a draw past one of another bucket: in REORDER mode a
+   draw may only jump back over runs whose objects are all of its bucket, and a run that spans two
+   buckets is never jumped over. Every draw is in bucket 0 here. S52 puts `(Sorting Layer rank,
+   Order in Layer)` in it (sort-axis distance stays a tie-break of its own sort) and submits each
+   pass's draws sorted by it; batching and 2D reordering then work inside each bucket, unchanged.
+   Sorting Groups are one bucket each (or a key range S52 reserves).
+2. **Per-sprite parameters in vertices, not uniforms.** The bake copies every vertex attribute it
+   does not know as it is (it knows POSITION, NORMAL, TANGENT, TEXCOORD1/2, COLOR). A per-sprite
+   value that must not break batches (S43's palette row, S48's flash amount, dither fade and
+   dissolve progress) lives in a vertex attribute of the sprite's mesh, the same at its four
+   vertices, written by its owner with `needUpdateBuffer` (MeshSystem when the value changes); the
+   shader variant that declares it reads it from the attribute on both paths. Changing it re-bakes
+   the record; an immutable sprite buffer changing twice within 30 updates goes private
+   (`refreshImmutableBuffer`), so an animated flash costs one dynamic buffer, not a buffer a frame.
+   `RenderSystem::setBatchAttributeRole(type, POINT | DIRECTION)` makes the bake transform such an
+   attribute like a position (an object-space point) or a normal. A value kept as a material uniform
+   is part of the batch key instead (it batches with equal values only).
+3. **S41's pixel snap.** Grid-aligned draws snap `gl_Position` per vertex (`pixelSnapClip`): a batched
+   vertex has the same clip position as drawn alone up to float rounding, which S41's bias covers.
+   Rotate On Grid snaps the pivot: S41/S52 give the sprite mesh a POINT-role attribute holding the
+   object-space origin `(0,0,0)` at every vertex; drawn alone the shader's `mvp * pivot` is the model
+   origin, batched it is the baked world origin through the run's `VP * T(cell)`: the same point.
+   Steps90 rounds the model matrix on the CPU: the bake reads the model matrix through
+   `objectMatrices()`, so S41 rounds it where `objectMatrices` / `objectModel` take it, for both paths.
+4. S52's own instance format (D2), `@instanceable` and FX slots are superseded by 2 for sprites drawn
+   by this batcher; S52's Sprite Batch component (bulk API) is a producer of its own.
+
+### Changes of plan
+
+- **Strips are not batched.** A batch draws with its first object's pipeline, whose primitive type is
+  the object's: only 16-bit indexed TRIANGLES batch (`ineligible_geometry`), so TRIANGLE_STRIP
+  MeshPolygons draw alone. The spec's "strips expanded to a list" would need another pipeline.
+- **The SSR G-buffer pass is not batched.** Its vertex stage ignores the sprite texture rect
+  (`gbuffer.vert`), so baked UVs would make the batched G-buffer differ from the unbatched one (and be
+  more right). Batching it waits for that fix (a render-correctness matter); SSR with sprites is rare.
+- **FLATTEN Canvas Group layers** draw their elements one by one (their own passes); the main colour
+  pass batches UI.
+- **Texture comparison** is by the object's own texture slots (base colour, metallic-roughness,
+  occlusion, emissive, normal; depth texture; UI texture), a `texture` key section, not every view
+  bound: the pass-wide ones (shadow maps, SSAO, spot masks) are bound to the run's draw and differ
+  between objects that never drew alone. `sampler` is folded into `texture`.
+- **Records** keep their vertices in per-record vectors, not one arena (simpler, the same lifetime
+  rules); a record is re-placed when its model matrix differs from the one it was placed with
+  (compared at submit, which also covers the editor's per-view matrices), not when `update()` sees
+  `needUpdate`. The mesh's `worldAABB` is still computed by `update()` (930133bb5 not taken: culling
+  of batched objects uses the record's placed bounds).
+- **Lazy MVP** applies when the frame draws every pass with the main camera's MVP: no other camera
+  (`hasMultipleCameras`) and no reflection probe; `distanceToCamera` is still computed (it sorts the
+  transparent queue). Billboards and UI elements keep their MVP.
+- **Stream chunks**: at most 16 MB per chunk on every platform (more chunks when a frame needs more);
+  the quad index buffer is per RenderSystem (per scene), not per process.
+- **STRICT mode** keeps one open run (opening another draws the one before at once).
+- **MCP**: `batching` also has `single_draws` and `drawn_alone`; `batch_breaks` entries have `pass`.
+  Agent guidance went into `docs/mcp/guide/profiling.md` (`jasper://docs/profiling`), with no line in
+  the agent guide (lean MCP rules; agent-authoring owns the guide).
+- **Tests** as section 10 with these differences: T14 (Vulkan stream refusal) and T22 (benchmark)
+  are not written (the Vulkan budget path is the one every STREAM upload takes; no benchmark server
+  here); T15 counts GPU buffers of 1,500 sprites against the 2 x 1,500 of main instead of shrinking
+  the pool (the pool is sized once per process); T13 (chunk growth) is covered by T15's 1,500 quads,
+  which need a second chunk in their first frame (`runs_skipped` 0).

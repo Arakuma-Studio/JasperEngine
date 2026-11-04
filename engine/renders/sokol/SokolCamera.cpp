@@ -191,6 +191,8 @@ void SokolCamera::applyViewport(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
+    // (a batcher's held draws keep the viewport they were drawn for)
+    SokolSystem::flushDeferred();
     sg_apply_viewport(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
 }
 
@@ -204,19 +206,20 @@ void SokolCamera::applyScissor(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
-    sg_apply_scissor_rect(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
+    SokolSystem::applyScissor((int)flooredX, (int)flooredY, (int)std::ceil(adjustedWidth), (int)std::ceil(adjustedHeight), false);
 }
 
 // top-left rects as they are on every backend: GL's offscreen targets are rendered Y-flipped
 // (RenderSystem::isRenderingFlipped), so its bottom-left origin is the image's top there
 void SokolCamera::applyViewportTopLeft(int x, int y, int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    SokolSystem::flushDeferred();
     sg_apply_viewport(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 
 void SokolCamera::applyScissorTopLeft(int x, int y, int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
-    sg_apply_scissor_rect(x, y, width, height, SystemRender::getFeatures().originTopLeft);
+    SokolSystem::applyScissor(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 
 void SokolCamera::endRenderPass(){

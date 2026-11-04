@@ -72,6 +72,9 @@ namespace {
         bool lastEnded = false;
         bool frameStatsListing = false;
         bool drawList = false;
+        // the next draw's batch annotation (annotateNextDraw)
+        uint16_t nextBatchItems = 0;
+        uint8_t nextBatchBreak = 0;
         std::unordered_map<uint32_t, PipelineInfo> pipelines;
         std::unordered_map<uint32_t, ShaderInfo> shaders;
         const PipelineInfo* currentPipeline = nullptr;
@@ -381,8 +384,19 @@ void SokolPassRecorder::onApplyUniforms(size_t bytes){
         s.current.passes.back().uniformBytes += (uint32_t)bytes;
 }
 
+void SokolPassRecorder::annotateNextDraw(uint16_t items, uint8_t reason){
+    State& s = state();
+    s.nextBatchItems = items;
+    s.nextBatchBreak = reason;
+}
+
 void SokolPassRecorder::onDraw(int baseElement, int numElements, int numInstances){
     State& s = state();
+    // (an annotation is for the one draw after it)
+    const uint16_t batchItems = s.nextBatchItems;
+    const uint8_t batchBreak = s.nextBatchBreak;
+    s.nextBatchItems = 0;
+    s.nextBatchBreak = 0;
     if (!s.enabled || !s.inPass)
         return;
     PassRecord& pass = s.current.passes.back();
@@ -402,6 +416,8 @@ void SokolPassRecorder::onDraw(int baseElement, int numElements, int numInstance
         draw.elements = (uint32_t)std::max(numElements, 0);
         draw.instances = (uint32_t)std::max(numInstances, 1);
         draw.baseElement = (uint32_t)std::max(baseElement, 0);
+        draw.batchItems = batchItems;
+        draw.batchBreak = batchBreak;
         s.current.draws.push_back(draw);
         pass.numDraws++;
     }

@@ -42,6 +42,15 @@ namespace jasperengine {
         // resetIndexBuffer returns to the one bound at load
         void setIndexBuffer(BufferRender* buffer, size_t byteOffset = 0);
         void resetIndexBuffer();
+        // for good: the buffer the load bound (original) was replaced by another of the same layout
+        // (MeshBufferPool gave the mesh's new bytes another shared buffer, or a private one)
+        void retargetVertexBuffer(uint32_t originalId, BufferRender* replacement);
+        void retargetIndexBuffer(uint32_t originalId, BufferRender* replacement);
+        // the view and sampler ids bound at a texture slot (0, 0 for slot -1): what two objects
+        // that draw as one must share (RenderSystem's Dynamic Batching)
+        void getTextureBinding(std::pair<int, int> slot, uint32_t& view, uint32_t& sampler) const;
+        // the vertex buffer bind slots its attributes use (diagnostics, tests)
+        size_t getVertexBindSlotCount() const;
         void addTexture(std::pair<int, int> slot, ShaderStageType stage, TextureRender* texture);
         // the texture through the sampler (filter, wrap) of another one: a pass that needs
         // bilinear taps of a target the user made NEAREST

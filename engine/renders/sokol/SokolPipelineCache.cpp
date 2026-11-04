@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SokolPipelineCache.h"
+#include "SokolSystem.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -659,6 +660,8 @@ size_t SokolPipelineCache::size(){
 }
 
 bool SokolPipelineCache::apply(sg_pipeline pipeline){
+    // a batcher's held draws first (SokolSystem::setDeferredFlush)
+    SokolSystem::beforeForeignDraw();
     if (pipeline.id == lastApplied)
         return false;
     sg_apply_pipeline(pipeline);

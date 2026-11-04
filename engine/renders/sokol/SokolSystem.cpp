@@ -388,6 +388,21 @@ namespace{
     bool passOpen = false;
     uint64_t nestedPasses = 0;
 
+    uint64_t commitCount = 0;
+
+    // the batcher's held draws and the lazy scissor (setDeferredFlush)
+    SokolSystem::DeferredFlush deferredFlush = nullptr;
+    void* deferredOwner = nullptr;
+    bool inDeferredFlush = false;
+    SokolSystem::ScissorRect requestedScissor;
+    SokolSystem::ScissorRect appliedScissor;
+
+    void applyScissorRect(const SokolSystem::ScissorRect& rect){
+        if (rect.set)
+            sg_apply_scissor_rect(rect.x, rect.y, rect.width, rect.height, rect.originTopLeft);
+        appliedScissor = rect;
+    }
+
     struct PendingInitialization{
         sg_attachments attachments;
         bool loadDepthStencil;
@@ -427,6 +442,76 @@ namespace{
     }
 }
 
+bool SokolSystem::ScissorRect::operator==(const ScissorRect& rhs) const{
+    if (set != rhs.set)
+        return false;
+    return !set || (x == rhs.x && y == rhs.y && width == rhs.width && height == rhs.height && originTopLeft == rhs.originTopLeft);
+}
+
+void SokolSystem::setDeferredFlush(DeferredFlush flush, void* owner){
+    if (!flush && deferredFlush){
+        flushDeferred();
+        // what was requested while deferring, for whatever draws next
+        if (passOpen && requestedScissor != appliedScissor && requestedScissor.set)
+            applyScissorRect(requestedScissor);
+    }
+    deferredFlush = flush;
+    deferredOwner = owner;
+}
+
+bool SokolSystem::isDeferringDraws(){
+    return deferredFlush != nullptr;
+}
+
+void SokolSystem::flushDeferred(){
+    if (!deferredFlush || inDeferredFlush)
+        return;
+    inDeferredFlush = true;
+    deferredFlush(deferredOwner);
+    inDeferredFlush = false;
+}
+
+void SokolSystem::beforeForeignDraw(){
+    if (!deferredFlush || inDeferredFlush)
+        return;
+    flushDeferred();
+    if (requestedScissor != appliedScissor){
+        if (requestedScissor.set){
+            applyScissorRect(requestedScissor);
+        }else{
+            // the pass's own scissor is never requested again once a rect was (a pass begins
+            // with it): nothing to restore it from, keep what is applied
+            requestedScissor = appliedScissor;
+        }
+    }
+}
+
+void SokolSystem::applyBatchScissor(const ScissorRect& rect){
+    if (rect != appliedScissor && rect.set)
+        applyScissorRect(rect);
+}
+
+void SokolSystem::applyScissor(int x, int y, int width, int height, bool originTopLeft){
+    ScissorRect rect;
+    rect.x = x;
+    rect.y = y;
+    rect.width = width;
+    rect.height = height;
+    rect.originTopLeft = originTopLeft;
+    rect.set = true;
+    requestedScissor = rect;
+    if (!deferredFlush)
+        applyScissorRect(rect);
+}
+
+uint64_t SokolSystem::getCommitCount(){
+    return commitCount;
+}
+
+const SokolSystem::ScissorRect& SokolSystem::getRequestedScissor(){
+    return requestedScissor;
+}
+
 void SokolSystem::beginPass(const sg_pass& pass){
     if (passOpen){
         nestedPasses++;
@@ -434,11 +519,16 @@ void SokolSystem::beginPass(const sg_pass& pass){
     }
     sg_begin_pass(pass);
     passOpen = true;
+    // sokol starts every pass with its whole target as the scissor
+    requestedScissor = ScissorRect();
+    appliedScissor = ScissorRect();
     // a new pass has no pipeline applied (the dynamic path's "applied last")
     SokolPipelineCache::invalidateApplied();
 }
 
 void SokolSystem::endPass(){
+    // the draws a batcher still holds belong to this pass
+    flushDeferred();
     sg_end_pass();
     passOpen = false;
     // the Frame Debugger's preview of the pass that ended, when it asked for it (S15; its blit is
@@ -492,6 +582,7 @@ void SokolSystem::commit(){
     descriptorFrameSkippedBytes = 0;
 
     sg_commit();
+    commitCount++;
     // the GPU times of earlier commits that resolved meanwhile (never waits)
     sgj_commit_times times;
     while (sgj_gpu_timer_pop(&times)){
@@ -660,6 +751,8 @@ void SokolSystem::shutdown(){
     sgj_gpu_timer_shutdown();
     pendingInitializations.clear();
     passOpen = false;
+    deferredFlush = nullptr;
+    deferredOwner = nullptr;
     sg_shutdown();
     featuresQueried = false;
     features = RenderFeatures();

@@ -181,6 +181,8 @@ bool Engine::gameEventsPaused = false;
 bool Engine::osPaused = false;
 bool Engine::nativePaused = false;
 std::atomic<bool> Engine::focused = true;
+bool Engine::dynamicBatching = true;
+bool Engine::dynamicBatchingDefault = true;
 int Engine::targetFrameRate = -1;
 // the project's VSync setting (platformConfig().vsync, set in systemInit; the generated init()
 // may set it again)
@@ -2773,6 +2775,7 @@ void Engine::resetApplicationState(){
     orientationPendingSince = 0.0;
     targetFrameRate = -1;
     applyFramePacing();
+    dynamicBatching = dynamicBatchingDefault;
     // no extra insets, and the next safe area is where the game starts (no event)
     Screen::resetSafeAreaState();
 }
@@ -2783,6 +2786,19 @@ bool Engine::isFocused(){
 
 bool Engine::isPaused(){
     return paused;
+}
+
+void Engine::setDynamicBatchingDefault(bool enabled){
+    dynamicBatchingDefault = enabled;
+    dynamicBatching = enabled;
+}
+
+void Engine::setDynamicBatching(bool enabled){
+    dynamicBatching = enabled;
+}
+
+bool Engine::isDynamicBatching(){
+    return dynamicBatching;
 }
 
 void Engine::setTargetFrameRate(int fps){
