@@ -203,3 +203,19 @@ async def test_supplied_id_gets_defaults():
         ed.check_eq((ed.project / PATH).read_text(), before, "undo is byte-identical")
         await ed.call("redo", scope="project")
         ed.check_eq((ed.project / PATH).read_text(), after, "redo is byte-identical")
+
+
+async def test_hand_written_edges_get_ids():
+    """F8: edges written without ids load with distinct ones; the first save keeps them."""
+    async with Editor(create=True, name="Graph Edges CI", env={"JASPER_TEST_GRAPH_KIND": "1"}) as ed:
+        graph = json.loads(json.dumps(GRAPH))
+        graph["edges"] = [{"from": {"node": "n1", "port": "value"}, "to": {"node": "n2", "port": "a"}},
+                          {"from": {"node": "n1", "port": "value"}, "to": {"node": "n2", "port": "b"}}]
+        await write_graph(ed, graph)
+        issues = await ed.call("validate_graph", path=PATH)
+        ed.check(not [i for i in issues["issues"] if i["code"] == "duplicate-id"], f"no duplicate id: {issues}")
+        got = await ed.call("get_graph", path=PATH)
+        ids = [e["id"] for e in got["graph"]["edges"]]
+        ed.check(len(set(ids)) == 2 and all(ids), f"two distinct ids: {ids}")
+        await ed.call("edit_graph", path=PATH, ops=[{"op": "disconnect", "id": ids[0]}])
+        ed.check_eq([e["id"] for e in json.loads((ed.project / PATH).read_text())["edges"]], [ids[1]], "the other edge keeps its id")

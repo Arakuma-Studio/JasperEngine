@@ -134,7 +134,7 @@ namespace jasperengine::graph {
     };
 
     // Reads a graph file. The kind's migrations (GraphRegistry) bring an older kindVersion up to
-    // date; unknown keys, node types and kinds are kept.
+    // date; unknown keys, node types and kinds are kept; an edge without an id gets one.
     JASPERENGINE_API Graph load(std::string_view json, LoadReport& report);
     JASPERENGINE_API Graph fromJson(const Json& json, LoadReport& report);
     // Deterministic: known keys in a fixed order, then the unknown ones as read; nodes and edges

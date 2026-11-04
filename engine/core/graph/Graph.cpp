@@ -461,6 +461,11 @@ Graph jasperengine::graph::fromJson(const Json& input, LoadReport& report){
             graph.groups.push_back(std::move(group));
         }
     }
+    // a hand-written edge may leave its id out: past every id of the file, in file order, so two
+    // loads of the file agree
+    for (Edge& edge : graph.edges) {
+        if (edge.id.empty()) edge.id = graph.allocateId("e");
+    }
     if (auto it = json.find("viewport"); it != json.end() && it->is_object()) {
         if (auto offset = it->find("offset"); offset != it->end()) graph.viewport.offset = vec2From(*offset);
         graph.viewport.zoom = it->value("zoom", 1.0);

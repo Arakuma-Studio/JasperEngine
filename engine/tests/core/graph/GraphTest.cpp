@@ -493,3 +493,28 @@ TEST_F(GraphTest, UndoOfARemoveRestoresTheNodeExactly) {
     apply(graph, inverse);
     EXPECT_EQ(save(graph), before);
 }
+
+// ---- BF23 F8: hand-written edges without ids
+
+TEST_F(GraphTest, LoadGivesEdgesWithoutIdsTheirOwn) {
+    const char* text = R"({"formatVersion": 1, "kind": "test", "kindVersion": 2, "nextId": 2,
+      "nodes": [{"id": "n1", "type": "const", "params": {}}, {"id": "n2", "type": "add", "params": {}},
+                {"id": "n20", "type": "sink", "params": {}}],
+      "edges": [{"from": {"node": "n1", "port": "value"}, "to": {"node": "n2", "port": "a"}},
+                {"id": "e30", "from": {"node": "n1", "port": "value"}, "to": {"node": "n2", "port": "b"}},
+                {"id": "", "from": {"node": "n2", "port": "sum"}, "to": {"node": "n20", "port": "x"}}],
+      "groups": [{"id": "g40", "title": "", "rect": [0, 0, 1, 1], "nodes": []}]})";
+    const Graph graph = loadOk(text);
+    EXPECT_FALSE(codes(graph).count("duplicate-id"));
+    ASSERT_EQ(graph.edges.size(), 3u);
+    // past every id of the file (nextId says 2, the group holds 40), in file order, deterministic
+    EXPECT_EQ(graph.edges[0].id, "e30");
+    EXPECT_EQ(graph.edges[1].id, "e41");
+    EXPECT_EQ(graph.edges[2].id, "e42");
+    EXPECT_EQ(graph.edges[1].from.port, "value");
+    EXPECT_EQ(graph.edges[2].from.port, "sum");
+    EXPECT_EQ(graph.nextId, 43u);
+    EXPECT_EQ(save(loadOk(text)), save(graph));
+    // once saved, they are the file's
+    EXPECT_EQ(save(loadOk(save(graph))), save(graph));
+}
