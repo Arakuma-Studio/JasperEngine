@@ -133,7 +133,9 @@ TEST_F(NavFindingsTest, EveryCode){
     EXPECT_EQ(findingDetail(*byCode["link_unconnected"].front(), "island_end"), -1.0);
     EXPECT_EQ(findingDetail(*byCode["link_unconnected"].front(), "connections"), 1.0);
     EXPECT_EQ(byCode["small_island"].front()->entity, ground);
-    EXPECT_NEAR(findingDetail(*byCode["small_island"].front(), "area_m2"), 9.0, 1.0);
+    // 4 x 4 m eroded by r = 0.5 (whole 0.25 m cells and the boundary): between 2.5^2 and 3^2
+    EXPECT_GE(findingDetail(*byCode["small_island"].front(), "area_m2"), 6.0);
+    EXPECT_LE(findingDetail(*byCode["small_island"].front(), "area_m2"), 9.0);
     EXPECT_EQ(byCode["crowd_filter_overflow"].front()->entity, ground);
     EXPECT_EQ(findingDetail(*byCode["crowd_filter_overflow"].front(), "masks"), 17.0);
     EXPECT_EQ(byCode["obstacle_carve_ignored"].front()->entity, carver);

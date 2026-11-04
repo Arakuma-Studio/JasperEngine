@@ -43,16 +43,6 @@ namespace {
 TEST(NavigationFindings, ProjectWrapper){
     if (!Out::memorySinkId())
         Out::startLogging();
-    nav::NavigationSettings settings = nav::NavigationSettings::defaults();
-    nav::AgentTypeSettings giant;
-    giant.id = 1;
-    giant.name = "Giant";
-    nav::AgentTypeSettings spare;
-    spare.id = 2;
-    spare.name = "Spare";
-    settings.agentTypes.push_back(giant);
-    settings.agentTypes.push_back(spare);
-    nav::setSettings(settings);
 
     // scene A: an unbaked Humanoid surface; scene B: an unbaked Giant surface and an agent of an
     // unknown type (an error); scene C has no file (not checked)
@@ -68,7 +58,18 @@ TEST(NavigationFindings, ProjectWrapper){
     b.addComponent<NavMeshAgentComponent>(stray, agent);
     navSurface(c, "Ground C");
 
+    // a Project applies its own navigation block: the test's types go in after it
     Project project;
+    nav::NavigationSettings settings = nav::NavigationSettings::defaults();
+    nav::AgentTypeSettings giant;
+    giant.id = 1;
+    giant.name = "Giant";
+    nav::AgentTypeSettings spare;
+    spare.id = 2;
+    spare.name = "Spare";
+    settings.agentTypes.push_back(giant);
+    settings.agentTypes.push_back(spare);
+    nav::setSettings(settings);
     addNavScene(project, a, 1, "A", "Scenes/A.scene");
     addNavScene(project, b, 2, "B", "Scenes/B.scene");
     addNavScene(project, c, 3, "C", "");
