@@ -197,6 +197,53 @@ if report and not report.ok then print(report.errorCode, report.hint) end
   `stale_tile` apply. The last three are found by rebuilding only the tile under the point with
   that one limit relaxed.
 
+## Path Tester and diagnostic overlays (editor)
+
+**Path Tester** (Scene view toolbar route button, or its **...** menu; the AI Navigation section of
+the Gizmos menu; the command **Path Tester**, `navigation.pathTester`, no default key: bind one in
+**Edit > Shortcuts...**). While it is on, **Shift+click** sets the start and a **click** the end, on
+whatever the pointer is over; a press within 10 px of a handle drags it and the query runs again
+every frame. **Esc**, its close button or the toggle ends it. It edits nothing (no undo step) and is
+not saved; it works in Edit and in Play. Its panel (the view's top right) chooses:
+
+- **Agent Type** and **Area Mask** (the project's types and areas), as a NavMesh Agent has them;
+- **Mode**: **Path** (`calculatePath`), **Raycast** (a straight walk on the mesh: where it stops),
+  **Closest Edge** (the nearest wall from the start) or **Locate** (where a point is).
+
+It shows the status and its reason sentence, the length, corners, the gap a Partial path leaves,
+how far each end snapped to the mesh and the ends' islands. **Copy Query** copies the same query
+as `query_navigation` arguments. The Scene view draws the start green, the end red, a Complete path
+magenta and a Partial one orange with a red gap to the end. In **Locate**, a click (or the end of a
+drag) also asks why the point is not walkable: the reasons show beside it, with the value against
+the agent's limit and **Select** for the GameObject a reason names (an excluded mesh, a Not Walkable
+modifier).
+
+The **AI Navigation** section of the Scene view's Gizmos menu also has (saved with the workspace):
+
+- **Color By**: **Areas** (the area colours), **Islands** (one colour per connected part, links
+  joining them; with a Path Tester start, the islands it cannot reach are grey) or **Tiles**.
+- **Show Steep Slopes**: the collected ground steeper than the agent type's Max Slope, in red.
+- **Show Tile Labels**: each visible tile's last build in this session, "12.4 ms · 210 polys ·
+  18.5 KB" ("– ms" for a tile not built since the navmesh loaded). With labels or **Show Tile
+  Bounds** on, tiles whose inputs changed since the bake are outlined orange.
+
+Everything is built on the CPU from the navmesh and the editor's cached collection, only while its
+option is on; a game never draws any of it.
+
+**Window > AI > Navigation**, Surfaces: each surface's **Last Bake** (time, tiles built of all, a
+warning count; the row opens to the warnings, the error and its hint), **Walkable** area (m²) and
+**Islands**, and below the table **Problems (N)**: the project's navigation findings (the same list
+as `get_navigation_info`, the CLI `check` and the export preflight). A click selects the GameObject,
+a double-click frames it too.
+
+The **NavMesh Surface** Inspector shows, above Bake, what a bake would build ("Voxels W × H, N
+tiles (M voxels per agent radius)", from the cached collection, or from the box in Volume mode)
+with a warning when the agent radius gets fewer than 2 voxels, when there are more than 512 tiles
+(above the mobile/web budget) or when Detour's polygon references would refuse it; under the state
+line, the last bake (time, tiles, polygons, its warnings, an error in red with its hint), the
+walkable area and the island count.
+
+
 ## Nav Grids
 
 A Nav Grid lays cells along its GameObject's X and Z (plane XZ) or X and Y (plane XY): Square

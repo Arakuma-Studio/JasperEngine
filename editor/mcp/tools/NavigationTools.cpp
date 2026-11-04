@@ -780,7 +780,7 @@ void visualizeNavigationTool(const CallPtr& call) {
                        {"avoidance", overlay.showAvoidance},
                        {"paths", overlay.showPaths == NavOverlaySettings::Paths::All ? "all" : overlay.showPaths == NavOverlaySettings::Paths::None ? "none" : "selected"}};
     std::string text = "AI Navigation overlay on.";
-    NavigationEditor::get().setQueryPath(scene->id, {});
+    NavigationEditor::get().clearQueryDraw(scene->id);
     if (args.contains("path") && args["path"].is_object()) {
         Vector3 from, to;
         if (!parsePoint(args["path"], "from", from, error) || !parsePoint(args["path"], "to", to, error)) {
@@ -789,7 +789,7 @@ void visualizeNavigationTool(const CallPtr& call) {
         }
         NavigationSystem* system = NavigationEditor::systemOf(*scene);
         const nav::NavPath path = system->calculatePath(from, to);
-        NavigationEditor::get().setQueryPath(scene->id, path.corners);
+        NavigationEditor::get().setQueryDraw(scene->id, NavQueryDraw{path, from, to, true, true});
         data["path"] = {{"status", nav::pathStatusName(path.status)}, {"corners", path.corners.size()}, {"length", rounded(path.length)}};
         text += std::string(" Path ") + nav::pathStatusName(path.status) + ", " + std::to_string(rounded(path.length)) + " long (drawn magenta).";
     }

@@ -26,6 +26,14 @@ namespace jasperengine::editor {
 
     class Project;
     struct SceneProject;
+    class NavigationOverlay;
+
+    // What the overlay draws for a query: its path (corners, status, gap) and its ends
+    struct NavQueryDraw {
+        nav::NavPath path;
+        Vector3 from, to;
+        bool hasFrom = false, hasTo = false;
+    };
 
     class NavigationEditor {
     public:
@@ -106,13 +114,14 @@ namespace jasperengine::editor {
         // the grid cell under a ray (false: it misses the grid's plane)
         static bool cellUnderRay(Scene* scene, Entity grid, const Ray& ray, nav::GridCell& cell);
 
-        // ---- the overlay's query path (visualize_navigation path), world points
-        void setQueryPath(uint32_t sceneId, std::vector<Vector3> points) { queryPaths[sceneId] = std::move(points); }
-        const std::vector<Vector3>& getQueryPath(uint32_t sceneId) const {
-            static const std::vector<Vector3> none;
-            auto it = queryPaths.find(sceneId);
-            return it != queryPaths.end() ? it->second : none;
-        }
+        // ---- the overlay's query (the Path Tester, visualize_navigation path; S42 R25): start
+        // green, end red, a Complete path magenta, a Partial one orange with a red gap to the end
+        void setQueryDraw(uint32_t sceneId, NavQueryDraw draw);
+        void clearQueryDraw(uint32_t sceneId);
+        // null: nothing to draw in the scene
+        const NavQueryDraw* getQueryDraw(uint32_t sceneId) const;
+        // the scene's AI Navigation overlay (getTileLabels); null before its Scene view drew it
+        NavigationOverlay* overlayOf(uint32_t sceneId);
 
         // The export preflight and the CLI check (spec R42): every surface of the loaded scenes
         // that is not baked, cannot be read or is out of date, as findings (tool "navigation")
@@ -125,8 +134,16 @@ namespace jasperengine::editor {
         static std::vector<Finding> checkSurfaces(Project* project, size_t* surfaces = nullptr);
 
         // Stale bake (spec R32, R42): tiles whose inputs differ from the baked ones, -1 when
-        // not collected; cached per scene revision
+        // not collected (inputReport's count)
         int dirtyTiles(Project* project, uint32_t sceneId, Entity surface);
+        // The surface's inputs collected against its navmesh (S54 R15, R24, R29): the dirty tiles
+        // and their coordinates, the tile grid and voxel size of the Inspector's estimate.
+        // Collected at most once a second (it reads the whole scene); null while it bakes or in
+        // play. keepInput: with the collected input itself and its sources (the slope overlay,
+        // the Path Tester's probe); an input nobody asked for in 2 s is let go (update()).
+        const NavigationSystem::InputReport* inputReport(SceneProject& sceneProject, Entity surface, bool keepInput = false);
+        // inputReport's input (keepInput), null when it cannot be collected
+        std::shared_ptr<const nav::NavBakeInput> keptInput(SceneProject& sceneProject, Entity surface);
 
     private:
         struct Pending {
@@ -137,16 +154,19 @@ namespace jasperengine::editor {
         };
         std::vector<Pending> pending;
 
-        struct DirtyCache {
+        struct InputCache {
             uint32_t sceneId = 0;
+            // a scene reloaded under the same id is another scene
+            const Scene* scene = nullptr;
             Entity surface = NULL_ENTITY;
-            uint64_t revision = 0;
             double checkedAt = 0.0;
-            int dirty = -1;
+            // the last time someone asked for the input itself
+            double inputAskedAt = 0.0;
+            NavigationSystem::InputReport report;
         };
-        std::vector<DirtyCache> dirtyCache;
+        std::vector<InputCache> inputCache;
 
-        std::map<uint32_t, std::vector<Vector3>> queryPaths;
+        std::map<uint32_t, NavQueryDraw> queryDraws;
         struct LinkDrag {
             bool active = false;
             uint32_t sceneId = 0;

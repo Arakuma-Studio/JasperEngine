@@ -640,6 +640,26 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 
 ## Deviations
 
+- S54 P3: AC13's `test_path_tester_flow` drives the Scene view with the harness's real input
+  (`tools/mcp/ui_input.py`, xdotool in its Xvfb), not `send_input` (that tool sends input to the
+  running game only). The panel's answer is read through UIProbe names (`pathTester.status.<status>`,
+  `.reason.<name>`, `.length.<dm>`, `.locate.<on_mesh|near_mesh|not_found>`, `.why.<code>`):
+  `find_ui_item` only sees labelled widgets, and the panel's lines are text.
+- S54 P3: Closest Edge and Locate need one point: any click (Shift or not) sets it. While a Locate
+  handle is dragged the location follows every frame, the walkability probe (up to 3 tile
+  rebuilds) runs on the click and when the drag ends.
+- S54 P3: "More tools ▸ Path Tester": the toolbar shows a Path Tester toggle (route icon) when its
+  items fit and a "Path Tester" item in its "..." (More Scene view tools) menu when they do not,
+  both only in scenes with a NavMesh Surface or a Nav Grid.
+- S54 P3: AC14's goldens set Color By and Show Steep Slopes through the Gizmos menu with real
+  input: `visualize_navigation`'s `show.islands/slope/tile_colors/tile_labels` are P2's and land
+  after P3.
+- S54 P3: Color By Islands greys from the start of the scene's query draw, the Path Tester's or
+  `visualize_navigation`'s `path.from`, when it lies on the surface.
+- S54 P3: the Inspector's summary lines are `get_inspector_layout` rows of kind Label (paths
+  `estimate`, `estimateVoxels`, `estimateTiles`, `estimateLimit`, `estimateError`, `lastBake`,
+  `lastBakeWarnings`, `walkable`; the label is the text drawn). A collection that fails shows its
+  error and code instead of the estimate.
 - S54 P1: island labels are one flat `int32_t` array with a per-tile-slot offset table
   (`NavIslandLabels::tileBase`) instead of a vector per tile slot (D2): a vector header per slot
   alone would cost 0.6 B per polygon of `bench_nav_city` and break R21's 4 B per polygon.
@@ -704,3 +724,19 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
   docs' "Why navigation fails". P2 switches the CLI and the export to `collectProjectFindings` /
   `logNavigationPreflight`; P3 sets `NavBakeError::SaveFailed` where the editor writes the asset
   (`NavigationEditor::finish`).
+- S54 P3 (branch `nav/s42-p3`): the interfaces (`nav: S54 P3 interfaces`, 030976793:
+  `NavOverlaySettings::colorBy/showSteepSlopes/showTileLabels`, `NavTileLabel` and
+  `getTileLabels`, `NavQueryDraw` with `setQueryDraw/clearQueryDraw/getQueryDraw` replacing
+  `setQueryPath`, `overlayOf`, `SceneWindow::frameBounds`), then R24-R29: `NavPathTester` (four
+  modes, handles, Copy Query, Locate's probe popup; toolbar toggle, More menu item, the AI
+  Navigation section's Start/Stop, `navigation.pathTester`), the overlay's Color By / Show Steep
+  Slopes / Show Tile Labels / dirty outlines, `NavigationEditor::inputReport` / `keptInput` (the
+  per-surface collection cache: dirty coordinates, the estimate's grid, the input while asked
+  for), the Navigation window's Last Bake / Walkable / Islands and Problems, the Inspector's
+  estimate and bake summary, `SaveFailed` / `NavMeshFailed` set where the editor writes the
+  asset. `NavigationEditor::checkSurfaces` stays until P2 switches the CLI and the export to
+  `collectProjectFindings`; P2 then removes it. Files of other packages touched minimally:
+  `editor/mcp/tools/NavigationTools.cpp` (two `setQueryPath` calls become the query draw),
+  `editor/render/SceneRender.h` (`getNavigationOverlay`), `editor/AppCommands.cpp` (the
+  `navigation.pathTester` binding), `editor/tests/navigation/NavigationEditorTest.cpp` (the
+  overlay settings test moved out).
