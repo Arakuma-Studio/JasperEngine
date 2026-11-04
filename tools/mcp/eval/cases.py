@@ -846,6 +846,8 @@ CASES = [
     },
     {
         "id": "bad_sound_too_quiet_no_measure",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
         "kind": "bad",
         "what_happened": "Sound-layer sessions: agents cannot hear, guessed a clip's level from a user's words and rewrote the "
                          "bytes or set a voice volume, never measuring it or using the clip's own import settings.",
@@ -854,6 +856,9 @@ CASES = [
         "prompt": "assets/sfx/jump.wav is too quiet and it clicks at its start. Fix that clip; every sound source that plays "
                   "it should get the fix.",
         "mocks": [
+            {"tool": "get_asset_info", "result": ok(
+                "assets/sfx/jump.wav: audio, 0.18 s, -31.2 LUFS-M; analyze_audio has its notes.",
+                {"path": "assets/sfx/jump.wav", "type": "audio", "data": {"audio": {"duration_s": 0.18, "momentary_max": -31.2}}})},
             {"tool": "analyze_audio", "result": ok(
                 "1. assets/sfx/jump.wav: -31.2 LUFS-M, TP -14.0 dBTP, transient (jump); starts at -6.0 dB re its peak",
                 {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "kind": "transient", "type": "jump",
@@ -873,7 +878,64 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_sound_layered_family",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "S36 M8: the layered presets are chosen by name and character; an agent asked for a wooden hit should "
+                         "use impact with family wood rather than a thump recipe tuned by hand.",
+        "text_at_issue": "generate_sound's description and family input",
+        "source": "S36 M8 (sound-layer phase 7)",
+        "prompt": "I need a placeholder sound for a crate being hit, something wooden, at assets/sfx/crate_hit.wav.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/crate_hit.wav: 0.19 s, -18.0 LUFS-M, TP -4.1 dBTP, transient (impact) [seed 5, gain +3.20 dB]",
+                {"files": [{"path": "assets/sfx/crate_hit.wav", "preset": "impact", "family": "wood", "seed": 5}], "type": "impact", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "impact", "family": "wood"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+    },
+    {
+        "id": "guard_sound_slice_takes",
+        "files": {"assets/sfx/footsteps_all.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "guard",
+        "what_happened": "S36 M9: a file holding several takes should become a shuffle Sound Event through edit_sound_event slice, "
+                         "not one AudioSource playing the whole file or clips cut by hand.",
+        "text_at_issue": "edit_sound_event's description and slice input",
+        "source": "S36 M9 (sound-layer phase 7)",
+        "prompt": "assets/sfx/footsteps_all.wav has about ten footstep takes one after another. Set up assets/sfx/footsteps.soundevent so each play picks a different take.",
+        "mocks": [
+            {"tool": "edit_sound_event", "result": ok(
+                "Created assets/sfx/footsteps.soundevent: shuffle, 10 clip(s). One undo step. No problems.",
+                {"event": "assets/sfx/footsteps.soundevent", "problems": [], "slices": [{"n": 1, "path": "assets/sfx/footsteps_01.wav"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sound_event", "args": {"slice": {"source": "assets/sfx/footsteps_all.wav"}}}],
+                   "must_not_call": ["write_file", "run_shell"]},
+    },
+    {
+        "id": "guard_sound_fit_like",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/door_licensed.ogg": "OggS\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "guard",
+        "what_happened": "S36 M10: asked for a placeholder like an existing clip, an agent should fit one with like instead of "
+                         "picking a preset by eye or copying the file, which keeps its licence problem.",
+        "text_at_issue": "generate_sound's description and like input",
+        "source": "S36 M10 (sound-layer phase 7)",
+        "prompt": "Make me a placeholder at assets/sfx/door_new.wav that sounds like assets/sfx/door_licensed.ogg, but which we can ship without its licence worries for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/door_new.wav: 0.41 s, -18.0 LUFS-M, TP -3.0 dBTP, transient (impact) [seed 1, gain +1.40 dB]\n"
+                "fit to assets/sfx/door_licensed.ogg: distance 1.42 (similar; defaults 3.10) after 64 renders",
+                {"files": [{"path": "assets/sfx/door_new.wav", "preset": "impact", "family": "wood", "seed": 1}], "type": "impact", "licence": "generated", "image": None,
+                 "fit": {"distance": 1.42, "grade": "similar", "renders": 64}})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"like": "assets/sfx/door_licensed.ogg"}}],
+                   "must_not_call": ["write_file", "import_files", "copy_asset"]},
+    },
+    {
         "id": "guard_placeholder_sound",
+        "groups_enabled": ["audio"],
         "kind": "guard",
         "what_happened": "Sound-layer sessions: with no audio file at hand, an agent should make a placeholder instead of "
                          "writing bytes by hand or searching the web.",
@@ -892,6 +954,7 @@ CASES = [
     },
     {
         "id": "guard_builtin_sound_search",
+        "groups_enabled": ["audio"],
         "kind": "guard",
         "what_happened": "An agent asked for a real recorded sound looked for one on the web, though 967 CC0 clips ship with the editor.",
         "text_at_issue": "search_sounds' description and its import hint",
@@ -910,6 +973,9 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "search_sounds"}, {"tool": "import_files", "args": {"sources": "*", "to_dir": "re:assets/sfx"}}],
                    "must_not_call": ["generate_sound"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_import_reports_a_leftover",
         "kind": "guard",
         "what_happened": "A crashed older editor left a staging folder without an owner marker beside the import. It may hold the "

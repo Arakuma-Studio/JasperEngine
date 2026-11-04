@@ -12,15 +12,29 @@
 #include "mcp/McpSchema.h"
 
 #include "Project.h"
+#include "audio/AudioAnalysis.h"
+#include "audio/AudioImages.h"
+#include "audio/AudioProvenance.h"
 #include "audio/SoundEventDocument.h"
+#include "audio/SoundEventIO.h"
 #include "audio/SoundEventRender.h"
 #include "audio/SoundSearch.h"
+#include "audio/SoundSlicer.h"
+#include "audio/SoundTypes.h"
+#include "command/type/SetAssetMetaCmd.h"
+#include "mcp/McpRefs.h"
+#include "util/Sha256.h"
 #include "util/AssetDatabase.h"
 #include "util/FileUtils.h"
 #include "util/Util.h"
 
+#include "yaml-cpp/yaml.h"
+
+#include <algorithm>
 #include <atomic>
+#include <fstream>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -87,7 +101,8 @@ std::string guidOf(Project* project, const fs::path& file) {
 }
 
 // after the write: what decoding finds, and the renditions, off the main thread
-void finishEdit(const CallPtr& call, Project* project, const fs::path& file, const std::string& rel, bool created, const SoundEventDef& def, bool written, int audition) {
+void finishEdit(const CallPtr& call, Project* project, const fs::path& file, const std::string& rel, bool created, const SoundEventDef& def, bool written, int audition,
+                const Json& slices = nullptr, const std::vector<std::string>& sliceProblems = {}) {
     // a new file has no entry until the database next looks, and the reply names its GUID
     if (created) project->refreshAssetDatabase(true);
     const std::string guid = guidOf(project, file);
@@ -98,6 +113,7 @@ void finishEdit(const CallPtr& call, Project* project, const fs::path& file, con
     job->seed = (uint64_t)project->getAudioSettings().seed;
     job->audition = audition;
     std::vector<std::string> problems = SoundEventDocument::problems(project, def);
+    problems.insert(problems.end(), sliceProblems.begin(), sliceProblems.end());
     std::thread([job]() {
         int analysed = 0;
         job->problems = SoundSearch::eventProblems(job->def, job->input.clipFiles, job->input.cacheDirectory, analysed);
@@ -107,7 +123,7 @@ void finishEdit(const CallPtr& call, Project* project, const fs::path& file, con
         job->finished = true;
     }).detach();
     call->waitUntil([job]() { return job->finished.load(); }, SOUND_EVENT_WORK_TIMEOUT_MS,
-                    [call, job, problems, rel, created, written, guid](bool timedOut) mutable {
+                    [call, job, problems, rel, created, written, guid, slices](bool timedOut) mutable {
         if (timedOut) {
             call->fail("Decoding the event's clips took over " + std::to_string(SOUND_EVENT_WORK_TIMEOUT_MS / 1000) + " s. The edit is written; call again without audition.");
             return;
@@ -116,6 +132,7 @@ void finishEdit(const CallPtr& call, Project* project, const fs::path& file, con
         if (!job->error.empty()) problems.push_back(job->error);
         Json data = {{"event", rel}, {"guid", guid}, {"values", SoundEventDocument::describe(job->def)},
                      {"problems", problems}, {"renditions", renditionsJson(*job)}, {"seed", job->seed}};
+        if (!slices.is_null()) data["slices"] = slices;
         std::string text = std::string(!written ? "Unchanged " : created ? "Created " : "Changed ") + rel + ": " +
                            SoundEventDef::modeName(job->def.mode) + ", " + std::to_string(job->def.clips.size()) + " clip(s).";
         if (written) text += " One undo step.";
@@ -134,6 +151,169 @@ void writeEdit(const CallPtr& call, Project* project, const fs::path& file, cons
     }
     if (changed) w4::syncFiles(call->ctx(), {file}, false);
     finishEdit(call, project, file, rel, created, def, changed, audition);
+}
+
+// -- slice: a multi-take file into a new shuffle event (spec S36 M9)
+
+struct SliceJob {
+    fs::path source;
+    std::string sourceRel;
+    fs::path eventFile;
+    SoundSlicer::Options options;
+    std::vector<int> pick;
+    bool preview = false;
+    // the results
+    std::string error;
+    std::string kind;
+    std::string type;
+    bool licensed = false;
+    AudioAnalysis::Signal signal;
+    std::vector<SoundSlicer::Slice> slices;
+    std::vector<SoundSlicer::File> files;
+    std::string png;
+    Json imageInfo = nullptr;
+    std::atomic<bool> finished{false};
+};
+
+void runSlice(SliceJob& job) {
+    std::ifstream in(job.source, std::ios::binary);
+    if (!in) {
+        job.error = job.sourceRel + " cannot be read.";
+        return;
+    }
+    std::stringstream read;
+    read << in.rdbuf();
+    const std::string bytes = read.str();
+    Json cached;
+    if (!AudioAnalysis::analyzeBytes(bytes, cached, job.error, &job.signal)) return;
+    const AudioAnalysis::Labels labels = AudioAnalysis::labelsOf(job.source);
+    std::string kindSource;
+    AudioAnalysis::resolveKind(cached.value("measured_kind", std::string(SoundTypes::TRANSIENT)), labels, job.kind, kindSource);
+    job.type = labels.type;
+    job.licensed = labels.licence.is_object() && labels.licence.value("id", std::string()) != AudioProvenance::LICENCE_UNKNOWN &&
+                   !labels.licence.value("id", std::string()).empty();
+    if (!SoundSlicer::detect(job.signal, job.options, job.kind, job.slices, job.error)) return;
+    if (job.preview) {
+        std::vector<AudioImages::SliceMark> marks;
+        for (const SoundSlicer::Slice& slice : job.slices) {
+            marks.push_back({(double)slice.startFrame / job.signal.sampleRate, (double)slice.endFrame / job.signal.sampleRate, slice.fadeInMs > 0.0, slice.fadeOutMs > 0.0});
+        }
+        const AudioImages::Image image = AudioImages::renderSlices(job.signal, job.sourceRel, marks, 768);
+        if (AudioImages::encodePng(image, job.png)) job.imageInfo = {{"mode", "slices"}, {"width", image.width}, {"height", image.height}};
+        return;
+    }
+    Sha256 sha;
+    sha.update(bytes);
+    SoundSlicer::plan(job.source, job.sourceRel, Sha256::toHex(sha.finish()), job.signal, job.slices, job.pick, job.eventFile, job.files, job.error);
+}
+
+void sliceSoundEvent(const CallPtr& call, Project* project, const fs::path& file, const std::string& rel, const Json& slice) {
+    static const std::vector<std::string> keys = {"source", "gate_db", "min_gap_ms", "pre_ms", "max_ms", "pick", "variation", "preview"};
+    for (auto it = slice.begin(); it != slice.end(); ++it) {
+        if (std::find(keys.begin(), keys.end(), it.key()) == keys.end()) {
+            call->fail("slice." + it.key() + " is unknown: source, gate_db, min_gap_ms, pre_ms, max_ms, pick, variation, preview.");
+            return;
+        }
+    }
+    auto job = std::make_shared<SliceJob>();
+    job->sourceRel = slice.value("source", std::string());
+    std::string error;
+    if (job->sourceRel.empty() || !McpRefs::resolveProjectPath(project, job->sourceRel, job->source, error, true)) {
+        call->fail("slice.source is a project audio file" + (error.empty() ? std::string(".") : ": " + error) + " Import a built-in clip with import_files first.");
+        return;
+    }
+    if (!project->isInsideAssetsPath(job->source)) {
+        call->fail("slice.source " + job->sourceRel + " is outside the assets folder.");
+        return;
+    }
+    for (const char* key : {"gate_db", "min_gap_ms", "pre_ms", "max_ms"}) {
+        if (slice.contains(key) && !slice[key].is_number()) {
+            call->fail(std::string("slice.") + key + " is a number.");
+            return;
+        }
+    }
+    job->options.gateDb = slice.value("gate_db", job->options.gateDb);
+    job->options.minGapMs = slice.value("min_gap_ms", job->options.minGapMs);
+    job->options.preMs = slice.value("pre_ms", job->options.preMs);
+    job->options.maxMs = slice.value("max_ms", job->options.maxMs);
+    if (slice.contains("pick")) {
+        if (!slice["pick"].is_array()) {
+            call->fail("slice.pick is a list of slice numbers, from 1.");
+            return;
+        }
+        for (const Json& n : slice["pick"]) {
+            if (!n.is_number_integer()) {
+                call->fail("slice.pick is a list of slice numbers, from 1.");
+                return;
+            }
+            job->pick.push_back(n.get<int>());
+        }
+    }
+    job->preview = slice.value("preview", false);
+    job->eventFile = file;
+    const bool variation = slice.value("variation", false);
+    std::thread([job]() {
+        runSlice(*job);
+        job->finished = true;
+    }).detach();
+    call->waitUntil([job]() { return job->finished.load(); }, SOUND_EVENT_WORK_TIMEOUT_MS, [call, job, project, file, rel, variation](bool timedOut) {
+        if (timedOut) {
+            call->fail("Slicing took over " + std::to_string(SOUND_EVENT_WORK_TIMEOUT_MS / 1000) + " s. Nothing was written.");
+            return;
+        }
+        if (!job->error.empty()) {
+            call->fail("slice: " + job->error + " Nothing was written.");
+            return;
+        }
+        const unsigned int rate = job->signal.sampleRate;
+        if (job->preview) {
+            Json slices = Json::array();
+            for (size_t i = 0; i < job->slices.size(); i++) slices.push_back(SoundSlicer::toJson(job->slices[i], (int)i + 1, rate));
+            Json data = {{"slices", slices}, {"source", {{"path", job->sourceRel}, {"duration_s", AudioAnalysis::rounded(job->signal.seconds(), 0.001)}, {"licensed", job->licensed}}}, {"image", job->imageInfo}};
+            ToolResult result = ToolResult::success(std::to_string(job->slices.size()) + " slice(s) of " + job->sourceRel + ". Nothing was written: call again without preview, with pick to choose.", data);
+            if (!job->png.empty()) result.images.push_back({job->png, "image/png"});
+            call->reply(std::move(result));
+            return;
+        }
+        SoundEventDef def;
+        def.mode = SoundEventMode::Shuffle;
+        def.avoidRepeat = true;
+        def.type = job->type;
+        if (variation) {
+            def.pitchMin = -1.0f;
+            def.pitchMax = 1.0f;
+            def.volumeMin = -1.5f;
+            def.volumeMax = 0.0f;
+        }
+        std::vector<WriteFilesCmd::Item> items;
+        Json slices = Json::array();
+        for (size_t i = 0; i < job->files.size(); i++) {
+            const SoundSlicer::File& made = job->files[i];
+            items.push_back({made.wav, made.wavBytes});
+            items.push_back({SetAssetMetaCmd::metaPathOf(made.wav), made.metaText});
+            SoundEventClip clip;
+            clip.clip = AssetRef(project->normalizeToAssetsRelative(made.wav).generic_string(), Guid::parse(YAML::Load(made.metaText)["guid"].as<std::string>("")));
+            def.clips.push_back(std::move(clip));
+            const int n = job->pick.empty() ? (int)i + 1 : job->pick[i];
+            Json item = SoundSlicer::toJson(job->slices[(size_t)n - 1], n, rate);
+            item["path"] = w4::projectRelative(project, made.wav);
+            slices.push_back(std::move(item));
+        }
+        const std::vector<std::string> invalid = SoundEventIO::validate(def);
+        if (!invalid.empty()) {
+            call->fail("slice: " + invalid.front() + ". Nothing was written.");
+            return;
+        }
+        items.push_back({file, SoundEventIO::write(def)});
+        std::string writeError;
+        if (!w4::writeFilesUndoable(call->ctx(), std::move(items), writeError, {}, "Slice into Sound Event")) {
+            call->fail(writeError);
+            return;
+        }
+        std::vector<std::string> problems;
+        if (!job->licensed) problems.push_back("source has no licence: the slices' licence is unknown");
+        finishEdit(call, project, file, rel, true, def, true, 0, slices, problems);
+    });
 }
 
 void editSoundEventTool(const CallPtr& call) {
@@ -155,6 +335,18 @@ void editSoundEventTool(const CallPtr& call) {
     }
     if (!create && !exists) {
         call->fail(rel + " does not exist: pass create: true to make it.");
+        return;
+    }
+    if (args.contains("slice")) {
+        if (!create) {
+            call->fail("slice makes a new event: pass create: true with a new path.");
+            return;
+        }
+        if (!args["slice"].is_object()) {
+            call->fail("slice is an object: {source, gate_db, min_gap_ms, pre_ms, max_ms, pick, variation, preview}.");
+            return;
+        }
+        sliceSoundEvent(call, project, file, rel, args["slice"]);
         return;
     }
     SoundEventDef def;
@@ -219,7 +411,8 @@ void registerSoundEventTools(McpRegistry& registry) {
         "Create or change a .soundevent (Unity's Audio Random Container): clips played by weight, shuffle, sequence or as "
         "layers, with pitch, volume and delay ranges, a cooldown and an instance limit. Scenes refer to it by GUID, so "
         "move_asset it freely; an AudioSource plays it through set_properties `event`. One undo step; during Play the next "
-        "plays use it. Result: problems, and with audition the picks and loudness of the next plays. Keys: jasper://docs/sound.";
+        "plays use it. Result: problems, and with audition the picks and loudness of the next plays. Keys: jasper://docs/sound. "
+        "slice: cut a multi-take file into clips.";
     tool.inputSchema = object({
         {"path", assetPath("A .soundevent in the assets folder.")},
         {"create", withDefault(boolean("Make the file; refused when it exists."), false)},
@@ -227,7 +420,8 @@ void registerSoundEventTools(McpRegistry& registry) {
                              "avoid_repeat, pitch_semitones, volume_db, delay_ms ([min, max]), output_group (a name), max_instances, "
                              "steal, cooldown_ms, priority, loop, spatial, type. null resets a key.")},
         {"match_levels", withDefault(boolean("After values: every clip's volume_db so all play equally loud, none past -1 dBTP. Not for layer."), false)},
-        {"audition", withDefault(integer("Offline renditions of the next plays.", 0, SoundEventRender::MAX_COUNT), 0)}
+        {"audition", withDefault(integer("Offline renditions of the next plays.", 0, SoundEventRender::MAX_COUNT), 0)},
+        {"slice", anyObject("With create: {source, gate_db, min_gap_ms, pre_ms, max_ms, pick, variation, preview}.")}
     }, {"path"});
     tool.annotations.idempotent = true;
     tool.activity = ToolActivity::Edit;

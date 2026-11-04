@@ -169,7 +169,7 @@ bool isEditorOwnedFile(Project* project, const fs::path& absolute, std::string& 
 }
 
 bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items, std::string& error,
-                        std::vector<fs::path> alsoSync) {
+                        std::vector<fs::path> alsoSync, const std::string& stepName) {
     for (const WriteFilesCmd::Item& item : items) {
         std::error_code ec;
         if (fs::is_directory(item.path, ec)) {
@@ -184,6 +184,7 @@ bool writeFilesUndoable(McpContext& ctx, std::vector<WriteFilesCmd::Item> items,
         syncFiles(*context, files, false);
     });
     cmd->setNoMerge();
+    if (!stepName.empty()) cmd->setName(stepName);
     auto failure = std::make_shared<std::string>();
     cmd->reportFailureTo(failure);
     // addCommand runs execute() and deletes the command when it fails (execute then changed nothing)

@@ -86,7 +86,8 @@ def main(argv: list) -> int:
     text = "\n".join(parts)
     out.parent.mkdir(parents=True, exist_ok=True)
     temporary = out.with_name(out.name + ".tmp")
-    temporary.write_text(text, encoding="utf-8", newline="\n")
+    with open(temporary, "w", encoding="utf-8", newline="\n") as stream:
+        stream.write(text)
     temporary.replace(out)
     print(f"embed_essentials: {len(entries)} clips, {sum(c['bytes'] for c in clips)} bytes -> {out}")
     return 0

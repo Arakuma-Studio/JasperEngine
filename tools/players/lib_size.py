@@ -107,6 +107,7 @@ ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
     (r"htmlui|HtmlUI|UIDocument|Rml", "engine: HTML UI"),
     (r"fluid", "engine: fluid simulation"),
     (r"nav(igation|mesh|grid|agent)?|crowd", "engine: navigation"),
+    (r"AudioClipSource|AudioImportTable|ClipImportSettings|clipFadeWeight", "engine: sound layer"),
     (r"spline", "engine: splines"),
     (r"lattice", "engine: lattice deformer"),
     (r"particle", "engine: particles"),

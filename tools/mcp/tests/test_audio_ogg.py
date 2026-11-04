@@ -9,7 +9,7 @@
   granules are refused.
 
 Oracles: the Ogg page headers parsed here (the last page's granule is the length, as the Vorbis spec
-and ffmpeg take it), ffmpeg's own decoder (which trims the Kenney files to their granule), Python
+and ffmpeg take it), ffmpeg's own decoder, cut to the granule (ffmpeg 4.4 does not trim a stream's end, spec Deviations), Python
 sample peaks and pyloudnorm's momentary max of that decode.
 """
 

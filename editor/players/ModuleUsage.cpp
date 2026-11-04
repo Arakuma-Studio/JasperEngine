@@ -272,7 +272,7 @@ namespace {
             }
             if (scan.debugOverlayInBuilds) add("htmlui", "Project Settings", "Debug > Overlay (an HTML UI document)");
             if (scan.navigationInBuilds) add("navigation", "Project Settings", "Navigation > Include in Builds");
-            if (scan.audioImports) add("soundlayer", "Audio clips", "import settings (the export writes je-audio-imports.json)");
+            if (scan.audioImportTable) add("soundlayer", "Audio clips", "import settings that change what a clip plays");
             for (const std::string& source : scan.cppScripts)
                 for (const std::string& module : detectedModules()) add(module, source, "C++ script (it can use any engine code)");
             for (const ModuleContent& content : scan.contents) scanContent(content);
@@ -556,10 +556,8 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
     ModuleScan scan;
     scan.stripEngineCode = project->isStripEngineCode();
     scan.navigationInBuilds = project->getNavigationSettings().includeInBuilds;
-    {
-        std::vector<std::string> problems;
-        scan.audioImports = !AudioImportRegistry::collect(*project, problems).empty();
-    }
+    std::vector<std::string> importProblems;
+    scan.audioImportTable = !AudioImportRegistry::collect(*project, importProblems).empty();
     const DebugSettings::Mode overlay = project->getDebugSettings().overlay;
     scan.debugOverlayInBuilds = overlay == DebugSettings::Mode::AllBuilds ||
                                 (overlay == DebugSettings::Mode::Development && project->isDevelopmentBuild());

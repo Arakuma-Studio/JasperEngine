@@ -1293,7 +1293,10 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundLibrary.cpp
     ${EDITOR_DIR}/audio/SoundLibraryCli.cpp
     ${EDITOR_DIR}/audio/SoundManifest.cpp
+    ${EDITOR_DIR}/audio/SoundDesign.cpp
+    ${EDITOR_DIR}/audio/SoundFit.cpp
     ${EDITOR_DIR}/audio/SoundSearch.cpp
+    ${EDITOR_DIR}/audio/SoundSlicer.cpp
     ${EDITOR_DIR}/audio/SoundSynth.cpp
     ${JASPERENGINE_ROOT}/libs/soloud/src/audiosource/sfxr/soloud_sfxr.cpp
     ${EDITOR_DIR}/audio/AudioImages.cpp

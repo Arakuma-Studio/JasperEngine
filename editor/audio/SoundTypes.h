@@ -333,6 +333,40 @@ namespace jasperengine::editor::SoundTypes {
         return kind == TRANSIENT || kind == GLITCH ? CLICK_SAFE_FADE_OUT_SHORT_MS : CLICK_SAFE_FADE_OUT_MS;
     }
 
+    // -- design: what a seed varies in a layered preset (SoundDesign): the force an octave share and a
+    // level, the timing a share and a delay, the pitch in semitones
+    inline constexpr double DESIGN_FORCE_OCTAVES = 0.25;
+    inline constexpr double DESIGN_FORCE_DB = 1.5;
+    inline constexpr double DESIGN_TIMING = 0.08;
+    inline constexpr double DESIGN_DELAY_MS = 1.0;
+    inline constexpr double DESIGN_PITCH_ST = 0.5;
+
+    // -- variety: two variations this far apart (SoundSearch::distance) read as two different sounds,
+    // not takes of one
+    inline constexpr double VARIETY_WIDE_DISTANCE = 0.5;
+    // two seeds of one preset under this are the same take: a preset's seeds lie much closer than an
+    // event's clips do (NEAR_DUPLICATE_DISTANCE), 0.003 to 0.218 at their nearest over its 16 families
+    inline constexpr double VARIETY_NEAR_DUPLICATE_DISTANCE = 0.020;
+
+    // -- fit: generate_sound like (SoundFit). The scales make each term of the distance 1 at one clearly
+    // audible step: 3 dB of balance, 6 dB of envelope, 19% of length, twice or half the attack.
+    inline constexpr int FIT_RENDERS = 64;
+    inline constexpr int FIT_STAGE_A_RENDERS = 16;
+    inline constexpr double FIT_MAX_SECONDS = 8.0;
+    inline constexpr double FIT_BAND_FLOOR_DB = -40.0;
+    inline constexpr double FIT_BAND_SCALE_DB = 3.0;
+    inline constexpr double FIT_ENVELOPE_SCALE_DB = 6.0;
+    inline constexpr double FIT_LENGTH_SCALE = 4.0;
+    inline constexpr double FIT_CLOSE = 1.0;
+    inline constexpr double FIT_SIMILAR = 2.0;
+
+    // -- slice: edit_sound_event slice (SoundSlicer)
+    inline constexpr double SLICE_TAIL_DB = -50.0;
+    inline constexpr double SLICE_MIN_MS = 30.0;
+    inline constexpr int SLICE_MAX = 64;
+    inline constexpr double SLICE_MAX_SOURCE_SECONDS = 120.0;
+    inline constexpr uint64_t SLICE_MAX_BYTES = 32ull * 1024 * 1024;
+
     // -- Sound Event problems
 
     // two clips of an event whose search_sounds similar_to distance is under this sound like one

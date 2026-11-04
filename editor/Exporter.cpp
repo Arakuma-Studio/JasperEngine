@@ -1315,6 +1315,7 @@ std::vector<std::string> editor::Exporter::compiledModules() const {
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
     if (project->getNavigationSettings().includeInBuilds) modules.push_back("navigation");
+    modules.push_back("soundlayer");
     // of them, those the project reaches (a source export: all of them)
     if (moduleUsageKnown)
         modules.erase(std::remove_if(modules.begin(), modules.end(), [this](const std::string& m) { return !moduleUsage.needs(m); }), modules.end());
@@ -3664,6 +3665,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_PHYSICS_2D", "physics2d");
         moduleSwitch("JASPERENGINE_PHYSICS_3D", "physics3d");
         moduleSwitch("JASPERENGINE_NAVIGATION", "navigation");
+        moduleSwitch("JASPERENGINE_SOUND_LAYER", "soundlayer");
         moduleSwitch("JASPERENGINE_RUNTIME_SHADERS", "runtimeshaders");
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");

@@ -152,6 +152,31 @@ namespace jasperengine::editor {
         static int sheetTileWidth(int items, int width);
         static int sheetHeight(int items, int width);
 
+        // A fit (generate_sound like): title 16, the bands as paired bars 120 (the reference grey, the
+        // result in the accent colour, -60..0 dB), both envelopes from the head 96, time axis 16: 248 px
+        struct CompareInput {
+            std::string title;
+            std::vector<double> referenceBandsDb;
+            std::vector<double> resultBandsDb;
+            // centre of each band, Hz
+            std::vector<double> bandHz;
+            // dB re the loudest frame, one point per frameSeconds
+            std::vector<double> referenceEnvelopeDb;
+            std::vector<double> resultEnvelopeDb;
+            double frameSeconds = 0.005;
+        };
+        static Image renderCompare(const CompareInput& input, int width);
+
+        // A file's slices (edit_sound_event slice preview): title 16, the waveform 128, the slices 24
+        // (each shaded and numbered S<n>, a red tick on an edge that needs a fade), time axis 16: 184 px
+        struct SliceMark {
+            double startSeconds = 0.0;
+            double endSeconds = 0.0;
+            bool fadeIn = false;
+            bool fadeOut = false;
+        };
+        static Image renderSlices(const AudioAnalysis::Signal& signal, const std::string& title, const std::vector<SliceMark>& slices, int width);
+
         // PNG (stbi_write_png_to_func), base64; false when encoding fails
         static bool encodePng(const Image& image, std::string& base64);
 

@@ -40,6 +40,9 @@ option(JASPERENGINE_ECS_BENCH "Build jasperengine-ecs-bench" OFF)
 # OFF leaves the library out and the navmesh API fails (grids keep working). The export sets it
 # from Project Settings > Navigation.
 option(JASPERENGINE_NAVIGATION "Compile Recast/Detour navigation meshes and crowds" ON)
+# The sound layer (S34 module soundlayer, specs S36 and S37): Sound Events, triggers, free voices and
+# what a clip's import settings do at run time. A Compile build leaves it out when its project does
+# not use it.
 option(JASPERENGINE_SOUND_LAYER "Compile Sound Events, triggers, free voices and clip import settings" ON)
 # The HTML/CSS UI (UI Document components, their Lua API, anime, widgets, effects, the on-screen
 # controls: RmlUi, lexbor, ThorVG, msdfgen, the Lucide icons) and its <video> (dav1d, Opus,
@@ -1330,14 +1333,9 @@ set(JASPERENGINE_SRCS
     core/input/InputVirtualControls.cpp
     core/audio/AudioEffects.cpp
     core/audio/AudioFileCheck.cpp
-    core/audio/AudioImport.cpp
-    core/audio/ClipSource.cpp
     core/audio/AudioMeter.cpp
     core/audio/AudioMixer.cpp
     core/audio/AudioMixerIO.cpp
-    core/audio/SoundEvent.cpp
-    core/audio/SoundEventIO.cpp
-    core/audio/SoundEventLibrary.cpp
     core/audio/SoloudEngineFile.cpp
     core/audio/TruePeak.cpp
     core/input/InputControlNames.cpp
@@ -1597,9 +1595,7 @@ set(JASPERENGINE_SRCS
     core/object/Sprite.cpp
     core/object/Terrain.cpp
     core/object/Tilemap.cpp
-    core/object/sound/Audio.cpp
     core/object/sound/AudioSource.cpp
-    core/object/sound/SoundHandle.cpp
     core/object/environment/Fog.cpp
     core/object/environment/LocalVolumetricFog.cpp
     core/object/environment/ReflectionProbe.cpp
@@ -1913,6 +1909,12 @@ list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTI
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
+
+# The sound layer (S34 module soundlayer): its own list, which S36, S37, S39 and S40 add to
+include(core/audio/SoundLayerSources.cmake)
+if(JASPERENGINE_SOUND_LAYER)
+    list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SOUND_LAYER_SRCS})
+endif()
 # Splines (S18): the core, geometry and layouts (no contraction, bit-identical output)
 include(core/spline/SplineSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_SPLINE_SRCS})

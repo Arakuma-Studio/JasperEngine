@@ -608,7 +608,6 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
     const unsigned int channels = signal.channels;
     const double rate = (double)signal.sampleRate;
     const double duration = signal.seconds();
-
     // -- AudioMeter: loudness, peaks, levels, bands
     AudioMeterOptions options;
     options.mode = mode;
@@ -654,7 +653,6 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
     for (float v : meter.shortTermCurve()) shortTerm.push_back(rounded(v, 0.01));
     item["momentary"] = momentary;
     item["short_term"] = shortTerm;
-
     // -- spectral features and flux on the mono downmix
     const std::vector<float> mono = signal.mono();
     const size_t frames = spectralFrames(n);
@@ -723,7 +721,6 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
         item["flatness"] = nullptr;
         item["rolloff_hz"] = nullptr;
     }
-
     // -- onsets: flux peaks, refined in the time domain
     std::vector<double> onsets;
     const double maxFlux = frames > 0 ? *std::max_element(flux.begin(), flux.end()) : 0.0;
@@ -766,7 +763,6 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
         }
         onsets = kept;
     }
-
     // -- per sample: peak position, envelope (no per-sample arrays: a long signal costs only its
     // own samples and the mono downmix)
     size_t peakAt = 0;
@@ -836,7 +832,6 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
         {"envelope_peak_ms", envelopePeakMs}
     };
     item["silence"] = silence(signal);
-
     // -- stereo: Pearson correlation of channels 0 and 1
     Json correlation = nullptr;
     if (channels >= 2 && n > 1) {
@@ -859,10 +854,8 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
         if (saa > 0.0 && sbb > 0.0) correlation = rounded(sab / std::sqrt(saa * sbb), 0.001);
     }
     item["stereo"] = {{"correlation", correlation}};
-
     // -- loop seam: the wrap against the signal's own steps next to it
     item["loop"] = loopSeam(signal, 0, n);
-
     // -- pitch: normalised autocorrelation of the loudest 100 ms
     {
         Json hz = nullptr;
@@ -1738,6 +1731,10 @@ Json AudioAnalysis::Region::toJson(size_t fileFrames) const {
 bool AudioAnalysis::Region::sameAs(const Region& other, size_t fileFrames) const {
     return startFrame == other.startFrame && end(fileFrames) == other.end(fileFrames) && fadeIn(fileFrames) == other.fadeIn(fileFrames) &&
            fadeOut(fileFrames) == other.fadeOut(fileFrames) && gainDb == other.gainDb;
+}
+
+bool AudioAnalysis::edgeSampleClicks(double v, double d, double peak) {
+    return edgeClicks(v, d, peak);
 }
 
 double AudioAnalysis::cutLevelDb(const Signal& file, uint32_t frame) {

@@ -27,6 +27,8 @@
 #include "audio/SoundEssentials.h"
 #include "audio/SoundLibrary.h"
 #include "audio/SoundSearch.h"
+#include "audio/SoundDesign.h"
+#include "audio/SoundFit.h"
 #include "audio/SoundSynth.h"
 #include "audio/SoundTypes.h"
 #include "command/CommandHistory.h"
@@ -63,6 +65,12 @@ const int DEFAULT_WIDTH = 768;
 const double WAIT_SECONDS = 60.0;
 
 const std::vector<std::string> IMAGE_MODES = {"none", "waveform", "spectrogram", "both", "sheet"};
+
+std::string formatted(const char* pattern, double first, double second) {
+    char text[64];
+    std::snprintf(text, sizeof(text), pattern, first, second);
+    return text;
+}
 
 std::string formatted(const char* pattern, double value) {
     char text[64];
@@ -472,6 +480,8 @@ struct GenerateWork {
         AudioAnalysis::Signal signal;
     };
     const SoundSynth::Preset* preset = nullptr;
+    // a layered preset's, resolved to its default
+    std::string family;
     Json params = Json::object();
     double targetLufs = 0.0;
     fs::path cacheDirectory;
@@ -480,6 +490,15 @@ struct GenerateWork {
     std::string error;
     std::string png;
     Json imageInfo = nullptr;
+    // like: the reference
+    std::string like;
+    fs::path likeFile;
+    std::optional<BuiltinSoundImport::Clip> likeBuiltin;
+    Json reference = nullptr;
+    SoundFit::Result fit;
+    SoundFit::Measure referenceMeasure;
+    Json referenceItem;
+    std::string fitWords;
 };
 
 // the sections of a generated clip's .meta
@@ -491,9 +510,12 @@ YAML::Node generatedSections(const GenerateWork& work, const GenerateWork::File&
     settings.type = work.preset->type;
     AudioProvenance provenance;
     std::string ignored;
-    provenance.apply({{"licence", AudioProvenance::LICENCE_GENERATED}, {"source", "generate_sound"},
-                      {"generator", {{"preset", work.preset->name}, {"seed", file.seed}, {"params", work.params},
-                                     {"loudness_lufs", work.targetLufs}, {"version", SoundSynth::VERSION}}}}, ignored);
+    Json generator = {{"preset", work.preset->name}, {"seed", file.seed}, {"params", work.params},
+                      {"loudness_lufs", work.targetLufs}, {"version", SoundSynth::VERSION}};
+    if (!work.family.empty()) generator["family"] = work.family;
+    Json keys = {{"licence", AudioProvenance::LICENCE_GENERATED}, {"source", "generate_sound"}, {"generator", generator}};
+    if (!work.reference.is_null()) keys["reference"] = work.reference;
+    provenance.apply(keys, ignored);
     YAML::Node importSection(YAML::NodeType::Map);
     importSection["audioImporter"] = settings.toYaml();
     YAML::Node sections(YAML::NodeType::Map);
@@ -502,7 +524,141 @@ YAML::Node generatedSections(const GenerateWork& work, const GenerateWork::File&
     return sections;
 }
 
+const char* const FIT_IMAGE = "compare";
+
+// The reference of a like call as it plays, measured, then the fit. False + work.error: nothing is written.
+bool fitToReference(GenerateWork& work, uint32_t seed) {
+    Json cached;
+    AudioAnalysis::Signal played;
+    std::string error;
+    AudioAnalysis::Labels labels;
+    if (work.likeBuiltin) {
+        labels = work.likeBuiltin->labels();
+        if (!BuiltinSoundImport::analyze(*work.likeBuiltin, work.cacheDirectory, cached, error, &played)) {
+            work.error = "like: " + work.like + ": " + error;
+            return false;
+        }
+    } else {
+        labels = AudioAnalysis::labelsOf(work.likeFile);
+        if (!AudioAnalysis::analyzeClip(work.likeFile, work.cacheDirectory, cached, error, &played)) {
+            work.error = "like: " + work.like + ": " + error;
+            return false;
+        }
+    }
+    work.referenceItem = AudioAnalysis::fileItem(cached, 1, work.like, labels, false, SoundTypes::HEAD_SILENCE_MAX_MS);
+    const std::string kind = work.referenceItem.value("kind", std::string());
+    if (kind == SoundTypes::LOOP || kind == SoundTypes::SPEECH) {
+        work.error = "like: " + work.like + " is a " + kind + ": a fit shapes a one-shot sound.";
+        return false;
+    }
+    if (played.seconds() > SoundTypes::FIT_MAX_SECONDS) {
+        work.error = "like: " + work.like + formatted(" plays %.1f s, longer than the ", played.seconds()) +
+                     formatted("%.0f s a fit takes: trim it with set_audio_import_settings or use a shorter take.", SoundTypes::FIT_MAX_SECONDS);
+        return false;
+    }
+    work.referenceMeasure = SoundFit::measure(played);
+    if (work.referenceMeasure.silent) {
+        work.error = "like: " + work.like + " is silent: nothing to fit to.";
+        return false;
+    }
+    if (!SoundFit::fit(work.referenceMeasure, *work.preset, work.family, seed, work.fit, error)) {
+        work.error = "like: " + error;
+        return false;
+    }
+    work.params = work.fit.params;
+    work.family = work.fit.family;
+    // only numbers reach the result, whatever the reference's licence: the reference is recorded
+    Json reference = {{"path", work.like}};
+    const Json licence = labels.licence;
+    if (licence.is_object()) {
+        reference["licence"] = licence.value("id", std::string(AudioProvenance::LICENCE_UNKNOWN));
+        for (const char* key : {"author", "url"}) {
+            if (licence.contains(key) && licence[key].is_string()) reference[key] = licence[key];
+        }
+    } else {
+        reference["licence"] = AudioProvenance::LICENCE_UNKNOWN;
+    }
+    work.reference = std::move(reference);
+    return true;
+}
+
+// The variety of a call's variations: their distances, the nearest pair and the verdict
+Json varietyOf(const GenerateWork& work) {
+    const size_t n = work.files.size();
+    std::vector<SoundSearch::Entry> entries;
+    double quietest = INFINITY, loudest = -INFINITY;
+    for (const GenerateWork::File& f : work.files) {
+        entries.push_back(SoundSearch::entryOfAnalysis(f.cached));
+        const double lufs = entries.back().lufs;
+        if (std::isfinite(lufs)) {
+            quietest = std::min(quietest, lufs);
+            loudest = std::max(loudest, lufs);
+        }
+    }
+    int pairs = 0;
+    double smallest = INFINITY, largest = 0.0, sum = 0.0;
+    size_t nearA = 0, nearB = 0;
+    Json duplicates = Json::array();
+    std::string duplicateWords;
+    for (size_t a = 0; a < n; a++) {
+        for (size_t b = a + 1; b < n; b++) {
+            double d = SoundSearch::distance(entries[a], entries[b]);
+            if (!std::isfinite(d)) d = 0.0;
+            pairs++;
+            sum += d;
+            largest = std::max(largest, d);
+            if (d < smallest) {
+                smallest = d;
+                nearA = a;
+                nearB = b;
+            }
+            if (d < SoundTypes::VARIETY_NEAR_DUPLICATE_DISTANCE || work.files[a].output.wav == work.files[b].output.wav) {
+                duplicates.push_back({a + 1, b + 1, AudioAnalysis::rounded(d, 0.001)});
+                if (duplicateWords.empty()) {
+                    duplicateWords = "variations " + std::to_string(a + 1) + " and " + std::to_string(b + 1) + " are near-duplicates" + formatted(" (%.3f)", d);
+                }
+            }
+        }
+    }
+    const double spread = std::isfinite(quietest) ? loudest - quietest : 0.0;
+    const std::string verdict = !duplicates.empty() ? "near_duplicates" : largest > SoundTypes::VARIETY_WIDE_DISTANCE ? "wide" : "one_palette";
+    std::string name = work.preset->name;
+    if (!work.family.empty()) name += "/" + work.family;
+    std::string text = std::to_string(n) + " variations of " + name + ": ";
+    if (verdict == "near_duplicates") text += duplicateWords + ": use other seeds or a different force";
+    else if (verdict == "wide") text += "wide, they read as different sounds rather than takes of one" + formatted(" (distances %.3f-%.3f)", smallest, largest);
+    else text += "one palette" + formatted(" (distances %.3f-%.3f, none under ", smallest, largest) + formatted("%.3f)", SoundTypes::VARIETY_NEAR_DUPLICATE_DISTANCE);
+    text += formatted("; loudness spread %.1f LU.", spread);
+    return {{"pairs", pairs},
+            {"distance", {{"min", AudioAnalysis::rounded(smallest, 0.001)}, {"mean", AudioAnalysis::rounded(sum / std::max(pairs, 1), 0.001)}, {"max", AudioAnalysis::rounded(largest, 0.001)}}},
+            {"nearest", {nearA + 1, nearB + 1, AudioAnalysis::rounded(smallest, 0.001)}},
+            {"near_duplicates", duplicates},
+            {"loudness_spread_lu", AudioAnalysis::rounded(spread, 0.1)},
+            {"verdict", verdict},
+            {"text", text}};
+}
+
+// The compare image of one fitted file: the reference against the file as written
+void renderFitImage(GenerateWork& work, const AudioAnalysis::Signal& written) {
+    const SoundFit::Measure result = SoundFit::measure(written);
+    AudioImages::CompareInput input;
+    input.title = "like " + work.like;
+    const auto referenceBands = SoundFit::bandLevels(work.referenceMeasure, result.rate);
+    const auto resultBands = SoundFit::bandLevels(result, work.referenceMeasure.rate);
+    input.referenceBandsDb.assign(referenceBands.begin(), referenceBands.end());
+    input.resultBandsDb.assign(resultBands.begin(), resultBands.end());
+    for (int b = 0; b < SoundFit::BANDS; b++) input.bandHz.push_back(SoundFit::bandCentre(b));
+    input.referenceEnvelopeDb = work.referenceMeasure.envelopeDb;
+    input.resultEnvelopeDb = result.envelopeDb;
+    const AudioImages::Image image = AudioImages::renderCompare(input, 768);
+    if (AudioImages::encodePng(image, work.png)) {
+        work.imageInfo = {{"mode", "compare"}, {"width", image.width}, {"height", image.height}};
+    }
+}
+
 void runGenerate(GenerateWork& work) {
+    if (!work.like.empty() && !fitToReference(work, work.files.front().seed)) return;
+    const bool fitImage = work.image == FIT_IMAGE;
     const bool wantImage = work.image != "none";
     AnalyzeWork pictures;
     pictures.image = work.image;
@@ -510,7 +666,7 @@ void runGenerate(GenerateWork& work) {
     for (size_t i = 0; i < work.files.size(); i++) {
         GenerateWork::File& file = work.files[i];
         std::string error;
-        if (!SoundSynth::generate(*work.preset, file.seed, work.params, work.targetLufs, file.output, error)) {
+        if (!SoundSynth::generate(*work.preset, file.seed, work.params, work.targetLufs, file.output, error, work.family)) {
             work.error = file.rel + ": " + error;
             return;
         }
@@ -524,11 +680,19 @@ void runGenerate(GenerateWork& work) {
             work.error = file.rel + ": " + error;
             return;
         }
-        if (wantImage) {
+        if (i == 0 && !work.like.empty()) {
+            const std::string differences = AudioCompare::differences(work.referenceItem, AudioAnalysis::fileItem(file.cached, 1, file.rel, AudioAnalysis::Labels(), false, SoundTypes::HEAD_SILENCE_MAX_MS), "the result").value("text", std::string());
+            const std::string bands = SoundFit::bandWords(work.referenceMeasure, work.fit.measure);
+            work.fitWords = bands + (bands.empty() || differences.empty() ? "" : "; ") + differences;
+        }
+        if (fitImage) {
+            renderFitImage(work, file.signal);
+        } else if (wantImage) {
             pictures.items.push_back(AudioAnalysis::fileItem(file.cached, (int)i + 1, file.rel, AudioAnalysis::Labels(), true, SoundTypes::HEAD_SILENCE_MAX_MS));
             signals.push_back(std::move(file.signal));
         }
     }
+    if (fitImage) return;
     renderImage(pictures, signals);
     work.png = std::move(pictures.png);
     work.imageInfo = std::move(pictures.imageInfo);
@@ -579,7 +743,16 @@ void generateSoundTool(const CallPtr& call) {
         std::random_device device;
         seed = (uint32_t)(device() % (uint32_t)(MAX_SEED - MAX_VARIATIONS + 2));
     }
+    const std::string like = args.value("like", std::string());
+    // a fit is reproducible by default
+    if (!like.empty() && !args.contains("seed")) seed = 1;
     if (presetName == SoundSynth::RANDOM) {
+        if (!like.empty()) {
+            std::string refusal;
+            SoundFit::canFit(nullptr, refusal);
+            call->fail(refusal);
+            return;
+        }
         if (args.contains("params") && !args["params"].is_null() && !(args["params"].is_object() && args["params"].empty())) {
             call->fail("params need a named preset: random picks one by the seed (the reply names it).");
             return;
@@ -592,6 +765,46 @@ void generateSoundTool(const CallPtr& call) {
     if (!work->preset) {
         call->fail("preset \"" + presetName + "\" is not one of the list.");
         return;
+    }
+    const std::vector<std::string> families = SoundDesign::families(work->preset->name);
+    const std::string family = args.value("family", std::string());
+    if (!family.empty()) {
+        if (families.empty()) {
+            call->fail("family applies to ui_click, swoosh, impact and pop.");
+            return;
+        }
+        if (std::find(families.begin(), families.end(), family) == families.end()) {
+            std::string list;
+            for (const std::string& name : families) list += (list.empty() ? "" : ", ") + name;
+            call->fail("unknown family '" + family + "' for " + work->preset->name + ": " + list + ".");
+            return;
+        }
+    }
+    // with like, an unset family is the fit's to choose
+    work->family = family.empty() && !families.empty() && like.empty() ? families.front() : family;
+    if (!like.empty()) {
+        if (!SoundFit::canFit(work->preset, error)) {
+            call->fail(error);
+            return;
+        }
+        if (args.contains("params") && !args["params"].is_null() && !(args["params"].is_object() && args["params"].empty())) {
+            call->fail("like searches the params: leave params out, then adjust the result with params and its seed.");
+            return;
+        }
+        work->like = like;
+        if (SoundEssentials::isReference(like) || SoundLibrary::isReference(like)) {
+            std::vector<BuiltinSoundImport::Clip> clip;
+            if (!BuiltinSoundImport::resolve({like}, clip, error) || clip.empty()) {
+                call->fail("like: " + error);
+                return;
+            }
+            work->likeBuiltin = clip[0];
+        } else {
+            if (!McpRefs::resolveProjectPath(project, like, work->likeFile, error)) {
+                call->fail("like: " + error);
+                return;
+            }
+        }
     }
     if (args.contains("params") && !args["params"].is_null()) {
         if (!SoundSynth::checkParams(*work->preset, args["params"], error)) {
@@ -615,6 +828,8 @@ void generateSoundTool(const CallPtr& call) {
         call->fail("image " + work->image + " shows one sound; use sheet (the default for variations) or one variation.");
         return;
     }
+    // one fitted file, unless the call asks for another: the reference against it
+    if (!like.empty() && variations == 1 && !args.contains("image")) work->image = FIT_IMAGE;
     const bool overwrite = args.value("overwrite", false);
     for (int i = 1; i <= variations; i++) {
         GenerateWork::File target;
@@ -666,16 +881,36 @@ void generateSoundTool(const CallPtr& call) {
         for (size_t i = 0; i < work->files.size(); i++) {
             const GenerateWork::File& f = work->files[i];
             Json item = AudioAnalysis::fileItem(f.cached, (int)i + 1, f.rel, AudioAnalysis::labelsOf(f.wav), false, SoundTypes::HEAD_SILENCE_MAX_MS);
-            files.push_back({{"path", f.rel}, {"preset", preset.name}, {"seed", f.seed},
-                             {"gain_db", AudioAnalysis::rounded(f.output.gainDb, 0.01)},
-                             {"limited_by", f.output.limitedByTruePeak ? Json("true_peak") : Json(nullptr)},
-                             {"analysis", item}});
+            Json entry = {{"path", f.rel}, {"preset", preset.name}, {"seed", f.seed},
+                          {"gain_db", AudioAnalysis::rounded(f.output.gainDb, 0.01)},
+                          {"limited_by", f.output.limitedByTruePeak ? Json("true_peak") : Json(nullptr)},
+                          {"analysis", item}};
+            if (!work->family.empty()) entry["family"] = work->family;
+            files.push_back(std::move(entry));
             lines += "\n" + itemLine(item) + " [seed " + std::to_string(f.seed) + formatted(", gain %+.2f dB", f.output.gainDb) +
                      (f.output.limitedByTruePeak ? ", held at -1 dBTP: under the target" : "") + "]";
         }
         std::string text = "Generated " + std::to_string(work->files.size()) + " placeholder sound(s), preset " + preset.name + " (type " + preset.type +
                            formatted(", target %.1f LUFS-M", work->targetLufs) + "); licence generated, one undo step:" + lines;
         Json data = {{"files", files}, {"type", preset.type}, {"licence", AudioProvenance::LICENCE_GENERATED}, {"image", work->imageInfo}};
+        if (work->files.size() > 1) {
+            data["variety"] = varietyOf(*work);
+            text += "\n" + data["variety"]["text"].get<std::string>();
+        }
+        if (!work->like.empty()) {
+            const SoundFit::Quality& q = work->fit.quality;
+            Json fit = {{"reference", work->reference}, {"preset", preset.name}, {"params", work->fit.params},
+                        {"distance", AudioAnalysis::rounded(q.distance, 0.001)}, {"grade", q.grade},
+                        {"band_db", AudioAnalysis::rounded(q.bandDb, 0.01)}, {"envelope_db", AudioAnalysis::rounded(q.envelopeDb, 0.01)},
+                        {"onset_ms", AudioAnalysis::rounded(q.onsetMs, 0.1)}, {"length_ratio", AudioAnalysis::rounded(q.lengthRatio, 0.001)},
+                        {"start_distance", AudioAnalysis::rounded(work->fit.startDistance, 0.001)}, {"renders", work->fit.renders},
+                        {"words", work->fitWords}, {"method", "bounded search of the preset's params; no audio of the reference is copied"}};
+            if (!work->family.empty()) fit["family"] = work->family;
+            data["fit"] = fit;
+            text += "\nfit to " + work->like + formatted(": distance %.2f (", q.distance) + q.grade + formatted("; defaults %.2f) after ", work->fit.startDistance) +
+                    std::to_string(work->fit.renders) + " renders: " + formatted("band balance %.1f dB, ", q.bandDb) + formatted("envelope %.1f dB; ", q.envelopeDb) + work->fitWords +
+                    ". The distance says how alike the measurements are, not that it sounds right: listen, or measure it in context.";
+        }
         if (work->image != "none" && work->imageInfo.is_null()) text += "\n(the image could not be encoded)";
         ToolResult result = ToolResult::success(text, data);
         if (!work->png.empty()) result.images.push_back({work->png, "image/png"});
@@ -1192,18 +1427,19 @@ void registerSoundTools(McpRegistry& registry) {
         generate.name = "generate_sound";
         generate.title = "Generate Sound";
         generate.description =
-            "Makes a placeholder sound: no licence, no download. A mono WAV from an sfxr preset or a DSP recipe, brought to its "
-            "type's loudness target without passing -1 dBTP, with a .meta (type, licence generated, preset, seed). The same "
-            "preset, seed and params give the same bytes; variations write <stem>_1..n.wav. Builds warn about placeholders: "
-            "replace them with search_sounds' clips before release. One undo step.";
+            "Makes a placeholder sound, no licence needed: a mono WAV from a preset at its type's loudness, with a .meta. The same "
+            "request gives the same bytes; variations report their variety. like fits a recipe or layered preset to a clip. Builds "
+            "warn about placeholders: replace them with search_sounds' clips. One undo step.";
         generate.inputSchema = object({
-            {"path", assetPath("Project-relative .wav inside the assets folder, e.g. \"assets/sounds/jump.wav\".")},
-            {"preset", stringEnum("random picks one by the seed.", SoundSynth::names())},
+            {"path", assetPath("A .wav in the assets folder.")},
+            {"preset", stringEnum("", SoundSynth::names())},
             {"seed", integer("Omitted: random, reported.", 0, MAX_SEED)},
             {"variations", withDefault(integer("", 1, MAX_VARIATIONS), 1)},
-            {"params", anyObject("Overrides, range-checked (jasper://docs/sound).")},
-            {"loudness_lufs", number("Target momentary max (default: the type's).", MIN_LOUDNESS, MAX_LOUDNESS)},
-            {"image", stringEnum("Default: both for one file, sheet for variations.", IMAGE_MODES)},
+            {"family", string("impact: wood, metal, stone, soft, heavy. Others: jasper://docs/sound.")},
+            {"like", string("Clip to fit: path, essentials: or library: id.")},
+            {"params", anyObject("Overrides (jasper://docs/sound).")},
+            {"loudness_lufs", number("Momentary max (default: the type's).", MIN_LOUDNESS, MAX_LOUDNESS)},
+            {"image", stringEnum("Default: both; like: compare; variations: sheet.", IMAGE_MODES)},
             {"overwrite", withDefault(boolean(""), false)}
         }, {"path", "preset"});
         generate.annotations.idempotent = false;

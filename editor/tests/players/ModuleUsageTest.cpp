@@ -86,6 +86,15 @@ TEST(ModuleUsage, AnEmptyProjectNeedsNothing) {
     EXPECT_EQ(modules(withLua("local v = Vector3(1, 2, 3)\nif Input.isKeyPressed(1) then Log.info(tostring(v:length())) end")), "");
 }
 
+TEST(ModuleUsage, TheSoundLayerFollowsTheImportTable) {
+    ModuleScan scan = empty();
+    EXPECT_EQ(modules(ModuleUsageDetector::analyze(scan)), "");
+    scan.audioImportTable = true;
+    const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
+    EXPECT_EQ(modules(usage), "soundlayer");
+    EXPECT_NE(usage.firstEvidence("soundlayer").find("import settings"), std::string::npos);
+}
+
 TEST(ModuleUsage, NavigationFollowsItsProjectSetting) {
     ModuleScan scan = empty();
     scan.navigationInBuilds = true;
@@ -457,14 +466,6 @@ TEST(ModuleUsageSoundLayer, EachFeatureOfASourceNeedsIt) {
         EXPECT_TRUE(usage.needs("soundlayer")) << evidence;
         EXPECT_NE(usage.firstEvidence("soundlayer").find(evidence), std::string::npos) << usage.firstEvidence("soundlayer");
     }
-}
-
-TEST(ModuleUsageSoundLayer, ImportSettingsNeedIt) {
-    ModuleScan scan;
-    scan.audioImports = true;
-    const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
-    EXPECT_TRUE(usage.needs("soundlayer"));
-    EXPECT_NE(usage.firstEvidence("soundlayer").find("je-audio-imports.json"), std::string::npos);
 }
 
 TEST(ModuleUsageSoundLayer, LuaNamesFromTheBindingsNeedIt) {
