@@ -17,7 +17,7 @@ from pathlib import Path
 
 from harness import Editor, skip
 import ui_input
-from test_meshes import grid_glb
+from model_fixture import grid_glb
 
 REPO = Path(__file__).resolve().parents[3]
 EDITOR = {"project": REPO / "tools" / "fixtures" / "textures", "xvfb": "harness"}

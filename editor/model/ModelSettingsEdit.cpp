@@ -8,8 +8,25 @@
 #include "command/type/SetAssetMetaCmd.h"
 #include "util/FileUtils.h"
 
+#include <filesystem>
+
 using namespace jasperengine;
 using namespace jasperengine::editor;
+
+namespace {
+
+    // a section as text in its canonical form; no section, a null and an all-default one are one
+    std::string canonicalSection(const YAML::Node& section){
+        if (!section || section.IsNull())
+            return std::string();
+        ModelImportSettings parsed;
+        std::string error;
+        if (!ModelImportSettings::parse(section, parsed, &error))
+            return YAML::Dump(section);
+        return parsed.isDefault() ? std::string() : YAML::Dump(parsed.serialize());
+    }
+
+}
 
 bool editor::editModelSection(const YAML::Node& stored, const ModelSettingsEdit& edit, YAML::Node& out, std::string& error){
     YAML::Node node = stored && stored.IsMap() ? YAML::Clone(stored) : YAML::Node(YAML::NodeType::Map);
@@ -52,12 +69,12 @@ bool editor::writeModelSections(Project& project, const std::vector<std::string>
     CommandHistory* history = project.getProjectCommandHistory();
     InteractiveEdit edit = history->beginInteractive(label);
     for (size_t i = 0; i < assetPaths.size() && i < sections.size(); i++){
-        const auto asset = project.normalizeToProjectRelative(project.getAssetsPath() / FileUtils::pathFromUtf8(assetPaths[i]));
-        Command* command = new SetAssetMetaCmd(&project, asset, ModelImportSettings::metaKey, sections[i]);
-        if (command->isNoOp()){
-            delete command;
+        const std::filesystem::path absolute = project.getAssetsPath() / FileUtils::pathFromUtf8(assetPaths[i]);
+        // what the sidecar holds already is no change and no undo step (a command only knows its
+        // old value once it has run)
+        if (canonicalSection(SetAssetMetaCmd::read(absolute, ModelImportSettings::metaKey)) == canonicalSection(sections[i]))
             continue;
-        }
+        Command* command = new SetAssetMetaCmd(&project, project.normalizeToProjectRelative(absolute), ModelImportSettings::metaKey, sections[i]);
         command->setNoMerge();
         if (!history->addCommand(command)){
             edit.cancel();

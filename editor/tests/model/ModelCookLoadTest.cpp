@@ -69,11 +69,6 @@ namespace {
         return ::testing::AssertionSuccess();
     }
 
-    std::vector<uint8_t> readBytes(const fs::path& file){
-        std::ifstream in(file, std::ios::binary);
-        return std::vector<uint8_t>((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    }
-
     // the documented bounds (docs/meshes.md) for the fixtures, which are about two units across
     SoupTolerance toleranceOf(MeshCompression compression){
         SoupTolerance tolerance;
@@ -113,40 +108,48 @@ namespace {
 
 }
 
-TEST(ModelCookLoad, CookedFixturesLoadAsTheirSourcesWithoutEditorDecoders){
-    // what each fixture's loader reads, and the cook of it at each compression
-    const char* const fixtures[] = {"source.glb", "meshopt_c.glb", "meshopt_cc.glb", "meshopt_khr.glb", "meshopt_noq.glb", "quantized.glb",
-                                    "gt_meshopt.glb", "meshopt_c.gltf", "instancing.glb", "texture_transform.glb", "msft_lod.glb", "basisu.glb",
-                                    "draco.glb", "draco_sequential.glb", "webp.glb"};
-    for (const char* name : fixtures){
-        const fs::path source = s41Fixture(name);
-        tinygltf::Model reference;
-        std::string error;
-        ASSERT_TRUE(MeshSystem::parseGLTFFile(source.generic_string(), reference, &error)) << name << ": " << error;
-        const std::vector<SoupTriangle> expected = triangleSoup(reference);
-        ASSERT_FALSE(expected.empty()) << name;
-        for (MeshCompression compression : {MeshCompression::Off, MeshCompression::Lossless, MeshCompression::Medium}){
-            for (ModelFamily family : {ModelFamily::Desktop, ModelFamily::Web}){
-                std::vector<uint8_t> glb;
-                ModelCookRecord record;
-                ASSERT_TRUE(cookFile(source, settingsOf(OptimizeMesh::Everything, compression), family, glb, record, error))
-                    << name << " " << meshCompressionName(compression) << ": " << error;
-                tinygltf::Model cooked;
-                GltfNormalizeResult result;
-                ASSERT_TRUE(loadAsGame(glb, source.parent_path(), cooked, result)) << name << " " << meshCompressionName(compression);
-                EXPECT_FALSE(result.needsEditorDecoders) << name << ": a game reads the cook without Draco or WebP";
-                EXPECT_FALSE(result.hasErrors()) << name << ": " << result.firstError();
-                for (const std::string& extension : cooked.extensionsUsed){
-                    EXPECT_NE(extension, "KHR_draco_mesh_compression") << name;
-                    EXPECT_NE(extension, "EXT_texture_webp") << name;
-                    EXPECT_NE(extension, "EXT_meshopt_compression") << name << ": the cook writes KHR_meshopt_compression";
-                }
-                EXPECT_EQ(compareSoups(expected, triangleSoup(cooked), toleranceOf(compression)), "")
-                    << name << " " << meshCompressionName(compression) << " " << modelFamilyName(family);
+// one test per fixture: what its loader reads, and the cook of it at each compression
+class ModelCookLoadFixtures : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(ModelCookLoadFixtures, LoadsAsItsSourceWithoutEditorDecoders){
+    const char* const name = GetParam();
+    const fs::path source = s41Fixture(name);
+    tinygltf::Model reference;
+    std::string error;
+    ASSERT_TRUE(MeshSystem::parseGLTFFile(source.generic_string(), reference, &error)) << name << ": " << error;
+    const std::vector<SoupTriangle> expected = triangleSoup(reference);
+    ASSERT_FALSE(expected.empty()) << name;
+    for (MeshCompression compression : {MeshCompression::Off, MeshCompression::Lossless, MeshCompression::Medium}){
+        for (ModelFamily family : {ModelFamily::Desktop, ModelFamily::Web}){
+            std::vector<uint8_t> glb;
+            ModelCookRecord record;
+            ASSERT_TRUE(cookFile(source, settingsOf(OptimizeMesh::Everything, compression), family, glb, record, error))
+                << name << " " << meshCompressionName(compression) << ": " << error;
+            tinygltf::Model cooked;
+            GltfNormalizeResult result;
+            ASSERT_TRUE(loadAsGame(glb, source.parent_path(), cooked, result)) << name << " " << meshCompressionName(compression);
+            EXPECT_FALSE(result.needsEditorDecoders) << name << ": a game reads the cook without Draco or WebP";
+            EXPECT_FALSE(result.hasErrors()) << name << ": " << result.firstError();
+            for (const std::string& extension : cooked.extensionsUsed){
+                EXPECT_NE(extension, "KHR_draco_mesh_compression") << name;
+                EXPECT_NE(extension, "EXT_texture_webp") << name;
+                EXPECT_NE(extension, "EXT_meshopt_compression") << name << ": the cook writes KHR_meshopt_compression";
             }
+            EXPECT_EQ(compareSoups(expected, triangleSoup(cooked), toleranceOf(compression)), "")
+                << name << " " << meshCompressionName(compression) << " " << modelFamilyName(family);
         }
     }
 }
+
+INSTANTIATE_TEST_SUITE_P(S53, ModelCookLoadFixtures,
+    ::testing::Values("source.glb", "meshopt_c.glb", "meshopt_cc.glb", "meshopt_khr.glb", "meshopt_noq.glb", "quantized.glb",
+                      "gt_meshopt.glb", "meshopt_c.gltf", "instancing.glb", "texture_transform.glb", "msft_lod.glb", "basisu.glb",
+                      "draco.glb", "draco_sequential.glb", "webp.glb"),
+    [](const ::testing::TestParamInfo<const char*>& info){
+        std::string name = info.param;
+        std::replace(name.begin(), name.end(), '.', '_');
+        return name;
+    });
 
 TEST(ModelCookLoad, DracoAndWebpAreTranscodedAndSaySo){
     std::string error;
