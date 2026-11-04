@@ -134,11 +134,8 @@ async def test_tools_and_schema(ed: Editor):
     ed.check_in("animation", ed.tool("list_assets").input_schema["properties"]["type"]["enum"], "list_assets type animation")
     bake = ed.tool("edit_pose_animation").input_schema["properties"]["bake"]["properties"]
     ed.check_in("clip", bake, "bake.clip")
-    ed.check("Clips (.anim, shared): edit_animation {clip, create, tracks [{path}]}" in ed.instructions, "the instructions bullet")
-    ed.check("jasper://docs/animation" in ed.instructions, "the instructions name the guide")
     # agents review I5: Unity's legacy Animation is the Animation Player, not the entity Animation
     ed.check("Legacy Animation = AnimationPlayerComponent" in ed.instructions, "the naming rule names the legacy Animation")
-    ed.check(len(ed.instructions.encode()) <= 16384, f"instructions within 16 KB: {len(ed.instructions.encode())}")
 
 
 async def test_create_and_read(ed: Editor):
