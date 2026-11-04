@@ -96,8 +96,8 @@ double AudioBiquad::process(double x){
 void AudioBiquad::settle(){
     // -600 dB, far under the meter's floor. Both at once: flushing one disturbs the other, which
     // keeps a limit cycle going at this level.
-    const double floor = 1e-30;
-    if (std::fabs(z1) < floor && std::fabs(z2) < floor) {
+    const double smallest = 1e-30;
+    if (std::fabs(z1) < smallest && std::fabs(z2) < smallest) {
         z1 = 0.0;
         z2 = 0.0;
     }
