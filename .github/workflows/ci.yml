@@ -1013,6 +1013,49 @@ jobs:
           name: test-results-prebuilt-android
           path: build/android-ac7/*.log
 
+  # S47: what a user pressing Build for Android gets, run for real: an APK and an App Bundle, the
+  # bundletool download from its real URL, the debug and release keys, a wrong password, then both
+  # installed on the emulator and their screens compared
+  packaging-android:
+    name: Android packaging (APK, bundle, signing, emulator)
+    needs: [players-android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/cache@v4
+        with:
+          path: build/.cache/ccache
+          key: ccache-prebuilt-android-${{ github.sha }}
+          restore-keys: ccache-prebuilt-android-
+      - name: Build the editor
+        run: SKIP_ENGINE=1 tools/build.sh linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: player-archives-android
+          path: build/player-archives
+      - name: Install the release gles3 runtime
+        run: |
+          zip=$(ls build/player-archives/jasperengine-player-android-universal-gles3-release-*.zip | grep -v -- -symbols.zip | head -n 1)
+          tools/build.sh exec linux build/linux/editor-install/bin/jasperengine-editor players install "$zip" --players-dir build/players
+      - name: Let the emulator use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Package, sign, install and run
+        run: tools/ci/android_packaging.sh release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-packaging-android
+          path: |
+            build/android-packaging/logs
+            build/android-packaging/emulator-*/*.png
+            build/android-packaging/emulator-*/*.txt
+
   players-windows:
     name: Player runtimes (Windows)
     if: >-
@@ -1131,6 +1174,41 @@ jobs:
           name: player-archives-apple
           path: build/players/archives/*.zip
           if-no-files-found: error
+
+  # S47: what a user pressing Build for iOS gets, run for real: the editor's Xcode project built with
+  # xcodebuild, installed and launched on a simulator, a device build as far as signing and the IPA
+  # path as far as it goes without an Apple developer account
+  packaging-ios:
+    name: iOS packaging (simulator, device, IPA)
+    needs: [macos, players-apple]
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: jasperengine_macos
+          path: build/editor
+      - uses: actions/download-artifact@v4
+        with:
+          name: player-archives-apple
+          path: build/player-archives
+      - name: Install the release iOS runtime
+        run: |
+          chmod +x build/editor/jasperengine-editor
+          zip=$(ls build/player-archives/jasperengine-player-ios-arm64-metal-release-*.zip | grep -v -- -symbols.zip | head -n 1)
+          build/editor/jasperengine-editor players install "$zip" --players-dir build/players
+      - name: Build, install, launch and sign
+        run: JASPER_EDITOR="$PWD/build/editor/jasperengine-editor" tools/ci/ios_packaging.sh release
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-packaging-ios
+          path: |
+            build/ios-packaging/logs
+            build/ios-packaging/screen.png
 
   # The release's archive hashes, compiled into its editors (D5); an empty table elsewhere
   player-hashes:
