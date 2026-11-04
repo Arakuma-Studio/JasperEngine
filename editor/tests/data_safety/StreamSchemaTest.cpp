@@ -6,6 +6,8 @@
 // reads: tools/check_stream_keys.py.
 
 #include "support/EditorTestSupport.h"
+#include "component/ScriptComponent.h"
+#include "component/FogComponent.h"
 
 #include "Stream.h"
 #include "StreamPreserved.h"

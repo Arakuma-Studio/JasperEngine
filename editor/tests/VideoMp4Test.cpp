@@ -9,6 +9,7 @@
 // as coloured quadrants: base-4 digits of N in the top-left, top-right and bottom-left quarters.
 
 #include "ScriptDataTestSupport.h"
+#include "Stream.h"
 #include "util/TestHttpServer.h"
 
 #include "media/GrowingFileReader.h"
