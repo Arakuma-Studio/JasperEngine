@@ -131,3 +131,4 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S71 | Cheap Mesh update flags (measure first) | follow-ups |
 | S72 | Build hygiene: header fan-out, sanitizer builds install | follow-ups |
 | S73 | Code cleanups: generated AssetRefSchema, frozen parity data, dead code, shader counter | follow-ups |
+| S74 | Clip quality: clip memory and stats, Animator property-write race, tiered slerp, key reduction with a measured bound, `check_animation` and `optimize_animation`, model clip settings, IK accuracy and debug (ideas after ozz-animation, nothing vendored) | follow-ups |
