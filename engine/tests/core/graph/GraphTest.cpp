@@ -456,3 +456,40 @@ TEST_F(GraphTest, AKindThatDidNotOptInKeepsItsWarnings) {
     EXPECT_TRUE(found.count("param-range"));
     EXPECT_TRUE(found.count("unknown-node-type"));
 }
+
+// ---- BF23 F7: a supplied id does not skip the type's defaults, an undo stays exact
+
+TEST_F(GraphTest, AddNodeWithAnIdGetsDefaultsAndDynamicPorts) {
+    Graph graph = loadOk(SAMPLE);
+    apply(graph, opFromJson({{"op", "addNode"}, {"node", {{"id", "bricks"}, {"type", "const"}}}}));
+    const Node* constant = graph.findNode("bricks");
+    ASSERT_NE(constant, nullptr);
+    EXPECT_EQ(constant->params.value("value", 0.0), 1.0);
+
+    apply(graph, opFromJson({{"op", "addNode"}, {"node", {{"id", "total"}, {"type", "sum"}}}}));
+    const Node* sum = graph.findNode("total");
+    ASSERT_NE(sum, nullptr);
+    EXPECT_EQ(sum->params.value("count", 0), 2);
+    ASSERT_TRUE(sum->dynamicPorts.has_value());
+    EXPECT_EQ(sum->dynamicPorts->size(), 3u);
+
+    // given values win, and the ports follow them
+    apply(graph, opFromJson({{"op", "addNode"}, {"node", {{"id", "wide"}, {"type", "sum"}, {"params", {{"count", 4}}}}}}));
+    EXPECT_EQ(graph.findNode("wide")->params.value("count", 0), 4);
+    EXPECT_EQ(graph.findNode("wide")->dynamicPorts->size(), 5u);
+}
+
+TEST_F(GraphTest, UndoOfARemoveRestoresTheNodeExactly) {
+    Graph graph = loadOk(SAMPLE);
+    // a node without its default: a removal and its undo must not bring the default back
+    apply(graph, opFromJson({{"op", "setParam"}, {"node", "n1"}, {"name", "value"}, {"value", nullptr}}));
+    const std::string before = save(graph);
+    const GraphOp inverse = apply(graph, opFromJson({{"op", "removeNode"}, {"id", "n1"}}));
+    ASSERT_EQ(inverse.op, "addNode");
+    EXPECT_EQ(inverse.args.value("restore", false), true) << "the undo path says so explicitly";
+    const GraphOp redo = apply(graph, opFromJson(toJson(inverse)));
+    EXPECT_EQ(save(graph), before);
+    apply(graph, redo);
+    apply(graph, inverse);
+    EXPECT_EQ(save(graph), before);
+}

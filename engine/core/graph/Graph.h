@@ -178,7 +178,8 @@ namespace jasperengine::graph {
 
     // One edit: {op, args}. apply() returns its inverse, so apply(apply(g, op)) restores g byte
     // for byte. Ops and their args:
-    //   addNode {node (id optional: allocated), edges?}      removeNode {id} (and its edges)
+    //   addNode {node (id optional: allocated), edges?, restore?: true (an undo's: the node as given,
+    //                 no defaults)}                          removeNode {id} (and its edges)
     //   moveNodes {ids, delta: [x, y]} or {positions: {id: [x, y]}}
     //   setParam {node, name, value} (value null removes)    connect {from: {node, port}, to: {...}, id?}
     //   disconnect {id} or {from, to}                         addVariable {variable}

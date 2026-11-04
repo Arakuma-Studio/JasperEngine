@@ -721,22 +721,20 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         for (const Edge& edge : edges) {
             if (edge.id.empty() || graph.findEdge(edge.id)) throw GraphOpError("addNode: edge ids must be new");
         }
-        const bool fresh = node.id.empty();
-        if (fresh) {
+        if (node.id.empty()) {
             node.id = graph.allocateId("n");
         } else if (graph.findNode(node.id)) {
             throw GraphOpError("addNode: a node '" + node.id + "' exists");
         }
         // a new node gets its type's parameter defaults, and stores its ports when the type's
-        // ports are dynamic (a node put back by an undo is restored exactly as it was)
-        if (fresh && !node.dynamicPorts) {
+        // ports are dynamic; a node put back by an undo (restore) comes back exactly as it was
+        if (!op.args.value("restore", false)) {
             if (auto kind = GraphRegistry::get().kind(graph.kind)) {
-                const NodeTypeDesc* type = GraphRegistry::nodeType(*kind, node.type);
-                if (type && type->dynamicPorts) node.dynamicPorts = type->dynamicPorts(node.params);
-                if (type) {
+                if (const NodeTypeDesc* type = GraphRegistry::nodeType(*kind, node.type)) {
                     for (const ParamDesc& param : type->params) {
                         if (!node.params.contains(param.name) && !param.defaultValue.is_null()) node.params[param.name] = param.defaultValue;
                     }
+                    if (type->dynamicPorts && !node.dynamicPorts) node.dynamicPorts = type->dynamicPorts(node.params);
                 }
             }
         }
@@ -762,7 +760,7 @@ GraphOp jasperengine::graph::apply(Graph& graph, const GraphOp& op){
         const std::string id = requireString(op, "id");
         auto it = lowerById(graph.nodes, id);
         if (it == graph.nodes.end() || it->id != id) throw GraphOpError("removeNode: no node '" + id + "'");
-        Json inverse = {{"node", toJson(*it)}};
+        Json inverse = {{"node", toJson(*it)}, {"restore", true}};
         Json edges = Json::array();
         graph.edges.erase(std::remove_if(graph.edges.begin(), graph.edges.end(), [&](const Edge& edge) {
             if (edge.from.node != id && edge.to.node != id) return false;

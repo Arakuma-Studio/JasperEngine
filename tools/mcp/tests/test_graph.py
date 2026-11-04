@@ -185,3 +185,21 @@ async def test_new_ids_come_back():
         bad = [{"op": "connect", "from": {"node": "n3", "port": "text"}, "to": {"node": "n5", "port": "a"}}]
         refused = await ed.call_raw("edit_graph", {"path": PATH, "ops": bad})
         ed.check(refused.is_error and "added" not in (refused.structured or {}), f"refused: {refused.structured}")
+
+
+async def test_supplied_id_gets_defaults():
+    """F7: a node added with its own id gets its type's defaults, and the undo is still exact."""
+    async with Editor(create=True, name="Graph Defaults CI", env={"JASPER_TEST_GRAPH_KIND": "1"}) as ed:
+        await write_graph(ed)
+        before = (ed.project / PATH).read_text()
+        ops = [{"op": "addNode", "node": {"id": "bricks", "type": "speed", "position": [0, 300]}},
+               {"op": "connect", "from": {"node": "bricks", "port": "value"}, "to": {"node": "n2", "port": "a"}}]
+        r = await ed.call("edit_graph", path=PATH, ops=ops)
+        ed.check_eq(r["applied"], 2, "added and connected in one batch")
+        after = (ed.project / PATH).read_text()
+        node = next(n for n in json.loads(after)["nodes"] if n["id"] == "bricks")
+        ed.check_eq(node["params"].get("value"), 1.0, f"the type's default: {node}")
+        await ed.call("undo", scope="project")
+        ed.check_eq((ed.project / PATH).read_text(), before, "undo is byte-identical")
+        await ed.call("redo", scope="project")
+        ed.check_eq((ed.project / PATH).read_text(), after, "redo is byte-identical")
