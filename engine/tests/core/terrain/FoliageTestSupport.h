@@ -4,8 +4,8 @@
 #ifndef TESTS_FOLIAGE_SUPPORT_H
 #define TESTS_FOLIAGE_SUPPORT_H
 
-// A Terrain with foliage in memory (T5's tests). Its meshes are paths that do not load, since
-// placement does not wait for them.
+// A Terrain with foliage in memory (T5's tests). Its meshes are one small OBJ in the temporary
+// directory: a path that does not load would log its error during whichever test runs next.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -22,6 +22,8 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <gtest/gtest.h>
 #include <memory>
@@ -32,6 +34,16 @@ namespace foliagetest {
 
     using namespace jasperengine;
     using namespace jasperengine::terrain;
+
+    inline std::string crossMesh() {
+        const std::filesystem::path path = std::filesystem::temp_directory_path() / "je-foliage-test-cross.obj";
+        if (!std::filesystem::exists(path)) {
+            std::ofstream out(path);
+            out << "v -1 0 0\nv 1 0 0\nv 1 4 0\nv -1 4 0\nv 0 0 -1\nv 0 0 1\nv 0 4 1\nv 0 4 -1\nvn 0 0 1\nvn 1 0 0\n"
+                   "f 1//1 2//1 3//1\nf 1//1 3//1 4//1\nf 5//2 6//2 7//2\nf 5//2 7//2 8//2\n";
+        }
+        return path.string();
+    }
 
     constexpr int MAP = 64;
     constexpr float WORLD = 128.0f;
@@ -89,7 +101,7 @@ namespace foliagetest {
             terrain.needUpdateTerrain = false;
 
             TerrainFoliageLayer layer;
-            layer.meshPath = AssetRef("t5-no-such-mesh.obj");
+            layer.meshPath = AssetRef(foliagetest::crossMesh());
             layer.density = 0.5f;
             layer.maxSlope = 90.0f;
             layer.drawDistance = drawDistance;
@@ -148,7 +160,7 @@ namespace foliagetest {
     inline void withTrees(FoliageFixture& fixture, std::initializer_list<std::pair<float, float>> points) {
         TerrainTreePrototype prototype;
         prototype.id = 5;
-        prototype.meshPath = AssetRef("t5-no-such-tree.obj");
+        prototype.meshPath = AssetRef(foliagetest::crossMesh());
         fixture.terrain().treePrototypes.push_back(prototype);
         fixture.frame();
         std::shared_ptr<TreeStore> store = fixture.foliage->getOrCreateTreeStore(fixture.entity);

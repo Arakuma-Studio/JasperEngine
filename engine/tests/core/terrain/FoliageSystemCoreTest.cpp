@@ -459,7 +459,7 @@ TEST(FoliageTreesCore, TreesPlantedBeforeTheTerrainLoadsLandInTheirCells) {
     FoliageFixture fixture;
     TerrainTreePrototype prototype;
     prototype.id = 5;
-    prototype.meshPath = AssetRef("t5-no-such-tree.obj");
+    prototype.meshPath = AssetRef(foliagetest::crossMesh());
     fixture.terrain().treePrototypes.push_back(prototype);
     fixture.terrain().heightMapLoaded = false;
     fixture.foliage->update(0.016);
