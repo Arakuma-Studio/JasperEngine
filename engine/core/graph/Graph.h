@@ -157,11 +157,13 @@ namespace jasperengine::graph {
     struct Issue {
         Severity severity = Severity::Error;
         std::string code;       // dangling-edge, duplicate-id, direction, type-mismatch, multiplicity, cycle,
-                                // unknown-node-type, missing-required-input, param-range, or a kind's own
+                                // unknown-node-type, missing-required-input, param-range, unknown-param
+                                // (kinds with strictParams only), or a kind's own
         std::string nodeId;
         std::string portId;
         std::string edgeId;
         std::string message;
+        std::string suggestion; // what to do instead ("did you mean 'value'?"), "" when nothing is known
     };
 
     JASPERENGINE_API std::vector<Issue> validate(const Graph& graph);

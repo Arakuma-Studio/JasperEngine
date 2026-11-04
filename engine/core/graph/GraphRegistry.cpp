@@ -100,6 +100,7 @@ Json jasperengine::graph::toJson(const NodeTypeDesc& type){
 Json jasperengine::graph::toJson(const GraphKindDesc& kind){
     Json out = {{"id", kind.id}, {"display_name", kind.displayName}, {"file_extension", kind.fileExtension},
                 {"kind_version", kind.kindVersion}, {"acyclic", kind.acyclic}, {"node_types", kind.nodeTypes.size()}};
+    if (kind.strictParams) out["strict_params"] = true;
     Json portTypes = Json::array();
     for (const PortTypeDesc& type : kind.portTypes) {
         char color[10];

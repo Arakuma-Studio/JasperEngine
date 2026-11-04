@@ -69,6 +69,13 @@ void registerTestKind() {
     blend.params = {{"weight", "float", 0.5, 0.0, 1.0, {}}};
     kind.nodeTypes = {speed, label, blend};
     GraphRegistry::get().registerKind(kind);
+
+    // the same graph as a kind that opted in to strict parameters
+    kind.id = "test_strict";
+    kind.displayName = "Strict Test Graph";
+    kind.fileExtension = ".strictgraph";
+    kind.strictParams = true;
+    GraphRegistry::get().registerKind(kind);
 }
 
 // the graph model's ordered JSON as the MCP replies' JSON
@@ -109,8 +116,13 @@ Json reportJson(const graph::LoadReport& report) {
     return out;
 }
 
+// with its message: a second misspelled parameter on a node is a new error, not the first again
 std::string errorKey(const graph::Issue& issue) {
-    return issue.code + "|" + issue.nodeId + "|" + issue.portId + "|" + issue.edgeId;
+    return issue.code + "|" + issue.nodeId + "|" + issue.portId + "|" + issue.edgeId + "|" + issue.message;
+}
+
+std::string issueText(const graph::Issue& issue) {
+    return issue.suggestion.empty() ? issue.message : issue.message + " (" + issue.suggestion + ")";
 }
 
 void listGraphKindsTool(const CallPtr& call) {
@@ -153,7 +165,7 @@ void validateGraphTool(const CallPtr& call) {
     if (!readGraph(call, file, text, g, report)) return;
     const std::vector<graph::Issue> issues = graph::validate(g);
     std::string summary = std::to_string(issues.size()) + " issue(s).";
-    for (const graph::Issue& issue : issues) summary += "\n" + std::string(graph::severityName(issue.severity)) + " " + issue.code + ": " + issue.message;
+    for (const graph::Issue& issue : issues) summary += "\n" + std::string(graph::severityName(issue.severity)) + " " + issue.code + ": " + issueText(issue);
     Json data = {{"issues", issuesJson(issues)}};
     const Json loaded = reportJson(report);
     if (!loaded.empty()) data["load"] = loaded;
@@ -194,16 +206,19 @@ void editGraphTool(const CallPtr& call) {
         return;
     }
     const std::vector<graph::Issue> issues = graph::validate(g);
-    Json added = Json::array();
+    Json newErrors = Json::array();
+    std::string firstNewError;
     for (const graph::Issue& issue : issues) {
-        if (issue.severity == graph::Severity::Error && !errorsBefore.count(errorKey(issue))) added.push_back(toMcp(graph::toJson(issue)));
+        if (issue.severity != graph::Severity::Error || errorsBefore.count(errorKey(issue))) continue;
+        if (newErrors.empty()) firstNewError = issueText(issue);
+        newErrors.push_back(toMcp(graph::toJson(issue)));
     }
     const std::string undoName = names.size() == 1 ? names.front() : "Edit Graph (" + std::to_string(names.size()) + " Changes)";
     Json data = {{"issues", issuesJson(issues)}, {"applied", names.size()}, {"undo_name", undoName}, {"dry_run", dryRun}};
-    if (!added.empty() && !allowInvalid) {
+    if (!newErrors.empty() && !allowInvalid) {
         data["applied"] = 0;
-        data["new_errors"] = added;
-        call->fail("The edit would add " + std::to_string(added.size()) + " error(s) (first: " + added[0].value("message", std::string()) +
+        data["new_errors"] = newErrors;
+        call->fail("The edit would add " + std::to_string(newErrors.size()) + " error(s) (first: " + firstNewError +
                    "); nothing was written. allow_invalid: true writes it anyway.", data);
         return;
     }
@@ -261,7 +276,7 @@ void registerGraphTools(McpRegistry& registry) {
         tool.title = "Validate Graph";
         tool.description = "A graph file's issues [{severity, code, node, port, edge, message}]: dangling-edge, duplicate-id, "
                            "direction, type-mismatch, multiplicity, cycle, unknown-node-type, missing-required-input, param-range, "
-                           "and the kind's own.";
+                           "unknown-param, and the kind's own.";
         tool.inputSchema = object({{"path", assetPath("A graph file.")}}, {"path"});
         tool.annotations.readOnly = true;
         tool.handler = validateGraphTool;

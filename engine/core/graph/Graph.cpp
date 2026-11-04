@@ -3,6 +3,7 @@
 
 #include "Graph.h"
 #include "GraphRegistry.h"
+#include "util/NearestName.h"
 
 #include <algorithm>
 #include <cctype>
@@ -199,6 +200,17 @@ namespace {
             }
         }
         return ref.port;
+    }
+
+    std::string didYouMean(const std::string& name, const std::vector<std::string>& candidates){
+        const std::string nearest = jasperengine::NearestName(name, candidates);
+        return nearest.empty() ? std::string() : "did you mean '" + nearest + "'?";
+    }
+
+    std::string listOf(const std::vector<std::string>& names){
+        std::string list;
+        for (const std::string& name : names) list += (list.empty() ? "" : ", ") + name;
+        return list;
     }
 
 }
@@ -501,15 +513,18 @@ Json jasperengine::graph::toJson(const Issue& issue){
     if (!issue.nodeId.empty()) out["node"] = issue.nodeId;
     if (!issue.portId.empty()) out["port"] = issue.portId;
     if (!issue.edgeId.empty()) out["edge"] = issue.edgeId;
+    if (!issue.suggestion.empty()) out["suggestion"] = issue.suggestion;
     return out;
 }
 
 std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
     std::vector<Issue> issues;
-    auto add = [&](Severity severity, const char* code, std::string message, std::string node = {}, std::string port = {}, std::string edge = {}) {
-        issues.push_back({severity, code, std::move(node), std::move(port), std::move(edge), std::move(message)});
+    auto add = [&](Severity severity, const char* code, std::string message, std::string node = {}, std::string port = {}, std::string edge = {},
+                   std::string suggestion = {}) {
+        issues.push_back({severity, code, std::move(node), std::move(port), std::move(edge), std::move(message), std::move(suggestion)});
     };
     std::shared_ptr<const GraphKindDesc> kind = GraphRegistry::get().kind(graph.kind);
+    const Severity paramSeverity = kind && kind->strictParams ? Severity::Error : Severity::Warning;
 
     // ids
     std::unordered_set<std::string> seen;
@@ -534,7 +549,10 @@ std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
     for (const Node& node : graph.nodes) {
         const NodeTypeDesc* type = kind ? GraphRegistry::nodeType(*kind, node.type) : nullptr;
         if (kind && !type) {
-            add(Severity::Warning, "unknown-node-type", "node type '" + node.type + "' is unknown to '" + graph.kind + "': the node is kept as it is", node.id);
+            std::vector<std::string> typeIds;
+            for (const NodeTypeDesc& candidate : kind->nodeTypes) typeIds.push_back(candidate.id);
+            add(paramSeverity, "unknown-node-type", "node type '" + node.type + "' is unknown to '" + graph.kind + "': the node is kept as it is", node.id, {}, {},
+                didYouMean(node.type, typeIds));
         }
         ports[node.id] = portsOf(graph, node);
         if (!type) continue;
@@ -546,12 +564,25 @@ std::vector<Issue> jasperengine::graph::validate(const Graph& graph){
                 if ((param.min && value < *param.min) || (param.max && value > *param.max)) {
                     std::string range = "[" + (param.min ? Json(*param.min).dump() : std::string("-inf")) + ", " +
                                         (param.max ? Json(*param.max).dump() : std::string("inf")) + "]";
-                    add(Severity::Warning, "param-range", "'" + param.name + "' = " + it->dump() + " is outside " + range, node.id);
+                    add(paramSeverity, "param-range", "'" + param.name + "' = " + it->dump() + " is outside " + range, node.id);
                 }
             } else if (param.kind == "enum" && it->is_string() && !param.enumValues.empty() &&
                        std::find(param.enumValues.begin(), param.enumValues.end(), it->get<std::string>()) == param.enumValues.end()) {
-                add(Severity::Warning, "param-range", "'" + param.name + "' = " + it->dump() + " is not one of its values", node.id);
+                std::string suggestion = didYouMean(it->get<std::string>(), param.enumValues);
+                if (suggestion.empty()) suggestion = "one of " + listOf(param.enumValues);
+                add(paramSeverity, "param-range", "'" + param.name + "' = " + it->dump() + " is not one of its values", node.id, {}, {}, std::move(suggestion));
             }
+        }
+        if (!kind->strictParams) continue;
+        for (auto it = node.params.begin(); it != node.params.end(); ++it) {
+            const std::string& name = it.key();
+            const auto declared = [&](const ParamDesc& param) { return param.name == name; };
+            if (std::any_of(type->params.begin(), type->params.end(), declared)) continue;
+            std::vector<std::string> names;
+            for (const ParamDesc& param : type->params) names.push_back(param.name);
+            std::string suggestion = didYouMean(name, names);
+            if (suggestion.empty()) suggestion = names.empty() ? "this node type has no parameters" : "its parameters: " + listOf(names);
+            add(Severity::Error, "unknown-param", "'" + name + "' is not a parameter of '" + node.type + "'", node.id, {}, {}, std::move(suggestion));
         }
     }
 

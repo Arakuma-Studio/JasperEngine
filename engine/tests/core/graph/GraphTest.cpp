@@ -362,3 +362,97 @@ TEST_F(GraphTest, Bench1000Nodes2000Edges) {
         EXPECT_LE(usPerOp, 5.0 * testsupport::perfSlack());
     }
 }
+
+// ---- BF23 F5, F9: a kind that opts in to strict parameters
+
+namespace {
+
+    void registerStrictKind() {
+        GraphKindDesc kind;
+        kind.id = "strict";
+        kind.fileExtension = ".strictgraph";
+        kind.strictParams = true;
+        kind.portTypes = {{"float", 0xff8800ffu, {}}};
+        NodeTypeDesc speed;
+        speed.id = "speed";
+        speed.ports = {port("value", PortDirection::Out, "float")};
+        speed.params = {{"value", "float", 1.0, 0.0, 100.0, {}},
+                        {"mode", "enum", "linear", std::nullopt, std::nullopt, {"linear", "smooth"}}};
+        kind.nodeTypes = {speed};
+        GraphRegistry::get().registerKind(kind);
+    }
+
+    class StrictGraphTest : public ::testing::Test {
+    protected:
+        void SetUp() override { registerStrictKind(); }
+        void TearDown() override { GraphRegistry::get().unregisterKind("strict"); }
+
+        static Issue only(const Graph& graph, const char* code) {
+            std::vector<Issue> found;
+            for (const Issue& issue : validate(graph)) {
+                if (issue.code == code) found.push_back(issue);
+            }
+            EXPECT_EQ(found.size(), 1u) << code;
+            return found.empty() ? Issue() : found.front();
+        }
+    };
+
+    Graph strictGraph(const char* node) {
+        LoadReport report;
+        Graph graph = load(std::string(R"({"formatVersion": 1, "kind": "strict", "nodes": [)") + node + "]}", report);
+        EXPECT_TRUE(report.ok) << "load never refuses: " << report.error;
+        return graph;
+    }
+
+}
+
+TEST_F(StrictGraphTest, MisspelledParameterIsAnError) {
+    const Issue issue = only(strictGraph(R"({"id": "n1", "type": "speed", "params": {"valeu": 3}})"), "unknown-param");
+    EXPECT_EQ(issue.severity, Severity::Error);
+    EXPECT_EQ(issue.nodeId, "n1");
+    EXPECT_EQ(issue.suggestion, "did you mean 'value'?");
+    EXPECT_EQ(toJson(issue).value("suggestion", std::string()), "did you mean 'value'?");
+}
+
+TEST_F(StrictGraphTest, NothingCloseListsTheParameters) {
+    const Issue issue = only(strictGraph(R"({"id": "n1", "type": "speed", "params": {"elevation": 3}})"), "unknown-param");
+    EXPECT_EQ(issue.suggestion, "its parameters: value, mode");
+}
+
+TEST_F(StrictGraphTest, UnknownNodeTypeIsAnError) {
+    const Issue issue = only(strictGraph(R"({"id": "n1", "type": "sped", "params": {}})"), "unknown-node-type");
+    EXPECT_EQ(issue.severity, Severity::Error);
+    EXPECT_EQ(issue.suggestion, "did you mean 'speed'?");
+}
+
+TEST_F(StrictGraphTest, OutOfRangeIsAnError) {
+    EXPECT_EQ(only(strictGraph(R"({"id": "n1", "type": "speed", "params": {"value": 500}})"), "param-range").severity, Severity::Error);
+    const Issue value = only(strictGraph(R"({"id": "n1", "type": "speed", "params": {"mode": "smoth"}})"), "param-range");
+    EXPECT_EQ(value.severity, Severity::Error);
+    EXPECT_EQ(value.suggestion, "did you mean 'smooth'?");
+}
+
+TEST_F(StrictGraphTest, LoadKeepsWhatValidateRefuses) {
+    const char* text = R"({"id": "n1", "type": "future", "position": [0.0, 0.0], "params": {"valeu": 3}})";
+    Graph graph = strictGraph(text);
+    ASSERT_EQ(graph.nodes.size(), 1u);
+    EXPECT_EQ(graph.nodes[0].type, "future");
+    EXPECT_EQ(graph.nodes[0].params.value("valeu", 0), 3);
+    LoadReport again;
+    load(save(graph), again);
+    EXPECT_TRUE(again.ok);
+}
+
+TEST_F(GraphTest, AKindThatDidNotOptInKeepsItsWarnings) {
+    const Graph graph = loadOk(R"({"formatVersion": 1, "kind": "test", "kindVersion": 2, "nodes": [
+        {"id": "n1", "type": "const", "params": {"valeu": 3, "value": 99}},
+        {"id": "n2", "type": "cosnt", "params": {}}]})");
+    std::set<std::string> found;
+    for (const Issue& issue : validate(graph)) {
+        found.insert(issue.code);
+        EXPECT_NE(issue.severity, Severity::Error) << issue.code << ": " << issue.message;
+    }
+    EXPECT_FALSE(found.count("unknown-param")) << "S23's forward compatibility";
+    EXPECT_TRUE(found.count("param-range"));
+    EXPECT_TRUE(found.count("unknown-node-type"));
+}

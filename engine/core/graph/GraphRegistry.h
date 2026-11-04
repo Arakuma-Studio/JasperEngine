@@ -59,6 +59,10 @@ namespace jasperengine::graph {
         int kindVersion = 1;
         std::vector<Migration> migrations;   // ascending toVersion
         bool acyclic = false;
+        // Unknown parameters and node types and out-of-range values are errors, so edit_graph
+        // refuses them. Off, they stay S23's forward compatibility: what a newer build wrote is
+        // kept and at most warned about. Either way load() never refuses a file for them.
+        bool strictParams = false;
         std::vector<NodeTypeDesc> nodeTypes;
         std::vector<PortTypeDesc> portTypes;
         // kind-specific issues, after the generic ones
