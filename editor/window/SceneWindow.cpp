@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "component/TextComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "window/PhysicsPlacementWindow.h"
+#include "component/MeshPolygonComponent.h"
 #include "widget/ColorField.h"
 #include "util/EditorScripts.h"
 #include "DocumentFile.h"

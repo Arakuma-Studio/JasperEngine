@@ -493,6 +493,29 @@ class Runs(unittest.TestCase):
         self.assertIn("builds: linux", out)
         self.assertEqual(self.calls(), [])
 
+    def test_the_header_gates_run_after_the_editor_build(self):
+        (self.root / "tools/check_fanout.py").write_text("import sys; sys.exit(1)\n")
+        (self.root / "tools/check_headers.py").write_text("import sys; open('headers.txt', 'w').write(' '.join(sys.argv[1:]))\n")
+        (self.root / "editor/App.h").write_text("int app();\n")
+        real = cc.in_image
+        cc.in_image = lambda: True
+        try:
+            code, out = self.run_main("--no-cache")
+        finally:
+            cc.in_image = real
+        self.assertEqual(code, 1, out)
+        self.assertIn("headers compile alone (1 edited)", out)
+        self.assertIn("FAIL (exit 1) header fan-out limits", out)
+        self.assertEqual((self.root / "headers.txt").read_text(), "editor/App.h")
+
+    def test_no_mcp_leaves_the_mcp_tests_out_and_is_not_cached(self):
+        (self.root / "CMakeLists.txt").write_text("# changed\n")
+        code, out = self.run_main("--no-mcp")
+        self.assertEqual(code, 0, out)
+        self.assertIn("SKIP (--no-mcp)", out)
+        self.assertIn("the pass is not cached", out)
+        self.assertFalse([c for c in self.calls() if c.startswith("mcp-tests")])
+
     def test_in_the_image_web_is_left_out_and_said_to_be(self):
         (self.root / "engine/core/Foo.cpp").write_text("int foo() { return 9; }\n")
         real = cc.in_image
