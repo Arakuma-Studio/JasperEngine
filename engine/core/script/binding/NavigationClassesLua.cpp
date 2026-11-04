@@ -19,7 +19,9 @@
 #include "object/navigation/NavMeshSurface.h"
 #include "subsystem/NavigationSystem.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 using namespace jasperengine;
 // the API generator (tools/lua_api) reads the bound names as written: unqualified
@@ -121,7 +123,93 @@ namespace {
             corners[(int)i + 1] = path.corners[i];
         table["corners"] = corners;
         table["length"] = path.length;
+        // S42 R35: why it is not Complete ("none" when it is), the surface that answered
+        table["reason"] = std::string(nav::pathFailureName(path.failure));
+        table["surface"] = (lua_Integer)path.surface;
+        table["closestPoint"] = path.closestPoint;
+        table["gap"] = path.gap;
         return table;
+    }
+
+    // ---- S42 diagnostics tables (camelCase keys, the MCP codes as strings: spec D6)
+
+    luabridge::LuaRef islandTable(lua_State* L, const nav::NavIsland& island) {
+        luabridge::LuaRef table = luabridge::newTable(L);
+        table["id"] = island.id;
+        table["area"] = island.area;
+        table["polys"] = island.polys;
+        table["boundsMin"] = island.boundsMin;
+        table["boundsMax"] = island.boundsMax;
+        return table;
+    }
+
+    luabridge::LuaRef locationTable(lua_State* L, const nav::NavLocation& location) {
+        luabridge::LuaRef table = luabridge::newTable(L);
+        table["onMesh"] = location.onMesh;
+        table["found"] = location.found;
+        table["position"] = location.position;
+        table["snapDistance"] = location.snapDistance;
+        table["island"] = location.island;
+        table["area"] = (int)location.area;
+        table["surface"] = (lua_Integer)location.surface;
+        return table;
+    }
+
+    // NavMeshSurface.lastBakeResult: the bake report (bake_navigation's per-surface result)
+    luabridge::LuaRef bakeReportTable(lua_State* L, const NavBakeResult& result) {
+        luabridge::LuaRef table = luabridge::newTable(L);
+        table["ok"] = result.ok;
+        table["cancelled"] = result.cancelled;
+        table["error"] = result.error;
+        table["errorCode"] = std::string(nav::bakeErrorName(result.errorCode));
+        table["hint"] = result.hint;
+        table["tilesBuilt"] = result.tilesBuilt;
+        table["tilesTotal"] = result.tilesTotal;
+        table["polys"] = result.polys;
+        table["milliseconds"] = result.milliseconds;
+        luabridge::LuaRef warnings = luabridge::newTable(L);
+        for (size_t i = 0; i < result.warnings.size(); i++)
+            warnings[(int)i + 1] = result.warnings[i];
+        table["warnings"] = warnings;
+        luabridge::LuaRef sources = luabridge::newTable(L);
+        sources["meshes"] = result.sources.meshes;
+        sources["instances"] = result.sources.instances;
+        sources["terrains"] = result.sources.terrains;
+        sources["colliders"] = result.sources.colliders;
+        sources["colliders2D"] = result.sources.colliders2D;
+        sources["volumes"] = result.sources.volumes;
+        sources["links"] = result.sources.links;
+        sources["excluded"] = result.sources.excluded;
+        sources["triangles"] = (lua_Integer)result.sources.triangles;
+        table["sources"] = sources;
+        table["walkableArea"] = result.walkableArea;
+        table["islandCount"] = result.islandCount;
+        luabridge::LuaRef islands = luabridge::newTable(L);
+        for (size_t i = 0; i < result.islands.size(); i++)
+            islands[(int)i + 1] = islandTable(L, result.islands[i]);
+        table["islands"] = islands;
+        // the five slowest tiles of the bake
+        std::vector<nav::NavTileReport> slowest = result.tiles;
+        std::stable_sort(slowest.begin(), slowest.end(),
+                         [](const nav::NavTileReport& a, const nav::NavTileReport& b) { return a.milliseconds > b.milliseconds; });
+        if (slowest.size() > 5)
+            slowest.resize(5);
+        luabridge::LuaRef tiles = luabridge::newTable(L);
+        for (size_t i = 0; i < slowest.size(); i++) {
+            luabridge::LuaRef tile = luabridge::newTable(L);
+            tile["x"] = slowest[i].x;
+            tile["y"] = slowest[i].y;
+            tile["ms"] = slowest[i].milliseconds;
+            tile["polys"] = slowest[i].polys;
+            tile["kb"] = (double)slowest[i].bytes / 1024.0;
+            tiles[(int)i + 1] = tile;
+        }
+        table["slowestTiles"] = tiles;
+        return table;
+    }
+
+    Entity entityArg(lua_State* L, int index) {
+        return (Entity)luaL_checkinteger(L, index);
     }
 
     luabridge::LuaRef gridPathTable(lua_State* L, const NavGrid& grid, const nav::GridPath& path) {
@@ -291,8 +379,41 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
             const bool found = self->findClosestEdge(vectorArg(L, 2), hit, filterArg(L, 3));
             return pushHit(L, found, hit);
         })
-        .addFunction("isReachable", +[](NavigationSystem* self, const Vector3& from, const Vector3& to, lua_State* L) {
-            return self->isReachable(from, to, filterArg(L, 4));
+        // (reachable, reason): S42 R35, the reason is ignorable
+        .addFunction("isReachable", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            nav::PathFailure why = nav::PathFailure::None;
+            const bool reachable = self->isReachable(vectorArg(L, 2), vectorArg(L, 3), filterArg(L, 4), &why);
+            lua_pushboolean(L, reachable ? 1 : 0);
+            lua_pushstring(L, nav::pathFailureName(why));
+            return 2;
+        })
+        .addFunction("locate", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            const float maxDistance = lua_gettop(L) >= 4 && !lua_isnil(L, 4) ? (float)luaL_checknumber(L, 4) : 5.0f;
+            locationTable(L, self->locate(vectorArg(L, 2), filterArg(L, 3), maxDistance)).push(L);
+            return 1;
+        })
+        .addFunction("getCoverage", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            const nav::NavCoverage coverage = self->getCoverage(entityArg(L, 2));
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["walkableArea"] = coverage.walkableArea;
+            table["islandCount"] = coverage.islandCount;
+            table["largestIslandArea"] = coverage.largestIslandArea;
+            table["tilesArea"] = coverage.tilesArea;
+            table["fraction"] = coverage.fraction;
+            table.push(L);
+            return 1;
+        })
+        .addFunction("getIslands", +[](lua_State* L) -> int {
+            NavigationSystem* self = navSelf(L);
+            const std::vector<nav::NavIsland> islands = self->getIslands(entityArg(L, 2));
+            luabridge::LuaRef table = luabridge::newTable(L);
+            for (size_t i = 0; i < islands.size(); i++)
+                table[(int)i + 1] = islandTable(L, islands[i]);
+            table.push(L);
+            return 1;
         })
         .addFunction("isBaking", &NavigationSystem::isAnyBaking)
         .addProperty("agentCount", &NavigationSystem::getAgentCount)
@@ -375,6 +496,10 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("isBaking", &NavMeshSurface::isBaking)
         .addProperty("bakeProgress", &NavMeshSurface::getBakeProgress)
         .addProperty("lastBakeError", &NavMeshSurface::getLastBakeError)
+        .addProperty("lastBakeResult", +[](const NavMeshSurface* self, lua_State* L) {
+            const NavBakeResult* result = self->getLastBakeResult();
+            return result ? bakeReportTable(L, *result) : luabridge::LuaRef(L);
+        })
         .addProperty("tileCount", &NavMeshSurface::getTileCount)
         .addProperty("polyCount", &NavMeshSurface::getPolyCount)
         .addProperty("hasNavMesh", &NavMeshSurface::hasNavMesh)

@@ -2933,6 +2933,28 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
+# S42 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
+OVERRIDES[('NavigationSystem', 'calculatePath')] = {
+    'doc': ['A path from `from` to `to` (Unity\'s NavMesh.CalculatePath): status, corners, length, and when it',
+            'is not Complete why (`reason`, "disconnected", ...), the answering surface, the closest point and',
+            'the gap left to the end.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'NavMeshPath')]}
+OVERRIDES[('NavigationSystem', 'isReachable')] = {
+    'doc': ['Whether a Complete path joins the points, then why not ("none" when it does): rejected at once',
+            'when their islands differ.'],
+    'overloads': [([('from', 'Vector3'), ('to', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, string')]}
+OVERRIDES[('NavigationSystem', 'locate')] = {
+    'doc': ['Where `point` is on the navmesh: onMesh when a path from here would start, else the nearest',
+            'point within maxDistance (5) with its snap distance, island, area and surface.'],
+    'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER), ('maxDistance?', 'number')], 'NavLocation')]}
+OVERRIDES[('NavigationSystem', 'getCoverage')] = {
+    'doc': ['The walkable area of a surface (m\u00b2), its island count, the largest island and the share of its',
+            'tiles\' footprint that is walkable.'],
+    'overloads': [([('surface', 'integer')], 'NavCoverage')]}
+OVERRIDES[('NavigationSystem', 'getIslands')] = {
+    'doc': ['The connected parts of a surface\'s navmesh (links included): id, area (m\u00b2), polygons, world bounds.'],
+    'overloads': [([('surface', 'integer')], 'NavIsland[]')]}
+PROPERTY_OVERRIDES[('NavMeshSurface', 'lastBakeResult')] = ('NavBakeReport|nil', True)
 PROPERTY_OVERRIDES[('UIDocument', 'lastReloadReport')] = ('UIReloadReport|nil', False)
 
 # HTML UI (phase 4, p4-guide): class doc lines appended to the generated ones (the guide's URI)

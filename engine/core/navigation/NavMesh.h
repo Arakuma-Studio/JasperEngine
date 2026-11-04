@@ -17,6 +17,7 @@
 // Main thread: the queries share one Detour query object.
 
 #include "Export.h"
+#include "navigation/NavDiagnostics.h"
 #include "navigation/NavMeshBuilder.h"
 #include "navigation/NavTypes.h"
 
@@ -94,6 +95,38 @@ namespace jasperengine::nav {
         std::vector<Link> links;
         // the triangle cap stopped the extraction
         bool truncated = false;
+
+        // ---- S42: per tile of tileBounds, its x, y and layer
+        std::vector<int32_t> tileCoords;
+        // per triangle: its island (DEBUG_ISLANDS, -1: none), the index of its tile in
+        // tileBounds (DEBUG_TILES); empty without the flag
+        std::vector<int32_t> triangleIslands;
+        std::vector<int32_t> triangleTiles;
+    };
+
+    // ---- S42 diagnostics (docs/specs/S42-navigation-diagnostics.md)
+
+    // getDebugGeometry's extras
+    constexpr uint32_t DEBUG_ISLANDS = 1u << 0;
+    constexpr uint32_t DEBUG_TILES = 1u << 1;
+
+    // One off-mesh connection of a baked link and whether Detour joined its ends to a polygon
+    struct NavLinkState {
+        uint32_t userId = 0;
+        Vector3 start, end;
+        bool startConnected = false, endConnected = false;
+        // the islands of the polygons its ends joined (-1: unconnected)
+        int startIsland = -1, endIsland = -1;
+    };
+
+    // One Detour tile (the overlays' labels, the bake report)
+    struct NavTileInfo {
+        int x = 0, y = 0, layer = 0;
+        // ground polygons
+        int polys = 0;
+        size_t bytes = 0;
+        float bmin[3] = {0, 0, 0};
+        float bmax[3] = {0, 0, 0};
     };
 
     class JASPERENGINE_API NavMesh {
@@ -145,9 +178,10 @@ namespace jasperengine::nav {
         // NavMeshLink that moved). False when a start left its tile (the surface must be rebaked).
         bool updateLink(uint32_t userId, const std::vector<NavLinkInput>& connections, std::string& error);
 
-        // ---- overlays: the tiles `visible` accepts (nav-space bounds), at most maxTriangles
+        // ---- overlays: the tiles `visible` accepts (nav-space bounds), at most maxTriangles;
+        // extras: DEBUG_ISLANDS, DEBUG_TILES (islands label the mesh when stale)
         void getDebugGeometry(const std::function<bool(const float* bmin, const float* bmax)>& visible, size_t maxTriangles,
-                              bool detailMesh, NavDebugGeometry& out) const;
+                              bool detailMesh, NavDebugGeometry& out, uint32_t extras = 0) const;
 
         // Detour objects of this mesh, for NavCrowd (engine-internal; null when invalid)
         void* detourNavMesh() const;
@@ -156,6 +190,44 @@ namespace jasperengine::nav {
         uint64_t getRevision() const;
         // whether a tile holds off-mesh connections (links)
         bool hasOffMeshConnections() const;
+
+        // ---- S42 diagnostics (nav space). Islands are labelled lazily, on the main thread, when
+        // the revision changed since the last labelling (R8): the calls that say so label;
+        // path queries never do, they only use labels that are current.
+        // the islands (nav-space bounds, nav units^2); labels when stale
+        const std::vector<NavIsland>& getIslands() const;
+        // the ground polygons' area, nav units^2; labels when stale
+        float getWalkableArea() const;
+        bool areIslandsCurrent() const;
+        // a polygon's island; -1 when the labels are not current (no labelling) or it has none
+        int getIslandOf(uint32_t polyRef) const;
+        // the revision the labels describe (0: never labelled)
+        uint64_t getLabelledRevision() const;
+        // what the labels hold (the bench's islands_bytes_per_poly)
+        size_t getIslandMemoryBytes() const;
+        // where a point is (R10): onMesh when a polygon is in the search box, else the nearest
+        // within maxDistance; labels when stale
+        NavLocation locate(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents, float maxDistance) const;
+        // whether a polygon lies under (or over) the point within the box's height: the point is
+        // walkable, not merely near the mesh
+        bool covers(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents) const;
+        // R6: false without a search when the islands are current and the ends' differ; else
+        // findPath's status is Complete. why: the failure (None when reachable)
+        bool isReachable(const Vector3& start, const Vector3& end, const NavFilter& filter, const Vector3& halfExtents,
+                         PathFailure* why = nullptr) const;
+        // the A* searches findPath and isReachable ran on this mesh (tests, the bench)
+        uint64_t getSearchCount() const;
+        // every off-mesh connection; labels when stale
+        void getLinkStates(std::vector<NavLinkState>& out) const;
+        void getTileInfos(std::vector<NavTileInfo>& out) const;
+        // the polygon nearest the point within the box (0: none), for setPolyFlags
+        uint32_t getPolyAt(const Vector3& point, const NavFilter& filter, const Vector3& halfExtents) const;
+        // the only way to change a polygon's flags (0 disables it); bumps the revision. False for
+        // an invalid reference.
+        bool setPolyFlags(uint32_t polyRef, uint16_t flags);
+        // whether a polygon of one static tile's data covers the point (the probe's rebuilds)
+        static bool tileCovers(const NavTileBlob& staticTile, const NavBuildConfig& config, const Vector3& point,
+                               const Vector3& halfExtents);
 
     private:
         struct Impl;

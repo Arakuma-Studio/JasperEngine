@@ -45,6 +45,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -121,6 +122,8 @@ struct NavigationSystem::Runtime {
         std::chrono::steady_clock::time_point bakeStarted;
         std::unique_ptr<NavBakeResult> lastResult;
         int dirtyTiles = -1;
+        // S42 R17: each tile's last build in this session, ms by (y, x); cleared on a load
+        std::map<std::pair<int, int>, double> tileMs;
         // the crowd of its agents and non-carving obstacles, made for one Detour mesh
         std::unique_ptr<NavCrowd> crowd;
         void* crowdMesh = nullptr;
@@ -395,6 +398,7 @@ bool NavigationSystem::reloadNavMesh(Entity surface, std::string& error) {
     state.loadedPath = component->navMeshData.path;
     state.loadError.clear();
     state.dirtyTiles = -1;
+    state.tileMs.clear();
     if (component->navMeshData.path.empty()) {
         state.mesh.reset();
         return true;
@@ -445,6 +449,7 @@ bool NavigationSystem::setNavMeshData(Entity surface, NavMeshData data, std::str
     state.loadedPath = surfaceComponent(scene, surface)->navMeshData.path;
     state.loadError.clear();
     state.dirtyTiles = -1;
+    state.tileMs.clear();
     return true;
 }
 
@@ -484,20 +489,33 @@ NavSurfaceStatus NavigationSystem::getSurfaceStatus(Entity surface) {
 }
 
 int NavigationSystem::countDirtyTiles(Entity surface, std::string* error) {
+    const InputReport report = inspectInputs(surface);
+    if (error && report.dirtyTiles < 0)
+        *error = report.error;
+    return report.dirtyTiles;
+}
+
+NavigationSystem::InputReport NavigationSystem::inspectInputs(Entity surface, const NavCollectOptions& options, bool keepInput) {
+    InputReport report;
     NavMeshSurfaceComponent* component = surfaceComponent(scene, surface);
     if (!component) {
-        if (error) *error = "the GameObject has no NavMeshSurface";
-        return -1;
+        report.error = "the GameObject has no NavMeshSurface";
+        report.errorCode = NavBakeError::NoSurface;
+        return report;
     }
-    std::string collectError;
-    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, collectError);
+    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, report.error, nullptr, options, &report.errorCode);
     Runtime::Surface& state = rt().surfaces[surface];
     const NavMesh* mesh = getNavMesh(surface);
     if (!input) {
-        if (error) *error = collectError;
         state.dirtyTiles = -1;
-        return -1;
+        return report;
     }
+    report.tilesWide = input->tilesWide();
+    report.tilesHigh = input->tilesHigh();
+    report.tileSize = input->config.tileSize;
+    report.nonEmptyTiles = (int)input->nonEmptyTiles.size();
+    report.cellSize = input->config.cellSize;
+    report.agentRadius = input->config.agentRadius;
     // a tile is dirty when its input hash differs from the baked one, or it is baked and now empty
     std::map<std::pair<int, int>, uint64_t> baked;
     bool configChanged = true;
@@ -517,48 +535,78 @@ int NavigationSystem::countDirtyTiles(Entity surface, std::string* error) {
             }
         }
     }
-    int dirty = 0;
     std::set<std::pair<int, int>> seen;
     for (uint32_t index : input->nonEmptyTiles) {
         const NavTileCoord coord = input->tileCoord(index);
         seen.insert({coord.y, coord.x});
         auto found = baked.find({coord.y, coord.x});
-        if (configChanged || found == baked.end() || found->second != input->tileHashes[index])
-            dirty++;
+        if (!mesh || configChanged || found == baked.end() || found->second != input->tileHashes[index])
+            report.dirty.push_back(coord);
     }
-    for (const auto& entry : baked) {
-        if (!seen.count(entry.first))
-            dirty++;
+    if (mesh) {
+        for (const auto& entry : baked) {
+            if (!seen.count(entry.first))
+                report.dirty.push_back(NavTileCoord{entry.first.second, entry.first.first});
+        }
     }
-    if (!mesh)
-        dirty = (int)input->nonEmptyTiles.size();
-    state.dirtyTiles = dirty;
-    return dirty;
+    std::sort(report.dirty.begin(), report.dirty.end());
+    report.dirty.erase(std::unique(report.dirty.begin(), report.dirty.end()), report.dirty.end());
+    report.dirtyTiles = (int)report.dirty.size();
+    state.dirtyTiles = report.dirtyTiles;
+    if (keepInput)
+        report.input = std::move(input);
+    return report;
 }
 
-bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error) {
+namespace {
+
+    // a bake that could not start: its code, and (when the surface exists and no bake runs) the
+    // surface's last result, so the report and the findings see it (S42 R16)
+    bool refuseBake(std::unique_ptr<NavBakeResult>* last, NavBakeError why, const std::string& error, NavBakeError* code,
+                    NavCollectStats* stats = nullptr) {
+        if (code)
+            *code = why;
+        if (last) {
+            *last = std::make_unique<NavBakeResult>();
+            (*last)->error = error;
+            (*last)->errorCode = why;
+            (*last)->hint = bakeErrorHint(why);
+            if (stats) {
+                (*last)->sources = std::move(*stats);
+                (*last)->warnings = (*last)->sources.warnings;
+            }
+        }
+        return false;
+    }
+
+}
+
+bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error, NavBakeError* code) {
+    if (code)
+        *code = NavBakeError::None;
     NavMeshSurfaceComponent* component = surfaceComponent(scene, surface);
     if (!component) {
         error = "the GameObject has no NavMeshSurface";
-        return false;
-    }
-    if (!isNavMeshAvailable()) {
-        error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
-        Log::error("Navigation: %s", error.c_str());
-        return false;
+        return refuseBake(nullptr, NavBakeError::NoSurface, error, code);
     }
     Runtime::Surface& state = rt().surfaces[surface];
     state.entity = surface;
+    if (!isNavMeshAvailable()) {
+        error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
+        Log::error("Navigation: %s", error.c_str());
+        return refuseBake(&state.lastResult, NavBakeError::Unavailable, error, code);
+    }
     getNavMesh(surface);
     if (state.bake) {
         error = "a bake of this surface is running";
-        return false;
+        return refuseBake(nullptr, NavBakeError::Busy, error, code);
     }
     if (mode == NavBakeMode::CLEAR) {
         state.mesh.reset();
         state.loaded = true;
         state.loadedPath = component->navMeshData.path;
         state.dirtyTiles = -1;
+        state.tileMs.clear();
         state.lastResult = std::make_unique<NavBakeResult>();
         state.lastResult->ok = true;
         return true;
@@ -566,9 +614,10 @@ bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error
 
     JE_PROFILE_SCOPE("Nav.Bake");
     NavCollectStats stats;
-    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats);
+    NavBakeError collectError = NavBakeError::None;
+    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, {}, &collectError);
     if (!input)
-        return false;
+        return refuseBake(&state.lastResult, collectError, error, code, &stats);
 
     // Dirty: the tiles whose hashes changed (a different configuration rebuilds all); Full: all
     std::vector<uint32_t> tiles;
@@ -607,18 +656,20 @@ bool NavigationSystem::bake(Entity surface, NavBakeMode mode, std::string& error
     return true;
 }
 
-bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std::string& error) {
+bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std::string& error, NavBakeError* code) {
+    if (code)
+        *code = NavBakeError::None;
     NavMeshSurfaceComponent* component = surfaceComponent(scene, surface);
     if (!component) {
         error = "the GameObject has no NavMeshSurface";
-        return false;
+        return refuseBake(nullptr, NavBakeError::NoSurface, error, code);
     }
     Runtime::Surface& state = rt().surfaces[surface];
     state.entity = surface;
     getNavMesh(surface);
     if (state.bake) {
         error = "a bake of this surface is running";
-        return false;
+        return refuseBake(nullptr, NavBakeError::Busy, error, code);
     }
     // without the tile records (a game's mesh) the asset is read again with them
     if (state.mesh && !state.mesh->getData()) {
@@ -628,11 +679,12 @@ bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std:
         keepBakeData = keep;
     }
     NavCollectStats stats;
-    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats);
+    NavBakeError collectError = NavBakeError::None;
+    std::shared_ptr<NavBakeInput> input = NavBakeCollector::collect(scene, surface, error, &stats, {}, &collectError);
     if (!input)
-        return false;
+        return refuseBake(&state.lastResult, collectError, error, code, &stats);
     if (!state.mesh || !state.mesh->getData() || state.mesh->getHeader().config.hash() != input->config.hash())
-        return bake(surface, NavBakeMode::FULL, error);
+        return bake(surface, NavBakeMode::FULL, error, code);
 
     // the tiles whose bounds (with their border) meet the box, in nav space
     const NavFrame frame = NavBakeCollector::frameOf(scene, surface);
@@ -673,8 +725,13 @@ bool NavigationSystem::updateTiles(Entity surface, const AABB& worldBounds, std:
 NavBakeResult NavigationSystem::bakeNow(Entity surface, NavBakeMode mode) {
     NavBakeResult result;
     std::string error;
-    if (!bake(surface, mode, error)) {
+    NavBakeError code = NavBakeError::None;
+    if (!bake(surface, mode, error, &code)) {
         result.error = error;
+        result.errorCode = code;
+        result.hint = bakeErrorHint(code);
+        if (code != NavBakeError::Busy && runtime && runtime->surfaces[surface].lastResult)
+            result = *runtime->surfaces[surface].lastResult;
         return result;
     }
     Runtime::Surface& state = rt().surfaces[surface];
@@ -684,6 +741,7 @@ NavBakeResult NavigationSystem::bakeNow(Entity surface, NavBakeMode mode) {
         state.bake->wait();
     }
     processBakes(0.0);
+    // the report as it landed: its island fields fill on the first getLastBakeResult (R8)
     if (state.lastResult)
         result = *state.lastResult;
     return result;
@@ -716,11 +774,24 @@ bool NavigationSystem::isAnyBaking() const {
     return false;
 }
 
-const NavBakeResult* NavigationSystem::getLastBakeResult(Entity surface) const {
+const NavBakeResult* NavigationSystem::getLastBakeResult(Entity surface) {
     if (!runtime)
         return nullptr;
     auto found = runtime->surfaces.find(surface);
-    return found != runtime->surfaces.end() ? found->second.lastResult.get() : nullptr;
+    if (found == runtime->surfaces.end() || !found->second.lastResult)
+        return nullptr;
+    NavBakeResult& result = *found->second.lastResult;
+    // the island fields on first read, never inside the landing (R8, R16)
+    if (result.ok && result.islandCount < 0 && found->second.mesh && found->second.mesh->isValid()) {
+        const NavCoverage coverage = getCoverage(surface);
+        result.walkableArea = coverage.walkableArea;
+        result.islandCount = coverage.islandCount;
+        result.islands = getIslands(surface);
+        std::stable_sort(result.islands.begin(), result.islands.end(), [](const NavIsland& a, const NavIsland& b) { return a.area > b.area; });
+        if (result.islands.size() > 16)
+            result.islands.resize(16);
+    }
+    return &result;
 }
 
 void NavigationSystem::processBakes(double budgetMs) {
@@ -748,12 +819,19 @@ void NavigationSystem::processBakes(double budgetMs) {
         std::unique_ptr<NavBake> bake = std::move(state.bake);
         auto result = std::make_unique<NavBakeResult>();
         result->warnings = state.bakeStats.warnings;
+        result->sources = std::move(state.bakeStats);
+        state.bakeStats = NavCollectStats();
         result->tilesTotal = bake->getTilesTotal();
         result->milliseconds = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - state.bakeStarted).count();
+        auto failWith = [&](NavBakeError code) {
+            result->errorCode = code;
+            result->hint = bakeErrorHint(code);
+        };
         if (bake->isCancelled()) {
             // the previous navmesh stays, tiles and hashes alike (spec R4)
             result->cancelled = true;
             result->error = "cancelled";
+            failWith(NavBakeError::Cancelled);
             state.lastResult = std::move(result);
             continue;
         }
@@ -771,10 +849,20 @@ void NavigationSystem::processBakes(double budgetMs) {
             coords.push_back(tile.coord);
             result->tilesBuilt++;
             result->polys += tile.polyCount;
-            for (NavTileBlob& blob : tile.blobs)
+            NavTileReport report;
+            report.x = tile.coord.x;
+            report.y = tile.coord.y;
+            report.polys = tile.polyCount;
+            report.milliseconds = tile.milliseconds;
+            for (NavTileBlob& blob : tile.blobs) {
+                report.bytes += blob.data.size();
                 blobs.push_back(std::move(blob));
+            }
+            result->tiles.push_back(report);
         }
         if (failed) {
+            failWith(NavBakeError::TileFailed);
+            result->tiles.clear();
             Log::error("NavMeshSurface '%s' bake failed: %s", scene->getEntityName(entry.first).c_str(), result->error.c_str());
             state.lastResult = std::move(result);
             continue;
@@ -785,7 +873,8 @@ void NavigationSystem::processBakes(double budgetMs) {
         const std::shared_ptr<const NavBakeInput>& input = bake->getInput();
         std::string error;
         bool ok = false;
-        if (state.bakeReplacesAll || !state.mesh || !state.mesh->getData()) {
+        const bool newMesh = state.bakeReplacesAll || !state.mesh || !state.mesh->getData();
+        if (newMesh) {
             NavMeshData data;
             data.header.agent = getSettings().agentTypeOrDefault(surfaceComponent(scene, entry.first)
                                                                       ? surfaceComponent(scene, entry.first)->agentType : 0);
@@ -804,10 +893,20 @@ void NavigationSystem::processBakes(double budgetMs) {
         }
         if (!ok) {
             result->error = error;
+            failWith(NavBakeError::NavMeshFailed);
+            result->tiles.clear();
             Log::error("NavMeshSurface '%s' bake failed: %s", scene->getEntityName(entry.first).c_str(), error.c_str());
             state.lastResult = std::move(result);
             continue;
         }
+        // the tiles' build times persist per surface (R17): a full bake replaces them all, an
+        // incremental one its own and drops the removed tiles
+        if (newMesh)
+            state.tileMs.clear();
+        for (const NavTileCoord& coord : state.bakeRemoved)
+            state.tileMs.erase({coord.y, coord.x});
+        for (const NavTileReport& tile : result->tiles)
+            state.tileMs[{tile.y, tile.x}] = tile.milliseconds;
         if (state.mesh)
             result->polys = state.mesh->getPolyCount();
         result->ok = true;
@@ -842,14 +941,21 @@ namespace {
 
 namespace {
 
-    // what a query needs of a surface: its mesh, frame and the search box of its agent type
-    bool makeQuery(NavigationSystem& system, Scene* scene, Entity entity, SurfaceQuery& out) {
+    // what a query needs of a surface: its mesh, frame and the search box of its agent type;
+    // why not (S42 R3 steps 1-2: not an enabled, active surface, or not baked)
+    bool makeQuery(NavigationSystem& system, Scene* scene, Entity entity, SurfaceQuery& out, PathFailure* why = nullptr) {
         const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(entity);
-        if (!component || !activeSurface(scene, entity, *component))
+        if (!component || !activeSurface(scene, entity, *component)) {
+            if (why)
+                *why = PathFailure::NoSurface;
             return false;
+        }
         const NavMesh* mesh = system.getNavMesh(entity);
-        if (!mesh)
+        if (!mesh) {
+            if (why)
+                *why = PathFailure::NotBaked;
             return false;
+        }
         out.entity = entity;
         out.mesh = mesh;
         out.frame = NavBakeCollector::frameOf(scene, entity);
@@ -885,10 +991,50 @@ namespace {
 
 }
 
+namespace {
+
+    // a path that never reached a navmesh: from the requested start to the requested end
+    NavPath unanswered(PathFailure failure, const Vector3& from, const Vector3& to) {
+        NavPath path;
+        path.failure = failure;
+        path.start = path.closestPoint = from;
+        path.end = to;
+        path.gap = from.distance(to);
+        return path;
+    }
+
+    // R5: the lower the better among non-Complete answers
+    int failureRank(PathFailure failure) {
+        switch (failure) {
+            case PathFailure::None: return 0;
+            case PathFailure::OutOfNodes: return 1;
+            case PathFailure::BlockedByArea: return 2;
+            case PathFailure::Disconnected: return 3;
+            case PathFailure::EndFiltered: return 4;
+            case PathFailure::EndOffMesh: return 5;
+            case PathFailure::StartFiltered: return 6;
+            case PathFailure::StartOffMesh: return 7;
+            case PathFailure::NotBaked: return 8;
+            case PathFailure::NoSurface: return 9;
+        }
+        return 9;
+    }
+
+    // whether `a` answers better than `b` (equal ranks: the smaller gap; else the earlier surface)
+    bool betterAnswer(const NavPath& a, const NavPath& b) {
+        const int ra = failureRank(a.failure), rb = failureRank(b.failure);
+        if (ra != rb)
+            return ra < rb;
+        return a.gap < b.gap;
+    }
+
+}
+
 NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, const Vector3& to, uint16_t areaMask) {
     SurfaceQuery q;
-    if (!makeQuery(*this, scene, surface, q))
-        return NavPath();
+    PathFailure why = PathFailure::NoSurface;
+    if (!makeQuery(*this, scene, surface, q, &why))
+        return unanswered(why, from, to);
     JE_PROFILE_SCOPE("Nav.Query");
     NavPath path = q.mesh->findPath(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromSettings(areaMask), q.halfExtents);
     const float planeZ = q.frame.planeZOf(from);
@@ -898,6 +1044,13 @@ NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, c
         if (i > 0)
             path.length += path.corners[i - 1].distance(path.corners[i]);
     }
+    // the S42 fields in the world (snap distances and the gap are lengths: the frame keeps them)
+    path.surface = surface;
+    path.start = path.startSnapDistance >= 0.0f ? q.frame.toWorld(path.start, planeZ) : from;
+    path.end = path.endSnapDistance >= 0.0f ? q.frame.toWorld(path.end, q.frame.planeZOf(to)) : to;
+    path.closestPoint = path.corners.empty() ? path.start : path.corners.back();
+    if (path.status != PathStatus::Complete)
+        path.gap = path.closestPoint.distance(path.end);
     return path;
 }
 
@@ -936,12 +1089,13 @@ bool NavigationSystem::findClosestEdgeOn(Entity surface, const Vector3& point, N
 }
 
 NavPath NavigationSystem::calculatePath(const Vector3& from, const Vector3& to, const QueryFilter& filter) {
-    NavPath best;
+    // the first Complete answer (entity order), else the best ranked one (R5)
+    NavPath best = unanswered(PathFailure::NoSurface, from, to);
     for (Entity surface : surfacesOf(scene, filter.agentType)) {
         NavPath path = calculatePathOn(surface, from, to, filter.areaMask);
         if (path.status == PathStatus::Complete)
             return path;
-        if (path.status == PathStatus::Partial && best.status == PathStatus::Invalid)
+        if (betterAnswer(path, best))
             best = std::move(path);
     }
     return best;
@@ -987,12 +1141,30 @@ bool NavigationSystem::findClosestEdge(const Vector3& point, NavHit& out, const 
     return found;
 }
 
-bool NavigationSystem::isReachable(const Vector3& from, const Vector3& to, const QueryFilter& filter) {
-    return calculatePath(from, to, filter).status == PathStatus::Complete;
+bool NavigationSystem::isReachable(const Vector3& from, const Vector3& to, const QueryFilter& filter, PathFailure* why) {
+    PathFailure best = PathFailure::NoSurface;
+    const NavFilter navFilter = NavFilter::fromSettings(filter.areaMask);
+    for (Entity surface : surfacesOf(scene, filter.agentType)) {
+        SurfaceQuery q;
+        PathFailure failure = PathFailure::NoSurface;
+        if (makeQuery(*this, scene, surface, q, &failure)) {
+            JE_PROFILE_SCOPE("Nav.Query");
+            if (q.mesh->isReachable(q.frame.toNav(from), q.frame.toNav(to), navFilter, q.halfExtents, &failure)) {
+                if (why)
+                    *why = PathFailure::None;
+                return true;
+            }
+        }
+        if (failureRank(failure) < failureRank(best))
+            best = failure;
+    }
+    if (why)
+        *why = best;
+    return false;
 }
 
 bool NavigationSystem::getDebugGeometry(Entity surface, const std::function<bool(const AABB& worldBounds)>& visible, size_t maxTriangles,
-                                        bool detailMesh, NavDebugGeometry& out) {
+                                        bool detailMesh, NavDebugGeometry& out, uint32_t extras) {
     out = NavDebugGeometry();
     SurfaceQuery q;
     if (!makeQuery(*this, scene, surface, q))
@@ -1007,7 +1179,7 @@ bool NavigationSystem::getDebugGeometry(Entity surface, const std::function<bool
         return box;
     };
     q.mesh->getDebugGeometry([&](const float* bmin, const float* bmax) { return !visible || visible(worldBox(bmin, bmax)); },
-                             maxTriangles, detailMesh, out);
+                             maxTriangles, detailMesh, out, extras);
     auto toWorld = [&](std::vector<float>& points) {
         for (size_t i = 0; i + 2 < points.size(); i += 3) {
             const Vector3 w = frame.toWorld(Vector3(points[i], points[i + 1], points[i + 2]));
@@ -1040,6 +1212,433 @@ bool NavigationSystem::getDebugGeometry(Entity surface, const std::function<bool
         link.end[0] = e.x; link.end[1] = e.y; link.end[2] = e.z;
     }
     return true;
+}
+
+// ---------------------------------------------------------------- S42 diagnostics
+
+namespace {
+
+    // nav units^2 per m^2 (a 2D surface is in scene points)
+    float areaScale(Scene* scene, Entity surface) {
+        const NavMeshSurfaceComponent* component = scene->findComponent<NavMeshSurfaceComponent>(surface);
+        const float scale = component ? NavBakeCollector::unitScaleOf(scene, *component) : 1.0f;
+        return scale * scale;
+    }
+
+    // a nav-space box as a world AABB (its 8 corners: a rotated surface's box is not axis-aligned)
+    void worldBounds(const NavFrame& frame, const Vector3& bmin, const Vector3& bmax, Vector3& outMin, Vector3& outMax) {
+        AABB box;
+        for (int c = 0; c < 8; c++)
+            box.merge(frame.toWorld(Vector3((c & 1) ? bmax.x : bmin.x, (c & 2) ? bmax.y : bmin.y, (c & 4) ? bmax.z : bmin.z)));
+        outMin = box.getMinimum();
+        outMax = box.getMaximum();
+    }
+
+    std::string quoted(Scene* scene, Entity entity) {
+        return "'" + scene->getEntityName(entity) + "'";
+    }
+
+}
+
+Vector3 NavigationSystem::getSearchExtents(Entity surface) {
+    SurfaceQuery q;
+    return makeQuery(*this, scene, surface, q) ? q.halfExtents : Vector3();
+}
+
+NavLocation NavigationSystem::locateOn(Entity surface, const Vector3& point, uint16_t areaMask, float maxDistance) {
+    NavLocation location;
+    SurfaceQuery q;
+    if (!makeQuery(*this, scene, surface, q))
+        return location;
+    location = q.mesh->locate(q.frame.toNav(point), NavFilter::fromSettings(areaMask), q.halfExtents, maxDistance);
+    if (location.found)
+        location.position = q.frame.toWorld(location.position, q.frame.planeZOf(point));
+    location.surface = surface;
+    return location;
+}
+
+NavLocation NavigationSystem::locate(const Vector3& point, const QueryFilter& filter, float maxDistance) {
+    NavLocation best;
+    for (Entity surface : surfacesOf(scene, filter.agentType)) {
+        const NavLocation location = locateOn(surface, point, filter.areaMask, maxDistance);
+        if (!location.found)
+            continue;
+        // the on-mesh one with the smallest snap, else the closest found
+        const bool better = !best.found || (location.onMesh && !best.onMesh) ||
+                            (location.onMesh == best.onMesh && location.snapDistance < best.snapDistance);
+        if (better)
+            best = location;
+    }
+    return best;
+}
+
+std::vector<NavIsland> NavigationSystem::getIslands(Entity surface) {
+    std::vector<NavIsland> islands;
+    SurfaceQuery q;
+    if (!makeQuery(*this, scene, surface, q))
+        return islands;
+    const float scale = areaScale(scene, surface);
+    islands = q.mesh->getIslands();
+    for (NavIsland& island : islands) {
+        island.area /= scale;
+        worldBounds(q.frame, island.boundsMin, island.boundsMax, island.boundsMin, island.boundsMax);
+    }
+    return islands;
+}
+
+NavCoverage NavigationSystem::getCoverage(Entity surface) {
+    NavCoverage coverage;
+    SurfaceQuery q;
+    if (!makeQuery(*this, scene, surface, q))
+        return coverage;
+    const float scale = areaScale(scene, surface);
+    const std::vector<NavIsland>& islands = q.mesh->getIslands();
+    coverage.walkableArea = q.mesh->getWalkableArea() / scale;
+    coverage.islandCount = (int)islands.size();
+    for (const NavIsland& island : islands)
+        coverage.largestIslandArea = std::max(coverage.largestIslandArea, island.area / scale);
+    std::vector<NavTileInfo> tiles;
+    q.mesh->getTileInfos(tiles);
+    std::set<std::pair<int, int>> nonEmpty;
+    for (const NavTileInfo& tile : tiles) {
+        if (tile.polys > 0)
+            nonEmpty.insert({tile.y, tile.x});
+    }
+    const float tileSize = q.mesh->getHeader().config.tileWorldSize();
+    coverage.tilesArea = (float)nonEmpty.size() * tileSize * tileSize / scale;
+    coverage.fraction = coverage.tilesArea > 0.0f ? coverage.walkableArea / coverage.tilesArea : 0.0f;
+    return coverage;
+}
+
+std::vector<NavigationSystem::LinkStatus> NavigationSystem::getLinkStatus() {
+    std::vector<LinkStatus> out;
+    std::vector<Entity> links;
+    auto array = scene->getComponentArray<NavMeshLinkComponent>();
+    for (size_t i = 0; i < array->size(); i++) {
+        const Entity entity = array->getEntity(i);
+        if (array->getComponentFromIndex(i).enabled && scene->isEntityActiveInHierarchy(entity))
+            links.push_back(entity);
+    }
+    if (links.empty())
+        return out;
+    std::sort(links.begin(), links.end());
+    // every baked surface's connections, once
+    std::vector<std::pair<Entity, std::vector<NavLinkState>>> states;
+    auto surfaces = scene->getComponentArray<NavMeshSurfaceComponent>();
+    std::vector<Entity> surfaceEntities;
+    for (size_t i = 0; i < surfaces->size(); i++)
+        surfaceEntities.push_back(surfaces->getEntity(i));
+    std::sort(surfaceEntities.begin(), surfaceEntities.end());
+    for (Entity surface : surfaceEntities) {
+        SurfaceQuery q;
+        if (!makeQuery(*this, scene, surface, q))
+            continue;
+        states.emplace_back(surface, std::vector<NavLinkState>());
+        q.mesh->getLinkStates(states.back().second);
+    }
+    for (Entity link : links) {
+        bool baked = false;
+        for (const auto& entry : states) {
+            LinkStatus status;
+            status.link = link;
+            status.surface = entry.first;
+            status.connected = true;
+            for (const NavLinkState& state : entry.second) {
+                if (state.userId != (uint32_t)link)
+                    continue;
+                if (status.connections == 0) {
+                    status.islandStart = state.startIsland;
+                    status.islandEnd = state.endIsland;
+                }
+                status.connections++;
+                status.connected = status.connected && state.startConnected && state.endConnected;
+            }
+            if (status.connections == 0)
+                continue;
+            baked = true;
+            out.push_back(status);
+        }
+        if (!baked) {
+            LinkStatus status;
+            status.link = link;
+            out.push_back(status);
+        }
+    }
+    return out;
+}
+
+std::vector<NavTileReport> NavigationSystem::getTileReports(Entity surface) {
+    std::vector<NavTileReport> reports;
+    SurfaceQuery q;
+    if (!makeQuery(*this, scene, surface, q))
+        return reports;
+    const Runtime::Surface& state = rt().surfaces[surface];
+    std::vector<NavTileInfo> tiles;
+    q.mesh->getTileInfos(tiles);
+    reports.reserve(tiles.size());
+    for (const NavTileInfo& tile : tiles) {
+        NavTileReport report;
+        report.x = tile.x;
+        report.y = tile.y;
+        report.layer = tile.layer;
+        report.polys = tile.polys;
+        report.bytes = tile.bytes;
+        auto found = state.tileMs.find({tile.y, tile.x});
+        report.milliseconds = found != state.tileMs.end() ? found->second : -1.0;
+        reports.push_back(report);
+    }
+    return reports;
+}
+
+std::vector<NavFinding> NavigationSystem::getFindings(const NavFindingOptions& options) {
+    std::vector<NavFinding> findings;
+    const NavigationSettings& settings = getSettings();
+    auto add = [&](const char* code, FindingSeverity severity, Entity entity, std::string message,
+                   std::vector<std::pair<std::string, double>> details = {}) {
+        NavFinding finding;
+        finding.code = code;
+        finding.severity = severity;
+        finding.entity = entity;
+        finding.message = std::move(message);
+        finding.details = std::move(details);
+        findings.push_back(std::move(finding));
+    };
+
+    auto surfaceArray = scene->getComponentArray<NavMeshSurfaceComponent>();
+    auto agentArray = scene->getComponentArray<NavMeshAgentComponent>();
+    std::vector<Entity> surfaceEntities, agentEntities;
+    for (size_t i = 0; i < surfaceArray->size(); i++)
+        surfaceEntities.push_back(surfaceArray->getEntity(i));
+    for (size_t i = 0; i < agentArray->size(); i++)
+        agentEntities.push_back(agentArray->getEntity(i));
+    std::sort(surfaceEntities.begin(), surfaceEntities.end());
+    std::sort(agentEntities.begin(), agentEntities.end());
+    std::set<int> usedTypes;
+
+    // ---- surfaces: baked, readable, current, last bake
+    for (Entity entity : surfaceEntities) {
+        const NavMeshSurfaceComponent& surface = scene->getComponent<NavMeshSurfaceComponent>(entity);
+        usedTypes.insert(surface.agentType);
+        const std::string name = quoted(scene, entity);
+        if (!settings.findAgentType(surface.agentType))
+            add("agent_type_missing", FindingSeverity::Error, entity,
+                "NavMesh Surface " + name + " uses agent type " + std::to_string(surface.agentType) +
+                    ", which the project does not define: it bakes for '" + settings.agentTypeOrDefault(surface.agentType).name +
+                    "' instead (pick an Agent Type, or add it in Window > AI > Navigation > Agents)",
+                {{"agent_type", (double)surface.agentType}});
+        if (!surface.enabled)
+            continue;
+        const NavMesh* mesh = getNavMesh(entity);
+        const Runtime::Surface& state = rt().surfaces[entity];
+        if (!state.loadError.empty()) {
+            add("navmesh_unreadable", FindingSeverity::Error, entity,
+                "NavMesh Surface " + name + ": its navmesh '" + surface.navMeshData.path + "' cannot be read (" + state.loadError +
+                    "); bake it again");
+        } else if (!mesh) {
+            // S19's text (test_checks.py)
+            add("not_baked", FindingSeverity::Warning, entity,
+                "NavMesh Surface " + name + " is not baked: its agents find no navmesh in the build (Bake, or bake_navigation)");
+        } else if (options.stale) {
+            const int dirty = options.dirtyTilesOf ? options.dirtyTilesOf(entity) : countDirtyTiles(entity);
+            if (dirty > 0)
+                add("stale_bake", FindingSeverity::Warning, entity,
+                    "NavMesh Surface " + name + " is out of date: " + std::to_string(dirty) +
+                        " tile(s) changed since its bake (Bake, or bake_navigation)",
+                    {{"dirty_tiles", (double)dirty}});
+        }
+        const NavBakeResult* last = state.lastResult.get();
+        if (last && !last->ok && !last->cancelled)
+            add("bake_failed", FindingSeverity::Error, entity,
+                "NavMesh Surface " + name + ": its last bake failed (" + std::string(bakeErrorName(last->errorCode)) + ": " + last->error +
+                    "). " + last->hint,
+                {{"error_code", (double)last->errorCode}});
+    }
+
+    // ---- links: every end on a polygon
+    const std::vector<LinkStatus> links = getLinkStatus();
+    for (const LinkStatus& link : links) {
+        if (link.surface == NULL_ENTITY || link.connected)
+            continue;
+        add("link_unconnected", FindingSeverity::Warning, link.link,
+            "NavMesh Link " + quoted(scene, link.link) + " has an end on no polygon of NavMesh Surface " + quoted(scene, link.surface) +
+                ": agents cannot use it (move its ends onto the navmesh, or widen its search with a smaller Voxel Size, then bake)",
+            {{"island_start", (double)link.islandStart}, {"island_end", (double)link.islandEnd}, {"connections", (double)link.connections}});
+    }
+
+    // ---- agents: on a surface of their type, or on a grid
+    std::vector<Entity> grids;
+    auto gridArray = scene->getComponentArray<NavGridComponent>();
+    for (size_t i = 0; i < gridArray->size(); i++) {
+        const Entity grid = gridArray->getEntity(i);
+        if (gridArray->getComponentFromIndex(i).enabled && scene->isEntityActiveInHierarchy(grid))
+            grids.push_back(grid);
+    }
+    std::sort(grids.begin(), grids.end());
+    // (surface, island) pairs agents stand on, and each surface's crowd masks
+    std::set<std::pair<Entity, int>> occupied;
+    std::map<Entity, std::set<uint16_t>> crowdMasks;
+    for (Entity entity : agentEntities) {
+        const NavMeshAgentComponent& agent = scene->getComponent<NavMeshAgentComponent>(entity);
+        usedTypes.insert(agent.agentType);
+        const std::string name = quoted(scene, entity);
+        if (!settings.findAgentType(agent.agentType))
+            add("agent_type_missing", FindingSeverity::Error, entity,
+                "NavMesh Agent " + name + " uses agent type " + std::to_string(agent.agentType) +
+                    ", which the project does not define: it walks the first type's navmesh (pick an Agent Type, or add it in "
+                    "Window > AI > Navigation > Agents)",
+                {{"agent_type", (double)agent.agentType}});
+        const Transform* transform = scene->findComponent<Transform>(entity);
+        if (!agent.enabled || !transform || !scene->isEntityActiveInHierarchy(entity))
+            continue;
+        const uint16_t mask = (uint16_t)(agent.areaMask & ALL_AREAS);
+        const Vector3 position = transform->worldPosition;
+        // its surfaces: the one it names, else those of its type
+        std::vector<Entity> candidates;
+        bool onGrid = false;
+        if (agent.surface != NULL_ENTITY) {
+            if (scene->findComponent<NavGridComponent>(agent.surface))
+                onGrid = true;
+            else if (scene->findComponent<NavMeshSurfaceComponent>(agent.surface))
+                candidates.push_back(agent.surface);
+        } else {
+            for (Entity surface : surfacesOf(scene, agent.agentType)) {
+                const NavMeshSurfaceComponent& component = scene->getComponent<NavMeshSurfaceComponent>(surface);
+                if (activeSurface(scene, surface, component))
+                    candidates.push_back(surface);
+            }
+            if (candidates.empty()) {
+                for (Entity grid : grids)
+                    onGrid = onGrid || gridContains(grid, position);
+            }
+        }
+        if (onGrid)
+            continue;
+        if (candidates.empty()) {
+            add("agent_no_surface", FindingSeverity::Warning, entity,
+                "NavMesh Agent " + name + " has no NavMesh Surface of agent type '" + settings.agentTypeOrDefault(agent.agentType).name +
+                    "' and no NavGrid holds it: it does not move (add a NavMesh Surface of its type and bake, or a NavGrid under it)");
+            continue;
+        }
+        // where its feet are on each candidate (the closest answers)
+        NavLocation best;
+        for (Entity surface : candidates) {
+            const NavFrame frame = NavBakeCollector::frameOf(scene, surface);
+            const Vector3 feet = position - frame.up() * (agent.baseOffset * NavBakeCollector::unitScaleOf(scene, scene->getComponent<NavMeshSurfaceComponent>(surface)));
+            const NavLocation location = locateOn(surface, feet, mask);
+            if (location.found && (!best.found || (location.onMesh && !best.onMesh) ||
+                                   (location.onMesh == best.onMesh && location.snapDistance < best.snapDistance)))
+                best = location;
+        }
+        // in play its crowd says it (isOnNavMesh); in edit its feet do
+        bool onMesh = best.onMesh;
+        Entity crowdSurface = best.onMesh ? best.surface : NULL_ENTITY;
+        if (runtime) {
+            auto found = runtime->agents.find(entity);
+            if (found != runtime->agents.end() && found->second.placed && !found->second.onGrid) {
+                onMesh = agent.isOnNavMesh;
+                crowdSurface = found->second.surface;
+            }
+        }
+        if (best.found && best.island >= 0)
+            occupied.insert({best.surface, best.island});
+        if (crowdSurface != NULL_ENTITY)
+            crowdMasks[crowdSurface].insert(mask);
+        if (!onMesh)
+            add("agent_off_mesh", FindingSeverity::Warning, entity,
+                "NavMesh Agent " + name + " is not on the navmesh: it does not move (move it onto the surface, warp it, or bake the "
+                    "surface under it)",
+                {{"snap_distance", best.found ? (double)best.snapDistance : -1.0}});
+    }
+    for (const auto& entry : crowdMasks) {
+        if (entry.second.size() > 16)
+            add("crowd_filter_overflow", FindingSeverity::Warning, entry.first,
+                "The agents on NavMesh Surface " + quoted(scene, entry.first) + " use " + std::to_string(entry.second.size()) +
+                    " different Area Masks; a crowd holds 16, the others walk every area (use fewer distinct masks)",
+                {{"masks", (double)entry.second.size()}});
+    }
+
+    // ---- small islands: no agent on them, no link reaching them, not the largest
+    for (Entity entity : surfaceEntities) {
+        const NavMeshSurfaceComponent& surface = scene->getComponent<NavMeshSurfaceComponent>(entity);
+        if (!surface.enabled || options.maxSmallIslands == 0)
+            continue;
+        SurfaceQuery q;
+        if (!makeQuery(*this, scene, entity, q))
+            continue;
+        const std::vector<NavIsland>& islands = q.mesh->getIslands();
+        if (islands.size() < 2)
+            continue;
+        const float scale = areaScale(scene, entity);
+        const float walkable = q.mesh->getWalkableArea();
+        int largest = 0;
+        for (const NavIsland& island : islands) {
+            if (island.area > islands[(size_t)largest].area)
+                largest = island.id;
+        }
+        std::set<int> linked;
+        for (const LinkStatus& link : links) {
+            if (link.surface == entity) {
+                linked.insert(link.islandStart);
+                linked.insert(link.islandEnd);
+            }
+        }
+        std::vector<const NavIsland*> small;
+        for (const NavIsland& island : islands) {
+            if (island.id != largest && island.area < 0.05f * walkable && !linked.count(island.id) && !occupied.count({entity, island.id}))
+                small.push_back(&island);
+        }
+        std::stable_sort(small.begin(), small.end(), [](const NavIsland* a, const NavIsland* b) { return a->area > b->area; });
+        if (small.size() > options.maxSmallIslands)
+            small.resize(options.maxSmallIslands);
+        for (const NavIsland* island : small) {
+            char area[32];
+            std::snprintf(area, sizeof(area), "%.1f", island->area / scale);
+            add("small_island", FindingSeverity::Info, entity,
+                "NavMesh Surface " + quoted(scene, entity) + " has a small island (#" + std::to_string(island->id) + ", " + area +
+                    " m\xC2\xB2) no agent stands on and no link reaches: agents cannot get there (raise Minimum Region Area to drop "
+                    "it, or connect it with a NavMesh Link)",
+                {{"island", (double)island->id}, {"area_m2", (double)(island->area / scale)}});
+        }
+    }
+
+    // ---- obstacles that ask to carve a surface that cannot
+    auto obstacleArray = scene->getComponentArray<NavMeshObstacleComponent>();
+    std::vector<Entity> obstacleEntities;
+    for (size_t i = 0; i < obstacleArray->size(); i++)
+        obstacleEntities.push_back(obstacleArray->getEntity(i));
+    std::sort(obstacleEntities.begin(), obstacleEntities.end());
+    for (Entity entity : obstacleEntities) {
+        const NavMeshObstacleComponent& obstacle = scene->getComponent<NavMeshObstacleComponent>(entity);
+        if (!obstacle.enabled || !obstacle.carve || !scene->isEntityActiveInHierarchy(entity))
+            continue;
+        for (Entity surface : surfaceEntities) {
+            const NavMesh* mesh = scene->getComponent<NavMeshSurfaceComponent>(surface).enabled ? getNavMesh(surface) : nullptr;
+            if (!mesh || mesh->isCarving())
+                continue;
+            add("obstacle_carve_ignored", FindingSeverity::Warning, entity,
+                "NavMesh Obstacle " + quoted(scene, entity) + " carves, but NavMesh Surface " + quoted(scene, surface) +
+                    " has no Runtime Carving: it is avoided instead (turn on Runtime Carving and bake, or turn off Carve)");
+            break;
+        }
+    }
+
+    // ---- agent types nothing uses (a scene with navigation only)
+    if (!surfaceEntities.empty() || !agentEntities.empty()) {
+        for (const AgentTypeSettings& type : settings.agentTypes) {
+            if (!usedTypes.count(type.id))
+                add("agent_type_unused", FindingSeverity::Info, NULL_ENTITY,
+                    "Agent type '" + type.name + "' is used by no NavMesh Surface or NavMesh Agent (remove it in Window > AI > Navigation > "
+                        "Agents if it is not needed)",
+                    {{"agent_type", (double)type.id}});
+        }
+    }
+
+    std::stable_sort(findings.begin(), findings.end(), [](const NavFinding& a, const NavFinding& b) {
+        if (a.severity != b.severity) return a.severity > b.severity;
+        if (a.entity != b.entity) return a.entity < b.entity;
+        return a.code < b.code;
+    });
+    return findings;
 }
 
 // ---------------------------------------------------------------- grids

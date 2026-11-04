@@ -54,12 +54,14 @@ namespace jasperengine::nav {
 
     class JASPERENGINE_API NavMeshBuilder {
     public:
-        // The whole build of the tile at `index` (NavBakeInput::tileIndex)
-        static NavTileBuildResult buildTile(const NavBakeInput& input, uint32_t index);
+        // The whole build of the tile at `index` (NavBakeInput::tileIndex); configOverride (S42's
+        // probe) replaces the input's Recast limits for this build: walkableRadius, walkableClimb,
+        // walkableHeight, minRegionArea, mergeRegionArea (the tile grid and border stay the input's)
+        static NavTileBuildResult buildTile(const NavBakeInput& input, uint32_t index, const NavBuildConfig* configOverride = nullptr);
 
         class JASPERENGINE_API TileJob {
         public:
-            TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index);
+            TileJob(std::shared_ptr<const NavBakeInput> input, uint32_t index, const NavBuildConfig* configOverride = nullptr);
             ~TileJob();
             TileJob(TileJob&&) noexcept;
             TileJob& operator=(TileJob&&) noexcept;
