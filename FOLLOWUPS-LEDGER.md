@@ -59,13 +59,13 @@ S65, S67, S68, S69, S70, S72 and S35-S40. Several ready big features may share o
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | In progress |
 | S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A | In progress |
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B | In progress |
-| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | In progress |
+| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, M | In progress |
 | S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | In progress |
 | S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | In progress |
 | S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B | In progress |
-| S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | In progress |
+| S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | Done |
 | S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | In progress |
 | S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | In progress |
 
@@ -104,14 +104,16 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 - 2026-11-04: MCP hints on errors go in the error text. S69's eval showed that for an error result Claude Code shows the model only the text, so `next` in `structuredContent` is never read there. This narrows the AGENTS.md "MCP text" rule; S69 updates that rule, and every program adding refusals should read this.
 
+- 2026-11-04: S65 waits for `dc/mesh-memory`: one test (`AnObjOfManyMaterialsLoadsWhole`, and the player's `obj=24` line) stays red until the capacities go. Note for mesh-memory: its flatten test must use a preview load, because S65 stops plain threads baking.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
-- GitHub refuses this host's Orquester SSH key since about 09:30 UTC 2026-11-04, though the key is still listed on the account. Git goes over HTTPS with the `gh` login for now (`je-remote/ghgit.sh`).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
 
 ## Done
 
+- S71: measured first: a Mesh's update flags cost 1083 µs a call on main; now 1.3 µs, same flags, every component under 2 µs. Stop also keeps a Mesh a Play only moved, which was never on main. Stop on 600 boxes went from 2.2x rebuilding them to 1.52x (changed) and 1.03x (moved). `CanvasGroupTest` budgets moved to `perfSlack()`, so that test no longer skips under load. `check-changed` passed one merge back; at the final commit a full build, 63 unit and 33 MCP tests. Open: the skipped reload shows no CPU saving under llvmpipe; not measured on a real GPU. A changed Mesh costs about 0.6 ms more on Stop.
 - Mac check: a real hang fixed: 1-9% of new FSEvents streams never report, and stopping one then hung forever. `start()` retries up to 3 streams, then polls. 0 hangs in 15 runs after, 1 before under load. The `Layers` hash difference is explained (17 of 3000 floats, at most 2 ULP: FMA contraction and one `sinf`), and that test now runs on Mac. Mac WERROR build: editor 2823 passed, 1 skipped; core 2849 passed, 16 skipped; 0 failed. S61's `PanelClaims` built and passed there; nobody has clicked the Mac menu. Open: polling watcher tests fail 5 of 10 under 14 CPU hogs (unchanged code); `Layers.PerformanceBudget` fails steadily on A (0.75 ms against 0.6 ms), passes on B; a test probe crashed 3 times with SIGBUS inside FSEvents, cause unknown.
 - S66: crash leftovers clean themselves up. Copies hold an S03 lock; a dead owner's folder is removed at start and before each copy; older folders without a marker are listed in the Hub and MCP, and Remove asks first. Build and 4/4 tests on the final merge; CI suite 1,267 passed on the previous merge, with 2 failures that pass alone on the same build (cause not established) plus the death test, since fixed. Eval: both cases 2/2, and 0/2 without their text. Not done: Show in Folder never clicked; a removal request with no import earlier in the conversation does not find the tool; no case covers it.
 - S61: a key acts on the focused panel (`PanelClaims`), and curve and eyedropper keys are rebindable. The bug was real: Delete in the Curve window deleted a selected GameObject. MCP 202-file selection 1291 passed; its 3 failures were fixed (one was S61's test; two were fixed by merging `main`); affected 10 files 132 passed; eval 2/2, and 0/2 without its text. Whole `check-changed` not green, because a root CMake line demands the whole suite; the next full pass covers it. macOS not built yet: next Mac run. Unit tests last ran before its final merges.
@@ -131,3 +133,6 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S61 and the death test landed. S63's guard is green: 45 of 45 scenes match byte for byte, after fixing 3 more draw-history bugs. S67: real iOS and Android runs pass; its work found `android-emulator-test.sh` emptying its own expectations, so earlier passes without `--scene` proved less. A's disk reached 27 GB free: removed S66's tree and the dangling images (54 GB free now).
 - 2026-11-04: S66 landed. Mac check found a real FSEvents hang and explained the `Layers` hash; re-merging. It also forked about 2,800 processes on the user's Mac by mistake for about 7 minutes; killed, told the user.
 - 2026-11-04: Mac check landed. The fork accident came from `mac_watch_stress.sh`: bash 3.2 rejects `read -t 0.5`, so each pass left a `tail` and a subshell behind. The script is gone from the Mac and its rewrite waits with `sleep 1`.
+- 2026-11-04: S71 landed.
+- 2026-11-04: S65 parked, tree done, waiting for `dc/mesh-memory`.
+- 2026-11-04: Correction: I told the user GitHub SSH was still refused and the key needed checking on their side. That was stale: I had last tested it at 09:50 UTC. It works (retested 14:20), and the key never needed anything. The refusal was real but temporary: other sessions on this host logged the same error until at least 11:10 UTC. Cause unknown. Git is back on the normal SSH remote.
