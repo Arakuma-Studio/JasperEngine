@@ -1,6 +1,6 @@
 # S53 — Terrain operations and authoring
 
-Wave 5 (terrain programme). Owner stream: terrain. Programme decisions: `TERRAIN-LEDGER.md` D1-D18,
+Wave 5 (terrain programme). Owner stream: terrain. Programme decisions: `TERRAIN-LEDGER.md` D1-D21,
 binding. Analyst reports (reading only, re-verified here where cited): `our-terrain-authoring.md`,
 `our-terrain-runtime.md`, `terrain3d-editor-ux.md`, `engine-constraints.md`.
 
@@ -27,8 +27,8 @@ build on the seams defined here.
   brush decal, modifier grammar and tool shortcuts, Terrain Info panel, pick from terrain, Height /
   Slope / Contours / Layer Weights overlays, invertible Slope Filter, Paint by Rules, visible error
   states, the brush radius cap.
-- MCP: `edit_terrain`, `visualize_terrain`, `import_terrain_heightmap`, `export_terrain_heightmap`,
-  extended `sample_terrain`, `frame_all` that can include terrains, `docs/mcp/guide/terrain.md`,
+- MCP: `edit_terrain` (which also imports heightmaps), `visualize_terrain`, `export_terrain_heightmap`,
+  extended `sample_terrain`, `docs/mcp/guide/terrain.md` (created or extended, R97),
   `tools/mcp/budget.json`.
 - Lua: `Terrain:getHeightAt`, `getNormalAt`, `isHoleAt`, `raycast`, `getHeights`, `setHeights`,
   `applyOps`, with collision refresh and paced GPU upload; `docs/scripting/terrain.md`.
@@ -224,7 +224,7 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
   - `TerrainComponentStore` (`engine/core/object/TerrainEdit.{h,cpp}`): the component's maps.
   - `EditorTerrainStore` (`editor/terrain/`): the component store plus persistence and sharing
     (`refreshSharing`, TMU:114).
-- **R4** The operation set is §6 Table 1: 23 public ops and 3 internal ones, open to registration from
+- **R4** The operation set is §6 Table 1: 24 public ops and 3 internal ones, open to registration from
   other files (R89). Each is one application, not a rate: running an op once gives the stated value,
   and no result depends on time.
 - **R5** Shapes: `all`, `circle {center, radius}`, `rect {min, max, rotation}`, `polyline {points,
@@ -246,8 +246,8 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
   (default 0, reported back). RNG is a small PCG32 in `TerrainDeterministic.h`. The folder's sources
   compile with `-ffp-contract=off` (precedent `engine/CMakeLists.txt:2001-2005`). Kernels use no libm
   except `sqrt`, `floor`, `ceil`, `round`, `fabs`; sine and cosine for mask rotation and slope limits
-  come from a polynomial in the same header. `TerrainGolden.*` hashes hold across x86-64 and wasm on
-  this host and across every CI platform (§7).
+  come from a polynomial in the same header. `TerrainGolden.*` hashes hold across x86-64 and wasm, checked
+  on this host; on any other platform they are unverified until a person runs §7's command.
 - **R9** Result (`TerrainOpResult`): per map one changed rectangle in texels and in terrain-local XZ
   with the exact count of changed texels; per op `changed_texels`, `clipped_low`, `clipped_high`,
   `filtered_out`, `outside`; height stats before and after (`min`, `max`, `mean_delta`, `max_delta`);
@@ -303,8 +303,8 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
 - **R19** `set_terrain_maps` keeps its schema, file naming and result. `flat`, `middle`,
   `fractal_noise` produce today's bytes through the internal `fill_noise` op on a `RawMapStore`.
   `random_noise` moves to a per-texel hash with `seed`: same seed gives the same map everywhere, but
-  not today's map, which was never portable. Recorded in `docs/terrain.md`. S55 R45 adds `hole_map` and
-  `cliff_projection` to the schema.
+  not today's map, which was never portable. Recorded in `docs/terrain.md`. Agent-authoring adds
+  `blendmap.index` and layer factors to this schema (R97); S53 and S55 add nothing to it.
 - **R20** The spline bake writes through `applyField`, and `TerrainSplineBake::bakeHeights`,
   `bakeBlend` and `bakeDensity` keep their signatures through `RawMapStore`, so
   `TerrainSplineBakeTests.*` run unchanged. `apply` and `TerrainSplineLiveSession` use an
@@ -398,7 +398,7 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
 - **R39** Replay: the `stroke` shape takes `[x, z]` or `[x, z, pressure]` points. With
   `JASPER_TERRAIN_STROKE_LOG=<path>` the editor appends each mouse stroke as the `edit_terrain` op
   that replays it, sample times included as `times`, and replaying gives byte-identical maps.
-  Test-only environment variable, no UI.
+  Test-only environment variable, no UI. Its append-only writer is the one raw write of this spec (R98).
 
 ### Functional — seams for later specs
 
@@ -431,8 +431,8 @@ Our own precedents, in preference to anything else: `edit_graph` (ops, `dry_run`
 ### Performance
 
 Budgets are `je-bench-terrain` metrics (`engine/tests/core/bench/TerrainBench.cpp`, thresholds in
-`tools/perf/bench-thresholds.json`, doc `docs/perf/terrain.md`) unless noted, on an 8-core build
-server in release.
+`tools/perf/bench-thresholds.json`, doc `docs/perf/terrain.md`) unless noted, on this 8-core
+host in release, idle.
 
 - **R47** Stamp, 16-bit map: radius 64 texels (about 13 k texels), `raise` ≤ 0.3 ms, `smooth` ≤ 0.8
   ms, with slope filter ≤ 1 ms. Radius 512 texels `raise` ≤ 8 ms on 8 cores.
@@ -536,10 +536,12 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
   (S55 Holes and budgets, S56 tiles, S57 density), which take the next digits. Scene view only, saved
   with the workspace per scene, never in a game or camera image, and it updates at most 10 times a
   second from dirty rectangles. A legend sits in the Scene view's corner. Implementation is DC8.
-- **R66** **Slope Filter** replaces the paint mask's name and reaches every map op, not only Paint
-  Texture: Slope Filter checkbox, range, **Invert** (`Y`), and Height Filter, likewise invertible.
-  Saved `paintUseMask` settings carry over. The tool that makes ramps is named **Ramp**, never Slope,
-  which avoids Terrain3D's clash.
+- **R66** **Slope Filter** is the paint mask's new label, and it can reach every map op: Slope Filter checkbox,
+  range, **Invert** (`Y`), Height Filter (likewise invertible) and **All Tools**. Stored keys: `paintUseMask` and its
+  ranges keep their names and their meaning, filtering Paint Texture as `TEW:1794` does today. New keys with defaults,
+  `filterAllTools` (false), `slopeFilterInvert` (false), `heightFilterInvert` (false), turn on the rest, so an old
+  workspace behaves as it did (R83). The tool that makes ramps is named **Ramp**, never Slope, which avoids Terrain3D's
+  clash.
 - **R67** **Paint by Rules** section under Paint Texture: rows of Layer (with Base), Slope range,
   Height range, Invert, Opacity, Noise (edge breakup with Seed), drag to reorder, later rows over
   earlier ones. **Preview** shows the result in the Layer Weights overlay from a dry run; **Apply** is
@@ -549,52 +551,54 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
 
 ### Agent UX (MCP, Lua, CLI)
 
-- **R68** `edit_terrain`, `visualize_terrain`, `import_terrain_heightmap`, `export_terrain_heightmap`
-  in group `terrain` (D17), module row `registerTerrainTools` in a new
-  `editor/mcp/tools/TerrainTools.cpp`. Exact schemas in §6. Detection for import is shared with the
-  dialog through `TerrainRawIO.h`: size from file length (squares first, a power of two or a power of
-  two plus one preferred), depth from extension then length, byte order from smoothness in both
-  orders, range from the data. Ambiguity refuses with the candidates listed. `.png` reads 8 and 16
-  bits; `.exr` reads through `FloatImage`.
+- **R68** `edit_terrain`, `visualize_terrain` and `export_terrain_heightmap` in group `terrain` (D17), module row
+  `registerTerrainTools` in a new `editor/mcp/tools/TerrainTools.cpp`. Import is `edit_terrain`'s `import_heightmap` op
+  (Table 1), so it has `dry_run`, all-or-nothing and one undo step with no tool of its own. Schemas in §6. Detection for
+  import is shared with the dialog through `TerrainRawIO.h`: size from file length (squares first, a power of two or a
+  power of two plus one preferred), depth from extension then length, byte order from smoothness in both orders, range
+  from the data. Ambiguity refuses with the candidates listed. `.png` reads 8 and 16 bits; `.exr` reads through
+  `FloatImage`.
 - **R69** `edit_terrain` is one undo step per call, all-or-nothing, `dry_run` runs everything on an
   overlay and discards it. Expected work above 4 M texels becomes a job (`wait`, `timeout_seconds`, as
   `bake_navigation`), computing on a snapshot off the main thread and committing on the main thread; a
   base changed meanwhile fails with a clear error.
 - **R70** `sample_terrain` gains `region`, `stats` (`height`, `slope`, `layers`), `slope_bins`,
-  `issues`, `hash`, and existing arguments and results do not change. Full map up to 2049²; larger
-  maps stride and report `stride`. Later specs add to it under these names only: S55's `info.material`,
-  `info.holes`, per-point fields and `stats: ["coverage"]` over `region` (S55 R43; S55 D5: S53's names
-  win), S56's per-point `state` (S56 R46), S57's `foliage` over `region` (S57 R55).
-- **R71** `frame_all` gains a companion `include_terrain` on `set_scene_camera`
-  (`SceneViewController::frameAll(sceneProject, includeTerrain)`). Default false keeps S26 R18 and
-  Alt+F. `visualize_terrain` uses the same path for `fit`, and the Terrain window's Frame Terrain
-  frames the terrain alone.
+  `issues`, `hash`, and existing arguments and results do not change, apart from agent-authoring's rename of
+  `foliage_layers` to `details` (R97). Full map up to 2049²; larger maps stride and report `stride`. Later specs add to it
+  under these names only: S55's `info.material`, `info.holes`, per-point fields and `stats: ["coverage"]` over `region`
+  (S55 R43; S55 D5: S53's names win), S56's per-point `state` and `world` (S56 R45, R46), S57's `foliage` over `region`
+  (S57 R55). With all of them it stays within `tool_default` (R74).
+- **R71** Framing a terrain is `visualize_terrain`'s `framing` (`fit`, `top`, `orbit`), through
+  `SceneViewController::frameAll(sceneProject, includeTerrain)`, which the Terrain window's Frame Terrain also calls, for
+  the terrain alone. `set_scene_camera` does not change: `frame_all` keeps S26 R18 and Alt+F, and its exception does not
+  rise.
 - **R72** `TerrainIssues` (pure checks plus component checks) is one list used by
   `sample_terrain.issues` and by a banner at the top of the Terrain window, each with `code`,
   `severity`, `message` and `fix`. Codes are in §6 Table 2. An error stays visible until fixed and
   shows a button where a fix exists (Convert to 16-bit, Retry Write, Create Terrain...). `Out::error`
   may also log, but the window and tool never rely on the console.
 - **R73** `docs/mcp/guide/terrain.md` (served as `jasper://docs/terrain`, row in
-  `docs/mcp/guide/README.md`): when to use which tool, every op with fields, the shape and filter
-  rules, units and spaces, warnings and issues, a worked flow (create, block out, paint by rules,
-  verify, look), dry run, jobs, Lua. A one-line digest in `McpInstructions.cpp`'s 3D bullet names the
-  group and the doc. `tool_groups`' description for `terrain` (`McpToolGroups.cpp:25`) is updated.
-- **R74** `budget.json`: `groups.terrain {chars: 30000, tools: 13, spec}`, the one limit for S53-S57
-  (D17; the others refer here). The 13 tools: today's `sculpt_terrain`, `set_terrain_maps`,
-  `sample_terrain`; S53's 4 (R68); S54's `generate_terrain`, `preview_noise_graph`; S55 none; S56's
-  `create_terrain_world`, `edit_terrain_world`, `get_terrain_world_status`; S57's `bake_terrain_impostors`.
-  Characters by the specs' estimates: S53 14,800, S54 2,600, S56 5,400, S57 1,000, leaving room for S55's
-  additions to `sample_terrain` and `visualize_terrain`. Exceptions `edit_terrain`
-  and any other tool over 1,500 at measured size plus 5 %; `set_scene_camera`'s exception rises by
-  what `include_terrain` measures. `test_tool_groups.py:208` lists the new tools. `docs/mcp/TOOLS.md`
-  is regenerated.
+  `docs/mcp/guide/README.md`; agent-authoring creates the same file, R97): when to use which tool, every op with fields,
+  the shape and filter rules, units and spaces, warnings and issues, a worked flow (create, block out, paint by rules,
+  verify, look), dry run, jobs, Lua. The agent guide gets one entry in its "Other areas" index, `terrain (edit_terrain):
+  jasper://docs/terrain`, with no digest section and no line in the 3D bullet; it stays ≤ 8,192 bytes with ≥ 1,500 free
+  (`budget.json` `guide`), and the entry needs AC74's case `terrain_find_docs`. `tool_groups`' description for `terrain`
+  (`McpToolGroups.cpp:25`) is updated.
+- **R74** `budget.json`: `groups.terrain {chars: 16000, tools: 10, spec}`, the one limit for S53-S57 (D17; the others
+  refer here), lowered to the measured total plus 5 % when S56 lands. No S53-S57 tool gets an `exceptions` entry: every
+  new tool fits `tool_default` (1,500) by its shape (R95). The 10 tools, sized by a script over the §6 schemas (estimates,
+  nothing built): `sculpt_terrain` (2,699, its existing exception), `set_terrain_maps` (2,369; about 2,680 with
+  agent-authoring), `sample_terrain` 1,431 with every later key, `edit_terrain` 1,461, `visualize_terrain` 1,434,
+  `export_terrain_heightmap` 696, S54's `generate_terrain` 1,249 and `preview_noise_graph` 883, S56's `edit_terrain_world`
+  884, agent-authoring's `edit_terrain_details` (about 1,100): about 14,320 in all. `test_tool_groups.py:208` lists the new
+  tools. `docs/mcp/TOOLS.md` is regenerated.
 - **R75** Lua on `Terrain` (§6 sketch), in a new `engine/core/script/binding/TerrainClassesLua.cpp`:
   `getHeightAt`, `getNormalAt`, `isHoleAt`, `contains`, `raycast` (always available, read-only);
   `getHeights`, `setHeights`, `applyOps`, and properties `heightMapWidth`, `heightMapHeight`,
   `allowRuntimeEdits`, and `setRuntimeUploadBudget(bytes)` (DC9). Writes on a terrain without Allow
   Runtime Edits fail with a Lua error naming the setting and the terrain. `applyOps` takes the same op
   tables as `edit_terrain` (world XZ for shapes), except `place_objects`, `erase_objects`,
-  `remap_layers` (authoring only), and returns the result as a table. No undo at runtime.
+  `remap_layers`, `import_heightmap` (authoring only), and returns the result as a table. No undo at runtime.
   `docs/scripting/terrain.md` documents all of it including costs, with Lua blocks under the doctest
   (`docs/scripting.md:242`). `lua-api.md:2810` points to it.
 - **R76** Terrain3D's pain points are designed away as follows.
@@ -649,8 +653,10 @@ New editor code goes in `editor/terrain/` (D2), listed by `editor/terrain/Terrai
   Old multi-channel height sources convert on first edit, as today.
 - **R83** `TerrainEditorSettings` gains fields with defaults; `brushMode` integers stay, and new tools
   append. Lift Floors, Flatten Peaks and Cut/Fill Holes are appended, so the enum table at
-  `StreamSchema.cpp:667` keeps every old value. Stored radius above 50 stays valid; a stored
-  `brushStrength` keeps its number, and R34 keeps its meaning at the click.
+  `StreamSchema.cpp:667` keeps every old value. Stored radius above 50 stays valid. `paintUseMask` keeps its key and meaning
+  (R66). A stored `brushStrength` keeps its number, and R34 and R35 keep its click and held rates; only a moving stroke's
+  deposit goes from per second to per distance, which no stored number could convert, so nothing migrates. Every key here is
+  optional and new, so no version bump, migration or fixture (`AGENTS.md`, Invariants).
 - **R84** Undo history is not persisted, so nothing migrates; a project's first run with S53 loads and
   draws the same (`test_upgrade_from_main.py` stays green). Writing a hole map bumps nothing; an older
   editor opening that scene preserves the unknown field (S03).
@@ -683,13 +689,14 @@ here win where theirs were assumptions (each of them says so).
   The editor wraps a Batch's commit as one `TerrainMapDeltaCmd` with the caller's undo name.
 - **R89** Op registration (S57 R23). `registerOp(name, validate, apply)` adds a kind from another
   file: it runs inside the same validation, overlay, result and undo, and returns its own result
-  fields in the op's entry. An op's own keys arrive through `edit_terrain`'s `params` (an `anyObject`)
-  so a later spec adds only its names to the `op` enum. Registered ops may write non-map data through
-  their own store (S57's `TreeStore`), which joins the same undo step.
+  fields in the op's entry. An op's own keys arrive in its op object, which the listed schema leaves open (R95), so a later
+  spec adds no schema text and the handler names the valid keys in its error. Registered ops may write non-map data through
+  their own store (S57's `TreeStore`), which joins the same undo step. A registered op may declare `spansFrames` (S57's
+  `bake_impostors` renders one view per frame): the call is then a job whatever its texel count.
 - **R90** Overlay sources (S55 R44, S56 R46, S57 R57). `TerrainOverlay::registerSource(name, bake,
   legend)`: `bake` fills an RGBA8 rectangle from the store, `legend` returns colour stops. S53
   registers its four through this same interface. A source may instead declare that it needs a
-  rendered frame (S55's `fetch_cost`). `visualize_terrain`'s `overlay` enum grows by name, and
+  rendered frame (S55's `fetch_cost`). `visualize_terrain`'s `overlay` is a string checked in the handler, so a source adds no schema text, and
   `quality` and `foliage_quality` are those specs' own keys.
 - **R91** `applyNewTerrainDefaults(TerrainComponent&)` in `TerrainEdit.h` is the one place new
   terrains get defaults: S55 R53 adds Limit Layers Per Pixel there, S57 F12 its Detail Distance. `TerrainEditWindow` keeps one-line
@@ -704,6 +711,49 @@ here win where theirs were assumptions (each of them says so).
 - **R93** `TerrainSurfaceQuery` is the abstract form of the query for regions and worlds (S57
   `FoliageRegion`, S56 R24): `sample`, `heightAt`, `raycast`. `SurfaceView` is its copied-texel form
   for jobs (S57 R7). `querySurface` uses the single-map implementation unless S56's hook applies.
+
+### Upstream revision: no CI, lean MCP, Doriax, storage
+
+- **R94 Where each AC runs.** There is no CI (`AGENTS.md`, Test). The gate per commit is `tools/check-changed`; before a push
+  to `origin main` that needs it, the full suite (`WERROR=1 tools/build.sh linux`, `WERROR=1 tools/build.sh unit-tests`,
+  `MCP_SUITE=all JASPER_SLOW_BUILD=1 JASPER_SLOW_TESTS=1 tools/build.sh mcp-tests -j <n>`). Every AC runs on this host (8 cores,
+  software GL, lavapipe, Emscripten, Android build with no emulator) or is labelled not verifiable here with the command a
+  person runs on that platform (§7's table). A row not run is reported unverified, never as passing.
+- **R95 Lean tools.** Each tool asked for by S53-S58 was challenged against "merge or extend before adding a near-duplicate":
+
+  | Asked for | Outcome | Why |
+  |---|---|---|
+  | `edit_terrain` | Kept, at most 1,500 | The one write tool; op items are open in the schema and closed in the handler (precedent: S47's `edit_sprite`) |
+  | `import_terrain_heightmap` | Merged: `edit_terrain` op `import_heightmap` | Needs what `edit_terrain` has: `dry_run`, one undo step, a job |
+  | `export_terrain_heightmap` | Kept | Writes a file, so it cannot be the read-only `sample_terrain`; nothing else exports |
+  | `visualize_terrain` | Kept | Overlay plus framing, as `visualize_navigation`; `overlay` is a handler-checked string |
+  | `include_terrain` on `set_scene_camera` | Removed | `visualize_terrain`'s `framing` does it, and a raised exception is not allowed (R71) |
+  | `generate_terrain` | Kept (S54) | Own job, statistics and image; the agent's "make me a terrain" entry |
+  | `preview_noise_graph` | Kept (S54) | Needs no terrain, works in Play, reports per node; `generate_terrain dry_run` does none of these |
+  | `create_terrain_world` | Merged: `edit_terrain_world {create}` (S56) | Same pattern as `edit_graph {create}` |
+  | `get_terrain_world_status` | Merged: `sample_terrain {world}` (S56) | A read of the same terrain; the status tool repeated its addressing |
+  | `edit_terrain_world` | Kept, at most 1,500 (S56) | Its ops are allowed in Play and `edit_terrain` is not, so one tool cannot carry both annotations |
+  | `bake_terrain_impostors` | Merged: `edit_terrain` op `bake_impostors` (S57, R89's `spansFrames`) | One more registered op |
+  | S55's additions | None to the listing beyond two `visualize_terrain` and `sample_terrain` keys; `set_terrain_maps` unchanged (S55 R45) | Reflection reaches the fields |
+  | `sculpt_terrain` | Stays for now | It is the near-duplicate, but AC13's baseline and Doriax's texts depend on it (§9) |
+
+  Schemas stay lean, with validation in the handler. Descriptions say what a tool does, its default or limit, the one misuse and
+  the sibling tool: no field lists, result lists or examples. A hint an agent must see is `next` in `structuredContent`: when a
+  result has a warning or issue with a fix, `next` names the call that fixes or verifies it (`height_clipped_high`: `remap_heights`
+  with a higher `maxHeight`; `navmesh_stale`: `bake_navigation`). An error names the fix. Names: `AGENTS.md` says
+  "area noun first", but the rule enforced is `verb_noun` (`docs/mcp/conventions.md`; `VERBS` in `test_tool_conventions.py`), so
+  every name here starts with a verb and then the area noun, one word per concept (`terrain`, `terrain_world`, `voxels`, `details`).
+- **R96 Eval cases.** New tool text and every guide line get a case in `tools/mcp/eval/cases.py` that fails without it (AC74).
+- **R97 Doriax overlap (D21).** `agent-authoring`, `render-correctness`, `draw-perf`, `ssr-probes` and `mesh-memory` are specs on
+  `docs/superpowers/specs/`, not landed. Whichever lands second merges onto the first, with no duplicated capability. §8 lists what
+  S53 shares with each.
+- **R98 Writes and lints.** Every persistent write goes through `engine/core/io/AtomicFile.h` or a helper on it: maps through
+  `TerrainMapFileWriter` (R31), `export_terrain_heightmap` through `safewrite::writeFileResolvedBeneath`, encoding to memory first
+  (`stbi_write_*_to_func`, never a path). `JASPER_TERRAIN_STROKE_LOG` is append-only and test-only, so it gets one reasoned line in
+  `tools/raw_writes_allowlist.txt` ("append-only logs" section). S53 vendors nothing, so `NOTICE.md` and `engine/notices.json` do
+  not change (Terrain3D: ideas only, D14).
+- **R99 Shaders.** S53 changes no shader (DC8), so no variant bit and no shader cache bump. An implementer who has to change one
+  bumps the shader cache version in `editor/App.cpp` by one and records a Deviation.
 
 ## 6. Design constraints & decisions
 
@@ -806,6 +856,7 @@ new value. Brush column is the `TerrainBrushMode` it replaces.
 | `fill_holes` | hole | shape (default all); same | those texels become 255 | new |
 | `place_objects` | entities | `asset`, `spacing`, `count`, `scale`, `rotation_jitter`, `align_to_normal`, `instanced`, `seed` | `PlacementPlan` | PlaceObject |
 | `erase_objects` | entities | | within shape, as TEW:2148 | EraseObject |
+| `import_heightmap` | height | `path`, `format`, `width`, `height`, `byte_order`, `flip_vertically`, `range`, `source_min`, `source_max`, `set_max_height`, `resolution` (§6 schema); no shape | replaces the map; same size is a delta, another size the structural path (R61) | new |
 
 Internal only (C++): `fill_noise` (R19), `apply_field` (R40), `set_heights` (import, Lua).
 
@@ -1000,86 +1051,72 @@ Character counts are estimates by a script over these schemas; set `budget.json`
 plus 5 %.
 
 ```cpp
-// edit_terrain (estimate 4,600 characters)
-// "Declarative terrain edits, all-or-nothing, one undo step per call. Each op: shape (all, circle, rect, polyline, mask,
-//  stroke), filter (slope, height, layer), absolute height or signed delta in world units, seed. dry_run changes nothing
-//  and returns the same result. Returns changed rects, stats, warnings. Over 4M texels: a job. Fields: jasper://docs/terrain."
+// edit_terrain (1,461 characters by script)
+// "Declarative terrain edits, all-or-nothing, one undo step per call, no rates: absolute heights or signed deltas, seeded.
+//  dry_run changes nothing and returns the same result. Over 4M texels: a job (get_job). For a look use visualize_terrain,
+//  for numbers sample_terrain. Ops and fields: jasper://docs/terrain."
 object({
   {"scene", sceneRef()},
   {"entity", entityRef("Default: the only terrain.")},
   {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
-  {"create", stringEnum("Preset for a terrain with no maps.", {"test_patch", "small", "medium", "large", "huge", "mobile"})},
+  {"create", string("Size preset for a terrain with no maps.")},   // handler: Table 6's ids
   {"map_resolution", integer("New maps.", 2, 8192)},
-  {"ops", Json{{"type", "array"}, {"minItems", 1}, {"maxItems", 256}, {"items", object({
-      {"op", stringEnum("", {"raise", "lower", "set_height", "lift_floors", "flatten_peaks", "smooth", "sharpen", "add_noise",
-                             "terrace", "stamp", "erode", "ramp", "remap_heights", "paint_layer", "paint_base", "paint_by_rules",
-                             "remap_layers", "paint_density", "erase_density", "cut_holes", "fill_holes", "place_objects", "erase_objects"})},
-      // S57 R23 appends scatter_by_rules, clear_foliage, place_trees, remove_trees, convert_placed_to_trees (R89); their keys go in params
-      {"shape", object({
-          {"type", withDefault(stringEnum("", {"all", "circle", "rect", "polyline", "mask", "stroke"}), "all")},
-          {"center", vec2("")}, {"radius", number("", 0)}, {"min", vec2("")}, {"max", vec2("")},
-          {"points", array(array(numberItem, ""), "[x, z], stroke: [x, z, pressure].")}, {"closed", boolean("Polygon.")},
-          {"times", array(numberItem, "stroke: seconds per point.")},
-          {"path", assetPath("Mask image.")}, {"size", vec2("")}, {"rotation", number("Degrees.")},
-          {"falloff", withDefault(stringEnum("", {"smooth", "linear", "constant"}), "smooth")},
-          {"feather", number("Share of radius.", 0, 1)}, {"spacing", number("stroke: world units.", 0)}})},
-      {"filter", object({
-          {"slope", vec2("Degrees.")}, {"height", vec2("")},
-          {"layer", object({{"index", integer("", 0, 64)}, {"min", number("", 0, 1)}, {"max", number("", 0, 1)}}, {"index"})},
-          {"invert", boolean("")}, {"softness", number("", 0, 1)}})},
-      {"height", number("Target.")}, {"heights", vec2("Ramp ends.")}, {"delta", number("World units.")},
-      {"strength", withDefault(number("", 0, 1), 1)},
-      {"in_range", vec2("")}, {"out_range", vec2("")},
-      {"layer", integer("", 0, 64)}, {"order", array(integerItem, "New index per layer.")},
-      {"normalize", withDefault(boolean(""), true)},
-      {"rules", array(object({
-          {"layer", integer("-1 base.", -1, 64)}, {"slope", vec2("")}, {"height", vec2("")}, {"invert", boolean("")},
-          {"opacity", number("", 0, 1)}, {"noise", number("", 0, 1)}}, {"layer"}), "")},
-      {"steps", integer("", 2, 64)}, {"iterations", integer("", 1, 64)}, {"seed", integer("", 0)},
-      {"noise_size", number("")}, {"amplitude", number("")}, {"octaves", integer("", 1, 8)},
-      {"asset", assetPath("Model or prefab.")}, {"instanced", withDefault(boolean(""), true)}, {"spacing", number("")},
-      {"count", integer("", 1)}, {"scale", vec2("")}, {"rotation_jitter", number("", 0, 1)}, {"align_to_normal", number("", 0, 1)},
-      {"params", anyObject("A registered op's fields.")}
-  }, {"op"})}}},
+  {"ops", Json{{"type", "array"}, {"maxItems", 256}, {"items", anyObject with properties {
+      {"op", string("raise, lower, set_height, smooth, paint_layer, paint_by_rules, cut_holes...")},
+      {"shape", anyObject("all, circle, rect, polyline, mask or stroke.")},
+      {"filter", anyObject("slope, height, layer, invert, softness.")}
+  }, required {"op"}}}},
   {"dry_run", withDefault(boolean(""), false)},
   {"hash", withDefault(boolean("Hash each changed map."), false)},
   {"wait", withDefault(boolean("A job waits for its end."), true)},
   {"timeout_seconds", number("", 0)}
 }, {"ops"})
+// The handler closes what the listing leaves open. Op fields, flat in the op object (Table 1, R5, R6):
+//   shape {type, center, radius, min, max, points, closed, times, path, size, rotation, falloff, feather, spacing},
+//   filter {slope, height, layer {index, min, max}, invert, softness}, height, heights, delta, strength, in_range, out_range,
+//   layer, order, normalize, rules [{layer, slope, height, invert, opacity, noise}], steps, iterations, seed, noise_size,
+//   amplitude, octaves, asset, instanced, spacing, count, scale, rotation_jitter, align_to_normal, and the import fields below.
+//   An unknown op or key fails naming the valid ones. S57 R23 adds ops the same way (R89).
+// import_heightmap: {op, path, format ("auto"), width, height, byte_order ("auto"), flip_vertically, range ("auto", "full", "source"),
+//   source_min, source_max, set_max_height, resolution}; the call's dry_run gives detection and a preview only.
+//   Height formula: normalized = (value - range_low) / (range_high - range_low); world = normalized * max_height + position.y.
 // result: {terrain, dry_run, undo_name, created_maps: [...],
 //   changed: [{map: "height"|"blend:0"|"hole"|"density:1", rect: [x, y, w, h], local: {min: [x, z], max: [x, z]}, texels}],
 //   ops: [{op, changed_texels, clipped_low, clipped_high, filtered_out, outside, seed?, placed?, erased?,
-//          hole_texels?, hole_fraction?, map_created?, map_removed?, collision_samples_open?}],
+//          hole_texels?, hole_fraction?, map_created?, map_removed?, collision_samples_open?, detected?}],
 //   stats: {height_min, height_max, height_min_before, height_max_before, mean_delta, max_delta},
-//   warnings: [{op, code, message}], hashes?: {map: "hex"}, job_id?, status?}
+//   warnings: [{op, code, message}], next?, hashes?: {map: "hex"}, job_id?, status?}, plus a preview image for import_heightmap.
 //   annotations: not read-only, not destructive, idempotent only with absolute ops; allowedWhilePlaying false.
 
-// visualize_terrain (estimate 1,450 characters)
-// "Show a terrain overlay in the Scene view (height, slope, contours, layer_weights; none hides it), frame
-//  the terrain and return a Scene view PNG with the overlay's legend and the camera. The view is left as set. Changes no project data."
+// visualize_terrain (1,434 characters by script, with S55's and S57's keys)
+// "Show a terrain overlay in the Scene view (none hides it), frame the terrain and return a Scene view PNG with the overlay's
+//  legend and the camera. The view stays as set; no project data changes. Overlay names: jasper://docs/terrain."
 object({
   {"scene", sceneRef()}, {"entity", entityRef("Default: the only terrain.")},
-  {"overlay", stringEnum("", {"none", "height", "slope", "contours", "layer_weights"})},
-  // R90 appends: S55 layer_count, fetch_cost, holes; S56 tiles, tile_state, lod, collision; S57 density, tree_density.
-  // New keys: S55 quality, S57 foliage_quality.
-  {"contour_interval", number("World units; default: auto.", 0)}, {"slope_range", vec2("Degrees.")},
+  {"overlay", string("height, slope, contours, layer_weights, holes, density...")},
+  // handler: none, height, slope, contours, layer_weights; R90 adds S55 layer_count, fetch_cost, holes; S56 tiles, tile_state, lod,
+  // collision; S57 density, tree_density.
+  {"contour_interval", number("World units; default: auto.", 0)}, {"slope_range", array(numberItem, "Degrees.")},
   {"layer", integer("", 0, 64)}, {"opacity", withDefault(number("", 0, 1), 0.7)},
   {"framing", withDefault(stringEnum("", {"keep", "fit", "top", "orbit"}), "fit")},
   {"yaw", number("Degrees.")}, {"pitch", number("Degrees.", -89, 89)},
-  {"region", object({{"min", vec2("")}, {"max", vec2("")}}, {"min", "max"})},
+  {"region", anyObject("{min:[x,z],max:[x,z]}")},
   {"space", withDefault(stringEnum("", {"world", "local"}), "world")},
+  {"quality", string("Tier for this capture.")}, {"foliage_quality", string("Tier for this capture.")},
   {"screenshot", withDefault(boolean(""), true)}, {"max_width", withDefault(integer("", 0, 4096), 1024)}
 })
 // result: {overlay, legend: [{value, color, label}], camera: {position, target}, view_rect_in_window}, plus a ToolResult image.
 //   readOnly true for project data; allowedWhilePlaying false.
 
-// sample_terrain, added keys (estimate 1,470 characters in all; today's keys and replies are unchanged)
-  {"region", object({{"min", vec2("")}, {"max", vec2("")}}, {"min", "max"})},
-  {"stats", array(stringEnum("", {"height", "slope", "layers"}), "Region statistics.")},   // S55 R43 appends coverage
+// sample_terrain, added keys (1,431 characters in all by script, with S56's and S57's; today's keys and replies are unchanged)
+  {"region", anyObject("{min:[x,z],max:[x,z]}")},
+  {"stats", array(string(""), "height, slope, layers, coverage.")},   // handler checks the names; S55 R43 adds coverage
   {"slope_bins", withDefault(integer("Over 0-90 degrees.", 1, 90), 9)},
   {"issues", withDefault(boolean("Problems and fixes."), false)},
-  {"hash", withDefault(boolean("Content hash of each map."), false)}
-// S57 R55 adds foliage (boolean).
+  {"hash", withDefault(boolean("Content hash of each map."), false)},
+  {"foliage", withDefault(boolean("Details and trees in region."), false)},   // S57 R55
+  {"world", anyObject("A Terrain World's tiles, with wait_for.")},             // S56 R45
+  {"timeout_seconds", number("", 0)}                                           // S56 R45's wait
 // grid's default stays 9 only when none of points, stats, issues, hash is given.
 // result adds: stats: {texels, stride,
 //     height: {min, max, mean, p05, p50, p95, clipped_low_share, clipped_high_share},
@@ -1087,28 +1124,7 @@ object({
 //     layers: [{index, name, coverage, mean_weight}], base_coverage},
 //   issues: [{code, severity, message, fix}], hashes: {height: "hex", "blend:0": "hex", ...}
 
-// import_terrain_heightmap (estimate 1,500 characters)
-// "Replace the heightmap from a raw or image file as one undo step. Detects size, depth, byte order and value range and returns
-//  them with a preview. dry_run: detection and preview only. Unclear detection refuses and says what to pass. Output is a 16-bit map."
-object({
-  {"scene", sceneRef()}, {"entity", entityRef("Default: the only terrain.")},
-  {"path", string("Project-relative .raw, .r8, .r16, .r32, .png or .exr.")},
-  {"format", withDefault(stringEnum("", {"auto", "r8", "r16", "r32f", "png", "exr"}), "auto")},
-  {"width", integer("", 2, 8192)}, {"height", integer("", 2, 8192)},
-  {"byte_order", withDefault(stringEnum("", {"auto", "little", "big"}), "auto")},
-  {"flip_vertically", withDefault(boolean(""), false)},
-  {"range", withDefault(stringEnum("auto: the data's min and max; full: the format's range; source: source_min/max.",
-                                   {"auto", "full", "source"}), "auto")},
-  {"source_min", number("World units.")}, {"source_max", number("World units.")},
-  {"set_max_height", withDefault(boolean("Set Terrain Height from the range."), false)},
-  {"resolution", integer("Resample to.", 2, 8192)},
-  {"dry_run", withDefault(boolean(""), false)}, {"max_width", withDefault(integer("Preview.", 0, 1024), 256)}
-}, {"path"})
-// result: {detected: {format, width, height, byte_order, min, max, mean, guessed: [...]},
-//   applied: {path, width, height, max_height, height_min, height_max, hash}?, warnings: [...], undo_name?}, plus a preview image.
-// Height formula: normalized = (value - range_low) / (range_high - range_low); world = normalized * max_height + position.y.
-
-// export_terrain_heightmap (estimate 690 characters)
+// export_terrain_heightmap (696 characters by script)
 // "Write the heightmap to a raw or 16-bit image file. Returns size, depth, value range and hash. Importing the file with range
 //  full gives the same heights back."
 object({
@@ -1120,9 +1136,6 @@ object({
   {"range", withDefault(stringEnum("", {"full", "auto"}), "full")}
 }, {"path"})
 // result: {path, format, width, height, bytes, min, max, hash, warnings}. Written beneath the project (the call's write scope); the flush of R30 runs first.
-
-// set_scene_camera, added key next to frame_all (ViewTools.cpp:1983)
-  {"include_terrain", withDefault(boolean("With frame_all: terrains count too."), false)}
 ```
 
 Worked agent flow, for the guide:
@@ -1147,7 +1160,7 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
 `engine/tests/core/CMakeLists.txt:17`), `editor/tests/terrain/*Test.cpp`,
 `tools/mcp/tests/test_terrain_*.py` (`CI = True`, `EDITOR = {"create": True}`),
 `engine/tests/core/render/TerrainEditGpuTest.cpp` (golden: made on glcore, matched on Vulkan,
-`docs/testing.md:660-665`).
+`docs/testing.md:639-644`).
 
 **Engine and determinism**
 - **AC1 (R1, R2)** `TerrainOpsDeps.NoEcsOrRenderIncludes` greps `engine/core/terrain/`.
@@ -1162,8 +1175,8 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
 - **AC4 (R6)** `TerrainFilter.SlopeHeightLayerAndInvert`: exact texel sets on a synthetic ramp, invert
   is the complement, out-of-filter bytes are unchanged, `softness` band values.
 - **AC5 (R8)** `TerrainGolden.Hashes`: a list of 40 op sequences on a fixed seed map, FNV hashes
-  pinned in `engine/tests/core/terrain/golden/op_hashes.json`, run on the core suite (Linux, and
-  Windows and macOS in CI) and by `tools/test-projects/terrain-edit` under
+  pinned in `engine/tests/core/terrain/golden/op_hashes.json`, run on the core suite on this host (Windows and macOS: the
+  table at the end of §7, unverified until run) and by `tools/test-projects/terrain-edit` under
   `tools/web/gates/terrain-edit.json`, which compares the same hashes in wasm.
   `TerrainGolden.ThreadCountDoesNotMatter`: 1 and 8 workers give equal bytes.
 - **AC6 (R9)** `TerrainOps.ResultNumbersMatchDiff`: for random op lists (fixed seed), `changed_texels`
@@ -1171,7 +1184,7 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
 - **AC7 (R11)** `TerrainOps.UntouchedTexelsKeepTheirBytes`: on 8-bit and 16-bit maps with odd values.
 - **AC8 (R12, R16, R92, DC3)** `TerrainHoles.CutFillAndQuery`: `cut_holes` then `isHole`, a second
   identical cut changes 0 texels, last fill removes the map, 0 and 255 only, height bytes untouched;
-  `test_terrain_ops.py::test_holes_warn_until_s43` (S55 removes the assertion with the warning);
+  `test_terrain_ops.py::test_holes_warn_until_s55` (S55 removes the assertion with the warning);
   `TerrainLayers.ChannelMappingIsTheOnlyRoute`.
 - **AC9 (R13)** `TerrainLayers.RemapMovesPaintAcrossBlendMaps`: layer 1 moved to index 5 keeps its
   weights exactly; `test_terrain_ui.py::test_delete_layer_keeps_paint`.
@@ -1331,13 +1344,13 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
   `.RoundTripEveryFormat`, `.FlipAndResample`; `test_terrain_raw.py`: export then import with range
   full gives an equal hash for R16, PNG; R8 within 1/255, R32F within 1/65535; `dry_run` returns an
   image and writes nothing.
-- **AC57 (R71)** `test_scene_view.py::test_frame_all_include_terrain`: default keeps S26 (terrain
-  excluded); `include_terrain` frames it; `test_terrain_visualize.py::test_framing_modes` camera
-  numbers for `fit`, `top`, `orbit`.
+- **AC57 (R71)** `test_terrain_visualize.py::test_framing_modes` camera numbers for `fit`, `top`, `orbit`;
+  `test_scene_view.py` unchanged and green, with `frame_all` still excluding terrains (S26), and `set_scene_camera`'s size
+  unchanged in `tool_budget.py`.
 - **AC58 (R73, R74)** `test_tool_groups.py` (hidden until enabled, `edit_terrain` listed after),
-  `test_tool_budget.py`, `test_tool_conventions.py`, `test_tool_coverage.py`, `test_docs.py`,
-  `test_autosync.py` pass; `jasper://docs/terrain` read by
-  `test_terrain_ops.py::test_guide_is_served`; `test_agent_docs.py` stays green.
+  `test_tool_budget.py` (with no new `exceptions` entry), `test_tool_conventions.py`, `test_tool_coverage.py`, `test_docs.py`,
+  `test_autosync.py` pass; `jasper://docs/terrain` read by `test_terrain_ops.py::test_guide_is_served`; `test_agent_docs.py`
+  stays green.
 
 **Data**
 - **AC59 (R81, R82, R84)** `StreamComponentTest.TerrainNewFieldsRoundTrip`,
@@ -1374,7 +1387,7 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
 - **AC69 (R88)** `TerrainBatch.AbsoluteWritesAndOneUndo`, `TerrainBatch.WeightEncoderRules` (clamp,
   normalize, layer 0 takes the rest), `.PaintByRulesUsesTheSameEncoder`.
 - **AC70 (R89)** `TerrainOps.RegisteredOpJoinsValidationResultAndUndo`, through a test op in the unit
-  test; `test_terrain_ops.py::test_params_reaches_a_registered_op` under `JASPER_MCP_SELFTEST_GROUP`.
+  test; `test_terrain_ops.py::test_op_keys_reach_a_registered_op` under `JASPER_MCP_SELFTEST_GROUP`.
 - **AC71 (R90)** `TerrainOverlay.RegisteredSourceBakesAndHasLegend` in the editor tests, and a test
   source through `visualize_terrain` under the same self-test switch.
 - **AC72 (R91)** `TerrainEdit.NewTerrainDefaultsHaveOneHome`: `create_entity` and the dialog give
@@ -1382,23 +1395,57 @@ Test homes: `engine/tests/core/terrain/*Test.cpp` (core, CPU, globbed by
 - **AC73 (R93)** `TerrainSurface.QueryInterfaceAndViewAgree`: virtual, view and `MeshSystem`
   forwarders are equal over 10,000 points; `.ExactAndPresentFlags`.
 
+**Upstream revision**
+- **AC74 (R96, R73)** Cases in `tools/mcp/eval/cases.py`, each with `mocks` in the real result shapes and `groups_enabled: ["terrain"]`
+  unless it is about finding the group. They need a rebuilt surface and lent accounts:
+  `tools/build.sh exec linux uv run --no-project --with-requirements tools/mcp/requirements.txt python tools/mcp/eval/dump_surface.py --out build/eval-surface`,
+  then `python3 tools/mcp/eval/run.py --appdir <box_lend_accounts appdir> --account <accounts> --surface <surface> --model sonnet --out <evidence>/runs/s53 -k terrain_ --samples 4`.
+  **Red:** the same command with `--surface` from the commit before the tool, or `--patch` removing the guide entry; each case below
+  must fail there. `python3 tools/mcp/eval/test_grade.py` runs here with no accounts. If the owner lends no accounts, the run is
+  reported unverified and the landing says so.
+
+  | Case | Kind | Prompt (paraphrased) | Check |
+  |---|---|---|---|
+  | `terrain_find_docs` | guard | "How do I edit this terrain? Group off" | enables `terrain` or reads `jasper://docs/terrain`, then calls `edit_terrain` |
+  | `terrain_hill_declarative` | bad | "Raise a hill to 80 m in the centre" | `edit_terrain` with `set_height`; must not call `sculpt_terrain` |
+  | `terrain_verify_edit` | guard | "Flatten this and check nothing clipped" | `sample_terrain` with `stats` after `edit_terrain`; acts on `next` |
+  | `terrain_import_raw` | guard | "Import assets/dem.r16" | `edit_terrain` op `import_heightmap` with `dry_run` first |
+  | `terrain_show_slopes` | guard | "Show me where it is too steep" | `visualize_terrain` overlay `slope`, not `screenshot` alone |
+  | `terrain_export_raw` | guard | "Export the heightmap as 16-bit raw" | `export_terrain_heightmap`, no `write_file` |
+  | `terrain_control_tilemap_name` | control | "Paint the grass terrain on the tile layer" (S50's word) | `edit_tilemap`; must not call `edit_terrain` |
+- **AC75 (R95)** Static: every op of Table 1 reaches the handler through the open item schema;
+  `test_terrain_ops.py::test_unknown_op_and_key_name_the_valid_ones`; `test_next_names_the_fix` (a clipped map, `next` in
+  `structuredContent`). `tool_budget.py --check` shows `edit_terrain`, `visualize_terrain`, `sample_terrain` and
+  `export_terrain_heightmap` within 1,500. **Red:** a closed copy of the old schema fails the budget.
+- **AC76 (R66, R83)** `TerrainSettingsMigration.PaintMaskKeepsItsMeaning`: a workspace with `paintUseMask: true` and no new keys
+  filters Paint Texture and leaves Raise unfiltered; `filterAllTools` extends it; `python3 tools/check_stream_keys.py` passes.
+  **Red:** applying `paintUseMask` to every tool fails the test.
+- **AC77 (R97)** Second-lander merge check, run by whichever of S53 and agent-authoring lands second: one
+  `docs/mcp/guide/terrain.md`, one `Other areas` entry, `test_terrain_details.py` and `test_terrain_ops.py` both green, no terrain
+  tool over its limit in `tool_budget.py --check`. `sample_terrain` returns `details`, not `foliage_layers`.
+- **AC78 (R98)** `python3 tools/check_raw_writes.py` passes with exactly one new allowlist line (the stroke log), and
+  `python3 tools/ci/check-hardcoded-shortcuts.py` passes for Table 5's keys. **Red:** `tools/check_raw_writes.py --self-test`.
+
 ### Verification available on this host
 
 8 cores, 15 GB RAM, Docker, `rb.sh L` queue, software GL (llvmpipe), Vulkan on lavapipe, no KVM, no
-Windows, no macOS, no iOS, no GPU, no `fixture-unity` (`TERRAIN-LEDGER.md`).
+Windows, no macOS, no iOS, no GPU, no `fixture-unity` (`TERRAIN-LEDGER.md`). There is no CI, so "Elsewhere" means a person
+runs the command and reports it; until then the row is unverified. The commands come from the removed CI jobs (`b4f7816ea`) and were not run here.
 
-| Check | Here | Elsewhere |
+| Check | Here | Elsewhere: command a person runs |
 |---|---|---|
 | Unit tests, determinism on x86-64, sanitizers | Yes, `tools/build.sh unit-tests`, `SANITIZE=...` | |
 | Hash equality in wasm | Yes, `GATE=terrain-edit tools/build.sh web-gate` | |
-| Hash equality on arm64, MSVC, macOS | No | CI's CPU suites (`docs/testing.md`), reported by whoever merges |
-| MCP tests, UI tests with xdotool | Yes, `tools/mcp/run-tests.sh -k terrain -j 2`, slower frames, wait on state not time | |
+| Hash equality on Windows (MSVC) | No | With `vcvars64`: `cmake -S engine -B build-engine-gl -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DJASPERENGINE_TESTS=ON && cmake --build build-engine-gl --target jasperengine-core-tests && build-engine-gl/tests/core/jasperengine-core-tests.exe --gtest_filter=Terrain*-*Gpu*` |
+| Hash equality on macOS arm64 | No | `cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON && cmake --build build-engine --target jasperengine-core-tests && build-engine/tests/core/jasperengine-core-tests --gtest_filter=Terrain*-*Gpu*` |
+| MCP tests, UI tests with xdotool | Yes, `tools/build.sh mcp-tests -k terrain -j 2`, slower frames, wait on state not time | |
 | Goldens on glcore and Vulkan | Yes (llvmpipe, lavapipe) | The reference renderers, so they count |
 | GLES3 and WebGL2 upload path | Partly: forced format in `TerrainEditGpu`, web gate in headless Chromium | |
-| D3D11, Metal drawing and upload | No: code by careful reading only; `*Gpu` excluded on those CI jobs (`docs/testing.md:515`) | Manual checklist |
-| Android | Build only, no emulator (no KVM) | Build servers with KVM |
-| iOS | No | |
-| GPU timings | No meaningful number: only relative, and bytes uploaded are exact | Manual checklist on real GPUs |
+| Metal drawing and upload | No: code by careful reading only | The macOS command above with `--gtest_filter=TerrainEditGpu*` (the default Metal device, `docs/testing.md:493`) |
+| D3D11 drawing and upload | No: no automated pixel test exists | By hand: `docs/specs/checklists/S53.md` on Windows |
+| Android | Build only, no emulator (no KVM) | On a host with `/dev/kvm`: `ANDROID_PROJECT=terrain-edit ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh` |
+| iOS | No | On a Mac: `python3 tools/xcode_sync_engine.py --check`, then build and run `terrain-edit` from the Xcode workspace on a device; checklist |
+| GPU timings | No meaningful number: only relative, and bytes uploaded are exact | `docs/specs/checklists/S53.md` on real GPUs |
 | CPU budgets | Yes, with `RB_SLOTS=2` and nothing else queued; the benchmark run is the enforcement | |
 | Pen pressure on real tablets | No: resampler and replay only; `Backend::penPressure` by reading | `docs/specs/checklists/S53.md` |
 | Human feel of decal, overlays, dialogs | Screenshots and pixel checks here; feel is a checklist item | Owner on a real display |
@@ -1434,7 +1481,7 @@ other names:
 | S56 §8, D11, D12 | Signed texels, refusable writes, per-map lattices (`worldOfTexel`, `texelOfWorld`), `preferredBlock`, `beginLarge`, created tiles in undo (`takeUndoHook`), `exact`, `present`, overlay room | R86, R87, R16, R90 |
 | S56 R28 | `TiledMapStore` with no caller changes | R2, R86; S56 hooks `querySurface` in one place and provides a `TerrainSurfaceQuery` |
 | S56 R31 | Runtime edits are RAM only | R78 |
-| S57 R23, R54 | Ops registered from another file; `edit_terrain` hosts them | R89 (`params`) |
+| S57 R23, R54 | Ops registered from another file; `edit_terrain` hosts them | R89 (keys in the op object) |
 | S57 §8 | Read-rectangle from the main thread; subscribable dirty rectangles; overlay source; `region` | `TerrainMapStore::read`, R42, R90, R70 |
 | S57 R7 | Query and its copied-texel form | R93 |
 | S58 R39, R40, R46 | `cut_holes` and `fill_holes` over rectangles or masks, also at runtime; a query that gives the height under a hole; dirty rectangles | R12, R75, R16, R42; a voxel volume does not use `TerrainMapStore` |
@@ -1446,9 +1493,9 @@ Other facts for them:
   are S55's, including any later overlay in the shader.
 - S56: per-tile textures replace the whole-image upload unit (DC9); world collision replaces
   `JoltTerrainRefresh`'s single-body lookup.
-- **Budget:** S53's foundation adds group `terrain` with R74's limits, 30,000 characters and 13 tools,
-  sized for all of S53-S57 (D17, S54 §8, S57 R59). S53 takes about 14,800 of them and 7 tools; S54 2,600 and 2
-  tools, S55 no tool, S56 and S57 fit the rest by their own estimates (3 tools and 1).
+- **Budget:** S53's foundation adds group `terrain` with R74's limits, 16,000 characters and 10 tools,
+  sized for all of S53-S57 (D17, S54 §8, S57 R59). S53 adds 3 tools; S54 2, S55 and S57 none, S56 1, agent-authoring 1.
+- **Bits and assets:** S53 adds no variant bit and no asset type.
 
 **Merge hotspots**: `TerrainEditWindow.{h,cpp}`, `WorldTools.cpp` (handlers only),
 `MeshSystem.{h,cpp}` and `RenderSystem.cpp` (guarded hooks), `TerrainComponent.h` (S55 also adds),
@@ -1457,9 +1504,20 @@ Other facts for them:
 `bench-thresholds.json`, `engine/CMakeLists.txt` (`include(core/terrain/TerrainSources.cmake)`,
 flags).
 
-**Land order inside S53** (each buildable, gate per commit `tools/check-changed`): baseline fixture
+**Land order inside S53** (each buildable, gate per commit `tools/check-changed`, and the full suite before the push when it needs it (R94)): baseline fixture
 (DC11); `engine/core/terrain/` with tests; surface query with forwarders (the foundation ends here); brush, generation and bake
 migration, delta undo and persistence together with R23; strokes; MCP tools; UI; Lua and runtime last.
+
+**Doriax overlap (D21; none landed yet: whichever lands second merges onto the first)**
+
+| Doriax spec | What S53 touches in common | Rule |
+|---|---|---|
+| `agent-authoring` | `edit_terrain_details` and `TerrainDetailRules`; `set_terrain_maps` `blendmap.index` and layer factors; `sample_terrain`'s `foliage_layers` renamed `details`, with `drawn`; `docs/mcp/guide/terrain.md`, `jasper://docs/terrain`, the guide's restructure; the Terrain window's load-once settings (`TerrainEditWindow.cpp:3589-3684`); `McpToolGroups.cpp:25` | S53 adds no detail-layer tool or field and no blend-slot parameter. `paint_density` and `erase_density` address `details` indices. S53 extends the guide file if it exists and creates it otherwise, and the second lander merges sections into one file. S53's new settings keys go through their load path, and their fix is not repeated. `sculpt_terrain` stays, because their text names it |
+| `render-correctness` | `TerrainFoliageLayer` fields and the foliage ring in `MeshSystem.cpp` | S53 only keeps the whole-layer refill (R23); the ring is S57's and theirs. Same `terrain.md` paragraph: merged |
+| `draw-perf` | `updateAllTerrainRenderTextures` (`RenderSystem.cpp:5905-5919`) walks `TerrainComponent` instead of `MeshComponent`; DC10's hook at `:5855` | Hook the terrain's texture update, whichever loop calls it |
+| `ssr-probes`, `mesh-memory` | Nothing in S53's code; `MeshComponent` stays out of `TerrainOps` (R1), and `MeshSystemTerrainEdit.cpp` uses indices, not references, across writes to its arrays | No action beyond that rule |
+
+**Pixel art.** S50 uses "terrain" for tile autotiling (`TerrainSolver`, `TerrainTemplates`, `terrain_sets`, `edit_tilemap`'s terrain brush). S53's C++ names are in `jasperengine::terrain`, its commands are `terrain.*` and S50 adds no `edit_terrain`, so nothing collides, but `namespace {}` helpers must not reuse S50's file-scope names in a unity build (`AGENTS.md`, Code), and `terrain_control_tilemap_name` (AC74) keeps agents apart.
 
 ## 9. Risks & defaults
 
@@ -1495,7 +1553,10 @@ migration, delta undo and persistence together with R23; strokes; MCP tools; UI;
   when S55 starts. The warning in R12 lasts only until S55's consumers land.
 - **`docs/specs/IMPLEMENTING.md` is stale on branches and servers** (`oe-port`, A/B/C). Default: the
   ledger's build queue and branches apply: worktree under `.worktrees/`, branch
-  `terrain/s41-authoring`, `rb.sh L`.
+  `terrain/s53-authoring`, `rb.sh L`.
+- **`sculpt_terrain` stays beside `edit_terrain`.** It is rate-based and D15 would not add it today. Default: keep it, because AC13
+  proves the migration through it and agent-authoring's text names it. Retiring it would give back 2,699 characters and is the
+  owner's decision after S53 lands.
 
 ## Deviations
 

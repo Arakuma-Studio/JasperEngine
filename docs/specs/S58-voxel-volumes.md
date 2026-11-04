@@ -1,6 +1,6 @@
 # S58: Voxel Volumes
 
-Wave 5 (terrain programme). Binding decisions: `TERRAIN-LEDGER.md` D1-D18. Analyst reports:
+Wave 5 (terrain programme). Binding decisions: `TERRAIN-LEDGER.md` D1-D21. Analyst reports:
 `/tmp/terrain-research/reports/voxel-storage-streaming.md`, `voxel-meshing-generators.md`,
 `engine-constraints.md`, `our-terrain-runtime.md`.
 
@@ -115,7 +115,7 @@ polls tasks instead. No mesh upload budget exists anywhere (engine-constraints r
   (`RenderSystem.cpp:5481-5726`), RGBA8 with a 2048 px cap (`TerrainComponent.h:28`), and S14 excludes
   arrays from compression (`S14:34`).
 - Lit variants beyond the property bits go through `variant.litDefines`
-  (`RenderSystem.cpp:3904-3917`): no property bit, no cache bump. Terrain hex tiling is the precedent.
+  (`RenderSystem.cpp:3904-3917`): no property bit. Terrain hex tiling is the precedent, and a shader change still bumps the cache (R83).
 - `flat` varyings already ship on all backends (`engine/shaderlib/htmlui_prim.vert:39-48`).
 - Vertex attribute formats include `ubyte4n` and `ushort2n`
   (`engine/renders/sokol/SokolPipelineRecord.cpp:131,135`).
@@ -154,7 +154,7 @@ web tiles are capped at 32 cells (`S19:584-588`).
 `transitionCellClass`, `transitionCellData`, `transitionCornerData`, `transitionVertexData`
 (1,009 lines). **Copy verbatim** (D14) with its header to
 `engine/libs/transvoxel/Transvoxel.cpp` plus `LICENSE` and a `README.jasper.md` that records the
-upstream commit; add a `NOTICE.md` row; `tools/ci/check-notices.py` checks both.
+upstream commit; add a `NOTICE.md` row and, since it sits under `engine/libs`, an `engine/notices.json` entry; `python3 tools/ci/check-notices.py` checks both.
 
 **godot_voxel** (`/tmp/terrain-research/godot_voxel/src`, commit 045ff93; paths below are relative to it). **Ideas only, no code** (D14).
 Its table file carries a more restrictive header (`meshers/transvoxel/transvoxel_tables.cpp:10-29`),
@@ -172,7 +172,7 @@ another reason not to touch it.
 **Terrain3D** contributes the editor grammar through S53 (D16), not code.
 
 Licences: Transvoxel MIT. Nothing from the OpenEngine do-not-copy list is touched: no compute, no
-SSBO, no GPU-driven culling, no render graph.
+SSBO, no GPU-driven culling, no render graph. Upstream dropped the README's "Licences" bullet; its remaining rule (copied code keeps its header and gets a `NOTICE.md` entry) is what this spec does for Transvoxel, and ledger D14 still decides the rest: no Godot code, and the MPL-2.0 erosion code stays banned. S58 reads neither.
 
 ## 5. Requirements
 
@@ -191,7 +191,7 @@ SSBO, no GPU-driven culling, no render graph.
 
   Dimensions and `voxelSize` belong to the asset. A volume's Transform takes translation and rotation.
   Scale stays (1, 1, 1): the Inspector shows an error and offers "Apply to Voxel Size", and
-  `create_voxel_volume` refuses anything else. A volume with `terrain` set must have no rotation.
+  `edit_voxels {create}` refuses anything else. A volume with `terrain` set must have no rotation.
   A volume is static in Play: moving its Transform at runtime logs one warning and does nothing.
 - **R2 SDF channel.** Each block is 16³ samples at voxel spacing, x fastest. A sample is `int16`:
   distance in voxels times 4096, **negative is solid, positive is air**, clamped to +/-32767 (a band of
@@ -519,10 +519,10 @@ SSBO, no GPU-driven culling, no render graph.
   strings per kind. A project without any of it needs no `voxel` and its build is unchanged.
 - **R49 Shaders.** `HAS_VOXEL` and one of `VOXEL_TIER_HIGH|MEDIUM|LOW` are `litDefines`, pushed at
   `RenderSystem.cpp:3904-3917` and appended to `defineCodes`: 4 more, which S55 R54's 64-bit `getDefineBits` has room
-  for (34 of 64 with S55's 30). They are in `mesh.vert`, `mesh.frag` with bodies in new
+  for (34 entries of 64 with S55's 30). They are in `mesh.vert`, `mesh.frag` with bodies in new
   includes `includes/voxel_vs.glsl` and `includes/voxel_fs.glsl`. Lit defines reach only colour shaders (S55 D2;
   `RenderSystem.cpp:3395`), so in `gbuffer.vert` and `gbuffer.frag` `HAS_VOXEL` comes from the property bit `Vox`
-  (GBUFFER 23, S55 D2's table) and S55's G-buffer tier bits 17 and 18 choose the tier. Depth and shadow passes use the plain mesh
+  (appended at landing, S55 D2's table) and S55's G-buffer tier bits `Tqm` and `Tql` choose the tier. Depth and shadow passes use the plain mesh
   depth variant, with no voxel code. New attributes `VOXELSLOTS` (`ushort2n`, x holds four 4-bit slots, y spare)
   and `VOXELWEIGHTS` (`ubyte4n`) are appended to `AttributeType`. The vertex shader unpacks slots to floats with
   integer ops on the attribute value, not on a float's bits (D13), and passes them `flat`. Vertex size 32 bytes.
@@ -637,14 +637,14 @@ SSBO, no GPU-driven culling, no render graph.
 ### Agent UX (MCP, Lua, CLI)
 
 - **R66 Group `voxels`** (D17): one row in `McpToolGroups.cpp`, module row `registerVoxelTools` in `McpTools.cpp`, tools in
-  `editor/mcp/tools/VoxelTools.cpp`, `budget.json` entry (5 tools, 6,000 characters), hidden until enabled, in
+  `editor/mcp/tools/VoxelTools.cpp`, `budget.json` entry (`groups.voxels {chars: 4500, tools: 4}`; about 3,040 by script, every tool within `tool_default` with no `exceptions` entry), hidden until enabled, in
   `tool_coverage`. Edit tools do not run while a job on the same volume runs (`volume_busy`). `sample_voxels`,
   `visualize_voxels` and `edit_voxels` are `allowedWhilePlaying` (the last acts on the Play copy and says `play_only: true`);
   the others are not. Longer than 1 s means a job.
-- **R67 `create_voxel_volume`** `{name?, parent?, position?, rotation?, size: [x,y,z] voxels, voxel_size?, base?, seed?, terrain?,
-  blend_width?, asset_path?, materials?: [...], dry_run?}`. Validates everything first. Result: `entity`, `asset`, `dimensions`,
+- **R67 Creating, by `edit_voxels {create}`**, merged rather than a `create_voxel_volume` tool (S53 R95, as `edit_graph {create}`): `create: {name?, parent?, position?, rotation?, size: [x,y,z] voxels, voxel_size?, base?, seed?, terrain?,
+  blend_width?, asset_path?, materials?: [...]}` with the call's `dry_run?`, open in the schema and closed in the handler. Validates everything first. Result: `entity`, `asset`, `dimensions`,
   `estimated_memory`, `over_budget_targets`. One undo step.
-- **R68 `edit_voxels`** `{entity?, ops: [{op, shape: {type, center?, radius?, half_extents?, rotation?, from?, to?, mesh?, stamp?,
+- **R68 `edit_voxels`** `{entity?, create?, ops?: [{op, shape: {type, center?, radius?, half_extents?, rotation?, from?, to?, mesh?, stamp?,
   scale?}, blend?, material?, weight?, falloff?, amount?, iterations?}], dry_run?, hash?}`. One undo step per call, whatever the
   op count (D15). Result: per-op and summed R27 fields. Positions are world space. Over 1 s becomes a job.
 - **R69 `sample_voxels`** `{entity?, mode, ...}`:
@@ -667,7 +667,7 @@ SSBO, no GPU-driven culling, no render graph.
   (old base description plus block refs). `dry_run` evaluates a coarse level only and says it is an estimate.
 - **R72 Guidance.** `docs/mcp/guide/voxels.md` (`jasper://docs/voxels`): volumes, voxel units versus metres, the edit-verify loop
   (`edit_voxels` with `dry_run`, apply, `sample_voxels hash` and `connectivity`, `visualize_voxels`), terrain attachment, budgets,
-  errors and how to react. One line in the agent guide's world digest at most (`test_autosync.py`). `docs/voxels.md` for people.
+  errors and how to react. The agent guide gets one entry in its "Other areas" index, `voxels (edit_voxels): jasper://docs/voxels`, no digest, within its 8,192 bytes and 1,500 free (`test_autosync.py`, `tool_budget.py --check`), and the entry's case is AC54's `voxel_find_docs`. `docs/voxels.md` for people.
 - **R73 Lua.** `engine/core/script/binding/VoxelClassesLua.cpp`, under `#if`, with `VoxelVolume(scene, entity)` or
   `go:getComponent`:
 
@@ -702,7 +702,7 @@ SSBO, no GPU-driven culling, no render graph.
   touches it.
 - **R77 Writes and identity.** All writes through `writeFileAtomic` (S03). Editor save happens with the scene's save and through a Save
   button, with S05's self-write suppression. An external change to the file reloads (S05) and drops the undo stack of that volume with a
-  note. Row in `AssetTypes.cpp` (sidecar GUID, S04), `AssetRefSchema.cpp` row, dependency edges to graph and mesh assets. `*.voxelvolume`
+  note. `AssetType::VoxelVolume = 31` (reserved, D19; stored in `assetmap.bin`), row in `AssetTypes.cpp` (sidecar GUID, S04), `AssetRefSchema.cpp` row, dependency edges to graph and mesh assets. `*.voxelvolume`
   joins S29's LFS pattern list. S03 Auto Save writes dirty volumes beside the scene backup, and `open_scene` recovery restores both.
 - **R78 Cook and export.** The component uses a hand-written runtime codec (`engine/core/serialization/codecs/`, `afterVoxelVolume` hook,
   `RuntimeFields.gen.inc` regenerated) and an editor encoder (`editor/cook/VoxelVolumeCook.{h,cpp}`), for its slots. The asset cook writes
@@ -717,6 +717,16 @@ SSBO, no GPU-driven culling, no render graph.
   job, with a completion event; it reads immutable blocks, so play continues. Two instances of one asset must use different slots.
 - **R80 Old projects.** Nothing changes for scenes with no volume. `ComponentType` entry appended at the end
   (`editor/Catalog.h`); scene version only per S03's rule for new components with defaults (no bump).
+
+### Upstream revision: no CI, lean MCP, Doriax, writes
+
+- **R81 Where each AC runs.** There is no CI (`AGENTS.md`, Test): the gate per commit is `tools/check-changed`, and the full suite runs before the push. Each AC runs on this host or is
+  labelled not verifiable here with the command a person runs (§7's tables). A row not run is reported unverified.
+- **R82 Lean tools.** Four tools: `edit_voxels` (with `create`), `sample_voxels`, `visualize_voxels`, `generate_voxels`. Each was challenged (S53 R95): `create_voxel_volume` merged; `sample_voxels` already holds what a status tool would;
+  `generate_voxels` stays apart from `edit_voxels` as `generate_terrain` does from `edit_terrain` (its own job and result). Sizes by script over lean schemas: 855, 817, 540, 831. Op and shape fields are open in the schema and closed in the handler; descriptions hold
+  no field or result lists. A hint an agent must see is `next` in `structuredContent` (`volume_busy`: `get_job`; `entrance_narrow`: widen it). Names follow the gated `verb_noun` rule (`docs/mcp/conventions.md`, `VERBS`), not `AGENTS.md`'s "area noun first". Each tool and the guide entry have cases that fail without them (AC54).
+- **R83 Bits and shaders.** `Vox` is appended at landing and pinned by `ShaderKey.VoxelBitIsPinned`. Each commit that changes a shader (`mesh.vert`, `mesh.frag`, `gbuffer.*`, `voxel_*.glsl`) bumps the shader cache version in `editor/App.cpp` by one over its `main`: Lit defines change programs, so the precedent of "no bump" in §3 does not extend to new source.
+- **R84 Writes and vendoring.** `.voxelvolume`, delta saves and Auto Save copies go through `writeFileAtomic` (R77, R79), so `tools/raw_writes_allowlist.txt` gets no line. `engine/libs/transvoxel/` needs a `NOTICE.md` row, a `LICENSE`, and an entry in `engine/notices.json` (`AGENTS.md`, Invariants). It gets no patch ledger, because it is verbatim.
 
 ## 6. Design constraints & decisions
 
@@ -861,7 +871,7 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 | AC24 | R25 | `VoxelNav.CollectsLevelZeroNotDrawn`: bake output equal with focus near and far. `VoxelNav.AutomaticUpdateAfterSettle`: dig blocks a corridor, path reroutes after debounce (game time); `Off` does nothing. MCP: `get_navigation_info` dirty tiles after an edit |
 | AC25 | R26 | `VoxelEdit.OpsMatchAnalytic`: dig, add, smooth, paint with sphere, box, capsule against analytic SDFs within 1/256 voxel; mesh and stamp against equivalent primitives |
 | AC26 | R27 | `VoxelEdit.DryRunEqualsApply` for all fields over 200 random ops (byte-equal result, store unchanged); `VoxelEdit.ValidationAllOrNothing`: every error code, store hash unchanged |
-| AC27 | R28 | `VoxelDeterminism.GoldenHash`: fixed op script's hash equals a recorded constant on Linux glcore and Vulkan builds and on wasm (`tools/test-projects/voxels` printing through the web gate); arm64 through CI. Red: compiling one file with `-ffp-contract=fast` on an FMA target is the documented local check, *CI only* |
+| AC27 | R28 | `VoxelDeterminism.GoldenHash`: fixed op script's hash equals a recorded constant on Linux glcore and Vulkan builds and on wasm (`tools/test-projects/voxels` printing through the web gate), here; arm64, Windows and macOS by the command in the host table, unverified until run. Red: compiling one file with `-ffp-contract=fast` on an FMA target is the documented local check on x86-64 with FMA, run here |
 | AC28 | R29 | `VoxelEditCmd.UndoRedoExact` (editor): 100 commands, undo all, hash back; redo all, hash same; memory counted. MCP: one call with 5 ops is one undo step (`get_undo_history`). Hole deltas undone with it |
 | AC29 | R30, R31 | `VoxelRuntime.PerCallBudget`, `.NoOpAllocatesNothing` (`AllocationCounter`), `.EventOrderAndDebrisDeterministic` (Lua), `.RevertChanges` |
 | AC30 | R37 | `test_voxels.py::test_presets`: each preset twice with one seed: hashes equal. `cave_entrance`: `sample_voxels connectivity` from sky to chamber `connected: true`; `caves` lists components; `overhangs` has an air sample under solid in a column |
@@ -888,8 +898,11 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 | AC51 | R79 | `VoxelRuntime.SaveLoadChanges`: dig, save, new scene, load: hash equal. `.RefusesBaseChanged`, atomic on failure, `DRLE16` only. In a player build with no zstd compressor linked (`nm`) |
 | AC52 | R80 | S34's `upgrade-from-main`, `tools/smoke-test.sh`, the test project goldens with no volume unchanged |
 | AC53 | R73 | `VoxelLua.*` for each function; `tools/lua_api/doctest.py` for `docs/voxels.md` and `jasper://docs/voxels` blocks |
+| AC54 | R82, R72 | Cases in `tools/mcp/eval/cases.py`, run as S53 AC74 says (`-k voxel_`; lent accounts, else reported unverified). Red: a surface from before the tool. `voxel_find_docs` (guard; group off, "add a destructible cave": enables `voxels` or reads the doc), `voxel_create_and_dig` (bad; "make a volume and dig a tunnel": one `edit_voxels` with `create` and `ops`, then `sample_voxels connectivity`), `voxel_generate_from_graph` (guard; `generate_voxels` source `noise_graph`, not ops by hand), `voxel_control_hill_is_terrain` (control; "raise a hill": `edit_terrain`, must not call `edit_voxels`), `voxel_cave_mouth_not_holes_only` (guard; "cave entrance": a volume with terrain attachment, not `cut_holes` alone) |
+| AC55 | R83, R84 | `ShaderKey.VoxelBitIsPinned`; `AssetTypes.VoxelVolumeValueIs31`; `python3 tools/ci/check-notices.py` (fails with a missing `engine/notices.json` entry); `python3 tools/check_raw_writes.py` with no new allowlist line; `python3 tools/check_stream_keys.py`. Red: `tools/check_raw_writes.py --self-test`; removing the notices entry fails the first |
+| AC56 | §8 | Second-lander checks: with `draw-perf`, voxel Lit keys ship with `Dlo` twins (`VoxelExport.CollectorListsTierVariants` extended); with `ssr-probes`, a voxel G-buffer variant builds with `Occ` off (`VoxelRenderGpu.LodSeamGolden` passes with no sokol validation error); with `mesh-memory`, `VoxelChangeSet.*` and `VoxelRenderGpu.*` green on its containers |
 
-**What this host can verify** (8 cores, software GL, no KVM, no Windows or macOS; the ledger's limits):
+**What this host can verify** (8 cores, software GL, no KVM, no Windows or macOS; the ledger's limits; there is no CI, so nothing else checks a push):
 
 | Verified here | How |
 |---|---|
@@ -904,9 +917,10 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
 | Not verifiable here | Who |
 |---|---|
 | Draw time and fill cost on real GPUs; mobile thermal | Manual list `docs/specs/checklists/S58.md` on a device, or the owner |
-| Windows, macOS, iOS builds and `CPU` suites; Android run; Metal goldens | CI on the push (`docs/testing.md:515`), and `xcode_sync_voxels.py --check` here |
-| Mobile CPU budgets | Inferred from native × a factor; recorded as such until a device measures |
-| arm64 determinism | CI; recorded as unverified here |
+| Windows build and CPU suites | With `vcvars64`: `cmake -S engine -B build-engine-gl -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DJASPERENGINE_TESTS=ON && cmake --build build-engine-gl --target jasperengine-core-tests && build-engine-gl/tests/core/jasperengine-core-tests.exe --gtest_filter=Voxel*:Transvoxel*-*Gpu*`; unverified until run |
+| macOS build, CPU suites, arm64 determinism, Metal goldens | `cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON && cmake --build build-engine --target jasperengine-core-tests && build-engine/tests/core/jasperengine-core-tests --gtest_filter=Voxel*:Transvoxel*` (Metal, `docs/testing.md:492-493`); unverified until run |
+| iOS | `python3 tools/xcode_sync_voxels.py --check` runs here; building and running `tools/test-projects/voxels` needs a Mac and the Xcode workspace; unverified until run |
+| Android run | On a host with `/dev/kvm`: `ANDROID_PROJECT=voxels ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh`; unverified until run |
 
 ## 8. Dependencies & conflicts
 
@@ -927,7 +941,9 @@ Suites: CPU under `engine/tests/core/voxel/`, GPU `*Gpu` with goldens in `engine
   - **S57:** reads holes through S53's query (D9); voxel foliage is out of scope on both sides (S57:41).
   - **S34:** `voxel` joins the module tables, at the end of `allModules`.
   - **Provides to others:** `voxel::sampleGround` (R45), the `.voxelvolume` format, `generate_voxels`' schema.
-- **Merge hotspots:** `engine/CMakeLists.txt`, `Scene.cpp:59-60`, `RenderSystem.cpp:3904-3917` (S55 adds defines there too), `mesh.frag`, `gbuffer.frag`, `Render.h` (append only), `ModuleUsage.cpp`, `Exporter.cpp`, `budget.json`, `McpToolGroups.cpp`, `NOTICE.md`, `variants.json`, `RuntimeFields.gen.inc`, `AssetTypes.cpp`.
+- **Merge hotspots:** `engine/CMakeLists.txt`, `Scene.cpp:59-60`, `RenderSystem.cpp:3904-3917` (S55 adds defines there too), `mesh.frag`, `gbuffer.frag`, `Render.h` (append only), `ModuleUsage.cpp`, `Exporter.cpp`, `budget.json`, `McpToolGroups.cpp`, `NOTICE.md`, `variants.json`, `RuntimeFields.gen.inc`, `AssetTypes.cpp`, `AssetType.h`, `engine/notices.json`.
+- **Doriax overlap (D21; none landed: whichever lands second merges onto the first).** `agent-authoring`: no terrain tool in common; its guide restructure takes `voxels`' index entry. `render-correctness`: G-buffer variants and the variant match; `HAS_VOXEL` joins through S55's helper. `draw-perf`: `Dlo` on the built-in Lit reaches voxel chunks (a sun-only scene), so `voxel_fs.glsl` obeys its guards and the collector ships the twin; its state sort sees voxel chunks as ordinary meshes. `ssr-probes`: G-buffer `Occ` and `Uv2` beside `Vox`; a chunk has no occlusion map, so `g_occlusion` stays off and `frag_albedo.a`'s code is written as for any mesh. `mesh-memory`: V7 and R19's chunk `MeshComponent`s use its containers; keep indices across writes, and assume no capacity.
+- **Pixel art.** `AssetType` 24-27 are theirs. S52's and S41's bits append to the same MESH and DEPTH masks, by name. `AttributeType` gains S52's and S58's entries: append only. No shared names.
 
 ## 9. Risks & defaults
 

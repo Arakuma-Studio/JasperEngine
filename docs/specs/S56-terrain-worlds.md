@@ -1,6 +1,6 @@
 # S56 — Terrain Worlds: tiles, streaming, collision paging
 
-Terrain programme (`TERRAIN-LEDGER.md`, decisions D1-D18), step 4 of 6. It lands last, after S53, S54, S55,
+Terrain programme (`TERRAIN-LEDGER.md`, decisions D1-D21), step 4 of 6. It lands last, after S53, S54, S55,
 S57 and S58 (programme D8; order in S53 §8). Everything under "Current state" was checked by
 reading today's code at the cited line (S53 and S55 will move some of it); nothing in this spec was
 built or run while writing it. Numbers marked *calc* are arithmetic, *assumed* are background knowledge
@@ -15,7 +15,7 @@ number of draws, and pages Jolt collision so nothing falls through. An ordinary 
 exactly as it does and a project with no world pays nothing. Brushes, MCP, Lua, spline bakes and
 generation edit across tile borders through S53's operation engine as if the world were one big map,
 in one undo step, and tiles appear where a brush goes. People get a panel with a minimap of the tiles;
-agents get three tools with a deterministic wait, so "the area is ready" and "the seam is closed" are
+agents get one tool and a status read with a deterministic wait, so "the area is ready" and "the seam is closed" are
 testable facts.
 
 ## 2. Scope
@@ -34,8 +34,8 @@ testable facts.
   slices; convert Terrain to Terrain World; seam verification and repair.
 - Navigation of a world (region bakes, follow-the-focus rebakes); the hooks S18 and S57 attach to.
 - Player module `JASPERENGINE_TERRAIN_WORLD`; cook and export; web limits.
-- Editor panel, overlay, inspector; `create_terrain_world`, `edit_terrain_world`,
-  `get_terrain_world_status`; the Lua `TerrainWorld` class.
+- Editor panel, overlay, inspector; `edit_terrain_world` (which also creates a world), `sample_terrain {world}` for status;
+  the Lua `TerrainWorld` class.
 
 **Out of scope** (decisions, not open questions)
 - A floating origin or camera-relative rendering (D13 records why). Worlds stop at ±16,384 m.
@@ -252,7 +252,7 @@ implementer copies something, in which case the normal rule applies.
   `collision`). Scripts wait with `Coroutine.waitUntil` or `world:waitForArea`, or get
   `world:onAreaReady`, called in the update phase. A pending area is itself a focus, so waiting for one
   loads it. `world:ensureCollisionAt(x, z)` builds the coarse collider now, for teleports (R22).
-- **R19 Visible state.** `getSurfaceAt(x, z)` and `get_terrain_world_status` report for any point:
+- **R19 Visible state.** `getSurfaceAt(x, z)` and `sample_terrain {world}` report for any point:
   absent, `overview` or `full`. Queries over a non-resident tile answer from the overview and say so.
 
 ### Functional — collision
@@ -418,30 +418,29 @@ implementer copies something, in which case the normal rule applies.
 
 ### Agent UX (MCP, Lua, CLI)
 
-- **R43 `create_terrain_world`** (group `terrain`, D17 of the programme). Parameters: `name`,
-  `asset_path`, `tile_quads`, `spacing`, `max_height`, `base_height`, one of
-  `grid: {width, length, origin}` or `from_terrain: <entity>`, `dry_run`, `wait`, `timeout_seconds`.
-  One undo step; returns entity, GUID, tile count, predicted memory. A job past 1 s.
+- **R43 Creating, by `edit_terrain_world {create}`** (group `terrain`, D17 of the programme), merged rather than a `create_terrain_world` tool (S53 R95).
+  `create` takes `name`, `asset_path`, `tile_quads`, `spacing`, `max_height`, `base_height`, one of
+  `grid: {width, length, origin}` or `from_terrain: <entity>`; the handler validates them. With `dry_run`, `wait`, `timeout_seconds` beside it.
+  One undo step; returns entity, GUID, tile count, predicted memory. A job past 1 s. `create` and `ops` may be one call, as `edit_graph` allows.
 - **R44 `edit_terrain_world`.** `entity`, `ops[]` validated all-or-nothing first (programme D15):
   `add_tiles`, `remove_tiles`, `import_heightmap`, `repair_seams`, `rebuild_overview`, `set_streaming`
   (pool, LOD distance, upload budget, `freeze`), `set_focus`, `remove_focus`, `set_collision`, plus
   `dry_run`, `wait`, `timeout_seconds`. Returns changed tiles and warnings. In Play only `set_streaming`,
   `set_focus`, `remove_focus` run; the others refuse by name.
-- **R45 `get_terrain_world_status`.** `entity`, optional `tiles` rectangle, optional
-  `wait_for: {x, z, radius, level}`, `timeout_seconds`. Returns `tile_counts`, per-tile `state`,
-  `gpu_bytes`, `cpu_bytes`, budgets, `queue`, `in_flight`, `uploads` (bytes last frame, total, retries),
+- **R45 Status, by `sample_terrain {world}`**, merged rather than a `get_terrain_world_status` tool (S53 R95). `world: {tiles?, wait_for?: {x, z, radius, level}}` with
+  `timeout_seconds` returns `world.tile_counts`, per-tile `state`, `gpu_bytes`, `cpu_bytes`, budgets, `queue`, `in_flight`, `uploads` (bytes last frame, total, retries),
   `main_thread_ms` (last, worst), `draws` per view and pass, `nodes` (visited, selected), `collision`
   (fine, coarse, frozen), `seam_errors`, `pool_exhausted`, `late_pages`, `errors`. `wait_for` makes a job
-  that ends on R18's condition, or fails at timeout with the tiles that were missing. Together with
-  `set_streaming {freeze: true}` this is the deterministic test wait: no load, eviction or upload runs
-  after it returns.
+  that ends on R18's condition, or fails at timeout with the tiles that were missing, with `next` in `structuredContent` naming
+  `set_streaming {freeze: true}` when screenshots are the goal. Together with `freeze` this is the deterministic test wait: no load, eviction or upload runs
+  after it returns. On a plain Terrain `world` is an error that names `edit_terrain_world {create}`.
 - **R46 Existing tools.** `edit_terrain`, `sample_terrain` and `visualize_terrain` take a World through
   `entity`, in S53's schema (S53's seam). `sample_terrain` gains `state` per point (R19); `visualize_terrain`
-  gains overlays `tiles`, `tile_state`, `lod`, `collision`. The group's limits are S53 R74's. New tools stay
-  within the tool default of 1,500 characters, except `edit_terrain_world` (at most 2,400, a recorded
-  exception). Guidance goes in
-  `docs/mcp/guide/terrain.md` under a `Terrain Worlds` heading. Tests prove the tools are hidden until
-  `tool_groups` enables `terrain`.
+  gains overlays `tiles`, `tile_state`, `lod`, `collision`. The group's limits are S53 R74's. S56 adds one tool, `edit_terrain_world`, at most
+  1,500 characters with no `exceptions` entry (884 by script: `ops` items and `create` are open in the schema and closed in the handler, S53 R95; its description
+  names the ops, not their fields). It is not folded into `edit_terrain` because its streaming ops run in Play and `edit_terrain` does not. Its name follows the gated `verb_noun`
+  rule (`docs/mcp/conventions.md`), not `AGENTS.md`'s "area noun first". Guidance goes in `docs/mcp/guide/terrain.md` under a `Terrain Worlds` heading, with no agent
+  guide line. Tests prove the tool is hidden until `tool_groups` enables `terrain`.
 - **R47 Lua.** Class `TerrainWorld` (bound under `#if JASPERENGINE_TERRAIN_WORLD`), got by
   `go:getTerrainWorld()` or `TerrainWorld(scene, entity)`: `addFocus`, `setFocus`, `removeFocus`,
   `getSurfaceAt` (height, normal, hole, exact, present), `getTileState`, `isAreaReady`, `waitForArea`,
@@ -451,7 +450,7 @@ implementer copies something, in which case the normal rule applies.
 
 ### Data & compatibility
 
-- **R48 Asset.** `Name.terrainworld/` is one asset of a new type `terrain_world` in `AssetTypes`, with
+- **R48 Asset.** `Name.terrainworld/` is one asset of a new type `terrain_world`, `AssetType::TerrainWorld = 30` (reserved, D19; stored in `assetmap.bin`), in `AssetTypes`, with
   in-file identity: `manifest.yaml` holds `formatVersion`, `guid`, the lattice, `maxHeight`, maps'
   lattices, `hasHoles` and `layerHash`. The scan does not enter the folder, so there is no `.meta` per tile; the
   Project window shows one icon; moving, renaming and S04 redirects treat it as one asset. **The tile set
@@ -488,6 +487,17 @@ implementer copies something, in which case the normal rule applies.
   with its source exclusions,
   `ModuleUsage` (a Terrain World on a GameObject, the Lua names). A player without it refuses content
   that needs it, by S34 R3. No new library.
+
+### Upstream revision: no CI, lean MCP, writes
+
+- **R56 Where each AC runs.** There is no CI (`AGENTS.md`, Test): the gate per commit is `tools/check-changed`, and the full suite runs before the push. Each AC runs on this host
+  or is labelled not verifiable here with the command a person runs (§7's table). A row not run is reported unverified.
+- **R57 Writes.** Every persistent write goes through `engine/core/io/AtomicFile.h`: tiles and `manifest.yaml` (R31), the import's temp-folder tiles (R32, then a directory rename), the overview
+  cache with `Durability` for regenerable output (R52), and the tile undo snapshot (R30, hard link or `publishFile`; a `copy_file` without overwrite is not flagged). So `tools/raw_writes_allowlist.txt` gets no line, and
+  `python3 tools/check_raw_writes.py` proves it. `world.bin` goes through the existing pack writer. Nothing is vendored: `NOTICE.md` and `engine/notices.json` do not change.
+- **R58 Shaders.** Each commit that changes a shader (`terrain_world_vs.glsl`, `HAS_TERRAIN_WORLD` in `terrain_vs.glsl`) bumps the shader cache version in `editor/App.cpp` by one over its `main`. `Twd` takes the next
+  free bit of MESH, DEPTH and GBUFFER at landing (S55 D2; S56 lands last, so after all of ours), pinned by `ShaderKey.TerrainWorldBitIsPinned`.
+- **R59 Eval cases.** The tool, the `world` key and the guide text get cases that fail without them (AC45).
 
 ## 6. Design constraints & decisions
 
@@ -589,8 +599,7 @@ LOD both sides compute the same morph from the same inputs.
 | Texture slots | 16 fragment when painted (`S11:87`) | **0 added in the fragment stage**; +1 vertex (macro) |
 
 The brief's "one draw" for the distance becomes at most 2 because CDLOD needs the full and half grids;
-both are instanced and both use the one texture. Variant bit (`HAS_TERRAIN_WORLD`, `Twd`): MESH 37, DEPTH 19,
-GBUFFER 19 (S55 D2's table: G-buffer 17 and 18 are S55's tier bits). It adds fields to `u_vs_terrainParams` under its define, so there is
+both are instanced and both use the one texture. Variant bit `Twd` (`HAS_TERRAIN_WORLD`): next free on MESH, DEPTH and GBUFFER at landing (R58, S55 D2's table). It adds fields to `u_vs_terrainParams` under its define, so there is
 no new `UniformBlockType` and draws upload the wider block.
 
 **D5 Cracks.** Skirts, not only morph, because streaming breaks CDLOD's one-level assumption whenever a
@@ -758,7 +767,7 @@ Unit suites: `jasperengine-core-tests` (`engine/tests/core/terrain/`, GPU in `en
 | AC9 | R3, R11 | `WorldLattice.BorderNormalsMatch`, `BorderHeightsBitIdentical`: CPU mirror of the shader kernels on both sides of each border of random tiles, compared bit for bit. Red: omit the gutter and normals differ. |
 | AC10 | R11 | Goldens made on glcore, matched on Vulkan: `TerrainWorldGpu.Golden` `terrain_world_near`, `terrain_world_corner` (4 tiles, lit, layers), `terrain_world_overview` (2 km altitude), each after wait and freeze. |
 | AC11 | R13 | `TerrainWorldGpu.UploadBudget`: bytes per frame ≤ budget except a lone over-budget image; `UploadRefusalRetries` (Vulkan, small stream budget set through `GpuResourceLimits`): refusals counted, tile draws only after retry, no missing page, no error log. Red: ignoring the return value leaves a tile black. |
-| AC12 | R35, R36, R13 | **`TerrainWorldGpu.FlyThrough`, the hard test.** 8 x 8 tiles, N = 256, canvas 640 x 360, 1,200 frames at 2 m a frame at 80 m altitude on a fixed path, pool 40. Asserts: ≥ 20 tiles loaded, ≥ 10 evicted (it really streamed), zero magenta at each frame (with a look-down camera path), `late_pages` = 0, profiler scope `TerrainWorld` max ≤ 4 ms, worst frame ≤ all-resident control's worst + 6 ms. Prints `[bench]` lines; clocks enforce with `JASPER_TEST_PERF_SLACK` (`docs/testing.md:535-546`), on an otherwise idle host, the count assertions always. |
+| AC12 | R35, R36, R13 | **`TerrainWorldGpu.FlyThrough`, the hard test.** 8 x 8 tiles, N = 256, canvas 640 x 360, 1,200 frames at 2 m a frame at 80 m altitude on a fixed path, pool 40. Asserts: ≥ 20 tiles loaded, ≥ 10 evicted (it really streamed), zero magenta at each frame (with a look-down camera path), `late_pages` = 0, profiler scope `TerrainWorld` max ≤ 4 ms, worst frame ≤ all-resident control's worst + 6 ms. Prints `[bench]` lines; clocks enforce with `JASPER_TEST_PERF_SLACK` (`docs/testing.md:514-525`), on an otherwise idle host, the count assertions always. |
 | AC13 | R37 | `TerrainWorldZeroCost.*`: scene with a plain Terrain, 10,000 frames of `TerrainWorldSystem`: zero allocations (`AllocationCountScope`), mean ≤ 1 µs; draw calls and existing terrain goldens unchanged; `tools/test-projects/terrain` web gate still passes. |
 | AC14 | R16 | `TileStreamer.PriorityByDistance`, `Reprioritises`, `CancelsOutsideRadius` (injected clock and I/O): order, cancel, `maxInFlight`. |
 | AC15 | R14 | `TileStreamer.CancelledTileReturns`: a cancelled tile demanded again loads (the godot_voxel hole). `ReadFailureRetriesThenError`. Red: no re-queue leaves the tile `Cold` for good. |
@@ -785,22 +794,26 @@ Unit suites: `jasperengine-core-tests` (`engine/tests/core/terrain/`, GPU in `en
 | AC36 | R55 | `ModuleUsage.TerrainWorld*`: component and each Lua evidence kind; empty project needs none. `PlayerModules.*` lists it. A build with `-DJASPERENGINE_TERRAIN_WORLD=OFF` links; a player without the module exits 5 on content needing it (`tools/ci/test_player_cli.py`). Sizes for R37 recorded in the spec by `player_sizes.py`. |
 | AC37 | R25 | `TerrainWorldNav.CollectsTiles`, `RefusesUnboundedSurface`, `FollowRebakes` (agents keep a path across a follow step); existing nav suites unchanged. |
 | AC38 | R26, R27 | `TerrainWorldSplines.BakeCrossesBorder`, `ConformWaitsForTile`; `TerrainWorldFoliage.RegionPerResidentTile`: a region added on `Resident`, removed on eviction, none with no foliage layers; a fixture's scatter equal to one map's across a border (S57's hash). |
-| AC39 | R43-R46 | `test_terrain_world.py`: create, status, `wait_for` plus `freeze`, then two identical `screenshot` hashes (determinism); all-or-nothing refusal leaves files unchanged; `dry_run` writes nothing; timeout lists missing tiles; tools hidden until `tool_groups` enables `terrain`; Play refusals by name; `tool_budget.py --check`, `gen_tool_docs.py --check`. |
+| AC39 | R43-R46 | `test_terrain_world.py`: `edit_terrain_world {create}`, `sample_terrain {world}`, `wait_for` plus `freeze`, then two identical `screenshot` hashes (determinism); all-or-nothing refusal leaves files unchanged; `dry_run` writes nothing; timeout lists missing tiles; the tool hidden until `tool_groups` enables `terrain`; Play refusals by name; `tool_budget.py --check`, `gen_tool_docs.py --check`. |
 | AC40 | R47 | Lua doc test (`python3 -m lua_api doctest`) over the new blocks; `TerrainWorldLua.*`: focus lifetime on destroy, `waitForArea` in a coroutine, `onAreaReady`, errors on bad arguments. |
 | AC41 | R40-R42 | `TerrainWorldPanel.*` (logic: cell states, undo of Add and Remove, dialog defaults); screenshots from an isolated editor (`tools/editor-shot.sh`): panel with minimap mid-stream, overlay in each of its four modes, kept in the evidence directory. |
 | AC42 | R1, R4, R5, R54 | `TerrainWorldScene.RoundTrip` (component saved, loaded, cooked and generated by `Factory`, field by field), `TransformForcedIdentity`, `AbsentTileNoDrawNoCollision`; `TerrainHeight.*` and `test_upgrade_from_main.py` unchanged and green, proving a plain Terrain and an old project take no new path. |
 | AC43 | R34, R35 (hardware), R39 | `docs/specs/checklists/S56.md`, manual on real hardware by a person, with results recorded: Android mid-range, iPhone, Windows D3D11, macOS Metal: fly-through project, no cracks, frame graph, memory against caps; Chrome and Safari on the web export. |
+| AC44 | R57, R58 | `python3 tools/check_raw_writes.py` with no new allowlist line; `python3 tools/check_stream_keys.py`; `ShaderKey.TerrainWorldBitIsPinned`; `TerrainWorldAsset.AssetTypeValueIs30`. Red: `tools/check_raw_writes.py --self-test`. |
+| AC45 | R59, R46 | Cases in `tools/mcp/eval/cases.py`, run as S53 AC74 says (`-k terrain_world`; lent accounts, else reported unverified): `terrain_world_create` (bad; "make an 8 by 8 km world": `edit_terrain_world {create}`, must not make many Terrain entities), `terrain_world_wait_ready` (guard; "screenshot the far corner": `sample_terrain {world: {wait_for}}`, `set_streaming freeze`, then `screenshot`), `terrain_world_sculpt_across` (guard; "raise this ridge across tiles": `edit_terrain` with `entity`, not `edit_terrain_world`). Red: a surface from before the tool. |
 
-**What this host can verify** (8 cores, software GL, no KVM; `TERRAIN-LEDGER.md`):
+**What this host can verify** (8 cores, software GL, no KVM; `TERRAIN-LEDGER.md`). There is no CI, so a row not run here is unverified until a person runs its command:
 
-| Item | Here | Elsewhere |
+| Item | Here | Elsewhere: command a person runs |
 |---|---|---|
 | Core, editor, TSan and ASan suites; MCP tests | yes | |
 | GL core (llvmpipe), Vulkan (lavapipe) goldens, cracks, fly-through | yes | |
 | GLES3 path | smoke through the linux-backends image | |
 | WebGL2 st and mt | web gate with chrome-headless-shell | Safari: checklist |
-| Android | build only (`tools/build.sh android`) | emulator needs KVM; device: checklist |
-| D3D11, Metal, Windows, macOS, iOS | not built; code kept compiling by care | CI on push; checklist |
+| Android | build only (`tools/build.sh android`) | On a host with `/dev/kvm`: `ANDROID_PROJECT=terrain-world ANDROID_ABIS=x86_64 tools/build.sh android`, then `tools/android-emulator-test.sh`; device: checklist |
+| Windows CPU suites | no | With `vcvars64`: `cmake -S engine -B build-engine-gl -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl -DJASPERENGINE_TESTS=ON && cmake --build build-engine-gl --target jasperengine-core-tests && build-engine-gl/tests/core/jasperengine-core-tests.exe --gtest_filter=WorldLattice*:TerrainWorld*:TileStreamer*:TiledMapStore*:TerrainTileFormat*-*Gpu*` |
+| macOS CPU suites; Metal | no | `cmake -S engine -B build-engine -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON && cmake --build build-engine --target jasperengine-core-tests && build-engine/tests/core/jasperengine-core-tests --gtest_filter=WorldLattice*:TerrainWorld*:TileStreamer*:TiledMapStore*:TerrainTileFormat*` |
+| D3D11, iOS | not built; code kept compiling by care | AC43's checklist |
 | Absolute ms budgets on a GPU | no: llvmpipe times the CPU upload and work, not a GPU | checklist |
 
 ## 8. Dependencies & conflicts
@@ -825,8 +838,7 @@ cook), S15 (profiler scopes), S19 (`updateTiles`, Volume), S24 (undo names), S26
   slots** and one fade line in the fragment path after yours (D14); nothing for you to do. S56 reuses R22 and R23
   across chunk and tile borders, and R17's shadow cut. Macro Normal is unavailable on a World (a terrain-wide
   map); Base Map macro likewise, because it is one texture over one terrain: Noise macro works. The overview is
-  Low with no layers and ignores holes. Skirts inherit the hole test (D5). Bits MESH 37, DEPTH 19, GBUFFER 19 are
-  S56's (your D2 table).
+  Low with no layers and ignores holes. Skirts inherit the hole test (D5). `Twd` is appended at landing (your D2 table).
 - **S57:** S56 implements F11 as written: `TileFoliageRegion`, one a resident tile, `tiles/x_z.jetrees` inside the
   folder (no `.meta`, because the scan does not enter it), shipped by the cook as entries. `maps()` is per tile. Tree
   capsules go with their region. Add the `*.jetrees` pattern in your own S29 change.
@@ -834,6 +846,10 @@ cook), S15 (profiler scopes), S19 (`updateTiles`, Volume), S24 (undo names), S26
   through `beginLarge` (D11); erosion's padding is yours to request through S53's read.
 - **S18:** `SplineSystem.cpp:1005-1019` reads a heightmap directly for water and must read the store on a World.
 - **S19:** the collector gets a tile branch; `NavMeshSurface` gets one field.
+- **Doriax (D21; none landed: whichever lands second merges onto the first).** `draw-perf` moves `updateAllTerrainRenderTextures` and adds `Dlo`: a World's textures are not in that walk (D1's hook at `updateTerrain`), and `Twd` keys
+  follow its twin rule. `ssr-probes`: the G-buffer's terrain AO applies to near tiles only, since the overview has no layers (R9). `mesh-memory`: a World's Mesh uses `StableArray` like any other, and D1 keeps indices across writes. `render-correctness`: foliage ring work reaches a World only through S57's regions.
+  `agent-authoring`: `terrain.md` gets S56's heading, and `edit_terrain_details` takes a World through `entity`, per region density in `DENS`.
+- **Pixel art.** `AssetType` 24-27 are theirs; no shared names (`jasperengine::terrain`'s `TileCoord`, `WorldLattice` against S50's `TileGridLayout`, `TileCells`).
 
 **Merge hotspots.** `RenderSystem.cpp`, `MeshSystem.cpp`, `InspectorWindow.cpp`, `TerrainEditWindow.cpp`
 (hooks only, D1), `terrain_vs.glsl` (one include under `HAS_TERRAIN_WORLD`), `ShaderVariantCompiler.cpp` and
