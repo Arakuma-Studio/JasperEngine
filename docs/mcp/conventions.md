@@ -110,7 +110,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `gameplay` | S22 |
 | `physics` | upstream's physics-3d: `create_ragdoll`, `edit_physics_material` (out of core to fit the budget) |
 | `audio` | upstream's audio-mixer: `audio_mixer` (out of core to fit the budget) |
-| `editor_tools` | S27 |
+| `editor_tools` | S27, S66 (`clear_project_leftovers`) |
 | `vcs` | S29 |
 | `html_ui` | S17 (`edit_ui_view`) |
 | `scripting` | S23 (`reload_scripts`, `get_script_status`, `set_script_settings`, `list_editor_menus`, `run_editor_menu`, `eval_expression`, the graph tools), upstream's `user_settings` (PlayerPrefs) |
