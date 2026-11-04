@@ -9,7 +9,7 @@
 #include "texture/TextureData.h"
 #include "util/FileUtils.h"
 #include "util/PngWriter.h"
-#include "util/TerrainNoise.h"
+#include "terrain/TerrainNoise.h"
 
 #include "stb_image_write.h"
 
@@ -62,7 +62,7 @@ std::vector<unsigned char> makeHeightPixels(const TerrainHeightmapRequest& reque
                 for (int o = 0; o < octaves; ++o) {
                     const float nx = (static_cast<float>(x) / static_cast<float>(resolution - 1)) * f;
                     const float ny = (static_cast<float>(y) / static_cast<float>(resolution - 1)) * f;
-                    sum += (TerrainNoise::value(nx, ny, request.seed + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
+                    sum += (terrain::TerrainNoise::value(nx, ny, request.seed + static_cast<uint32_t>(o * 1013)) * 2.0f - 1.0f) * weight;
                     weightSum += weight;
                     weight *= 0.5f;
                     f *= 2.0f;

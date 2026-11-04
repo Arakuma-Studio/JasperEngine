@@ -955,7 +955,6 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/physics/PlacementCli.cpp
     ${EDITOR_DIR}/util/TerrainMapFileWriter.cpp
     ${EDITOR_DIR}/util/TerrainMapUtils.cpp
-    ${EDITOR_DIR}/util/TerrainErosion.cpp
     ${EDITOR_DIR}/util/UIUtils.cpp
     ${EDITOR_DIR}/util/UiItemLocator.cpp
     ${EDITOR_DIR}/util/CommandRunner.cpp

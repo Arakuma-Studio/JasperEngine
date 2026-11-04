@@ -574,6 +574,8 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     YAML::Node node;
     node["enabled"] = terrain.enabled;
     node["heightMap"] = encodeTexture(terrain.heightMap);
+    // only a terrain with holes says so: an old scene saves back byte-identical (S53 R81)
+    if (!terrain.holeMap.empty()) node["holeMap"] = encodeTexture(terrain.holeMap);
     YAML::Node blendMapsNode;
     for (const Texture& blendMap : terrain.blendMaps) {
         blendMapsNode.push_back(encodeTexture(blendMap));
@@ -622,6 +624,7 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     }
 
     if (node["heightMap"]) terrain.heightMap = decodeTexture(node["heightMap"]);
+    terrain.holeMap = node["holeMap"] ? decodeTexture(node["holeMap"]) : Texture();
     // Cleared like the other lists below: decoding over a loaded terrain (a stop, a prefab
     // reload) must replace what it has, not append to it.
     terrain.blendMaps.clear();

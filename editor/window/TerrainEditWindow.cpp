@@ -28,9 +28,10 @@
 #include "util/FileDialogs.h"
 #include "util/TerrainMapFileWriter.h"
 #include "util/TerrainMapUtils.h"
-#include "util/TerrainErosion.h"
+#include "terrain/TerrainErosion.h"
+#include "terrain/TerrainSurface.h"
 #include "util/NormalMapTilt.h"
-#include "util/TerrainNoise.h"
+#include "terrain/TerrainNoise.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
@@ -185,18 +186,6 @@ ColorFormat editor::TerrainEditWindow::expectedFormat(TerrainMapTarget target){
     return target == TerrainMapTarget::DensityMap ? ColorFormat::RED : ColorFormat::RGBA;
 }
 
-// Decode a normalized [0,1] height from a raw pixel buffer, honoring 8- or 16-bit storage.
-// 16-bit samples are stored little-endian in memory (native unsigned short).
-float editor::TerrainEditWindow::decodeHeightTexel(const unsigned char* pixels, size_t texelIndex, int channels, int bytesPerChannel){
-    const size_t byteIndex = texelIndex * static_cast<size_t>(channels) * static_cast<size_t>(bytesPerChannel);
-    if (bytesPerChannel >= 2){
-        const unsigned int value = static_cast<unsigned int>(pixels[byteIndex]) |
-                                   (static_cast<unsigned int>(pixels[byteIndex + 1]) << 8);
-        return static_cast<float>(value) / 65535.0f;
-    }
-    return pixels[byteIndex] / 255.0f;
-}
-
 // Encode a normalized [0,1] height into a raw pixel buffer (single channel), 8- or 16-bit.
 void editor::TerrainEditWindow::encodeHeightTexel(unsigned char* pixels, size_t texelIndex, int bytesPerChannel, float value){
     const float clamped = std::max(0.0f, std::min(1.0f, value));
@@ -300,7 +289,7 @@ std::vector<unsigned char> editor::TerrainEditWindow::convertTexturePixels(Textu
             if (isScalarTarget(target)){
                 // Decode the source value (8- or 16-bit, R channel) and re-encode at the
                 // destination precision. This upcasts legacy 8-bit heightmaps to 16-bit.
-                const float normalized = decodeHeightTexel(src, texelIndex, srcChannels, srcBytesPerChannel);
+                const float normalized = terrain::heightTexelAt(src, texelIndex, srcChannels, srcBytesPerChannel);
                 encodeHeightTexel(pixels.data(), texelIndex, dstBytesPerChannel, normalized);
             }else{
                 const size_t srcIndex = texelIndex * srcChannels * srcBytesPerChannel;
@@ -671,30 +660,6 @@ static float terrainTexel(float local, float terrainSize, int size){
     return MeshSystem::terrainTexelCoord(local, terrainSize, size);
 }
 
-// Bilinearly sample a normalized [0,1] height at a float texel coordinate.
-float editor::TerrainEditWindow::bilinearHeightSample(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY){
-    if (!pixels || width <= 0 || height <= 0 || channels <= 0){
-        return 0.0f;
-    }
-    texelX = std::clamp(texelX, 0.0f, static_cast<float>(width - 1));
-    texelY = std::clamp(texelY, 0.0f, static_cast<float>(height - 1));
-    const int lowerX = std::clamp(static_cast<int>(std::floor(texelX)), 0, width - 1);
-    const int lowerY = std::clamp(static_cast<int>(std::floor(texelY)), 0, height - 1);
-    const int upperX = std::min(lowerX + 1, width - 1);
-    const int upperY = std::min(lowerY + 1, height - 1);
-    const float blendX = texelX - static_cast<float>(lowerX);
-    const float blendY = texelY - static_cast<float>(lowerY);
-
-    auto sample = [&](int x, int y){
-        return decodeHeightTexel(pixels, static_cast<size_t>(y) * static_cast<size_t>(width) + static_cast<size_t>(x), channels, bytesPerChannel);
-    };
-
-    const float lower = sample(lowerX, lowerY) + (sample(upperX, lowerY) - sample(lowerX, lowerY)) * blendX;
-    const float upper = sample(lowerX, upperY) + (sample(upperX, upperY) - sample(lowerX, upperY)) * blendX;
-    return lower + (upper - lower) * blendY;
-}
-
-
 void editor::TerrainEditWindow::writeHeight(TextureData& data, int x, int y, float value){
     unsigned char* pixels = static_cast<unsigned char*>(data.getData());
     if (!pixels){
@@ -759,7 +724,7 @@ bool editor::TerrainEditWindow::raycastTerrainStrokeSurface(const Ray& localRay,
             return false;
         }
 
-        sampledHeight = bilinearHeightSample(pixels, width, height, channels, bytesPerChannel,
+        sampledHeight = terrain::sampleHeightTexels(pixels, width, height, channels, bytesPerChannel,
                                              terrainTexel(localX, terrainSize, width), terrainTexel(localZ, terrainSize, height)) * maxHeight;
         return true;
     };
@@ -1656,7 +1621,7 @@ bool editor::TerrainEditWindow::stampBrush(TerrainComponent& terrain, TextureDat
         stroke.workingPixels.resize(texelCount * static_cast<size_t>(workingChannels));
         if (isScalarTarget(target)){
             for (size_t i = 0; i < texelCount; i++){
-                stroke.workingPixels[i] = decodeHeightTexel(pixels, i, channels, bytesPerChannel);
+                stroke.workingPixels[i] = terrain::heightTexelAt(pixels, i, channels, bytesPerChannel);
             }
         }else{
             for (size_t i = 0; i < texelCount; i++){
@@ -1738,7 +1703,7 @@ bool editor::TerrainEditWindow::stampBrush(TerrainComponent& terrain, TextureDat
             auto referenceHeight = [&](float localX, float localZ){
                 const float refX = terrainTexel(localX, terrain.terrainSize, stroke.heightReferenceWidth);
                 const float refY = terrainTexel(localZ, terrain.terrainSize, stroke.heightReferenceHeight);
-                return bilinearHeightSample(stroke.heightReferencePixels.data(), stroke.heightReferenceWidth, stroke.heightReferenceHeight,
+                return terrain::sampleHeightTexels(stroke.heightReferencePixels.data(), stroke.heightReferenceWidth, stroke.heightReferenceHeight,
                                             stroke.heightReferenceChannels, stroke.heightReferenceBytesPerChannel, refX, refY);
             };
             rampStartHeight = referenceHeight(stroke.rampStart.x, stroke.rampStart.z);
@@ -1846,7 +1811,7 @@ bool editor::TerrainEditWindow::stampBrush(TerrainComponent& terrain, TextureDat
                 next = (mode == TerrainBrushMode::Smooth) ? current + (blurred - current) * weight
                                                           : current + (current - blurred) * weight;
             }else if (mode == TerrainBrushMode::Noise){
-                next = current + TerrainNoise::fractal(static_cast<float>(x) * noiseFrequency, static_cast<float>(y) * noiseFrequency,
+                next = current + terrain::TerrainNoise::fractal(static_cast<float>(x) * noiseFrequency, static_cast<float>(y) * noiseFrequency,
                                                        NOISE_SEED, NOISE_OCTAVES) * weight;
             }else if (mode == TerrainBrushMode::Terrace){
                 next = current + (std::round(current * terraceIntervals) / terraceIntervals - current) * weight;
@@ -1878,13 +1843,14 @@ bool editor::TerrainEditWindow::stampBrush(TerrainComponent& terrain, TextureDat
         const int droplets = static_cast<int>(stroke.erodeCarry);
         stroke.erodeCarry -= static_cast<float>(droplets);
 
-        const TerrainMapRegion region{minX, minY, maxX, maxY};
+        const terrain::ErosionField field{stroke.workingPixels.data(), 0, 0, width, height, width, height};
+        const terrain::ErosionRegion region{minX, minY, maxX, maxY};
         if (droplets > 0){
-            TerrainErosion::hydraulic(stroke.workingPixels, width, height, region, heightScale, droplets, ++stroke.erodeSeed, brushWeight);
+            terrain::TerrainErosion::hydraulic(field, region, heightScale, droplets, ++stroke.erodeSeed, brushWeight);
         }
         // Talus is time-scaled on its own, so it settles on every stamp
-        TerrainErosion::thermal(stroke.workingPixels, width, height, region, heightScale, ERODE_TALUS,
-                                std::clamp(brushStrength * flowRate * deltaTime, 0.0f, 1.0f), brushWeight);
+        terrain::TerrainErosion::thermal(field, region, heightScale, ERODE_TALUS,
+                                         std::clamp(brushStrength * flowRate * deltaTime, 0.0f, 1.0f), brushWeight);
         touched = true;
     }else{
         for (int y = minY; y <= maxY; y++){
@@ -2295,7 +2261,7 @@ bool editor::TerrainEditWindow::convertHeightMapTo16Bit(uint32_t sceneId, Entity
     after.channels = 1;
     after.pixels.assign(static_cast<size_t>(before.width) * static_cast<size_t>(before.height) * 2, 0);
     for (size_t texel = 0; texel < static_cast<size_t>(before.width) * static_cast<size_t>(before.height); texel++){
-        encodeHeightTexel(after.pixels.data(), texel, 2, decodeHeightTexel(before.pixels.data(), texel, before.channels, 1));
+        encodeHeightTexel(after.pixels.data(), texel, 2, terrain::heightTexelAt(before.pixels.data(), texel, before.channels, 1));
     }
     if (after.path.empty()){
         after.path = makeEditableTexturePath(project, sceneId, entity, ref);
@@ -2997,7 +2963,7 @@ bool editor::TerrainEditWindow::loadBrushMask(){
     brushMaskHeight = data.getHeight();
     brushMaskPixels.resize(static_cast<size_t>(brushMaskWidth) * static_cast<size_t>(brushMaskHeight));
     for (size_t i = 0; i < brushMaskPixels.size(); i++){
-        brushMaskPixels[i] = decodeHeightTexel(pixels, i, channels, bytesPerChannel);
+        brushMaskPixels[i] = terrain::heightTexelAt(pixels, i, channels, bytesPerChannel);
     }
 
     return true;
@@ -3901,7 +3867,7 @@ bool editor::TerrainEditWindow::updateCursor(Scene* scene, const Ray& ray, Terra
         const float clampedZ = std::clamp(localZ, -halfSize, halfSize);
         float surfaceHeight = 0.0f;
         if (heightPixels){
-            surfaceHeight = bilinearHeightSample(heightPixels, mapWidth, mapHeight, mapChannels, mapBytesPerChannel,
+            surfaceHeight = terrain::sampleHeightTexels(heightPixels, mapWidth, mapHeight, mapChannels, mapBytesPerChannel,
                                                  terrainTexel(clampedX, terrainSize, mapWidth), terrainTexel(clampedZ, terrainSize, mapHeight)) * terrain.maxHeight;
         }
         return transform.modelMatrix * Vector3(clampedX, surfaceHeight + lift, clampedZ);

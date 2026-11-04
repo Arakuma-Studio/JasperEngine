@@ -1557,3 +1557,67 @@ migration, delta undo and persistence together with R23; strokes; MCP tools; UI;
 - **`sculpt_terrain` stays beside `edit_terrain`.** It is rate-based and D15 would not add it today. Default: keep it, because AC13
   proves the migration through it and agent-authoring's text names it. Retiring it would give back 2,699 characters and is the
   owner's decision after T1 lands.
+
+## Deviations
+
+Recorded while landing the foundation (§8). Names here are what the code has; the sibling specs cite
+the sketch's names, which all still exist unless a line below says otherwise.
+
+- **D-1 `TerrainMapStore` has three more virtuals, none abstract.** R12 needs the last fill to remove
+  the map and the sketch had only `createMap`, so `canRemoveMap` and `removeMap` default to "this store
+  keeps its maps". T3 R29's `holeMapHolds` is `canRemoveMap` returning false. `canCreateMap` (default
+  true) lets validation refuse a density map for a foliage layer that does not exist, so a dry run
+  tells the truth. A store written to the sketch, as T4 R28 lists it, compiles unchanged.
+- **D-2 `TerrainEditEvents` has an overload per scene.** The handler is the sketch's, but entity
+  numbers repeat across scenes, so `subscribe(handler)` alone would hand a system another scene's
+  terrain. `subscribe(scene, handler)` is what a subscriber living in a scene (T5's re-snap, T6's
+  regeneration) should use. Also public: `publish`, `hasPending`, `flush(scene)`, `forgetScene`.
+- **D-3 The event is published by the store, not by each route.** Publishing in `TerrainComponentStore`
+  covers every route at once, including ones not written yet. AC64's red control is therefore "skip
+  the publish in the store", not "bypass it in `applyField`".
+- **D-4 The frame's flush is guarded by a process-wide flag, not `terrain.editState`.** DC10 names
+  `editState`, which arrives with node refit and the rest of T1 (R23). The guard costs one load per
+  scene update. The rest of T1 may fold it into `editState`.
+- **D-5 `TerrainEdit.ZeroCostWhenUnused` covers what exists.** Today it counts the frame's guard and a
+  query. R53's 1000-frame count over an unedited terrain and the `sizeof` assertion land with
+  `editState`, which is what they would measure.
+- **D-6 Erosion belongs to its block.** R87 says both routes give the same bytes. They do for every
+  kernel but `erode`, whose droplets are drawn per block, so its bytes depend on `preferredBlock`.
+  `TerrainGolden` compares `erode` across stores only with the map as one block. Full-map erosion is
+  T2's, and T2 R24 has its own worker-count rule.
+- **D-7 Straight on the store quantizes between ops.** With a `beginLarge` token there is no overlay to
+  hold float working values, so a list, a stroke's stamps and a smooth's iterations round at each
+  application. One application gives the overlay's bytes (`TerrainStore.StraightOnTheStoreGivesTheOverlaysBytes`).
+- **D-8 `remap_layers` always uses an overlay of its own,** even straight on a store: a channel moved
+  early must not be read as the source of a later one. Its memory is therefore the map's tiles, not a
+  block. Authoring op on a single terrain; T4 should refuse it on a world or remap per tile.
+- **D-9 `EditorTerrainStore` is not in the foundation.** R3 lists it, but it is the component store plus
+  persistence and sharing (R29, R41) and lives in `editor/terrain/`, outside what §8 calls the foundation.
+- **D-10 `rasterizeRegion` has two more defaulted parameters,** a `Filter*` (R12: filters apply) and a
+  `HoleRegionResult*` for R27's numbers. T3 D10's call compiles as written. `collision_samples_open`
+  and `hole_no_collision` wait for T3's collider rule, as R12 says.
+- **D-11 `registerOp` returns `bool`,** false for one of Table 1's names. `registeredOpExists` and
+  `unregisterOp` are added for callers and tests. `OpValidateFn` and `OpApplyFn` take an `OpError` and
+  an `OpContext`. `Op::params` holds a registered op's own keys as `OpParam`, a plain value tree, since this
+  folder may not include a JSON library (R1); the handler copies them there from the op object (R89, R95).
+- **D-12 `Op`'s fields beyond the sketch.** `existingObjects` (spacing for `place_objects`, candidates
+  for `erase_objects`) because the plan is pure; `erodeSeconds` and `droplets` so a brush can carry its
+  fraction; `baseHeight`, `frequency` and `fill` for `fill_noise`. `OpOptions` gains `dryRun`, `inPlace`
+  (a stroke keeps its overlay's floats between stamps) and `newMapResolution`. A stroke's `raise` or
+  `lower` without `delta` deposits as a brush does, in map units (R34).
+- **D-13 `TerrainErosion` takes a window.** `ErosionField` is a window into a map rather than the whole
+  map's vector, so a stamp needs no whole-map buffer; the weight is a plain callback with a template
+  convenience (R22 allowed either). The Terrain window passes the whole map as its window until the
+  brush migrates.
+- **D-14 The private height decoders are renamed, not yet gone by use.** `TerrainEditWindow` calls
+  `terrain::heightTexelAt` and `terrain::sampleHeightTexels`; AC12's names are gone. Its stroke code
+  still reads through them until R17 and R22 remove it.
+- **D-15 `holeMap` is `Hidden` in reflection.** It is cut and filled by ops and saved by its codec, so
+  no Inspector row and no change to `inspector_layouts.json`. T3 may show it.
+- **D-16 Parts of the foundation's requirements that need later work.** R1's "every write goes through"
+  and R13's window use are the migration. AC8's `test_holes_warn_until_s43` and AC9's
+  `test_delete_layer_keeps_paint` need `edit_terrain` and the UI. AC64's brush, spline bake, Lua and undo
+  routes, AC68's `TerrainMapDeltaCmd` half and AC72's dialog half exist once those do.
+- **D-17 `import_heightmap` takes decoded heights.** The engine's op holds the normalized values, their size and
+  nothing about files: finding and decoding a file is `TerrainRawIO` and the handler (R61, R68), which come with the
+  rest of T1. A size other than the map's is refused here, naming the structural path the handler takes (R1, R61).

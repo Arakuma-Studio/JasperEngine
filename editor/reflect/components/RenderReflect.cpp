@@ -335,6 +335,8 @@ namespace {
     constexpr FieldDesc kTerrainFields[] = {
         JE_FIELD(TerrainComponent, enabled),
         JE_FIELD(TerrainComponent, heightMap, .updateFlags = kTerrain | kTerrainTexture | kFoliage),
+        // cut and filled by operations, never picked by hand (S53 R12)
+        JE_FIELD(TerrainComponent, holeMap, .flags = Hidden, .updateFlags = kTerrainTexture),
         JE_FIELD(TerrainComponent, autoSetRanges, .updateFlags = kTerrain),
         JE_FIELD(TerrainComponent, offset),
         JE_FIELD(TerrainComponent, terrainSize, .updateFlags = kTerrain | kFoliage, .unit = Unit::Meters, .min = 0.0f),
@@ -601,7 +603,7 @@ const ComponentDesc kInstancedMeshDesc{
 namespace {
 
     // the keys its codec reads
-    constexpr const char* kTerrainKnownKeys[] = {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
+    constexpr const char* kTerrainKnownKeys[] = {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "holeMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
 
 }
 

@@ -1590,6 +1590,7 @@ set(JASPERENGINE_SRCS
     core/object/Primitive.cpp
     core/object/Sprite.cpp
     core/object/Terrain.cpp
+    core/object/TerrainEdit.cpp
     core/object/Tilemap.cpp
     core/object/sound/AudioSource.cpp
     core/object/environment/Fog.cpp
@@ -1901,6 +1902,8 @@ endif()
 # Particles (S20): the SIMD kernels' flags, the subsystem and its drawing
 include(core/particles/ParticleSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_PARTICLE_SRCS} ${JASPERENGINE_PARTICLE_SYSTEM_SRCS})
+include(core/terrain/TerrainSources.cmake)
+list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_TERRAIN_SRCS})
 # Navigation (S19): navmeshes, crowds, grids, the NavigationSystem and its Lua objects
 include(core/navigation/NavigationSources.cmake)
 list(APPEND JASPERENGINE_SRCS ${JASPERENGINE_NAVIGATION_SRCS})
@@ -2030,6 +2033,7 @@ jasperengine_skip_unity_build(
         core/graph/GraphRegistry.cpp
         core/lattice/LatticePresets.cpp
         core/lattice/LatticeSolver.cpp
+        core/object/TerrainEdit.cpp
         core/object/spline/SplineAnimate.cpp
         core/object/spline/SplineInstantiate.cpp
         core/pose/PoseAnimationIO.cpp
@@ -2145,6 +2149,17 @@ endif()
 jasperengine_skip_unity_build(
     REASON "the Animator's pose kernels: no floating-point contraction, per unit"
     SOURCES ${JASPERENGINE_ANIMATOR_SRCS})
+
+# the terrain operation engine and its query (docs/specs/S53-terrain-authoring.md R8): a map's bytes
+# are the same on every CPU only without floating-point contraction
+if(MSVC)
+    set_source_files_properties(${JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS "/fp:precise")
+else()
+    set_source_files_properties(${JASPERENGINE_TERRAIN_SRCS} PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+jasperengine_skip_unity_build(
+    REASON "the terrain kernels: no floating-point contraction, per unit"
+    SOURCES ${JASPERENGINE_TERRAIN_SRCS})
 
 # the mip chain and the import processing: no fused multiply-adds, so the levels (and the cook
 # cache keys built on them) are the same bytes on every CPU, like stb_image_resize2's

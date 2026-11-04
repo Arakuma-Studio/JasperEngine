@@ -928,6 +928,7 @@ const StructTable kBody_LightComponent{"light", kBody_LightComponent_fields, std
 const FieldEntry kBody_TerrainComponent_fields[] = {
     JE_RF(TerrainComponent, enabled, 0x88b70f61u, Bool),
     JE_RF(TerrainComponent, heightMap, 0x77c648cbu, Texture),
+    JE_RF(TerrainComponent, holeMap, 0xea937f84u, Texture),
     JE_RF(TerrainComponent, autoSetRanges, 0x25f4d55bu, Bool),
     JE_RF(TerrainComponent, offset, 0xfe490703u, Vector2),
     JE_RF(TerrainComponent, terrainSize, 0x6f8249e0u, Float),

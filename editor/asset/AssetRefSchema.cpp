@@ -123,6 +123,7 @@ namespace {
         row(C::TextComponent, "font", Shape::AssetList, AssetType::Font, Base::Assets);
 
         row(C::TerrainComponent, "heightMap", Shape::Texture, AssetType::Texture, Base::Assets);
+        row(C::TerrainComponent, "holeMap", Shape::Texture, AssetType::Texture, Base::Assets);
         row(C::TerrainComponent, "blendMaps[]", Shape::Texture, AssetType::Texture, Base::Assets);
         for (const char* layer : {"colorTexture", "normalTexture", "roughnessTexture", "metallicTexture", "occlusionTexture", "heightTexture"}) {
             row(C::TerrainComponent, std::string("surfaceLayers[].") + layer, Shape::Texture, AssetType::Texture, Base::Assets);
@@ -561,6 +562,7 @@ namespace {
         eachComponent<TerrainComponent>(registry, only, visit, C::TerrainComponent, [&](TerrainComponent& terrain) {
             const bool heightMapChanged = visit.texture(terrain.heightMap, componentRow(C::TerrainComponent, "heightMap"), "heightMap");
             bool textureChanged = heightMapChanged;
+            textureChanged |= visit.texture(terrain.holeMap, componentRow(C::TerrainComponent, "holeMap"), "holeMap");
             for (size_t i = 0; i < terrain.blendMaps.size(); i++) {
                 textureChanged |= visit.texture(terrain.blendMaps[i], componentRow(C::TerrainComponent, "blendMaps[]"), "blendMaps[" + std::to_string(i) + "]");
             }

@@ -248,7 +248,6 @@ namespace jasperengine::editor{
         std::string makeEditableTexturePath(Project* project, uint32_t sceneId, Entity entity, const TerrainMapRef& ref);
         int expectedChannels(TerrainMapTarget target);
         ColorFormat expectedFormat(TerrainMapTarget target);
-        static float decodeHeightTexel(const unsigned char* pixels, size_t texelIndex, int channels, int bytesPerChannel);
         static void encodeHeightTexel(unsigned char* pixels, size_t texelIndex, int bytesPerChannel, float value);
         unsigned char clampByte(float value);
         bool setFileBackedTextureData(Project* project, Texture& texture, const std::string& relativePath, int width, int height, ColorFormat format, int channels, const std::vector<unsigned char>& pixels);
@@ -263,7 +262,6 @@ namespace jasperengine::editor{
         void applySnapshotToTexture(Project* project, Texture& texture, const TerrainMapSnapshot& snapshot);
         bool ensureEditableMap(Project* project, SceneProject* sceneProject, Entity entity, const TerrainMapRef& ref, int resolution);
         void writeHeight(TextureData& data, int x, int y, float value);
-        static float bilinearHeightSample(const unsigned char* pixels, int width, int height, int channels, int bytesPerChannel, float texelX, float texelY);
         bool raycastTerrainStrokeSurface(const Ray& localRay, TerrainComponent& terrain, const ActiveStroke* activeStroke, Vector3& localPoint, float& localHeight) const;
 
         SceneProject* findSceneProject(Scene* scene) const;

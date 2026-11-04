@@ -243,6 +243,7 @@
 1004 linerenderer/customShader shader
 1005 light/spotMask texture
 1006 terrain/heightMap texture
+1006 terrain/holeMap texture
 1007 points/texture texture
 1007 points/customShader shader
 1008 skybox/texture cubemap

@@ -21345,6 +21345,7 @@
     "enabled",
     "foliageLayers",
     "heightMap",
+    "holeMap",
     "levels",
     "maxHeight",
     "offset",
@@ -21382,6 +21383,11 @@
     "heightMap": [
      11,
      34460401664,
+     true
+    ],
+    "holeMap": [
+     11,
+     67108864,
      true
     ],
     "levels": [
@@ -21534,6 +21540,11 @@
     "heightMap": [
      11,
      34460401664,
+     true
+    ],
+    "holeMap": [
+     11,
+     67108864,
      true
     ],
     "levels": [
@@ -45823,6 +45834,11 @@
    "heightMap": [
     11,
     34460401664,
+    true
+   ],
+   "holeMap": [
+    11,
+    67108864,
     true
    ],
    "levels": [
