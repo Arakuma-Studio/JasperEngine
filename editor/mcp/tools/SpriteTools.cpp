@@ -333,9 +333,8 @@ void registerSpriteTools(McpRegistry& registry) {
     ToolDef tool;
     tool.name = "set_sprite_import_settings";
     tool.title = "Set Sprite Import Settings";
-    tool.description = "Partial update of .aseprite files' import settings (keys in jasper://docs/sprites: import_mode, layers, pivot, "
-                       "border, trim, clips, texture). Without output: a preview of the frames, pages, clips and warnings, nothing "
-                       "written; output: true writes the metas (one undo step) and reimports.";
+    tool.description = "Partial update of .aseprite files' import settings (keys: jasper://docs/sprites). Without output: a preview of "
+                       "the frames, pages, clips and warnings, nothing written; output: true writes the metas (one undo step) and reimports.";
     tool.inputSchema = object({
         {"paths", array(string(""), "Project-relative .aseprite files.")},
         {"settings", anyObject("")},

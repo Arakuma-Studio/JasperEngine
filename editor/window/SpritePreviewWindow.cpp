@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpritePreviewWindow.h"
+#include "widget/ColorField.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -902,7 +903,17 @@ void SpritePreviewWindow::drawToolbar() {
     if (ImGui::Combo("Background", &backgroundIndex, backgrounds, 2)) background = static_cast<Background>(backgroundIndex);
     if (background == Background::Color) {
         ImGui::SameLine();
-        ImGui::ColorEdit3("##backgroundColor", backgroundColor, ImGuiColorEditFlags_NoInputs);
+        // the preview's own colour (sRGB as shown), no undo: nothing of the project changes
+        Vector3 shown(backgroundColor[0], backgroundColor[1], backgroundColor[2]);
+        ui::ColorFieldOptions options;
+        options.linearStorage = false;
+        options.label = "Background";
+        options.width = ImGui::GetFontSize() * 3.0f;
+        if (ui::colorField("##backgroundColor", shown, options) != ui::EditPhase::None) {
+            backgroundColor[0] = shown.x;
+            backgroundColor[1] = shown.y;
+            backgroundColor[2] = shown.z;
+        }
     }
 }
 

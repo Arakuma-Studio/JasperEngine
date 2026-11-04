@@ -932,3 +932,10 @@ Recorded by the implementation (`feature/s44-aseprite-import`):
 - **Sprite Preview.** Compare at 1x draws both frames at the preview's integer zoom (S41's Game
   view scale is not on main); the background is a checkerboard or a picked colour, not the
   scene's.
+- **Budgets (AC15, AC20).** Measured on the shared 8-core build host under load (budgets printed,
+  enforced only by the benchmark run's `perfSlack()`), with `AsepriteBench` documents built in
+  code at R26's sizes (2.67 MB file, not 1.5 MB): read 238 ms (budget 40), one 256² 8-layer
+  composition 2.8 ms (1), write unchanged 3.4 ms (5), write with every cel changed 639 ms (120:
+  deflating 128 MB of cels at level 6 on one thread), import of a 64×64 24-frame file 2.4 ms (50);
+  a 2,000-frame sheet parse 9.8 ms (5). The read, composition and full-write budgets are missed
+  here; a quiet-machine benchmark run should confirm before tuning.
