@@ -12,9 +12,11 @@
 #include "object/CapsuleShadowCaster.h"
 #include "object/Light.h"
 #include "object/Primitive.h"
+#include "pool/ShaderPool.h"
 #include "render/LightingTiers.h"
 #include "render/OrderIndependentTransparency.h"
 #include "render/SystemRender.h"
+#include "shader/RuntimeShaderCompiler.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/MaterialPbr.h"
 
@@ -26,6 +28,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <memory>
 #include <string>
@@ -445,6 +448,52 @@ TEST_F(LightingGpu, OrderIndependentThreePlanesInBothOrders){
     ASSERT_TRUE(render());
     const Difference difference = differenceOf(forward, readTarget());
     EXPECT_LE(difference.maxDiff, 2) << "the order of the planes changed the image (mean " << difference.meanDiff << ")";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// S32 x S57: while the Order Independent programs (the resolve and the walls' OIT variant) are
+// still building, the camera draws Sorted and the scene's load waits for them; once they are
+// built Order Independent turns on. The builder holds them "building" for as long as the test
+// says (the ShaderPool hook AsyncCreateTest uses), the other variants compile as usual.
+TEST_F(LightingGpu, OrderIndependentWaitsForItsPrograms){
+    JASPER_REQUIRE_GPU();
+    camera.setPosition(0.0f, 1.5f, 5.0f);
+    camera.setTarget(0.0f, 1.0f, 0.0f);
+    std::vector<std::unique_ptr<Primitive>> planes;
+    threePlanes(scene, planes, false);
+    ASSERT_TRUE(render());
+    const std::vector<uint8_t> sorted = readTarget();
+
+    std::atomic<bool> held{true};
+    std::atomic<int> heldAsks{0};
+    const uint64_t oitBit = ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT);
+    ShaderPool::setShaderBuilder([&held, &heldAsks, oitBit](ShaderKey key){
+        const ShaderType type = ShaderPool::getShaderTypeFromKey(key);
+        const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
+        const bool oitProgram = (type == ShaderType::LIGHTING_PASS && (properties & 1u)) ||
+                                (type == ShaderType::MESH && (properties & oitBit));
+        if (oitProgram && held.load()){
+            heldAsks.fetch_add(1);
+            return ShaderBuildResult({}, ResourceLoadState::Loading);
+        }
+        return RuntimeShaderCompiler::request(key);
+    });
+    struct BuilderReset{ ~BuilderReset(){ ShaderPool::setShaderBuilder(nullptr); } } reset;
+
+    scene.getComponent<CameraComponent>(camera.getEntity()).transparencyMode = TransparencyMode::ORDER_INDEPENDENT;
+    GpuEnvironment::drawFrames(30);
+    EXPECT_GT(heldAsks.load(), 0) << "the Order Independent programs were never asked for";
+    EXPECT_TRUE(renderSystem().getLightingStats().oit);
+    EXPECT_FALSE(renderSystem().isAllLoaded()) << "the scene counted as loaded with its OIT programs building";
+    EXPECT_FALSE(hasPass(passLabels(), "oit accumulation"));
+    const Difference whileBuilding = differenceOf(sorted, readTarget());
+    EXPECT_LE(whileBuilding.maxDiff, 2) << "while its programs build the camera does not draw as Sorted does (mean "
+                                        << whileBuilding.meanDiff << ")";
+
+    held.store(false);
+    ASSERT_TRUE(render()) << "the scene never finished loading once the OIT programs could build";
+    EXPECT_TRUE(hasPass(passLabels(), "oit accumulation")) << "Order Independent never turned on once its programs were built";
+    EXPECT_GT(differenceOf(sorted, readTarget()).maxDiff, 2) << "built, the camera still draws as Sorted does";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
