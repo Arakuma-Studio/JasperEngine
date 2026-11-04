@@ -163,6 +163,15 @@ arguments change it. They are editor preferences, not undoable, and not saved wi
   but localhost fail with `offline`, also while playing (jasper://docs/networking);
   `maximize_on_play`, `show_stats`.
 
+## Input Field text in any language
+
+An Input Field takes any character, emoji and other characters beyond U+FFFF included, on every
+platform: Windows and Android type those as two UTF-16 halves, which the engine joins before the
+field sees them (one character, one backspace to erase). `maxTextSize` counts characters. Whether
+a character shows is up to the Text's font: the default font has Latin and Arabic; a game that
+shows Chinese, Japanese, Korean or emoji gives the Text a font with those glyphs. Check typing as
+Windows delivers it with `send_input {type:"text", text:"a😀", per_unit:true}` (`jasper://docs/input`).
+
 ## Text outline and shadow
 
 `Text` (TMP's outline and underlay): `outlineWidth` (UI units outside the glyph edge), `outlineColor`,
