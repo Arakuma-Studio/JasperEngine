@@ -52,6 +52,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_set>
+#include <span>
 #include <vector>
 
 namespace jasperengine{
@@ -769,6 +770,12 @@ namespace jasperengine{
 #ifdef JASPERENGINE_PHYSICS_3D
 		JPH::PhysicsSystem* getWorld3D();
 		bool loadRigidbody(Entity entity);
+		// T6 V8: a static body of an already built shape for this entity's Rigidbody, not yet in the
+		// broad phase. The two after it follow Jolt's batch contract (BodyInterface.h): prepare is
+		// thread-safe, finalize runs between steps on the main thread.
+		JPH::BodyID createStaticBodyForShape(Entity entity, const JPH::Shape* shape);
+		JPH::BodyInterface::AddState prepareBodies(std::span<JPH::BodyID> ids);
+		void finalizeBodies(std::span<JPH::BodyID> ids, JPH::BodyInterface::AddState state);
 		void destroyRigidbody(RigidbodyComponent& body);
 		// The 3D counterpart of ensureRigidbody2DLoaded()
 		bool ensureRigidbodyLoaded(Entity entity);

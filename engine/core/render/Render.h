@@ -244,7 +244,10 @@ namespace jasperengine{
         // width, role and fan parameter (a_lineParams)
         LINETANGENTIN,
         LINETANGENTOUT,
-        LINEPARAMS
+        LINEPARAMS,
+        // a Voxel Volume's vertex (T6 R49): four 4-bit slots in x (ushort2n), the weights over them (ubyte4n)
+        VOXELSLOTS,
+        VOXELWEIGHTS
     };
 
     enum class AttributeDataType{
@@ -308,7 +311,8 @@ namespace jasperengine{
         BLIT_FS_PARAMS,
         PROBE_FILTER_FS_PARAMS,
         PARTICLES_VS_PARAMS,
-        PARTICLES_FS_PARAMS
+        PARTICLES_FS_PARAMS,
+        FS_VOXEL_LAYERS
     };
 
     enum class StorageBufferType{
@@ -352,7 +356,8 @@ namespace jasperengine{
         PARTICLESIXWAYA,     // six-way lighting: the two response maps
         PARTICLESIXWAYB,
         PARTICLEEMISSION,    // the emission map
-        VAT                  // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        VAT,                 // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        VOXELDETAIL          // a Voxel Volume's texture array (T6 R50, includes/voxel_fs.glsl)
     };
 
     enum class TextureType {

@@ -147,6 +147,10 @@ int ShaderData::getAttrIndex(AttributeType type){
         attrstr = "a_tangentOut";
     }else if (type == AttributeType::LINEPARAMS){
         attrstr = "a_lineParams";
+    }else if (type == AttributeType::VOXELSLOTS){
+        attrstr = "a_voxelSlots";
+    }else if (type == AttributeType::VOXELWEIGHTS){
+        attrstr = "a_voxelWeights";
     }
 
     if (attrstr.empty()){
@@ -262,6 +266,8 @@ int ShaderData::getUniformBlockIndex(UniformBlockType type){
         ustr = "u_vs_terrainParams";
     }else if (type == UniformBlockType::FS_TERRAIN_LAYERS){
         ustr = "u_fs_terrainLayers";
+    }else if (type == UniformBlockType::FS_VOXEL_LAYERS){
+        ustr = "u_fs_voxelLayers";
     }else if (type == UniformBlockType::SSAO_FS_PARAMS){
         ustr = "u_fs_ssaoParams";
     }else if (type == UniformBlockType::SSAO_BLUR_FS_PARAMS){
@@ -399,6 +405,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_blendMap2";
     }else if (type == TextureShaderType::TERRAINDETAIL){
         texstr = "u_terrainDetail";
+    }else if (type == TextureShaderType::VOXELDETAIL){
+        texstr = "u_voxelDetail";
     }else if (type == TextureShaderType::DEPTHTEXTURE){
         texstr = "u_depthTexture";
     }else if (type == TextureShaderType::SSAOTEXTURE){

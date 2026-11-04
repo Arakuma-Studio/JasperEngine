@@ -131,6 +131,9 @@ in vec3 a_position;
 #ifdef HAS_TERRAIN
     #include "includes/terrain_vs.glsl"
 #endif
+#ifdef HAS_VOXEL
+    #include "includes/voxel_vs.glsl"
+#endif
 // the lattices deforming the mesh (HAS_LATTICE): latticeDeform, after a_color is declared
 #include "includes/lattice.glsl"
 // the baked vertex animation (HAS_VAT): vatEvaluate, vatPosition, vatNormal, vatTangent
@@ -273,6 +276,9 @@ void main() {
     #if defined(HAS_TERRAIN_PBR) && defined(HAS_NORMALS)
         setTerrainShadingAxes(pbrParams.normalMatrix);
     #endif
+    #ifdef HAS_VOXEL
+        setVoxelVaryings(a_position, a_normal, pbrParams.normalMatrix);
+    #endif
 
     #ifdef HAS_UV_SET1
         v_uv1 = vec2(0.0, 0.0);
@@ -334,6 +340,9 @@ void main() {
     #endif
 
     gl_Position = pbrParams.mvpMatrix * pos;
+    #ifdef HAS_VOXEL
+        v_voxelPositionEye.w = gl_Position.w;
+    #endif
     #ifdef IS_VULKAN
         // GL [-1,1] to Vulkan [0,1] depth range (spirv-cross fixup_clipspace equivalent)
         gl_Position.z = (gl_Position.z + gl_Position.w) * 0.5;

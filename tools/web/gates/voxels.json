@@ -1,0 +1,15 @@
+{
+  "description": "tools/test-projects/voxels (WEB_PROJECT=voxels tools/build.sh web, WEB_THREADS=1 for pthreads; GATE=voxels tools/build.sh web-gate): a Voxel Volume of ground generated, meshed and drawn on CPU jobs in WebGL2: the first set activates, a body rests on it, a dig lands within R56's frames, and the fixed op script's hash equals the native golden (T6 AC27, AC43). The canvas centre is the ground.",
+  "isolated": true,
+  "seconds": 45,
+  "rgb": [120, 110, 90],
+  "tolerance": 90,
+  "console": [
+    {"text": "[gate] voxels golden 659ad177d96702d6", "level": "log"},
+    {"text": "[gate] voxels first set active", "level": "log"},
+    {"text": "[gate] voxels ground collision holds", "level": "log"},
+    {"text": "[gate] voxels dig ok 1", "level": "log"},
+    {"text": "[gate] voxels dig to collision within budget", "level": "log"}
+  ],
+  "ordered": true
+}

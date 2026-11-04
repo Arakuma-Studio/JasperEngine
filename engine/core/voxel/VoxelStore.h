@@ -191,11 +191,15 @@ namespace jasperengine::voxel {
         void bumpVersion() { dataVersion++; }
 
         void setBase(std::shared_ptr<const BaseSource> source);
+        // The same source of truth over new input (R46): no slot changes
+        void replaceBase(std::shared_ptr<const BaseSource> source) { baseSource = std::move(source); }
         const std::shared_ptr<const BaseSource>& base() const { return baseSource; }
         // Every slot back to the base, with no block modified
         void resetToBase();
         // Unmodified slots back to the base, for a regenerate with keep_edits (R33)
         void resetUnmodifiedToBase();
+        // One unmodified block back to its base (R46: the terrain under it changed)
+        void resetBlockToBase(const BlockKey& key);
         // A loaded file's blocks
         void setColdSource(std::shared_ptr<const ColdSource> source);
         const std::shared_ptr<const ColdSource>& cold() const { return coldSource; }

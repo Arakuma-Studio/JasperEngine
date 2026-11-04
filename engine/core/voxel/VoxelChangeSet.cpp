@@ -101,8 +101,8 @@ void ChangeSetScheduler::markDirty(const IntBox& changed, int levels) {
     }
 }
 
-void ChangeSetScheduler::onEdit(const IntBox& changed, int levels) {
-    if (changed.empty()) return;
+uint64_t ChangeSetScheduler::onEdit(const IntBox& changed, int levels) {
+    if (changed.empty()) return lastActivated;
     // An edit pre-empts: an LOD set that has not activated goes, its finished meshes stay in the cache
     waitingLod = false;
     for (size_t i = sets.size(); i > 0; i--) {
@@ -128,12 +128,13 @@ void ChangeSetScheduler::onEdit(const IntBox& changed, int levels) {
             item.second = updated;
             request(updated, true);
         }
-        return;
+        return second.id;
     }
     std::map<BlockKey, MeshId> target;
     for (const auto& item : latestTarget()) target.emplace(item.first, idFor(item.first, item.second.sideMask));
     // A first set not yet visible at all still has to build at the new version
     startSet(true, std::move(target), changed);
+    return sets.back().id;
 }
 
 void ChangeSetScheduler::takeRequests(std::vector<MeshBuildRequest>& out) {
@@ -222,6 +223,7 @@ bool ChangeSetScheduler::pollActivation(Activation& out) {
     out.setId = set.id;
     out.wasEditSet = set.isEdit;
     out.changedBounds = set.changed;
+    lastActivated = set.id;
     for (const auto& item : current) {
         const auto wanted = set.target.find(item.first);
         if (wanted == set.target.end() || !(wanted->second == item.second)) out.hide.push_back(item.second);

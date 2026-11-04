@@ -60,7 +60,10 @@ namespace jasperengine::voxel {
         // An edit landed: changed samples in voxels. Cancels a pending LOD set, and every visible (or
         // in-flight) block whose window read those samples is rebuilt, in one set. A third set merges into the
         // second. levels is the store's level count.
-        void onEdit(const IntBox& changed, int levels);
+        // Returns the set this edit lands in: R23 swaps collision at or after its activation.
+        uint64_t onEdit(const IntBox& changed, int levels);
+        // The newest set that went on screen; sets activate in order
+        uint64_t lastActivatedSet() const { return lastActivated; }
 
         // The builds to start now. The caller may run them in any order.
         void takeRequests(std::vector<MeshBuildRequest>& out);
@@ -142,6 +145,7 @@ namespace jasperengine::voxel {
         uint64_t editVersion = 0;
         uint64_t clock = 0;
         int activations = 0;
+        uint64_t lastActivated = 0;
     };
 
 }

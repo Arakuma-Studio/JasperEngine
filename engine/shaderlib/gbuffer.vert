@@ -56,6 +56,9 @@ out vec3 v_normal;          // view space
 #ifdef HAS_TERRAIN
     #include "includes/terrain_vs.glsl"
 #endif
+#ifdef HAS_VOXEL
+    #include "includes/voxel_vs.glsl"
+#endif
 #include "includes/lattice.glsl"
 #include "includes/vat.glsl"
 
@@ -134,6 +137,9 @@ void main() {
     #if defined(HAS_TERRAIN_PBR) && defined(HAS_NORMALS)
         setTerrainShadingAxes(gbufferParams.normalMatrix);
     #endif
+    #ifdef HAS_VOXEL
+        setVoxelVaryings(a_position, a_normal, gbufferParams.normalMatrix);
+    #endif
 
     #ifdef HAS_TERRAIN_PBR
         // fills the surface varyings the painted layers are sampled with, and returns
@@ -153,6 +159,9 @@ void main() {
     #endif
 
     gl_Position = mvpMatrix * pos;
+    #ifdef HAS_VOXEL
+        v_voxelPositionEye.w = gl_Position.w;
+    #endif
 
     v_projZW = gl_Position.zw;
     // No Y flip here: the G-buffer keeps the target's native orientation, and SSR

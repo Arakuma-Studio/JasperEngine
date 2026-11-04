@@ -96,11 +96,16 @@ namespace {
         {"PBR_HEX_TILING", "Hx"}, {"TERRAIN_HEX_TILING", "Th"},
         {"USE_LIT_QUALITY", "Lq"},
         {"TERRAIN_HEX_STOCHASTIC", "Ts"},
+        {"HAS_VOXEL", "Vx"}, {"VOXEL_TIER_HIGH", "Vh"}, {"VOXEL_TIER_MEDIUM", "Vm"}, {"VOXEL_TIER_LOW", "Vl"},
     };
 
 }
 
 const char* const MaterialPbr::LIT_QUALITY_DEFINE = "USE_LIT_QUALITY";
+const char* const MaterialPbr::VOXEL_DEFINE = "HAS_VOXEL";
+const char* const MaterialPbr::VOXEL_TIER_HIGH_DEFINE = "VOXEL_TIER_HIGH";
+const char* const MaterialPbr::VOXEL_TIER_MEDIUM_DEFINE = "VOXEL_TIER_MEDIUM";
+const char* const MaterialPbr::VOXEL_TIER_LOW_DEFINE = "VOXEL_TIER_LOW";
 const char* const MaterialPbr::TERRAIN_HEX_DEFINE = "TERRAIN_HEX_TILING";
 const char* const MaterialPbr::TERRAIN_HEX_STOCHASTIC_DEFINE = "TERRAIN_HEX_STOCHASTIC";
 const char* const MaterialPbr::TRANSMISSION_DEFINE = "PBR_TRANSMISSION";

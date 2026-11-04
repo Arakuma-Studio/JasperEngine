@@ -634,6 +634,10 @@ uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
 
+uint64_t ShaderPool::getGBufferVoxelProperty(){
+    return shaderPropertyBit(16);
+}
+
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
     switch (shaderType) {
         case ShaderType::MESH:   return shaderPropertyBit(31);
@@ -784,6 +788,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 14: return shortName ? "Vat" : "Vertex Animation";
             case 15: return shortName ? "Vab" : "Vertex Animation Bones";
+            // a Voxel Volume's chunk (T6 R49; the colour pass takes it through Lit defines)
+            case 16: return shortName ? "Vox" : "Voxel Volume";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {

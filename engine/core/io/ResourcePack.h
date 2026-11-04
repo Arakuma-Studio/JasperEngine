@@ -34,6 +34,9 @@ namespace jasperengine {
         // the unpacked size of an entry, false when the pack does not hold it
         static bool size(const std::string& path, uint64_t& outSize);
         static bool read(const std::string& path, std::vector<unsigned char>& outData);
+        // The entry's bytes in place, where the content pack lives in memory (the web): no copy to
+        // read, none to keep. False elsewhere; a caller then reads.
+        static bool view(const std::string& path, std::span<const uint8_t>& out);
         // Data::open can take ownership directly, without copying the packed bytes.
         static bool readOwned(const std::string& path, std::unique_ptr<unsigned char[]>& outData,
                               unsigned int& outSize);

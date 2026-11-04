@@ -8,6 +8,7 @@
 
 #include "voxel/TransvoxelMesher.h"
 #include "voxel/VoxelEdit.h"
+#include "voxel/VoxelGenerator.h"
 #include "voxel/VoxelSample.h"
 #include "voxel/VoxelStore.h"
 

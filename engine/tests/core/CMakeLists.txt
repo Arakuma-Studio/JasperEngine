@@ -196,7 +196,9 @@ add_executable(je-bench-nav ${CMAKE_CURRENT_SOURCE_DIR}/bench/NavBench.cpp ${COR
 # je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
 add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
+# je-bench-voxel: the Voxel Volume budgets (T6 R55, R56)
+add_executable(je-bench-voxel ${CMAKE_CURRENT_SOURCE_DIR}/bench/VoxelBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
+foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-voxel)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})
@@ -204,7 +206,7 @@ foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-b
     set_target_properties(${target} PROPERTIES FOLDER "tests")
 endforeach()
 
-foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
+foreach(target jasperengine-core-tests je-bench-jobs je-bench-memory je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-voxel)
     if(CORE_TEST_COUNTS_ALLOCATIONS)
         target_compile_definitions(${target} PRIVATE JE_TEST_COUNTS_ALLOCATIONS)
         target_link_options(${target} PRIVATE "-Wl,--wrap=malloc" "-Wl,--wrap=calloc" "-Wl,--wrap=realloc" "-rdynamic")
@@ -214,6 +216,11 @@ endforeach()
 # core's floating-point flags (core/spline/SplineSources.cmake, S18 R16): with contraction, as
 # clang does on arm64, the bowl ground's heights round differently from x86-64's, and the bit-exact
 # checks (SplineFillMesherTests seams and zero-area triangles) compared other inputs
+# The voxel tests compute inputs and expected hashes in their own units: no contraction there either (T6 R28)
+file(GLOB CORE_TEST_VOXEL_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/voxel/*.cpp)
+if(CORE_TEST_VOXEL_SOURCES AND JASPERENGINE_VOXEL_FLAGS)
+    set_source_files_properties(${CORE_TEST_VOXEL_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_VOXEL_FLAGS}")
+endif()
 file(GLOB CORE_TEST_SPLINE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/spline/*.cpp)
 if(CORE_TEST_SPLINE_SOURCES AND JASPERENGINE_SPLINE_FLAGS)
     set_source_files_properties(${CORE_TEST_SPLINE_SOURCES} PROPERTIES COMPILE_OPTIONS "${JASPERENGINE_SPLINE_FLAGS}")

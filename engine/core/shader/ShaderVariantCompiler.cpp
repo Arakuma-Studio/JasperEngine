@@ -452,6 +452,7 @@ void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& de
     if (prop & shaderPropertyBit(13)) defs.push_back({"HAS_VERTEX_COLOR_VEC4", "1"});         // 'Vc4'
     if (vat) defs.push_back({"HAS_VAT", "1"});                                                  // 'Vat', 'Vab'
     if (vat && (prop & shaderPropertyBit(15))) defs.push_back({"HAS_VAT_BONES", "1"});          // 'Vab'
+    if (prop & shaderPropertyBit(16)) defs.push_back({"HAS_VOXEL", "1"});                       // 'Vox'
 }
 
 void addUIPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {

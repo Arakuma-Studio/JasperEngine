@@ -402,6 +402,13 @@ void Store::resetUnmodifiedToBase() {
     dataVersion++;
 }
 
+void Store::resetBlockToBase(const BlockKey& key) {
+    if (slot(key).modified()) return;
+    Slot value;
+    value.setBase(false, false);
+    setSlot(key, std::move(value));
+}
+
 void Store::setColdSource(std::shared_ptr<const ColdSource> source) {
     const int64_t before = coldSource ? static_cast<int64_t>(coldSource->byteSize()) : 0;
     coldSource = std::move(source);

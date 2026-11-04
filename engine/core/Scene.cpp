@@ -30,6 +30,9 @@
 #include "picking/SceneBvh.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "subsystem/SplineSystem.h"
+#if JASPERENGINE_VOXEL
+#include "subsystem/VoxelSystem.h"
+#endif
 #include "util/Color.h"
 
 #include <algorithm>
@@ -57,6 +60,9 @@ void Scene::init(){
     // after the scripts, before the meshes and transforms: generated chunks and followers are
     // drawn in the frame they change (docs/specs/S18-splines.md D3)
     registerSystem<SplineSystem>();
+#if JASPERENGINE_VOXEL
+    registerSystem<VoxelSystem>();
+#endif
     registerSystem<MeshSystem>();
     registerSystem<LatticeSystem>();
     // after the lattices, before Render reads the GPU state it writes (vertex animation spec 3.4)

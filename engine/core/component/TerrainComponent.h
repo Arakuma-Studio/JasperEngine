@@ -200,6 +200,9 @@ namespace jasperengine{
 
         // R8, 0 = hole, 255 = solid (S55 R18); absent means no holes, and no cost anywhere
         Texture holeMap;
+        // T3 R29, T6 R40: an attached Automatic Voxel Volume keeps the map while it exists, so a first
+        // in-game dig does not reload the terrain's variant. Not saved.
+        int holeMapHolds = 0;
 
         bool needUpdateTerrain = true;
         bool needUpdateTexture = false;

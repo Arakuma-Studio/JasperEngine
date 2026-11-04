@@ -375,7 +375,7 @@ WriteResult TerrainComponentStore::createMap(MapId map, MapFormat newFormat, flo
 }
 
 bool TerrainComponentStore::canRemoveMap(MapId map) const {
-    return map.kind == MapKind::Hole && !terrain.holeMap.empty();
+    return map.kind == MapKind::Hole && !terrain.holeMap.empty() && terrain.holeMapHolds <= 0;
 }
 
 WriteResult TerrainComponentStore::removeMap(MapId map) {
