@@ -271,7 +271,7 @@ namespace {
         const Vector4 plane(0.0f, 1.0f, 0.2f, 1.0f);
         const Matrix4 oblique = projection.obliqueNearClip(plane);
         EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.0f, 0.0f, -5.0f)), -1.0f, 1e-4f);
-        EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.5f, -1.0f, -10.0f)), -1.0f, 1e-4f);
+        EXPECT_NEAR(m4NdcDepth(oblique, Vector3(0.5f, 1.0f, -10.0f)), -1.0f, 1e-4f);
         const float front = m4NdcDepth(oblique, Vector3(0.0f, 0.5f, -5.0f));
         EXPECT_GT(front, -1.0f);
         EXPECT_LT(front, 1.0f);

@@ -36,8 +36,10 @@ def passes_of(settings) -> list:
     return found if isinstance(found, list) else []
 
 
-async def lua(ed: Editor, code: str):
-    return (await ed.call("eval_lua", code=code))["values"]
+async def lua(ed: Editor, code: str, edit: bool = False):
+    """Lua's return values; edit=True runs it against the stopped scene."""
+    extra = {"allow_edit_mode": True} if edit else {}
+    return (await ed.call("eval_lua", code=code, **extra))["values"]
 
 
 async def test_menu_entry_creates_water(ed: Editor):
@@ -238,15 +240,15 @@ async def test_waves_hold_while_paused(ed: Editor):
 
 async def test_edit_mode_animate_water(ed: Editor):
     """A stopped scene's clock follows the Scene view's Animate water (on by default)."""
-    first = (await lua(ed, "return Water.getTime(scene)"))[0]
+    first = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
     await asyncio.sleep(0.5)
-    second = (await lua(ed, "return Water.getTime(scene)"))[0]
+    second = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
     ed.check(second > first, f"Animate water on: the clock moves in edit mode ({first} {second})")
     await ed.call("set_scene_camera", display={"animate_water": False})
     try:
-        held = (await lua(ed, "return Water.getTime(scene)"))[0]
+        held = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
         await asyncio.sleep(0.5)
-        still = (await lua(ed, "return Water.getTime(scene)"))[0]
+        still = (await lua(ed, "return Water.getTime(scene)", edit=True))[0]
         ed.check_eq(still, held, "Animate water off: the clock holds")
     finally:
         await ed.call("set_scene_camera", display={"animate_water": True})
@@ -272,11 +274,11 @@ async def test_fork_keeps_buoyancy_queries_underwater(ed: Editor):
                   content=with_role((library / "underwater.frag").read_text(), "// @shader postprocess", "underwater"))
     await ed.call("write_file", path="shaders/HandUnderwater.vert",
                   content=(REPO / "engine" / "shaderlib" / "fullscreen.vert").read_text())
-    await ed.call("set_properties", entity="Water", values={"mesh": {M + "shader": "shaders/HandWater"}})
     chain = passes_of(await ed.call("get_scene_settings", names=["post_process"]))
-    chain[0]["shader"] = "shaders/HandUnderwater"
-    await ed.call("set_scene_settings", values={"post_process": chain})
     try:
+        await ed.call("set_properties", entity="Water", values={"mesh": {M + "shader": "shaders/HandWater"}})
+        chain[0]["shader"] = "shaders/HandUnderwater"
+        await ed.call("set_scene_settings", settings={"post_process": chain})
         await ed.call("play", action="start")
         await ed.call("wait", game_seconds=5)
         crate = await ed.call("get_runtime_entity", entity="Crate", components=["transform"])
@@ -292,7 +294,7 @@ async def test_fork_keeps_buoyancy_queries_underwater(ed: Editor):
         await ed.call("play", action="stop")
         await ed.call("set_properties", entity="Water", values={"mesh": {M + "shader": "library:water"}})
         chain[0]["shader"] = "library:underwater"
-        await ed.call("set_scene_settings", values={"post_process": chain})
+        await ed.call("set_scene_settings", settings={"post_process": chain})
 
 
 async def test_fork_shader_from_library(ed: Editor):
@@ -324,19 +326,19 @@ async def test_planar_reflection_settings(ed: Editor):
                                                              "planar_reflection_layers"]))["settings"]
     ed.check_eq(defaults["planar_reflection_resolution"], "half", f"half by default: {defaults!r}")
     ed.check_eq(defaults["planar_reflection_layers"], "everything")
-    await ed.call("set_scene_settings", values={"planar_reflection_resolution": "quarter", "max_planar_reflections": 1,
+    await ed.call("set_scene_settings", settings={"planar_reflection_resolution": "quarter", "max_planar_reflections": 1,
                                                 "planar_reflection_far_clip": 60, "planar_reflection_shadows": False})
     got = (await ed.call("get_scene_settings", names=["planar_reflection_resolution", "max_planar_reflections"]))["settings"]
     ed.check_eq(got["planar_reflection_resolution"], "quarter")
     ed.check_eq(got["max_planar_reflections"], 1)
-    await ed.check_error("set_scene_settings", values={"max_planar_reflections": 9}, contains="1 to 4")
+    await ed.check_error("set_scene_settings", settings={"max_planar_reflections": 9}, contains="1 to 4")
     await ed.call("undo")
     got = (await ed.call("get_scene_settings", names=["planar_reflection_resolution"]))["settings"]
     ed.check_eq(got["planar_reflection_resolution"], "half", "undo restores the resolution")
     await ed.call("redo")
     # the same settings in Lua
     lua_values = await lua(ed, "return scene.planarReflectionResolution == PlanarReflectionResolution.QUARTER, "
-                               "scene.maxPlanarReflections, scene.planarReflectionShadows")
+                               "scene.maxPlanarReflections, scene.planarReflectionShadows", edit=True)
     ed.check_eq(lua_values, [True, 1, False], "Scene's Lua properties read the settings")
 
     # drawn: a pass for the water's height, at a quarter of the view
@@ -354,7 +356,7 @@ async def test_planar_reflection_settings(ed: Editor):
     scene_shot = await ed.call_raw("screenshot", {"view": "scene", "save_path": "screenshots/water_planar_scene_view.png"})
     ed.check(scene_shot.images, "Scene view screenshot of the reflection")
 
-    await ed.call("set_scene_settings", values={"planar_reflection_resolution": "off"})
+    await ed.call("set_scene_settings", settings={"planar_reflection_resolution": "off"})
     await ed.call_raw("screenshot", {"view": "game"})
     await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_planar_off.png"})
     stats = await ed.call("get_render_stats")
@@ -362,7 +364,7 @@ async def test_planar_reflection_settings(ed: Editor):
     shaders = (await ed.call("list_shaders", name="water"))["shaders"][0]
     ed.check_eq(shaders.get("role"), "water", "list_shaders names the role")
     ed.check("planar reflection" in shaders.get("cost_note", ""), f"and the planar reflection cost: {shaders.get('cost_note')!r}")
-    await ed.call("set_scene_settings", values={"planar_reflection_resolution": "half", "max_planar_reflections": 2,
+    await ed.call("set_scene_settings", settings={"planar_reflection_resolution": "half", "max_planar_reflections": 2,
                                                 "planar_reflection_far_clip": 0, "planar_reflection_shadows": True})
 
 
