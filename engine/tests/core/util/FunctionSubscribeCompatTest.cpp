@@ -6,6 +6,7 @@
 #include "util/CrashHook.h"
 #include "support/AllocationCounter.h"
 #include "Log.h"
+#include "log/Logger.h"
 
 #include <gtest/gtest.h>
 
@@ -194,6 +195,7 @@ TEST(FunctionSubscribeCompatTest, ZeroAllocCall) {
 
 namespace {
     std::vector<std::string> errorsSince(uint64_t lastId) {
+        Logger::flush();
         std::vector<std::string> lines;
         for (const LogEntry& entry : Log::getEntries(0, logLevelBit(LogLevel::Error), lastId)) lines.push_back(entry.message);
         return lines;
