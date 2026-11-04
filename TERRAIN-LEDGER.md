@@ -73,10 +73,15 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - D18. Runtime code that many games will not use is an S34 player module with `ModuleUsage` detection, a
   CMake option and a test: `JASPERENGINE_TERRAIN_WORLD` (S56), `JASPERENGINE_VOXEL` (S58),
   and `JASPERENGINE_NOISE` (S54's runtime evaluator, also used by voxels).
-- D19. Shader variant bits are allocated once, in the table in S55 D2, so streams cannot collide. S55 widens
-  `getDefineBits` to 64 bits so S58 has room. No spec bumps the scene version; new fields default.
+- D19. Shader variant bits are appended at landing, in landing order, as on the pixel-art and Doriax programmes: the
+  table in S55 D2 gives names and the order among our streams, not reservations, and a test pins each. Each shader
+  change bumps the shader cache version. S55 widens `getDefineBits` to 64 bits so S58 has room. No spec bumps the scene
+  version; new fields default. Asset types 24-27 are pixel art's, so ours start at 28.
 - D20. Landing order: S53 foundation first (the `engine/core/terrain` seams), then the rest of S53, S54, S55,
   S57 and S58 in parallel, then S56 last.
+- D21. Doriax's unlanded `agent-authoring` and `render-correctness` also touch terrain and foliage. We align with their
+  specs instead of duplicating them, and whichever lands second merges onto the first. New MCP text follows the lean
+  rules (a failing eval case for new text, guide limits, budget ratchet).
 
 ## How the work runs
 
@@ -88,7 +93,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   its own worktree under `.worktrees/` and branch `terrain/sNN-*`.
 - **Evidence** stays outside the repository in `/var/lib/orquester/workspaces/jaspersito/terrain-evidence/`.
 - **Known verification limits of this host:** no Windows, macOS or iOS builds; no Android emulator (no
-  KVM); software GL only; no `fixture-unity` project (those MCP tests skip). CI on the push covers more.
+  KVM); software GL only; no `fixture-unity` project (those MCP tests skip). There is no CI upstream any more, so
+  nothing else checks a push; anything not run here stays unverified and is reported that way.
 
 ## Status
 
@@ -96,7 +102,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 |---|---|---|
 | Analysis of the three repos and our code | done | Nine reports |
 | Build host setup | done | Docker 29.1.3, swap, `rb.sh` queue |
-| Baseline Linux build | in progress | Fills the shared ccache |
+| Baseline on the merged tree | in progress | Linux, unit, MCP, web and Android results to compare against |
 | S53 spec | done | 93 requirements, 73 acceptance criteria at first draft |
 | S54 spec | done | 71 and 47 |
 | S55 spec | done | 53 and 47, then one requirement added in reconciliation |
@@ -104,6 +110,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 | S57 spec | done | 63 and 40 |
 | S58 spec | done | 80 and 53 |
 | Spec reconciliation | done | One bit table, one landing order, S53's names win |
+| Merge of `origin/main` (pixel art, Doriax specs, lean MCP, no CI) | done | Specs renumbered from S41-S46 to S53-S58 |
+| Spec revision for the upstream changes | in progress | |
 | S53 foundation | in progress | Seams everything else builds on |
 | S53 implementation | not started | |
 | S54 implementation | not started | |
@@ -122,3 +130,6 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - Wrote this ledger and the programme decisions; started the six spec writers.
 - All six specs written and reconciled: shader bits, version policy, hole map scope, Alt key, seam names.
 - Started S53 foundation in `.worktrees/s41`.
+- Owner flagged remote changes. `origin/main` had 28 new commits: pixel-art specs S41-S52, 19 Doriax specs, lean MCP rules,
+  an AGENTS.md rewrite and removal of all CI. Renumbered our specs to S53-S58, merged, restarted the baseline, and started a
+  revision of the specs. Doriax's agent-authoring and render-correctness overlap terrain and foliage.
