@@ -16,6 +16,7 @@ import yaml
 from harness import Editor, make_native_player, project_player_name, record_built_player, skip, symlinks_permitted
 
 EDITOR = {"create": True, "name": "Owned Places"}
+CI = True
 TIMEOUT = 900
 
 
