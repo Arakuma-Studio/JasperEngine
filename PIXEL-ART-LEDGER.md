@@ -167,10 +167,10 @@ never build or run them.
 
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
-| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | spec done |
+| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | implementing |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
-| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | spec done |
-| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | spec done |
+| S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | implementing |
+| S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | implementing |
 | S45 | Sprite Atlas | 5B | S44 | feature/s45-sprite-atlas | spec done |
 | S46 | Pixel Art Cleanup | 5C | S43, S44, S42, S48 | feature/s46-pixel-art-cleanup | spec done |
 | S47 | Agent Sprite Drawing | 5C | S43, S44, S42, S46 M1 (same wave) | feature/s47-agent-sprite-drawing | spec done |
@@ -178,7 +178,7 @@ never build or run them.
 | S49 | Pixel Particles | 5B | S41, S43, S44 (S48's lints, same wave) | feature/s49-pixel-particles | spec done |
 | S50 | Grid Tilemap | 5C | S41, S44, S52, S45, S42 | feature/s50-grid-tilemap | spec done |
 | S51 | Pixel Fonts | 5B | S41 | feature/s51-pixel-fonts | spec done |
-| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | spec done |
+| S52 | Sprite Instancing | 5A | S41, S44 (same wave, optional) | feature/s52-sprite-instancing | implementing |
 
 The states, in order: spec in progress → spec done → implementing → in review → merged and pushed.
 
@@ -200,6 +200,10 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
 
 ## Log
 
+- 2026-11-04: Wave 5A implementation started: S41, S43, S44 and S52, each in
+  `.worktrees/sNN` on its feature branch from `main` 7fe6b0b36. Each implementer follows
+  `.worktrees/IMPLEMENTER-BRIEF.md` (local, not committed). A baseline unit-test run of `main` is
+  in progress.
 - 2026-11-04: All 12 specs are written (S41–S52) and a consistency pass reconciled them: snap
   rule, asset type numbers, the Bayer table, tool groups and budgets, FX slots, and the wave
   order. Docker is installed on this host. The baseline `tools/build.sh linux` of `main` passed:
