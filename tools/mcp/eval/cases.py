@@ -925,6 +925,8 @@ CASES = [
         "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
+    },
+    {
         "id": "guard_device_simulation",
         "kind": "guard",
         "what_happened": "Seeing a game as a low-end phone renders it needs the Game view's device simulation in Play: the "
