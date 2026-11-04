@@ -951,6 +951,7 @@ bool bounds2D(Scene* scene, Entity entity, Vector2& minOut, Vector2& maxOut, std
                 case PivotPreset::BOTTOM_LEFT: break;
                 case PivotPreset::TOP_RIGHT: px = w; py = h; break;
                 case PivotPreset::BOTTOM_RIGHT: px = w; break;
+                case PivotPreset::FRAME: px = w * 0.5f; py = h * 0.5f; break;   // a legacy sprite's From Frame is its centre
             }
             minOut = Vector2(-px, -py);
             maxOut = Vector2(w - px, h - py);
@@ -2790,7 +2791,8 @@ const std::vector<std::pair<const char*, PivotPreset>>& pivotPresets() {
     static const std::vector<std::pair<const char*, PivotPreset>> table = {
         {"center", PivotPreset::CENTER}, {"top_center", PivotPreset::TOP_CENTER}, {"bottom_center", PivotPreset::BOTTOM_CENTER},
         {"left_center", PivotPreset::LEFT_CENTER}, {"right_center", PivotPreset::RIGHT_CENTER}, {"top_left", PivotPreset::TOP_LEFT},
-        {"bottom_left", PivotPreset::BOTTOM_LEFT}, {"top_right", PivotPreset::TOP_RIGHT}, {"bottom_right", PivotPreset::BOTTOM_RIGHT}};
+        {"bottom_left", PivotPreset::BOTTOM_LEFT}, {"top_right", PivotPreset::TOP_RIGHT}, {"bottom_right", PivotPreset::BOTTOM_RIGHT},
+        {"frame", PivotPreset::FRAME}};
     return table;
 }
 

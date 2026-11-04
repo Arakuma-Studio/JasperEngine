@@ -12,6 +12,7 @@
 #include "component/TrailRendererComponent.h"
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
+#include "component/SpriteComponent.h"
 #include "component/PointsComponent.h"
 #include "component/PrefabComponent.h"
 #include "component/ReflectionProbeComponent.h"
@@ -153,6 +154,8 @@ namespace {
         row(C::TrailRendererComponent, "shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets);
 
         row(C::ModelComponent, "filename", Shape::Asset, AssetType::Model, Base::Assets);
+        // a sheet sprite's sheet (S44): an .aseprite file or a texture
+        row(C::SpriteComponent, "sheet", Shape::Asset, AssetType::Unknown, Base::Assets);
         row(C::AudioSourceComponent, "filename", Shape::Asset, AssetType::Audio, Base::Assets);
         row(C::UIDocumentComponent, "filename", Shape::Asset, AssetType::UIDocument, Base::Assets);
         row(C::PoseAnimatorComponent, "animation", Shape::Asset, AssetType::PoseAnimation, Base::Assets);
@@ -641,6 +644,14 @@ namespace {
 
         eachComponent<ModelComponent>(registry, only, visit, C::ModelComponent, [&](ModelComponent& model) {
             if (visit.asset(model.filename, componentRow(C::ModelComponent, "filename"), "filename")) model.needUpdateModel = true;
+        });
+
+        eachComponent<SpriteComponent>(registry, only, visit, C::SpriteComponent, [&](SpriteComponent& sprite) {
+            if (sprite.sheet.empty()) return;
+            if (visit.asset(sprite.sheet, componentRow(C::SpriteComponent, "sheet"), "sheet")) {
+                sprite.sheetData.reset();
+                sprite.needUpdateSprite = true;
+            }
         });
 
         eachComponent<AudioSourceComponent>(registry, only, visit, C::AudioSourceComponent, [&](AudioSourceComponent& audio) {
