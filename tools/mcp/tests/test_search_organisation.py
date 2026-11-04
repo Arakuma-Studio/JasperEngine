@@ -144,6 +144,31 @@ async def test_palette_search(ed: Editor):
     ed.check_eq(status["windows"]["open"].get("Inspector"), True, "the Inspector is open")
 
 
+# window.* catalog commands the palette's window list leaves out, and why (BF23 F21)
+PALETTE_WINDOW_EXCLUSIONS = {
+    # toggles a preference, opens no window
+    "window.detachableWindows",
+    # actions on layouts, in the palette's commands
+    "window.layouts.apply", "window.layouts.save", "window.layouts.rename", "window.layouts.delete",
+    "window.layouts.saveToFile", "window.layouts.loadFromFile", "window.layouts.reset",
+    # version control's windows: only with a repository, in the palette's commands
+    "window.vcs.commit", "window.vcs.history", "window.vcs.sceneDiff", "window.vcs.conflicts",
+}
+
+
+async def test_palette_lists_every_window(ed: Editor):
+    """The palette's list is kept by hand (SearchPalette.cpp): every window.* command has a row"""
+    commands = {i: item for i, item in by_id(await ed.call("list_shortcuts")).items() if i.startswith("window.")}
+    ed.check("window.animator" in commands and "window.console" in commands, f"the catalog's windows: {sorted(commands)}")
+    for excluded in PALETTE_WINDOW_EXCLUSIONS:
+        ed.check_in(excluded, commands, "an exclusion names a catalog command")
+    listed = await ed.call("search_editor", query="/", scopes=["panel"], limit=100)
+    ed.check(listed["total"] <= 100, f"the limit holds them all: {listed['total']}")
+    keys = {r["key"] for r in listed["results"]}
+    missing = sorted(i for i, item in commands.items() if i not in PALETTE_WINDOW_EXCLUSIONS and "panel:" + item["name"] not in keys)
+    ed.check_eq(missing, [], f"window.* commands the palette lacks (it lists {sorted(keys)})")
+
+
 async def test_layout_presets(ed: Editor):
     saved = await ed.call("edit_layout_presets", action="save", name="A")
     ed.check(saved["files_written"], f"the preset file: {saved}")
