@@ -4,13 +4,14 @@
 #include "TiledLights.h"
 
 #include <algorithm>
+#include <limits>
 #include <cmath>
 
 using namespace jasperengine;
 
 namespace {
     // the clip-space position of a view-space point
-    Vector4 project(const Matrix4& projection, float x, float y, float z){
+    Vector4 projectViewPoint(const Matrix4& projection, float x, float y, float z){
         return projection * Vector4(x, y, z, 1.0f);
     }
 }
@@ -69,11 +70,12 @@ bool TiledLights::projectSphere(const View& view, const Vector3& center, float r
                     {cosAngle * va - sinAngle * vz, sinAngle * va + cosAngle * vz},
                     {cosAngle * va + sinAngle * vz, -sinAngle * va + cosAngle * vz}
                 };
-                float low = 1.0f;
-                float high = -1.0f;
+                // (not seeded with the view's -1..1: a sphere wholly off one side must stay off it)
+                float low = std::numeric_limits<float>::max();
+                float high = -std::numeric_limits<float>::max();
                 for (int k = 0; k < 2; k++){
-                    const Vector4 clip = (axis == 0) ? project(p, points[k][0], c.y, points[k][1])
-                                                     : project(p, c.x, points[k][0], points[k][1]);
+                    const Vector4 clip = (axis == 0) ? projectViewPoint(p, points[k][0], c.y, points[k][1])
+                                                     : projectViewPoint(p, c.x, points[k][0], points[k][1]);
                     if (clip.w <= 1e-6f){
                         low = -1.0f;
                         high = 1.0f;
@@ -89,10 +91,10 @@ bool TiledLights::projectSphere(const View& view, const Vector3& center, float r
         }
     }else{
         // orthographic: the sphere's extent along each axis, projected linearly
-        const Vector4 x0 = project(p, c.x - r, c.y, c.z);
-        const Vector4 x1 = project(p, c.x + r, c.y, c.z);
-        const Vector4 y0 = project(p, c.x, c.y - r, c.z);
-        const Vector4 y1 = project(p, c.x, c.y + r, c.z);
+        const Vector4 x0 = projectViewPoint(p, c.x - r, c.y, c.z);
+        const Vector4 x1 = projectViewPoint(p, c.x + r, c.y, c.z);
+        const Vector4 y0 = projectViewPoint(p, c.x, c.y - r, c.z);
+        const Vector4 y1 = projectViewPoint(p, c.x, c.y + r, c.z);
         ndc[0] = std::min(x0.x / x0.w, x1.x / x1.w);
         ndc[2] = std::max(x0.x / x0.w, x1.x / x1.w);
         ndc[1] = std::min(y0.y / y0.w, y1.y / y1.w);

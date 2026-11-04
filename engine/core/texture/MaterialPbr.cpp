@@ -535,6 +535,14 @@ void MaterialPbr::getUniformBlock(const MaterialPbrExtensions& pbr, float out[UN
     out[UNIFORM_IOR_HEX + 3] = a / (1.0f + b * std::pow(0.5f, c)) + d * 0.5f + e;
 }
 
+ShadingModel MaterialPbr::getShadingModel(const MaterialPbrExtensions& pbr){
+    return pbr.hair.enabled ? ShadingModel::HAIR : ShadingModel::STANDARD;
+}
+
+void MaterialPbr::setShadingModel(MaterialPbrExtensions& pbr, ShadingModel model){
+    pbr.hair.enabled = model == ShadingModel::HAIR;
+}
+
 float MaterialPbr::hairExponent(float width){
     const float w = std::clamp(width, 0.01f, 1.0f);
     return std::max(2.0f / (w * w) - 2.0f, 1.0f);

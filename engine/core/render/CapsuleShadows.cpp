@@ -12,7 +12,7 @@
 using namespace jasperengine;
 
 namespace {
-    Vector3 axisOf(CapsuleDirection direction){
+    Vector3 capsuleAxisOf(CapsuleDirection direction){
         switch (direction){
             case CapsuleDirection::X_AXIS: return Vector3(1.0f, 0.0f, 0.0f);
             case CapsuleDirection::Z_AXIS: return Vector3(0.0f, 0.0f, 1.0f);
@@ -20,11 +20,11 @@ namespace {
         }
     }
 
-    float maxScale(const Vector3& scale){
+    float capsuleMaxScale(const Vector3& scale){
         return std::max(std::abs(scale.x), std::max(std::abs(scale.y), std::abs(scale.z)));
     }
 
-    float smoothstep(float edge0, float edge1, float x){
+    float capsuleSmoothstep(float edge0, float edge1, float x){
         if (edge1 <= edge0)
             return x < edge0 ? 0.0f : 1.0f;
         const float t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
@@ -33,14 +33,14 @@ namespace {
 
     // the penumbra's half width at the receiver's start (a hard capsule still blends one tenth
     // of its radius) and the shadows' reach when there is no softness
-    constexpr float PENUMBRA_BASE = 0.1f;
-    constexpr float HARD_REACH = 100.0f;
+    constexpr float CAPSULE_PENUMBRA_BASE = 0.1f;
+    constexpr float CAPSULE_HARD_REACH = 100.0f;
 }
 
 CapsuleShadows::World CapsuleShadows::toWorld(const CapsuleShadowShape& shape, const Matrix4& boneModel){
     World world;
     const Vector4 center = boneModel * Vector4(shape.offset.x, shape.offset.y, shape.offset.z, 1.0f);
-    const Vector3 axis = axisOf(shape.direction) * (0.5f * std::max(shape.length, 0.0f));
+    const Vector3 axis = capsuleAxisOf(shape.direction) * (0.5f * std::max(shape.length, 0.0f));
     const Vector4 half = boneModel * Vector4(axis.x, axis.y, axis.z, 0.0f);
     const Vector3 c(center.x, center.y, center.z);
     const Vector3 h(half.x, half.y, half.z);
@@ -75,7 +75,7 @@ CapsuleShadowShape CapsuleShadows::fromWorld(const std::string& boneName, const 
         shape.direction = CapsuleDirection::Y_AXIS;
     }
     shape.length = axis.length();
-    const float scale = maxScale(bone.scale);
+    const float scale = capsuleMaxScale(bone.scale);
     shape.radius = scale > 0.0f ? radius / scale : radius;
     return shape;
 }
@@ -198,8 +198,8 @@ bool CapsuleShadows::fitToSkeleton(const std::vector<Bone>& bones, std::vector<C
 float CapsuleShadows::reach(const World& capsule, float softness){
     // the penumbra grows by softness a metre: past eight radii the occlusion is under 1/64
     if (softness <= 1e-4f)
-        return HARD_REACH;
-    return std::min(HARD_REACH, (8.0f - PENUMBRA_BASE) * capsule.radius / softness);
+        return CAPSULE_HARD_REACH;
+    return std::min(CAPSULE_HARD_REACH, (8.0f - CAPSULE_PENUMBRA_BASE) * capsule.radius / softness);
 }
 
 bool CapsuleShadows::reaches(const World& capsule, const Vector3& towardsLight, float softness, const AABB& receiver){
@@ -212,12 +212,12 @@ bool CapsuleShadows::reaches(const World& capsule, const Vector3& towardsLight, 
     const float distance = reach(capsule, softness);
     const Vector3 center = (capsule.a + capsule.b) * 0.5f;
     const float radius = 0.5f * (capsule.b - capsule.a).length() + capsule.radius +
-                         PENUMBRA_BASE * capsule.radius + softness * distance;
-    const Vector3 far = center - towardsLight * distance;
+                         CAPSULE_PENUMBRA_BASE * capsule.radius + softness * distance;
+    const Vector3 farCenter = center - towardsLight * distance;
     const Vector3 extent(radius, radius, radius);
     AABB swept;
-    swept.setExtents(Vector3(std::min(center.x, far.x), std::min(center.y, far.y), std::min(center.z, far.z)) - extent,
-                     Vector3(std::max(center.x, far.x), std::max(center.y, far.y), std::max(center.z, far.z)) + extent);
+    swept.setExtents(Vector3(std::min(center.x, farCenter.x), std::min(center.y, farCenter.y), std::min(center.z, farCenter.z)) - extent,
+                     Vector3(std::max(center.x, farCenter.x), std::max(center.y, farCenter.y), std::max(center.z, farCenter.z)) + extent);
     return swept.intersects(receiver);
 }
 
@@ -243,11 +243,11 @@ float CapsuleShadows::occlusion(const World& capsule, const Vector3& point, cons
     const float distance = (w + towardsLight * t - d * s).length();
 
     const float r = capsule.radius;
-    const float penumbra = PENUMBRA_BASE * r + std::max(softness, 0.0f) * t;
+    const float penumbra = CAPSULE_PENUMBRA_BASE * r + std::max(softness, 0.0f) * t;
     // the share of the light the capsule can hide at that distance: all of it while the
     // penumbra is narrower than the capsule, then the capsule's share of the light's disc
     const float hidden = std::min(1.0f, (r * r) / std::max(penumbra * penumbra, 1e-12f));
-    const float occluded = hidden * (1.0f - smoothstep(std::max(r - penumbra, 0.0f), r + penumbra, distance)) *
-                           smoothstep(0.0f, r, along);
+    const float occluded = hidden * (1.0f - capsuleSmoothstep(std::max(r - penumbra, 0.0f), r + penumbra, distance)) *
+                           capsuleSmoothstep(0.0f, r, along);
     return 1.0f - occluded;
 }

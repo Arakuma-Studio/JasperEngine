@@ -1584,6 +1584,7 @@ set(JASPERENGINE_SRCS
     core/object/Animator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
+    core/object/CapsuleShadowCaster.cpp
     core/object/Points.cpp
     core/object/Primitive.cpp
     core/object/Sprite.cpp

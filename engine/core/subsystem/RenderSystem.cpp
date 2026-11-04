@@ -15900,6 +15900,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // S57's contact shadows (the main camera): the mask from the pass's packed depth, an
     // effect's above or a depth pre-pass of their own the scene inputs then share
     passContactMask = nullptr;
+    { static int s57diag = 0; if (lighting.contactShadows && s57diag++ < 8) Log::verbose("S57DIAG hook contact %i main %i light %i shared %p vp %f x %f", (int)lighting.contactShadows, (int)isMainCamera, lighting.contactLight, (void*)sharedSceneDepth, sceneInputViewport.getWidth(), sceneInputViewport.getHeight()); }
     if (lighting.contactShadows && isMainCamera && lighting.contactLight >= 0){
         const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
         const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
@@ -15912,6 +15913,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 sharedSceneDepth = contactDepth;
             }
         }
+        { static int s57diag2 = 0; if (s57diag2++ < 8) Log::verbose("S57DIAG depth %p", (void*)contactDepth); }
         if (contactDepth)
             passContactMask = renderContactShadows(camera, contactDepth, depthWidth, depthHeight);
     }

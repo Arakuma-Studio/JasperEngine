@@ -121,6 +121,13 @@ namespace jasperengine{
         bool operator != (const MaterialPbrExtensions& o) const { return !(*this == o); }
     };
 
+    // The Lit material's Shading Model (spec S57 R5): the Hair lobe's enabled flag, as the editor,
+    // MCP and Lua show it. Stored as ints: append only
+    enum class ShadingModel{
+        STANDARD,
+        HAIR
+    };
+
     // What the mobile and web exports leave out of the lobes (project export setting): REDUCED
     // strips iridescence, the anisotropy direction map and the coat normal map
     enum class PbrTier{
@@ -261,6 +268,8 @@ namespace jasperengine{
         static void getHairUniformBlock(const MaterialPbrExtensions& pbr, float out[HAIR_UNIFORM_FLOATS]);
         // a Width (0..1) as the highlight's exponent: 2 / width^2 - 2, at least 1
         static float hairExponent(float width);
+        static ShadingModel getShadingModel(const MaterialPbrExtensions& pbr);
+        static void setShadingModel(MaterialPbrExtensions& pbr, ShadingModel model);
 
         // "lit_" + two letters per define of a builtin:lit reference (Cc Cm Cn Sh Sm An Am Ir Im
         // Tr Tm Vo Sp Sq Hx Th Lq Ts Hr Hf), the basename its compiled shaders are stored under

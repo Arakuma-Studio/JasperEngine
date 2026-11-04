@@ -1450,6 +1450,27 @@ namespace jasperengine{
 		void setShadowDebug(const ShadowDebugSettings& settings);
 		const ShadowDebugSettings& getShadowDebug() const{ return shadowDebug; }
 		const ShadowStats& getShadowStats() const{ return shadowStats; }
+
+		// S57's lighting this update and its last frame (get_render_stats "lighting")
+		struct LightingStats{
+			LightMode lightMode = LightMode::AUTOMATIC;   // the project's
+			LightingTier tier = LightingTier::HIGH;
+			bool tiledLights = false;
+			int tileColumns = 0;
+			int tileRows = 0;
+			bool tileStatsValid = false;
+			TiledLights::Stats tiles;
+			bool capsuleShadows = false;
+			int capsuleCasters = 0;
+			int capsules = 0;
+			bool contactShadows = false;
+			int contactWidth = 0;
+			int contactHeight = 0;
+			bool oit = false;
+			bool oitFallback = false;
+			int oitDraws = 0;
+		};
+		LightingStats getLightingStats() const;
 		// the shadow quality tier the scene renders with
 		ShadowTier getEffectiveShadowTier() const{ return shadowTier; }
 		// the atlases as a colour image (the Atlas debug view): null unless that view is on

@@ -17,7 +17,7 @@
 #include "render/ContactShadows.h"
 #include "render/OrderIndependentTransparency.h"
 #include "render/SystemRender.h"
-#include "shader/ShaderReference.h"
+#include "shader/ShaderManifest.h"
 #include "texture/MaterialPbr.h"
 #include "profiler/Profile.h"
 
@@ -49,6 +49,9 @@ namespace {
 //-----What the variants take-----
 
 void RenderSystem::updateLightingFeatures(){
+    // the last frame's OIT draws, for the stats
+    lighting.oitDraws = lighting.oitDrawsCounting;
+    lighting.oitDrawsCounting = 0;
     lighting.tier = LightingTiers::getTier();
     LightingTiers::tileGrid(lighting.tier, lighting.tileColumns, lighting.tileRows);
     lighting.contactDivisor = LightingTiers::contactShadowDivisor(lighting.tier);
@@ -101,6 +104,27 @@ void RenderSystem::updateLightingFeatures(){
         needReloadMeshVariants();
     }
     releaseLightingFeatures(false);
+}
+
+RenderSystem::LightingStats RenderSystem::getLightingStats() const{
+    LightingStats stats;
+    stats.lightMode = LightingTiers::getLightMode();
+    stats.tier = lighting.tier;
+    stats.tiledLights = lighting.tiledLights;
+    stats.tileColumns = lighting.tileColumns;
+    stats.tileRows = lighting.tileRows;
+    stats.tileStatsValid = lighting.tiledLights && lighting.tileStatsValid;
+    stats.tiles = lighting.tileStats;
+    stats.capsuleShadows = lighting.capsuleShadows;
+    stats.capsuleCasters = lighting.capsuleCasters;
+    stats.capsules = (int)lighting.capsules.size();
+    stats.contactShadows = lighting.contactShadows;
+    stats.contactWidth = lighting.contactShadows ? lighting.contactWidth : 0;
+    stats.contactHeight = lighting.contactShadows ? lighting.contactHeight : 0;
+    stats.oit = lighting.oit;
+    stats.oitFallback = lighting.oitFallback;
+    stats.oitDraws = lighting.oitDraws;
+    return stats;
 }
 
 void RenderSystem::releaseLightingFeatures(bool all){
@@ -541,6 +565,7 @@ void RenderSystem::finishTiledLights(CameraShadows& target){
 
 TextureRender* RenderSystem::renderContactShadows(CameraComponent& camera, TextureRender* depth, unsigned int width, unsigned int height){
     const int divisor = lighting.contactDivisor;
+    { static int s57diag3 = 0; if (s57diag3++ < 8) Log::verbose("S57DIAG pass divisor %i light %i of %i loaded %i shader %p created %i", divisor, lighting.contactLight, (int)sceneLightEntities.size(), (int)lighting.contactLoaded, (void*)lighting.contactShader.get(), lighting.contactShader ? (int)lighting.contactShader->isCreated() : -1); }
     if (divisor <= 0 || lighting.contactLight < 0 || lighting.contactLight >= (int)sceneLightEntities.size() || !depth)
         return nullptr;
     const Entity lightEntity = sceneLightEntities[lighting.contactLight];
