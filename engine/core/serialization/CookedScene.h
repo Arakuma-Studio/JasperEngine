@@ -34,7 +34,8 @@ namespace jasperengine {
         constexpr char SCENE_MAGIC[4] = {'J', 'S', 'C', 'N'};
         constexpr char PREFAB_MAGIC[4] = {'J', 'P', 'F', 'B'};
         constexpr uint16_t FORMAT_MAJOR = 1;
-        constexpr uint16_t FORMAT_MINOR = 0;
+        // 1: the default shaders' property values end the scene settings record
+        constexpr uint16_t FORMAT_MINOR = 1;
         constexpr size_t HEADER_BYTES = 28;
 
         // entity record flags

@@ -126,6 +126,8 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     for (ShaderType type : kDefaultShaderTypes) write(w, scene.getDefaultShaderRef(type));
     write(w, scene.getPostProcessPasses());
     write(w, scene.getPostProcessing());
+    // format 1.1: the default shaders' property values, after everything 1.0 wrote
+    for (ShaderType type : kDefaultShaderTypes) write(w, scene.getDefaultShaderUniforms(type));
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
@@ -201,4 +203,11 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     PostProcessingSettings postProcessing;
     read(r, postProcessing);
     if (postProcessing != PostProcessingSettings()) scene.setPostProcessing(postProcessing);
+    // a 1.0 record ends here
+    if (r.atEnd()) return;
+    for (ShaderType type : kDefaultShaderTypes) {
+        ShaderUniformValues values;
+        read(r, values);
+        if (!values.empty()) scene.setDefaultShaderUniforms(type, values);
+    }
 }
