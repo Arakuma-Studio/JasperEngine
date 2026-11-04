@@ -860,7 +860,7 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
             webCanvasPixelated = pixelated;
             EM_ASM({
                 var element = document.querySelector(UTF8ToString($0));
-                if (element) element.style.imageRendering = $1 ? 'pixelated' : '';
+                if (element) element.style.imageRendering = $1 ? "pixelated" : "";
             }, canvas.c_str(), pixelated ? 1 : 0);
             if (pixelated && (int)round(cssWidth) == screenWidth && (int)round(cssHeight) == screenHeight) {
                 emscripten_set_element_css_size(canvas.c_str(), cssWidth, cssHeight);
@@ -873,7 +873,7 @@ EM_BOOL JasperEngineWeb::renderLoop(double time, void* userdata){
                 changeCanvasSize((int)round(webCanvasPinnedWidth), (int)round(webCanvasPinnedHeight));
                 EM_ASM({
                     var element = document.querySelector(UTF8ToString($0));
-                    if (element) { element.style.width = ''; element.style.height = ''; }
+                    if (element) { element.style.width = ""; element.style.height = ""; }
                 }, canvas.c_str());
                 cssWidth = webCanvasPinnedWidth;
                 cssHeight = webCanvasPinnedHeight;
