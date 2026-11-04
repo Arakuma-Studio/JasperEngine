@@ -14,7 +14,8 @@ BUILD="$EXPORT/build-web"
 mkdir -p "$RESULTS"
 emcmake cmake -S "$EXPORT" -B "$BUILD" -DCMAKE_BUILD_TYPE=Release -DGRAPHIC_BACKEND=gles3
 cmake --build "$BUILD" -j "${JOBS:-8}"
-PAGE="$(cd "$BUILD" && ls -- *.html | head -1)"
+# (not <app>.export.html, the template the page is made from)
+PAGE="$(cd "$BUILD" && ls -- *.html | grep -v "\.export\.html$" | head -1)"
 python3 "$ROOT/tools/web/browser_gate.py" --root "$BUILD" --page "$PAGE" --until-ready \
     --baseline "$ROOT/tools/web/gates/linked-folder-game.json" --expect LINKED-LUA-OK \
     --screenshot "$RESULTS/linked-folder-game.png" --transcript "$RESULTS/linked-folder-game.log"
