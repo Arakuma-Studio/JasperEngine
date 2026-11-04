@@ -44,7 +44,7 @@ namespace jasperengine{
         float getBakeProgress() const;
         // the last bake's error, "" when it succeeded
         std::string getLastBakeError() const;
-        // S42: the last bake's report (null before a bake; Lua's lastBakeResult table)
+        // S54: the last bake's report (null before a bake; Lua's lastBakeResult table)
         const NavBakeResult* getLastBakeResult() const;
         int getTileCount() const;
         int getPolyCount() const;

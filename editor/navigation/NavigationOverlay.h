@@ -16,12 +16,14 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "navigation/NavTypes.h"
+#include "navigation/NavDiagnostics.h"
 
 #include "yaml-cpp/yaml.h"
 
 #include <array>
 #include <map>
 #include <set>
+#include <string>
 #include <vector>
 
 namespace jasperengine {
@@ -33,6 +35,10 @@ namespace jasperengine {
     class Mesh;
 }
 
+namespace jasperengine::nav {
+    struct NavDebugGeometry;
+}
+
 namespace jasperengine::editor {
 
     struct SceneProject;
@@ -40,6 +46,8 @@ namespace jasperengine::editor {
     // Saved with the workspace (per scene, with the Scene view's display settings)
     struct NavOverlaySettings {
         enum class Paths { None, Selected, All };
+        // what the navmesh's triangles are tinted by (S42 R27)
+        enum class ColorBy { Areas, Islands, Tiles };
 
         bool enabled = true;
         bool showNavMesh = true;
@@ -50,11 +58,18 @@ namespace jasperengine::editor {
         bool showAvoidance = false;
         bool showLinks = true;
         bool showObstacles = true;
+        // ---- S42 diagnostics (R27, R38: written only when not default)
+        ColorBy colorBy = ColorBy::Areas;
+        // collected triangles steeper than the agent type's Max Slope
+        bool showSteepSlopes = false;
+        // "12.4 ms · 210 polys · 18.5 KB" at every visible tile
+        bool showTileLabels = false;
 
         bool operator==(const NavOverlaySettings& other) const {
             return enabled == other.enabled && showNavMesh == other.showNavMesh && showTileBounds == other.showTileBounds &&
                    showHeightMesh == other.showHeightMesh && showGrid == other.showGrid && showPaths == other.showPaths &&
-                   showAvoidance == other.showAvoidance && showLinks == other.showLinks && showObstacles == other.showObstacles;
+                   showAvoidance == other.showAvoidance && showLinks == other.showLinks && showObstacles == other.showObstacles &&
+                   colorBy == other.colorBy && showSteepSlopes == other.showSteepSlopes && showTileLabels == other.showTileLabels;
         }
         bool operator!=(const NavOverlaySettings& other) const { return !(*this == other); }
     };
@@ -62,6 +77,18 @@ namespace jasperengine::editor {
     // only what differs from the defaults ("navigation" under the scene's view settings)
     YAML::Node encodeNavOverlaySettings(const NavOverlaySettings& settings);
     void decodeNavOverlaySettings(const YAML::Node& node, NavOverlaySettings& settings);
+
+    // One tile's label of the last update (Show Tile Labels): its last build in this session
+    struct NavTileLabel {
+        Entity surface = NULL_ENTITY;
+        int x = 0, y = 0;
+        // "12.4 ms · 210 polys · 18.5 KB" ("– ms" when not built since the navmesh loaded)
+        std::string text;
+        // the tile's centre, at the bottom of its bounds
+        Vector3 world;
+        // its inputs changed since the bake (outlined orange)
+        bool dirty = false;
+    };
 
     class NavigationOverlay {
     public:
@@ -78,6 +105,8 @@ namespace jasperengine::editor {
         // AGENT_PATH_COLOR. Pure: no scene, no GPU.
         static void gridCellColors(const nav::NavGridMap& map, const std::array<Vector4, nav::AREA_COUNT>& areaColors,
                                    const std::vector<int>& reserved, std::vector<Vector4>& out);
+        // Show Tile Labels: at most this many per update (the tiles in the view first by entity)
+        static constexpr size_t MAX_TILE_LABELS = 256;
 
         explicit NavigationOverlay(Scene* scene);
         ~NavigationOverlay();
@@ -88,6 +117,26 @@ namespace jasperengine::editor {
         // what the last update drew (tests, visualize_navigation)
         size_t getTriangleCount() const { return drawnTriangles; }
         size_t getLineCount() const { return drawnLines; }
+        // the last update's visible tile labels (Show Tile Labels; the Scene view draws them as
+        // ImGui text, visualize_navigation lists them)
+        const std::vector<NavTileLabel>& getTileLabels() const { return tileLabels; }
+        // Show Steep Slopes' triangles of the last update
+        size_t getSlopeTriangleCount() const { return drawnSlopeTriangles; }
+        // the Mesh and LineRenderer objects it holds (tests: options off create none)
+        size_t getObjectCount() const;
+        // Color By Islands: the island of the query's start the last update kept coloured (the
+        // others grey), -1: none
+        int getStartIsland(Entity surface) const {
+            auto it = surfaces.find(surface);
+            return it != surfaces.end() ? it->second.startIsland : -1;
+        }
+
+        // a navmesh triangle's tint by Color By: its area, its island (grey when startIsland >= 0
+        // and it is another island, or it has none) or its tile
+        static std::vector<Vector4> triangleColors(const nav::NavDebugGeometry& geometry, NavOverlaySettings::ColorBy colorBy,
+                                                   int startIsland);
+        // "12.4 ms · 210 polys · 18.5 KB" ("– ms" when not built since the navmesh loaded)
+        static std::string tileLabelText(const nav::NavTileReport& report);
 
     private:
         struct SurfaceDraw {
@@ -98,6 +147,21 @@ namespace jasperengine::editor {
             std::vector<uint32_t> visibleKey;
             bool detail = false;
             size_t triangles = 0;
+            NavOverlaySettings::ColorBy colorBy = NavOverlaySettings::ColorBy::Areas;
+            // Color By Islands: the island of the query's start (the others grey), -1: none
+            int startIsland = -1;
+            // tile bounds drawn, and the dirty tiles outlined (x, y)
+            bool tileBounds = false;
+            bool dirtyOutlines = false;
+            std::vector<std::pair<int, int>> dirty;
+            // Show Steep Slopes: the collected triangles steeper than the agent's Max Slope, and
+            // the inputs they were made from (their tile hashes and configuration)
+            std::vector<Mesh*> slopes;
+            uint64_t slopeKey = 0;
+            size_t slopeTriangles = 0;
+            // Show Tile Labels: the tiles' last builds, read again when the navmesh changed
+            uint64_t reportsRevision = 0;
+            std::vector<nav::NavTileReport> reports;
         };
         struct GridDraw {
             std::vector<Mesh*> meshes;
@@ -120,6 +184,8 @@ namespace jasperengine::editor {
         // per update, reused: a grid's reserved cells and cell colours
         std::vector<int> reservedScratch;
         std::vector<Vector4> cellColors;
+        size_t drawnSlopeTriangles = 0;
+        std::vector<NavTileLabel> tileLabels;
 
         Mesh* newMesh();
         LineRenderer* newLines(unsigned int maxLines);
@@ -127,6 +193,7 @@ namespace jasperengine::editor {
                         float lift);
         void updateSurface(Entity entity, SurfaceDraw& draw, SceneProject& sceneProject, Camera* camera, const NavOverlaySettings& settings,
                            size_t& triangleBudget);
+        void updateSlopes(Entity entity, SurfaceDraw& draw, SceneProject& sceneProject, const NavOverlaySettings& settings, size_t& triangleBudget);
         void updateGrid(Entity entity, GridDraw& draw, SceneProject& sceneProject, const NavOverlaySettings& settings);
         void drawGizmos(SceneProject& sceneProject, const std::set<Entity>& selected, const NavOverlaySettings& settings);
         static void destroy(SurfaceDraw& draw);

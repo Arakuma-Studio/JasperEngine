@@ -594,3 +594,46 @@ TEST_F(NavBakeTest, RuntimeCarvingBakeDeferred){
     steps(10);
     EXPECT_TRUE(handle.isOnNavMesh());
 }
+
+// S54 R12 (AC9): the probe's sources ride along with the input but never into its tile hashes
+TEST_F(NavBakeTest, SourcesDoNotChangeHashes){
+    const Entity floor = plane(*scene, Vector3(), 40.0f, 40.0f);
+    const Entity statics = box(*scene, Vector3(-5.0f, 0.5f, 0.0f), Vector3(2.0f, 1.0f, 2.0f));
+    const Entity obstacle = box(*scene, Vector3(10.0f, 0.5f, 0.0f), Vector3(2.0f, 1.0f, 2.0f));
+    scene->addComponent<NavMeshObstacleComponent>(obstacle, NavMeshObstacleComponent());
+    const Entity hidden = box(*scene, Vector3(0.0f, 0.5f, 10.0f), Vector3(2.0f, 1.0f, 2.0f));
+    scene->setEntityLayer(hidden, 5);
+    areaVolume(Vector3(0.0f, 0.0f, -10.0f), Vector3(4.0f, 4.0f, 4.0f), nav::AREA_NOT_WALKABLE);
+    const Entity surface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
+    addSurface(*scene, surface, 0.25f, 32).includeLayers = ~(1u << 5);
+    resolveTransforms(*scene);
+
+    std::string error;
+    nav::NavCollectStats plain, recorded;
+    const auto without = nav::NavBakeCollector::collect(scene.get(), surface, error, &plain);
+    nav::NavCollectOptions options;
+    options.recordSources = true;
+    const auto with = nav::NavBakeCollector::collect(scene.get(), surface, error, &recorded, options);
+    ASSERT_TRUE(without);
+    ASSERT_TRUE(with);
+    EXPECT_EQ(without->tileHashes, with->tileHashes);
+    EXPECT_EQ(without->triangleAreas, with->triangleAreas);
+    // without the option nothing is kept
+    EXPECT_TRUE(without->triangleSources.empty());
+    EXPECT_TRUE(without->volumeSources.empty());
+    EXPECT_TRUE(plain.excludedEntities.empty());
+    // with it: one GameObject per triangle and volume, the exclusions with their reason
+    ASSERT_EQ(with->triangleSources.size(), with->triangleAreas.size());
+    ASSERT_EQ(with->volumeSources.size(), with->volumes.size());
+    EXPECT_EQ(with->terrainSources.size(), with->terrains.size());
+    EXPECT_NE(std::find(with->triangleSources.begin(), with->triangleSources.end(), floor), with->triangleSources.end());
+    EXPECT_NE(std::find(with->triangleSources.begin(), with->triangleSources.end(), statics), with->triangleSources.end());
+    EXPECT_EQ(std::find(with->triangleSources.begin(), with->triangleSources.end(), obstacle), with->triangleSources.end());
+    std::map<Entity, std::string> why(recorded.excludedEntities.begin(), recorded.excludedEntities.end());
+    EXPECT_EQ(why[obstacle], "obstacle");
+    EXPECT_EQ(why[hidden], "layer");
+    EXPECT_EQ(with->excludedEntities, recorded.excludedEntities);
+    // the counts are the same either way (the layer is not a policy exclusion)
+    EXPECT_EQ(plain.excluded, recorded.excluded);
+    EXPECT_EQ(plain.excluded, 1);
+}

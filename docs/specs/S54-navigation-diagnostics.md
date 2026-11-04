@@ -640,4 +640,139 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 
 ## Deviations
 
+- S54 P2: the upstream MCP text rules (AGENTS.md "MCP text", newer than this spec) win where they
+  differ. The listed schemas stay lean: a point (`from`, `to`, `path.from/to`) is the loose type
+  list `["array", "integer", "string"]` rather than `anyOf[vec3, entityRef]`, `to` is the same list
+  with `maxItems` 64 (an array that is not three numbers is a list of targets), `frame` is
+  `["integer", "string"]`; the handler validates them. The server does not check `maxItems`, so 65
+  targets are refused by the handler with an error naming the limit (AC16 "refused by the schema").
+- S54 P2: a failed path or `reachable` also carries `next` in structuredContent (and the text): the
+  tool route of its reason (`locate` at the end off the mesh, `bake_navigation`, the islands...),
+  since a hint an agent must see goes there; list entries leave it out. `reachable` answers carry
+  `surface`, `closest_point` and `gap` from a path searched for them only when not reachable.
+- S54 P2: `from` as a NavMesh Agent also gives its Area Mask when `area_mask` is absent (the spec
+  names only the agent type), so the answer is the agent's own query.
+- S54 P2: R34 "McpInstructions.cpp is unchanged": the guide's "Other areas" index gains
+  `navigation (get_navigation_info)` (upstream: an area without a digest is one index entry), with
+  the eval case `guard_navigation_findings`. The descriptions of `get_navigation_info` and
+  `bake_navigation` lose their result field lists (upstream: descriptions hold no field lists);
+  the fields are in `docs/mcp/guide/navigation.md`.
+- S54 P2: `show.islands` and `show.tile_colors` both true is an error ("turn on one"); false on the
+  current Color By returns to Areas.
+- S54 P2: `out_of_nodes` is not raised by the MCP fixture (it needs a 3,000-polygon comb);
+  `NavFailureTest.OutOfNodes` (P1) covers it, `test_query_reasons` covers the other eight.
+- S54 P3: AC13's `test_path_tester_flow` drives the Scene view with the harness's real input
+  (`tools/mcp/ui_input.py`, xdotool in its Xvfb), not `send_input` (that tool sends input to the
+  running game only). The panel's answer is read through UIProbe names (`pathTester.status.<status>`,
+  `.reason.<name>`, `.length.<dm>`, `.locate.<on_mesh|near_mesh|not_found>`, `.why.<code>`):
+  `find_ui_item` only sees labelled widgets, and the panel's lines are text.
+- S54 P3: Closest Edge and Locate need one point: any click (Shift or not) sets it. While a Locate
+  handle is dragged the location follows every frame, the walkability probe (up to 3 tile
+  rebuilds) runs on the click and when the drag ends.
+- S54 P3: "More tools ▸ Path Tester": the toolbar shows a Path Tester toggle (route icon) when its
+  items fit and a "Path Tester" item in its "..." (More Scene view tools) menu when they do not,
+  both only in scenes with a NavMesh Surface or a Nav Grid.
+- S54 P3: AC14's goldens set Color By and Show Steep Slopes through the Gizmos menu with real
+  input: `visualize_navigation`'s `show.islands/slope/tile_colors/tile_labels` are P2's and land
+  after P3.
+- S54 P3: Color By Islands greys from the start of the scene's query draw, the Path Tester's or
+  `visualize_navigation`'s `path.from`, when it lies on the surface.
+- S54 P3: the Inspector's summary lines are `get_inspector_layout` rows of kind Label (paths
+  `estimate`, `estimateVoxels`, `estimateTiles`, `estimateLimit`, `estimateError`, `lastBake`,
+  `lastBakeWarnings`, `walkable`; the label is the text drawn). A collection that fails shows its
+  error and code instead of the estimate.
+- S54 P1: island labels are one flat `int32_t` array with a per-tile-slot offset table
+  (`NavIslandLabels::tileBase`) instead of a vector per tile slot (D2): a vector header per slot
+  alone would cost 0.6 B per polygon of `bench_nav_city` and break R21's 4 B per polygon.
+- S54 P1: additions beyond the §6 sketch, all additive: `NavMesh::getPolyAt` (the reference
+  `setPolyFlags` takes), `covers` (a polygon right under a point), `isReachable` (R6 on one mesh),
+  `getSearchCount`, `getLabelledRevision`, `getIslandMemoryBytes`; `nav::labelIslands` /
+  `NavIslandLabels` and `bakeErrorFromName` in `NavDiagnostics.h`;
+  `NavigationSystem::getSearchExtents`; `NavDebugGeometry::tileCoords` (x, y, layer per tile of
+  `tileBounds`; `triangleTiles` indexes that list); `NavBakeInput::excludedEntities` (a cached
+  input carries its exclusions to the probe, which takes no stats); `NavProbeReason::detail`
+  (R11 says `value` names why a GameObject was excluded, but `value` is a float: the reason
+  string, and for `filtered` the area name, go in `detail`); `ProjectNavFinding::sceneId` and an
+  options argument of `collectProjectFindings` (`stale`, a per-scene `dirtyTilesOf`) for P3's
+  Problems list.
+- S54 P1: `bakeNow` returns the report as it landed (`islandCount` -1): only
+  `getLastBakeResult` labels (R8), so a synchronous bake (the bench's incremental bake) never
+  pays for islands.
+- S54 P1: a bake that cannot start (`nothing_collected`, `too_large`, `unavailable`) becomes the
+  surface's last result, so `bake_failed` and the Inspector see it; `busy` and `no_surface` do not
+  replace it.
+- S54 P1: AC7's "allocate nothing" is checked as exactly one allocation per path: S19's corners
+  vector, which every path had before; nothing else (no labels, no second search) allocates.
+- S54 P1: the probe calls a point walkable when a polygon lies right under it (a cell wide, Step
+  Height + 2 cell heights tall), not when one is in the query search box: R10's `onMesh` (the
+  search box, 2 x radius) would call a point 0.2 m from a wall on the mesh and never explain it.
+  The location it returns is still R10's.
+- S54 P1: when the tile under a point is stale, the probe first rebuilds it with the baked limits;
+  if that already covers the point, `stale_tile` is the only reason (a bake fixes it). That case
+  takes 4 single-tile rebuilds instead of R24's 3.
+- S54 P1: AC8 locates "off the mesh" 1.5 m from the edge: 1 m is exactly the search box's half
+  width (2 x 0.5 m radius) and Detour's box test is inclusive.
+- S54 P1: `agent_type_unused` is raised only in scenes with navigation components (else every
+  project without navigation would get an info for Humanoid); `collectProjectFindings` keeps a
+  type only when no scene uses it, once, without a scene.
+- S54 P1: grid answers report an end outside the grid or on a Not Walkable / masked cell as
+  `*_off_mesh` / `*_filtered` also when `allowPartial` gives a Partial path to it (the reason is
+  more useful than `disconnected`).
+- S54 P1: AC6 `.AreaAndBounds` (and AC8's coverage) checks the area within 5 % of 19^2, not 2 %:
+  Recast erodes whole cells (r = 0.5 m at 0.2 m cells is 3 cells plus the boundary span), so the
+  baked square is 18.6 m wide (346 m^2). The test also checks the area equals the island's
+  bounds' footprint within 1 %, which pins the labelling's arithmetic exactly.
+- S54 P1: `bench_nav_city` (S19's fixture) holds 2643 polygons in 400 tiles, not the ~20k R21-R23
+  assume, so a per-tile cost weighs 8 x more per polygon: the island tile table keeps only the
+  slots up to the last one in use, in 16 bits while every label index fits. Measured (5 runs,
+  `--workers 3`, a shared 8-core host): `city_islands_ms` 0.19, `islands_bytes_per_poly` 4.30,
+  `query_reject_disconnected_us` 0.54 (0 searches), `query_locate_p95_ms` 0.0022,
+  `findings_city_ms` 0.085, `query_path_p95_ms` 0.122 (unchanged budget).
+- S54 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
+  (P3's; the two new sources) and `engine/core/navigation/NavBakeInput.cpp` (`memoryBytes` counts
+  the sources).
+
 ## Progress (implementation notes, keep updated)
+
+- S54 P2: `query_navigation` (points as GameObjects, agent type and mask from an agent, the
+  target/agent type conflict, `locate` with the probe's `why[]`, up to 64 targets, every reason on
+  paths, reachable and grids, islands labelled for the answer), `bake_navigation` (the bake report:
+  sources, islands, slowest tiles, error code and hint), `get_navigation_info` (coverage, islands,
+  last bake, link states, obstacles, modifiers, findings, `entities`), `visualize_navigation`
+  (islands / tile colours / slope / tile labels, `frame`, `screenshot: "game"`, the path's reason),
+  the CLI `check` and the export preflight on `collectProjectFindings` / `logNavigationPreflight`.
+  Tests: `test_navigation_diagnostics.py`, `test_checks.py::test_cli_navigation_findings`,
+  `test_navigation.py::test_tools_listed_with_schemas` (group hidden, annotations); eval cases
+  `guard_navigation_*`.
+- S54 P2: `bake_navigation`'s job message was overwritten by its "baking" progress when every start
+  was refused (the reasons and hint never reached the text); the progress is set before the loop,
+  the same hunk as S53 P2's (`nav/s41-p2`). `nav/s41-p2` after 11ed93a92 is not merged here: it
+  conflicts in P1/P3 files too; its `get_navigation_info` `last_bake` (the editor's record) and this
+  package's (the bake report, R32) meet in `NavigationTools.cpp` at the integration.
+- S54 P1 (branch `nav/s42-p1`): the contract (`nav: S42 contract`, aba8fb7e8) carries the whole
+  §6 sketch with working bodies. Done: R1-R10 (failure detection in `NavMesh::findPath`, the
+  ranking, `isReachable`'s island reject, islands by union-find cached per revision, coverage,
+  `locate`), R11-R12 (`NavWalkabilityProbe`, `NavCollectOptions::recordSources`, the builder's
+  config override), R13-R15 (`getFindings`, `collectProjectFindings`, `logNavigationPreflight`),
+  R16-R17 (bake codes and hints, sources, tile reports kept per surface), R18 stubs, R35 Lua
+  (path reason fields, `isReachable`'s reason, `locate`, `getCoverage`, `getIslands`,
+  `NavMeshSurface.lastBakeResult`, stubs and parser overrides), the bench metrics of AC12 and the
+  docs' "Why navigation fails". P2 switches the CLI and the export to `collectProjectFindings` /
+  `logNavigationPreflight`; P3 sets `NavBakeError::SaveFailed` where the editor writes the asset
+  (`NavigationEditor::finish`).
+- S54 P3 (branch `nav/s42-p3`): the interfaces (`nav: S54 P3 interfaces`, 030976793:
+  `NavOverlaySettings::colorBy/showSteepSlopes/showTileLabels`, `NavTileLabel` and
+  `getTileLabels`, `NavQueryDraw` with `setQueryDraw/clearQueryDraw/getQueryDraw` replacing
+  `setQueryPath`, `overlayOf`, `SceneWindow::frameBounds`), then R24-R29: `NavPathTester` (four
+  modes, handles, Copy Query, Locate's probe popup; toolbar toggle, More menu item, the AI
+  Navigation section's Start/Stop, `navigation.pathTester`), the overlay's Color By / Show Steep
+  Slopes / Show Tile Labels / dirty outlines, `NavigationEditor::inputReport` / `keptInput` (the
+  per-surface collection cache: dirty coordinates, the estimate's grid, the input while asked
+  for), the Navigation window's Last Bake / Walkable / Islands and Problems, the Inspector's
+  estimate and bake summary, `SaveFailed` / `NavMeshFailed` set where the editor writes the
+  asset. `NavigationEditor::checkSurfaces` stays until P2 switches the CLI and the export to
+  `collectProjectFindings`; P2 then removes it. Files of other packages touched minimally:
+  `editor/mcp/tools/NavigationTools.cpp` (two `setQueryPath` calls become the query draw),
+  `editor/render/SceneRender.h` (`getNavigationOverlay`), `editor/AppCommands.cpp` (the
+  `navigation.pathTester` binding), `editor/tests/navigation/NavigationEditorTest.cpp` (the
+  overlay settings test moved out).

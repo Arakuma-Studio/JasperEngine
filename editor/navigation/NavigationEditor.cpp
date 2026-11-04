@@ -13,6 +13,8 @@
 #include "navigation/NavGridMap.h"
 #include "navigation/NavGridCellsCmd.h"
 #include "navigation/NavGridBrush.h"
+#include "navigation/NavigationOverlay.h"
+#include "render/SceneRender.h"
 #include "component/Transform.h"
 #include "component/NavMeshLinkComponent.h"
 #include "command/type/PropertyCmd.h"
@@ -328,6 +330,14 @@ void NavigationEditor::update(Project* project) {
         finish(project, done, result);
     }
     if (!pending.empty()) Backend::getApp().requestFrame();
+    // a kept input can be MBs: only while the slope overlay or the Path Tester asks for it; an
+    // entry no one read for a minute (a closed scene, a removed surface) goes
+    const double now = nowSeconds();
+    for (InputCache& cache : inputCache) {
+        if (cache.report.input && now - cache.inputAskedAt > 2.0) cache.report.input.reset();
+    }
+    inputCache.erase(std::remove_if(inputCache.begin(), inputCache.end(), [&](const InputCache& cache) { return now - cache.checkedAt > 60.0; }),
+                     inputCache.end());
 }
 
 void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeResult& bakeResult) {
@@ -341,6 +351,8 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
             result.ok = false;
             result.error = "the bake produced no navmesh";
             result.logged = false;
+            result.errorCode = nav::NavBakeError::NavMeshFailed;
+            result.hint = nav::bakeErrorHint(result.errorCode);
         } else {
             AssetRef ref;
             std::string error;
@@ -354,11 +366,13 @@ void NavigationEditor::finish(Project* project, Pending& entry, const NavBakeRes
                 result.ok = false;
                 result.error = "the navmesh was baked but not saved: " + error;
                 result.logged = false;
+                result.errorCode = nav::NavBakeError::SaveFailed;
+                result.hint = nav::bakeErrorHint(result.errorCode);
             }
         }
-        dirtyCache.erase(std::remove_if(dirtyCache.begin(), dirtyCache.end(), [&](const DirtyCache& cache) {
+        inputCache.erase(std::remove_if(inputCache.begin(), inputCache.end(), [&](const InputCache& cache) {
             return cache.sceneId == entry.sceneId && cache.surface == entry.surface;
-        }), dirtyCache.end());
+        }), inputCache.end());
         sceneProject->needUpdateRender = true;
     }
     const std::string name = sceneProject && sceneProject->scene ? sceneProject->scene->getEntityName(entry.surface) : entry.surfaceName;
@@ -447,25 +461,63 @@ bool NavigationEditor::resetGridOverrides(Project* project, uint32_t sceneId, En
 
 int NavigationEditor::dirtyTiles(Project* project, uint32_t sceneId, Entity surface) {
     SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
-    NavigationSystem* system = sceneProject ? systemOf(*sceneProject) : nullptr;
-    if (!system || isBaking(sceneId, surface)) return -1;
+    const NavigationSystem::InputReport* report = sceneProject ? inputReport(*sceneProject, surface) : nullptr;
+    return report ? report->dirtyTiles : -1;
+}
+
+const NavigationSystem::InputReport* NavigationEditor::inputReport(SceneProject& sceneProject, Entity surface, bool keepInput) {
+    NavigationSystem* system = systemOf(sceneProject);
+    // a game's surfaces keep no tile records to compare with
+    if (!system || sceneProject.playState != ScenePlayState::STOPPED || isBaking(sceneProject.id, surface)) return nullptr;
     const double now = nowSeconds();
-    for (DirtyCache& cache : dirtyCache) {
-        if (cache.sceneId == sceneId && cache.surface == surface) {
-            // collecting reads the whole scene: once a second at most
-            if (now - cache.checkedAt < 1.0) return cache.dirty;
-            cache.dirty = system->countDirtyTiles(surface);
-            cache.checkedAt = now;
-            return cache.dirty;
-        }
+    auto it = std::find_if(inputCache.begin(), inputCache.end(),
+                           [&](const InputCache& cache) {
+                               return cache.sceneId == sceneProject.id && cache.scene == sceneProject.scene && cache.surface == surface;
+                           });
+    if (it == inputCache.end()) {
+        InputCache cache;
+        cache.sceneId = sceneProject.id;
+        cache.scene = sceneProject.scene;
+        cache.surface = surface;
+        inputCache.push_back(std::move(cache));
+        it = inputCache.end() - 1;
+    } else if (now - it->checkedAt < 1.0 && (!keepInput || it->report.input)) {
+        // collecting reads the whole scene: once a second at most
+        if (keepInput) it->inputAskedAt = now;
+        return &it->report;
     }
-    DirtyCache cache;
-    cache.sceneId = sceneId;
-    cache.surface = surface;
-    cache.dirty = system->countDirtyTiles(surface);
-    cache.checkedAt = now;
-    dirtyCache.push_back(cache);
-    return cache.dirty;
+    nav::NavCollectOptions options;
+    options.recordSources = keepInput;
+    it->report = system->inspectInputs(surface, options, keepInput);
+    it->checkedAt = now;
+    if (keepInput) it->inputAskedAt = now;
+    return &it->report;
+}
+
+std::shared_ptr<const nav::NavBakeInput> NavigationEditor::keptInput(SceneProject& sceneProject, Entity surface) {
+    const NavigationSystem::InputReport* report = inputReport(sceneProject, surface, true);
+    return report ? report->input : nullptr;
+}
+
+// ---------------------------------------------------------------- the overlay's query
+
+void NavigationEditor::setQueryDraw(uint32_t sceneId, NavQueryDraw draw) {
+    queryDraws[sceneId] = std::move(draw);
+}
+
+void NavigationEditor::clearQueryDraw(uint32_t sceneId) {
+    queryDraws.erase(sceneId);
+}
+
+const NavQueryDraw* NavigationEditor::getQueryDraw(uint32_t sceneId) const {
+    auto it = queryDraws.find(sceneId);
+    return it != queryDraws.end() ? &it->second : nullptr;
+}
+
+NavigationOverlay* NavigationEditor::overlayOf(uint32_t sceneId) {
+    Project* project = Backend::getApp().getProject();
+    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+    return sceneProject && sceneProject->sceneRender ? sceneProject->sceneRender->getNavigationOverlay() : nullptr;
 }
 
 // ---------------------------------------------------------------- the nav-grid brush
@@ -566,45 +618,6 @@ void NavigationEditor::endBrushStroke(Project* project) {
     // the cells are painted already: the command's execute() writes the same values
     CommandHandle::get(done->sceneId)->addCommand(new NavGridCellsCmd(project, done->sceneId, done->grid, cells, "Paint Nav Grid"));
     if (SceneProject* sceneProject = project->getScene(done->sceneId)) sceneProject->needUpdateRender = true;
-}
-
-std::vector<NavigationEditor::Finding> NavigationEditor::checkSurfaces(Project* project, size_t* surfaces) {
-    std::vector<Finding> findings;
-    size_t count = 0;
-    for (SceneProject& sceneProject : project->getScenes()) {
-        if (!sceneProject.scene || sceneProject.filepath.empty()) continue;
-        NavigationSystem* system = systemOf(sceneProject);
-        if (!system) continue;
-        auto array = sceneProject.scene->getComponentArray<NavMeshSurfaceComponent>();
-        std::vector<Entity> entities;
-        for (size_t i = 0; i < array->size(); i++) entities.push_back(array->getEntity(i));
-        std::sort(entities.begin(), entities.end());
-        for (Entity entity : entities) {
-            const NavMeshSurfaceComponent& surface = sceneProject.scene->getComponent<NavMeshSurfaceComponent>(entity);
-            if (!surface.enabled) continue;
-            count++;
-            Finding finding;
-            finding.scenePath = sceneProject.filepath.generic_string();
-            finding.sceneName = sceneProject.name;
-            finding.entityName = sceneProject.scene->getEntityName(entity);
-            const NavSurfaceStatus status = system->getSurfaceStatus(entity);
-            if (surface.navMeshData.empty()) {
-                finding.message = "NavMesh Surface '" + finding.entityName + "' is not baked: its agents find no navmesh in the build "
-                                  "(Bake, or bake_navigation)";
-            } else if (!status.loadError.empty() || status.state == NavBakeState::NOT_BAKED) {
-                finding.message = "NavMesh Surface '" + finding.entityName + "': its navmesh '" + surface.navMeshData.path +
-                                  "' cannot be read" + (status.loadError.empty() ? std::string() : " (" + status.loadError + ")") + "; bake it again";
-            } else {
-                const int dirty = system->countDirtyTiles(entity);
-                if (dirty <= 0) continue;
-                finding.message = "NavMesh Surface '" + finding.entityName + "' is out of date: " + std::to_string(dirty) +
-                                  " tile(s) changed since its bake (Bake, or bake_navigation)";
-            }
-            findings.push_back(std::move(finding));
-        }
-    }
-    if (surfaces) *surfaces = count;
-    return findings;
 }
 
 // ---------------------------------------------------------------- link handles

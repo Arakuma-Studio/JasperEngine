@@ -200,8 +200,114 @@ if path.status == NavMeshPathStatus.Complete then ... end   -- path.corners, pat
 local found, hit = nav:samplePosition(point, 2.0)            -- hit.position, hit.normal, hit.area, hit.distance
 local blocked, hit = nav:raycast(a, b)
 local found, edge = nav:findClosestEdge(point)
-local reachable = nav:isReachable(a, b)
+local reachable, why = nav:isReachable(a, b)                -- why: "none" when reachable
 ```
+
+## Why navigation fails
+
+Every path that is not Complete says why in `reason` (Lua, MCP; `NavPath::failure` in C++), with
+the surface that answered, the point it got closest to and the gap left to the end:
+
+| Reason | Status | What it means, what to do |
+|---|---|---|
+| `no_surface` | Invalid | No enabled NavMesh Surface of the agent type: add one (or check the Agent Type) |
+| `not_baked` | Invalid | The surfaces have no navmesh (never baked, cleared, unreadable asset): bake them |
+| `start_off_mesh` / `end_off_mesh` | Invalid | No polygon near that end: move it onto the navmesh (`locate` tells how far it is) |
+| `start_filtered` / `end_filtered` | Invalid | That end is on an area the Area Mask leaves out |
+| `disconnected` | Partial | The ends are on islands that do not connect (or only through one-way links): add a NavMesh Link |
+| `blocked_by_area` | Partial | They connect only through areas the Area Mask leaves out |
+| `out_of_nodes` | Partial | The path needs more than 2048 polygons: split the trip, or raise Voxel Size |
+
+The checks run in that order; a Partial path still leads to the reachable point closest to the end.
+With several surfaces of the agent type, the first Complete one answers, else the best failure
+(`out_of_nodes` first, `no_surface` last). Paths and `isReachable` never compute islands
+themselves: once something asked for them (the overlays, `getIslands`, the bake report),
+`isReachable` rejects two islands at once without a search.
+
+```lua
+local nav = scene:getNavigationSystem()
+local path = nav:calculatePath(a, b)
+if path.status ~= NavMeshPathStatus.Complete then
+    print(path.reason, path.surface, path.closestPoint, path.gap)   -- "disconnected", 12, Vector3, 4.2
+end
+local here = nav:locate(a)              -- onMesh, found, position, snapDistance, island, area, surface
+if not here.onMesh and here.found then print("off the mesh by", here.snapDistance) end
+local surfaceEntity = here.surface
+local coverage = nav:getCoverage(surfaceEntity)   -- walkableArea (m²), islandCount, largestIslandArea, tilesArea, fraction
+for _, island in ipairs(nav:getIslands(surfaceEntity)) do
+    print(island.id, island.area, island.polys, island.boundsMin, island.boundsMax)
+end
+local report = NavMeshSurface(scene, surfaceEntity).lastBakeResult   -- nil before a bake
+if report and not report.ok then print(report.errorCode, report.hint) end
+```
+
+- **Islands** are the parts of a navmesh that connect (NavMesh Links join them, in either
+  direction); ids follow the tiles in order, so the same bake gives the same ids.
+- **`lastBakeResult`** is the last bake's report: `ok`, `errorCode` (`nothing_collected`,
+  `too_large`, `busy`, `tile_failed`, `navmesh_failed`, `cancelled`, `save_failed`, ...) with its
+  `hint`, `sources` (meshes, instances, terrains, colliders, colliders2D, volumes, links,
+  excluded, triangles), `warnings`, `walkableArea`, `islandCount`, the 16 largest `islands` and
+  the five `slowestTiles`. Lua keys are camelCase; the MCP results carry the same values with
+  snake_case keys and the same code strings.
+- **Findings** (the Navigation window's Problems list, `get_navigation_info`, `jasperengine-editor
+  check` and the export) are one list: `not_baked`, `navmesh_unreadable`, `stale_bake`,
+  `bake_failed`, `agent_off_mesh`, `agent_no_surface`, `agent_type_missing`, `agent_type_unused`,
+  `link_unconnected`, `small_island`, `crowd_filter_overflow` and `obstacle_carve_ignored`, each
+  naming its GameObject and the fix. Errors fail `check`; the export only logs them.
+- **Why not walkable?** For a point off the navmesh the editor names the reasons, in order:
+  `stale_tile`, `outside_volume`, `outside_bounds`, `no_geometry`, `excluded` (layer, moving body,
+  agent, obstacle, Exclude modifier, inactive), `not_walkable_area`, `too_steep` (vs Max Slope),
+  `low_clearance` (vs Height), `near_wall` (vs Radius), `step_too_high` (vs Step Height),
+  `small_region` (vs Minimum Region Area); on the navmesh only `filtered`, `small_island` and
+  `stale_tile` apply. The last three are found by rebuilding only the tile under the point with
+  that one limit relaxed.
+
+## Path Tester and diagnostic overlays (editor)
+
+**Path Tester** (Scene view toolbar route button, or its **...** menu; the AI Navigation section of
+the Gizmos menu; the command **Path Tester**, `navigation.pathTester`, no default key: bind one in
+**Edit > Shortcuts...**). While it is on, **Shift+click** sets the start and a **click** the end, on
+whatever the pointer is over; a press within 10 px of a handle drags it and the query runs again
+every frame. **Esc**, its close button or the toggle ends it. It edits nothing (no undo step) and is
+not saved; it works in Edit and in Play. Its panel (the view's top right) chooses:
+
+- **Agent Type** and **Area Mask** (the project's types and areas), as a NavMesh Agent has them;
+- **Mode**: **Path** (`calculatePath`), **Raycast** (a straight walk on the mesh: where it stops),
+  **Closest Edge** (the nearest wall from the start) or **Locate** (where a point is).
+
+It shows the status and its reason sentence, the length, corners, the gap a Partial path leaves,
+how far each end snapped to the mesh and the ends' islands. **Copy Query** copies the same query
+as `query_navigation` arguments. The Scene view draws the start green, the end red, a Complete path
+magenta and a Partial one orange with a red gap to the end. In **Locate**, a click (or the end of a
+drag) also asks why the point is not walkable: the reasons show beside it, with the value against
+the agent's limit and **Select** for the GameObject a reason names (an excluded mesh, a Not Walkable
+modifier).
+
+The **AI Navigation** section of the Scene view's Gizmos menu also has (saved with the workspace):
+
+- **Color By**: **Areas** (the area colours), **Islands** (one colour per connected part, links
+  joining them; with a Path Tester start, the islands it cannot reach are grey) or **Tiles**.
+- **Show Steep Slopes**: the collected ground steeper than the agent type's Max Slope, in red.
+- **Show Tile Labels**: each visible tile's last build in this session, "12.4 ms · 210 polys ·
+  18.5 KB" ("– ms" for a tile not built since the navmesh loaded). With labels or **Show Tile
+  Bounds** on, tiles whose inputs changed since the bake are outlined orange.
+
+Everything is built on the CPU from the navmesh and the editor's cached collection, only while its
+option is on; a game never draws any of it.
+
+**Window > AI > Navigation**, Surfaces: each surface's **Last Bake** (time, tiles built of all, a
+warning count; the row opens to the warnings, the error and its hint), **Walkable** area (m²) and
+**Islands**, and below the table **Problems (N)**: the project's navigation findings (the same list
+as `get_navigation_info`, the CLI `check` and the export preflight). A click selects the GameObject,
+a double-click frames it too.
+
+The **NavMesh Surface** Inspector shows, above Bake, what a bake would build ("Voxels W × H, N
+tiles (M voxels per agent radius)", from the cached collection, or from the box in Volume mode)
+with a warning when the agent radius gets fewer than 2 voxels, when there are more than 512 tiles
+(above the mobile/web budget) or when Detour's polygon references would refuse it; under the state
+line, the last bake (time, tiles, polygons, its warnings, an error in red with its hint), the
+walkable area and the island count.
+
 
 ## Nav Grids
 

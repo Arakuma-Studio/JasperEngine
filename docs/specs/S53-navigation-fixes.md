@@ -718,7 +718,8 @@ P2 order:
   a tool name exist only there); the build's preflight logs the same out-of-date warning, which
   the test reads from the build's warnings and log.
 - S53 P2: R3 details the spec leaves open: a cancel does not replace a standing failure (it shows
-  until a bake succeeds), a successful Clear removes the surface's `last_bake`, and an Inspector
+  until a bake succeeds), a successful Clear drops the editor's record of the surface (S54's
+  engine report, merged into `last_bake`, then speaks alone), and an Inspector
   Shift-click starts only the full bake (it started a dirty bake too on release, which logged a
   refusal twice).
 - S53 P2: `bake_navigation` set its job's progress text after the loop that starts the bakes, so

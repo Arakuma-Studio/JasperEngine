@@ -3,8 +3,9 @@
 
 // The editor side of navigation (docs/specs/S19-navigation.md R31, R35, R39, R41): the six
 // components re-encode identically (scene round trip), the project's navigation block keeps only
-// what differs from the defaults and reads back sanitized, the overlay settings round trip, the
-// generated main.cpp sets the settings, and the nav-grid brush's stamps, lines, fills and strokes.
+// what differs from the defaults and reads back sanitized, the generated main.cpp sets the
+// settings, and the nav-grid brush's stamps, lines, fills and strokes. (The overlay's settings:
+// NavigationOverlayTest.cpp.)
 // S53 (docs/specs/S53-navigation-fixes.md R17, R22, R27): Max Carving Obstacles and Carve Tiles Per
 // Tick default when missing, and the overlay's reservation tint.
 
@@ -141,17 +142,6 @@ TEST(NavigationProjectSettings, GeneratedCodeSetsThem){
     nav::NavigationSettings onlyCarving;
     onlyCarving.carveTilesPerTick = 1;
     EXPECT_NE(generateNavigationSettingsCode(onlyCarving, "").find("navigation.carveTilesPerTick = 1;"), std::string::npos);
-}
-
-TEST(NavigationOverlay, SettingsRoundTrip){
-    EXPECT_EQ(encodeNavOverlaySettings(NavOverlaySettings()).size(), 0u);
-    NavOverlaySettings settings;
-    settings.showTileBounds = true;
-    settings.showPaths = NavOverlaySettings::Paths::All;
-    settings.showNavMesh = false;
-    NavOverlaySettings read;
-    decodeNavOverlaySettings(YAML::Load(YAML::Dump(encodeNavOverlaySettings(settings))), read);
-    EXPECT_EQ(read, settings);
 }
 
 // S53 R22: in play the cells agents reserved are tinted halfway to the agent-path colour; the
