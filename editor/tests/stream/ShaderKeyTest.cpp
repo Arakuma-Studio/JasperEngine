@@ -406,7 +406,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(36) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(37) | shaderPropertyBit(63), "mesh_UltNor"},
         // bit 33, S10's high shadow filters
         {ShaderType::MESH, 0x51 | shaderPropertyBit(33), "mesh_UltShwNorShq"},
         // bit 32, the first past the 32 older keys use, is the lattice deformer
@@ -418,6 +418,9 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(17), "depth_Vab"},
         {ShaderType::GBUFFER, shaderPropertyBit(14), "gbuffer_Vat"},
         {ShaderType::GBUFFER, shaderPropertyBit(15), "gbuffer_Vab"},
+        // S55's automatic GPU instancing: MESH bit 36, DEPTH bit 18
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(36), "mesh_UltNorAui"},
+        {ShaderType::DEPTH, shaderPropertyBit(18), "depth_Aui"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
         {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVab"},
