@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "LuaBinding.h"
+#include "object/spline/Spline.h"
+#include "object/spline/SplineAnimate.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
+#include "component/ButtonComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/PanelComponent.h"
+#include "component/SafeAreaComponent.h"
 #include "component/ActionComponent.h"
 
 #include "lua.hpp"

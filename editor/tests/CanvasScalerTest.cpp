@@ -7,6 +7,7 @@
 // exports generate.
 
 #include <gtest/gtest.h>
+#include "camera/CameraType.h"
 
 #include "Engine.h"
 #include "Scene.h"

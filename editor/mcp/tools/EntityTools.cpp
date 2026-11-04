@@ -4,6 +4,7 @@
 // W1: hierarchy and GameObjects: tree, find, create, delete, duplicate, rename, move,
 // active/tag/layer, selection, copy/cut/paste
 #include "McpTools.h"
+#include "component/Transform.h"
 #include "LatticeShared.h"
 
 #include "mcp/McpCall.h"

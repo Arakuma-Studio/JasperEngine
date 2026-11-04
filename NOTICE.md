@@ -72,6 +72,7 @@ Layout of the HTML/CSS UI:
 | Code | Version | Location | License | Used for |
 |---|---|---|---|---|
 | [Taffy](https://github.com/DioxusLabs/taffy) (`src/compute/grid` and `src/compute/flexbox.rs`, ported to C++) | `master` at `8409f3f8c6de` | `engine/libs/rmlui/Source/Core/Layout/Grid*`, `engine/libs/rmlui/Source/Core/Layout/FlexFormattingContext.*` (`engine/libs/rmlui/LICENSE-taffy.txt`) | MIT | CSS Grid and flexbox layout in the RmlUi fork |
+| [libebur128](https://github.com/jiixyj/libebur128) (the five numeric design constants of the K-weighting filters) | `master` | `engine/core/audio/AudioMeter.cpp` | MIT | BS.1770-4 K-weighting at any sample rate |
 
 Test data: the html5lib tree-construction tests (MIT, `engine/tests/htmlui/fixtures/compat/html5lib/LICENSE`). Taffy's layout test fixtures (MIT, `engine/tests/htmlui/fixtures/taffy/LICENSE-taffy.txt`). The audio tests' Ogg Vorbis clip is Kenney's "Sci-Fi Sounds" 1.0 (CC0, `engine/tests/core/fixtures/audio/License-kenney.txt`); their FLAC and MP3 sweeps are FFmpeg encodes of a synthetic source (tests only, never shipped).
 

@@ -13,6 +13,10 @@
 #include "util/Color.h"
 #include "shader/ShaderManifest.h"
 
+namespace jasperengine{
+    enum class ScriptPropertyType;
+}
+
 namespace jasperengine::editor{
     enum UpdateFlags : uint64_t {
         UpdateFlags_None                = 0,

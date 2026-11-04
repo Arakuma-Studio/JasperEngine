@@ -5,6 +5,7 @@
 #define TILEMAP_H
 
 #include "Mesh.h"
+#include "component/TilemapComponent.h"
 
 namespace jasperengine{
 

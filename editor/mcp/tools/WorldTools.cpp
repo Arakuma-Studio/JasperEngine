@@ -6,6 +6,8 @@
 // colliders and joints, UI widget trees and rect layouts, particle systems, models, and the
 // point lists of polygons / shadow casters / line renderers.
 #include "util/ProjectUtils.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/OnScreenControlComponents.h"
 #include "McpTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"

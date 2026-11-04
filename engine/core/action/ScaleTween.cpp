@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ScaleTween.h"
+#include "component/ScaleTweenComponent.h"
 
 using namespace jasperengine;
 

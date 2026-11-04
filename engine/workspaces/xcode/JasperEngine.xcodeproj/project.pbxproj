@@ -4373,6 +4373,12 @@
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
+		4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
+		4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
+		4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
+		4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
+		4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4799D5B065A0FD015C /* AudioMeter.h */; };
+		4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EA336A0838677E68 /* TruePeak.h */; };
 		4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */; };
 		4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E4729B77C264D072B9E /* PixelRotation.cpp */; };
@@ -4385,7 +4391,9 @@
 		4A534E476C92FA1FA0E80B1E /* PixelPerfectCamera.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */; };
 		4A534E47C7919DBFFB70D497 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
 		4A534E47B22CC36E554C21C2 /* RenderSystemPixelArt.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */; };
+		4A534E47B1BAAAB3C75B88ED /* CameraType.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475F6FD9951F989C76 /* CameraType.h */; };
 		4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */; };
+		4A534E4727FAC9DB1C824F50 /* ComponentFwd.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A5E93FFF657430E4 /* ComponentFwd.h */; };
 		4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479A02188939300830 /* PixelPerfectCamera.h */; };
 		4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */; };
 		4A534E47182EAC07119845A8 /* PixelRotation.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47D3B649BD59C300EB /* PixelRotation.h */; };
@@ -8591,13 +8599,19 @@
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
+		4A534E47238F638B6921C9C5 /* AudioMeter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMeter.cpp; sourceTree = "<group>"; };
+		4A534E47B2A2155B16BB00CE /* TruePeak.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TruePeak.cpp; sourceTree = "<group>"; };
+		4A534E4799D5B065A0FD015C /* AudioMeter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioMeter.h; sourceTree = "<group>"; };
+		4A534E47EA336A0838677E68 /* TruePeak.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TruePeak.h; sourceTree = "<group>"; };
 		4A534E4750F165CC5C4BF73D /* PixelPerfectLayout.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectLayout.cpp; sourceTree = "<group>"; };
 		4A534E4729B77C264D072B9E /* PixelRotation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelRotation.cpp; sourceTree = "<group>"; };
 		4A534E472B25A401BD02EB09 /* PixelsPerUnit.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelsPerUnit.cpp; sourceTree = "<group>"; };
 		4A534E47F2BFD84A29C801DF /* PixelSnap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelSnap.cpp; sourceTree = "<group>"; };
 		4A534E476E7497A030BB3E4B /* PixelPerfectCamera.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = PixelPerfectCamera.cpp; sourceTree = "<group>"; };
 		4A534E47C5CE79851F202667 /* RenderSystemPixelArt.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = RenderSystemPixelArt.cpp; sourceTree = "<group>"; };
+		4A534E475F6FD9951F989C76 /* CameraType.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = CameraType.h; sourceTree = "<group>"; };
 		4A534E4702DCE721EDB0433A /* PixelPerfectCameraComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCameraComponent.h; sourceTree = "<group>"; };
+		4A534E47A5E93FFF657430E4 /* ComponentFwd.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ComponentFwd.h; sourceTree = "<group>"; };
 		4A534E479A02188939300830 /* PixelPerfectCamera.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectCamera.h; sourceTree = "<group>"; };
 		4A534E476C6B823D5DE87C4A /* PixelPerfectLayout.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelPerfectLayout.h; sourceTree = "<group>"; };
 		4A534E47D3B649BD59C300EB /* PixelRotation.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PixelRotation.h; sourceTree = "<group>"; };
@@ -10086,6 +10100,10 @@
 				4A534E47797D7C3F52743130 /* SoloudEngineFile.h */,
 				4A534E47E1B079449B612515 /* AudioFileCheck.cpp */,
 				4A534E478C2A964FA571E181 /* AudioFileCheck.h */,
+				4A534E47238F638B6921C9C5 /* AudioMeter.cpp */,
+				4A534E47B2A2155B16BB00CE /* TruePeak.cpp */,
+				4A534E4799D5B065A0FD015C /* AudioMeter.h */,
+				4A534E47EA336A0838677E68 /* TruePeak.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -10293,6 +10311,7 @@
 				4A534E471EDC920A8DCBF993 /* ShakePreset.h */,
 				4A534E4775CFE4EABC3BFB73 /* ShakePresets.h */,
 				4A534E470967CFAF401F9620 /* ShakerRuntime.h */,
+				4A534E475F6FD9951F989C76 /* CameraType.h */,
 			);
 			path = camera;
 			sourceTree = "<group>";
@@ -12373,6 +12392,7 @@
 				71E36B8425D5996400EFEED4 /* EntityManager.h */,
 				71E36B8325D5996400EFEED4 /* Signature.h */,
 				71E36B8625D5996400EFEED4 /* SubSystem.h */,
+				4A534E47A5E93FFF657430E4 /* ComponentFwd.h */,
 			);
 			path = ecs;
 			sourceTree = "<group>";
@@ -15288,7 +15308,11 @@
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
+				4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */,
+				4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */,
+				4A534E47B1BAAAB3C75B88ED /* CameraType.h in Headers */,
 				4A534E47121FD6387E508980 /* PixelPerfectCameraComponent.h in Headers */,
+				4A534E4727FAC9DB1C824F50 /* ComponentFwd.h in Headers */,
 				4A534E4796FEBF33733E2DFB /* PixelPerfectCamera.h in Headers */,
 				4A534E473C40ED72D5D87706 /* PixelPerfectLayout.h in Headers */,
 				4A534E47182EAC07119845A8 /* PixelRotation.h in Headers */,
@@ -17790,6 +17814,8 @@
 				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
 				4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */,
 				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
+				4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */,
+				4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */,
 				4A534E47F2CD91899A5516E7 /* PixelPerfectLayout.cpp in Sources */,
 				4A534E47FC51F1B3A7B60422 /* PixelRotation.cpp in Sources */,
 				4A534E47BAE152DFB7C3B8C0 /* PixelsPerUnit.cpp in Sources */,
@@ -18587,6 +18613,8 @@
 				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
 				4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */,
 				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
+				4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */,
+				4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */,
 				4A534E47F6F783BAE5B25B2E /* PixelPerfectLayout.cpp in Sources */,
 				4A534E478CE6807E3A08DEE2 /* PixelRotation.cpp in Sources */,
 				4A534E47D9601CF893F61A9F /* PixelsPerUnit.cpp in Sources */,

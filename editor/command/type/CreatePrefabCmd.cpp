@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CreatePrefabCmd.h"
+#include "project/PrefabUnpackRecord.h"
 #include "editor/Out.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"

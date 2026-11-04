@@ -9,6 +9,8 @@ import harness
 from harness import Editor
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation"}
+CI_EXCLUDED = ("long-running (about 3 minutes on a loaded server: joints simulated in Play on the pose-animation rig); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 

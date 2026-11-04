@@ -612,3 +612,18 @@ async def test_moving_a_prop_off_a_posed_bone_keeps_its_rest_world(ed: Editor):
     finally:
         await ed.call("select_entities", entities=["Ground"])
         await ed.call("undo", scene="Main Scene")
+
+
+async def test_delete_goes_to_the_window_not_the_scene(ed: Editor):
+    """S61 AC2: Delete in the focused window removes its pose, never the selected Hero."""
+    await ed.call("select_entities", entities=["Hero"])
+    await focus(ed, entity="Hero")
+    st = (await focus(ed, path=WALK))["state"]
+    poses = st["pose_count"]
+    ed.check(poses > 1, f"poses to delete: {st}")
+    heroes = len(harness.find_key(await ed.call("find_entities", name="Hero*"), "entities") or [])
+    await press(ed, "Delete")
+    ed.check_eq((await state(ed))["pose_count"], poses - 1, "Delete removed the pose")
+    ed.check_eq(len(harness.find_key(await ed.call("find_entities", name="Hero*"), "entities") or []), heroes, "the GameObject stays")
+    await ed.call("undo", scope="project")
+    ed.check_eq((await state(ed))["pose_count"], poses, "one undo step")

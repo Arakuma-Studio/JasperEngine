@@ -13,6 +13,7 @@ from pathlib import Path
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Script Data"}
+CI = True
 TIMEOUT = 600
 
 RUNDATA = ".jasperengine/user/rundata"

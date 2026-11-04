@@ -4,6 +4,11 @@
 #ifndef BONE_COMPONENT_H
 #define BONE_COMPONENT_H
 
+#include "Export.h"
+#include "ecs/Entity.h"
+#include "math/Matrix4.h"
+#include "math/Quaternion.h"
+#include "math/Vector3.h"
 #include <string>
 
 namespace jasperengine{
