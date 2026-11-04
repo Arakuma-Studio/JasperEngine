@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "asset/AssetIndex.h"
-#include "support/TempDir.h"
+#include "TempDir.h"
 
 #include <gtest/gtest.h>
 
