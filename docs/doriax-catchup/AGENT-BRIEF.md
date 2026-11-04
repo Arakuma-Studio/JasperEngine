@@ -70,7 +70,7 @@ Environment variables go in front of `slot` (they are inherited).
 Build-queue rules (the two slots are the program's bottleneck; a cold build takes 30-50 minutes):
 - Always `WERROR=1` on `linux` and `unit-tests`: one configuration means one incremental tree shared by your
   iterations and the gate, and shared ccache hits across worktrees (a flag change recompiles everything).
-- Red controls run in your own worktree: revert the fix temporarily, rebuild incrementally, run only the regression
+- Red controls run in your own worktree: revert the fix temporarily with a patch (`git diff > fix.patch`, `git apply -R fix.patch`; never `git stash`, whose stack is shared by every worktree of the repository), rebuild incrementally, run only the regression
   tests, restore. Never a scratch copy of the repository (a cold build each).
 - One heavy job queued per agent at a time; chain related steps into one `slot` call.
 - Iterate with `SKIP_ENGINE=1`, `UNIT_SUITE=core|editor` and filters; no full suites (the lead runs them at landing).
