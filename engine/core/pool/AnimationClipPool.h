@@ -90,8 +90,9 @@ namespace jasperengine{
         // sub-clip's builder may wait for the pooled-glTF mutex a model loading on another thread
         // holds for its whole build, or parse the file, and a .anim parses about 50 ms per MB: null
         // with `loading` true until the build is done, then what getOrLoad gave (the clip, or null
-        // + `error`), to the first caller that polls it. Every load without async loading, and a
-        // .anim without threads (web without pthreads: a job would wait for the frame's pump), is
+        // + `error`), to the first caller that polls it. Every load without async loading, a .anim
+        // under 64 KB (a few milliseconds, where a job would start it a frame late) and a .anim
+        // without threads (web without pthreads: a job would wait for the frame's pump) are
         // getOrLoad on this thread, with the same result. Players and scene preloads poll it once a
         // frame; invalidate, invalidateModel and clear forget the builds in flight (the next poll
         // starts another). `animInCall`: a caller that must show the pose in this call (an

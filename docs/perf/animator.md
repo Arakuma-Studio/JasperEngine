@@ -139,7 +139,7 @@ Single-run noise on these rows is several percent. A clip whose segments are mos
 the extra dot product (the 60 degree row above) and gains nothing; a clip of nothing else would get slower.
 The real clips are ozz samples, a Quaternius clip and an earlier Python reduction of them at 1 mm (not `ClipReduction`), kept out of the repository.
 Parse + build of a `.anim` costs about 50 ms per MB here (`real_pab_atlas`: 4.3 MB, 228 ms), unchanged by
-S74; with async loading it now happens on a worker where there are threads.
+S74; with async loading a file of 64 KB or more now does this on a worker where there are threads.
 
 ### WebAssembly
 

@@ -215,7 +215,9 @@ TEST_F(AnimatorHotPath, SnapshotWithAWeightFadeInTheSameFrame){
 
 // R16: a preview shows its pose in the call, as without async loading (the editor's mode)
 TEST_F(AnimatorHotPath, PreviewLoadsAnAnimInTheCall){
-    animator(controllerFile("preview", controller({}, {state("Base", clip("base", turn("Hips", 30.0f)))})));
+    // large enough for the thread pool otherwise
+    animtest::writeAsset(prefix + "base.anim", anim::writeClip(turn("Hips", 30.0f)) + std::string(70000, ' '));
+    animator(controllerFile("preview", controller({}, {state("Base", prefix + "base.anim")})));
     const bool wasAsync = Engine::isAsyncLoading();
     Engine::setAsyncLoading(true);
     std::string error;
@@ -232,7 +234,9 @@ TEST_F(AnimatorHotPath, ThreadPoolFirstUseMatchesTheCallingThread){
     const std::string base = clip("base", turn("Hips", 30.0f));
     ClipData late = turn("Hips/Spine", 40.0f);
     late.events = {event(0.05f, "early")};
-    const std::string lateClip = clip("late", late);
+    // large enough to go through the thread pool
+    animtest::writeAsset(prefix + "late.anim", anim::writeClip(late) + std::string(70000, ' '));
+    const std::string lateClip = prefix + "late.anim";
     ControllerDef def = controller({}, {state("Base", base)});
     LayerDef upper;
     upper.name = "Upper";

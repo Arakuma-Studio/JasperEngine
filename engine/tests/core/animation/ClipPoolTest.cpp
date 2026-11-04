@@ -337,6 +337,11 @@ namespace {
         bool was;
     };
 
+    // over pollOrLoad's limit for a load in the call, and the same clip
+    std::string largeClipText(float x){
+        return clipText(x) + std::string(70000, ' ');
+    }
+
     std::shared_ptr<const AnimationClip> pollUntilDone(const std::string& path, std::string* error = nullptr){
         const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
         bool loading = true;
@@ -351,10 +356,10 @@ namespace {
 
 }
 
-// AC7 (R16): in async loading a .anim parses on a worker: the caller gets `loading`, then the same
+// AC7 (R16): in async loading a large .anim parses on a worker: the caller gets `loading`, then the same
 // clip as a load on this thread, and the same error for a file that does not load
 TEST_F(ClipPool, PollOrLoadParsesAnimOnAWorker){
-    animtest::writeAsset(p("async.anim"), clipText(3));
+    animtest::writeAsset(p("async.anim"), largeClipText(3));
     std::shared_ptr<const AnimationClip> sync = AnimationClipPool::getOrLoad(p("async.anim"));
     ASSERT_TRUE(sync);
     const std::string syncBytes = anim::writeClip(sync->toData());
@@ -388,21 +393,32 @@ TEST_F(ClipPool, PollOrLoadParsesAnimOnAWorker){
     EXPECT_EQ(AnimationClipPool::get(p("async.anim")), clip) << "cached";
     EXPECT_GT(AnimationClipPool::getGeneration(p("async.anim")), 0u);
 
-    // the same failures as on this thread, and they are not cached
+    // the same failure as on this thread, and it is not cached
+    animtest::writeAsset(p("broken.anim"), "{ not json" + std::string(70000, ' '));
     std::string syncError;
     Engine::setAsyncLoading(false);
-    EXPECT_FALSE(AnimationClipPool::getOrLoad(p("missing.anim"), &syncError));
+    EXPECT_FALSE(AnimationClipPool::getOrLoad(p("broken.anim"), &syncError));
     Engine::setAsyncLoading(true);
     std::string asyncError;
-    EXPECT_FALSE(pollUntilDone(p("missing.anim"), &asyncError));
+    EXPECT_FALSE(pollUntilDone(p("broken.anim"), &asyncError));
     EXPECT_EQ(asyncError, syncError);
-    animtest::writeAsset(p("missing.anim"), clipText(4));
-    EXPECT_TRUE(pollUntilDone(p("missing.anim")));
+    EXPECT_FALSE(syncError.empty());
+    animtest::writeAsset(p("broken.anim"), largeClipText(4));
+    EXPECT_TRUE(pollUntilDone(p("broken.anim")));
+
+    // a small file and a missing one: in the call, with no job and no frame's wait
+    animtest::writeAsset(p("small.anim"), clipText(6));
+    EXPECT_FLOAT_EQ(endX(AnimationClipPool::pollOrLoad(p("small.anim"), loading)), 6.0f);
+    EXPECT_FALSE(loading);
+    std::string missing;
+    EXPECT_FALSE(AnimationClipPool::pollOrLoad(p("missing.anim"), loading, &missing));
+    EXPECT_FALSE(loading);
+    EXPECT_FALSE(missing.empty());
 }
 
 // AC7 (R16): no threads (web without pthreads): the same clip in the call, on the calling thread
 TEST_F(ClipPool, PollOrLoadWithoutThreadsLoadsInTheCall){
-    animtest::writeAsset(p("nothreads.anim"), clipText(5));
+    animtest::writeAsset(p("nothreads.anim"), largeClipText(5));
     AsyncLoadingOn async;
     std::thread::id builtOn;
     AnimationClipPoolTestHooks hooks;
@@ -431,7 +447,7 @@ TEST_F(ClipPool, PollOrLoadWithoutThreadsLoadsInTheCall){
 // R16: an invalidate during a worker's parse is honoured like one during a call, and the handle
 // of a finished job does not keep a clip alive that its users released
 TEST_F(ClipPool, PollOrLoadInvalidateAndRelease){
-    animtest::writeAsset(p("flight.anim"), clipText(1));
+    animtest::writeAsset(p("flight.anim"), largeClipText(1));
     AsyncLoadingOn async;
     std::atomic<int> stage{0};
     AnimationClipPoolTestHooks hooks;
@@ -449,7 +465,7 @@ TEST_F(ClipPool, PollOrLoadInvalidateAndRelease){
     const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(10);
     while (stage == 0 && std::chrono::steady_clock::now() < until) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     ASSERT_EQ(stage, 1) << "the worker parsed";
-    animtest::writeAsset(p("flight.anim"), clipText(2));
+    animtest::writeAsset(p("flight.anim"), largeClipText(2));
     AnimationClipPool::invalidate(p("flight.anim"));
     stage = 2;
     std::shared_ptr<const AnimationClip> clip = pollUntilDone(p("flight.anim"));

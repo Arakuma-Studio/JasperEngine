@@ -12,7 +12,9 @@
 #include "pose/ModelRig.h"
 #include "Engine.h"
 #include "io/Data.h"
+#include "io/File.h"
 #include "io/FileData.h"
+#include "io/ResourcePack.h"
 #include "subsystem/MeshSystem.h"
 #include "jobs/JobSystem.h"
 
@@ -415,6 +417,25 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::getOrLoad(const std::str
 
 namespace{
 
+    // Under this a .anim parses in the call: at about 50 ms per MB it takes a few milliseconds at
+    // most, and a job would start it at least a frame late, moving the clip against the rest of
+    // the game's timeline for nothing (tools/test-projects/upgrade-from-main plays frame for frame)
+    constexpr uint64_t kAnimInCallBytes = 64 * 1024;
+
+    // a file that cannot be opened counts as small: its error comes from the call
+    bool smallAnim(const std::string& path){
+        uint64_t packed = 0;
+        if (ResourcePack::size(path, packed)) return packed < kAnimInCallBytes;
+        File file;
+        return file.open(path.c_str()) != 0 || file.length() < kAnimInCallBytes;
+    }
+
+    bool hasAsyncLoad(const std::string& key){
+        AsyncLoads& loads = asyncLoads();
+        std::lock_guard<std::mutex> lock(loads.mutex);
+        return loads.pending.count(key) != 0;
+    }
+
     bool noThreads(){
 #ifdef JASPERENGINE_ANIM_TEST_HOOKS
         std::function<bool()> singleThreaded;
@@ -448,6 +469,7 @@ std::shared_ptr<const AnimationClip> AnimationClipPool::pollOrLoad(const std::st
         forgetAsyncLoad(key);
         return cached;
     }
+    if (!anim::isSubClipReference(path) && !hasAsyncLoad(key) && smallAnim(path)) return getOrLoad(path, error);
 
     AsyncLoads& loads = asyncLoads();
     jobs::Task<AsyncLoad> build;

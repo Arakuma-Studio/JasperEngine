@@ -138,7 +138,10 @@ namespace {
 
 // S74 R16: sample() shows its pose in the call, as without async loading
 TEST_F(Player, SampleLoadsAnAnimInTheCallInAsyncLoading){
-    AnimationPlayer object = player({{"slide", slide("Arm", 3.0f)}});
+    // large enough for the thread pool otherwise
+    animtest::writeAsset(prefix + "slide.anim", anim::writeClip(slide("Arm", 3.0f)) + std::string(70000, ' '));
+    AnimationPlayer object(&scene, root);
+    object.addClip(prefix + "slide.anim", "slide");
     const bool wasAsync = Engine::isAsyncLoading();
     Engine::setAsyncLoading(true);
     object.play("slide");
