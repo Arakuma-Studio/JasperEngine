@@ -3831,7 +3831,7 @@ void ProjectSettingsWindow::pollInputListen() {
     }
 
     for (int key = ImGuiKey_NamedKey_BEGIN; key < ImGuiKey_NamedKey_END; key++) {
-        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false)) continue;
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(key), false)) continue;   // shortcut-lint: allow Listen in this modal captures any key for a game binding
         const int engineKey = PlayInput::engineKey(static_cast<ImGuiKey>(key));
         if (engineKey != D_KEY_UNKNOWN) {
             addControl({InputDevice::Key, engineKey});
