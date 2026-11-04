@@ -24042,6 +24042,11 @@
      131072,
      true
     ],
+    "colliders[].slice": [
+     1,
+     131072,
+     true
+    ],
     "colliders[].type": [
      13,
      131072,
@@ -28582,6 +28587,11 @@
       8,
       "bottom_right",
       "Bottom Right"
+     ],
+     [
+      9,
+      "frame",
+      "From Frame"
      ]
     ]
    },
@@ -28592,9 +28602,13 @@
     "automaticFlipY",
     "enabled",
     "flipY",
+    "frame",
+    "frameName",
     "framesRect",
     "height",
     "pivotPreset",
+    "sheet",
+    "sheetGuid",
     "textureScaleFactor",
     "width"
    ],
@@ -28615,6 +28629,16 @@
      1024,
      true
     ],
+    "frame": [
+     8,
+     1024,
+     true
+    ],
+    "frameName": [
+     1,
+     0,
+     true
+    ],
     "height": [
      9,
      1024,
@@ -28627,6 +28651,11 @@
     ],
     "pivotPreset": [
      13,
+     1024,
+     true
+    ],
+    "sheet": [
+     18,
      1024,
      true
     ],
@@ -28657,6 +28686,16 @@
      1024,
      true
     ],
+    "frame": [
+     8,
+     1024,
+     true
+    ],
+    "frameName": [
+     1,
+     0,
+     true
+    ],
     "height": [
      9,
      1024,
@@ -28669,6 +28708,11 @@
     ],
     "pivotPreset": [
      13,
+     1024,
+     true
+    ],
+    "sheet": [
+     18,
      1024,
      true
     ],
@@ -45768,6 +45812,16 @@
     1024,
     true
    ],
+   "frame": [
+    8,
+    1024,
+    true
+   ],
+   "frameName": [
+    1,
+    0,
+    true
+   ],
    "height": [
     9,
     1024,
@@ -45780,6 +45834,11 @@
    ],
    "pivotPreset": [
     13,
+    1024,
+    true
+   ],
+   "sheet": [
+    18,
     1024,
     true
    ],
@@ -47341,7 +47400,8 @@
     "top_left",
     "bottom_left",
     "top_right",
-    "bottom_right"
+    "bottom_right",
+    "frame"
    ]
   },
   "PrimitiveType": {

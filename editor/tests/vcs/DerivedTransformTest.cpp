@@ -139,7 +139,7 @@ TEST(Stream, DerivedTransformMigrationReachesPrefabsAndInstances) {
     StreamMigrations::migrate(DocumentKind::Prefab, prefab);
     expectNoDerivedKeys(YAML::Dump(prefab), "a migrated prefab");
     EXPECT_EQ(prefab["members"][0]["components"]["transform"]["position"].size(), 3u);
-    EXPECT_EQ(prefab["version"].as<int>(), 8);
+    EXPECT_EQ(prefab["version"].as<int>(), 9);
 
     YAML::Node scene = YAML::Load(
         "formatVersion: 3\nentities:\n  - type: Entity\n    entity: 20\n    name: Instance\n    components:\n      transform:\n"
