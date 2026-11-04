@@ -555,11 +555,11 @@ void NavigationOverlay::updateSurface(Entity entity, SurfaceDraw& draw, ScenePro
             label.x = x;
             label.y = y;
             label.text = tileLabelText(*report);
-            // the top face's centre (corners with y max: c & 2)
+            // the bottom face's centre (corners with y min: not c & 2), on the ground it labels
             const float* c = &geometry.tileBounds[t * 24];
-            Vector3 top(0, 0, 0);
-            for (int i : {2, 3, 6, 7}) top += Vector3(c[i * 3], c[i * 3 + 1], c[i * 3 + 2]);
-            label.world = top * 0.25f;
+            Vector3 bottom(0, 0, 0);
+            for (int i : {0, 1, 4, 5}) bottom += Vector3(c[i * 3], c[i * 3 + 1], c[i * 3 + 2]);
+            label.world = bottom * 0.25f;
             label.dirty = std::find(dirty.begin(), dirty.end(), std::pair<int, int>(x, y)) != dirty.end();
             tileLabels.push_back(std::move(label));
         }

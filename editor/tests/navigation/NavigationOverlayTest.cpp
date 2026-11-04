@@ -52,7 +52,9 @@ namespace {
             surface = floors.front()->getEntity();
             scene.addComponent<NavMeshSurfaceComponent>(surface, NavMeshSurfaceComponent());
             camera = std::make_unique<Camera>(&scene);
-            sceneProject.id = 4343;
+            // an id of its own: the editor keeps per-scene caches (two open scenes never share one)
+            static uint32_t nextId = 4343;
+            sceneProject.id = ++nextId;
             sceneProject.scene = &scene;
             sceneProject.sceneType = SceneType::SCENE_3D;
             system = NavigationEditor::systemOf(sceneProject);

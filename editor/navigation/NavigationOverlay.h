@@ -78,7 +78,7 @@ namespace jasperengine::editor {
         int x = 0, y = 0;
         // "12.4 ms · 210 polys · 18.5 KB" ("– ms" when not built since the navmesh loaded)
         std::string text;
-        // the tile's centre, at the top of its bounds
+        // the tile's centre, at the bottom of its bounds
         Vector3 world;
         // its inputs changed since the bake (outlined orange)
         bool dirty = false;
