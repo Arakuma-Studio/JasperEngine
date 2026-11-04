@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import sys
 import time
 from pathlib import Path
@@ -27,6 +28,19 @@ TIMEOUT = 1800
 
 TOOLS = ("edit_voxels", "sample_voxels", "visualize_voxels", "generate_voxels")
 S: dict = {}
+
+# T2's format: the distance to a height, which is ground as a Noise Graph writes it
+def height_graph(height: float) -> str:
+    return json.dumps({
+        "formatVersion": 1, "kind": "noise", "kindVersion": 1, "nextId": 8,
+        "nodes": [{"id": "n1", "type": "position", "position": [0, 0], "params": {}},
+                  {"id": "n2", "type": "scale_offset", "position": [240, 0], "params": {"scale": 1.0, "offset": -height}},
+                  {"id": "n3", "type": "output_value", "position": [480, 0], "params": {"name": "sdf"}}],
+        "edges": [{"id": "e4", "from": {"node": "n1", "port": "y"}, "to": {"node": "n2", "port": "in"}},
+                  {"id": "e5", "from": {"node": "n2", "port": "out"}, "to": {"node": "n3", "port": "in"}}],
+        "variables": [], "groups": [], "viewport": {"offset": [0, 0], "zoom": 1.0},
+        "metadata": {"noise": {"space": "world", "dimensions": "3d"}}})
+
 
 # R57: per view, on the reference content
 GPU_BUDGETS = {"High": (300, 600_000), "Medium": (180, 300_000), "Low": (120, 150_000)}
@@ -380,8 +394,24 @@ async def test_generate_job(ed: Editor):
     box = await ed.call("create_entity", name="MeshSource", type="box", position=[32, 32, 32], scale=[20, 20, 20])
     from_mesh = await finished(ed, await ed.call("generate_voxels", entity=entity, source="mesh", mesh=box["entity_id"], keep_edits=False))
     ed.check_eq(from_mesh["status"], "succeeded", f"{from_mesh}")
-    bad = await ed.call_raw("generate_voxels", {"entity": entity, "source": "noise_graph", "graph": "graphs/none.noisegraph"})
-    ed.check(bad.is_error or (await finished(ed, bad.value))["status"] == "failed", bad.text[:300])
+    await refused(ed, "generate_voxels", "missing_asset", entity=entity, source="noise_graph", graph="graphs/none.noisegraph")
+
+    # From a Noise Graph, whose later change is reported and applies nothing by itself (R33, V10)
+    graphs = ed.project / "graphs"
+    graphs.mkdir(exist_ok=True)
+    graph = graphs / "Ground.noisegraph"
+    graph.write_text(height_graph(20.0))
+    await ed.call("sync_files")
+    from_graph = await finished(ed, await ed.call("generate_voxels", entity=entity, source="noise_graph", graph="graphs/Ground.noisegraph", keep_edits=False))
+    ed.check_eq(from_graph["status"], "succeeded", f"{from_graph}")
+    surface = (await ed.call("sample_voxels", entity=entity, mode="values", points=[[32, 10, 32], [32, 30, 32]]))["values"]
+    ed.check(surface[0]["inside"] and not surface[1]["inside"], f"the graph's height: {surface}")
+    ed.check_eq((await ed.call("sample_voxels", entity=entity, mode="stats"))["base_stale"], False, "just generated")
+    held = await content_hash(ed, entity)
+    graph.write_text(height_graph(25.0))
+    await ed.call("sync_files")
+    ed.check_eq((await ed.call("sample_voxels", entity=entity, mode="stats"))["base_stale"], True, "the graph changed")
+    ed.check_eq(await content_hash(ed, entity), held, "a stale base changes nothing by itself")
     await refused(ed, "generate_voxels", "invalid_source", entity=entity, source="magic")
 
     # Cancel: everything as it was, and the volume is free again

@@ -1562,8 +1562,7 @@ void sampleStats(const CallPtr& call, Target& target, Project* project) {
         {"dimensions", intsJson(target.store->desc().dimensions)},
         {"voxel_size", target.store->desc().voxelSize},
         {"base", asset ? asset->generator.kind : std::string()},
-        // R33: its source cannot be built, so untouched blocks are not what the generator says
-        {"base_stale", asset ? !asset->baseResolved : false},
+        {"base_stale", isVoxelBaseStale(target.sp->scene, target.entity)},
     };
     call->ok(std::to_string(stats.chunks) + " chunks, " + std::to_string(stats.triangles) + " triangles, " + std::to_string(memory.total()) + " bytes.", std::move(data));
 }
