@@ -23168,7 +23168,9 @@
    "key": "action",
    "known_keys": [
     "ownedTarget",
+    "randomStart",
     "speed",
+    "startOffset",
     "state",
     "target"
    ],
@@ -23179,7 +23181,17 @@
      0,
      true
     ],
+    "randomStart": [
+     0,
+     0,
+     true
+    ],
     "speed": [
+     2,
+     0,
+     true
+    ],
+    "startOffset": [
      2,
      0,
      true
@@ -23201,7 +23213,17 @@
      0,
      true
     ],
+    "randomStart": [
+     0,
+     0,
+     true
+    ],
     "speed": [
+     2,
+     0,
+     true
+    ],
+    "startOffset": [
      2,
      0,
      true
@@ -39750,7 +39772,17 @@
     0,
     true
    ],
+   "randomStart": [
+    0,
+    0,
+    true
+   ],
    "speed": [
+    2,
+    0,
+    true
+   ],
+   "startOffset": [
     2,
     0,
     true
