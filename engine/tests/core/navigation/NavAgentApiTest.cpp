@@ -387,8 +387,9 @@ TEST_F(NavAgentApiTest, StuckFiresAndRepaths){
     EXPECT_TRUE(stuckTicks.empty());
 }
 
-// AC25: why a destination fails: no surface, a surface never baked, a destination on another island;
-// lastPathFailure goes back to None after a path that succeeds
+// AC25: why a destination fails: no surface, a surface never baked, a destination on another island,
+// a door closed on the way without Auto Repath; lastPathFailure goes back to None after a path that
+// succeeds
 TEST_F(NavAgentApiTest, PathFailedReason){
     std::vector<nav::PathFailure> reasons;
     const auto listen = [&](Entity entity) {
@@ -447,4 +448,33 @@ TEST_F(NavAgentApiTest, PathFailedReason){
     EXPECT_EQ(handle.getLastPathFailure(), nav::PathFailure::Disconnected);
     handle.resetPath();
     EXPECT_EQ(handle.getLastPathFailure(), nav::PathFailure::None);
+
+    // a door closed on its way (a Not Walkable script volume) with Auto Repath off: the path is
+    // dropped, blocked by an area
+    scene = std::make_unique<Scene>();
+    test::disableSubSystems(*scene);
+    scene->getScheduler().setEnabled("NavigationSystem", true);
+    nav = scene->getSystem<NavigationSystem>().get();
+    plane(*scene, Vector3(), 20.0f, 8.0f);
+    box(*scene, Vector3(0.0f, 1.0f, -2.75f), Vector3(1.0f, 2.0f, 2.5f));
+    box(*scene, Vector3(0.0f, 1.0f, 2.75f), Vector3(1.0f, 2.0f, 2.5f));
+    const Entity doorSurface = transformEntity(*scene, Vector3(), NULL_ENTITY, "Surface");
+    addSurface(*scene, doorSurface, CELL, 32);
+    bake(doorSurface);
+    const Entity runner = agent(*scene, Vector3(-8.0f, 0.0f, 0.0f));
+    scene->getComponent<NavMeshAgentComponent>(runner).autoRepath = false;
+    reasons.clear();
+    listen(runner);
+    step();
+    NavMeshAgent door(scene.get(), runner);
+    ASSERT_TRUE(door.setDestination(Vector3(8.0f, 0.0f, 0.0f)));
+    stepUntil([&]() { return !door.isPathPending(); }, 60);
+    ASSERT_EQ(door.getPathStatus(), nav::PathStatus::Complete);
+    steps(10);
+    EXPECT_NE(nav->setAreaInVolume(Vector3(0.0f, 0.0f, 0.0f), Vector3(1.2f, 4.0f, 3.5f), Quaternion(), nav::AREA_NOT_WALKABLE), 0u);
+    stepUntil([&]() { return !reasons.empty(); }, 60);
+    ASSERT_EQ(reasons.size(), 1u);
+    EXPECT_EQ(reasons[0], nav::PathFailure::BlockedByArea);
+    EXPECT_FALSE(door.hasPath());
+    EXPECT_EQ(door.getLastPathFailure(), nav::PathFailure::BlockedByArea);
 }

@@ -251,6 +251,28 @@ namespace jasperengine::nav {
         static bool tileCovers(const NavTileBlob& staticTile, const NavBuildConfig& config, const Vector3& point,
                                const Vector3& halfExtents);
 
+        // ---- S55 areas (docs/specs/S55-navigation-gameplay-api.md R11-R18, D5). Runtime area
+        // overrides (nav-space prisms: the ground polygons whose centroid lies inside take the
+        // area, Not Walkable gives flags 0) and link states over the baked flags. They apply in
+        // ascending (order, id), a later one wins and Not Walkable always; every tile change
+        // (create, replaceTiles, updateCarving, updateLink) applies them again before it returns,
+        // and they outlive clear() and create(). An applied change bumps the revision once.
+        // id > 0; on a mesh not built yet it applies to the tiles that come
+        uint32_t addAreaOverride(const NavConvexVolume& volume, uint8_t area, uint64_t order = 0);
+        bool updateAreaOverride(uint32_t id, const NavConvexVolume& volume, uint8_t area);
+        bool removeAreaOverride(uint32_t id);
+        // the ground polygons in the override's volume now (-1: no such override)
+        int getAreaOverridePolyCount(uint32_t id) const;
+        // a deactivated link's connections pass nothing (flags 0; their polygon area stays)
+        void setLinkActive(uint32_t userId, bool active);
+        bool isLinkActive(uint32_t userId) const;
+        // the polygons an override or link state changed since the last call (crowd replans)
+        void takeChangedPolys(std::vector<uint32_t>& out);
+        // the tiles holding a baked-state snapshot: none without overrides and deactivated links (R18)
+        size_t getPolyStateTileCount() const;
+        // Detour's storeTileState bytes of a tile (empty: no such tile), what R13's restore matches
+        std::vector<uint8_t> getTileStateBytes(int x, int y, int layer = 0) const;
+
     private:
         struct Impl;
         std::unique_ptr<Impl> impl;

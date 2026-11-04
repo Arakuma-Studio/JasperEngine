@@ -165,6 +165,7 @@ YAML::Node editor::Stream::encodeNavMeshLinkComponent(const NavMeshLinkComponent
     node["bidirectional"] = link.bidirectional;
     node["autoUpdatePosition"] = link.autoUpdatePosition;
     node["area"] = link.area;
+    node["activated"] = link.activated;
     return node;
 }
 
@@ -181,6 +182,7 @@ NavMeshLinkComponent editor::Stream::decodeNavMeshLinkComponent(const YAML::Node
     if (node["bidirectional"]) link.bidirectional = YamlNumbers::as<bool>(node["bidirectional"]);
     if (node["autoUpdatePosition"]) link.autoUpdatePosition = YamlNumbers::as<bool>(node["autoUpdatePosition"]);
     if (node["area"]) link.area = YamlNumbers::as<int>(node["area"]);
+    if (node["activated"]) link.activated = YamlNumbers::as<bool>(node["activated"]);
     return link;
 }
 
@@ -196,6 +198,7 @@ YAML::Node editor::Stream::encodeNavMeshModifierComponent(const NavMeshModifierC
     node["useVolume"] = modifier.useVolume;
     node["volumeCenter"] = encodeVector3(modifier.volumeCenter);
     node["volumeSize"] = encodeVector3(modifier.volumeSize);
+    node["applyAtRuntime"] = modifier.applyAtRuntime;
     return node;
 }
 
@@ -211,6 +214,7 @@ NavMeshModifierComponent editor::Stream::decodeNavMeshModifierComponent(const YA
     if (node["useVolume"]) modifier.useVolume = YamlNumbers::as<bool>(node["useVolume"]);
     if (node["volumeCenter"]) modifier.volumeCenter = decodeVector3(node["volumeCenter"]);
     if (node["volumeSize"]) modifier.volumeSize = decodeVector3(node["volumeSize"]);
+    if (node["applyAtRuntime"]) modifier.applyAtRuntime = YamlNumbers::as<bool>(node["applyAtRuntime"]);
     return modifier;
 }
 

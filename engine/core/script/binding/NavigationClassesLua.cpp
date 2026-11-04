@@ -413,32 +413,34 @@ namespace {
         return 1;
     }
 
-    // nextOffMeshLinkData: the next link along the path, currentOffMeshLinkData's shape
-    luabridge::LuaRef nextLinkData(const NavMeshAgent& agent, lua_State* L) {
+    // OffMeshLinkData {valid, activated, occupied, startPos, endPos, link}: activated and occupied
+    // are the link's state now (S55 R16, R17, R24)
+    luabridge::LuaRef linkTable(const NavMeshAgent& agent, lua_State* L, bool valid, const Vector3& start, const Vector3& end, Entity link) {
         luabridge::LuaRef table = luabridge::newTable(L);
-        Vector3 start, end;
-        Entity link = NULL_ENTITY;
-        const bool valid = agent.getNextOffMeshLink(start, end, link);
+        NavigationSystem* system = valid ? agent.getScene()->getSystem<NavigationSystem>().get() : nullptr;
         table["valid"] = valid;
-        table["activated"] = valid;
+        table["activated"] = system && system->isLinkActive(link);
+        table["occupied"] = system && system->isLinkOccupied(link);
         table["startPos"] = start;
         table["endPos"] = end;
         table["link"] = link;
         return table;
     }
 
-    // currentOffMeshLinkData: {valid, startPos, endPos, link}
+    // nextOffMeshLinkData: the next link along its path
+    luabridge::LuaRef nextLinkData(const NavMeshAgent& agent, lua_State* L) {
+        Vector3 start, end;
+        Entity link = NULL_ENTITY;
+        const bool valid = agent.getNextOffMeshLink(start, end, link);
+        return linkTable(agent, L, valid, start, end, link);
+    }
+
+    // currentOffMeshLinkData: the link it is on
     luabridge::LuaRef linkData(const NavMeshAgent& agent, lua_State* L) {
-        luabridge::LuaRef table = luabridge::newTable(L);
         Vector3 start, end;
         Entity link = NULL_ENTITY;
         const bool valid = agent.getCurrentOffMeshLink(start, end, link);
-        table["valid"] = valid;
-        table["activated"] = valid;
-        table["startPos"] = start;
-        table["endPos"] = end;
-        table["link"] = link;
-        return table;
+        return linkTable(agent, L, valid, start, end, link);
     }
 
 }
@@ -804,6 +806,8 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
         .addProperty("cellSize", &NavGrid::getCellSize)
         .addProperty("layout", &NavGrid::getLayout)
         .endClass();
+
+    registerNavigationComponentClasses(L);
 
 #endif //DISABLE_LUA_BINDINGS
 }

@@ -153,6 +153,11 @@ namespace jasperengine::nav {
         // what the crowd holds (agents, grids, path queue), approximately
         size_t getMemoryBytes() const;
 
+        // ---- S55 areas (R15): every walking agent whose whole corridor (not dtCrowd's 10-polygon
+        // lookahead) holds one of the changed polygons (sorted) requests its target again; their
+        // indices, ascending. Agents on a link finish it.
+        void replanCrossing(const std::vector<uint32_t>& changedPolys, std::vector<int>& replanned);
+
         // ---- S55 agents (docs/specs/S55-navigation-gameplay-api.md R20-R24, D7)
         // Hands the agent a planned corridor (setPath): its current polygon must be among the first
         // 16 (those before it are dropped) and each polygon kept must still pass its filter. At most

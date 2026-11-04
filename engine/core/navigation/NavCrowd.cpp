@@ -418,10 +418,15 @@ Vector3 NavCrowd::getTargetPosition(int agent) const {
 void NavCrowd::update(float dt) {
     if (!impl->crowd || impl->count == 0)
         return;
-    // ---- S55 agents: a script's corridor is followed as given; velocity overrides start here
+    // ---- S55 agents: a script's corridor is followed as given, until a request for a new path
+    // (a replan since the last update included); velocity overrides start here
     if (impl->scriptedCount > 0) {
         for (int i = 0; i < impl->capacity; i++) {
-            if (impl->scripted[(size_t)i])
+            if (!impl->scripted[(size_t)i])
+                continue;
+            if (impl->agent(i)->targetState != DT_CROWDAGENT_TARGET_VALID)
+                impl->unscript(i);
+            else
                 impl->editable(i)->params.updateFlags &= (unsigned char)~(DT_CROWD_OPTIMIZE_VIS | DT_CROWD_OPTIMIZE_TOPO);
         }
     }
@@ -798,6 +803,27 @@ size_t NavCrowd::getMemoryBytes() const {
            (size_t)impl->capacity * 4 * sizeof(unsigned short) + 4096 * 48 + impl->params.capacity() * sizeof(NavCrowdAgentParams);
 }
 
+void NavCrowd::replanCrossing(const std::vector<uint32_t>& changedPolys, std::vector<int>& replanned) {
+    replanned.clear();
+    if (!impl->crowd || changedPolys.empty())
+        return;
+    for (int index = 0; index < impl->capacity; index++) {
+        const dtCrowdAgent* ag = impl->agent(index);
+        if (!ag->active || impl->params[(size_t)index].obstacle || impl->onLink[(size_t)index] || ag->state != DT_CROWDAGENT_STATE_WALKING ||
+            ag->targetState != DT_CROWDAGENT_TARGET_VALID)
+            continue;
+        const dtPolyRef* path = ag->corridor.getPath();
+        const int count = ag->corridor.getPathCount();
+        for (int i = 0; i < count; i++) {
+            if (std::binary_search(changedPolys.begin(), changedPolys.end(), (uint32_t)path[i])) {
+                impl->crowd->requestMoveTarget(index, ag->targetRef, ag->targetPos);
+                replanned.push_back(index);
+                break;
+            }
+        }
+    }
+}
+
 // ---- S55 agents
 
 namespace {
@@ -1069,6 +1095,8 @@ int NavCrowd::getFilterCount() const { return 0; }
 int NavCrowd::getFilterOverflowCount() const { return 0; }
 bool NavCrowd::isFilterFallback(int) const { return false; }
 size_t NavCrowd::getMemoryBytes() const { return 0; }
+void NavCrowd::replanCrossing(const std::vector<uint32_t>&, std::vector<int>& replanned) { replanned.clear(); }
+
 bool NavCrowd::setCorridor(int, const std::vector<uint32_t>&, const Vector3&) { return false; }
 void NavCrowd::getCorridor(int, std::vector<uint32_t>& polys) const { polys.clear(); }
 bool NavCrowd::isCorridorValid(int) const { return false; }
