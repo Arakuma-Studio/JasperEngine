@@ -14723,10 +14723,14 @@ uint16_t RenderSystem::getScenePipelines() const{
         }
     }
 
-    // mirrors and probe capture render with reversed winding (see isRenderingFlipped)
+    // mirrors, probe capture and water reflections render with reversed winding (see
+    // isRenderingFlipped); a water reflection into a target of its own
     if (scene->getComponentArray<MirrorComponent>()->size() > 0 ||
             scene->getComponentArray<ReflectionProbeComponent>()->size() > 0){
         pipelines |= PIP_RTT_INVERT;
+    }
+    if (!planarReflectionMeshes.empty() && scene->getPlanarReflectionResolution() != PlanarReflectionResolution::OFF){
+        pipelines |= PIP_RTT | PIP_RTT_INVERT;
     }
 
 #ifdef JASPERENGINE_EDITOR

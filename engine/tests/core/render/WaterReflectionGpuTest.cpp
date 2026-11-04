@@ -155,6 +155,7 @@ TEST_F(WaterReflectionGpu, PlanarReflectionMirrorsTheScene){
     EXPECT_EQ(drawn.planes, 1u);
     EXPECT_EQ(drawn.passes, 1u);
     EXPECT_EQ(drawn.fallbacks, 0u);
+    // (compareTargetWithGolden writes the actual image on a mismatch)
     const CompareResult golden = compareTargetWithGolden("water_planar_reflection", hardwareTolerance({24, 0.01, 2.0}));
     EXPECT_TRUE(golden.passed) << golden.message;
 

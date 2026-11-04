@@ -233,7 +233,8 @@ TEST_F(WaterLayeringGpu, TransparentUnderWaterNearerThanItsCentre){
     ASSERT_TRUE(render()) << "the scene never finished loading";
     const LayeringPixel alone = layeringPixelAt(scene, Vector3(0.0f, -0.5f, 0.0f));
     printLayeringPixel("glass alone", alone);
-    EXPECT_GT(underLake.b - alone.b, 40) << "the glass under the lake was drawn over it";
+    // (drawn over the lake, the glass keeps most of its own red and gains little blue)
+    EXPECT_GT(underLake.b - alone.b, 80) << "the glass under the lake was drawn over it";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

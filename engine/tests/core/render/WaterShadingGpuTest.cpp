@@ -20,6 +20,7 @@
 
 #include "GpuEnvironment.h"
 #include "HeadlessContext.h"
+#include "ImageCompare.h"
 #include "LogCapture.h"
 #include "Readback.h"
 
@@ -164,7 +165,8 @@ TEST_F(WaterShadingGpu, ShadowEdgeFollowsSmoothSurface){
     std::printf("[gpu] shadow on %s: %zu flat shadowed, %zu flat lit, %zu of them shadowed once rippled\n",
                 HeadlessContext::getBackendName(), flatShadowPixels, flatLitPixels, movedPixels);
     ASSERT_GT(flatShadowPixels, 500u) << "the box casts no shadow on the water";
-    EXPECT_LT((double)movedPixels, 0.001 * (double)flatLitPixels) << "the ripples move the shadow lookup";
+    // (the same lookup: only a handful of pixels, where the variants' arithmetic rounds apart)
+    EXPECT_LE(movedPixels, 5u) << "the ripples move the shadow lookup";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -206,7 +208,7 @@ TEST_F(WaterShadingGpu, CausticsDarkInSurfaceShadow){
 
     // surface points: the bed seen through them is lit in both, the surface only at the second
     const Vector3 inShadow(0.0f, 0.0f, 0.0f);
-    const Vector3 inSun(5.0f, 0.0f, 3.0f);
+    const Vector3 inSun(3.2f, 0.0f, 0.0f);
     const double shadowRatio = shadingLuminanceAt(scene, on, width, height, inShadow) /
                                std::max(shadingLuminanceAt(scene, off, width, height, inShadow), 1.0);
     const double sunRatio = shadingLuminanceAt(scene, on, width, height, inSun) /
@@ -214,6 +216,10 @@ TEST_F(WaterShadingGpu, CausticsDarkInSurfaceShadow){
     std::printf("[gpu] caustics on %s: %.3f in the surface's shadow, %.3f in the sun\n",
                 HeadlessContext::getBackendName(), shadowRatio, sunRatio);
     EXPECT_GT(sunRatio, 1.05) << "no caustics in the sun at all: the test proves nothing";
+    if (HasFailure()){
+        writePng(getOutputDirectory() + "/water_caustics_off.png", off, width, height);
+        writePng(getOutputDirectory() + "/water_caustics_on.png", on, width, height);
+    }
     EXPECT_LT(shadowRatio, 1.02) << "caustics brighten the bed under the shadowed surface";
     EXPECT_NO_ENGINE_ERRORS();
 }
