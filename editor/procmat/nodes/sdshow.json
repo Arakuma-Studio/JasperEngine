@@ -1,0 +1,59 @@
+{
+ "code": [],
+ "description": "Creates a grayscale image from a shape described as a 2D Signed Distance Function",
+ "format": 1,
+ "functions": [],
+ "id": "sdshow",
+ "inputs": [
+  {
+   "default": "0.0",
+   "description": "The input shape",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "sdf2d"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdShow",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the shape as a grayscale image",
+   "expr": "clamp($base-$in($uv)/max($bevel, 0.00001), 0.0, 1.0)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The width of the gradient at the edges of the shape",
+   "label": "Bevel",
+   "max": 1,
+   "min": 0,
+   "name": "bevel",
+   "short_description": "Bevel",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The base value of the output",
+   "label": "Base",
+   "max": 1,
+   "min": 0,
+   "name": "base",
+   "short_description": "Base",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdShow",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdshow.mmg"
+ },
+ "type_version": 1
+}

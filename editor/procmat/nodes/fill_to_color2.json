@@ -1,0 +1,60 @@
+{
+ "code": [
+  "vec4 $(name_uv)_bb = $in($uv);"
+ ],
+ "description": "A fill companion node that fills each area with a color taken from a color map image",
+ "format": 1,
+ "functions": [],
+ "id": "fill_to_color2",
+ "inputs": [
+  {
+   "default": "vec4(0.0)",
+   "description": "The input fill data, to be connected to the output of a Fill node",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "fill"
+  },
+  {
+   "default": "vec4(1.0)",
+   "description": "The image from which colors are taken",
+   "label": "",
+   "name": "map",
+   "short_description": "Color map",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Fill to Color",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated output image",
+   "expr": "mix($edgecolor, $map(fract($(name_uv)_bb.xy+0.5*$(name_uv)_bb.zw)), step(0.0000001, dot($(name_uv)_bb.zw, vec2(1.0))))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "a": 1,
+    "b": 1,
+    "g": 1,
+    "r": 1
+   },
+   "description": "The color used to draw outlines",
+   "label": "Edge Color",
+   "name": "edgecolor",
+   "short_description": "Outline color",
+   "type": "color"
+  }
+ ],
+ "short_description": "Fill to color",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fill_to_color2.mmg"
+ },
+ "type_version": 1
+}

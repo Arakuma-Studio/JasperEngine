@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpRefs.h"
+#include "component/Transform.h"
 
 #include "util/SafeWrite.h"
 

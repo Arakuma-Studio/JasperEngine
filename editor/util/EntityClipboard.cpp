@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityClipboard.h"
+#include "component/ActionComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
+#include "component/PrefabComponent.h"
+#include "component/MeshComponent.h"
 #include "pose/PoseEditSession.h"
 
 #include "Project.h"

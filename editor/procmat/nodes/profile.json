@@ -1,0 +1,94 @@
+{
+ "code": [],
+ "description": "Generates profile as a grayscale image from specified gradient",
+ "format": 1,
+ "functions": [
+  "draw_profile_curve",
+  "draw_profile_fill"
+ ],
+ "id": "profile",
+ "inputs": [
+  {
+   "default": "dot($gradient($uv.x).xyz, vec3(1.0/3.0))",
+   "label": "2:",
+   "name": "in",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Profile",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "An image showing the profile defined by the gradient",
+   "expr": "draw_profile_$style($uv, $in($uv), (dot($gradient($uv.x+0.001).xyz, vec3(1.0/3.0))-dot($gradient($uv.x-0.001).xyz, vec3(1.0/3.0)))/0.002, max(0.0001, $width))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "Style of the output image (fill or curve)",
+   "label": "",
+   "name": "style",
+   "short_description": "Style",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Curve",
+     "value": "curve"
+    },
+    {
+     "name": "Fill",
+     "value": "fill"
+    }
+   ]
+  },
+  {
+   "default": {
+    "interpolation": 1,
+    "points": [
+     {
+      "a": 1,
+      "b": 0,
+      "g": 0,
+      "pos": 0,
+      "r": 0
+     },
+     {
+      "a": 1,
+      "b": 1,
+      "g": 1,
+      "pos": 1,
+      "r": 1
+     }
+    ],
+    "type": "Gradient"
+   },
+   "description": "Gradient that defines the profile to be shown",
+   "label": "",
+   "name": "gradient",
+   "short_description": "Gradient",
+   "type": "gradient"
+  },
+  {
+   "default": 0.05,
+   "description": "Width of the curve",
+   "label": "",
+   "max": 1,
+   "min": 0,
+   "name": "width",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Profile",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/profile.mmg"
+ },
+ "type_version": 1
+}

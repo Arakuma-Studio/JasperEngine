@@ -1,0 +1,147 @@
+{
+ "code": [],
+ "description": "A fill companion node that generated an gradients on each filled area",
+ "format": 1,
+ "functions": [
+  "fill_to_uv_square",
+  "fill_to_uv_stretch",
+  "gradient_uv"
+ ],
+ "id": "fill_to_gradient2",
+ "inputs": [
+  {
+   "default": "vec4(0.0, 0.0, 1.0, 1.0)",
+   "description": "The input fill data, to be connected to the output of a Fill node",
+   "function": true,
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "fill"
+  }
+ ],
+ "instance": [
+  "vec4 $(name)_multiple_gradients(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec4 bb = $in(fract(uv));",
+  "\tvec3 custom_uv = fill_to_uv_$mode(uv, bb, float($seed));",
+  "\tfloat rnd =  float($seed)+custom_uv.z;",
+  "",
+  "\tvec4 value = vec4(1.0);",
+  "\tfor( int i = 0; i < int($layers); i++) {",
+  "\t\tvec2 grad_uv = gradient_uv(custom_uv.xy, $rotate, $r_rotate, $r_offset, vec2(custom_uv.z, $seed + float(i)));",
+  "\t\tvec4 gradient = $grad(grad_uv.x);",
+  "\t\t//if (grad_uv.x > 0.99999)",
+  "\t\t//\tgradient = $grad(0.0);",
+  "\t\tvalue = min(value, gradient);",
+  "\t}",
+  "\treturn value;",
+  "}"
+ ],
+ "kind": "shader",
+ "name": "Fill to Gradient",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated gradient output",
+   "expr": "$(name)_multiple_gradients($uv, _seed_variation_, _controlled_variation_)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "interpolation": 1,
+    "points": [
+     {
+      "a": 1,
+      "b": 0,
+      "g": 0,
+      "pos": 0,
+      "r": 0
+     },
+     {
+      "a": 1,
+      "b": 1,
+      "g": 1,
+      "pos": 1,
+      "r": 1
+     }
+    ],
+    "type": "Gradient"
+   },
+   "description": "Gradient to be spread on each fill area",
+   "label": "",
+   "name": "grad",
+   "short_description": "Gradient",
+   "type": "gradient"
+  },
+  {
+   "default": 0,
+   "description": "Algorithm used to place the graident on each island",
+   "label": "",
+   "name": "mode",
+   "short_description": "Mode",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Stretch",
+     "value": "stretch"
+    },
+    {
+     "name": "Square",
+     "value": "square"
+    }
+   ]
+  },
+  {
+   "default": 1,
+   "description": "Layers of gradients placed on top of each other, blended with the min function",
+   "label": "Layers",
+   "max": 20,
+   "min": 1,
+   "name": "layers",
+   "short_description": "Layers",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Base rotation of the gradients",
+   "label": "Rotate",
+   "max": 360,
+   "min": 0,
+   "name": "rotate",
+   "short_description": "Rotate",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Rotation randomization of each gradient",
+   "label": "Rnd Rotate",
+   "max": 180,
+   "min": 0,
+   "name": "r_rotate",
+   "short_description": "Random Rotation",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Offset randomization of each gradient",
+   "label": "Rnd Offset",
+   "max": 1,
+   "min": 0,
+   "name": "r_offset",
+   "short_description": "Random Offset",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Fill to Gradient",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fill_to_gradient2.mmg"
+ },
+ "type_version": 1
+}

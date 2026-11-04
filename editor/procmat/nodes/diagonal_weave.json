@@ -1,0 +1,41 @@
+{
+ "code": [],
+ "description": "Generates a weaving pipes pattern.",
+ "format": 1,
+ "functions": [
+  "diagonal_weave"
+ ],
+ "id": "diagonal_weave",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Diagonal Weave",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a grayscale image of the diagonal weave pattern.",
+   "expr": "diagonal_weave($uv*$size,$seed)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 4,
+   "description": "The number of rows and columns of the diagonal weave pattern.",
+   "label": "Size",
+   "max": 64,
+   "min": 2,
+   "name": "size",
+   "short_description": "Size",
+   "step": 1,
+   "type": "float"
+  }
+ ],
+ "short_description": "Diagonal Weave",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/diagonal_weave.mmg"
+ },
+ "type_version": 1
+}

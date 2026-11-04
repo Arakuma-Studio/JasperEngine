@@ -1,0 +1,94 @@
+{
+ "code": [
+  "vec2 $(name_uv)_co = vec2($cx+0.5,$cy+0.5);",
+  "float $(name_uv)_f = dot(2.0*($uv - $(name_uv)_co),2.0*($uv - $(name_uv)_co));"
+ ],
+ "description": "",
+ "format": 1,
+ "functions": [],
+ "id": "spherize",
+ "inputs": [
+  {
+   "default": "vec4($uv,0.0,1.0)",
+   "description": "Input image to be distorted",
+   "label": "",
+   "name": "in#",
+   "short_description": "Input#",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Spherize",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the distorted image",
+   "expr": "mix($in#($(name_uv)_co-($(name_uv)_co-$uv)/(sqrt(abs($r-$(name_uv)_f))*max($a,0.0)+1.0)),$in#($uv),step($r,$(name_uv)_f))",
+   "label": "Output#",
+   "type": "rgba"
+  },
+  {
+   "expr": "step($(name_uv)_f,$r)",
+   "label": "Mask",
+   "type": "f"
+  },
+  {
+   "expr": "$r-$(name_uv)_f",
+   "label": "Falloff",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.9,
+   "description": "Sphere radius",
+   "label": "2:Radius",
+   "max": 1,
+   "min": 0,
+   "name": "r",
+   "short_description": "Radius",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "Distortion amount",
+   "label": "Amount",
+   "max": 1,
+   "min": 0,
+   "name": "a",
+   "short_description": "Amount",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Location of the sphere center",
+   "label": "Center X",
+   "max": 1,
+   "min": -1,
+   "name": "cx",
+   "short_description": "Center.x",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Location of the sphere center",
+   "label": "Center Y",
+   "max": 1,
+   "min": -1,
+   "name": "cy",
+   "short_description": "Center.y",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Distorts an image as if it was wrapped around a sphere",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/spherize.mmg"
+ },
+ "type_version": 1
+}

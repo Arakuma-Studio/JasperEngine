@@ -10,6 +10,7 @@
 // first. The engine's copy lives in the shared engine, the editor's in this binary.
 
 #include <gtest/gtest.h>
+#include "stream/UpstreamParticles.h"
 
 #include "support/TextureCorpus.h"
 

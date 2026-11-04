@@ -1,0 +1,570 @@
+{
+ "connections": [
+  {
+   "from": "colorize",
+   "from_port": 0.0,
+   "to": "_2",
+   "to_port": 0.0
+  },
+  {
+   "from": "_2",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 0.0
+  },
+  {
+   "from": "uniform_greyscale",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 2.0
+  },
+  {
+   "from": "uniform_greyscale_2",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 1.0
+  },
+  {
+   "from": "combine",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 1.0
+  },
+  {
+   "from": "uniform_greyscale_3",
+   "from_port": 0.0,
+   "to": "combine",
+   "to_port": 0.0
+  },
+  {
+   "from": "normal_map",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 3.0
+  },
+  {
+   "from": "uniform",
+   "from_port": 0.0,
+   "to": "gen_outputs",
+   "to_port": 2.0
+  },
+  {
+   "from": "colorize_2",
+   "from_port": 0.0,
+   "to": "normal_map",
+   "to_port": 0.0
+  },
+  {
+   "from": "noise",
+   "from_port": 0.0,
+   "to": "blend",
+   "to_port": 1.0
+  },
+  {
+   "from": "scratches",
+   "from_port": 0.0,
+   "to": "blend",
+   "to_port": 0.0
+  },
+  {
+   "from": "blend",
+   "from_port": 0.0,
+   "to": "colorize_2",
+   "to_port": 0.0
+  },
+  {
+   "from": "graph_2",
+   "from_port": 0.0,
+   "to": "colorize",
+   "to_port": 0.0
+  }
+ ],
+ "description": "",
+ "format": 1,
+ "id": "graph_workflow_materials_marble",
+ "inputs": [],
+ "kind": "graph",
+ "name": "Marble",
+ "nodes": [
+  {
+   "id": "uniform_greyscale_2",
+   "parameters": {
+    "color": 0.15
+   },
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "uniform_greyscale",
+   "parameters": {
+    "color": 0.0
+   },
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "_2",
+   "parameters": {
+    "c1": {
+     "a": 1.0,
+     "b": 1.0,
+     "g": 1.0,
+     "r": 1.0,
+     "type": "Color"
+    },
+    "c2": {
+     "a": 1.0,
+     "b": 0.0,
+     "g": 0.0,
+     "r": 0.0,
+     "type": "Color"
+    }
+   },
+   "shader": {
+    "code": [],
+    "functions": [],
+    "inputs": [
+     {
+      "default": "$uv.x",
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [],
+    "outputs": [
+     {
+      "expr": "mix($c1, $c2, $in($uv))",
+      "type": "rgba"
+     }
+    ],
+    "parameters": [
+     {
+      "default": {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "r": 0.0
+      },
+      "label": "Color 1",
+      "name": "c1",
+      "type": "color"
+     },
+     {
+      "default": {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "r": 1.0
+      },
+      "label": "Color 2",
+      "name": "c2",
+      "type": "color"
+     }
+    ]
+   }
+  },
+  {
+   "id": "colorize",
+   "parameters": {
+    "gradient": {
+     "interpolation": 1.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 0.0,
+       "r": 1.0
+      },
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.090909,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.336364,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 1.0,
+       "g": 1.0,
+       "pos": 0.390909,
+       "r": 1.0
+      },
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.436364,
+       "r": 0.0
+      }
+     ],
+     "type": "Gradient"
+    }
+   },
+   "type": "colorize"
+  },
+  {
+   "id": "combine",
+   "parameters": {
+    "color": {
+     "a": 1.0,
+     "b": 1.0,
+     "g": 1.0,
+     "r": 1.0,
+     "type": "Color"
+    },
+    "name": 0.0
+   },
+   "type": "combine"
+  },
+  {
+   "id": "uniform_greyscale_3",
+   "parameters": {
+    "color": 1.0
+   },
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "normal_map",
+   "parameters": {
+    "amount": 0.5,
+    "param0": 11.0,
+    "param1": 2.0,
+    "param2": 0.0,
+    "param3": 0.0,
+    "param4": 0.0,
+    "size": 4.0
+   },
+   "type": "normal_map"
+  },
+  {
+   "id": "uniform",
+   "parameters": {
+    "color": {
+     "a": 1.0,
+     "b": 0.0,
+     "g": 0.0,
+     "r": 0.0,
+     "type": "Color"
+    }
+   },
+   "type": "uniform"
+  },
+  {
+   "id": "scratches",
+   "parameters": {
+    "Randomness": 0.5,
+    "angle": -1.0,
+    "layers": 10.0,
+    "length": 0.05,
+    "randomness": 1.0,
+    "waviness": 0.29,
+    "width": 0.002
+   },
+   "type": "scratches"
+  },
+  {
+   "id": "colorize_2",
+   "parameters": {
+    "gradient": {
+     "interpolation": 1.0,
+     "points": [
+      {
+       "a": 1.0,
+       "b": 0.0,
+       "g": 0.0,
+       "pos": 0.0,
+       "r": 0.0
+      },
+      {
+       "a": 1.0,
+       "b": 0.015625,
+       "g": 0.015625,
+       "pos": 1.0,
+       "r": 0.015625
+      }
+     ],
+     "type": "Gradient"
+    }
+   },
+   "type": "colorize"
+  },
+  {
+   "id": "noise",
+   "parameters": {
+    "density": 0.5,
+    "size": 10.0
+   },
+   "type": "noise"
+  },
+  {
+   "id": "blend",
+   "parameters": {
+    "amount": 0.99,
+    "blend_type": 0.0
+   },
+   "type": "blend"
+  },
+  {
+   "graph": {
+    "connections": [
+     {
+      "from": "perlin",
+      "from_port": 0.0,
+      "to": "transform",
+      "to_port": 1.0
+     },
+     {
+      "from": "perlin",
+      "from_port": 0.0,
+      "to": "transform",
+      "to_port": 2.0
+     },
+     {
+      "from": "perlin",
+      "from_port": 0.0,
+      "to": "transform",
+      "to_port": 0.0
+     },
+     {
+      "from": "transform",
+      "from_port": 0.0,
+      "to": "gen_outputs",
+      "to_port": 0.0
+     }
+    ],
+    "inputs": [],
+    "nodes": [
+     {
+      "id": "transform",
+      "parameters": {
+       "repeat": true,
+       "rotate": 0.0,
+       "scale_x": 1.0,
+       "scale_y": 1.0,
+       "translate_x": 0.5,
+       "translate_y": 0.5
+      },
+      "type": "transform"
+     },
+     {
+      "id": "perlin",
+      "parameters": {
+       "iterations": 8.0,
+       "persistence": 0.5,
+       "scale_x": 8.0,
+       "scale_y": 8.0
+      },
+      "type": "perlin"
+     }
+    ],
+    "outputs": [
+     {
+      "description": "",
+      "group_size": 0,
+      "label": "port0",
+      "name": "port0",
+      "type": "rgba"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 8.0,
+      "label": "Scale X",
+      "links": [
+       {
+        "node": "perlin",
+        "param": "scale_x"
+       }
+      ],
+      "max": 32,
+      "min": 1,
+      "name": "param0",
+      "step": 1,
+      "type": "float"
+     },
+     {
+      "default": 8.0,
+      "label": "Scale Y",
+      "links": [
+       {
+        "node": "perlin",
+        "param": "scale_y"
+       }
+      ],
+      "max": 32,
+      "min": 1,
+      "name": "param1",
+      "step": 1,
+      "type": "float"
+     },
+     {
+      "default": 8.0,
+      "label": "Iterations",
+      "links": [
+       {
+        "node": "perlin",
+        "param": "iterations"
+       }
+      ],
+      "max": 10,
+      "min": 1,
+      "name": "param2",
+      "step": 1,
+      "type": "float"
+     },
+     {
+      "default": 0.5,
+      "label": "Persistance",
+      "links": [
+       {
+        "node": "perlin",
+        "param": "persistence"
+       }
+      ],
+      "max": 1,
+      "min": 0,
+      "name": "param3",
+      "step": 0.05,
+      "type": "float"
+     },
+     {
+      "default": 0.5,
+      "label": "Warp X",
+      "links": [
+       {
+        "node": "transform",
+        "param": "translate_x"
+       }
+      ],
+      "max": 1,
+      "min": -1,
+      "name": "param4",
+      "step": 0.005,
+      "type": "float"
+     },
+     {
+      "default": 0.5,
+      "label": "Warp Y",
+      "links": [
+       {
+        "node": "transform",
+        "param": "translate_y"
+       }
+      ],
+      "max": 1,
+      "min": -1,
+      "name": "param5",
+      "step": 0.005,
+      "type": "float"
+     }
+    ]
+   },
+   "id": "graph_2",
+   "parameters": {
+    "param0": 8.0,
+    "param1": 8.0,
+    "param2": 8.0,
+    "param3": 0.5,
+    "param4": 0.5,
+    "param5": 0.5
+   }
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "",
+   "group_size": 4.0,
+   "label": "Albedo",
+   "name": "Albedo",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "ORM",
+   "name": "ORM",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Emission",
+   "name": "Emission",
+   "type": "rgb"
+  },
+  {
+   "description": "",
+   "group_size": 0,
+   "label": "Normal",
+   "name": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "a": 1.0,
+    "b": 1.0,
+    "g": 1.0,
+    "r": 1.0,
+    "type": "Color"
+   },
+   "label": "Color 1",
+   "links": [
+    {
+     "node": "_2",
+     "param": "c1"
+    }
+   ],
+   "name": "param0",
+   "type": "color"
+  },
+  {
+   "default": {
+    "a": 1.0,
+    "b": 0.0,
+    "g": 0.0,
+    "r": 0.0,
+    "type": "Color"
+   },
+   "label": "Color 2",
+   "links": [
+    {
+     "node": "_2",
+     "param": "c2"
+    }
+   ],
+   "name": "param1",
+   "type": "color"
+  },
+  {
+   "default": 2.0,
+   "label": "Scratches",
+   "links": [
+    {
+     "node": "normal_map",
+     "param": "param1"
+    }
+   ],
+   "max": 2,
+   "min": 0,
+   "name": "param2",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "material_maker/library/base.json"
+ },
+ "type_version": 1
+}

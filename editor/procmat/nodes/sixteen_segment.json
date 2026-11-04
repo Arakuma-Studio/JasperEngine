@@ -1,0 +1,152 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "all_seg",
+  "xvisd_ascii",
+  "xvisd_custom"
+ ],
+ "id": "sixteen_segment",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "Map that affects the bevel parameter",
+   "label": "7:",
+   "name": "bevel_map",
+   "short_description": "Bevel Map",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Sixteen Segment Display",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "xvisd_$t($uv, $st, $sl, $b*$bevel_map($uv), $a, $dps, vec2($dpx, $dpy), $da, $dp)",
+   "label": "Display Output",
+   "type": "f"
+  },
+  {
+   "expr": "all_seg($uv, $st, $sl, $dps, vec2($dpx, $dpy), $da)",
+   "label": "Display Mask",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "Specifies how the character code is handled.\n\nASCII: Read as an ASCII code in decimal (32-125), 31 turns all segments on.\n\nCustom: Read as an integer (0-65535). Interpreted as an unsigned 16-bit binary number which determines which segment(s) to turn on (e.g. 4635 = 'M').",
+   "label": "Display",
+   "name": "t",
+   "short_description": "Display Mode",
+   "type": "enum",
+   "values": [
+    {
+     "name": "ASCII",
+     "value": "ascii"
+    },
+    {
+     "name": "Custom",
+     "value": "custom"
+    }
+   ]
+  },
+  {
+   "default": 31,
+   "description": "Character code/configuration for the display. See 'Display Mode' for more details.",
+   "label": "1:",
+   "max": 125,
+   "min": 31,
+   "name": "a",
+   "short_description": "Character Code",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.15,
+   "label": "Gap",
+   "max": 1,
+   "min": 0,
+   "name": "sl",
+   "short_description": "Gap between segments",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.2,
+   "label": "Thickness",
+   "max": 1,
+   "min": 0,
+   "name": "st",
+   "short_description": "Segment Thickness",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.65,
+   "label": "DP Size",
+   "max": 1,
+   "min": 0,
+   "name": "dps",
+   "short_description": "Size of the decimal point",
+   "step": 0.001,
+   "type": "float"
+  },
+  {
+   "default": 0.3,
+   "label": "DP Position",
+   "max": 1,
+   "min": 0,
+   "name": "dpx",
+   "short_description": "Decimal point position on the x axis",
+   "step": 0.001,
+   "type": "float"
+  },
+  {
+   "default": 0.415,
+   "label": "5:",
+   "max": 1,
+   "min": 0,
+   "name": "dpy",
+   "short_description": "Decimal point position on the y axis",
+   "step": 0.001,
+   "type": "float"
+  },
+  {
+   "default": 60,
+   "label": "Diagonals Rotation",
+   "max": 180,
+   "min": 0,
+   "name": "da",
+   "short_description": "Rotation angle for the diagonal segments",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "label": "Bevel",
+   "max": 1,
+   "min": 0,
+   "name": "b",
+   "short_description": "Width of the edge of each segment",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": false,
+   "description": "Toggles the decimal point when the display mode is set to 'custom'",
+   "label": "Decimal Point",
+   "name": "dp",
+   "short_description": "Decimal point (DP) toggle",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Sixteen Segment Display",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sixteen_segment.mmg"
+ },
+ "type_version": 1
+}

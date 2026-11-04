@@ -1,0 +1,74 @@
+{
+ "code": [],
+ "description": "An arc as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdArc"
+ ],
+ "id": "sdarc",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdArc",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The arc as a signed distance function",
+   "expr": "sdArc($uv-vec2(0.5), mod($a1, 360.0)*0.01745329251, mod($a2, 360.0)*0.01745329251, $r1, $r2)",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The first angle of the arc",
+   "label": "Angle 1",
+   "max": 180,
+   "min": -180,
+   "name": "a1",
+   "short_description": "Angle1",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The second angle of the arc",
+   "label": "Angle 2",
+   "max": 180,
+   "min": -180,
+   "name": "a2",
+   "short_description": "Angle2",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The radius of the arc",
+   "label": "Radius",
+   "max": 1,
+   "min": 0,
+   "name": "r1",
+   "short_description": "Radius",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.1,
+   "description": "The width of the shape around the arc",
+   "label": "Width",
+   "max": 1,
+   "min": 0,
+   "name": "r2",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdArc",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdarc.mmg"
+ },
+ "type_version": 1
+}

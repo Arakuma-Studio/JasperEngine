@@ -1,0 +1,261 @@
+{
+ "connections": [
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "buffer",
+   "to_port": 0
+  },
+  {
+   "from": "buffer",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 1
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "switch",
+   "to_port": 0
+  },
+  {
+   "from": "edge_detect_1",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "switch",
+   "from_port": 0,
+   "to": "edge_detect_1",
+   "to_port": 0
+  }
+ ],
+ "description": "Generates a normal map from a height map",
+ "format": 1,
+ "id": "normal_map",
+ "inputs": [
+  {
+   "description": "The input height map",
+   "group_size": 0,
+   "label": "Input",
+   "name": "Bump",
+   "type": "f"
+  }
+ ],
+ "kind": "graph",
+ "name": "Normal Map",
+ "nodes": [
+  {
+   "id": "buffer",
+   "parameters": {
+    "lod": 0,
+    "size": 10
+   },
+   "seed": -32011,
+   "type": "buffer"
+  },
+  {
+   "id": "switch",
+   "parameters": {
+    "choices": 2,
+    "outputs": 1,
+    "source": 1
+   },
+   "seed": -53264,
+   "type": "switch"
+  },
+  {
+   "id": "edge_detect_1",
+   "parameters": {
+    "amount": 1,
+    "format": 0,
+    "size": 10
+   },
+   "seed": -11547,
+   "shader": {
+    "code": [],
+    "functions": [
+     "process_normal_default",
+     "process_normal_directx",
+     "process_normal_opengl"
+    ],
+    "inputs": [
+     {
+      "default": "0.0",
+      "function": true,
+      "label": "",
+      "name": "in",
+      "type": "f"
+     }
+    ],
+    "instance": [
+     "vec3 $(name)_fct(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+     "\tvec3 e = vec3(1.0/$size, -1.0/$size, 0);",
+     "\tvec2 rv = vec2(1.0, -1.0)*$in(uv+e.xy);",
+     "\trv += vec2(-1.0, 1.0)*$in(uv-e.xy);",
+     "\trv += vec2(1.0, 1.0)*$in(uv+e.xx);",
+     "\trv += vec2(-1.0, -1.0)*$in(uv-e.xx);",
+     "\trv += vec2(2.0, 0.0)*$in(uv+e.xz);",
+     "\trv += vec2(-2.0, 0.0)*$in(uv-e.xz);",
+     "\trv += vec2(0.0, 2.0)*$in(uv+e.zx);",
+     "\trv += vec2(0.0, -2.0)*$in(uv-e.zx);",
+     "\treturn vec3(rv, 0.0);",
+     "}"
+    ],
+    "outputs": [
+     {
+      "expr": "process_normal_$format($(name)_fct($uv, _seed_variation_, _controlled_variation_), $amount*$size/128.0)",
+      "type": "rgb"
+     }
+    ],
+    "parameters": [
+     {
+      "default": 0,
+      "label": "",
+      "name": "format",
+      "type": "enum",
+      "values": [
+       {
+        "name": "Default",
+        "value": "default"
+       },
+       {
+        "name": "OpenGL",
+        "value": "opengl"
+       },
+       {
+        "name": "DirectX",
+        "value": "directx"
+       }
+      ]
+     },
+     {
+      "default": 9,
+      "first": 4,
+      "label": "",
+      "last": 12,
+      "name": "size",
+      "type": "size"
+     },
+     {
+      "default": 0.5,
+      "label": "",
+      "max": 2,
+      "min": 0,
+      "name": "amount",
+      "step": 0.01,
+      "type": "float"
+     }
+    ]
+   }
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows the generated normal map",
+   "group_size": 0,
+   "label": "Output",
+   "name": "Normal",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The format of the generated normal map\nIn most cases this should be set to default",
+   "label": "",
+   "links": [
+    {
+     "node": "edge_detect_1",
+     "param": "format"
+    }
+   ],
+   "name": "param2",
+   "short_description": "Format",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Default",
+     "value": "default"
+    },
+    {
+     "name": "OpenGL",
+     "value": "opengl"
+    },
+    {
+     "name": "DirectX",
+     "value": "directx"
+    }
+   ]
+  },
+  {
+   "default": 10,
+   "description": "The resolution of the generated normal map",
+   "first": 4,
+   "label": "",
+   "last": 13,
+   "links": [
+    {
+     "node": "buffer",
+     "param": "size"
+    },
+    {
+     "node": "edge_detect_1",
+     "param": "size"
+    }
+   ],
+   "name": "param0",
+   "short_description": "Resolution",
+   "type": "size"
+  },
+  {
+   "default": 1,
+   "description": "The strength of the normal map filter",
+   "label": "",
+   "links": [
+    {
+     "node": "edge_detect_1",
+     "param": "amount"
+    }
+   ],
+   "max": 2,
+   "min": 0,
+   "name": "param1",
+   "short_description": "Strength",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "configurations": {
+    "False": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 0
+     }
+    ],
+    "True": [
+     {
+      "node": "switch",
+      "param": "source",
+      "value": 1
+     }
+    ]
+   },
+   "default": 1,
+   "description": "When set, a buffer is used to sample the input before the normal map filter",
+   "label": "Buffer",
+   "name": "param4",
+   "short_description": "Buffer",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Normal map",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/normal_map.mmg"
+ },
+ "type_version": 1
+}

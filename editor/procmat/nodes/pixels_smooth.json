@@ -1,0 +1,66 @@
+{
+ "code": [
+  "vec2 $(name_uv)_size = vec2(float($pixels_size.x), float($pixels_size.y));",
+  "ivec2 $(name_uv)_floor = ivec2(floor($(name_uv)_size*$uv-vec2(0.5, 0.5)));",
+  "vec2 $(name_uv)_fract = fract($(name_uv)_size*$uv-vec2(0.5, 0.5));",
+  "vec4 $(name_uv)_color0 = $pixels($(name_uv)_floor);",
+  "vec4 $(name_uv)_color1 = $pixels($(name_uv)_floor+ivec2(1, 0));",
+  "vec4 $(name_uv)_color2 = $pixels($(name_uv)_floor+ivec2(0, 1));",
+  "vec4 $(name_uv)_color3 = $pixels($(name_uv)_floor+ivec2(1, 1));"
+ ],
+ "description": "Draws a tiny image with pixel smoothing",
+ "format": 1,
+ "functions": [],
+ "id": "pixels_smooth",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Smooth Pixels",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "mix(mix($(name_uv)_color0, $(name_uv)_color1, $(name_uv)_fract.x), mix($(name_uv)_color2, $(name_uv)_color3, $(name_uv)_fract.x), $(name_uv)_fract.y)",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "bpp": 1,
+    "h": 8,
+    "pl": [
+     {
+      "a": 1,
+      "b": 0.5,
+      "g": 0.5,
+      "r": 0.5
+     },
+     {
+      "a": 1,
+      "b": 1,
+      "g": 1,
+      "r": 1
+     }
+    ],
+    "px": [
+     42,
+     42
+    ],
+    "type": "Pixels",
+    "w": 8
+   },
+   "description": "Pixel data of the image",
+   "label": "",
+   "name": "pixels",
+   "short_description": "Pixels",
+   "type": "pixels"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/pixels_smooth.mmg"
+ },
+ "type_version": 1
+}

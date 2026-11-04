@@ -1,0 +1,65 @@
+{
+ "code": [
+  "vec4 $(name_uv)_bb = $in($uv);"
+ ],
+ "description": "A fill companion node that fills each area with a grayscale value that depends on its size",
+ "format": 1,
+ "functions": [],
+ "id": "fill_to_size2",
+ "inputs": [
+  {
+   "default": "vec4(0.0)",
+   "description": "The input fill data, to be connected to the output of a Fill node",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "fill"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Fill to Size",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated output image",
+   "expr": "$formula",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The size value to be used (area, width, height or maximum between width and height)",
+   "label": "",
+   "name": "formula",
+   "short_description": "Size",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Area",
+     "value": "sqrt($(name_uv)_bb.z*$(name_uv)_bb.w)"
+    },
+    {
+     "name": "Width",
+     "value": "$(name_uv)_bb.z"
+    },
+    {
+     "name": "Height",
+     "value": "$(name_uv)_bb.w"
+    },
+    {
+     "name": "max(W, H)",
+     "value": "max($(name_uv)_bb.z, $(name_uv)_bb.w)"
+    }
+   ]
+  }
+ ],
+ "short_description": "Fill to size",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fill_to_size2.mmg"
+ },
+ "type_version": 1
+}

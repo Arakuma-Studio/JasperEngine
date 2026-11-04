@@ -1,0 +1,373 @@
+{
+ "connections": [
+  {
+   "from": "scale",
+   "from_port": 0,
+   "to": "translate",
+   "to_port": 0
+  },
+  {
+   "from": "scale",
+   "from_port": 0,
+   "to": "translate_2",
+   "to_port": 0
+  },
+  {
+   "from": "gen_inputs",
+   "from_port": 0,
+   "to": "scale",
+   "to_port": 0
+  },
+  {
+   "from": "scale",
+   "from_port": 0,
+   "to": "blend",
+   "to_port": 0
+  },
+  {
+   "from": "translate",
+   "from_port": 0,
+   "to": "blend",
+   "to_port": 1
+  },
+  {
+   "from": "translate_5",
+   "from_port": 0,
+   "to": "blend",
+   "to_port": 2
+  },
+  {
+   "from": "blend",
+   "from_port": 0,
+   "to": "blend_2",
+   "to_port": 0
+  },
+  {
+   "from": "translate_5",
+   "from_port": 0,
+   "to": "rotate",
+   "to_port": 0
+  },
+  {
+   "from": "rotate",
+   "from_port": 0,
+   "to": "blend_2",
+   "to_port": 2
+  },
+  {
+   "from": "translate_2",
+   "from_port": 0,
+   "to": "blend_2",
+   "to_port": 1
+  },
+  {
+   "from": "translate_5",
+   "from_port": 0,
+   "to": "rotate_2",
+   "to_port": 0
+  },
+  {
+   "from": "rotate_2",
+   "from_port": 0,
+   "to": "blend_3",
+   "to_port": 2
+  },
+  {
+   "from": "blend_2",
+   "from_port": 0,
+   "to": "blend_3",
+   "to_port": 0
+  },
+  {
+   "from": "translate_3",
+   "from_port": 0,
+   "to": "blend_3",
+   "to_port": 1
+  },
+  {
+   "from": "translate_5",
+   "from_port": 0,
+   "to": "rotate_3",
+   "to_port": 0
+  },
+  {
+   "from": "rotate_3",
+   "from_port": 0,
+   "to": "blend_4",
+   "to_port": 2
+  },
+  {
+   "from": "blend_3",
+   "from_port": 0,
+   "to": "blend_4",
+   "to_port": 0
+  },
+  {
+   "from": "translate_4",
+   "from_port": 0,
+   "to": "blend_4",
+   "to_port": 1
+  },
+  {
+   "from": "blend_4",
+   "from_port": 0,
+   "to": "transform2",
+   "to_port": 0
+  },
+  {
+   "from": "transform2",
+   "from_port": 0,
+   "to": "gen_outputs",
+   "to_port": 0
+  },
+  {
+   "from": "blend_2",
+   "from_port": 0,
+   "to": "translate_3",
+   "to_port": 0
+  },
+  {
+   "from": "blend_2",
+   "from_port": 0,
+   "to": "translate_4",
+   "to_port": 0
+  },
+  {
+   "from": "uniform_greyscale",
+   "from_port": 0,
+   "to": "tones_step",
+   "to_port": 0
+  },
+  {
+   "from": "tones_step",
+   "from_port": 0,
+   "to": "math",
+   "to_port": 0
+  },
+  {
+   "from": "math",
+   "from_port": 0,
+   "to": "translate_5",
+   "to_port": 0
+  }
+ ],
+ "description": "Creates a tileable version of its input image by moving different parts around to hide seams.",
+ "format": 1,
+ "id": "make_tileable_square",
+ "inputs": [
+  {
+   "description": "The image to be made tileable",
+   "group_size": 0,
+   "label": "Input",
+   "name": "in",
+   "type": "rgba"
+  }
+ ],
+ "kind": "graph",
+ "name": "Make Tileable Square",
+ "nodes": [
+  {
+   "generic_size": 1,
+   "id": "translate_2",
+   "parameters": {
+    "translate_x": -1,
+    "translate_y": 0
+   },
+   "seed": 0.0,
+   "type": "translate"
+  },
+  {
+   "generic_size": 1,
+   "id": "translate_3",
+   "parameters": {
+    "translate_x": 0,
+    "translate_y": 1
+   },
+   "seed": 0.0,
+   "type": "translate"
+  },
+  {
+   "generic_size": 1,
+   "id": "translate_4",
+   "parameters": {
+    "translate_x": 0,
+    "translate_y": -1
+   },
+   "seed": 0.0,
+   "type": "translate"
+  },
+  {
+   "generic_size": 1,
+   "id": "translate",
+   "parameters": {
+    "translate_x": 1,
+    "translate_y": 0
+   },
+   "seed": 0.0,
+   "type": "translate"
+  },
+  {
+   "generic_size": 1,
+   "id": "translate_5",
+   "parameters": {
+    "translate_x": 0.5,
+    "translate_y": 0
+   },
+   "seed": 0.0,
+   "type": "translate"
+  },
+  {
+   "generic_size": 1,
+   "id": "scale",
+   "parameters": {
+    "cx": 0,
+    "cy": 0,
+    "scale_x": "1.0+$fw",
+    "scale_y": "1.0+$fw"
+   },
+   "seed": 0.0,
+   "type": "scale"
+  },
+  {
+   "id": "blend",
+   "parameters": {
+    "amount": 1,
+    "blend_type": 0
+   },
+   "seed": 0.0,
+   "type": "blend"
+  },
+  {
+   "id": "tones_step",
+   "parameters": {
+    "invert": true,
+    "value": 0.5,
+    "width": "$fw"
+   },
+   "seed": 0.0,
+   "type": "tones_step"
+  },
+  {
+   "id": "blend_2",
+   "parameters": {
+    "amount": 1,
+    "blend_type": 0
+   },
+   "seed": 0.0,
+   "type": "blend"
+  },
+  {
+   "generic_size": 1,
+   "id": "rotate",
+   "parameters": {
+    "cx": 0,
+    "cy": 0,
+    "rotate": 180
+   },
+   "seed": 0.0,
+   "type": "rotate"
+  },
+  {
+   "generic_size": 1,
+   "id": "rotate_2",
+   "parameters": {
+    "cx": 0,
+    "cy": 0,
+    "rotate": 90
+   },
+   "seed": 0.0,
+   "type": "rotate"
+  },
+  {
+   "id": "blend_3",
+   "parameters": {
+    "amount": 1,
+    "blend_type": 0
+   },
+   "seed": 0.0,
+   "type": "blend"
+  },
+  {
+   "id": "blend_4",
+   "parameters": {
+    "amount": 1,
+    "blend_type": 0
+   },
+   "seed": 0.0,
+   "type": "blend"
+  },
+  {
+   "generic_size": 1,
+   "id": "rotate_3",
+   "parameters": {
+    "cx": 0,
+    "cy": 0,
+    "rotate": -90
+   },
+   "seed": 0.0,
+   "type": "rotate"
+  },
+  {
+   "generic_size": 1,
+   "id": "transform2",
+   "parameters": {
+    "mode": 1,
+    "rotate": 0,
+    "scale_x": 1,
+    "scale_y": 1,
+    "translate_x": 0,
+    "translate_y": 0
+   },
+   "seed": 0.0,
+   "type": "transform2"
+  },
+  {
+   "id": "uniform_greyscale",
+   "parameters": {
+    "color": "$uv.x"
+   },
+   "seed": 0.0,
+   "type": "uniform_greyscale"
+  },
+  {
+   "id": "math",
+   "parameters": {
+    "clamp": false,
+    "default_in1": 0,
+    "default_in2": 0,
+    "op": 20
+   },
+   "seed": 0.0,
+   "type": "math"
+  }
+ ],
+ "notices": [],
+ "outputs": [
+  {
+   "description": "A tileable version of the input image",
+   "group_size": 0,
+   "label": "Output",
+   "name": "out",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.1,
+   "label": "Width",
+   "max": 1,
+   "min": 0,
+   "name": "fw",
+   "named": true,
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Make Tileable Square",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/make_tileable_square.mmg"
+ },
+ "type_version": 1
+}

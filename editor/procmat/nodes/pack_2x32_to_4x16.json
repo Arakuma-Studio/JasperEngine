@@ -1,0 +1,36 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "pack_2x32_to_4x16"
+ ],
+ "id": "pack_2x32_to_4x16",
+ "inputs": [
+  {
+   "default": "vec3(1.0)",
+   "function": true,
+   "label": "",
+   "name": "source",
+   "type": "rgb"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "pack 2x32 to 4x16",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "pack_2x32_to_4x16($source($uv).xy)",
+   "label": "source_big",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/pack_2x32_to_4x16.mmg"
+ },
+ "type_version": 1
+}

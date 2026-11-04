@@ -1,0 +1,61 @@
+{
+ "code": [],
+ "description": "Draws a grayscale sine wave pattern",
+ "format": 1,
+ "functions": [],
+ "id": "sine_wave",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Sine Wave",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a grayscale image of a sine wave",
+   "expr": "1.0-abs(2.0*($uv.y-0.5)-$amplitude*sin(($frequency*$uv.x+$phase)*6.28318530718))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "description": "The amplitude of the sine wave function",
+   "label": "Amplitude",
+   "max": 1,
+   "min": 0,
+   "name": "amplitude",
+   "short_description": "Amplitude",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "The frequency of the sine wave function (i.e. the number of oscillations shown in the generated image).",
+   "label": "Frequency",
+   "max": 16,
+   "min": 0,
+   "name": "frequency",
+   "short_description": "Frequency",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "The phase of the sine wave function",
+   "label": "Phase",
+   "max": 1,
+   "min": 0,
+   "name": "phase",
+   "short_description": "Phase",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Sine wave pattern",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sine_wave.mmg"
+ },
+ "type_version": 1
+}

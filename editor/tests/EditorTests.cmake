@@ -14,6 +14,13 @@ file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/reflect/legacy/*.cpp)
 # the reflection codec's benchmark against the legacy codecs (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
+# the CPU tier's interpreter (S90 R11): only the tests and procmat-sweep run it until the evaluator
+# of S90 M5 joins it to the editor. Its opcode names are short, so it keeps its own unity unit.
+set(JASPERENGINE_SPIRV_INTERPRETER ${CMAKE_SOURCE_DIR}/${EDITOR_DIR}/procmat/SpirvInterpreter.cpp)
+list(APPEND EDITOR_TEST_SOURCES ${JASPERENGINE_SPIRV_INTERPRETER})
+set_source_files_properties(${JASPERENGINE_SPIRV_INTERPRETER} PROPERTIES
+    SKIP_UNITY_BUILD_INCLUSION ON
+    INCLUDE_DIRECTORIES ${CMAKE_SOURCE_DIR}/engine/libs/shadercompiler/libs/glslang)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
 # crash handler (editor/tests/util/LogCrashHelper.cpp)
@@ -118,6 +125,7 @@ endif()
 
 # The engine's include directories and definitions, for tests that compile the C++ the editor
 # generates for exports (LineRendererStreamTest: Factory's component code against the engine
-# headers, with the compiler that builds the tests)
+# headers, with the compiler that builds the tests; as a game's code sees them, every component
+# through Scene.h, without the engine's own JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES)
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
-"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")
+"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<FILTER:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,EXCLUDE,^JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES$>,\n>\n")

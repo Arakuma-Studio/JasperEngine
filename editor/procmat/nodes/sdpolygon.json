@@ -1,0 +1,72 @@
+{
+ "code": [],
+ "description": "A polygon as a signed distance function",
+ "format": 1,
+ "functions": [],
+ "id": "sdpolygon",
+ "inputs": [],
+ "instance": [
+  "float sdPolygon_$(name)(vec2 p, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec2 v[] = $polygon;",
+  "\tint l = v.length();",
+  "\tfloat d = dot(p-v[0],p-v[0]);",
+  "\tfloat s = 1.0;",
+  "\tint j = l-1;",
+  "\tfor(int i=0; i<l; i++)",
+  "\t{",
+  "\t\tvec2 e = v[j] - v[i];",
+  "\t\tvec2 w =\tp - v[i];",
+  "\t\tvec2 b = w - e*clamp( dot(w,e)/dot(e,e), 0.0, 1.0 );",
+  "\t\td = min( d, dot(b,b) );",
+  "\t\tbvec3 c = bvec3(p.y>=v[i].y,p.y<v[j].y,e.x*w.y>e.y*w.x);",
+  "\t\tif( all(c) || all(not(c)) ) s*=-1.0;",
+  "\t\tj=i;",
+  "\t}",
+  "\treturn s*sqrt(d);",
+  "}",
+  ""
+ ],
+ "kind": "shader",
+ "name": "sdPolygon",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The polygon as a signed distance function",
+   "expr": "sdPolygon_$(name)($uv, _seed_variation_, _controlled_variation_)",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "points": [
+     {
+      "x": 0.2,
+      "y": 0.2
+     },
+     {
+      "x": 0.4,
+      "y": 0.7
+     },
+     {
+      "x": 0.7,
+      "y": 0.4
+     }
+    ],
+    "type": "Polygon"
+   },
+   "description": "The polygon to be drawn",
+   "label": "",
+   "name": "polygon",
+   "short_description": "Polygon",
+   "type": "polygon"
+  }
+ ],
+ "short_description": "sdPolygon",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdpolygon.mmg"
+ },
+ "type_version": 1
+}

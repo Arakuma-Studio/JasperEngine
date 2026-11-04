@@ -1,0 +1,90 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "adjust_levels"
+ ],
+ "id": "tones",
+ "inputs": [
+  {
+   "default": "vec4(1.0)",
+   "label": "",
+   "name": "input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Levels",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "adjust_levels($input($uv), $in_min, $in_mid, $in_max, $out_min, $out_max)",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "a": 0,
+    "b": 0,
+    "g": 0,
+    "r": 0
+   },
+   "label": "",
+   "name": "in_min",
+   "type": "color"
+  },
+  {
+   "default": {
+    "a": 0.498039,
+    "b": 0.498039,
+    "g": 0.498039,
+    "r": 0.498039
+   },
+   "label": "",
+   "name": "in_mid",
+   "type": "color"
+  },
+  {
+   "default": {
+    "a": 1,
+    "b": 1,
+    "g": 1,
+    "r": 1
+   },
+   "label": "",
+   "name": "in_max",
+   "type": "color"
+  },
+  {
+   "default": {
+    "a": 1,
+    "b": 0,
+    "g": 0,
+    "r": 0
+   },
+   "label": "",
+   "name": "out_min",
+   "type": "color"
+  },
+  {
+   "default": {
+    "a": 1,
+    "b": 1,
+    "g": 1,
+    "r": 1
+   },
+   "label": "",
+   "name": "out_max",
+   "type": "color"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/tones.mmg"
+ },
+ "type_version": 1
+}

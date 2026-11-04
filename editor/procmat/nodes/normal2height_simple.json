@@ -1,0 +1,87 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [],
+ "id": "normal2height_simple",
+ "inputs": [
+  {
+   "default": "vec3(0.5)",
+   "function": true,
+   "label": "",
+   "name": "nm",
+   "type": "rgb"
+  }
+ ],
+ "instance": [
+  "float find_height_$name(vec2 uv, vec2 center, float center_height, int steps, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tvec2 p;",
+  "\tfloat height = center_height;",
+  "\tfloat sum = 0.0;",
+  "\tfor (int i = 0; i < steps; ++i) {",
+  "\t\tp = mix(center, uv, float(i)/float(steps));",
+  "\t\tvec2 nm = $nm(p).xy-vec2(0.5);",
+  "\t\theight += $scale*dot((uv-center)/float(steps), nm);",
+  "\t}",
+  "\treturn height;",
+  "}",
+  "",
+  "float height_$name(vec2 uv, float _seed_variation_, vec4 _controlled_variation_) {",
+  "\tconst vec2 c = vec2(0.5);",
+  "\tfloat center_height = $center_height;",
+  "\tfloat l = length(uv-c)*$size;",
+  "\tfloat lx = abs(uv.x-c.x)*$size;",
+  "\tfloat ly = abs(uv.y-c.y)*$size;",
+  "\tfloat h = find_height_$name(uv, c, center_height, int(l)+1, _seed_variation_, _controlled_variation_);",
+  "\tfloat hxi = find_height_$name(vec2(c.x, uv.y), c, center_height, int(ly)+1, _seed_variation_, _controlled_variation_);",
+  "\tfloat hx = find_height_$name(uv, vec2(c.x, uv.y), hxi, int(lx)+1, _seed_variation_, _controlled_variation_);",
+  "\tfloat hyi = find_height_$name(vec2(uv.x, c.y), c, center_height, int(lx)+1, _seed_variation_, _controlled_variation_);",
+  "\tfloat hy = find_height_$name(uv, vec2(uv.x, c.y), hyi, int(ly)+1, _seed_variation_, _controlled_variation_);",
+  "\treturn 0.5*h+0.25*(hx+hy);",
+  "}",
+  ""
+ ],
+ "kind": "shader",
+ "name": "Simple Normal to Height",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "height_$name($uv, _seed_variation_, _controlled_variation_)",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 10,
+   "first": 6,
+   "label": "Size",
+   "last": 12,
+   "name": "size",
+   "type": "size"
+  },
+  {
+   "default": 0.5,
+   "label": "Base Height",
+   "max": 1,
+   "min": 0,
+   "name": "center_height",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 20,
+   "label": "Strength",
+   "max": 50,
+   "min": 0,
+   "name": "scale",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/normal2height_simple.mmg"
+ },
+ "type_version": 1
+}

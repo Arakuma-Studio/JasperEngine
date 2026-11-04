@@ -2,6 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender3D.h"
+#include "component/AudioSourceComponent.h"
+#include "component/BoneComponent.h"
+#include "component/CharacterControllerComponent.h"
+#include "component/Joint3DComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "object/Sprite.h"
+#include "subsystem/PhysicsSystem.h"
+#include "subsystem/RenderSystem.h"
 #include "profiler/Profile.h"
 #include "pose/PoseViewport.h"
 

@@ -1,0 +1,115 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "roman2"
+ ],
+ "id": "roman_numerals3",
+ "inputs": [
+  {
+   "default": "1.0",
+   "description": "Map that affects the number parameter",
+   "label": "4:",
+   "name": "number_map",
+   "short_description": "Number Map",
+   "type": "f"
+  },
+  {
+   "default": "1.0",
+   "description": "Map that affects the bevel parameter",
+   "label": "5:",
+   "name": "bevel_map",
+   "short_description": "Bevel Map",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Roman Numerals",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "roman2($uv, $w, $h, int($n*$number_map($uv)), $bevel*$bevel_map($uv), $r*min($w, $h), (1.0+$s)*$w, $a)",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0.5,
+   "label": "Width",
+   "max": 1,
+   "min": 0,
+   "name": "w",
+   "short_description": "Glyph Width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "label": "Height",
+   "max": 1,
+   "min": 0,
+   "name": "h",
+   "short_description": "Glyph Height",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "label": "Thickness",
+   "max": 1,
+   "min": 0,
+   "name": "r",
+   "short_description": "Glyph Thickness",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "label": "Number",
+   "max": 399,
+   "min": 1,
+   "name": "n",
+   "short_description": "Roman number to display",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "label": "Bevel",
+   "max": 1,
+   "min": 0,
+   "name": "bevel",
+   "short_description": "Glyph edge width",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "label": "Spacing",
+   "max": 1,
+   "min": 0,
+   "name": "s",
+   "short_description": "Spacing between glyphs",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "label": "Align",
+   "max": 1,
+   "min": 0,
+   "name": "a",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Roman Numerals",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/roman_numerals3.mmg"
+ },
+ "type_version": 1
+}

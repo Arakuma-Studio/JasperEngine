@@ -12,6 +12,7 @@
 // their ages) are.
 
 #include "Stream.h"
+#include "profiler/Profiler.h"
 #include "StreamMigrations.h"
 #include "Scene.h"
 #include "component/ParticleSystemComponent.h"

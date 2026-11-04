@@ -1,0 +1,41 @@
+{
+ "code": [
+  "vec3 $(name_uv)_rand = $in($uv);"
+ ],
+ "description": "Takes a set of RGB color ids as input and generates a new set of random values.",
+ "format": 1,
+ "functions": [
+  "rand",
+  "rand3"
+ ],
+ "id": "randomize",
+ "inputs": [
+  {
+   "default": "vec3(0.0)",
+   "description": "Color ids",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgb"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Randomize",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The randomized set of color ids.",
+   "expr": "rand3( vec2( float($seed) + $(name_uv)_rand.x, rand( $(name_uv)_rand.yz ) ) )",
+   "label": "Output",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Randomize",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/randomize.mmg"
+ },
+ "type_version": 1
+}

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ParticlePreviewRender.h"
+#include "component/LightComponent.h"
 
 #include "Engine.h"
 #include "component/ParticleSystemComponent.h"

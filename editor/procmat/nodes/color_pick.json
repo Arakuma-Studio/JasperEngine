@@ -1,0 +1,72 @@
+{
+ "code": [],
+ "description": "Pick colors from an input ID map",
+ "format": 1,
+ "functions": [],
+ "id": "color_pick",
+ "inputs": [
+  {
+   "default": "vec3(1.0)",
+   "description": "The input ID map",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgb"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Color Pick",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Output mask corresponding to the picked color",
+   "expr": "1.0 - clamp((dot(abs($in($uv) - $color#.rgb), vec3(1.0/3.0)) - $threshold) / max($falloff, 0.00001), 0.0, 1.0)",
+   "label": "Output #",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": {
+    "a": 1,
+    "b": 1,
+    "g": 1,
+    "r": 1
+   },
+   "description": "Color to pick from the ID map",
+   "label": "",
+   "name": "color#",
+   "short_description": "Color #",
+   "type": "color"
+  },
+  {
+   "default": 0.01,
+   "description": "Controls the sensitivity of color matching. Higher values will match more colors.",
+   "label": "Threshold",
+   "max": 1,
+   "min": 0,
+   "name": "threshold",
+   "short_description": "Threshold",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0,
+   "description": "Controls the softness of the output mask. Set to 0 to output a binary black/white image.",
+   "label": "Falloff",
+   "max": 1,
+   "min": 0,
+   "name": "falloff",
+   "short_description": "Falloff",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Pick colors",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/color_pick.mmg"
+ },
+ "type_version": 1
+}

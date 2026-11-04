@@ -1,0 +1,46 @@
+{
+ "code": [
+  "vec2 $(name_uv)_size = $in($uv).zw;",
+  "float $(name_uv)orientation = $(name_uv)_size.x < $(name_uv)_size.y ? 0.0 : 1.0;"
+ ],
+ "description": "Outputs the orientation of each bounding box (white: horizontal, black: vertical)",
+ "format": 1,
+ "functions": [],
+ "id": "fill_to_orientation2",
+ "inputs": [
+  {
+   "default": "vec4(1.0)",
+   "description": "The input fill data, to be connected to the output of a Fill node",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "fill"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Fill to Orientation",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The orientation of each bounding box (white: horizontal, black: vertical)",
+   "expr": "$invert ? 1.0 - $(name_uv)orientation : $(name_uv)orientation",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": false,
+   "label": "Invert",
+   "name": "invert",
+   "type": "boolean"
+  }
+ ],
+ "short_description": "Fill to Orientation",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/fill_to_orientation2.mmg"
+ },
+ "type_version": 1
+}
