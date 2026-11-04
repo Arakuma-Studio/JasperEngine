@@ -23,6 +23,7 @@
 #include "texsynth/SynthesisRecipe.h"
 #include "texsynth/SynthesisSession.h"
 #include "util/ProjectChecks.h"
+#include "window/ProjectWindow.h"
 #include "window/TextureSynthesisWindow.h"
 
 #include "imgui.h"
@@ -460,7 +461,9 @@ namespace {
         if (!texture.hasData()) std::exit(13);
         // a replacing Save: released for the new pixels
         if (!window.save(true, written, error) || texture.hasData()) std::exit(14);
-        // (the child's own folders: an exec'd death test runs the test's body again)
+        // (the child's own folders: an exec'd death test runs the test's body again; Save revealed
+        // the output in the Project window, whose thumbnail worker writes under the project)
+        if (ProjectWindow* projectWindow = app.getProjectWindow()) projectWindow->stopThumbnailWork();
         fs::remove_all(dir);
         fs::remove_all(config);
         std::exit(0);
