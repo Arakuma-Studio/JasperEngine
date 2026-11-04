@@ -412,6 +412,18 @@ void SystemRender::setVulkanHostQueryReset(bool enabled){
     SokolSystem::setVulkanHostQueryReset(enabled);
 }
 
+namespace {
+    int vulkanRobustBufferAccess = -1;
+}
+
+void SystemRender::setVulkanRobustBufferAccess(bool enabled){
+    vulkanRobustBufferAccess = enabled ? 1 : 0;
+}
+
+int SystemRender::getVulkanRobustBufferAccess(){
+    return vulkanRobustBufferAccess;
+}
+
 FramebufferRender* SystemRender::getPassPreviewTarget(){
     return SokolPassPreview::target();
 }
