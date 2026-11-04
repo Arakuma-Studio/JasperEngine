@@ -183,6 +183,9 @@ Writing tests (the rest is in `docs/testing.md`; read it before adding one):
 - 4-space indent.
 - Code goes in the `jasperengine::` namespaces.
 - Match the surrounding naming and comment density.
+- Engine and editor sources include each component they use (`engine/core/component/Transform.h`); a header
+  that only names one forward-declares it (`engine/core/ecs/ComponentFwd.h`). `engine/core/Scene.h` and `editor/Project.h` do not
+  bring them; `tools/check_fanout.py` holds the limits (`docs/testing.md`, "Build speed").
 - Comments say why, not what.
 - A new `namespace {}` helper must not reuse a file-scope name from another source of the target:
   unity builds merge them.

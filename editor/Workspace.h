@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "render/SceneDisplaySettings.h"
 #include "Project.h"
 #include "window/GameResolutions.h"
 

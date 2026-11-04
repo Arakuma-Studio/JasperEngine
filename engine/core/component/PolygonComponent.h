@@ -4,6 +4,9 @@
 #ifndef POLYGON_COMPONENT_H
 #define POLYGON_COMPONENT_H
 
+#include "Export.h"
+#include "math/Vector3.h"
+#include "math/Vector4.h"
 #include <vector>
 
 namespace jasperengine{

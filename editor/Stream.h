@@ -4,19 +4,17 @@
 #pragma once
 
 #include "yaml-cpp/yaml.h"
+#include "render/SceneDisplaySettings.h"
 #include "Scene.h"
+#include "ecs/ComponentFwd.h"
 #include "ecs/Entity.h"
 #include "Project.h"
 #include "action/Ease.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
-#include "component/FluidSimulationComponent.h"
 #include "particles/LegacyParticleSystem.h"
-#include "component/TextEffectComponent.h"
-#include "component/TrailRendererComponent.h"
 #include "math/Curve.h"
-#include "component/VideoPlayerComponent.h"
 
 #include <filesystem>
 #include <stdexcept>
@@ -24,6 +22,45 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include "buffer/ExternalBuffer.h"
+#include "buffer/IndexBuffer.h"
+#include "buffer/InterleavedBuffer.h"
+#include "render/LineRibbonBuilder.h"
+#include "util/SpriteFrameData.h"
+#include "util/TextEffects.h"
+
+namespace jasperengine{
+    enum class AlphaTweenTarget;
+    enum class AnchorPreset;
+    enum class AudioSourceAttenuation;
+    enum class AudioSourceState;
+    enum class CanvasGroupRenderMode;
+    enum class FluidOutput;
+    enum class FogType;
+    enum class Joint2DType;
+    enum class Joint3DType;
+    enum class JointAnchorSpace;
+    enum class JointBreakAction;
+    enum class JointMotion;
+    enum class LatticeInterpolation;
+    enum class LatticeJiggleAnchor;
+    enum class LatticeMaskChannel;
+    enum class LatticeOutside;
+    enum class LatticeStage;
+    enum class LayoutGroupType;
+    enum class LightShading;
+    enum class LightType;
+    enum class LineRendererMode : int;
+    enum class ProgressbarType;
+    enum class RigidbodyInterpolation;
+    enum class ScrollbarType;
+    enum class UIDocumentRenderMode;
+    struct Submesh;
+    struct TerrainFoliageLayer;
+    struct TerrainSurfaceLayer;
+    struct TileData;
+    struct TileRectData;
+}
 
 namespace jasperengine::editor {
     class Workspace;

@@ -4,15 +4,16 @@
 #ifndef LIGHT_COMPONENT_H
 #define LIGHT_COMPONENT_H
 
+#include "registry/TagManager.h"
 #include "math/Vector3.h"
-#include "component/CameraComponent.h"
-#include "component/Transform.h"
 #include "render/FramebufferRender.h"
 #include "texture/Texture.h"
 #include "render/shadow/CascadeFit.h"
 #include "render/shadow/ShadowTypes.h"
 #include "Engine.h"
 #include <cmath>
+#include "math/Plane.h"
+#include "render/CameraRender.h"
 
 namespace jasperengine{
 
