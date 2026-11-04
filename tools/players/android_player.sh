@@ -11,7 +11,7 @@
 #                    a release build)
 #   symbols/lib/<abi>/*.so  the same libraries before stripping (the runtime's symbols)
 #
-#   tools/players/android_player.sh <release|development> [OUT] [gles3|vulkan] [variant]
+#   tools/players/android_player.sh <release|development> [OUT] [gles3] [variant]
 #
 # variant: a release variant of engine/player/variants.json (default full; S34 R4)
 #
@@ -23,7 +23,8 @@ FLAVOUR="${1:?release or development}"
 OUT="${2:-build/players-build/android-$FLAVOUR}"
 BACKEND="${3:-gles3}"
 PLAYER_VARIANT="${4:-full}"
-[[ "$BACKEND" == gles3 || "$BACKEND" == vulkan ]] || { echo "backend is gles3 or vulkan (got $BACKEND)" >&2; exit 1; }
+# Android builds have OpenGL ES 3 only (engine/CMakeLists.txt)
+[[ "$BACKEND" == gles3 ]] || { echo "backend is gles3 on Android (got $BACKEND)" >&2; exit 1; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 case "$FLAVOUR" in
     release) TASK=assembleRelease; VARIANT=release ;;
