@@ -355,6 +355,37 @@ CASES = [
         "max_turns": 24,
     },
     {
+        "id": "guard_meshes_load_error",
+        "kind": "guard",
+        "what_happened": "An export fails because a model requires a glTF extension the engine cannot read. The agent must read "
+                         "the model's load findings, tell the user to export the model again without that extension, and not "
+                         "try import settings or edit the .meta / the file (S53 R5: the loader's findings in inspect_models).",
+        "text_at_issue": "Guide meshes 'What the loader finds' (gltf-required-extension: the export fails until the model is "
+                         "exported again without it); inspect_models' load_diagnostics",
+        "source": "synthetic guard (S53 R5, R22)",
+        "files": GAME_FILES,
+        "prompt": "The export fails with something about assets/models/crate.glb. Find out why and tell me what to do; don't "
+                  "change anything yet.",
+        "mocks": [
+            {"tool": "inspect_models", "result": ok(
+                "1 model(s), desktop: 1,200 tris, memory 0.1 MB, download 0.1 MB, 1 cooked, 1 error(s), 0 warning(s).\n"
+                "assets/models/crate.glb: glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; "
+                "it is loaded without it (export the model again without VENDOR_shapes); export fails until it is fixed",
+                {"platform": "desktop", "total": 1, "models": [{"path": "assets/models/crate.glb", "status": "cooked", "issues": [
+                    {"code": "gltf-required-extension", "severity": "error",
+                     "message": "glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; it is loaded "
+                                "without it (export the model again without VENDOR_shapes); export fails until it is fixed"}],
+                    "load_diagnostics": [{"severity": "error", "extension": "VENDOR_shapes", "part": "",
+                                          "message": "glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; it is loaded without it",
+                                          "fix": "export the model again without VENDOR_shapes", "cook_fixes": False}]}]})},
+            {"tool": "reimport_models", "result": ok("Reimported 1 model(s).", {"models": []})},
+        ],
+        "checks": {"calls": ["inspect_models"],
+                   "must_not_call": ["set_model_import_settings", "write_file"], "shell_must_not": [r"\.meta", r"gltfpack"],
+                   "reply_must": [r"VENDOR_shapes", r"(?i)export|re-?export"]},
+        "max_turns": 16,
+    },
+    {
         "id": "bad_game_view_resolution",
         "kind": "bad",
         "what_happened": "Asked for a 20:9 phone view, agents sent configure_game_view {aspect: '20:9'}, got the aspect enum "

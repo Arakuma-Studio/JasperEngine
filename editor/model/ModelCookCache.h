@@ -15,6 +15,7 @@
 #include "model/ModelImportSettings.h"
 
 #include "mcp/McpJson.h"
+#include "subsystem/GltfNormalize.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -31,7 +32,7 @@ namespace jasperengine::editor {
 
     // bumped when the cook's output changes for the same inputs (a pass, the layout it writes,
     // the codec parameters): every model cooks again through the cache key
-    constexpr int kModelCookVersion = 1;
+    constexpr int kModelCookVersion = 2;
 
     // geometry as the GPU holds it
     struct ModelGeometryStats {
@@ -79,6 +80,11 @@ namespace jasperengine::editor {
         std::vector<std::string> sourceExtensions;      // the source's required ones
         std::vector<std::string> keptOrder;             // "Body/1 (blended)": triangle order kept
         std::vector<std::string> warnings;
+        // what the loader finds in the source (S53 R5), and the editor-only extensions the cook
+        // took out of it (R6: Draco, WebP, a Basis texture's PNG source)
+        std::vector<GltfDiagnostic> diagnostics;
+        std::vector<std::string> transcoded;
+        int authoredLodPrimitives = 0;                  // primitives whose levels are MSFT_lod's (R4)
         double cookMs = 0.0;
 
         // "None" or "Up to 0.02% of the model's size"
@@ -86,6 +92,10 @@ namespace jasperengine::editor {
         Json toJson() const;
         static bool fromJson(const Json& json, ModelCookRecord& out);
     };
+
+    // a load finding as the records and MCP write it (severity "error", "warning" or "info")
+    Json modelDiagnosticJson(const GltfDiagnostic& diagnostic);
+    bool modelDiagnosticFromJson(const Json& json, GltfDiagnostic& out);
 
     class ModelCookCache {
     public:

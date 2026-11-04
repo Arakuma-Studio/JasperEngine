@@ -35,7 +35,21 @@ Nodes, meshes, primitives, materials, skins, animations and scenes keep their or
 every accessor its index, so scenes, sub-clip paths and submesh overrides need no change. The cook
 checks this on its own output and refuses to write a file that breaks it. A file it cannot rewrite
 safely (an extension of its own that points at bufferViews) ships as it is, with the reason in the
-Inspector. A file that requires Draco compression fails the cook: re-export it without Draco.
+Inspector.
+
+The cook reads the source as a game would (the loader's normalise step, `docs/model-loading.md`)
+and acts on what it finds:
+
+- **Draco and WebP** (`KHR_draco_mesh_compression`, `EXT_texture_webp`) only the editor decodes:
+  the cook writes the decoded geometry and a PNG of each WebP image, so a build never carries
+  either. A Basis Universal texture (`KHR_texture_basisu`) without a fallback image gets a PNG one
+  in the desktop and mobile cooks.
+- **`MSFT_lod`**: the lower levels whose attributes match the base mesh's become its baked levels
+  (`JE_mesh_lods`, with the file's `MSFT_screencoverage` as each level's `coverage`); the others set
+  how many levels the cook generates and how small the last one gets. Generate LODs Off bakes none.
+- **What the loader reports** (an extension it cannot read, a stream it cannot decode) shows in the
+  Inspector, on the model's badge and in `inspect_models`. An error fails the export naming the
+  file; a warning does not.
 
 ## Settings (the Model Import inspector)
 
@@ -71,7 +85,8 @@ cooked file then requires.
 ### Levels of detail
 
 Baked levels go into the cooked file as `JE_mesh_lods` on each primitive:
-`{"recipe": <int>, "levels": [{"indices": <accessor>, "error": <float>}]}`, levels in order of
+`{"recipe": <int>, "levels": [{"indices": <accessor>, "error": <float>}]}` (an authored level also
+has `"coverage"`, its `MSFT_screencoverage`), levels in order of
 coarseness after LOD 0 (the primitive itself), their indices over the primitive's vertices, `error`
 the simplifier's deviation in mesh units. The extension is listed as used, not required: a reader
 without it draws LOD 0. A scene draws levels with Mesh LOD on. The Inspector's table shows each

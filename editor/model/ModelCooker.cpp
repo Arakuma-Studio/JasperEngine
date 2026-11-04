@@ -5,6 +5,7 @@
 
 #include "model/GltfDocument.h"
 #include "model/MeshDeviation.h"
+#include "model/ModelSourceDecode.h"
 
 #include "pool/MeshLodPool.h"
 #include "util/FileUtils.h"
@@ -171,6 +172,13 @@ namespace {
         int indexType = gltf::UNSIGNED_SHORT;
         std::vector<std::pair<std::vector<uint32_t>, float>> lods;  // indices, error
         std::vector<double> lodDeviation;
+        std::vector<float> lodCoverage;             // MSFT_screencoverage of a level, -1 without
+        // MSFT_lod's lower levels folded into this primitive's vertices (R4): their indices over
+        // them, and the screen coverage each switches at (-1 when the file gives none)
+        std::vector<std::vector<uint32_t>> authored;
+        std::vector<float> authoredCoverage;
+        // MSFT_lod's levels whose attributes differ: their triangle counts, the generated levels' targets
+        std::vector<long long> lodTargets;
     };
 
     struct Stream {
@@ -231,6 +239,9 @@ namespace {
         size_t sourceAccessors = 0;
         long long dedupeRemoved = 0;
         long long dedupeBefore = 0;
+        // folded and target levels by (mesh, primitive), until collect() makes the primitives
+        std::map<std::pair<size_t, size_t>, std::vector<std::pair<std::vector<uint32_t>, float>>> foldedLevels;
+        std::map<std::pair<size_t, size_t>, std::vector<long long>> targetLevels;
 
         bool isCancelled() const { return cancelled && cancelled(); }
         bool collect(std::string& error);
@@ -241,6 +252,7 @@ namespace {
         bool finishIndices(std::string& error);
         void quantize(Group& group);
         void settleIndexRotation(Group& group);
+        bool foldAuthoredLods(const std::vector<GltfLodChain>& chains, std::string& error);
         void buildLods(Group& group);
         std::vector<float> positionsOf(const Group& group) const;
         ModelGeometryStats sourceStats(std::string& error);
@@ -324,8 +336,8 @@ namespace {
                     if (primitive.contains("extensions") && primitive["extensions"].is_object()){
                         for (auto it = primitive["extensions"].begin(); it != primitive["extensions"].end(); ++it){
                             if (it.key() == "KHR_draco_mesh_compression"){
-                                error = request.assetPath + " requires KHR_draco_mesh_compression, which this editor cannot decode: "
-                                        "re-export it without Draco compression";
+                                // takeDraco moved every decoded stream: one left was not decoded
+                                error = request.assetPath + " " + meshLabel(root, m, p) + ": its Draco stream was not decoded";
                                 return false;
                             }
                             if (std::find_if(std::begin(KEPT_PRIMITIVE_EXTENSIONS), std::end(KEPT_PRIMITIVE_EXTENSIONS),
@@ -333,6 +345,16 @@ namespace {
                                 info.foreignExtension = it.key();
                         }
                     }
+                    const auto folded = foldedLevels.find({m, p});
+                    if (folded != foldedLevels.end()){
+                        for (auto& [list, coverage] : folded->second){
+                            info.authored.push_back(std::move(list));
+                            info.authoredCoverage.push_back(coverage);
+                        }
+                    }
+                    const auto targets = targetLevels.find({m, p});
+                    if (targets != targetLevels.end())
+                        info.lodTargets = targets->second;
                     primitives.push_back(std::move(info));
                 }
             }
@@ -523,6 +545,16 @@ namespace {
                 return true;
             }
         }
+        // the folded MSFT_lod levels follow every pass with LOD 0, after it (its vertices first)
+        std::vector<std::pair<size_t, size_t>> levelOf;     // lists past the primitives': (primitive, level)
+        for (size_t i = 0; i < group.primitives.size(); i++){
+            Primitive& primitive = primitives[group.primitives[i]];
+            for (size_t l = 0; l < primitive.authored.size(); l++){
+                lists.push_back(primitive.authored[l]);
+                levelOf.push_back({i, l});
+            }
+        }
+        auto ownerOf = [&](size_t list){ return list < group.primitives.size() ? list : levelOf[list - group.primitives.size()].first; };
         const bool reorder = settings.optimizeMesh != OptimizeMesh::Nothing || settings.normals == ModelNormals::Calculate;
         std::vector<std::vector<uint32_t>*> listRefs;
         for (std::vector<uint32_t>& list : lists)
@@ -610,9 +642,10 @@ namespace {
         if (settings.optimizeMesh == OptimizeMesh::Everything || settings.optimizeMesh == OptimizeMesh::PolygonOrder){
             const std::vector<float> positions = positionsOf(group);
             for (size_t i = 0; i < lists.size(); i++){
-                Primitive& primitive = primitives[group.primitives[i]];
+                Primitive& primitive = primitives[group.primitives[ownerOf(i)]];
                 if (primitive.blended){
-                    record.keptOrder.push_back(meshLabel(doc.json(), primitive.mesh, primitive.index) + " (blended)");
+                    if (i < group.primitives.size())
+                        record.keptOrder.push_back(meshLabel(doc.json(), primitive.mesh, primitive.index) + " (blended)");
                     continue;
                 }
                 std::vector<uint32_t>& list = lists[i];
@@ -643,6 +676,8 @@ namespace {
             applyRemap(group, listRefs, remap, unique);
         }
 
+        for (size_t i = 0; i < levelOf.size(); i++)
+            primitives[group.primitives[levelOf[i].first]].authored[levelOf[i].second] = std::move(lists[group.primitives.size() + i]);
         for (size_t i = 0; i < group.primitives.size(); i++){
             Primitive& primitive = primitives[group.primitives[i]];
             if (!primitive.indices && !reorder)
@@ -802,6 +837,164 @@ namespace {
         }
     }
 
+    // MSFT_lod (R4): each lower level's primitive whose attributes are the base primitive's (the
+    // same semantics and formats, no morph targets) has its vertices appended to the base's and
+    // becomes one of its levels; the others give the generated levels' triangle targets. The
+    // lower levels' own meshes stay in the file (the loader takes them off the scene).
+    bool Cook::foldAuthoredLods(const std::vector<GltfLodChain>& chains, std::string& error){
+        if (settings.generateLods == GenerateLods::Off || chains.empty())
+            return true;
+        Json& root = doc.json();
+        if (!GltfDocument::arrayOf(root, "meshes") || !GltfDocument::arrayOf(root, "accessors"))
+            return true;
+        doc.prepareViews();
+        const Json* meshes = GltfDocument::arrayOf(root, "meshes");
+        std::set<size_t> foldedMeshes;
+        for (const GltfLodChain& chain : chains){
+            const size_t base = (size_t)chain.base.mesh;
+            if (chain.base.mesh < 0 || base >= meshes->size() || !foldedMeshes.insert(base).second)
+                continue;
+            const Json& baseMesh = (*meshes)[base];
+            if (!baseMesh.contains("primitives") || !baseMesh["primitives"].is_array())
+                continue;
+            for (size_t p = 0; p < baseMesh["primitives"].size(); p++){
+                const Json& primitive = root["meshes"][base]["primitives"][p];
+                auto triangles = [&](const Json& object, std::vector<uint32_t>& list, size_t& vertices) -> bool {
+                    size_t position = 0;
+                    if ((int)object.value("mode", 4) != 4 || !object.contains("attributes") ||
+                            !GltfDocument::getIndex(object["attributes"], "POSITION", position))
+                        return false;
+                    GltfAccessorLayout layout;
+                    std::string ignored;
+                    if (!doc.accessorLayout(position, layout, ignored))
+                        return false;
+                    vertices = layout.count;
+                    size_t indices = 0;
+                    if (GltfDocument::getIndex(object, "indices", indices)){
+                        if (!doc.readIndices(indices, list, ignored))
+                            return false;
+                    }else{
+                        list.resize(vertices);
+                        for (size_t v = 0; v < vertices; v++)
+                            list[v] = (uint32_t)v;
+                    }
+                    return list.size() % 3 == 0 && std::all_of(list.begin(), list.end(), [&](uint32_t i){ return i < vertices; });
+                };
+                std::vector<uint32_t> baseList;
+                size_t baseVertices = 0;
+                if (!triangles(primitive, baseList, baseVertices) || primitive.contains("targets"))
+                    continue;
+                // the levels that match fold; the rest give targets
+                std::vector<std::pair<size_t, float>> matching;     // level mesh, its coverage
+                std::vector<long long> targets;
+                for (const GltfLodLevel& level : chain.levels){
+                    if (level.mesh < 0 || (size_t)level.mesh >= meshes->size())
+                        continue;
+                    const Json& levelMesh = (*meshes)[(size_t)level.mesh];
+                    if (!levelMesh.contains("primitives") || !levelMesh["primitives"].is_array() || p >= levelMesh["primitives"].size())
+                        continue;
+                    const Json& other = levelMesh["primitives"][p];
+                    std::vector<uint32_t> list;
+                    size_t vertices = 0;
+                    if (!triangles(other, list, vertices))
+                        continue;
+                    bool same = !other.contains("targets") && other["attributes"].size() == primitive["attributes"].size();
+                    for (auto it = primitive["attributes"].begin(); same && it != primitive["attributes"].end(); ++it){
+                        size_t mine = 0, theirs = 0;
+                        GltfAccessorLayout a, b;
+                        std::string ignored;
+                        same = it->is_number_unsigned() && GltfDocument::getIndex(other["attributes"], it.key().c_str(), theirs) &&
+                               GltfDocument::getIndex(primitive["attributes"], it.key().c_str(), mine) &&
+                               doc.accessorLayout(mine, a, ignored) && doc.accessorLayout(theirs, b, ignored) &&
+                               a.componentType == b.componentType && a.components == b.components && a.normalized == b.normalized;
+                    }
+                    if (same)
+                        matching.push_back({(size_t)level.mesh, level.screenCoverage});
+                    else
+                        targets.push_back((long long)list.size() / 3);
+                }
+                // float positions only: the folded accessor's bounds are recomputed from them
+                GltfAccessorLayout position;
+                std::string ignored;
+                if (!doc.accessorLayout(primitive["attributes"]["POSITION"].get<size_t>(), position, ignored) ||
+                        position.componentType != gltf::FLOAT){
+                    for (const auto& level : matching){
+                        const Json& other = root["meshes"][level.first]["primitives"][p];
+                        std::vector<uint32_t> list;
+                        size_t count = 0;
+                        triangles(other, list, count);
+                        targets.push_back((long long)list.size() / 3);
+                    }
+                    matching.clear();
+                }
+                if (!targets.empty())
+                    targetLevels[{base, p}] = targets;
+                if (matching.empty())
+                    continue;
+                // the base's streams with every matching level's vertices after its own
+                std::vector<std::pair<std::vector<uint32_t>, float>> levels;
+                std::map<std::string, std::vector<uint8_t>> streams;
+                std::map<std::string, GltfAccessorLayout> layouts;
+                for (auto it = primitive["attributes"].begin(); it != primitive["attributes"].end(); ++it){
+                    if (!doc.readAccessorRaw(it->get<size_t>(), streams[it.key()], layouts[it.key()], error))
+                        return false;
+                }
+                size_t vertices = baseVertices;
+                for (const auto& [levelMesh, coverage] : matching){
+                    const Json& other = root["meshes"][levelMesh]["primitives"][p];
+                    std::vector<uint32_t> list;
+                    size_t count = 0;
+                    triangles(other, list, count);
+                    for (auto it = other["attributes"].begin(); it != other["attributes"].end(); ++it){
+                        std::vector<uint8_t> data;
+                        GltfAccessorLayout layout;
+                        if (!doc.readAccessorRaw(it->get<size_t>(), data, layout, error))
+                            return false;
+                        if (layout.count != count){
+                            error = request.assetPath + " " + meshLabel(root, levelMesh, p) + ": an MSFT_lod level's attributes have different counts";
+                            return false;
+                        }
+                        streams[it.key()].insert(streams[it.key()].end(), data.begin(), data.end());
+                    }
+                    for (uint32_t& index : list)
+                        index += (uint32_t)vertices;
+                    vertices += count;
+                    levels.push_back({std::move(list), coverage});
+                }
+                // the base primitive's accessors now hold every level's vertices
+                for (auto it = primitive["attributes"].begin(); it != primitive["attributes"].end(); ++it){
+                    const size_t accessor = it->get<size_t>();
+                    const GltfAccessorLayout& layout = layouts[it.key()];
+                    const size_t stride = (layout.elementSize + 3) / 4 * 4;
+                    std::vector<uint8_t> bytes(vertices * stride, 0);
+                    for (size_t v = 0; v < vertices; v++)
+                        std::memcpy(bytes.data() + v * stride, streams[it.key()].data() + v * layout.elementSize, layout.elementSize);
+                    const size_t view = doc.addView(std::move(bytes), stride, gltf::ARRAY_BUFFER);
+                    Json& json = root["accessors"][accessor];
+                    json["bufferView"] = view;
+                    json.erase("byteOffset");
+                    json.erase("sparse");
+                    json["count"] = vertices;
+                    if (it.key() == "POSITION" && layout.componentType == gltf::FLOAT && layout.components == 3){
+                        const std::vector<uint8_t>& data = streams[it.key()];
+                        float lo[3], hi[3];
+                        for (int c = 0; c < 3; c++){ lo[c] = std::numeric_limits<float>::max(); hi[c] = -std::numeric_limits<float>::max(); }
+                        for (size_t v = 0; v < vertices; v++){
+                            float value[3];
+                            std::memcpy(value, data.data() + v * 12, 12);
+                            for (int c = 0; c < 3; c++){ lo[c] = std::min(lo[c], value[c]); hi[c] = std::max(hi[c], value[c]); }
+                        }
+                        json["min"] = Json::array({lo[0], lo[1], lo[2]});
+                        json["max"] = Json::array({hi[0], hi[1], hi[2]});
+                    }
+                }
+                foldedLevels[{base, p}] = std::move(levels);
+            }
+        }
+        doc.pruneViews();
+        return true;
+    }
+
     void Cook::buildLods(Group& group){
         if (settings.generateLods == GenerateLods::Off)
             return;
@@ -837,6 +1030,26 @@ namespace {
             Primitive& primitive = primitives[p];
             if (!primitive.indexed || primitive.mode != 4 || primitive.list.size() % 3 != 0)
                 continue;
+            if (!primitive.authored.empty()){
+                // MSFT_lod's levels as the file has them; `error` measured, as the generated ones'
+                for (size_t l = 0; l < primitive.authored.size() && l + 1 < (size_t)MAX_MESH_LODS; l++){
+                    const double deviation = MeshDeviation::surfaceDeviation(positions, primitive.list, primitive.authored[l]);
+                    primitive.lodDeviation.push_back(deviation);
+                    primitive.lods.push_back({primitive.authored[l], (float)deviation});
+                    primitive.lodCoverage.push_back(l < primitive.authoredCoverage.size() ? primitive.authoredCoverage[l] : -1.0f);
+                }
+                record.authoredLodPrimitives++;
+                continue;
+            }
+            MeshLodRecipe levelRecipe = recipe;
+            if (!primitive.lodTargets.empty() && primitive.list.size() >= 3){
+                // as many levels as MSFT_lod's, reaching its coarsest triangle count
+                const double tris = (double)(primitive.list.size() / 3);
+                const double last = std::max(1.0, (double)primitive.lodTargets.back());
+                levelRecipe.levels = (unsigned int)std::clamp((int)primitive.lodTargets.size(), 1, MAX_MESH_LODS - 1);
+                levelRecipe.ratio = (float)std::clamp(std::pow(last / tris, 1.0 / levelRecipe.levels), 0.05, 0.95);
+                levelRecipe.targetError = FLT_MAX;
+            }
             MeshLodSource source;
             source.positions = positions;
             source.indices = primitive.list;
@@ -847,7 +1060,7 @@ namespace {
                 if (normal) source.attributes.insert(source.attributes.end(), {normals[v * 3], normals[v * 3 + 1], normals[v * 3 + 2]});
                 if (uv) source.attributes.insert(source.attributes.end(), {uvs[v * 2], uvs[v * 2 + 1]});
             }
-            const std::shared_ptr<MeshLodData> data = MeshLodPool::buildLevels(source, recipe);
+            const std::shared_ptr<MeshLodData> data = MeshLodPool::buildLevels(source, levelRecipe);
             if (!data || data->numLevels < 2)
                 continue;
             const size_t indexSize = primitive.indexType == gltf::UNSIGNED_INT ? 4 : 2;
@@ -866,6 +1079,7 @@ namespace {
                 }
                 primitive.lodDeviation.push_back(MeshDeviation::surfaceDeviation(positions, primitive.list, list));
                 primitive.lods.push_back({std::move(list), level.error});
+                primitive.lodCoverage.push_back(-1.0f);
             }
         }
     }
@@ -1025,9 +1239,14 @@ namespace {
             if (primitive.lods.empty())
                 continue;
             Json levels = Json::array();
-            for (const auto& [list, lodError] : primitive.lods){
+            for (size_t l = 0; l < primitive.lods.size(); l++){
+                const auto& [list, lodError] = primitive.lods[l];
                 const size_t accessor = addAccessor(Json{{"componentType", primitive.indexType}, {"count", list.size()}, {"type", "SCALAR"}});
-                levels.push_back(Json{{"indices", accessor}, {"error", lodError}});
+                Json level = {{"indices", accessor}, {"error", lodError}};
+                // an authored level's switch point (MSFT_screencoverage), optional in contract C1
+                if (l < primitive.lodCoverage.size() && primitive.lodCoverage[l] >= 0.0f)
+                    level["coverage"] = primitive.lodCoverage[l];
+                levels.push_back(std::move(level));
             }
             if (!json.contains("extensions") || !json["extensions"].is_object())
                 json["extensions"] = Json::object();
@@ -1430,13 +1649,23 @@ namespace {
         record.sourceExtensions = doc.requiredExtensions();
         record.compression = meshCompressionName(settings.meshCompression);
         record.family = modelFamilyName(request.family);
-        for (const std::string& extension : record.sourceExtensions){
-            if (extension == "KHR_draco_mesh_compression"){
-                error = request.assetPath + " requires KHR_draco_mesh_compression, which this editor cannot decode: "
-                        "re-export it without Draco compression";
-                return false;
-            }
-        }
+        // the source as the loader reads it: its findings (R5), the editor-only decodes (R6) and
+        // the MSFT_lod chains (R4)
+        ModelSourceLoad load;
+        if (!ModelSourceDecode::inspect(request.source, request.assetPath, load, error))
+            return false;
+        record.diagnostics = load.result.diagnostics;
+        const bool draco = std::find(load.result.handledExtensions.begin(), load.result.handledExtensions.end(),
+                                     "KHR_draco_mesh_compression") != load.result.handledExtensions.end();
+        if (!ModelSourceDecode::takeDraco(doc, load, error))
+            return false;
+        if (draco)
+            record.transcoded.push_back("KHR_draco_mesh_compression");
+        if (!ModelSourceDecode::transcodeImages(doc, request.family != ModelFamily::Web, record.transcoded, error))
+            return false;
+        if (!foldAuthoredLods(load.result.lodChains, error))
+            return false;
+        load = ModelSourceLoad();
         Json& root = doc.json();
         const std::string signature = structureSignature(root);
         if (const Json* meshes = GltfDocument::arrayOf(root, "meshes"))
@@ -1444,6 +1673,11 @@ namespace {
 
         const std::string foreign = foreignViewReference(root, "");
         if (!foreign.empty()){
+            if (!record.transcoded.empty()){
+                error = request.assetPath + " cannot ship as it is (" + foreign.substr(1) + " refers to a bufferView from an extension "
+                        "the cook does not know), and it needs " + record.transcoded.front() + " decoded: export it again without one of them";
+                return false;
+            }
             // a file the cook cannot rewrite safely ships as it is
             std::ifstream in(request.source, std::ios::binary);
             glb.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());

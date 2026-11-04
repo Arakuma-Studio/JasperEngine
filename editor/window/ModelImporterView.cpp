@@ -486,7 +486,12 @@ void ModelImporterView::drawIssues(){
             if (editModelSection(stored[0], edit, section, message))
                 writeModelSections(*project, {assetPaths[0]}, {section}, "Set Model Import Settings", changed, message);
         }
-        if ((issue.fix == ModelIssue::Fix::Reimport || error) && ImGui::SmallButton(issue.code == "gltf-required-extension" ? "Cook anyway" : "Reimport")){
+        // a recook fixes a failed cook, and turns a Draco or WebP source into what games read
+        // (R18 "Cook anyway"); an extension the engine cannot read needs the file exported again
+        const bool cooked = row.hasState && row.state.status == ModelCookStatus::Cooked;
+        const bool transcode = issue.code == "gltf-cook-transcodes" && !cooked;
+        const bool recook = issue.fix == ModelIssue::Fix::Reimport || transcode || (error && issue.code != "gltf-required-extension");
+        if (recook && ImGui::SmallButton(transcode ? "Cook anyway" : "Reimport")){
             ModelCookQueue::get().invalidate(assetPaths[0]);
             ModelCookQueue::get().request(assetPaths[0], shownFamily(), ModelCookQueue::Selected);
         }

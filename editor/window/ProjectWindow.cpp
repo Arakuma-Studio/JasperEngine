@@ -4684,9 +4684,32 @@ void editor::ProjectWindow::drawTextureCookBadge(ImDrawList* drawList, const Fil
                 char text[160];
                 std::snprintf(text, sizeof(text), "Cooked for desktop (%s): %.0f%% smaller download", meshCompressionLabel(state.resolved.meshCompression), saved);
                 tooltip = text;
+                // what the loader finds in the source (S53 R5): an error fails export
+                const GltfDiagnostic* worst = nullptr;
+                for (const GltfDiagnostic& diagnostic : record.diagnostics) {
+                    if (diagnostic.cookFixes || diagnostic.severity == GltfDiagnosticSeverity::Info) continue;
+                    if (!worst || (diagnostic.severity == GltfDiagnosticSeverity::Error && worst->severity != GltfDiagnosticSeverity::Error)) worst = &diagnostic;
+                }
+                if (worst) {
+                    const bool isError = worst->severity == GltfDiagnosticSeverity::Error;
+                    icon = ICON_FA_TRIANGLE_EXCLAMATION;
+                    color = isError ? IM_COL32(255, 110, 90, 255) : IM_COL32(240, 190, 80, 255);
+                    tooltip = (isError ? "Load error (export fails): " : "Load warning: ") + worst->text();
+                }
                 break;
             }
-            default: return;
+            default: {
+                // not cooked yet: what its last load found
+                const std::vector<GltfDiagnostic> found = ModelLoadDiagnostics::get(absolute.generic_string());
+                const auto error = std::find_if(found.begin(), found.end(), [](const GltfDiagnostic& d) {
+                    return d.severity == GltfDiagnosticSeverity::Error && !d.cookFixes;
+                });
+                if (error == found.end()) return;
+                icon = ICON_FA_TRIANGLE_EXCLAMATION;
+                color = IM_COL32(255, 110, 90, 255);
+                tooltip = "Load error (export fails): " + error->text();
+                break;
+            }
         }
     } else {
         return;

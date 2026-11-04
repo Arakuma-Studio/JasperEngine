@@ -108,6 +108,12 @@ ModelAuditRow ModelAudit::row(Project& project, const std::string& assetPath, Mo
     row.usage = usage.usageOf(assetPath);
     const bool baked = row.hasState && row.state.status == ModelCookStatus::Cooked && row.state.record.lodPrimitives > 0;
     row.readWrite = usage.decideReadWrite(assetPath, row.resolved.readWrite, project.getModelSettings().scriptMeshData, row.header.skinned, baked);
+    if (row.hasState && row.state.status == ModelCookStatus::Cooked)
+        row.diagnostics = row.state.record.diagnostics;
+    for (const GltfDiagnostic& diagnostic : ModelLoadDiagnostics::get(absolute.generic_string())){
+        if (std::find(row.diagnostics.begin(), row.diagnostics.end(), diagnostic) == row.diagnostics.end())
+            row.diagnostics.push_back(diagnostic);
+    }
     row.issues = issues(row);
     return row;
 }
@@ -128,12 +134,17 @@ std::vector<ModelIssue> ModelAudit::issues(const ModelAuditRow& row){
         issue->fix = ModelIssue::Fix::OpenImporter;
         issue->fixLabel = "Open the importer";
     }
-    for (const std::string& extension : row.header.requiredExtensions){
-        if (extension == "KHR_draco_mesh_compression"){
-            ModelIssue* issue = add("gltf-required-extension", "error", name + " requires KHR_draco_mesh_compression, which this editor cannot decode: "
-                                    "re-export it without Draco compression; the cook then compresses it");
+    // the loader's findings (R5): an error fails export, a warning is shown, what the cook removes is told
+    for (const GltfDiagnostic& diagnostic : row.diagnostics){
+        if (diagnostic.cookFixes){
+            add("gltf-cook-transcodes", "info", diagnostic.text());
+        }else if (diagnostic.severity == GltfDiagnosticSeverity::Error){
+            ModelIssue* issue = add(diagnostic.extension.empty() ? "gltf-load-error" : "gltf-required-extension", "error",
+                                    diagnostic.text() + "; export fails until it is fixed");
             issue->fix = ModelIssue::Fix::OpenImporter;
             issue->fixLabel = "Open the importer";
+        }else if (diagnostic.severity == GltfDiagnosticSeverity::Warning){
+            add("gltf-load-warning", "warning", diagnostic.text());
         }
     }
     if (row.hasState && row.state.status == ModelCookStatus::Failed){
@@ -207,7 +218,8 @@ Json ModelAudit::recordJson(const ModelCookRecord& r){
     return {{"source", stats(r.before)}, {"cooked", stats(r.after)}, {"source_bytes", r.sourceBytes}, {"download_bytes", r.diskBytes},
             {"duplicate_percent", r.duplicatePercent}, {"lods", lods}, {"visual_change", r.visualChange()},
             {"position_error", r.positionError}, {"model_size", r.modelSize}, {"required_extensions", r.requiredExtensions},
-            {"kept_order", r.keptOrder}, {"warnings", r.warnings}, {"cook_ms", r.cookMs}, {"pass_through", r.passThrough}};
+            {"kept_order", r.keptOrder}, {"warnings", r.warnings}, {"cook_ms", r.cookMs}, {"pass_through", r.passThrough},
+            {"transcoded", r.transcoded}, {"authored_lod_primitives", r.authoredLodPrimitives}};
 }
 
 Json ModelAudit::resolvedJson(const ResolvedModelSettings& r){
@@ -271,6 +283,10 @@ Json ModelAudit::toJson(const ModelAuditRow& row, bool details){
         return out;
     out["settings"] = {{"resolved", resolvedJson(row.resolved)}, {"stored", storedJson(row.stored)}};
     out["read_write"] = {{"keep", row.readWrite.keep}, {"reasons", row.readWrite.reasons}};
+    Json diagnostics = Json::array();
+    for (const GltfDiagnostic& diagnostic : row.diagnostics)
+        diagnostics.push_back(modelDiagnosticJson(diagnostic));
+    out["load_diagnostics"] = diagnostics;
     Json documents = Json::array();
     for (const ModelDocumentUse& use : row.usage.documents)
         documents.push_back({{"document", use.document}, {"objects", use.objects}, {"lod_enabled", use.lodEnabled}});

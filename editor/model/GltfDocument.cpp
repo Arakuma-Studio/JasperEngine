@@ -224,12 +224,13 @@ bool GltfDocument::load(const fs::path& file, std::string& error, std::vector<ui
     return loadMemory(bytes, file.parent_path(), file.filename().generic_string(), error, read);
 }
 
-bool GltfDocument::loadMemory(const std::vector<uint8_t>& bytes, const fs::path& baseDir, const std::string& name,
+bool GltfDocument::loadMemory(const std::vector<uint8_t>& bytes, const fs::path& baseDirectory, const std::string& name,
                               std::string& error, std::vector<uint8_t>* read){
     root = Json();
     buffers.clear();
     decodedViews.clear();
     label = name;
+    baseDir = baseDirectory;
     if (read)
         read->insert(read->end(), bytes.begin(), bytes.end());
 
@@ -418,6 +419,76 @@ bool GltfDocument::decodeCompressedViews(std::string& error){
         else if (filter == "EXPONENTIAL") meshopt_decodeFilterExp(out.data(), count, stride);
         else if (filter == "COLOR") meshopt_decodeFilterColor(out.data(), count, stride);
         decodedViews[v] = std::move(out);
+    }
+    return true;
+}
+
+void GltfDocument::prepareViews(){
+    for (const char* key : {"buffers", "bufferViews"}){
+        if (!root.contains(key) || !root[key].is_array())
+            root[key] = Json::array();
+    }
+}
+
+void GltfDocument::pruneViews(){
+    for (const char* key : {"buffers", "bufferViews"}){
+        if (root.contains(key) && root[key].is_array() && root[key].empty())
+            root.erase(key);
+    }
+}
+
+size_t GltfDocument::addView(std::vector<uint8_t> bytes, size_t stride, int target){
+    if (!root.contains("buffers") || !root["buffers"].is_array())
+        root["buffers"] = Json::array();
+    if (!root.contains("bufferViews") || !root["bufferViews"].is_array())
+        root["bufferViews"] = Json::array();
+    const size_t length = bytes.size();
+    root["buffers"].push_back(Json{{"byteLength", length}});
+    Json view = {{"buffer", root["buffers"].size() - 1}, {"byteLength", length}};
+    if (stride > 0)
+        view["byteStride"] = stride;
+    if (target != 0)
+        view["target"] = target;
+    root["bufferViews"].push_back(std::move(view));
+    buffers.push_back(std::move(bytes));
+    decodedViews.resize(root["bufferViews"].size());
+    return root["bufferViews"].size() - 1;
+}
+
+bool GltfDocument::imageBytes(size_t image, std::vector<uint8_t>& out, std::string& error) const{
+    const Json* images = arrayOf(root, "images");
+    if (!images || image >= images->size() || !(*images)[image].is_object()){
+        error = "image " + std::to_string(image) + " of " + label + " does not exist";
+        return false;
+    }
+    const Json& object = (*images)[image];
+    size_t view = 0;
+    if (getIndex(object, "bufferView", view)){
+        const uint8_t* data = nullptr;
+        size_t size = 0, stride = 0;
+        if (!viewData(view, data, size, stride, error))
+            return false;
+        out.assign(data, data + size);
+        return true;
+    }
+    auto uri = object.find("uri");
+    if (uri == object.end() || !uri->is_string()){
+        error = "image " + std::to_string(image) + " of " + label + " has neither a bufferView nor a uri";
+        return false;
+    }
+    const std::string value = uri->get<std::string>();
+    if (value.rfind("data:", 0) == 0){
+        const size_t comma = value.find(',');
+        if (comma == std::string::npos || value.substr(0, comma).find(";base64") == std::string::npos || !decodeBase64(value, comma + 1, out)){
+            error = "image " + std::to_string(image) + " of " + label + " has a data URI that is not base64";
+            return false;
+        }
+        return true;
+    }
+    const fs::path path = baseDir / editor::FileUtils::pathFromUtf8(decodeUri(value));
+    if (!readFile(path, out)){
+        error = "cannot read " + path.filename().generic_string() + ", image " + std::to_string(image) + " of " + label;
+        return false;
     }
     return true;
 }

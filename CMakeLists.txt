@@ -1081,6 +1081,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/model/ModelPreviewRaster.cpp
     ${EDITOR_DIR}/model/ModelSettingsCmd.cpp
     ${EDITOR_DIR}/model/ModelSettingsEdit.cpp
+    ${EDITOR_DIR}/model/ModelSourceDecode.cpp
     ${EDITOR_DIR}/model/ModelUsage.cpp
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp

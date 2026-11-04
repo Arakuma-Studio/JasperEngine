@@ -99,16 +99,51 @@ std::string ModelCookRecord::visualChange() const{
     return text;
 }
 
+namespace {
+
+    const char* severityName(GltfDiagnosticSeverity severity){
+        switch (severity){
+            case GltfDiagnosticSeverity::Info: return "info";
+            case GltfDiagnosticSeverity::Error: return "error";
+            case GltfDiagnosticSeverity::Warning: default: return "warning";
+        }
+    }
+
+}
+
+Json editor::modelDiagnosticJson(const GltfDiagnostic& diagnostic){
+    return {{"severity", severityName(diagnostic.severity)}, {"extension", diagnostic.extension}, {"part", diagnostic.part},
+            {"message", diagnostic.message}, {"fix", diagnostic.fix}, {"cook_fixes", diagnostic.cookFixes}};
+}
+
+bool editor::modelDiagnosticFromJson(const Json& json, GltfDiagnostic& out){
+    if (!json.is_object())
+        return false;
+    const std::string severity = json.value("severity", std::string("warning"));
+    out.severity = severity == "error" ? GltfDiagnosticSeverity::Error : severity == "info" ? GltfDiagnosticSeverity::Info
+                                                                                              : GltfDiagnosticSeverity::Warning;
+    out.extension = json.value("extension", std::string());
+    out.part = json.value("part", std::string());
+    out.message = json.value("message", std::string());
+    out.fix = json.value("fix", std::string());
+    out.cookFixes = json.value("cook_fixes", false);
+    return !out.message.empty();
+}
+
 Json ModelCookRecord::toJson() const{
     Json lodsJson = Json::array();
     for (const ModelLodLevelStats& level : lods)
         lodsJson.push_back(level.toJson());
+    Json diagnosticsJson = Json::array();
+    for (const GltfDiagnostic& diagnostic : diagnostics)
+        diagnosticsJson.push_back(modelDiagnosticJson(diagnostic));
     return {{"version", kModelCookVersion}, {"key", key}, {"family", family}, {"compression", compression},
             {"sourceBytes", sourceBytes}, {"diskBytes", diskBytes}, {"before", before.toJson()}, {"after", after.toJson()},
             {"duplicatePercent", duplicatePercent}, {"meshes", meshes}, {"primitives", primitives},
             {"lodPrimitives", lodPrimitives}, {"lods", lodsJson}, {"modelSize", modelSize}, {"positionError", positionError},
             {"passThrough", passThrough}, {"requiredExtensions", requiredExtensions}, {"sourceExtensions", sourceExtensions},
-            {"keptOrder", keptOrder}, {"warnings", warnings}, {"cookMs", cookMs}};
+            {"keptOrder", keptOrder}, {"warnings", warnings}, {"diagnostics", diagnosticsJson}, {"transcoded", transcoded},
+            {"authoredLodPrimitives", authoredLodPrimitives}, {"cookMs", cookMs}};
 }
 
 bool ModelCookRecord::fromJson(const Json& json, ModelCookRecord& out){
@@ -136,6 +171,15 @@ bool ModelCookRecord::fromJson(const Json& json, ModelCookRecord& out){
     out.sourceExtensions = stringsOf(json, "sourceExtensions");
     out.keptOrder = stringsOf(json, "keptOrder");
     out.warnings = stringsOf(json, "warnings");
+    if (json.contains("diagnostics") && json["diagnostics"].is_array()){
+        for (const Json& item : json["diagnostics"]){
+            GltfDiagnostic diagnostic;
+            if (modelDiagnosticFromJson(item, diagnostic))
+                out.diagnostics.push_back(diagnostic);
+        }
+    }
+    out.transcoded = stringsOf(json, "transcoded");
+    out.authoredLodPrimitives = json.value("authoredLodPrimitives", 0);
     out.cookMs = json.value("cookMs", 0.0);
     return !out.key.empty();
 }

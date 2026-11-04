@@ -14,6 +14,7 @@
 
 #include "command/type/SetAssetMetaCmd.h"
 #include "model/CookedModels.h"
+#include "model/GltfDocument.h"
 #include "model/ModelExport.h"
 
 #include "json.hpp"
@@ -81,14 +82,15 @@ TEST(ModelExport, CooksEveryModelIntoTheIndexAndLeavesTheSourcesOut){
     closeProject(*project);
 }
 
-TEST(ModelExport, ACookErrorFailsTheExportNamingTheFile){
+TEST(ModelExport, ALoadErrorFailsTheExportNamingTheFile){
     jasperengine::test::TestTempDir dir{"model-export-error"};
     std::unique_ptr<Project> project = loadFixture(dir.path());
     ASSERT_TRUE(project);
-    // a model whose geometry needs a decoder the editor lacks
-    const nlohmann::ordered_json gltf = {{"asset", {{"version", "2.0"}}}, {"extensionsUsed", {"KHR_draco_mesh_compression"}},
-            {"extensionsRequired", {"KHR_draco_mesh_compression"}}, {"meshes", nlohmann::ordered_json::array()}};
-    std::ofstream(dir.path() / "assets" / "models" / "draco.gltf") << gltf.dump();
+    // a model that requires an extension the engine does not read (S53 R5): it cooks, the
+    // game would load it without that extension, so the export stops
+    const nlohmann::ordered_json gltf = {{"asset", {{"version", "2.0"}}}, {"extensionsUsed", {"VENDOR_required_test"}},
+            {"extensionsRequired", {"VENDOR_required_test"}}, {"meshes", nlohmann::ordered_json::array()}};
+    std::ofstream(dir.path() / "assets" / "models" / "unread.gltf") << gltf.dump();
     project->refreshAssetDatabase(true);
     project->getAssetIndex().waitUntilReady();
     ModelExportInputs inputs;
@@ -96,7 +98,34 @@ TEST(ModelExport, ACookErrorFailsTheExportNamingTheFile){
     ASSERT_TRUE(ModelExport::gather(*project, {ModelFamily::Desktop}, inputs, error)) << error;
     const ModelExportResult result = ModelExport::cookForExport(*project, inputs, dir.path() / "export" / "assets", 1, nullptr, nullptr);
     EXPECT_FALSE(result.ok);
-    EXPECT_NE(result.error.find("models/draco.gltf"), std::string::npos) << result.error;
-    EXPECT_NE(result.error.find("KHR_draco_mesh_compression"), std::string::npos) << result.error;
+    EXPECT_NE(result.error.find("models/unread.gltf"), std::string::npos) << result.error;
+    EXPECT_NE(result.error.find("VENDOR_required_test"), std::string::npos) << result.error;
+    closeProject(*project);
+}
+
+TEST(ModelExport, ADracoModelShipsItsCookWithoutDraco){
+    jasperengine::test::TestTempDir dir{"model-export-draco"};
+    std::unique_ptr<Project> project = loadFixture(dir.path());
+    ASSERT_TRUE(project);
+    fs::copy_file(fs::path(JASPER_TEST_REPO_DIR) / "engine/tests/core/fixtures/gltf/s41/draco.glb", dir.path() / "assets" / "models" / "draco.glb");
+    project->refreshAssetDatabase(true);
+    project->getAssetIndex().waitUntilReady();
+    ModelExportInputs inputs;
+    std::string error;
+    ASSERT_TRUE(ModelExport::gather(*project, {ModelFamily::Web}, inputs, error)) << error;
+    const fs::path out = dir.path() / "export" / "assets";
+    const ModelExportResult result = ModelExport::cookForExport(*project, inputs, out, 2, nullptr, nullptr);
+    ASSERT_TRUE(result.ok) << result.error;
+    std::ifstream in(out / CookedModels::kIndexFile, std::ios::binary);
+    std::stringstream text;
+    text << in.rdbuf();
+    const nlohmann::json index = nlohmann::json::parse(text.str(), nullptr, false);
+    ASSERT_TRUE(index.is_object() && index["models"].contains("models/draco.glb")) << text.str();
+    const fs::path cooked = out / CookedModels::kCookedDir / index["models"]["models/draco.glb"]["web"]["file"].get<std::string>();
+    GltfDocument doc;
+    ASSERT_TRUE(doc.load(cooked, error)) << error;
+    for (const std::string& extension : doc.usedExtensions())
+        EXPECT_NE(extension, "KHR_draco_mesh_compression");
+    EXPECT_TRUE(result.cookedSources.count("models/draco.glb")) << "the Draco source stays out of the build";
     closeProject(*project);
 }

@@ -3,7 +3,8 @@ until the group is on; inspect_models reads every model from its header and cook
 writes nothing and predicts exactly what the applied settings cook; set_model_import_settings is one
 undo step and a cook job (wait false returns a job id); bad settings name the valid keys and write
 nothing; setting is refused while playing; check_render_budgets fails (isError, so `call` exits 1)
-with the offenders when a budget is exceeded, passes within it, and refuses without a budget.
+with the offenders when a budget is exceeded, passes within it, and refuses without a budget; a
+model that requires an extension the engine cannot read reports the loader's error (S53 R5).
 
 The project is a copy of tools/fixtures/textures with a generated grid model added (a pure
 function of this file).
@@ -216,3 +217,19 @@ async def test_render_budgets(ed: Editor):
     await ed.call("set_project_settings", values={"quality.render_budgets.mobile.triangles": 1000000})
     ok = await ed.call("check_render_budgets", scene="Main", platform="mobile")
     ed.check_eq(ok["ok"], True, f"within the budget: {ok}")
+
+
+async def test_load_findings(ed: Editor):
+    ed.require_tools(*TOOLS)
+    rel = "assets/models/unread.gltf"
+    unread = {"asset": {"version": "2.0"}, "extensionsUsed": ["VENDOR_required_test"],
+              "extensionsRequired": ["VENDOR_required_test"], "meshes": []}
+    (ed.project / rel).write_text(json.dumps(unread))
+    await ed.call("sync_files", paths=[rel])
+    await cooked(ed, rel)
+    model = (await ed.call("inspect_models", paths=[rel]))["models"][0]
+    codes = [issue["code"] for issue in model["issues"]]
+    ed.check("gltf-required-extension" in codes, f"the loader's error is an issue: {model['issues']}")
+    found = model["load_diagnostics"]
+    ed.check(any(d["severity"] == "error" and d["extension"] == "VENDOR_required_test" and not d["cook_fixes"] for d in found),
+             f"load_diagnostics: {found}")

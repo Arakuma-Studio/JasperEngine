@@ -54,6 +54,15 @@ puts settings back to their defaults. They live in the model's `.meta` under
   `lods[].deviation_percent` is the sampled distance a level differs by.
 - Blended submeshes keep their triangle order; `kept_order` lists them.
 
+### What the loader finds
+
+`inspect_models` with `paths` returns `load_diagnostics`, what a game's loader finds in the source,
+and issues from them: `gltf-required-extension` (an extension the engine cannot read: the export
+fails until the model is exported again without it), `gltf-load-warning`, and
+`gltf-cook-transcodes` (Draco, WebP: the cook removes them, nothing to do). A record's
+`transcoded` lists what the cook decoded; `authored_lod_primitives` counts the primitives whose
+levels are the file's own `MSFT_lod`.
+
 ### Budgets
 
 Budgets are project settings: `quality.render_budgets.<platform>.triangles`, `.draw_calls`,

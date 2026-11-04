@@ -1,7 +1,7 @@
 """The Inspector's Model Import Settings with real input (docs/specs/S53-model-import-cook.md R16-R21,
 AC12): clicking a model in the Project window shows its importer with its measured cook; a
-multi-selection shows totals and the largest models; a model the cook refuses shows the failure row
-with its actions; Window > Analysis > Mesh Optimization Audit lists the project's models; an export
+multi-selection shows totals and the largest models; a model the loader reports an error in shows
+the failure row with its actions; Window > Analysis > Mesh Optimization Audit lists the project's models; an export
 writes build-report.json and the Build Report window shows it. xdotool clicks the rects
 editor_status and find_ui_item report; the screenshots of each step go to SHOTS (default
 build/test-results/model-importer-ui/, JASPER_MODEL_SHOTS overrides it).
@@ -93,10 +93,11 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     if not shutil.which("xdotool") or not ed._xvfb or not ed._xvfb.display:
         skip("needs xdotool and the harness Xvfb")
     (ed.project / "assets" / "models" / "grid.glb").write_bytes(grid_glb())
-    draco = {"asset": {"version": "2.0"}, "extensionsUsed": ["KHR_draco_mesh_compression"],
-             "extensionsRequired": ["KHR_draco_mesh_compression"], "meshes": []}
-    (ed.project / "assets" / "models" / "draco.gltf").write_text(json.dumps(draco))
-    await ed.call("sync_files", paths=["assets/models/grid.glb", "assets/models/draco.gltf"])
+    # a model that requires an extension the engine does not read (S53 R5): an error, export fails
+    unread = {"asset": {"version": "2.0"}, "extensionsUsed": ["VENDOR_required_test"],
+              "extensionsRequired": ["VENDOR_required_test"], "meshes": []}
+    (ed.project / "assets" / "models" / "unread.gltf").write_text(json.dumps(unread))
+    await ed.call("sync_files", paths=["assets/models/grid.glb", "assets/models/unread.gltf"])
     await ed.call("tool_groups", enable=["meshes", "editor_ux"])
     # the cooks first, so the importer shows measured numbers
     result = await ed.call("reimport_models", paths=["assets/models/grid.glb", "assets/models/panel.gltf"])
@@ -126,9 +127,10 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     await ui_input.frames(ed, 6)
     await shot(ed, "2-model-importer-multi")
 
-    # a model the cook refuses: the failure row and its actions
+    # a model with a load error: the failure row and its actions
+    await ed.call("reimport_models", paths=["assets/models/unread.gltf"])
     state = await ui(ed)
-    await click(ed, entry(state, "draco.gltf"))
+    await click(ed, entry(state, "unread.gltf"))
     await wait_item(ed, "Show in Explorer", "Inspector")
     await ui_input.frames(ed, 6)
     await shot(ed, "3-model-failure-row")
@@ -139,9 +141,9 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     await ui_input.frames(ed, 10)
     await shot(ed, "4-mesh-audit")
 
-    # an export's Build Report (a model the cook refuses fails an export: it goes first)
-    (ed.project / "assets" / "models" / "draco.gltf").unlink()
-    await ed.call("sync_files", paths=["assets/models/draco.gltf"])
+    # an export's Build Report (a model with a load error fails an export: it goes first)
+    (ed.project / "assets" / "models" / "unread.gltf").unlink()
+    await ed.call("sync_files", paths=["assets/models/unread.gltf"])
     out = ed.scratch.root / "export-source"
     built = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", timeout_seconds=600)
     report = out / "build-report.json"

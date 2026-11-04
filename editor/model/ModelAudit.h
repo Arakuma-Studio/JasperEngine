@@ -47,6 +47,8 @@ namespace jasperengine::editor {
         bool storedRead = true;     // false: the section is malformed (its error in headerError)
         ModelUsage usage;
         ModelReadWriteDecision readWrite;
+        // what the loader finds in the source (S53 R5): the cook's record, then the model's last load
+        std::vector<GltfDiagnostic> diagnostics;
         std::vector<ModelIssue> issues;
 
         // the numbers the Audit's columns show: the cook's when cooked, else the header's

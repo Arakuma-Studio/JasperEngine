@@ -378,9 +378,36 @@ Out of scope:
   a skin, an animation, instancing or an unknown primitive extension keeps its vertex and triangle
   order (compression and index format still apply), with a warning naming why.
 - **Files the cook cannot rewrite:** a file with an unknown extension that names a bufferView ships
-  as it is (pass-through, a warning in the record and the Audit). A required
-  `KHR_draco_mesh_compression` fails the cook with "re-export it without Draco" until the editor's
-  Draco decoder (s41-loader) is merged.
+  as it is (pass-through, a warning in the record and the Audit), unless it also needs an
+  editor-only decode, which fails the cook naming both.
+- **The source as the loader reads it (R4-R6):** every cook also parses the source with tinygltf and
+  runs `GltfNormalize::normalize` (external images not read): its diagnostics go into the cook
+  record, its MSFT_lod chains drive the fold, and Draco streams are taken from the normalised model
+  into fresh views of the cook's own document (never its views or buffers). The cook's JSON-level
+  rewrite stays the writer, so unknown JSON keeps its place.
+- **Draco, WebP, Basis (R6):** Draco streams become plain accessors; every WebP image becomes an
+  embedded PNG (S14's texture cook reads no WebP, and embedded images are not texture-cooked, so the
+  hand-off is the PNG); a `KHR_texture_basisu` texture without a `source` gets a PNG `source` in the
+  desktop and mobile cooks (web keeps the KTX2 alone). The record's `transcoded` lists them.
+- **MSFT_lod (R4):** a lower level's primitive folds into the base primitive when its attributes are
+  the same semantics and formats and neither has morph targets: its vertices are appended to the
+  base's accessors and its triangles become a `JE_mesh_lods` level (through every Optimize pass with
+  LOD 0); `error` is the measured distance from LOD 0's surface, and the level carries `coverage`,
+  its `MSFT_screencoverage` (an optional key added to contract C1). The lower levels' own meshes
+  stay in the file (structure invariant; the loader takes them off the scene), so their bytes ship
+  twice. A level that does not match gives the generated levels their count and the coarsest
+  triangle count. Generate LODs Off folds nothing.
+- **Load findings (R5):** the Inspector rows, the Audit, the badge and `inspect_models`
+  (`load_diagnostics`, issue codes `gltf-required-extension`, `gltf-load-error`,
+  `gltf-load-warning`, `gltf-cook-transcodes`) show the cook record's findings and the model's
+  last load (`ModelLoadDiagnostics`). An Error the cook does not remove fails the export naming
+  the file. "Cook anyway" (R18) recooks a Draco or WebP model not cooked yet; an unread extension
+  offers Open Console and Show in Explorer.
+- **The index codec turns triangles:** `KHR_meshopt_compression`'s TRIANGLES mode may rotate a
+  triangle's corners (winding kept). LOD 0's lists take one codec round trip before the levels are
+  baked, so Automatic's levels are built from exactly what the runtime decodes.
+- **Export file names:** `je-cooked/models/<SHA-256 of the bytes>.glb`, so families whose cooks are
+  the same bytes ship one file (the cache key names the family, R12).
 - **Blended submeshes:** glTF BLEND materials and, from every scene and prefab file (and the open
   scenes), submesh overrides of alpha or blend mode and meshes drawn transparent. A scene override
   names a submesh index, so the cook keeps that index's triangle order in every mesh of the model
@@ -417,13 +444,13 @@ Out of scope:
   and Doriax `mesh-memory` is reshaping exactly this storage (§8 says the release lands on whatever
   storage lands). The release and AC8's "frees the memory" half follow on top of `mesh-memory`; the
   readers' half of AC8 (each reader keeps the data) is covered by the analysis tests.
-- **R4 (MSFT_lod folding into baked levels):** it depends on s41-loader's `MSFT_lod` reading and is
-  left to the merge with it.
 - **R16 preview:** drawn on the CPU (flat shading, wireframe, orbit by drag, Source/Cooked, Force
   LOD) instead of a GPU preview scene, so it works in a headless editor and costs nothing when the
   importer is closed.
-- **R18 "Cook anyway":** offered on a required-extension failure; for Draco it retries the cook,
-  which transcodes once s41-loader's decoder is merged.
+- **R4's switch points:** contract C1 has no field for them, so authored levels carry an optional
+  `coverage` (their `MSFT_screencoverage`); a runtime that does not read it selects them by `error`
+  like generated levels. The loader's owner of `JE_mesh_lods` reading (s42-lod) decides whether to
+  use it.
 
 ## Decisions (s41-loader: R1-R7, R15, R27, R28's decoder size)
 

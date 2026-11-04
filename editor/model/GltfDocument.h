@@ -73,6 +73,19 @@ namespace jasperengine::editor {
         // an index list (indices accessor) as 32-bit values
         bool readIndices(size_t accessor, std::vector<uint32_t>& out, std::string& error) const;
 
+        // A buffer of `bytes` and a bufferView over all of it (data the cook decoded: Draco
+        // streams, a transcoded image); the view's index
+        size_t addView(std::vector<uint8_t> bytes, size_t stride = 0, int target = 0);
+        // Makes the buffers and bufferViews arrays when the file has none, so references into the
+        // JSON stay valid across addView (ordered_json moves its members when a key is added);
+        // pruneViews() removes them again when they stayed empty (glTF forbids empty arrays)
+        void prepareViews();
+        void pruneViews();
+        // An image's encoded bytes: its bufferView, a data URI, or a file next to the model
+        bool imageBytes(size_t image, std::vector<uint8_t>& out, std::string& error) const;
+        // the directory external buffers and images resolve against
+        const std::filesystem::path& getBaseDir() const { return baseDir; }
+
         // A binary glTF of `json` with `bin` as its BIN chunk (padded as the format wants)
         static std::vector<uint8_t> writeGlb(const Json& json, const std::vector<uint8_t>& bin);
 
@@ -86,6 +99,7 @@ namespace jasperengine::editor {
         // the decoded bytes of compressed bufferViews (empty for the others)
         std::vector<std::vector<uint8_t>> decodedViews;
         std::string label;
+        std::filesystem::path baseDir;
 
         bool decodeCompressedViews(std::string& error);
     };
