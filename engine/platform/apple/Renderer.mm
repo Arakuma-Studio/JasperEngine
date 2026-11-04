@@ -120,6 +120,18 @@ static CGSize _screenSize;
     jasperengine::Engine::systemLowMemory();
 }
 
++ (void)updateGame {
+    jasperengine::Engine::systemUpdate();
+}
+
++ (void)visibilityChanged:(BOOL)visible {
+    jasperengine::Engine::systemVisibilityChanged(visible == YES);
+}
+
++ (double)hiddenUpdateFps {
+    return jasperengine::Engine::getHiddenUpdateFps();
+}
+
 + (void)orientationChanged {
     jasperengine::Engine::systemOrientationChanged();
 }
