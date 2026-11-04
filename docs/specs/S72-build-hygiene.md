@@ -43,6 +43,13 @@ should also produce an installed editor as normal builds do, so sanitizer MCP ru
   its fields, so the number is uses, not a chain of includes. A wave that adds many Transform users may reach
   150; the check then asks for a decision, which can be a higher limit stated here with its reason.
 - **`MeshComponent.h` was left alone** (`dc/mesh-memory` rewrites it): only its includers changed.
+- **Unity (AC2):** sources that came with main since S33 no longer shared a batch (file-local helpers named
+  alike, a `using namespace` reaching a later source, Xlib in `ScreenColorX11.cpp`, `LaunchKeysX11.cpp`,
+  `HostServicesLinux.cpp`). They are listed in `jasperengine_skip_unity_build` rather than renamed, to touch no
+  source a branch in flight edits. That they predate this work is inferred from the errors; main's own unity
+  build was not run.
+- **Every component header now compiles alone** (`check_headers.py engine/core/component/*.h`, 90 of 90): six did
+  not, and a source that includes one first now would hit it.
 - **`tools/check-changed --no-mcp`** is new: a change of the root CMake or `tools/build.sh` selects the whole MCP
   suite, which the integrator runs once per wave. It says so in the summary and caches no pass.
 - **R5, cause:** every install rule said `CONFIGURATIONS Release MinSizeRel`, and a sanitizer tree is Debug
