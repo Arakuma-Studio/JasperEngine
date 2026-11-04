@@ -1,16 +1,20 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The table of asset references (docs/specs/S53-code-cleanups.md R1). asset_ref_rows_frozen.txt and
-// asset_ref_results_frozen.txt are what the hand-written table and walk gave: every row of it, and
-// what its two walks find in tools/fixtures/reflection-parity/AllComponents.scene. A moved
-// reference reloads what it feeds, component by component, as that walk did.
+// The table of asset references, generated from the reflection tables (docs/specs/S73-code-cleanups.md
+// R1). asset_ref_rows_frozen.txt and asset_ref_results_frozen.txt are what the hand-written table
+// and walk gave: every row of it, and what its two walks find in
+// tools/fixtures/reflection-parity/AllComponents.scene. They are not to be rewritten: a new field
+// adds a row, and these still hold. A moved reference reloads what it feeds, component by
+// component, as that walk did.
 
 #include "support/EditorTestSupport.h"
 
 #include "asset/AssetRefSchema.h"
 
 #include "Catalog.h"
+#include "reflect/Field.h"
+#include "reflect/Reflect.h"
 #include "component/AnimationPlayerComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -33,16 +37,15 @@
 #include "component/UIComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/VertexAnimatorComponent.h"
+#include "component/VolumetricCloudsComponent.h"
 #include "registry/EntityRegistry.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <set>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -122,11 +125,6 @@ namespace asset_ref_schema_generated_test {
         return lines;
     }
 
-    void writeLines(const fs::path& path, const std::vector<std::string>& lines) {
-        std::ofstream out(path, std::ios::binary);
-        for (const std::string& line : lines) out << line << "\n";
-    }
-
     std::string siteText(const char* walk, const std::string& locator, uint32_t ordinal, const AssetRef& ref, const AssetRefSite& site) {
         return std::string(walk) + "\t" + locator + "#" + std::to_string(ordinal) + "\t" + ref.path + "\t" + ref.guid.str() + "\t" +
                assetTypeName(site.expected) + "\t" + baseName(site.base) + "\t" + depEdgeKindName(site.kind);
@@ -147,20 +145,11 @@ namespace asset_ref_schema_generated_test {
     }
 
     TEST(AssetRefSchemaFrozen, EveryRowOfTheHandTable) {
-        const fs::path path = frozenPath("asset_ref_rows_frozen.txt");
-        std::vector<std::string> rows = allRows();
-        if (std::getenv("JASPER_TEST_UPDATE_GOLDEN")) writeLines(path, rows);
-        const std::vector<std::string> frozen = readLines(path);
+        const std::vector<std::string> rows = allRows();
+        const std::vector<std::string> frozen = readLines(frozenPath("asset_ref_rows_frozen.txt"));
         ASSERT_FALSE(frozen.empty());
         const std::set<std::string> generated(rows.begin(), rows.end());
         for (const std::string& row : frozen) EXPECT_TRUE(generated.count(row)) << "not in the table: " << row;
-    }
-
-    TEST(AssetRefSchemaFrozen, WhatItsWalksFindInAScene) {
-        const fs::path path = frozenPath("asset_ref_results_frozen.txt");
-        const std::vector<std::string> results = allComponentsResults();
-        if (std::getenv("JASPER_TEST_UPDATE_GOLDEN")) writeLines(path, results);
-        EXPECT_EQ(results, readLines(path));
     }
 
     // What a test's visitor does: the path of the one field named moves
@@ -190,6 +179,115 @@ namespace asset_ref_schema_generated_test {
         Texture texture;
         texture.setPath(path);
         return texture;
+    }
+
+    // The same, but for the reference the hand table had missed (docs/specs/S73-code-cleanups.md,
+    // Deviations): a row of its own now, in both walks
+    TEST(AssetRefSchemaFrozen, WhatItsWalksFindInAScene) {
+        std::vector<std::string> results = allComponentsResults();
+        const auto isWeatherMap = [](const std::string& line) { return line.find("VolumetricCloudsComponent.weatherMap") != std::string::npos; };
+        EXPECT_EQ(std::count_if(results.begin(), results.end(), isWeatherMap), 2);
+        results.erase(std::remove_if(results.begin(), results.end(), isWeatherMap), results.end());
+        EXPECT_EQ(results, readLines(frozenPath("asset_ref_results_frozen.txt")));
+    }
+
+    // A reference field of a component's table is all a row takes
+
+    struct GeneratedProbe {
+        Texture map;
+        std::vector<Texture> layers;
+        AssetRef model;
+        AssetRef unnamed;
+        ShaderRef shader;
+        FontArray fonts;
+        std::vector<std::pair<std::string, Texture>> uniforms;
+        std::string clip;
+        std::string clipGuid;
+        std::string animation;
+        std::string guid;
+        float notAReference = 0.0f;
+        Texture runtimeOnly;
+    };
+
+    constexpr reflect::FieldDesc kGeneratedProbeFields[] = {
+        JE_FIELD(GeneratedProbe, map),
+        JE_FIELD(GeneratedProbe, layers),
+        JE_FIELD(GeneratedProbe, model, .asset = reflect::AssetKind::Model),
+        JE_FIELD(GeneratedProbe, unnamed),
+        JE_FIELD(GeneratedProbe, shader),
+        JE_FIELD(GeneratedProbe, fonts),
+        JE_FIELD(GeneratedProbe, uniforms, .ops = &reflect::ops::ShaderTextures),
+        JE_FIELD(GeneratedProbe, clip, .asset = reflect::AssetKind::AnimationClip),
+        JE_FIELD(GeneratedProbe, clipGuid),
+        JE_FIELD(GeneratedProbe, animation, .asset = reflect::AssetKind::VertexAnimation),
+        JE_FIELD(GeneratedProbe, guid),
+        JE_FIELD(GeneratedProbe, notAReference),
+        JE_FIELD(GeneratedProbe, runtimeOnly, .flags = reflect::NoSave),
+    };
+
+    TEST(AssetRefSchemaGenerated, ARowForEachReferenceFieldOfATable) {
+        reflect::ComponentDesc desc{};
+        desc.type = ComponentType::LightComponent;
+        desc.body = JE_STRUCT_DESC(GeneratedProbe, "GeneratedProbe", kGeneratedProbeFields);
+        std::vector<std::string> rows;
+        for (const AssetRefField& row : AssetRefSchema::fieldsOf(desc)) rows.push_back(rowText(row));
+        const std::string kind = depEdgeKindName(DepEdgeKind::SceneComponent);
+        const auto line = [&](const std::string& path, const std::string& shape, const std::string& expected, const std::string& base) {
+            return "component\tLightComponent\t" + path + "\t" + shape + "\t" + expected + "\t" + base + "\t" + kind;
+        };
+        EXPECT_EQ(rows, (std::vector<std::string>{
+            line("map", "texture", "texture", "assets"),
+            line("layers[]", "texture", "texture", "assets"),
+            line("model", "asset", "model", "assets"),
+            line("unnamed", "asset", assetTypeName(AssetType::Unknown), "assets"),
+            line("shader", "shader", "shader", "project"),
+            line("fonts", "list", "font", "assets"),
+            line("uniforms{}", "texture", "texture", "assets"),
+            line("clip", "asset", "animation_clip", "assets"),
+            line("animation", "guid_sibling", "vertex_animation", "assets"),
+        }));
+    }
+
+    // Two references no one wrote a row for: they appear from the component tables, in memory and
+    // in a closed file, and a moved file rewrites them
+    TEST(AssetRefSchemaGenerated, ReferencesTheHandTableMissed) {
+        VolumetricCloudsComponent clouds;
+        clouds.weatherMap = textureAt("textures/weather.png");
+        OneComponent<VolumetricCloudsComponent> c(clouds);
+        EXPECT_TRUE(moveField(c.registry, c.entity, "weatherMap"));
+        EXPECT_EQ(c.get().weatherMap.getPath(), "moved/textures/weather.png");
+
+        AnimationPlayerComponent player;
+        player.layers.resize(1);
+        player.layers[0].mask = "masks/upper.mask";
+        player.layers[0].maskGuid = "0123456789abcdef0123456789abcdef";
+        OneComponent<AnimationPlayerComponent> p(player);
+        p.get().needsLoad = false;
+        EXPECT_TRUE(moveField(p.registry, p.entity, "layers[0].mask"));
+        EXPECT_EQ(p.get().layers[0].mask, "moved/masks/upper.mask");
+        EXPECT_EQ(p.get().layers[0].maskGuid, "0123456789abcdef0123456789abcdef");
+        EXPECT_TRUE(p.get().needsLoad);
+
+        const YAML::Node root = YAML::Load(R"(
+entities:
+  - type: Entity
+    entity: 12
+    name: Hero
+    components:
+      animationplayer:
+        layers:
+          - {name: Upper, mask: masks/upper.mask, maskGuid: 0123456789abcdef0123456789abcdef}
+      volumetricclouds:
+        weatherMap: {path: textures/weather.png}
+)");
+        std::vector<std::string> found;
+        AssetRefSchema::extractDocumentRefs(root, false, [&](const AssetRefFound& ref) {
+            found.push_back(ref.site.locator(ref.scope) + " " + ref.ref.path + " " + ref.ref.guid.str() + " " + assetTypeName(ref.site.expected));
+        });
+        EXPECT_EQ(found, (std::vector<std::string>{
+            "entity:12/AnimationPlayerComponent.layers[0].mask masks/upper.mask 0123456789abcdef0123456789abcdef " + std::string(assetTypeName(AssetType::AvatarMask)),
+            "entity:12/VolumetricCloudsComponent.weatherMap textures/weather.png  texture",
+        }));
     }
 
     const char* const kCustomShader = "shaders/a.vert|shaders/a.frag";

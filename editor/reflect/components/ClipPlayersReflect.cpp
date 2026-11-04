@@ -51,7 +51,7 @@ namespace {
     // clip: the path hint (asset-relative .anim or "<model>#<clip>"); guid: the .anim's (editor
     // only, empty for sub-clips); name: the state name (empty: the file stem or sub-clip name)
     constexpr FieldDesc kAnimationPlayerClipFields[] = {
-        JE_FIELD(AnimationPlayerClip, clip, .updateFlags = kPlayerReload, .asset = AssetKind::AnimationClip),
+        JE_FIELD(AnimationPlayerClip, clip, .updateFlags = kPlayerReload, .asset = AssetKind::AnimationClip, .assetForm = AssetForm::ClipEntry),
         JE_FIELD(AnimationPlayerClip, guid, .updateFlags = kPlayerReload, .label = "GUID"),
         JE_FIELD(AnimationPlayerClip, name, .updateFlags = kPlayerReload),
         JE_FIELD(AnimationPlayerClip, wrap, .ops = &kClipWrapOps, .enumDesc = &enums::kClipWrapMode, .updateFlags = kPlayerReload,

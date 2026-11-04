@@ -95,10 +95,17 @@ namespace {
 
     constexpr uint64_t kAudio = UpdateFlags_AudioSource;
 
+    // what was loaded came from the old path
+    void audioFileMoved(void* owner) {
+        AudioSourceComponent& audio = *static_cast<AudioSourceComponent*>(owner);
+        audio.loaded = false;
+        audio.loadFailed = false;
+    }
+
     constexpr FieldDesc kAudioSourceFields[] = {
         JE_FIELD(AudioSourceComponent, enabled, .flags = CodegenIfChanged),
         JE_FIELD(AudioSourceComponent, state, .ops = &kAudioStateOps, .enumDesc = &enums::kAudioSourceState, .updateFlags = kAudio),
-        JE_FIELD(AudioSourceComponent, filename, .ops = &ops::AssetRefIfSet, .updateFlags = kAudio, .asset = AssetKind::Audio, .label = "Audio Clip"),
+        JE_FIELD(AudioSourceComponent, filename, .ops = &ops::AssetRefIfSet, .updateFlags = kAudio, .asset = AssetKind::Audio, .label = "Audio Clip", .assetMoved = &audioFileMoved),
         JE_FIELD(AudioSourceComponent, enableClocked, .updateFlags = kAudio, .label = "Clocked", .group = "Playback", .uiOrder = 7),
         JE_FIELD(AudioSourceComponent, volume, .ops = &ops::FiniteDouble, .flags = OmitIfNonFinite, .updateFlags = kAudio, .min = 0.0f,
                  .step = 0.01f, .format = "%.3f", .group = "Playback", .uiOrder = 1),

@@ -381,15 +381,15 @@ PREFABS.md §2), `settings`, `material`, `project` or `text:<line>`. Examples:
 `entity:12/MeshComponent.submeshes[0].material.baseColorTexture` and
 `project/scenes[3]`.
 
-Until S08 lands, one hand-written table `editor/asset/AssetRefSchema.cpp` lists every reference
-field: component, YAML key path, expected type, kind, and accessor. It provides:
+One table, `editor/asset/AssetRefSchema.cpp`, lists every reference field: component, YAML key
+path, expected type and kind (S73 generates its component rows from the reflection tables). It
+provides:
 - `forEachAssetRef(EntityRegistry&, fn(AssetRef&, const FieldLocator&, AssetType))`, the
   single visitor that replaces `visitAssetPathsInRegistry`, `applyCustomShaderPathChange`,
   `remapScriptPathsInRegistry` and `visitAssetPathsInMaterialFiles`;
 - the closed-file YAML extractor that feeds the index.
 
-S08 later generates this table from reflection. A new reference field must appear in it, or a
-unit test fails (AC12). The index lives only in memory and in the cache JSON, with no SQLite.
+A new reference field of a component only needs its field in the reflection table. The index lives only in memory and in the cache JSON, with no SQLite.
 
 ### 6.7 `AssetOps` (editor/asset/AssetOps.{h,cpp})
 `move(from, to)`, `copy(from, to, copyGuids*)`, `remove(path)` (to `.trash`, metas included)
@@ -485,9 +485,9 @@ in `tools/mcp/tests/test_asset_identity.py`.
 - **AC11 (R17, R29)** `find_references` on a texture used via a material file returns the
   material edge, plus the scene edges with `transitive: true`. A 10k-asset generated
   benchmark project (`tools/performance/assetdb_bench.py`) answers in ≤ 50 ms.
-- **AC12 (§6.6)** `AssetRefSchema.CoversAllFields`: a test enumerates every `AssetRef` and
-  `Texture` member of every component (an explicit list checked against `Catalog`) and fails
-  if any is missing from the schema.
+- **AC12 (§6.6)** `AssetRefSchema.CoversAllFields`: every asset property `Catalog` lists for every
+  component has a row. `AssetRefSchemaFrozen.EveryRowOfTheHandTable` (S73) replaces the explicit
+  member list this test had.
 - **AC13 (R21, R22, R23)** `assetdb_bench.py` on the reference machine: warm open ≤ 250 ms,
   cold identity pass ≤ 1 s, full index ≤ 3 s, single-file update ≤ 5 ms + parse. These are
   reported in CI as a benchmark, and the thresholds are checked on the nightly job.
@@ -525,8 +525,8 @@ in `tools/mcp/tests/test_asset_identity.py`.
     expected writes so they are not echoed back). S04 can ship first on the existing 2 s
     poll, extended to all types, within R23's budget.
 - **Coordinates with:**
-  - S08: FieldLocator syntax and the `AssetRef` reflected field type. S08 replaces
-    `AssetRefSchema.cpp` with generated tables and must keep its test (AC12).
+  - S08: FieldLocator syntax and the `AssetRef` reflected field type. S73 generates the
+    `AssetRefSchema.cpp` component rows from its tables and keeps the test (AC12).
   - S14: owns `import:` in metas.
   - S25: `labels:` in metas, and an asset filter `ref:`/`missing:`.
   - S29: the commit dialog pairs an asset with its meta. `*.meta` is never LFS-tracked.
