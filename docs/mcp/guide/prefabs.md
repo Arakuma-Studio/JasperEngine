@@ -3,6 +3,13 @@
 Served as `jasper://docs/prefabs`. JasperEngine follows Unity's prefab model; the developer
 contracts are in `editor/project/PREFABS.md`.
 
+## When to make a Prefab
+
+Anything placed more than once, in one scene or across scenes (the player, an enemy, a pickup, a
+door, a recurring prop), and anything a script spawns: build it once in a scene, `create_prefab`
+from it, and place the others with `instantiate_prefab`. Copies from `duplicate_entities` are
+independent GameObjects: an edit then has to be repeated on each. More: `jasper://docs/authoring`.
+
 ## Assets and instances
 
 - A Prefab is a `.prefab` file (YAML, version 3) with a GUID; references survive renames and

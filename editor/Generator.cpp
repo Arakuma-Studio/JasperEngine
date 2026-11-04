@@ -1713,6 +1713,10 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "`---@class <FileName> : ScriptInstance`. C++ API: the headers in `" + api + "/` (clangd: `.clangd`).\n";
     agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
                      "errors); as an agent hook after every edit: `check --project <this directory> --hook`.\n\n";
+    agentsContent += "## Building scenes\n\n";
+    agentsContent += "Place what a scene uses with the editor tools; scripts drive it through GameObject script properties and spawn "
+                     "only what can't be placed ahead, from a Prefab. Make what repeats a Prefab; animate with `edit_animation`, not "
+                     "per-frame code (`jasper://docs/authoring`).\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
     agentsContent += "Game UI is standard HTML and CSS with Lua logic (no JavaScript), one UI Document per GameObject (MCP: "
                      "`create_ui_document`), under `assets/ui/`. `check --ui` reports what the engine drops or rewrites. Supported CSS: "

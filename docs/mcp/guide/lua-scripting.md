@@ -53,7 +53,8 @@ return Player
 - Events: RegisterEngineEvent(self, "onUpdate" | "onFixedUpdate" | "onPostUpdate" |
   "onKeyDown" | "onMouseDown" | "onTouchStart" | ...); define the method first. Component
   events: RegisterEvent(self, Button(self.scene, self.entity):getButtonComponent().onPress,
-  "onPress"). No manual unregister. onDestroy runs on GameObject.destroy.
+  "onPress"). No manual unregister. onDestroy runs on GameObject.destroy. A button click is the
+  UI event onClick (Image(...):getUIComponent().onClick); Button onRelease fires on every release.
 - Bound getters are often PROPERTIES, not methods: go.position, sprite.width, body.mass,
   Engine.deltatime. A non-existent method fails at runtime ("attempt to call a nil value").
   Check jasper://docs/lua-api (an index: read only the sections you need), the Lua stubs or

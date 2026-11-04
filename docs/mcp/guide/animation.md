@@ -15,6 +15,10 @@ Two ways to keyframe in JasperEngine, both edited with `edit_animation`:
 Pose animations (`.poseanim`, `jasper://docs/pose-animation`) are a third, humanoid-only
 format; `edit_pose_animation` can bake them into a clip (`bake: {model, clip: true}`).
 
+Motion that can be authored ahead of time (spins, bobs, patrols, doors, fades, UI transitions)
+belongs in a clip or an entity Animation that a script starts (`play`, `crossFade`, `stop`), not in
+script code that moves a transform every frame (`jasper://docs/authoring`).
+
 State machines, blend trees, layers, IK and humanoid retargeting over these clips are the
 **Animator** (Unity's Animator Controller): `edit_animator_controller`, `control_animator`,
 `jasper://docs/animator`.

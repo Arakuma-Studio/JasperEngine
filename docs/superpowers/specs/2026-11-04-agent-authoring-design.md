@@ -737,3 +737,41 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
   `Project.cpp:7500-7590`): the save hold relies on `SAVING` being set for every person's save and cleared on every
   outcome; the test hook sits in `saveSceneToPathAsync`.
 - **code-editor-git**: none in code; guide budget only.
+
+## Deviations (implementation, 2026-11-04)
+
+1. **The guide plan follows the lean MCP rules (`fe3e90b97`), not section 6.1.** `main` halved the guide (6,241
+   bytes, limit 8,192 with 1,500 headroom: at most 6,692) and made every new guide or tool text need an eval case.
+   The client cut is **not** handled by that change: measured on `main`'s guide (Python, the gate's own functions,
+   `dc-work/aa-evidence/red-client-cut.txt`), Claude Code's 4,096 characters end inside "Lua scripts", so a Claude Code
+   agent never saw C++, Physics, Prefabs, Shaders, HTML/CSS UI, Other areas or the Tool groups line (the line that
+   tells it to call `tool_groups`; the eval itself runs Claude Code, so it measured the cut guide). What changed:
+   - `McpInstructions.cpp` is two literals around the generated groups line: head = intro (with the pointer
+     `No "## Other areas" below? Your client cut this text: read it all with read_file jasper://guide.`), Addressing,
+     The loop, Building scenes, then **Tool groups**; tail = Code, Undo, Lua, Unity names, C++, Physics, Prefabs,
+     Shaders, HTML/CSS UI, Other areas. Unity names moved after the cut (the pointer leads there).
+   - "Building scenes" is one short section (assemble in the editor, script properties, spawn from a Prefab, make what
+     repeats a Prefab, animation through `edit_animation`); the HUD rule is not repeated there (the HTML/CSS UI digest
+     and `create_ui`'s result carry it). The Prefabs digest loses its runtime signature (in `prefabs.md` and the Lua
+     digest). Measured: 6,679 bytes, 13 under the line; the cut keeps intro, Addressing, The loop, Building scenes,
+     Tool groups, Code and Undo.
+   - Rules agents need at the moment they act went into results (`next`, the lean rules' preferred place):
+     `create_ui` in a 3D scene says where a HUD goes; `duplicate_entities` of a plain GameObject suggests a Prefab.
+   - `budget.json` `guide.client_cut` lists `(intro)`, Addressing, The loop, Building scenes and Tool groups; the gate
+     also checks the pointer. Eval cases added (`tools/mcp/eval/cases.py`): `bad_repeat_without_prefab`,
+     `bad_bob_in_script`, `bad_hud_widgets_in_3d`, `guard_rotation_not_euler`, `guard_guide_past_the_cut`,
+     `bad_terrain_grass`, `bad_shader_override_by_building`.
+2. **Shader overrides: a tool in the `shipping` group (`edit_build_shaders`), not settings rows.** The settings
+   registry's rows are Project Settings / Preferences rows: the palette and the settings search would send a person to
+   a Project Settings page that does not draw them (the overrides live in Build Settings). `edit_build_shaders
+   {add, exclude, remove, clear}` (no arguments: lists) is one project undo step (`ShaderOverridesCmd`), and
+   `build_project shaders` goes through the same code. The Build Settings window applies each edit through the command
+   and shows the project's lists every frame (it no longer writes a working copy back).
+3. **`left_preview` has no MCP test**: no tool turns the Inspector's camera preview on, so the branch is covered by
+   reading only (inferred).
+4. **`editor_status` no longer reports `playing: true` during a person's save** (same class as 4.7): it reports
+   `saving: true`.
+5. **The Terrain window reloads by generation, not only on a project switch.** `Project::setTerrainEditorSettings`
+   bumps a generation (workspace load, project close); the window reads the settings when the generation changed and
+   writes back only over the generation it read, so a frame drawn before the workspace loads cannot overwrite it.
+6. **The authoring rules in the generated `AGENTS.md` are one paragraph** (its 5,000-byte cap, `test_generators.py`).

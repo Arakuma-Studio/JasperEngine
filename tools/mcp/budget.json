@@ -11,7 +11,8 @@
         "generated tool groups section, and each '## ' section (the text before the first one counts as a section);",
         "sections names a section's own limit. headroom_bytes: the whole text must stay that far under bytes, room",
         "for the tool groups and digest lines later specs add. Area detail goes to docs/mcp/guide/<area>.md, never",
-        "into a raised limit or a smaller headroom."
+        "into a raised limit or a smaller headroom. client_cut: the sections a client that keeps only the first chars",
+        "characters must still get whole (UTF-16 code units, as JavaScript counts), and the pointer the intro must carry."
     ],
     "default_listing": {
         "chars": 99000,
@@ -26,7 +27,13 @@
         "bytes": 8192,
         "headroom_bytes": 1500,
         "section_bytes": 1500,
-        "sections": {}
+        "sections": {},
+        "client_cut": {
+            "chars": 4096,
+            "sections": ["(intro)", "Addressing", "The loop", "Building scenes", "Tool groups"],
+            "pointer": "read_file jasper://guide",
+            "reason": "Claude Code keeps the first 4096 characters of server instructions (CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH default, agent-authoring)"
+        }
     },
     "groups": {
         "diagnostics": {

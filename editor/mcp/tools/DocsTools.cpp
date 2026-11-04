@@ -736,8 +736,9 @@ void registerDocsTools(McpRegistry& registry) {
                 std::string(language == "Lua" ? "lua-api" : "cpp-scripting") + " you need. Confirm API names with search_engine_api.\n"
                 "2. Art: list_assets type texture; if nothing fits, make sprites with generate_placeholder_art under the assets "
                 "directory and look at them with view_asset.\n"
-                "3. Scene: create the GameObjects (sprites, a camera, UI text for the score) with the scene/entity tools, physics "
-                "bodies with colliders where things collide.\n"
+                "3. Scene: place every GameObject in the editor (sprites, a camera, physics bodies with colliders where things "
+                "collide); make what repeats a Prefab (create_prefab, instantiate_prefab); put the score in a UI scene attached "
+                "with set_child_scene; author motion with edit_animation. Read jasper://docs/authoring.\n"
                 "4. Scripts: create_script (kind " + std::string(language == "Lua" ? "lua" : "cpp_script") + ") attached to the "
                 "GameObjects; expose tunables as properties and set them with set_script_properties. " +
                 std::string(language == "Lua" ? "Edit the files with your own tools; fix the problems the next call reports "

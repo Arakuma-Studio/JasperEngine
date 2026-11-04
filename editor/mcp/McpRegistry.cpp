@@ -111,6 +111,23 @@ const ResourceTemplateDef* McpRegistry::matchResourceTemplate(const std::string&
     return nullptr;
 }
 
+ResourceResult McpRegistry::readResource(const std::string& uri, bool& found) const {
+    found = true;
+    try {
+        if (const ResourceDef* def = findResource(uri)) {
+            return def->read ? def->read(uri) : ResourceResult{false, "Resource has no reader.", {}};
+        }
+        std::map<std::string, std::string> vars;
+        if (const ResourceTemplateDef* tmpl = matchResourceTemplate(uri, vars)) {
+            return tmpl->read ? tmpl->read(uri, vars) : ResourceResult{false, "Resource has no reader.", {}};
+        }
+    } catch (const std::exception& e) {
+        return ResourceResult{false, e.what(), {}};
+    }
+    found = false;
+    return ResourceResult{false, "Resource not found: " + uri, {}};
+}
+
 bool McpRegistry::matchUriTemplate(const std::string& uriTemplate, const std::string& uri, std::map<std::string, std::string>& vars) {
     size_t t = 0;
     size_t u = 0;
