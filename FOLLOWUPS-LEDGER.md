@@ -52,7 +52,7 @@ S65, S67, S68, S69, S70, S72 and S35-S40. Several ready big features may share o
 | Spec | What | Branch | Server | Status |
 |---|---|---|---|---|
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | In progress |
-| CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | In progress |
+| CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | In progress |
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | In progress |
 | S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A | In progress |
@@ -95,13 +95,19 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S67: Android Vulkan is no longer offered. It could never have compiled: no sokol backend is set for it,
   and Android only creates an EGL context. Android uses GLES3. A real Android Vulkan backend is a separate feature (see Left).
 
+- 2026-11-04: S68 vs `dc/export-pipeline`: that spec's §6.1 and §7 rule 2 say the export walk does not follow links. S68 ships
+  linked folders, because that is what users expect and what the editor already reads. Whoever lands second makes `copyAssets`,
+  `copyLua` and `copyCustomShaderSources` follow links. `test_linked_folders_export.py` fails if they stop.
+- 2026-11-04: MCP eval: agents add cases but cannot run them. The integrator runs new cases at landing, on Orquester accounts.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
+- `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
 
 ## Done
 
-Nothing yet.
+- `fix/ci-suite-classify`: `--suite ci` runs again. 26 files CI = True, 20 CI_EXCLUDED with reasons, a guard in check-changed. Also fixed two tests pinning guide text origin cut. New CI files 112 passed, 0 failed, 0 skipped; both edited files whole 55 passed. Whole check-changed not run: it would select 47 MCP files, some building real players, for a change that only adds a constant to the 20 excluded files.
 
 ## Log
 
@@ -109,3 +115,5 @@ Nothing yet.
 - 2026-11-04: Started 15 agents, each in its own worktree: the Mac check, S38 M1, S61-S73.
 - 2026-11-04: Merged origin/main (`e8142a81e`, lean MCP surface; someone else is pushing to origin, so fetch before every landing). B's jobs per slot cut from 8 to 4 (load was 28 on 12 cores).
 - 2026-11-04: User pointed to new remote changes. Merged origin/main `297562c95`: pixel art specs, Doriax catch-up specs, AGENTS.md rewrite, GitHub workflows removed. Renumbered this program to S61-S73. Told every agent.
+- 2026-11-04: S68's red run: 4 of its tests fail on the control editor as intended; one more was fixed so it does too (not yet rerun).
+- 2026-11-04: First landing: `fix/ci-suite-classify`. S69 found a real bug: the Loading popup swallows a dialog opened once; fixing with a red test. S63's guard: 42 of 45 fixture scenes differ on the unfixed tree (somewhat inflated).
