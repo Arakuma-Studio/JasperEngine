@@ -9,11 +9,14 @@
 
 #include "window/EditorFilePicker.h"
 #include "window/EditorModal.h"
+#include "window/LoadingWindow.h"
 
 #include "imgui.h"
+#include "thread/ResourceProgress.h"
 
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -21,6 +24,7 @@
 #include <thread>
 #include <vector>
 
+using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
@@ -483,6 +487,108 @@ TEST(EditorModalTest, ChoiceOfALabel) {
     EXPECT_EQ(EditorModal::choiceOf("Keep Mine"), "keep_mine");
     EXPECT_EQ(EditorModal::choiceOf("Force-Push!"), "force_push");
     EXPECT_EQ(EditorModal::choiceOf("Open##id"), "open");
+}
+
+// ------------------------------------------------------------------ the Loading popup
+
+namespace {
+
+    // A popup opened once, as most dialogs are, and the build progress, in one frame's order
+    struct DialogAndBuilds {
+        ModalContext ui;
+        LoadingWindow loading;
+        bool ask = false;
+        bool answered = false;
+
+        void frame() {
+            ui.frame([this]() {
+                if (ask) {
+                    ImGui::OpenPopup("Question");
+                    ask = false;
+                }
+                if (EditorModal::begin("Question")) {
+                    if (EditorModal::button("OK", "ok") || answered) ImGui::CloseCurrentPopup();
+                    answered = false;
+                    ImGui::EndPopup();
+                }
+                loading.showBuilds(ResourceProgress::hasActiveBuilds());
+            });
+        }
+
+        bool loadingIsOpen() {
+            bool open = false;
+            ui.frame([&]() {
+                open = ImGui::IsPopupOpen("Loading");
+                if (EditorModal::begin("Question")) ImGui::EndPopup();
+                loading.showBuilds(ResourceProgress::hasActiveBuilds());
+            });
+            return open;
+        }
+
+        std::string reported() {
+            EditorDialogInfo info;
+            return EditorModal::topModal(info) ? info.title : std::string();
+        }
+    };
+
+    constexpr uint64_t TEST_BUILD = 0x5369ull << 32;
+
+}
+
+TEST(EditorModalLoadingTest, ADialogAskedForOnceSurvivesABuildThatStartsAfterIt) {
+    DialogAndBuilds editor;
+    editor.ask = true;
+    editor.frame();
+    EXPECT_EQ(editor.reported(), "Question");
+
+    ResourceProgress::startBuild(TEST_BUILD, ResourceType::Shader, "s69");
+    for (int i = 0; i < 4; i++) {
+        editor.frame();
+        EXPECT_EQ(editor.reported(), "Question") << "frame " << i << ": the progress must not take its place";
+    }
+    EXPECT_FALSE(editor.loadingIsOpen()) << "the progress waits for the dialog";
+
+    // answered: the progress the builds still owe comes up, and ends with them
+    editor.answered = true;
+    editor.frame();
+    editor.frame();
+    EXPECT_TRUE(editor.loadingIsOpen());
+    EXPECT_EQ(editor.reported(), "") << "a progress popup is not a dialog";
+    ResourceProgress::completeBuild(TEST_BUILD);
+    editor.frame();
+    editor.frame();
+    EXPECT_FALSE(editor.loadingIsOpen());
+
+    // nothing of it is left to hold back the next builds' progress
+    ResourceProgress::startBuild(TEST_BUILD + 2, ResourceType::Shader, "s69");
+    editor.frame();
+    EXPECT_TRUE(editor.loadingIsOpen());
+    ResourceProgress::completeBuild(TEST_BUILD + 2);
+    editor.frame();
+    editor.frame();
+    EXPECT_FALSE(editor.loadingIsOpen());
+}
+
+TEST(EditorModalLoadingTest, ADialogAskedForDuringABuildOpensAndTheProgressComesBack) {
+    DialogAndBuilds editor;
+    ResourceProgress::startBuild(TEST_BUILD + 1, ResourceType::Shader, "s69");
+    editor.frame();
+    EXPECT_TRUE(editor.loadingIsOpen());
+
+    editor.ask = true;
+    editor.frame();
+    editor.frame();
+    EXPECT_EQ(editor.reported(), "Question") << "asked for while shaders build";
+    EXPECT_FALSE(editor.loadingIsOpen());
+
+    editor.answered = true;
+    editor.frame();
+    editor.frame();
+    EXPECT_TRUE(editor.loadingIsOpen()) << "the builds are not done";
+    ResourceProgress::completeBuild(TEST_BUILD + 1);
+    editor.frame();
+    editor.frame();
+    EXPECT_FALSE(editor.loadingIsOpen());
 }
 
 // ------------------------------------------------------------------ file pickers

@@ -17,6 +17,8 @@ namespace jasperengine::editor {
 
     public:
         void show();
+        // The build progress popup, for this frame's state of the builds (show gives it)
+        void showBuilds(bool hasBuilds);
 
     private:
         void drawProjectOverlay(const std::string& status);

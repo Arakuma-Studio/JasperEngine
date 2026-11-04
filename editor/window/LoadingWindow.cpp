@@ -27,8 +27,21 @@ void LoadingWindow::show() {
         app.requestRedraw();
     }
 
+    showBuilds(hasBuilds);
+}
+
+void LoadingWindow::showBuilds(bool hasBuilds) {
     if (hasBuilds && !ImGui::IsDragDropActive()) {
+        // a dialog asked for during the builds took its place: it comes back after that dialog
+        if (wasShowing && !ImGui::IsPopupOpen("Loading")) {
+            wasShowing = false;
+        }
         if (!wasShowing) {
+            // ImGui keeps one popup per level, so opening this one closes the one that is open, and a dialog
+            // opened once would never come back: the progress waits for it
+            if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+                return;
+            }
             ImGui::OpenPopup("Loading");
             wasShowing = true;
         }

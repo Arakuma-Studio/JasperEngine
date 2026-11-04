@@ -69,7 +69,7 @@ SITES = {
     ("window/PoseAnimationWindow.cpp", "Map Bones###PoseMapBones"): "not driven: needs a skinned model (test_pose_animation_window opens it)",
     ("window/CodeEditor.cpp", "Files Changed###FilesChanged"): "not driven: needs an unsaved buffer and an external change at once; code_editor resolves it for agents",
     ("htmlui/HtmlUiImportPanel.cpp", "Remove unused imports##htmlui"): "not driven: its button shows on a document with imports (network fixture); the HTML UI tools remove them for agents",
-    ("window/LoadingWindow.cpp", "Loading"): "not driven: Role::Progress, never reported; its absence is test_progress_is_not_a_dialog's unit test",
+    ("window/LoadingWindow.cpp", "Loading"): "not driven: Role::Progress, never reported (EditorModalTest); that it no longer closes a dialog: test_save_template_fields, EditorModalLoadingTest",
     ("window/AvatarWindow.cpp", "Unsaved Avatar###AvatarClose"): "not driven: needs a humanoid model with edits in the Avatar window",
     ("window/PoseAnimationWindowTemplates.cpp", "New Pose Animation from Template###PoseTemplateCreate"): "not driven: from a card of the Pose window's template panel, which needs a bound rig",
     ("window/PoseAnimationWindowTemplates.cpp", "Delete Template###PoseTemplateDelete"): "not driven: as above",
@@ -466,6 +466,7 @@ async def test_save_template_fields(ed: Editor):
     other_temp = ed.scratch.root / "other-temp"
     other_temp.mkdir(exist_ok=True)
     async with Editor(project=REPO / "tools/fixtures/stencil", xvfb="editor", env={"TMPDIR": str(other_temp)}) as saved:
+        # right after the project opens, while its shaders build: asked once, as a person does
         await saved.call("run_command", id="file.saveProjectAsTemplate")
         d = await wait_dialog(saved, "Save Project as Template")
         ed.check(d, f"it opens: {await dialog(saved)}")

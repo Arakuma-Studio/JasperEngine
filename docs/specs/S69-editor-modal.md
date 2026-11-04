@@ -52,3 +52,8 @@ choices or message, so an agent gets stuck on most of them.
 - **A save takes a moment and can go on to another dialog.** `editor_status.playing` is true while a scene is `saving`
   (as before S69), and in a temporary project Save All goes from Save Scene to Save Project once the save ends, so a reply
   with no `dialog` does not mean none follows.
+- **The Loading popup no longer closes a dialog (found by this work, R6 is about layout and keys, not this).** ImGui keeps one
+  popup per level, so when builds started `OpenPopup("Loading")` replaced whatever was open, and a dialog opened once
+  was gone for good: a person or agent who asked for it while a project's shaders were starting saw nothing happen. The
+  progress now waits while another popup is open and comes up once it closes; a dialog asked for during builds opens as
+  before, and the progress returns after it. A person sees the dialog stay where it used to vanish.
