@@ -47,6 +47,8 @@ from harness import REPO, Editor, TestFailure, skip, symlinks_permitted
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "SpriteNormals"}
+CI_EXCLUDED = ("long-running (about 8 minutes on a loaded server: 23 tests generating normal maps); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 900
 
 FIXTURES = REPO / "editor" / "spritenormals" / "tests" / "fixtures"

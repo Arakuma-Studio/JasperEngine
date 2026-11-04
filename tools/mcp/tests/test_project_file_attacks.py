@@ -14,6 +14,7 @@ import yaml
 from harness import Editor, skip, symlinks_permitted
 
 EDITOR = {"create": True, "name": "Project File Attacks"}
+CI = True
 TIMEOUT = 900
 
 
