@@ -132,4 +132,18 @@ void MeshProcess::process(dtNavMeshCreateParams* params, unsigned char* polyArea
     }
 }
 
+NavRecastLog::NavRecastLog(): rcContext(false) {}
+
+void NavRecastLog::takeMessages(std::vector<std::string>& out) {
+    (void)out;
+}
+
+void NavRecastLog::doResetLog() {}
+
+void NavRecastLog::doLog(const rcLogCategory category, const char* msg, const int len) {
+    (void)category;
+    (void)msg;
+    (void)len;
+}
+
 #endif // JASPERENGINE_NAVIGATION

@@ -46,6 +46,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <limits>
 #include <map>
 #include <set>
 #include <unordered_map>
@@ -221,7 +222,7 @@ struct NavigationSystem::Runtime {
     void syncAgents(NavigationSystem& system, Scene* scene);
     void syncObstacles(NavigationSystem& system, Scene* scene, float dt);
     void solveGrids(NavigationSystem& system, Scene* scene, uint32_t tick);
-    void updateCarving();
+    int updateCarving();
     void stepCrowds(Scene* scene, float dt);
     void writeBack(NavigationSystem& system, Scene* scene, float dt, uint32_t tick);
     void moveGridAgent(NavigationSystem& system, Scene* scene, Agent& agent, NavMeshAgentComponent& component, float dt, uint32_t tick);
@@ -485,6 +486,8 @@ NavSurfaceStatus NavigationSystem::getSurfaceStatus(Entity surface) {
         status.crowdAgents = state.crowd->getAgentCount();
         status.crowdCapacity = state.crowd->getCapacity();
     }
+    if (mesh)
+        status.queuedBuilds = mesh->getQueuedBuilds();
     return status;
 }
 
@@ -1036,6 +1039,7 @@ NavPath NavigationSystem::calculatePathOn(Entity surface, const Vector3& from, c
     if (!makeQuery(*this, scene, surface, q, &why))
         return unanswered(why, from, to);
     JE_PROFILE_SCOPE("Nav.Query");
+    pathQueryCount++;
     NavPath path = q.mesh->findPath(q.frame.toNav(from), q.frame.toNav(to), NavFilter::fromSettings(areaMask), q.halfExtents);
     const float planeZ = q.frame.planeZOf(from);
     path.length = 0.0f;
@@ -1733,6 +1737,19 @@ bool NavigationSystem::gridContains(Entity grid, const Vector3& world) {
     if (!map)
         return false;
     return map->contains(map->cellAt(gridLocal(gridFrame(scene, grid), world)));
+}
+
+bool NavigationSystem::getGridReservedCells(Entity grid, std::vector<int>& cells) {
+    cells.clear();
+    NavGridMap* map = getGridMap(grid);
+    if (!map)
+        return false;
+    const GridReservations& reservations = rt().grids[grid].reservations;
+    for (int cell = 0; cell < reservations.getCellCount(); cell++) {
+        if (reservations.holder(cell, fixedTick) != 0)
+            cells.push_back(cell);
+    }
+    return true;
 }
 
 GridCell NavigationSystem::gridWorldToCell(Entity grid, const Vector3& world) {
@@ -2625,18 +2642,22 @@ void NavigationSystem::Runtime::syncObstacles(NavigationSystem& system, Scene* s
                 carved = obstacle.carves.end();
             }
             if (wantCarve && carved == obstacle.carves.end()) {
-                uint32_t ref = 0;
+                NavObstacleDesc desc;
                 if (component.shape == NavObstacleShape::BOX) {
                     const Vector3 half = component.size * scale * 0.5f;
                     const Vector3 forward = frame.directionToNav(transform->worldRotation * Vector3(0.0f, 0.0f, 1.0f));
-                    const float yaw = std::atan2(forward.x, forward.z);
-                    ref = surface.mesh->addBoxObstacle(navPosition, frame.plane == NavPlane::XY ? Vector3(half.x, 1e6f, half.y) : half, yaw);
+                    desc.shape = NavObstacleDesc::Shape::Box;
+                    desc.position = navPosition;
+                    desc.halfExtents = frame.plane == NavPlane::XY ? Vector3(half.x, 1e6f, half.y) : half;
+                    desc.yRadians = std::atan2(forward.x, forward.z);
                 } else {
-                    const float radius = component.radius * std::max(scale.x, scale.z);
                     const float height = component.height * scale.y;
-                    ref = surface.mesh->addCylinderObstacle(navPosition - Vector3(0.0f, height * 0.5f, 0.0f), radius,
-                                                            frame.plane == NavPlane::XY ? 1e6f : height);
+                    desc.shape = NavObstacleDesc::Shape::Cylinder;
+                    desc.position = navPosition - Vector3(0.0f, height * 0.5f, 0.0f);
+                    desc.radius = component.radius * std::max(scale.x, scale.z);
+                    desc.height = frame.plane == NavPlane::XY ? 1e6f : height;
                 }
+                const uint32_t ref = surface.mesh->addObstacle(desc);
                 if (ref) {
                     obstacle.carves[entry.first] = ref;
                     obstacle.carvedPosition = position;
@@ -2762,14 +2783,20 @@ void NavigationSystem::Runtime::solveGrids(NavigationSystem& system, Scene* scen
     }
 }
 
-void NavigationSystem::Runtime::updateCarving() {
+int NavigationSystem::Runtime::updateCarving() {
+    int builds = 0;
     for (auto& entry : surfaces) {
         if (!entry.second.mesh || !entry.second.mesh->isCarving())
             continue;
         bool upToDate = true;
         int rebuilt = 0;
-        entry.second.mesh->updateCarving(CARVE_BUDGET_MS, upToDate, rebuilt);
+        NavCarveBudget budget;
+        budget.maxTileBuilds = std::numeric_limits<int>::max();
+        budget.ceilingMs = CARVE_BUDGET_MS;
+        entry.second.mesh->updateCarving(budget, upToDate, rebuilt);
+        builds += rebuilt;
     }
+    return builds;
 }
 
 void NavigationSystem::Runtime::stepCrowds(Scene* scene, float dt) {
@@ -3207,7 +3234,7 @@ void NavigationSystem::fixedUpdate(double dt) {
     // 3. grid paths, a batch
     r.solveGrids(*this, scene, fixedTick);
     // 4. tile caches, budgeted
-    r.updateCarving();
+    carveTileBuilds = r.updateCarving();
     // 5. crowds
     r.stepCrowds(scene, step);
     // 6. drivers

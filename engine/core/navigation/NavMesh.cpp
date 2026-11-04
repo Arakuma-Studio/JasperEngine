@@ -394,6 +394,7 @@ namespace {
     constexpr int QUERY_NODES = 2048;
 
     std::atomic<uint64_t> revisions{1};
+    std::atomic<uint64_t> generations{1};
 
     // Why Detour cannot hold this static tile safely, or null when it can: Detour's addTile and
     // its queries take every count and index in the data as they are
@@ -564,6 +565,10 @@ struct NavMesh::Impl {
     // carving: the links of each tile (the mesh process adds them to the tiles it builds)
     std::map<TileKey, std::vector<NavLinkInput>> links;
     uint64_t revision = 0;
+    uint64_t generation = 0;
+    // the carving obstacles by id, with their tile-cache refs
+    std::map<uint32_t, dtObstacleRef> obstacles;
+    uint32_t nextObstacle = 1;
     // whether some tile has off-mesh connections, at linksRevision (a crowd asks every tick)
     mutable uint64_t linksRevision = UINT64_MAX;
     mutable bool hasLinks = false;
@@ -585,9 +590,26 @@ struct NavMesh::Impl {
         navMesh = nullptr;
         valid = false;
         links.clear();
+        obstacles.clear();
     }
 
     void bump() { revision = revisions.fetch_add(1, std::memory_order_relaxed) + 1; }
+    void newGeneration() { generation = generations.fetch_add(1, std::memory_order_relaxed) + 1; }
+
+    dtObstacleRef submit(const NavObstacleDesc& desc) {
+        dtObstacleRef ref = 0;
+        if (desc.shape == NavObstacleDesc::Shape::Box) {
+            const float c[3] = {desc.position.x, desc.position.y, desc.position.z};
+            const float h[3] = {desc.halfExtents.x, desc.halfExtents.y, desc.halfExtents.z};
+            if (dtStatusFailed(tileCache->addBoxObstacle(c, h, desc.yRadians, &ref)))
+                return 0;
+        } else {
+            const float p[3] = {desc.position.x, desc.position.y, desc.position.z};
+            if (dtStatusFailed(tileCache->addObstacle(p, desc.radius, desc.height, &ref)))
+                return 0;
+        }
+        return ref;
+    }
 
     void fillFilter(const NavFilter& filter, dtQueryFilter& out) const {
         out.setIncludeFlags(filter.areaMask);
@@ -799,10 +821,13 @@ struct NavMesh::Impl {
 NavMesh::NavMesh(): impl(std::make_unique<Impl>()) {}
 NavMesh::~NavMesh() = default;
 
-bool NavMesh::create(NavMeshData data, bool keepData, std::string& error) {
+bool NavMesh::create(NavMeshData data, bool keepData, std::string& error, const NavMeshCreateOptions& options) {
     impl->release();
+    impl->newGeneration();
     impl->data = NavMeshData();
     impl->header = data.header;
+    if (options.maxObstacles >= 0)
+        impl->header.maxObstacles = options.maxObstacles;
     impl->keepData = keepData;
     data.sortTiles();
 
@@ -851,6 +876,7 @@ bool NavMesh::create(NavMeshData data, bool keepData, std::string& error) {
 
 void NavMesh::clear() {
     impl->release();
+    impl->newGeneration();
     impl->data = NavMeshData();
     impl->header = NavMeshHeader();
     impl->bump();
@@ -858,6 +884,18 @@ void NavMesh::clear() {
 
 bool NavMesh::isValid() const {
     return impl->valid;
+}
+
+bool NavMesh::isComplete() const {
+    return true;
+}
+
+int NavMesh::getQueuedBuilds() const {
+    return 0;
+}
+
+uint64_t NavMesh::getGeneration() const {
+    return impl->generation;
 }
 
 const NavMeshHeader& NavMesh::getHeader() const {
@@ -1209,34 +1247,48 @@ bool NavMesh::getHeight(const Vector3& point, const NavFilter& filter, const Vec
     return dtStatusSucceed(impl->query->getPolyHeight(ref, p, &height));
 }
 
-uint32_t NavMesh::addCylinderObstacle(const Vector3& position, float radius, float height) {
+uint32_t NavMesh::addObstacle(const NavObstacleDesc& desc) {
     if (!impl->valid || !impl->tileCache)
         return 0;
-    const float p[3] = {position.x, position.y, position.z};
-    dtObstacleRef ref = 0;
-    if (dtStatusFailed(impl->tileCache->addObstacle(p, radius, height, &ref)))
+    const dtObstacleRef ref = impl->submit(desc);
+    if (!ref)
         return 0;
-    return ref;
+    const uint32_t id = impl->nextObstacle++;
+    impl->obstacles[id] = ref;
+    return id;
 }
 
-uint32_t NavMesh::addBoxObstacle(const Vector3& center, const Vector3& halfExtents, float yRadians) {
-    if (!impl->valid || !impl->tileCache)
-        return 0;
-    const float c[3] = {center.x, center.y, center.z};
-    const float h[3] = {halfExtents.x, halfExtents.y, halfExtents.z};
-    dtObstacleRef ref = 0;
-    if (dtStatusFailed(impl->tileCache->addBoxObstacle(c, h, yRadians, &ref)))
-        return 0;
-    return ref;
+void NavMesh::moveObstacle(uint32_t id, const NavObstacleDesc& desc) {
+    auto found = impl->obstacles.find(id);
+    if (!impl->valid || !impl->tileCache || found == impl->obstacles.end())
+        return;
+    impl->tileCache->removeObstacle(found->second);
+    found->second = impl->submit(desc);
 }
 
-bool NavMesh::removeObstacle(uint32_t obstacle) {
-    if (!impl->valid || !impl->tileCache || obstacle == 0)
-        return false;
-    return dtStatusSucceed(impl->tileCache->removeObstacle(obstacle));
+void NavMesh::removeObstacle(uint32_t id) {
+    auto found = impl->obstacles.find(id);
+    if (found == impl->obstacles.end())
+        return;
+    if (impl->valid && impl->tileCache && found->second)
+        impl->tileCache->removeObstacle(found->second);
+    impl->obstacles.erase(found);
 }
 
-bool NavMesh::updateCarving(double budgetMs, bool& upToDate, int& tilesRebuilt) {
+bool NavMesh::hasObstacle(uint32_t id) const {
+    return impl->obstacles.count(id) != 0;
+}
+
+void NavMesh::adoptObstacles(NavMesh& previous) {
+    (void)previous;
+}
+
+int NavMesh::countTileLayers(const NavObstacleDesc& desc) const {
+    (void)desc;
+    return 0;
+}
+
+bool NavMesh::updateCarving(const NavCarveBudget& budget, bool& upToDate, int& tilesRebuilt) {
     upToDate = true;
     tilesRebuilt = 0;
     if (!impl->valid || !impl->tileCache)
@@ -1244,7 +1296,7 @@ bool NavMesh::updateCarving(double budgetMs, bool& upToDate, int& tilesRebuilt) 
     const auto begin = std::chrono::steady_clock::now();
     bool changed = false;
     // each update handles the queued obstacle requests and then rebuilds one touched tile
-    for (;;) {
+    while (tilesRebuilt < budget.maxTileBuilds) {
         bool done = false;
         if (dtStatusFailed(impl->tileCache->update(0.0f, impl->navMesh, &done)))
             break;
@@ -1256,12 +1308,37 @@ bool NavMesh::updateCarving(double budgetMs, bool& upToDate, int& tilesRebuilt) 
         changed = true;
         tilesRebuilt++;
         const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
-        if (elapsed >= budgetMs)
+        if (budget.ceilingMs > 0.0 && elapsed >= budget.ceilingMs)
             break;
     }
     if (changed)
         impl->bump();
     return true;
+}
+
+void NavMesh::setDeferCarvedBuilds(bool defer) {
+    (void)defer;
+}
+
+int NavMesh::getTileCacheObstacleCount() const {
+    if (!impl->valid || !impl->tileCache)
+        return 0;
+    int count = 0;
+    for (int i = 0; i < impl->tileCache->getObstacleCount(); i++) {
+        if (impl->tileCache->getObstacle(i)->state != DT_OBSTACLE_EMPTY)
+            count++;
+    }
+    return count;
+}
+
+int NavMesh::getFailedCarveBuilds() const {
+    return 0;
+}
+
+bool NavMesh::getLinkConnections(uint32_t userId, std::vector<NavLinkInput>& out) const {
+    (void)userId;
+    out.clear();
+    return false;
 }
 
 bool NavMesh::updateLink(uint32_t userId, const std::vector<NavLinkInput>& connections, std::string& error) {
@@ -1745,13 +1822,16 @@ struct NavMesh::Impl {
 NavMesh::NavMesh(): impl(std::make_unique<Impl>()) {}
 NavMesh::~NavMesh() = default;
 
-bool NavMesh::create(NavMeshData, bool, std::string& error) {
+bool NavMesh::create(NavMeshData, bool, std::string& error, const NavMeshCreateOptions&) {
     logUnavailable();
     error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
     return false;
 }
 void NavMesh::clear() {}
 bool NavMesh::isValid() const { return false; }
+bool NavMesh::isComplete() const { return true; }
+int NavMesh::getQueuedBuilds() const { return 0; }
+uint64_t NavMesh::getGeneration() const { return 0; }
 const NavMeshHeader& NavMesh::getHeader() const { return impl->header; }
 const NavMeshData* NavMesh::getData() const { return nullptr; }
 bool NavMesh::replaceTiles(const std::vector<NavTileCoord>&, std::vector<NavTileBlob>, std::string& error) {
@@ -1776,10 +1856,17 @@ NavHit NavMesh::samplePosition(const Vector3&, float, const NavFilter&) const { 
 NavHit NavMesh::raycast(const Vector3&, const Vector3&, const NavFilter&, const Vector3&) const { logUnavailable(); return NavHit(); }
 NavHit NavMesh::findClosestEdge(const Vector3&, const NavFilter&, const Vector3&) const { logUnavailable(); return NavHit(); }
 bool NavMesh::getHeight(const Vector3&, const NavFilter&, const Vector3&, float&) const { logUnavailable(); return false; }
-uint32_t NavMesh::addCylinderObstacle(const Vector3&, float, float) { logUnavailable(); return 0; }
-uint32_t NavMesh::addBoxObstacle(const Vector3&, const Vector3&, float) { logUnavailable(); return 0; }
-bool NavMesh::removeObstacle(uint32_t) { return false; }
-bool NavMesh::updateCarving(double, bool& upToDate, int& tilesRebuilt) { upToDate = true; tilesRebuilt = 0; return false; }
+uint32_t NavMesh::addObstacle(const NavObstacleDesc&) { logUnavailable(); return 0; }
+void NavMesh::moveObstacle(uint32_t, const NavObstacleDesc&) {}
+void NavMesh::removeObstacle(uint32_t) {}
+bool NavMesh::hasObstacle(uint32_t) const { return false; }
+void NavMesh::adoptObstacles(NavMesh&) {}
+int NavMesh::countTileLayers(const NavObstacleDesc&) const { return 0; }
+bool NavMesh::updateCarving(const NavCarveBudget&, bool& upToDate, int& tilesRebuilt) { upToDate = true; tilesRebuilt = 0; return false; }
+void NavMesh::setDeferCarvedBuilds(bool) {}
+int NavMesh::getTileCacheObstacleCount() const { return 0; }
+int NavMesh::getFailedCarveBuilds() const { return 0; }
+bool NavMesh::getLinkConnections(uint32_t, std::vector<NavLinkInput>& out) const { out.clear(); return false; }
 bool NavMesh::updateLink(uint32_t, const std::vector<NavLinkInput>&, std::string& error) {
     error = "navmesh support is not in this build (JASPERENGINE_NAVIGATION is off)";
     return false;
