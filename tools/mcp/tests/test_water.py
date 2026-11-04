@@ -183,6 +183,19 @@ def surface(sample: dict) -> float:
     return sample["samples"][0]["surface_height"]
 
 
+async def test_transparent_under_water_screenshot(ed: Editor):
+    """A see-through red box under the refracting water shows through it, tinted
+    (screenshots/water_glass_under.png; water-reflections F2, F3)."""
+    made = await ed.call("create_entity", type="cube", name="Glass", position=[1.5, -1.2, 2.0])
+    glass = find_key(made, "entity_id", "id")
+    await ed.call("set_properties", entity=glass, values={"mesh": {
+        M + "shader": "library:unlit", M + "blendMode": "alpha",
+        M + "shaderParams": {"baseColor": [1.0, 0.1, 0.1, 0.5]}}})
+    shot = await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_glass_under.png"})
+    ed.check(shot.images, "screenshot of the box under the water")
+    await ed.call("delete_entity", entity=glass)
+
+
 async def test_waves_hold_while_paused(ed: Editor):
     """The waves run on the scene clock: Pause and time scale 0 hold them with the bodies, time
     scale 0.5 halves them (water-reflections F9)."""
@@ -338,9 +351,12 @@ async def test_planar_reflection_settings(ed: Editor):
     in_use = (await ed.call("get_scene_settings"))["planar_reflections_in_use"]
     ed.check(in_use["passes"] == 1 and in_use["width"] > 0, f"in use: {in_use!r}")
 
+    scene_shot = await ed.call_raw("screenshot", {"view": "scene", "save_path": "screenshots/water_planar_scene_view.png"})
+    ed.check(scene_shot.images, "Scene view screenshot of the reflection")
+
     await ed.call("set_scene_settings", values={"planar_reflection_resolution": "off"})
     await ed.call_raw("screenshot", {"view": "game"})
-    await ed.call_raw("screenshot", {"view": "game"})
+    await ed.call_raw("screenshot", {"view": "game", "save_path": "screenshots/water_planar_off.png"})
     stats = await ed.call("get_render_stats")
     ed.check(not stats.get("planar_reflections", {}).get("passes"), f"off: no pass: {stats.get('planar_reflections')!r}")
     shaders = (await ed.call("list_shaders", name="water"))["shaders"][0]
