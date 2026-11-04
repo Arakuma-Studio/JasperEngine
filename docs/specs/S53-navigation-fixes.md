@@ -1,7 +1,7 @@
-# S41 — Navigation hygiene (N0): upstream fixes, bake reporting, corridor status, links, carving
+# S53 — Navigation hygiene (N0): upstream fixes, bake reporting, corridor status, links, carving
 
 Wave 4 (navigation N0). A follow-up to `docs/specs/S19-navigation.md`, from an audit of its code.
-It lands before S42 (navigation diagnostics) and S43 (gameplay API), which build on it. Paths are
+It lands before S54 (navigation diagnostics) and S55 (gameplay API), which build on it. Paths are
 relative to the repository root. `UPSTREAM` is recastnavigation's history (read-only clone,
 `/tmp/recast-analysis/src`). Every claim in §3 was checked by reading the code at the cited lines.
 
@@ -15,7 +15,7 @@ build on:
 - A NavMeshLink option that is stored but does nothing.
 - Carving obstacles whose cuts can be lost or stay forever, and whose timing depends on the machine.
 
-S41 fixes and hardens what exists. It adds no new features: S42 owns diagnostics and S43 owns the
+S53 fixes and hardens what exists. It adds no new features: S54 owns diagnostics and S55 owns the
 gameplay API. Every fix ships a test that fails without it.
 
 ## 2. Scope
@@ -32,9 +32,9 @@ gameplay API. Every fix ships a test that fails without it.
 - Small editor and MCP defects, test-infrastructure gaps, and records missing from S19 (R20-R28).
 
 **Out of scope**
-- **S42:** `nav::PathFailure` reasons, islands, coverage, findings, the Path Tester, new overlays,
+- **S54:** `nav::PathFailure` reasons, islands, coverage, findings, the Path Tester, new overlays,
   and new MCP parameters for diagnostics.
-- **S43:** new queries, runtime area toggles, enabling or disabling links at runtime, `setPath`,
+- **S55:** new queries, runtime area toggles, enabling or disabling links at runtime, `setPath`,
   root motion, stuck detection, and Lua handles for Obstacle, Link and Modifier.
 - Re-vendoring upstream `main`, and the upstream commits `0096f0d`, `3e94c3b` and `c393777` (R1).
 - Per-tile vertical bounds. They would change every tile hash (`NavBakeInput.cpp:287-288`) and
@@ -61,7 +61,7 @@ the brief come after it in `UPSTREAM`.
   - dtCrowd cannot reach it: `moveAlongSurface` visits at most 16 polygons, and the corridor holds
     256. Only a direct call can (inferred).
   - `dtMergeCorridorStartShortcut` (`:142-152`) has the same pattern, but `req <= MAX_RES` (32) is
-    always below 256. Upstream left it unchanged too, so S41 does not patch it.
+    always below 256. Upstream left it unchanged too, so S53 does not patch it.
 - `9f4ce64` (#796): `distToTriMesh(..., &tris[0], ...)` runs on a possibly empty `rcIntArray`
   (`Recast/Source/RecastMeshDetail.cpp:846`).
   - `delaunayHull` can drop every dangling face (`:518-528`).
@@ -444,7 +444,7 @@ its upstream hash. No OpenEngine code is used.
 
   - The schemas stay within `tools/mcp/budget.json`.
   - `docs/mcp/TOOLS.md` is regenerated.
-- **R25 Lua.** No new bindings: Link and Obstacle handles are S43's. `docs/scripting.md` and the
+- **R25 Lua.** No new bindings: Link and Obstacle handles are S55's. `docs/scripting.md` and the
   Lua stub comments describe the R6 and R7 semantics of `pathStatus`, `remainingDistance` and
   `onDestinationReached`.
 - **R26 Docs.**
@@ -452,7 +452,7 @@ its upstream hash. No OpenEngine code is used.
     Positions, long paths, bake failures and warnings.
   - `docs/mcp/guide/navigation.md`: `last_bake`, warnings, and the play policy.
   - `docs/testing.md`: the OFF gate and the export test.
-  - `docs/specs/README.md` index: an S41 row.
+  - `docs/specs/README.md` index: an S53 row.
 
 ### Data & compatibility
 
@@ -594,14 +594,14 @@ build, so asserts are on).
   - S08 (reflection tables), S24 (undo of rows and settings), S30 (prebuilt players, for AC29),
     S25 (`run_command`, for AC24), S02 (sanitizer presets, the web gate, `check_bench.py`).
 - **Blocks:**
-  - S42, which builds failure reasons on R6's status and findings on R4's warnings.
-  - S43, which builds Link and Obstacle handles on R10-R12 and the agent API on R6-R8.
-  - Both rebase on S41.
+  - S54, which builds failure reasons on R6's status and findings on R4's warnings.
+  - S55, which builds Link and Obstacle handles on R10-R12 and the agent API on R6-R8.
+  - Both rebase on S53.
 - **Merge hotspots:**
-  - `NavigationSystem.cpp` and `NavCrowd.*` (S43).
+  - `NavigationSystem.cpp` and `NavCrowd.*` (S55).
   - `NavigationTools.cpp`, `NavigationOverlay.*`, `NavigationWindow.cpp` and the
-    `get_navigation_info` schema (S42).
-  - `InspectorNavigation.cpp` and `NavigationReflect.cpp` (S42, S43).
+    `get_navigation_info` schema (S54).
+  - `InspectorNavigation.cpp` and `NavigationReflect.cpp` (S54, S55).
   - `tools/mcp/budget.json` and `docs/mcp/TOOLS.md` (every MCP stream).
   - `editor/tests/reflect/catalog_snapshot.json` (any reflection change).
   - `NOTICE.md`.
@@ -615,7 +615,7 @@ build, so asserts are on).
 | A desktop Auto of 4 builds over 1 ms on the timing server | The bench decides: lower Auto to 2 and record it in Deviations |
 | Deferred builds delay a runtime carving rebake by about tiles / budget ticks (400 tiles at 4 per tick ≈ 1.7 s) | Accepted: the old mesh stays in service (R10); the docs say so |
 | Partial paths no longer fire `onDestinationReached`, which some scripts may rely on | It is a fix (S19 R12 says "of the destination"); recorded in `docs/navigation.md` "Changes" and the guide's Pitfalls |
-| The R5 warning lets clamped bakes ship | A hard error would refuse scenes that work today; S42's findings can raise it to an error |
+| The R5 warning lets clamped bakes ship | A hard error would refuse scenes that work today; S54's findings can raise it to an error |
 | Static links cannot move across tiles | A warning, with Runtime Carving as the fix (R10); growing static tiles is out of scope |
 | A `%p` rewrite merges different pointers | Intended: the messages are for people, and deterministic results matter more |
 | The AC3 red control may not be constructible | Recorded in Progress; the patch is upstream's |
@@ -625,7 +625,7 @@ build, so asserts are on).
 Two implementers work in separate worktrees, each on its own branch, and merge into one
 integration branch.
 - **P1** lands an interface commit first: the §6 declarations with their default implementations.
-  It is named `nav: S41 interfaces` and touches only headers and stubs.
+  It is named `nav: S53 interfaces` and touches only headers and stubs.
 - **P2** merges that commit before its step 3.
 - After that the packages share no file except as noted.
 
