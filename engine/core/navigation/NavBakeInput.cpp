@@ -317,6 +317,13 @@ void NavBakeInput::finalize() {
                 for (int i = i0; i <= i1; i++)
                     hasher.f32(terrain.heightAt(i, j));
             }
+            // T3 R23: a hole under this tile bakes it again. No holes hash as before.
+            if (!terrain.holeCells.empty()) {
+                for (int j = j0; j < j1; j++) {
+                    for (int i = i0; i < i1; i++)
+                        hasher.u8(terrain.isHoleCell(i, j) ? 1 : 0);
+                }
+            }
         }
 
         for (const NavConvexVolume& volume : volumes) {

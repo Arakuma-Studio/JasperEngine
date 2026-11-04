@@ -5393,9 +5393,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
     // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
-    // v45: Voxel Volumes (T6 R83): HAS_VOXEL and its tiers in mesh.vert, mesh.frag and the G-buffer
-    //      (GBUFFER bit 16 'Vox'), includes/voxel_vs.glsl and voxel_fs.glsl.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v45";
+    // v45: terrain holes (T3 R20): TERRAIN_HOLES, 'Thl' on MESH, DEPTH and GBUFFER, in mesh.frag, depth.frag,
+    //      gbuffer.frag, output.glsl and surface_depth_fs.glsl; a terrain with holes drops u_occlusionTexture.
+    // v46: Voxel Volumes (T6 R83): HAS_VOXEL and its tiers in mesh.vert, mesh.frag and the G-buffer
+    //      (GBUFFER bit 'Vox'), includes/voxel_vs.glsl and voxel_fs.glsl.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v46";
 }
 
 void editor::App::pushTabNotificationStyle(){

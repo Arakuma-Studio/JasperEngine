@@ -523,6 +523,26 @@ const EnumTable<MaterialLighting>& StreamSchema::materialLighting() {
     return table;
 }
 
+const EnumTable<TerrainQualitySetting>& StreamSchema::terrainQualitySetting() {
+    static const EnumTable<TerrainQualitySetting> table(reflect::enums::kTerrainQualitySetting);
+    return table;
+}
+
+const EnumTable<TerrainOffscreenShadows>& StreamSchema::terrainOffscreenShadows() {
+    static const EnumTable<TerrainOffscreenShadows> table(reflect::enums::kTerrainOffscreenShadows);
+    return table;
+}
+
+const EnumTable<TerrainMacroMode>& StreamSchema::terrainMacroMode() {
+    static const EnumTable<TerrainMacroMode> table(reflect::enums::kTerrainMacroMode);
+    return table;
+}
+
+const EnumTable<TerrainCliffProjection>& StreamSchema::terrainCliffProjection() {
+    static const EnumTable<TerrainCliffProjection> table(reflect::enums::kTerrainCliffProjection);
+    return table;
+}
+
 const EnumTable<MaterialPassOrder>& StreamSchema::materialPassOrder() {
     static const EnumTable<MaterialPassOrder> table(reflect::enums::kMaterialPassOrder);
     return table;

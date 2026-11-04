@@ -181,7 +181,10 @@ vec4 getBaseColor(){
 
     #if defined(HAS_UV_SET1) || defined(HAS_UV_SET2)
         vec4 getOcclusionTexture(){
-            #ifdef LIT_STOCHASTIC
+            #ifdef TERRAIN_HOLES
+                // (mesh.frag leaves the texture out: T3 R21)
+                return vec4(1.0);
+            #elif defined(LIT_STOCHASTIC)
                 return stochasticTexture(u_occlusionTexture, u_occlusion_smp, getOcclusionStochastic());
             #elif defined(PBR_HEX_ACTIVE)
                 return PBR_HEX_TEXTURE(u_occlusionTexture, u_occlusion_smp, getOcclusionUV(), PBR_HEX_OCCLUSION);

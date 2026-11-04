@@ -40,8 +40,14 @@ in vec2 v_projZW;
 #ifdef DEPTH_STOCHASTIC
     #include "includes/stochastic.glsl"
 #endif
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
+#endif
 
 void main() {
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
+    #endif
     #if defined(ALPHA_MASK)
         float alpha = depthMaterial.alphaParams.x;
     #endif

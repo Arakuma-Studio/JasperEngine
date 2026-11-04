@@ -8,10 +8,13 @@
 #include "NavTestUtil.h"
 
 #include "component/NavGridComponent.h"
+#include "component/TerrainComponent.h"
 #include "navigation/GridPathfinder.h"
 #include "navigation/NavGridMap.h"
 #include "object/navigation/NavGrid.h"
 #include "object/navigation/NavMeshAgent.h"
+#include "terrain/TerrainHoles.h"
+#include "texture/TextureData.h"
 
 #include <algorithm>
 #include <cmath>
@@ -443,4 +446,45 @@ TEST_F(NavGridTest, JumpPointSearchMatchesAStar){
         }
         EXPECT_GT(compared, 20);
     }
+}
+
+// T3 R23: a cell over a hole is Not Walkable unless overridden
+TEST_F(NavGridTest, GridHole) {
+    std::vector<uint8_t> heights((size_t)17 * 17, 32);
+    std::vector<uint8_t> holes((size_t)17 * 17, terrain::SOLID_VALUE);
+    for (int y = 0; y < 17; y++) {
+        for (int x = 0; x < 8; x++)
+            holes[(size_t)y * 17 + x] = terrain::HOLE_VALUE;
+    }
+    const Entity terrainEntity = transformEntity(*scene, Vector3());
+    TerrainComponent terrainComponent;
+    terrainComponent.terrainSize = 16.0f;
+    terrainComponent.maxHeight = 4.0f;
+    terrainComponent.heightMap.setData("nav-grid-hole-height", TextureData(17, 17, (unsigned int)heights.size(), ColorFormat::RED, 1, heights.data()));
+    terrainComponent.holeMap.setData("nav-grid-hole-holes", TextureData(17, 17, (unsigned int)holes.size(), ColorFormat::RED, 1, holes.data()));
+    scene->addComponent<TerrainComponent>(terrainEntity, terrainComponent);
+
+    const Entity gridEntity = transformEntity(*scene, Vector3(-8.0f, 0.0f, -8.0f), NULL_ENTITY, "Grid");
+    NavGridComponent grid;
+    grid.width = 16;
+    grid.height = 16;
+    grid.cellSize = 1.0f;
+    grid.source = NavGridSource::TERRAIN;
+    grid.sourceEntity = terrainEntity;
+    scene->addComponent<NavGridComponent>(gridEntity, grid);
+    resolveTransforms(*scene);
+
+    std::string error;
+    ASSERT_TRUE(nav->rebuildGrid(gridEntity, error)) << error;
+    nav::NavGridMap* map = nav->getGridMap(gridEntity);
+    ASSERT_NE(map, nullptr);
+    EXPECT_EQ(map->getArea(GridCell{2, 12}), nav::AREA_NOT_WALKABLE);
+    // a person's say on one cell of the hole stands through a rebuild
+    map->setArea(GridCell{2, 12}, nav::AREA_WALKABLE);
+    map->setOverride(GridCell{2, 12}, true);
+    ASSERT_TRUE(nav->rebuildGrid(gridEntity, error)) << error;
+    map = nav->getGridMap(gridEntity);
+    EXPECT_EQ(map->getArea(GridCell{2, 2}), nav::AREA_NOT_WALKABLE);
+    EXPECT_EQ(map->getArea(GridCell{12, 2}), nav::AREA_WALKABLE);
+    EXPECT_EQ(map->getArea(GridCell{2, 12}), nav::AREA_WALKABLE) << "overridden";
 }

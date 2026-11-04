@@ -544,6 +544,8 @@ namespace jasperengine{
 		bool terrainHex = false;
 		// and a layer takes Stochastic Tiling (TERRAIN_HEX_STOCHASTIC, with terrainHex only)
 		bool terrainHexStochastic = false;
+		// the terrain has a hole map (T3 R20): every pass of its variant reads it ('Thl')
+		bool terrainHoles = false;
 	};
 
 	// The shaders one submesh draws with
@@ -2088,6 +2090,8 @@ namespace jasperengine{
 		void applyTerrainLayersUniform(ObjectRender& render, int slot, Entity entity, TerrainComponent& terrain);
 		bool loadTerrainTextures(Entity entity, TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		bool loadTerrainHeightTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
+		// T3 R20, R21 (RenderSystemTerrain.cpp): a variant with holes reads this map in every pass
+		bool loadTerrainHoleTexture(TerrainComponent& terrain, ObjectRender& render, ShaderData& shaderData);
 		bool updateTerrainRenderTextures(Entity entity, TerrainComponent& terrain, MeshComponent& mesh);
 #if JASPERENGINE_VOXEL
 		// A volume's array (T6 R50; RenderSystemVoxel.cpp): every slot's maps as slices of one texture.

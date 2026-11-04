@@ -3353,8 +3353,10 @@ float MeshSystem::sampleTerrainHeight(const unsigned char* pixels, int width, in
     return terrain::sampleHeightLocal(pixels, width, height, channels, bytesPerChannel, terrainSize, localX, localZ);
 }
 
-bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint){
-    return raycastTerrain(terrain, transform, ray, false, worldPoint);
+bool MeshSystem::raycastTerrainSurface(const Ray& ray, TerrainComponent& terrain, Transform& transform, Vector3& worldPoint, bool ignoreHoles){
+    // T3 R25: a crossing inside a hole is passed and the ray goes on; a brush sets ignoreHoles, to
+    // paint and fill inside one
+    return raycastTerrain(terrain, transform, ray, !ignoreHoles, worldPoint);
 }
 
 // Height range of an area of the heightmap, sampling every texel the vertex shader can
@@ -3498,6 +3500,10 @@ bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
         if (texResult.state == ResourceLoadState::Loading){
             return false;
         }
+    }
+    // the collider and the queries read its texels as they read the heights (T3 R52)
+    if (prepareTerrainHoleMap(terrain) == ResourceLoadState::Loading){
+        return false;
     }
 
     for (int v = 0; v < MAX_TERRAIN_VIEWS; v++){
@@ -3801,6 +3807,7 @@ void MeshSystem::appendFoliageCell(TerrainComponent& terrain, TerrainFoliageLaye
     const unsigned int attempts = foliageCellAttempts(layer);
     const float expectedInstances = layer.density * TERRAIN_FOLIAGE_CELL_SIZE * TERRAIN_FOLIAGE_CELL_SIZE;
     const float scaleRange = layer.maxScale - layer.minScale;
+    const terrain::HoleMapView holes = terrain.holeMap.empty() ? terrain::HoleMapView() : terrainSurfaceView(terrain).holes;
 
     for (unsigned int i = 0; i < attempts; i++){
         const unsigned int hashX = hashFoliage(layer.seed, static_cast<unsigned int>(cellX), static_cast<unsigned int>(cellZ), i);
@@ -3821,6 +3828,10 @@ void MeshSystem::appendFoliageCell(TerrainComponent& terrain, TerrainFoliageLaye
             density *= std::min(1.0f, expectedInstances - i);
         }
         if (randomFoliage(hashAccept) >= density){
+            continue;
+        }
+        // T3 R26: nothing grows in a hole. An absent map leaves texels null, and no more than this test
+        if (holes.texels && terrain::isHole(holes, (localX + halfSize) / terrain.terrainSize, (localZ + halfSize) / terrain.terrainSize)){
             continue;
         }
 

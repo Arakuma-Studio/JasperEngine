@@ -67,6 +67,11 @@ namespace {
             case MapKind::Blend:
             case MapKind::Hole:
                 terrain.needUpdateTexture = true;
+                // T3 R26: a hole takes its foliage with it, and a filled one gives it back
+                if (map.kind == MapKind::Hole) {
+                    terrain.needUpdateFoliage = true;
+                    terrain.holeMapRevision++;
+                }
                 break;
             case MapKind::Density:
                 terrain.needUpdateFoliage = true;
@@ -120,6 +125,17 @@ SurfaceView jasperengine::terrainSurfaceView(TerrainComponent& terrain) {
     return view;
 }
 
+ResourceLoadState jasperengine::prepareTerrainHoleMap(TerrainComponent& terrain) {
+    Texture& map = terrain.holeMap;
+    if (map.empty()) return ResourceLoadState::Finished;
+    map.setReleaseDataAfterLoad(false);
+    if (map.getMinFilter() != TextureFilter::NEAREST) map.setMinFilter(TextureFilter::NEAREST);
+    if (map.getMagFilter() != TextureFilter::NEAREST) map.setMagFilter(TextureFilter::NEAREST);
+    if (map.getWrapU() != TextureWrap::CLAMP_TO_EDGE) map.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    if (map.getWrapV() != TextureWrap::CLAMP_TO_EDGE) map.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    return map.load().state;
+}
+
 SurfaceSample jasperengine::querySurface(TerrainComponent& terrain, float localX, float localZ) {
     return sampleSurface(terrainSurfaceView(terrain), localX, localZ);
 }
@@ -130,6 +146,7 @@ bool jasperengine::raycastTerrain(TerrainComponent& terrain, const Transform& tr
         terrain.heightMap.setReleaseDataAfterLoad(false);
         terrain.heightMap.load();
     }
+    prepareTerrainHoleMap(terrain);
     const SurfaceView view = terrainSurfaceView(terrain);
 
     const Matrix4 inverseModel = transform.modelMatrix.inverse();
@@ -375,7 +392,8 @@ WriteResult TerrainComponentStore::createMap(MapId map, MapFormat newFormat, flo
 }
 
 bool TerrainComponentStore::canRemoveMap(MapId map) const {
-    return map.kind == MapKind::Hole && !terrain.holeMap.empty() && terrain.holeMapHolds <= 0;
+    // T3 R29: while a volume holds it, a last fill keeps the map, all solid
+    return map.kind == MapKind::Hole && !terrain.holeMap.empty() && terrain.holeMapHolds == 0;
 }
 
 WriteResult TerrainComponentStore::removeMap(MapId map) {
@@ -383,6 +401,8 @@ WriteResult TerrainComponentStore::removeMap(MapId map) {
     const MapFormat before = format(map);
     terrain.holeMap = Texture();
     terrain.needUpdateTexture = true;
+    terrain.needUpdateFoliage = true;
+    terrain.holeMapRevision++;
     TerrainEditEvents::publish(scene, entity, map, before.bounds);
     return WriteResult{true, "", 0};
 }

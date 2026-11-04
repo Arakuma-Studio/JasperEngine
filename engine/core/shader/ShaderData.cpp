@@ -407,6 +407,8 @@ std::pair<int, int> ShaderData::getTextureIndex(TextureShaderType type){
         texstr = "u_terrainDetail";
     }else if (type == TextureShaderType::VOXELDETAIL){
         texstr = "u_voxelDetail";
+    }else if (type == TextureShaderType::TERRAINHOLES){
+        texstr = "u_terrainHoles";
     }else if (type == TextureShaderType::DEPTHTEXTURE){
         texstr = "u_depthTexture";
     }else if (type == TextureShaderType::SSAOTEXTURE){

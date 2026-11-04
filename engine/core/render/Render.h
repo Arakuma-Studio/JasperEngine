@@ -357,6 +357,7 @@ namespace jasperengine{
         PARTICLESIXWAYB,
         PARTICLEEMISSION,    // the emission map
         VAT,                 // a Vertex Animation payload (RGBA16F/32F, includes/vat.glsl)
+        TERRAINHOLES,        // a terrain's hole map (R8, texelFetch: T3 R18, includes/terrain_holes_fs.glsl)
         VOXELDETAIL          // a Voxel Volume's texture array (T6 R50, includes/voxel_fs.glsl)
     };
 

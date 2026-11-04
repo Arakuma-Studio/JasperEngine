@@ -26,8 +26,14 @@ in vec2 v_projZW;
 #endif
 
 #include "includes/depth_util.glsl"
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
+#endif
 
 void main() {
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
+    #endif
     #ifdef SURFACE_DEPTH_DISCARD
         vec2 uv = vec2(0.0);
         vec4 color = vec4(1.0);

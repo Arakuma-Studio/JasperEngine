@@ -48,6 +48,11 @@ in float i_terrainnode_resolution; //int
     }
 #endif
 
+#ifdef TERRAIN_HOLES
+    // T3 R20: the one UV the hole test reads, in every pass (includes/terrain_holes_fs.glsl)
+    out vec2 v_terrainHoleUV;
+#endif
+
 float morphFactor;
 
 
@@ -87,6 +92,10 @@ vec3 getTerrainPosition(vec3 pos, mat4 modelMatrix){
     pos.xz = morphVertex(a_position.xz, pos.xz, morphFactor);
 
     pos = vec3(pos.x, getHeight(pos), pos.z);
+
+    #ifdef TERRAIN_HOLES
+        v_terrainHoleUV = (pos.xz + (terrain.size / 2.0)) / terrain.size;
+    #endif
 
     return pos;
 }

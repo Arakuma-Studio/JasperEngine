@@ -1,0 +1,218 @@
+// (c) Eduardo Doria and contributors
+// SPDX-License-Identifier: MIT
+
+// T3 R25, R26: what each reader of the surface does over a hole (AC32, AC33). The GPU's half is
+// render/TerrainHolesGpuTest.cpp, the collider's editor/tests/engine/physics/JoltShapeBuilderTest.cpp.
+
+#include "Scene.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/Transform.h"
+#include "object/TerrainEdit.h"
+#include "pool/TextureDataPool.h"
+#include "subsystem/MeshSystem.h"
+#include "subsystem/ParticleSubsystem.h"
+#include "terrain/TerrainHoles.h"
+#include "terrain/TerrainOps.h"
+#include "texture/TextureData.h"
+
+#include <gtest/gtest.h>
+
+#include <memory>
+#include <span>
+#include <string>
+#include <vector>
+
+using namespace jasperengine;
+
+namespace {
+
+    constexpr int MAP_SIZE = 33;
+    constexpr float TERRAIN_SIZE = 64.0f;
+
+    class TerrainHolesConsumers : public ::testing::Test {
+    protected:
+        std::unique_ptr<Scene> scene;
+        Entity entity = NULL_ENTITY;
+        std::vector<uint8_t> heights;
+        std::vector<uint8_t> holes;
+        std::vector<uint8_t> density;
+        std::vector<std::string> ids;
+
+        void SetUp() override{
+            scene = std::make_unique<Scene>();
+            entity = scene->createEntity();
+            scene->addComponent<Transform>(entity, {});
+            heights.assign(static_cast<size_t>(MAP_SIZE) * MAP_SIZE, 128);
+            TerrainComponent terrain;
+            terrain.terrainSize = TERRAIN_SIZE;
+            terrain.maxHeight = 8.0f;
+            terrain.heightMap.setData(id("height"), TextureData(MAP_SIZE, MAP_SIZE, static_cast<unsigned int>(heights.size()),
+                                                                ColorFormat::RED, 1, heights.data()));
+            scene->addComponent<TerrainComponent>(entity, terrain);
+        }
+
+        void TearDown() override{
+            scene.reset();
+            for (const std::string& name : ids){
+                TextureDataPool::remove(name);
+            }
+        }
+
+        std::string id(const std::string& name){
+            ids.push_back(std::string("terrain-holes-consumers-") + ::testing::UnitTest::GetInstance()->current_test_info()->name() + "-" + name);
+            return ids.back();
+        }
+
+        TerrainComponent& terrain(){
+            return scene->getComponent<TerrainComponent>(entity);
+        }
+
+        // the whole half of the terrain with local x < 0 is a hole
+        void cutWestHalf(){
+            holes.assign(static_cast<size_t>(MAP_SIZE) * MAP_SIZE, terrain::SOLID_VALUE);
+            for (int y = 0; y < MAP_SIZE; y++){
+                for (int x = 0; x < MAP_SIZE / 2; x++){
+                    holes[static_cast<size_t>(y) * MAP_SIZE + x] = terrain::HOLE_VALUE;
+                }
+            }
+            terrain().holeMap.setData(id("holes"), TextureData(MAP_SIZE, MAP_SIZE, static_cast<unsigned int>(holes.size()),
+                                                               ColorFormat::RED, 1, holes.data()));
+        }
+    };
+
+}
+
+TEST_F(TerrainHolesConsumers, Foliage){
+    density.assign(static_cast<size_t>(MAP_SIZE) * MAP_SIZE, 255);
+    TerrainFoliageLayer layer;
+    layer.density = 1.0f;
+    layer.maxSlope = 90.0f;
+    layer.densityMap.setData(id("density"), TextureData(MAP_SIZE, MAP_SIZE, static_cast<unsigned int>(density.size()),
+                                                        ColorFormat::RED, 1, density.data()));
+    MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
+    const auto scatter = [&](){
+        std::vector<InstanceData> instances;
+        for (int z = -5; z <= 4; z++){
+            for (int x = -5; x <= 4; x++){
+                meshSystem->appendFoliageCell(terrain(), layer, x, z, instances);
+            }
+        }
+        return instances;
+    };
+
+    const std::vector<InstanceData> solid = scatter();
+    int west = 0;
+    for (const InstanceData& instance : solid){
+        west += instance.position.x < -1.0f ? 1 : 0;
+    }
+    ASSERT_GT(west, 100) << "the map must grow something where the hole will be";
+
+    cutWestHalf();
+    const std::vector<InstanceData> cut = scatter();
+    const terrain::HoleMapView view = terrainSurfaceView(terrain()).holes;
+    size_t kept = 0;
+    for (const InstanceData& instance : cut){
+        EXPECT_FALSE(terrain::isHole(view, (instance.position.x + TERRAIN_SIZE * 0.5f) / TERRAIN_SIZE, (instance.position.z + TERRAIN_SIZE * 0.5f) / TERRAIN_SIZE));
+    }
+    // the rest of the scatter stands where it stood: a hole moves nothing, it only takes what was over it
+    for (const InstanceData& instance : solid){
+        kept += terrain::isHole(view, (instance.position.x + TERRAIN_SIZE * 0.5f) / TERRAIN_SIZE, (instance.position.z + TERRAIN_SIZE * 0.5f) / TERRAIN_SIZE) ? 0 : 1;
+    }
+    EXPECT_EQ(cut.size(), kept);
+    EXPECT_LT(cut.size(), solid.size());
+
+    // and the store's change tells the scatter to run again
+    terrain().needUpdateFoliage = false;
+    TerrainComponentStore store(scene.get(), entity, terrain());
+    const float one = 1.0f;
+    ASSERT_TRUE(store.write(terrain::MapId{terrain::MapKind::Hole, 0}, terrain::TexelRect{0, 0, 1, 1}, std::span<const float>(&one, 1)).ok);
+    EXPECT_TRUE(terrain().needUpdateFoliage);
+}
+
+TEST_F(TerrainHolesConsumers, ParticlesPassThroughAHole){
+    ParticleSubsystem* particles = scene->getSystem<ParticleSubsystem>().get();
+    auto query = [&](float x, float z, float out[3]){
+        const float point[3] = {x, 20.0f, z};
+        float normal[3];
+        particles->gatherTerrains();
+        return ParticleSubsystem::sampleTerrain(particles, point, out, normal);
+    };
+    float surface[3];
+    EXPECT_TRUE(query(-10.0f, 0.0f, surface));
+    EXPECT_TRUE(query(10.0f, 0.0f, surface));
+    cutWestHalf();
+    EXPECT_FALSE(query(-10.0f, 0.0f, surface)) << "over the hole there is no surface";
+    EXPECT_TRUE(query(10.0f, 0.0f, surface));
+}
+
+TEST_F(TerrainHolesConsumers, HeightStaysDefinedUnderAHole){
+    cutWestHalf();
+    float height = 0.0f;
+    Vector3 normal;
+    MeshSystem::sampleTerrainSurface(terrain(), -10.0f, 0.0f, height, normal);
+    EXPECT_NEAR(height, 8.0f * 128.0f / 255.0f, 1e-3f);
+    EXPECT_TRUE(querySurface(terrain(), -10.0f, 0.0f).hole);
+    EXPECT_FALSE(querySurface(terrain(), 10.0f, 0.0f).hole);
+}
+
+TEST_F(TerrainHolesConsumers, BrushRaysSeeThroughTheRule){
+    cutWestHalf();
+    MeshSystem* meshSystem = scene->getSystem<MeshSystem>().get();
+    Transform& transform = scene->getComponent<Transform>(entity);
+    const Ray down(Vector3(-10.0f, 50.0f, 0.0f), Vector3(0.0f, -100.0f, 0.0f));
+    Vector3 point;
+    EXPECT_FALSE(meshSystem->raycastTerrainSurface(down, terrain(), transform, point)) << "a ray down a hole misses";
+    EXPECT_TRUE(meshSystem->raycastTerrainSurface(down, terrain(), transform, point, true)) << "a brush paints in it";
+    const Ray solid(Vector3(10.0f, 50.0f, 0.0f), Vector3(0.0f, -100.0f, 0.0f));
+    EXPECT_TRUE(meshSystem->raycastTerrainSurface(solid, terrain(), transform, point));
+    EXPECT_NEAR(point.y, 8.0f * 128.0f / 255.0f, 1e-3f);
+}
+
+// T3 R29: while a volume holds the map, a last fill keeps it, all solid, and no reload follows
+TEST_F(TerrainHolesConsumers, HoldKeepsTheMap){
+    TerrainComponentStore store(scene.get(), entity, terrain());
+    terrain().holeMapHolds = 1;
+    terrain::Op cut;
+    cut.type = terrain::OpType::CutHoles;
+    cut.shape.type = terrain::ShapeType::Circle;
+    cut.shape.center = Vector2(0.0f, 0.0f);
+    cut.shape.radius = 8.0f;
+    ASSERT_TRUE(terrain::applyOps(store, std::span<const terrain::Op>(&cut, 1)).ok);
+    EXPECT_FALSE(terrain().holeMap.empty());
+    terrain::Op fill;
+    fill.type = terrain::OpType::FillHoles;
+    terrain::TerrainOpResult filled = terrain::applyOps(store, std::span<const terrain::Op>(&fill, 1));
+    ASSERT_TRUE(filled.ok);
+    EXPECT_FALSE(filled.ops[0].mapRemoved);
+    EXPECT_FALSE(terrain().holeMap.empty()) << "the map stays, all solid";
+    EXPECT_FALSE(querySurface(terrain(), 0.0f, 0.0f).hole);
+
+    terrain().holeMapHolds = 0;
+    ASSERT_TRUE(terrain::applyOps(store, std::span<const terrain::Op>(&cut, 1)).ok);
+    filled = terrain::applyOps(store, std::span<const terrain::Op>(&fill, 1));
+    ASSERT_TRUE(filled.ok);
+    EXPECT_TRUE(filled.ops[0].mapRemoved);
+    EXPECT_TRUE(terrain().holeMap.empty());
+}
+
+// T3 R27: a hole with no interior sample warns, and collision_samples_open counts what opens
+TEST_F(TerrainHolesConsumers, CollisionSamplesOpenAndWarning){
+    TerrainComponentStore store(scene.get(), entity, terrain());
+    terrain::Op small;
+    small.type = terrain::OpType::CutHoles;
+    small.shape.type = terrain::ShapeType::Circle;
+    small.shape.center = Vector2(0.0f, 0.0f);
+    small.shape.radius = 1.0f;
+    const terrain::TerrainOpResult first = terrain::applyOps(store, std::span<const terrain::Op>(&small, 1));
+    ASSERT_TRUE(first.ok);
+    EXPECT_EQ(first.ops[0].collisionSamplesOpen, 0);
+    EXPECT_TRUE(first.hasWarning("hole_no_collision"));
+
+    terrain::Op large = small;
+    large.shape.radius = 16.0f;
+    const terrain::TerrainOpResult second = terrain::applyOps(store, std::span<const terrain::Op>(&large, 1));
+    ASSERT_TRUE(second.ok);
+    EXPECT_GT(second.ops[0].collisionSamplesOpen, 0);
+    EXPECT_FALSE(second.hasWarning("hole_no_collision"));
+}

@@ -21,6 +21,8 @@
 #include "object/Primitive.h"
 #include "object/Sprite.h"
 #include "object/Terrain.h"
+#include "object/TerrainEdit.h"
+#include "terrain/TerrainHoles.h"
 #include "object/Tilemap.h"
 #include "picking/PickingTestUtil.h"
 #include "util/Angle.h"
@@ -520,5 +522,63 @@ TEST(MeshRaycast, UnsignedShortJointsReadAsTheGpuBindsThem){
     for (uint32_t v = 0; v < vertices; v++){
         const Vector3 expected = (v < 8 ? mesh.bonesMatrix[0] : mesh.bonesMatrix[1]) * geometry.positions[v];
         EXPECT_LE((posed[v] - expected).length(), 1e-5f) << "vertex " << v << " " << posed[v].toString() << " vs " << expected.toString();
+    }
+}
+
+// T3 R25: a ray down a hole misses this terrain and returns what lies beyond it; a brush's ignoreHoles
+// hits; outside a hole the surface answers as ever (S26's 1e-4)
+TEST(MeshRaycast, TerrainHoleMisses){
+    Scene scene;
+    Camera camera(&scene);
+    camera.activate();
+    Terrain terrain(&scene);
+    terrain.setSize(32.0f);
+    terrain.setMaxHeight(8.0f);
+    std::vector<uint8_t> heights((size_t)33 * 33, 128);
+    std::vector<uint8_t> holes((size_t)33 * 33, terrain::SOLID_VALUE);
+    for (int y = 10; y < 20; y++){
+        for (int x = 10; x < 20; x++){
+            holes[(size_t)y * 33 + x] = terrain::HOLE_VALUE;
+        }
+    }
+    TerrainComponent& component = scene.getComponent<TerrainComponent>(terrain.getEntity());
+    component.heightMap.setData("raycast-hole-height", TextureData(33, 33, (unsigned int)heights.size(), ColorFormat::RED, 1, heights.data()));
+    component.heightMap.setReleaseDataAfterLoad(false);
+    component.holeMap.setData("raycast-hole-holes", TextureData(33, 33, (unsigned int)holes.size(), ColorFormat::RED, 1, holes.data()));
+    component.needUpdateTerrain = true;
+
+    Primitive below(&scene);
+    below.createBox(40.0f, 1.0f, 40.0f);
+    below.setPosition(0.0f, -10.0f, 0.0f);
+
+    settleScene(scene);
+
+    const float surface = 8.0f * 128.0f / 255.0f;
+    // the centre of the hole's texels: local (-1, -1)
+    const Ray throughHole(Vector3(-1.0f, 50.0f, -1.0f), Vector3(0.0f, -200.0f, 0.0f));
+    MeshRaycastHit hit = MeshRaycast::raycast(&scene, throughHole, LAYER_MASK_EVERYTHING);
+    ASSERT_TRUE(hit.hit);
+    EXPECT_EQ(hit.entity, below.getEntity()) << "the ray went on to what is beyond the hole";
+    EXPECT_NEAR(hit.point.y, -9.5f, 1e-3f);
+
+    Vector3 point;
+    MeshSystem* meshSystem = scene.getSystem<MeshSystem>().get();
+    Transform& transform = scene.getComponent<Transform>(terrain.getEntity());
+    EXPECT_FALSE(meshSystem->raycastTerrainSurface(throughHole, component, transform, point));
+    ASSERT_TRUE(meshSystem->raycastTerrainSurface(throughHole, component, transform, point, true)) << "ignoreHoles hits";
+    EXPECT_NEAR(point.y, surface, 1e-3f);
+
+    // outside a hole
+    const Ray onGround(Vector3(11.0f, 50.0f, 11.0f), Vector3(0.0f, -200.0f, 0.0f));
+    hit = MeshRaycast::raycast(&scene, onGround, LAYER_MASK_EVERYTHING);
+    ASSERT_TRUE(hit.hit);
+    EXPECT_EQ(hit.entity, terrain.getEntity());
+    EXPECT_NEAR(hit.point.y, surface, 1e-4f);
+
+    // and a slanted ray that crosses the surface over the hole comes out beyond it
+    Ray slanted(Vector3(-1.0f, surface + 4.0f, -1.0f), Vector3(40.0f, -8.0f, 0.0f));
+    hit = MeshRaycast::raycast(&scene, slanted, LAYER_MASK_EVERYTHING);
+    if (hit.hit && hit.entity == terrain.getEntity()){
+        EXPECT_FALSE(querySurface(component, hit.point.x, hit.point.z).hole);
     }
 }

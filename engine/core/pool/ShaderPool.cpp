@@ -635,7 +635,16 @@ uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
 }
 
 uint64_t ShaderPool::getGBufferVoxelProperty(){
-    return shaderPropertyBit(16);
+    return shaderPropertyBit(17);
+}
+
+uint64_t ShaderPool::getTerrainHolesProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:    return shaderPropertyBit(36);
+        case ShaderType::DEPTH:   return shaderPropertyBit(18);
+        case ShaderType::GBUFFER: return shaderPropertyBit(16);
+        default:                  return 0;
+    }
 }
 
 uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
@@ -653,9 +662,9 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 36;
-        case ShaderType::DEPTH:  return 18;
-        case ShaderType::GBUFFER: return 16;
+        case ShaderType::MESH:   return 37;
+        case ShaderType::DEPTH:  return 19;
+        case ShaderType::GBUFFER: return 17;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
         // Vc3 Vc4 Pcl, and the ribbon of thick lines and trails: Rib, Tex (its base texture), Pxw
@@ -739,6 +748,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // and 34, after S10's 'Shq')
             case 34: return shortName ? "Vat" : "Vertex Animation";
             case 35: return shortName ? "Vab" : "Vertex Animation Bones";
+            // T3 R20: a terrain with a hole map (TERRAIN_HOLES, includes/terrain_holes_fs.glsl)
+            case 36: return shortName ? "Thl" : "Terrain Holes";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -765,6 +776,7 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 16: return shortName ? "Vat" : "Vertex Animation";
             case 17: return shortName ? "Vab" : "Vertex Animation Bones";
+            case 18: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {
@@ -788,8 +800,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 14: return shortName ? "Vat" : "Vertex Animation";
             case 15: return shortName ? "Vab" : "Vertex Animation Bones";
+            case 16: return shortName ? "Thl" : "Terrain Holes"; // T3 R20
             // a Voxel Volume's chunk (T6 R49; the colour pass takes it through Lit defines)
-            case 16: return shortName ? "Vox" : "Voxel Volume";
+            case 17: return shortName ? "Vox" : "Voxel Volume";
         }
     } else if (shaderType == ShaderType::UI) {
         switch (bit) {

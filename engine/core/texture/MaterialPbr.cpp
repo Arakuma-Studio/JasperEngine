@@ -98,6 +98,8 @@ namespace {
         {"TERRAIN_HEX_STOCHASTIC", "Ts"},
         {"HAS_VOXEL", "Vx"}, {"VOXEL_TIER_HIGH", "Vh"}, {"VOXEL_TIER_MEDIUM", "Vm"}, {"VOXEL_TIER_LOW", "Vl"},
     };
+    // T3 R54: a bit per entry of a 64-bit mask, so the table may grow past 32 and no further
+    static_assert(sizeof(defineCodes) / sizeof(defineCodes[0]) <= 64, "MaterialPbr's define bits are 64 wide");
 
 }
 
@@ -540,27 +542,27 @@ bool MaterialPbr::parseVariantBasename(const std::string& basename, std::vector<
     return true;
 }
 
-uint32_t MaterialPbr::getDefineBits(const std::vector<std::string>& defines){
-    uint32_t bits = 0;
+uint64_t MaterialPbr::getDefineBits(const std::vector<std::string>& defines){
+    uint64_t bits = 0;
     for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
         if (std::find(defines.begin(), defines.end(), defineCodes[i].define) != defines.end())
-            bits |= 1u << i;
+            bits |= 1ull << i;
     }
     return bits;
 }
 
-uint32_t MaterialPbr::getDefineBit(const std::string& define){
+uint64_t MaterialPbr::getDefineBit(const std::string& define){
     for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
         if (define == defineCodes[i].define)
-            return 1u << i;
+            return 1ull << i;
     }
     return 0;
 }
 
-std::vector<std::string> MaterialPbr::getDefinesFromBits(uint32_t bits){
+std::vector<std::string> MaterialPbr::getDefinesFromBits(uint64_t bits){
     std::vector<std::string> defines;
     for (size_t i = 0; i < sizeof(defineCodes) / sizeof(defineCodes[0]); i++){
-        if (bits & (1u << i))
+        if (bits & (1ull << i))
             defines.push_back(defineCodes[i].define);
     }
     std::sort(defines.begin(), defines.end());

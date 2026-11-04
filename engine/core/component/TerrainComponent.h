@@ -61,6 +61,12 @@ namespace jasperengine{
     // captures), each selecting and morphing its own node cut. Grouping the per-view
     // buffers in a struct (instead of a 2-D array of InterleavedBuffer) keeps MSVC's
     // code generation from crashing when the ECS pool instantiates TerrainComponent.
+    // T3 R49. All stored as ints: append only.
+    enum class TerrainQualitySetting : int { AUTO, HIGH, MEDIUM, LOW };
+    enum class TerrainOffscreenShadows : int { AUTO, ON, OFF };
+    enum class TerrainMacroMode : int { OFF, NOISE, BASE_MAP };
+    enum class TerrainCliffProjection : int { AUTO, FLAT_ONLY };
+
     struct TerrainView{
         // 0 = fullRes, 1 = halfRes; selected and uploaded independently once per frame
         InterleavedBuffer nodesbuffer[2];
@@ -106,6 +112,9 @@ namespace jasperengine{
         // side planes stay planar. hexRotation 0..1 is the share of a turn a tile may rotate.
         bool hexTiling = false;
         float hexRotation = 1;
+        // T3 R11: Auto is the tier's (triplanar at High, one plane below); Flat Only never reads a
+        // side plane, for grass or sand that never sits on a cliff
+        TerrainCliffProjection cliffProjection = TerrainCliffProjection::AUTO;
 
         bool operator == (const TerrainSurfaceLayer& other) const{
             return pbr == other.pbr &&
@@ -128,7 +137,8 @@ namespace jasperengine{
                    stochasticContrast == other.stochasticContrast &&
                    stochasticRotation == other.stochasticRotation &&
                    hexTiling == other.hexTiling &&
-                   hexRotation == other.hexRotation;
+                   hexRotation == other.hexRotation &&
+                   cliffProjection == other.cliffProjection;
         }
 
         bool operator != (const TerrainSurfaceLayer& other) const{
@@ -198,11 +208,34 @@ namespace jasperengine{
         int rootGridSize = 2;
         int levels = 6;
 
-        // R8, 0 = hole, 255 = solid (S55 R18); absent means no holes, and no cost anywhere
+        // R8, 0 = hole, 255 = solid (T3 R18); absent means no holes, and no cost anywhere
         Texture holeMap;
-        // T3 R29, T6 R40: an attached Automatic Voxel Volume keeps the map while it exists, so a first
-        // in-game dig does not reload the terrain's variant. Not saved.
+
+        // T3 R49: the terrain's material features. Each costs nothing at its default.
+        TerrainQualitySetting quality = TerrainQualitySetting::AUTO;
+        bool limitLayersPerPixel = false;
+        TerrainOffscreenShadows offscreenShadows = TerrainOffscreenShadows::AUTO;
+        TerrainMacroMode macroMode = TerrainMacroMode::OFF;
+        float macroScale = 64; //metres
+        float macroStrength = 0.35f;
+        Vector3 macroTintA = Vector3(0.80f, 0.84f, 0.76f);
+        Vector3 macroTintB = Vector3(1.04f, 1.0f, 0.92f);
+        float macroSlopeFade = 0.33f;
+        bool resampleEnabled = false;
+        float resampleNear = 30; //metres
+        float resampleFar = 120; //metres
+        float resampleReduction = 0.25f;
+        float heightBlendSharpness = 0;
+        bool macroNormal = false;
+
+        // T3 R29, T6 R40: while above 0 (a terrain with an attached Automatic Voxel Volume, in Play) a
+        // last fill keeps the map, all solid, and reloads nothing, so a first in-game dig costs no
+        // variant reload. Not saved, not reflected, and reset on clone.
         int holeMapHolds = 0;
+        // a hole map that fails to load, or is not R8, warns once and draws no holes (T3 R29)
+        bool holeMapWarned = false;
+        // bumped by each change of the map's texels, for who placed something by them (T3 R26). Not saved
+        uint32_t holeMapRevision = 0;
 
         bool needUpdateTerrain = true;
         bool needUpdateTexture = false;
@@ -229,6 +262,9 @@ namespace jasperengine{
         layer.stochasticBlendSharpness = previous.stochasticBlendSharpness;
         layer.stochasticContrast = previous.stochasticContrast;
         layer.stochasticRotation = previous.stochasticRotation;
+        layer.hexTiling = previous.hexTiling;
+        layer.hexRotation = previous.hexRotation;
+        layer.cliffProjection = previous.cliffProjection;
         return layer;
     }
 

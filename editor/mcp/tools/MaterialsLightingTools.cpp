@@ -35,7 +35,7 @@ namespace {
 // the distinct builtin:lit variants the open scenes' meshes draw with (a project past
 // MaterialPbr::VARIANT_WARNING compiles and ships many)
 size_t litVariantCount(Project* project){
-    std::set<std::pair<uint32_t, uint32_t>> variants;
+    std::set<std::pair<uint64_t, uint64_t>> variants;
     for (SceneProject* sceneProject : project->getScenesAndPrefabStages()){
         if (!sceneProject->scene) continue;
         auto meshes = sceneProject->scene->getComponentArray<MeshComponent>();

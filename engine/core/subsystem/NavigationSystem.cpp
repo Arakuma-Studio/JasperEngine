@@ -6,6 +6,7 @@
 #include "Engine.h"
 #include "Log.h"
 #include "Scene.h"
+#include "object/TerrainEdit.h"
 #include "component/MeshComponent.h"
 #include "component/NavGridComponent.h"
 #include "component/NavMeshAgentComponent.h"
@@ -1427,14 +1428,17 @@ bool NavigationSystem::rebuildGrid(Entity grid, std::string& error) {
                     assign(cell, AREA_NOT_WALKABLE);
                     continue;
                 }
-                float height = 0.0f;
-                Vector3 normal;
                 // heights at the cell centre (spec risk table: hex cells too)
-                MeshSystem::sampleTerrainSurface(*terrain, local.x, local.z, height, normal);
-                const Vector3 surfaceWorld = terrainTransform->modelMatrix * Vector3(local.x, height, local.z);
+                const terrain::SurfaceSample sample = querySurface(*terrain, local.x, local.z);
+                const Vector3 surfaceWorld = terrainTransform->modelMatrix * Vector3(local.x, sample.height, local.z);
                 map->setHeight(cell, frame.toNav(surfaceWorld).y);
-                if (!map->getOverride(cell) && map->getArea(cell) == AREA_NOT_WALKABLE)
-                    map->setArea(cell, AREA_WALKABLE);
+                if (!map->getOverride(cell)) {
+                    // T3 R23: over a hole, Not Walkable unless a person says otherwise
+                    if (sample.hole)
+                        map->setArea(cell, AREA_NOT_WALKABLE);
+                    else if (map->getArea(cell) == AREA_NOT_WALKABLE)
+                        map->setArea(cell, AREA_WALKABLE);
+                }
             }
         }
     } else {

@@ -64,9 +64,15 @@ out vec4 g_finalColor;
     uniform sampler u_baseColor_smp;
     #ifndef MATERIAL_UNLIT
         uniform texture2D u_metallicRoughnessTexture;
-        uniform texture2D u_occlusionTexture;
+        // a terrain with holes gives its base material's occlusion texture to the hole map (T3 R21:
+        // the base occlusion reads 1, the layers' own still applies)
+        #ifndef TERRAIN_HOLES
+            uniform texture2D u_occlusionTexture;
+        #endif
         uniform sampler u_metallicRoughness_smp;
-        uniform sampler u_occlusion_smp;
+        #ifndef TERRAIN_HOLES
+            uniform sampler u_occlusion_smp;
+        #endif
         // a painted terrain with the post-processing colour leaves its base material's emissive
         // texture out: its slot is the colour LUT's (the variant is at 16 textures without it;
         // the emissive factor still applies)
@@ -248,6 +254,9 @@ const float M_PI = 3.141592653589793;
 #endif
 // the post-processing colour (USE_POST_COLOR; after lit_frame.glsl, which holds its parameters)
 #include "includes/post_color.glsl"
+#ifdef TERRAIN_HOLES
+    #include "includes/terrain_holes_fs.glsl"
+#endif
 
 void main() {
     #ifdef PBR_HEX_ACTIVE
@@ -295,6 +304,9 @@ void main() {
             g_finalColor = postColorEncodeBlended(baseColor);
         #else
             g_finalColor = (vec4(linearTosRGB(baseColor.rgb), baseColor.a));
+        #endif
+        #ifdef TERRAIN_HOLES
+            terrainDiscardHole();
         #endif
         return;
     #endif
@@ -551,5 +563,10 @@ void main() {
         #else
             g_finalColor = vec4(linearTosRGB(color.rgb), baseColor.a);
         #endif
+    #endif
+    // T3 R20: at the end of the shader rather than the top: on llvmpipe's 256-bit path a discard ahead
+    // of the lit code crashed in its JIT (T3-terrain-materials-holes.md, Deviations)
+    #ifdef TERRAIN_HOLES
+        terrainDiscardHole();
     #endif
 }
