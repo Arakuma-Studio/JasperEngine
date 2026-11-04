@@ -18,6 +18,10 @@ using namespace jasperengine;
 using namespace jasperengine::editor;
 
 namespace {
+    // CameraComponent's S57 defaults (a default CameraComponent would allocate a framebuffer)
+    constexpr TransparencyMode kCameraTransparencyMode = TransparencyMode::SORTED;
+    constexpr float kCameraOitWeightScale = 1.0f;
+
 
     std::string shadowCaster2DShapeToString(ShadowCaster2DShape shape) {
         return StreamSchema::shadowCaster2DShape().toString(shape);
@@ -530,10 +534,9 @@ YAML::Node LegacyCodecs::encodeCameraComponent(const CameraComponent& camera) {
     node["framebufferHeight"] = camera.framebufferHeight;
     node["framebufferFilter"] = textureFilterToString(camera.framebufferFilter);
     // the transparency mode (S57), written only away from its defaults
-    const CameraComponent defaults;
-    if (camera.transparencyMode != defaults.transparencyMode)
+    if (camera.transparencyMode != kCameraTransparencyMode)
         node["transparencyMode"] = OrderIndependentTransparency::getModeName(camera.transparencyMode);
-    if (camera.oitWeightScale != defaults.oitWeightScale) node["oitWeightScale"] = camera.oitWeightScale;
+    if (camera.oitWeightScale != kCameraOitWeightScale) node["oitWeightScale"] = camera.oitWeightScale;
 
     return node;
 }
@@ -569,12 +572,14 @@ CameraComponent LegacyCodecs::decodeCameraComponent(const YAML::Node& node, cons
     if (node["framebufferWidth"]) camera.framebufferWidth = YamlNumbers::as<unsigned int>(node["framebufferWidth"]);
     if (node["framebufferHeight"]) camera.framebufferHeight = YamlNumbers::as<unsigned int>(node["framebufferHeight"]);
     if (node["framebufferFilter"]) camera.framebufferFilter = decodeEnum(node, "framebufferFilter", StreamSchema::textureFilter());
+    // written only away from their defaults (S57): absent is the default, not the old value
+    camera.transparencyMode = kCameraTransparencyMode;
     if (node["transparencyMode"]) {
         TransparencyMode mode;
         if (OrderIndependentTransparency::modeFromName(node["transparencyMode"].Scalar().c_str(), mode))
             camera.transparencyMode = mode;
     }
-    if (node["oitWeightScale"]) camera.oitWeightScale = YamlNumbers::as<float>(node["oitWeightScale"]);
+    camera.oitWeightScale = node["oitWeightScale"] ? YamlNumbers::as<float>(node["oitWeightScale"]) : kCameraOitWeightScale;
 
     if (node["enabled"]) camera.enabled = YamlNumbers::as<bool>(node["enabled"]);
 
