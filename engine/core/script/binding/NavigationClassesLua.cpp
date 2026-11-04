@@ -123,7 +123,7 @@ namespace {
             corners[(int)i + 1] = path.corners[i];
         table["corners"] = corners;
         table["length"] = path.length;
-        // S42 R35: why it is not Complete ("none" when it is), the surface that answered
+        // S54 R35: why it is not Complete ("none" when it is), the surface that answered
         table["reason"] = std::string(nav::pathFailureName(path.failure));
         table["surface"] = (lua_Integer)path.surface;
         table["closestPoint"] = path.closestPoint;
@@ -131,7 +131,7 @@ namespace {
         return table;
     }
 
-    // ---- S42 diagnostics tables (camelCase keys, the MCP codes as strings: spec D6)
+    // ---- S54 diagnostics tables (camelCase keys, the MCP codes as strings: spec D6)
 
     luabridge::LuaRef islandTable(lua_State* L, const nav::NavIsland& island) {
         luabridge::LuaRef table = luabridge::newTable(L);
@@ -379,7 +379,7 @@ void LuaBinding::registerNavigationClasses(lua_State *L){
             const bool found = self->findClosestEdge(vectorArg(L, 2), hit, filterArg(L, 3));
             return pushHit(L, found, hit);
         })
-        // (reachable, reason): S42 R35, the reason is ignorable
+        // (reachable, reason): S54 R35, the reason is ignorable
         .addFunction("isReachable", +[](lua_State* L) -> int {
             NavigationSystem* self = navSelf(L);
             nav::PathFailure why = nav::PathFailure::None;

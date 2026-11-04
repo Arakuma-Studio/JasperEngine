@@ -34074,7 +34074,7 @@
      [
       0,
       "auto",
-      "Remove Object"
+      "Surface Policy"
      ],
      [
       1,
@@ -34084,7 +34084,7 @@
      [
       2,
       "exclude",
-      "Remove Object (always)"
+      "Remove Object"
      ]
     ]
    },
