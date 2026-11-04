@@ -1173,7 +1173,7 @@ void buildProjectTool(const CallPtr& call) {
     replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
 }
 
-// ------------------------------------------------------------------ the shader list (S44)
+// ------------------------------------------------------------------ the shader list (S64)
 
 // What the build tools may read of closed scenes before they answer: more than about a second
 // becomes a job (docs/mcp/conventions.md). A big file is one load past that by itself.
@@ -1307,7 +1307,9 @@ void generateShadersTool(const CallPtr& call) {
     ShaderListStatus list;
     const auto projectKeys = [project]() {
         const ShaderOverrides& overrides = project->getShaderOverrides();
-        return project->finishBuildShaderKeys(project->collectSceneBuildShaderKeys(), overrides.additions, overrides.exclusions);
+        std::set<ShaderKey> sceneKeys;
+        project->collectBuildShaderKeys(sceneKeys);
+        return project->finishBuildShaderKeys(sceneKeys, overrides.additions, overrides.exclusions);
     };
     if (args.contains("shaders") && args["shaders"].is_array() && !args["shaders"].empty()) {
         for (const Json& item : args["shaders"]) {
@@ -1468,7 +1470,7 @@ void getBuildInfoTool(const CallPtr& call) {
     }
     data["scenes"] = scenes;
 
-    // the list as a build would ship it (S44); the time and the reads are what closed scenes add
+    // the list as a build would ship it (S64); the time and the reads are what closed scenes add
     const auto listStart = std::chrono::steady_clock::now();
     const ShaderListStatus list = project->refreshClosedSceneShaderKeys(answerLimit(project));
     data["shader_list_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - listStart).count();
@@ -1479,13 +1481,15 @@ void getBuildInfoTool(const CallPtr& call) {
         const JobPtr job = shaderListJob(ctx, project);
         data["shaders_pending_scenes"] = list.pendingScenes;
         data["shaders_job_id"] = job->id();
-        data["shaders_hint"] = "Reading the closed scenes takes a while: get_job {job_id: " + job->id() + "} until it ends, then get_build_info again. "
-                               "build_project and generate_shaders do it themselves.";
+        data["next"] = "This list is incomplete. get_job {job_id: \"" + job->id() + "\"} until it ends, then get_build_info again. "
+                       "build_project and generate_shaders finish it themselves.";
     }
 
     const ShaderOverrides& overrides = project->getShaderOverrides();
     // what the scenes need and every build ships, before the manual picks
-    const std::set<ShaderKey> fromScenes = project->finishBuildShaderKeys(project->collectSceneBuildShaderKeys(), {}, {});
+    std::set<ShaderKey> sceneKeys;
+    project->collectBuildShaderKeys(sceneKeys);
+    const std::set<ShaderKey> fromScenes = project->finishBuildShaderKeys(sceneKeys, {}, {});
     std::set<ShaderKey> all = fromScenes;
     for (ShaderKey key : overrides.additions) all.insert(ShaderPool::normalizeKey(key));
     for (ShaderKey key : overrides.exclusions) all.insert(ShaderPool::normalizeKey(key));
@@ -1516,7 +1520,7 @@ void getBuildInfoTool(const CallPtr& call) {
                        (missing.empty() ? "available" : "missing tools") + "; Web: " + (emsdk.found ? "available" : "no emsdk") +
                        "; source export: available. " + std::to_string(scenes.size()) + " scene(s) in the build, " +
                        std::to_string(included) + " shader(s).";
-    if (!list.complete()) text += " The shader list is incomplete: " + std::to_string(list.pendingScenes.size()) + " closed scene(s) left, see shaders_hint.";
+    if (!list.complete()) text += " The shader list is incomplete: " + std::to_string(list.pendingScenes.size()) + " closed scene(s) left, see next.";
     for (const UnreadableScene& scene : list.unreadableScenes) text += " Cannot read scene " + scene.path + ": " + scene.error + ".";
     call->ok(text, data);
 }
@@ -2392,9 +2396,8 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Get Build Info";
         tool.description =
             "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), graphics APIs and last "
-            "output dir per mode, jobs, scenes in build, the shaders a build ships, closed scenes included (count; "
-            "include_shaders: keys for build_project shaders; shaders_complete false: shaders_hint says how to finish), "
-            "running job, last result. Call before build_project.";
+            "output dir per mode, jobs, scenes in build, shader count (include_shaders: keys for build_project "
+            "shaders), running job, last result. Call before build_project.";
         tool.inputSchema = object({
             {"include_shaders", withDefault(boolean(""), false)}
         });
@@ -2451,7 +2454,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Generate Shaders";
         tool.description =
             "Compile shader variants into output_dir as a job, without a player (build_project does this itself). "
-            "Default: the list a build ships (get_build_info), closed scenes included. format header = C++ headers, binary = .sdat.";
+            "Default: the shaders the project's scenes need. format header = C++ headers, binary = .sdat.";
         tool.inputSchema = object({
             {"output_dir", string("Absolute.")},
             {"backends", array(stringItem, "Graphics APIs. Default: all.")},

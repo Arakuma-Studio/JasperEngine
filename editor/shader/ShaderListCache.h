@@ -15,7 +15,7 @@
 namespace jasperengine::editor {
 
     // What Project::refreshClosedSceneShaderKeys computed of each closed scene (docs/specs/
-    // S44-shader-lists.md): valid while the scene's file has the same hash and what its keys also
+    // S64-shader-lists.md): valid while the scene's file has the same hash and what its keys also
     // read (prefabs, models, scripts...: the context, Project::shaderListContext) did not change.
     // Kept in the project's .jasperengine folder for the next session; a file that does not read
     // only costs computing them again.

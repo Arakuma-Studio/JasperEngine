@@ -184,10 +184,10 @@ while the editor is hung), `get_crash_reports`, `dismiss_crash_notice`, `set_han
 `je-bench-diag` (built with the core tests) measures what the diagnostics cost a running
 program, gated by `tools/perf/check_bench.py` against `tools/perf/bench-thresholds.json`: the
 heartbeat (≤ 5 ns), a 120-byte crash-ring write (≤ 150 ns), the install (≤ 3 ms) and the idle
-watchdog thread (≤ 0.1 % of one core). Run it on the benchmark-only server:
+watchdog thread (≤ 0.1 % of one core). Run it on a quiet machine:
 
 ```bash
-rb.sh E --img 'cmake -S engine -B build/linux/bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON \
+tools/build.sh exec linux bash -c 'cmake -S engine -B build/linux/bench -G Ninja -DCMAKE_BUILD_TYPE=Release -DJASPERENGINE_TESTS=ON \
     && cmake --build build/linux/bench --target je-bench-diag \
     && build/linux/bench/tests/core/je-bench-diag --json build/linux/bench/diag.json \
     && python3 tools/perf/check_bench.py build/linux/bench/diag.json'

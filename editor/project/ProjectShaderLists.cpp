@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The project's shader list, with its scenes closed or open (docs/specs/S44-shader-lists.md): a
+// The project's shader list, with its scenes closed or open (docs/specs/S64-shader-lists.md): a
 // closed scene's keys computed from its current file as an export's load and save compute them, the
 // cache that keeps an unchanged project from reading any, and the list every consumer shares.
 
@@ -31,7 +31,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::int64_t stampOf(fs::file_time_type time) {
+    std::int64_t shaderListStamp(fs::file_time_type time) {
         return static_cast<std::int64_t>(time.time_since_epoch().count());
     }
 
@@ -53,7 +53,7 @@ namespace {
         const std::uintmax_t size = fs::file_size(file, sizeError);
         text += shownName;
         if (!timeError && !sizeError) {
-            text += '|' + std::to_string(stampOf(time)) + '|' + std::to_string(size);
+            text += '|' + std::to_string(shaderListStamp(time)) + '|' + std::to_string(size);
         }
         text += '\n';
     }
@@ -76,7 +76,7 @@ namespace {
         return editor::FileUtils::pathToGenericUtf8(sceneProject.filepath.lexically_normal());
     }
 
-    std::vector<std::string> prefabPaths(const editor::SceneProject& sceneProject) {
+    std::vector<std::string> listedPrefabPaths(const editor::SceneProject& sceneProject) {
         std::vector<std::string> paths;
         for (const editor::PrefabSceneInfo& info : sceneProject.prefabs) {
             paths.push_back(editor::FileUtils::pathToGenericUtf8(info.prefabPath));
@@ -110,7 +110,7 @@ std::string editor::Project::shaderListContext() const {
     // the prefabs every scene can spawn start from these (collectAllPrefabs, which reads their files)
     std::vector<std::string> prefabs;
     for (const SceneProject& sceneProject : scenes) {
-        const std::vector<std::string> listed = prefabPaths(sceneProject);
+        const std::vector<std::string> listed = listedPrefabPaths(sceneProject);
         prefabs.insert(prefabs.end(), listed.begin(), listed.end());
         if (sceneProject.scene) {
             for (const fs::path& path : findScriptPrefabReferences(sceneProject.scene)) {
@@ -200,8 +200,8 @@ bool editor::Project::readClosedSceneShaderKeys(SceneProject& sceneProject, Shad
         updateScenePrefabs(probe.get());
 
         // the keys read the prefabs of every scene, this one's as its file has them now
-        const std::vector<std::string> before = prefabPaths(sceneProject);
-        entry.prefabs = prefabPaths(*probe);
+        const std::vector<std::string> before = listedPrefabPaths(sceneProject);
+        entry.prefabs = listedPrefabPaths(*probe);
         prefabsChanged = before != entry.prefabs;
         if (prefabsChanged) {
             setClosedScenePrefabs(sceneProject, entry.prefabs);
@@ -240,11 +240,11 @@ void editor::Project::rememberSavedShaderKeys(const SceneProject& sceneProject, 
     loadShaderListCache();
     ShaderListCache::Entry entry;
     entry.sha1 = sha1;
-    entry.writeTime = stampOf(time);
+    entry.writeTime = shaderListStamp(time);
     entry.size = size;
     entry.context = shaderListContext();
     entry.keys = sceneProject.shaderKeys;
-    entry.prefabs = prefabPaths(sceneProject);
+    entry.prefabs = listedPrefabPaths(sceneProject);
     shaderListCache.store(sceneCacheKey(sceneProject), std::move(entry));
 }
 
@@ -287,7 +287,7 @@ editor::ShaderListStatus editor::Project::refreshClosedSceneShaderKeys(const Sha
             unreadable("the file is missing");
             continue;
         }
-        item.writeTime = stampOf(time);
+        item.writeTime = shaderListStamp(time);
         item.size = size;
 
         const auto failure = shaderListFailures.find(item.key);
@@ -306,7 +306,7 @@ editor::ShaderListStatus editor::Project::refreshClosedSceneShaderKeys(const Sha
             if (!sameStamp) {
                 shaderListCache.updateStamp(item.key, item.writeTime, size);
             }
-            if (prefabPaths(sceneProject) != entry->prefabs) {
+            if (listedPrefabPaths(sceneProject) != entry->prefabs) {
                 setClosedScenePrefabs(sceneProject, entry->prefabs);
             }
         }
@@ -382,9 +382,8 @@ editor::ShaderListStatus editor::Project::refreshClosedSceneShaderKeys(const Sha
     return status;
 }
 
-std::set<ShaderKey> editor::Project::collectSceneBuildShaderKeys() const {
+void editor::Project::collectBuildShaderKeys(std::set<ShaderKey>& keys) const {
     // the generated main.cpp registers every scene stack, so any of them can be loaded
-    std::set<ShaderKey> keys;
     for (const SceneProject& sceneProject : scenes) {
         std::set<ShaderKey> sceneKeys = sceneProject.shaderKeys;
         // stored keys are only as new as the last save of that scene
@@ -394,7 +393,6 @@ std::set<ShaderKey> editor::Project::collectSceneBuildShaderKeys() const {
             keys.insert(ShaderPool::normalizeKey(key));
         }
     }
-    return keys;
 }
 
 std::set<ShaderKey> editor::Project::finishBuildShaderKeys(const std::set<ShaderKey>& sceneKeys, const std::set<ShaderKey>& additions,
@@ -437,5 +435,7 @@ std::set<ShaderKey> editor::Project::collectStandaloneShaderKeys() {
         Out::warning("Scene '%s' (%s) cannot be read for the shaders Play builds ahead: %s", scene.name.c_str(), scene.path.c_str(), scene.error.c_str());
     }
     const ShaderOverrides& overrides = getShaderOverrides();
-    return finishBuildShaderKeys(collectSceneBuildShaderKeys(), overrides.additions, overrides.exclusions);
+    std::set<ShaderKey> sceneKeys;
+    collectBuildShaderKeys(sceneKeys);
+    return finishBuildShaderKeys(sceneKeys, overrides.additions, overrides.exclusions);
 }

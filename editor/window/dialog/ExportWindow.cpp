@@ -137,7 +137,9 @@ void ExportWindow::refreshShaderSelection() {
             limit.maxMillis = 100;
             m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(limit);
         }
-        sceneKeys = m_project->finishBuildShaderKeys(m_project->collectSceneBuildShaderKeys(), {}, {});
+        std::set<ShaderKey> collected;
+        m_project->collectBuildShaderKeys(collected);
+        sceneKeys = m_project->finishBuildShaderKeys(collected, {}, {});
     }
 
     std::set<ShaderKey> keys = sceneKeys;

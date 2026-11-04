@@ -1191,10 +1191,10 @@ void editor::Exporter::resolveShaderKeys() {
             keys.insert(ShaderPool::normalizeKey(key));
         }
     } else {
-        // the list every consumer shares (Project::collectSceneBuildShaderKeys): each scene's saved
+        // the list every consumer shares (Project::collectBuildShaderKeys): each scene's saved
         // keys and, where it is loaded, what its objects were loaded with and what its content needs
         // now (a save writes no loaded state: Project::collectSavedShaderKeys)
-        keys = project->collectSceneBuildShaderKeys();
+        project->collectBuildShaderKeys(keys);
     }
     keys = project->finishBuildShaderKeys(keys, config.shaderAdditions, config.shaderExclusions);
 

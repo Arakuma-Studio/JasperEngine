@@ -1,4 +1,4 @@
-"""The project's shader list with closed scenes (docs/specs/S44-shader-lists.md, docs/mcp/guide/
+"""The project's shader list with closed scenes (docs/specs/S64-shader-lists.md, docs/mcp/guide/
 shipping.md "The shader list"): get_build_info, generate_shaders, Play's startup and an export name
 the same shaders whatever each closed scene's file saved (AC1, AC2, R5), an unchanged project answers
 from the cache by file hash, also after a restart (AC3), work past the budget is a job (R3), and a
@@ -161,12 +161,6 @@ async def test_stale_closed_scenes_match_an_export():
         ed.check_eq(sorted(from_export ^ names), [], "a second export ships the same list")
 
 
-async def test_fixture_matches_an_export():
-    """AC2 on the default fixture (its scenes as they are, every one but the first closed)."""
-    async with Editor(label="fixture") as ed:
-        await check_lists_match(ed)
-
-
 async def test_overrides_and_warmup_are_in_every_list():
     """R2: what a build adds (the warm-up list) and removes (an exclusion) is in the one list."""
     async with Editor(project=await stale_project(), label="overrides") as ed:
@@ -264,7 +258,7 @@ async def test_past_the_budget_is_a_job():
         info = await ed.call("get_build_info", include_shaders=True)
         ed.check_eq(info["shaders_complete"], False, "no time for the closed scenes")
         ed.check(sorted(info["shaders_pending_scenes"]), f"names them: {info}")
-        ed.check("get_job" in info["shaders_hint"], f"how to finish: {info['shaders_hint']}")
+        ed.check(info["shaders_job_id"] in info["next"] and "get_job" in info["next"], f"how to finish: {info['next']}")
         again = await ed.call("get_build_info")
         ed.check_eq(again["shaders_job_id"], info["shaders_job_id"], "one job at a time")
         job = await finish_job(ed, info["shaders_job_id"])

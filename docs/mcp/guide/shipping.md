@@ -42,25 +42,17 @@ compiles when this computer can.
 `get_build_info platforms.<name>.tools_missing[]` names what a platform's build lacks (Android:
 build-tools, platform, JDK; the bundletool jar is downloaded for `aab`).
 
+Before exporting: the scenes saved, the Console clean in play, the start scene right
+(`edit_build_scenes`).
+
 ## The shader list
 
-`get_build_info` (`shader_count`, `include_shaders`), `generate_shaders` without `shaders`, Play's
-startup, the Build Settings window and every export name the same shaders, whichever scenes are open:
-what each scene needs now, what every build ships, the manual additions and the warm-up list, without
-the exclusions (docs/specs/S44-shader-lists.md). `excluded` shaders stay listed, flagged.
+`get_build_info`, `generate_shaders` without `shaders`, Play's startup, Build Settings and every
+export name the same shaders, closed scenes included.
 
-A closed scene's keys come from its file as it is now (no GPU work, as an export's load and save),
-cached by the file's hash in `.jasperengine/shader-lists.yaml`: an unchanged project reads no scene
-(`shader_list_scenes_read` 0, `shader_list_ms`). A changed prefab, model, material, script, shader or
-UI file reads the closed scenes again, since their keys depend on them.
-
-- `shaders_complete: false`: reading them takes over about a second (or Play is running), so the
-  answer holds what is known. `shaders_pending_scenes` names what is left, `shaders_job_id` is the job
-  doing it, `shaders_hint` says how to finish: `get_job` until it ends, then `get_build_info` again.
-  `generate_shaders` waits for it inside its own job.
-- `shaders_unreadable_scenes[{scene, path, error}]`, and `result.unreadable_scenes` of a
-  `generate_shaders` job: scenes that cannot be read. The list holds what it last knew of them; an
-  export warns about them.
+- `shaders_complete: false`: the list is not finished. Do what `next` says before you rely on it.
+- `shaders_unreadable_scenes` (a `generate_shaders` job: `result.unreadable_scenes`): scenes whose
+  file cannot be read, with why. Fix the file: until then the list holds what it last knew of them.
 
 ## Running a build
 

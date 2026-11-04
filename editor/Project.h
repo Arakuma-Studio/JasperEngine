@@ -1462,11 +1462,11 @@ namespace jasperengine::editor{
         // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
         // and cannot compile, so a variant the editor never draws with is missing there. The
         // keys are read from the scenes (main thread), the build runs anywhere. The same list as
-        // an export's, whichever scenes are open (S44).
+        // an export's, whichever scenes are open (S64).
         std::set<ShaderKey> collectStandaloneShaderKeys();
         void buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys);
 
-        // ---- S44: the cache of closed scenes' keys
+        // ---- S64: the cache of closed scenes' keys
         // What a closed scene's keys read besides its file: the prefabs every scene lists, the
         // files they and the collector read, the editor that computed them
         std::string shaderListContext() const;
@@ -1542,10 +1542,10 @@ namespace jasperengine::editor{
         Project(const Project&) = delete;
         Project& operator=(const Project&) = delete;
 
-        // ---- The project's shader list (docs/specs/S44-shader-lists.md). One source for an export,
+        // ---- The project's shader list (docs/specs/S64-shader-lists.md). One source for an export,
         // generate_shaders, get_build_info, Play's startup and the Build Settings window:
         // refreshClosedSceneShaderKeys (not needed right after an export's saves), then
-        // collectSceneBuildShaderKeys, then finishBuildShaderKeys.
+        // collectBuildShaderKeys, then finishBuildShaderKeys.
         //
         // Makes each closed scene's shaderKeys what an export would find: its file's keys and what
         // its content needs, computed from its file as an export's load and save do, without
@@ -1555,7 +1555,7 @@ namespace jasperengine::editor{
         ShaderListStatus refreshClosedSceneShaderKeys(const ShaderListLimit& limit = {});
         // What the scenes need, normalized: each one's keys, and what an open one has loaded and
         // needs now. Any thread an export runs on.
-        std::set<ShaderKey> collectSceneBuildShaderKeys() const;
+        void collectBuildShaderKeys(std::set<ShaderKey>& keys) const;
         // The list of a build from what the scenes need: what every build ships, the additions and
         // the warm-up list in, the exclusions out
         std::set<ShaderKey> finishBuildShaderKeys(const std::set<ShaderKey>& sceneKeys, const std::set<ShaderKey>& additions,

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// What the shader list keeps of closed scenes between sessions (docs/specs/S44-shader-lists.md). The
+// What the shader list keeps of closed scenes between sessions (docs/specs/S64-shader-lists.md). The
 // list itself runs in the editor: tools/mcp/tests/test_shader_lists.py.
 
 #include <gtest/gtest.h>
@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    fs::path cacheFile(const std::string& name) {
+    fs::path scratchCacheFile(const std::string& name) {
         const fs::path dir = fs::temp_directory_path() / ("jasper-shader-list-test-" + name + "-" + std::to_string(::getpid()));
         fs::remove_all(dir);
         // made by the save, as in a project that has no .jasperengine yet
@@ -44,7 +44,7 @@ namespace {
 }
 
 TEST(ShaderListCache, KeepsEntriesBetweenSessions) {
-    const fs::path file = cacheFile("roundtrip");
+    const fs::path file = scratchCacheFile("roundtrip");
     ShaderListCache cache;
     ShaderListCache::Entry entry = sampleEntry();
     // a fork's key is written by its path: the id is this session's
@@ -85,7 +85,7 @@ TEST(ShaderListCache, StampChangesKeepTheAnswer) {
 
 // A cache is only worth its answers: whatever is wrong with the file, the keys are computed again
 TEST(ShaderListCache, AnUnusableFileIsAnEmptyCache) {
-    const fs::path file = cacheFile("unusable");
+    const fs::path file = scratchCacheFile("unusable");
     ShaderListCache cache;
     cache.store("scenes/A.scene", sampleEntry());
     ASSERT_TRUE(cache.save(file));
