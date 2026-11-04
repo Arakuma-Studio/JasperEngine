@@ -54,6 +54,15 @@ namespace jasperengine::nav {
         Failed
     };
 
+    // What the corridor of an agent with a valid target holds (S41 R6, D5): the way to the
+    // target's polygon, its first 256 polygons (the search reached the target), or the way to
+    // the polygon nearest an unreachable target
+    enum class NavCrowdPath : uint8_t {
+        Complete,
+        Truncated,
+        Partial
+    };
+
     // A link an agent reached this update
     struct NavLinkEntry {
         int agent = -1;
@@ -90,6 +99,9 @@ namespace jasperengine::nav {
         void resetMoveTarget(int agent);
         NavCrowdTarget getTargetState(int agent) const;
         bool isPathPartial(int agent) const;
+        NavCrowdPath getPathState(int agent) const;
+        // the polygons of the agent's corridor
+        int getCorridorSize(int agent) const;
         Vector3 getTargetPosition(int agent) const;
 
         // One crowd step (spec D2 step 5); the path queue runs 100 iterations at most

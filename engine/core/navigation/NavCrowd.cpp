@@ -284,6 +284,14 @@ bool NavCrowd::isPathPartial(int agent) const {
     return impl->agent(agent)->partial;
 }
 
+NavCrowdPath NavCrowd::getPathState(int agent) const {
+    return impl->agent(agent)->partial ? NavCrowdPath::Partial : NavCrowdPath::Complete;
+}
+
+int NavCrowd::getCorridorSize(int agent) const {
+    return impl->agent(agent)->corridor.getPathCount();
+}
+
 Vector3 NavCrowd::getTargetPosition(int agent) const {
     return vec(impl->agent(agent)->targetPos);
 }
@@ -655,6 +663,8 @@ bool NavCrowd::requestMoveTarget(int, const Vector3&) { return false; }
 void NavCrowd::resetMoveTarget(int) {}
 NavCrowdTarget NavCrowd::getTargetState(int) const { return NavCrowdTarget::Failed; }
 bool NavCrowd::isPathPartial(int) const { return false; }
+NavCrowdPath NavCrowd::getPathState(int) const { return NavCrowdPath::Partial; }
+int NavCrowd::getCorridorSize(int) const { return 0; }
 Vector3 NavCrowd::getTargetPosition(int) const { return Vector3(); }
 void NavCrowd::update(float) {}
 Vector3 NavCrowd::getPosition(int) const { return Vector3(); }
