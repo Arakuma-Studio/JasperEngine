@@ -124,16 +124,17 @@ writes open in the Aseprite version their features need:
 | tilemaps and tilesets, layer UUIDs, cel z-index, user data on tags and the sprite, user properties | 1.3 |
 
 Limits (larger files fail with `too_large` instead of exhausting memory): canvas 16384 px a side,
-65,535 frames, 1 GiB of decoded pixels, groups nested 128 deep.
+65,535 frames, 1 GiB of decoded pixels, 64 MiB of palettes (frame 0's and one per change), groups
+nested 128 deep.
 
 ## What is verified
 
 The codec's tests (`editor/tests/pixelart/`) render every frame of the fixture corpus
 (`editor/tests/fixtures/aseprite/README.md`) against Aseprite's own PNG exports pixel for pixel,
-re-save every fixture byte for byte, round-trip documents built in code, and fuzz the reader with
-malformed files under the address sanitizer. These have no real-Aseprite golden yet and are
-checked against values worked out from Aseprite's source: group opacity and group blend modes,
-layer × cel opacity combinations, `describe` against Aseprite's `--data` JSON, Hue and Saturation
-as Aseprite 1.3.15 and later draw them, and files the writer makes opened in Aseprite. A run of
-the manual compatibility check (Aseprite opening written files) is recorded here per release:
-none yet.
+including a corpus made with Aseprite 1.3.18 for group opacity and blend, layer × cel opacity,
+composed nested groups, tilemap flips, user data and indexed sprites with a background; compare
+`describe` with Aseprite's `--data` for every fixture; re-save every fixture byte for byte;
+round-trip documents built in code; and fuzz the reader with malformed files under the address
+sanitizer, bounding what it allocates. `tools/pixelart/aseprite_compat.py` (needs
+`JASPER_ASEPRITE`) checks the other direction: Aseprite opens the files the writer makes and
+exports the same frames.

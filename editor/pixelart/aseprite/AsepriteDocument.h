@@ -41,6 +41,7 @@ namespace jasperengine::editor::pixelart::aseprite {
     inline constexpr int kMaxCanvasSide = 16384;
     inline constexpr int kMaxFrames = 65535;
     inline constexpr uint64_t kMaxDecodedPixelBytes = 1ull << 30;   // 1 GiB of decoded pixels
+    inline constexpr uint64_t kMaxPaletteBytes = 64ull << 20;       // the palettes kept (frame 0 and each change)
     inline constexpr int kMaxUserDataDepth = 128;
 
     enum class ColorMode : uint16_t { Rgba = 32, Grayscale = 16, Indexed = 8 };

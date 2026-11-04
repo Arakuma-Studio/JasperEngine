@@ -12,6 +12,7 @@
 #include "AnimationKeys.h"
 
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
+#include "sprite/SpriteSheetPool.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpRefs.h"
@@ -2914,6 +2915,25 @@ void setSheetSpriteFrames(const CallPtr& call, Target& target, UndoStep& step, b
 }
 
 void setSpriteFramesTool(const CallPtr& call) {
+    // an .aseprite sheet being imported: the call waits for it (the editor keeps running) and
+    // then runs as if it had just come
+    if (has(call->args(), "sheet") && call->args()["sheet"].is_string()) {
+        std::string sheet, error;
+        if (McpValues::assetPathFromJson(call->ctx().project(), call->args()["sheet"].get<std::string>(), sheet, error) &&
+            SpriteSheetPool::isAsepritePath(sheet) && !pixelart::aseprite::AsepriteImporter::get().ensureImport(sheet)) {
+            call->waitUntil([sheet]() { return pixelart::aseprite::AsepriteImporter::get().ensureImport(sheet); }, 60000,
+                            [call](bool timedOut) {
+                if (timedOut) {
+                    const Json problem = {{"kind", "import_failed"}, {"field", "sheet"}, {"message", "the sheet's import did not finish within 60 s"},
+                                          {"fix", "call again once get_asset_info's import_state is imported"}};
+                    call->fail("import_failed: the sheet's import did not finish within 60 s", Json{{"error", problem}, {"errors", Json::array({problem})}});
+                    return;
+                }
+                setSpriteFramesTool(call);
+            });
+            return;
+        }
+    }
     Target target;
     if (!resolveSceneArg(call, target) || !sceneStopped(call, target)) return;
     const Json& args = call->args();
@@ -2942,8 +2962,19 @@ void setSpriteFramesTool(const CallPtr& call) {
         failWith("clips needs an .aseprite sheet: pass sheet.");
         return;
     }
+    if (!sprite->sheet.empty() && !has(args, "texture")) {
+        // the mesh's texture is the sheet's page: slicing it would save the import cache's file
+        failWith("\"" + scene->getEntityName(target.entity) + "\" shows " + sprite->sheet.path +
+                 ": pass texture with slice or frames to go back to inline frames, or frame to pick a frame of the sheet.");
+        return;
+    }
 
     auto* multi = new MultiPropertyCmd();
+    // texture, slice or frames on a sheet sprite: it goes back to inline frames, in the same step
+    const std::string clearedSheet = sprite->sheet.path;
+    if (!clearedSheet.empty()) {
+        addProp<AssetRef>(*multi, target, target.entity, ComponentType::SpriteComponent, "sheet", AssetRef());
+    }
     std::string stored = meshTexturePath(scene, target.entity, 0);
     if (has(args, "texture")) {
         if (!addMeshTexture(target, target.entity, 0, args["texture"], *multi, error) ||
@@ -3066,9 +3097,13 @@ void setSpriteFramesTool(const CallPtr& call) {
         list.push_back({{"index", i}, {"name", result.framesRect[i].name}, {"rect", rectJson(result.framesRect[i].rect)}});
     }
     call->ok("Sprite \"" + scene->getEntityName(target.entity) + "\" has " + std::to_string(result.numFramesRect) + " frame(s).",
-             Json{{"sprite", entityJson(target, target.entity)}, {"created", created}, {"frames", list},
-                  {"texture", McpValues::assetPathToJson(target.project, stored)},
-                  {"size", {result.width, result.height}}, {"pivot", nameOf(pivotPresets(), result.pivotPreset)}});
+             [&]() {
+                 Json data = {{"sprite", entityJson(target, target.entity)}, {"created", created}, {"frames", list},
+                              {"texture", McpValues::assetPathToJson(target.project, stored)},
+                              {"size", {result.width, result.height}}, {"pivot", nameOf(pivotPresets(), result.pivotPreset)}};
+                 if (!clearedSheet.empty()) data["cleared_sheet"] = McpValues::assetPathToJson(target.project, clearedSheet);
+                 return data;
+             }());
 }
 
 void setSpriteAnimationTool(const CallPtr& call) {
@@ -3082,7 +3117,24 @@ void setSpriteAnimationTool(const CallPtr& call) {
         call->fail("\"" + scene->getEntityName(target.entity) + "\" is not a Sprite (set_sprite_frames makes one).");
         return;
     }
-    if (sprite->numFramesRect == 0) {
+    // a sheet sprite's frames are its sheet's (S44 R50): indices and names of the sheet
+    std::vector<std::string> frameNames;
+    if (!sprite->sheet.empty()) {
+        pixelart::PixelProblem problem;
+        if (SpriteSheetPool::isAsepritePath(sprite->sheet.path) && !pixelart::aseprite::importedRecord(sprite->sheet.path, problem)) {
+            call->fail(problem.kind + ": " + problem.message + ". Fix: " + problem.fix);
+            return;
+        }
+        std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite->sheet.path);
+        if (!sheet || sheet->frames.empty()) {
+            call->fail("The sprite's sheet " + sprite->sheet.path + " has no frames.");
+            return;
+        }
+        for (const SpriteFrame& f : sheet->frames) frameNames.push_back(f.name);
+    } else {
+        for (unsigned i = 0; i < sprite->numFramesRect; i++) frameNames.push_back(sprite->framesRect[i].name);
+    }
+    if (frameNames.empty()) {
         call->fail("The sprite has no frames yet: slice its sheet with set_sprite_frames first.");
         return;
     }
@@ -3097,24 +3149,30 @@ void setSpriteAnimationTool(const CallPtr& call) {
             int index = -1;
             if (f.is_number_integer()) index = f.get<int>();
             else if (f.is_string()) {
-                for (unsigned i = 0; i < sprite->numFramesRect; i++) {
-                    if (sprite->framesRect[i].name == f.get<std::string>()) index = static_cast<int>(i);
+                for (size_t i = 0; i < frameNames.size(); i++) {
+                    if (frameNames[i] == f.get<std::string>()) index = static_cast<int>(i);
                 }
             }
-            if (index < 0 || index >= static_cast<int>(sprite->numFramesRect)) {
-                call->fail("frame " + f.dump() + " is not one of the sprite's " + std::to_string(sprite->numFramesRect) + " frames (index or name).");
+            if (index < 0 || index >= static_cast<int>(frameNames.size())) {
+                call->fail("frame " + f.dump() + " is not one of the sprite's " + std::to_string(frameNames.size()) + " frames (index or name).");
                 return;
             }
             frames.push_back(index);
         }
     } else {
-        for (unsigned i = 0; i < sprite->numFramesRect; i++) frames.push_back(static_cast<int>(i));
+        for (size_t i = 0; i < frameNames.size(); i++) frames.push_back(static_cast<int>(i));
     }
     if (frames.size() > MAX_SPRITE_FRAMES) {
         call->fail("At most " + std::to_string(MAX_SPRITE_FRAMES) + " frames.");
         return;
     }
     std::vector<int> times(frames.size(), static_cast<int>(std::lround(1000.0f / std::max(0.1f, numberOr(args, "fps", 10.0f)))));
+    if (!sprite->sheet.empty() && !has(args, "fps") && !has(args, "frame_ms")) {
+        // a sheet's frames keep their own durations (Aseprite's)
+        if (std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite->sheet.path)) {
+            for (size_t i = 0; i < frames.size(); i++) times[i] = std::max(1, static_cast<int>(sheet->frames[static_cast<size_t>(frames[i])].durationMs));
+        }
+    }
     if (has(args, "frame_ms")) {
         if (args["frame_ms"].is_number()) {
             std::fill(times.begin(), times.end(), std::max(1, args["frame_ms"].get<int>()));

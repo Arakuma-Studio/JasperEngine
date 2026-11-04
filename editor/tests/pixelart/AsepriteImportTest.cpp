@@ -6,10 +6,19 @@
 
 #include "AsepriteTestSupport.h"
 #include "pixelart/aseprite/AsepriteImport.h"
+#include "pixelart/aseprite/AsepriteImporter.h"
+#include "util/AssetDatabase.h"
+
+#include "animation/AnimationClipIO.h"
+#include "sprite/SpriteSheetIO.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <iterator>
+#include <map>
 #include <set>
 
 using namespace jasperengine;
@@ -42,11 +51,6 @@ namespace {
         return out;
     }
 
-    std::set<std::string> keysOf(const AsepriteImport& import) {
-        std::set<std::string> keys;
-        for (const SubAssetOutput& o : import.subAssets) keys.insert(o.key);
-        return keys;
-    }
 
 }
 
@@ -109,27 +113,107 @@ TEST(AsepriteImportTest, Layers) {
     for (const SpriteFrame& f : layered.sheet.frames) EXPECT_EQ(f.sourceSize, all.sheet.frames[0].sourceSize);
 }
 
-// AC10: one clip per tag with the tag's playback, loop when repeat is 0 and once otherwise; a
-// file without tags gets one clip named after the file
+// AC10 (§6.6, exact): the key lists, times, lengths and wraps of every direction and repeat,
+// worked out from the spec's rules (not from the importer's own sequence()), and the events layer
 TEST(AsepriteImportTest, Clips) {
-    for (const char* name : {"tags3.aseprite", "tags3x123reps.aseprite"}) {
-        const AsepriteImport import = importOf(importFixture("aseprite-tests", name));
-        ASSERT_TRUE(import.ok()) << import.error.message;
-        ASSERT_EQ(import.clips.size(), import.sheet.tags.size()) << name;
-        for (const ClipOutput& clip : import.clips) {
-            ASSERT_GE(clip.tag, 0);
-            const SpriteTag& tag = import.sheet.tags[static_cast<size_t>(clip.tag)];
-            EXPECT_EQ(clip.name, tag.name);
-            EXPECT_EQ(clip.key, "animation:" + tag.name);
-            EXPECT_EQ(clip.wrap, tag.repeat == 0 ? "loop" : "once") << name << " " << tag.name;
-            const std::vector<int> frames = tag.repeat == 0 ? tag.sequence() : tag.playback();
-            EXPECT_EQ(clip.keys, frames.size()) << name << " " << tag.name;
-            double ms = 0;
-            for (int f : frames) ms += import.sheet.frames[static_cast<size_t>(f)].durationMs;
-            EXPECT_NEAR(clip.length, ms / 1000.0, 1e-4) << name << " " << tag.name;
-            EXPECT_NE(clip.text.find("frame"), std::string::npos) << "a sprite.frame track";
-        }
+    // four frames of 100, 50, 150 and 100 ms; every tag spans frames 1..3
+    Document doc;
+    doc.width = 2;
+    doc.height = 2;
+    doc.mode = ColorMode::Rgba;
+    doc.frameDurations = {100, 50, 150, 100};
+    Layer body;
+    body.name = "Body";
+    Layer events;
+    events.name = "events";
+    doc.layers = {body, events};
+    doc.rebuildTreeFromLevels();
+    for (int f = 0; f < 4; f++) {
+        PixelImage image(2, 2);
+        image.fill({static_cast<uint8_t>(40 * f + 20), 0, 0, 255});
+        Cel cel;
+        cel.layer = 0;
+        cel.frame = f;
+        cel.image = std::make_shared<const PixelImage>(image);
+        doc.cels.push_back(cel);
     }
+    Cel marker;   // the events layer's cel on frame 2 says what the clip calls there
+    marker.layer = 1;
+    marker.frame = 2;
+    marker.image = std::make_shared<const PixelImage>(PixelImage(1, 1));
+    marker.userData.text = "onStep(\"left\", 1)";
+    doc.cels.push_back(marker);
+    struct Expected {
+        const char* name;
+        TagDirection direction;
+        uint16_t repeat;
+        std::vector<int> frames;
+        std::vector<double> times;
+        double length;
+        const char* wrap;
+    };
+    const std::vector<Expected> table = {
+        {"fwd0", TagDirection::Forward, 0, {1, 2, 3}, {0.0, 0.05, 0.2}, 0.3, "loop"},
+        {"rev0", TagDirection::Reverse, 0, {3, 2, 1}, {0.0, 0.1, 0.25}, 0.3, "loop"},
+        {"pp0", TagDirection::PingPong, 0, {1, 2, 3, 2}, {0.0, 0.05, 0.2, 0.3}, 0.45, "loop"},
+        {"ppr0", TagDirection::PingPongReverse, 0, {3, 2, 1, 2}, {0.0, 0.1, 0.25, 0.3}, 0.45, "loop"},
+        {"fwd3", TagDirection::Forward, 3, {1, 2, 3, 1, 2, 3, 1, 2, 3}, {0.0, 0.05, 0.2, 0.3, 0.35, 0.5, 0.6, 0.65, 0.8}, 0.9, "once"},
+        {"rev1", TagDirection::Reverse, 1, {3, 2, 1}, {0.0, 0.1, 0.25}, 0.3, "once"},
+        {"pp1", TagDirection::PingPong, 1, {1, 2, 3}, {0.0, 0.05, 0.2}, 0.3, "once"},
+        {"pp3", TagDirection::PingPong, 3, {1, 2, 3, 2, 1, 2, 3}, {0.0, 0.05, 0.2, 0.3, 0.45, 0.5, 0.65}, 0.75, "once"},
+        {"ppr2", TagDirection::PingPongReverse, 2, {3, 2, 1, 2, 3}, {0.0, 0.1, 0.25, 0.3, 0.45}, 0.55, "once"},
+    };
+    for (const Expected& e : table) {
+        Tag tag;
+        tag.name = e.name;
+        tag.from = 1;
+        tag.to = 3;
+        tag.direction = e.direction;
+        tag.repeat = e.repeat;
+        doc.tags.push_back(tag);
+    }
+    doc.sortCels();
+    AsepriteImportSettings settings;
+    settings.trim = false;
+    const AsepriteImport import = AsepriteImport::run(doc, settings, AsepriteImportContext{"sprites/table.aseprite", Guid(), 1});
+    ASSERT_TRUE(import.ok()) << import.error.message;
+    ASSERT_EQ(import.clips.size(), table.size());
+    for (size_t i = 0; i < table.size(); i++) {
+        const Expected& e = table[i];
+        const ClipOutput& clip = import.clips[i];
+        SCOPED_TRACE(e.name);
+        EXPECT_EQ(clip.name, e.name);
+        EXPECT_EQ(clip.key, std::string("animation:") + e.name);
+        EXPECT_EQ(clip.wrap, e.wrap);
+        const anim::ClipParseResult parsed = anim::parseClip(clip.text);
+        ASSERT_TRUE(parsed.ok());
+        const ClipData& data = *parsed.data;
+        EXPECT_NEAR(data.length, e.length, 1e-6);
+        EXPECT_FLOAT_EQ(data.frameRate, 20.0f);   // gcd(50, 100, 150) = 50 ms
+        EXPECT_EQ(data.source.kind, "aseprite");
+        EXPECT_EQ(data.source.path, "sprites/table.aseprite");
+        EXPECT_EQ(data.source.name, e.name);
+        const ClipTrackData* frameTrack = nullptr;
+        for (const ClipTrackData& t : data.tracks) {
+            if (t.component == "sprite" && t.property == "frame") frameTrack = &t;
+        }
+        ASSERT_NE(frameTrack, nullptr);
+        EXPECT_TRUE(frameTrack->path.empty());
+        EXPECT_TRUE(frameTrack->discrete);   // step keys: a frame index never interpolates
+        ASSERT_EQ(frameTrack->keys.size(), e.frames.size());
+        for (size_t k = 0; k < e.frames.size(); k++) {
+            EXPECT_EQ(static_cast<int>(frameTrack->keys[k].value.at(0)), e.frames[k]) << "key " << k;
+            EXPECT_NEAR(frameTrack->keys[k].time, e.times[k], 1e-6) << "key " << k;
+        }
+        // the events layer's frame 2 text, at frame 2's start in this tag's playback (once per visit)
+        size_t visits = 0;
+        for (size_t k = 0; k < e.frames.size(); k++) visits += e.frames[k] == 2 ? 1 : 0;
+        ASSERT_EQ(data.events.size(), visits);
+        EXPECT_EQ(data.events[0].function, "onStep");
+        ASSERT_EQ(data.events[0].args.size(), 2u);
+    }
+
+    // a file without tags: one clip of all frames named after the file; generate off: none
     const AsepriteImport untagged = importOf(importFixture("asefile", "basic-16x16.aseprite"), {}, "sprites/basic.aseprite");
     ASSERT_TRUE(untagged.ok());
     ASSERT_EQ(untagged.clips.size(), 1u);
@@ -138,6 +222,36 @@ TEST(AsepriteImportTest, Clips) {
     AsepriteImportSettings none;
     none.generateClips = false;
     EXPECT_TRUE(importOf(importFixture("aseprite-tests", "tags3.aseprite"), none).clips.empty());
+}
+
+// A fully transparent sprite keeps its frames and tags: the sheet has a 1x1 page for its empty
+// frames to point at, and survives its own record's round trip
+TEST(AsepriteImportTest, TransparentSpriteKeepsItsFrames) {
+    Document doc;
+    doc.width = 8;
+    doc.height = 8;
+    doc.mode = ColorMode::Rgba;
+    doc.frameDurations = {100, 100, 100};
+    Layer layer;
+    layer.name = "Empty";
+    doc.layers = {layer};
+    doc.rebuildTreeFromLevels();
+    Tag tag;
+    tag.name = "idle";
+    tag.from = 0;
+    tag.to = 2;
+    doc.tags = {tag};
+    const AsepriteImport import = AsepriteImport::run(doc, AsepriteImportSettings(), AsepriteImportContext{"sprites/ghost.aseprite", Guid(), 1});
+    ASSERT_TRUE(import.ok()) << import.error.message;
+    ASSERT_EQ(import.pages.size(), 1u);
+    EXPECT_EQ(import.pages[0].width(), 1);
+    EXPECT_EQ(import.sheet.frames.size(), 3u);
+    const SpriteSheetParseResult parsed = parseSheet(writeSheet(import.sheet));
+    ASSERT_TRUE(parsed.ok());
+    EXPECT_EQ(parsed.sheet->frames.size(), 3u);
+    ASSERT_EQ(parsed.sheet->tags.size(), 1u);
+    EXPECT_EQ(parsed.sheet->tags[0].to, 2);
+    EXPECT_EQ(import.clips.size(), 1u);
 }
 
 // AC11: the pivot from a slice's pivot, the border from the 9-patch slice (that frame untrimmed),
@@ -172,41 +286,165 @@ TEST(AsepriteImportTest, Slices) {
     EXPECT_EQ(moved.sheet.slices[0].keys.size(), moving.slices[0].keys.size());
 }
 
-// AC8 (the outputs' part): sub-asset keys never contain the file's name, so a renamed file keeps
-// every derived GUID; an added frame keeps the keys of the frames there were; a renamed tag
-// changes only that clip's key (the asset database's matching keeps its GUID)
+// AC8: the asset database's sub-asset GUIDs of a file survive a rename of the file (with its meta),
+// an added frame and a renamed tag (the clip keeps its GUID, its key and name follow the tag), and
+// the import hands out exactly those GUIDs (derived ones for index keys, the database's for named)
 TEST(AsepriteImportTest, GuidsAreStable) {
-    const fs::path file = importFixture("asefile", "layers_and_tags.aseprite");
-    const std::set<std::string> keys = keysOf(importOf(file, {}, "sprites/hero.aseprite"));
-    EXPECT_EQ(keysOf(importOf(file, {}, "characters/renamed.aseprite")), keys);
-    for (const std::string& k : keys) EXPECT_EQ(k.find("hero"), std::string::npos) << k;
-    EXPECT_TRUE(keys.count("animation:T1") && keys.count("frame#0") && keys.count("frame#3"));
+    const fs::path root = fs::temp_directory_path() / ("je-aseprite-guids-" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()) +
+                                                       "-" + std::to_string(reinterpret_cast<uintptr_t>(&root) & 0xffff));
+    fs::remove_all(root);
+    fs::create_directories(root / "assets/sprites");
+    const fs::path source = importFixture("asefile", "layers_and_tags.aseprite");
+    fs::copy_file(source, root / "assets/sprites/hero.aseprite");
+    jasperengine::editor::AssetDatabase database;
+    database.open(root, "assets");
+    auto guidsOf = [&](const std::string& path) {
+        std::map<std::string, Guid> byKey;
+        jasperengine::editor::AssetDatabase::AssetInfo info;
+        if (database.getInfo(fs::path(path), info)) {
+            for (const jasperengine::editor::AssetDatabase::SubAsset& sub : info.subAssets) byKey[sub.key] = sub.guid;
+            byKey["#file"] = info.guid;
+        }
+        return byKey;
+    };
+    auto later = [](const fs::path& file) { fs::last_write_time(file, fs::last_write_time(file) + std::chrono::seconds(2)); };
+    const std::map<std::string, Guid> first = guidsOf("assets/sprites/hero.aseprite");
+    ASSERT_TRUE(first.count("animation:T1") && first.count("animation:T2") && first.count("animation:T3")) << first.size();
+    EXPECT_FALSE(first.at("animation:T1").isNull());
 
-    Document added = loadDocument(file);
-    added.frameDurations.push_back(added.frameDurations.back());
-    const int last = added.frameCount() - 1;
-    for (const Cel& c : std::vector<Cel>(added.cels)) {
-        if (c.frame != last - 1) continue;
-        Cel copy = c;
-        copy.frame = last;
-        copy.linkedFrame = -1;
-        added.cels.push_back(copy);
+    // the import's outputs: named keys take the database's GUIDs, index keys Guid::derive's
+    auto importGuids = [&](const std::string& assetPath, const std::map<std::string, Guid>& known) {
+        ImportRequest request;
+        request.file = root / "assets" / assetPath;
+        request.assetPath = assetPath;
+        request.sourceGuid = known.at("#file");
+        for (const auto& [key, guid] : known) {
+            if (key != "#file") request.namedGuids[key] = guid;
+        }
+        request.cacheRoot = root / ".jasperengine/cache/imported/v1";
+        std::shared_ptr<ImportRecord> record = AsepriteImporter::runImport(request);
+        std::map<std::string, Guid> out;
+        for (const ImportRecord::Output& o : record->outputs) out[o.key] = o.guid;
+        return out;
+    };
+    const std::map<std::string, Guid> imported = importGuids("sprites/hero.aseprite", first);
+    EXPECT_EQ(imported.at("animation:T1"), first.at("animation:T1"));
+    EXPECT_EQ(imported.at("frame#0"), Guid::derive(first.at("#file"), "frame#0"));
+
+    // a rename with its meta: the same file GUID, the same sub-asset GUIDs, the same import GUIDs
+    fs::create_directories(root / "assets/characters");
+    fs::rename(root / "assets/sprites/hero.aseprite", root / "assets/characters/knight.aseprite");
+    fs::rename(root / "assets/sprites/hero.aseprite.meta", root / "assets/characters/knight.aseprite.meta");
+    database.refresh();
+    const std::map<std::string, Guid> renamed = guidsOf("assets/characters/knight.aseprite");
+    EXPECT_EQ(renamed, first);
+    const std::map<std::string, Guid> reimported = importGuids("characters/knight.aseprite", renamed);
+    EXPECT_EQ(reimported, imported);
+
+    // an added frame keeps every GUID there was
+    Document grown = loadDocument(root / "assets/characters/knight.aseprite");
+    grown.frameDurations.push_back(grown.frameDurations.back());
+    ASSERT_TRUE(writeFile(grown, root / "assets/characters/knight.aseprite", nullptr));
+    later(root / "assets/characters/knight.aseprite");
+    database.refresh();
+    const std::map<std::string, Guid> withFrame = guidsOf("assets/characters/knight.aseprite");
+    const std::map<std::string, Guid> grownImport = importGuids("characters/knight.aseprite", withFrame);
+    for (const auto& [key, guid] : imported) EXPECT_EQ(grownImport.at(key), guid) << key;
+    EXPECT_TRUE(grownImport.count("frame#4"));
+
+    // a renamed tag: the clip keeps its GUID under the new key (the reference follows the name)
+    Document retagged = loadDocument(root / "assets/characters/knight.aseprite");
+    retagged.tags[0].name = "Walk";
+    ASSERT_TRUE(writeFile(retagged, root / "assets/characters/knight.aseprite", nullptr));
+    later(root / "assets/characters/knight.aseprite");
+    database.refresh();
+    const std::map<std::string, Guid> afterRename = guidsOf("assets/characters/knight.aseprite");
+    EXPECT_FALSE(afterRename.count("animation:T1"));
+    ASSERT_TRUE(afterRename.count("animation:Walk"));
+    EXPECT_EQ(afterRename.at("animation:Walk"), first.at("animation:T1"));
+    EXPECT_EQ(afterRename.at("animation:T2"), first.at("animation:T2"));
+    EXPECT_EQ(importGuids("characters/knight.aseprite", afterRename).at("animation:Walk"), first.at("animation:T1"));
+    fs::remove_all(root);
+}
+
+// The import cache is keyed by the file's path and GUID too: a copy of a file under another name
+// imports its own frames and clips (not the other file's names), and a renamed file gets a new import
+TEST(AsepriteImportTest, CacheKnowsTheFile) {
+    const fs::path root = fs::temp_directory_path() / ("je-aseprite-cache-" + std::to_string(reinterpret_cast<uintptr_t>(&root) & 0xffff));
+    fs::remove_all(root);
+    fs::create_directories(root / "assets");
+    fs::copy_file(importFixture("asefile", "basic-16x16.aseprite"), root / "assets/hero.aseprite");
+    fs::copy_file(importFixture("asefile", "basic-16x16.aseprite"), root / "assets/slime.aseprite");
+    auto run = [&](const std::string& assetPath, const Guid& guid) {
+        ImportRequest request;
+        request.file = root / "assets" / assetPath;
+        request.assetPath = assetPath;
+        request.sourceGuid = guid;
+        request.cacheRoot = root / "cache";
+        return AsepriteImporter::runImport(request);
+    };
+    const Guid heroGuid = Guid::derive(Guid(), "hero"), slimeGuid = Guid::derive(Guid(), "slime");
+    std::shared_ptr<ImportRecord> hero = run("hero.aseprite", heroGuid);
+    std::shared_ptr<ImportRecord> slime = run("slime.aseprite", slimeGuid);
+    ASSERT_TRUE(hero->ok && slime->ok);
+    EXPECT_NE(hero->key, slime->key);
+    EXPECT_FALSE(slime->cacheHit);
+    auto sheetOf = [](const ImportRecord& r) {
+        std::ifstream in(r.sheetFile(), std::ios::binary);
+        return parseSheet(std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()));
+    };
+    const SpriteSheetParseResult slimeSheet = sheetOf(*slime);
+    ASSERT_TRUE(slimeSheet.ok());
+    EXPECT_EQ(slimeSheet.sheet->source, "slime.aseprite");
+    EXPECT_EQ(slimeSheet.sheet->frames[0].name, "slime 0");
+    ASSERT_EQ(slime->clips.size(), 1u);
+    EXPECT_EQ(slime->clips[0].name, "slime");
+    // the same file again: the cache
+    EXPECT_TRUE(run("hero.aseprite", heroGuid)->cacheHit);
+    // renamed (the GUID kept): a new import with the new name
+    fs::rename(root / "assets/hero.aseprite", root / "assets/knight.aseprite");
+    std::shared_ptr<ImportRecord> knight = run("knight.aseprite", heroGuid);
+    EXPECT_FALSE(knight->cacheHit);
+    EXPECT_EQ(sheetOf(*knight).sheet->frames[0].name, "knight 0");
+    fs::remove_all(root);
+}
+
+// AC20 (the editor's side of ImportedAssetsTest): the provider and an export's index.json come from
+// one table of the import, so every key an export ships resolves in the editor to the very file
+// the export copies, and the sheet record names its pages by their exported paths
+TEST(AsepriteImportTest, ProviderAndExportAgree) {
+    const fs::path root = fs::temp_directory_path() / ("je-aseprite-export-" + std::to_string(reinterpret_cast<uintptr_t>(&root) & 0xffff));
+    fs::remove_all(root);
+    fs::create_directories(root / "assets");
+    fs::copy_file(importFixture("asefile", "layers_and_tags.aseprite"), root / "assets/hero.aseprite");
+    ImportRequest request;
+    request.file = root / "assets/hero.aseprite";
+    request.assetPath = "hero.aseprite";
+    request.cacheRoot = root / "cache";
+    std::shared_ptr<ImportRecord> record = AsepriteImporter::runImport(request);
+    ASSERT_TRUE(record->ok) << record->error.message;
+    const std::vector<ImportRecord::ExportedFile> files = record->exportedFiles();
+    ASSERT_EQ(files.size(), 1 + record->pages.size() + record->clips.size());
+    const std::string base = "je-imported/" + record->key.substr(0, 2) + "/" + record->key + "/";
+    for (const ImportRecord::ExportedFile& f : files) {
+        SCOPED_TRACE(f.key);
+        fs::path resolved;
+        ASSERT_TRUE(record->resolveKey(f.key, resolved));
+        EXPECT_EQ(resolved, f.cacheFile);
+        EXPECT_TRUE(fs::is_regular_file(f.cacheFile));
+        EXPECT_EQ(f.exportPath, base + f.cacheFile.filename().string());
     }
-    added.sortCels();
-    AsepriteImportContext ctx;
-    ctx.sourcePath = "sprites/hero.aseprite";
-    std::set<std::string> grown;
-    for (const SubAssetOutput& o : AsepriteImport::run(added, {}, ctx).subAssets) grown.insert(o.key);
-    for (const std::string& k : keys) EXPECT_TRUE(grown.count(k)) << "kept: " << k;
-    EXPECT_TRUE(grown.count("frame#4"));
-
-    Document renamed = loadDocument(file);
-    renamed.tags[0].name = "Walk";
-    std::set<std::string> after;
-    for (const SubAssetOutput& o : AsepriteImport::run(renamed, {}, ctx).subAssets) after.insert(o.key);
-    EXPECT_FALSE(after.count("animation:T1"));
-    EXPECT_TRUE(after.count("animation:Walk"));
-    std::set<std::string> rest = keys;
-    rest.erase("animation:T1");
-    for (const std::string& k : rest) EXPECT_TRUE(after.count(k)) << "kept: " << k;
+    for (const ImportRecord::Clip& clip : record->clips) {
+        fs::path byName, byKey;
+        ASSERT_TRUE(record->resolveKey("animation:" + clip.name, byName) && record->resolveKey(clip.key, byKey));
+        EXPECT_EQ(byName, byKey);
+    }
+    fs::path none;
+    EXPECT_FALSE(record->resolveKey("image#99999999999999999999999", none));
+    EXPECT_FALSE(record->resolveKey("animation:nope", none));
+    std::ifstream in(record->sheetFile(), std::ios::binary);
+    const SpriteSheetParseResult sheet = parseSheet(std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()));
+    ASSERT_TRUE(sheet.ok());
+    for (size_t p = 0; p < sheet.sheet->pages.size(); p++) EXPECT_EQ(sheet.sheet->pages[p].texture, base + "page" + std::to_string(p) + ".png");
+    fs::remove_all(root);
 }

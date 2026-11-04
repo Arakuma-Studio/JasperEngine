@@ -44,9 +44,10 @@ namespace jasperengine::editor::pixelart::aseprite {
         std::string defaultClip;          // set when the call set it
     };
 
-    // The import of an .aseprite file (asset-relative), started when there is none and waited for
-    // up to timeoutMs (main thread); null with an import_failed problem when it is not there or failed
-    std::shared_ptr<const ImportRecord> awaitImport(const std::string& assetPath, int timeoutMs, PixelProblem& problem);
+    // The import of an .aseprite file (asset-relative) when it is there and none is running (main
+    // thread, never waits: a missing one is started); null with an import_failed problem otherwise.
+    // Callers that must wait use AsepriteImporter::whenImported or an MCP call's waitUntil.
+    std::shared_ptr<const ImportRecord> importedRecord(const std::string& assetPath, PixelProblem& problem);
 
     // The tag clip a player starts with: a tag named "idle" (any case), else the first
     std::string defaultTagClip(const std::vector<std::string>& names);

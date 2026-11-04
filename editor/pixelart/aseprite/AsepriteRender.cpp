@@ -191,6 +191,26 @@ namespace jasperengine::editor::pixelart::aseprite {
             const int x0 = std::max(0, ox), y0 = std::max(0, oy);
             const int x1 = std::min(dst.w, ox + w), y1 = std::min(dst.h, oy + h);
             const int square = std::min(w, h);
+            if (doc.mode == ColorMode::Rgba && !xf && !yf && !df) {
+                // the common case, row by row without the per-pixel mode switch; an opaque source
+                // pixel at full opacity in Normal mode is the result itself
+                const bool normal = func == blender(BlendMode::Normal);
+                const uint8_t* rows = image.pixels().data();
+                for (int y = y0; y < y1; y++) {
+                    const uint8_t* p = rows + (static_cast<size_t>(y - oy) * w + (x0 - ox)) * 4;
+                    uint32_t* d = dst.px.data() + static_cast<size_t>(y) * dst.w + x0;
+                    for (int x = x0; x < x1; x++, p += 4, d++) {
+                        const uint32_t src = blend::pack(p);
+                        if (src == maskColor) continue;
+                        if (normal && opacity == 255 && p[3] == 255) {
+                            *d = src;
+                        } else {
+                            *d = func(*d, src, opacity);
+                        }
+                    }
+                }
+                return;
+            }
             for (int y = y0; y < y1; y++) {
                 for (int x = x0; x < x1; x++) {
                     int sx = x - ox, sy = y - oy;
@@ -220,6 +240,8 @@ namespace jasperengine::editor::pixelart::aseprite {
                     if (t.id == layer.tilesetIndex) ts = &t;
                 }
                 if (!ts || ts->tiles.empty()) return;
+                // a tilemap built in memory may not hold columns x rows tiles (a read one always does)
+                if (tm.columns < 0 || tm.rows < 0 || tm.tiles.size() < static_cast<size_t>(tm.columns) * static_cast<size_t>(tm.rows)) return;
                 const uint32_t flagMask = tm.xFlipMask | tm.yFlipMask | tm.diagonalMask;
                 uint32_t idShift = 0;
                 while (tm.idMask && idShift < 32 && !((tm.idMask >> idShift) & 1)) idShift++;
@@ -290,8 +312,15 @@ namespace jasperengine::editor::pixelart::aseprite {
             if (doc.mode == ColorMode::Indexed) {
                 std::vector<uint8_t> indices(n);
                 for (size_t i = 0; i < n; i++) indices[i] = static_cast<uint8_t>(canvas.px[i]);
-                // an indexed sheet's transparent index is clear (its PNG gives it alpha 0)
-                PixelImage image = PixelImage::fromIndices(doc.width, doc.height, std::move(indices), palette, doc.transparentIndex);
+                // an indexed sheet's transparent index is clear (its PNG gives it alpha 0), unless a
+                // background layer is drawn: its pixels are opaque whatever their index, as Aseprite
+                // exports them
+                bool backgroundDrawn = false;
+                for (size_t l = 0; l < doc.layers.size() && l < renderable.size(); l++) {
+                    backgroundDrawn = backgroundDrawn || (doc.layers[l].background() && renderable[l]);
+                }
+                PixelImage image = PixelImage::fromIndices(doc.width, doc.height, std::move(indices), palette,
+                                                           backgroundDrawn ? -1 : doc.transparentIndex);
                 if (!options.keepIndices) image.dropIndices();
                 return image;
             }
@@ -326,8 +355,10 @@ namespace jasperengine::editor::pixelart::aseprite {
         if (!ts || tilemap.columns < 1 || tilemap.rows < 1) return PixelImage();
         // a one-layer, one-frame document holding just this tilemap, drawn by the composer
         Document doc;
-        doc.width = std::min(kMaxCanvasSide, tilemap.columns * ts->tileWidth);
-        doc.height = std::min(kMaxCanvasSide, tilemap.rows * ts->tileHeight);
+        // in 64 bits: 65535 columns of 65535-pixel tiles overflow an int
+        doc.width = static_cast<int>(std::min<int64_t>(kMaxCanvasSide, static_cast<int64_t>(tilemap.columns) * ts->tileWidth));
+        doc.height = static_cast<int>(std::min<int64_t>(kMaxCanvasSide, static_cast<int64_t>(tilemap.rows) * ts->tileHeight));
+        if (doc.width < 1 || doc.height < 1) return PixelImage();
         doc.mode = document.mode;
         doc.transparentIndex = document.transparentIndex;
         doc.palette = document.palette;

@@ -188,6 +188,9 @@ namespace jasperengine{
         void updateTerrainFoliage(Entity entity, TerrainComponent& terrain, Transform& transform);
 
     public:
+        // Sprite:playTag (S44 R38): the tag's frames at the sheet's durations, at the tag's speed; a
+        // step longer than the tag goes round whole loops (or ends it) at once
+        static void stepSpriteTag(SpriteComponent& sprite, double dt);
         MeshSystem(Scene* scene);
         virtual ~MeshSystem();
 

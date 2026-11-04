@@ -9,6 +9,7 @@
 #include "io/Data.h"
 #include "sprite/SpriteSheetPool.h"
 
+#include <charconv>
 #include <cctype>
 #include <filesystem>
 
@@ -97,8 +98,10 @@ namespace jasperengine::anim{
             if (e.name == clip && !found) found = &e;
         }
         if (!found && isNumber(clip)){
-            const size_t index = (size_t)std::stoul(clip);
-            if (index < entries.size()) found = &entries[index];
+            size_t index = 0;
+            // (from_chars: a long run of digits fails instead of throwing)
+            const auto parsed = std::from_chars(clip.data(), clip.data() + clip.size(), index);
+            if (parsed.ec == std::errc() && index < entries.size()) found = &entries[index];
         }
         if (!found){
             if (error) *error = "no clip \"" + clip + "\" in " + path;

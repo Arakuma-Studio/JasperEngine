@@ -7,8 +7,11 @@
 // their ComponentDesc's codec (editor/reflect/components). The rest of the scene file is Stream.cpp.
 
 #include "Stream.h"
+#include "sprite/SpriteSheetPool.h"
+#include "sprite/SpriteSheet.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
+#include "StreamPreserved.h"
 #include "StreamSchema.h"
 #include "Catalog.h"
 #include "util/ProjectUtils.h"
@@ -394,6 +397,17 @@ SpriteComponent editor::Stream::decodeSpriteComponent(const YAML::Node& node, co
     }
     if (node["frame"]) sprite.frame = YamlNumbers::as<int>(node["frame"]);
     if (node["frameName"]) sprite.frameName = node["frameName"].as<std::string>();
+    // R48: a saved frame name the sheet no longer has falls back to the saved index, said in the
+    // load report (the sheet is the import the editor already has; none yet: nothing to check)
+    if (!sprite.sheet.empty() && !sprite.frameName.empty() && node["frameName"]) {
+        if (std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(sprite.sheet.path)) {
+            if (sheet->findFrame(sprite.frameName) < 0 && sheet->frameCount() > 0) {
+                const int shown = std::clamp(sprite.frame, 0, sheet->frameCount() - 1);
+                StreamLoad::fallbackValue(node["frameName"], "the sheet " + sprite.sheet.path + " has no frame \"" + sprite.frameName +
+                                          "\": frame " + std::to_string(shown) + " (\"" + sheet->frames[static_cast<size_t>(shown)].name + "\") is shown");
+            }
+        }
+    }
 
     if (node["framesRect"]) {
         const YAML::Node& framesNode = node["framesRect"];

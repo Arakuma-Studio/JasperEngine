@@ -6,6 +6,7 @@
 // ("[bench] resolve"); with JASPER_TEST_PERF_SLACK (the benchmark run on E, docs/testing.md) it
 // is also held to 150 ns times that factor.
 
+#include "support/AllocationProbe.h"
 #include "support/EditorTestSupport.h"
 
 #include "reflect/Reflect.h"
@@ -23,39 +24,6 @@
 #include <new>
 #include <vector>
 
-namespace {
-    // the calling thread's allocations through operator new (the test binary's own code)
-    thread_local unsigned long long reflectBenchAllocations = 0;
-}
-
-void* operator new(std::size_t size) {
-    reflectBenchAllocations++;
-    if (void* memory = std::malloc(size ? size : 1)) return memory;
-    throw std::bad_alloc();
-}
-
-void* operator new[](std::size_t size) {
-    reflectBenchAllocations++;
-    if (void* memory = std::malloc(size ? size : 1)) return memory;
-    throw std::bad_alloc();
-}
-
-void* operator new(std::size_t size, const std::nothrow_t&) noexcept {
-    reflectBenchAllocations++;
-    return std::malloc(size ? size : 1);
-}
-
-void* operator new[](std::size_t size, const std::nothrow_t&) noexcept {
-    reflectBenchAllocations++;
-    return std::malloc(size ? size : 1);
-}
-
-void operator delete(void* memory) noexcept { std::free(memory); }
-void operator delete[](void* memory) noexcept { std::free(memory); }
-void operator delete(void* memory, std::size_t) noexcept { std::free(memory); }
-void operator delete[](void* memory, std::size_t) noexcept { std::free(memory); }
-void operator delete(void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
-void operator delete[](void* memory, const std::nothrow_t&) noexcept { std::free(memory); }
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -69,7 +37,7 @@ namespace reflect_resolve_bench_test {
         // (reserved first: only the resolves are counted)
         batches.reserve(51);
         void* sink = nullptr;
-        const unsigned long long before = reflectBenchAllocations;
+        const unsigned long long before = editor::test::threadAllocations().count;
         for (int batch = 0; batch < 51; batch++) {
             const auto start = std::chrono::steady_clock::now();
             for (int i = 0; i < 1000; i++) {
@@ -79,7 +47,7 @@ namespace reflect_resolve_bench_test {
             const auto end = std::chrono::steady_clock::now();
             batches.push_back(std::chrono::duration<double, std::nano>(end - start).count() / 1000.0);
         }
-        allocations = reflectBenchAllocations - before;
+        allocations = editor::test::threadAllocations().count - before;
         EXPECT_NE(sink, nullptr);
         std::sort(batches.begin(), batches.end());
         return batches[batches.size() / 2];

@@ -1,0 +1,42 @@
+{ "frames": [
+   {
+    "filename": "nested_groups 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 16, "h": 16 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 16, "h": 16 },
+    "sourceSize": { "w": 16, "h": 16 },
+    "duration": 100
+   },
+   {
+    "filename": "nested_groups 1.aseprite",
+    "frame": { "x": 16, "y": 0, "w": 16, "h": 16 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 16, "h": 16 },
+    "sourceSize": { "w": 16, "h": 16 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "nested_groups.png",
+  "format": "RGBA8888",
+  "size": { "w": 32, "h": 16 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "base", "opacity": 255, "blendMode": "normal" },
+   { "name": "outer" },
+   { "name": "o1", "group": "outer", "opacity": 255, "blendMode": "normal" },
+   { "name": "middle", "group": "outer" },
+   { "name": "m1", "group": "middle", "opacity": 200, "blendMode": "overlay" },
+   { "name": "inner", "group": "middle" },
+   { "name": "i1", "group": "inner", "opacity": 255, "blendMode": "screen" }
+  ],
+  "slices": [
+  ]
+ }
+}

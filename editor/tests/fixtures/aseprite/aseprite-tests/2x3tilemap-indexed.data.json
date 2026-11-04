@@ -1,0 +1,45 @@
+{ "frames": [
+   {
+    "filename": "2x3tilemap-indexed 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 4, "h": 5 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 4, "h": 5 },
+    "sourceSize": { "w": 4, "h": 5 },
+    "duration": 100
+   },
+   {
+    "filename": "2x3tilemap-indexed 1.aseprite",
+    "frame": { "x": 4, "y": 0, "w": 4, "h": 5 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 4, "h": 5 },
+    "sourceSize": { "w": 4, "h": 5 },
+    "duration": 100
+   },
+   {
+    "filename": "2x3tilemap-indexed 2.aseprite",
+    "frame": { "x": 8, "y": 0, "w": 4, "h": 5 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 4, "h": 5 },
+    "sourceSize": { "w": 4, "h": 5 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "2x3tilemap-indexed_sheet.png",
+  "format": "I8",
+  "size": { "w": 12, "h": 5 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "Tilemap 1", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+  ]
+ }
+}

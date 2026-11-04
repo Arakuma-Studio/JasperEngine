@@ -717,6 +717,12 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
             packed = r.layout.frames;
             out.pages = std::move(r.pages);
+            // every frame fully transparent: no pixel to pack, but a sheet record needs a page for
+            // its (empty) frames to point at, or a reader drops them and the tags with them
+            if (out.pages.empty() && !packed.empty()) {
+                out.pages.emplace_back(1, 1);
+                for (sprite::PackedFrame& pf : packed) pf.page = 0;
+            }
         } else {
             // Aseprite's sheet look: untrimmed cells in rows, as many columns as fit max_size
             const int cw = doc.width + s.padding, ch = doc.height + s.padding;

@@ -14,6 +14,7 @@
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "sprite/SpriteSheetPool.h"
 #include "util/FileUtils.h"
+#include "util/UIProbe.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -704,7 +705,10 @@ void AsepriteImporterView::drawStatus(){
         if (files.size() > 1) ImGui::SameLine();
         if (pending) ImGui::TextDisabled(ICON_FA_GEAR " Importing...");
         else if (!record) ImGui::TextDisabled("Not imported yet");
-        else if (record->ok) ImGui::TextWrapped("%s", record->summary.c_str());
+        else if (record->ok){
+            ImGui::TextWrapped("%s", record->summary.c_str());
+            UIProbe::item("asepriteImporter.summary." + file.assetPath);
+        }
         if (record && !record->ok) aseViewProblem(record->error);
         if (record)
             for (const pixelart::PixelProblem& warning : record->warnings)
@@ -720,15 +724,18 @@ void AsepriteImporterView::drawButtons(){
         assetPaths.push_back(file.assetPath);
     if (ImGui::Button(ICON_FA_UP_RIGHT_FROM_SQUARE " Open in Aseprite"))
         ase::openInAsepriteOrFallback(project, assetPaths, false);
+    UIProbe::item("asepriteImporter.openInAseprite");
     ImGui::SameLine();
     const auto& openPreview = ase::asepriteEditorHooks().openSpritePreview;
     ImGui::BeginDisabled(!openPreview);
     if (ImGui::Button(ICON_FA_EYE " Open Sprite Preview") && openPreview)
         openPreview(files[0].assetPath);
     ImGui::EndDisabled();
+    UIProbe::item("asepriteImporter.openSpritePreview");
     if (ImGui::Button(ICON_FA_ARROWS_ROTATE " Reimport"))
         for (const std::string& path : assetPaths)
             ase::AsepriteImporter::get().reimport(path);
+    UIProbe::item("asepriteImporter.reimport");
     ImGui::SameLine();
     size_t clips = 0;
     for (const File& file : files)
@@ -738,6 +745,7 @@ void AsepriteImporterView::drawButtons(){
     if (ImGui::Button(ICON_FA_FILE_EXPORT " Extract Clips..."))
         openExtract = true;
     ImGui::EndDisabled();
+    UIProbe::item("asepriteImporter.extractClips");
     if (clips == 0 && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
         ImGui::SetTooltip("No clips imported yet");
 
@@ -797,7 +805,9 @@ bool AsepriteImporterView::draw(const std::vector<fs::path>& selection){
     ImGui::BeginDisabled(readOnly);
 
     auto section = [&](const char* title, auto&& body){
-        if (!ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen))
+        const bool open = ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen);
+        UIProbe::item(std::string("asepriteImporter.section.") + title);
+        if (!open)
             return;
         ImGui::PushID(title);
         body();
@@ -823,9 +833,11 @@ bool AsepriteImporterView::draw(const std::vector<fs::path>& selection){
     ImGui::BeginDisabled(touched.empty());
     if (ImGui::Button("Revert"))
         revert();
+    UIProbe::item("asepriteImporter.revert");
     ImGui::SameLine();
     if (ImGui::Button("Apply"))
         apply();
+    UIProbe::item("asepriteImporter.apply");
     ImGui::EndDisabled();
     ImGui::EndDisabled();
 

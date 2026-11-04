@@ -1,0 +1,63 @@
+{ "frames": [
+   {
+    "filename": "cel_layer_opacity 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 24, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 12 },
+    "sourceSize": { "w": 24, "h": 12 },
+    "duration": 100
+   },
+   {
+    "filename": "cel_layer_opacity 1.aseprite",
+    "frame": { "x": 24, "y": 0, "w": 24, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 12 },
+    "sourceSize": { "w": 24, "h": 12 },
+    "duration": 100
+   },
+   {
+    "filename": "cel_layer_opacity 2.aseprite",
+    "frame": { "x": 48, "y": 0, "w": 24, "h": 12 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 12 },
+    "sourceSize": { "w": 24, "h": 12 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "cel_layer_opacity.png",
+  "format": "RGBA8888",
+  "size": { "w": 72, "h": 12 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "base", "opacity": 255, "blendMode": "normal" },
+   { "name": "normal_1", "opacity": 1, "blendMode": "normal" },
+   { "name": "normal_127", "opacity": 127, "blendMode": "normal" },
+   { "name": "normal_254", "opacity": 254, "blendMode": "normal" },
+   { "name": "multiply_1", "opacity": 1, "blendMode": "multiply" },
+   { "name": "multiply_127", "opacity": 127, "blendMode": "multiply" },
+   { "name": "multiply_254", "opacity": 254, "blendMode": "multiply" },
+   { "name": "screen_1", "opacity": 1, "blendMode": "screen" },
+   { "name": "screen_127", "opacity": 127, "blendMode": "screen" },
+   { "name": "screen_254", "opacity": 254, "blendMode": "screen" },
+   { "name": "overlay_1", "opacity": 1, "blendMode": "overlay" },
+   { "name": "overlay_127", "opacity": 127, "blendMode": "overlay" },
+   { "name": "overlay_254", "opacity": 254, "blendMode": "overlay" },
+   { "name": "hue_1", "opacity": 1, "blendMode": "hsl_hue" },
+   { "name": "hue_127", "opacity": 127, "blendMode": "hsl_hue" },
+   { "name": "hue_254", "opacity": 254, "blendMode": "hsl_hue" },
+   { "name": "addition_1", "opacity": 1, "blendMode": "addition" },
+   { "name": "addition_127", "opacity": 127, "blendMode": "addition" },
+   { "name": "addition_254", "opacity": 254, "blendMode": "addition" }
+  ],
+  "slices": [
+  ]
+ }
+}

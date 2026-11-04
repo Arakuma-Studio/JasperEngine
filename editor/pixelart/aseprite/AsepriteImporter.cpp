@@ -10,6 +10,7 @@
 #include "sprite/SpritePacker.h"
 
 #include "asset/ImportedAssets.h"
+#include "reload/HotReloadService.h"
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
 #include "pool/AnimationClipPool.h"
@@ -18,6 +19,7 @@
 #include "texture/Texture.h"
 #include "util/Sha256.h"
 
+#include <charconv>
 #include <chrono>
 #include <fstream>
 #include <iterator>
@@ -159,10 +161,13 @@ namespace jasperengine::editor::pixelart::aseprite {
             running.clear();
             again.clear();
             swaps.clear();
+            waiting.clear();   // their scenes go with the project
             ImportedAssets::setProvider(nullptr);
             SetAssetMetaCmd::removeWriteListener(this);
             std::lock_guard<std::mutex> lock(mutex);
             records.clear();
+            attempts.clear();
+            attemptCounts.clear();
             started = 0;
         }
         project = newProject;
@@ -214,7 +219,10 @@ namespace jasperengine::editor::pixelart::aseprite {
     }
 
     std::string AsepriteImporter::cacheKey(const std::string& contentSha256, const ImportRequest& request) {
-        const std::string text = contentSha256 + "|" + request.settings.fingerprint() + "|ppu " +
+        // the outputs carry the file's path and GUID (the sheet's source, frame and untagged clip
+        // names, the clips' source.path): a copy or a renamed file imports on its own
+        const std::string text = contentSha256 + "|path " + request.assetPath + "|guid " + request.sourceGuid.str() + "|" +
+                                 request.settings.fingerprint() + "|ppu " +
                                  std::to_string(request.settings.pixelsPerUnit.value_or(request.projectPixelsPerUnit)) + "|importer " +
                                  std::to_string(kAsepriteImporterVersion) + "|packer " + std::to_string(sprite::kPackerVersion) +
                                  "|sheet " + std::to_string(SPRITESHEET_VERSION);
@@ -336,9 +344,37 @@ namespace jasperengine::editor::pixelart::aseprite {
         }, options);
     }
 
+    std::shared_ptr<const ImportRecord> AsepriteImporter::lastAttempt(const std::string& path) const {
+        const std::string assetPath = assetPathOf(path);
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = attempts.find(assetPath);
+        return it == attempts.end() ? nullptr : it->second;
+    }
+
+    uint64_t AsepriteImporter::attemptCount(const std::string& path) const {
+        const std::string assetPath = assetPathOf(path);
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = attemptCounts.find(assetPath);
+        return it == attemptCounts.end() ? 0 : it->second;
+    }
+
     void AsepriteImporter::adopt(std::shared_ptr<ImportRecord> record) {
         if (!record || !project) return;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            attempts[record->assetPath] = record;
+            attemptCounts[record->assetPath]++;
+        }
+        // R36: what an import found reaches the next MCP call's external_changes.problems, as a
+        // clip's load warnings do (the path project-relative, as the auto-sync names files)
+        const std::string projectPath = project->normalizeToProjectRelative(project->getAssetsPath() / record->assetPath).generic_string();
+        auto late = [&](const PixelProblem& p, const char* severity) {
+            HotReloadService::get().addLateProblem({{"path", projectPath}, {"severity", severity},
+                                                    {"message", p.kind + ": " + p.message + (p.fix.empty() ? "" : " (" + p.fix + ")")}});
+        };
+        for (const PixelProblem& w : record->warnings) late(w, "warning");
         if (!record->ok) {
+            late(record->error, "error");
             // the previous version stays (R22)
             Out::warning("[Aseprite] %s: %s (kept the previous version)", record->assetPath.c_str(), record->error.message.c_str());
             std::lock_guard<std::mutex> lock(mutex);
@@ -401,6 +437,16 @@ namespace jasperengine::editor::pixelart::aseprite {
             it = swaps.erase(it);
             changed = true;
         }
+        // the callers waiting for a file whose import is over (it may have failed)
+        for (size_t i = 0; i < waiting.size();) {
+            if (isPending(waiting[i].first)) {
+                i++;
+                continue;
+            }
+            std::function<void()> then = std::move(waiting[i].second);
+            waiting.erase(waiting.begin() + static_cast<std::ptrdiff_t>(i));
+            then();
+        }
         return changed;
     }
 
@@ -415,6 +461,23 @@ namespace jasperengine::editor::pixelart::aseprite {
             jobs::pump(1.0);
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
         }
+    }
+
+    bool AsepriteImporter::ensureImport(const std::string& path) {
+        const std::string assetPath = assetPathOf(path);
+        if (isPending(assetPath)) return false;
+        if (record(assetPath)) return true;
+        reimport(assetPath);
+        return !isPending(assetPath) && record(assetPath) != nullptr;
+    }
+
+    void AsepriteImporter::whenImported(const std::string& path, std::function<void()> then) {
+        const std::string assetPath = assetPathOf(path);
+        if (ensureImport(assetPath) || !isPending(assetPath)) {
+            then();
+            return;
+        }
+        waiting.emplace_back(assetPath, std::move(then));
     }
 
     bool AsepriteImporter::isPending(const std::string& path) const {
@@ -450,23 +513,44 @@ namespace jasperengine::editor::pixelart::aseprite {
             if (it == records.end() || !it->second->ok) return false;
             r = it->second;
         }
+        fs::path file;
+        if (!r->resolveKey(key, file)) return false;
+        fileOut = file.string();
+        return true;
+    }
+
+    std::vector<ImportRecord::ExportedFile> ImportRecord::exportedFiles() const {
+        std::vector<ExportedFile> out;
+        if (!ok) return out;
+        const std::string base = std::string(ImportedAssets::kImportedDir) + "/" + key.substr(0, 2) + "/" + key + "/";
+        out.push_back({"sheet", sheetFile(), base + "sheet.json"});
+        for (size_t p = 0; p < pages.size(); p++) {
+            out.push_back({"image#" + std::to_string(p), pageFile(p), base + "page" + std::to_string(p) + ".png"});
+        }
+        for (const Clip& c : clips) out.push_back({c.key, dir / c.file, base + c.file});
+        return out;
+    }
+
+    bool ImportRecord::resolveKey(const std::string& key, fs::path& file) const {
+        if (!ok) return false;
         if (key == "sheet") {
-            fileOut = r->sheetFile().string();
+            file = sheetFile();
             return true;
         }
         if (key.rfind("image#", 0) == 0) {
             const std::string index = key.substr(6);
-            if (index.empty() || index.find_first_not_of("0123456789") != std::string::npos) return false;
-            const size_t page = static_cast<size_t>(std::stoul(index));
-            if (page >= r->pages.size()) return false;
-            fileOut = r->pageFile(page).string();
+            size_t page = 0;
+            // (from_chars: a long run of digits fails instead of throwing)
+            const auto parsed = std::from_chars(index.data(), index.data() + index.size(), page);
+            if (index.empty() || parsed.ec != std::errc() || parsed.ptr != index.data() + index.size() || page >= pages.size()) return false;
+            file = pageFile(page);
             return true;
         }
         if (key.rfind("animation", 0) == 0) {
-            const ImportRecord::Clip* clip = r->findClip(key);
-            if (!clip && key.rfind("animation:", 0) == 0) clip = r->findClip(key.substr(10));
+            const Clip* clip = findClip(key);
+            if (!clip && key.rfind("animation:", 0) == 0) clip = findClip(key.substr(10));
             if (!clip) return false;
-            fileOut = (r->dir / clip->file).string();
+            file = dir / clip->file;
             return true;
         }
         return false;

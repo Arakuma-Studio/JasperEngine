@@ -11,9 +11,10 @@
 //   .jasperengine/cache/imported/v1/<k[0:2]>/<k>/clip-<n>.anim   the tag clips (canonical .anim)
 //   .jasperengine/cache/imported/v1/<k[0:2]>/<k>/import.json     warnings, timings, sub-assets (written last)
 //
-// k = SHA-256 of (the file's content hash, the resolved settings, the pixels per unit, the
-// importer and packer versions): a renamed or touched file hits its cache, deleting the cache
-// only costs a reimport. A project without .aseprite files starts no job and makes no directory.
+// k = SHA-256 of (the file's content hash, its asset path and GUID, the resolved settings, the
+// pixels per unit, the importer and packer versions): the outputs name the file (frame names,
+// the sheet's source, the clips' source.path), so a copy or a rename imports again; a touched
+// file hits its cache; deleting the cache only costs a reimport. A project without .aseprite files starts no job and makes no directory.
 //
 // Thread model: attach/update/reimport/record on the main thread; runImport on any thread;
 // the provider (called by pool loads on job threads) reads a snapshot under the module's mutex.
@@ -30,6 +31,7 @@
 #include "json.hpp"
 
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -86,6 +88,19 @@ namespace jasperengine::editor::pixelart::aseprite {
         // {sheet, pages, clips: [{name, key, reference, guid, length, wrap}], slices, sub_assets, warnings, cache}
         nlohmann::json toJson() const;
         const Clip* findClip(const std::string& keyOrName) const;
+
+        // What an export ships of the import, the one table the editor's provider and the
+        // export's index.json both come from: each `<source>#<key>` with its cache file and its
+        // asset-relative path in an export (je-imported/<k[0:2]>/<k>/...)
+        struct ExportedFile {
+            std::string key;              // "sheet", "image#0", "animation:walk"
+            std::filesystem::path cacheFile;
+            std::string exportPath;
+        };
+        std::vector<ExportedFile> exportedFiles() const;
+        // the cache file of a key (the provider's answer): "sheet", "image#<n>", "animation:<tag>"
+        // or a clip's name; false when the import has none
+        bool resolveKey(const std::string& key, std::filesystem::path& file) const;
     };
 
     // What an import needs, gathered on the main thread
@@ -115,12 +130,24 @@ namespace jasperengine::editor::pixelart::aseprite {
         void requestAll();
         // until the files' imports are in (export, MCP writes, tests); false on timeout
         bool waitFor(const std::vector<std::string>& assetPaths, int timeoutMs);
+        // true when the file has an import and none is running (main thread); else starts one if
+        // there is none and returns false: callers wait without blocking (an MCP call's waitUntil,
+        // whenImported)
+        bool ensureImport(const std::string& assetPath);
+        // `then` on the main thread once the file's running (or next) import has finished, failed
+        // or not; at once when it has an import and none is running
+        void whenImported(const std::string& assetPath, std::function<void()> then);
 
         // the current (adopted) import of a file, null before its first one
         std::shared_ptr<const ImportRecord> record(const std::string& assetPath) const;
         // the outputs (sheet, clip references, GUIDs) of a file: R23's interface for S45/S47
         nlohmann::json outputs(const std::string& assetPath) const;
         bool isPending(const std::string& assetPath) const;
+        // the latest import that finished, failed ones too (record() keeps the last good one), and
+        // how many have finished for the file: a caller that changed the settings waits for the
+        // count to move and reads the outcome of its own import
+        std::shared_ptr<const ImportRecord> lastAttempt(const std::string& assetPath) const;
+        uint64_t attemptCount(const std::string& assetPath) const;
         // imports started since attach (R25: a project without .aseprite files starts none)
         uint64_t jobsStarted() const { return started; }
 
@@ -152,8 +179,11 @@ namespace jasperengine::editor::pixelart::aseprite {
         Project* project = nullptr;
         mutable std::mutex mutex;   // records (the provider reads them from job threads)
         std::map<std::string, std::shared_ptr<const ImportRecord>> records;
+        std::map<std::string, std::shared_ptr<const ImportRecord>> attempts;
+        std::map<std::string, uint64_t> attemptCounts;
         std::map<std::string, jobs::Task<std::shared_ptr<ImportRecord>>> running;
         std::set<std::string> again;   // asked again while running
+        std::vector<std::pair<std::string, std::function<void()>>> waiting;   // whenImported
         std::vector<Swap> swaps;
         uint64_t started = 0;
 

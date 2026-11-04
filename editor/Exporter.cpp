@@ -2779,18 +2779,12 @@ bool editor::Exporter::copyImportedAssets(const fs::path& assetsDst) {
         return !ec;
     };
     for (const auto& record : importedRecords) {
-        const std::string dir = exportedImportDir(*record);
-        if (!ship(record->sheetFile(), dir + "sheet.json")) return false;
-        files[ImportedAssets::reference(record->assetPath, "sheet")] = dir + "sheet.json";
-        for (size_t p = 0; p < record->pages.size(); p++) {
-            const std::string page = dir + "page" + std::to_string(p) + ".png";
+        // the record's own table: the editor's provider answers the same keys from it
+        for (const pixelart::aseprite::ImportRecord::ExportedFile& f : record->exportedFiles()) {
             // a page cooked with the project's sprite rules ships as its je-cooked/ file only
-            if (!cookedTextureSources.count(page) && !ship(record->pageFile(p), page)) return false;
-            files[ImportedAssets::reference(record->assetPath, "image#" + std::to_string(p))] = page;
-        }
-        for (const pixelart::aseprite::ImportRecord::Clip& clip : record->clips) {
-            if (!ship(record->dir / clip.file, dir + clip.file)) return false;
-            files[ImportedAssets::reference(record->assetPath, clip.key)] = dir + clip.file;
+            const bool cookedPage = f.key.rfind("image#", 0) == 0 && cookedTextureSources.count(f.exportPath);
+            if (!cookedPage && !ship(f.cacheFile, f.exportPath)) return false;
+            files[ImportedAssets::reference(record->assetPath, f.key)] = f.exportPath;
         }
     }
     const nlohmann::json index = {{"format", ImportedAssets::kIndexFormat}, {"version", ImportedAssets::kIndexVersion}, {"files", files}};

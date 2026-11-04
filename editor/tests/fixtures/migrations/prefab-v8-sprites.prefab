@@ -1,0 +1,42 @@
+type: Prefab
+version: 8
+guid: 5c2e7a19-8b4d-4f60-a3e1-2d9c6b0f7e58
+nextEntity: 1002
+root: 1001
+members:
+  - type: Entity
+    entity: 1001
+    name: Hero
+    components:
+      transform:
+        position: [0, 0, 0]
+        rotation: [1, 0, 0, 0]
+        scale: [1, 1, 1]
+      mesh:
+        submeshes:
+          - material:
+              baseColorTexture:
+                textureType: 2D
+                source: path
+                path: sprites/hero.png
+                minFilter: nearest
+                magFilter: nearest
+      sprite:
+        enabled: true
+        width: 16
+        height: 24
+        automaticFlipY: true
+        flipY: true
+        textureScaleFactor: 0
+        pivotPreset: bottom_center
+        framesRect:
+          - name: walk_0
+            rect: [0, 0, 16, 24]
+          - name: walk_1
+            rect: [16, 0, 16, 24]
+          - name: walk_2
+            rect: [32, 0, 16, 24]
+      spriteanimation:
+        loop: true
+        frames: [0, 1, 2]
+        framesTime: [100, 100, 120]

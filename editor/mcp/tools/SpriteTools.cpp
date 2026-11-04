@@ -7,6 +7,8 @@
 #include "McpTools.h"
 #include "SpriteTools.h"
 
+#include <chrono>
+
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
 #include "mcp/McpJobs.h"
@@ -100,13 +102,16 @@ Json previewOf(const fs::path& absolute, const std::string& assetPath, const ase
 
 // polls `done` on the main thread each loop until it holds, then runs `then` (an import's swap
 // happens there)
-void onMainWhen(std::function<bool()> done, std::function<void()> then) {
-    getEditorHost().enqueueMainThreadTask([done, then]() {
-        if (done()) {
-            then();
+// `then(timedOut)` on the main thread once `done()` holds, or after `seconds`
+void onMainWhen(std::function<bool()> done, std::function<void(bool)> then, double seconds,
+                std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now()) {
+    getEditorHost().enqueueMainThreadTask([done, then, seconds, started]() {
+        const bool late = std::chrono::steady_clock::now() - started > std::chrono::duration<double>(seconds);
+        if (done() || late) {
+            then(!done());
             return;
         }
-        onMainWhen(done, then);
+        onMainWhen(done, then, seconds, started);
     });
 }
 
@@ -199,6 +204,10 @@ void setSpriteImportSettingsTool(const CallPtr& call) {
         }, options);
     } else {
         // the metas, one undo step; the importer imports each file again (its meta listener)
+        // each file's own import of these settings is the one after this count (the previous
+        // good import stays in record() when it fails)
+        std::vector<uint64_t> attemptsBefore;
+        for (const Item& item : items) attemptsBefore.push_back(importer.attemptCount(item.assetPath));
         CommandHistory* history = project->getProjectCommandHistory();
         InteractiveEdit edit = history->beginInteractive("Set Sprite Import Settings");
         for (const Item& item : items) {
@@ -218,17 +227,23 @@ void setSpriteImportSettingsTool(const CallPtr& call) {
         edit.commit();
         std::vector<std::string> paths;
         for (const Item& item : items) paths.push_back(item.assetPath);
-        onMainWhen([paths, &importer]() {
-            for (const std::string& p : paths) {
-                if (importer.isPending(p)) return false;
+        onMainWhen([paths, attemptsBefore, &importer]() {
+            for (size_t i = 0; i < paths.size(); i++) {
+                if (importer.isPending(paths[i]) || importer.attemptCount(paths[i]) <= attemptsBefore[i]) return false;
             }
             return true;
-        }, [job, items, paths, &importer, includePreview]() {
+        }, [job, items, paths, &importer, includePreview](bool timedOut) {
+            if (timedOut) {
+                const Json problem = {{"kind", "import_failed"}, {"field", "paths"}, {"message", "the import did not finish within 5 minutes"},
+                                      {"fix", "wait, then read get_asset_info's import_state"}};
+                job->fail("import_failed: the import did not finish within 5 minutes", Json{{"errors", Json::array({problem})}, {"error", problem}});
+                return;
+            }
             Json files = Json::array();
             Json images = Json::array();
             Json failures = Json::array();
             for (size_t i = 0; i < items.size(); i++) {
-                std::shared_ptr<const ase::ImportRecord> record = importer.record(paths[i]);
+                std::shared_ptr<const ase::ImportRecord> record = importer.lastAttempt(paths[i]);
                 if (!record || !record->ok) {
                     failures.push_back(problemJson(record ? record->error : pixelart::PixelProblem{"import_failed", "", "no import of " + items[i].given, ""}));
                     continue;
@@ -254,7 +269,7 @@ void setSpriteImportSettingsTool(const CallPtr& call) {
             }
             job->succeed("Wrote the import settings of " + std::to_string(files.size()) + " file(s) and imported them. Undo with scope project.",
                          Json{{"files", files}, {"images", images}, {"written", true}});
-        });
+        }, 300.0);
     }
     replyWhenJobDone(call, job, true, 1.0, [](const McpJob& finished) {
         Json result = finished.result();

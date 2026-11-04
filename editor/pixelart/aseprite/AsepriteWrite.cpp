@@ -13,6 +13,8 @@
 #include "asset/ContentHash.h"
 #include "io/AtomicFile.h"
 
+#include <thread>
+#include <atomic>
 #include <algorithm>
 #include <unordered_set>
 
@@ -383,7 +385,13 @@ namespace jasperengine::editor::pixelart::aseprite {
                             for (size_t i = 0; i < tm.tiles.size(); i++) {
                                 for (size_t b = 0; b < tileBytes; b++) raw[i * tileBytes + b] = static_cast<uint8_t>(tm.tiles[i] >> (8 * b));
                             }
-                            o.raw(deflateBytes(raw));
+                            std::vector<uint8_t> z;
+                            if (!deflateBytes(raw, z)) {
+                                setError(error, "the tilemap of layer " + std::to_string(cel->layer) + ", frame " + std::to_string(cel->frame) +
+                                         " could not be compressed", "make the tilemap smaller", "cels");
+                                return false;
+                            }
+                            o.raw(z);
                         }
                     } else {
                         o.u16(2);
@@ -399,6 +407,11 @@ namespace jasperengine::editor::pixelart::aseprite {
                                 hashInto(o, hashes.imageHash(doc, *cel));
                             } else {
                                 const bool background = doc.layers.size() > static_cast<size_t>(cel->layer) && doc.layers[static_cast<size_t>(cel->layer)].background();
+                                auto ahead = hashes.compressedCels.find(cel);
+                                if (ahead != hashes.compressedCels.end() && !ahead->second.empty()) {
+                                    o.raw(ahead->second);
+                                    break;
+                                }
                                 std::vector<uint8_t> raw;
                                 std::string why;
                                 if (!imageFileBytes(*image, doc.mode, doc.paletteAt(cel->frame), background ? -1 : doc.transparentIndex, raw, &why)) {
@@ -406,7 +419,13 @@ namespace jasperengine::editor::pixelart::aseprite {
                                              "use palette colours only, or add the colour to the palette first", "cels");
                                     return false;
                                 }
-                                o.raw(deflateBytes(raw));
+                                std::vector<uint8_t> z;
+                                if (!deflateBytes(raw, z)) {
+                                    setError(error, "the cel of layer '" + doc.layers[static_cast<size_t>(cel->layer)].name + "', frame " +
+                                             std::to_string(cel->frame) + " could not be compressed", "make the cel smaller", "cels");
+                                    return false;
+                                }
+                                o.raw(z);
                             }
                         }
                     }
@@ -524,7 +543,11 @@ namespace jasperengine::editor::pixelart::aseprite {
                             o.u32(0);
                             hashInto(o, ContentHash::of(std::string_view(reinterpret_cast<const char*>(raw.data()), raw.size())));
                         } else {
-                            std::vector<uint8_t> z = deflateBytes(raw);
+                            std::vector<uint8_t> z;
+                            if (!deflateBytes(raw, z)) {
+                                setError(error, "the tileset '" + ts.name + "' could not be compressed", "use fewer or smaller tiles", "tilesets");
+                                return false;
+                            }
                             o.u32(static_cast<uint32_t>(z.size()));
                             o.raw(z);
                         }
@@ -661,8 +684,55 @@ namespace jasperengine::editor::pixelart::aseprite {
             std::vector<Planned> canonical(int frame);
             std::vector<Planned> merge(int frame, std::vector<Planned> wanted);
             void paletteChunks(int frame, const FrameRefs& had, std::vector<Planned>& out);
+            void compressAhead(const std::vector<std::vector<Planned>>& plans);
             bool writeHeader(std::vector<uint8_t>& out);
         };
+
+        void Writer::compressAhead(const std::vector<std::vector<Planned>>& plans) {
+            struct Job {
+                const Cel* cel;
+                std::vector<uint8_t> out;
+            };
+            std::vector<Job> jobs;
+            size_t total = 0;
+            for (const std::vector<Planned>& plan : plans) {
+                for (const Planned& p : plan) {
+                    if (p.ref.kind != ChunkRef::Kind::Cel) continue;
+                    if (p.original && p.original->type == p.type && fingerprintMatches(*p.original)) continue;
+                    const Cel* cel = doc.celRecord(p.ref.a, p.ref.b);
+                    if (!cel || cel->linkedFrame >= 0 || cel->tilemap || !cel->image || cel->image->empty()) continue;
+                    if (hashes.compressedCels.count(cel)) continue;
+                    hashes.compressedCels[cel];
+                    jobs.push_back({cel, {}});
+                    total += static_cast<size_t>(cel->image->width()) * cel->image->height() * 4;
+                }
+            }
+            // threads pay off on big documents only; a cel that fails here is encoded (and its
+            // error reported) by encodeBody as before
+            const unsigned hardware = std::max(1u, std::thread::hardware_concurrency());
+            const unsigned threads = total < (8u << 20) ? 0u : std::min({hardware, 8u, static_cast<unsigned>(jobs.size())});
+            if (threads == 0) {
+                hashes.compressedCels.clear();
+                return;
+            }
+            std::atomic<size_t> next{0};
+            auto work = [this, &jobs, &next]() {
+                for (;;) {
+                    const size_t i = next.fetch_add(1);
+                    if (i >= jobs.size()) return;
+                    const Cel& cel = *jobs[i].cel;
+                    const bool background = doc.layers.size() > static_cast<size_t>(cel.layer) && doc.layers[static_cast<size_t>(cel.layer)].background();
+                    std::vector<uint8_t> raw;
+                    if (!imageFileBytes(*cel.image, doc.mode, doc.paletteAt(cel.frame), background ? -1 : doc.transparentIndex, raw, nullptr)) continue;
+                    deflateBytes(raw, jobs[i].out);
+                }
+            };
+            std::vector<std::thread> pool;
+            for (unsigned t = 1; t < threads; t++) pool.emplace_back(work);
+            work();
+            for (std::thread& t : pool) t.join();
+            for (Job& job : jobs) hashes.compressedCels[job.cel] = std::move(job.out);
+        }
 
         // Frame 0 always has a palette chunk, a later frame where its palette changes; the
         // chunk types the file used there stay while they can hold the palette (or still match)
@@ -889,17 +959,46 @@ namespace jasperengine::editor::pixelart::aseprite {
                              "put the cel on an image or tilemap layer", "cels");
                     return false;
                 }
-                if (cel.image && cel.image->width() > 0xffff) {
-                    setError(error, "a cel is wider than 65535 pixels", "crop the cel", "cels");
+                const std::string where = " (layer " + std::to_string(cel.layer) + ", frame " + std::to_string(cel.frame) + ")";
+                if (cel.image && (cel.image->width() > 0xffff || cel.image->height() > 0xffff)) {
+                    setError(error, "a cel is larger than 65535 pixels a side" + where, "crop the cel", "cels");
                     return false;
                 }
+                // the file keeps the position in 16 bits
+                if (cel.x < -32768 || cel.x > 32767 || cel.y < -32768 || cel.y > 32767) {
+                    setError(error, "a cel is at " + std::to_string(cel.x) + ", " + std::to_string(cel.y) + where + " (-32768 to 32767)",
+                             "move the cel nearer the canvas", "cels");
+                    return false;
+                }
+                if (cel.linkedFrame >= 0 && (cel.linkedFrame >= cel.frame || !doc.celRecord(cel.layer, cel.linkedFrame))) {
+                    setError(error, "a cel links to frame " + std::to_string(cel.linkedFrame) + where + ", which has no earlier cel on its layer",
+                             "link to an earlier frame's cel", "cels");
+                    return false;
+                }
+                if (cel.tilemap) {
+                    const Tilemap& tm = *cel.tilemap;
+                    if (tm.columns < 0 || tm.rows < 0 || tm.columns > 0xffff || tm.rows > 0xffff ||
+                        tm.tiles.size() != static_cast<size_t>(tm.columns) * static_cast<size_t>(tm.rows) ||
+                        (tm.bitsPerTile != 8 && tm.bitsPerTile != 16 && tm.bitsPerTile != 32)) {
+                        setError(error, "a tilemap" + where + " is " + std::to_string(tm.columns) + "x" + std::to_string(tm.rows) + " with " +
+                                 std::to_string(tm.tiles.size()) + " tiles at " + std::to_string(tm.bitsPerTile) + " bits",
+                                 "give it columns x rows tiles (each side up to 65535) of 8, 16 or 32 bits", "cels");
+                        return false;
+                    }
+                }
             }
+
+            // the plans, and the image cels to encode again compressed ahead on several threads
+            // (R26: every cel of a big file changed is deflating 128 MB)
+            std::vector<std::vector<Planned>> plans(static_cast<size_t>(doc.frameCount()));
+            for (int f = 0; f < doc.frameCount(); f++) plans[static_cast<size_t>(f)] = merge(f, canonical(f));
+            compressAhead(plans);
 
             std::vector<uint8_t> file;
             writeHeader(file);
             for (int f = 0; f < doc.frameCount(); f++) {
                 const FrameRecord* fr = provFrame(f);
-                std::vector<Planned> plan = merge(f, canonical(f));
+                std::vector<Planned>& plan = plans[static_cast<size_t>(f)];
                 const uint16_t duration = doc.frameDurations[static_cast<size_t>(f)];
 
                 // an untouched frame is copied whole (its header and any slack after its chunks)

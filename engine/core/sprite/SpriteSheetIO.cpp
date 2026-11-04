@@ -3,6 +3,9 @@
 
 #include "SpriteSheetIO.h"
 
+#include <algorithm>
+#include <cstdlib>
+
 #include <cmath>
 #include <cstdio>
 #include <functional>
@@ -80,7 +83,12 @@ namespace jasperengine{
 
     std::vector<int> SpriteTag::playback() const{
         if (repeat <= 0) return sequence();
-        return tagPlayback(*this, repeat, false);
+        // at most Aseprite's 16-bit count, and a playback no longer than SPRITE_TAG_MAX_PLAYBACK
+        // frames (a long tag repeated many times is not unrolled into gigabytes)
+        const int span = std::abs(to - from) + 1;
+        const int passes = std::clamp(repeat, 1, SPRITE_TAG_MAX_REPEAT);
+        const int fit = std::max(1, static_cast<int>(SPRITE_TAG_MAX_PLAYBACK / static_cast<size_t>(std::max(1, span))));
+        return tagPlayback(*this, std::min(passes, fit), false);
     }
 
     const SpriteSliceKey* SpriteSlice::keyAt(int frame) const{
@@ -334,6 +342,11 @@ namespace jasperengine{
                     p.warn(path + ".direction", "unknown direction (forward)");
                 }
                 if (tj.contains("repeat") && p.integer(tj["repeat"], path + ".repeat", tag.repeat) && tag.repeat < 0) tag.repeat = 0;
+                if (tag.repeat > SPRITE_TAG_MAX_REPEAT){
+                    // Aseprite stores the count in 16 bits; more would unroll into a huge playback
+                    p.warn(path + ".repeat", std::to_string(tag.repeat) + " is more than " + std::to_string(SPRITE_TAG_MAX_REPEAT) + " (kept at that)");
+                    tag.repeat = SPRITE_TAG_MAX_REPEAT;
+                }
                 if (tj.contains("color") && (!tj["color"].is_string() || !spriteColorFromText(tj["color"].get<std::string>(), tag.color))){
                     p.warn(path + ".color", "not #rrggbbaa (black)");
                 }

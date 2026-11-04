@@ -53,6 +53,10 @@ namespace jasperengine{
         PING_PONG_REVERSE
     };
 
+    // Aseprite's 16-bit repeat count, and the longest playback a tag unrolls into
+    constexpr int SPRITE_TAG_MAX_REPEAT = 65535;
+    constexpr size_t SPRITE_TAG_MAX_PLAYBACK = 1u << 20;
+
     struct JASPERENGINE_API SpriteTag{
         std::string name;
         int from = 0, to = 0;             // frame indices, inclusive
@@ -62,7 +66,8 @@ namespace jasperengine{
         nlohmann::json userData;          // {text?, color?, properties?, extensions?}; null when none
         // the frames one pass plays, direction applied (a one-frame tag: one entry)
         std::vector<int> sequence() const;
-        // the whole playback with `repeat` unrolled (repeat 0: one pass)
+        // the whole playback with `repeat` unrolled (repeat 0: one pass), capped at
+        // SPRITE_TAG_MAX_PLAYBACK frames (fewer passes)
         std::vector<int> playback() const;
     };
 

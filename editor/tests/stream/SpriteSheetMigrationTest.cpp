@@ -75,6 +75,25 @@ TEST(SpriteSheetMigration, PrefabVersionsMoveTogether) {
     EXPECT_EQ(root["members"].size(), 0u);
 }
 
+// a prefab written before the bump (inline-frame Sprite and Sprite Animation) migrates to the
+// current version with its sprite sections untouched, and decodes to the same frames
+TEST(SpriteSheetMigration, PrefabBeforeTheBumpKeepsItsSprites) {
+    const std::filesystem::path path = fixture("migrations/prefab-v8-sprites.prefab");
+    const YAML::Node original = YAML::Load(readText(path));
+    ASSERT_EQ(original["version"].as<int>(), 8);
+    const DocumentFile prefab = DocumentFiles::read(path, DocumentKind::Prefab);
+    EXPECT_EQ(prefab.migration.versionRead, 8);
+    EXPECT_EQ(prefab.root["version"].as<int>(), Prefab::FILE_VERSION);
+    const YAML::Node member = prefab.root["members"][0];
+    std::string why;
+    EXPECT_TRUE(structurallyEqual(member["components"]["sprite"], original["members"][0]["components"]["sprite"], &why)) << why;
+    EXPECT_TRUE(structurallyEqual(member["components"]["spriteanimation"], original["members"][0]["components"]["spriteanimation"], &why)) << why;
+    const SpriteComponent sprite = Stream::decodeSpriteComponent(member["components"]["sprite"]);
+    EXPECT_TRUE(sprite.sheet.empty());
+    ASSERT_EQ(sprite.numFramesRect, 3u);
+    EXPECT_EQ(sprite.framesRect[2].name, "walk_2");
+}
+
 TEST(SpriteSheetMigration, SheetSpriteRoundTrips) {
     SpriteComponent sprite;
     sprite.sheet = AssetRef("sprites/hero.aseprite", Guid::parse("4b1e9c0d2a7f4e31b6c58d0f9e2a7c13"));

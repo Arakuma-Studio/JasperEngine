@@ -1,0 +1,56 @@
+{ "frames": [
+   {
+    "filename": "slice_advanced 0.aseprite",
+    "frame": { "x": 0, "y": 0, "w": 32, "h": 32 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 32 },
+    "sourceSize": { "w": 32, "h": 32 },
+    "duration": 100
+   },
+   {
+    "filename": "slice_advanced 1.aseprite",
+    "frame": { "x": 32, "y": 0, "w": 32, "h": 32 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 32 },
+    "sourceSize": { "w": 32, "h": 32 },
+    "duration": 100
+   },
+   {
+    "filename": "slice_advanced 2.aseprite",
+    "frame": { "x": 64, "y": 0, "w": 32, "h": 32 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 32 },
+    "sourceSize": { "w": 32, "h": 32 },
+    "duration": 100
+   },
+   {
+    "filename": "slice_advanced 3.aseprite",
+    "frame": { "x": 96, "y": 0, "w": 32, "h": 32 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 32, "h": 32 },
+    "sourceSize": { "w": 32, "h": 32 },
+    "duration": 100
+   }
+ ],
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.18.6-dev",
+  "image": "slice_advanced_sheet.png",
+  "format": "RGBA8888",
+  "size": { "w": 128, "h": 32 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "Layer 1", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+   { "name": "Slice 2", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 2, "y": 1, "w": 8, "h": 8 }, "center": {"x": 3, "y": 3, "w": 2, "h": 2 } }] },
+   { "name": "Slice 1", "color": "#0000ffff", "keys": [{ "frame": 0, "bounds": {"x": 12, "y": 11, "w": 8, "h": 10 }, "pivot": {"x": 4, "y": 10 } }, { "frame": 1, "bounds": {"x": 18, "y": 5, "w": 8, "h": 10 }, "pivot": {"x": 4, "y": 10 } }, { "frame": 2, "bounds": {"x": 24, "y": 11, "w": 8, "h": 10 }, "pivot": {"x": 4, "y": 10 } }, { "frame": 3, "bounds": {"x": 15, "y": 21, "w": 8, "h": 10 }, "pivot": {"x": 4, "y": 10 } }] }
+  ]
+ }
+}

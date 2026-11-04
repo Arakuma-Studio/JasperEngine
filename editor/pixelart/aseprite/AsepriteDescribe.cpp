@@ -140,7 +140,8 @@ namespace jasperengine::editor::pixelart::aseprite {
             for (const SliceKey& k : s.keys) {
                 nlohmann::json kj = {{"frame", k.frame}, {"bounds", rect(k.bounds)}};
                 if (k.center) {
-                    kj["center"] = rect(*k.center);
+                    // an empty centre (a hidden key's) is left out, as Aseprite's --data does
+                    if (!k.center->empty()) kj["center"] = rect(*k.center);
                     ninePatch = true;
                 }
                 if (k.pivot) {

@@ -7,9 +7,12 @@
 // failure is a typed error. Run under ASan/UBSan with the sanitizer presets (docs/testing.md).
 
 #include "AsepriteTestSupport.h"
+#include "support/AllocationProbe.h"
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <cstdio>
 #include <random>
 #include <set>
 
@@ -68,6 +71,7 @@ TEST(AsepriteFuzzTest, Mutations) {
 
     std::mt19937 rng(0x5EED44);
     int ok = 0, failed = 0;
+    size_t maxLargest = 0;
     for (int iteration = 0; iteration < 20000; iteration++) {
         const size_t pick = rng() % corpus.size();
         std::vector<uint8_t> bytes = corpus[pick];
@@ -88,7 +92,15 @@ TEST(AsepriteFuzzTest, Mutations) {
             const size_t fields[] = {6, 8, 10, 12, 32};
             put16(bytes, fields[rng() % 5], static_cast<uint32_t>(rng()));
         }
+        // R6: no single allocation beyond what the bytes can decompress to (zlib's 1032:1) or a
+        // full 65,536-entry palette, and no more in all than the 1 GiB + 64 MiB budgets
+        const jasperengine::editor::test::ThreadAllocations before = jasperengine::editor::test::threadAllocations();
+        jasperengine::editor::test::resetLargestAllocation();
         ReadResult r = read(bytes);
+        const jasperengine::editor::test::ThreadAllocations after = jasperengine::editor::test::threadAllocations();
+        EXPECT_LE(after.largest, std::max<size_t>(8u << 20, 1100 * bytes.size())) << "iteration " << iteration;
+        EXPECT_LE(after.bytes - before.bytes, (kMaxDecodedPixelBytes + kMaxPaletteBytes) * 2) << "iteration " << iteration;
+        maxLargest = std::max(maxLargest, after.largest);
         if (r.ok()) {
             ok++;
             // what was read writes and renders (small canvases only: render is not the hostile surface)
@@ -111,4 +123,34 @@ TEST(AsepriteFuzzTest, Mutations) {
     // both outcomes happen: the mutations reach past the header checks
     EXPECT_GT(ok, 1000);
     EXPECT_GT(failed, 1000);
+    std::printf("[fuzz] the largest allocation of one read: %zu bytes\n", maxLargest);
+}
+
+// R6: a palette that changes on every frame keeps a copy per change; a file of many changes to a
+// 65,536-entry palette stops with too_large once they pass 64 MiB, having allocated about that
+TEST(AsepriteFuzzTest, PaletteChangesAreBounded) {
+    Document doc;
+    doc.width = 4;
+    doc.height = 4;
+    doc.mode = ColorMode::Rgba;
+    doc.frameDurations.assign(60, 100);
+    doc.palette.assign(65536, PaletteEntry{});
+    Layer layer;
+    layer.name = "Layer";
+    doc.layers.push_back(layer);
+    doc.rebuildTreeFromLevels();
+    for (int f = 1; f < 60; f++) {
+        std::vector<PaletteEntry> changed = doc.palette;
+        changed[static_cast<size_t>(f)].color = {static_cast<uint8_t>(f), 0, 0, 255};
+        doc.paletteChanges[f] = changed;
+    }
+    std::vector<uint8_t> bytes;
+    CodecError error;
+    ASSERT_TRUE(write(doc, bytes, &error)) << error.message;
+    const jasperengine::editor::test::ThreadAllocations before = jasperengine::editor::test::threadAllocations();
+    ReadResult r = read(bytes);
+    const jasperengine::editor::test::ThreadAllocations after = jasperengine::editor::test::threadAllocations();
+    ASSERT_FALSE(r.ok());
+    EXPECT_EQ(r.error.kind, "too_large") << r.error.message;
+    EXPECT_LT(after.bytes - before.bytes, static_cast<unsigned long long>(kMaxPaletteBytes) * 2 + bytes.size() * 4);
 }

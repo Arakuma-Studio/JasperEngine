@@ -294,6 +294,8 @@ namespace jasperengine{
 		// the colliders following a sprite slice take its box on the shown frame (S44 R17)
 		void updateSliceColliders2D(Entity entity, Rigidbody2DComponent& body);
 		void createCollider2DShapes(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
+		// the shapes of a collider's own type and points (a slice collider's box goes through it too)
+		void createCollider2DShapesOf(Entity entity, Rigidbody2DComponent& body, size_t index, const Vector2& entityScale, int layer);
 		// true when the pieces were made again (not from the cache); logs the problems when `log`
 		bool computeCollider2DPieces(Collider2D& collider, const Vector2& entityScale, bool log, size_t index, const std::string& entityName);
 		void resolveCollider2DSurface(const Rigidbody2DComponent& body, const Collider2D& collider, float& friction, float& restitution, int& userMaterial) const;

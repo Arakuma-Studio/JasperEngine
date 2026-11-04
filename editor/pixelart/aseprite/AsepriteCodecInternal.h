@@ -121,7 +121,8 @@ namespace jasperengine::editor::pixelart::aseprite::detail {
     // many); false (with a message) when the stream is not zlib
     bool inflateBounded(std::span<const uint8_t> compressed, uint8_t* out, size_t expected, size_t& produced, std::string& error);
     // zlib stream at miniz level 6: deterministic
-    std::vector<uint8_t> deflateBytes(std::span<const uint8_t> raw);
+    // false (out empty) when miniz cannot compress it
+    bool deflateBytes(std::span<const uint8_t> raw, std::vector<uint8_t>& out);
 
     // ---- pixels in file form
 
@@ -223,6 +224,9 @@ namespace jasperengine::editor::pixelart::aseprite::detail {
     struct HashCache {
         const Provenance* provenance = nullptr;
         std::unordered_map<const void*, uint64_t> computed;
+        // image cels' compressed pixels, made ahead on several threads by the writer (looked up
+        // by the cel record, never iterated: the output does not depend on the map's order)
+        std::unordered_map<const void*, std::vector<uint8_t>> compressedCels;
         uint64_t imageHash(const Document& doc, const Cel& cel);
         uint64_t tilemapHash(const Tilemap& tilemap);
     };

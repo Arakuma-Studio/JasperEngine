@@ -18,6 +18,7 @@
 #include "pixelart/aseprite/AsepriteImporter.h"
 #include "shortcuts/CommandCatalog.h"
 #include "util/FileUtils.h"
+#include "util/UIProbe.h"
 #include "util/UserFiles.h"
 #include "window/ProjectWindow.h"
 
@@ -770,12 +771,15 @@ void SpritePreviewWindow::show() {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
             drawSidePanel();
+            UIProbe::item("spritePreview.panel");
             ImGui::TableSetColumnIndex(1);
             const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
             const float stripHeight = lineHeight * static_cast<float>(stripLanes + 2) + ImGui::GetStyle().ScrollbarSize + ImGui::GetStyle().WindowPadding.y * 2.0f;
             const ImVec2 avail = ImGui::GetContentRegionAvail();
             drawCanvas(ImVec2(avail.x, std::max(avail.y - stripHeight - ImGui::GetStyle().ItemSpacing.y, lineHeight * 4.0f)));
+            UIProbe::item("spritePreview.canvas");
             drawFrameStrip();
+            UIProbe::item("spritePreview.frameStrip");
             ImGui::EndTable();
         }
     }
@@ -794,11 +798,13 @@ void SpritePreviewWindow::drawToolbar() {
     ImGui::TextUnformatted(assetPath.c_str());
     ImGui::SameLine();
     if (ImGui::RadioButton("Source", view == View::Source)) view = View::Source;
+    UIProbe::item("spritePreview.view.Source");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The file as Aseprite composes it (the layers ticked under Layers)");
     ImGui::SameLine();
     ImGui::BeginDisabled(!importedAvailable);
     if (ImGui::RadioButton("Imported", view == View::Imported)) view = View::Imported;
     ImGui::EndDisabled();
+    UIProbe::item("spritePreview.view.Imported");
     if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("What the game draws: the import's sprite sheet");
 
     if (view == View::Imported && spriteGroups() > 1) {
@@ -819,6 +825,7 @@ void SpritePreviewWindow::drawToolbar() {
     const char* tagPreview = tag >= 0 && tag < static_cast<int>(list.size()) ? list[static_cast<size_t>(tag)].name.c_str() : "All Frames";
     if (ImGui::BeginCombo("##tag", tagPreview)) {
         if (ImGui::Selectable("All Frames", tag < 0)) selectTag(-1);
+        UIProbe::item("spritePreview.tagAll");
         for (size_t i = 0; i < list.size(); i++) {
             ImGui::PushID(static_cast<int>(i));
             ImGui::ColorButton("##color", ImVec4(list[i].color.x, list[i].color.y, list[i].color.z, 1.0f), ImGuiColorEditFlags_NoTooltip,
@@ -827,20 +834,26 @@ void SpritePreviewWindow::drawToolbar() {
             const std::string label = list[i].name + "  (" + std::to_string(list[i].from) + "-" + std::to_string(list[i].to) + ", " +
                                       spriteTagDirectionName(list[i].direction) + ")";
             if (ImGui::Selectable(label.c_str(), tag == static_cast<int>(i))) selectTag(static_cast<int>(i));
+            UIProbe::item("spritePreview.tagItem." + list[i].name);
             ImGui::PopID();
         }
         ImGui::EndCombo();
     }
+    // the combo again once its popup ends (End restores the last item)
+    UIProbe::item("spritePreview.tagDropdown");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("Tag");
     ImGui::SameLine();
     ImGui::BeginDisabled(frames <= 0);
     if (ImGui::Button(playing ? ICON_FA_PAUSE : ICON_FA_PLAY)) togglePlay();
+    UIProbe::item(playing ? "spritePreview.pause" : "spritePreview.play");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", catalog.tooltip("spritePreview.playPause", playing ? "Pause" : "Play").c_str());
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_BACKWARD_STEP)) stepFrame(-1);
+    UIProbe::item("spritePreview.previousFrame");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", catalog.tooltip("spritePreview.previousFrame", "Previous Frame").c_str());
     ImGui::SameLine();
     if (ImGui::Button(ICON_FA_FORWARD_STEP)) stepFrame(1);
+    UIProbe::item("spritePreview.nextFrame");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", catalog.tooltip("spritePreview.nextFrame", "Next Frame").c_str());
     ImGui::EndDisabled();
     ImGui::SameLine();
@@ -872,35 +885,59 @@ void SpritePreviewWindow::drawToolbar() {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", catalog.tooltip("spritePreview.zoomIn", "Zoom In").c_str());
     ImGui::SameLine();
     if (ImGui::Button("Fit")) fitRequested = true;
+    UIProbe::item("spritePreview.fit");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The largest whole zoom that fits the view");
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::Checkbox("Onion Skin", &onionSkin);
+    UIProbe::item("spritePreview.onionSkin");
     if (onionSkin) {
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
         ImGui::SliderInt("Previous", &onionPrevious, 1, 3);
+        UIProbe::item("spritePreview.onionPrevious");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 4.0f);
         ImGui::SliderInt("Next", &onionNext, 1, 3);
+        UIProbe::item("spritePreview.onionNext");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 5.0f);
         ImGui::SliderFloat("Opacity", &onionOpacity, 0.05f, 1.0f, "%.2f");
+        UIProbe::item("spritePreview.onionOpacity");
     }
     ImGui::SameLine();
     ImGui::Checkbox("Slices", &showSlices);
+    UIProbe::item("spritePreview.slices");
     ImGui::SameLine();
     ImGui::Checkbox("Pivot", &showPivot);
+    UIProbe::item("spritePreview.pivot");
     ImGui::SameLine();
     ImGui::Checkbox("Trim", &showTrim);
+    UIProbe::item("spritePreview.trim");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The rectangle the import keeps of each frame");
     ImGui::SameLine();
     ImGui::Checkbox("Pixel Grid", &showGrid);
+    UIProbe::item("spritePreview.pixelGrid");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 7.0f);
-    const char* backgrounds[] = {"Checkerboard", "Color"};
+    const char* backgrounds[] = {"Checkerboard", "Color", "Scene"};
     int backgroundIndex = static_cast<int>(background);
-    if (ImGui::Combo("Background", &backgroundIndex, backgrounds, 2)) background = static_cast<Background>(backgroundIndex);
+    if (ImGui::Combo("Background", &backgroundIndex, backgrounds, IM_ARRAYSIZE(backgrounds))) background = static_cast<Background>(backgroundIndex);
+    UIProbe::item("spritePreview.background");
+    if (background == Background::Scene) {
+        ImGui::SameLine();
+        ImVec4 sceneColor;
+        std::string sceneName;
+        if (sceneBackgroundColor(sceneColor, &sceneName)) {
+            // read-only here: the colour is the scene's, edited in its Inspector
+            ImGui::ColorButton("##sceneBackground", sceneColor, ImGuiColorEditFlags_NoTooltip | ImGuiColorEditFlags_NoPicker,
+                               ImVec2(ImGui::GetFontSize() * 3.0f, ImGui::GetFrameHeight()));
+            UIProbe::item("spritePreview.sceneBackground");
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("The Background of %s (edit it in the scene's Inspector)", sceneName.c_str());
+        } else {
+            ImGui::TextDisabled("No scene open");
+        }
+    }
     if (background == Background::Color) {
         ImGui::SameLine();
         // the preview's own colour (sRGB as shown), no undo: nothing of the project changes
@@ -927,6 +964,7 @@ void SpritePreviewWindow::drawSidePanel() {
     if (record) {
         if (record->ok) {
             ImGui::TextWrapped("%s", record->summary.c_str());
+            UIProbe::item("spritePreview.summary");
         } else {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.4f, 1.0f));
             ImGui::TextWrapped("Import failed: %s", record->error.message.c_str());
@@ -941,6 +979,8 @@ void SpritePreviewWindow::drawSidePanel() {
     drawLayers();
     ImGui::Spacing();
     drawCompareSection();
+    // a test wheels this panel to reach what a short window leaves below
+    UIProbe::scroll("spritePreview.panel");
     ImGui::EndChild();
 }
 
@@ -973,9 +1013,12 @@ void SpritePreviewWindow::drawLayers() {
                         if (spritePreviewLeaf(doc.layers[static_cast<size_t>(c)]) && spritePreviewUnder(doc, c, l)) setLayerOn(c, value);
                     }
                 }
+                UIProbe::item("spritePreview.layer." + doc.layerPath(l));
             } else if (spritePreviewLeaf(layer)) {
                 bool value = layerOn(l);
                 if (ImGui::Checkbox(layer.name.c_str(), &value)) setLayerOn(l, value);
+                UIProbe::item("spritePreview.layer." + doc.layerPath(l));
+                if (value) UIProbe::item("spritePreview.layerOn." + doc.layerPath(l));
                 if (!doc.visibleHierarchy(l)) {
                     ImGui::SameLine();
                     ImGui::TextDisabled("(hidden)");
@@ -991,10 +1034,12 @@ void SpritePreviewWindow::drawLayers() {
     if (view != View::Source) ImGui::TextDisabled("Layer toggles show in the Source view.");
 
     if (ImGui::Button("Exclude from Import")) excludeFromImport();
+    UIProbe::item("spritePreview.excludeFromImport");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("The import takes exactly the ticked layers (one undo step)");
     if (!statusMessage.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, statusIsError ? ImVec4(1.0f, 0.45f, 0.4f, 1.0f) : ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
         ImGui::TextWrapped("%s", statusMessage.c_str());
+        UIProbe::item(statusIsError ? "spritePreview.statusError" : "spritePreview.status");
         ImGui::PopStyleColor();
     }
 }
@@ -1002,6 +1047,7 @@ void SpritePreviewWindow::drawLayers() {
 void SpritePreviewWindow::drawCompareSection() {
     if (!ImGui::CollapsingHeader("Compare at 1\xc3\x97", ImGuiTreeNodeFlags_DefaultOpen)) return;
     ImGui::Checkbox("Compare", &compare);
+    UIProbe::item("spritePreview.compare");
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("This frame next to a reference frame of another sheet, at the same whole scale");
     if (!compare) return;
     ImGui::SetNextItemWidth(-1.0f);
@@ -1013,10 +1059,12 @@ void SpritePreviewWindow::drawCompareSection() {
                 compareFrame = 0;
                 saveCompareChoice();
             }
+            UIProbe::item("spritePreview.compareCandidate." + candidate);
         }
         if (compareCandidates.empty()) ImGui::TextDisabled("No .aseprite files in the project");
         ImGui::EndCombo();
     }
+    UIProbe::item("spritePreview.compareSheet");
     if (compareSheet && !compareSheet->frames.empty()) {
         const int last = compareSheet->frameCount() - 1;
         ImGui::SetNextItemWidth(-1.0f);
@@ -1030,6 +1078,7 @@ void SpritePreviewWindow::drawCompareSection() {
             }
             ImGui::EndCombo();
         }
+        UIProbe::item("spritePreview.compareFrame");
         if (sheet && compareSheet->pixelsPerUnit != sheet->pixelsPerUnit) {
             char warning[256];
             std::snprintf(warning, sizeof(warning), "%s %g PPU, %s %g PPU: mixed pixel sizes",
@@ -1038,6 +1087,7 @@ void SpritePreviewWindow::drawCompareSection() {
                           static_cast<double>(compareSheet->pixelsPerUnit));
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.75f, 0.3f, 1.0f));
             ImGui::TextWrapped("%s %s", ICON_FA_TRIANGLE_EXCLAMATION, warning);
+            UIProbe::item("spritePreview.compareWarning");
             ImGui::PopStyleColor();
         }
     } else if (!compareSheetPath.empty()) {
@@ -1092,10 +1142,16 @@ void SpritePreviewWindow::drawCanvas(const ImVec2& size) {
     const ImVec2 origin(std::floor(canvasMin.x + (canvasSize.x - totalW) * 0.5f + pan.x),
                         std::floor(canvasMin.y + (canvasSize.y - static_cast<float>(contentH) * z) * 0.5f + pan.y));
 
+    ImVec4 sceneColor;
+    const bool sceneFill = background == Background::Scene && sceneBackgroundColor(sceneColor);
     auto backgroundAt = [&](ImVec2 min, int pw, int ph) {
         const ImVec2 max(min.x + static_cast<float>(pw) * z, min.y + static_cast<float>(ph) * z);
         if (background == Background::Color) {
             draw->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(ImVec4(backgroundColor[0], backgroundColor[1], backgroundColor[2], 1.0f)));
+            return;
+        }
+        if (sceneFill) {
+            draw->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(sceneColor));
             return;
         }
         // 8-pixel squares of the sprite, only where the view shows them
@@ -1124,16 +1180,24 @@ void SpritePreviewWindow::drawCanvas(const ImVec2& size) {
             const int f = frame - d;
             if (f < from) continue;
             const float alpha = onionOpacity * static_cast<float>(onionPrevious - d + 1) / static_cast<float>(onionPrevious);
-            drawFrameImage(draw, origin, f, ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 0.25f, 0.25f, alpha)));
+            if (drawFrameImage(draw, origin, f, ImGui::ColorConvertFloat4ToU32(ImVec4(1.0f, 0.25f, 0.25f, alpha)))) {
+                UIProbe::rect("spritePreview.onionDrawn.previous." + std::to_string(d), origin.x, origin.y, origin.x + static_cast<float>(w) * z,
+                              origin.y + static_cast<float>(h) * z);
+            }
         }
         for (int d = onionNext; d >= 1; d--) {
             const int f = frame + d;
             if (f > to) continue;
             const float alpha = onionOpacity * static_cast<float>(onionNext - d + 1) / static_cast<float>(onionNext);
-            drawFrameImage(draw, origin, f, ImGui::ColorConvertFloat4ToU32(ImVec4(0.25f, 0.25f, 1.0f, alpha)));
+            if (drawFrameImage(draw, origin, f, ImGui::ColorConvertFloat4ToU32(ImVec4(0.25f, 0.25f, 1.0f, alpha)))) {
+                UIProbe::rect("spritePreview.onionDrawn.next." + std::to_string(d), origin.x, origin.y, origin.x + static_cast<float>(w) * z,
+                              origin.y + static_cast<float>(h) * z);
+            }
         }
     }
-    if (!drawFrameImage(draw, origin, frame, IM_COL32_WHITE) && view == View::Imported) {
+    if (drawFrameImage(draw, origin, frame, IM_COL32_WHITE)) {
+        UIProbe::rect("spritePreview.frameImage", origin.x, origin.y, origin.x + static_cast<float>(w) * z, origin.y + static_cast<float>(h) * z);
+    } else if (view == View::Imported) {
         draw->AddText(origin, ImGui::GetColorU32(ImGuiCol_TextDisabled), "The import has no pixels for this frame");
     }
     drawOverlays(draw, origin);
@@ -1143,6 +1207,8 @@ void SpritePreviewWindow::drawCanvas(const ImVec2& size) {
         backgroundAt(refOrigin, compareGpu.width, compareGpu.height);
         draw->AddImage(Backend::getImGuiTexture(compareGpu.texture.getRender()), refOrigin,
                        ImVec2(refOrigin.x + static_cast<float>(compareGpu.width) * z, refOrigin.y + static_cast<float>(compareGpu.height) * z));
+        UIProbe::rect("spritePreview.compareImage", refOrigin.x, refOrigin.y, refOrigin.x + static_cast<float>(compareGpu.width) * z,
+                      refOrigin.y + static_cast<float>(compareGpu.height) * z);
         const float labelY = origin.y + static_cast<float>(contentH) * z + 2.0f;
         draw->AddText(ImVec2(origin.x, labelY), ImGui::GetColorU32(ImGuiCol_Text),
                       FileUtils::pathToUtf8(FileUtils::pathFromUtf8(assetPath).stem()).c_str());
@@ -1172,6 +1238,17 @@ bool SpritePreviewWindow::drawFrameImage(ImDrawList* draw, ImVec2 origin, int fi
     const ImVec2 a(origin.x + f->offset.x * z, origin.y + f->offset.y * z);
     const ImVec2 b(a.x + f->rect.getWidth() * z, a.y + f->rect.getHeight() * z);
     draw->AddImage(Backend::getImGuiTexture(page->texture.getRender()), a, b, uv0, uv1, tint);
+    return true;
+}
+
+bool SpritePreviewWindow::sceneBackgroundColor(ImVec4& color, std::string* sceneName) const {
+    const SceneProject* sceneProject = project->getSelectedScene();
+    if (!sceneProject || !sceneProject->scene) return false;
+    // stored as shown (sRGB, the Inspector's Background field), so ImGui draws it as is; opaque,
+    // as nothing is behind a cleared game view to show through
+    const Vector4 c = sceneProject->scene->getBackgroundColor();
+    color = ImVec4(c.x, c.y, c.z, 1.0f);
+    if (sceneName) *sceneName = sceneProject->name;
     return true;
 }
 
@@ -1320,6 +1397,7 @@ void SpritePreviewWindow::drawFrameStrip() {
         if (ImGui::InvisibleButton("##tagBand", ImVec2(std::max(1.0f, b.x - a.x), std::max(1.0f, b.y - a.y)))) selectTag(static_cast<int>(i));
         ImGui::PopID();
         const bool selected = tag == static_cast<int>(i);
+        UIProbe::item((selected ? "spritePreview.tagBandSelected." : "spritePreview.tagBand.") + t.name);
         draw->AddRectFilled(a, b, spritePreviewColor(t.color, selected ? 1.0f : 0.75f), 2.0f);
         if (selected) draw->AddRect(a, b, IM_COL32_WHITE, 2.0f);
         const ImVec4 c(t.color.x, t.color.y, t.color.z, 1.0f);
@@ -1343,6 +1421,7 @@ void SpritePreviewWindow::drawFrameStrip() {
         const bool cellHovered = ImGui::IsItemHovered();
         ImGui::PopID();
         const bool current = f == frame;
+        UIProbe::item((current ? "spritePreview.frameCurrent." : "spritePreview.frame.") + std::to_string(f));
         draw->AddRectFilled(a, b, ImGui::GetColorU32(current ? ImGuiCol_HeaderActive : (cellHovered ? ImGuiCol_HeaderHovered : ImGuiCol_FrameBg)), 2.0f);
         char index[16];
         std::snprintf(index, sizeof(index), "%d", f);

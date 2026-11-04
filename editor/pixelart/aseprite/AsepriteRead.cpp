@@ -10,9 +10,11 @@
 #include "AsepriteCodecInternal.h"
 
 #include <algorithm>
+#include <atomic>
 #include <fstream>
 #include <iterator>
 #include <new>
+#include <thread>
 
 namespace jasperengine::editor::pixelart::aseprite {
 
@@ -32,6 +34,18 @@ namespace jasperengine::editor::pixelart::aseprite {
         struct PendingImage {
             std::shared_ptr<PixelImage> image;
             int layer = 0, frame = 0;
+        };
+
+        // a compressed cel, inflated in finish() with the others, on several threads (R26: a
+        // 256x256, 64-frame, 8-layer file is 128 MB of pixels to inflate)
+        struct DeferredCel {
+            std::shared_ptr<PixelImage> image;
+            std::span<const uint8_t> compressed;
+            size_t expected = 0;
+            int w = 0, h = 0;
+            size_t chunkStart = 0;
+            size_t produced = 0;
+            std::string error;
         };
 
         class Reader {
@@ -55,7 +69,10 @@ namespace jasperengine::editor::pixelart::aseprite {
             int tileUserDataLeft = 0;      // tile user data chunks still expected after a tileset's
             int tileUserDataTileset = -1;
             uint64_t decodedBytes = 0;
+            uint64_t paletteBytes = 0;     // the palettes kept, frame 0's and each change's
             std::vector<PendingImage> pending;
+            std::vector<DeferredCel> deferred;
+            void inflateDeferred();
             ChunkAnchor anchor;            // the last object chunk read in the frame
 
             void warn(const char* kind, std::string message, std::string fix, std::string field, size_t offset) {
@@ -76,7 +93,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             ChunkRef keepOpaque(int frame, uint16_t type, size_t chunkStart, size_t chunkEnd);
             void readOldPalette(Cursor& c, bool sixBit);
             void readPalette(Cursor& c);
-            void commitPalette(int frame);
+            void commitPalette(int frame, size_t offset);
             ChunkRef readLayer(Cursor& c, size_t chunkStart);
             ChunkRef readCel(Cursor& c, int frame, size_t chunkStart, size_t chunkEnd);
             void readCelExtra(Cursor& c, int frame);
@@ -297,13 +314,13 @@ namespace jasperengine::editor::pixelart::aseprite {
                     // chunks once it has read a new one)
                     if (!newPaletteSeen) {
                         readOldPalette(c, type != kChunkOldPalette);
-                        commitPalette(frame);
+                        commitPalette(frame, chunkStart);
                     }
                     anchor = {ChunkAnchor::Kind::Palette};
                     return {ChunkRef::Kind::Palette, frame, type};
                 case kChunkPalette:
                     readPalette(c);
-                    commitPalette(frame);
+                    commitPalette(frame, chunkStart);
                     newPaletteSeen = true;
                     anchor = {ChunkAnchor::Kind::Palette};
                     return {ChunkRef::Kind::Palette, frame, type};
@@ -424,10 +441,24 @@ namespace jasperengine::editor::pixelart::aseprite {
             }
         }
 
-        void Reader::commitPalette(int frame) {
+        void Reader::commitPalette(int frame, size_t offset) {
+            // every palette kept is a copy of the whole palette (a later frame's change too): R6's
+            // budget counts them, so a file of many one-entry changes to a 65,536-entry palette
+            // stops with too_large instead of asking for gigabytes
+            uint64_t bytes = static_cast<uint64_t>(currentPalette.size()) * sizeof(PaletteEntry);
+            for (const PaletteEntry& e : currentPalette) {
+                if (e.name) bytes += e.name->size();
+            }
+            if (frame != 0 && currentPalette == doc.paletteAt(frame)) return;
+            paletteBytes += bytes;
+            if (paletteBytes > kMaxPaletteBytes) {
+                fail("too_large", "the sprite's palettes (one per frame where it changes) take more than 64 MiB",
+                     "use fewer palette changes, or a smaller palette", chunkField(kChunkPalette, offset), offset);
+            }
+            budget(bytes, offset);
             if (frame == 0) {
                 doc.palette = currentPalette;
-            } else if (currentPalette != doc.paletteAt(frame)) {
+            } else {
                 doc.paletteChanges[frame] = currentPalette;
             }
         }
@@ -552,7 +583,19 @@ namespace jasperengine::editor::pixelart::aseprite {
                             raw.resize(expected, 0);
                         }
                     } else {
-                        raw = inflateInto(c, expected, chunkStart, kChunkCel);
+                        // checked now (a claim beyond zlib's ratio allocates nothing), inflated
+                        // in finish() with the other cels
+                        std::span<const uint8_t> compressed = c.bytes(c.remaining());
+                        if (expected / 1032 > compressed.size() + 64) {
+                            fail("corrupt_chunk", "chunk " + hex16(kChunkCel) + " at byte " + std::to_string(chunkStart) + " claims " +
+                                 std::to_string(expected) + " pixel bytes from " + std::to_string(compressed.size()) + " compressed ones",
+                                 "the file is damaged: open it in Aseprite and save it again", chunkField(kChunkCel, chunkStart), chunkStart);
+                        }
+                        auto image = std::make_shared<PixelImage>();
+                        deferred.push_back({image, compressed, expected, w, h, chunkStart, 0, std::string()});
+                        if (doc.mode == ColorMode::Indexed) pending.push_back({image, cel.layer, frame});
+                        cel.image = image;
+                        break;
                     }
                     auto image = std::make_shared<PixelImage>(
                         imageFromFileBytes(w, h, doc.mode, raw, std::span<const uint8_t>(), -1));
@@ -971,7 +1014,54 @@ namespace jasperengine::editor::pixelart::aseprite {
             doc.tilesets.push_back(std::move(ts));
         }
 
+        void Reader::inflateDeferred() {
+            if (deferred.empty()) return;
+            size_t total = 0;
+            for (const DeferredCel& d : deferred) total += d.expected;
+            // threads pay off on big files only
+            const unsigned hardware = std::max(1u, std::thread::hardware_concurrency());
+            const unsigned threads = total < (8u << 20) ? 1u : std::min({hardware, 8u, static_cast<unsigned>(deferred.size())});
+            std::atomic<size_t> next{0};
+            const ColorMode mode = doc.mode;
+            auto work = [this, &next, mode]() {
+                for (;;) {
+                    const size_t i = next.fetch_add(1);
+                    if (i >= deferred.size()) return;
+                    DeferredCel& d = deferred[i];
+                    try {
+                        std::vector<uint8_t> raw(d.expected);
+                        std::string error;
+                        if (!inflateBounded(d.compressed, raw.data(), d.expected, d.produced, error)) {
+                            d.error = error.empty() ? std::string("not a zlib stream") : error;
+                            continue;
+                        }
+                        *d.image = imageFromFileBytes(d.w, d.h, mode, raw, std::span<const uint8_t>(), -1);
+                    } catch (const std::bad_alloc&) {
+                        d.error = "out of memory";
+                    }
+                }
+            };
+            std::vector<std::thread> pool;
+            for (unsigned t = 1; t < threads; t++) pool.emplace_back(work);
+            work();
+            for (std::thread& t : pool) t.join();
+            // what went wrong, in the file's order
+            for (const DeferredCel& d : deferred) {
+                if (!d.error.empty()) {
+                    fail("corrupt_chunk", "chunk " + hex16(kChunkCel) + " at byte " + std::to_string(d.chunkStart) + " holds damaged pixels (" + d.error + ")",
+                         "the file is damaged: open it in Aseprite and save it again", chunkField(kChunkCel, d.chunkStart), d.chunkStart);
+                }
+                if (d.produced < d.expected) {
+                    warn("corrupt_chunk", "chunk " + hex16(kChunkCel) + " at byte " + std::to_string(d.chunkStart) + " holds " + std::to_string(d.produced) +
+                         " of its " + std::to_string(d.expected) + " pixel bytes (the rest is transparent)",
+                         "save the file again from Aseprite", chunkField(kChunkCel, d.chunkStart), d.chunkStart);
+                }
+            }
+            deferred.clear();
+        }
+
         void Reader::finish() {
+            inflateDeferred();
             // parents from the child levels (levels that jump are normalized; an unchanged layer
             // still writes back its original chunk)
             doc.rebuildTreeFromLevels();

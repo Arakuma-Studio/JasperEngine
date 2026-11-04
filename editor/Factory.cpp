@@ -1218,6 +1218,14 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         const SpriteComponent* sheetSprite = scene->findComponent<SpriteComponent>(entity);
         if (s != 0 || !sheetSprite || sheetSprite->sheet.empty()){
             code << formatTexture(indentSpaces, mesh.submeshes[s].material.baseColorTexture, "mesh.submeshes[" + idx + "].material.baseColorTexture", projectPath);
+        }else{
+            // its sampler (pixel art's Nearest), the page coming from the sheet
+            const Texture& page = mesh.submeshes[0].material.baseColorTexture;
+            const std::string var = "mesh.submeshes[0].material.baseColorTexture";
+            code << ind << var << ".setMinFilter(" << formatTextureFilter(page.getMinFilter()) << ");\n";
+            code << ind << var << ".setMagFilter(" << formatTextureFilter(page.getMagFilter()) << ");\n";
+            code << ind << var << ".setWrapU(" << formatTextureWrap(page.getWrapU()) << ");\n";
+            code << ind << var << ".setWrapV(" << formatTextureWrap(page.getWrapV()) << ");\n";
         }
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.emissiveTexture, "mesh.submeshes[" + idx + "].material.emissiveTexture", projectPath);
         code << formatTexture(indentSpaces, mesh.submeshes[s].material.metallicRoughnessTexture, "mesh.submeshes[" + idx + "].material.metallicRoughnessTexture", projectPath);

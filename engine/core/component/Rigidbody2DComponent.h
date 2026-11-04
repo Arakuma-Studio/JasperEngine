@@ -92,7 +92,8 @@ namespace jasperengine{
 
         // a slice of the GameObject's sheet sprite (docs/specs/S44-aseprite-import.md R17): the
         // collider is that slice's box on every frame (a 4-point polygon, rebuilt when the box
-        // changes) and has no shape on frames where the slice is hidden. "" = its own shape.
+        // changes; type and points stay as saved) and has no shape on frames where the slice is
+        // hidden. "" = its own shape.
         std::string slice;
 
         // runtime, not saved
@@ -113,9 +114,11 @@ namespace jasperengine{
         float appliedFriction = -1.0f;
         float appliedRestitution = -1.0f;
         int appliedUserMaterial = -1;
-        // the slice's box the points hold, and whether it is shown on the current frame
+        // the slice's box on the current frame (its shape's 4 points, never the saved `points`)
+        // and whether the slice shows there
         bool sliceVisible = false;
         Rect sliceBounds = Rect(0.0f, 0.0f, 0.0f, 0.0f);
+        std::vector<Vector2> slicePoints;
     };
 
     struct JASPERENGINE_API Rigidbody2DComponent{

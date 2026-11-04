@@ -37,6 +37,7 @@ const char* editor::loadIssueKindName(LoadIssueKind kind) {
         case LoadIssueKind::UnknownRootKey: return "unknown_root_key";
         case LoadIssueKind::NewerFormat: return "newer_format";
         case LoadIssueKind::Migrated: return "migrated";
+        case LoadIssueKind::Fallback: return "fallback";
     }
     return "unknown";
 }

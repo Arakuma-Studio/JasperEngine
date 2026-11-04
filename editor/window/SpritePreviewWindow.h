@@ -70,7 +70,8 @@ namespace jasperengine::editor {
 
     private:
         enum class View { Source, Imported };
-        enum class Background { Checkerboard, Color };
+        // Scene: the selected scene's Background colour, the colour the game clears to behind the sprite
+        enum class Background { Checkerboard, Color, Scene };
 
         // What the job reads: the document, the import's pages, and the timeline and layer rows
         // derived from them (defined in the .cpp)
@@ -221,6 +222,8 @@ namespace jasperengine::editor {
         // one frame (and its onion skin) at `origin`, zoomed; false when nothing could be drawn
         bool drawFrameImage(ImDrawList* draw, ImVec2 origin, int fileFrame, ImU32 tint);
         void drawOverlays(ImDrawList* draw, ImVec2 origin);
+        // the selected scene's background colour; false when no scene is open (the checkerboard shows)
+        bool sceneBackgroundColor(ImVec4& color, std::string* sceneName = nullptr) const;
         std::vector<SliceOverlay> slicesAt(int fileFrame) const;
     };
 

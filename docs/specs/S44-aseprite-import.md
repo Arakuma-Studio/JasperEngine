@@ -912,9 +912,10 @@ Recorded by the implementation (`feature/s44-aseprite-import`):
 - **Guide.** No `## Pixel art` digest section: the upstream MCP rules (merged into this branch)
   give an area one "Other areas" entry; S44's is "sprites and .aseprite files (set_sprite_frames
   sheet): jasper://docs/sprites", with eval case `bad_aseprite_by_hand`.
-- **AC12's `create_entity` from the asset** is `set_sprite_frames {create, sheet}`: the same code
-  as the drop (`AsepriteSpriteSetup`), so no new `create_entity` parameter. It names the
-  GameObject from `create.name`, and gives no layer children (the drop does both).
+- **AC12's `create_entity` from the asset** is `set_sprite_frames {create, sheet}` (the drop's
+  code, `AsepriteSpriteSetup`), so no new `create_entity` parameter; it names the GameObject from
+  `create.name` and gives no layer children (the drop does both). The drop itself is tested by
+  dragging in the editor (`test_aseprite_import.py::test_drop`).
 - **`playTag`** is stepped by `MeshSystem` on the Sprite's own runtime fields with the sheet's
   durations instead of a Sprite Animation action entity: a Lua `Sprite` wrapper owns its action's
   entity, so a tag would stop with the wrapper. Behaviour is R38's (direction, repeat, speed, no
@@ -926,12 +927,24 @@ Recorded by the implementation (`feature/s44-aseprite-import`):
   `editor/tests/fixtures/migrations/scene-v7-sprites.scene`, `SpriteSheetMigrationTest`).
 - **Compression `project`.** Pages are added to the export's S14 texture cook keyed by their
   `je-imported/` path (sprite type); `none` ships the PNG pages.
-- **Compat gate.** `tools/pixelart/aseprite_compat.py` is not written: no Aseprite install was
-  available to develop or run it against. Features without a real-Aseprite golden are listed in
-  `editor/tests/fixtures/aseprite/README.md` and `docs/aseprite.md`.
+- **Real Aseprite goldens.** §9's corpus is authored with Aseprite 1.3.18
+  (`tools/pixelart/make_golden_corpus.lua`/`.py`, `editor/tests/fixtures/aseprite/s44-corpus/`) and
+  every fixture has Aseprite's `--data` JSON; `AsepriteParityTest` checks the frames (flattened and
+  composed), the indexed + background file and `describe` against them; the manual gate is
+  `tools/pixelart/aseprite_compat.py`. A batch save never sets the "groups are composed" header flag
+  and has no Lua API for slice keys after frame 0: the script patches both and Aseprite re-saves.
+  Aseprite's `--sheet` clears an indexed background's transparent index while `--save-as` keeps it
+  opaque; the importer follows `--save-as` (a background layer is opaque by definition).
+- **Cache key.** It holds the file's asset path and GUID besides §6.5's content, settings and
+  versions: the outputs name the file (frame names, the sheet's source, the clips' `source.path`),
+  so a copy or a rename is its own import (one reimport after a rename).
+- **Palettes (R6).** The palettes a file keeps (frame 0's and one copy per change) are limited to
+  64 MiB, besides the 1 GiB of pixels: a file of many changes to a 65,536-entry palette is
+  `too_large` instead of an allocation of gigabytes.
+- **Tag repeats.** A repeat count above Aseprite's 16-bit 65,535 is clamped (with a warning), and
+  a playback unrolls at most 2^20 frames (fewer passes beyond that).
 - **Sprite Preview.** Compare at 1x draws both frames at the preview's integer zoom (S41's Game
-  view scale is not on main); the background is a checkerboard or a picked colour, not the
-  scene's.
+  view scale is not on main).
 - **Budgets (AC15, AC20).** Measured on the shared 8-core build host under load (budgets printed,
   enforced only by the benchmark run's `perfSlack()`), with `AsepriteBench` documents built in
   code at R26's sizes (2.67 MB file, not 1.5 MB): read 238 ms (budget 40), one 256² 8-layer

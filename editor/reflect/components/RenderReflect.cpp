@@ -216,7 +216,18 @@ namespace {
         const SpriteComponent* sprite = const_cast<EntityRegistry*>(ctx.registry)->findComponent<SpriteComponent>(ctx.entity);
         if (sprite && !sprite->sheet.empty() && node["submeshes"] && node["submeshes"].IsSequence() && node["submeshes"].size() > 0) {
             YAML::Node material = node["submeshes"][0]["material"];
-            if (material && material.IsMap()) material.remove("baseColorTexture");
+            if (material && material.IsMap()) {
+                // the sampler stays (R15/R49: pixel art keeps its Nearest filter), the page goes;
+                // encoded from a copy with a stand-in path, so an unloaded page keeps it too
+                Texture sampler = mesh.submeshes[0].material.baseColorTexture;
+                sampler.setPath("sheet-page");
+                const YAML::Node encoded = Stream::encodeTexture(sampler, false);
+                YAML::Node kept;
+                for (const char* key : {"minFilter", "magFilter", "wrapU", "wrapV", "alphaBorder"}) {
+                    if (encoded[key]) kept[key] = encoded[key];
+                }
+                material["baseColorTexture"] = kept;
+            }
         }
         return node;
     }

@@ -16,6 +16,7 @@
 #include "command/type/PropertyCmd.h"
 
 #include "component/AnimationPlayerComponent.h"
+#include "component/MeshComponent.h"
 #include "component/Rigidbody2DComponent.h"
 #include "component/SpriteComponent.h"
 #include "sprite/SpriteSheet.h"
@@ -27,10 +28,9 @@
 
 namespace jasperengine::editor::pixelart::aseprite {
 
-    std::shared_ptr<const ImportRecord> awaitImport(const std::string& assetPath, int timeoutMs, PixelProblem& problem) {
+    std::shared_ptr<const ImportRecord> importedRecord(const std::string& assetPath, PixelProblem& problem) {
         AsepriteImporter& importer = AsepriteImporter::get();
-        if (!importer.record(assetPath) && !importer.isPending(assetPath)) importer.reimport(assetPath);
-        if (!importer.waitFor({assetPath}, timeoutMs)) {
+        if (!importer.ensureImport(assetPath)) {
             problem = {"import_failed", "sheet", assetPath + " is still importing", "call again once get_asset_info shows its outputs"};
             return nullptr;
         }
@@ -63,7 +63,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         Scene* scene = project->getScene(sceneId)->scene;
         const bool aseprite = SpriteSheetPool::isAsepritePath(request.sheet);
         if (aseprite) {
-            result.record = awaitImport(request.sheet, 15000, problem);
+            result.record = importedRecord(request.sheet, problem);
             if (!result.record) return false;
         }
         result.sheet = SpriteSheetPool::get(request.sheet);
@@ -100,6 +100,20 @@ namespace jasperengine::editor::pixelart::aseprite {
         const ComponentType cp = ComponentType::SpriteComponent;
         if (sprite->sheet.path != request.sheet) {
             commands.push_back(new PropertyCmd<AssetRef>(project, sceneId, entity, cp, "sheet", project->makeAssetRef(request.sheet, AssetPathBase::Assets)));
+        }
+        if (sprite->sheet.empty()) {
+            // a sprite turning into a sheet sprite samples its pages as pixel art (R15): Nearest,
+            // the page itself coming from the sheet
+            const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+            Texture sampler;
+            if (mesh && mesh->numSubmeshes > 0) {
+                sampler.setWrapU(mesh->submeshes[0].material.baseColorTexture.getWrapU());
+                sampler.setWrapV(mesh->submeshes[0].material.baseColorTexture.getWrapV());
+            }
+            sampler.setMinFilter(TextureFilter::NEAREST);
+            sampler.setMagFilter(TextureFilter::NEAREST);
+            commands.push_back(new PropertyCmd<Texture>(project, sceneId, entity, ComponentType::MeshComponent,
+                                                        "submeshes[0].material.baseColorTexture", sampler));
         }
         commands.push_back(new PropertyCmd<int>(project, sceneId, entity, cp, "frame", result.frame));
         commands.push_back(new PropertyCmd<std::string>(project, sceneId, entity, cp, "frameName", result.frameName));
@@ -226,7 +240,7 @@ namespace jasperengine::editor::pixelart::aseprite {
 
     Entity createSpriteFromAseprite(Project* project, uint32_t sceneId, const std::string& assetPath, Entity parent,
                                     const Vector3& position, PixelProblem& problem) {
-        std::shared_ptr<const ImportRecord> record = awaitImport(assetPath, 15000, problem);
+        std::shared_ptr<const ImportRecord> record = importedRecord(assetPath, problem);
         if (!record) return NULL_ENTITY;
         std::shared_ptr<const SpriteSheetData> sheet = SpriteSheetPool::get(assetPath);
         if (!sheet || sheet->frames.empty()) {
@@ -326,6 +340,18 @@ namespace jasperengine::editor::pixelart::aseprite {
 
     Entity dropAseprite(Project* project, uint32_t sceneId, const std::string& assetPath, Entity target, Entity parent,
                         const Vector3& position) {
+        if (!AsepriteImporter::get().ensureImport(assetPath)) {
+            // the drop completes once the file is imported (the editor never waits on it)
+            Out::info("%s is importing: it drops in when its import is done", assetPath.c_str());
+            AsepriteImporter::get().whenImported(assetPath, [project, sceneId, assetPath, target, parent, position]() {
+                SceneProject* sceneProject = project->getScene(sceneId);
+                if (!sceneProject || !sceneProject->scene || sceneProject->playState != ScenePlayState::STOPPED) return;
+                const Entity stillTarget = target != NULL_ENTITY && sceneProject->scene->isEntityCreated(target) ? target : NULL_ENTITY;
+                const Entity stillParent = parent != NULL_ENTITY && sceneProject->scene->isEntityCreated(parent) ? parent : NULL_ENTITY;
+                if (AsepriteImporter::get().ensureImport(assetPath)) dropAseprite(project, sceneId, assetPath, stillTarget, stillParent, position);
+            });
+            return NULL_ENTITY;
+        }
         Scene* scene = project->getScene(sceneId)->scene;
         PixelProblem problem;
         Entity result = NULL_ENTITY;
@@ -341,7 +367,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                 for (Command* c : commands) delete c;
             }
         } else if (target != NULL_ENTITY && scene->findComponent<AnimationPlayerComponent>(target)) {
-            std::shared_ptr<const ImportRecord> record = awaitImport(assetPath, 15000, problem);
+            std::shared_ptr<const ImportRecord> record = importedRecord(assetPath, problem);
             if (record) {
                 std::vector<AnimationPlayerClip> entries;
                 for (const ImportRecord::Clip& clip : record->clips) {

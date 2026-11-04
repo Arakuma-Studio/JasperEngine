@@ -6972,46 +6972,66 @@ void MeshSystem::resetModelToBindPose(Entity entity, ModelComponent& model){
     }
 }
 
-namespace{
-    // Sprite:playTag (S44 R38): the tag's frames for the sheet's durations, at the tag's speed;
-    // a zero-duration frame shows for one update
-    void stepSheetSpriteTag(SpriteComponent& sprite, double dt){
-        if (!sprite.sheetData || sprite.tagFrames.empty()){
-            return;
-        }
-        const SpriteSheetData& sheet = *sprite.sheetData;
-        const double step = dt * 1000.0 * sprite.tagSpeed;
-        if (step <= 0.0){
-            return;
-        }
-        sprite.tagElapsedMs += step;
-        if (sprite.tagStep >= sprite.tagFrames.size()){
-            sprite.tagStep = 0;
-        }
-        while (true){
-            const int f = sprite.tagFrames[sprite.tagStep];
-            const double duration = (f >= 0 && f < sheet.frameCount()) ? (double)sheet.frames[(size_t)f].durationMs : 0.0;
-            if (sprite.tagElapsedMs < duration){
-                break;
-            }
-            if (sprite.tagStep + 1 >= sprite.tagFrames.size()){
-                if (!sprite.tagLoop){
-                    // finished: the last frame stays
-                    sprite.tagPlaying = false;
-                    sprite.tagElapsedMs = 0.0;
-                    break;
-                }
-                sprite.tagStep = 0;
-            }else{
-                sprite.tagStep++;
-            }
-            sprite.tagElapsedMs -= duration;
-            if (duration <= 0.0){
-                break;
-            }
-        }
-        sprite.frame = sprite.tagFrames[sprite.tagStep];
+// Sprite:playTag (S44 R38): the tag's frames for the sheet's durations, at the tag's speed;
+// a zero-duration frame shows for one update
+void MeshSystem::stepSpriteTag(SpriteComponent& sprite, double dt){
+    if (!sprite.sheetData || sprite.tagFrames.empty()){
+        return;
     }
+    const SpriteSheetData& sheet = *sprite.sheetData;
+    const double step = dt * 1000.0 * sprite.tagSpeed;
+    if (step <= 0.0){
+        return;
+    }
+    if (!std::isfinite(step)){
+        return;
+    }
+    if (sprite.tagStep >= sprite.tagFrames.size()){
+        sprite.tagStep = 0;
+    }
+    auto durationOf = [&](size_t i) -> double {
+        const int f = sprite.tagFrames[i];
+        return (f >= 0 && f < sheet.frameCount()) ? (double)sheet.frames[(size_t)f].durationMs : 0.0;
+    };
+    sprite.tagElapsedMs += step;
+    // a large step (a high speed, a long frame) goes round whole loops at once, or ends the
+    // tag, instead of stepping frame by frame: the loop below runs at most one pass
+    double loop = 0.0, rest = 0.0;
+    for (size_t i = 0; i < sprite.tagFrames.size(); i++){
+        loop += durationOf(i);
+        if (i >= sprite.tagStep) rest += durationOf(i);
+    }
+    if (sprite.tagLoop && loop > 0.0 && sprite.tagElapsedMs >= loop){
+        sprite.tagElapsedMs = std::fmod(sprite.tagElapsedMs, loop);
+    }else if (!sprite.tagLoop && sprite.tagElapsedMs >= rest){
+        sprite.tagStep = sprite.tagFrames.size() - 1;
+        sprite.tagPlaying = false;
+        sprite.tagElapsedMs = 0.0;
+        sprite.frame = sprite.tagFrames[sprite.tagStep];
+        return;
+    }
+    while (true){
+        const double duration = durationOf(sprite.tagStep);
+        if (sprite.tagElapsedMs < duration){
+            break;
+        }
+        if (sprite.tagStep + 1 >= sprite.tagFrames.size()){
+            if (!sprite.tagLoop){
+                // finished: the last frame stays
+                sprite.tagPlaying = false;
+                sprite.tagElapsedMs = 0.0;
+                break;
+            }
+            sprite.tagStep = 0;
+        }else{
+            sprite.tagStep++;
+        }
+        sprite.tagElapsedMs -= duration;
+        if (duration <= 0.0){
+            break;
+        }
+    }
+    sprite.frame = sprite.tagFrames[sprite.tagStep];
 }
 
 bool MeshSystem::updateSheetSprite(SpriteComponent& sprite, MeshComponent& mesh){
@@ -7324,7 +7344,7 @@ void MeshSystem::update(double dt){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
             if (sprite.tagPlaying){
-                stepSheetSpriteTag(sprite, dt);
+                stepSpriteTag(sprite, dt);
             }
             createOrUpdateSprite(sprite, mesh);
         }

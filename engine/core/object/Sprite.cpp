@@ -13,6 +13,7 @@
 #include "sprite/SpriteSheetPool.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -360,6 +361,12 @@ void Sprite::setSheet(const std::string& path){
     if (spritecomp.sheet.path == path){
         return;
     }
+    if (spritecomp.sheet.empty() && !path.empty()){
+        // a sheet's pages are pixel art (R15): sampled Nearest
+        Texture& page = getComponent<MeshComponent>().submeshes[0].material.baseColorTexture;
+        page.setMinFilter(TextureFilter::NEAREST);
+        page.setMagFilter(TextureFilter::NEAREST);
+    }
     spritecomp.sheet = path;
     spritecomp.frame = 0;
     spritecomp.frameName.clear();
@@ -415,6 +422,10 @@ int Sprite::getFrameCount() const{
 
 void Sprite::playTag(const std::string& name, float speed){
     SpriteComponent& spritecomp = getComponent<SpriteComponent>();
+    if (!std::isfinite(speed) || speed <= 0.0f){
+        Log::error("Sprite:playTag(\"%s\"): speed must be a number above 0 (got %g)", name.c_str(), (double)speed);
+        return;
+    }
     std::shared_ptr<const SpriteSheetData> sheet = getSheetData();
     if (!sheet){
         Log::error("Sprite:playTag(\"%s\"): the sprite has no sheet", name.c_str());

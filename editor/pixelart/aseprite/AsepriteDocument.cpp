@@ -421,20 +421,26 @@ namespace jasperengine::editor::pixelart::aseprite::detail {
         return ok;
     }
 
-    std::vector<uint8_t> deflateBytes(std::span<const uint8_t> raw) {
+    bool deflateBytes(std::span<const uint8_t> raw, std::vector<uint8_t>& out) {
+        out.clear();
+        // miniz's stream sizes are 32-bit
+        if (raw.size() > 0xffffffffull / 2) return false;
         mz_stream stream;
         std::memset(&stream, 0, sizeof(stream));
-        std::vector<uint8_t> out;
-        if (mz_deflateInit(&stream, MZ_DEFAULT_LEVEL) != MZ_OK) return out;
+        if (mz_deflateInit(&stream, MZ_DEFAULT_LEVEL) != MZ_OK) return false;
         out.resize(mz_deflateBound(&stream, static_cast<mz_ulong>(raw.size())) + 16);
         stream.next_in = raw.data();
         stream.avail_in = static_cast<unsigned int>(raw.size());
         stream.next_out = out.data();
         stream.avail_out = static_cast<unsigned int>(out.size());
-        mz_deflate(&stream, MZ_FINISH);
+        const int status = mz_deflate(&stream, MZ_FINISH);
         out.resize(stream.total_out);
         mz_deflateEnd(&stream);
-        return out;
+        if (status != MZ_STREAM_END) {
+            out.clear();
+            return false;
+        }
+        return true;
     }
 
     int bytesPerPixel(ColorMode mode) {

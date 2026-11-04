@@ -6,6 +6,8 @@
 
 #include <gtest/gtest.h>
 
+#include <map>
+
 #include "TestSystem.h"
 #include "AllocationCounter.h"
 #include "asset/ImportedAssets.h"
@@ -198,13 +200,19 @@ TEST(ImportedAssetsTest, ProviderAndExportIndexAgree){
     // the editor's provider answers the same references
     ImportedAssets::setProvider([](const std::string& ref, std::string& out){
         if (ref.rfind("sprites/hero.aseprite#", 0) != 0) return false;
-        out = "je-imported/ab/abcd/" + ref.substr(ref.find('#') + 1);
+        // the cache's file names, as AsepriteImporter answers them
+        static const std::map<std::string, std::string> names = {{"sheet", "sheet.json"}, {"image#0", "page0.png"}, {"animation:walk", "clip-0.anim"}};
+        auto it = names.find(ref.substr(ref.find('#') + 1));
+        if (it == names.end()) return false;
+        out = "je-imported/ab/abcd/" + it->second;
         return true;
     });
-    for (const char* key : keys){
+    for (size_t i = 0; i < std::size(keys); i++){
         std::string viaProvider;
-        EXPECT_TRUE(ImportedAssets::find(key, viaProvider)) << key;
+        EXPECT_TRUE(ImportedAssets::find(keys[i], viaProvider)) << keys[i];
+        EXPECT_EQ(viaProvider, fromIndex[i]) << keys[i];
     }
+    // (the editor side, that both come from one table of the import: AsepriteImportTest.ProviderAndExportAgree)
 
     // the pool loads the imported sheet, its pages through the same index
     ImportedAssets::setProvider(nullptr);
