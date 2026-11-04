@@ -177,16 +177,12 @@ namespace {
     }
 
     template<class T>
-    int getPaletteName(lua_State* L) {
-        MeshComponent* mesh = meshOf<T>(L);
-        std::string name;
-        if (mesh && mesh->numSubmeshes > 0) {
-            const std::vector<std::string> names = paletteRowNames(mesh->submeshes[0].material);
-            const int row = getPaletteRow(mesh->submeshes[0].material);
-            if (row > 0 && row < (int)names.size()) name = names[row];
-        }
-        lua_pushlstring(L, name.data(), name.size());
-        return 1;
+    std::string getPaletteName(const T* object) {
+        const MeshComponent& mesh = const_cast<T*>(object)->template getComponent<MeshComponent>();
+        if (mesh.numSubmeshes == 0) return std::string();
+        const std::vector<std::string> names = paletteRowNames(mesh.submeshes[0].material);
+        const int row = getPaletteRow(mesh.submeshes[0].material);
+        return row > 0 && row < (int)names.size() ? names[row] : std::string();
     }
 
     template<class T>
@@ -254,17 +250,6 @@ namespace {
         mesh.needUpdateShaderUniforms = true;
     }
 
-    template<class T>
-    void addPaletteSwap(lua_State* L, const char* name) {
-        luabridge::getGlobalNamespace(L)
-            .beginClass<T>(name)
-            .addProperty("palette", &getPaletteName<T>, &setPaletteName<T>)
-            .addProperty("paletteRow", &getRow<T>, &setRow<T>)
-            .addProperty("paletteCycleSpeed", &getCycleSpeed<T>, &setCycleSpeed<T>)
-            .addFunction("setPaletteTarget", &setPaletteTargetOf<T>)
-            .endClass();
-    }
-
 }
 }
 #endif
@@ -277,14 +262,14 @@ void LuaBinding::registerPixelArtClasses(lua_State* L){
         .beginClass<LuaPalette>("Palette")
         .addStaticFunction("load", &loadPalette)
         .addStaticFunction("new", &paletteNew)
-        .addProperty("count", +[](const LuaPalette* self) { return paletteOf(*self).count(); })
-        .addProperty("name", +[](const LuaPalette* self) { return paletteOf(*self).name; })
-        .addProperty("variants", +[](const LuaPalette* self, lua_State* L) {
+        .addProperty("count", +[](const LuaPalette* self) -> int { return paletteOf(*self).count(); })
+        .addProperty("name", +[](const LuaPalette* self) -> std::string { return paletteOf(*self).name; })
+        .addProperty("variants", +[](const LuaPalette* self, lua_State* L) -> luabridge::LuaRef {
             std::vector<std::string> names;
             for (const PaletteVariant& variant : paletteOf(*self).variants) names.push_back(variant.name);
             return namesTable(L, names);
         })
-        .addProperty("ramps", +[](const LuaPalette* self, lua_State* L) {
+        .addProperty("ramps", +[](const LuaPalette* self, lua_State* L) -> luabridge::LuaRef {
             std::vector<std::string> names;
             for (const PaletteRamp& ramp : paletteOf(*self).ramps) names.push_back(ramp.name);
             return namesTable(L, names);
@@ -297,7 +282,7 @@ void LuaBinding::registerPixelArtClasses(lua_State* L){
             const Palette& palette = paletteOf(*self);
             return palette.validIndex(index) ? toHex(palette.colors[index]) : std::string();
         })
-        .addFunction("nearest", +[](const LuaPalette* self, const Vector4& color, std::optional<std::string> distance) {
+        .addFunction("nearest", +[](const LuaPalette* self, const Vector4& color, std::optional<std::string> distance) -> int {
             ColorMetric metric = ColorMetric::OkLab;
             if (distance && !parseColorMetric(*distance, metric))
                 Log::warn("Palette:nearest: unknown distance \"%s\" (oklab, ciede2000, rgb): OKLab used", distance->c_str());
@@ -310,8 +295,25 @@ void LuaBinding::registerPixelArtClasses(lua_State* L){
         })
         .endClass();
 
-    addPaletteSwap<Sprite>(L, "Sprite");
-    addPaletteSwap<Tilemap>(L, "Tilemap");
-    addPaletteSwap<MeshPolygon>(L, "MeshPolygon");
+    // one chain per class (not a template taking the name): the Lua API extractor reads the names
+    luabridge::getGlobalNamespace(L)
+        .beginClass<Sprite>("Sprite")
+        .addProperty("palette", &getPaletteName<Sprite>, &setPaletteName<Sprite>)
+        .addProperty("paletteRow", &getRow<Sprite>, &setRow<Sprite>)
+        .addProperty("paletteCycleSpeed", &getCycleSpeed<Sprite>, &setCycleSpeed<Sprite>)
+        .addFunction("setPaletteTarget", &setPaletteTargetOf<Sprite>)
+        .endClass()
+        .beginClass<Tilemap>("Tilemap")
+        .addProperty("palette", &getPaletteName<Tilemap>, &setPaletteName<Tilemap>)
+        .addProperty("paletteRow", &getRow<Tilemap>, &setRow<Tilemap>)
+        .addProperty("paletteCycleSpeed", &getCycleSpeed<Tilemap>, &setCycleSpeed<Tilemap>)
+        .addFunction("setPaletteTarget", &setPaletteTargetOf<Tilemap>)
+        .endClass()
+        .beginClass<MeshPolygon>("MeshPolygon")
+        .addProperty("palette", &getPaletteName<MeshPolygon>, &setPaletteName<MeshPolygon>)
+        .addProperty("paletteRow", &getRow<MeshPolygon>, &setRow<MeshPolygon>)
+        .addProperty("paletteCycleSpeed", &getCycleSpeed<MeshPolygon>, &setCycleSpeed<MeshPolygon>)
+        .addFunction("setPaletteTarget", &setPaletteTargetOf<MeshPolygon>)
+        .endClass();
 #endif //DISABLE_LUA_BINDINGS
 }
