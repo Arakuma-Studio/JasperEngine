@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 
 namespace {
 
-    std::string readFile(const fs::path& path) {
+    std::string generatorCMakeRead(const fs::path& path) {
         std::ifstream file(path, std::ios::binary);
         return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
     }
@@ -40,11 +40,11 @@ namespace {
         Generator generator;
         generator.configure(scenes, "test", {}, {}, project, project / ".jasperengine", project / "assets", project / "lua", {}, 20,
                             Scaling::FITWIDTH, TextureStrategy::NONE, 1280, 720, true, window);
-        return readFile(project / "CMakeLists.txt");
+        return generatorCMakeRead(project / "CMakeLists.txt");
     }
 
     // the text of the CMake block that starts at `opening` (an if(...) line), to its endif()
-    std::string blockAt(const std::string& text, size_t opening) {
+    std::string generatorCMakeBlockAt(const std::string& text, size_t opening) {
         int depth = 0;
         size_t pos = opening;
         while (pos < text.size()) {
@@ -83,7 +83,7 @@ TEST(GeneratorCMake, AbiMacrosWhateverTheLibraryDirectory) {
     for (const char* opening : {"if(JASPERENGINE_EDITOR_PLUGIN)\n", "if(NOT DEFINED JASPERENGINE_LIB_DIR"}) {
         const size_t at = cmake.find(opening);
         ASSERT_NE(at, std::string::npos) << opening;
-        EXPECT_EQ(blockAt(cmake, at).find("JASPERENGINE_SHARED"), std::string::npos) << blockAt(cmake, at);
+        EXPECT_EQ(generatorCMakeBlockAt(cmake, at).find("JASPERENGINE_SHARED"), std::string::npos) << generatorCMakeBlockAt(cmake, at);
     }
     // a static engine library (other layouts) is refused at configure; MinGW's import library is not static
     EXPECT_NE(cmake.find("is not an editor engine library"), std::string::npos) << cmake;

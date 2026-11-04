@@ -14,6 +14,7 @@ JASPERENGINE_EDITOR on every compile.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 import tempfile
@@ -36,8 +37,9 @@ public:
 };
 """
 
-# Functions of both libraries the engine itself does not call (none of their archive members is
-# linked into the engine library without the whole-archive link), and Jolt's allocator hook
+# Functions of both libraries the engine itself does not call (JPH::TriangleSplitterMean was not in
+# the engine library before the whole-archive link: checked against its dynamic symbols), and Jolt's
+# allocator hook
 SOURCE = """#include "PhysicsLibs.h"
 #include "Log.h"
 
@@ -46,28 +48,45 @@ SOURCE = """#include "PhysicsLibs.h"
 #include <Jolt/Jolt.h>
 #include <Jolt/Core/Memory.h>
 #include <Jolt/Geometry/ConvexHullBuilder2D.h>
-#include <Jolt/Physics/Collision/Shape/BoxShape.h>
-#include <Jolt/Skeleton/Skeleton.h>
+#include <Jolt/Physics/StateRecorderImpl.h>
+#include <Jolt/TriangleSplitter/TriangleSplitterMean.h>
 
 using namespace jasperengine;
 
 PhysicsLibs::PhysicsLibs(Scene* scene, Entity entity) : ScriptBase(scene, entity) {
-    // Box2D: a hull of four points (hull.c)
-    b2Vec2 points[] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
-    const b2Hull hull = b2ComputeHull(points, 4);
-    const bool valid = b2ValidateHull(&hull);
+    // Box2D: the swept distance of two proxies (distance.c)
+    const b2Vec2 square[] = {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+    b2ShapeCastPairInput input = {};
+    input.proxyA = b2MakeProxy(square, 4, 0.0f);
+    input.proxyB = b2MakeProxy(square, 4, 0.0f);
+    input.transformA = b2Transform_identity;
+    input.transformB = b2Transform_identity;
+    input.transformB.p = {3.0f, 0.0f};
+    input.translationB = {-4.0f, 0.0f};
+    input.maxFraction = 1.0f;
+    const b2CastOutput cast = b2ShapeCast(&input);
 
-    // Jolt: its allocator (data, dllimport on MSVC) and a skeleton (Skeleton.cpp)
+    // Jolt: its allocator (data, dllimport on MSVC), a 2D hull and a state recorder
     void* block = JPH::Allocate(64);
     JPH::Free(block);
-    JPH::Skeleton skeleton;
-    skeleton.AddJoint("root");
-    skeleton.AddJoint("child", 0);
-    skeleton.CalculateParentJointIndices();
-    const int child = skeleton.GetJointIndex("child");
+    JPH::Array<JPH::Vec3> positions = {JPH::Vec3(0, 0, 0), JPH::Vec3(1, 0, 0), JPH::Vec3(1, 1, 0), JPH::Vec3(0, 1, 0), JPH::Vec3(0.5f, 0.5f, 0)};
+    JPH::ConvexHullBuilder2D builder(positions);
+    JPH::ConvexHullBuilder2D::Edges edges;
+    builder.Initialize(0, 1, 2, 16, 1.0e-4f, edges);
+    JPH::StateRecorderImpl recorder;
+    const int value = 42;
+    recorder.Write(value);
+    recorder.Rewind();
+    int read = 0;
+    recorder.Read(read);
+    JPH::VertexList vertices = {JPH::Float3(0, 0, 0), JPH::Float3(1, 0, 0), JPH::Float3(0, 1, 0)};
+    JPH::IndexedTriangleList triangles = {JPH::IndexedTriangle(0, 1, 2)};
+    JPH::TriangleSplitterMean splitter(vertices, triangles);
+    JPH::TriangleSplitter::Stats stats;
+    splitter.GetStats(stats);
 
-    Log::print("PhysicsLibs hull=%d valid=%d joints=%d child=%d allocated=%d", hull.count, valid ? 1 : 0,
-               skeleton.GetJointCount(), child, block != nullptr ? 1 : 0);
+    Log::print("PhysicsLibs hit=%d edges=%d state=%d allocated=%d splitter=%s", cast.hit ? 1 : 0, (int)edges.size(), read,
+               block != nullptr ? 1 : 0, stats.mSplitterName);
 }
 """
 
@@ -97,7 +116,11 @@ async def test_scripts_call_box2d_and_jolt(ed: Editor):
     await ed.call("wait", frames=5)
     lines = [e["message"] for e in await ed.console_since(None, limit=2000) if "PhysicsLibs hull=" in e.get("message", "")]
     ed.check(lines, "the script ran")
-    ed.check("hull=4 valid=1 joints=2 child=1 allocated=1" in lines[0], f"the libraries answered: {lines[0]}")
+    found = re.search(r"hit=(\d+) edges=(\d+) state=(\d+) allocated=(\d+)", lines[0])
+    ed.check(found is not None, f"the libraries answered: {lines[0]}")
+    hit, edges, state, allocated = (int(g) for g in found.groups())
+    ed.check(hit == 1 and edges >= 3 and state == 42 and allocated == 1 and "splitter=TriangleSplitterMean" in lines[0],
+             f"the libraries answered: {lines[0]}")
     await ed.call("play", action="stop")
 
     # a standalone configure of the generated project against a library folder given explicitly

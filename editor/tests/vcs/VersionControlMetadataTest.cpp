@@ -115,7 +115,7 @@ TEST(VersionControlMetadata, UserAuthoredFileIsUntouched) {
 }
 
 namespace {
-    size_t occurrences(const std::string& text, const std::string& what) {
+    size_t vcsMetadataOccurrences(const std::string& text, const std::string& what) {
         size_t count = 0;
         for (size_t at = text.find(what); at != std::string::npos; at = text.find(what, at + what.size())) count++;
         return count;
@@ -150,8 +150,8 @@ TEST(VersionControlMetadata, UserLinesSurviveRefreshes) {
     }
     const std::string ignore = readFile(dir / ".gitignore");
     const std::string attributes = readFile(dir / ".gitattributes");
-    EXPECT_EQ(occurrences(ignore, "secrets.env\n"), 1u) << ignore;
-    EXPECT_EQ(occurrences(attributes, "docs/** linguist-documentation\n"), 1u) << attributes;
+    EXPECT_EQ(vcsMetadataOccurrences(ignore, "secrets.env\n"), 1u) << ignore;
+    EXPECT_EQ(vcsMetadataOccurrences(attributes, "docs/** linguist-documentation\n"), 1u) << attributes;
     // the block follows the settings: no LFS line of the previous variant is left
     EXPECT_EQ(attributes.find("filter=lfs"), std::string::npos) << attributes;
     EXPECT_NE(attributes.find("*.png     binary"), std::string::npos) << attributes;
@@ -184,6 +184,6 @@ TEST(VersionControlMetadata, OlderEditorsFileKeepsOnlyTheUsersLines) {
     const std::string attributes = readFile(dir / ".gitattributes");
     EXPECT_EQ(attributes.find("filter=lfs"), std::string::npos) << attributes;
     EXPECT_EQ(attributes.find("*.psd"), std::string::npos) << attributes;
-    EXPECT_EQ(occurrences(attributes, "*.blend binary"), 1u) << attributes;
+    EXPECT_EQ(vcsMetadataOccurrences(attributes, "*.blend binary"), 1u) << attributes;
     EXPECT_GT(attributes.find("*.blend binary"), attributes.find("End of the JasperEngine Editor's lines")) << attributes;
 }
