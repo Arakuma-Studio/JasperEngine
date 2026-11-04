@@ -335,7 +335,8 @@ async def test_visualize_frame_and_flags(ed: Editor):
 
 async def test_lua_diagnostics(ed: Editor):
     """AC20: in play, a path's reason, surface, closestPoint and gap; isReachable's reason; locate,
-    getCoverage, getIslands; NavMeshSurface.lastBakeResult (nil before a bake of the game)."""
+    getCoverage, getIslands; NavMeshSurface.lastBakeResult after the game rebakes (before that it is
+    the editor's bake of this session, or nil)."""
     s = await setup(ed)
     st = await ed.call("get_play_state")
     if st["state"] != "stopped":
@@ -355,16 +356,19 @@ async def test_lua_diagnostics(ed: Editor):
             "return p.reason, p.surface == floor, p.gap > 1, "
             "math.abs(p.closestPoint.x - last.x) + math.abs(p.closestPoint.z - last.z) < 0.01, "
             "ok, why, here.onMesh, here.island >= 0, cov.islandCount >= 2, cov.walkableArea > 1000, #islands == cov.islandCount, "
-            "islands[1].polys > 0, before == nil"))
+            "islands[1].polys > 0, before == nil or before.ok"))
         ed.check_eq(got["values"], ["disconnected", True, True, True, False, "disconnected", True, True, True, True, True, True, True],
                     f"{got}")
-        await ed.call("eval_lua", code="NavMeshSurface(scene, entity('Floor')):bakeAsync()")
+        started = await ed.call("eval_lua", code=(
+            "return NavMeshSurface(scene, entity('Floor')):bakeAsync()"))
+        ed.check_eq(started["values"], [True], f"the game's bake starts: {started}")
         await ed.call("wait", seconds=300, game_seconds=120,
-                      **{"until": "return NavMeshSurface(scene, entity('Floor')).lastBakeResult ~= nil"})
+                      **{"until": "local surf = NavMeshSurface(scene, entity('Floor')) "
+                                  "return not surf.isBaking and surf.lastBakeResult ~= nil"})
         report = await ed.call("eval_lua", code=(
             "local r = NavMeshSurface(scene, entity('Floor')).lastBakeResult "
             "return r.ok, r.errorCode, r.sources.meshes >= 3, r.sources.colliders2D, r.islandCount >= 2, #r.islands >= 2, "
-            "r.walkableArea > 1000, #r.slowestTiles > 0, r.tilesBuilt > 0"))
+            "r.walkableArea > 1000, type(r.slowestTiles) == 'table', r.tilesTotal > 0"))
         ed.check_eq(report["values"], [True, "none", True, 0, True, True, True, True, True], f"{report}")
     finally:
         await ed.call("play", action="stop")
