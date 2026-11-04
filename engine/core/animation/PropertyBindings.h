@@ -13,14 +13,16 @@
 // - Thread-safety: parsePropertyRef, findAnimatableProperty, animatableProperties and the
 //   conversions are pure (any thread: the clip loader parses on worker threads). Everything
 //   taking a Scene reads or writes it: the main thread; internPropertyKey is main thread only.
+//   The one exception: the Animator's wave runs a row marked workerSafe on a worker, on an entity
+//   no other Animator writes (AnimatorSystem.h, S74 R8).
 // - Invariants:
 //   * read / write work on stored values (linear colours, cone cosines); the key-space helpers
 //     (readPropertyKeySpace, writePropertyKeySpace) apply the display transform:
 //     keyToStored(storedToKey(v)) == v within 1e-5 for colours in [0, 1] (P9).
 //   * writes set the runtime dirty flags the engine's own Lua setters set, and do nothing when
 //     the stored value is unchanged (callers compare first); `deferred` rows (gameobject.active,
-//     a script's enabled) run user callbacks (onEnable / onDisable) and are applied by the
-//     ActionSystem flush after every other write.
+//     a script's enabled) run user callbacks (onEnable / onDisable) and are applied after every
+//     other write, by the ActionSystem flush and the Animator's finalize.
 //   * a row's has() is the component test (bindings report missing_component when false).
 
 #ifndef PROPERTY_BINDINGS_H
@@ -74,6 +76,10 @@ namespace jasperengine::anim{
         // preset), saved with the rest and put back when a preview ends (4 floats)
         bool (*snapshot)(Scene* scene, Entity entity, const PropertyParams& params, float* out);
         bool (*restore)(Scene* scene, Entity entity, const PropertyParams& params, const float* in);
+        // read and write touch nothing but the entity's own components (no Lua, physics world,
+        // asset load or cache): the Animator may run them on a worker. Off by default: a new row
+        // stays on the main thread until someone has read what it reaches
+        bool workerSafe = false;
     };
 
     // every registry row, in listing order (Add Property, list_properties)
@@ -146,6 +152,10 @@ namespace jasperengine::anim{
     // with RGB values ("#RRGGBB", 3 numbers; spec 5.4)
     inline bool keysOpaqueAlpha(const PropertyBinding& binding, size_t keyWidth){
         return binding.swizzle < 0 && binding.kind == PropertyKind::Color4 && keyWidth == 3;
+    }
+    // the Animator's wave may run this binding on a worker (script fields have no row: never)
+    inline bool propertyWorkerSafe(const PropertyBinding& binding){
+        return binding.entry && binding.entry->workerSafe && !binding.deferred;
     }
     // a script binding's script is not the instance it bound (reloaded, removed, reordered):
     // the binding should be made again (spec P4). False for other bindings

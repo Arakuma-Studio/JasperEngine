@@ -15,9 +15,10 @@
 //   (PropertyBindings.h) on the entity their path names ("" the root): each bound (entity,
 //   property) is `width` float channels of the rig in key space, blended like morph weights
 //   (layer masks pass them: masks select transforms). The Animator writes them after the pose
-//   (AnimatorSystem::writePose): discrete properties rounded to the nearest value (the heavier
-//   side of a two-way blend), only when the value changed, deferred rows (GameObject active, a
-//   script's enabled) after every other write. A property track's entity is not a bone.
+//   (AnimatorSystem::writePose and its finalize, RigProperty::inWave): discrete properties rounded
+//   to the nearest value (the heavier side of a two-way blend), only when the value changed,
+//   deferred rows (GameObject active, a script's enabled) after every other write. A property
+//   track's entity is not a bone.
 // - Rest values are taken from the scene before the Animator first writes an entity and kept in
 //   the AnimatorRestMap across rebinds (the upstream rest rule).
 // - The rig holds every ancestor of a bound entity below the root, so bones with parent -1 are
@@ -78,6 +79,9 @@ namespace jasperengine::anim{
         Entity entity = NULL_ENTITY;
         PropertyBinding binding;    // swizzle -1
         int firstChannel = -1;
+        // written by the wave; else on the main thread from AnimatorInstance::deferredProperties
+        // (AnimatorSystem decides once it knows every rig: main thread until then)
+        bool inWave = false;
     };
 
     // a property's value before the Animator first wrote it (key space)

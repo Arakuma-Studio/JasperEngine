@@ -265,6 +265,10 @@ namespace jasperengine::anim{
         std::vector<uint64_t> warnedKeys;   // warnOnce(key): the per-event warnings, no string built
 
         AnimatorOutput output;
+        // the values of the property rows that wait for the main thread (RigProperty::inWave
+        // false), by rig channel: sized at bind, filled by the wave, applied by AnimatorSystem
+        std::vector<float> deferredProperties;
+        bool propertiesPending = false;
         float clock = 0.0f;                 // seconds the Animator ran (retry throttles)
         uint64_t evaluations = 0;
 

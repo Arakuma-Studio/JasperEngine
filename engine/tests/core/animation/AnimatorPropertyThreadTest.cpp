@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "AnimatorTestUtil.h"
+#include "support/AllocationCounter.h"
 
 #include "animation/ClipBinding.h"
 #include "animation/PropertyBindings.h"
@@ -25,7 +26,9 @@
 
 #include <array>
 #include <atomic>
+#include <cstdio>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <thread>
@@ -111,6 +114,12 @@ namespace {
 
     int recordScriptCallback(lua_State*){
         threadLog.record(ScriptCallback);
+        return 0;
+    }
+
+    std::function<void()> removeHook;
+    int callRemoveHook(lua_State*){
+        if (removeHook) removeHook();
         return 0;
     }
 
@@ -412,4 +421,197 @@ TEST(AnimatorPropertyThreadDeterminism, ParallelEqualsSerial){
     }
     ASSERT_EQ(results[0].size(), results[1].size());
     EXPECT_EQ(std::memcmp(results[0].data(), results[1].data(), results[0].size() * sizeof(float)), 0) << "bit-identical";
+}
+
+// S74 R8 and docs/animator.md "Order of a frame": every Animator's values, then the callback rows,
+// then root motion and events Animator by Animator; each once
+TEST_F(AnimatorPropertyThread, EveryValueIsWrittenBeforeAnyCallback){
+    ClipData data = slide("Hips", 1.0f);
+    data.events = {event(0.5f, "mark")};
+    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+    data.tracks.push_back(propertyTrack("", "script:Probe", "enabled", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
+    const std::string path = controllerFile("c", oneState(clip("rows", data)));
+    ASSERT_EQ(luaL_dostring(L, "orderLog = {}"), LUA_OK);
+    std::vector<std::string> log;
+    int glows[2];
+    const char* names[2] = {"A", "B"};
+    for (int i = 0; i < 2; i++){
+        const Entity entity = node(NULL_ENTITY, names[i], Vector3(0, 0, 0));
+        node(entity, "Hips", Vector3(0, 1, 0));
+        glows[i] = script(entity, "Probe");
+        AnimatorComponent& component = animator(path, entity);
+        component.applyRootMotion = true;
+        characters.push_back(entity);
+    }
+    for (int i = 0; i < 2; i++){
+        const std::string name = names[i];
+        lua_rawgeti(L, LUA_REGISTRYINDEX, glows[i]);
+        lua_setglobal(L, ("probe" + name).c_str());
+        const std::string code = "probe" + name + ".onDisable = function(self) orderLog[#orderLog + 1] = string.format('" + name +
+                                 " disable %.2f %.2f', probeA.glow, probeB.glow) end; probe" + name + ".onEnable = nil";
+        ASSERT_EQ(luaL_dostring(L, code.c_str()), LUA_OK) << lua_tostring(L, -1);
+    }
+    auto drain = [&](){
+        ASSERT_EQ(luaL_dostring(L, "orderResult = table.concat(orderLog, ','); orderLog = {}"), LUA_OK);
+        lua_getglobal(L, "orderResult");
+        const std::string text = lua_tostring(L, -1) ? lua_tostring(L, -1) : "";
+        lua_pop(L, 1);
+        if (!text.empty()) log.push_back(text);
+    };
+    for (int i = 0; i < 2; i++){
+        const std::string name = names[i];
+        AnimatorComponent& component = scene.getComponent<AnimatorComponent>(characters[(size_t)i]);
+        component.onAnimatorMove.add("test", [&, name](Vector3, Quaternion){
+            drain();
+            log.push_back(name + " move");
+        });
+        component.onEvent.add("test", [&, name](const AnimationEvent&){
+            char text[64];
+            std::snprintf(text, sizeof(text), "%s event %.2f %.2f", name.c_str(), luaField(glows[0], "glow"), luaField(glows[1], "glow"));
+            log.push_back(text);
+        });
+    }
+    ScriptRuntime::awakeScene(&scene);
+    step(0.0);
+    log.clear();
+    drain();
+    log.clear();
+    step(0.6);
+    const std::vector<std::string> expected = {"A disable 0.60 0.60,B disable 0.60 0.60", "A move", "A event 0.60 0.60", "B move", "B event 0.60 0.60"};
+    EXPECT_EQ(log, expected);
+}
+
+// A callback that removes an Animator: nothing it held is used, and the one that moved into its
+// slot of the component array still plays its events
+TEST_F(AnimatorPropertyThread, ACallbackMayRemoveAnAnimator){
+    ClipData data = slide("Hips", 1.0f);
+    data.events = {event(0.5f, "mark")};
+    data.tracks.push_back(propertyTrack("", "script:Probe", "enabled", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
+    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+    const std::string path = controllerFile("c", oneState(clip("rows", data)));
+    std::vector<int> fired(3, 0);
+    std::vector<int> glows;
+    for (int i = 0; i < 3; i++){
+        const Entity entity = node(NULL_ENTITY, "Character", Vector3(0, 0, 0));
+        node(entity, "Hips", Vector3(0, 1, 0));
+        glows.push_back(script(entity, "Probe"));
+        animator(path, entity).onEvent.add("test", [&fired, i](const AnimationEvent&){ fired[(size_t)i]++; });
+        characters.push_back(entity);
+    }
+    removeHook = [this](){
+        if (scene.findComponent<AnimatorComponent>(characters[1])) scene.removeComponent<AnimatorComponent>(characters[1]);
+    };
+    lua_register(L, "removeTheSecondAnimator", &callRemoveHook);
+    lua_rawgeti(L, LUA_REGISTRYINDEX, glows[0]);
+    lua_setglobal(L, "firstProbe");
+    ASSERT_EQ(luaL_dostring(L, "firstProbe.onDisable = function(self) removeTheSecondAnimator() end"), LUA_OK);
+    ScriptRuntime::awakeScene(&scene);
+    step(0.0);
+    step(0.6);
+    removeHook = nullptr;
+    EXPECT_EQ(scene.findComponent<AnimatorComponent>(characters[1]), nullptr);
+    EXPECT_EQ(fired[0], 1);
+    EXPECT_EQ(fired[1], 0) << "removed before its events";
+    EXPECT_EQ(fired[2], 1) << "moved in the array, not gone";
+    EXPECT_NEAR(luaField(glows[1], "glow"), 0.6f, 1e-5f) << "the values came before any callback";
+    EXPECT_NEAR(luaField(glows[2], "glow"), 0.6f, 1e-5f);
+}
+
+// A row on an entity that only one Animator writes stays in the wave; a second writer sends it to
+// the main thread, and it comes back when that one goes
+TEST_F(AnimatorPropertyThread, PlainRowsLeaveTheWaveWhileTheEntityIsShared){
+    const Entity outer = node(NULL_ENTITY, "Outer", Vector3(0, 0, 0));
+    const Entity inner = node(outer, "Inner", Vector3(0, 0, 0));
+    const Entity shared = lamp(inner, "Shared");
+    const Entity other = lamp(inner, "Other");
+    ClipData fromOuter;
+    fromOuter.wrap = ClipWrapMode::Loop;
+    fromOuter.tracks.push_back(propertyTrack("Inner/Shared", "light", "intensity", {key(0, {10}), key(1, {20})}));
+    fromOuter.tracks.push_back(propertyTrack("Inner/Other", "light", "intensity", {key(0, {10}), key(1, {20})}));
+    ClipData fromInner;
+    fromInner.wrap = ClipWrapMode::Loop;
+    fromInner.tracks.push_back(propertyTrack("Shared", "light", "intensity", {key(0, {100}), key(1, {200})}));
+    animator(controllerFile("outer", oneState(clip("outer", fromOuter))), outer);
+    step(0.0);
+    auto inWave = [&](Entity animatorEntity, Entity target){
+        for (const RigProperty& property : instance(animatorEntity).rig.properties){
+            if (property.entity == target) return property.inWave;
+        }
+        ADD_FAILURE() << "no row on the entity";
+        return false;
+    };
+    EXPECT_TRUE(inWave(outer, shared)) << "one writer, a row that touches only its entity";
+    EXPECT_TRUE(inWave(outer, other));
+
+    animator(controllerFile("inner", oneState(clip("inner", fromInner))), inner);
+    step(kDt);
+    EXPECT_FALSE(inWave(outer, shared)) << "the first Animator's row follows the second's bind";
+    EXPECT_FALSE(inWave(inner, shared));
+    EXPECT_TRUE(inWave(outer, other)) << "another entity is not concerned";
+    EXPECT_GE(scene.getComponent<LightComponent>(shared).intensity, 100.0f) << "the later Animator's value";
+
+    scene.removeComponent<AnimatorComponent>(inner);
+    step(kDt);
+    EXPECT_TRUE(inWave(outer, shared)) << "one writer again";
+    EXPECT_LE(scene.getComponent<LightComponent>(shared).intensity, 20.0f);
+
+    // a row on another Animator's bone
+    ClipData boneOfInner = slide("Shared", 1.0f);
+    animator(controllerFile("bones", oneState(clip("bones", boneOfInner))), inner);
+    step(kDt);
+    EXPECT_FALSE(inWave(outer, shared)) << "the other Animator writes that entity's Transform";
+}
+
+// The registry's side of R8: only rows that touch nothing but their entity may run on a worker
+TEST(AnimatorPropertyThreadRows, RowsThatReachSharedStateAreNotWorkerSafe){
+    auto workerSafe = [](const char* component, const char* property){
+        const AnimatableProperty* row = findAnimatableProperty(component, property);
+        EXPECT_NE(row, nullptr) << component << "." << property;
+        return row && row->workerSafe;
+    };
+    EXPECT_FALSE(workerSafe("gameobject", "active")) << "user callbacks";
+    EXPECT_FALSE(workerSafe("sprite", "frame")) << "Texture::load";
+    EXPECT_FALSE(workerSafe("rigidbody2d", "enabled")) << "the Box2D world";
+    EXPECT_FALSE(workerSafe("mesh", "submeshes[0].material.shaderParams.tint")) << "the manifest cache, its lock";
+    EXPECT_FALSE(workerSafe("ui", "shaderUniforms.tint"));
+    EXPECT_TRUE(workerSafe("light", "intensity"));
+    EXPECT_TRUE(workerSafe("mesh", "submeshes[0].material.baseColorFactor"));
+    EXPECT_TRUE(workerSafe("canvasgroup", "alpha"));
+    EXPECT_TRUE(workerSafe("rigidbody", "enabled")) << "the flag only: physics applies it on its step";
+    PropertyRef ref;
+    ASSERT_TRUE(parsePropertyRef("script:Torch", "glow", ref));
+    EXPECT_FALSE(ref.deferred) << "a field runs no callback, and still has no row to run on a worker";
+    PropertyBinding binding;
+    EXPECT_FALSE(propertyWorkerSafe(binding));
+}
+
+// The edit-mode preview has no finalize: its rows are written before it returns
+TEST_F(AnimatorPropertyThread, PreviewWritesEveryRowAtOnce){
+    ClipData data = slide("Hips", 1.0f);
+    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+    data.tracks.push_back(propertyTrack("Hips/Spine/Head", "gameobject", "active", {key(0, {1}), key(0.5f, {0}), key(1, {1})}));
+    const int ref = script(root, "Probe");
+    animator(controllerFile("c", oneState(clip("rows", data))));
+    std::string error;
+    ASSERT_TRUE(system().preview(root, 0.6f, &error)) << error;
+    EXPECT_NEAR(luaField(ref, "glow"), 0.6f, 1e-5f);
+    EXPECT_FALSE(scene.isEntityActive(head));
+    system().restorePreview(root);
+    EXPECT_FLOAT_EQ(luaField(ref, "glow"), 0.0f);
+    EXPECT_TRUE(scene.isEntityActive(head));
+}
+
+// R9: rows that wait for the main thread allocate nothing once playing
+TEST_F(AnimatorPropertyThread, WaitingRowsAllocateNothing){
+    if (!testsupport::countsAllocations()) GTEST_SKIP() << "this build cannot count allocations";
+    ClipData data = slide("Hips", 1.0f);
+    data.tracks.push_back(propertyTrack("", "script:Probe", "glow", {key(0, {0}), key(1, {1})}));
+    data.tracks.push_back(propertyTrack("Door", "gameobject", "active", {key(0, {1}), key(1, {1})}));
+    data.tracks.push_back(propertyTrack("Lamp", "light", "intensity", {key(0, {1}), key(1, {3})}));
+    buildCharacters(controllerFile("c", oneState(clip("rows", data))));
+    step(0.0);
+    step(kDt, 120);
+    testsupport::AllocationCountScope scope;
+    step(kDt, 600);
+    EXPECT_EQ(scope.count(), 0u);
 }
