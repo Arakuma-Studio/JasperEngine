@@ -280,7 +280,7 @@ TEST_F(NavCrowdTest, CorridorAtCapacity){
     ASSERT_TRUE(handle.isOnNavMesh());
     int reached = 0, failed = 0;
     handle.getOnDestinationReached() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { reached++; });
-    handle.getOnPathFailed() = std::function<void(NavMeshAgent)>([&](NavMeshAgent) { failed++; });
+    handle.getOnPathFailed() = std::function<void(NavMeshAgent, nav::PathFailure)>([&](NavMeshAgent, nav::PathFailure) { failed++; });
     ASSERT_TRUE(handle.setDestination(destination));
     bool truncated = false;
     std::vector<Vector3> corners;
