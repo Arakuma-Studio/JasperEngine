@@ -683,4 +683,20 @@ core and editor suites, `test_navigation.py`, `test_navigation_gameplay.py`, `te
 
 ## Deviations
 
+- S55 P3: `agent.path` (`getAgentCorridorPath`) starts at the agent's position, as `calculatePath`'s
+  paths and Unity's `NavMeshAgent.path` do, so AC21 compares its corners after the first with
+  `getPathCorners()` (the corners ahead).
+- S55 P3: `setPath` checks every polygon it puts in the corridor against the agent's filter
+  (`isValidPolyRef`, O(1) each, at most 256) whatever `meshRevision` says, instead of only after a
+  revision change: the same answer, and no stale-revision corner case.
+- S55 P3: an agent following a path from `setPath` steers without dtCrowd's corridor shortcuts
+  (`DT_CROWD_OPTIMIZE_VIS`, `DT_CROWD_OPTIMIZE_TOPO`) until its next request or a crowd replan;
+  with them the crowd re-optimises the given route with its own costs and leaves it (AC19).
+- S55 P3: without a path, `velocity = v` moves the agent at `v` only as far as its acceleration lets
+  the crowd's velocity follow in one tick (Detour's velocity request integrates within
+  `maxAcceleration`); AC22's no-path case runs with an acceleration that reaches `v` in a tick.
+- S55 P3: AC18's zero allocations per tick needed the S19 tick's own buffers kept between ticks (the
+  sorted agent list, the crowd slot owners, the dispatched events, sorted without `stable_sort`'s
+  temporary buffer); the event order is unchanged (entity, then queue order).
+
 ## Progress (implementation notes, keep updated)
