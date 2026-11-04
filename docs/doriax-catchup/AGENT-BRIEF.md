@@ -77,7 +77,7 @@ Build-queue rules (the two slots are the program's bottleneck; a cold build take
 - Disk: the host has 301 GB for every worktree and a full gate leaves about 40 GB of build trees. Never make
   scratch copies of the repository; build no extra configurations (`CXX_STANDARD`, `SANITIZE`, `UNITY`, other
   `BUILD_TYPE`s) unless your spec needs them; once a suite has passed for the last time, delete its tree
-  (`build/linux/htmlui-tests-*`, `build/web*`, `build/android*`). The lead deletes a feature's build trees after it
+  (`build/linux/htmlui-tests-*`, `build/web*`, `build/android*`, and after an Android build `engine/workspaces/androidstudio/app/.cxx` and `app/build`, about 25 GB). The lead deletes a feature's build trees after it
   merges. The external fixture project
 (`build/fixture-unity`) does not exist on this host: tests that need it skip or fail for that reason only; say so.
 Windows, macOS and iOS cannot be built here: keep that code compiling by careful reading, `#ifdef` discipline and
