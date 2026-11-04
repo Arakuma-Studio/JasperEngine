@@ -27,6 +27,7 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -110,6 +111,14 @@ namespace {
             return GpuEnvironment::runFrames([current](){
                 return current->getSystem<RenderSystem>()->isAllLoaded();
             });
+        }
+
+        // render(), then the frames until a pass of that label runs: SSAO's full-screen shaders build
+        // in the background, and its depth pre-pass starts with them, not with the meshes
+        bool renderWithPass(const char* label){
+            if (!render())
+                return false;
+            return GpuEnvironment::runFrames([label](){ return passCounts(label).found; });
         }
 
         // the frame's passes of a label (prefix "shadow": the shadow atlas, its static layer and
@@ -250,7 +259,7 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     buildScene();
 
     Engine::setGpuInstancingEnabled(false);
-    ASSERT_TRUE(render()) << "the scene never finished loading";
+    ASSERT_TRUE(renderWithPass("depth pre-pass")) << "the scene never finished loading, or the depth pre-pass never ran";
     const PassCounts shadowOff = passCounts("shadow");
     const PassCounts depthOff = passCounts("depth pre-pass");
     const std::vector<uint8_t> frameOff = readTarget();
@@ -258,7 +267,7 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     const std::vector<uint8_t> depthImageOff = passImage("depth pre-pass", 0);
 
     Engine::setGpuInstancingEnabled(true);
-    ASSERT_TRUE(render()) << "the batch variants never finished loading";
+    ASSERT_TRUE(renderWithPass("depth pre-pass")) << "the batch variants never finished loading, or the depth pre-pass never ran";
     const PassCounts shadowOn = passCounts("shadow");
     const PassCounts depthOn = passCounts("depth pre-pass");
     const std::vector<uint8_t> frameOn = readTarget();
@@ -282,5 +291,51 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     EXPECT_EQ(differentPixels(shadowImageOff, shadowImageOn), 0u) << "shadow atlas pixels that differ";
     EXPECT_EQ(differentPixels(depthImageOff, depthImageOn), 0u) << "depth pre-pass pixels that differ";
     EXPECT_EQ(differentPixels(frameOff, frameOn), 0u) << "frame pixels that differ";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// New projects take Shadow LOD Bias 0.5 to draw shadows one detail level coarser. The bias divides
+// the shadow views' threshold (computeLodView), so it doubles the error a level may have; a level
+// is the last one of the chain within that error (selectMeshLod). What that is in levels depends
+// on how fast a generated chain's error grows: measured here across the range of distances where
+// the choice changes.
+TEST_F(InstancingGoldenGpu, ShadowLodBiasHalfIsOneCoarserLevel){
+    JASPER_REQUIRE_GPU();
+    scene.setMeshLodEnabled(true);
+    Model model(&scene);
+    ASSERT_TRUE(model.loadModel("gltf/instancing/sphere.gltf"));
+    const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
+    const MeshComponent* loaded = &mesh;
+    ASSERT_TRUE(GpuEnvironment::runFrames([loaded](){ return loaded->numLods > 1; })) << "the sphere got no detail levels";
+
+    std::printf("[instancing] sphere: %u levels, errors", mesh.numLods);
+    for (unsigned int l = 0; l < mesh.numLods; l++)
+        std::printf(" %g", mesh.lodError[l]);
+    std::printf("\n");
+    ASSERT_GE(mesh.numLods, 3u);
+
+    const auto levelWithin = [&mesh](float allowed){
+        unsigned int level = 0;
+        for (unsigned int l = 1; l < mesh.numLods; l++){
+            if (mesh.lodError[l] > allowed)
+                break;
+            level = l;
+        }
+        return level;
+    };
+    // log-spaced, from where the first level comes in to where the last one has
+    const float first = mesh.lodError[1];
+    const float last = mesh.lodError[mesh.numLods - 1];
+    ASSERT_GT(first, 0.0f);
+    constexpr int STEPS = 256;
+    float coarser = 0.0f;
+    for (int i = 0; i < STEPS; i++){
+        const float allowed = first * std::pow(last / first, (float)i / (float)(STEPS - 1));
+        coarser += (float)levelWithin(allowed * 2.0f) - (float)levelWithin(allowed);
+    }
+    coarser /= (float)STEPS;
+    std::printf("[instancing] Shadow LOD Bias 0.5: %.2f levels coarser on average\n", coarser);
+    EXPECT_GE(coarser, 0.5f);
+    EXPECT_LE(coarser, 1.5f);
     EXPECT_NO_ENGINE_ERRORS();
 }

@@ -93,4 +93,6 @@ TEST_F(StreamBudgetGpu, OversizedInstanceViewLandsWithinTwoFrames){
     GpuEnvironment::drawFrames(2);
     EXPECT_EQ(SystemRender::getStreamSkippedUploads(), skippedAfter) << "uploads still refused";
     EXPECT_GE(skippedAfter, skippedBefore);
+    // an upload that waits for its frame is late, not lost: the warning says so, no error
+    EXPECT_NO_ENGINE_ERRORS();
 }

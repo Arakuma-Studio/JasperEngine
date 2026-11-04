@@ -118,6 +118,7 @@ namespace {
         // after it waits for the next frame). One that finds the frame begun waits for the next,
         // which keeps the budget for it (aloneWaiting). Before S55 R6 it was refused forever.
         uint64_t frameAlone = 0;     // the bytes of the item made alone this frame
+        uint64_t frameDelayed = 0;   // the bytes of the items turned away for a later frame: not lost
         bool aloneWaiting = false;   // one was turned away: the frame keeps the budget for it
         bool aloneAsked = false;     // one asked this frame
         bool aloneLogged = false;
@@ -131,7 +132,7 @@ namespace {
             enforced = hasBuffer;
             frameUsed = frameNeeded = frameSkipped = lastFrame = peak = skipped = 0;
             overflowLogged = false;
-            frameAlone = 0;
+            frameAlone = frameDelayed = 0;
             aloneWaiting = aloneAsked = aloneLogged = false;
         }
 
@@ -152,7 +153,7 @@ namespace {
             aloneAsked = true;
             if (frameUsed > 0 || frameAlone > 0){
                 aloneWaiting = true;
-                frameNeeded = roundUp(frameNeeded + size, 16);
+                frameDelayed = roundUp(frameDelayed + size, 16);
                 return false;
             }
             aloneWaiting = false;
@@ -189,9 +190,9 @@ namespace {
                               (unsigned long long)frameNeeded, contents, setting, (unsigned long long)limit, name, items);
                 }
             }
-            lastFrame = frameNeeded + frameAlone;
+            lastFrame = frameNeeded + frameAlone + frameDelayed;
             peak = std::max(peak, lastFrame);
-            frameUsed = frameNeeded = frameSkipped = frameAlone = 0;
+            frameUsed = frameNeeded = frameSkipped = frameAlone = frameDelayed = 0;
             // the item turned away is asked for again by its owner next frame; one not asked for
             // again (its data went, or became smaller) keeps nothing waiting
             if (!aloneAsked)

@@ -84,7 +84,7 @@ async def test_new_counters(ed: Editor):
 
         # Lua's view of the same frame
         lua = (await ed.call("eval_lua", code="local s = scene:getRenderStats() return s.mainDrawCalls, s.instancedDraws, "
-                                                "s.shadowTriangles > 0, object('Ball0').allowGpuInstancing"))["values"]
+                                                "s.shadowTriangles > 0, object('Ball0', 'Mesh').allowGpuInstancing"))["values"]
         ed.check(lua[0] >= 1 and lua[1] >= 1 and lua[2] is True and lua[3] is True, f"Scene:getRenderStats and Mesh.allowGpuInstancing: {lua}")
     finally:
         await ed.call("play", action="stop")
