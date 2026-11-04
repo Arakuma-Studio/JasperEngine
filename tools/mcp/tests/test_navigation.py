@@ -1,5 +1,7 @@
 """S19 navigation as an agent sees it (docs/specs/S19-navigation.md R37, R38; AC22-AC25), with the
-S41 fixes (docs/specs/S41-navigation-fixes.md R2, R3, R4, R17, R23, R24, R28; AC5, AC7, AC26-AC28).
+S53 fixes (docs/specs/S53-navigation-fixes.md R2, R3, R4, R17, R23, R24, R28; AC5, AC7, AC26-AC28) and
+S54's tool rules (docs/specs/S54-navigation-diagnostics.md R34, AC19; the diagnostics themselves are
+in test_navigation_diagnostics.py).
 
 Scene Nav (3D): a 40 x 40 floor (plane x 4) with a static 2 m box near its middle, a NavMesh
 Surface on the floor, a walker with a NavMesh Agent, and a 16 x 12 Nav Grid. The tools: their
@@ -68,12 +70,27 @@ async def wait_job(ed: Editor, job_id: str, timeout: float) -> dict:
 
 
 async def test_tools_listed_with_schemas(ed: Editor):
-    """Each tool is in tools/list (group navigation) with an object schema."""
+    """Each tool is in tools/list (group navigation) with an object schema; the group is hidden from
+    a new session until tool_groups enables it (S54 AC19)."""
     listed = {tool.name: tool for tool in await ed.tools(groups=["navigation"])}
     for name in TOOLS:
         ed.check(name in listed, f"{name} in tools/list")
         schema = listed[name].inputSchema if hasattr(listed[name], "inputSchema") else listed[name].input_schema
         ed.check_eq(schema.get("type"), "object", f"{name} schema {schema}")
+    default = {tool.name for tool in await ed.tools(groups=None)}
+    ed.check(not default & set(TOOLS), f"hidden until navigation is enabled: {sorted(default & set(TOOLS))}")
+    await ed.call("tool_groups", enable=["navigation"])
+    try:
+        enabled = {tool.name for tool in await ed.tools(groups=None)}
+        ed.check(set(TOOLS) <= enabled, f"listed once enabled: {sorted(set(TOOLS) - enabled)}")
+    finally:
+        await ed.call("tool_groups", disable=["navigation"])
+    # S54 R34: the read tools are read-only and idempotent; visualize_navigation is idempotent, not read-only
+    annotations = {name: listed[name].annotations for name in TOOLS}
+    for name in ("get_navigation_info", "query_navigation"):
+        ed.check(annotations[name].read_only_hint and annotations[name].idempotent_hint, f"{name}: {annotations[name]}")
+    visualize = annotations["visualize_navigation"]
+    ed.check(visualize.idempotent_hint and not visualize.read_only_hint, f"visualize_navigation: {visualize}")
 
 
 async def test_bake_job_and_info(ed: Editor):
