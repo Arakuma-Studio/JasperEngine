@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The nightly smoke tests (.github/workflows/nightly.yml): tools/smoke-test.sh on the projects
+# The smoke test of every fixture project: tools/smoke-test.sh on the projects
 # under tools/fixtures/, after tools/build.sh linux. One backend per call:
 #
 #   tools/ci/nightly-smoke.sh opengl    every fixture project

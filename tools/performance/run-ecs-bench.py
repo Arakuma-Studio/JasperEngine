@@ -14,7 +14,7 @@ to <output>/ecs-bench.csv.
     tools/performance/run-ecs-bench.py [--baseline-ref oe-port] [--sizes 10000,100000] [--runs 7]
     tools/performance/run-ecs-bench.py --baseline-archive build/oe-port-engine.tar   # git archive oe-port engine
 
-Run it inside the Linux build image (rb.sh <server> --img '...'), never on a dev machine.
+Run it inside the Linux build image (tools/build.sh exec linux ...).
 """
 import argparse
 import csv
