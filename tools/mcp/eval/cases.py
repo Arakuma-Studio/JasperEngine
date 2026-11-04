@@ -800,4 +800,60 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "bad_child_scene_on_closed_parent",
+        "kind": "bad",
+        "what_happened": "set_child_scene on a closed parent reported success and the attachment was lost when the scene opened "
+                         "(Doriax 385cff970); it now fails and names open_scene.",
+        "text_at_issue": "set_child_scene: 'Scene \"Level2\" is not open: open_scene it first (child scenes are edited on an open "
+                         "scene).'",
+        "source": "scene-integrity spec 4.10 (Doriax 385cff970)",
+        "prompt": "Make scenes/Hud.scene a child scene of scenes/Level2.scene, so it loads with it.",
+        "mocks": [
+            {"tool": "list_scenes", "result": ok(
+                "3 scene(s):\n1 \"Main\" 3D scenes/Main.scene open selected start\n2 \"Hud\" 2D scenes/Hud.scene open\n"
+                "3 \"Level2\" 3D scenes/Level2.scene",
+                {"scenes": [{"id": 1, "name": "Main", "path": "scenes/Main.scene", "opened": True, "selected": True},
+                            {"id": 2, "name": "Hud", "path": "scenes/Hud.scene", "opened": True},
+                            {"id": 3, "name": "Level2", "path": "scenes/Level2.scene", "opened": False}]})},
+            {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$"}, "after": "open_scene", "result": ok(
+                "Scene 2 is a child scene of 3.", {"scene": {"id": 3, "name": "Level2", "child_scenes": [{"id": 2}]}})},
+            {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$"}, "result": err(
+                "Scene \"Level2\" is not open: open_scene it first (child scenes are edited on an open scene).")},
+            {"tool": "open_scene", "args": {"scene": "re:Level2|^3$"}, "result": ok(
+                "Opened scene 3 \"Level2\" (scenes/Level2.scene), selected.",
+                {"scene": {"id": 3, "name": "Level2", "path": "scenes/Level2.scene", "opened": True, "selected": True}})},
+            {"tool": "save_scene", "result": ok("Saved scene 3 \"Level2\" to scenes/Level2.scene.", {"scene": {"id": 3}})},
+        ],
+        # opened first, or retried once the error named open_scene
+        "checks": {"calls": [{"tool": "open_scene", "args": {"scene": "re:Level2|^3$"}},
+                             {"tool": "set_child_scene", "args": {"scene": "re:Level2|^3$", "child": "re:Hud|^2$"}}],
+                   "any_of": [{"order": [["open_scene", "set_child_scene"]]}, {"min_calls": {"set_child_scene": 2}}],
+                   "must_not_call": [{"tool": "open_scene", "args": {"close_previous": True}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_move_next_to_skybox",
+        "kind": "bad",
+        "what_happened": "move_entity after=Skybox for a GameObject with a Transform reported 'Moved' while only the list changed, "
+                         "and the next sort put it back; it now fails and says to use parent/index.",
+        "text_at_issue": "move_entity: 'Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the "
+                         "hierarchy; one without (a Skybox) keeps its own place: place it with parent (and index), or next to a "
+                         "GameObject with a Transform.'",
+        "source": "scene-integrity spec 4.16 (Doriax 2eea20daa, narrowed)",
+        "prompt": "In the Main scene, put the Crate first among the root GameObjects (it is listed after the Skybox now).",
+        "mocks": [
+            {"tool": "move_entity", "args": {"after": "*"}, "result": err(
+                "Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the hierarchy; one without "
+                "(a Skybox) keeps its own place: place it with parent (and index), or next to a GameObject with a Transform.")},
+            {"tool": "move_entity", "args": {"before": "*"}, "result": err(
+                "Cannot place \"Crate\" next to \"Skybox\": GameObjects with a Transform follow the hierarchy; one without "
+                "(a Skybox) keeps its own place: place it with parent (and index), or next to a GameObject with a Transform.")},
+            {"tool": "move_entity", "result": ok("Moved 1 GameObject(s) (one undo step); world poses kept (local transforms "
+                                                 "adapted).", {"scene_id": 1, "moved": [{"id": 13, "path": "Crate", "parent": None}]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" to scenes/Main.scene.", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "move_entity", "args": {"index": 0}}]},
+        "max_turns": 14,
+    },
 ]

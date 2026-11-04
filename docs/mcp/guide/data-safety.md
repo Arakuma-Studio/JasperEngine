@@ -12,6 +12,21 @@ description is `docs/data-safety.md`.
 - Unsaved scenes are lost when the editor closes. Save after each working step (`save_scene`,
   `save_project`); Auto Save only makes crash backups and never writes the scene file.
 
+## Scene files and identity
+
+- One file per scene: `save_scene path=` refuses the file of another project scene ("<path> is
+  the file of scene ..."), a path outside the project and a folder. `open_scene` of a file outside
+  the project fails: copy it in with `move_asset copy` first.
+- `move_asset copy=true` of a `.scene` (or a folder holding some) gives each copy its own scene
+  id and the name of its file: the result's `copied_scenes` lists `{path, scene_id, name}`.
+  References between copied scenes are not redirected.
+- Two files with one id at load: the later one gets a stable replacement id, is modified, and the
+  Console says which; `save_scene` it.
+- `save_scene all=true` lists every untitled scene in `skipped` (changed or not): give each a
+  `path`, or it is lost when the editor closes.
+- `set_child_scene` needs the parent open (`open_scene` it first); during Play it only does
+  `loaded_inline` on a scene that is not playing.
+
 ## Files the editor cannot fully read
 
 A scene, prefab, material or `project.yaml` written by a newer editor, a plugin or a hand edit

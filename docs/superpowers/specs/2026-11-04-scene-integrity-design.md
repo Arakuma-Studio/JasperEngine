@@ -982,4 +982,34 @@ Hot files for merge planning: `editor/Project.cpp`, `editor/App.cpp`, `editor/St
 
 ## Deviations
 
-None yet.
+Recorded during the implementation (branch `dc/scene-integrity`).
+
+1. **Multi-delete undo (4.17) was mostly fixed already.** `DeleteEntityCmd` keeps `trackedBeforeDelete`
+   and puts the whole tracked list back on undo (an older fix the comparison's trace missed), so the
+   list order of `{Light, A, Sky, B}` comes back. What remained wrong is the Skybox component array: the
+   skies are restored in restore order, so the scene's sky (the first Skybox) could swap. The undo now
+   sorts the Skybox array by the restored list; no `keepUntransformedPlaces` pass is needed.
+2. **`AssetOps::copy` keeps its `copyGuids` parameter and gains `copyScenes`** (a map of `SceneCopy {id,
+   name}` by copy path) instead of a `CopyIdentity` struct replacing it: the same redo behaviour with
+   less churn in the signature `project-window` also calls. `AssetOps::Result::copiedScenes` reports what
+   each copy got.
+3. **`move_entity parent/index` counts `index` among the siblings with a Transform** when the moved
+   GameObject has one, so `parent: null, index: 0` never anchors on a Skybox (which the command now
+   refuses). Documented in `docs/mcp/guide/ecs.md`.
+4. **No `ProjectUtils::isTransformOrdered` and no debug-only warning in `writeSceneSource`**: the
+   generator and the cooker sort their own copy of the list, so an unsorted list can no longer reach an
+   export, and the tests compare the list with its sorted copy directly.
+5. **Inspector "Main Camera" field**: there is none (the main camera is set from the Hierarchy's context
+   menu and MCP); `list_scenes` reports `main_camera` null when the Camera component is gone, and
+   `getSceneCamera` ignores it.
+6. **Hierarchy child-scene menu items for closed parents**: the Hierarchy only shows open scenes and
+   inline-loaded child scenes, whose data is loaded, so the closed-parent refusal lives in
+   `set_child_scene` alone.
+7. **The picker UI test** is replaced by the unit test of `Project::getRelatedScenes` and the drop rules
+   (`SceneIntegrityTest.RelatedScenesAndDropRules`): driving the picker popup of a script property with
+   real input would test ImGui more than the list it is built from.
+8. **Agent guide**: no digest line (lead decision: only agent-authoring restructures the guide). The
+   changed tool texts (`set_child_scene`'s error and description, `move_entity`'s refusal) have eval cases
+   `bad_child_scene_on_closed_parent` and `bad_move_next_to_skybox` in `tools/mcp/eval/cases.py`.
+9. **Escape** follows the lead decision across specs: the focused Game view delivers Escape to the game
+   (runtime-core) and the same press releases a captured or confined cursor (`PlayInput::forward`).

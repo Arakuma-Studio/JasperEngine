@@ -42,6 +42,14 @@ animates the user's moves):
 - `camera_settings {fov, near, far, speed, acceleration, easing, dynamic_clipping}`, the Scene
   Camera popup's settings (any of them; the reply lists them all).
 
+## While the game plays
+
+The Scene view of the played scene draws from the editor camera. After a game load replaced the
+played scene, it draws the loaded scene instead: `get_play_state` reports it as
+`scene_view_scene_id`, and `pick_at` on the played scene returns the loaded scene's GameObjects
+(their `scene` is the loaded copy's id). `get_play_state` `input.cursor` gives the game's mouse
+mode and `released_to_editor` (Escape in the Game view, or `run_command playmode.releaseCursor`).
+
 ## Bookmarks, layouts, measures, filters
 
 - `edit_scene_view_bookmarks {action: list | store | recall | delete | rename, slot}`: slot 0 is
