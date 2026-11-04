@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectSettingsWindow.h"
+#include "window/ProjectWindow.h"
 #include "window/EditorModal.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"

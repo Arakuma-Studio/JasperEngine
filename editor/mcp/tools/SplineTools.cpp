@@ -7,6 +7,8 @@
 // to Terrain). Edits go through the commands the editor uses (SplineEditCmd, the bake's
 // TerrainMapPatchCmds), each call one undo step.
 #include "McpTools.h"
+#include "component/MeshComponent.h"
+#include "component/Transform.h"
 
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"

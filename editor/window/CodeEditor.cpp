@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "CodeEditor.h"
+#include "component/ScriptComponent.h"
 #include "EditorModal.h"
 
 #include "reload/HotReloadService.h"

@@ -5,6 +5,7 @@
 #define ANIMATION_H
 
 #include "Action.h"
+#include "component/AnimationComponent.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Animation: public Action{

@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ComponentValuesCmd.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/ModelComponent.h"
 #include "animation/ClipRecordHooks.h"
 
 #include "Stream.h"

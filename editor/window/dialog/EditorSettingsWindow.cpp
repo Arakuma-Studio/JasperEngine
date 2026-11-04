@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "EditorSettingsWindow.h"
+#include "platform/ExternalTools.h"
+#include "object/Lattice.h"
+#include "window/CodeEditor.h"
 #include "window/EditorModal.h"
 #include "widget/ColorField.h"
 #include "util/FileUtils.h"

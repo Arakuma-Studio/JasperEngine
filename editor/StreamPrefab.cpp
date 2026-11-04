@@ -8,6 +8,8 @@
 // PrefabComponent codec.
 
 #include "Stream.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 #include "Catalog.h"
 #include "Out.h"
 #include "util/YamlNumbers.h"
