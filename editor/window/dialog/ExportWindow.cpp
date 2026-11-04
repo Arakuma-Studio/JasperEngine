@@ -127,15 +127,17 @@ const char* ExportWindow::localExportMode() const {
 }
 
 void ExportWindow::refreshShaderSelection() {
-    // Stored keys are refreshed on scene save; include live components added since then.
+    // The list a build ships before this window's picks (Project::refreshClosedSceneShaderKeys):
+    // closed scenes as their files are now; what takes longer than a blink goes on in
+    // drawShaderSection, a scene a frame
     std::set<ShaderKey> sceneKeys;
     if (m_project) {
-        for (const auto& scene : m_project->getScenes()) {
-            std::set<ShaderKey> keys = scene.shaderKeys;
-            m_project->collectSceneShaderKeys(&scene, keys);
-            m_project->collectRequiredShaderKeys(&scene, keys);
-            for (ShaderKey key : keys) sceneKeys.insert(ShaderPool::normalizeKey(key));
+        if (!m_project->isGeneratedExportRunning()) {
+            ShaderListLimit limit;
+            limit.maxMillis = 100;
+            m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(limit);
         }
+        sceneKeys = m_project->finishBuildShaderKeys(m_project->collectSceneBuildShaderKeys(), {}, {});
     }
 
     std::set<ShaderKey> keys = sceneKeys;
@@ -799,6 +801,15 @@ void ExportWindow::drawDesktopKitRows() {
 }
 
 void ExportWindow::drawShaderSection() {
+    if (m_project && !m_shaderListStatus.complete() && !m_project->isGeneratedExportRunning()) {
+        ShaderListLimit oneScene;
+        oneScene.maxScenes = 1;
+        m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(oneScene);
+        if (m_shaderListStatus.complete()) {
+            refreshShaderSelection();
+        }
+    }
+
     ImGui::AlignTextToFramePadding();
     ImGui::TextDisabled("Shader variants compiled into the build");
     ImGui::SameLine();
@@ -831,6 +842,14 @@ void ExportWindow::drawShaderSection() {
     ImGui::EndDisabled();
 
     ImGui::Spacing();
+
+    if (!m_shaderListStatus.complete()) {
+        ImGui::TextDisabled("Reading %d closed scene(s) for this list...", (int)m_shaderListStatus.pendingScenes.size());
+    }
+    for (const UnreadableScene& scene : m_shaderListStatus.unreadableScenes) {
+        ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " Cannot read scene %s", scene.path.c_str());
+        ImGui::SetItemTooltip("%s\nThis list holds what it last knew of the scene.", scene.error.c_str());
+    }
 
     ImGui::BeginChild("ShaderList", ImVec2(0, Theme::dpi(160.0f)), true);
     {

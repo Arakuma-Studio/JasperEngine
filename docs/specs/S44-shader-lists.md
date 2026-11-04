@@ -22,3 +22,20 @@ which can be stale (63 listed instead of 71 in one test). A missing key means a 
 - AC2. A test comparing `generate_shaders` keys, `get_build_info` keys and the keys an export really builds, equal on the
   fixture and on a test project with several closed scenes.
 - AC3. A timing test or measurement for R3. Docs and `docs/mcp/TOOLS.md` regenerated. `tools/check-changed` green.
+
+## Deviations
+
+- **The cache key is more than the file hash.** A closed scene's keys also read the prefabs of every scene, its
+  models, the scripts (the variants a script can reach) and the HTML UI files, so a hit needs the file's hash and a
+  context hash (`Project::shaderListContext`: stamps of those files, the lists of prefabs, the mobile tier, the editor
+  binary). An edit of one of them reads the closed scenes again. Kept in `.jasperengine/shader-lists.yaml` so a new
+  session of an unchanged project reads nothing.
+- **Play's list follows the overrides.** R2 asks for one set, so Play's startup now also builds what every build
+  ships, the additions and the warm-up list, and no longer builds the excluded keys ahead (the editor still compiles
+  one on demand when it draws with it).
+- **A fix in the source of truth.** `collectRequiredShaderKeys` read a prefab that was not loaded from its file only,
+  so a Prefab Variant or a prefab with nested instances gave different keys depending on which scenes were open. It
+  now makes an instance of it either way, and forgets what it loaded.
+- **`generate_shaders` per backend.** The list is the same; an export still skips the High shadow filters' variants
+  for the backends no platform of which has a High tier (`ShadowTiers::cooksHighFilters`), `generate_shaders` builds
+  what it is asked to on every backend. AC2 compares OpenGL, where both build them.

@@ -43,6 +43,9 @@ namespace jasperengine {
         static size_t getSkippedCount();
         // the variants' keys (forks registered in this session); the export ships them
         static std::vector<ShaderKey> getShaderKeys();
+        // the variants' keys of a list's text, leaving the list loaded now as it is (any thread: a
+        // build's shader list reads the file during Play's replay); false with *error as loadFromString
+        static bool readShaderKeys(const std::string& text, std::vector<ShaderKey>& keys, std::string* error = nullptr);
         // the list without the variants (and their pipelines) not in `keep` (the export's selection)
         static std::string filteredString(const std::vector<ShaderKey>& keep);
 
