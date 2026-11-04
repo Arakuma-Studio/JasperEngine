@@ -417,11 +417,11 @@ TEST_F(LodFadeGpu, TheDeviceTiersLodBiasReachesTheSelection){
     QualityResolver::setSettings(settings);
     QualityResolver::setTier(DeviceTier::Ultra);
     ASSERT_FLOAT_EQ(QualityResolver::lodBias(), 0.5f);
-    GpuEnvironment::drawFrames(3);
+    GpuEnvironment::drawFrames(40);   // (past a fade)
     EXPECT_EQ(sphere.getCurrentLod(), 1) << "the tier's bias reached the selection";
     // the project's own LOD Bias multiplies with it: 2 x 0.5 is the sphere's LOD 0 again
     settings.lodBias = 2.0f;
     QualityResolver::setSettings(settings);
-    GpuEnvironment::drawFrames(3);
+    GpuEnvironment::drawFrames(40);   // (past a fade)
     EXPECT_EQ(sphere.getCurrentLod(), 0) << "one multiplication of both biases, not two";
 }
