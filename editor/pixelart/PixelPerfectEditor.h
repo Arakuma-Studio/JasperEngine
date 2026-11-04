@@ -20,6 +20,7 @@ namespace jasperengine {
 
 namespace jasperengine::editor {
     class Project;
+    struct SceneProject;
 }
 
 namespace jasperengine::editor::pixelart {
@@ -38,14 +39,15 @@ namespace jasperengine::editor::pixelart {
     // "4x - 320x180 in 1280x720, bars 0x0"
     std::string describeLayout(const jasperengine::pixelart::PixelPerfectLayout& layout, int screenWidth, int screenHeight);
 
-    // what is wrong with the component on that camera (the Inspector's warnings, in its order)
-    std::vector<std::string> pixelPerfectWarnings(Scene* scene, Entity camera);
+    // what is wrong with the component on that camera (the Inspector's warnings, in its order);
+    // mainCamera is the scene's (its SceneProject's: in the editor the Scene holds the view's camera)
+    std::vector<std::string> pixelPerfectWarnings(Scene* scene, Entity camera, Entity mainCamera);
 
     // ---- the Scene view's Pixel Zoom (R21)
 
     // the scene's main camera has an applicable Pixel Perfect Camera: Pixel Zoom, the grid, Snap
     // Preview and Pixel Move Snap apply
-    bool scenePixelPerfect(Scene* scene);
+    bool scenePixelPerfect(const SceneProject* sceneProject);
     // view pixels per base pixel of a 2D zoom (world units per view pixel), and back
     float pixelZoomScale(float zoom, int pixelsPerUnit);
     float zoomForPixelScale(float scale, int pixelsPerUnit);

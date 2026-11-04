@@ -65,9 +65,10 @@ namespace jasperengine::editor::pixelart {
         return text;
     }
 
-    bool scenePixelPerfect(Scene* scene){
+    bool scenePixelPerfect(const SceneProject* sceneProject){
         PixelPerfectViewRequest request;
-        return scene && RenderSystem::getPixelPerfectRequest(scene, scene->getCamera(), request);
+        return sceneProject && sceneProject->scene &&
+               RenderSystem::getPixelPerfectRequest(sceneProject->scene, sceneProject->mainCamera, request);
     }
 
     float pixelZoomScale(float zoom, int pixelsPerUnit){
@@ -129,7 +130,7 @@ namespace jasperengine::editor::pixelart {
         return zoom > 0.0f ? std::round(position / zoom) * zoom : position;
     }
 
-    std::vector<std::string> pixelPerfectWarnings(Scene* scene, Entity camera){
+    std::vector<std::string> pixelPerfectWarnings(Scene* scene, Entity camera, Entity mainCamera){
         std::vector<std::string> warnings;
         const PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(camera);
         const CameraComponent* cameraComponent = scene->findComponent<CameraComponent>(camera);
@@ -141,7 +142,7 @@ namespace jasperengine::editor::pixelart {
         }
         if (cameraComponent->type == CameraType::CAMERA_PERSPECTIVE)
             warnings.push_back("Pixel Perfect Camera needs an orthographic or UI camera: it does nothing on a perspective one.");
-        if (scene->getCamera() != camera && !cameraComponent->renderToTexture)
+        if (mainCamera != camera && !cameraComponent->renderToTexture)
             warnings.push_back("Not the main camera of its scene: it lays out nothing until it is.");
         if (component->rotationMode == PixelRotation::ON_GRID && !component->upscaleRenderTexture)
             warnings.push_back("Rotate On Grid without Upscale Render Texture rotates at the screen's resolution (mixels).");

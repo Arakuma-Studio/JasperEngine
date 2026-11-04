@@ -110,6 +110,6 @@ void editor::InspectorWindow::drawPixelPerfectCameraComponent(ComponentType cpTy
     }
     UIProbe::item("pixelperfectcamera.pixel_ratio");
 
-    for (const std::string& warning : pixelart::pixelPerfectWarnings(scene, entity))
+    for (const std::string& warning : pixelart::pixelPerfectWarnings(scene, entity, sceneProject->mainCamera))
         drawPixelArtWarning(warning);
 }

@@ -830,7 +830,7 @@ CASES = [
         "kind": "guard",
         "what_happened": "Checking pixel art at 1x (one physical pixel per art pixel) is the Game view's Pixel Scale, not its "
                          "zoom Scale (1 to 5, the image fitted first) or a resolution change.",
-        "text_at_issue": "configure_game_view pixel_scale: 'Pixel Perfect Camera scale; 0 auto.'",
+        "text_at_issue": "configure_game_view pixel_scale: 'Pixel Perfect scale; 0 auto.'",
         "source": "S41 (R20, AC15); no failure on record",
         "prompt": "The main camera has a Pixel Perfect Camera. Show the Game view at 1x pixel scale so I can check the art pixel "
                   "for pixel, then take a Game view screenshot.",

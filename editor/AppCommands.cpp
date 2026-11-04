@@ -258,7 +258,7 @@ void editor::App::registerCommands(){
     // S41: the Pixel Zoom's 1x and Game (a 2D scene drawn through a Pixel Perfect Camera)
     auto pixelScene = [this]() {
         const SceneProject* scene = project.getSelectedScene();
-        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelPerfect(scene->scene);
+        return scene && scene->sceneRender && scene->sceneType == SceneType::SCENE_2D && pixelart::scenePixelPerfect(scene);
     };
     bind("sceneView.pixelZoom1x", [this](const CommandArgs&) {
         if (SceneProject* scene = project.getSelectedScene()) sceneWindow->setPixelZoom(*scene, 1.0f);

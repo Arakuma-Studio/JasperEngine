@@ -2084,7 +2084,7 @@ void registerViewTools(McpRegistry& registry) {
         tool.inputSchema = object({
             {"aspect", stringEnum("", {"free", "project", "16:9", "16:10", "4:3", "9:16"})},
             {"scale", number("", 1, 5)},
-            {"pixel_scale", integer("Pixel Perfect Camera scale; 0 auto.", 0, 8)},
+            {"pixel_scale", integer("Pixel Perfect scale; 0 auto.", 0, 8)},
             {"maximize_on_play", boolean("")},
             {"show_stats", boolean("")},
             {"simulate_touch", boolean("")},

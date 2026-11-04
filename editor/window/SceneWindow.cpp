@@ -3177,12 +3177,12 @@ float editor::SceneWindow::getOverlayScale(uint32_t sceneId) const {
 
 bool editor::SceneWindow::pixelZoomActive(const SceneProject* sceneProject) const{
     return sceneProject && sceneProject->sceneType == SceneType::SCENE_2D && sceneProject->displaySettings.pixelZoom &&
-           pixelart::scenePixelPerfect(sceneProject->scene);
+           pixelart::scenePixelPerfect(sceneProject);
 }
 
 float editor::SceneWindow::gamePixelZoom(SceneProject& sceneProject) const{
     jasperengine::pixelart::PixelPerfectLayout layout;
-    if (pixelart::computeEditLayout(*project, sceneProject.scene, sceneProject.scene->getCamera(), layout))
+    if (pixelart::computeEditLayout(*project, sceneProject.scene, sceneProject.mainCamera, layout))
         return (float)layout.scale;
     return 1.0f;
 }
@@ -3203,7 +3203,7 @@ void editor::SceneWindow::setPixelZoom(SceneProject& sceneProject, float scale){
 }
 
 void editor::SceneWindow::drawPixelZoomToolbar(SceneProject& sceneProject){
-    if (sceneProject.sceneType != SceneType::SCENE_2D || !pixelart::scenePixelPerfect(sceneProject.scene))
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !pixelart::scenePixelPerfect(&sceneProject))
         return;
     const std::string id = std::to_string(sceneProject.id);
     bool& on = sceneProject.displaySettings.pixelZoom;
@@ -3277,10 +3277,10 @@ void editor::SceneWindow::drawPixelGrid(SceneProject& sceneProject, const ImVec2
 }
 
 void editor::SceneWindow::drawPixelPerfectFrames(SceneProject& sceneProject, const ImVec2& canvasMin){
-    if (sceneProject.sceneType != SceneType::SCENE_2D || !sceneProject.sceneRender || !pixelart::scenePixelPerfect(sceneProject.scene))
+    if (sceneProject.sceneType != SceneType::SCENE_2D || !sceneProject.sceneRender || !pixelart::scenePixelPerfect(&sceneProject))
         return;
     Scene* scene = sceneProject.scene;
-    const Entity cameraEntity = scene->getCamera();
+    const Entity cameraEntity = sceneProject.mainCamera;
     const Transform* transform = scene->findComponent<Transform>(cameraEntity);
     const PixelPerfectCameraComponent* component = scene->findComponent<PixelPerfectCameraComponent>(cameraEntity);
     if (!transform || !component)
