@@ -4,8 +4,8 @@
 #pragma once
 
 // Project Settings > Navigation (project.yaml `navigation:`, docs/navigation.md): the agent
-// types and the area table every navmesh, crowd and grid of the project reads, the crowd and
-// web bake budgets, and whether exported builds carry Recast/Detour.
+// types and the area table every navmesh, crowd and grid of the project reads, the crowd, web
+// bake, grid and carving budgets, and whether exported builds carry Recast/Detour.
 
 #include "navigation/NavTypes.h"
 

@@ -674,4 +674,30 @@ P2 order:
 
 ## Deviations
 
+- S53 P2: R21 held already, so §3's item 8 is wrong there: the brush keys' enable predicate
+  `dyePainting()` is `SceneRender::isFluidPainting()`, which counts the nav-grid brush
+  (`SceneRender.cpp:2579-2581`). The red run of AC24 on the base editor saw `run_command
+  terrain.brushLarger` succeed once Paint was clicked, so no fix was made and `AppCommands.cpp` is unchanged; `test_navigation_ui.py::test_brush_size_keys`
+  stays as a guard without a red control. It reads the brush size from a UIProbe item the
+  Inspector's brush slider names (`inspector.navBrushSize.<n>`): `find_ui_item` reports where a
+  control is, not its value.
+- S53 P2: R28 "CI runs it": the repository has no CI any more (origin/main removed the
+  workflows). `tools/check-changed` plans `navigation-off` for the paths R28 lists, plus
+  `engine/tests/core/navigation/**` (the NavStubTest source itself) and the script.
+- S53 P2: AC29's tool `navigation` finding comes from `jasperengine-editor check` (findings with
+  a tool name exist only there); the build's preflight logs the same out-of-date warning, which
+  the test reads from the build's warnings and log.
+- S53 P2: R3 details the spec leaves open: a cancel does not replace a standing failure (it shows
+  until a bake succeeds), a successful Clear removes the surface's `last_bake`, and an Inspector
+  Shift-click starts only the full bake (it started a dirty bake too on release, which logged a
+  refusal twice).
+- S53 P2: `bake_navigation` set its job's progress text after the loop that starts the bakes, so
+  when every start was refused the job's failure message read "baking" (found by AC5's red run);
+  the progress is set before the loop.
+- S53 P2: R24's new text follows the lean MCP rules that landed meanwhile: no description grew
+  (`last_bake` and the path's `agent_type`/`area_mask` speak through their names, schemas and
+  results), `carve_tiles_per_tick` says only "0: Auto."; `tools/mcp/eval/cases.py` has
+  `guard_nav_carve_tiles_per_tick` and `guard_nav_visualize_agent_type` for them (offline
+  `test_grade.py` only; the live eval is the integrator's call).
+
 ## Progress

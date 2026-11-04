@@ -110,7 +110,7 @@ Json settingsJson(const NavigationProjectSettings& project) {
     }
     return {{"agents", agents}, {"areas", areas}, {"crowd_max_agents", settings.crowdMaxAgents},
             {"web_bake_budget_ms", settings.webBakeBudgetMs}, {"max_grid_solves_per_tick", settings.maxGridSolvesPerTick},
-            {"include_in_builds", project.includeInBuilds}};
+            {"carve_tiles_per_tick", settings.carveTilesPerTick}, {"include_in_builds", project.includeInBuilds}};
 }
 
 // query_navigation's and visualize_navigation's agent type
@@ -181,6 +181,8 @@ void bakeNavigationTool(const CallPtr& call) {
     state->sceneId = scene->id;
     state->surfaces = surfaces;
     state->job = ctx.jobs().create("bake_navigation", "Bake " + std::to_string(surfaces.size()) + " NavMesh Surface(s) (" + modeName + ")");
+    // before any start: when every start is refused the job ends in the loop, with the reasons
+    state->job->setProgress(0.0, "baking");
     std::weak_ptr<BakeCall> weak = state;
     state->job->setCancelHandler([weak, project]() {
         if (auto s = weak.lock()) {
@@ -234,7 +236,6 @@ void bakeNavigationTool(const CallPtr& call) {
         }
     }
     finishIfDone();
-    state->job->setProgress(0.0, "baking");
     call->detach();
     replyWhenJobDone(call, state->job, args.value("wait", true), args.value("timeout_seconds", 120.0), [state](const McpJob& finished) {
         Json result = finished.result();
@@ -267,8 +268,16 @@ void getNavigationInfoTool(const CallPtr& call) {
         const int dirty = playing ? status.dirtyTiles : NavigationEditor::get().dirtyTiles(project, scene->id, entity);
         Json item = {{"entity", McpRefs::entityJson(scene, entity)}, {"state", stateName(status.state)}, {"tiles", status.tiles},
                      {"dirty_tiles", dirty}, {"polys", status.polys}, {"bytes", status.bytes}, {"carving", status.carving},
-                     {"agent_type", surface.agentType}, {"enabled", surface.enabled}, {"asset", surface.navMeshData.path}};
+                     {"agent_type", surface.agentType}, {"enabled", surface.enabled}, {"asset", surface.navMeshData.path},
+                     {"max_carving_obstacles", surface.maxCarvingObstacles}};
         if (status.state == NavBakeState::BAKING) item["progress"] = rounded(status.progress);
+        // this session's last bake of the surface (S53 R3): a failure stays until a bake succeeds
+        if (const NavigationEditor::LastBake* last = NavigationEditor::get().lastBake(scene->id, entity)) {
+            Json lastBake = {{"ok", last->ok}, {"cancelled", last->cancelled}, {"warnings", last->warnings}};
+            if (!last->error.empty()) lastBake["error"] = last->error;
+            item["last_bake"] = lastBake;
+            if (!last->ok && !last->cancelled) text += "\n  surface " + McpRefs::entityPath(scene, entity) + ": last bake failed: " + last->error;
+        }
         if (!status.loadError.empty()) item["load_error"] = status.loadError;
         if (playing) item["crowd"] = {{"agents", status.crowdAgents}, {"capacity", status.crowdCapacity}};
         surfaces.push_back(item);
@@ -643,6 +652,14 @@ void setNavigationSettingsTool(const CallPtr& call) {
     if (args.contains("crowd_max_agents")) settings.crowdMaxAgents = std::clamp(args["crowd_max_agents"].get<int>(), 1, 4096);
     if (args.contains("web_bake_budget_ms")) settings.webBakeBudgetMs = std::clamp(args["web_bake_budget_ms"].get<float>(), 0.5f, 50.0f);
     if (args.contains("max_grid_solves_per_tick")) settings.maxGridSolvesPerTick = std::clamp(args["max_grid_solves_per_tick"].get<int>(), 1, 4096);
+    if (args.contains("carve_tiles_per_tick")) {
+        const int tiles = args["carve_tiles_per_tick"].get<int>();
+        if (tiles < 0 || tiles > 64) {
+            call->fail("carve_tiles_per_tick: 0 (Auto: 4 on desktop, 2 on Android, iOS and web) to 64.");
+            return;
+        }
+        settings.carveTilesPerTick = tiles;
+    }
     if (args.contains("include_in_builds")) next.includeInBuilds = args["include_in_builds"].get<bool>();
     settings.sanitize();
     if (next == project->getNavigationSettings()) {
@@ -909,6 +926,7 @@ void registerNavigationTools(McpRegistry& registry) {
             {"crowd_max_agents", integer("", 1, 4096)},
             {"web_bake_budget_ms", number("", 0.5, 50.0)},
             {"max_grid_solves_per_tick", integer("", 1, 4096)},
+            {"carve_tiles_per_tick", integer("0: Auto.", 0, 64)},
             {"include_in_builds", boolean("Recast/Detour in exported builds.")}
         });
         // area costs apply at the next tick; the edit stays after Stop, like Project Settings
@@ -952,9 +970,8 @@ void registerNavigationTools(McpRegistry& registry) {
         tool.title = "Visualize Navigation";
         tool.description =
             "Turn on the Scene view's AI Navigation overlay and set what it shows (navmesh in area colours, tiles, heightmesh, "
-            "grid, agent paths, avoidance, links, obstacles) of a scene (the running one while playing); path {from, to, "
-            "agent_type?, area_mask?} also draws a query path, as query_navigation finds it. screenshot: true returns the Scene "
-            "view as a PNG.";
+            "grid, agent paths, avoidance, links, obstacles); path {from, to} also draws a query path. screenshot: true returns "
+            "the Scene view as a PNG.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"show", object({{"navmesh", boolean("")}, {"tiles", boolean("")}, {"heightmesh", boolean("")}, {"grid", boolean("")},

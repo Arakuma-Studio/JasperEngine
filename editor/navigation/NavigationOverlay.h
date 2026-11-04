@@ -7,21 +7,27 @@
 // colours (translucent triangles, edge lines; the tiles intersecting the view frustum, at most
 // 64k triangles), tile bounds, the detail (height) mesh, NavGrid cells, agent paths and
 // avoidance, links, obstacles, and the selected components' gizmos (surface and modifier
-// volumes, link start/end, obstacle shapes, the agent's cylinder). Editor-only objects in the
+// volumes, link start/end, obstacle shapes, the agent's cylinder); in play, the NavGrid cells
+// agents reserved at the current fixed tick (S53 R22). Editor-only objects in the
 // scene they annotate (the Scene view draws them, never a game or camera image); a shipped
 // player has none of this.
 
 #include "Scene.h"
 #include "math/Vector3.h"
 #include "math/Vector4.h"
+#include "navigation/NavTypes.h"
 
 #include "yaml-cpp/yaml.h"
 
+#include <array>
 #include <map>
 #include <set>
 #include <vector>
 
 namespace jasperengine {
+    namespace nav {
+        class NavGridMap;
+    }
     class Camera;
     class LineRenderer;
     class Mesh;
@@ -60,6 +66,18 @@ namespace jasperengine::editor {
     class NavigationOverlay {
     public:
         static constexpr size_t MAX_TRIANGLES = 65536;
+        // NavGrid cells: their area's colour at this opacity (brush-painted overrides more opaque)
+        static constexpr float CELL_ALPHA = 0.4f;
+        static constexpr float OVERRIDE_CELL_ALPHA = 0.6f;
+        // agent paths; a reserved cell is tinted halfway to it
+        static inline const Vector4 AGENT_PATH_COLOR = Vector4(1.0f, 0.85f, 0.2f, 1.0f);
+
+        // One colour per cell of the map (by cell index): the cell's area colour (rgb of
+        // areaColors) at CELL_ALPHA or OVERRIDE_CELL_ALPHA, and for the cells in `reserved` (cell
+        // indices; repeats and indices outside the map ignored) a 50 % blend of that rgb toward
+        // AGENT_PATH_COLOR. Pure: no scene, no GPU.
+        static void gridCellColors(const nav::NavGridMap& map, const std::array<Vector4, nav::AREA_COUNT>& areaColors,
+                                   const std::vector<int>& reserved, std::vector<Vector4>& out);
 
         explicit NavigationOverlay(Scene* scene);
         ~NavigationOverlay();
@@ -88,6 +106,8 @@ namespace jasperengine::editor {
             uint64_t settingsVersion = 0;
             // the GameObject's world position and rotation it was drawn at
             float pose[7] = {0, 0, 0, 0, 0, 0, 0};
+            // the reserved cells it was drawn with (empty out of play)
+            std::vector<int> reserved;
         };
 
         Scene* scene;
@@ -97,6 +117,9 @@ namespace jasperengine::editor {
         LineRenderer* lines = nullptr;
         size_t drawnTriangles = 0;
         size_t drawnLines = 0;
+        // per update, reused: a grid's reserved cells and cell colours
+        std::vector<int> reservedScratch;
+        std::vector<Vector4> cellColors;
 
         Mesh* newMesh();
         LineRenderer* newLines(unsigned int maxLines);
