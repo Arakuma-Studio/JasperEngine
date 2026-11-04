@@ -11,6 +11,8 @@
 // (a modal, a menu, the Search palette) is open or while the Shortcuts window captures a key.
 // While macOS's native menu is active, a menu item's own key equivalent belongs to NSMenu,
 // which runs it: the dispatcher leaves that chord to it, so no chord fires twice (R9).
+// A focused panel's claim on the edit commands (PanelClaims.h) acts through the commands' own
+// enabled state and key gate: nothing here knows the panels.
 //
 // Keys that stay local are not catalog commands: Esc in dialogs, the Console's arrow keys, the
 // text editors' bindings and Play input.
@@ -48,7 +50,9 @@ namespace jasperengine::editor {
         bool gameHasKeyboard = false;     // Play, the Game view taking the keys
         bool popupOpen = false;           // any popup or modal (menus, dialogs, the Search palette)
         bool nativeMenuOwnsKeys = false;  // macOS: NSMenu runs its items' key equivalents
-        // the focused panel contexts (SceneView, Hierarchy, Project, Console)
+        // macOS: the chords its Edit items show for a panel's own commands (PanelClaims)
+        std::vector<Chord> nativeMenuChords;
+        // the focused panel contexts (SceneView, Hierarchy, Project, Console, Curve...)
         std::vector<ShortcutContext> panels;
     };
 

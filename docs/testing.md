@@ -61,6 +61,9 @@ then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screen
 `JASPER_MESH_LOAD_HOLD_FILE=<path>` holds the first load (the binding) of the meshes of a scene that
 loaded a model in the background while that file exists, so what else loads the same model meanwhile
 (a Project window thumbnail's preview) comes first (`tools/mcp/tests/test_model_texture_bind.py`).
+`JASPER_TEST_STAGING_HOLD=<path>` holds a Project Hub import or template copy with part of its files in
+its staging folder while that file exists, after creating `<path>.held`: the tests kill the editor
+there (`CrashLeftovers.*` in `editor/tests/hub/HubTest.cpp`, `tools/mcp/tests/test_crash_leftovers.py`).
 
 ### HTML UI, MCP, smoke, web
 
@@ -527,7 +530,8 @@ shared `main()` (`TestMain.cpp`) that initialises the engine without a GPU:
   through the Lua bindings, with no budget: builds are compared with it on the benchmark server); the
   editor suite's `editor::test::perfSlack()` does the same for `CommandHistoryBench` (S24),
   `AutosaveEncodeBench` (S03), `VcsBench` (S29: status poll, snapshot swap, scene diff; the
-  main-thread encode is reported) and `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
+  main-thread encode is reported), `ChangedUpdateFlagsBench` (S71: 50 us a call per component) and
+  `ReflectCodecBench`/`ReflectResolveBench` (S08; its MCP R19 frame
   cost, `test_reflection.py::test_inspector_frame_cost`, reads the same variable) (ratios such as a report's overhead stay checked everywhere). The MCP
   texture storm's frame budget (`test_jobs_memory_ui.py`, S06 AC23) reads the same variable; it assumes
   a machine whose decode workers and software renderer do not share cores (8+ hardware threads):
