@@ -7,7 +7,7 @@
 // keys with tangent handles, wrap ghosting outside the keys, a min-max band between a curve and
 // its partner, the range rect (clamped when the field asks), double-click to add a key, Delete,
 // Ctrl+C / Ctrl+V, Unity's key menu, F to frame, and a bottom bar with the selected key's Time
-// and Value and the wrap modes. Those keys are the catalog's curve.* commands (S41): the host runs
+// and Value and the wrap modes. Those keys are the catalog's curve.* commands (S61): the host runs
 // them through request(), the widget reads no key itself. Each gesture (a drag, a menu action, a typed number) is reported
 // as began / changed / ended, so its host makes it one undo step. The edits are curveops'.
 

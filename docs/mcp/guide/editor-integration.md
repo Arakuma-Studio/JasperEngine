@@ -196,14 +196,6 @@ fails unless `force: true`, which takes it from that command. Rebindings are the
 `shortcuts.yaml` next to the editor settings, for every project. `docs/editor/keyboard-shortcuts.md`
 lists the defaults.
 
-The edit commands follow the focused panel (S41): while the Curve window, the Project window, the
-Animator, Input Actions, Animation, Pose Animation, Sprite Normal Map, Color, Gradient Editor or
-Jobs & Memory window (or the Console's list) has focus, `run_command edit.delete` (`edit.copy`,
-`edit.frameSelected`...) goes to that panel, or is refused as disabled when it has nothing to act
-on; it never reaches the scene then. `editor_status.windows.focused` says which window that is;
-`ui.curve_window` (`open`, `focused`, `selected_keys`, `clipboard_keys`, `view`) and
-`ui.color_picker` (`open`, `focused`, `sampling`) show those windows' state.
-
 ## Window layouts
 
 `edit_layout_presets {action, name?, new_name?, path?}`: `list`, `apply`, `save` (the current

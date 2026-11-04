@@ -615,7 +615,7 @@ async def test_moving_a_prop_off_a_posed_bone_keeps_its_rest_world(ed: Editor):
 
 
 async def test_delete_goes_to_the_window_not_the_scene(ed: Editor):
-    """S41 AC2: Delete in the focused window removes its pose, never the selected Hero."""
+    """S61 AC2: Delete in the focused window removes its pose, never the selected Hero."""
     await ed.call("select_entities", entities=["Hero"])
     await focus(ed, entity="Hero")
     st = (await focus(ed, path=WALK))["state"]

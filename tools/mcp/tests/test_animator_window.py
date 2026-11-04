@@ -406,7 +406,7 @@ async def test_animator_window_live_parameters(ed: Editor):
 
 
 async def test_delete_goes_to_the_window_not_the_scene(ed: Editor):
-    """S41 AC2: Delete with a state selected removes the state, never the selected Hero."""
+    """S61 AC2: Delete with a state selected removes the state, never the selected Hero."""
     ui = Ui(ed)
     await ed.call("select_entities", entities=["Hero"])
     heroes = len(harness.find_key(await ed.call("find_entities", name="Hero*"), "entities") or [])

@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// A focused panel's claim on the edit commands (docs/specs/S41-window-commands.md R2, R3, R5,
+// A focused panel's claim on the edit commands (docs/specs/S61-window-commands.md R2, R3, R5,
 // R6, AC3), through the real catalog table and the real dispatcher: the key, the menu and the
 // palette reach the panel and nothing else, and a panel's own command really moves when rebound.
 
@@ -209,7 +209,7 @@ TEST(PanelClaims, RebindingThePanelsCommandMovesItsKey) {
     EXPECT_EQ(c.press("F"), Ran{"edit.frameSelected"});
 
     // the settings path: a saved file reloads it
-    const std::filesystem::path file = std::filesystem::path(::testing::TempDir()) / "s41-shortcuts.yaml";
+    const std::filesystem::path file = std::filesystem::path(::testing::TempDir()) / "s61-shortcuts.yaml";
     std::string error;
     ASSERT_TRUE(ShortcutOverrides::save(file, c.recording.catalog, &error)) << error;
 

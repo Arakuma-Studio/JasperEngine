@@ -3,7 +3,7 @@
 
 #pragma once
 
-// A focused panel's claim on the edit commands (docs/specs/S41-window-commands.md R2). While a
+// A focused panel's claim on the edit commands (docs/specs/S61-window-commands.md R2). While a
 // panel with a claim has focus, Edit > Delete, Duplicate, Frame Selected, Copy, Cut, Paste...
 // go to its handlers and nowhere else, from a key, the Edit menu, the Search palette or an agent
 // alike. A verb the panel has no handler for is disabled: it never falls through to the scene.

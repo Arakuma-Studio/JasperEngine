@@ -1,4 +1,4 @@
-"""S41 by real input: a key does what the focused panel says, and only that.
+"""S61 by real input: a key does what the focused panel says, and only that.
 
 Scene GameObjects selected, the Curve window focused: Delete, F, Ctrl+C and Ctrl+V reach the curve
 through the one dispatcher and never the scene (the mouse over the Scene view too: its keys are
@@ -379,9 +379,13 @@ async def test_input_actions_window_deletes_its_map(ed: Editor):
     await press_in_panel(ed, keys, s, count, "Input Actions", "Delete")
     text = (ed.project / path).read_text()
     ed.check('"Gameplay"' not in text and '"Menu"' in text, f"Delete removed the selected map: {text}")
-    # nothing selected now: it does nothing, and does not fall through
+    # the window selects the next map: Delete goes on with it. No map left, nothing is selected:
+    # it does nothing, and does not fall through to the scene
+    await press_in_panel(ed, keys, s, count, "Input Actions, the next map", "Delete")
+    text = (ed.project / path).read_text()
+    ed.check('"Menu"' not in text, f"Delete removed the next map: {text}")
     await press_in_panel(ed, keys, s, count, "Input Actions, nothing selected", "Delete")
-    ed.check_eq((ed.project / path).read_text(), text, "and removes no map")
+    ed.check_eq((ed.project / path).read_text(), text, "and changes nothing")
     await ed.call("focus_window", window="scene", scene=s["scene"])
 
 
