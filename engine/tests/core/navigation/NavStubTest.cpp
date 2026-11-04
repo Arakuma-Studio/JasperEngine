@@ -47,6 +47,36 @@ TEST_F(NavStubTest, QueriesFail){
     EXPECT_FALSE(NavMeshAgent(scene.get(), walker).isOnNavMesh());
 }
 
+// S54 R18 (AC8): the diagnostics answer Not baked, no islands and an empty location
+TEST_F(NavStubTest, DiagnosticsStubs){
+    test::LogCapture log;
+    const Entity surface = planeSurface();
+    resolveTransforms(*scene);
+    const nav::NavPath path = nav->calculatePath(Vector3(-5, 0, 0), Vector3(5, 0, 0));
+    EXPECT_EQ(path.status, nav::PathStatus::Invalid);
+    EXPECT_EQ(path.failure, nav::PathFailure::NotBaked);
+    nav::PathFailure why = nav::PathFailure::None;
+    EXPECT_FALSE(nav->isReachable(Vector3(-5, 0, 0), Vector3(5, 0, 0), {}, &why));
+    EXPECT_EQ(why, nav::PathFailure::NotBaked);
+    EXPECT_TRUE(nav->getIslands(surface).empty());
+    EXPECT_EQ(nav->getCoverage(surface).islandCount, 0);
+    const nav::NavLocation location = nav->locate(Vector3());
+    EXPECT_FALSE(location.found);
+    EXPECT_FALSE(location.onMesh);
+
+    nav::NavMesh mesh;
+    EXPECT_EQ(mesh.findPath(Vector3(), Vector3(1, 0, 0), nav::NavFilter(), Vector3(1, 1, 1)).failure, nav::PathFailure::NotBaked);
+    EXPECT_TRUE(mesh.getIslands().empty());
+    EXPECT_FALSE(mesh.locate(Vector3(), nav::NavFilter(), Vector3(1, 1, 1), 5.0f).found);
+    EXPECT_FALSE(mesh.setPolyFlags(1, 0));
+    for (int i = 0; i < 5; i++)
+        mesh.locate(Vector3(), nav::NavFilter(), Vector3(1, 1, 1), 5.0f);
+    EXPECT_LE(log.count(D_LOG_ERROR, "JASPERENGINE_NAVIGATION is off"), 1u);
+    // the bake says why
+    const NavBakeResult result = nav->bakeNow(surface, NavBakeMode::FULL);
+    EXPECT_EQ(result.errorCode, nav::NavBakeError::Unavailable);
+}
+
 TEST_F(NavStubTest, LogsOnce){
     test::LogCapture log;
     nav::NavMesh mesh;

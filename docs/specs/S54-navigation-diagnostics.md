@@ -640,4 +640,67 @@ with `triangleIslands`/`triangleTiles`, `getTileReports`, `getIslands`, `getFind
 
 ## Deviations
 
+- S54 P1: island labels are one flat `int32_t` array with a per-tile-slot offset table
+  (`NavIslandLabels::tileBase`) instead of a vector per tile slot (D2): a vector header per slot
+  alone would cost 0.6 B per polygon of `bench_nav_city` and break R21's 4 B per polygon.
+- S54 P1: additions beyond the §6 sketch, all additive: `NavMesh::getPolyAt` (the reference
+  `setPolyFlags` takes), `covers` (a polygon right under a point), `isReachable` (R6 on one mesh),
+  `getSearchCount`, `getLabelledRevision`, `getIslandMemoryBytes`; `nav::labelIslands` /
+  `NavIslandLabels` and `bakeErrorFromName` in `NavDiagnostics.h`;
+  `NavigationSystem::getSearchExtents`; `NavDebugGeometry::tileCoords` (x, y, layer per tile of
+  `tileBounds`; `triangleTiles` indexes that list); `NavBakeInput::excludedEntities` (a cached
+  input carries its exclusions to the probe, which takes no stats); `NavProbeReason::detail`
+  (R11 says `value` names why a GameObject was excluded, but `value` is a float: the reason
+  string, and for `filtered` the area name, go in `detail`); `ProjectNavFinding::sceneId` and an
+  options argument of `collectProjectFindings` (`stale`, a per-scene `dirtyTilesOf`) for P3's
+  Problems list.
+- S54 P1: `bakeNow` returns the report as it landed (`islandCount` -1): only
+  `getLastBakeResult` labels (R8), so a synchronous bake (the bench's incremental bake) never
+  pays for islands.
+- S54 P1: a bake that cannot start (`nothing_collected`, `too_large`, `unavailable`) becomes the
+  surface's last result, so `bake_failed` and the Inspector see it; `busy` and `no_surface` do not
+  replace it.
+- S54 P1: AC7's "allocate nothing" is checked as exactly one allocation per path: S19's corners
+  vector, which every path had before; nothing else (no labels, no second search) allocates.
+- S54 P1: the probe calls a point walkable when a polygon lies right under it (a cell wide, Step
+  Height + 2 cell heights tall), not when one is in the query search box: R10's `onMesh` (the
+  search box, 2 x radius) would call a point 0.2 m from a wall on the mesh and never explain it.
+  The location it returns is still R10's.
+- S54 P1: when the tile under a point is stale, the probe first rebuilds it with the baked limits;
+  if that already covers the point, `stale_tile` is the only reason (a bake fixes it). That case
+  takes 4 single-tile rebuilds instead of R24's 3.
+- S54 P1: AC8 locates "off the mesh" 1.5 m from the edge: 1 m is exactly the search box's half
+  width (2 x 0.5 m radius) and Detour's box test is inclusive.
+- S54 P1: `agent_type_unused` is raised only in scenes with navigation components (else every
+  project without navigation would get an info for Humanoid); `collectProjectFindings` keeps a
+  type only when no scene uses it, once, without a scene.
+- S54 P1: grid answers report an end outside the grid or on a Not Walkable / masked cell as
+  `*_off_mesh` / `*_filtered` also when `allowPartial` gives a Partial path to it (the reason is
+  more useful than `disconnected`).
+- S54 P1: AC6 `.AreaAndBounds` (and AC8's coverage) checks the area within 5 % of 19^2, not 2 %:
+  Recast erodes whole cells (r = 0.5 m at 0.2 m cells is 3 cells plus the boundary span), so the
+  baked square is 18.6 m wide (346 m^2). The test also checks the area equals the island's
+  bounds' footprint within 1 %, which pins the labelling's arithmetic exactly.
+- S54 P1: `bench_nav_city` (S19's fixture) holds 2643 polygons in 400 tiles, not the ~20k R21-R23
+  assume, so a per-tile cost weighs 8 x more per polygon: the island tile table keeps only the
+  slots up to the last one in use, in 16 bits while every label index fits. Measured (5 runs,
+  `--workers 3`, a shared 8-core host): `city_islands_ms` 0.19, `islands_bytes_per_poly` 4.30,
+  `query_reject_disconnected_us` 0.54 (0 searches), `query_locate_p95_ms` 0.0022,
+  `findings_city_ms` 0.085, `query_path_p95_ms` 0.122 (unchanged budget).
+- S54 P1: files outside P1 touched minimally: `editor/navigation/NavigationEditorSources.cmake`
+  (P3's; the two new sources) and `engine/core/navigation/NavBakeInput.cpp` (`memoryBytes` counts
+  the sources).
+
 ## Progress (implementation notes, keep updated)
+
+- S54 P1 (branch `nav/s42-p1`): the contract (`nav: S42 contract`, aba8fb7e8) carries the whole
+  §6 sketch with working bodies. Done: R1-R10 (failure detection in `NavMesh::findPath`, the
+  ranking, `isReachable`'s island reject, islands by union-find cached per revision, coverage,
+  `locate`), R11-R12 (`NavWalkabilityProbe`, `NavCollectOptions::recordSources`, the builder's
+  config override), R13-R15 (`getFindings`, `collectProjectFindings`, `logNavigationPreflight`),
+  R16-R17 (bake codes and hints, sources, tile reports kept per surface), R18 stubs, R35 Lua
+  (path reason fields, `isReachable`'s reason, `locate`, `getCoverage`, `getIslands`,
+  `NavMeshSurface.lastBakeResult`, stubs and parser overrides), the bench metrics of AC12 and the
+  docs' "Why navigation fails". P2 switches the CLI and the export to `collectProjectFindings` /
+  `logNavigationPreflight`; P3 sets `NavBakeError::SaveFailed` where the editor writes the asset
+  (`NavigationEditor::finish`).

@@ -2933,7 +2933,7 @@ OVERRIDES[('NavigationSystem', 'findClosestEdge')] = {
             'the hit (position, normal, distance).'],
     'overloads': [([('point', 'Vector3'), ('filter?', _NAV_FILTER)], 'boolean, NavMeshHit')]}
 PROPERTY_OVERRIDES[('NavMeshAgent', 'currentOffMeshLinkData')] = ('OffMeshLinkData', False)
-# S42 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
+# S54 navigation diagnostics: path reasons, isReachable's reason, locate, coverage, islands, the bake report
 OVERRIDES[('NavigationSystem', 'calculatePath')] = {
     'doc': ['A path from `from` to `to` (Unity\'s NavMesh.CalculatePath): status, corners, length, and when it',
             'is not Complete why (`reason`, "disconnected", ...), the answering surface, the closest point and',
