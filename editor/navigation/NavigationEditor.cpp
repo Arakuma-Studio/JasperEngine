@@ -13,6 +13,8 @@
 #include "navigation/NavGridMap.h"
 #include "navigation/NavGridCellsCmd.h"
 #include "navigation/NavGridBrush.h"
+#include "navigation/NavigationOverlay.h"
+#include "render/SceneRender.h"
 #include "component/Transform.h"
 #include "component/NavMeshLinkComponent.h"
 #include "command/type/PropertyCmd.h"
@@ -415,6 +417,27 @@ int NavigationEditor::dirtyTiles(Project* project, uint32_t sceneId, Entity surf
     cache.checkedAt = now;
     dirtyCache.push_back(cache);
     return cache.dirty;
+}
+
+// ---------------------------------------------------------------- the overlay's query
+
+void NavigationEditor::setQueryDraw(uint32_t sceneId, NavQueryDraw draw) {
+    queryDraws[sceneId] = std::move(draw);
+}
+
+void NavigationEditor::clearQueryDraw(uint32_t sceneId) {
+    queryDraws.erase(sceneId);
+}
+
+const NavQueryDraw* NavigationEditor::getQueryDraw(uint32_t sceneId) const {
+    auto it = queryDraws.find(sceneId);
+    return it != queryDraws.end() ? &it->second : nullptr;
+}
+
+NavigationOverlay* NavigationEditor::overlayOf(uint32_t sceneId) {
+    Project* project = Backend::getApp().getProject();
+    SceneProject* sceneProject = project ? project->getScene(sceneId) : nullptr;
+    return sceneProject && sceneProject->sceneRender ? sceneProject->sceneRender->getNavigationOverlay() : nullptr;
 }
 
 // ---------------------------------------------------------------- the nav-grid brush

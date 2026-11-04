@@ -581,11 +581,22 @@ void NavigationOverlay::drawGizmos(SceneProject& sceneProject, const std::set<En
         addBox(lines, transform->modelMatrix, modifier.volumeCenter, modifier.volumeSize, color);
     }
 
-    // the query path of visualize_navigation
-    const std::vector<Vector3>& queryPath = NavigationEditor::get().getQueryPath(sceneProject.id);
-    if (queryPath.size() > 1) {
-        reserve(queryPath.size());
-        for (size_t i = 1; i < queryPath.size(); i++) lines->addLine(queryPath[i - 1], queryPath[i], Vector4(1.0f, 0.2f, 0.8f, 1.0f));
+    // the query of the Path Tester or visualize_navigation: start green, end red, a Complete
+    // path magenta, a Partial one orange with a red gap from where it stops to the end asked
+    if (const NavQueryDraw* query = NavigationEditor::get().getQueryDraw(sceneProject.id)) {
+        const Vector3 up = sceneProject.sceneType == SceneType::SCENE_3D ? Vector3(0, 1, 0) : Vector3(0, 0, 1);
+        const std::vector<Vector3>& corners = query->path.corners;
+        const bool partial = query->path.status == nav::PathStatus::Partial;
+        reserve(corners.size() + 80);
+        const Vector4 pathColor = partial ? Vector4(1.0f, 0.55f, 0.1f, 1.0f) : Vector4(1.0f, 0.2f, 0.8f, 1.0f);
+        for (size_t i = 1; i < corners.size(); i++) lines->addLine(corners[i - 1], corners[i], pathColor);
+        if (partial && query->hasTo && !corners.empty()) lines->addLine(corners.back(), query->to, Vector4(1.0f, 0.1f, 0.1f, 1.0f));
+        auto marker = [&](const Vector3& at, const Vector4& color) {
+            addCylinder(lines, at, up, 0.25f, 0.0f, color, 16);
+            lines->addLine(at, at + up * 1.0f, color);
+        };
+        if (query->hasFrom) marker(query->from, Vector4(0.2f, 0.95f, 0.3f, 1.0f));
+        if (query->hasTo) marker(query->to, Vector4(1.0f, 0.15f, 0.15f, 1.0f));
     }
 
     lines->updateLines();
