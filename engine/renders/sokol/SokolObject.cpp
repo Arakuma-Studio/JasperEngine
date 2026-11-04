@@ -1241,6 +1241,7 @@ namespace {
         unsigned int count = 0;
         unsigned int instances = 0;
         SokolObject* variant = nullptr;
+        uint32_t variantPipeline = SG_INVALID_ID;  // its pipeline of this draw's type
         int objectSlot = -1;
         float lodFade = 0.0f;
 
@@ -1420,7 +1421,7 @@ namespace {
     // b can be an instance of a's batch; else the reason is counted
     bool batchesWith(const HeldDraw& a, const HeldDraw& b, SokolDrawBatch::FrameStats& stats){
         if (a.pipeline.id != b.pipeline.id || a.pipelineIndex != b.pipelineIndex || a.objectSlot != b.objectSlot ||
-                a.variant->pipelines[a.pipelineIndex].id != b.variant->pipelines[b.pipelineIndex].id){
+                a.variantPipeline != b.variantPipeline){
             stats.splitPipeline++;
             return false;
         }
@@ -1563,6 +1564,8 @@ bool SokolDrawBatch::holdDraw(SokolObject* object, unsigned int base, unsigned i
     draw.objectSlot = object->nextBatchObjectSlot;
     draw.lodFade = object->nextBatchLodFade;
     object->nextBatchVariant = nullptr;
+    draw.variantPipeline = (draw.variant && draw.pipelineIndex >= 0 && draw.pipelineIndex < SokolObject::PIPELINE_TYPES)
+        ? draw.variant->pipelines[draw.pipelineIndex].id : SG_INVALID_ID;
 
     // one instance of the plain pipeline whose variant was linked and whose object block can be
     // an instance's
