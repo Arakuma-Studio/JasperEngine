@@ -8,6 +8,7 @@
 
 #include "RenderSystem.h"
 #include "RenderSystemShared.h"
+#include "render/SystemRender.h"
 #include "Scene.h"
 #include "Engine.h"
 #include "Log.h"

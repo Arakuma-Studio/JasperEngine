@@ -8276,8 +8276,8 @@ void RenderSystem::offerDrawBatch(ObjectRender& render, ObjectRender& variant, i
 namespace {
     // what a draw of the submesh binds and applies of its material, as a sort key (draws of one
     // material sort together: a batch is drawn from consecutive draws)
-    uint32_t materialKey(const Submesh& submesh){
-        const Material& material = submesh.material;
+    uint32_t materialKey(Submesh& submesh){
+        Material& material = submesh.material;
         uint32_t key = VisibleList::mixKey(0, (uint64_t)(uintptr_t)submesh.shader.get());
         key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.baseColorTexture.getRender(nullptr));
         key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.normalTexture.getRender(nullptr));
@@ -8344,7 +8344,7 @@ void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const
         auto keyOf = [&](unsigned int s, bool batches) -> uint64_t{
             if (!batches)
                 return 0;
-            const Submesh& submesh = mesh.submeshes[s];
+            Submesh& submesh = mesh.submeshes[s];
             const ObjectRender& render = depthPipelines ? submesh.depthRender : submesh.render;
             const uint64_t key = ((uint64_t)render.getPipelineId(pipType) << 32) | VisibleList::mixKey(materialKey(submesh), meshKey(render));
             return key != 0 ? key : 1;
@@ -9721,7 +9721,7 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 }
             }else{
                 // a shadow pass draws position-only indices where they pay off (spec S55 R5)
-                const ShadowIndexBuffer* shadowIndices = nullptr;
+                ShadowIndexBuffer* shadowIndices = nullptr;
                 if (pipelineType == PIP_SHADOW_DEPTH && usesShadowIndices(mesh, mesh.submeshes[i], instmesh, terrain)){
                     if (!mesh.submeshes[i].shadowIndices)
                         mesh.submeshes[i].shadowIndices = shadowIndexBuffer(mesh, mesh.submeshes[i]);

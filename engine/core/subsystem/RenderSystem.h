@@ -2190,7 +2190,7 @@ namespace jasperengine{
 		// the submesh's shadow indices (Submesh::shadowIndices), made or found shared
 		std::shared_ptr<ShadowIndexBuffer> shadowIndexBuffer(MeshComponent& mesh, Submesh& submesh);
 		// the shadow indices the depth draw being made draws level 0 with (null: its own)
-		const ShadowIndexBuffer* passShadowIndices = nullptr;
+		ShadowIndexBuffer* passShadowIndices = nullptr;
 		// The terrain nodes a shadow slot draws (spec S55 R5), as the records of TerrainView's
 		// buffers (position, size, range, resolution) and the eye they morph from
 		struct ShadowTerrainCut{
