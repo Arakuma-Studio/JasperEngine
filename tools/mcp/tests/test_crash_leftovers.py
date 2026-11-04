@@ -166,11 +166,11 @@ async def test_a_live_owner_in_another_editor_is_never_touched():
     try:
         into = scene.into
         staging = into / "Packed.importing"
-        async with scene.held_editor() as hub:
-            call = asyncio.create_task(hub.ed.call_raw("import_project", {"source": str(scene.archive), "path": str(into), "timeout_seconds": 300}))
-            await wait_for(scene.held.exists, 120, "the import at the hold")
-            before = sorted(p.name for p in staging.rglob("*"))
-            async with Editor(create=True, name="Second") as second:
+        async with Editor(create=True, name="Second") as second:
+            async with scene.held_editor() as hub:
+                call = asyncio.create_task(hub.ed.call_raw("import_project", {"source": str(scene.archive), "path": str(into), "timeout_seconds": 300}))
+                await wait_for(scene.held.exists, 120, "the import at the hold")
+                before = sorted(p.name for p in staging.rglob("*"))
                 swept = await second.call("clean_project_leftovers", remove=[])
                 second.check_eq(swept["removed"], [], "nothing of a running editor")
                 got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
@@ -184,16 +184,17 @@ async def test_a_live_owner_in_another_editor_is_never_touched():
                 second.check("leftovers" not in imported, f"a live folder is not a leftover: {imported}")
                 second.check_eq(sorted(p.name for p in staging.rglob("*")), before, "not a file touched by the import's sweep")
 
+                # the killed editor's MCP session ends with this block: nothing else awaits in it
                 hub.kill9()
                 with contextlib.suppress(BaseException):
                     await asyncio.wait_for(call, 30)
 
-                # This project is under the system's temp folder, so it is no recent project and its
-                # parent no known one: `remove` names the folder. Its owner is dead: the sweep takes it
-                got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
-                second.check(not got.is_error, f"its owner died: {got.text}")
-                second.check_eq(got.structured["removed"], [staging.as_posix()], "it goes")
-                second.check_eq(sorted(os.listdir(into)), ["Packed"], "the folder and its marker")
+            # This project is under the system's temp folder, so it is no recent project and its
+            # parent no known one: `remove` names the folder. Its owner is dead: the sweep takes it
+            got = await second.call_raw("clean_project_leftovers", {"remove": [str(staging)]})
+            second.check(not got.is_error, f"its owner died: {got.text}")
+            second.check_eq(got.structured["removed"], [staging.as_posix()], "it goes")
+            second.check_eq(sorted(os.listdir(into)), ["Packed"], "the folder and its marker")
     finally:
         scene.remove()
 
