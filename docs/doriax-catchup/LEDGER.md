@@ -50,6 +50,11 @@ agent ("be braver"): what most users and agents expect of a game engine, Unity n
 - **Agent guide budget** (`editor/mcp/McpInstructions.cpp`, 4,096-character client cut found by agent-authoring):
   only agent-authoring restructures the guide. Every other feature puts agent guidance in `docs/mcp/guide/<area>.md`
   and adds at most a one-line pointer, trimming elsewhere if needed.
+- **Pixel-art program** (S41-S52, `PIXEL-ART-LEDGER.md`, pushed to `origin/main` from another machine): S52 (Sprite
+  instancing: batched sprites, Sorting Layers) owns sprite batching. Our feature 13 is rescoped to `ui-batching`:
+  component UI quads (S52 leaves them out) and content-shared buffers for non-sprite meshes, implemented after S52
+  lands. The lean MCP rules merged with it (`fe3e90b97`: guide at most 8,192 bytes, eval cases for new text) override
+  our specs; agent-authoring revises its guide plan against them.
 - **Generated files** (`docs/mcp/TOOLS.md`, `tools/mcp/budget.json` measurements, `catalog_snapshot.json`, Lua
   stubs): each branch regenerates them after its last merge of `main`; at merge the lead regenerates again.
 
@@ -59,25 +64,25 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | specced |
-| 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | specced |
-| 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | specced |
-| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | specced |
-| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | specced |
-| 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | specced |
+| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | impl |
+| 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
+| 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
+| 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | impl |
+| 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
+| 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
 | 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | specced |
-| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | specced |
-| 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | specced |
-| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | specced |
-| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | specced |
+| 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
+| 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
+| 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
+| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | impl |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
-| 13 | `sprite-batching` | automatic sprite batching, settled sprites, shared buffers, no 8k-sprite ceiling | specced |
+| 13 | `ui-batching` (was `sprite-batching`) | batching of component UI quads and buffers shared by content for non-sprite meshes; sprite batching itself is pixel-art S52's | specced (rescope pending) |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | specced |
 | 15 | `water-reflections` | planar reflection, transparents under water, waves, shadows, forks | specced |
 | 16 | `water-boats` | exclusion volumes and wakes | specced |
 | 17 | `platform-lifecycle` | hidden/minimized games, macOS launch, web audio and keys, Android Gradle | specced |
-| 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | specced |
-| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | specced |
+| 18 | `agent-authoring` | agent guide rules, foliage and blend-map tools, camera, rotations, shader overrides, save holds | impl |
+| 19 | `code-editor-git` | VCS markers and diffs in the code editor, footer state, scene default shader uniforms | impl |
 
 ## Log
 
@@ -88,3 +93,9 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 - 2026-11-04: all 19 specs written (606 to 1,019 lines, 11 to 21 acceptance criteria each), with the cross-spec
   decisions above. Builds run through `slot` (2 slots of 4 CPUs). Implementation starts in waves, ordered by the
   merge order above; agents work in `/var/lib/orquester/workspaces/jaspersito/dc-wt/<feature>`.
+- 2026-11-04: pushing the specs found 9 new commits on `origin/main` from the parallel pixel-art program (S41-S52
+  specs, lean MCP surface). Merged (`59c2a964f`) and pushed. Feature 13 rescoped (see decisions). Wave 1 started
+  (12 features): mobile-shipping, unicode-text, export-pipeline, build-toolchain, scene-integrity,
+  project-window, runtime-core, scripting, mesh-memory, render-correctness, agent-authoring, code-editor-git.
+  Waiting: ui-components (after unicode-text), platform-lifecycle, ssr-probes, water-reflections, draw-perf (after
+  mesh-memory), water-boats (after water-reflections), ui-batching (after S52).

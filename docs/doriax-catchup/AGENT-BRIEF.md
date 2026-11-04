@@ -24,6 +24,22 @@ otherwise, see LEDGER.md); no TODO stubs, dead code or disabled tests.
   Copied code keeps its header (`(c) Eduardo Doria and contributors` is already ours) and needs no NOTICE entry
   (same copyright holder line as ours); code from anywhere else gets a NOTICE.md entry.
 
+## What changed on `main` after the specs were written (2026-11-04)
+
+- A second program, **pixel-art** (specs `docs/specs/S41-*.md` to `S52-*.md`, ledger `PIXEL-ART-LEDGER.md`), is
+  implemented in parallel on another machine and pushed to `origin/main`. Read its specs where they touch your area
+  (S52 sprite instancing and Sorting Layers own **sprite** batching and 2D sort; S41 pixel snap and camera; S44/S45
+  sprite sheets; S50 tilemaps) and do not build anything that duplicates them. Its shared registries (asset types
+  24-27, shader bits appended at landing, MCP groups) apply to us too.
+- **Lean MCP surface** (`fe3e90b97`, AGENTS.md "MCP text", `.claude/rules/mcp.md`, `docs/mcp/conventions.md`): the
+  agent guide is at most 8,192 bytes with 1,500 bytes of headroom; an area gets one "Other areas" entry (its key tool
+  and `jasper://docs/<area>`); new tool or guide text needs a case in `tools/mcp/eval/cases.py` that fails without
+  it; hints an agent must see go in `structuredContent` (`next`); `tool_budget.py --check` ratchets bytes. Where
+  your spec plans guide text or tool text that breaks these rules, follow the rules and record it in Deviations.
+  If the live eval cannot run here (it needs Orquester-managed accounts), add the case, run `test_grade.py`, and say
+  so in your report.
+- The licence rule was dropped (`docs/specs/README.md`): copied code keeps its header and gets a NOTICE.md entry.
+
 ## Building and testing on this host (no remote machines)
 
 This host has 8 cores, 15 GB RAM and 32 GB swap, shared by every agent. **Every heavy command goes through `slot`**
