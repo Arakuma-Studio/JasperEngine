@@ -84,6 +84,8 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
   rules (a failing eval case for new text, guide limits, budget ratchet).
 - D22. Keep `sculpt_terrain`, pointing agents at `edit_terrain` through its result. Add `qemu-user` to the Android image so ARM
   determinism can be checked here. Asset types: NoiseGraph 28, TreeData 29, TerrainWorld 30, VoxelVolume 31.
+- D23. Owner rule: nothing runs a full suite until the very end of the whole programme. Streams run only filtered tests, and
+  not `tools/check-changed`. Full gates, the MCP baseline, and web and Android builds run once on the merged tree, by the coordinator.
 
 ## How the work runs
 
@@ -141,5 +143,7 @@ to whoever writes the spec ("what most users and agents expect of a game engine;
 - The foundation took about 10 hours. Main cause: the coordinator made every stream wait on it, leaving half the host idle
   from 08:03. Stopped waiting: T2, T3, T5 and T6 start now on the foundation's committed work; queue changed to 3 slots of 3 jobs.
 - `origin/main` moved 95 more commits and took S53-S73, so the specs moved to their own T1-T6 series. Merged.
+- Owner asked that nothing runs full suites until the very end. Checked: nothing was. The brief's `check-changed` step could have
+  grown into one, so it is banned for streams.
 - Queue starved a one-file syntax check for over an hour; made the queue first come first served and added a fast lane.
 - Specs revised for no CI, the lean MCP rules and the Doriax overlap. Six near-duplicate tools merged away.
