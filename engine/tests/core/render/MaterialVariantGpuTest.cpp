@@ -36,7 +36,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    Texture flatTexture(const std::string& id, std::array<uint8_t, 4> texel){
+    Texture variantFlatTexture(const std::string& id, std::array<uint8_t, 4> texel){
         TextureDataPool::setGenerator(id, [texel]() -> TextureData {
             const int size = 4 * 4 * 4;
             unsigned char* pixels = static_cast<unsigned char*>(std::malloc(size));
@@ -51,7 +51,7 @@ namespace {
         return texture;
     }
 
-    uint64_t bit(int index){
+    uint64_t variantBit(int index){
         return uint64_t(1) << index;
     }
 
@@ -112,20 +112,20 @@ TEST_F(MaterialVariantGpu, GBufferFollowsATextureGivenToALoadedMaterial){
     sun.setShadows(false);
     scene.setSSREnabled(true);
     Material material;
-    material.normalTexture = flatTexture("rc-variant-normal", {128, 128, 255, 255});
+    material.normalTexture = variantFlatTexture("rc-variant-normal", {128, 128, 255, 255});
     plane.setMaterial(material);
     settle(false);
     ASSERT_TRUE(submesh().gbufferShader) << "SSR on draws no G-buffer";
-    ASSERT_NE(submesh().shaderProperties & bit(1), 0u) << "the case needs UVs before the edit ('Uv1')";
-    ASSERT_EQ(submesh().gbufferShaderProperties & (bit(0) | bit(8)), 0u);
+    ASSERT_NE(submesh().shaderProperties & variantBit(1), 0u) << "the case needs UVs before the edit ('Uv1')";
+    ASSERT_EQ(submesh().gbufferShaderProperties & (variantBit(0) | variantBit(8)), 0u);
 
     edit([](Material& m){
-        m.baseColorTexture = flatTexture("rc-variant-base", {200, 60, 60, 255});
-        m.metallicRoughnessTexture = flatTexture("rc-variant-mr", {255, 40, 255, 255});
+        m.baseColorTexture = variantFlatTexture("rc-variant-base", {200, 60, 60, 255});
+        m.metallicRoughnessTexture = variantFlatTexture("rc-variant-mr", {255, 40, 255, 255});
     });
     settle(true);
-    EXPECT_NE(submesh().gbufferShaderProperties & bit(0), 0u) << "the G-buffer variant has no base colour texture ('Bct')";
-    EXPECT_NE(submesh().gbufferShaderProperties & bit(8), 0u) << "the G-buffer variant has no metallic-roughness texture ('Mrt')";
+    EXPECT_NE(submesh().gbufferShaderProperties & variantBit(0), 0u) << "the G-buffer variant has no base colour texture ('Bct')";
+    EXPECT_NE(submesh().gbufferShaderProperties & variantBit(8), 0u) << "the G-buffer variant has no metallic-roughness texture ('Mrt')";
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 0, true), "Bct");
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 8, true), "Mrt");
     EXPECT_NO_ENGINE_ERRORS();
@@ -137,18 +137,18 @@ TEST_F(MaterialVariantGpu, DepthClipFollowsABaseColourGivenToAMaskMaterial){
     Material material;
     material.alphaMode = MaterialAlphaMode::MASK;
     material.alphaCutoff = 0.5f;
-    material.normalTexture = flatTexture("rc-variant-mask-normal", {128, 128, 255, 255});
+    material.normalTexture = variantFlatTexture("rc-variant-mask-normal", {128, 128, 255, 255});
     plane.setMaterial(material);
     settle(false);
     ASSERT_TRUE(submesh().depthShader) << "a shadow-casting light draws no depth pass";
-    ASSERT_NE(submesh().shaderProperties & bit(1), 0u) << "the case needs UVs before the edit ('Uv1')";
-    ASSERT_EQ(submesh().depthShaderProperties & bit(0), 0u);
+    ASSERT_NE(submesh().shaderProperties & variantBit(1), 0u) << "the case needs UVs before the edit ('Uv1')";
+    ASSERT_EQ(submesh().depthShaderProperties & variantBit(0), 0u);
 
     edit([](Material& m){
-        m.baseColorTexture = flatTexture("rc-variant-mask-base", {255, 255, 255, 0});
+        m.baseColorTexture = variantFlatTexture("rc-variant-mask-base", {255, 255, 255, 0});
     });
     settle(true);
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 0, true), "Tex");
-    EXPECT_NE(submesh().depthShaderProperties & bit(0), 0u) << "the shadow and depth passes do not clip by the new base colour ('Tex')";
+    EXPECT_NE(submesh().depthShaderProperties & variantBit(0), 0u) << "the shadow and depth passes do not clip by the new base colour ('Tex')";
     EXPECT_NO_ENGINE_ERRORS();
 }

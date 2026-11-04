@@ -88,7 +88,7 @@ namespace {
     };
 
     // the pixels of the target the batch covers (anything brighter than the black background)
-    int coveredPixels(){
+    int fadeCoveredPixels(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -98,7 +98,7 @@ namespace {
         return covered;
     }
 
-    void expectNear(const Vector3& actual, const Vector3& expected, const char* what){
+    void expectAxisNear(const Vector3& actual, const Vector3& expected, const char* what){
         EXPECT_NEAR(actual.x, expected.x, 1e-3f) << what;
         EXPECT_NEAR(actual.y, expected.y, 1e-3f) << what;
         EXPECT_NEAR(actual.z, expected.z, 1e-3f) << what;
@@ -112,12 +112,12 @@ TEST_F(InstancedFadeGpu, AnOpaqueBillboardFollowsTheCameraRotation){
     batch.setInstancedBillboard(true);
     settle();
     ASSERT_FALSE(instances().renderInstances.empty());
-    expectNear(instanceAxis(2), cameraRotation() * Vector3(0.0f, 0.0f, 1.0f), "the billboard does not face the camera");
+    expectAxisNear(instanceAxis(2), cameraRotation() * Vector3(0.0f, 0.0f, 1.0f), "the billboard does not face the camera");
 
     // the camera turns where it stands
     camera.setTarget(3.0f, 0.0f, 0.0f);
     GpuEnvironment::drawFrames(2);
-    expectNear(instanceAxis(2), cameraRotation() * Vector3(0.0f, 0.0f, 1.0f), "the opaque billboard kept its old rotation");
+    expectAxisNear(instanceAxis(2), cameraRotation() * Vector3(0.0f, 0.0f, 1.0f), "the opaque billboard kept its old rotation");
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -129,16 +129,16 @@ TEST_F(InstancedFadeGpu, CylindricalBillboardTurnsAboutUpOnly){
     settle();
     ASSERT_FALSE(instances().renderInstances.empty());
     // upright, its face toward the camera's side
-    expectNear(instanceAxis(1), Vector3(0.0f, 1.0f, 0.0f), "the cylindrical billboard tilts");
-    expectNear(instanceAxis(2), Vector3(1.0f, 0.0f, 0.0f), "the cylindrical billboard does not face the camera's side");
+    expectAxisNear(instanceAxis(1), Vector3(0.0f, 1.0f, 0.0f), "the cylindrical billboard tilts");
+    expectAxisNear(instanceAxis(2), Vector3(1.0f, 0.0f, 0.0f), "the cylindrical billboard does not face the camera's side");
 
     // straight above, looking down: no side to face, it keeps its yaw
     camera.setPosition(0.0f, 6.0f, 0.0f);
     camera.setTarget(0.0f, 0.0f, 0.0f);
     camera.setUp(0.0f, 0.0f, -1.0f);
     GpuEnvironment::drawFrames(2);
-    expectNear(instanceAxis(1), Vector3(0.0f, 1.0f, 0.0f), "the cylindrical billboard tilts under a camera above it");
-    expectNear(instanceAxis(2), Vector3(1.0f, 0.0f, 0.0f), "a camera straight above changed the yaw");
+    expectAxisNear(instanceAxis(1), Vector3(0.0f, 1.0f, 0.0f), "the cylindrical billboard tilts under a camera above it");
+    expectAxisNear(instanceAxis(2), Vector3(1.0f, 0.0f, 0.0f), "a camera straight above changed the yaw");
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -210,13 +210,13 @@ TEST_F(InstancedFadeGpu, TheNearBandShrinksTheInstance){
     batch.setDistanceFade(true);
     batch.setFadeRange(30.0f, 40.0f);
     settle();
-    const int whole = coveredPixels();
+    const int whole = fadeCoveredPixels();
     ASSERT_GT(whole, 50) << "the instance does not draw";
 
     // the instance 3 m away, the band from 2 m to 4 m: half its size, a quarter of its area
     batch.setNearFadeRange(2.0f, 4.0f);
     GpuEnvironment::drawFrames(3);
-    const int band = coveredPixels();
+    const int band = fadeCoveredPixels();
     EXPECT_GT(band, whole / 10) << "the instance half way through the band vanished";
     EXPECT_LT(band, whole / 2) << "the instance half way through the band is not shrunk";
     EXPECT_NO_ENGINE_ERRORS();

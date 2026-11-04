@@ -34,7 +34,7 @@ using namespace jasperengine::test;
 namespace {
 
     // a 4x4 image of one texel value
-    void registerFlatImage(const std::string& id, std::array<uint8_t, 4> texel){
+    void registerPointsImage(const std::string& id, std::array<uint8_t, 4> texel){
         TextureDataPool::setGenerator(id, [texel]() -> TextureData {
             const int size = 4 * 4 * 4;
             unsigned char* pixels = static_cast<unsigned char*>(std::malloc(size));
@@ -46,7 +46,7 @@ namespace {
         });
     }
 
-    std::array<int, 3> centerPixel(){
+    std::array<int, 3> pointsCenterPixel(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -90,7 +90,7 @@ namespace {
                 return current->getSystem<RenderSystem>()->isAllLoaded();
             })) << "the scene never finished loading";
             GpuEnvironment::drawFrames(3);
-            return centerPixel();
+            return pointsCenterPixel();
         }
 
         // the generated image `id` (TextureDataPool), as an Inspector or script swap gives it
@@ -109,7 +109,7 @@ namespace {
 TEST_F(PointsDepthWriteGpu, TransparentPointsDoNotHideWhatIsDrawnAfter){
     JASPER_REQUIRE_GPU();
     // its texels are all transparent: it draws nothing, so B shows
-    registerFlatImage("rc-points-clear", {255, 255, 255, 0});
+    registerPointsImage("rc-points-clear", {255, 255, 255, 0});
     useTexture("rc-points-clear");
     const std::array<int, 3> center = settledCenter();
     ASSERT_TRUE(frontComponent().isTransparent()) << "Auto Transparency did not find the texture's alpha";
@@ -119,7 +119,7 @@ TEST_F(PointsDepthWriteGpu, TransparentPointsDoNotHideWhatIsDrawnAfter){
 
 TEST_F(PointsDepthWriteGpu, DepthWriteOnKeepsWriting){
     JASPER_REQUIRE_GPU();
-    registerFlatImage("rc-points-clear-on", {255, 255, 255, 0});
+    registerPointsImage("rc-points-clear-on", {255, 255, 255, 0});
     useTexture("rc-points-clear-on");
     frontComponent().depthWrite = MaterialDepthWrite::ENABLED;
     const std::array<int, 3> center = settledCenter();
@@ -129,8 +129,8 @@ TEST_F(PointsDepthWriteGpu, DepthWriteOnKeepsWriting){
 
 TEST_F(PointsDepthWriteGpu, ATextureGainingAlphaMovesThePointsToTheTransparentQueue){
     JASPER_REQUIRE_GPU();
-    registerFlatImage("rc-points-opaque", {255, 255, 255, 255});
-    registerFlatImage("rc-points-clear-later", {255, 255, 255, 0});
+    registerPointsImage("rc-points-opaque", {255, 255, 255, 255});
+    registerPointsImage("rc-points-clear-later", {255, 255, 255, 0});
     useTexture("rc-points-opaque");
     settledCenter();
     ASSERT_FALSE(frontComponent().isTransparent());

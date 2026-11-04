@@ -39,7 +39,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    void writeGrey(const std::string& path, uint8_t value){
+    void writeFoliageGrey(const std::string& path, uint8_t value){
         std::vector<uint8_t> pixels(16 * 16 * 4, value);
         for (size_t i = 3; i < pixels.size(); i += 4)
             pixels[i] = 255;
@@ -47,7 +47,7 @@ namespace {
     }
 
     // a one-triangle glTF, its mesh at the root (what a foliage layer instances)
-    std::string writeTriangle(TempDir& dir){
+    std::string writeFoliageBlade(TempDir& dir){
         const std::array<float, 9> positions = {0, 0, 0, 0.5f, 0, 0, 0, 1, 0};
         const std::array<float, 9> normals = {0, 0, 1, 0, 0, 1, 0, 0, 1};
         std::string bin(reinterpret_cast<const char*>(positions.data()), sizeof(positions));
@@ -80,14 +80,14 @@ namespace {
 
             const std::string height = dir.file("height.png").generic_string();
             const std::string density = dir.file("density.png").generic_string();
-            writeGrey(height, 0);
-            writeGrey(density, 255);
+            writeFoliageGrey(height, 0);
+            writeFoliageGrey(density, 255);
             terrain.setSize(256.0f);
             terrain.setMaxHeight(1.0f);
             terrain.setHeightMap(height);
 
             TerrainFoliageLayer layer;
-            layer.meshPath = writeTriangle(dir);
+            layer.meshPath = writeFoliageBlade(dir);
             layer.densityMap.setPath(density);
             layer.density = 0.05f;
             layer.drawDistance = 50.0f;

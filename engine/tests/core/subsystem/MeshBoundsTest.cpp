@@ -25,7 +25,7 @@ using namespace jasperengine;
 namespace {
 
     // a triangle of float positions in a submesh of its own
-    Entity makeTriangle(Scene& scene, const Vector3& a, const Vector3& b, const Vector3& c){
+    Entity makeBoundsTriangle(Scene& scene, const Vector3& a, const Vector3& b, const Vector3& c){
         const Entity entity = scene.createEntity();
         scene.addComponent<Transform>(entity);
         scene.addComponent<MeshComponent>(entity);
@@ -42,7 +42,7 @@ namespace {
         return entity;
     }
 
-    void expectVector(const Vector3& actual, const Vector3& expected, const char* what){
+    void expectBoundsVector(const Vector3& actual, const Vector3& expected, const char* what){
         EXPECT_NEAR(actual.x, expected.x, 1e-5f) << what;
         EXPECT_NEAR(actual.y, expected.y, 1e-5f) << what;
         EXPECT_NEAR(actual.z, expected.z, 1e-5f) << what;
@@ -52,23 +52,23 @@ namespace {
 
 TEST(MeshBounds, OffsetMeshBoundsHugTheVertices){
     Scene scene;
-    const Entity entity = makeTriangle(scene, Vector3(10, 10, 10), Vector3(11, 10, 10), Vector3(10, 11, 11));
+    const Entity entity = makeBoundsTriangle(scene, Vector3(10, 10, 10), Vector3(11, 10, 10), Vector3(10, 11, 11));
     MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
     scene.getSystem<MeshSystem>()->calculateMeshAABB(mesh);
 
-    expectVector(mesh.verticesAABB.getMinimum(), Vector3(10, 10, 10), "minimum");
-    expectVector(mesh.verticesAABB.getMaximum(), Vector3(11, 11, 11), "maximum");
+    expectBoundsVector(mesh.verticesAABB.getMinimum(), Vector3(10, 10, 10), "minimum");
+    expectBoundsVector(mesh.verticesAABB.getMaximum(), Vector3(11, 11, 11), "maximum");
     EXPECT_EQ(mesh.aabb, mesh.verticesAABB);
 }
 
 TEST(MeshBounds, MeshAroundItsOriginIsUnchanged){
     Scene scene;
-    const Entity entity = makeTriangle(scene, Vector3(-1, -2, -3), Vector3(1, 0, 0), Vector3(0, 2, 3));
+    const Entity entity = makeBoundsTriangle(scene, Vector3(-1, -2, -3), Vector3(1, 0, 0), Vector3(0, 2, 3));
     MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
     scene.getSystem<MeshSystem>()->calculateMeshAABB(mesh);
 
-    expectVector(mesh.verticesAABB.getMinimum(), Vector3(-1, -2, -3), "minimum");
-    expectVector(mesh.verticesAABB.getMaximum(), Vector3(1, 2, 3), "maximum");
+    expectBoundsVector(mesh.verticesAABB.getMinimum(), Vector3(-1, -2, -3), "minimum");
+    expectBoundsVector(mesh.verticesAABB.getMaximum(), Vector3(1, 2, 3), "maximum");
 }
 
 TEST(MeshBounds, EmptyMeshKeepsZero){
@@ -129,5 +129,5 @@ TEST(MeshBounds, PolygonLeftOfItsOriginMeasuresItsOwnExtent){
     scene.getSystem<MeshSystem>()->createMeshPolygon(meshComponent, mesh);
     EXPECT_EQ(meshComponent.width, 4u);
     EXPECT_EQ(meshComponent.height, 4u);
-    expectVector(mesh.verticesAABB.getMaximum(), Vector3(-5, -2, 0), "mesh polygon maximum");
+    expectBoundsVector(mesh.verticesAABB.getMaximum(), Vector3(-5, -2, 0), "mesh polygon maximum");
 }

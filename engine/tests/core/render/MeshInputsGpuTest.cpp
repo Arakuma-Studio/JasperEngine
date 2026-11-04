@@ -40,7 +40,7 @@ using namespace jasperengine::test;
 
 namespace {
 
-    struct QuadInputs {
+    struct InputsQuad {
         bool normals = false;
         bool tangents = false;
         bool uv1 = false;
@@ -49,7 +49,7 @@ namespace {
 
     // a 2x2 quad on y = 0 facing +y, with only the attributes asked for: UV set 1 at (0, 0) and
     // set 2 at (1, 1) on every vertex, so a texture's set decides which texel draws
-    void fillQuad(Scene& scene, Entity entity, const QuadInputs& in){
+    void fillInputsQuad(Scene& scene, Entity entity, const InputsQuad& in){
         MeshComponent& mesh = scene.getComponent<MeshComponent>(entity);
         mesh.submeshes[0].primitiveType = PrimitiveType::TRIANGLES;
         mesh.numSubmeshes = 1;
@@ -74,7 +74,7 @@ namespace {
     }
 
     // an 8x8 image of two halves (left, right)
-    Texture splitTexture(const std::string& id, std::array<uint8_t, 4> left, std::array<uint8_t, 4> right){
+    Texture inputsSplitTexture(const std::string& id, std::array<uint8_t, 4> left, std::array<uint8_t, 4> right){
         TextureDataPool::setGenerator(id, [left, right]() -> TextureData {
             const int size = 8 * 8 * 4;
             unsigned char* pixels = static_cast<unsigned char*>(std::malloc(size));
@@ -93,7 +93,7 @@ namespace {
         return texture;
     }
 
-    std::array<int, 3> centerPixel(){
+    std::array<int, 3> inputsCenterPixel(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
@@ -104,11 +104,11 @@ namespace {
         return {rgba[i], rgba[i + 1], rgba[i + 2]};
     }
 
-    enum class Lighting { Pixel, Vertex, Mixed, Lights2D };
+    enum class InputsLighting { Pixel, Vertex, Mixed, Lights2D };
 
     struct InputsCase {
         const char* name;
-        Lighting lighting;
+        InputsLighting lighting;
         bool tangents;
     };
 
@@ -119,12 +119,12 @@ namespace {
     class MeshInputsGpu : public ::testing::TestWithParam<InputsCase> {};
 
     // the scene of every case: a black background, a camera above the quad
-    struct QuadScene {
+    struct InputsQuadScene {
         Scene scene;
         Camera camera{&scene};
         Mesh quad{&scene};
 
-        QuadScene(){
+        InputsQuadScene(){
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
             camera.setType(CameraType::CAMERA_PERSPECTIVE);
             camera.setPosition(0.0f, 3.0f, 0.01f);
@@ -133,7 +133,7 @@ namespace {
             Engine::setScene(&scene);
         }
 
-        ~QuadScene(){
+        ~InputsQuadScene(){
             Engine::removeScene(&scene);
         }
 
@@ -158,10 +158,10 @@ TEST_P(MeshInputsGpu, ANormallessMeshFeedsEveryInput){
     const InputsCase& c = GetParam();
     const int unfed = ObjectRender::getUnfedVertexInputLoads();
     {
-        QuadScene s;
+        InputsQuadScene s;
         Light sun(&s.scene);
         Light2D light2d(&s.scene);
-        if (c.lighting == Lighting::Lights2D){
+        if (c.lighting == InputsLighting::Lights2D){
             sun.setEnabled(false);
             light2d.setPosition(0.0f, 0.5f, 0.0f);
             light2d.setRange(10.0f);
@@ -174,15 +174,15 @@ TEST_P(MeshInputsGpu, ANormallessMeshFeedsEveryInput){
             sun.setShadows(false);
         }
 
-        QuadInputs in;
+        InputsQuad in;
         in.tangents = c.tangents;
-        fillQuad(s.scene, s.quad.getEntity(), in);
+        fillInputsQuad(s.scene, s.quad.getEntity(), in);
         Material material;
         material.baseColorFactor = Vector4(0.8f, 0.8f, 0.8f, 1.0f);
         material.roughnessFactor = 1.0f;
         material.metallicFactor = 0.0f;
-        if (c.lighting == Lighting::Vertex) material.lighting = MaterialLighting::VERTEX;
-        if (c.lighting == Lighting::Mixed) material.lighting = MaterialLighting::MIXED;
+        if (c.lighting == InputsLighting::Vertex) material.lighting = MaterialLighting::VERTEX;
+        if (c.lighting == InputsLighting::Mixed) material.lighting = MaterialLighting::MIXED;
         s.quad.setMaterial(material);
         s.quad.setFaceCulling(false);
 
@@ -190,35 +190,35 @@ TEST_P(MeshInputsGpu, ANormallessMeshFeedsEveryInput){
         const uint64_t properties = s.submesh().shaderProperties;
         EXPECT_EQ(properties & (uint64_t(1) << 6), 0u) << c.name << ": a mesh without normals asks for 'Nor'";
         EXPECT_EQ(properties & (uint64_t(1) << 8), 0u) << c.name << ": tangents without normals ('Tan')";
-        const std::array<int, 3> center = centerPixel();
+        const std::array<int, 3> center = inputsCenterPixel();
         EXPECT_GT(center[0] + center[1] + center[2], 30) << c.name << ": the lit quad draws black";
     }
     EXPECT_EQ(ObjectRender::getUnfedVertexInputLoads(), unfed) << c.name << ": a pipeline left a vertex input without its buffer";
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-INSTANTIATE_TEST_SUITE_P(Lighting, MeshInputsGpu, ::testing::Values(
-    InputsCase{"Pixel", Lighting::Pixel, false},
-    InputsCase{"PixelWithTangents", Lighting::Pixel, true},
-    InputsCase{"Vertex", Lighting::Vertex, false},
-    InputsCase{"Mixed", Lighting::Mixed, true},
-    InputsCase{"Lights2D", Lighting::Lights2D, false},
-    InputsCase{"Lights2DWithTangents", Lighting::Lights2D, true}),
+INSTANTIATE_TEST_SUITE_P(InputsLighting, MeshInputsGpu, ::testing::Values(
+    InputsCase{"Pixel", InputsLighting::Pixel, false},
+    InputsCase{"PixelWithTangents", InputsLighting::Pixel, true},
+    InputsCase{"Vertex", InputsLighting::Vertex, false},
+    InputsCase{"Mixed", InputsLighting::Mixed, true},
+    InputsCase{"Lights2D", InputsLighting::Lights2D, false},
+    InputsCase{"Lights2DWithTangents", InputsLighting::Lights2D, true}),
     [](const ::testing::TestParamInfo<InputsCase>& info){ return std::string(info.param.name); });
 
 // the 2D lights read tangents only for a normal map: a mesh with tangents and no map takes none
 TEST(MeshInputsGpuSingle, TwoDLightsTakeTangentsOnlyWithANormalMap){
     JASPER_REQUIRE_GPU();
-    QuadScene s;
+    InputsQuadScene s;
     Light2D light2d(&s.scene);
     light2d.setPosition(0.0f, 0.5f, 0.0f);
     light2d.setRange(10.0f);
 
-    QuadInputs in;
+    InputsQuad in;
     in.normals = true;
     in.tangents = true;
     in.uv1 = true;
-    fillQuad(s.scene, s.quad.getEntity(), in);
+    fillInputsQuad(s.scene, s.quad.getEntity(), in);
     Material material;
     material.lighting = MaterialLighting::NONE;
     s.quad.setMaterial(material);
@@ -226,7 +226,7 @@ TEST(MeshInputsGpuSingle, TwoDLightsTakeTangentsOnlyWithANormalMap){
     EXPECT_EQ(s.submesh().shaderProperties & (uint64_t(1) << 22), uint64_t(1) << 22) << "the case is not on the 2D light path ('L2d')";
     EXPECT_EQ(s.submesh().shaderProperties & (uint64_t(1) << 8), 0u) << "'Tan' without a normal map";
 
-    material.normalTexture = splitTexture("rc-flat-normal", {128, 128, 255, 255}, {128, 128, 255, 255});
+    material.normalTexture = inputsSplitTexture("rc-flat-normal", {128, 128, 255, 255}, {128, 128, 255, 255});
     s.quad.setMaterial(material);
     ASSERT_TRUE(s.settle());
     EXPECT_NE(s.submesh().shaderProperties & (uint64_t(1) << 7), 0u) << "no 'Nmp' with the normal map";
@@ -238,7 +238,7 @@ TEST(MeshInputsGpuSingle, TwoDLightsTakeTangentsOnlyWithANormalMap){
 // the block's second vec4 (set1), which a driver may leave out of the flattened array
 TEST(MeshInputsGpuSingle, TwoUvSetsWithoutANormalMapSampleTheirSets){
     JASPER_REQUIRE_GPU();
-    QuadScene s;
+    InputsQuadScene s;
     s.scene.setGlobalIllumination(1.0f);
     Light sun(&s.scene);
     sun.setType(LightType::DIRECTIONAL);
@@ -246,22 +246,22 @@ TEST(MeshInputsGpuSingle, TwoUvSetsWithoutANormalMapSampleTheirSets){
     sun.setIntensity(2.0f);
     sun.setShadows(false);
 
-    QuadInputs in;
+    InputsQuad in;
     in.normals = true;
     in.uv1 = true;
     in.uv2 = true;
-    fillQuad(s.scene, s.quad.getEntity(), in);
+    fillInputsQuad(s.scene, s.quad.getEntity(), in);
     Material material;
     material.metallicFactor = 0.0f;
-    material.baseColorTexture = splitTexture("rc-uv-red-green", {255, 0, 0, 255}, {0, 255, 0, 255});
+    material.baseColorTexture = inputsSplitTexture("rc-uv-red-green", {255, 0, 0, 255}, {0, 255, 0, 255});
     material.baseColorTexCoord = 1;
-    material.metallicRoughnessTexture = splitTexture("rc-uv-rough", {255, 255, 0, 255}, {255, 255, 0, 255});
+    material.metallicRoughnessTexture = inputsSplitTexture("rc-uv-rough", {255, 255, 0, 255}, {255, 255, 0, 255});
     material.metallicRoughnessTexCoord = 0;
     s.quad.setMaterial(material);
     ASSERT_TRUE(s.settle());
     EXPECT_NE(s.submesh().shaderProperties & (uint64_t(1) << 2), 0u) << "the variant has no second UV set ('Uv2')";
     EXPECT_EQ(s.submesh().shaderProperties & (uint64_t(1) << 7), 0u) << "the case has a normal map";
-    const std::array<int, 3> center = centerPixel();
+    const std::array<int, 3> center = inputsCenterPixel();
     EXPECT_GT(center[1], center[0] + 20) << "the base colour did not sample UV set 2 (red is set 1's texel)";
     EXPECT_NO_ENGINE_ERRORS();
 }
