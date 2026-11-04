@@ -1165,6 +1165,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
+    if (!mesh.allowGpuInstancing)
+        code << ind << "mesh.allowGpuInstancing = false;\n";
     code << ind << "mesh.renderInReflectionProbes = " << formatBool(mesh.renderInReflectionProbes) << ";\n";
     code << ind << "mesh.transparent = " << formatBool(mesh.transparent) << ";\n";
     code << ind << "mesh.autoTransparency = " << formatBool(mesh.autoTransparency) << ";\n";

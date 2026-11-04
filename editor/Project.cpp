@@ -1718,6 +1718,18 @@ const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() c
     return htmlUiRender;
 }
 
+void editor::Project::setDrawSubmissionSettings(const DrawSubmissionSettings& settings){
+    drawSubmission = settings;
+    drawSubmission.shadowLodBias = std::clamp(drawSubmission.shadowLodBias, 0, MAX_SHADOW_LOD_BIAS);
+    // the editor's scenes draw with them at once (RenderSystem reads them every update)
+    Engine::setGpuInstancingEnabled(drawSubmission.gpuInstancing);
+    Engine::setShadowLodBias(drawSubmission.shadowLodBias);
+}
+
+const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings() const{
+    return drawSubmission;
+}
+
 void editor::Project::setShadowTier(int platform, ShadowTier tier){
     if (platform < 0 || platform >= ShadowTiers::PLATFORM_COUNT)
         return;
@@ -5670,6 +5682,7 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
+    setDrawSubmissionSettings(DrawSubmissionSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
@@ -7437,6 +7450,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);
@@ -9515,6 +9529,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setTextureDefaults(textureSettings.textureQuality, textureSettings.memoryBudgetMB, textureSettings.lowMemoryFallback);

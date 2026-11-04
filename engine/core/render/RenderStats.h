@@ -183,6 +183,31 @@ namespace jasperengine{
         size_t pipelineCacheSize = 0;
         double gpuFrameMs = 0.0;
         bool gpuFrameValid = false;
+        // by kind of pass, from the pass list (spec S43 R7): the colour passes of the view's
+        // cameras ("camera", "camera layer"), the shadow maps ("shadow", "point shadow" and their
+        // static layers), the depth passes ("depth pre-pass", "gbuffer") and every other one
+        uint32_t mainDraws = 0;
+        uint32_t shadowDraws = 0;
+        uint32_t depthDraws = 0;
+        uint32_t otherDraws = 0;
+        uint64_t mainTriangles = 0;
+        uint64_t shadowTriangles = 0;
+        // automatic GPU instancing (DrawBatchStats) of the last committed frame
+        uint32_t instancedDraws = 0;
+        uint32_t batchedInstances = 0;
+        uint64_t uniformBytesKept = 0;
+        // the frame's visible lists (RenderSystem): mesh draws kept and culled, every pass
+        uint32_t visible = 0;
+        uint32_t culled = 0;
+    };
+
+    // automatic GPU instancing and the state not applied again in a frame (spec S43)
+    struct DrawBatchStats {
+        uint32_t instancedDraws = 0;    // instanced draws made of batches
+        uint32_t batchedInstances = 0;  // the draws they replaced
+        uint64_t uniformBytesKept = 0;  // uniform bytes already in their slot, not applied again
+        uint32_t pipelinesKept = 0;     // pipelines already applied, not applied again
+        uint64_t instanceBytes = 0;     // the batches' instance data
     };
 
 }

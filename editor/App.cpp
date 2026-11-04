@@ -2968,6 +2968,10 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--mesh-lod") {
             if (const char* value = requireValue(i, "--mesh-lod"))
                 benchmarkMeshLod = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--gpu-instancing") {
+            // the project's GPU Instancing for this run (not saved): S43's before and after
+            if (const char* value = requireValue(i, "--gpu-instancing"))
+                benchmarkGpuInstancing = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
@@ -4389,6 +4393,8 @@ void editor::App::tickBenchmark() {
         }
         if (benchmarkMeshLod >= 0)
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
+        if (benchmarkGpuInstancing >= 0)
+            Engine::setGpuInstancingEnabled(benchmarkGpuInstancing != 0);
         if (benchmarkDepthPrepass >= 0)
             selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
         if (benchmarkLitQuality >= 0)
@@ -4438,6 +4444,8 @@ void editor::App::tickBenchmark() {
             benchmarkPhaseFrames = 0;
             benchmarkFps.clear();
             benchmarkDraws.clear();
+            benchmarkRenderStats.clear();
+            benchmarkRenderCpuMs.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
             benchmarkUiTotals.clear();
@@ -4467,6 +4475,8 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
+        benchmarkRenderStats.push_back(SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME));
+        benchmarkRenderCpuMs.push_back(Engine::getFrameDrawCpuTime() * 1000.0);
         if (benchmarkUiStats) {
             // the scene's documents (screen and texture-mode contexts), this frame
             std::shared_ptr<UIDocumentSystem> documents = selected->scene->getSystem<UIDocumentSystem>();
@@ -4621,6 +4631,44 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    // the scenes' draw and the commit of each measured frame (the render submission, S43 R9)
+    json << ",\n  \"renderCpuMs\": {\"median\": " << stat(benchmarkRenderCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkRenderCpuMs, 0.95)
+         << ", \"mean\": " << mean(benchmarkRenderCpuMs) << "}";
+    {
+        // the game frame's render counters averaged over the measured frames (S43 R7; with --play
+        // the frame the Game view shows): deterministic for a still scene
+        const struct { const char* name; double (*value)(const RenderStats&); } counters[] = {
+            {"mainDrawCalls", [](const RenderStats& r) { return (double)r.mainDraws; }},
+            {"shadowDrawCalls", [](const RenderStats& r) { return (double)r.shadowDraws; }},
+            {"depthDrawCalls", [](const RenderStats& r) { return (double)r.depthDraws; }},
+            {"otherDrawCalls", [](const RenderStats& r) { return (double)r.otherDraws; }},
+            {"mainTriangles", [](const RenderStats& r) { return (double)r.mainTriangles; }},
+            {"shadowTriangles", [](const RenderStats& r) { return (double)r.shadowTriangles; }},
+            {"instancedDraws", [](const RenderStats& r) { return (double)r.instancedDraws; }},
+            {"batchedInstances", [](const RenderStats& r) { return (double)r.batchedInstances; }},
+            {"visible", [](const RenderStats& r) { return (double)r.visible; }},
+            {"culled", [](const RenderStats& r) { return (double)r.culled; }},
+            {"uniformBytes", [](const RenderStats& r) { return (double)r.uniformBytes; }},
+            {"uniformBytesKept", [](const RenderStats& r) { return (double)r.uniformBytesKept; }},
+            {"bufferUploadBytes", [](const RenderStats& r) { return (double)r.bufferUploadBytes; }},
+            {"pipelinesApplied", [](const RenderStats& r) { return (double)r.pipelinesApplied; }},
+            {"bindingsApplied", [](const RenderStats& r) { return (double)r.bindingsApplied; }},
+            {"aliveBuffers", [](const RenderStats& r) { return (double)r.aliveBuffers; }},
+            {"aliveImages", [](const RenderStats& r) { return (double)r.aliveImages; }},
+            {"alivePipelines", [](const RenderStats& r) { return (double)r.alivePipelines; }},
+        };
+        json << ",\n  \"render\": {";
+        bool first = true;
+        for (const auto& counter : counters) {
+            double sum = 0.0;
+            for (const RenderStats& frameStats : benchmarkRenderStats)
+                sum += counter.value(frameStats);
+            json << (first ? "" : ", ") << "\"" << counter.name << "\": "
+                 << (benchmarkRenderStats.empty() ? 0.0 : sum / static_cast<double>(benchmarkRenderStats.size()));
+            first = false;
+        }
+        json << "}";
+    }
     if (benchmarkUiStats) {
         // HtmlUIRenderStats averaged over the measured frames
         json << ",\n  \"htmlUi\": {";

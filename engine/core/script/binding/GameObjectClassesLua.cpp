@@ -1841,6 +1841,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("receiveShadows", &Mesh::isReceiveShadows, &Mesh::setReceiveShadows)
         .addProperty("lodEnabled", &Mesh::isLodEnabled, &Mesh::setLodEnabled)
         .addProperty("lodBias", &Mesh::getLodBias, &Mesh::setLodBias)
+        .addProperty("allowGpuInstancing", &Mesh::isAllowGpuInstancing, &Mesh::setAllowGpuInstancing)
         .addProperty("renderInReflectionProbes", &Mesh::isRenderInReflectionProbes, &Mesh::setRenderInReflectionProbes)
         .addProperty("shadowsBillboard", &Mesh::isShadowsBillboard, &Mesh::setShadowsBillboard)
         .addProperty("transparent", &Mesh::isTransparent, &Mesh::setTransparent)

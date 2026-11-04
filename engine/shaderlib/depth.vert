@@ -14,12 +14,9 @@
 //   } customParams;
 
 // mvpMatrix is lightVPMatrix * modelMatrix computed once, so a depth prepass matches
-// mesh.vert bit for bit; a fork may still multiply the two itself
-uniform u_vs_depthParams {
-    mat4 modelMatrix;
-    mat4 lightVPMatrix;
-    mat4 mvpMatrix;
-} depthParams;
+// mesh.vert bit for bit; a fork may still multiply the two itself (u_vs_depthParams, or per
+// instance in an automatically instanced batch: includes/object_depth_params.glsl)
+#include "includes/object_depth_params.glsl"
 
 invariant gl_Position;
 

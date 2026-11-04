@@ -630,6 +630,14 @@ uint64_t ShaderPool::getVatProperty(ShaderType shaderType, bool bones){
     }
 }
 
+uint64_t ShaderPool::getAutoInstancingProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:  return shaderPropertyBit(47);
+        case ShaderType::DEPTH: return shaderPropertyBit(23);
+        default:                return 0;
+    }
+}
+
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
@@ -649,8 +657,8 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 36;
-        case ShaderType::DEPTH:  return 18;
+        case ShaderType::MESH:   return 48;
+        case ShaderType::DEPTH:  return 24;
         case ShaderType::GBUFFER: return 16;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
@@ -735,6 +743,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // and 34, after S10's 'Shq')
             case 34: return shortName ? "Vat" : "Vertex Animation";
             case 35: return shortName ? "Vab" : "Vertex Animation Bones";
+            // automatic GPU instancing (HAS_AUTO_INSTANCING, includes/object_params.glsl, S43):
+            // the object block per instance (getAutoInstancingProperty; bits 36-46 unused)
+            case 47: return shortName ? "Aui" : "Auto Instancing";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -761,6 +772,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 16: return shortName ? "Vat" : "Vertex Animation";
             case 17: return shortName ? "Vab" : "Vertex Animation Bones";
+            // automatic GPU instancing (includes/object_depth_params.glsl, S43; bits 18-22 unused)
+            case 23: return shortName ? "Aui" : "Auto Instancing";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {

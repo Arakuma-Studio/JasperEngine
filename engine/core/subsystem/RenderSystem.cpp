@@ -46,6 +46,8 @@
 #include "shader/ShaderGlobals.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "render/LineRibbonBuilder.h"
+#include "meshoptimizer.h"
+#include <bit>
 #include <cstddef>
 #include <memory>
 #include <algorithm>
@@ -2902,10 +2904,27 @@ void RenderSystem::renderReflectionProbeCapture(){
         const float distance = mesh->worldAABB.isNull() ? 0.0f : mesh->worldAABB.squaredDistance(capturePosition);
         opaqueRenders.push_back({entity, mesh, instanced, terrain, tilemap, &transform, distance, mesh->opaqueSortPriority, (uint32_t)opaqueRenders.size()});
     }
-    std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
-    for (const OpaqueRenderData& opaque : opaqueRenders){
-        drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, captureCamera, captureTransform, PIP_RTT_INVERT, opaque.instmesh, opaque.terrain, opaque.tilemap, mainTerrainView());
+    // the face's detail levels, the Shadow LOD Bias coarser than its own view's (spec S43 R5)
+    const LodView probeLod = computeLodView(captureCamera, captureTransform, (float)resolution, Engine::getShadowLodBias());
+    if (SystemRender::isDrawBatching()){
+        // GPU Instancing: culled once, sorted by state, drawn in batches (spec S43)
+        VisibleFrustum frustum;
+        frustum.planes = captureCamera.frustumPlanes;
+        frustum.farClip = captureCamera.farClip;
+        frustum.eye = capturePosition;
+        buildVisibleQueue(opaqueRenders, frustum, PIP_RTT_INVERT, false);
+    }else{
+        std::sort(opaqueRenders.begin(), opaqueRenders.end(), OpaqueRenderComparison());
     }
+    SystemRender::beginDrawBatch();
+    for (const OpaqueRenderData& opaque : opaqueRenders){
+        passSubmeshMask = opaque.submeshMask;
+        passPreCulled = opaque.preCulled;
+        drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, captureCamera, captureTransform, PIP_RTT_INVERT, opaque.instmesh, opaque.terrain, opaque.tilemap, mainTerrainView(), -1, &probeLod);
+    }
+    SystemRender::endDrawBatch();
+    passSubmeshMask = 0xFFFFFFFFu;
+    passPreCulled = false;
     if (capturePlan.any())
         atmosphere.drawComposites(capturePlan, PIP_RTT_INVERT, 1, captureViewport, resolution, isRenderingFlipped(captureCamera), captureCamera, captureTransform);
 
@@ -6293,6 +6312,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
     };
     std::vector<SubmeshLoad> submeshLoads(mesh.numSubmeshes);
     bool shadersReady = true;
+    // a batch variant's shader still building (GPU Instancing): drawn alone until it is
+    bool batchPending = false;
 
     for (int i = 0; i < mesh.numSubmeshes; i++){
 
@@ -6443,6 +6464,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                     !ShaderPool::isShaderBuildFailed(ShaderType::MESH, passVariant.properties, passShaderId))
                 shadersReady = false;
         }
+        // and its batch variants' (GPU Instancing), which the load does not wait for
+        requestSubmeshBatchShaders(mesh, mesh.submeshes[i], shaderInputs, variant, meshShaderSrc, depthShaderSrc);
     }
     if (!shadersReady){
         return false;
@@ -6799,6 +6822,13 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             return false;
         }
 
+        // the depth render's state and pipelines (its batch variant's too)
+        RenderState depthState;
+        uint16_t depthPipelines = 0;
+        // a custom depth program (library @depth or a fork) gets every attribute it
+        // declares; the built-in one only position, UV, skin and morph targets
+        const bool allDepthAttributes = mesh.submeshes[i].customDepthShaderId != 0;
+
         //----------Start depth shader---------------
         if (needDepthPass){
             ObjectRender& depthRender = mesh.submeshes[i].depthRender;
@@ -6850,10 +6880,6 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                                            ShaderReference::getEnabledFeatures(mesh.submeshes[i].material.shader, mesh.submeshes[i].material.shaderFeatures))){
                 return false;
             }
-            // a custom depth program (library @depth or a fork) gets every attribute it
-            // declares; the built-in one only position, UV, skin and morph targets
-            const bool allDepthAttributes = mesh.submeshes[i].customDepthShaderId != 0;
-
             if (terrain){
                 mesh.submeshes[i].slotVSDepthTerrain = depthShaderData.getUniformBlockIndex(UniformBlockType::DEPTH_TERRAIN_VS_PARAMS);
 
@@ -6953,7 +6979,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             }
 
             // culls as the color pass resolved (a texture shadow casts from both faces)
-            RenderState depthState(colorState.faceCulling, true, colorState.cullingMode, mesh.windingOrder, colorState.faceCulling);
+            depthState = RenderState(colorState.faceCulling, true, colorState.cullingMode, mesh.windingOrder, colorState.faceCulling);
             if (mesh.submeshes[i].textureShadow){
                 depthState.faceCulling = false;
             }
@@ -6961,7 +6987,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             depthState.depthBias = colorState.depthBias;
             depthState.depthBiasSlope = colorState.depthBiasSlope;
 
-            uint16_t depthPipelines = PIP_DEPTH | PIP_SHADOW_DEPTH;
+            depthPipelines = PIP_DEPTH | PIP_SHADOW_DEPTH;
             if (shaderEnvironment.depthPrepass){
                 if (pipelines & PIP_DEFAULT) depthPipelines |= PIP_ZPREPASS;
                 if (pipelines & PIP_RTT) depthPipelines |= PIP_ZPREPASS_RTT;
@@ -7115,6 +7141,12 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         if (!extraPassLoaded){
             return false;
         }
+
+        // the batch variants, on the layouts just loaded (GPU Instancing, spec S43)
+        loadSubmeshBatchVariants(mesh, mesh.submeshes[i], pipelines, colorState, needDepthPass ? depthPipelines : 0, depthState,
+                                 allDepthAttributes, msaaPipelineSamples, buffers, bufferNameToRender, bufferStride, batchPending);
+        attempt.renders.push_back(&mesh.submeshes[i].batchRender);
+        attempt.renders.push_back(&mesh.submeshes[i].batchDepthRender);
     }
     attempt.succeeded = true;
 
@@ -7184,10 +7216,15 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         instmesh->renderVat.clear();
     }
 
+    // the bounds its submeshes are culled with, and shadow indices made again on their next shadow
+    updateSubmeshBounds(mesh);
+    for (int i = 0; i < mesh.numSubmeshes; i++)
+        mesh.submeshes[i].shadowIndices.reset();
+
     mesh.needReload = false;
     // loaded with the current environment; a variant standing in for one still building (or its
-    // GPU object being created) reloads once that one is ready
-    mesh.needVariantReload = standIn;
+    // GPU object being created), or a batch variant still building, reloads once that one is ready
+    mesh.needVariantReload = standIn || batchPending;
     mesh.needUpdateShaderUniforms = false;
     mesh.needUpdateAABB = true;
     mesh.loadCalled = true;
@@ -7862,6 +7899,472 @@ unsigned int RenderSystem::bindSubmeshAttributes(ObjectRender& render, ShaderDat
     return indexed ? indexCount : mesh.vertexCount;
 }
 
+// ---------------------------------------------------------------- automatic GPU instancing (S43)
+
+SubmeshBatchVariant RenderSystem::getSubmeshBatchVariant(const MeshComponent& mesh, const Submesh& submesh, const SubmeshShaderInputs& inputs,
+                                                         const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
+                                                         const std::string& depthShaderSrc){
+    SubmeshBatchVariant batch;
+    if (!Engine::isGpuInstancingEnabled() || !mesh.allowGpuInstancing)
+        return batch;
+    if (inputs.terrain || inputs.instanced || inputs.mirror || inputs.textureRect || inputs.skinning || inputs.morphTarget ||
+            inputs.lattice || inputs.vat != VatVariant::NONE || hasExtraPass(submesh, inputs.terrain) ||
+            submesh.primitiveType != PrimitiveType::TRIANGLES)
+        return batch;
+    bool blended = false;
+    bool transparentQueue = false;
+    resolveSubmeshRenderState(mesh, submesh, inputs.manifest.get(), blended, transparentQueue);
+    if (transparentQueue)
+        return batch;
+    // the most vertex inputs it reads (a library shader's a_smoothNormal counted), with the
+    // instance's vectors within sokol's 16
+    const int vertexInputs = 1 + (inputs.normal ? 1 : 0) + (inputs.tangent ? 1 : 0) + (inputs.texCoord1 ? 1 : 0) +
+                             (inputs.texCoord2 ? 1 : 0) + ((inputs.vertexColor3 || inputs.vertexColor4) ? 1 : 0) +
+                             (inputs.manifest ? 1 : 0);
+    // the built-in shader and the library's switch their object block (includes/object_params.glsl)
+    const bool colorShader = meshShaderSrc.empty() || ShaderReference::isBuiltin(meshShaderSrc) || ShaderReference::isLibrary(meshShaderSrc);
+    if (colorShader && vertexInputs + 10 <= SG_MAX_VERTEX_ATTRIBUTES)
+        batch.properties = variant.properties | ShaderPool::getAutoInstancingProperty(ShaderType::MESH);
+    const bool depthShader = depthShaderSrc.empty() || ShaderReference::isLibrary(depthShaderSrc);
+    if (variant.depthPass && variant.depth && depthShader && vertexInputs + 8 <= SG_MAX_VERTEX_ATTRIBUTES)
+        batch.depthProperties = variant.depthProperties | ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH);
+    return batch;
+}
+
+void RenderSystem::requestSubmeshBatchShaders(MeshComponent& mesh, Submesh& submesh, const SubmeshShaderInputs& inputs,
+                                              const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
+                                              const std::string& depthShaderSrc){
+    const SubmeshBatchVariant batch = getSubmeshBatchVariant(mesh, submesh, inputs, variant, meshShaderSrc, depthShaderSrc);
+    const uint16_t shaderId = batch.properties ? ShaderPool::registerCustomShader(meshShaderSrc) : 0;
+    const uint16_t depthShaderId = batch.depthProperties ? ShaderPool::registerCustomShader(depthShaderSrc) : 0;
+    // a reload keeps the variants it still draws, and lets go of the others with their keys
+    if (submesh.batchShader && (submesh.batchShaderProperties != batch.properties || submesh.batchShaderId != shaderId)){
+        submesh.batchShader.reset();
+        ShaderPool::remove(ShaderType::MESH, submesh.batchShaderProperties, submesh.batchShaderId);
+    }
+    if (submesh.batchDepthShader && (submesh.batchDepthShaderProperties != batch.depthProperties || submesh.batchDepthShaderId != depthShaderId)){
+        submesh.batchDepthShader.reset();
+        ShaderPool::remove(ShaderType::DEPTH, submesh.batchDepthShaderProperties, submesh.batchDepthShaderId);
+    }
+    submesh.batchShaderProperties = batch.properties;
+    submesh.batchShaderId = shaderId;
+    submesh.batchDepthShaderProperties = batch.depthProperties;
+    submesh.batchDepthShaderId = depthShaderId;
+    if (batch.properties && !submesh.batchShader)
+        submesh.batchShader = ShaderPool::get(ShaderType::MESH, batch.properties, shaderId);
+    if (batch.depthProperties && !submesh.batchDepthShader)
+        submesh.batchDepthShader = ShaderPool::get(ShaderType::DEPTH, batch.depthProperties, depthShaderId);
+}
+
+void RenderSystem::loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submesh, uint16_t pipelines, const RenderState& colorState,
+                                            uint16_t depthPipelines, const RenderState& depthState, bool allDepthAttributes, int msaaSamples,
+                                            BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, bool& pending){
+    // a variant not linked below draws nothing: the submesh's draws stay single
+    submesh.batchRender.destroy();
+    submesh.batchDepthRender.destroy();
+
+    auto ready = [&pending](const std::shared_ptr<ShaderRender>& shader, ShaderType type, uint64_t properties, uint16_t id){
+        if (!shader)
+            return false;
+        if (shader->isCreated())
+            return true;
+        if (!ShaderPool::isShaderBuildFailed(type, properties, id))
+            pending = true;
+        return false;
+    };
+
+    if (ready(submesh.batchShader, ShaderType::MESH, submesh.batchShaderProperties, submesh.batchShaderId) &&
+            submesh.shader && submesh.shader->isCreated()){
+        ObjectRender& batch = submesh.batchRender;
+        ShaderData& data = submesh.batchShader->shaderData;
+        batch.beginLoad(submesh.primitiveType);
+        batch.setShader(submesh.batchShader.get());
+        // as the colour render binds them (loadMesh), then the instance's vectors
+        bindSubmeshAttributes(batch, data, mesh, submesh, buffers, bufferNameToRender, bufferStride, nullptr);
+        bool loaded = bindSmoothNormals(batch, data, mesh, submesh, buffers) && bindUnfedMorphInputs(batch, data, mesh, submesh, buffers);
+        if (loaded){
+            static const AttributeType vectors[] = {
+                AttributeType::OBJECTMODEL0, AttributeType::OBJECTMODEL1, AttributeType::OBJECTMODEL2,
+                AttributeType::OBJECTNORMAL0, AttributeType::OBJECTNORMAL1, AttributeType::OBJECTNORMAL2,
+                AttributeType::OBJECTMVP0, AttributeType::OBJECTMVP1, AttributeType::OBJECTMVP2, AttributeType::OBJECTMVP3};
+            int locations[10];
+            for (int k = 0; k < 10; k++)
+                locations[k] = data.getAttrIndex(vectors[k]);
+            batch.addBatchInstanceAttributes(locations, 10, BatchLayout::MESH);
+            loaded = batch.endLoad(pipelines, colorState, msaaSamples) &&
+                     batch.linkBatchVariant(submesh.render, submesh.shader->shaderData, data, "u_vs_pbrParams");
+        }
+        if (!loaded)
+            batch.destroy();
+    }
+
+    if (ready(submesh.batchDepthShader, ShaderType::DEPTH, submesh.batchDepthShaderProperties, submesh.batchDepthShaderId) &&
+            submesh.depthShader && submesh.depthShader->isCreated()){
+        ObjectRender& batch = submesh.batchDepthRender;
+        ShaderData& data = submesh.batchDepthShader->shaderData;
+        batch.beginLoad(submesh.primitiveType);
+        batch.setShader(submesh.batchDepthShader.get());
+        // as the depth render binds them (loadMesh: no skin, morph targets or terrain here)
+        auto depthInput = [allDepthAttributes](AttributeType type){
+            return allDepthAttributes || type == AttributeType::POSITION || type == AttributeType::TEXCOORD1 ||
+                   type == AttributeType::COLOR || type == AttributeType::VAT_INDEX;
+        };
+        for (auto const& buf : buffers){
+            if (!buf.second->isRenderAttributes())
+                continue;
+            if (buf.second->getType() == BufferType::INDEX_BUFFER){
+                Attribute indexattr = buf.second->getAttributes()[AttributeType::INDEX];
+                batch.setIndex(buf.second->getRender(), indexattr.getDataType(), indexattr.getOffset());
+                continue;
+            }
+            for (auto const& attr : buf.second->getAttributes()){
+                if (depthInput(attr.first))
+                    batch.addAttribute(data.getAttrIndex(attr.first), buf.second->getRender(), attr.second.getElements(), attr.second.getDataType(), buf.second->getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+            }
+        }
+        for (auto const& attr : submesh.attributes){
+            if (!bufferNameToRender.count(attr.second.getBufferName()))
+                continue;
+            if (attr.first == AttributeType::INDEX){
+                batch.setIndex(bufferNameToRender[attr.second.getBufferName()], attr.second.getDataType(), attr.second.getOffset());
+            }else if (depthInput(attr.first)){
+                batch.addAttribute(data.getAttrIndex(attr.first), bufferNameToRender[attr.second.getBufferName()], attr.second.getElements(), attr.second.getDataType(), bufferStride[attr.second.getBufferName()], attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
+            }
+        }
+        bool loaded = bindSmoothNormals(batch, data, mesh, submesh, buffers) && bindUnfedMorphInputs(batch, data, mesh, submesh, buffers);
+        if (loaded){
+            static const AttributeType vectors[] = {
+                AttributeType::OBJECTMODEL0, AttributeType::OBJECTMODEL1, AttributeType::OBJECTMODEL2,
+                AttributeType::OBJECTMVP0, AttributeType::OBJECTMVP1, AttributeType::OBJECTMVP2, AttributeType::OBJECTMVP3,
+                AttributeType::OBJECTEXTRA};
+            int locations[8];
+            for (int k = 0; k < 8; k++)
+                locations[k] = data.getAttrIndex(vectors[k]);
+            batch.addBatchInstanceAttributes(locations, 8, BatchLayout::DEPTH);
+            loaded = batch.endLoad(depthPipelines, depthState, msaaSamples) &&
+                     batch.linkBatchVariant(submesh.depthRender, submesh.depthShader->shaderData, data, "u_vs_depthParams");
+        }
+        if (!loaded)
+            batch.destroy();
+    }
+}
+
+void RenderSystem::releaseSubmeshBatchVariants(Submesh& submesh, bool keepShaders){
+    submesh.batchRender.destroy();
+    submesh.batchDepthRender.destroy();
+    if (keepShaders)
+        return;
+    if (submesh.batchShader){
+        submesh.batchShader.reset();
+        ShaderPool::remove(ShaderType::MESH, submesh.batchShaderProperties, submesh.batchShaderId);
+    }
+    if (submesh.batchDepthShader){
+        submesh.batchDepthShader.reset();
+        ShaderPool::remove(ShaderType::DEPTH, submesh.batchDepthShaderProperties, submesh.batchDepthShaderId);
+    }
+    submesh.batchShaderProperties = submesh.batchDepthShaderProperties = 0;
+    submesh.batchShaderId = submesh.batchDepthShaderId = 0;
+}
+
+namespace {
+    // what a submesh's bounds and shadow indices are made of: its position and index ranges on
+    // their GPU buffers (sokol's ids are not reused for a long time), shared by every mesh over them
+    struct SubmeshGeometryKey{
+        uint32_t positionBuffer;
+        uint32_t positionOffset;
+        uint32_t indexBuffer;
+        uint32_t indexOffset;
+        uint32_t indexCount;
+        bool operator==(const SubmeshGeometryKey& o) const{
+            return positionBuffer == o.positionBuffer && positionOffset == o.positionOffset && indexBuffer == o.indexBuffer &&
+                   indexOffset == o.indexOffset && indexCount == o.indexCount;
+        }
+    };
+    struct SubmeshGeometryHash{
+        size_t operator()(const SubmeshGeometryKey& k) const{
+            uint64_t h = 1469598103934665603ull;
+            for (uint32_t v : {k.positionBuffer, k.positionOffset, k.indexBuffer, k.indexOffset, k.indexCount})
+                h = (h ^ v) * 1099511628211ull;
+            return (size_t)h;
+        }
+    };
+
+    // the readable float positions and 16/32-bit indices of a submesh, with their key
+    struct SubmeshGeometry{
+        Buffer* positions = nullptr;
+        Attribute* position = nullptr;
+        Buffer* indices = nullptr;
+        Attribute* index = nullptr;
+        SubmeshGeometryKey key{};
+    };
+
+    bool readable(const Buffer* buffer, const Attribute* attribute, unsigned int elementSize){
+        if (!buffer || !attribute || !buffer->getData())
+            return false;
+        const size_t stride = std::max(buffer->getStride(), elementSize);
+        return attribute->getCount() == 0 ||
+               (size_t)attribute->getOffset() + (size_t)(attribute->getCount() - 1) * stride + elementSize <= buffer->getSize();
+    }
+}
+
+void RenderSystem::updateSubmeshBounds(MeshComponent& mesh){
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++)
+        mesh.submeshes[s].localBounds = AABB();
+    // a single submesh's bounds are the mesh's
+    if (mesh.numSubmeshes < 2)
+        return;
+
+    static std::unordered_map<SubmeshGeometryKey, AABB, SubmeshGeometryHash> cache;
+    static uint64_t cacheContext = 0;
+    if (cacheContext != SystemRender::getContextId()){
+        cache.clear();
+        cacheContext = SystemRender::getContextId();
+    }
+
+    std::map<std::string, Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0)
+        buffers["vertices"] = &mesh.buffer;
+    if (mesh.indices.getSize() > 0)
+        buffers["indices"] = &mesh.indices;
+    for (int i = 0; i < mesh.numExternalBuffers; i++)
+        buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        Submesh& submesh = mesh.submeshes[s];
+        const LodAttribute position = findSubmeshAttribute(submesh, buffers, AttributeType::POSITION);
+        const LodAttribute index = findSubmeshAttribute(submesh, buffers, AttributeType::INDEX);
+        // only an indexed submesh draws part of the vertices
+        if (!position.attribute || !index.attribute || position.attribute->getDataType() != AttributeDataType::FLOAT ||
+                position.attribute->getElements() < 3)
+            continue;
+        const AttributeDataType indexType = index.attribute->getDataType();
+        const unsigned int indexSize = (indexType == AttributeDataType::UNSIGNED_INT) ? 4 : 2;
+        if ((indexType != AttributeDataType::UNSIGNED_INT && indexType != AttributeDataType::UNSIGNED_SHORT) ||
+                !readable(position.buffer, position.attribute, 12) || !readable(index.buffer, index.attribute, indexSize))
+            continue;
+        const SubmeshGeometryKey key{position.buffer->getRender()->backend.get().id, position.attribute->getOffset(),
+                                     index.buffer->getRender()->backend.get().id, index.attribute->getOffset(), index.attribute->getCount()};
+        auto cached = cache.find(key);
+        if (cached != cache.end()){
+            submesh.localBounds = cached->second;
+            continue;
+        }
+        AABB bounds;
+        const unsigned int vertexCount = position.attribute->getCount();
+        const unsigned int count = index.attribute->getCount();
+        for (unsigned int k = 0; k < count; k++){
+            const uint32_t v = (indexType == AttributeDataType::UNSIGNED_INT) ? index.buffer->getUInt32(index.attribute, k)
+                                                                             : index.buffer->getUInt16(index.attribute, k);
+            if (v < vertexCount)
+                bounds.merge(position.buffer->getVector3(position.attribute, v));
+        }
+        submesh.localBounds = bounds;
+        if (key.positionBuffer != SG_INVALID_ID && key.indexBuffer != SG_INVALID_ID)
+            cache[key] = bounds;
+    }
+}
+
+std::shared_ptr<ShadowIndexBuffer> RenderSystem::shadowIndexBuffer(MeshComponent& mesh, Submesh& submesh){
+    static std::unordered_map<SubmeshGeometryKey, std::weak_ptr<ShadowIndexBuffer>, SubmeshGeometryHash> shared;
+    static uint64_t sharedContext = 0;
+    if (sharedContext != SystemRender::getContextId()){
+        shared.clear();
+        sharedContext = SystemRender::getContextId();
+    }
+    std::shared_ptr<ShadowIndexBuffer> result = std::make_shared<ShadowIndexBuffer>();
+
+    std::map<std::string, Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0)
+        buffers["vertices"] = &mesh.buffer;
+    if (mesh.indices.getSize() > 0)
+        buffers["indices"] = &mesh.indices;
+    for (int i = 0; i < mesh.numExternalBuffers; i++)
+        buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+    const LodAttribute position = findSubmeshAttribute(submesh, buffers, AttributeType::POSITION);
+    const LodAttribute index = findSubmeshAttribute(submesh, buffers, AttributeType::INDEX);
+    if (!position.attribute || !index.attribute || position.attribute->getDataType() != AttributeDataType::FLOAT ||
+            position.attribute->getElements() < 3)
+        return result;
+    const AttributeDataType indexType = index.attribute->getDataType();
+    const bool wide = indexType == AttributeDataType::UNSIGNED_INT;
+    if ((!wide && indexType != AttributeDataType::UNSIGNED_SHORT) || index.attribute->getOffset() != 0 ||
+            !readable(position.buffer, position.attribute, 12) || !readable(index.buffer, index.attribute, wide ? 4 : 2))
+        return result;
+
+    const SubmeshGeometryKey key{position.buffer->getRender()->backend.get().id, position.attribute->getOffset(),
+                                 index.buffer->getRender()->backend.get().id, index.attribute->getOffset(), index.attribute->getCount()};
+    auto found = shared.find(key);
+    if (found != shared.end()){
+        if (std::shared_ptr<ShadowIndexBuffer> existing = found->second.lock())
+            return existing;
+    }
+
+    const unsigned int vertexCount = position.attribute->getCount();
+    const unsigned int count = index.attribute->getCount();
+    std::vector<float> positions((size_t)vertexCount * 3);
+    for (unsigned int v = 0; v < vertexCount; v++){
+        const Vector3 p = position.buffer->getVector3(position.attribute, v);
+        positions[(size_t)v * 3] = p.x;
+        positions[(size_t)v * 3 + 1] = p.y;
+        positions[(size_t)v * 3 + 2] = p.z;
+    }
+    std::vector<unsigned int> source(count);
+    for (unsigned int k = 0; k < count; k++){
+        source[k] = wide ? index.buffer->getUInt32(index.attribute, k) : index.buffer->getUInt16(index.attribute, k);
+        if (source[k] >= vertexCount)
+            return result;
+    }
+    std::vector<unsigned int> remapped(count);
+    meshopt_generateShadowIndexBuffer(remapped.data(), source.data(), count, positions.data(), vertexCount, sizeof(float) * 3, sizeof(float) * 3);
+
+    // worth a buffer when the triangles reference more than 10% fewer vertices
+    std::vector<uint8_t> used(vertexCount, 0);
+    size_t vertices = 0;
+    for (unsigned int v : source)
+        vertices += used[v] ? 0 : (used[v] = 1);
+    std::fill(used.begin(), used.end(), 0);
+    size_t positionsUsed = 0;
+    for (unsigned int v : remapped)
+        positionsUsed += used[v] ? 0 : (used[v] = 1);
+    if (positionsUsed * 10 >= vertices * 9)
+        return result;
+
+    const size_t elementSize = wide ? 4 : 2;
+    result->bytes.resize((size_t)count * elementSize);
+    for (unsigned int k = 0; k < count; k++){
+        if (wide){
+            const uint32_t v = remapped[k];
+            std::memcpy(result->bytes.data() + (size_t)k * 4, &v, 4);
+        }else{
+            const uint16_t v = (uint16_t)remapped[k];
+            std::memcpy(result->bytes.data() + (size_t)k * 2, &v, 2);
+        }
+    }
+    result->buffer.setType(BufferType::INDEX_BUFFER);
+    result->buffer.setUsage(BufferUsage::IMMUTABLE);
+    result->buffer.setData(result->bytes.data(), result->bytes.size());
+    {
+        JE_GPU_ALLOC_SCOPE(Meshes, "Shadow indices");
+        if (!result->buffer.getRender()->createBuffer((unsigned int)result->bytes.size(), result->bytes.data(), BufferType::INDEX_BUFFER, BufferUsage::IMMUTABLE))
+            return std::make_shared<ShadowIndexBuffer>();
+    }
+    result->count = count;
+    shared[key] = result;
+    return result;
+}
+
+void RenderSystem::offerDrawBatch(ObjectRender& render, ObjectRender& variant, int objectSlot, bool mirrored){
+    // (a mirrored draw has a pipeline of its own: it draws alone)
+    if (SystemRender::isDrawBatching() && !mirrored && objectSlot >= 0 && variant.isBatchVariant())
+        render.setNextDrawBatch(&variant, objectSlot, 0.0f);
+}
+
+namespace {
+    // what a draw of the submesh binds and applies of its material, as a sort key (draws of one
+    // material sort together: a batch is drawn from consecutive draws)
+    uint32_t materialKey(const Submesh& submesh){
+        const Material& material = submesh.material;
+        uint32_t key = VisibleList::mixKey(0, (uint64_t)(uintptr_t)submesh.shader.get());
+        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.baseColorTexture.getRender(nullptr));
+        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.normalTexture.getRender(nullptr));
+        key = VisibleList::mixKey(key, (uint64_t)(uintptr_t)material.metallicRoughnessTexture.getRender(nullptr));
+        uint32_t factor[4];
+        std::memcpy(factor, &material.baseColorFactor, sizeof(factor));
+        key = VisibleList::mixKey(key, ((uint64_t)factor[0] << 32) | factor[1]);
+        key = VisibleList::mixKey(key, ((uint64_t)factor[2] << 32) | factor[3]);
+        return key;
+    }
+
+    uint32_t meshKey(const ObjectRender& render){
+        return render.getVertexBufferId() ^ (render.getIndexBufferId() << 6);
+    }
+}
+
+void RenderSystem::buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines){
+    const size_t count = queue.size();
+    visibleCandidates.resize(count);
+    visibleResults.resize(count);
+    for (size_t i = 0; i < count; i++){
+        const OpaqueRenderData& entry = queue[i];
+        const MeshComponent& mesh = *entry.mesh;
+        VisibleCandidate& candidate = visibleCandidates[i];
+        candidate = VisibleCandidate();
+        candidate.numSubmeshes = mesh.numSubmeshes;
+        candidate.worldBounds = mesh.worldAABB;
+        // what drawMesh tests on its own (isBatchVisible: instances, terrains, tilemaps and the
+        // editor's per-pass overrides) is kept here; a mesh's bounds are tested once here
+        bool own = cullsBatch(mesh, entry.instmesh) && !entry.instmesh && !entry.terrain && !entry.tilemap;
+#ifdef JASPERENGINE_EDITOR
+        own = own && !(passObjects && isObjectOverridden(*entry.transform));
+#endif
+        candidate.cullBounds = own;
+        // the submeshes one by one where their rest bounds are where they draw
+        bool rest = own && !entry.transform->billboard && mesh.skinnedAABB.isNull() && mesh.animatedBounds.isNull() &&
+                    mesh.lattice.count == 0;
+        for (unsigned int s = 0; s < mesh.numSubmeshes && rest; s++)
+            rest = !mesh.submeshes[s].hasMorphTarget;
+        if (rest){
+            candidate.submeshBounds = &mesh.submeshes[0].localBounds;
+            candidate.submeshStride = sizeof(Submesh);
+            candidate.model = &entry.transform->modelMatrix;
+        }
+    }
+
+    VisibleList::cull(frustum, visibleCandidates.data(), count, visibleResults.data(), true);
+
+    visibleEntries.clear();
+    uint32_t visible = 0;
+    uint32_t culled = 0;
+    for (size_t i = 0; i < count; i++){
+        const OpaqueRenderData& entry = queue[i];
+        MeshComponent& mesh = *entry.mesh;
+        const uint32_t all = (mesh.numSubmeshes >= 32) ? 0xFFFFFFFFu : ((1u << mesh.numSubmeshes) - 1u);
+        const VisibleCandidate& candidate = visibleCandidates[i];
+        const uint32_t mask = candidate.cullBounds ? visibleResults[i].submeshMask : all;
+        visible += (uint32_t)std::popcount(mask);
+        culled += (uint32_t)std::popcount(all & ~mask);
+        if (mask == 0)
+            continue;
+
+        auto keyOf = [&](unsigned int s){
+            const Submesh& submesh = mesh.submeshes[s];
+            const ObjectRender& render = depthPipelines ? submesh.depthRender : submesh.render;
+            return VisibleList::opaqueKey(entry.sortPriority, false, render.getPipelineId(pipType), materialKey(submesh),
+                                          meshKey(render), std::sqrt(std::max(entry.distanceToCamera, 0.0f)), frustum.farClip);
+        };
+        // a mesh without extra passes splits into its batchable submeshes, each sorted with its
+        // like, and the rest in one entry (a mesh's extra passes go around all its draws)
+        bool splits = mesh.numSubmeshes > 1 && !entry.instmesh && !entry.terrain && !entry.tilemap;
+        for (unsigned int s = 0; s < mesh.numSubmeshes && splits; s++)
+            splits = !mesh.submeshes[s].extraPass;
+        uint32_t rest = mask;
+        if (splits){
+            for (unsigned int s = 0; s < mesh.numSubmeshes && s < 32; s++){
+                const Submesh& submesh = mesh.submeshes[s];
+                const bool batches = depthPipelines ? submesh.batchDepthRender.isBatchVariant() : submesh.batchRender.isBatchVariant();
+                if (!(mask & (1u << s)) || !batches)
+                    continue;
+                OpaqueRenderData split = entry;
+                split.submeshMask = 1u << s;
+                split.sortKey = keyOf(s);
+                split.preCulled = candidate.cullBounds;
+                visibleEntries.push_back(split);
+                rest &= ~(1u << s);
+            }
+        }
+        if (rest != 0){
+            OpaqueRenderData whole = entry;
+            whole.submeshMask = rest;
+            whole.sortKey = keyOf((unsigned int)std::countr_zero(rest));
+            whole.preCulled = candidate.cullBounds;
+            visibleEntries.push_back(whole);
+        }
+    }
+    std::sort(visibleEntries.begin(), visibleEntries.end(), OpaqueKeyComparison());
+    queue.swap(visibleEntries);
+    Engine::addVisibilityStats(visible, culled);
+}
+
 void RenderSystem::releaseSubmeshExtraPass(Submesh& submesh, bool keepShader){
     if (!submesh.extraPass)
         return;
@@ -8189,14 +8692,18 @@ void RenderSystem::updateMeshLodErrors(MeshComponent& mesh){
     instanceViewsDirty = true;
 }
 
-// world units one pixel of the view being drawn spans through camera
-RenderSystem::LodView RenderSystem::computeLodView(const CameraComponent& camera, const Transform& cameraTransform) const{
-    float viewHeight = targetViewRect().getHeight();
-    if (isFixedResolutionActive())
-        viewHeight = (float)scene->getFixedResolutionHeight();
+// world units one pixel of the view being drawn spans through camera (viewHeight > 0: a view of
+// that many pixels, else the target's); levelBias: levels coarser than that view selects
+RenderSystem::LodView RenderSystem::computeLodView(const CameraComponent& camera, const Transform& cameraTransform, float viewHeight, unsigned int levelBias) const{
+    if (viewHeight <= 0.0f){
+        viewHeight = targetViewRect().getHeight();
+        if (isFixedResolutionActive())
+            viewHeight = (float)scene->getFixedResolutionHeight();
+    }
     viewHeight = std::max(viewHeight, 1.0f);
 
     LodView view;
+    view.levelBias = levelBias;
     view.enabled = scene->isMeshLodEnabled();
     view.threshold = scene->getMeshLodThreshold();
     view.origin = cameraTransform.worldPosition;
@@ -8230,7 +8737,8 @@ unsigned int RenderSystem::selectMeshLod(const MeshComponent& mesh, const LodVie
             break;
         level = l;
     }
-    return level;
+    // a shadow pass, a probe or a render-to-texture camera: coarser by the Shadow LOD Bias
+    return std::min(level + view->levelBias, mesh.numLods - 1);
 }
 
 // culled slice of every instanced mesh for the main camera and each shadow slot;
@@ -8381,6 +8889,9 @@ void RenderSystem::buildInstanceView(InstanceView& view, InstanceViewRange& rang
 // instances and detail level a pass draws a mesh with; false when there is nothing to draw
 bool RenderSystem::selectMeshDraw(Entity entity, MeshComponent& mesh, Transform& transform, InstancedMeshComponent* instmesh, bool ownLod, int instanceView, const LodView* lodView, MeshDraw& draw){
     if (instmesh){
+        // a view whose upload was refused this frame draws nothing rather than stale instances
+        if (instanceView >= 0 && !instanceViewOf(instanceView).current)
+            return false;
         const InstanceViewRange* range = (instanceView >= 0) ? &instanceRange(entity, *instmesh, instanceView) : nullptr;
         draw.instanceCount = range ? range->count() : instmesh->numVisible;
         draw.instanceFirst = range ? range->offset : 0;
@@ -8426,6 +8937,11 @@ void RenderSystem::drawSubmeshGeometry(ObjectRender& render, Entity entity, Mesh
         if (level > 0){
             render.setIndexBuffer(submesh.lodIndices.getRender());
             render.draw(lodData->levels[level].indexBase, lodData->levels[level].indexCount, instances);
+            render.resetIndexBuffer();
+        }else if (passShadowIndices){
+            // the same triangles over the first vertex of each position (a shadow pass)
+            render.setIndexBuffer(passShadowIndices->buffer.getRender());
+            render.draw(0, submesh.vertexCount, instances);
             render.resetIndexBuffer();
         }else{
             render.draw(0, submesh.vertexCount, instances);
@@ -8561,9 +9077,13 @@ void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
             render->createBuffer(view.capacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
         }
         view.buffer.setData((unsigned char*)view.data.data(), size);
-        // past the frame's stream staging buffer: tried again next frame
-        if (size > 0 && !render->updateBuffer(size, view.buffer.getData()))
+        // past the frame's stream staging buffer: tried again next frame, its instances not drawn
+        // meanwhile (the buffer holds the previous list, or nothing when it grew)
+        view.current = true;
+        if (size > 0 && !render->updateBuffer(size, view.buffer.getData())){
             view.needUpload = true;
+            view.current = false;
+        }
 
         // the VAT batches' states, alike
         if (!view.vatData.empty()){
@@ -8576,8 +9096,10 @@ void RenderSystem::uploadInstanceViews(InstanceView* views, size_t count){
                 vatRender->createBuffer(view.vatCapacity, nullptr, BufferType::VERTEX_BUFFER, BufferUsage::STREAM);
             }
             view.vatBuffer.setData((unsigned char*)view.vatData.data(), vatSize);
-            if (!vatRender->updateBuffer(vatSize, view.vatBuffer.getData()))
+            if (!vatRender->updateBuffer(vatSize, view.vatBuffer.getData())){
                 view.needUpload = true;
+                view.current = false;
+            }
         }
     }
 }
@@ -8608,7 +9130,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             return false;
         }
 
-        if (!isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)) {
+        // (a visible list culled it already: passPreCulled)
+        if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, camera.farClip, camera.frustumPlanes)) {
             return false;
         }
 
@@ -8666,9 +9189,11 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // the stencil its object marks) covers the submeshes that have not marked it yet.
         // a split mesh drawn in one queue: the submeshes of that queue (passSubmeshQueue)
         const SubmeshQueue submeshQueue = passSubmeshQueue;
+        // and of a visible list's entry, its submeshes (passSubmeshMask)
+        const uint32_t submeshMask = passSubmeshMask;
         auto inQueue = [&](int i){
-            return submeshQueue == SubmeshQueue::ALL ||
-                (submeshQueue == SubmeshQueue::TRANSPARENT) == mesh.submeshes[i].alphaBlend;
+            return (i >= 32 || (submeshMask & (1u << i))) && (submeshQueue == SubmeshQueue::ALL ||
+                (submeshQueue == SubmeshQueue::TRANSPARENT) == mesh.submeshes[i].alphaBlend);
         };
         bool hasBeforePasses = false;
         bool hasAfterPasses = false;
@@ -8970,6 +9495,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.draw(range.offset, range.count, instanceCount);
                 }
             }else{
+                // (GPU Instancing: it may join the draws of its like, spec S43)
+                if (!instmesh && !terrain)
+                    offerDrawBatch(render, mesh.submeshes[i].batchRender, mesh.submeshes[i].slotVSParams, mirroredDraw || passNoFaceCulling() || viewMirrorBound);
                 drawSubmeshGeometry(render, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
             }
 
@@ -9000,7 +9528,8 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             return false;
         }
 
-        if (!isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
+        // (a visible list culled it already: passPreCulled)
+        if (!passPreCulled && !isBatchVisible(entity, mesh, transform, instmesh, instanceView, cameraFar, frustumPlanes)) {
             return false;
         }
 
@@ -9029,6 +9558,9 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                 mesh.submeshes[i].needUpdateDepthTexture = false;
                 continue;
             }
+            // a visible list's entry: its submeshes
+            if (i < 32 && !(passSubmeshMask & (1u << i)))
+                continue;
 
             // a shader whose @state says shadows=off casts none (its depth program may
             // not even be loaded when no other depth pass needs it)
@@ -9077,9 +9609,21 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
 
             applyFrameBlock(depthRender, depthBindings);
 
+            // a shadow slot's own cut of the terrain (spec S43 R5), else the camera's
+            bool ownTerrainCut = false;
             if (terrain){
                 instanceCount = terrainNodes->nodesbuffer[i].getCount();
                 depthRender.replaceVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), terrainNodes->nodesbuffer[i].getRender());
+                if (passShadowTerrain && i < 2){
+                    const std::vector<float>& nodes = passShadowTerrain->nodes[i];
+                    if (nodes.empty())
+                        continue;
+                    // (the camera's cut when it does not fit this frame)
+                    if (depthRender.bindStreamVertexBuffer(terrain->views[0].nodesbuffer[i].getRender(), nodes.data(), nodes.size() * sizeof(float))){
+                        instanceCount = (unsigned int)(nodes.size() / 5);
+                        ownTerrainCut = true;
+                    }
+                }
             }
 
             //model, mvp matrix
@@ -9125,8 +9669,8 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             }
 
             if (terrain){
-                // shadow depth renders the view camera's selection
-                terrain->eyePos = terrainNodes->nodesEyePos;
+                // shadow depth renders the view camera's selection, or the slot's own (from its eye)
+                terrain->eyePos = ownTerrainCut ? passShadowTerrain->eye : terrainNodes->nodesEyePos;
                 depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthTerrain, sizeof(float) * 8, &(terrain->eyePos));
             }
 
@@ -9138,12 +9682,37 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
                     depthRender.draw(range.offset, range.count, instanceCount);
                 }
             }else{
+                // a shadow pass draws position-only indices where they pay off (spec S43 R5)
+                const ShadowIndexBuffer* shadowIndices = nullptr;
+                if (pipelineType == PIP_SHADOW_DEPTH && usesShadowIndices(mesh, mesh.submeshes[i], instmesh, terrain)){
+                    if (!mesh.submeshes[i].shadowIndices)
+                        mesh.submeshes[i].shadowIndices = shadowIndexBuffer(mesh, mesh.submeshes[i]);
+                    if (mesh.submeshes[i].shadowIndices->count == mesh.submeshes[i].vertexCount)
+                        shadowIndices = mesh.submeshes[i].shadowIndices.get();
+                }
+                if (!instmesh && !terrain)
+                    offerDrawBatch(depthRender, mesh.submeshes[i].batchDepthRender, mesh.submeshes[i].slotVSDepthParams, mirroredDraw || passNoFaceCulling());
+                passShadowIndices = shadowIndices;
                 drawSubmeshGeometry(depthRender, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
+                passShadowIndices = nullptr;
             }
         }
     }
 
     return true;
+}
+
+// a shadow pass's depth program that reads positions only (the built-in one, opaque), on a
+// mesh whose vertices stay where they are loaded
+bool RenderSystem::usesShadowIndices(const MeshComponent& mesh, const Submesh& submesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain) const{
+    if (terrain || submesh.customDepthShaderId != 0 || submesh.primitiveType != PrimitiveType::TRIANGLES ||
+            submesh.hasSkinning || submesh.hasMorphTarget || mesh.lattice.variantActive || mesh.vat.variantActive != VatVariant::NONE)
+        return false;
+    // no alpha clip, texture rect, instance fade or other input: the instance matrix of an
+    // InstancedMesh ('Ist') and a batch's ('Aui') move positions alike
+    const uint64_t positionsOnly = ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH) |
+                                   ShaderPool::getDepthMeshProperties(false, false, false, false, false, false, true);
+    return (submesh.depthShaderProperties & ~positionsOnly) == 0;
 }
 
 void RenderSystem::loadSSAO(){
@@ -9380,6 +9949,11 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
     ssaoPassRender.startRenderPass(&target.getRender());
     passResolution = Vector2((float)width, (float)height);
 
+    // GPU Instancing: the meshes are listed, then culled, sorted and drawn (spec S43)
+    const bool batching = SystemRender::isDrawBatching();
+    depthQueue.clear();
+    const Vector3 eye = perCameraTransform ? perCameraTransform->worldPosition : camera.viewMatrix.inverse() * Vector3(0, 0, 0);
+
     auto transforms = scene->getComponentArray<Transform>();
     for (int i = 0; i < transforms->size(); i++){
         Transform& transform = transforms->getComponentFromIndex(i);
@@ -9407,10 +9981,35 @@ void RenderSystem::renderOpaqueDepth(CameraComponent& camera, Framebuffer& targe
         TerrainComponent* terrain = scene->findComponent<TerrainComponent>(entity);
         TilemapComponent* tilemap = scene->findComponent<TilemapComponent>(entity);
 
+        if (batching){
+            const float distance = mesh.worldAABB.isNull() ? 0.0f : mesh.worldAABB.squaredDistance(eye);
+            depthQueue.push_back({entity, &mesh, instmesh, terrain, tilemap, &transform, distance, mesh.opaqueSortPriority, (uint32_t)depthQueue.size()});
+            continue;
+        }
         const Matrix4& model = objectModel(transform);
         vs_depth_t params = {model, renderVP, renderVP * model};
         passSubmeshQueue = mesh.isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
         drawMeshDepth(entity, mesh, transform, camera.farClip, camera.frustumPlanes, params, instmesh, terrain, tilemap, true, PIP_DEPTH, instanceView, lodView);
+    }
+    if (batching){
+        // GPU Instancing: culled once, sorted by state and drawn in batches (spec S43)
+        VisibleFrustum frustum;
+        frustum.planes = camera.frustumPlanes;
+        frustum.farClip = camera.farClip;
+        frustum.eye = eye;
+        buildVisibleQueue(depthQueue, frustum, PIP_DEPTH, true);
+        SystemRender::beginDrawBatch();
+        for (const OpaqueRenderData& opaque : depthQueue){
+            const Matrix4& model = objectModel(*opaque.transform);
+            vs_depth_t params = {model, renderVP, renderVP * model};
+            passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
+            passSubmeshMask = opaque.submeshMask;
+            passPreCulled = opaque.preCulled;
+            drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, PIP_DEPTH, instanceView, lodView);
+        }
+        SystemRender::endDrawBatch();
+        passSubmeshMask = 0xFFFFFFFFu;
+        passPreCulled = false;
     }
     passSubmeshQueue = SubmeshQueue::ALL;
     ssaoPassRender.endRenderPass();
@@ -10736,6 +11335,8 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
                 submesh.depthShader.reset();
                 ShaderPool::remove(ShaderType::DEPTH, submesh.depthShaderProperties, submesh.customDepthShaderId);
             }
+            // the batch variants' (GPU Instancing)
+            releaseSubmeshBatchVariants(submesh, false);
             // G-buffer shader may have been loaded for SSR
             if (submesh.gbufferShader){
                 submesh.gbufferShader.reset();
@@ -10803,6 +11404,9 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.render.destroy();
         submesh.depthRender.destroy();
         submesh.gbufferRender.destroy();
+        submesh.batchRender.destroy();
+        submesh.batchDepthRender.destroy();
+        submesh.shadowIndices.reset();
 
         //Shaders uniforms
         submesh.slotVSParams = -1;
@@ -12825,6 +13429,7 @@ void RenderSystem::updateTerrain(TerrainComponent& terrain, const Transform& tra
 
         for (int s = 0; s < 2; s++){
             view.nodesbuffer[s].clear();
+            view.nodeIndices[s].clear();
         }
 
         for (int i = 0; i < (terrain.rootGridSize*terrain.rootGridSize); i++){
@@ -12866,12 +13471,14 @@ bool RenderSystem::isTerrainNodeInSphere(Vector3 position, float radius, const A
     return dist2 <= r2;
 }
 
-// appends one selected CDLOD node's per-instance data (position, size, range, resolution)
-static void appendTerrainNode(InterleavedBuffer& buffer, const TerrainNode& node){
-    buffer.addVector2(AttributeType::TERRAINNODEPOSITION, node.position);
-    buffer.addFloat(AttributeType::TERRAINNODESIZE, node.size);
-    buffer.addFloat(AttributeType::TERRAINNODERANGE, node.currentRange);
-    buffer.addFloat(AttributeType::TERRAINNODERESOLUTION, node.resolution);
+// appends one selected CDLOD node's per-instance data (position, size, range, resolution), and
+// which node it is
+static void appendTerrainNode(TerrainView& view, int buffer, const TerrainComponent& terrain, const TerrainNode& node){
+    view.nodesbuffer[buffer].addVector2(AttributeType::TERRAINNODEPOSITION, node.position);
+    view.nodesbuffer[buffer].addFloat(AttributeType::TERRAINNODESIZE, node.size);
+    view.nodesbuffer[buffer].addFloat(AttributeType::TERRAINNODERANGE, node.currentRange);
+    view.nodesbuffer[buffer].addFloat(AttributeType::TERRAINNODERESOLUTION, node.resolution);
+    view.nodeIndices[buffer].push_back((uint32_t)(&node - terrain.nodes.data()));
 }
 
 bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainNode& terrainNode, int lodLevel, TerrainView& view){
@@ -12893,7 +13500,7 @@ bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, const Transfo
         //Full resolution
         terrainNode.resolution = terrain.resolution;
         terrainNode.visible = true;
-        appendTerrainNode(view.nodesbuffer[0], terrainNode);
+        appendTerrainNode(view, 0, terrain, terrainNode);
 
         return true;
     } else {
@@ -12902,7 +13509,7 @@ bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, const Transfo
             //Full resolution
             terrainNode.resolution = terrain.resolution;
             terrainNode.visible = true;
-            appendTerrainNode(view.nodesbuffer[0], terrainNode);
+            appendTerrainNode(view, 0, terrain, terrainNode);
         } else {
             for (int i = 0; i < 4; i++) {
                 TerrainNode& child = terrain.nodes[terrainNode.childs[i]];
@@ -12911,7 +13518,7 @@ bool RenderSystem::terrainNodeLODSelect(TerrainComponent& terrain, const Transfo
                     child.resolution = terrain.resolution / 2;
                     child.currentRange = terrainNode.currentRange;
                     child.visible = true;
-                    appendTerrainNode(view.nodesbuffer[1], child);
+                    appendTerrainNode(view, 1, terrain, child);
                 }
             }
         }
@@ -13123,6 +13730,14 @@ bool RenderSystem::meshVariantShadersReady(Entity entity, MeshComponent& mesh, c
             allReady = ready(ShaderType::MESH, passVariant.properties, ShaderPool::registerCustomShader(getSubmeshExtraPassReference(submesh)),
                              submesh.extraPass ? &submesh.extraPass->render : nullptr) && allReady;
         }
+        // its batch variants (GPU Instancing): built, or failed (it draws alone)
+        const std::string meshShaderSrc = getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines);
+        const std::string depthShaderSrc = getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader);
+        const SubmeshBatchVariant batch = getSubmeshBatchVariant(mesh, submesh, inputs, variant, meshShaderSrc, depthShaderSrc);
+        if (batch.properties)
+            allReady = ready(ShaderType::MESH, batch.properties, ShaderPool::registerCustomShader(meshShaderSrc), nullptr) && allReady;
+        if (batch.depthProperties)
+            allReady = ready(ShaderType::DEPTH, batch.depthProperties, ShaderPool::registerCustomShader(depthShaderSrc), nullptr) && allReady;
     }
     if (!allReady)
         return false;
@@ -13869,6 +14484,16 @@ BufferRender* RenderSystem::instanceVatBuffer(int instanceView){
     return rv().instanceViews[instanceView].vatBuffer.getRender();
 }
 
+const RenderSystem::InstanceView& RenderSystem::instanceViewOf(int instanceView){
+    if (instanceView >= 1 && ps().ownShadowInstances)
+        return ps().instanceViews[instanceView - 1];
+#ifdef JASPERENGINE_EDITOR
+    if (rv().secondary && rv().sharesPrimaryCamera)
+        return primaryView.instanceViews[instanceView];
+#endif
+    return rv().instanceViews[instanceView];
+}
+
 BufferRender* RenderSystem::instanceBuffer(int instanceView){
     if (instanceView >= 1 && ps().ownShadowInstances)
         return ps().instanceViews[instanceView - 1].buffer.getRender();
@@ -14338,6 +14963,14 @@ void RenderSystem::update(double dt){
     rebindEpochSeen = rebindEpoch;
     // the clock of the shadow caches (ShadowCache): one tick per update that samples the casters
     shadowFrame++;
+
+    // GPU Instancing (spec S43): the batch variants are loaded while it is on, so a change loads
+    // the meshes again (each keeps drawing its loaded variants until its new ones are built)
+    SystemRender::setDrawBatching(Engine::isGpuInstancingEnabled());
+    if (loadedGpuInstancing != Engine::isGpuInstancingEnabled()){
+        loadedGpuInstancing = Engine::isGpuInstancingEnabled();
+        needReloadMeshVariants();
+    }
 
     // library:underwater passes on while the main camera is under a water (Water.h)
     Water::updateUnderwater(scene);
@@ -16026,9 +16659,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     //---------Draw opaque meshes and UI----------
     bool hasActiveScissor = false;
 
-    // only the main camera has a culled instance view and detail levels
+    // only the main camera has a culled instance view; another camera's detail levels are the
+    // Shadow LOD Bias coarser than its own view selects (spec S43 R5)
     const int instanceView = isMainCamera ? 0 : -1;
-    const LodView* lodView = isMainCamera ? &rv().lodView : nullptr;
+    const LodView ownLodView = isMainCamera ? LodView() : computeLodView(camera, cameraTransform, 0.0f, Engine::getShadowLodBias());
+    const LodView* lodView = isMainCamera ? &rv().lodView : &ownLodView;
 
     const bool depthPrepass = isMainCamera && camera.depthTest && scene->isDepthPrepassEnabled();
 
@@ -16075,7 +16710,14 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             }
         }
 
-        if (distanceSort){
+        if (distanceSort && SystemRender::isDrawBatching()){
+            // GPU Instancing: culled once (on jobs), split by submesh, sorted by state (spec S43)
+            VisibleFrustum frustum;
+            frustum.planes = camera.frustumPlanes;
+            frustum.farClip = camera.farClip;
+            frustum.eye = cameraTransform.worldPosition;
+            buildVisibleQueue(opaqueRenders, frustum, colorPip, false);
+        }else if (distanceSort){
             // sortPriority first (lower draws first, so stencil writers go before their
             // readers), then nearest first; ties keep the transform order (no allocation,
             // unlike std::stable_sort)
@@ -16091,15 +16733,21 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (isRenderingFlipped(camera)){
             renderVP = Matrix4::scaleMatrix(Vector3(1, -1, 1)) * renderVP;
         }
+        SystemRender::beginDrawBatch();
         for (const OpaqueRenderData& opaque : opaqueRenders){
             // a forked color shader without a depth program, or no depth write (see loadMesh)
             if (opaque.mesh->skipsDepthPrepass)
                 continue;
             vs_depth_t params = {objectModel(*opaque.transform), renderVP, objectMVP(*opaque.transform)};
             passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
+            passSubmeshMask = opaque.submeshMask;
+            passPreCulled = opaque.preCulled;
             drawMeshDepth(opaque.entity, *opaque.mesh, *opaque.transform, camera.farClip, camera.frustumPlanes, params, opaque.instmesh, opaque.terrain, opaque.tilemap, true, prepassPip, instanceView, lodView);
         }
+        SystemRender::endDrawBatch();
         passSubmeshQueue = SubmeshQueue::ALL;
+        passSubmeshMask = 0xFFFFFFFFu;
+        passPreCulled = false;
     }
 
     //---------Draw sky----------
@@ -16139,12 +16787,19 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     };
 
     if (distanceSort){
+        // (GPU Instancing: consecutive draws of one mesh, material and pipeline drawn as one)
+        SystemRender::beginDrawBatch();
         for (const OpaqueRenderData& opaque : opaqueRenders){
             // (a transparent mesh here is split: its opaque submeshes)
             passSubmeshQueue = opaque.mesh->isTransparent() ? SubmeshQueue::OPAQUE : SubmeshQueue::ALL;
+            passSubmeshMask = opaque.submeshMask;
+            passPreCulled = opaque.preCulled;
             drawMesh(opaque.entity, *opaque.mesh, *opaque.transform, camera, cameraTransform, colorPip, opaque.instmesh, opaque.terrain, opaque.tilemap, terrainView, instanceView, lodView);
         }
+        SystemRender::endDrawBatch();
         passSubmeshQueue = SubmeshQueue::ALL;
+        passSubmeshMask = 0xFFFFFFFFu;
+        passPreCulled = false;
         // the atmosphere over the opaque scene: the sky composite (Sky Map clouds and the sky
         // fill on the sky's pixels), then the Screen clouds and the volumetric fog; what is
         // drawn after (transparents) takes the analytic fog alone

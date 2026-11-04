@@ -1266,6 +1266,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp
     ${EDITOR_DIR}/command/type/CreateMaterialFileCmd.cpp

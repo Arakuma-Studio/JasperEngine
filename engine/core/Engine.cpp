@@ -125,6 +125,8 @@ Scaling Engine::scalingMode = Scaling::FITWIDTH;
 AtmosphereQuality Engine::atmosphereQualityDefaults[3] = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
 bool Engine::atmosphereQualityOverridden = false;
 AtmosphereQuality Engine::atmosphereQualityOverride = AtmosphereQuality::HIGH;
+bool Engine::gpuInstancingEnabled = true;
+int Engine::shadowLodBias = 1;
 CanvasScalerSettings Engine::defaultCanvasScaler;
 TextureStrategy Engine::textureStrategy = TextureStrategy::NONE;
 
@@ -139,6 +141,7 @@ bool Engine::uiEventReceived = false;
 uint64_t Engine::lastTime = 0;
 double Engine::framePeriod = 0.0;
 double Engine::frameCpuTime = 0.0;
+double Engine::frameDrawCpuTime = 0.0;
 double Engine::updateTimeCount = 0;
 int Engine::fixedStepsLeft = 1;
 
@@ -837,6 +840,22 @@ Platform Engine::getPlatform(){
 #endif
 }
 
+void Engine::setGpuInstancingEnabled(bool enabled){
+    gpuInstancingEnabled = enabled;
+}
+
+bool Engine::isGpuInstancingEnabled(){
+    return gpuInstancingEnabled;
+}
+
+void Engine::setShadowLodBias(int levels){
+    shadowLodBias = std::clamp(levels, 0, MAX_SHADOW_LOD_BIAS);
+}
+
+int Engine::getShadowLodBias(){
+    return shadowLodBias;
+}
+
 void Engine::setAtmosphereQualityDefaults(AtmosphereQuality desktop, AtmosphereQuality mobile, AtmosphereQuality web){
     atmosphereQualityDefaults[0] = desktop;
     atmosphereQualityDefaults[1] = mobile;
@@ -913,6 +932,10 @@ double Engine::getFramePeriod(){
     return framePeriod;
 }
 
+double Engine::getFrameDrawCpuTime(){
+    return frameDrawCpuTime;
+}
+
 double Engine::getFrameCpuTime(){
     return frameCpuTime;
 }
@@ -930,6 +953,11 @@ void Engine::addDrawStats(uint32_t instances, uint64_t triangles){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;
     currentFrameStats.triangles += triangles;
+}
+
+void Engine::addVisibilityStats(uint32_t visible, uint32_t culled){
+    currentFrameStats.visible += visible;
+    currentFrameStats.culled += culled;
 }
 
 uint32_t Engine::getPendingDrawCalls(){
@@ -2166,6 +2194,7 @@ void Engine::runFrame(bool draw){
     //Deltatime in seconds
     double rawDelta = stm_sec(stm_laptime(&lastTime));
     const uint64_t frameStart = lastTime;
+    uint64_t drawStart = frameStart;
     framerate = (rawDelta > 0.0) ? (float)(1.0 / rawDelta) : 0.0f;
     framePeriod = rawDelta;
     // (the stats overlay's frame times are S15's frame-time ring, FrameTimes, from systemDraw)
@@ -2397,6 +2426,7 @@ void Engine::runFrame(bool draw){
         beginCompositeFramebuffer();
 
         beginFrameStats();
+        drawStart = stm_now();
         {
             JE_PROFILE_SCOPE("Draw");
             for (int i = 0; i < scenes.size(); i++){
@@ -2419,6 +2449,7 @@ void Engine::runFrame(bool draw){
         SystemRender::commit();
     }
     frameCpuTime = stm_sec(stm_since(frameStart));
+    frameDrawCpuTime = draw ? stm_sec(stm_since(drawStart)) : 0.0;
     FrameTimes::setDrawCalls(currentFrameStats.drawCalls);
 
     // a one-shot stays until a frame draws it: loaded means its objects are made or asked for, and

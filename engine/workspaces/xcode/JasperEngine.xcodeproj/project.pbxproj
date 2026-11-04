@@ -4373,6 +4373,9 @@
 		4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47A4609FEFF72DC9EF /* PlayerModules.h */; };
 		4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4760C1D1328627EB69 /* UIDocumentInput.h */; };
 		4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */; };
+		4A534E47D3FE7A3BDC14E1FD /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
+		4A534E47CB4A1456D094C81E /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
+		4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478899E2BB41CC207E /* VisibleList.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8574,6 +8577,8 @@
 		4A534E47A4609FEFF72DC9EF /* PlayerModules.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = PlayerModules.h; sourceTree = "<group>"; };
 		4A534E4760C1D1328627EB69 /* UIDocumentInput.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentInput.h; sourceTree = "<group>"; };
 		4A534E47259041D9FBB3AD9B /* UIDocumentSystemNone.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIDocumentSystemNone.h; sourceTree = "<group>"; };
+		4A534E47261DED0CDC733CE1 /* VisibleList.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VisibleList.cpp; sourceTree = "<group>"; };
+		4A534E478899E2BB41CC207E /* VisibleList.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VisibleList.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10594,6 +10599,8 @@
 				4A534E476309E3EF32DDB09B /* LineRibbonBuilder.cpp */,
 				4A534E47197C345843945889 /* LineRibbonBuilder.h */,
 				4A534E4737234843A0260B98 /* UIDrawColor.h */,
+				4A534E47261DED0CDC733CE1 /* VisibleList.cpp */,
+				4A534E478899E2BB41CC207E /* VisibleList.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -15241,6 +15248,7 @@
 				4A534E4706E1FF7D80570A0A /* PlayerModules.h in Headers */,
 				4A534E47B520F8D54E1F0ADE /* UIDocumentInput.h in Headers */,
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
+				4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17738,6 +17746,7 @@
 				4A534E47A6F7345580E0D892 /* ProcessMemory.cpp in Sources */,
 				4A534E47C9D7644B70C96ACD /* AudioFileCheck.cpp in Sources */,
 				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
+				4A534E47D3FE7A3BDC14E1FD /* VisibleList.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18529,6 +18538,7 @@
 				4A534E4702E0F1BB649CA319 /* ProcessMemory.cpp in Sources */,
 				4A534E4787F0A52BE790720B /* AudioFileCheck.cpp in Sources */,
 				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
+				4A534E47CB4A1456D094C81E /* VisibleList.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

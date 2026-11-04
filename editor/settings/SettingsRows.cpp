@@ -21,6 +21,7 @@
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/DrawSubmissionSettingsCmd.h"
 #include "DebugSettings.h"
 #include "Generator.h"
 #include "audio/AudioMixer.h"
@@ -594,6 +595,23 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
         return true;
     };
     return s;
+}
+
+// GPU Instancing and Shadow LOD Bias (spec S43): one field of DrawSubmissionSettings, applied as one
+// undoable step (undo scope project)
+bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmissionSettings&)>& change, bool apply, std::string& error) {
+    Project* p = ctx.project();
+    DrawSubmissionSettings changed = p->getDrawSubmissionSettings();
+    change(changed);
+    if (apply && changed != p->getDrawSubmissionSettings()) {
+        auto* command = new DrawSubmissionSettingsCmd(p, changed);
+        command->setNoMerge();
+        if (!p->getProjectCommandHistory()->addCommand(command)) {
+            error = "the draw submission settings could not be applied";
+            return false;
+        }
+    }
+    return true;
 }
 
 // "mainThreadBudgetMs" -> "main_thread_budget_ms"
@@ -1664,6 +1682,22 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
+        // GPU Instancing (S43): draws of one mesh, material and shader drawn as one
+        {
+            Setting s;
+            s.key = "graphics.gpu_instancing";
+            s.type = "bool";
+            s.description = "GPU Instancing: opaque Mesh draws of the same mesh, material and shader are drawn as one instanced draw "
+                            "(the image is the same), constant uniforms are applied once, and passes sort their draws by state. "
+                            "A Mesh opts out with Allow GPU Instancing. Off submits every draw alone, as before. Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getDrawSubmissionSettings().gpuInstancing); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                bool b;
+                if (!readBool(value, b, error)) return false;
+                return setDrawSubmission(ctx, [b](DrawSubmissionSettings& settings) { settings.gpuInstancing = b; }, apply, error);
+            };
+            add(s);
+        }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
         // the tiers of volumetric fog and clouds per platform group
@@ -1685,6 +1719,23 @@ std::vector<Setting> mcpSettingsTable() {
                     ctx.project()->setAtmosphereQuality(all);
                 }
                 return true;
+            };
+            add(s);
+        }
+
+        // Shadow LOD Bias (S43, quality.shadow_lod_bias): detail levels the shadow-like passes draw coarser
+        {
+            Setting s;
+            s.key = "quality.shadow_lod_bias";
+            s.type = "int";
+            s.description = "Shadow LOD Bias: detail levels (LOD) shadow maps, point light faces, reflection probes and "
+                            "render-to-texture cameras draw coarser than their own view selects, 0-" + std::to_string(MAX_SHADOW_LOD_BIAS) +
+                            " (default 1; with Mesh Detail (LOD) on). Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getDrawSubmissionSettings().shadowLodBias); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                long long v;
+                if (!readInt(value, 0, MAX_SHADOW_LOD_BIAS, v, error)) return false;
+                return setDrawSubmission(ctx, [v](DrawSubmissionSettings& settings) { settings.shadowLodBias = static_cast<int>(v); }, apply, error);
             };
             add(s);
         }
@@ -2739,10 +2790,12 @@ const Placement placements[] = {
     {"graphics.shadow_tier.android", "Graphics", "Shadows", "Android Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.ios", "Graphics", "Shadows", "iOS Shadow Tier", "shadow quality"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
+    {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
+    {"quality.shadow_lod_bias", "Quality", "", "Shadow LOD Bias", "shadow detail level lod coarser"},
     {"physics.enabled", "Physics", "", "3D Physics", "jolt rigidbody"},
     {"physics.layer_collision_matrix", "Physics", "Layer Collision Matrix", "Layer Collision Matrix", "layers collide"},
     {"physics.max_bodies", "Physics", "3D World Capacity", "Max Bodies", "jolt capacity limit rigidbodies"},

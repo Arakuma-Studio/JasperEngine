@@ -71,6 +71,7 @@ namespace jasperengine::editor {
         ThreadingProjectSettings m_threading;
         ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
+        DrawSubmissionSettings m_drawSubmission;
         NavigationProjectSettings m_navigation;
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};

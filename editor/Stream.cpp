@@ -2531,19 +2531,25 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["htmlUiSdfPrimitives"] = htmlUiRender.sdfPrimitives;
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
     }
-    // graphics.shadowTier.<platform>, only the platforms away from their default tier
+    // graphics.shadowTier.<platform>, only the platforms away from their default tier; GPU
+    // Instancing and Shadow LOD Bias (S43) when not their defaults
     {
+        YAML::Node graphics;
         YAML::Node tiers;
         for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
             const ShadowTier tier = project->getShadowTier(platform);
             if (tier != ShadowTiers::defaultTier(platform))
                 tiers[Project::getShadowTierPlatformName(platform)] = StreamSchema::shadowTier().toString(tier);
         }
-        if (tiers.size() > 0){
-            YAML::Node graphics;
+        if (tiers.size() > 0)
             graphics["shadowTier"] = tiers;
+        const DrawSubmissionSettings& drawSubmission = project->getDrawSubmissionSettings();
+        if (drawSubmission.gpuInstancing != DrawSubmissionSettings().gpuInstancing)
+            graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
+        if (drawSubmission.shadowLodBias != DrawSubmissionSettings().shadowLodBias)
+            graphics["shadowLodBias"] = drawSubmission.shadowLodBias;
+        if (graphics.size() > 0)
             root["graphics"] = graphics;
-        }
     }
 
     root["windowMode"] = windowModeToString(project->getWindowMode());
@@ -3156,6 +3162,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (node["htmlUiTransformAwareText"].IsDefined())
             htmlUiRender.transformAwareText = YamlNumbers::as<bool>(node["htmlUiTransformAwareText"]);
         project->setHtmlUiRenderSettings(htmlUiRender);
+    }
+
+    // graphics.gpuInstancing, graphics.shadowLodBias (S43): projects saved before them take the defaults
+    {
+        DrawSubmissionSettings drawSubmission;
+        const YAML::Node graphics = node["graphics"];
+        if (graphics && graphics.IsMap()){
+            if (graphics["gpuInstancing"].IsDefined())
+                drawSubmission.gpuInstancing = YamlNumbers::as<bool>(graphics["gpuInstancing"]);
+            if (graphics["shadowLodBias"].IsDefined())
+                drawSubmission.shadowLodBias = YamlNumbers::as<int>(graphics["shadowLodBias"]);
+        }
+        project->setDrawSubmissionSettings(drawSubmission);
     }
 
     // graphics.shadowTier.<platform>: an absent platform takes its default tier

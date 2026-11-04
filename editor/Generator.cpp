@@ -2578,6 +2578,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                 tierNames[std::clamp(static_cast<int>(tier), 0, 3)] + ");\n";
         }
     }
+    // GPU Instancing and Shadow LOD Bias (spec S43), written when not the defaults
+    if (!drawSubmission.gpuInstancing)
+        mainContent += "    Engine::setGpuInstancingEnabled(false);\n";
+    if (drawSubmission.shadowLodBias != DrawSubmissionSettings().shadowLodBias)
+        mainContent += "    Engine::setShadowLodBias(" + std::to_string(drawSubmission.shadowLodBias) + ");\n";
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
     // The native plugins of plugins/native that the platform being built cannot run: a call to

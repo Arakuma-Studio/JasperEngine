@@ -36,6 +36,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/HtmlUiRenderSettingsCmd.h"
+#include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
@@ -1078,6 +1079,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_threading = project->getThreadingSettings();
     m_shaderCreation = project->getShaderCreationSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
+    m_drawSubmission = project->getDrawSubmissionSettings();
     m_navigation = project->getNavigationSettings();
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
@@ -1858,6 +1860,19 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             }
         }
 
+        // automatic GPU instancing (S43)
+        if (settingsui::beginRow("graphics.gpu_instancing")) {
+            const DrawSubmissionSettings defaults;
+            if (projectBeginSettingsRow("GPU Instancing", m_drawSubmission.gpuInstancing != defaults.gpuInstancing)) {
+                m_drawSubmission.gpuInstancing = defaults.gpuInstancing;
+            }
+            ImGui::Checkbox("##GpuInstancing", &m_drawSubmission.gpuInstancing);
+            endSettingsRow("Draws opaque Meshes of the same mesh, material and shader as one instanced draw (the image stays "
+                           "the same), applies constant uniforms once and sorts each pass's draws by state: fewer draw calls, "
+                           "the largest CPU cost on WebGL2 and mobile. A Mesh opts out with Allow GPU Instancing. Off draws "
+                           "every Mesh alone.");
+        }
+
         if (settingsui::beginRow("graphics.mobile_pbr_tier")) {
             drawComboSetting("Mobile PBR Tier", "##MobilePbrTier", mobilePbrTierNames, 2, m_mobilePbrTierIndex, findMobilePbrTierIndex(Project::defaultMobilePbrTier),
                 "Android, iOS and HTML5 exports with Reduced leave out iridescence, anisotropy direction maps and clear coat normal maps "
@@ -1982,6 +1997,20 @@ void ProjectSettingsWindow::drawQualitySettings() {
         for (int i = 0; i < 3; i++) {
             if (!settingsui::beginRow(keys[i])) continue;
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
+        }
+
+        // the detail levels of the shadow-like passes (S43)
+        if (settingsui::beginRow("quality.shadow_lod_bias")) {
+            const DrawSubmissionSettings defaults;
+            if (projectBeginSettingsRow("Shadow LOD Bias", m_drawSubmission.shadowLodBias != defaults.shadowLodBias)) {
+                m_drawSubmission.shadowLodBias = defaults.shadowLodBias;
+            }
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::SliderInt("##ShadowLodBias", &m_drawSubmission.shadowLodBias, 0, MAX_SHADOW_LOD_BIAS);
+            m_drawSubmission.shadowLodBias = std::clamp(m_drawSubmission.shadowLodBias, 0, MAX_SHADOW_LOD_BIAS);
+            endSettingsRow("Detail levels (LOD) shadow maps, point light faces, reflection probes and render-to-texture cameras "
+                           "draw coarser than their own view selects: they cost fewer triangles where the difference does not show. "
+                           "0 draws the level the view selects. Needs the scene's Mesh Detail (LOD).");
         }
     });
 }
@@ -4529,6 +4558,10 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: the editor's documents follow at once
     if (m_htmlUiRender != m_project->getHtmlUiRenderSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new HtmlUiRenderSettingsCmd(m_project, m_htmlUiRender));
+    }
+    // undoable: the editor's scenes draw with them at once
+    if (m_drawSubmission != m_project->getDrawSubmissionSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new DrawSubmissionSettingsCmd(m_project, m_drawSubmission));
     }
     // undoable: every scene's crowds and grids read them at their next fixed tick
     if (m_navigation != m_project->getNavigationSettings()) {

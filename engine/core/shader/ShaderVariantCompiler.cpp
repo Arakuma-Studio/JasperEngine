@@ -408,6 +408,7 @@ void addMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, con
     // includes/vat.glsl: Bones mode ('Vab') wins when a key has both
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & ShaderPool::getVatProperty(ShaderType::MESH, true))) defs.push_back({"HAS_VAT_BONES", "1"}); // 'Vab'
+    if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::MESH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
 }
 
 void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
@@ -431,6 +432,7 @@ void addDepthMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs
     if ((prop & shaderPropertyBit(15)) && !(prop & shaderPropertyBit(5))) defs.push_back({"HAS_LATTICE", "1"}); // 'Ltc' (never on a terrain)
     if (vat) defs.push_back({"HAS_VAT", "1"});                                              // 'Vat', 'Vab'
     if (vat && (prop & shaderPropertyBit(17))) defs.push_back({"HAS_VAT_BONES", "1"});      // 'Vab'
+    if (prop & ShaderPool::getAutoInstancingProperty(ShaderType::DEPTH)) defs.push_back({"HAS_AUTO_INSTANCING", "1"}); // 'Aui'
 }
 
 void addGBufferMeshPropertyDefinitions(std::vector<shadercompiler::define_t>& defs, const uint64_t prop) {
