@@ -246,6 +246,22 @@ namespace jasperengine{
         void setSceneColorScale(SceneColorScale scale);
         SceneColorScale getSceneColorScale() const;
 
+        // Planar reflections (SceneSettings): read each frame by RenderSystem, no reload
+        void setPlanarReflectionResolution(PlanarReflectionResolution resolution);
+        PlanarReflectionResolution getPlanarReflectionResolution() const;
+        void setPlanarReflectionLayers(uint32_t layers);
+        uint32_t getPlanarReflectionLayers() const;
+        void setPlanarReflectionShadows(bool shadows);
+        bool getPlanarReflectionShadows() const;
+        // metres, 0: the viewing camera's far clip (negative values read as 0)
+        void setPlanarReflectionFarClip(float farClip);
+        float getPlanarReflectionFarClip() const;
+        void setPlanarReflectionClipOffset(float offset);
+        float getPlanarReflectionClipOffset() const;
+        // 1..4 (clamped)
+        void setMaxPlanarReflections(int count);
+        int getMaxPlanarReflections() const;
+
         // The clock of this scene's game-time animation (library:water's waves, ripples and
         // caustics, any shader declaring a sceneTime member, Water.getTime): the seconds the scene
         // has run, scaled by Time.timeScale. Engine::runFrame advances it with the game's frame

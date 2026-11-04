@@ -460,6 +460,14 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                     value = static_cast<LitQuality>(currentItem);
                 }
             }
+            if constexpr (std::is_same_v<T, PlanarReflectionResolution>) {
+                const char* resolutionNames[] = { "Off", "Quarter", "Half", "Full" };
+                int currentItem = std::clamp(static_cast<int>(value), 0, 3);
+                changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, resolutionNames, IM_ARRAYSIZE(resolutionNames));
+                if (changed) {
+                    value = static_cast<PlanarReflectionResolution>(currentItem);
+                }
+            }
             if constexpr (std::is_same_v<T, SceneColorScale>) {
                 const char* scaleNames[] = { "Full", "Half" };
                 int currentItem = static_cast<int>(value);
@@ -474,6 +482,45 @@ void editor::InspectorWindow::drawScenePropertyRow(SceneProject* sceneProject, c
                 changed = ImGui::Combo(("##" + propertyName).c_str(), &currentItem, filterNames, IM_ARRAYSIZE(filterNames));
                 if (changed) {
                     value = (currentItem == 1) ? TextureFilter::LINEAR : TextureFilter::NEAREST;
+                }
+            }
+            break;
+        case ScenePropertyInputType::LayerMask:
+            if constexpr (std::is_same_v<T, uint32_t>) {
+                // Unity's mask field: toggles keep the list open, Nothing and Everything set every bit
+                if (ImGui::BeginCombo(("##" + propertyName).c_str(), sceneLayerMaskLabel(value).c_str())) {
+                    ImGui::PushItemFlag(ImGuiItemFlags_AutoClosePopups, false);
+                    uint32_t namedMask = 0;
+                    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+                        if (!TagManager::layerToName(layer).empty()) namedMask |= (1u << layer);
+                    }
+                    if (ImGui::MenuItem("Nothing", nullptr, value == LAYER_MASK_NOTHING)) {
+                        value = LAYER_MASK_NOTHING;
+                        changed = true;
+                    }
+                    if (ImGui::MenuItem("Everything", nullptr, value == LAYER_MASK_EVERYTHING)) {
+                        value = LAYER_MASK_EVERYTHING;
+                        changed = true;
+                    }
+                    for (int layer = 0; layer < MAX_LAYERS; layer++) {
+                        const std::string name = TagManager::layerToName(layer);
+                        if (name.empty()) continue;
+                        const uint32_t bit = 1u << layer;
+                        if (ImGui::MenuItem((std::to_string(layer) + ": " + name).c_str(), nullptr, (value & bit) != 0)) {
+                            value = (value & bit) ? (value & ~bit) : (value | bit);
+                            // every named layer on reads as Everything, as Unity stores it
+                            if ((value & namedMask) == namedMask) value = LAYER_MASK_EVERYTHING;
+                            changed = true;
+                        }
+                    }
+                    ImGui::PopItemFlag();
+                    ImGui::EndCombo();
+                }
+                if (changed) {
+                    // one undo step per toggle
+                    Command* maskCmd = new ScenePropertyCmd<T>(project, sceneProject->id, propertyName, value);
+                    CommandHandle::get(sceneProject->id)->addCommandNoMerge(maskCmd);
+                    changed = false;
                 }
             }
             break;
@@ -1798,8 +1845,62 @@ static std::string layerDisplayName(int layer){
     return name.empty() ? "Layer " + std::to_string(layer) : name;
 }
 
+void editor::InspectorWindow::drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags){
+    ImGui::SeparatorText("Planar Reflections");
+    if (!ImGui::BeginTable("scene_planar_reflection_table", 2, tableFlags))
+        return;
+    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Clip Plane Offset"));
+    ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
+
+    const float comboWidth = ImGui::CalcTextSize("Quarter").x + ImGui::GetFrameHeight() + ImGui::GetStyle().FramePadding.x * 2.0f;
+    drawScenePropertyRow<PlanarReflectionResolution>(sceneProject, "planar_reflection_resolution", "Resolution", ScenePropertyInputType::Combo, comboWidth, 0.0f, 1.0f,
+        "Water with Planar Reflection shows the scene mirrored in it: each camera draws the scene again, mirrored, once for every water height it sees. "
+        "This is the size of that pass, per side of the camera's view: Half (default) draws a quarter of the pixels, Quarter a sixteenth (mobile). "
+        "Off draws none: such water shows the sky or reflection probe reflection instead.");
+    if (jasperengine::editor::Catalog::getSceneProperty<PlanarReflectionResolution>(sceneProject->scene, "planar_reflection_resolution") != PlanarReflectionResolution::OFF) {
+        drawScenePropertyRow<uint32_t>(sceneProject, "planar_reflection_layers", "Layers", ScenePropertyInputType::LayerMask, -1.0f, 0.0f, 1.0f,
+            "The layers the reflection draws (with the camera's Culling Mask): leave out small or far objects to save draws.");
+        drawScenePropertyRow<bool>(sceneProject, "planar_reflection_shadows", "Shadows", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+            "The reflection samples the camera's shadow maps (no shadow map is drawn for it). Off: the reflected scene is lit unshadowed, cheaper on mobile.");
+        drawScenePropertyRow<float>(sceneProject, "planar_reflection_far_clip", "Far Clip Plane", ScenePropertyInputType::DragFloat, -1.0f, 0.0f, 100000.0f,
+            "How far the reflection draws (metres; 0: as far as the camera). A shorter distance culls more objects.");
+        drawScenePropertyRow<float>(sceneProject, "planar_reflection_clip_offset", "Clip Plane Offset", ScenePropertyInputType::DragFloat, -1.0f, -10.0f, 10.0f,
+            "The reflection leaves out what is within this distance above the water's rest level (Unity's Clip Plane Offset), so objects crossing the surface do not show their wet parts mirrored.");
+        drawScenePropertyRow<int>(sceneProject, "max_planar_reflections", "Max Planes", ScenePropertyInputType::DragInt, -1.0f, 1.0f, 4.0f,
+            "The most water heights a camera reflects (the nearest ones); water at other heights shows the sky or reflection probe reflection.");
+    }
+
+    // what the last frame drew for them
+    const RenderSystem::PlanarReflectionStats stats = sceneProject->scene->getSystem<RenderSystem>()->getPlanarReflectionStats();
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextUnformatted("In Use");
+    ImGui::TableSetColumnIndex(1);
+    if (stats.passes > 0) {
+        ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_GAUGE_HIGH " %u pass%s, %u x %u", stats.passes, stats.passes == 1 ? "" : "es", stats.width, stats.height);
+    } else {
+        ImGui::TextDisabled("None");
+    }
+    if (ImGui::IsItemHovered()) {
+        ImGui::BeginTooltip();
+        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 32.0f);
+        if (stats.passes > 0 || stats.fallbacks > 0)
+            ImGui::Text("Last frame: %u water height%s seen, %u reflection pass%s drawn, %u over Max Planes (showing the sky reflection).",
+                        stats.planes, stats.planes == 1 ? "" : "s", stats.passes, stats.passes == 1 ? "" : "es", stats.fallbacks);
+        else
+            ImGui::TextUnformatted("Last frame drew no planar reflection: no visible water with Planar Reflection, so they cost nothing.");
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+    ImGui::EndTable();
+}
+
 // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
 static std::string layerMaskLabel(uint32_t mask){
+    return editor::InspectorWindow::sceneLayerMaskLabel(mask);
+}
+
+std::string editor::InspectorWindow::sceneLayerMaskLabel(uint32_t mask){
     if (mask == LAYER_MASK_NOTHING) return "Nothing";
     if (mask == LAYER_MASK_EVERYTHING) return "Everything";
     for (int layer = 0; layer < MAX_LAYERS; layer++){
@@ -12738,6 +12839,8 @@ void editor::InspectorWindow::show(){
 
                     ImGui::EndTable();
                 }
+
+                drawScenePlanarReflections(sceneProject, tableFlags);
 
                 ImGui::SeparatorText("Ambient Occlusion (SSAO)");
 

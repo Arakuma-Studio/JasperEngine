@@ -164,6 +164,12 @@ namespace jasperengine{
 	} fs_terrain_layers_t;
 
 	// includes/environment.glsl (u_fs_environment)
+	// u_fs_planarReflection (includes/planar_reflection.glsl)
+	typedef struct fs_planar_reflection_t {
+		Matrix4 viewProjection; // the reflection camera's, logical
+		Vector4 params;         // x the plane's height, y 1 with a reflection
+	} fs_planar_reflection_t;
+
 	typedef struct fs_environment_t {
 		Vector4 colorRotation; // rgb linear tint, w rotation about +Y (radians)
 		Vector4 params;        // x highest mip level, y 1 with an environment
@@ -1000,6 +1006,9 @@ namespace jasperengine{
 			bool isMain = false;
 			// draws into camera->framebuffer
 			bool renderToTexture = false;
+			// a water reflection pass (renderWaterReflections): no planar reflection reader,
+			// no scene input reader, the viewer's detail levels
+			bool reflection = false;
 			// terrain node cut the pass draws (TERRAIN_PASS_VIEW: the secondary pass's own)
 			int terrainView = 0;
 		};
@@ -1089,6 +1098,29 @@ namespace jasperengine{
 			bool isCreated() const{ return levels >= 0; }
 		};
 
+		// A water reflection pass of a view (renderWaterReflections): the view's camera mirrored
+		// about the plane of the waters at one height, drawn into its own target; reused from
+		// frame to frame, freed once unused for a while
+		struct WaterReflectionPass{
+			float level = 0.0f;
+			// drawn this frame for the view's camera, and the frame (drawCount) it last was
+			bool active = false;
+			uint64_t lastUsed = 0;
+			Framebuffer framebuffer;
+			CameraComponent camera;
+			Transform transform;
+			// the viewer's lighting and shadow maps (strengths 0 without the scene's shadows)
+			CameraShadows shadows;
+#ifdef JASPERENGINE_EDITOR
+			PassObjects objects;
+#endif
+
+			WaterReflectionPass();
+			~WaterReflectionPass();
+			WaterReflectionPass(const WaterReflectionPass&) = delete;
+			WaterReflectionPass& operator=(const WaterReflectionPass&) = delete;
+		};
+
 		struct RenderView{
 			InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
 			LodView lodView;
@@ -1158,6 +1190,15 @@ namespace jasperengine{
 			// the scene camera's colour pass when only the scene colour needs it offscreen
 			// (exported builds drawing to the swapchain): blitted to the swapchain after
 			Framebuffer sceneColorRedirect;
+			// the water reflection passes of the view's camera, and which one each reflecting mesh
+			// reads this frame (none: its fallback)
+			std::vector<std::unique_ptr<WaterReflectionPass>> waterReflections;
+			std::unordered_map<Entity, int> waterReflectionOf;
+			// the camera they were drawn for (its pass alone reads them), and the view whose
+			// passes waterReflectionOf indexes (null: this one; an editor view through the
+			// frame's own camera reads the frame's)
+			const CameraComponent* waterReflectionCamera = nullptr;
+			RenderView* waterReflectionSource = nullptr;
 			// the scene's post-processing applies to the view camera (ViewDesc::postProcessing;
 			// always for the frame's own view)
 			bool postProcessing = true;
@@ -2322,6 +2363,37 @@ namespace jasperengine{
 		// the pass's waters a transparent queue layers around (WaterLayering.h): the visible
 		// transparent meshes of waterMeshes in the queue, with their levels and wave bands
 		void gatherPassWaters(const std::vector<TransparentRenderData>& queue, std::vector<WaterLayer>& waters) const;
+		// The water reflection passes of a view's camera (spec water-reflections 6.4): the
+		// heights of the visible meshes reading a planar reflection, nearest first up to the
+		// scene's cap, each drawn mirrored about its plane before the camera's own pass;
+		// terrainView: the terrain cut the passes draw (the primary view's next free slot)
+		void renderWaterReflections(RenderView& view, CameraComponent& viewer, Transform& viewerTransform, int terrainView);
+		// the view's reflection passes unused for a while freed (all of them: everything)
+		void releaseWaterReflections(RenderView& view, bool everything);
+		// what a reflection camera takes of the camera it mirrors (copied: making a camera entity
+		// may move the camera arrays)
+		struct ReflectionViewer{
+			Matrix4 viewMatrix;
+			Vector3 eye;
+			CameraType type = CameraType::CAMERA_PERSPECTIVE;
+			float yfov = 0.0f, aspect = 1.0f, nearClip = 0.1f, farClip = 1000.0f;
+			float leftClip = 0.0f, rightClip = 0.0f, bottomClip = 0.0f, topClip = 0.0f;
+			uint32_t cullingMask = LAYER_MASK_EVERYTHING;
+
+			static ReflectionViewer of(const CameraComponent& camera);
+		};
+		// a reflection camera: the viewer mirrored about a plane (its normal, a point of it), its
+		// near plane moved onto the plane raised by clipOffset along the normal, so nothing
+		// behind it shows (mirrors and water reflections)
+		void driveReflectionCamera(CameraComponent& reflectionCamera, Transform& reflectionTransform, const ReflectionViewer& viewer,
+		                           const Vector3& normal, const Vector3& point, float clipOffset);
+		// target takes source's lighting and shadow maps (its own camera's viewport), without
+		// shadows at strength 0
+		void shareCameraShadows(CameraShadows& target, const CameraShadows& source, const CameraComponent& camera, bool shadows);
+		// the camera of the camera pass being drawn (renderCameraPass)
+		const CameraComponent* passCamera = nullptr;
+		// u_fs_planarReflection and its texture for a draw of a mesh reading one
+		void applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity);
 		// the world box a transparent draw covers (null when it has none to tell)
 		AABB transparentBounds(const TransparentRenderData& renderData) const;
 		// whether a draw of the transparent queue samples the scene colour (and is drawn)
@@ -2818,7 +2890,24 @@ namespace jasperengine{
 			bool depthPrograms = false;    // every mesh keeps a depth program for the scene depth
 			bool colorRedirect = false;    // the exported scene camera draws offscreen for the copy now
 		};
+
+		// what the last frame's water reflection passes were (get_render_stats, the scene
+		// settings' In Use row)
+		struct PlanarReflectionStats{
+			uint32_t planes = 0;     // water heights seen by the views' cameras
+			uint32_t passes = 0;     // reflection passes drawn
+			uint32_t fallbacks = 0;  // heights over the cap (their waters show the environment)
+			uint32_t width = 0;      // the last pass's target
+			uint32_t height = 0;
+		};
+
 		SceneInputDetails getSceneInputDetails();
+		// what the last frame's water reflection passes were
+		PlanarReflectionStats getPlanarReflectionStats() const{ return lastPlanarReflectionStats; }
+	private:
+		PlanarReflectionStats planarReflectionStats;
+		PlanarReflectionStats lastPlanarReflectionStats;
+	public:
 		bool hasPendingMeshLods() const;
 	
 #ifdef JASPERENGINE_EDITOR

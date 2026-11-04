@@ -114,6 +114,9 @@ namespace jasperengine{
         // the reflection environment (includes/environment.glsl, @require environment)
         int slotFSEnvironment = -1;
         std::pair<int, int> slotEnvironment = {-1, -1};
+        // the planar reflection (includes/planar_reflection.glsl, @require planarreflection)
+        int slotFSPlanarReflection = -1;
+        std::pair<int, int> slotPlanarReflection = {-1, -1};
         // the frame's blurred scene (phase 4, includes/blurred_scene.glsl: frosted UI panels)
         int slotFSBlurredScene = -1;
         std::pair<int, int> slotBlurredScene = {-1, -1};
@@ -142,6 +145,8 @@ namespace jasperengine{
             slotSceneColor = {-1, -1};
             slotFSEnvironment = -1;
             slotEnvironment = {-1, -1};
+            slotFSPlanarReflection = -1;
+            slotPlanarReflection = {-1, -1};
             slotFSBlurredScene = -1;
             slotBlurredScene = {-1, -1};
             slotFSHeightFog = -1;

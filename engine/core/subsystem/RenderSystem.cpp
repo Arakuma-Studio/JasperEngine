@@ -4034,6 +4034,11 @@ bool RenderSystem::loadShaderLibraryBindings(ShaderLibraryBindings& bindings, Sh
     bindings.slotEnvironment = shaderData.getTextureIndexByName("u_environmentTexture");
     if (bindings.slotEnvironment.first != -1)
         render.addTexture(bindings.slotEnvironment, ShaderStageType::FRAGMENT, &emptyCubeBlack);
+    // the planar reflection (includes/planar_reflection.glsl), black until a draw binds its own
+    bindings.slotFSPlanarReflection = shaderData.getUniformBlockIndexByName("u_fs_planarReflection");
+    bindings.slotPlanarReflection = shaderData.getTextureIndexByName("u_planarReflectionTexture");
+    if (bindings.slotPlanarReflection.first != -1)
+        render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, &emptyBlack);
     // the frame's blurred scene (includes/blurred_scene.glsl), black until a draw binds it
     bindings.slotFSBlurredScene = shaderData.getUniformBlockIndexByName("u_fs_blurredScene");
     bindings.slotBlurredScene = shaderData.getTextureIndexByName("u_blurredSceneTexture");
@@ -8071,6 +8076,7 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     applyFrameBlock(render, extra.libraryBindings);
     applySceneInputs(render, extra.libraryBindings);
     applyEnvironment(render, extra.libraryBindings, mesh, transform);
+    applyPlanarReflection(render, extra.libraryBindings, entity);
 
     if (extra.slotFSFog != -1){
 #ifdef JASPERENGINE_EDITOR
@@ -8793,6 +8799,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             applyFrameBlock(render, libraryBindings);
             applySceneInputs(render, libraryBindings);
             applyEnvironment(render, libraryBindings, mesh, transform);
+            applyPlanarReflection(render, libraryBindings, entity);
 
             if (mesh.submeshes[i].hasIBL){
                 TextureRender* probeTexture = &emptyCubeBlack;
@@ -12766,6 +12773,332 @@ void RenderSystem::destroyMirrorCamera(Entity entity){
     scene->destroyEntity(cameraEntity);
 }
 
+RenderSystem::ReflectionViewer RenderSystem::ReflectionViewer::of(const CameraComponent& camera){
+    ReflectionViewer viewer;
+    viewer.viewMatrix = camera.viewMatrix;
+    // the eye in world space, from the view matrix (whatever the camera's transform holds)
+    viewer.eye = camera.viewMatrix.inverse() * Vector3(0.0f, 0.0f, 0.0f);
+    viewer.type = camera.type;
+    viewer.yfov = camera.yfov;
+    viewer.aspect = camera.aspect;
+    viewer.nearClip = camera.nearClip;
+    viewer.farClip = camera.farClip;
+    viewer.leftClip = camera.leftClip;
+    viewer.rightClip = camera.rightClip;
+    viewer.bottomClip = camera.bottomClip;
+    viewer.topClip = camera.topClip;
+    // a reflection shows the layers its viewer sees
+    viewer.cullingMask = camera.cullingMask;
+    return viewer;
+}
+
+void RenderSystem::driveReflectionCamera(CameraComponent& refCam, Transform& refCamTransform, const ReflectionViewer& viewer,
+                                         const Vector3& normal, const Vector3& point, float clipOffset){
+    Plane plane(normal, point);
+
+    // reflection view keeps the handedness flip (true mirror); winding is
+    // restored by invertCulling so reflected geometry shows front faces
+    Matrix4 reflectMat = Matrix4::reflectMatrix(plane);
+    refCam.customViewMatrix = viewer.viewMatrix * reflectMat;
+    refCam.hasCustomViewMatrix = true;
+
+    // Give the reflection camera the reflected eye position. The custom view
+    // matrix overrides the view, but distance-based effects still read the
+    // transform's worldPosition (terrain CDLOD detail + morph origin, transparent
+    // sorting, per-camera lighting eye) — without this they'd key off the origin
+    // and the reflected terrain would morph at the wrong LOD (visible cracks).
+    refCamTransform.position = reflectMat * viewer.eye;
+    refCamTransform.worldPosition = refCamTransform.position;
+    refCam.invertCulling = true;
+    refCam.renderToTexture = true;
+
+    // match the viewer's projection so the reflection lines up 1:1
+    refCam.type = viewer.type;
+    refCam.yfov = viewer.yfov;
+    refCam.aspect = viewer.aspect;
+    refCam.nearClip = viewer.nearClip;
+    refCam.farClip = viewer.farClip;
+    refCam.leftClip = viewer.leftClip;
+    refCam.rightClip = viewer.rightClip;
+    refCam.bottomClip = viewer.bottomClip;
+    refCam.topClip = viewer.topClip;
+    refCam.cullingMask = viewer.cullingMask;
+
+    // recompute the reflection camera matrices with the override applied
+    updateCamera(refCam, refCamTransform);
+
+    // oblique near-plane clipping: move the reflection camera's near plane onto
+    // the plane (raised by clipOffset) so geometry behind it doesn't leak into the
+    // reflection. The clip plane (normal toward the front/reflecting side) is taken
+    // to the reflection camera's view space via inverse-transpose. Applied ONLY to
+    // viewProjectionMatrix (used by meshes), NOT projectionMatrix: the skybox
+    // renders from projectionMatrix and the oblique depth would clip it. Only the
+    // depth row changes, so projective sampling (clip.xy/w) is unaffected.
+    const Plane clipPlane(normal, point + normal * clipOffset);
+    Vector4 worldClipPlane(normal.x, normal.y, normal.z, clipPlane.d);
+    Vector4 viewClipPlane = refCam.viewMatrix.inverse().transpose() * worldClipPlane;
+    Matrix4 obliqueProjection = refCam.projectionMatrix.obliqueNearClip(viewClipPlane);
+    refCam.viewProjectionMatrix = obliqueProjection * refCam.viewMatrix;
+    updateCameraFrustumPlanes(refCam.viewProjectionMatrix, refCam.frustumPlanes);
+}
+
+RenderSystem::WaterReflectionPass::WaterReflectionPass(){
+    // the reflection renders into the pass's own framebuffer
+    delete camera.framebuffer;
+    camera.framebuffer = &framebuffer;
+    camera.renderToTexture = true;
+    camera.autoResize = false;
+    camera.invertCulling = true;
+}
+
+RenderSystem::WaterReflectionPass::~WaterReflectionPass(){
+    camera.framebuffer = nullptr;
+    framebuffer.destroy();
+#ifdef JASPERENGINE_EDITOR
+    for (auto& entry : objects.terrainViews){
+        for (int s = 0; s < 2; s++){
+            entry.second.nodesbuffer[s].getRender()->destroyBuffer();
+        }
+    }
+#endif
+}
+
+void RenderSystem::releaseWaterReflections(RenderView& view, bool everything){
+    // a pass unused for this many draws gives its target back
+    const uint64_t HOLD_DRAWS = 120;
+    for (auto it = view.waterReflections.begin(); it != view.waterReflections.end();){
+        if (everything || (!(*it)->active && drawCount > (*it)->lastUsed + HOLD_DRAWS)){
+            it = view.waterReflections.erase(it);
+        }else{
+            ++it;
+        }
+    }
+    if (everything)
+        view.waterReflectionOf.clear();
+}
+
+void RenderSystem::renderWaterReflections(RenderView& view, CameraComponent& viewer, Transform& viewerTransform, int terrainView){
+    view.waterReflectionOf.clear();
+    view.waterReflectionCamera = &viewer;
+    view.waterReflectionSource = nullptr;
+    for (const std::unique_ptr<WaterReflectionPass>& pass : view.waterReflections)
+        pass->active = false;
+    // nothing reads a planar reflection, or the scene draws none: nothing at all
+    const PlanarReflectionResolution resolution = scene->getPlanarReflectionResolution();
+    if (planarReflectionMeshes.empty() || resolution == PlanarReflectionResolution::OFF){
+        if (!view.waterReflections.empty())
+            releaseWaterReflections(view, true);
+        return;
+    }
+
+    ReflectionViewer reflectionViewer = ReflectionViewer::of(viewer);
+    const Vector3 eye = reflectionViewer.eye;
+
+    // the heights of the visible meshes reading a reflection, joined within 0.01 world units;
+    // a height the eye is not above shows no reflection (seen from below: the fallback)
+    struct ReflectionPlane{ float level; float distance; std::vector<Entity> meshes; };
+    std::vector<ReflectionPlane> planes;
+    for (Entity entity : planarReflectionMeshes){
+        MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        Transform* transform = scene->findComponent<Transform>(entity);
+        if (!mesh || !transform || !mesh->loaded || mesh->worldAABB.isNull() || !transform->visible)
+            continue;
+        if (!isRenderActive(entity) || !isLayerVisible(entity, viewer.cullingMask) || !isInsideCamera(viewer, mesh->worldAABB))
+            continue;
+        const float level = mesh->worldAABB.getMaximum().y;
+        if (eye.y <= level + 1e-3f)
+            continue;
+        ReflectionPlane* found = nullptr;
+        for (ReflectionPlane& plane : planes){
+            if (std::fabs(plane.level - level) <= 0.01f){
+                found = &plane;
+                break;
+            }
+        }
+        if (!found){
+            planes.push_back({level, eye.y - level, {}});
+            found = &planes.back();
+        }
+        found->meshes.push_back(entity);
+    }
+    planarReflectionStats.planes += (uint32_t)planes.size();
+    if (planes.empty()){
+        releaseWaterReflections(view, false);
+        return;
+    }
+    // the nearest heights first; past the cap the waters show the environment
+    std::sort(planes.begin(), planes.end(), [](const ReflectionPlane& a, const ReflectionPlane& b){
+        return a.distance < b.distance;
+    });
+    const size_t count = std::min(planes.size(), (size_t)std::max(1, scene->getMaxPlanarReflections()));
+    planarReflectionStats.fallbacks += (uint32_t)(planes.size() - count);
+
+    // the passes' size: the viewer's pass at the scene's resolution
+    float viewWidth = 0.0f;
+    float viewHeight = 0.0f;
+#ifdef JASPERENGINE_EDITOR
+    if (view.secondary){
+        viewWidth = view.viewRect.getWidth();
+        viewHeight = view.viewRect.getHeight();
+    }
+#endif
+    if (viewWidth <= 0.0f || viewHeight <= 0.0f){
+        if (viewer.renderToTexture && viewer.framebuffer){
+            viewWidth = (float)viewer.framebuffer->getWidth();
+            viewHeight = (float)viewer.framebuffer->getHeight();
+        }else{
+            const Rect viewRect = Engine::getViewRect();
+            viewWidth = viewRect.getWidth();
+            viewHeight = viewRect.getHeight();
+        }
+    }
+    const float scale = resolution == PlanarReflectionResolution::QUARTER ? 0.25f : (resolution == PlanarReflectionResolution::HALF ? 0.5f : 1.0f);
+    const unsigned int width = (unsigned int)std::max(16.0f, std::floor(viewWidth * scale));
+    const unsigned int height = (unsigned int)std::max(16.0f, std::floor(viewHeight * scale));
+
+    // what the reflection draws: the layers the viewer and the scene's setting share, up to
+    // the scene's far clip
+    reflectionViewer.cullingMask = viewer.cullingMask & scene->getPlanarReflectionLayers();
+    const float farClip = scene->getPlanarReflectionFarClip();
+    if (farClip > 0.0f)
+        reflectionViewer.farClip = std::max(reflectionViewer.nearClip * 2.0f, std::min(reflectionViewer.farClip, farClip));
+    const float clipOffset = scene->getPlanarReflectionClipOffset();
+    const CameraShadows& viewerShadows = passShadows ? *passShadows : view.shadows;
+    const bool reflectionShadows = scene->getPlanarReflectionShadows();
+
+    while (view.waterReflections.size() < count)
+        view.waterReflections.push_back(std::make_unique<WaterReflectionPass>());
+
+#ifdef JASPERENGINE_EDITOR
+    PassObjects* viewObjects = passObjects;
+#endif
+    CameraShadows* viewShadows = passShadows;
+    for (size_t p = 0; p < count; p++){
+        WaterReflectionPass& pass = *view.waterReflections[p];
+        if (!pass.framebuffer.isCreated() || pass.framebuffer.getWidth() != width || pass.framebuffer.getHeight() != height){
+            pass.framebuffer.destroy();
+            pass.framebuffer.setWidth(width);
+            pass.framebuffer.setHeight(height);
+            pass.framebuffer.setMinFilter(TextureFilter::LINEAR);
+            pass.framebuffer.setMagFilter(TextureFilter::LINEAR);
+            pass.framebuffer.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+            pass.framebuffer.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+            JE_GPU_ALLOC_SCOPE(RenderTargets, "Water reflection");
+            pass.framebuffer.create();
+        }
+        if (!pass.framebuffer.isCreated())
+            continue;
+        pass.camera.framebufferWidth = width;
+        pass.camera.framebufferHeight = height;
+
+        const ReflectionPlane& plane = planes[p];
+        driveReflectionCamera(pass.camera, pass.transform, reflectionViewer, Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, plane.level, 0.0f), clipOffset);
+
+        // the viewer's lighting and maps (shadows are world-space): none of its own to draw
+        shareCameraShadows(pass.shadows, viewerShadows, pass.camera, reflectionShadows);
+
+        int passTerrainView = terrainView;
+#ifdef JASPERENGINE_EDITOR
+        if (view.secondary){
+            passObjects = &pass.objects;
+            buildPassObjects(pass.objects, pass.camera, pass.transform);
+            selectPassTerrain(pass.objects, pass.camera, pass.transform);
+            passTerrainView = TERRAIN_PASS_VIEW;
+        }else
+#endif
+        if (terrainView != 0){
+            selectCameraTerrain(pass.camera, pass.transform, terrainView);
+        }
+
+        // (the cut mainTerrainView gives the pass's draws)
+        pass.shadows.terrainView = passTerrainView;
+
+        CameraPass cameraPass;
+        cameraPass.camera = &pass.camera;
+        cameraPass.cameraTransform = &pass.transform;
+        cameraPass.isMain = false;
+        cameraPass.renderToTexture = true;
+        cameraPass.reflection = true;
+        cameraPass.terrainView = passTerrainView;
+        passShadows = &pass.shadows;
+        renderCameraPass(cameraPass);
+        passShadows = viewShadows;
+#ifdef JASPERENGINE_EDITOR
+        passObjects = viewObjects;
+#endif
+
+        pass.active = true;
+        pass.lastUsed = drawCount;
+        pass.level = plane.level;
+        for (Entity entity : plane.meshes)
+            view.waterReflectionOf[entity] = (int)p;
+        planarReflectionStats.passes++;
+        planarReflectionStats.width = width;
+        planarReflectionStats.height = height;
+    }
+    (void)viewerTransform;
+    releaseWaterReflections(view, false);
+}
+
+void RenderSystem::shareCameraShadows(CameraShadows& target, const CameraShadows& source, const CameraComponent& camera, bool shadows){
+    target.fs_lighting = source.fs_lighting;
+    target.vs_shadows = source.vs_shadows;
+    target.fs_shadows = source.fs_shadows;
+    target.fs_point_shadows = source.fs_point_shadows;
+    target.fs_shadow_data = source.fs_shadow_data;
+    target.fs_point_shadow_data = source.fs_point_shadow_data;
+    // the shadow debug views are the viewer's
+    target.fs_shadow_data.header.w = 0.0f;
+    target.fitCameraPosition = source.fitCameraPosition;
+    target.fitCameraForward = source.fitCameraForward;
+    target.fs_lighting.viewportInfo = lightingViewportInfo(camera);
+    target.ownLightCameras = false;
+    target.ownShadowInstances = false;
+    target.cameraMask = source.cameraMask;
+    target.terrainView = source.terrainView;
+    target.projectiveAtlas = source.projectiveAtlas;
+    target.pointAtlas = source.pointAtlas;
+    target.projectiveAtlasRaw = source.projectiveAtlasRaw;
+    target.drawProjective = false;
+    target.drawPoint = false;
+    if (!shadows){
+        // every slot at strength 0 (shadow_data.glsl): the fragments read their lights unshadowed
+        for (int s = 0; s < MAX_SHADOW_ATLAS_SLOTS; s++){
+            target.fs_shadow_data.filtering[s].w = 0.0f;
+        }
+        for (int p = 0; p < MAX_POINT_SHADOW_LIGHTS; p++){
+            target.fs_point_shadow_data.filtering[p].w = 0.0f;
+        }
+    }
+}
+
+void RenderSystem::applyPlanarReflection(ObjectRender& render, const ShaderLibraryBindings& bindings, Entity entity){
+    if (bindings.slotFSPlanarReflection == -1 && bindings.slotPlanarReflection.first == -1)
+        return;
+    fs_planar_reflection_t block;
+    block.params = Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    TextureRender* texture = &emptyBlack;
+
+    // the reflection the view's camera has for this mesh's height, in its own pass only
+    RenderView& view = rv();
+    const RenderView& source = view.waterReflectionSource ? *view.waterReflectionSource : view;
+    if (passCamera && passCamera == view.waterReflectionCamera){
+        auto found = view.waterReflectionOf.find(entity);
+        if (found != view.waterReflectionOf.end() && found->second >= 0 && found->second < (int)source.waterReflections.size()){
+            const WaterReflectionPass& pass = *source.waterReflections[found->second];
+            if (pass.active && pass.framebuffer.isCreated()){
+                block.viewProjection = pass.camera.viewProjectionMatrix;
+                block.params = Vector4(pass.level, 1.0f, 0.0f, 0.0f);
+                texture = &const_cast<WaterReflectionPass&>(pass).framebuffer.getRender().getColorTexture();
+            }
+        }
+    }
+    if (bindings.slotFSPlanarReflection != -1)
+        render.applyUniformBlock(bindings.slotFSPlanarReflection, sizeof(fs_planar_reflection_t), &block);
+    if (bindings.slotPlanarReflection.first != -1)
+        render.addTexture(bindings.slotPlanarReflection, ShaderStageType::FRAGMENT, texture);
+}
+
 // Drives each mirror's reflection camera: its view = mainView * reflect(plane),
 // so the reflected scene is rendered into that camera's framebuffer. Runs after
 // the main camera is updated and before the draw pass. The handedness flip from
@@ -12781,17 +13114,7 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
 
     // copy main camera state before any camera creation: creating a reflection
     // camera below can reallocate the camera/transform arrays and dangle references
-    const Matrix4 mainView = mainCameraPtr->viewMatrix;
-    // main camera eye in world space (reflected per-mirror below); derived from the
-    // view matrix so it doesn't depend on the (possibly dangling) camera component
-    const Vector3 mainEye = mainView.inverse() * Vector3(0.0f, 0.0f, 0.0f);
-    const CameraType mainType = mainCameraPtr->type;
-    const float mYfov = mainCameraPtr->yfov, mAspect = mainCameraPtr->aspect;
-    const float mNear = mainCameraPtr->nearClip, mFar = mainCameraPtr->farClip;
-    const float mLeft = mainCameraPtr->leftClip, mRight = mainCameraPtr->rightClip;
-    const float mBottom = mainCameraPtr->bottomClip, mTop = mainCameraPtr->topClip;
-    // a mirror reflects the layers its viewer sees
-    const uint32_t mCullingMask = mainCameraPtr->cullingMask;
+    const ReflectionViewer viewer = ReflectionViewer::of(*mainCameraPtr);
     // mainCameraPtr must not be used past here (may dangle after camera creation)
 
     // Creating a reflection camera appends to the camera/transform arrays but never
@@ -12816,50 +13139,7 @@ void RenderSystem::updateMirrors(Entity mainCameraEntity){
 
         // mirror plane in world space (entity position, world-rotated normal)
         Vector3 worldNormal = (mirrorTransform->worldRotation * mirrors->getComponentFromIndex(i).normal).normalize();
-        Plane plane(worldNormal, mirrorTransform->worldPosition);
-
-        // reflection view keeps the handedness flip (true mirror); winding is
-        // restored by invertCulling so reflected geometry shows front faces
-        Matrix4 reflectMat = Matrix4::reflectMatrix(plane);
-        refCam->customViewMatrix = mainView * reflectMat;
-        refCam->hasCustomViewMatrix = true;
-
-        // Give the reflection camera the reflected eye position. The custom view
-        // matrix overrides the view, but distance-based effects still read the
-        // transform's worldPosition (terrain CDLOD detail + morph origin, transparent
-        // sorting, per-camera lighting eye) — without this they'd key off the origin
-        // and the reflected terrain would morph at the wrong LOD (visible cracks).
-        refCamTransform->worldPosition = reflectMat * mainEye;
-        refCam->invertCulling = true;
-        refCam->renderToTexture = true;
-
-        // match the main camera projection so the reflection lines up 1:1
-        refCam->type = mainType;
-        refCam->yfov = mYfov;
-        refCam->aspect = mAspect;
-        refCam->nearClip = mNear;
-        refCam->farClip = mFar;
-        refCam->leftClip = mLeft;
-        refCam->rightClip = mRight;
-        refCam->bottomClip = mBottom;
-        refCam->topClip = mTop;
-        refCam->cullingMask = mCullingMask;
-
-        // recompute the reflection camera matrices with the override applied
-        updateCamera(*refCam, *refCamTransform);
-
-        // oblique near-plane clipping: move the reflection camera's near plane onto
-        // the mirror plane so geometry behind the mirror doesn't leak into the
-        // reflection. The clip plane (mirror plane, normal toward the front/reflecting
-        // side) is taken to the reflection camera's view space via inverse-transpose.
-        // Applied ONLY to viewProjectionMatrix (used by meshes), NOT projectionMatrix:
-        // the skybox renders from projectionMatrix and the oblique depth would clip it.
-        // Only the depth row changes, so projective sampling (clip.xy/w) is unaffected.
-        Vector4 worldClipPlane(worldNormal.x, worldNormal.y, worldNormal.z, plane.d);
-        Vector4 viewClipPlane = refCam->viewMatrix.inverse().transpose() * worldClipPlane;
-        Matrix4 obliqueProjection = refCam->projectionMatrix.obliqueNearClip(viewClipPlane);
-        refCam->viewProjectionMatrix = obliqueProjection * refCam->viewMatrix;
-        updateCameraFrustumPlanes(refCam->viewProjectionMatrix, refCam->frustumPlanes);
+        driveReflectionCamera(*refCam, *refCamTransform, viewer, worldNormal, mirrorTransform->worldPosition, 0.0f);
 
         MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
         if (mesh && mesh->numSubmeshes > 0){
@@ -14655,6 +14935,11 @@ void RenderSystem::update(double dt){
         }
     }
 
+    // the scene camera's water reflection passes rewrite the shared MVPs as other cameras do
+    if (!planarReflectionMeshes.empty() && scene->getPlanarReflectionResolution() != PlanarReflectionResolution::OFF){
+        hasMultipleCameras = true;
+    }
+
     // drive mirror reflection cameras from the (now updated) main camera, so the
     // reflection passes render with current matrices in the draw step. This may
     // create reflection camera entities (reallocating the camera/transform arrays),
@@ -15611,6 +15896,13 @@ void RenderSystem::drawCameras(bool includeMain){
             renderCameraShadows(*cameraLighting);
         }
 
+        // the scene camera's water reflections, before its own pass, with the next terrain cut
+        // the render-to-texture cameras left (else the scene camera's)
+        if (isMainCamera){
+            const int reflectionTerrainView = (terrainViewCounter + 1 < MAX_TERRAIN_VIEWS) ? terrainViewCounter + 1 : 0;
+            renderWaterReflections(primaryView, camera, *cameraTransformPtr, reflectionTerrainView);
+        }
+
         CameraPass pass;
         pass.camera = &camera;
         pass.cameraTransform = cameraTransformPtr;
@@ -15639,6 +15931,9 @@ void RenderSystem::drawCameras(bool includeMain){
     sceneInputStats.depthPrePasses = 0;
     sceneInputStats.sharedDepth = 0;
     sceneInputStats.colorCopies = 0;
+    sceneInputStats.colorRecopies = 0;
+    lastPlanarReflectionStats = planarReflectionStats;
+    planarReflectionStats = PlanarReflectionStats();
     if (!primaryView.sceneInputTargets.empty())
         releaseSceneInputTargets(primaryView, false);
 #ifdef JASPERENGINE_EDITOR
@@ -15662,6 +15957,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     CameraComponent& camera = *pass.camera;
     Transform& cameraTransform = *pass.cameraTransform;
     const bool isMainCamera = pass.isMain;
+    passCamera = &camera;
     const int terrainView = pass.terrainView;
     // layers this camera draws (Unity Camera.cullingMask)
     const uint32_t cullingMask = camera.cullingMask;
@@ -15689,7 +15985,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // scene (nothing to look at in a scene without such a shader)
     passSceneDepth = nullptr;
     passSceneColor = nullptr;
-    const uint32_t sceneInputs = sceneInputUsage ? findPassSceneInputs(camera, isMainCamera ? 0 : -1) : 0;
+    // (a water reflection pass draws no reader of the scene)
+    const uint32_t sceneInputs = (sceneInputUsage && !pass.reflection) ? findPassSceneInputs(camera, isMainCamera ? 0 : -1) : 0;
 
     // Screen-space reflections (main camera only). The G-buffer geometry pass runs
     // FIRST so SSAO can share its depth (a single geometry pre-pass feeds both
@@ -16159,9 +16456,10 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     //---------Draw opaque meshes and UI----------
     bool hasActiveScissor = false;
 
-    // only the main camera has a culled instance view and detail levels
+    // only the main camera has a culled instance view and detail levels (a water reflection
+    // takes its viewer's detail levels)
     const int instanceView = isMainCamera ? 0 : -1;
-    const LodView* lodView = isMainCamera ? &rv().lodView : nullptr;
+    const LodView* lodView = (isMainCamera || pass.reflection) ? &rv().lodView : nullptr;
 
     const bool depthPrepass = isMainCamera && camera.depthTest && scene->isDepthPrepassEnabled();
 
@@ -16186,6 +16484,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
             if (!transform.visible || samplesCameraTarget(camera, mesh) || !isRenderActive(entity, signature) || !isLayerVisible(entity, cullingMask)){
+                continue;
+            }
+            // a water reflection draws no reflecting mesh (it would read its own pass) and no
+            // reader of the scene (it has none)
+            if (pass.reflection && (mesh.sceneInputs != 0 || planarReflectionMeshes.count(entity))){
                 continue;
             }
 
@@ -16423,7 +16726,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
         if (signature.test(scene->getComponentId<MeshComponent>())){
             MeshComponent& mesh = scene->getComponent<MeshComponent>(entity);
 
-            if (transform.visible && renderActive && !samplesCameraTarget(camera, mesh)){
+            if (transform.visible && renderActive && !samplesCameraTarget(camera, mesh) &&
+                    !(pass.reflection && (mesh.sceneInputs != 0 || planarReflectionMeshes.count(entity)))){
 
                 // Per-camera transparent-instance sorting is intentionally NOT done
                 // here: the instance buffer is shared across all cameras and sokol
@@ -17826,8 +18130,7 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
         return;
     }
 
-    const Matrix4 mainView = camera.viewMatrix;
-    const Vector3 mainEye = mainView.inverse() * Vector3(0.0f, 0.0f, 0.0f);
+    const ReflectionViewer viewer = ReflectionViewer::of(camera);
 
     PassObjects* viewObjects = passObjects;
 
@@ -17866,36 +18169,7 @@ void RenderSystem::renderViewMirrors(RenderView& view, CameraComponent& camera){
         Transform& refCamTransform = mirrorView.transform;
 
         Vector3 worldNormal = (mirrorTransform->worldRotation * mirror.normal).normalize();
-        Plane plane(worldNormal, mirrorTransform->worldPosition);
-
-        Matrix4 reflectMat = Matrix4::reflectMatrix(plane);
-        refCam.customViewMatrix = mainView * reflectMat;
-        refCam.hasCustomViewMatrix = true;
-        refCamTransform.position = reflectMat * mainEye;
-        refCamTransform.worldPosition = refCamTransform.position;
-        refCam.invertCulling = true;
-        refCam.renderToTexture = true;
-
-        refCam.type = camera.type;
-        refCam.yfov = camera.yfov;
-        refCam.aspect = camera.aspect;
-        refCam.nearClip = camera.nearClip;
-        refCam.farClip = camera.farClip;
-        refCam.leftClip = camera.leftClip;
-        refCam.rightClip = camera.rightClip;
-        refCam.bottomClip = camera.bottomClip;
-        refCam.topClip = camera.topClip;
-        // a mirror reflects the layers its viewer sees
-        refCam.cullingMask = camera.cullingMask;
-
-        updateCamera(refCam, refCamTransform);
-
-        // oblique near plane on the mirror (see updateMirrors)
-        Vector4 worldClipPlane(worldNormal.x, worldNormal.y, worldNormal.z, plane.d);
-        Vector4 viewClipPlane = refCam.viewMatrix.inverse().transpose() * worldClipPlane;
-        Matrix4 obliqueProjection = refCam.projectionMatrix.obliqueNearClip(viewClipPlane);
-        refCam.viewProjectionMatrix = obliqueProjection * refCam.viewMatrix;
-        updateCameraFrustumPlanes(refCam.viewProjectionMatrix, refCam.frustumPlanes);
+        driveReflectionCamera(refCam, refCamTransform, viewer, worldNormal, mirrorTransform->worldPosition, 0.0f);
         mirrorView.viewProjection = refCam.viewProjectionMatrix;
 
         passObjects = &mirrorView.objects;
@@ -18042,6 +18316,11 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
             view.instancesBuilt = false;
         }
         view.mirrors.clear();
+        // the frame's water reflections, read by this view's own pass
+        view.waterReflections.clear();
+        view.waterReflectionOf = primaryView.waterReflectionOf;
+        view.waterReflectionSource = &primaryView;
+        view.waterReflectionCamera = &camera;
     }else if (!desc.shadows){
         // its lighting without shadow maps: none is planned or drawn for it
         const bool sceneShadows = hasShadows;
@@ -18052,6 +18331,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         selectPassTerrain(view.objects, camera, cameraTransform);
         updatePassFrame(camera, cameraTransform);
         renderViewMirrors(view, camera);
+        renderWaterReflections(view, camera, cameraTransform, 0);
     }else{
         // the view's shadow passes draw its terrain cut and cull its instance lists
         prepareCameraShadows(viewShadows, camera, cameraTransform, TERRAIN_PASS_VIEW, false);
@@ -18060,6 +18340,7 @@ void RenderSystem::drawView(uint32_t viewId, const ViewDesc& desc){
         updatePassFrame(camera, cameraTransform);
         renderCameraShadows(viewShadows);
         renderViewMirrors(view, camera);
+        renderWaterReflections(view, camera, cameraTransform, 0);
     }
     if (!desc.shadows){
         // every slot at strength 0 (shadow_data.glsl): the fragments read their lights unshadowed

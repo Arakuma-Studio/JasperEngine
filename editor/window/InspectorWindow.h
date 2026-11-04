@@ -281,7 +281,8 @@ namespace jasperengine::editor{
             SliderFloat,
             ColorRGB,
             ColorRGBA,
-            Combo
+            Combo,
+            LayerMask   // a uint32_t layer mask: Unity's mask field
         };
 
         struct DirtyMaterialEntry {
@@ -438,6 +439,12 @@ namespace jasperengine::editor{
         void writeDirtyMaterial(const DirtyMaterialEntry& entry);
         template<typename T>
         void drawScenePropertyRow(SceneProject* sceneProject, const std::string& propertyName, const char* label, ScenePropertyInputType inputType, float inputWidth = -1.0f, float minValue = 0.0f, float maxValue = 1.0f, const std::string& help = "");
+        // the Planar Reflections section of the scene settings (water-reflections)
+        void drawScenePlanarReflections(SceneProject* sceneProject, ImGuiTableFlags tableFlags);
+    public:
+        // Unity's mask field label: Nothing, Everything, the one layer's name, or Mixed...
+        static std::string sceneLayerMaskLabel(uint32_t mask);
+    private:
 
         // Sound preview helpers
         bool ensureSoundPreviewInitialized();

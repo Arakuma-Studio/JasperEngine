@@ -205,6 +205,28 @@ namespace {
             wrappedTooltip(editor::Catalog::getSceneInputsCost(inputs));
     }
 
+    // One row under a shader's rows reading a planar reflection (PLANAR_REFLECTION): what the
+    // scene's Planar Reflections draw for it, and that it costs a camera pass per water height
+    void planarReflectionInfoRow(Scene* scene, const std::string& shader, const std::vector<std::string>& features) {
+        std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
+        if (!scene || !manifest || !(manifest->resolveRequire(ShaderReference::getEnabledFeatures(shader, features)) & ShaderRequire_PlanarReflection))
+            return;
+        static const char* const sizes[] = {"Off", "a quarter", "half", "full"};
+        const PlanarReflectionResolution resolution = scene->getPlanarReflectionResolution();
+        ImGui::TableNextRow();
+        ImGui::TableSetColumnIndex(1);
+        ImGui::PushStyleColor(ImGuiCol_Text, editor::Theme::Colors::WarningText);
+        if (resolution == PlanarReflectionResolution::OFF)
+            ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Planar reflection: Off in this scene, the sky or probe reflection is drawn");
+        else
+            ImGui::TextWrapped(ICON_FA_GAUGE_HIGH " Planar reflection: the scene again at %s resolution, one pass per water height", sizes[(int)resolution]);
+        ImGui::PopStyleColor();
+        if (ImGui::IsItemHovered())
+            wrappedTooltip("Each camera that sees this water draws the scene mirrored about its rest level, once for every water height "
+                           "it sees (the nearest up to Max Planes). Scene settings > Planar Reflections sets the resolution (Off: none), "
+                           "the layers, shadows and distance. Made for flat water: a sloped surface mirrors about one level.");
+    }
+
     std::shared_ptr<const ShaderManifest> presentManifest(const std::string& shader) {
         std::shared_ptr<const ShaderManifest> manifest = shader.empty() ? nullptr : ShaderManifests::get(shader);
         return (manifest && manifest->present) ? manifest : nullptr;
@@ -759,6 +781,7 @@ bool editor::InspectorWindow::drawShaderManifestRows(ComponentType cpType, Scene
     // what this variant reads of the scene (phase 3) and the cost: a material's, its extra
     // pass's or a points component's
     sceneInputsInfoRow(Catalog::getShaderSceneInputs(shader, features));
+    planarReflectionInfoRow(sceneProject->scene, shader, features);
 
     return true;
 }
