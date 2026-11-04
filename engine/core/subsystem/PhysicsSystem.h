@@ -6,6 +6,7 @@
 
 #include "SubSystem.h"
 #include "ecs/ComponentFwd.h"
+#include "component/PhysicsCommon.h"
 #include "math/Vector2.h"
 #include "math/Vector3.h"
 #include "math/Quaternion.h"
