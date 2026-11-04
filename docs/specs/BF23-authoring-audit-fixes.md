@@ -250,7 +250,8 @@ result changes S54's first milestone.
   (`JasperEngineWin.cpp`) and macOS (`MacViewGL.mm`, `NSOpenGLProfileVersion4_1Core`), the editor's
   `BackendLinux.cpp` and `BackendWin.cpp`, and the tests' `HeadlessContext.cpp`. Web and Android use
   GLES3 (`glsl300es`), iOS uses Metal. The one version 3 context attribute is the Linux GLES3 3.2
-  test context. **Left as they are, outside the three files this item names:** the runtime label
+  test context. The text now says 4.1 in `AGENTS.md` and `docs/specs/README.md`; after the merge of
+  `integ/mats-fx`, `.claude/rules/rendering.md` names no version. **Left as they are, outside those files:** the runtime label
   `"OpenGL 3.3 core"` (`SokolSystem.cpp:836`), pinned by `tools/ci/test_player_cli.py:157` and
   repeated in `docs/profiling.md:109` and a comment in `SystemRender.h:140`, still names the wrong
   version and should change together as a small follow-up. The `GL 3.3` mentions about RGB565
