@@ -37,7 +37,7 @@ FRAMES = 30
 
 # The decoded PCM of test_normal_recording's MOV (no lossy codec, so no FFmpeg version in it), from
 # the build before S62 (main at f9beac071): the recorder's rewrite did not touch a normal recording
-REFERENCE_AUDIO_SHA256 = "@REFERENCE@"
+REFERENCE_AUDIO_SHA256 = "408859a6ce060fa90c3699b5ff1a6b5b591250bc4dfd428f102bdd367b53c500"
 REFERENCE_AUDIO_BYTES = 576000
 
 
