@@ -4661,7 +4661,7 @@ The command catalog: {id, group, name, context, chords, default_chords, overridd
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `conflicts_only` | boolean |  |  |
-| `context` | `"global"` \| `"editor"` \| `"scene_view"` \| `"hierarchy"` \| `"project"` \| `"console"` \| `"animation"` \| `"pose_animation"` |  |  |
+| `context` | `"global"` \| `"editor"` \| `"scene_view"` \| `"hierarchy"` \| `"project"` \| `"console"` \| `"animation"` \| `"pose_animation"` \| `"curve"` \| `"color_picker"` |  |  |
 | `group` | string |  | File, Edit, Tools, Scene View... |
 
 
