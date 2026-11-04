@@ -30,6 +30,7 @@ import pngdiff
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "LinesTrailsTest"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 HERE = Path(__file__).resolve().parent

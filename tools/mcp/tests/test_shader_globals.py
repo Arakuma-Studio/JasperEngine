@@ -30,6 +30,7 @@ from harness import Editor, find_key, skip
 from htmlui_pixels import decode_png
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "shader-globals"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "1800"))
 SCENE = "scenes/Globals.scene"
 S: dict = {}

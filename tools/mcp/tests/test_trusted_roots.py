@@ -14,6 +14,7 @@ from harness import Editor, skip, symlinks_permitted
 import pngdiff
 
 EDITOR = {"create": True, "name": "Trusted Roots"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 
 S: dict = {}
 

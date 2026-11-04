@@ -13,6 +13,7 @@ import struct
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Audio Mixer"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 MIXER = "audio/Main.mixer"   # a new project's assets folder is the project folder

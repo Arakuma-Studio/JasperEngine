@@ -19,6 +19,7 @@ import pngdiff  # noqa: E402
 from htmlui_pixels import decode_png  # noqa: E402
 
 EDITOR = {"create": True, "name": "Light2D Normals"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 SIZE = 64

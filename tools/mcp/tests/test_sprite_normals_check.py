@@ -24,6 +24,7 @@ import harness
 from harness import REPO, Editor, TestFailure
 
 EDITOR = {"create": True, "name": "NormalsCheck"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 600
 
 FIXTURES = REPO / "editor" / "spritenormals" / "tests" / "fixtures" / "inputs"

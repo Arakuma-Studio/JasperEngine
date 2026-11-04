@@ -12,6 +12,7 @@ from pathlib import Path
 from harness import Editor, make_native_player, project_player_name, record_built_player, skip
 
 EDITOR = {"create": True, "name": "Editor Writers"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 1500
 
 GUARD = ("hidden folder", "named project.yaml", "regenerated on every build")

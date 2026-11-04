@@ -29,6 +29,7 @@ from htmlui_pixels import decode_png
 
 
 EDITOR = {"create": True, "name": "ParticlesTest"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 1200
 
 HERE = Path(__file__).resolve().parent

@@ -18,6 +18,7 @@ import pbxproj
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Native Test"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 1500
 
 CPP_PLUGIN = """#include "JasperEngine.h"

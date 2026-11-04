@@ -16,6 +16,7 @@ import json
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Anim Properties"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 
 TIMEOUT = 900
 

@@ -9,6 +9,7 @@ import harness
 from harness import Editor
 
 EDITOR = {"project": harness.REPO / "tools" / "fixtures" / "pose-animation"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 

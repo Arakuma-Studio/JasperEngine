@@ -16,6 +16,7 @@ import yaml
 from harness import Editor, make_native_player, project_player_name, record_built_player, skip, symlinks_permitted
 
 EDITOR = {"create": True, "name": "Owned Places"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 

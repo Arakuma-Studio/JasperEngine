@@ -32,6 +32,7 @@ from harness import Editor, TestFailure
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "SpriteNormalsPaint"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 SPR = "assets/sprites"

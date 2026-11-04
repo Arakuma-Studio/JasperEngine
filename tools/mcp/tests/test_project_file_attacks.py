@@ -14,6 +14,7 @@ import yaml
 from harness import Editor, skip, symlinks_permitted
 
 EDITOR = {"create": True, "name": "Project File Attacks"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 

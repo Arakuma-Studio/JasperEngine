@@ -5,6 +5,7 @@ check_script's lifecycle warnings, and a scene loaded again in Play being built 
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Lifecycle"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 
 LOGGER = """---@class Logger : ScriptInstance
 local Logger = {}

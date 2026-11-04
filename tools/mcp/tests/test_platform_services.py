@@ -10,6 +10,7 @@ from harness import Editor
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Platform Services"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 
 RECORDER = """---@class Recorder : ScriptInstance
 local Recorder = { properties = {} }

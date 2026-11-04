@@ -26,6 +26,7 @@ from pathlib import Path
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness", "ui_probe": True}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 CONTROLLER = "assets/anim/window.controller"

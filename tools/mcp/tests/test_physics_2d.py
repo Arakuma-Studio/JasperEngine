@@ -15,6 +15,7 @@ import yaml
 from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "Physics 2D"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = int(os.environ.get("JASPER_BUILD_TIMEOUT", "7200"))
 JOBS = 3   # the host is shared: never more
 

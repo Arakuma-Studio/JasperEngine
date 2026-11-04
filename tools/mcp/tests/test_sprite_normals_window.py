@@ -33,6 +33,7 @@ import harness
 from harness import Editor
 
 EDITOR = {"create": True, "xvfb": "harness", "ui_probe": True}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 900
 
 S: dict = {}

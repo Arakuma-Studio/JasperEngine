@@ -13,6 +13,7 @@ from pathlib import Path
 from harness import Editor, skip
 
 EDITOR = {"create": True, "name": "Shell And Exec"}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 1200
 
 

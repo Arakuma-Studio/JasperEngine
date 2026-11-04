@@ -14,6 +14,7 @@ import subprocess
 from harness import Editor
 
 EDITOR = {"xvfb": "harness", "create": True, "name": "Lifecycle Inspector", "ui_probe": True}
+CI_EXCLUDED = "not sorted into the CI suite yet: landed undeclared; in the full suite (MCP_SUITE=all)"
 TIMEOUT = 600
 
 TOGGLE = """local Toggle = {}
