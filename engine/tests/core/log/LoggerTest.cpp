@@ -7,6 +7,7 @@
 #include "TempDir.h"
 
 #include "Log.h"
+#include "util/StringUtils.h"
 #include "script/LuaBinding.h"
 #include "lua.hpp"
 
@@ -125,6 +126,37 @@ TEST(LoggerTest, LongTextIsTruncated) {
     ASSERT_EQ(found.size(), 1u);
     EXPECT_LE(found[0].text.size(), LogRecord::MAX_TEXT_BYTES);
     EXPECT_TRUE(found[0].flags & LogFlagTruncated);
+}
+
+// The log is UTF-8 for every sink: bytes that are not (a child's output in another code page, a
+// cut string) arrive repaired, one U+FFFD per bad byte, through write and the printf form alike
+TEST(LoggerTest, InvalidUtf8ReachesSinksRepaired) {
+    auto sink = recordingSink();
+    Logger::write(LogLevel::Info, logCategoryLoggerTest(), "utf8 write \xFF\xC3 caf\xC3\xA9");
+    Logger::writef(LogLevel::Info, logCategoryLoggerTest(), nullptr, "%s", "utf8 writef \xE2\x82 \xF0\x9F\x98\x80");
+    Logger::flush();
+    const auto written = sink->containing("utf8 write ");
+    ASSERT_EQ(written.size(), 1u);
+    EXPECT_EQ(written[0].text, "utf8 write \xEF\xBF\xBD\xEF\xBF\xBD caf\xC3\xA9");
+    const auto formatted = sink->containing("utf8 writef ");
+    ASSERT_EQ(formatted.size(), 1u);
+    EXPECT_EQ(formatted[0].text, "utf8 writef \xEF\xBF\xBD\xEF\xBF\xBD \xF0\x9F\x98\x80");
+}
+
+// a text cut to the record's limit is cut between characters, never inside one
+TEST(LoggerTest, TruncationKeepsWholeCharacters) {
+    auto sink = recordingSink();
+    std::string text = "cut ";
+    while (text.size() < LogRecord::MAX_TEXT_BYTES + 100) text += "\xE2\x82\xAC";
+    Logger::write(LogLevel::Info, logCategoryLoggerTest(), text);
+    Logger::flush();
+    const auto found = sink->containing("cut ");
+    ASSERT_EQ(found.size(), 1u);
+    EXPECT_TRUE(found[0].flags & LogFlagTruncated);
+    bool invalid = false;
+    StringUtils::decodeUtf8ToCodepoints(found[0].text, invalid);
+    EXPECT_FALSE(invalid) << "a character was cut in half";
+    EXPECT_EQ(found[0].text.find("\xEF\xBF\xBD"), std::string::npos) << "and none was replaced";
 }
 
 TEST(LoggerTest, IdsMonotonicAcrossThreads) {

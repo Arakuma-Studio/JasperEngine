@@ -6,6 +6,7 @@
 #include "Backtrace.h"
 // timed waits TSan can see (GCC 11 misses libstdc++'s steady-clock wait)
 #include "jobs/detail/TimedWait.h"
+#include "util/StringUtils.h"
 
 #include <algorithm>
 #include <array>
@@ -166,6 +167,8 @@ namespace je_logger {
         uint32_t currentSink = 0;
         char formatBuffer[1024];
         std::string largeText;
+        // a text that was not valid UTF-8, repaired (logSubmit)
+        std::string repairedText;
         void* frames[LogRecord::MAX_FRAMES];
         // Inline sinks written under the lock that want afterWrite() once it is released
         std::vector<std::shared_ptr<SinkEntry>> afterWrite;
@@ -941,6 +944,13 @@ namespace je_logger {
         LoggerState& s = logState();
         ThreadState& thread = logCurrentThread();
 
+        // every sink gets UTF-8: a child's output in another code page, a cut string or, on
+        // Windows, ANSI text (StringUtils::legacyToUtf8); valid text costs one scan
+        if (!StringUtils::isValidUtf8(text)) {
+            thread.repairedText = StringUtils::legacyToUtf8(text);
+            text = thread.repairedText;
+        }
+
         if (!s.initialized.load(std::memory_order_acquire)) {
             if (s.residentCount.load(std::memory_order_acquire) > 0 && !thread.holdsQueueLock) {
                 deliverResident(s, thread, level, category, source, text, flags);
@@ -988,7 +998,9 @@ namespace je_logger {
         std::string& large = thread.largeText;
         if (text.size() > LogRecord::MAX_TEXT_BYTES) {
             char suffix[48];
-            const size_t keep = LogRecord::MAX_TEXT_BYTES - 40;
+            size_t keep = LogRecord::MAX_TEXT_BYTES - 40;
+            // between characters, never inside one
+            while (keep > 0 && (static_cast<unsigned char>(text[keep]) & 0xC0) == 0x80) keep--;
             const int suffixLength = std::snprintf(suffix, sizeof(suffix), "\xE2\x80\xA6[truncated %llu bytes]",
                                                    static_cast<unsigned long long>(text.size() - keep));
             if (text.data() != large.data()) {
