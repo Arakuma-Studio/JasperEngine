@@ -5,6 +5,8 @@ check_script's lifecycle warnings, and a scene loaded again in Play being built 
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Lifecycle"}
+CI_EXCLUDED = ("long-running (about 100 s on a loaded server: a C++ script compiled for Play); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 
 LOGGER = """---@class Logger : ScriptInstance
 local Logger = {}
