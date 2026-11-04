@@ -11,6 +11,7 @@
 #include "Generator.h"
 #include "Scene.h"
 #include "component/MeshComponent.h"
+#include "object/Sprite.h"
 #include "object/Terrain.h"
 #include "texture/Texture.h"
 
@@ -167,6 +168,23 @@ TEST(GeneratedScenes, ATerrainWhoseHeightMapFailedToLoadGeneratesNoVertices) {
     }
     ASSERT_TRUE(heightMap.empty());
     EXPECT_EQ(Factory::createMeshComponent(8, &scene, terrain.getEntity(), fs::path()), before);
+}
+
+// A sprite or tilemap sets hasTextureRect once its texture loads, so with async loading its buffers
+// (in the scene's code) can load first and pick a variant without the texture rect, which the
+// build may not ship. The cooked scenes keep the flag (Stream); the scene's code does too
+// (Doriax 33172858c, export-pipeline spec 6.13).
+TEST(GeneratedScenes, SpriteKeepsHasTextureRect) {
+    Scene scene;
+    Sprite sprite(&scene);
+    MeshComponent& mesh = scene.getComponent<MeshComponent>(sprite.getEntity());
+    ASSERT_GE(mesh.numSubmeshes, 1u);
+    mesh.submeshes[0].hasTextureRect = true;
+    const std::string code = Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path());
+    EXPECT_NE(code.find("mesh.submeshes[0].hasTextureRect = true;"), std::string::npos) << code;
+
+    mesh.submeshes[0].hasTextureRect = false;
+    EXPECT_EQ(Factory::createMeshComponent(8, &scene, sprite.getEntity(), fs::path()).find("hasTextureRect"), std::string::npos);
 }
 
 // A Lua script's string property is generated as an assignment to a ScriptPropertyValue. Since

@@ -440,8 +440,10 @@ bool editor::Generator::buildProject(const fs::path& buildPath, const std::strin
     MsBuildProgress msbuild(buildPath, configType);
     const std::string row = statusRow;
     float lastFraction = -1.0f;
+    buildErrors.clear();
     return commandRunner.run(buildArgv, buildPath, [&](const std::string& line) {
         Out::build(line);
+        buildErrors.add(line);
         float fraction = -1.0f;
         if (msbuild.consumeLine(line, fraction) || parseBuildProgress(line, fraction)) {
             if (fraction - lastFraction >= 0.01f || fraction >= 1.0f) {
@@ -3330,6 +3332,11 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             if (commandRunner.isCancelRequested()) {
                 Out::warning("Build cancelled.");
             } else {
+                // the errors again at the end of the output, where a long build leaves the reader
+                if (!buildErrors.errors().empty()) {
+                    Out::error("C++ scripts failed to build with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::error("%s", error.text.c_str());
+                }
                 Out::error("Build failed");
             }
             lastBuildSucceeded.store(false, std::memory_order_relaxed);

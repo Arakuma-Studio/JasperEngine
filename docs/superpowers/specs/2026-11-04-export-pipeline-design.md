@@ -735,3 +735,53 @@ Existing suites to keep green: `test_build.py`, `test_build_method.py`,
   `engine/platform/emscripten`. No overlap with apply.cmake, but both touch the web gate if it adds
   tests there.
 - **`code-editor-git`.** No overlap.
+
+## Deviations
+
+Recorded during implementation (branch `dc/export-pipeline`).
+
+1. **Capacities of script-only prefabs (6.7, F8, Doriax b1df76163): not implemented.** Lead
+   decision (LEDGER.md, "Capacities"): `mesh-memory` removes the fixed component capacities, so the
+   counting has nothing left to size. T9 and acceptance criterion 9 are dropped with it.
+2. **Failure wording.** The Build dialog prefixes every failure with "Build failed:", so the
+   exporter's own messages say what failed instead of repeating it: "Compiling failed with N
+   error(s). First: <file>:<line>: <message>" and "CMake configuration failed with ...". A failure
+   with no recognised error line names the last output line. Shader build failures say "<n>
+   shader(s) failed to build. First: <shader> (<language>): <reason>".
+3. **The Play-time C++ build in MCP (`compile_scripts`, `play` start).** These tools keep
+   `ProjectChecks::summarizeCppBuild`, an existing parser with its own deduplication and limits
+   (60 errors, 30 warnings), and do not take `BuildDiagnostics`. The Generator does use
+   `BuildErrorLog` to repeat the errors at the end of the Play build's log. MCP's `build_project`,
+   the exporter, the Console's level and the CLI share `BuildDiagnostics`.
+4. **The start scene in Build Settings.** Scenes In Build lists saved scenes only, and the start
+   scene is chosen from it, so a never-saved scene cannot be the start scene (Unity's untitled
+   scenes are not in its build list either). Never-saved scenes still ship (6.6), with the warning
+   and the **Save...** button.
+5. **Base scene.** Covering the start scene leaves frames with no main scene. To make the loading
+   scene clear the frame and own the swapchain redirect, `Engine::getBaseScene()` (the main scene,
+   else the bottom running scene) was added. `RenderSystem::isBaseLayer`, `isFixedResolutionActive`,
+   `updateSwapchainRedirect` and `Engine::endCompositeFramebuffer` use it. Without it, the loading
+   scene would draw as a layer over an uncleared frame.
+6. **`webTreePathRefusal`** (the Windows `%` refusal walk) does not skip earlier exports. It only
+   refuses paths with `%` or `"`. A false refusal there names the folder, and moving the earlier
+   export out of the project (which the build now asks for) clears it.
+7. **The web gate with a special path (T19)** was not added. The quoting of `--preload-file` and
+   `--pre-js` is checked by reading the generated flags (6.12) and by the normal web build. T18
+   (configure in "My Game @1 [x]") covers the globs.
+8. **Lean MCP rules.** No tool description changed. The new result text (the refusal, the `W-...`
+   codes) has the eval case `guard_build_output_inside_project` (tools/mcp/eval/cases.py), and the
+   detail went to `docs/mcp/guide/shipping.md`. The agent guide is unchanged. The live eval was not
+   run here: it needs Orquester-managed accounts. `test_grade.py` passes.
+9. **Linked folders are followed (lead decision, S68 linked folders).** This overrides 6.1 and rule
+   7.2 ("links are not followed"). `copyAssets`, `copyLua` and `copyCustomShaderSources` walk with
+   `exportfiles::walk(..., followLinks=true)`: a linked folder ships at the path the editor reads it
+   by, under each name that reaches it. A link back to a folder it is in is a cycle, left out with
+   `W-LINK-CYCLE`. The other guards stay: no earlier export, failed copies fail the export. The
+   C++ header and script walks and the SDK mirror still do not follow folder links.
+10. **One shader-key function for S64.** `Project::collectBuildShaderKeys` is where S64 (shader
+    lists for closed scenes) adds its closed-scene keys. The exporter, Build Settings,
+    `get_build_info`/`generate_shaders` and the standalone cache already go through it.
+11. **T17 (prebuilt web favicon in the slow lane)** was not added: the MCP suite has no prebuilt web
+    build. The prebuilt `finalizeWeb` and the Compile path share `Exporter::writeWebFavicon`, which
+    T16 covers through the source export.
+

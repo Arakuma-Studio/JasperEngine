@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include "imgui.h"
+#include "log/LogCategory.h"
 #include "util/SourceLocation.h"
 
 namespace jasperengine::editor {
@@ -25,6 +26,8 @@ namespace jasperengine::editor {
 
     struct LogData {
         LogType type;
+        // the counter and filter bucket (ConsoleWindow::Severity): a build line by its own level
+        int severity = 0;
         std::string message;
         uint64_t id = 0;                     // the logger's record id (increasing)
         bool detail = false;                 // Debug or Trace: drawn grey
@@ -42,10 +45,16 @@ namespace jasperengine::editor {
     // Error Pause, search, Log/Warning/Error counters that filter), one row per
     // message, and a details pane with the full text of the selected message.
     class ConsoleWindow {
-    private:
-        // Severity buckets the counters and filters work on. Info and Success
-        // are "Log"; Build (compiler/shader output) folds into Log as well.
+    public:
+        // Severity buckets the counters and filters work on. Info and Success are "Log"; a Build
+        // line (compiler/shader output) goes by its level: a compiler error counts as an Error.
         enum Severity { SEVERITY_LOG = 0, SEVERITY_WARNING = 1, SEVERITY_ERROR_MESSAGE = 2, SEVERITY_COUNT = 3 };
+        static Severity severityOf(LogType type, LogLevel level);
+        // Opens a file location of a message (a build-tree copy maps back to its project file):
+        // Preferences > External Tools > External Script Editor when external, else the Code Editor
+        static void openLocation(const SourceLocation& location, bool external);
+
+    private:
 
         struct Row {
             size_t logIndex;                 // entry shown (the first occurrence when collapsed)
@@ -95,7 +104,6 @@ namespace jasperengine::editor {
 
         static size_t countRawLines(const std::string& message);
         static size_t trimLeadingRawLines(std::string& message, size_t linesToTrim);
-        static Severity severityOf(LogType type);
         void enforceStoredLineLimit();
         void recountSeverities();
         void rebuildRows();
@@ -116,7 +124,6 @@ namespace jasperengine::editor {
         // External Tools > External Script Editor, else the built-in Code Editor. False when
         // the message names no file.
         static bool openFirstLocation(const LogData& log, bool external);
-        static void openLocation(const SourceLocation& location, bool external);
 
     public:
         static constexpr const char* WINDOW_NAME = "Console";

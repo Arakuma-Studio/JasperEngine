@@ -21,6 +21,7 @@
 #include "registry/TagManager.h"
 #include "Factory.h"
 #include "util/Prefab.h"
+#include "util/BuildDiagnostics.h"
 #include "util/CommandRunner.h"
 
 namespace fs = std::filesystem;
@@ -267,6 +268,8 @@ namespace jasperengine::editor {
         std::vector<std::string> macOSFrameworks;
         std::atomic<bool> lastBuildSucceeded;
         CommandRunner commandRunner;
+        // the compiler and linker errors of the last C++ script build, repeated at its end
+        BuildErrorLog buildErrors;
         // the project's UI Scale, emitted by configure (setUIScale before it)
         CanvasScalerSettings uiScale;
 

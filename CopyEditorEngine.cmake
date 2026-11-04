@@ -106,9 +106,20 @@ endif()
 not_in_engine("${stale}" stale)
 remove_stale("${stale}")
 
+# IDE output of the workspaces (Android Studio, Gradle, Xcode, Finder) is never part of the SDK:
+# exports would copy it into every game (export/ExportFiles.h isIdeOutput keeps the same names)
 file(COPY "${ENGINE_SOURCE}/" DESTINATION "${ENGINE_DEST}"
      PATTERN ".cxx" EXCLUDE
      PATTERN ".gradle" EXCLUDE
+     PATTERN ".idea" EXCLUDE
+     PATTERN ".kotlin" EXCLUDE
+     PATTERN ".externalNativeBuild" EXCLUDE
+     PATTERN "captures" EXCLUDE
+     PATTERN "local.properties" EXCLUDE
+     PATTERN "xcuserdata" EXCLUDE
+     PATTERN "DerivedData" EXCLUDE
+     PATTERN ".DS_Store" EXCLUDE
+     REGEX "\\.iml$" EXCLUDE
      PATTERN "build" EXCLUDE
      PATTERN ".git" EXCLUDE
      REGEX "/engine/tests$" EXCLUDE

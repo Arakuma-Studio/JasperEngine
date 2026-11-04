@@ -9,7 +9,9 @@
 #include "players/ModuleUsage.h"
 #include "shader/ShaderBuilder.h"
 #include "ShaderDataSerializer.h"
+#include "util/BuildDiagnostics.h"
 #include "util/CommandRunner.h"
+#include "export/ExportFiles.h"
 
 #include <filesystem>
 #include <set>
@@ -134,6 +136,9 @@ namespace jasperengine::editor {
         bool finished = false;
         bool failed = false;
         std::string errorMessage;
+        // a failed build's errors (the first BuildErrorLog::kMaxKept, unique) and how many there were
+        std::vector<BuildDiagnostic> errors;
+        size_t errorCount = 0;
     };
 
     // The Emscripten SDK a Web build uses. No emcmake wrapper (emcmake.bat would run through
@@ -228,6 +233,32 @@ namespace jasperengine::editor {
         // for the [0,1] SourceCode range) map into [0, 0.5] for Desktop/Web,
         // leaving the upper half for configure/build/collect.
         float progressScale = 1.0f;
+
+        // Every copy and write of an export: false (the export failed, naming the file and the
+        // reason) when it did not land
+        bool copyOrFail(const fs::path& from, const fs::path& to);
+        bool writeOrFail(const fs::path& path, const std::string& content);
+        // an earlier export's file this one no longer makes (false: it could not be removed)
+        bool removeStale(const fs::path& path);
+        // A tree the export copies, walked with exportfiles::walk: folders that cannot be read are
+        // warned about (W-UNREADABLE-FOLDER), any other error fails the export. `filter` sees
+        // the folders that are not an earlier export's (isEarlierExport skips those). followLinks:
+        // linked folders ship as the editor reads them (S68); a link cycle is warned (W-LINK-CYCLE)
+        bool walkTree(const fs::path& root, const exportfiles::DirFilter& filter, const exportfiles::Visitor& visit,
+                      bool followLinks = false);
+        // An export's folder met while walking the project (this export's own folders, or one an
+        // earlier export left): skipped, and warned about once (W-EXPORT-FOLDER-SKIPPED)
+        bool isEarlierExport(const fs::directory_entry& entry);
+        std::set<fs::path> warnedExportFolders;
+        // the build's compiler and linker errors (configureBuild, runBuild)
+        BuildErrorLog buildErrors;
+        // a failed configure or build: its errors at the end of the log, in the progress, and the
+        // first in the failure message ("Build failed with 2 error(s). First: ...")
+        void failBuild(const std::string& what);
+        // the web page's icon: Web > Favicon, else the Player icon (a PNG), else the JasperEngine logo
+        bool writeWebFavicon(const fs::path& target);
+        // a fresh report for this export (every mode: warnings and notes)
+        void resetResult();
 
         void setProgress(const std::string& step, float value);
         void setProgressRaw(const std::string& step, float value);
@@ -383,10 +414,13 @@ namespace jasperengine::editor {
         // target_include_directories() call putting the script roots on the exported game target.
         std::string buildScriptDirIncludes() const;
 
-        static void copyTree(const fs::path& src, const fs::path& dst, std::error_code& ec);
-        static void copyTreeIfChanged(const fs::path& src, const fs::path& dst, std::error_code& ec);
 
     public:
+        // Why `dir` can't take an export of `project` ("" when it can): it is, or is inside, the
+        // project, its assets or its Lua folder (the editor would import the exported files as
+        // project assets), unless it is below a hidden folder or the project's top-level build/
+        static std::string outputFolderRefusal(const Project* project, const fs::path& dir);
+
         // a scene or prefab file's text: a Video Player with an http(s) url
         static bool hasUrlVideoPlayer(const std::string& sceneText);
         // the first of `files` (relative to `root`: Lua, C++ scripts, HTML UI documents) that may
