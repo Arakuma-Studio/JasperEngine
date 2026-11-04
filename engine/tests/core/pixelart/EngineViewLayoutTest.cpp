@@ -48,21 +48,21 @@ TEST(EngineViewLayoutTest, OtherModesKeepTheirLayout){
     EXPECT_EQ(viewRect.getWidth(), 1366.0f);
 }
 
-// R3: a Pixel Perfect Camera's view is its main scene's; a new main scene, or none, starts without
-// it (its own Pixel Perfect Camera sets it again on its first update)
+// R3: a Pixel Perfect Camera's view is its main scene's: with the main scene removed, or replaced
+// by none, the Engine lays out without it (a new main scene's own camera sets it on its update)
 TEST(EngineViewLayoutTest, ThePixelPerfectViewGoesWithItsMainScene){
     PixelPerfectViewRequest request;
     request.active = true;
     request.referenceWidth = 320;
     request.referenceHeight = 180;
-    Scene first, second;
-    Engine::setScene(&first);
+    Scene scene;
+    Engine::setScene(&scene);
     Engine::setPixelPerfectView(request);
-    Engine::setScene(&first);
-    EXPECT_TRUE(Engine::getPixelPerfectView().active) << "the same main scene keeps it";
-    Engine::setScene(&second);
-    EXPECT_FALSE(Engine::getPixelPerfectView().active) << "another main scene";
-    Engine::setPixelPerfectView(request);
-    Engine::removeScene(&second);
+    ASSERT_TRUE(Engine::getPixelPerfectView().active);
+    Engine::removeScene(&scene);
     EXPECT_FALSE(Engine::getPixelPerfectView().active) << "the main scene removed";
+    Engine::setScene(&scene);
+    Engine::setPixelPerfectView(request);
+    Engine::setScene(nullptr);
+    EXPECT_FALSE(Engine::getPixelPerfectView().active) << "no main scene";
 }
