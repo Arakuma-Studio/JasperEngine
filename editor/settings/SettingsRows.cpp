@@ -21,6 +21,7 @@
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "titleart/TitleArtSettingsCmd.h"
 #include "DebugSettings.h"
 #include "Generator.h"
 #include "audio/AudioMixer.h"
@@ -588,6 +589,33 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
             command->setNoMerge();
             if (!p->getProjectCommandHistory()->addCommand(command)) {
                 error = "the debug settings could not be applied";
+                return false;
+            }
+        }
+        return true;
+    };
+    return s;
+}
+
+// Project Settings > Title Art: one key of TitleArtProjectSettings, applied as one undoable step
+Setting titleArtSetting(const std::string& key, const std::string& type, const std::string& description, std::vector<std::string> values,
+                        std::function<Json(const TitleArtProjectSettings&)> get,
+                        std::function<bool(TitleArtProjectSettings&, const Json&, std::string&)> set) {
+    Setting s;
+    s.key = key;
+    s.type = type;
+    s.description = description + " Undoable (undo scope project).";
+    s.values = std::move(values);
+    s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getTitleArtSettings()); };
+    s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+        Project* p = ctx.project();
+        TitleArtProjectSettings changed = p->getTitleArtSettings();
+        if (!set(changed, value, error)) return false;
+        if (apply && changed != p->getTitleArtSettings()) {
+            auto* command = new TitleArtSettingsCmd(p, p->getTitleArtSettings(), changed);
+            command->setNoMerge();
+            if (!p->getProjectCommandHistory()->addCommand(command)) {
+                error = "the Title Art settings could not be applied";
                 return false;
             }
         }
@@ -1666,6 +1694,20 @@ std::vector<Setting> mcpSettingsTable() {
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
+        // Project Settings > Title Art (S80 R52): one undoable step each
+        add(titleArtSetting("title_art.auto_bake", "bool", "Rebake a Title Art document's existing outputs 500 ms after its last edit.", {},
+                            [](const TitleArtProjectSettings& t) { return Json(t.autoBake); },
+                            [](TitleArtProjectSettings& t, const Json& value, std::string& error) { return readBool(value, t.autoBake, error); }));
+        add(titleArtSetting("title_art.stale_bakes_on_export", "enum",
+                            "What an export does with Title Art outputs that are stale or missing: rebake them first, warn, or fail.",
+                            {"rebake", "warn", "fail"}, [](const TitleArtProjectSettings& t) { return Json(titleStaleBakesPolicyName(t.staleBakesOnExport)); },
+                            [](TitleArtProjectSettings& t, const Json& value, std::string& error) {
+                                if (!value.is_string() || !titleStaleBakesPolicyFromName(value.get<std::string>(), t.staleBakesOnExport)) {
+                                    error = "must be rebake, warn or fail";
+                                    return false;
+                                }
+                                return true;
+                            }));
         // the tiers of volumetric fog and clouds per platform group
         for (int group = 0; group < 3; group++) {
             static const char* const keys[3] = {"quality.atmosphere_quality_desktop", "quality.atmosphere_quality_mobile", "quality.atmosphere_quality_web"};
@@ -2740,6 +2782,8 @@ const Placement placements[] = {
     {"graphics.shadow_tier.ios", "Graphics", "Shadows", "iOS Shadow Tier", "shadow quality"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
+    {"title_art.auto_bake", "Title Art", "", "Auto Bake", "titleart bake automatic outputs png"},
+    {"title_art.stale_bakes_on_export", "Title Art", "", "Stale Bakes On Export", "titleart export rebake warn fail outputs"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_web", "Quality", "", "Atmosphere Quality (Web)", "volumetric fog clouds"},
@@ -2939,6 +2983,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
                                                        "pods swift packages spm entitlements deployment target script urls sdk"},
         {"Editor", SettingsScope::Project, 12, "version control assets labels"},
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
+        {"Title Art", SettingsScope::Project, 14, "title art titleart logo bake baked outputs png export stale"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},

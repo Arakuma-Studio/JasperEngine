@@ -21,6 +21,8 @@
 #include "component/AnimatorComponent.h"
 #include "pool/AnimatorAssetPool.h"
 #include "vat/VatDocument.h"
+#include "titleart/TitleArtBaker.h"
+#include "titleart/TitleArtDocument.h"
 #include "animation/ModelSubClips.h"
 #include "pose/PoseAnimationDocument.h"
 #include "pose/PoseRigProvider.h"
@@ -5616,6 +5618,10 @@ void editor::Project::resetConfigs() {
     PoseAnimationDocument::closeAll();
     AnimationClipDocument::closeAll();
     VatDocument::closeAll();
+    // Title Art documents, their scheduled bakes and the renderer's resolver and caches too
+    TitleArtDocument::closeAll();
+    TitleArtAutoBake::get().reset();
+    TitleArtRenderHost::editor().reset();
     // the Inspector's asset was a file of the old project
     inspectedAsset.clear();
     PoseRigProvider::clear();

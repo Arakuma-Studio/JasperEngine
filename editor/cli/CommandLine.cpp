@@ -49,6 +49,7 @@
 #include "asset/AssetFileWrite.h"
 #include "json.hpp"
 #include "util/ProjectChecks.h"
+#include "titleart/TitleArtProjectCheck.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/TransformPropagation.h"
 #include "texture/TextureCli.h"
@@ -2104,6 +2105,7 @@ struct CheckOptions {
     bool vat = false;
     bool normals = false;
     bool videos = false;
+    bool titles = false;
     bool all = false;
     bool filesGiven = false;
     std::vector<std::string> files;
@@ -2143,13 +2145,17 @@ void printCheckUsage(const std::string& commandName) {
         << "                           (video-codec-unsupported-on-target, a warning per platform) and URL MP4s\n"
         << "                           whose moov box follows the media data (video-not-faststart-url, info; an\n"
         << "                           http(s) url by the project's file of that name: nothing is downloaded).\n"
-        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps and videos.\n"
-        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos.\n"
+        << "      --titles             Title Art documents (.titleart), no GPU: parse errors and newer versions,\n"
+        << "                           missing fonts and images (errors), missing glyphs, and outputs not baked,\n"
+        << "                           stale or with an invalid recipe (warnings, with the export_title command).\n"
+        << "      --all                Lua, shaders, C++, UI, textures, clips, vertex animations, normal maps, videos\n"
+        << "                           and titles.\n"
+        << "                           Default: --lua --shaders --ui --textures --anims --vat --normals --videos --titles.\n"
         << "      --files <paths...>   Only these files (absolute, or relative to the current directory or\n"
         << "                           the project); files outside the project or of other kinds are ignored.\n"
         << "                           A .vat or .vat.glb checks the Vertex Animation; another file checks the\n"
         << "                           .vat files baked from it. An image checks the normal map it is (a recipe)\n"
-        << "                           or the normal maps made from it.\n"
+        << "                           or the normal maps made from it. A .titleart or a baked PNG checks the title.\n"
         << "      --format <format>    text (default) or json.\n"
         << "  -q, --quiet              No summary line.\n"
         << "      --hook               Agent hook mode: read the hook's JSON on stdin (any tool: Claude Code\n"
@@ -2184,6 +2190,8 @@ bool parseCheckArgs(int argc, char** argv, CheckOptions& options, std::string& e
             options.ui = true;
         } else if (arg == "--textures") {
             options.textures = true;
+        } else if (arg == "--titles") {
+            options.titles = true;
         } else if (arg == "--anims") {
             options.anims = true;
         } else if (arg == "--vat") {
@@ -3145,9 +3153,10 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     bool vatAssets = options.vat || options.all;
     bool normals = options.normals || options.all;
     bool videos = options.videos || options.all;
+    bool titles = options.titles || options.all;
     if (!options.lua && !options.shaders && !options.cpp && !options.ui && !options.textures && !options.anims && !options.vat && !options.normals &&
-        !options.videos && !options.all) {
-        lua = shaders = ui = textures = anims = vatAssets = normals = videos = true;
+        !options.videos && !options.titles && !options.all) {
+        lua = shaders = ui = textures = anims = vatAssets = normals = videos = titles = true;
     }
 
     fs::path base = CommandLine::invocationDirectory();
@@ -3181,6 +3190,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     std::vector<fs::path> clipFiles;
     std::vector<fs::path> vatGiven;     // .vat, .vat.glb and the other files (sources of bakes)
     std::vector<fs::path> normalFiles;  // images: generated normal maps, or sources of some
+    std::vector<fs::path> titleFiles;   // .titleart documents and baked PNGs (their documents)
     bool cppFiles = false;
     std::vector<std::string> checkedNames;   // project-relative, for the hook log
     const bool fileMode = options.filesGiven || options.hook;
@@ -3221,6 +3231,8 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
             if (textures && Util::isImageFile(name)) synthesisFiles.push_back(path);
             // a generated normal map, or an image normal maps were made from
             if (normals && Util::isImageFile(name)) normalFiles.push_back(path);
+            // a Title Art document, or a PNG baked from one
+            if (titles && (Util::isTitleArtFile(name) || Util::isImageFile(name))) titleFiles.push_back(path);
         }
     } else if (lua) {
         luaFiles = ProjectChecks::findProjectFiles(root, {".lua"});
@@ -3234,6 +3246,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
     const bool synthesisWanted = fileMode ? !synthesisFiles.empty() : textures;
     const bool animsWanted = fileMode ? !clipFiles.empty() : anims;
     const bool normalsWanted = fileMode ? !normalFiles.empty() : normals;
+    const bool titlesWanted = fileMode ? !titleFiles.empty() : titles;
     // scene files' Video Players (a whole-project check: not per file)
     const bool videosWanted = !fileMode && videos;
     // the recipes are read without the engine: it starts only when a .vat is concerned
@@ -3282,6 +3295,13 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const spritenormals::NormalsCheck normalsCheck = spritenormals::checkSpriteNormals(root, fileMode ? normalFiles : std::vector<fs::path>());
         run.findings.insert(run.findings.end(), normalsCheck.findings.begin(), normalsCheck.findings.end());
         run.checked.push_back({"normals", normalsCheck.recipes + normalsCheck.maps});
+    }
+    if (titlesWanted) {
+        // documents, references and recipes: no engine, no GPU
+        const fs::path assetsDir = ProjectChecks::assetsRootFromProjectFile(root).lexically_relative(root.lexically_normal());
+        const TitleArtProjectCheck titleCheck = checkTitleArtFiles(root, assetsDir, fileMode ? titleFiles : std::vector<fs::path>());
+        run.findings.insert(run.findings.end(), titleCheck.findings.begin(), titleCheck.findings.end());
+        if (!fileMode || titleCheck.documents) run.checked.push_back({"titles", titleCheck.documents});
     }
     if (videosWanted) {
         // the scene and prefab YAML and the clips' header boxes: no engine
@@ -3348,7 +3368,7 @@ int runCheck(int argc, char** argv, const std::string& commandName) {
         const std::map<std::string, std::string> units = {{"lua", "file"}, {"shaders", "fork"}, {"cpp", "script"}, {"ui", "file"},
                                                           {"textures", "recipe"}, {"texture_imports", "texture"}, {"anims", "clip"},
                                                           {"vat", "file"}, {"navigation", "surface"},
-                                                          {"normals", "map"}, {"videos", "Video Player"}};
+                                                          {"normals", "map"}, {"videos", "Video Player"}, {"titles", "title"}};
         for (const auto& [category, count] : run.checked) {
             // a category without a unit here still prints (never a map::at abort after the results)
             const auto unit = units.find(category);

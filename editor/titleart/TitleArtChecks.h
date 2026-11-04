@@ -20,6 +20,7 @@
 #include "titleart/TitleArtDoc.h"
 #include "titleart/TitleArtTypes.h"
 
+#include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
@@ -58,7 +59,12 @@ namespace jasperengine::editor {
 
         const titleart::TitleArtDoc& doc;
         std::string path;                           // project-relative
+        std::filesystem::path file;                 // absolute (bake_fresh reads the outputs beside it)
         const titleart::AssetResolver* assets = nullptr;
+        // what loading the file reported (document_valid): normalize warnings, and the version
+        // error of a newer file (then `doc` is empty)
+        std::vector<titleart::TitleWarning> loadWarnings;
+        std::string versionError;
         TitleCheckOptions options;
         // renders a request through the caller's renderer and reads it back; null for checks run
         // without a GPU (their pixel checks report SKIP)

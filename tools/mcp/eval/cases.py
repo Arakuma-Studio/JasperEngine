@@ -800,4 +800,25 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "make_title_logo",
+        "kind": "guard",
+        "what_happened": "Logo and title requests are Title Art documents (edit_title in the title_art group, baked to a "
+                         "texture), not a scene of Text components or a hand-painted PNG; the guide's Other areas entry "
+                         "names the area and its tool.",
+        "text_at_issue": "Guide 'Other areas': 'title art (edit_title)' and the generated Tool groups list (title_art)",
+        "source": "guide index entry (S80 R60, AC40); no failure on record",
+        "prompt": "Make a gold game title logo that says JACKPOT, with a dark outline, as a texture I can place in the menu scene.",
+        "mocks": [
+            {"tool": "tool_groups", "result": ok("Enabled title_art.", {"enabled": ["title_art"]})},
+            {"tool": "edit_title", "result": ok("Created assets/titles/jackpot.titleart; applied 2 op(s).",
+                                                {"path": "assets/titles/jackpot.titleart", "rev": 2, "applied": 2})},
+            {"tool": "render_title", "result": ok("Rendered assets/titles/jackpot.titleart (rev 2) at 768 x 432.", {"rev": 2})},
+            {"tool": "export_title", "result": ok("Baked 1 output(s) of assets/titles/jackpot.titleart.",
+                                                  {"files": [{"output": "main", "path": "assets/titles/jackpot.titleart.png"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_title"}],
+                   "must_not_call": ["create_texture", "write_file", "synthesize_texture"]},
+        "max_turns": 16,
+    },
 ]

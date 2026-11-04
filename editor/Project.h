@@ -36,6 +36,7 @@
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
 #include "texture/TextureImportSettings.h"
+#include "titleart/TitleArtSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
 #include "window/SpriteNormalsWindowSettings.h"
@@ -936,6 +937,7 @@ namespace jasperengine::editor{
         ShaderCreationProjectSettings shaderCreationSettings;
         AudioSettings audioSettings;
         DebugSettings debugSettings;
+        TitleArtProjectSettings titleArtSettings;
         // applyDebugSettingsForPlay ran for the running Play (until it stops): changes apply live
         mutable bool debugSettingsInPlay = false;
         TerrainEditorSettings terrainEditorSettings;
@@ -1887,6 +1889,11 @@ namespace jasperengine::editor{
         // the engine as Play starts: the log buffer and stack traces, the development build
         // flag, DebugOverlay::configure (development mode: on in the editor's Play)
         void applyDebugSettingsForPlay() const;
+
+        // Project Settings > Title Art (project.yaml `titleArt:`), changed through
+        // TitleArtSettingsCmd (undoable); read by Auto Bake and the export
+        const TitleArtProjectSettings& getTitleArtSettings() const { return titleArtSettings; }
+        void setTitleArtSettings(const TitleArtProjectSettings& settings) { titleArtSettings = settings; }
 
         TerrainEditorSettings& getTerrainEditorSettings();
         const TerrainEditorSettings& getTerrainEditorSettings() const;

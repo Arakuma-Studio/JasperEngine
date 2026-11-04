@@ -39,7 +39,9 @@ namespace jasperengine::editor {
         UIImage,            // HTML src, CSS url()
         LuaRequire,         // Lua require("...")
         ShaderInclude,      // shader #include
-        ModelUri            // a glTF's external buffer/image URI
+        ModelUri,           // a glTF's external buffer/image URI
+        TitleArtAsset,      // a font, image, SVG or map a .titleart reads (field: its JSON path)
+        TitleArtOutput      // a .titleart's baked PNG (field: outputs[i])
     };
 
     const char* depEdgeKindName(DepEdgeKind kind);

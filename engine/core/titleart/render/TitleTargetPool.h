@@ -28,6 +28,10 @@
 #include <string>
 #include <vector>
 
+namespace jasperengine {
+    class TextureRender;
+}
+
 namespace jasperengine::titleart {
 
     constexpr int TITLE_TARGET_IDLE_RENDERS = 3;
@@ -59,6 +63,9 @@ namespace jasperengine::titleart {
     class JASPERENGINE_API TitleTarget {
     public:
         virtual ~TitleTarget() = default;
+        // the colour texture passes render into: what the editor reads back (bakes, checks,
+        // previews, FrameReadback::readTexture) and draws; null when the allocator has none
+        virtual TextureRender* colorTexture() const { return nullptr; }
     };
 
     class JASPERENGINE_API TitleTargetAllocator {

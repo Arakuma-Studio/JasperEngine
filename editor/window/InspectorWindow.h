@@ -410,6 +410,8 @@ namespace jasperengine::editor{
         void clearVertexAnimatorPreviewScene(uint32_t sceneId);
         // the inspected .vat (Project window click)
         void drawVatAsset(const std::filesystem::path& asset);
+        // the inspected .titleart (InspectorWindowTitleArt.cpp)
+        void drawTitleArtAsset(const std::filesystem::path& asset);
         // InspectorWindowCamera.cpp (camera shake spec 9)
         void drawCameraShakerComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);
         void drawCameraFollowComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities);

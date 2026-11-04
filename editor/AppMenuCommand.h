@@ -133,7 +133,8 @@ namespace jasperengine::editor {
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
         AddCameraShakerToMainCamera,  // GameObject > Add Camera Shaker to Main Camera
-        AssetsCreateTitleArt          // Assets > Create > Title Art (S80)
+        AssetsCreateTitleArt,         // Assets > Create > Title Art (S80)
+        TitleArtBakeAll               // the command palette's "Title Art: Bake All" (S80 §6.13)
     };
 
 }

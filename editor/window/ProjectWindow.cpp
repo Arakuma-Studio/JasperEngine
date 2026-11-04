@@ -61,6 +61,7 @@
 #include "pose/PoseEditSession.h"
 #include "pose/PoseImage.h"
 #include "titleart/TitleArtDocument.h"
+#include "titleart/TitleArtBaker.h"
 
 #include "Backend.h"
 #include "InspectorWindow.h"
@@ -232,6 +233,26 @@ static void makePhysicsMaterialIcon(int size, std::vector<uint8_t>& rgba) {
 }
 
 // The .vat icon: a crowd of three figures over a texture grid (the baked frames)
+// a "T" over a rim: a gold letter with a dark outline on a warm plate
+static void makeTitleArtIcon(int size, std::vector<uint8_t>& rgba) {
+    editor::PoseImage image(size, size);
+    const float s = static_cast<float>(size) / 64.0f;
+    auto px = [s](float v) { return static_cast<int>(v * s); };
+    const editor::PoseColor plate = editor::PoseColor::hex(0x3A2A18);
+    const editor::PoseColor rim = editor::PoseColor::hex(0x8A4B12);
+    const editor::PoseColor face = editor::PoseColor::hex(0xF2C14E);
+    const editor::PoseColor shine = editor::PoseColor::hex(0xFFF0B8);
+    image.fillRect(px(6), px(40), px(52), px(16), plate);
+    image.fillRect(px(8), px(42), px(48), px(12), rim);
+    // the T's rim, then its face
+    image.fillRect(px(10), px(6), px(44), px(14), rim);
+    image.fillRect(px(24), px(6), px(16), px(44), rim);
+    image.fillRect(px(13), px(9), px(38), px(8), face);
+    image.fillRect(px(27), px(9), px(10), px(38), face);
+    image.fillRect(px(14), px(10), px(36), px(2), shine);
+    rgba = image.getPixels();
+}
+
 static void makeVertexAnimationIcon(int size, std::vector<uint8_t>& rgba) {
     editor::PoseImage image(size, size);
     const float s = static_cast<float>(size) / 64.0f;
@@ -349,6 +370,9 @@ editor::FileType editor::ProjectWindow::classifyThumbnailFileType(const fs::path
     }
     if (editor::Util::isPoseAnimationFile(extension)) {
         return editor::FileType::POSE_ANIMATION;
+    }
+    if (editor::Util::isTitleArtFile(extension)) {
+        return editor::FileType::TITLE_ART;
     }
     // .anim clips keep their icon: no thumbnail render (animation clips spec 9.R53)
 
@@ -1027,6 +1051,8 @@ ImU32 editor::ProjectWindow::fileSeparatorColor(const FileEntry& fe) const{
             return ImGui::GetColorU32(ImVec4(0.82f, 0.48f, 0.15f, 1.0f));
         case FileType::PHYSICS_MATERIAL:
             return ImGui::GetColorU32(ImVec4(0.31f, 0.76f, 0.97f, 1.0f));
+        case FileType::TITLE_ART:
+            return ImGui::GetColorU32(ImVec4(0.93f, 0.71f, 0.18f, 1.0f));
         case FileType::NONE:
         default:
             return ImGui::GetColorU32(ImVec4(0.50f, 0.50f, 0.50f, 1.0f));
@@ -2655,6 +2681,9 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }else if (Util::isVertexAnimationFile(fileEntry.extension)){
             fileEntry.type = FileType::VERTEX_ANIMATION;
             fileEntry.icon = vertexAnimationIcon.getRender();
+        }else if (Util::isTitleArtFile(fileEntry.extension)){
+            fileEntry.type = FileType::TITLE_ART;
+            fileEntry.icon = titleArtIcon.getRender();
         }else if (PhysicsMaterialAssets::isPhysicsMaterialFile(fileEntry.extension)){
             fileEntry.type = FileType::PHYSICS_MATERIAL;
             fileEntry.icon = physicsMaterialIcon.getRender();
@@ -2697,7 +2726,7 @@ editor::FileEntry editor::ProjectWindow::makeFileEntry(const fs::path& path, con
         }
 
         if (fileEntry.type == FileType::IMAGE || fileEntry.type == FileType::MATERIAL || fileEntry.type == FileType::MODEL ||
-            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION) {
+            fileEntry.type == FileType::PREFAB || fileEntry.type == FileType::POSE_ANIMATION || fileEntry.type == FileType::TITLE_ART) {
             queueThumbnailGeneration(path, fileEntry.type);
         }
         // its asset labels (S25)
@@ -3207,6 +3236,11 @@ void editor::ProjectWindow::queueThumbnailGeneration(const fs::path& filePath, F
         if (type == FileType::POSE_ANIMATION) {
             // the main thread renders these too (processPoseThumbnails)
             poseThumbnailQueue.push(thumbFile);
+            return;
+        }
+        if (type == FileType::TITLE_ART) {
+            // the main thread renders these (processTitleArtThumbnails, through TitlePreviewQueue)
+            titleArtThumbnailQueue.push(thumbFile);
             return;
         }
         if (type == FileType::PREFAB) {
@@ -4000,6 +4034,11 @@ void editor::ProjectWindow::show() {
             TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(vertexAnimationIconPixels.size()), ColorFormat::RGBA, 4,
                         vertexAnimationIconPixels.data()));
         vertexAnimationIcon.load();
+        makeTitleArtIcon(clipIconSize, titleArtIconPixels);
+        titleArtIcon.setData("editor:resources:title_art_icon",
+            TextureData(clipIconSize, clipIconSize, static_cast<unsigned int>(titleArtIconPixels.size()), ColorFormat::RGBA, 4,
+                        titleArtIconPixels.data()));
+        titleArtIcon.load();
         auto proceduralIcon = [](Texture& icon, std::vector<uint8_t>& pixels, const char* id, void (*make)(int, std::vector<uint8_t>&)) {
             const int iconSize = 64;
             make(iconSize, pixels);
@@ -4022,6 +4061,7 @@ void editor::ProjectWindow::show() {
     }
 
     processPoseThumbnails();
+    processTitleArtThumbnails();
 
     // Process completed thumbnails
     while (true) {
@@ -4504,10 +4544,13 @@ void editor::ProjectWindow::assetsCreateTitleArt() {
     focusProjectPanel(this);
     const fs::path relative = uniqueRelativePath(currentPath, "New Title Art", titleart::TITLE_ART_EXTENSION);
     std::string error;
-    if (!TitleArtDocument::create(project, relative.generic_string(), nullptr, "Create Title Art", &error)) {
+    std::shared_ptr<TitleArtDocument> created = TitleArtDocument::create(project, relative.generic_string(), nullptr, "Create Title Art", &error);
+    if (!created) {
         Backend::getApp().registerAlert("Create Title Art", error);
         return;
     }
+    // it bakes at once, so a texture exists to place (R7)
+    if (TitleArtRenderHost::available()) TitleArtAutoBake::get().requestBake(project, created->absolutePath(), {}, false);
     scanDirectory(currentPath);
     const std::string fileName = relative.filename().string();
     selectedFiles.clear();
@@ -4633,6 +4676,25 @@ void editor::ProjectWindow::processPoseThumbnails() {
     poseThumbnailer.process();
 }
 
+void editor::ProjectWindow::processTitleArtThumbnails() {
+    while (!titleArtThumbnailQueue.empty()) {
+        ThumbnailRequest request = titleArtThumbnailQueue.front();
+        titleArtThumbnailQueue.pop();
+        titleArtThumbnailer.request(project, request.path, project->getThumbnailPath(request.path), 128, [this, request](bool ok) {
+            {
+                std::lock_guard<std::mutex> lock(thumbnailMutex);
+                pendingThumbnailRequests.erase(thumbnailRequestKey(request.path));
+                if (request.generation != thumbnailGeneration) return;
+            }
+            if (!ok) return;   // no renderer or a document that does not load: the file keeps its icon
+            evictThumbnailTexture(project->getThumbnailPath(request.path).string());
+            std::lock_guard<std::mutex> completedLock(completedThumbnailMutex);
+            completedThumbnailQueue.push(request);
+        });
+    }
+    titleArtThumbnailer.process();
+}
+
 void editor::ProjectWindow::assetsShowInFileManager() {
     fs::path target = currentPath;
     if (selectedFiles.size() == 1) {
@@ -4705,6 +4767,15 @@ void editor::ProjectWindow::openFile(const FileEntry& file, const fs::path& file
         project->openScene(filePath);
     } else if (file.type == FileType::POSE_ANIMATION) {
         Backend::getApp().getPoseAnimationWindow()->openFromAsset(filePath.string());
+    } else if (file.type == FileType::TITLE_ART) {
+        // the Inspector's summary (Open in Title Designer is there once S82's window exists)
+        selectedFiles.clear();
+        selectedFiles.insert(file.name);
+        lastSelectedFile = file.name;
+        project->setInspectedAsset(filePath.lexically_normal());
+        if (InspectorWindow* inspector = Backend::getApp().getInspectorWindow()) {
+            inspector->setOpen(true);
+        }
     } else if (file.type == FileType::VERTEX_ANIMATION) {
         // the baker with its recipe once it is there; the Inspector's asset view always
         selectedFiles.clear();
