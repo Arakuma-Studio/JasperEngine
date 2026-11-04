@@ -178,9 +178,10 @@ void VoxelEditWindow::show() {
         ImGui::SetNextWindowFocus();
         focusRequested = false;
     }
-    if (!ImGui::Begin(WINDOW_NAME, &windowOpen)) {
+    bool open = windowOpen;
+    if (!ImGui::Begin(WINDOW_NAME, &open)) {
         ImGui::End();
-        if (!windowOpen) setOpen(true), setOpen(false);
+        if (!open) setOpen(false);
         return;
     }
 
@@ -229,7 +230,7 @@ void VoxelEditWindow::show() {
         }
     }
     ImGui::End();
-    if (!windowOpen) setOpen(true), setOpen(false);
+    if (!open) setOpen(false);
 }
 
 void VoxelEditWindow::drawBrushTab(SceneProject& sceneProject) {
@@ -644,10 +645,19 @@ void VoxelEditWindow::drawVolumeTab(SceneProject& sceneProject) {
     ImGui::BeginDisabled(!terrainBase);
     if (ImGui::Button(ICON_FA_MOUNTAIN_SUN " Re-seed From Terrain")) {
         std::string error;
-        const int blocks = reseedVoxelVolumeFromTerrain(project, sceneProject.id, target, nullptr, &error);
+        voxel::IntBox region;
+        region.min = voxel::Int3{reseedMin[0], reseedMin[1], reseedMin[2]};
+        region.max = voxel::Int3{reseedMax[0], reseedMax[1], reseedMax[2]};
+        const int blocks = reseedVoxelVolumeFromTerrain(project, sceneProject.id, target, reseedWhole ? nullptr : &region, &error);
         if (blocks < 0) setStatus(error, true);
         else setStatus("Re-seeded " + std::to_string(blocks) + " blocks.", false);
     }
     ImGui::SetItemTooltip("Discard modified blocks and take the terrain again. One undo step.");
+    ImGui::Checkbox("Whole Volume", &reseedWhole);
+    if (!reseedWhole) {
+        ImGui::DragInt3("Region Min", reseedMin, 1.0f, 0, 4096);
+        ImGui::DragInt3("Region Max", reseedMax, 1.0f, 0, 4096);
+        ImGui::SetItemTooltip("Voxels. It widens to whole blocks of the coarsest level.");
+    }
     ImGui::EndDisabled();
 }

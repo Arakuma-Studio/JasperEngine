@@ -50,6 +50,10 @@ namespace jasperengine::editor {
         // the Materials tab
         int replaceWith = 0;
         int removingSlot = -1;
+        // Re-seed From Terrain's region (R46)
+        bool reseedWhole = true;
+        int reseedMin[3] = {0, 0, 0};
+        int reseedMax[3] = {64, 64, 64};
         // the Stamp shape's source
         std::string stampPath;
         Entity meshSource = NULL_ENTITY;

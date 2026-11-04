@@ -81,11 +81,9 @@ namespace {
         SceneLines(const SceneLines&) = delete;
         SceneLines& operator=(const SceneLines&) = delete;
 
-        void begin(size_t capacity) {
-            if (capacity > max) {
-                max = capacity;
-                lines->setMaxLines(static_cast<unsigned int>(capacity));
-            }
+        // the buffer grows to what is drawn; `limit` keeps a whole mountain from becoming one
+        void begin(size_t limit) {
+            max = limit;
             lines->clearLines();
             count = 0;
         }

@@ -202,9 +202,10 @@ TEST_F(VoxelBrush, StrokeSpacing) {
     ASSERT_TRUE(tool.beginStroke(scene(), rayDown(20.0f, 32.0f), VoxelBrushModifiers{}));
     const uint64_t afterFirst = hash();
     EXPECT_NE(afterFirst, start);
-    // the stamp dug under the pointer, so the same ray now lands lower: move only what the ray moves
-    tool.paintStroke(scene(), rayDown(20.0f, 32.0f));
+    // the ray hits the surface as it was at the press: frame after frame on one spot digs no deeper
+    for (int frame = 0; frame < 5; frame++) tool.paintStroke(scene(), rayDown(20.0f, 32.0f));
     const uint64_t afterSecond = hash();
+    EXPECT_EQ(afterSecond, afterFirst) << "holding still adds nothing";
     tool.paintStroke(scene(), rayDown(24.0f, 32.0f));
     tool.paintStroke(scene(), rayDown(28.0f, 32.0f));
     tool.paintStroke(scene(), rayDown(40.0f, 32.0f));
@@ -235,20 +236,19 @@ TEST_F(VoxelBrush, ScriptedStrokeSame) {
     CommandHistory* history = CommandHandle::get(sceneProject->id);
     const uint64_t start = hash();
 
-    // a mouse stroke, keeping the hit of each ray as the tool sees it at that moment
+    // the path a mouse stroke's rays land on: the surface as it is at the press
     const Ray rays[] = {rayDown(16.0f, 16.0f), rayDown(19.0f, 18.0f), rayDown(23.0f, 18.5f), rayDown(31.0f, 24.0f), rayDown(32.0f, 40.0f)};
     std::vector<voxel::Vec3d> path;
+    for (const Ray& ray : rays) {
+        voxel::RaycastHit hit;
+        ASSERT_TRUE(VoxelBrushTool::hitVolume(*system, owner, ray, false, hit));
+        path.push_back(hit.point);
+    }
+
     tool.arm(VoxelTool::Dig);
     tool.settings().radius = 2.0f;
-    voxel::RaycastHit hit;
-    ASSERT_TRUE(VoxelBrushTool::hitVolume(*system, owner, rays[0], false, hit));
-    path.push_back(hit.point);
     ASSERT_TRUE(tool.beginStroke(scene(), rays[0], VoxelBrushModifiers{}));
-    for (size_t i = 1; i < std::size(rays); i++) {
-        ASSERT_TRUE(VoxelBrushTool::hitVolume(*system, owner, rays[i], false, hit));
-        path.push_back(hit.point);
-        ASSERT_TRUE(tool.paintStroke(scene(), rays[i]));
-    }
+    for (size_t i = 1; i < std::size(rays); i++) ASSERT_TRUE(tool.paintStroke(scene(), rays[i]));
     tool.endStroke();
     const uint64_t byMouse = hash();
     EXPECT_NE(byMouse, start);

@@ -106,8 +106,8 @@ bool VoxelBrushTool::isEditingScene(Scene* scene) const {
     return system && system->getStore(owner);
 }
 
-bool VoxelBrushTool::hitVolume(VoxelSystem& system, Entity owner, const Ray& ray, bool floorFallback, voxel::RaycastHit& hit) {
-    voxel::Store* store = system.getStore(owner);
+bool VoxelBrushTool::hitVolume(VoxelSystem& system, Entity owner, const Ray& ray, bool floorFallback, voxel::RaycastHit& hit, voxel::Store* surface) {
+    voxel::Store* store = surface ? surface : system.getStore(owner);
     if (!store) return false;
     // The ray runs from origin to origin + direction: it spans the view, and the volume's frame keeps metres
     const Vector3 start = ray.getOrigin();
@@ -176,6 +176,7 @@ bool VoxelBrushTool::strokeCancelled() {
     // Esc reached the history (App's interactive cancel): the edits went with it
     stroke.active = false;
     stroke.edit = InteractiveEdit();
+    stroke.surface.reset();
     return true;
 }
 
@@ -186,6 +187,7 @@ void VoxelBrushTool::finishStroke() {
     // what comes next starts its own step
     history->mark();
     stroke.active = false;
+    stroke.surface.reset();
 }
 
 bool VoxelBrushTool::beginStroke(Scene* scene, const Ray& ray, VoxelBrushModifiers modifiers) {
@@ -206,6 +208,7 @@ bool VoxelBrushTool::beginStroke(Scene* scene, const Ray& ray, VoxelBrushModifie
     error.clear();
     const double spacing = voxelStrokeSpacing(brush.radius, system->getStore(owner)->desc().voxelSize);
     openStroke(sceneId, owner, brush, effective, spacing);
+    stroke.surface = system->getStore(owner)->clone();
     if (stroke.shape == VoxelBrushShape::Capsule) {
         stroke.capsuleStart = hit.point;
         stroke.capsuleEnd = hit.point;
@@ -220,7 +223,7 @@ bool VoxelBrushTool::paintStroke(Scene* scene, const Ray& ray) {
     if (!stroke.active || strokeCancelled() || !isEditingScene(scene)) return false;
     std::shared_ptr<VoxelSystem> system = scene->findSystem<VoxelSystem>();
     voxel::RaycastHit hit;
-    if (!hitVolume(*system, stroke.owner, ray, stroke.effective == VoxelTool::Add, hit)) {
+    if (!hitVolume(*system, stroke.owner, ray, stroke.effective == VoxelTool::Add, hit, stroke.surface.get())) {
         stroke.stamper.lift();
         return false;
     }
@@ -245,6 +248,7 @@ void VoxelBrushTool::cancelStroke() {
     stroke.edit.cancel();
     stroke.edit = InteractiveEdit();
     stroke.active = false;
+    stroke.surface.reset();
 }
 
 bool VoxelBrushTool::altRelease(Scene* scene, const Ray& ray) {
@@ -270,7 +274,7 @@ void VoxelBrushTool::updateCursor(Scene* scene, const Ray& ray) {
     voxel::Store* store = system->getStore(owner);
     voxel::RaycastHit hit;
     const VoxelTool effective = stroke.active ? stroke.effective : liveEffective;
-    if (!hitVolume(*system, owner, ray, effective == VoxelTool::Add, hit)) {
+    if (!hitVolume(*system, owner, ray, effective == VoxelTool::Add, hit, stroke.active ? stroke.surface.get() : nullptr)) {
         hideCursor();
         return;
     }

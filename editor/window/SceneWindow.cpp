@@ -1880,6 +1880,10 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
     // T6 R60 (T1 DC12): Alt on an armed Voxel Volume brush starts no stroke. Past the drag threshold it
     // is the orbit below, and a release before it picks the material under the pointer.
     VoxelBrushTool& voxelBrush = VoxelBrushTool::get();
+    // Alt pressed mid-stroke keeps the release from the view's own path below
+    if (voxelBrush.isStrokeActive() && altHeld && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        voxelBrush.endStroke();
+    }
     if (voxelBrush.isEditingScene(sceneProject->scene)) {
         if (isMouseInWindow && altHeld && !gizmoSideActive && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !suppressLeftMouse) {
             voxelBrush.altPress(mousePos.x, mousePos.y);

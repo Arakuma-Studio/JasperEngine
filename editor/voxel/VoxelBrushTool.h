@@ -15,6 +15,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -110,9 +111,9 @@ namespace jasperengine::editor {
         static bool scriptedStroke(Project* project, uint32_t sceneId, Entity owner, const VoxelBrushSettings& settings, VoxelTool effective,
                                    const std::vector<voxel::Vec3d>& points, std::string& why);
 
-        // The ray into the volume's frame, against level 0. An Add over nothing lands on the floor (y = 0),
-        // since an empty volume has no surface to start from.
-        static bool hitVolume(VoxelSystem& system, Entity owner, const Ray& ray, bool floorFallback, voxel::RaycastHit& hit);
+        // The ray into the volume's frame, against level 0 of the store, or of `surface` when given. An Add
+        // over nothing lands on the floor (y = 0), since an empty volume has no surface to start from.
+        static bool hitVolume(VoxelSystem& system, Entity owner, const Ray& ray, bool floorFallback, voxel::RaycastHit& hit, voxel::Store* surface = nullptr);
 
     private:
         struct Stroke {
@@ -125,6 +126,9 @@ namespace jasperengine::editor {
             VoxelBrushSettings settings;
             std::vector<voxel::Vec3d> stamps;
             VoxelStrokeStamper stamper{1.0};
+            // The surface as it was at the press, what the stroke's rays hit (T1's height reference). On
+            // the live one each stamp would sink the next, and holding still would dig on forever.
+            std::unique_ptr<voxel::Store> surface;
             voxel::Vec3d capsuleStart;
             voxel::Vec3d capsuleEnd;
         };
