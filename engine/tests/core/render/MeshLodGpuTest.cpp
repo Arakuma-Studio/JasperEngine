@@ -128,6 +128,41 @@ TEST_F(MeshLodGpu, ABuildDroppedBeforeItWasTakenIsBuiltAgain){
     EXPECT_GT(mesh.numLods, 1u);
 }
 
+// R2: a quantized model's 8-bit normals and 16-bit UVs (S53 keeps them normalized on the GPU) guide
+// the simplification like float ones (red before: the builder left them out)
+TEST_F(MeshLodGpu, AQuantizedModelsAttributesGuideItsLevels){
+    JASPER_REQUIRE_GPU();
+    Model model(&scene);
+    ASSERT_TRUE(model.loadModel(JASPER_TEST_SOURCE_DIR "/fixtures/gltf/s41/quantized.glb"));
+    ASSERT_TRUE(settle());
+    // the ball: the submesh with normals and UVs stored as normalized integers
+    bool found = false;
+    for (Entity entity : scene.getEntityList()){
+        MeshComponent* mesh = scene.findComponent<MeshComponent>(entity);
+        if (!mesh)
+            continue;
+        for (unsigned int s = 0; s < mesh->numSubmeshes; s++){
+            auto normal = mesh->submeshes[s].attributes.find(AttributeType::NORMAL);
+            auto uv = mesh->submeshes[s].attributes.find(AttributeType::TEXCOORD1);
+            if (normal == mesh->submeshes[s].attributes.end() || normal->second.getDataType() == AttributeDataType::FLOAT ||
+                    uv == mesh->submeshes[s].attributes.end() || uv->second.getDataType() == AttributeDataType::FLOAT)
+                continue;
+            found = true;
+            MeshLodSource source;
+            ASSERT_TRUE(RenderSystem::readSubmeshLodSource(*mesh, s, source));
+            const size_t vertices = source.positions.size() / 3;
+            ASSERT_EQ(source.normals.size(), vertices * 3) << "the 8-bit normals guide the collapses";
+            ASSERT_EQ(source.uvs.size(), vertices * 2) << "the 16-bit UVs guide the collapses";
+            for (size_t v = 0; v < vertices; v++){
+                const float* n = &source.normals[v * 3];
+                EXPECT_NEAR(std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]), 1.0f, 0.03f) << "vertex " << v;
+            }
+            EXPECT_EQ(MeshLodPool::buildLevels(source, MeshLodRecipe::runtime())->numLevels > 1, mesh->numLods > 1);
+        }
+    }
+    EXPECT_TRUE(found) << "the fixture keeps quantized normals and UVs";
+}
+
 namespace {
     // a flat grid of quads with a baked JE_mesh_lods level of two triangles (exact: error 0)
     std::string writeBakedGrid(TempDir& dir, int recipe){

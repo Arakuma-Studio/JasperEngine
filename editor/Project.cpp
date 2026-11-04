@@ -6106,7 +6106,8 @@ bool editor::Project::restorePlaySnapshot(SceneProject* sceneProject) {
     auto entitiesNode = sceneProject->playStateSnapshot["entities"];
     size_t insertAt = 0;
     for (const auto& entityNode : entitiesNode) {
-        std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true);
+        // a Mesh Play left as it was, moved or not, is kept: decoding it reloads it at the next frame
+        std::vector<Entity> restored = Stream::decodeEntity(entityNode, sceneProject->scene, nullptr, nullptr, sceneProject, NULL_ENTITY, false, true, nullptr, true);
 
         // A script can destroy entities while playing and the decode recreates them, but
         // only the tracked list makes them visible to the editor again

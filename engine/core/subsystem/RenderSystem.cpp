@@ -7325,6 +7325,51 @@ void RenderSystem::updateMeshLods(Entity entity, MeshComponent& mesh, bool rehas
     }
 }
 
+namespace{
+    // the attributes a level's collapses read: floats, or the normalized 8 and 16 bit forms a
+    // quantized model keeps on the GPU (S53: 8-bit normals, 16-bit UVs)
+    size_t lodAttributeSize(AttributeDataType type){
+        switch (type){
+            case AttributeDataType::FLOAT: return 4;
+            case AttributeDataType::SHORT:
+            case AttributeDataType::UNSIGNED_SHORT: return 2;
+            case AttributeDataType::BYTE:
+            case AttributeDataType::UNSIGNED_BYTE: return 1;
+            default: return 0;
+        }
+    }
+
+    bool isLodReadable(const Attribute& attribute, unsigned int minElements){
+        const AttributeDataType type = attribute.getDataType();
+        return attribute.getElements() >= minElements && lodAttributeSize(type) > 0 && (type == AttributeDataType::FLOAT || attribute.getNormalized());
+    }
+
+    // elements floats of an attribute at a vertex, normalized values decoded as glTF does
+    // (signed: max(v / max, -1)); false past the buffer's end
+    bool readLodFloats(const Buffer& buffer, const Attribute& attribute, unsigned int vertex, unsigned int elements, float* out){
+        const AttributeDataType type = attribute.getDataType();
+        const size_t size = lodAttributeSize(type);
+        const size_t stride = buffer.getStride() ? buffer.getStride() : attribute.getElements() * size;
+        const size_t at = attribute.getOffset() + (size_t)vertex * stride;
+        if (size == 0 || at + elements * size > buffer.getSize())
+            return false;
+        const unsigned char* data = buffer.getData() + at;
+        for (unsigned int e = 0; e < elements; e++){
+            const unsigned char* v = data + e * size;
+            switch (type){
+                case AttributeDataType::FLOAT: std::memcpy(&out[e], v, 4); break;
+                case AttributeDataType::SHORT:{ int16_t q; std::memcpy(&q, v, 2); out[e] = std::max(q / 32767.0f, -1.0f); break; }
+                case AttributeDataType::UNSIGNED_SHORT:{ uint16_t q; std::memcpy(&q, v, 2); out[e] = q / 65535.0f; break; }
+                case AttributeDataType::BYTE:{ int8_t q; std::memcpy(&q, v, 1); out[e] = std::max(q / 127.0f, -1.0f); break; }
+                default: out[e] = *v / 255.0f; break;
+            }
+            if (!std::isfinite(out[e]))
+                out[e] = 0.0f;
+        }
+        return true;
+    }
+}
+
 RenderSystem::LodAttribute RenderSystem::findSubmeshAttribute(Submesh& submesh, std::map<std::string, Buffer*>& buffers, AttributeType type){
     auto it = submesh.attributes.find(type);
     if (it != submesh.attributes.end()){
@@ -7362,17 +7407,12 @@ bool RenderSystem::findLodAttributes(Submesh& submesh, std::map<std::string, Buf
     unsigned int vertexCount = attributes.position.attribute->getCount();
     attributes.normal = findSubmeshAttribute(submesh, buffers, AttributeType::NORMAL);
     attributes.uv = findSubmeshAttribute(submesh, buffers, AttributeType::TEXCOORD1);
-    for (LodAttribute* optional : {&attributes.normal, &attributes.uv}){
-        if (optional->attribute && (optional->attribute->getDataType() != AttributeDataType::FLOAT || optional->attribute->getCount() != vertexCount))
-            *optional = {};
-    }
     // a skinned mesh qualifies too: its bone weights keep collapses within a joint's influence
     attributes.skinWeights = findSubmeshAttribute(submesh, buffers, AttributeType::BONEWEIGHTS);
-    if (attributes.skinWeights.attribute){
-        const AttributeDataType type = attributes.skinWeights.attribute->getDataType();
-        const bool readable = type == AttributeDataType::FLOAT || type == AttributeDataType::UNSIGNED_BYTE || type == AttributeDataType::UNSIGNED_SHORT;
-        if (!readable || attributes.skinWeights.attribute->getElements() != 4 || attributes.skinWeights.attribute->getCount() != vertexCount)
-            attributes.skinWeights = {};
+    const std::pair<LodAttribute*, unsigned int> optional[] = {{&attributes.normal, 3}, {&attributes.uv, 2}, {&attributes.skinWeights, 4}};
+    for (const auto& [attribute, elements] : optional){
+        if (attribute->attribute && (!isLodReadable(*attribute->attribute, elements) || attribute->attribute->getCount() != vertexCount))
+            *attribute = {};
     }
     return true;
 }
@@ -7437,11 +7477,23 @@ bool RenderSystem::readSubmeshLevel(MeshComponent& mesh, unsigned int submeshInd
     return true;
 }
 
+bool RenderSystem::readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source){
+    if (submeshIndex >= mesh.numSubmeshes)
+        return false;
+    std::map<std::string, Buffer*> buffers;
+    if (mesh.buffer.getSize() > 0)
+        buffers["vertices"] = &mesh.buffer;
+    if (mesh.indices.getSize() > 0)
+        buffers["indices"] = &mesh.indices;
+    for (int i = 0; i < mesh.numExternalBuffers; i++)
+        buffers[mesh.eBuffers[i].getName()] = &mesh.eBuffers[i];
+    LodAttributes attributes;
+    return findLodAttributes(mesh.submeshes[submeshIndex], buffers, attributes) && readLodSource(attributes, source);
+}
+
 bool RenderSystem::readLodSource(const LodAttributes& attributes, MeshLodSource& source){
     unsigned int vertexCount = attributes.position.attribute->getCount();
     unsigned int indexCount = attributes.index.attribute->getCount();
-    bool normal = attributes.normal.attribute != nullptr;
-    bool uv = attributes.uv.attribute != nullptr;
 
     source.indexType = attributes.index.attribute->getDataType();
     source.indices.reserve(indexCount);
@@ -7455,48 +7507,26 @@ bool RenderSystem::readLodSource(const LodAttributes& attributes, MeshLodSource&
     }
 
     source.positions.reserve(vertexCount * 3);
-    if (normal) source.normals.reserve(vertexCount * 3);
-    if (uv) source.uvs.reserve(vertexCount * 2);
     for (unsigned int v = 0; v < vertexCount; v++){
         Vector3 p = attributes.position.buffer->getVector3(attributes.position.attribute, v);
         source.positions.insert(source.positions.end(), {p.x, p.y, p.z});
-        if (normal){
-            Vector3 n = attributes.normal.buffer->getVector3(attributes.normal.attribute, v);
-            source.normals.insert(source.normals.end(), {n.x, n.y, n.z});
-        }
-        if (uv){
-            Vector2 t = attributes.uv.buffer->getVector2(attributes.uv.attribute, v);
-            source.uvs.insert(source.uvs.end(), {t.x, t.y});
-        }
     }
-
-    if (const Attribute* weights = attributes.skinWeights.attribute){
-        // float or normalized unsigned weights (glTF WEIGHTS_0)
-        const Buffer* buffer = attributes.skinWeights.buffer;
-        const size_t stride = buffer->getStride() ? buffer->getStride() : weights->getElements() * sizeof(float);
-        const AttributeDataType type = weights->getDataType();
-        const size_t size = (type == AttributeDataType::FLOAT) ? 4 : (type == AttributeDataType::UNSIGNED_SHORT) ? 2 : 1;
-        if ((size_t)weights->getOffset() + (size_t)(vertexCount - 1) * stride + 4 * size <= buffer->getSize()){
-            source.skinWeights.reserve(vertexCount * 4);
-            for (unsigned int v = 0; v < vertexCount; v++){
-                const unsigned char* at = buffer->getData() + weights->getOffset() + (size_t)v * stride;
-                for (int e = 0; e < 4; e++){
-                    float w;
-                    if (type == AttributeDataType::FLOAT){
-                        std::memcpy(&w, at + e * 4, 4);
-                    }else if (type == AttributeDataType::UNSIGNED_SHORT){
-                        uint16_t q;
-                        std::memcpy(&q, at + e * 2, 2);
-                        w = q / 65535.0f;
-                    }else{
-                        w = at[e] / 255.0f;
-                    }
-                    source.skinWeights.push_back(std::isfinite(w) ? w : 0.0f);
-                }
+    // the guiding attributes as floats (a quantized model's normalized ones decoded); one that
+    // cannot be read whole guides nothing
+    auto read = [vertexCount](const LodAttribute& attribute, unsigned int elements, std::vector<float>& out){
+        if (!attribute.attribute)
+            return;
+        out.resize((size_t)vertexCount * elements);
+        for (unsigned int v = 0; v < vertexCount; v++){
+            if (!readLodFloats(*attribute.buffer, *attribute.attribute, v, elements, &out[(size_t)v * elements])){
+                out.clear();
+                return;
             }
         }
-    }
-
+    };
+    read(attributes.normal, 3, source.normals);
+    read(attributes.uv, 2, source.uvs);
+    read(attributes.skinWeights, 4, source.skinWeights);
     return true;
 }
 

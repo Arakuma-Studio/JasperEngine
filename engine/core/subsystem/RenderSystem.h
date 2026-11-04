@@ -2230,6 +2230,9 @@ namespace jasperengine{
 		// when the submesh has no CPU geometry the levels read (the editor's wireframe, captures)
 		static bool readSubmeshLevel(MeshComponent& mesh, unsigned int submeshIndex, unsigned int level,
 		                             std::vector<Vector3>& positions, std::vector<uint32_t>& indices);
+		// what the level builder reads of a loaded submesh (its positions, indices and the
+		// attributes that guide it, decoded to floats); false when it has none to build from
+		static bool readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source);
 	private:
 		void releaseSubmeshLodFade(Submesh& submesh);
 		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;
