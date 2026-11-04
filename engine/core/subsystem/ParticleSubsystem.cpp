@@ -193,8 +193,10 @@ bool ParticleSubsystem::ensureEffect(Entity entity, ParticleSystemComponent& par
         return state.effect != nullptr;
     }
 
-    // a parameter edit keeps the live particles; another structure starts over
-    if (state.effect && state.runtime.rebind(compiled)){
+    // a parameter edit keeps the live particles; another structure starts over, and so does another
+    // seed: the run the stats name is the one that runs
+    const uint32_t pinnedSeed = particles.seed != 0 ? particles.seed : compiled->document.seed;
+    if (state.effect && (pinnedSeed == 0 || pinnedSeed == state.seed) && state.runtime.rebind(compiled)){
         state.effect = compiled;
     }else{
         const bool wasPlaying = state.runtime.isPlaying();
@@ -441,7 +443,13 @@ ParticleSystemStats ParticleSubsystem::getStats(Entity entity){
     stats.drawnViews = state->drawnViews;
     stats.raysLastTick = r.raysLastTick();
     stats.bytesPerParticle = r.program() ? (uint32_t)r.program()->bytesPerParticle() : 0u;
+    stats.seed = state->seed;
     return stats;
+}
+
+uint64_t ParticleSubsystem::getStateHash(Entity entity){
+    ParticleSystemState* state = getState(entity);
+    return state ? state->runtime.stateHash() : 0;
 }
 
 void ParticleSubsystem::markVisible(Entity entity){

@@ -87,6 +87,9 @@ for a given seed and frame-rate independent.
   selected systems play there too; the panel's Playback Time slider scrubs).
 - `get_particle_stats` reports particle_count, time, ticks, the world budget, simulate/render µs,
   culled; `capture_particles {entity, time, camera: scene|game}` seeks and returns an image.
+- Both report `seed` (the one in use, also what a seedless effect drew for this play) and `state_hash`:
+  put the seed in the effect (`edit_particle_effect {patch: {seed}}`) and the same time gives the
+  same hash, which is how to tell that two runs are the same one.
 - `get_particle_migration_report` lists the old particle systems (Points + Particle System action)
   the documents read were converted from; saving writes the new format.
 

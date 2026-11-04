@@ -209,3 +209,41 @@ async def test_particles_file_is_text_and_tracked(ed: Editor):
         ext = await external(ed)
         ed.check(path not in ext.get("changed", []), f"edit_particle_effect's own write: {ext}")
         await asyncio.sleep(0.25)
+
+
+async def test_reports_reproduce_a_run(ed: Editor):
+    """F13: stats and captures name the seed in use and a hash of the state: the same seed gives the
+    same hash, another seed another, and the seed a seedless effect drew reproduces its run."""
+    s = await setup(ed)
+    async def capture(time_s: float = 0.5) -> dict:
+        r = await ed.call_raw("capture_particles", {"scene": s["scene"], "entity": s["system"], "time": time_s, "max_width": 64})
+        ed.check(not r.is_error, f"capture: {r.text[:300]}")
+        return r.value["stats"]
+
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 3})
+    first = await capture()
+    ed.check_eq(first.get("seed"), 3, f"the seed in use: {first}")
+    ed.check(isinstance(first.get("state_hash"), str) and len(first["state_hash"]) == 16, f"the state's hash: {first}")
+    ed.check(first["particle_count"] > 0, f"particles to hash: {first}")
+    again = await capture()
+    ed.check_eq(again["state_hash"], first["state_hash"], "the same seed and time give the same state")
+    live = await stats(ed)
+    ed.check_eq((live["seed"], live["state_hash"]), (3, first["state_hash"]), "get_particle_stats reports them too")
+
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 4})
+    other = await capture()
+    ed.check_eq(other["seed"], 4, "the new seed")
+    ed.check(other["state_hash"] != first["state_hash"], f"another seed, another state: {first} {other}")
+
+    # a seedless effect draws one per play; the reported one reproduces that run
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 0})
+    await ed.call("control_particles", scene=s["scene"], entity=s["system"], action="stop")
+    await ed.call("control_particles", scene=s["scene"], entity=s["system"], action="clear")
+    await ed.call("control_particles", scene=s["scene"], entity=s["system"], action="play")
+    drawn = await capture()
+    ed.check(drawn["seed"] not in (0, 3, 4), f"the seed drawn: {drawn}")
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": drawn["seed"]})
+    pinned = await capture()
+    ed.check_eq(pinned["seed"], drawn["seed"], "the pinned seed")
+    ed.check_eq(pinned["state_hash"], drawn["state_hash"], "pinning the reported seed reproduces the run")
+    await ed.call("edit_particle_effect", scene=s["scene"], entity=s["system"], patch={"seed": 3})

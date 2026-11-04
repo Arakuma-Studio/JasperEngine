@@ -36,6 +36,7 @@
 #include "window/SceneWindow.h"
 
 #include <algorithm>
+#include <cstdio>
 #include <filesystem>
 
 namespace jasperengine::editor::mcp {
@@ -388,7 +389,10 @@ void assignTool(const CallPtr& call) {
 
 Json statsJson(ParticleSubsystem& particles, Entity entity) {
     const ParticleSystemStats s = particles.getStats(entity);
-    return {{"valid", s.valid}, {"particle_count", s.live}, {"capacity", s.capacity}, {"budget", s.budget}, {"emission_scale", s.emissionScale},
+    // as text: a 64-bit number does not survive every JSON reader
+    char stateHash[17];
+    std::snprintf(stateHash, sizeof(stateHash), "%016llx", static_cast<unsigned long long>(particles.getStateHash(entity)));
+    return {{"valid", s.valid}, {"seed", s.seed}, {"state_hash", stateHash}, {"particle_count", s.live}, {"capacity", s.capacity}, {"budget", s.budget}, {"emission_scale", s.emissionScale},
             {"ticks", s.ticks}, {"tick_count", s.tickCount}, {"time", s.time}, {"dropped_time", s.droppedTime},
             {"simulate_us", s.simulateMicros}, {"render_us", s.renderMicros}, {"culled", s.culled}, {"playing", s.playing},
             {"paused", s.paused}, {"emitting", s.emitting}, {"sorted_views", s.sortedViews}, {"drawn_views", s.drawnViews},
@@ -571,7 +575,8 @@ void captureTool(const CallPtr& call) {
         data["time"] = time;
         data["stats"] = stats;
         ToolResult reply = ToolResult::success("The effect at " + std::to_string(time) + " s (" + std::to_string(stats.value("particle_count", 0)) +
-                                               " particles), " + std::to_string(result.info.value("width", 0)) + "x" +
+                                               " particles, seed " + std::to_string(stats.value("seed", 0u)) + ", state_hash " +
+                                               stats.value("state_hash", std::string()) + "), " + std::to_string(result.info.value("width", 0)) + "x" +
                                                std::to_string(result.info.value("height", 0)) + ".", data);
         reply.images.push_back(std::move(result.image));
         call->reply(std::move(reply));
