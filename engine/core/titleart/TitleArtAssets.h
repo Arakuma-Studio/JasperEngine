@@ -51,7 +51,8 @@ namespace jasperengine::titleart {
         // the asset a reference names, GUID first, then the path hint
         virtual ResolvedTitleAsset resolve(const TitleAssetRef& ref, TitleAssetKind kind) const = 0;
         // a face of a font file (`faceIndex` for .ttc members), shared: one FontFace per file and
-        // index for the resolver's lifetime; null with `error`
+        // index for the resolver's lifetime; null with `error`. Loaded with
+        // FontFaceRasterizer::Optional, so CFF2 variable fonts open (Title Art draws outlines)
         virtual std::shared_ptr<FontFace> loadFont(const ResolvedTitleAsset& asset, int faceIndex, std::string* error) const = 0;
         // a file's bytes (SVG text, image files); false with `error`
         virtual bool readBytes(const ResolvedTitleAsset& asset, std::vector<uint8_t>& out, std::string* error) const = 0;
