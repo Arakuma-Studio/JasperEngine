@@ -113,13 +113,11 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S50 | Grid tilemap: Grid and Tilemap Layers, Tileset assets, terrain autotiling, tile colliders, Tile Palette and brushes, Tiled/LDtk import | 5C (pixel art) |
 | S51 | Pixel fonts: Bitmap Font asset from grid sheets, BMFont and pixel TTFs, integer scale on the pixel grid, pixel outline and shadow, HTML UI faces, built-in pixel font | 5B (pixel art) |
 | S52 | Sprite instancing: one instance format, batched sprites, Sorting Layers and Sorting Groups, Sprite Batch, batch statistics | 5A (pixel art) |
-<<<<<<< HEAD
 | S53 | Model import and cook: meshopt/quantized/Draco/WebP/Basis glTF, Model Importer (.meta, per platform), lossless and lossy Mesh Compression, baked LODs, Read/Write, Audit window, Build Report, `meshes` MCP group | 5 |
 | S54 | LOD and cross-fade: LOD on by default, fixed selection, baked levels, dithered cross-fade, shadow LOD, culled level, instanced LOD, Scene view Draw Modes, Stats, `capture_model_lods` | 5 |
 | S55 | Draw submission: automatic GPU instancing (beside the Doriax draw-perf and sprite-batching), constants once per pass, visible lists on jobs, shadow geometry, stream-budget fix, mesh benchmark gate | 5 |
 | S56 | Device tiers (GPU database after The Forge), tier overrides and Game view simulation, thermal and memory response, upload pacing | 5 |
 | S57 | Lighting after The Forge: screen-tile light lists, capsule shadows, contact shadows, weighted blended OIT, hair lobe | 5 |
-=======
 | S61 | Window-scoped commands: a key acts on the focused panel; curve and colour keys rebindable | follow-ups |
 | S62 | Recorder integrity: no false success, no stand-in frames | follow-ups |
 | S63 | Saved files do not depend on what was drawn or loaded (sprite frames, weather map, guard test) | follow-ups |
@@ -133,4 +131,3 @@ we can. Specs describe WHAT and the acceptance bar, not a step-by-step implement
 | S71 | Cheap Mesh update flags (measure first) | follow-ups |
 | S72 | Build hygiene: header fan-out, sanitizer builds install | follow-ups |
 | S73 | Code cleanups: generated AssetRefSchema, frozen parity data, dead code, shader counter | follow-ups |
->>>>>>> origin/main
