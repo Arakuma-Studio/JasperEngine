@@ -1,15 +1,20 @@
 // Production declarations and methods are injected without rewriting their logic.
 #include <algorithm>
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
+#ifdef GRID_RESERVATION_ALLOCATIONS
 #include <new>
+#endif
 #include <random>
 #include <unordered_map>
 #include <vector>
 
+#ifdef GRID_RESERVATION_ALLOCATIONS
 static size_t allocationCount = 0;
 static bool countAllocations = false;
 void* operator new(std::size_t size){
@@ -19,6 +24,7 @@ void* operator new(std::size_t size){
 }
 void operator delete(void* value) noexcept { std::free(value); }
 void operator delete(void* value, std::size_t) noexcept { std::free(value); }
+#endif
 
 // PRODUCTION_CLASSES
 
@@ -57,7 +63,25 @@ static void correctness(){
     std::fprintf(stderr, "Differential checks passed: 30000 mutations, %zu holder/expiry queries.\n", queries);
 }
 
-#ifndef CHECK_ONLY
+#ifdef GRID_RESERVATION_ALLOCATIONS
+template<class Reservations>
+static double allocationsPerUpdate(size_t count){
+    Reservations reservations;
+    reservations.reset((int)count * 2);
+    std::vector<std::vector<int>> paths(count);
+    for (size_t i = 0; i < count; i++){
+        paths[i] = {(int)i * 2, (int)i * 2 + 1};
+        reservations.reserve((uint32_t)i + 1, paths[i], 10);
+    }
+    allocationCount = 0;
+    countAllocations = true;
+    for (size_t i = 0; i < count; i++) reservations.reserve((uint32_t)i + 1, paths[i], 11);
+    countAllocations = false;
+    const size_t allocations = allocationCount;
+    assert(reservations.holder((int)count * 2 - 1, 11) == count);
+    return double(allocations) / double(count);
+}
+#elif !defined(CHECK_ONLY)
 static double cpuSeconds(){
     timespec now;
     const int status = clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &now);
@@ -66,7 +90,7 @@ static double cpuSeconds(){
 }
 
 template<class Reservations>
-static std::pair<double, double> measure(size_t count){
+static double measure(size_t count){
     Reservations reservations;
     reservations.reset((int)count * 2);
     std::vector<std::vector<int>> paths(count);
@@ -77,31 +101,36 @@ static std::pair<double, double> measure(size_t count){
     uint32_t tick = 11;
     size_t updates = 0;
     const size_t batches = std::max(size_t(1), size_t(1024) / count);
-    allocationCount = 0;
-    countAllocations = true;
     const double start = cpuSeconds();
     double elapsed;
     do{
         for (size_t batch = 0; batch < batches; batch++){
             for (size_t i = 0; i < count; i++) reservations.reserve((uint32_t)i + 1, paths[i], tick);
+            // Make every batch's stores observable to the compiler without a hardware fence.
+            std::atomic_signal_fence(std::memory_order_seq_cst);
             updates += count;
             tick++;
         }
         elapsed = cpuSeconds() - start;
     }while (elapsed < 0.025);
-    countAllocations = false;
-    const size_t allocations = allocationCount;
     assert(reservations.holder((int)count * 2 - 1, tick - 1) == count);
-    return {elapsed * 1e9 / double(updates), double(allocations) / double(updates)};
+    return elapsed * 1e9 / double(updates);
 }
 #endif
 
-int main(){
+int main(int argc, char** argv){
     correctness();
-#ifndef CHECK_ONLY
+    if (argc > 1 && std::strcmp(argv[1], "--check") == 0) return 0;
+#ifdef GRID_RESERVATION_ALLOCATIONS
+    for (size_t count : {size_t(1), size_t(8), size_t(128), size_t(1024), size_t(8192)}){
+        const double before = allocationsPerUpdate<BeforeReservations>(count);
+        const double after = allocationsPerUpdate<AfterReservations>(count);
+        std::printf("%zu,%.6f,%.6f\n", count, before, after);
+    }
+#elif !defined(CHECK_ONLY)
     for (size_t count : {size_t(1), size_t(8), size_t(128), size_t(1024), size_t(8192)}){
         for (int sample = 0; sample < 11; sample++){
-            std::pair<double, double> before, after;
+            double before, after;
             if (sample % 2 == 0){
                 before = measure<BeforeReservations>(count);
                 after = measure<AfterReservations>(count);
@@ -109,8 +138,7 @@ int main(){
                 after = measure<AfterReservations>(count);
                 before = measure<BeforeReservations>(count);
             }
-            std::printf("%zu,%d,%.3f,%.3f,%.6f,%.6f\n", count, sample,
-                        before.first, after.first, before.second, after.second);
+            std::printf("%zu,%d,%.3f,%.3f\n", count, sample, before, after);
         }
     }
 #endif
