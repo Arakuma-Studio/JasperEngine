@@ -76,8 +76,6 @@ private:
     static wchar_t toCodepoint(const std::string &u);
     static std::string toUTF8(wchar_t cp);
     static int jasperengine_mouse_button(int button);
-    static int jasperengine_legacy_input(int code);
-    static int jasperengine_input(const char code[32]);
     static int jasperengine_gamepad_button(int button);
 
     static void pollGamepads();

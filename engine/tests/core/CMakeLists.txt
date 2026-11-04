@@ -102,6 +102,8 @@ jasperengine_add_test_target(jasperengine-core-tests
         # the vertex animation tests' asset root, and their asset and GLB fixtures
         ${CMAKE_CURRENT_SOURCE_DIR}/vat/VatTestEnvironment.cpp
     INCLUDES ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/support
+        # WebKeyMap.h, the web platform's key map (plain C++)
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../platform/emscripten
     DEFINITIONS
         # the repository root: the fixture projects of tools/fixtures (pose and clip tests' models)
         JASPER_TEST_REPO_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../.."
