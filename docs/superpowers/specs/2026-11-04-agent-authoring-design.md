@@ -760,7 +760,7 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
    - `budget.json` `guide.client_cut` lists `(intro)`, Addressing, The loop, Building scenes and Tool groups; the gate
      also checks the pointer. Eval cases added (`tools/mcp/eval/cases.py`): `bad_repeat_without_prefab`,
      `bad_bob_in_script`, `bad_hud_widgets_in_3d`, `guard_rotation_not_euler`, `guard_guide_past_the_cut`,
-     `bad_terrain_grass`, `bad_shader_override_by_building`.
+     `bad_terrain_grass`, `bad_shader_override_by_building`, `bad_cpp_without_toolchain`.
 2. **Shader overrides: a tool in the `shipping` group (`edit_build_shaders`), not settings rows.** The settings
    registry's rows are Project Settings / Preferences rows: the palette and the settings search would send a person to
    a Project Settings page that does not draw them (the overrides live in Build Settings). `edit_build_shaders

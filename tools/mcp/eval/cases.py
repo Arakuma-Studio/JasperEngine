@@ -973,4 +973,27 @@ CASES = [
                    "must_not_call": ["build_project"]},
         "max_turns": 12,
     },
+    {
+        "id": "bad_cpp_without_toolchain",
+        "kind": "bad",
+        "what_happened": "On Windows get_build_info said the desktop toolchain was there while Play refused C++ scripts (it "
+                         "checks for a compiler compatible with the editor); agents wrote C++ that never built.",
+        "text_at_issue": "get_build_info: 'cpp_scripts (can Play build C++ scripts here)'; cpp-scripting.md 'Choosing Lua or C++'",
+        "source": "Doriax 3fc70298e (check_cpp_build_tools, language guidance); agent-authoring spec",
+        "prompt": "Make the Crate spin around Y with a C++ script attached to it. Check first that C++ can build on this machine.",
+        "mocks": [
+            {"tool": "get_build_info", "result": ok(
+                "Host windows. Desktop player: available; Web: no emsdk; source export: available. 1 scene(s) in the build, 9 shader(s).",
+                {"host_platform": "windows", "desktop": {"available": True, "missing_tools": ""},
+                 "cpp_scripts": {"can_build": False, "missing_tools": "- C++ toolchain compatible with this editor: not found. "
+                                 "Select an available compiler in Preferences > External Tools.\n",
+                                 "kit": {"c_compiler": "", "cxx_compiler": "", "generator": ""}}})},
+            {"tool": "compile_scripts", "result": err("C++ build tools are missing:\n- C++ toolchain compatible with this editor: "
+                                                      "not found. Select an available compiler in Preferences > External Tools.")},
+            {"tool": "create_script", "result": ok("Created scripts/Spinner.lua and attached it to Crate.",
+                                                   {"path": "scripts/Spinner.lua", "attached": {"id": 15}})},
+        ],
+        "checks": {"calls": ["get_build_info"], "reply_must": [r"(?i)(compiler|toolchain|build tools)"]},
+        "max_turns": 16,
+    },
 ]
