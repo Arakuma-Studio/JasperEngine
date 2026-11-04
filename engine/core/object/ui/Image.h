@@ -5,6 +5,7 @@
 #define IMAGE_H
 
 #include "RectTransform.h"
+#include "texture/Material.h"
 
 namespace jasperengine{
     class JASPERENGINE_API Image: public RectTransform{

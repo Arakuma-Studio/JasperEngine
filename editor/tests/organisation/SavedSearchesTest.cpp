@@ -5,6 +5,7 @@
 // thing, and organisation.yaml / project.yaml keep them.
 
 #include "organisation/Organisation.h"
+#include "spritenormals/SpriteNormalsField.h"
 #include "organisation/SavedSearchRows.h"
 #include "search/AssetQuery.h"
 #include "search/FakeAssetIndex.h"

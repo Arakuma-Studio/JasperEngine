@@ -118,6 +118,7 @@ endif()
 
 # The engine's include directories and definitions, for tests that compile the C++ the editor
 # generates for exports (LineRendererStreamTest: Factory's component code against the engine
-# headers, with the compiler that builds the tests)
+# headers, with the compiler that builds the tests; as a game's code sees them, every component
+# through Scene.h, without the engine's own JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES)
 file(GENERATE OUTPUT ${CMAKE_BINARY_DIR}/editor-tests-engine-flags.txt CONTENT
-"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,\n>\n")
+"$<JOIN:$<TARGET_PROPERTY:jasperengine,INCLUDE_DIRECTORIES>,\n>\n#defines\n$<JOIN:$<FILTER:$<TARGET_PROPERTY:jasperengine,COMPILE_DEFINITIONS>,EXCLUDE,^JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES$>,\n>\n")

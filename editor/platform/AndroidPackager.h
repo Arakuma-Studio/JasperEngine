@@ -48,7 +48,13 @@ namespace jasperengine::editor::platform {
         std::string keystoreAlias;
         std::string keystorePassword;          // else JASPER_ANDROID_KS_PASS
         std::string keyPassword;               // else JASPER_ANDROID_KEY_PASS, else the keystore's
+        // a bundle's bundletool jar; empty: the pinned one, downloaded once (AndroidTools::bundletoolJar)
+        std::filesystem::path bundletool;
     };
+
+    // What keytool's output says is wrong with a keystore and its key, in words a user can act on
+    // (the wrong store or key password, no such alias, not a keystore); "" when it says none of it
+    std::string describeKeystoreFailure(const std::string& keytoolOutput, const std::filesystem::path& keystore, const std::string& alias);
 
     // whether a package compresses its native libraries (an APK for minSdk < 23, as the Android
     // Gradle plugin does; its manifest then says extractNativeLibs="true") or stores them

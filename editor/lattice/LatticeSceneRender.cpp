@@ -5,6 +5,10 @@
 // with the Gizmos popup's "Lattices"), the gizmo on the selected points and its drag.
 
 #include "render/SceneRender.h"
+#include "lattice/LatticeTypes.h"
+#include "component/Transform.h"
+#include "util/Angle.h"
+#include "component/CameraComponent.h"
 
 #include "AppSettings.h"
 #include "Backend.h"

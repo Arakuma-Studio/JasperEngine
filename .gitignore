@@ -3,6 +3,7 @@ build
 build-rel
 build-release
 settings.yaml
+/settings.yaml.lock
 editor_layout.ini
 editor.log
 
