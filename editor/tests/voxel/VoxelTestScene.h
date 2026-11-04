@@ -23,6 +23,17 @@
 #include <memory>
 #include <string>
 
+namespace jasperengine {
+    // TEST-ONLY seam (System.h befriends it): detach / restore the instance
+    struct SystemTestAccess {
+        static System* swap(System* system) {
+            System* previous = System::systemInstance;
+            System::systemInstance = system;
+            return previous;
+        }
+    };
+}
+
 namespace jasperengine::editor::voxeltest {
 
     namespace fs = std::filesystem;
@@ -57,6 +68,8 @@ namespace jasperengine::editor::voxeltest {
     public:
         std::string assets;
         std::string getAssetPath() override { return assets; }
+        int getScreenWidth() override { return 1280; }
+        int getScreenHeight() override { return 720; }
     };
 
     class VoxelSceneTest : public ::testing::Test {
@@ -78,8 +91,7 @@ namespace jasperengine::editor::voxeltest {
             project->setSkipProjectLock(true);
             ASSERT_TRUE(project->loadProject(dir.path(), false));
             assetsSystem.assets = project->getAssetsPath().string();
-            previousSystem = System::systemInstance;
-            System::systemInstance = &assetsSystem;
+            previousSystem = SystemTestAccess::swap(&assetsSystem);
             for (SceneProject& candidate : project->getScenes()) {
                 if (!candidate.filepath.empty() && !candidate.scene) project->loadScene(candidate.filepath, false, false, true);
             }
@@ -100,7 +112,7 @@ namespace jasperengine::editor::voxeltest {
                 project->releaseScenes();
             }
             project.reset();
-            if (previousSystem) System::systemInstance = previousSystem;
+            SystemTestAccess::swap(previousSystem);
         }
 
         fs::path assetFile() const { return project->getAssetsPath() / assetPath; }

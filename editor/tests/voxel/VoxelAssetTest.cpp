@@ -185,7 +185,7 @@ TEST_F(VoxelAssetTest, ExternalChangeReloads) {
 
     // the kind apply() files it under, and the service reading another program's write
     EXPECT_EQ(reload::kindOf(assetFile()), "voxel");
-    HotReloadService service;
+    HotReloadService& service = HotReloadService::get();
     service.attach(*project);
     const std::string external = otherContent(3);
     TestTempDir::write(assetFile(), external);
