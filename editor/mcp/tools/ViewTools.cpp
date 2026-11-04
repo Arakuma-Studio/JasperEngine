@@ -954,6 +954,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"disable_fog", &SceneDisplaySettings::disableFog},
         {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
+        {"animate_water", &SceneDisplaySettings::animateWater},
     };
     return flags;
 }

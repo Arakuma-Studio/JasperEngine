@@ -75,11 +75,10 @@ async def test_play_floats_and_samples_agree(ed: Editor):
         # half its density: about half under, so its centre near the (waving) surface
         ed.check(-0.35 < y < 0.35, f"the crate floats half under: y {y}")
 
-        # one round-trip: both read the same frame's shader time (the editor's frames go on drawing
-        # while the game is paused, and each latches the clock)
+        # one round-trip: both read the same frame's water clock (the scene clock)
         both = await ed.call("batch", calls=[
             {"tool": "sample_water", "arguments": {"points": [[1.5, 0, 2.5]]}},
-            {"tool": "eval_lua", "arguments": {"code": "return Water.sampleHeight(scene, 1.5, 2.5), Water.getTime()"}},
+            {"tool": "eval_lua", "arguments": {"code": "return Water.sampleHeight(scene, 1.5, 2.5), Water.getTime(scene)"}},
             {"tool": "eval_lua", "arguments": {"code": "local w = Water.sample(scene, Vector3(1.5, -1, 2.5)); "
                                                        "return w.inWater, w.surfaceHeight, w.volume"}}])
         ed.check_eq(both["failed"], 0, f"{both}")
@@ -87,7 +86,7 @@ async def test_play_floats_and_samples_agree(ed: Editor):
         lua = both["results"][1]["structured"]["values"]
         tool = got["samples"][0]["surface_height"]
         ed.check(abs(tool - lua[0]) <= 1e-5, f"sample_water {tool} = Water.sampleHeight {lua[0]}")
-        ed.check(abs(got["shader_time"] - lua[1]) <= 1e-6, f"the same shader time: {got['shader_time']} {lua[1]}")
+        ed.check(abs(got["water_time"] - lua[1]) <= 1e-6, f"the same water time: {got['water_time']} {lua[1]}")
         sample = both["results"][2]["structured"]["values"]
         ed.check_eq(sample[0], True, f"Water.sample in water: {sample}")
         ed.check(abs(sample[1] - tool) <= 1e-5, f"Water.sample's surface: {sample}")

@@ -10,8 +10,10 @@
 #include "math/Vector3.h"
 #include "math/Vector4.h"
 #include "subsystem/WaterSystem.h"
+#include "util/WaterWaves.h"
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace jasperengine{
@@ -19,20 +21,17 @@ namespace jasperengine{
     class Scene;
     struct Material;
 
-    // A water surface: an enabled, active mesh with a submesh drawn with library:water
-    // (engine/shaderlib/library/water.frag), with the values of that submesh's material (its
-    // own or the manifest defaults). Made for a horizontal surface: it rests at the top of the
-    // mesh's world bounds and covers their extent in XZ.
+    // A water surface: an enabled, active mesh with a submesh drawn with library:water or a
+    // shader whose manifest says @role water (a fork of it; engine/shaderlib/library/water.frag),
+    // with the values of that submesh's material (its own or its shader's manifest defaults).
+    // Made for a horizontal surface: it rests at the top of the mesh's world bounds and covers
+    // their extent in XZ.
     struct JASPERENGINE_API WaterSurface{
         Entity entity = NULL_ENTITY;
         float level = 0.0f;                 // rest height (world Y), the top of the bounds
         Vector2 minXZ;                      // world bounds in XZ
         Vector2 maxXZ;
-        bool waves = false;                 // WAVES, with the values below
-        Vector2 waveDirection = Vector2(1.0f, 0.3f);
-        float waveHeight = 0.0f;
-        float waveLength = 1.0f;
-        float waveSpeed = 0.0f;
+        WaterWaveParams waves;              // WAVES (and GERSTNER), with their values
         bool buoyancy = true;               // floats Rigidbodies with a Buoyancy
         float buoyancyDepth = 0.0f;         // how far below the surface they float, 0: no bottom
         Vector4 shallowColor;               // linear, as the material stores them
@@ -41,14 +40,17 @@ namespace jasperengine{
         bool covers(float x, float z) const;
         // the lowest point in the water: level - buoyancyDepth, minus infinity without a depth
         float getBottom() const;
-        // the surface at a world XZ at a time of the shader clock (Water::getTime)
+        // the surface at a world XZ at a time of the scene clock (Water::getTime)
         float getHeight(float x, float z, float time) const;
         Vector3 getNormal(float x, float z, float time) const;
+        // the waves there: height above the level, slope, normal, the water's velocity
+        WaterWaveSample getWaves(float x, float z, float time) const;
     };
 
     // The water surfaces of a scene for the physics and scripts (Lua: Water). They are the
-    // meshes drawn with library:water; heights take its waves (WAVES) on the clock the
-    // shader animates them by, so what floats rides the waves on screen. Where waters overlap
+    // meshes drawn with library:water (or a fork with @role water); heights take its waves
+    // (WAVES, GERSTNER) on the clock the shader animates them by (the scene clock), so what
+    // floats rides the waves on screen. Where waters overlap
     // the one whose bottom (WaterSurface::getBottom) is highest wins: a pool with a floating
     // depth over a lake without one floats its own bodies.
     //
@@ -64,10 +66,16 @@ namespace jasperengine{
         static const char* const SHADER;            // "library:water"
         static const char* const UNDERWATER_SHADER; // "library:underwater"
 
-        // The clock the shader library animates by (frame.time.x): Engine::getShaderTime, the
-        // wall clock latched once a frame (or whole fixed frames under a fixed frame delta),
-        // also running in the editor and while the game is paused or its time scaled
-        static float getTime();
+        // Whether a shader reference is a water: library:water, or a shader whose manifest says
+        // @role water (a fork of it). The name first; only a fork's manifest is looked up.
+        static bool isWaterShader(const std::string& reference);
+        // the same for the view from inside: library:underwater or @role underwater
+        static bool isUnderwaterShader(const std::string& reference);
+
+        // The clock library:water animates by (its engine-written sceneTime): the scene's game
+        // clock (Scene::getSceneTime), which holds while the game is paused and follows the time
+        // scale; the main scene's without one, 0 without either
+        static float getTime(Scene* scene = nullptr);
 
         // The waves of library:water (WAVES, library/water.glsl's waterWaves through its C++
         // twin util/WaterWaves.h) at a world XZ: x the height above the rest level, yz its slope
@@ -76,8 +84,11 @@ namespace jasperengine{
 
         // every water surface of the scene (none without library:water meshes)
         static std::vector<WaterSurface> getSurfaces(Scene* scene);
-        // the surface a material makes of a mesh (false: the material is not library:water)
+        // the surface a material makes of a mesh (false: the material is not a water)
         static bool readMaterial(const Material& material, WaterSurface& surface);
+        // the waves of a water material: WAVES, GERSTNER and their values, set or its shader's
+        // manifest defaults (false: the material is not a water)
+        static bool readWaves(const Material& material, WaterWaveParams& waves);
         // the water a point is in or over: of the surfaces covering its XZ whose bottom is at
         // or under it, the one whose bottom is highest (then the highest level); buoyant:
         // only waters whose buoyancy is on. Null for none.

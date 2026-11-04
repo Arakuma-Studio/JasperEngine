@@ -3,7 +3,7 @@
 
 // Buoyancy in Water Volumes (docs/specs/S22-gameplay.md R30-R32, R37, AC12): Archimedes' columns
 // in the fixed step settle a box as deep as its density is of the water's, ride the waves the
-// shader draws (the material's, on the shader clock), and cost nothing in a scene without water.
+// shader draws (the material's, on the scene clock), and cost nothing in a scene without water.
 
 #include "Engine.h"
 #include "Input.h"
@@ -111,9 +111,10 @@ namespace {
             }
         }
 
-        // a frame of one fixed step: the shader clock latched, then the step
+        // a frame of one fixed step: the scene clock advanced by it (as Engine::runFrame does),
+        // then the step
         void step(){
-            Engine::latchShaderTime();
+            scene->advanceSceneTime(DT);
             resolveTransforms();
             Input::beginFixedStep();
             scene->fixedUpdate(DT);
@@ -203,7 +204,7 @@ TEST_F(BuoyancyTest, NoWorkWhenAbsent){
 TEST_F(BuoyancyTest, SampleMatchesTheWaveTwin){
     water(true, 0.4f, 12.0f, 2.0f);
     step();
-    const float time = Engine::getShaderTime();
+    const float time = (float)scene->getSceneTime();
     const WaterSample sample = physics->sampleWater(Vector3(3.0f, -1.0f, 2.0f));
     const WaterWaveSample wave = waterWaves(Vector2(3.0f, 2.0f), time, Vector2(1.0f, 0.0f), 0.4f, 12.0f, 2.0f);
     EXPECT_TRUE(sample.inWater);

@@ -3,6 +3,7 @@
 // @shader postprocess
 // @name "Underwater"
 // @category "Post-processing"
+// @role underwater
 // @description "The view from inside a water: the scene fades into the water with the distance the view travels through it, each colour at its own rate (Beer-Lambert: a blue-green water loses red first), towards the water's colour lit by the sun and the ambient; the view leaving the water at its surface fades only by the water in front of it. Add it to the chain switched off: while the main camera is under a library:water surface (a running scene) the engine switches it on and gives it that surface's height and, with Follow water, its shallow and deep colours, and switches it off again above (Water, engine/core/object/environment/Water.h). Reads the scene depth: a depth pre-pass of the opaque meshes while it is on (none extra with SSAO or SSR); one full-screen pass."
 // @property shallowColor color (0.25, 0.8, 0.85, 1) "Clear colour (the hue the view fades through)"
 // @property deepColor color (0.03, 0.25, 0.45, 1) "Water colour (what the distance fades to)"

@@ -369,6 +369,28 @@ SceneColorScale Scene::getSceneColorScale() const{
     return settings.sceneColorScale;
 }
 
+double Scene::getSceneTime() const{
+    return Engine::hasPinnedShaderTime() ? Engine::getPinnedShaderTime() : sceneTime;
+}
+
+void Scene::setSceneTime(double seconds){
+    if (std::isfinite(seconds))
+        sceneTime = seconds;
+}
+
+void Scene::advanceSceneTime(double delta, bool evenWhenPaused){
+    if ((!sceneTimePaused || evenWhenPaused) && std::isfinite(delta) && delta > 0.0)
+        sceneTime += delta;
+}
+
+void Scene::setSceneTimePaused(bool paused){
+    sceneTimePaused = paused;
+}
+
+bool Scene::isSceneTimePaused() const{
+    return sceneTimePaused;
+}
+
 void Scene::setSSAOEnabled(bool ssaoEnabled){
     if (settings.ssaoEnabled != ssaoEnabled){
         settings.ssaoEnabled = ssaoEnabled;

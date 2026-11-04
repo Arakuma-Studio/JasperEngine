@@ -5,6 +5,7 @@
 // @category "Nature"
 // @description "Stylised water: shallow to deep colour by the view angle, two scrolling normal layers and foam anchored to the world, optional sine waves; lit per pixel with a specular glint, distant waves and ripples fading so they do not shimmer. Optional features: BUILTIN_TEXTURES (the engine's seamless ripples and foam noise where the material sets no texture, so no image files are needed), REFLECTION (the sky or the reflection probe around it by Schlick's fresnel, a GGX sun glint), UNDERSIDE (both faces drawn: seen from below, the sky only through Snell's window, the depths mirrored around it; with library:underwater in the post-processing chain the view under the surface fades into the water), and the scene-reading DEPTH_FOAM (foam along every shore and object crossing the surface) and ABSORPTION (colour by the water's thickness; with REFRACTION the bed seen through it also loses each colour at its own rate) reading the scene depth, REFRACTION (the bed and anything under the surface bent by the ripples) the scene colour and depth, CAUSTICS (with REFRACTION: the sunlight focused on the bed). For meshes that carry their water (a spline's river or lake): FLOW (rivers: the ripples and the foam carried along the flow the vertex colour gives) and MESH_DEPTH (shore foam and shallow to deep colour from the depth the mesh's first UV set gives, with no scene-depth pass: the mobile path). Mobile cost of those: the scene depth is an extra depth-only pass of the opaque meshes (none when SSAO or SSR already made one), the scene colour a copy of the screen (half resolution by default) and a split of the render pass; REFLECTION, CAUSTICS and MESH_DEPTH are a few instructions (one cube map read for REFLECTION), FLOW doubles the four texture reads. REFRACTION hides other transparent objects behind the water where it bends the view (the scene colour holds only opaque objects and the sky), and needs the Alpha or Premultiplied blend (Additive and Multiply draw it unrefracted). Limits of reading the depth: no shore foam where a vertical face meets the water seen from straight above (no depth gap there), and REFRACTION leaves a faint line along outlines crossing the water (samples in front are rejected). Floats rigidbodies with a Buoyancy (Water in Lua: the surface height and normal at a point, the same waves). Alpha blended; casts no shadows."
 // @lighting none pixel
+// @role water
 // @require position normals
 // @require scenedepth feature=DEPTH_FOAM
 // @require scenedepth feature=ABSORPTION
@@ -31,6 +32,7 @@
 // @property waveHeight float 0.06 "Wave height (world units)" feature=WAVES
 // @property waveLength float 2.5 "Wave length (world units)" feature=WAVES
 // @property waveSpeed float 0.8 "Wave speed (world units per second)" feature=WAVES
+// @property waveSteepness range(0, 1) 0.5 "Crest sharpness" feature=GERSTNER
 // @property reflectionColor color (0.9, 0.95, 1, 1) "Reflection colour (times the environment; alone without one)" feature=REFLECTION
 // @property reflectionStrength range(0, 2) 1 "Reflection strength" feature=REFLECTION
 // @property shoreFoamWidth float 0.12 "Shore foam width (world units of depth)" feature=DEPTH_FOAM
@@ -54,6 +56,7 @@
 // @texture u_normalTexture normal "Ripple normal map" default[BUILTIN_TEXTURES]=ripples
 // @texture u_noiseTexture gray "Foam noise (red)" default[BUILTIN_TEXTURES]=noise
 // @feature WAVES "Waves"
+// @feature GERSTNER "Gerstner waves (with WAVES: sharp crests, the surface rolling forward)"
 // @feature BUILTIN_TEXTURES "Built-in ripples and foam noise (unset textures)"
 // @feature REFLECTION "Reflection (sky or reflection probe, GGX glint)"
 // @feature UNDERSIDE "Seen from below (both faces, Snell's window)"
@@ -212,6 +215,11 @@ uniform u_fs_customParams {
     float meshShoreFoamBreakup;
     float meshAbsorptionDepth;
     float meshShoreFade;
+    float waveSteepness;
+    float reflectionDistortion;
+    // written by the engine: the scene clock (Scene::getSceneTime), which the waves, the ripples,
+    // the flow and the caustics run on, so they hold while the game is paused
+    float sceneTime;
 } customParams;
 
 #define FRAME_FS
@@ -237,6 +245,10 @@ uniform sampler u_noise_smp;
 
 in vec3 v_position;
 in vec3 v_normal;
+#if defined(WAVES) && defined(GERSTNER)
+    // the world XZ the surface point rests at (library/water.vert): the Gerstner waves are lit there
+    in vec2 v_waveRest;
+#endif
 #ifdef FLOW
     // the mesh's flow: rg its direction over world XZ (0.5 + 0.5 d), b the share of flowSpeed
     in vec4 v_rawColor;
@@ -261,7 +273,7 @@ out vec4 g_finalColor;
 // offset wraps every tile, so a long run keeps its precision)
 vec2 waterLayerUV(vec2 xz, float size, vec2 drift){
     float scale = 1.0 / max(size, 1e-3);
-    return xz * scale + fract(frame.time.x * drift * scale);
+    return xz * scale + fract(customParams.sceneTime * drift * scale);
 }
 
 #ifdef FLOW
@@ -315,10 +327,26 @@ void main() {
     // the share of the detail kept, 1 near, less where it would only sparkle
     float detail = 1.0;
 
-    #ifdef WAVES
+    #if defined(WAVES) && defined(GERSTNER)
+        // the Gerstner surface at the point's rest position, each wave fading where a pixel
+        // covers a good part of it; the normal bent as the flat surface's would be
+        vec4 waveWeights = vec4(1.0) - smoothstep(vec4(0.04), vec4(0.35),
+            vec4(footprint) / (max(customParams.waveLength, 1e-3) * vec4(1.0, 0.6, 0.37, 0.23)));
+        vec3 dPdx;
+        vec3 dPdz;
+        vec3 gerstner = waterGerstner(v_waveRest, customParams.sceneTime, customParams.waveDirection, customParams.waveHeight,
+                                      customParams.waveLength, customParams.waveSpeed, customParams.waveSteepness,
+                                      waveWeights, dPdx, dPdz);
+        n = normalize(n + normalize(cross(dPdz, dPdx)) - vec3(0.0, 1.0, 0.0));
+        // foam on the crests: high, or squeezed where the surface bunches up
+        float compression = 1.0 - (dPdx.x * dPdz.z - dPdz.x * dPdx.z);
+        crest = max(clamp(gerstner.y / max(customParams.waveHeight, 1e-4), 0.0, 1.0),
+                    clamp(compression / max(customParams.waveSteepness, 1e-3), 0.0, 1.0)) * 0.15;
+        detail = waveWeights.x;
+    #elif defined(WAVES)
         // the waves' slope, as the vertex stage raised them, fading where a pixel covers a
         // good part of a wave
-        vec3 wave = waterWaves(xz, frame.time.x, customParams.waveDirection, customParams.waveHeight,
+        vec3 wave = waterWaves(xz, customParams.sceneTime, customParams.waveDirection, customParams.waveHeight,
                                customParams.waveLength, customParams.waveSpeed);
         float waveDetail = 1.0 - smoothstep(0.04, 0.35, footprint / max(customParams.waveLength, 1e-3));
         n = normalize(n - vec3(wave.y, 0.0, wave.z) * waveDetail);
@@ -350,7 +378,7 @@ void main() {
         // two phases half a cycle apart, each sampled where the flow brought the surface from
         // since the phase restarted; the second at another part of the tiles
         float cycle = max(customParams.flowCycle, 1e-3);
-        float phaseA = fract(frame.time.x / cycle);
+        float phaseA = fract(customParams.sceneTime / cycle);
         float phaseB = fract(phaseA + 0.5);
         vec2 flowCycleTravel = waterFlowVelocity() * cycle;
         vec2 layerScales = vec2(1.0 / max(customParams.layerScale, 1e-3), 1.0 / max(customParams.secondLayerScale, 1e-3));
@@ -429,7 +457,7 @@ void main() {
                                      (surfaceDepth + seenThickness / rayScale) / max(surfaceDepth, 1e-3));
                 float causticsFade = smoothstep(0.02, 0.25, below) * exp(-below / max(customParams.causticsDepth, 1e-3)) *
                                      (1.0 - smoothstep(0.15, 0.5, bedFootprint / cellSize));
-                float pattern = waterCaustics(bed.xz / cellSize, frame.time.x * customParams.causticsSpeed);
+                float pattern = waterCaustics(bed.xz / cellSize, customParams.sceneTime * customParams.causticsSpeed);
                 // applied after the lights, which tell whether the surface over it is in shadow
                 causticsGain = customParams.causticsStrength * pattern * causticsFade;
             }

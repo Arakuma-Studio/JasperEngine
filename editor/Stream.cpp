@@ -2202,6 +2202,7 @@ YAML::Node editor::Stream::encodeSceneDisplaySettings(const SceneDisplaySettings
     sceneNode["disableFaceCulling"]   = ds.disableFaceCulling;
     sceneNode["disableFog"]           = ds.disableFog;
     sceneNode["disableClouds"]        = ds.disableClouds;
+    sceneNode["animateWater"]         = ds.animateWater;
     if (ds.showPostProcessing)
         sceneNode["showPostProcessing"] = ds.showPostProcessing;
     if (ds.showAllLattices)
@@ -2235,6 +2236,7 @@ void editor::Stream::decodeSceneDisplaySettings(const YAML::Node& node, SceneDis
     if (node["disableFaceCulling"])   ds.disableFaceCulling   = YamlNumbers::as<bool>(node["disableFaceCulling"]);
     if (node["disableFog"])           ds.disableFog           = YamlNumbers::as<bool>(node["disableFog"]);
     if (node["disableClouds"])        ds.disableClouds        = YamlNumbers::as<bool>(node["disableClouds"]);
+    if (node["animateWater"])         ds.animateWater         = YamlNumbers::as<bool>(node["animateWater"]);
     ds.showPostProcessing = node["showPostProcessing"] ? YamlNumbers::as<bool>(node["showPostProcessing"]) : false;
     ds.showAllLattices = node["showAllLattices"] ? YamlNumbers::as<bool>(node["showAllLattices"]) : false;
     decodeNavOverlaySettings(node["navigation"], ds.navigation);

@@ -674,6 +674,9 @@ namespace jasperengine {
         // it there, whatever the wall clock or the fixed delta. A negative value unpins it: the
         // next latch reads the clock again (a fixed delta then starts from the pinned time).
         static void setPinnedShaderTime(double seconds);
+        // whether the shader clock is pinned, and at what (Scene::getSceneTime follows it)
+        static bool hasPinnedShaderTime();
+        static double getPinnedShaderTime();
 
         // A shipped game started with --headless (docs/specs/S30-shipping.md R17): no window shown,
         // no audio output, no input; frames still render

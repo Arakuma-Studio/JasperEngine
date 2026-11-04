@@ -76,7 +76,7 @@ TEST(Water, SurfacesReadTheMaterial) {
     ASSERT_EQ(surfaces.size(), 2u);
     const WaterSurface& flat = surfaces[0];
     EXPECT_FLOAT_EQ(flat.level, 1.5f);
-    EXPECT_FALSE(flat.waves);
+    EXPECT_FALSE(flat.waves.waves);
     EXPECT_TRUE(flat.buoyancy) << "the manifest default";
     EXPECT_FLOAT_EQ(flat.buoyancyDepth, 0.0f);
     EXPECT_TRUE(flat.covers(4.9f, -4.9f));
@@ -89,9 +89,10 @@ TEST(Water, SurfacesReadTheMaterial) {
 
     const WaterSurface& waves = surfaces[1];
     EXPECT_EQ(waves.entity, wavy);
-    EXPECT_TRUE(waves.waves);
-    EXPECT_FLOAT_EQ(waves.waveHeight, 0.25f);
-    EXPECT_FLOAT_EQ(waves.waveLength, 3.0f);
+    EXPECT_TRUE(waves.waves.waves);
+    EXPECT_FALSE(waves.waves.gerstner);
+    EXPECT_FLOAT_EQ(waves.waves.height, 0.25f);
+    EXPECT_FLOAT_EQ(waves.waves.length, 3.0f);
     EXPECT_FALSE(waves.buoyancy);
     EXPECT_FLOAT_EQ(waves.getBottom(), -4.0f);
     const float t = 7.5f;

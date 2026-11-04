@@ -397,12 +397,14 @@ namespace {
         render.applyUniformBlock(slot, sizeof(fade), &fade);
     }
 
-    // custom block of a forked shader, with the engine-written members refreshed
-    void applyCustomUniforms(ObjectRender& render, CustomUniformBlock& block, float frameTime, const Vector2& resolution){
+    // custom block of a forked shader, with the engine-written members refreshed: the shader
+    // clock, the scene clock and the target's size
+    void applyCustomUniforms(ObjectRender& render, CustomUniformBlock& block, float frameTime, float sceneTime, const Vector2& resolution){
         if (block.slot == -1)
             return;
 
         block.writeTime(frameTime);
+        block.writeSceneTime(sceneTime);
         block.writeResolution(resolution.x, resolution.y);
         render.applyUniformBlock(block.slot, (unsigned int)block.data.size(), block.data.data());
     }
@@ -462,15 +464,15 @@ namespace {
     void applyComponentUniforms(ObjectRender& render, CustomUniformBlock& vsBlock, CustomUniformBlock& fsBlock,
                                 const ShaderUniformValues& values, const ShaderManifest* manifest, bool& needUpdate,
                                 const ShaderGlobalBindings& bindings, uint64_t& globalsVersionSeen,
-                                float frameTime, const Vector2& resolution){
+                                float frameTime, float sceneTime, const Vector2& resolution){
         if (ShaderGlobals::isOutdated(bindings, globalsVersionSeen))
             needUpdate = true;
         if (needUpdate){
             writeComponentUniforms(vsBlock, fsBlock, values, manifest, bindings, globalsVersionSeen);
             needUpdate = false;
         }
-        applyCustomUniforms(render, vsBlock, frameTime, resolution);
-        applyCustomUniforms(render, fsBlock, frameTime, resolution);
+        applyCustomUniforms(render, vsBlock, frameTime, sceneTime, resolution);
+        applyCustomUniforms(render, fsBlock, frameTime, sceneTime, resolution);
     }
 
     // how a shader without a manifest takes the post-processing colour under its resolved blend
@@ -798,6 +800,7 @@ RenderSystem::RenderSystem(Scene* scene): SubSystem(scene), atmosphere(this){
     ssaoSlotParams = -1;
     ssaoBlurSlotParams = -1;
     frameTime = 0.0f;
+    frameSceneTime = 0.0f;
     passResolution = Vector2(0.0f, 0.0f);
     passFrame = {};
     passSceneBlock = {};
@@ -8136,8 +8139,8 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
 
     render.applyUniformBlock(extra.slotVSParams, sizeof(float) * 48, (void*)objectBlock);
 
-    applyCustomUniforms(render, extra.customVSParams, frameTime, passResolution);
-    applyCustomUniforms(render, extra.customFSParams, frameTime, passResolution);
+    applyCustomUniforms(render, extra.customVSParams, frameTime, frameSceneTime, passResolution);
+    applyCustomUniforms(render, extra.customFSParams, frameTime, frameSceneTime, passResolution);
 
     // the same instances, detail level and tilemap chunks as the submesh's draw
     if (tilemap && !tilemapDrawRanges.empty()){
@@ -8959,8 +8962,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             //model, normal and mvp matrix
             render.applyUniformBlock(mesh.submeshes[i].slotVSParams, sizeof(float) * 48, (void*)objectBlock);
 
-            applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, passResolution);
-            applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, passResolution);
+            applyCustomUniforms(render, mesh.submeshes[i].customVSParams, frameTime, frameSceneTime, passResolution);
+            applyCustomUniforms(render, mesh.submeshes[i].customFSParams, frameTime, frameSceneTime, passResolution);
 
             if (tilemap && !tilemapDrawRanges.empty()){
                 if (instmesh){
@@ -9085,8 +9088,8 @@ bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& 
             //model, mvp matrix
             depthRender.applyUniformBlock(mesh.submeshes[i].slotVSDepthParams, std::min((unsigned int)sizeof(vs_depth_t), mesh.submeshes[i].sizeVSDepthParams), &vsDepthParams);
 
-            applyCustomUniforms(depthRender, mesh.submeshes[i].customVSDepthParams, frameTime, passResolution);
-            applyCustomUniforms(depthRender, mesh.submeshes[i].customFSDepthParams, frameTime, passResolution);
+            applyCustomUniforms(depthRender, mesh.submeshes[i].customVSDepthParams, frameTime, frameSceneTime, passResolution);
+            applyCustomUniforms(depthRender, mesh.submeshes[i].customFSDepthParams, frameTime, frameSceneTime, passResolution);
 
             if (mesh.submeshes[i].slotVSDepthFade != -1 && instmesh){
                 applyInstanceFadeUniform(depthRender, mesh.submeshes[i].slotVSDepthFade, *instmesh, instanceFadeEye(entity, *instmesh, instanceView));
@@ -10670,7 +10673,7 @@ TextureRender* RenderSystem::renderPostProcess(FramebufferRender* destination, b
             // its own textures (a camera target may have been made again) and engine data
             bindShaderTextures(pass.bindings, pass.render, pass.textures);
             applyFrameBlock(pass.render, pass.bindings);
-            applyCustomUniforms(pass.render, pass.params, frameTime, Vector2((float)width, (float)height));
+            applyCustomUniforms(pass.render, pass.params, frameTime, frameSceneTime, Vector2((float)width, (float)height));
             pass.render.draw(0, 3, 1);
         }
         postProcessPassRender.endRenderPass();
@@ -11104,7 +11107,7 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             render.applyUniformBlock(ui.slotFSTextParams, sizeof(float) * 16, ui.textParams);
         }
         applyComponentUniforms(render, ui.customVSParams, ui.customFSParams, ui.shaderUniforms, ui.shaderManifest.get(), ui.needUpdateShaderUniforms,
-                               ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, passResolution);
+                               ui.shaderGlobalBindings, ui.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, ui.libraryBindings);
         render.draw(0, ui.vertexCount, 1);
 
@@ -11642,7 +11645,7 @@ bool RenderSystem::drawRibbon(T& component, const Matrix4& modelMatrix, const Ve
     params.viewport = Vector4(passResolution.x, passResolution.y, 0.0f, 0.0f);
     render.applyUniformBlock(component.slotVSParams, sizeof(vs_lines_ribbon_params_t), &params);
     applyComponentUniforms(render, component.customVSParams, component.customFSParams, component.shaderUniforms, component.shaderManifest.get(),
-                           component.needUpdateShaderUniforms, component.shaderGlobalBindings, component.globalsVersionSeen, frameTime, passResolution);
+                           component.needUpdateShaderUniforms, component.shaderGlobalBindings, component.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
     applyFrameBlock(render, component.libraryBindings);
     render.draw(0, ribbon.indexCount, 1);
 
@@ -11996,7 +11999,7 @@ bool RenderSystem::drawPoints(Entity entity, PointsComponent& points, Transform&
         vsParams.pointScale = computePointsScale(camera, getPointsViewportHeight(camera));
         render.applyUniformBlock(points.slotVSParams, sizeof(vs_points_params_t), &vsParams);
         applyComponentUniforms(render, points.customVSParams, points.customFSParams, points.shaderUniforms, points.shaderManifest.get(), points.needUpdateShaderUniforms,
-                               points.shaderGlobalBindings, points.globalsVersionSeen, frameTime, passResolution);
+                               points.shaderGlobalBindings, points.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, points.libraryBindings);
         applySceneInputs(render, points.libraryBindings);
 #ifdef JASPERENGINE_EDITOR
@@ -12097,7 +12100,7 @@ bool RenderSystem::drawLines(Entity entity, LineRendererComponent& lines, Transf
             render.applyUniformBlock(lines.slotVSParams, sizeof(float) * 16, (void*)&objectMVP(transform));
         }
         applyComponentUniforms(render, lines.customVSParams, lines.customFSParams, lines.shaderUniforms, lines.shaderManifest.get(), lines.needUpdateShaderUniforms,
-                               lines.shaderGlobalBindings, lines.globalsVersionSeen, frameTime, passResolution);
+                               lines.shaderGlobalBindings, lines.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, lines.libraryBindings);
         render.draw(0, segments.size() * 2, 1);
     }
@@ -12298,7 +12301,7 @@ bool RenderSystem::drawSky(SkyboxComponent& sky, PipelineType pipType, const Mat
         render.applyUniformBlock(sky.slotVSParams, sizeof(float) * 16, (void*)&viewProjection);
         render.applyUniformBlock(sky.slotFSParams, sizeof(float) * 4, &sky.color);
         applyComponentUniforms(render, sky.customVSParams, sky.customFSParams, sky.shaderUniforms, sky.shaderManifest.get(), sky.needUpdateShaderUniforms,
-                               sky.shaderGlobalBindings, sky.globalsVersionSeen, frameTime, passResolution);
+                               sky.shaderGlobalBindings, sky.globalsVersionSeen, frameTime, frameSceneTime, passResolution);
         applyFrameBlock(render, sky.libraryBindings);
         render.draw(0, 36, 1);
     }
@@ -15223,8 +15226,10 @@ void RenderSystem::selectCameraTerrain(CameraComponent& camera, Transform& camer
 // culled instance lists of the scene camera, the shadow maps of its lights, the 2D
 // shadow rows and the reflection probe face of the frame.
 void RenderSystem::drawFramePasses(){
-    // the frame's shader clock (Engine::latchShaderTime), the one the CPU's waves read
+    // the frame's shader clock (Engine::latchShaderTime), and the scene's game clock the water
+    // and the CPU's waves read (Scene::getSceneTime)
     frameTime = Engine::getShaderTime();
+    frameSceneTime = (float)scene->getSceneTime();
     updateDynamicResolution();
 
 #ifdef JASPERENGINE_EDITOR

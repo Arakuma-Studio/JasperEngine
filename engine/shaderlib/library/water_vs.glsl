@@ -2,8 +2,6 @@
 // depth (water_depth.vert) programs so shadows and the depth pre-pass follow the surface.
 // Include after the surface include; the stage passes its own model matrix.
 
-#define FRAME_VS
-#include "includes/frame.glsl"
 #include "includes/motion.glsl"
 #include "library/water.glsl"
 
@@ -12,13 +10,29 @@ uniform u_vs_customParams {
     float waveHeight;
     float waveLength;
     float waveSpeed;
+    float waveSteepness;
+    // written by the engine: the scene clock (Scene::getSceneTime)
+    float sceneTime;
 } customParams;
 
-// raised along world up by the waves at its world XZ (heights in world units, whatever
-// the object's scale)
+// the world XZ the vertex rests at (GERSTNER moves it sideways): water.vert passes it on
+vec2 waterRestXZ = vec2(0.0);
+
+// moved by the waves at its world XZ (heights in world units, whatever the object's scale):
+// raised along world up, and with GERSTNER also moved along the waves
 vec3 waterWavePosition(vec3 position, mat4 modelMatrix){
     vec2 xz = (modelMatrix * vec4(position, 1.0)).xz;
-    float h = waterWaves(xz, frame.time.x, customParams.waveDirection, customParams.waveHeight,
-                         customParams.waveLength, customParams.waveSpeed).x;
-    return position + motionWorldToLocal(modelMatrix, vec3(0.0, h, 0.0));
+    waterRestXZ = xz;
+    #ifdef GERSTNER
+        vec3 dPdx;
+        vec3 dPdz;
+        vec3 offset = waterGerstner(xz, customParams.sceneTime, customParams.waveDirection, customParams.waveHeight,
+                                    customParams.waveLength, customParams.waveSpeed, customParams.waveSteepness,
+                                    vec4(1.0), dPdx, dPdz);
+        return position + motionWorldToLocal(modelMatrix, offset);
+    #else
+        float h = waterWaves(xz, customParams.sceneTime, customParams.waveDirection, customParams.waveHeight,
+                             customParams.waveLength, customParams.waveSpeed).x;
+        return position + motionWorldToLocal(modelMatrix, vec3(0.0, h, 0.0));
+    #endif
 }

@@ -416,7 +416,8 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 else if (input == "scenecolor") rule.require |= ShaderRequire_SceneColor;
                 else if (input == "environment") rule.require |= ShaderRequire_Environment;
                 else if (input == "normalmap") rule.require |= ShaderRequire_NormalMap;
-                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment, normalmap)");
+                else if (input == "planarreflection") rule.require |= ShaderRequire_PlanarReflection;
+                else report(lineNumber, true, "unknown input '" + arg.text + "' (normals, tangents, uv1, uv2, color, rawcolor, position, smoothnormals, scenedepth, scenecolor, environment, normalmap, planarreflection)");
             }
             if (!valid)
                 continue;
@@ -775,6 +776,18 @@ void ShaderManifest::parse(const std::string& source, const std::string& file){
                 report(lineNumber, true, "@depth takes no argument");
             depth = true;
 
+        }else if (directive == "role"){
+            const std::string value = args.size() == 1 && !args[0].quoted ? lower(args[0].text) : std::string();
+            if (role != ShaderRole::NONE){
+                report(lineNumber, true, "@role given twice");
+            }else if (value == "water"){
+                role = ShaderRole::WATER;
+            }else if (value == "underwater"){
+                role = ShaderRole::UNDERWATER;
+            }else{
+                report(lineNumber, true, "@role takes one of: water, underwater");
+            }
+
         }else{
             report(lineNumber, false, "unknown directive @" + directive + " (ignored)");
         }
@@ -868,6 +881,19 @@ void ShaderManifest::checkComplete(const std::string& file, bool library){
     }
     if ((possibleRequire & ShaderRequire_Environment) && hasType && type != ShaderType::MESH)
         report(environmentLine, "@require environment needs @shader mesh");
+    // the planar reflection is bound to mesh draws (RenderSystem::applyPlanarReflection)
+    if ((possibleRequire & ShaderRequire_PlanarReflection) && hasType && type != ShaderType::MESH){
+        int line = 1;
+        for (const ShaderManifestRequireRule& rule : requireRules){
+            if (rule.require & ShaderRequire_PlanarReflection){
+                line = rule.line;
+                break;
+            }
+        }
+        report(line, "@require planarreflection needs @shader mesh");
+    }
+    if (role != ShaderRole::NONE && hasType && type != (role == ShaderRole::WATER ? ShaderType::MESH : ShaderType::POSTPROCESS))
+        report(1, role == ShaderRole::WATER ? "@role water needs @shader mesh" : "@role underwater needs @shader postprocess");
     // the material's normal map is bound to mesh draws, by the name the 2D light path reads
     if (possibleRequire & ShaderRequire_NormalMap){
         // the first feature= line asking for it (1 when every variant does)
@@ -1157,6 +1183,7 @@ std::vector<std::string> ShaderManifest::getRequireDefines(uint32_t require){
     if (require & ShaderRequire_SceneColor) defines.push_back("SURFACE_SCENE_COLOR");
     if (require & ShaderRequire_Environment) defines.push_back("SURFACE_ENVIRONMENT");
     if (require & ShaderRequire_NormalMap) defines.push_back("SURFACE_NORMAL_MAP");
+    if (require & ShaderRequire_PlanarReflection) defines.push_back("SURFACE_PLANAR_REFLECTION");
     return defines;
 }
 
@@ -1177,7 +1204,8 @@ std::vector<std::string> ShaderManifest::getRequireNames(uint32_t require){
         {ShaderRequire_UV1, "uv1"}, {ShaderRequire_UV2, "uv2"}, {ShaderRequire_Color, "color"},
         {ShaderRequire_RawColor, "rawcolor"}, {ShaderRequire_SmoothNormals, "smoothnormals"},
         {ShaderRequire_SceneDepth, "scenedepth"}, {ShaderRequire_SceneColor, "scenecolor"},
-        {ShaderRequire_Environment, "environment"}, {ShaderRequire_NormalMap, "normalmap"}};
+        {ShaderRequire_Environment, "environment"}, {ShaderRequire_NormalMap, "normalmap"},
+        {ShaderRequire_PlanarReflection, "planarreflection"}};
     std::vector<std::string> result;
     for (const auto& name : names){
         if (require & name.first)

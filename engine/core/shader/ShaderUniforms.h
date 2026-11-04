@@ -27,7 +27,7 @@ namespace jasperengine{
 
     class JASPERENGINE_API ShaderUniforms{
     public:
-        // "time" and "resolution", written by the engine every frame
+        // "time", "resolution" and "sceneTime" (Scene::getSceneTime), written by the engine every frame
         static bool isReserved(const std::string& name);
         // float/int scalars and vectors; matrices and arrays take no value
         static bool isEditable(const ShaderUniform& uniform);
@@ -47,6 +47,7 @@ namespace jasperengine{
         std::vector<uint8_t> data; // rounded up to the vec4 stride
         int timeMember = -1;
         int resolutionMember = -1;
+        int sceneTimeMember = -1;
         bool mixedTypes = false; // int and float members together, which GL uploads wrong
 
         bool resolve(ShaderData& shaderData, const std::string& blockName);
@@ -60,6 +61,8 @@ namespace jasperengine{
         void writeValues(const ShaderUniformValues& values, const ShaderUniformValues* fallbackValues, const ShaderManifest* manifest,
                          const ShaderGlobalBindings* bindings = nullptr);
         void writeTime(float seconds);
+        // the scene clock (Scene::getSceneTime) of the scene drawing it
+        void writeSceneTime(float seconds);
         void writeResolution(float width, float height);
 
         static void writeUniform(std::vector<uint8_t>& block, const ShaderUniform& uniform, const Vector4& value);

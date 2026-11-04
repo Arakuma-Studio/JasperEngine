@@ -81,7 +81,7 @@ TEST(BuoyancyBench, HundredBodiesFourColumns){
             }
         };
         for (int i = 0; i < 30; i++){
-            Engine::latchShaderTime();
+            scene->advanceSceneTime(DT);
             resolve();
             scene->fixedUpdate(DT);
             resolve();
@@ -92,7 +92,7 @@ TEST(BuoyancyBench, HundredBodiesFourColumns){
         const uint64_t evaluations = WaterSystem::getWaveEvaluations();
         double total = 0.0;
         for (int i = 0; i < steps; i++){
-            Engine::latchShaderTime();
+            scene->advanceSceneTime(DT);
             const auto start = std::chrono::steady_clock::now();
             water.applyBuoyancy(DT);
             total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();

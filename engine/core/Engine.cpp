@@ -1025,6 +1025,14 @@ void Engine::setPinnedShaderTime(double seconds){
     }
 }
 
+bool Engine::hasPinnedShaderTime(){
+    return pinnedShaderTime >= 0.0;
+}
+
+double Engine::getPinnedShaderTime(){
+    return pinnedShaderTime;
+}
+
 float Engine::getShaderTime(){
     return (float)shaderTime;
 }
@@ -2276,6 +2284,10 @@ void Engine::runFrame(bool draw){
         double frameDelta = deltatime;
         gameTime += frameDelta;
         gameFrames++;
+        // the scenes' game-time clocks (Scene::getSceneTime), before the fixed steps, so the
+        // physics, the update and the draw of the frame see one value; a paused scene holds
+        for (int i = 0; i < scenes.size(); i++)
+            scenes[i]->advanceSceneTime(frameDelta);
         // the scheduler's game clocks: stopped by the editor's Pause too (gameTime is not)
         const bool gameClocks = advanceGameClocks(scheduler, frameTime);
 

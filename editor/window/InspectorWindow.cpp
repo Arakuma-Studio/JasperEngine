@@ -6516,6 +6516,8 @@ bool editor::InspectorWindow::drawShaderUniformRow(const ShaderUniform& uniform,
         ImGui::SameLine();
         helpMarker(name == "resolution"
             ? "Reserved uniform, written every frame with the size of the render target: xy = width and height, zw = 1 / width and 1 / height.\n\nRename it to edit a value of your own here."
+            : name == "sceneTime"
+            ? "Reserved uniform, written every frame with the scene's game clock: seconds the scene has run, scaled by the time scale, held while the game is paused.\n\nRename it to edit a value of your own here."
             : "Reserved uniform, written every frame with the seconds elapsed since startup.\n\nRename it to edit a value of your own here.");
         return false;
     }

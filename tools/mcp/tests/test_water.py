@@ -46,7 +46,7 @@ async def test_menu_entry_creates_water(ed: Editor):
     mesh = entity["components"]["mesh"]
     ed.check_eq(mesh.get(M + "shader"), "library:water", f"water material: {mesh!r}")
     features = mesh.get(M + "shaderFeatures") or []
-    for feature in ("BUILTIN_TEXTURES", "WAVES", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"):
+    for feature in ("BUILTIN_TEXTURES", "WAVES", "GERSTNER", "REFLECTION", "UNDERSIDE", "DEPTH_FOAM", "REFRACTION"):
         ed.check(feature in features, f"preset feature {feature}: {features!r}")
     ed.check_eq(mesh.get(M + "lighting"), "pixel", "lit per pixel")
 
@@ -106,21 +106,21 @@ async def test_play_floats_and_queries(ed: Editor):
     ed.check(-0.7 < crate_y < 0.7, f"the buoyant crate floats at the surface: y {crate_y}")
     ed.check(anchor_y < -10, f"the other falls through the water: y {anchor_y}")
 
-    # the surface the shader draws: waveHeight 0.1, two waves (at most 1.5 times it)
+    # the surface the shader draws: waveHeight 0.1, four Gerstner waves (at most 1.94 times it)
     height, normal, outside, under, over = await lua(ed, """
         return Water.getHeight(scene, 1.0, 2.0), Water.getNormal(scene, 1.0, 2.0),
                Water.getHeight(scene, 50.0, 0.0), Water.isUnderwater(scene, Vector3(0, -1, 0)),
                Water.isUnderwater(scene, Vector3(0, 1, 0))""")
-    ed.check(isinstance(height, (int, float)) and abs(height) <= 0.15 + 1e-4, f"height within the waves: {height!r}")
-    ed.check(isinstance(normal, list) and len(normal) == 3 and normal[1] > 0.9, f"normal nearly up: {normal!r}")
+    ed.check(isinstance(height, (int, float)) and abs(height) <= 0.194 + 1e-4, f"height within the waves: {height!r}")
+    ed.check(isinstance(normal, list) and len(normal) == 3 and normal[1] > 0.8, f"normal nearly up: {normal!r}")
     ed.check(outside is None, f"no water at x 50: {outside!r}")
     ed.check(under is True and over is False, f"isUnderwater: {under!r} {over!r}")
-    # on the shader's clock, latched once a frame (S22 R29): still within a frame, moving over frames
-    first, time, same = await lua(ed, "local a = Water.getHeight(scene, 1, 2); local t = Water.getTime(); "
-                                      "local s = os.clock(); while os.clock() < s + 0.05 do end; return a, t, Water.getTime()")
-    ed.check_eq(same, time, "one shader time within a frame")
+    # on the scene clock, advanced once a frame: still within a frame, moving over frames
+    first, time, same = await lua(ed, "local a = Water.getHeight(scene, 1, 2); local t = Water.getTime(scene); "
+                                      "local s = os.clock(); while os.clock() < s + 0.05 do end; return a, t, Water.getTime(scene)")
+    ed.check_eq(same, time, "one water time within a frame")
     await ed.call("wait", frames=20)
-    second, later = await lua(ed, "return Water.getHeight(scene, 1, 2), Water.getTime()")
+    second, later = await lua(ed, "return Water.getHeight(scene, 1, 2), Water.getTime(scene)")
     ed.check(later > time, f"the clock moves frame to frame: {time} {later}")
     ed.check(first != second, f"the waves move: {first} {second}")
 

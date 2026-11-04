@@ -1541,9 +1541,11 @@ namespace jasperengine{
 		int ssaoSlotParams;
 		int ssaoBlurSlotParams;
 
-		// engine-written custom uniforms: seconds since startup, sampled once per draw(),
-		// and the size of the target being drawn (shadow slot, SSAO depth or camera color)
+		// engine-written custom uniforms: seconds since startup and the scene clock
+		// (Scene::getSceneTime), sampled once per draw(), and the size of the target being
+		// drawn (shadow slot, SSAO depth or camera color)
 		float frameTime;
+		float frameSceneTime = 0.0f;
 		Vector2 passResolution;
 
 		// the engine frame block (u_vs_frame / u_fs_frame) of the camera pass being drawn,
