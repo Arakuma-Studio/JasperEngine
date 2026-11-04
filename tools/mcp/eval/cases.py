@@ -857,6 +857,7 @@ CASES = [
         "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
         "max_turns": 8,
     },
+    {
         "id": "guard_import_reports_a_leftover",
         "kind": "guard",
         "what_happened": "A crashed older editor left a staging folder without an owner marker beside the import. It may hold the "
