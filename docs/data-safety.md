@@ -139,7 +139,7 @@ Editor helpers on top: `DocumentFiles::write` (Document writes of documents, wit
 message), `FileUtils::writeFile` / `writeIfChanged` (Cache, skip if unchanged),
 `FileUtils::copyFileAtomic`, `util/PngWriter.h` `writePng` (PNG encoded in memory),
 `util/AtomicFileStream.h` (an `ostringstream` written atomically when it goes out of scope).
-`tools/check_raw_writes.py` fails CI on a new `std::ofstream`, `fopen("w")`, `stbi_write_*` to a
+`tools/check_raw_writes.py` fails on a new `std::ofstream`, `fopen("w")`, `stbi_write_*` to a
 path or `copy_file(..., overwrite_existing)` under `editor/` and `engine/core/`; the few raw
 writes left (append-only logs, private temp files, export and import staging) are listed with a reason in
 `tools/raw_writes_allowlist.txt`. A file watcher ignores `io::isTemporarySiblingName()` names

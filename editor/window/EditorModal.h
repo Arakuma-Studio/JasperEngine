@@ -53,7 +53,7 @@ namespace jasperengine::editor {
     };
 
     // Every editor modal popup is drawn through EditorModal, so MCP sees and answers it as a human
-    // would (S49): editor_status reports the top-most one (App::getOpenDialog), respond_dialog presses
+    // would (S69): editor_status reports the top-most one (App::getOpenDialog), respond_dialog presses
     // its buttons and fills its fields, and edits are refused while it is open. MCP calls run
     // between frames (after ImGui::NewFrame, before the windows are drawn), when no window is
     // active, so they see the modal of the last complete frame (endFrame). tools/check-editor-modals.py

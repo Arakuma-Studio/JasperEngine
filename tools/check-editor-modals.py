@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fails on a modal popup begun anywhere but in EditorModal (S49 R1, AC3).
+"""Fails on a modal popup begun anywhere but in EditorModal (S69 R1, AC3).
 
 A modal blocks the human at the window, so an agent must see it too: editor_status reports what is
 drawn through editor/window/EditorModal.{h,cpp} and respond_dialog answers it. A modal begun with

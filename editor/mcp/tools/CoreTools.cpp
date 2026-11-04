@@ -1028,12 +1028,11 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Respond to Dialog";
         tool.description =
-            "Answer the open editor dialog, modal window or file picker (editor_status.dialog; edits are refused meanwhile): "
-            "values fill its fields, then choice clicks a button. The message says what each choice means. A dialog's "
-            "refusal comes back as an error, which keeps it open. See jasper://docs/dialogs.";
+            "Answer the open editor dialog or file picker (editor_status.dialog): values fill its fields, then choice "
+            "presses a button. A refusal is an error and the dialog stays open.";
         tool.inputSchema = object({
-            {"choice", string("One of dialog.choices: ok, yes, no, cancel or a button's own word.")},
-            {"values", anyObject("{field: value} of dialog.fields; a file picker takes path (or paths).")}
+            {"choice", string("A word of dialog.choices.")},
+            {"values", anyObject("{field: value} of dialog.fields; a file picker takes path.")}
         });
         tool.handler = respondDialogTool;
         registry.addTool(std::move(tool));
@@ -1045,8 +1044,8 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Tool Groups";
         tool.description =
-            "List the tool groups; enable/disable lists a group in this session's tools/list (core always is). "
-            "Every tool is callable by name whether listed or not, also in batch.";
+            "List the tool groups and what each holds; enable/disable lists a group's tools in this session (core "
+            "always is).";
         tool.inputSchema = object({
             {"enable", array(string(""), "")},
             {"disable", array(string(""), "")}

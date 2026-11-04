@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 // EditorModal and EditorFilePicker: what MCP sees of a modal and how an answer reaches its widgets,
-// on a real ImGui context without a display or GPU (S49 AC2). The whole path through respond_dialog
+// on a real ImGui context without a display or GPU (S69 AC2). The whole path through respond_dialog
 // is tools/mcp/tests/test_editor_modals.py.
 
 #include <gtest/gtest.h>

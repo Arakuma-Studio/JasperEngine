@@ -1155,17 +1155,16 @@ void McpServer::runOnMainThread(std::function<void()> task) {
 void McpServer::answerDuringFilePicker(const CallPtr& call, const EditorDialogInfo& picker) {
     const std::string& tool = call->tool();
     if (tool == "editor_status") {
-        call->ok("Open dialog: \"" + picker.title + "\". Nothing else runs until it is answered.",
-                 Json{{"dialog", dialogJson(picker)}, {"file_picker_open", true}});
+        call->ok("Open dialog: \"" + picker.title + "\". Nothing else runs until it is answered.", dialogRefusalJson(picker));
         return;
     }
     if (tool != "respond_dialog") {
-        call->fail(dialogBlockMessage(picker) + " Nothing runs until it is answered.", Json{{"dialog", dialogJson(picker)}});
+        call->fail(dialogBlockMessage(picker) + " Nothing runs until it is answered.", dialogRefusalJson(picker));
         return;
     }
     std::string error;
     if (!answerFilePicker(call->args(), error)) {
-        call->fail(error, Json{{"dialog", dialogJson(picker)}});
+        call->fail(error, Json{{"dialog", dialogJson(picker)}, {"error", error}});
         return;
     }
     // what the code that opened the picker did with the answer takes the main thread's next frames
@@ -1179,7 +1178,7 @@ void McpServer::answerDuringFilePicker(const CallPtr& call, const EditorDialogIn
 void McpServer::onFilePickerOpened() {
     EditorDialogInfo picker;
     if (!EditorFilePicker::info(picker)) return;
-    const Json data = Json{{"dialog", dialogJson(picker)}};
+    const Json data = dialogRefusalJson(picker);
     const std::string refused = dialogBlockMessage(picker) + " This call was stopped by it: retry it after answering.";
 
     // A client that sends one call at a time would never get to answer while it waits for these.
@@ -1391,7 +1390,7 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
                      dialog.title + (dialog.message.empty() ? std::string() : ": " + dialog.message) + ")";
         } else if (def.name != "respond_dialog" && def.name != "batch") {
             call->fail(blockingDialogMessage() + " Edits are refused until it is answered.",
-                       Json{{"dialog", dialogJson(dialog)}});
+                       dialogRefusalJson(dialog));
             return;
         }
     }

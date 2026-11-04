@@ -1,10 +1,10 @@
-"""Every modal dialog can be seen and answered by an agent (S49): editor_status.dialog reports the
+"""Every modal dialog can be seen and answered by an agent (S69): editor_status.dialog reports the
 top-most modal's title, message, choices and fields; respond_dialog fills its fields (values) and
 presses its buttons; edits are refused meanwhile; file pickers wait for values.path in a headless
 editor. Ported from the sound layer's test of the same name and extended.
 
-Before S49 MCP calls, which run before the frame draws its windows, never saw a modal: dialog is
-null, respond_dialog says none is open, and edits went through under it. Red run: docs/specs/S49.
+Before S69 MCP calls, which run before the frame draws its windows, never saw a modal: dialog is
+null, respond_dialog says none is open, and edits went through under it. The red run is in docs/specs/S69-editor-modal.md.
 
 SITES below is the table of every EditorModal::begin in the editor: how the test drives it, or why it
 does not. test_sites_table_is_complete reads the sources, so a new modal must be added here.

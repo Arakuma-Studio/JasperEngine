@@ -12,7 +12,7 @@
 
 namespace jasperengine::editor {
 
-    // File pickers as MCP sees them (S49 R5). A picker is a call that returns a path, so the editor's
+    // File pickers as MCP sees them (S69 R5). A picker is a call that returns a path, so the editor's
     // main thread waits inside it, and no tool can run there: while one is open the transports answer
     // on their own threads (McpServer::handleCallDuringFilePicker). A headless editor has no native
     // dialog to show, so its picker waits for respond_dialog's values.path; a native one cannot be
