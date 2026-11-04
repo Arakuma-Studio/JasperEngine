@@ -2,7 +2,7 @@
 # The editor build's engine copies follow engine/ (BF5): a header added to engine/ appears in
 # build/linux/editor/engine and in build/linux/editor-install/bin/engine after tools/build.sh
 # linux, and is gone from both after it is deleted and the editor rebuilt. Two incremental
-# editor builds (SKIP_ENGINE=1); run on a build server: rb.sh <S> tools/ci/check-engine-copy.sh
+# editor builds (SKIP_ENGINE=1).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT"
