@@ -708,6 +708,8 @@ into `build/linux/editor-<sanitizers>-install`: its build type is Debug by defau
 rules' configurations (`JASPERENGINE_INSTALL_CONFIGURATIONS`) add Debug and RelWithDebInfo when
 `JASPERENGINE_SANITIZE` is on. `SANITIZE=... tools/build.sh mcp-tests` runs the harness on that install
 (`JASPER_EDITOR` names it, with TSan's `setarch` wrapper); a sanitizer report ends the editor, and so the test.
+Leak checking is off in that run: the editor's exit reports what Xvfb's unloaded GL driver kept, frames of an
+unmapped module that no suppression can name. The unit tests hold the leak check.
 
 `tools/build.sh` passes these runtime options on every run:
 `ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:strict_string_checks=1`,

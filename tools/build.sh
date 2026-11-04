@@ -414,6 +414,8 @@ linux)
             -DCMAKE_INSTALL_PREFIX=$OUT/$EDITOR_DIR-install $CCACHE_FLAGS
         cmake --build $OUT/$EDITOR_DIR --target $EDITOR_TARGET $JOBS_FLAG
         cmake --install $OUT/$EDITOR_DIR $INSTALL_STRIP
+        # (a sanitizer build ships nothing, and at -O0 exports the std templates it instantiates on these types)
+        if [[ -z '$SANITIZE_LIST' ]]; then
         # RmlUi stays inside the shared engine (engine/libs/rmlui/hidden-symbols.map)
         leaked=\$(nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -c 'Rml::' || true)
         if [[ \$leaked != 0 ]]; then
@@ -434,6 +436,7 @@ linux)
             echo \"libjasperengine.so exports \$leaked video decoder symbols:\" >&2
             nm -D -C $OUT/$EDITOR_DIR-install/bin/libjasperengine.so | grep -E ' (dav1d|opus)_|mkvparser::' | head -20 >&2
             exit 1
+        fi
         fi
         [[ '${SKIP_ENGINE:-0}' == 1 ]] && exit 0
         cmake --preset engine-linux-release -S engine -B $OUT/$ENGINE_DIR -DCMAKE_BUILD_TYPE=$BT $OPTION_FLAGS \
@@ -663,6 +666,9 @@ mcp-tests)
     EDITOR_INSTALL="build/linux/editor$SANITIZE_SUFFIX-install"
     [[ -x "$ROOT/$EDITOR_INSTALL/bin/jasperengine-editor" ]] || { echo "No editor at $EDITOR_INSTALL; run ${SANITIZE:+SANITIZE=$SANITIZE }tools/build.sh linux" >&2; exit 1; }
     [[ -n "$SANITIZE_SUFFIX" ]] && ENV_FLAGS+=(-e "JASPER_EDITOR=${TEST_WRAP:+$TEST_WRAP }/src/$EDITOR_INSTALL/bin/jasperengine-editor")
+    # (no leak check here: an editor's exit reports what the GL driver it unloaded kept, frames of an unmapped
+    # module that no suppression can name; the unit tests hold the leak check)
+    [[ -n "$SANITIZE_SUFFIX" ]] && ENV_FLAGS+=(-e "ASAN_OPTIONS=abort_on_error=1:detect_leaks=0:strict_string_checks=1")
     SUITE_FLAGS="--suite $SUITE"
     [[ "$SUITE" == all ]] && SUITE_FLAGS=""
     # (each argument quoted once more: the command runs through bash -c)
