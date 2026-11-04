@@ -800,4 +800,24 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "guard_true_peak_limiter",
+        "kind": "guard",
+        "what_happened": "The audio guide names the limiter's truePeak and lookahead; an agent asked for a dBTP ceiling must set "
+                         "them instead of a plain limiter, which lets inter-sample peaks through.",
+        "text_at_issue": "docs/mcp/guide/audio.md effects table: 'lookahead ... with truePeak 1 and at least 1.5 ms it holds "
+                         "threshold + 0.1 dB in true peak'",
+        "source": "S38 guide text; no failure on record",
+        "prompt": "This project is from an old version and has no limiter. Keep the game's Master output under -1 dBTP.",
+        "mocks": [
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [], "latency_ms": 0}]})},
+            {"tool": "audio_mixer", "args": {"action": "edit"}, "result": ok(
+                "Edited audio/Main.mixer (1 op, one undo step).", {"mixer": "audio/Main.mixer"})},
+        ],
+        "checks": {"calls": [{"tool": "audio_mixer", "args": {"action": "edit", "ops": [
+            {"op": "add_effect", "type": "limiter", "params": {"truePeak": 1, "lookahead": "*"}}]}}]},
+        "max_turns": 12,
+    },
 ]

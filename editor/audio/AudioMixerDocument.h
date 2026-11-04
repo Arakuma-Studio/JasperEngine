@@ -15,6 +15,8 @@
 
 namespace jasperengine::editor {
 
+    struct AudioSettings;
+
     class Project;
 
     // A .mixer asset as the editor edits it (audio-mixer spec 9, 10): the Audio Mixer window and
@@ -28,6 +30,14 @@ namespace jasperengine::editor {
         // cannot be written.
         static bool ensureProjectMixer(Project* project, std::filesystem::path& file, std::string* error, bool* created = nullptr);
         // a .mixer file -> def (false + error: missing, not JSON, invalid)
+        // What a new project starts from (S38 R8): a Master true-peak limiter at -1 dBTP, 1.5 ms of
+        // lookahead. writeNewProjectAudio makes a project folder start from it, unless its
+        // project.yaml has an audio node of its own (a template's): the mixer file and the keys.
+        static AudioMixerDef newProjectMixer();
+        static AudioSettings newProjectAudioSettings();
+        static bool writeNewProjectMixer(const std::filesystem::path& assetsDir, std::string* error);
+        static bool writeNewProjectAudio(const std::filesystem::path& projectDir, std::string* error);
+
         static bool read(const std::filesystem::path& file, AudioMixerDef& def, std::string* error,
                          std::vector<std::string>* warnings = nullptr);
         // The def written as one undo step (validated first: false + error, nothing written). A
@@ -52,7 +62,7 @@ namespace jasperengine::editor {
 
         // The structure for the MCP get (names first, ids for the files); `live` adds the runtime
         // values, overrides and meters (the def must be the playing mixer)
-        static nlohmann::json describe(const AudioMixerDef& def, bool live);
+        static nlohmann::json describe(const AudioMixerDef& def, bool live, float targetLufs = -18.0f);
 
         // effect lookup in a group by index (0-based, a number) or type ("lowpass"; the first of it)
         static int findEffect(const AudioMixerGroupDef& group, const nlohmann::json& which);

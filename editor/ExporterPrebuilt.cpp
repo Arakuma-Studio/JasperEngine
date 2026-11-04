@@ -638,6 +638,8 @@ bool editor::Exporter::writeGameConfig() {
     game.audioMaxRealVoices = audio.maxRealVoices;
     game.audioMaxVoices = audio.maxVoices;
     game.audioSampleRate = audio.sampleRate;
+    game.audioOutputStage = audio.outputStage;
+    game.audioIosSession = audio.iosSessionCategory;
 
     // the project icon, at the content root: the window and taskbar icon of every platform
     fs::path icon = project->getWindowIcon();

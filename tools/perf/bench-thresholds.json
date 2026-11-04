@@ -92,6 +92,11 @@
     "empty_scene_allocations": {"max": 0, "spec": "R21 no allocations without spline components (--count-allocs)"},
     "spline_animate_follower_us": {"max": 0.5, "spec": "R21 Spline Animate per follower per frame"}
   },
+  "je-bench-audio": {
+    "meter_file_3min_ms": {"max": 300, "spec": "S38 R16 file mode, a 3-minute stereo file, CPU time"},
+    "meter_stream_core_pct": {"max": 1.5, "spec": "S38 R16 stream mode, 48 kHz stereo, of one core"},
+    "limiter_true_peak_core_pct": {"max": 2.5, "spec": "S38 R17 true peak and 1.5 ms lookahead, a stereo bus at 48 kHz (the budget is Android arm64's)"}
+  },
   "je-bench-anim": {
     "crowd200_sampled": {"min": 200, "spec": "R19 every character of AnimBench.Crowd200 evaluated each frame"},
     "crowd200_parallel_p95_ms": {"max": 2.5, "spec": "R19 AnimatorSystem wall time, 200 x 65 bones, 3 workers + main, p95"},

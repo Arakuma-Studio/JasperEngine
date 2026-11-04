@@ -27,6 +27,8 @@
 #include "render/SystemRender.h"
 
 #include "external/IconsFontAwesome6.h"
+#include "audio/AudioMixerDocument.h"
+#include "audio/LoudnessMonitor.h"
 #include "command/CommandHandle.h"
 #include "command/UndoTimeline.h"
 #include "command/type/AddComponentCmd.h"
@@ -966,6 +968,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
+            break;
+        case AppMenuCommand::ResetLoudness:
+            LoudnessMonitor::get().reset();
             break;
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
@@ -2887,6 +2892,8 @@ void editor::App::show(){
     layouts.drawDialogs();
     layouts.endFrame();
 
+    LoudnessMonitor::get().update(project.isAnyScenePlaying());
+
     // MCP calls waiting on a condition or on frames (waitUntil / afterFrames)
     mcp::McpServer::get().tick();
 }
@@ -3399,6 +3406,8 @@ void editor::App::hubCreateProject(const hub::ProjectTemplate& info, const std::
     creation->copy = std::async(std::launch::async, [copyOf, target]() {
         std::string error;
         if (!hub::templates::materialize(copyOf, target, error)) return error.empty() ? std::string("the copy failed") : error;
+        // a template with no audio node of its own starts like any new project
+        if (!AudioMixerDocument::writeNewProjectAudio(target, &error)) return error;
         return std::string();
     });
     hubCreation = std::move(creation);

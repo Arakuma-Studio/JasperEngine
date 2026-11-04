@@ -91,6 +91,8 @@ namespace jasperengine::editor {
         void drawStrips();
         void drawStrip(const AudioMixerGroupDef& group);
         void drawMeter(const std::string& groupId, float height);
+        // the Master strip: LUFS against the target, the true-peak hold, the limiter's reduction
+        void drawLoudness(const AudioMixerGroupDef& master);
         void drawEffect(const AudioMixerGroupDef& group, size_t index, float width);
         void drawPopups();
         // the right-click menu of a control: expose / unexpose the target

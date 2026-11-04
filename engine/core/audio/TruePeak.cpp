@@ -26,6 +26,9 @@ static const float TRUE_PEAK_FIR[TruePeak::TAPS][TruePeak::PHASES] = {
     { -0.0083007812500f,  -0.0189208984375f,  -0.0291748046875f,   0.0017089843750f}
 };
 
+// the largest sum of a phase's absolute coefficients, rounded up
+static const float TRUE_PEAK_MAX_GAIN = 2.03f;
+
 TruePeak::TruePeak(unsigned int channels): histories(std::max(channels, 1u)){
 }
 
@@ -68,6 +71,59 @@ float TruePeak::processSample(unsigned int channel, float sample){
     float largest = std::fabs(sample);
     for (unsigned int phase = 0; phase < PHASES; phase++) {
         largest = std::max(largest, std::fabs(y[phase]));
+    }
+    return largest;
+}
+
+float TruePeak::processChannel(unsigned int channel, const float* samples, size_t count, float above){
+    static constexpr size_t RUN = 256;
+    History& history = histories[channel];
+    // oldest first: the history, then the run, so that the filter walks a plain array
+    float line[TAPS + RUN];
+    for (unsigned int tap = 0; tap < TAPS; tap++) {
+        line[TAPS - 1 - tap] = history.samples[history.newest + tap];
+    }
+
+    float largest = 0.0f;
+    while (count > 0) {
+        const size_t run = count < RUN ? count : RUN;
+        for (size_t i = 0; i < run; i++) {
+            const float x = samples[i];
+            line[TAPS + i] = std::isfinite(x) ? x : 0.0f;
+            largest = std::max(largest, std::fabs(line[TAPS + i]));
+        }
+        float reach = 0.0f;
+        for (size_t i = 0; i < TAPS + run; i++) {
+            reach = std::max(reach, std::fabs(line[i]));
+        }
+        float peak = largest;
+        const size_t filtered = reach * TRUE_PEAK_MAX_GAIN > std::max(above, largest) ? run : 0;
+        for (size_t i = 0; i < filtered; i++) {
+            const float* newest = line + TAPS + i;
+            float y[PHASES] = {};
+            for (unsigned int tap = 0; tap < TAPS; tap++) {
+                const float value = newest[-(long)tap];
+                for (unsigned int phase = 0; phase < PHASES; phase++) {
+                    y[phase] += TRUE_PEAK_FIR[tap][phase] * value;
+                }
+            }
+            for (unsigned int phase = 0; phase < PHASES; phase++) {
+                peak = std::max(peak, std::fabs(y[phase]));
+            }
+        }
+        largest = peak;
+        for (unsigned int tap = 0; tap < TAPS; tap++) {
+            line[tap] = line[run + tap];
+        }
+        samples += run;
+        count -= run;
+    }
+
+    history.newest = 0;
+    for (unsigned int tap = 0; tap < TAPS; tap++) {
+        const float x = line[TAPS - 1 - tap];
+        history.samples[tap] = x;
+        history.samples[tap + TAPS] = x;
     }
     return largest;
 }

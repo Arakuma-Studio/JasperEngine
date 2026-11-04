@@ -93,6 +93,21 @@ double AudioBiquad::process(double x){
     return y;
 }
 
+void AudioBiquad::processRun(double* samples, size_t count){
+    // the state in locals: nothing the compiler has to write back on each sample
+    const double cb0 = b0, cb1 = b1, cb2 = b2, ca1 = a1, ca2 = a2;
+    double s1 = z1, s2 = z2;
+    for (size_t i = 0; i < count; i++) {
+        const double x = samples[i];
+        const double y = cb0 * x + s1;
+        s1 = cb1 * x - ca1 * y + s2;
+        s2 = cb2 * x - ca2 * y;
+        samples[i] = y;
+    }
+    z1 = s1;
+    z2 = s2;
+}
+
 void AudioBiquad::settle(){
     // -600 dB, far under the meter's floor. Both at once: flushing one disturbs the other, which
     // keeps a limit cycle going at this level.
@@ -115,6 +130,11 @@ void AudioKWeighting::init(unsigned int sampleRate){
 
 double AudioKWeighting::process(double x){
     return highPass.process(shelf.process(x));
+}
+
+void AudioKWeighting::processRun(double* samples, size_t count){
+    shelf.processRun(samples, count);
+    highPass.processRun(samples, count);
 }
 
 void AudioKWeighting::settle(){
@@ -179,6 +199,173 @@ void AudioOctaveBank::settle(){
         band.settle();
     }
     sub.settle();
+}
+
+// -- AudioSpectrumBands ----------------------------------------------------------------------------
+
+void AudioSpectrumBands::init(unsigned int rate, unsigned int channelCount){
+    sampleRate = rate;
+    channels = channelCount;
+    // about 3 Hz a bin, whatever the rate: the 31.5 Hz band is 22 Hz wide
+    size = 1024;
+    while (size < rate / 3) {
+        size *= 2;
+    }
+    input.assign(size * channels, 0.0f);
+    // a sine window at half overlap: its squares add up to 1, so that the windows hold the signal's
+    // energy exactly. The first half of the first window is silence.
+    fill = size / 2;
+    pending = 0;
+    windows = 0;
+    window.resize(size);
+    for (size_t i = 0; i < size; i++) {
+        window[i] = (float)std::sin(METER_PI * ((double)i + 0.5) / (double)size);
+    }
+    twiddleRe.resize(size / 2);
+    twiddleIm.resize(size / 2);
+    for (size_t i = 0; i < size / 2; i++) {
+        const double angle = -2.0 * METER_PI * (double)i / (double)size;
+        twiddleRe[i] = (float)std::cos(angle);
+        twiddleIm[i] = (float)std::sin(angle);
+    }
+    re.resize(size);
+    im.resize(size);
+    workRe.resize(size);
+    workIm.resize(size);
+    power.assign(size, 0.0);
+}
+
+void AudioSpectrumBands::transformWindows(){
+    windows++;
+    // two channels in one complex transform: |Z(k)|^2 + |Z(n - k)|^2 is twice their powers at k, and
+    // the bands read a frequency from both bins, so nothing has to separate them
+    for (unsigned int c = 0; c < channels; c += 2) {
+        const float* first = input.data() + (size_t)c * size;
+        const float* second = c + 1 < channels ? first + size : nullptr;
+        for (size_t i = 0; i < size; i++) {
+            re[i] = first[i] * window[i];
+            im[i] = second ? second[i] * window[i] : 0.0f;
+        }
+
+        // Stockham's radix 2, no bit reversal: the twiddle only depends on the outer loop, so that the
+        // inner one vectorizes in the stages where it is long
+        float* xr = re.data();
+        float* xi = im.data();
+        float* yr = workRe.data();
+        float* yi = workIm.data();
+        size_t stride = 1;
+        for (size_t n = size; n > 1; n /= 2) {
+            const size_t half = n / 2;
+            for (size_t p = 0; p < half; p++) {
+                const float wr = twiddleRe[p * stride];
+                const float wi = twiddleIm[p * stride];
+                const float* ar = xr + stride * p;
+                const float* ai = xi + stride * p;
+                const float* br = xr + stride * (p + half);
+                const float* bi = xi + stride * (p + half);
+                float* cr = yr + stride * 2 * p;
+                float* ci = yi + stride * 2 * p;
+                float* dr = yr + stride * (2 * p + 1);
+                float* di = yi + stride * (2 * p + 1);
+                for (size_t q = 0; q < stride; q++) {
+                    const float sumR = ar[q] + br[q];
+                    const float sumI = ai[q] + bi[q];
+                    const float diffR = ar[q] - br[q];
+                    const float diffI = ai[q] - bi[q];
+                    cr[q] = sumR;
+                    ci[q] = sumI;
+                    dr[q] = diffR * wr - diffI * wi;
+                    di[q] = diffR * wi + diffI * wr;
+                }
+            }
+            std::swap(xr, yr);
+            std::swap(xi, yi);
+            stride *= 2;
+        }
+        for (size_t k = 0; k < size; k++) {
+            power[k] += (double)xr[k] * xr[k] + (double)xi[k] * xi[k];
+        }
+    }
+}
+
+void AudioSpectrumBands::process(const float* planar, size_t stride, size_t frames){
+    size_t position = 0;
+    while (position < frames) {
+        const size_t count = std::min(frames - position, size - fill);
+        for (unsigned int c = 0; c < channels; c++) {
+            std::copy(planar + c * stride + position, planar + c * stride + position + count, input.data() + c * size + fill);
+        }
+        fill += count;
+        position += count;
+        pending += count;
+        if (fill == size) {
+            transformWindows();
+            advanceWindow();
+            pending = 0;
+        }
+    }
+}
+
+void AudioSpectrumBands::advanceWindow(){
+    for (unsigned int c = 0; c < channels; c++) {
+        float* line = input.data() + c * size;
+        std::copy(line + size / 2, line + size, line);
+    }
+    fill = size / 2;
+}
+
+void AudioSpectrumBands::finish(){
+    // silence up to the end of this window, and of the next one for what is in its second half: every
+    // sample goes through its two windows
+    const bool secondHalf = pending > 0;
+    for (int i = 0; i < (secondHalf ? 2 : 1); i++) {
+        for (unsigned int c = 0; c < channels; c++) {
+            std::fill(input.data() + c * size + fill, input.data() + (size_t)(c + 1) * size, 0.0f);
+        }
+        transformWindows();
+        advanceWindow();
+    }
+    pending = 0;
+}
+
+uint64_t AudioSpectrumBands::windowedFrames() const{
+    return windows * (uint64_t)(size / 2);
+}
+
+void AudioSpectrumBands::energy(double out[BANDS + 1]) const{
+    const double rate = (double)sampleRate;
+    const auto warped = [rate](double hz) { return std::tan(METER_PI * hz / rate); };
+    const auto bandEnergy = [&](double low, double high) {
+        // as AudioOctaveBank::initBand: empty from the limit, no low-pass from it. 4th-order Butterworth
+        // edges through the bilinear transform, the magnitudes of its biquads.
+        if (low >= BAND_EDGE_LIMIT * rate) {
+            return 0.0;
+        }
+        const double lowEdge = warped(low);
+        const bool hasHigh = high < BAND_EDGE_LIMIT * rate;
+        const double highEdge = hasHigh ? warped(high) : 0.0;
+        double sum = 0.0;
+        for (size_t k = 1; k < size; k++) {
+            const size_t bin = std::min(k, size - k);
+            if (bin * 2 == size) {
+                // the Nyquist bin: the high-pass passes it, a low-pass closes it
+                sum += hasHigh ? 0.0 : power[k];
+                continue;
+            }
+            const double at = warped(rate * (double)bin / (double)size);
+            double attenuation = 1.0 + std::pow(lowEdge / at, 8.0);
+            if (hasHigh) {
+                attenuation *= 1.0 + std::pow(at / highEdge, 8.0);
+            }
+            sum += power[k] / attenuation;
+        }
+        return sum / (double)size;
+    };
+    for (int b = 0; b < BANDS; b++) {
+        const double centre = AudioMeter::bandCentre(b);
+        out[b] = bandEnergy(centre / std::sqrt(2.0), centre * std::sqrt(2.0));
+    }
+    out[BANDS] = bandEnergy(SUB_LOW_HZ, SUB_HIGH_HZ);
 }
 
 void AudioMeter::kWeighting(unsigned int sampleRate, double shelf[5], double highPass[5]){
@@ -246,11 +433,13 @@ AudioMeter::AudioMeter(unsigned int sampleRate, unsigned int channels, const Aud
         Channel& channel = state[c];
         channel.kWeighting.init(sampleRate);
         channel.weight = channelWeight(channels, c);
-        if (options.bands) {
-            channel.bands.init(sampleRate);
-        }
+    }
+    if (options.bands) {
+        spectrum.init(sampleRate, channels);
     }
     truePeakFilter = TruePeak(channels);
+    run.assign((size_t)channels * RUN_FRAMES, 0.0f);
+    weightedRun.assign(RUN_FRAMES, 0.0);
 
     energyBefore.push_back(0.0);
     subBlockEnd = (uint64_t)boundary(1);
@@ -293,48 +482,56 @@ int64_t AudioMeter::signalSubBlocks() const{
     return std::min(last, complete);
 }
 
-double AudioMeter::finite(float sample){
-    if (std::isfinite(sample)) {
-        return sample;
-    }
-    nonFinite++;
-    return 0.0;
+size_t AudioMeter::runFramesNow(size_t frames) const{
+    return std::min<size_t>(std::min<size_t>(frames, RUN_FRAMES), (size_t)(subBlockEnd - processed));
 }
 
-void AudioMeter::frame(const double* x, bool padding){
+void AudioMeter::processRun(size_t frames, bool padding){
     double energy = 0.0;
     for (unsigned int c = 0; c < channels; c++) {
         Channel& channel = state[c];
-        double weighted = channel.kWeighting.process(x[c]);
-        energy += channel.weight * weighted * weighted;
-
-        if (padding) {
-            continue;
+        const float* samples = run.data() + (size_t)c * RUN_FRAMES;
+        for (size_t i = 0; i < frames; i++) {
+            weightedRun[i] = samples[i];
         }
 
-        double magnitude = std::fabs(x[c]);
-        peak = std::max(peak, magnitude);
-        if (magnitude >= CLIP_LEVEL) {
-            clipped++;
-        }
-        channel.sum += x[c];
-        channel.energy += x[c] * x[c];
-        truePeak = std::max(truePeak, (double)truePeakFilter.processSample(c, (float)x[c]));
-
-        if (options.bands) {
-            double y[BANDS + 1];
-            channel.bands.process(x[c], y);
-            for (int b = 0; b < BANDS; b++) {
-                channel.bandEnergy[b] += y[b] * y[b];
+        if (!padding) {
+            double channelPeak = peak;
+            double sum = 0.0;
+            double squares = 0.0;
+            uint64_t over = 0;
+            for (size_t i = 0; i < frames; i++) {
+                const double x = weightedRun[i];
+                const double magnitude = std::fabs(x);
+                channelPeak = std::max(channelPeak, magnitude);
+                over += magnitude >= CLIP_LEVEL ? 1 : 0;
+                sum += x;
+                squares += x * x;
             }
-            channel.subEnergy += y[BANDS] * y[BANDS];
+            peak = channelPeak;
+            clipped += over;
+            channel.sum += sum;
+            channel.energy += squares;
+            truePeak = std::max(truePeak, (double)truePeakFilter.processChannel(c, samples, frames, (float)truePeak));
+        }
+
+        if (channel.weight != 0.0) {
+            channel.kWeighting.processRun(weightedRun.data(), frames);
+            double squares = 0.0;
+            for (size_t i = 0; i < frames; i++) {
+                squares += weightedRun[i] * weightedRun[i];
+            }
+            energy += channel.weight * squares;
         }
     }
 
     subBlockSum += energy;
-    processed++;
+    processed += frames;
     if (!padding) {
-        signalFrames++;
+        signalFrames += frames;
+        if (options.bands) {
+            spectrum.process(run.data(), RUN_FRAMES, frames);
+        }
     }
     while (processed >= subBlockEnd) {
         energyBefore.push_back(energyBefore.back() + subBlockSum);
@@ -342,9 +539,6 @@ void AudioMeter::frame(const double* x, bool padding){
         subBlockEnd = (uint64_t)boundary(completeSubBlocks() + 1);
         for (Channel& channel : state) {
             channel.kWeighting.settle();
-            if (options.bands) {
-                channel.bands.settle();
-            }
         }
     }
 }
@@ -353,12 +547,23 @@ void AudioMeter::process(const float* interleaved, size_t frames){
     if (!valid || finished || !interleaved) {
         return;
     }
-    double x[CHANNELS_MAX];
-    for (size_t i = 0; i < frames; i++) {
+    while (frames > 0) {
+        const size_t count = runFramesNow(frames);
         for (unsigned int c = 0; c < channels; c++) {
-            x[c] = finite(interleaved[i * channels + c]);
+            float* out = run.data() + (size_t)c * RUN_FRAMES;
+            for (size_t i = 0; i < count; i++) {
+                const float x = interleaved[i * channels + c];
+                if (std::isfinite(x)) {
+                    out[i] = x;
+                } else {
+                    out[i] = 0.0f;
+                    nonFinite++;
+                }
+            }
         }
-        frame(x, false);
+        processRun(count, false);
+        interleaved += count * channels;
+        frames -= count;
     }
 }
 
@@ -366,12 +571,23 @@ void AudioMeter::processPlanar(const float* const* planar, size_t frames){
     if (!valid || finished || !planar) {
         return;
     }
-    double x[CHANNELS_MAX];
-    for (size_t i = 0; i < frames; i++) {
+    size_t position = 0;
+    while (position < frames) {
+        const size_t count = runFramesNow(frames - position);
         for (unsigned int c = 0; c < channels; c++) {
-            x[c] = finite(planar[c][i]);
+            float* out = run.data() + (size_t)c * RUN_FRAMES;
+            const float* in = planar[c] + position;
+            for (size_t i = 0; i < count; i++) {
+                if (std::isfinite(in[i])) {
+                    out[i] = in[i];
+                } else {
+                    out[i] = 0.0f;
+                    nonFinite++;
+                }
+            }
         }
-        frame(x, false);
+        processRun(count, false);
+        position += count;
     }
 }
 
@@ -380,6 +596,9 @@ void AudioMeter::finish(){
         return;
     }
     finished = true;
+    if (options.bands) {
+        spectrum.finish();
+    }
     if (options.mode != AudioMeterMode::File) {
         return;
     }
@@ -390,10 +609,12 @@ void AudioMeter::finish(){
             truePeak = std::max(truePeak, (double)truePeakFilter.processSample(c, 0.0f));
         }
     }
-    const double zeros[CHANNELS_MAX] = {};
-    const uint64_t padding = (uint64_t)std::ceil(FILE_PADDING_SECONDS * sampleRate);
-    for (uint64_t i = 0; i < padding; i++) {
-        frame(zeros, true);
+    std::fill(run.begin(), run.end(), 0.0f);
+    uint64_t padding = (uint64_t)std::ceil(FILE_PADDING_SECONDS * sampleRate);
+    while (padding > 0) {
+        const size_t count = runFramesNow((size_t)padding);
+        processRun(count, true);
+        padding -= count;
     }
 }
 
@@ -424,24 +645,22 @@ LoudnessResult AudioMeter::result() const{
     if (signalFrames > 0) {
         const double samples = (double)signalFrames * channels;
         double energy = 0.0;
-        double subEnergy = 0.0;
-        double bandEnergy[BANDS] = {};
         for (const Channel& channel : state) {
             energy += channel.energy;
-            subEnergy += channel.subEnergy;
-            for (int b = 0; b < BANDS; b++) {
-                bandEnergy[b] += channel.bandEnergy[b];
-            }
             r.dcOffset = std::max(r.dcOffset, std::fabs(channel.sum / (double)signalFrames));
         }
         r.meanSquare = energy / samples;
         r.rmsDb = meanSquareDb(r.meanSquare);
-        if (options.bands) {
+        // before finish() the energy is that of the windows done so far
+        const double windowed = finished ? samples : (double)spectrum.windowedFrames() * channels;
+        if (options.bands && windowed > 0.0) {
+            double bandEnergy[BANDS + 1];
+            spectrum.energy(bandEnergy);
             for (int b = 0; b < BANDS; b++) {
-                r.bandsMeanSquare[b] = bandEnergy[b] / samples;
+                r.bandsMeanSquare[b] = bandEnergy[b] / windowed;
                 r.bandsDb[b] = meanSquareDb(r.bandsMeanSquare[b]);
             }
-            r.subMeanSquare = subEnergy / samples;
+            r.subMeanSquare = bandEnergy[BANDS] / windowed;
             r.subShare = r.meanSquare > 0.0 ? std::min(1.0, r.subMeanSquare / r.meanSquare) : 0.0;
         }
     }
@@ -523,6 +742,16 @@ LoudnessResult AudioMeter::result() const{
     }
 
     return r;
+}
+
+std::optional<double> AudioMeter::momentaryNow() const{
+    const int64_t end = signalSubBlocks();
+    return end > 0 ? std::optional<double>(windowLoudness(end, MOMENTARY_SUB_BLOCKS)) : std::nullopt;
+}
+
+std::optional<double> AudioMeter::shortTermNow() const{
+    const int64_t end = signalSubBlocks();
+    return end >= SHORT_TERM_SUB_BLOCKS ? std::optional<double>(windowLoudness(end, SHORT_TERM_SUB_BLOCKS)) : std::nullopt;
 }
 
 std::vector<float> AudioMeter::momentaryCurve() const{

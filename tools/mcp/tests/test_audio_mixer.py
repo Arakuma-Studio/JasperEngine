@@ -56,6 +56,10 @@ async def test_setup_and_build_the_mixer(ed: Editor):
     await ed.call("set_properties", entity="Music",
                   values={"audiosource": {"filename": "music.wav", "looping": True, "state": "playing"}})
 
+    # as a project from before S38 has it: no mixer (a new project starts with one, S38 R8)
+    await ed.call("set_project_settings", values={"audio.mixer": ""})
+    (ed.project / MIXER).unlink()
+
     got = await ed.call_raw("audio_mixer", {"action": "get"})
     ed.check(not got.is_error and "implicit Master" in got.text, f"no mixer yet: {got.text[:300]}")
 

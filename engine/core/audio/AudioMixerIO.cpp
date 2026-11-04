@@ -413,7 +413,7 @@ bool AudioMixerIO::parse(const std::string& text, AudioMixerDef& out, std::strin
     if (root.contains("version")) {
         if (!root["version"].is_number_integer() || root["version"].get<int>() < 1) return fail(error, "version: expected a whole number from 1");
         def.version = root["version"].get<int>();
-        if (def.version > 1) return fail(error, "version: " + std::to_string(def.version) + " is newer than this engine reads (1)");
+        if (def.version > 2) return fail(error, "version: " + std::to_string(def.version) + " is newer than this engine reads (2)");
     }
     if (root.contains("updateMode")) {
         const Json& mode = root["updateMode"];
@@ -591,10 +591,26 @@ namespace {
 
 }
 
+// Version 2 is a mixer an older engine must refuse by its version, not by a parameter it does not
+// know: only a limiter with a delay or a true-peak detector needs it (S38 R3), so every other mixer
+// keeps its bytes.
+static bool usesLimiterDelay(const AudioMixerDef& def) {
+    for (const AudioMixerGroupDef& group : def.groups) {
+        for (const AudioMixerEffectDef& effect : group.effects) {
+            if (effect.type != AudioEffectType::Limiter) continue;
+            for (const char* name : {"lookahead", "truePeak"}) {
+                auto it = effect.params.find(name);
+                if (it != effect.params.end() && it->second != 0.0f) return true;
+            }
+        }
+    }
+    return false;
+}
+
 std::string AudioMixerIO::write(const AudioMixerDef& def) {
     OJson root;
     root["format"] = FORMAT;
-    root["version"] = def.version < 1 ? 1 : def.version;
+    root["version"] = usesLimiterDelay(def) ? 2 : 1;
     root["updateMode"] = def.unscaled ? "unscaled" : "scaled";
 
     OJson groups = OJson::array();
