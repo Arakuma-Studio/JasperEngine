@@ -27,6 +27,8 @@ extern unsigned int bulb_icon_png_len;
 #include "util/GraphicUtils.h"
 #include "window/PhysicsPlacementWindow.h"
 #include "window/TerrainEditWindow.h"
+#include "voxel/VoxelBrushTool.h"
+#include "voxel/VoxelSceneOverlay.h"
 #include "render/LineDrawUtils.h"
 #include "render/Joint2DAnchors.h"
 #include "util/Angle.h"
@@ -177,6 +179,7 @@ editor::SceneRender::~SceneRender(){
     for (auto& pair : particleShapeLines) {
         delete pair.second;
     }
+    VoxelSceneOverlay::release(scene);
     delete terrainBrushLines;
     delete physicsLines;
     delete camera;
@@ -1319,6 +1322,13 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
         poseViewport->removeCovered(selEntities);
     }
 
+    // T6 R60: the armed Voxel Volume brush takes the press, Alt never reaches here
+    if (VoxelBrushTool::get().isEditingScene(scene)){
+        const ImGuiIO& io = ImGui::GetIO();
+        VoxelBrushTool::get().beginStroke(scene, ownerMouseRay, VoxelBrushModifiers{io.KeyCtrl, io.KeyShift});
+        return;
+    }
+
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         if (terrainEditWindow->isEditingScene(scene)){
             terrainEditWindow->beginStroke(scene, ownerMouseRay);
@@ -1570,6 +1580,7 @@ void editor::SceneRender::mouseReleaseEvent(float x, float y){
         poseViewport->mouseUp();
     }
 
+    VoxelBrushTool::get().endStroke();
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         terrainEditWindow->endStroke();
     }
@@ -1721,6 +1732,12 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
     }
     if (poseViewport && !editLayer.active){
         poseViewport->removeCovered(selEntities);
+    }
+
+    if (VoxelBrushTool::get().isEditingScene(scene)){
+        VoxelBrushTool::get().paintStroke(scene, ownerMouseRay);
+        VoxelBrushTool::get().updateCursor(scene, ownerMouseRay);
+        return;
     }
 
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
@@ -2582,6 +2599,10 @@ bool editor::SceneRender::isFluidPainting() const{
 }
 
 bool editor::SceneRender::isTerrainEditing() const{
+    // the armed Voxel Volume brush (T6 R60) takes the left button the same way
+    if (VoxelBrushTool::get().isEditingScene(scene)){
+        return true;
+    }
     if (TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow()){
         return terrainEditWindow->isEditingScene(scene);
     }
@@ -2828,6 +2849,9 @@ float editor::SceneRender::snapRotationAngle(float angle, bool invertRotationSna
 void editor::SceneRender::updateTerrainBrushCursor(){
     if (!terrainBrushLines){
         return;
+    }
+    if (VoxelBrushTool::get().isEditingScene(scene)){
+        VoxelBrushTool::get().updateCursor(scene, ownerMouseRay);
     }
 
     TerrainEditWindow* terrainEditWindow = Backend::getApp().getTerrainEditWindow();

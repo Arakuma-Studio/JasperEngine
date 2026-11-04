@@ -113,7 +113,9 @@ namespace jasperengine::editor{
         // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
         RAGDOLL_WIZARD,
         // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
-        SAFE_AREA
+        SAFE_AREA,
+        // a Voxel Volume; the Hierarchy's row opens its dialog (T6 R59), which makes it with its file
+        VOXEL_VOLUME
     };
 
     class CreateEntityCmd: public Command{
