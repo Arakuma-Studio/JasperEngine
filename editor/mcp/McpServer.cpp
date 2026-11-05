@@ -1182,6 +1182,8 @@ void McpServer::queueSettle(Settle settle) {
         settle.respond();
         return;
     }
+    // (checked after the push: onFilePickerOpened answers what was queued before it)
+    if (EditorFilePicker::isOpen()) answerSettlesNow();
     // A handler or deferred callback on this stack runs the queue once it has returned; a completion
     // anywhere else (a job's thread, another main-thread task) by a task of its own
     if (appPtr->isMainThread() && handlersOnStack > 0) return;
@@ -1202,8 +1204,21 @@ void McpServer::runSettles() {
         } catch (const std::exception& e) {
             Out::error("MCP auto-sync: the settle after %s failed: %s", settle.tool.c_str(), e.what());
         }
-        settle.respond();
+        if (settle.respond) settle.respond();
     }
+}
+
+void McpServer::answerSettlesNow() {
+    std::vector<std::function<void()>> answers;
+    {
+        std::lock_guard<std::mutex> lock(settleMutex);
+        for (Settle& settle : settles) {
+            if (!settle.respond) continue;
+            answers.push_back(std::move(settle.respond));
+            settle.respond = nullptr;
+        }
+    }
+    for (const std::function<void()>& answer : answers) answer();
 }
 
 void McpServer::answerDuringFilePicker(const CallPtr& call, const EditorDialogInfo& picker) {
@@ -1230,6 +1245,8 @@ void McpServer::answerDuringFilePicker(const CallPtr& call, const EditorDialogIn
 }
 
 void McpServer::onFilePickerOpened() {
+    // their settles need this thread, which the picker now holds
+    answerSettlesNow();
     EditorDialogInfo picker;
     if (!EditorFilePicker::info(picker)) return;
     const Json data = Json{{"dialog", dialogJson(picker)}};

@@ -14,11 +14,13 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 
-from harness import Editor, RawEditor, find_key, over_budget
+from harness import Editor, RawEditor, find_key, over_budget, skip, symlinks_permitted
 from pngdiff import encode as encode_png
 
 EDITOR = {"create": True, "name": "AutoSyncRace", "env": {"JASPER_TEST_SETTLE_DELAY_MS": "300"}}
@@ -138,6 +140,57 @@ async def no_pause_rounds(ed: Editor, tag: str):
     ed.check_eq([p for p in seen if "/Tool" in p], [], "no file write_file wrote was reported")
 
 
+async def through_a_linked_folder(ed: Editor, tag: str, source: str):
+    """A folder linked in from outside the project (S68) is a folder of the project: the changes behind
+    the link are found under its name, with the same stamps as anywhere. A tool can't write through such
+    a link (McpRefs::writeEscape), so the stamps here are of another program's earlier write."""
+    if not symlinks_permitted():
+        skip("this process may not create symbolic links")
+    outside = Path(tempfile.mkdtemp(prefix="jasper-autosync-link-"))
+    link = ed.project / f"scripts/{tag}Lib"
+    link.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        (outside / "Seed.lua").write_text("return {}\n")
+        os.symlink(outside, link)
+        ed.check_in(f"scripts/{tag}Lib/Seed.lua", changed(await status_call(ed)), "the linked folder's file is found")
+        await quiet(ed)
+
+        # a new file 0 ms after a writing call, with that call's stamp
+        anchor = f"scripts/{tag}Anchor.lua"
+        await write_file(ed, anchor, "return {}\n")
+        (outside / "Inside.lua").write_text("return {}\n")
+        stamp(outside / "Inside.lua", (ed.project / anchor).stat().st_mtime_ns)
+        ext = external(await status_call(ed))
+        ed.check(ext is not None and ext["changed"] == [f"scripts/{tag}Lib/Inside.lua"], f"found behind the link: {ext!r}")
+        ed.check_eq(ext["source"], source, "found by")
+
+        # a rewrite with the stamp a pick-up recorded: the content tells
+        rewrite = outside / "Rewrite.lua"
+        rewrite.write_text("return { value = 1 }\n")
+        ed.check_in(f"scripts/{tag}Lib/Rewrite.lua", changed(await status_call(ed)), "the first write")
+        before = rewrite.stat()
+        rewrite.write_text("return { value = 2 }\n")
+        stamp(rewrite, before.st_mtime_ns)
+        ed.check_in(f"scripts/{tag}Lib/Rewrite.lua", changed(await status_call(ed)), "the same-stamp rewrite behind the link")
+
+        # a new file with that stamp, the linked folder's own stamp unchanged
+        (outside / "Three.lua").write_text("return {}\n")
+        ed.check_in(f"scripts/{tag}Lib/Three.lua", changed(await status_call(ed)), "the folder's stamp is recorded")
+        folder = outside.stat()
+        three = (outside / "Three.lua").stat()
+        (outside / "Four.lua").write_text("return {}\n")
+        stamp(outside / "Four.lua", three.st_mtime_ns)
+        stamp(outside, folder.st_mtime_ns)
+        ext = external(await status_call(ed))
+        ed.check(ext is not None and ext.get("added") == [f"scripts/{tag}Lib/Four.lua"], f"the same-tick new file behind the link: {ext!r}")
+        r = await status_call(ed)
+        ed.check(external(r) is None, f"reported twice: {external(r)!r}")
+    finally:
+        link.unlink(missing_ok=True)
+        shutil.rmtree(outside, ignore_errors=True)
+        await status_call(ed)
+
+
 # ------------------------------------------------------------------ the watcher's journal
 
 
@@ -158,6 +211,10 @@ async def test_no_pause_rounds(ed: Editor):
     await no_pause_rounds(ed, "Journal")
 
 
+async def test_through_a_linked_folder(ed: Editor):
+    await through_a_linked_folder(ed, "Journal", "watcher")
+
+
 # ------------------------------------------------------------------ the stat scan
 
 
@@ -169,6 +226,7 @@ async def test_watcher_off_the_scan_finds_the_same():
         await same_tick_rewrite_of_the_tools_file(ed, "Scan")
         await same_tick_new_file_in_the_tools_folder(ed, "Scan")
         await no_pause_rounds(ed, "Scan")
+        await through_a_linked_folder(ed, "Scan", "scan")
 
 
 # ------------------------------------------------------------------ when the result goes out
@@ -264,6 +322,60 @@ async def test_editor_closes_with_a_writing_call_waiting():
         code = await raw.close_stdin_and_wait(120)
         if code != 0:
             raw.fail(f"the editor must exit cleanly, got {code!r}")
+
+
+# ------------------------------------------------------------------ dialogs (S69)
+
+
+async def open_dialog(ed: Editor) -> dict:
+    for _ in range(80):
+        found = (await ed.call("editor_status")).get("dialog")
+        if found:
+            return found
+        await asyncio.sleep(0.25)
+    ed.fail("the dialog never opened")
+
+
+async def test_a_call_a_dialog_refuses_settles_too(ed: Editor):
+    """A writing call refused because a modal is open has run through execute: it waits for its settle
+    like any other, and what is written once it has the refusal is external."""
+    await quiet(ed)
+    await ed.call("run_command", id="help.about")
+    opened = await open_dialog(ed)
+    try:
+        wall = time.monotonic()
+        r = await ed.call_raw("write_file", {"path": "scripts/RefusedByDialog.lua", "content": "return {}\n"})
+        ed.check(r.is_error and opened["title"] in r.text, f"refused: {r.text[:300]}")
+        ed.check(time.monotonic() - wall >= SETTLE_DELAY_S, "the refusal went out before its settle")
+        ed.check(not (ed.project / "scripts/RefusedByDialog.lua").exists(), "nothing written")
+        rel = "scripts/AfterRefusal.lua"
+        (ed.project / rel).write_text("return {}\n")
+        stamp(ed.project / rel, time.time_ns() - 1_000_000)
+        ext = external(await status_call(ed))
+        ed.check(ext is not None and ext["changed"] == [rel], f"reported: {ext!r}")
+    finally:
+        await ed.call("respond_dialog", choice="ok")
+
+
+async def test_a_writing_call_that_opens_a_file_picker_answers_at_once(ed: Editor):
+    """The picker holds the main thread until it is answered, and its client has this result to wait for:
+    the result can't wait for the settle, which runs once the thread is back. Then the tool's window is
+    closed as usual: what is written after that is external."""
+    await quiet(ed)
+    r = await ed.call_raw("run_command", {"id": "assets.import"}, timeout=60)
+    ed.check(not r.is_error, f"run_command: {r.text[:300]}")
+    ed.check_eq(r.structured["dialog"]["kind"], "file_picker", "the tool says so")
+    refused = await ed.call_raw("create_entity", {"name": "DuringPicker", "type": "cube"}, timeout=60)
+    ed.check(refused.is_error and "respond_dialog" in refused.text, f"answered without the main thread: {refused.text[:300]}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq((await ed.call("editor_status")).get("dialog"), None, "cancelled")
+    await quiet(ed)
+    await write_file(ed, "scripts/AfterPicker.lua", "return {}\n")
+    rel = "scripts/AfterPickerExternal.lua"
+    (ed.project / rel).write_text("return {}\n")
+    stamp(ed.project / rel, (ed.project / "scripts/AfterPicker.lua").stat().st_mtime_ns)
+    ext = external(await status_call(ed))
+    ed.check(ext is not None and ext["changed"] == [rel], f"reported, the tool's own not: {ext!r}")
 
 
 # ------------------------------------------------------------------ R3, R4 and what they cost

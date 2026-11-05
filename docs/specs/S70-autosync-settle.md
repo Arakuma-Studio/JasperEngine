@@ -48,3 +48,6 @@ so such a write can be absorbed as the tool's own, and the agent silently works 
   (`HotReloadService::forgetApplied`); otherwise it was reported but not reloaded once that stamp had stopped being racy (100 ms).
 - **AC1's same-tick new file forges more than the reference's test.** It also gives the new file the tool's mtime, the stamp a real
   same-tick write has, which is what the journal path must survive.
+- **A file picker comes before the settle (S69).** A picker holds the main thread until it is answered, and the client may have to answer
+  it first, so a result completed while one is open goes out at once and its settle runs when the thread is back. A client's write in
+  that gap counts as written during the call (R7).

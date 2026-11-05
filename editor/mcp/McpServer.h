@@ -292,7 +292,8 @@ namespace jasperengine::editor::mcp {
         // The result of a call that may write files waits for its settle (McpAutoSync::afterCall):
         // whatever the client writes once it has the result is then newer than that settle, so it
         // is never taken as the tool's own. Queued by the completion (any thread), run on the main
-        // thread where no handler is on the stack.
+        // thread where no handler is on the stack. While a file picker holds that thread the answer
+        // goes first (its client may have to answer the picker) and the settle once the thread is back.
         struct Settle {
             std::string tool;
             std::chrono::system_clock::time_point start;
@@ -304,6 +305,7 @@ namespace jasperengine::editor::mcp {
         int handlersOnStack = 0;          // main thread only: tool handlers and deferred callbacks running
         void queueSettle(Settle settle);
         void runSettles();
+        void answerSettlesNow();
 
         std::atomic<bool> httpChangesAllowed{true};
 
