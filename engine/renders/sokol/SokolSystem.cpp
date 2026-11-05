@@ -693,6 +693,8 @@ const RenderFeatures& SokolSystem::getFeatures(){
         features.renderR16F = r16f.render;
         features.blendR16F = r16f.blend;
         features.filterR16F = r16f.filter;
+        features.msaaRGBA16F = rgba16f.msaa;
+        features.msaaR16F = r16f.msaa;
         features.maxTextureSize2D = sg_query_limits().max_image_size_2d;
         for (size_t f = 0; f < kGpuTextureFormatCount; f++)
             features.textureFormats.set((GpuTextureFormat)f, SokolTexture::isFormatSupported((GpuTextureFormat)f));

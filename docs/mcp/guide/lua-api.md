@@ -184,7 +184,7 @@ label, defaults to `name`), `type` (string, case-insensitive; default `float` if
 | any other string = a Lua script class name (e.g. `"Enemy"`) | that GameObject's `Enemy` script instance table (its `self`) | none |
 
 Wrapper class names accepted as `type` (case-insensitive): `GameObject`, `Camera`, `Light`,
-`Light2D`, `ShadowCaster2D`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
+`Light2D`, `ShadowCaster2D`, `CapsuleShadowCaster`, `Mesh`, `Primitive`, `Mirror`, `Terrain`, `Tilemap`, `Model`,
 `MeshPolygon`, `Points`, `LineRenderer`, `TrailRenderer`, `Sprite`, `AudioSource`, `RectTransform`,
 `LayoutGroup`, `Polygon`, `Text`, `Image`, `Button`, `Panel`, `Scrollbar`, `Progressbar`,
 `InputField`, `Bone`, `Fog`, `LocalVolumetricFog`, `VolumetricClouds`, `Skybox`, `ReflectionProbe`, `FluidSimulation`, `Rigidbody2D`, `Joint2D`, `CharacterController2D`,
@@ -1130,7 +1130,7 @@ Entities are plain integers (`0` = none).
 | `gravity3D` (Vector3, rw); `setGravity3D(x, y, z)` | |
 | `physicsInterpolation` (bool, rw) | bodies drawn between their last two fixed steps (default true); the scene setting `physics_interpolation` |
 | `physics2DSubSteps` (integer, rw) | Box2D sub-steps of each fixed step, 1-16 (default 4); the scene setting `physics_2d_sub_steps` |
-| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
+| `ambientLight2DColor`, `ambientLight2DIntensity`, `globalIlluminationColor`, `globalIlluminationIntensity`, `maxLightsPerObject` (1-16; the other lights reaching an object go into its ambient), `litQuality` (`LitQuality.STANDARD` / `HIGH`: the built-in Lit's specular anti-aliasing and direct-light energy compensation; new scenes are High, scenes saved before it Standard), `physicalLightEV100` (the exposure, -6..24, lights in lux, candela or lumen are drawn at: Sunny 15, Overcast 12, Interior 7, Night 2), `shadowQuality` (`ShadowQuality` AUTO/NONE (hard only)/LOW/MEDIUM/HIGH/ULTRA, the shadow quality tier), `shadowDistance` (metres, 0: the tier's), `shadowFadeFraction`, `shadowCascadeBlend`, `capsuleShadowsEnabled`, `capsuleShadowIntensity` (0..1), `capsuleShadowSoftness` (0..2; `jasper://docs/lighting`), `effectiveShadowTier` (read-only `ShadowTier` LOW/MEDIUM/HIGH/ULTRA; `jasper://docs/shadows`), `lightState`, `shadow2DQuality`, `sceneColorScale` (`SceneColorScale`: resolution of the scene-colour copy that shaders requiring scenecolor sample; `HALF` default), `postProcessing` (a `PostProcessingSettings` copy: edit its fields, then assign it back, `local p = scene.postProcessing; p.tonemap = TonemapMode.ACES; p.fxaaEnabled = true; scene.postProcessing = p`; enums `TonemapMode` NONE/ACES/NEUTRAL/REINHARD/AGX, `MonochromeMode` GRAYSCALE/SEPIA; fields as `get_scene_settings` `post_processing.<field>` in camelCase; `scene.postProcessing = PostProcessingSettings()` turns everything off; costs and presets: `jasper://docs/post-processing`), `postProcessPasses` (a list of `PostProcessPass`: `shader`, `enabled`, `scale` 0.1-1, `setUniform`/`getUniform`, `setTexture(uniform, path)`/`getTexture`; assign the list back; `jasper://docs/post-processing`), `enableUIEvents` | rw properties (partial list; also ssao*/ssr*/fixedResolution*/postProcess* rendering options) |
 | `getPhysicsSystem()`, `getAudioSystem()`, `getActionSystem()`, `getMeshSystem()`, `getRenderSystem()`, `getUISystem()` | subsystem objects |
 | `findEntitiesWith({"Transform", "MeshComponent"}[, {"UIComponent"}])` | -> table of Entity with every listed component and none of the excluded ones, in the order of the first one's array (parents before children for `Transform`); names are the component class names |
 | `getChangeTick()` | -> integer: the scene's change tick; a change made after the call is stamped with a newer one |
@@ -1785,7 +1785,10 @@ compiles in only while its `...Enabled` is true, so animating a factor never rec
 `specularFactor`, `specularColor`, `ior`; `hexTilingEnabled`, `hexTilingRotation`,
 `hexTilingContrast`. Their maps read only: `clearcoatTexture`, `clearcoatNormalTexture`,
 `sheenTexture`, `anisotropyTexture`, `iridescenceTexture`, `transmissionTexture`,
-`specularTexture`. E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
+`specularTexture`. The Shading Model: `shadingModel` (`ShadingModel.STANDARD` / `HAIR`), and the
+hair's `hairPrimaryColor`, `hairPrimaryShift`, `hairPrimaryWidth`, `hairSecondaryColor`,
+`hairSecondaryShift`, `hairSecondaryWidth`, `hairRotation` (radians), read only `hairFlowTexture`.
+E.g. `local m = mesh:getMaterial(); m.clearcoatEnabled = true;
 m.clearcoatFactor = 1; mesh:setMaterial(m)`. More: `jasper://docs/materials`.
 `extraPass` (`MaterialPass`, edited in place on the copy, then `setMaterial`): one more draw
 of the submesh after its mesh's main draws (`order = MaterialPassOrder.BEFORE`: ahead of
@@ -2156,7 +2159,9 @@ end
 
 rw: `type` (`CameraType.*`), `enabled`, `nearClip`, `farClip`, `leftClip`, `rightClip`,
 `bottomClip`, `topClip`, `aspect`, `yfov`, `target` (Vector3), `up` (Vector3), `autoResize`,
-`renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`.
+`renderToTexture`, `transparentSort`, `depthTest`, `cullingMask`, `transparencyMode`
+(`TransparencyMode.SORTED` / `ORDER_INDEPENDENT`: weighted blended OIT for alpha-blended materials),
+`oitWeightScale` (`jasper://docs/lighting`).
 Methods: `activate()`, `setOrtho(l, r, b, t, near, far)`, `setPerspective(yfov, aspect, near,
 far)`, `setType(t)`, `setTarget(x, y, z)`, `disableTarget()`, `isUsingTarget()`, `setUp(x,y,z)`,
 `getDirection()`, `getRight()`, `getUp()`, `getWorldDirection()`, `getWorldTarget()`,
@@ -2265,7 +2270,9 @@ Shadows (`jasper://docs/shadows`) rw: `shadowType` (`ShadowType.NONE/HARD/SOFT`)
 `cascadeSplitMode` (`CascadeSplitMode.AUTO/MANUAL`), `cascadeSplits` (Vector3, fractions of the
 distance), `shadowDistance` (metres, 0: the scene's or the tier's), `shadowAngularDiameter`
 (degrees), `shadowSourceRadius` (metres), `shadowUpdateMode` (`ShadowUpdateMode.AUTO/EVERY_FRAME/ON_DEMAND`);
-`requestShadowUpdate()` redraws an On Demand light's maps.
+`requestShadowUpdate()` redraws an On Demand light's maps. Contact shadows (directional and spot
+lights with shadows): `contactShadows`, `contactShadowLength` (metres), `contactShadowThickness`
+(metres), `contactShadowSampleCount` (8..16; `jasper://docs/lighting`).
 
 Light2D rw: `enabled`, `color` (Vector3), `intensity`, `range`, `falloff`, `height`,
 `shadows`, `shadowBias`, `shadowSoftness`, `mapResolution`; methods `setColor(r,g,b)`,
@@ -2800,6 +2807,12 @@ makes a GameObject with one.
   `wrapCellWidth`, `wrapCellHeight`; ro `contentWidth`, `contentHeight`; `resize()`.
 - `ShadowCaster2D`: rw `shape` (`ShadowCaster2DShape.AUTO_QUAD` / `POLYGON`), `closed`,
   `enabled`; `addVertex(x, y)`, `clearVertices()`, `getVertexCount()`.
+- `CapsuleShadowCaster` (capsule shadows, `jasper://docs/lighting`): rw `enabled`, `castShadows`
+  (`CapsuleCastShadows.ON` / `CAPSULES_ONLY`); ro `capsuleCount`; `addCapsule(bone, radius, length)`
+  (its index, -1 past 8), `removeCapsule(i)`, `clearCapsules()`, `get/setCapsuleBone(i)`,
+  `get/setCapsuleRadius(i)`, `get/setCapsuleLength(i)`, `get/setCapsuleOffset(i)`,
+  `get/setCapsuleDirection(i)` (`CapsuleDirection.X_AXIS/Y_AXIS/Z_AXIS`), `fitToSkeleton()` (false:
+  no humanoid bones under the GameObject).
 - `Fog`: rw `type` (`FogType.*`), `color`, `density`, `linearStart`, `linearEnd`. Height fog
   (`type = FogType.HEIGHT`, see `jasper://docs/atmosphere`): rw `colorMode` (`FogColorMode.*`),
   `attenuationDistance`, `baseHeight`, `maximumHeight`, `startDistance`, `maxFogDistance`,
@@ -3091,6 +3104,11 @@ a:setOnComplete(function() Log.print("arrived") end)   -- Once only
 | `MaterialStencilOp` | `KEEP`, `ZERO`, `REPLACE`, `INCR_CLAMP`, `DECR_CLAMP`, `INVERT`, `INCR_WRAP`, `DECR_WRAP` |
 | `MaterialColorWrite` | `AUTO` (-1), `NONE` (0), `R` (1), `G` (2), `B` (4), `A` (8), `RGB` (7), `ALL` (15); any sum of `R`, `G`, `B`, `A` |
 | `ShadowCaster2DShape` | `AUTO_QUAD`, `POLYGON` |
+| `TransparencyMode` | `SORTED`, `ORDER_INDEPENDENT` |
+| `ShadingModel` | `STANDARD`, `HAIR` |
+| `CapsuleCastShadows` | `ON`, `CAPSULES_ONLY` |
+| `CapsuleDirection` | `X_AXIS`, `Y_AXIS`, `Z_AXIS` |
+| `LightMode` | `AUTOMATIC`, `PER_OBJECT`, `TILED` |
 | `ReflectionProbeMode` | `STATIC`, `DYNAMIC` |
 | `ReflectionProbeUpdateMode` | `ON_LOAD`, `ON_MOVE`, `INTERVAL`, `MANUAL` |
 | `FluidOutput` | `SCREEN`, `MATERIAL`, `TEXTURE` (`FluidSimulation.output`) |

@@ -133,6 +133,17 @@ namespace jasperengine{
         ShadowUpdateMode getShadowUpdateMode() const;
         // redraws the light's shadow maps (On Demand lights)
         void requestShadowUpdate();
+
+        // contact shadows (directional and spot lights with shadows): the march's reach and the
+        // surfaces' thickness in metres, its samples (8..16)
+        void setContactShadows(bool contactShadows);
+        bool isContactShadows() const;
+        void setContactShadowLength(float length);
+        float getContactShadowLength() const;
+        void setContactShadowThickness(float thickness);
+        float getContactShadowThickness() const;
+        void setContactShadowSampleCount(int samples);
+        int getContactShadowSampleCount() const;
     };
 }
 

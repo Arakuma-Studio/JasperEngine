@@ -21,6 +21,8 @@
 #include "Project.h"
 #include "render/RenderUtil.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "render/LightingTiers.h"
 #include "render/SystemRender.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/GpuMemory.h"
@@ -199,6 +201,37 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
     };
 }
 
+// the lighting features and their passes (the pass list's "contact shadows" and "oit accumulation")
+Json lightingStatsJson(const RenderSystem::LightingStats& stats, uint32_t tag){
+    Json tiles = {{"active", stats.tiledLights}, {"columns", stats.tileColumns}, {"rows", stats.tileRows}};
+    if (stats.tileStatsValid){
+        tiles["lights"] = stats.tiles.lights;
+        tiles["max_per_tile"] = stats.tiles.maxPerTile;
+        tiles["average_per_tile"] = round3(stats.tiles.averagePerTile);
+        tiles["dropped_from_view"] = stats.tiles.droppedFromView;
+        tiles["dropped_from_tiles"] = stats.tiles.droppedFromTiles;
+    }
+    Json passes = Json::object();
+    const PassList list = SystemRender::getPassList(tag, true);
+    for (const PassRecord& pass : list.passes){
+        const std::string label = pass.label;
+        if (label != "contact shadows" && label != "oit accumulation")
+            continue;
+        std::string key = label;
+        std::replace(key.begin(), key.end(), ' ', '_');
+        passes[key + "_ms"] = pass.gpuValid ? Json(round3(pass.gpuMs)) : Json(nullptr);
+    }
+    return Json{
+        {"light_mode", LightingTiers::getModeName(stats.lightMode)},
+        {"tier", LightingTiers::getTierName(stats.tier)},
+        {"tiles", tiles},
+        {"capsule_shadows", {{"active", stats.capsuleShadows}, {"casters", stats.capsuleCasters}, {"capsules", stats.capsules}}},
+        {"contact_shadows", {{"active", stats.contactShadows}, {"width", stats.contactWidth}, {"height", stats.contactHeight}}},
+        {"oit", {{"active", stats.oit}, {"fallback", stats.oitFallback}, {"draws", stats.oitDraws}}},
+        {"passes", passes},
+    };
+}
+
 void getRenderStatsTool(const CallPtr& call){
     uint32_t tag = FRAME_TAG;
     std::string name;
@@ -216,6 +249,9 @@ void getRenderStatsTool(const CallPtr& call){
                 data["html_ui"] = ui;
             }
         }
+        // S57's lighting: the screen tiles' figures, capsule, contact and OIT, their passes' GPU time
+        if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>())
+            data["lighting"] = lightingStatsJson(render->getLightingStats(), tag);
     }
     std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws, " +
         std::to_string(data["passes"].get<uint32_t>()) + " passes, CPU " + std::to_string(data["cpu_ms"].get<double>()).substr(0, 6) + " ms";

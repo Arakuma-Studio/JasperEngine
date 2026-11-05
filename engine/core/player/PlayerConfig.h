@@ -14,6 +14,7 @@
 #include "navigation/NavTypes.h"
 #include "registry/PhysicsLayers.h"
 #include "render/AtmosphereQuality.h"
+#include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceSettings.h"
@@ -85,6 +86,8 @@ namespace jasperengine::player {
         bool sdfPrimitives = true;
         bool transformAwareText = true;
         PbrTier mobilePbrTier = PbrTier::REDUCED;
+        // Project Settings > Graphics > Light Mode
+        LightMode lightMode = LightMode::AUTOMATIC;
         // per ShadowTiers platform
         std::array<ShadowTier, ShadowTiers::PLATFORM_COUNT> shadowTiers{};
         // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the

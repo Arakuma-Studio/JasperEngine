@@ -11,6 +11,7 @@
 namespace jasperengine{
 
     struct CameraComponent;
+    enum class TransparencyMode : int; // render/OrderIndependentTransparency.h
 
     class JASPERENGINE_API Camera: public GameObject{
 
@@ -121,6 +122,13 @@ namespace jasperengine{
 
         void setTransparentSort(bool transparentSort);
         bool isTransparentSort() const;
+
+        // Sorted, or Order Independent (weighted blended OIT for alpha-blended materials, Sorted
+        // where the device cannot); the OIT depth weight's scale of view distances
+        void setTransparencyMode(TransparencyMode mode);
+        TransparencyMode getTransparencyMode() const;
+        void setOitWeightScale(float scale);
+        float getOitWeightScale() const;
 
         void setDepthTest(bool depthTest);
         bool isDepthTest() const;

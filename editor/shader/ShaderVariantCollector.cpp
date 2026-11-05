@@ -29,6 +29,9 @@
 #include "component/PointsComponent.h"
 #include "component/ReflectionProbeComponent.h"
 #include "component/ShadowCaster2DComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
+#include "component/CameraComponent.h"
+#include "render/LightingTiers.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
@@ -79,6 +82,11 @@ namespace {
         FACT_HEIGHT_FOG      = 1u << 9, // a Fog of type Height (the sky composite)
         FACT_VOLUMETRIC_FOG  = 1u << 10, // its volumetric fog (every mesh gets a depth program)
         FACT_CLOUDS          = 1u << 11, // Volumetric Clouds (every mesh gets a depth program)
+        // S57 (RenderSystem::updateLightingFeatures)
+        FACT_LOCAL_LIGHTS    = 1u << 12, // a point or spot Light (Light Mode Tiled lists them per tile)
+        FACT_CONTACT_LIGHT   = 1u << 13, // a shadowed directional or spot light with contact shadows
+        FACT_CAPSULE_CASTERS = 1u << 14, // Capsule Shadow Casters
+        FACT_OIT_CAMERA      = 1u << 15, // a camera drawing Order Independent
     };
 
     // whether a shader reference reads the scene depth with these features (manifest @require
@@ -123,6 +131,19 @@ namespace {
                 if (light->shadows){
                     facts |= FACT_SHADOW_LIGHTS;
                 }
+                if (light->type != LightType::DIRECTIONAL){
+                    facts |= FACT_LOCAL_LIGHTS;
+                }
+                if (light->shadows && light->contactShadows && light->type != LightType::POINT){
+                    facts |= FACT_CONTACT_LIGHT;
+                }
+            }
+            if (registry->findComponent<CapsuleShadowCasterComponent>(entity)){
+                facts |= FACT_CAPSULE_CASTERS;
+            }
+            if (const CameraComponent* camera = registry->findComponent<CameraComponent>(entity)){
+                if (camera->transparencyMode == TransparencyMode::ORDER_INDEPENDENT)
+                    facts |= FACT_OIT_CAMERA;
             }
             if (const FogComponent* fog = registry->findComponent<FogComponent>(entity)){
                 facts |= FACT_FOG;
@@ -207,6 +228,13 @@ namespace {
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {}) ||
             postProcessReadsDepth(scene);
         environment.litQualityHigh = scene->getLitQuality() == LitQuality::HIGH;
+        // S57: capsule shadows of a scene enabling them; Tiled and contact shadows follow the
+        // device's tier as well (lightingStates adds their other state); OIT a camera asking
+        environment.capsuleShadows = environment.lights && environment.shadows && scene->isCapsuleShadowsEnabled() &&
+                                     (facts & FACT_CAPSULE_CASTERS);
+        environment.contactShadows = environment.lights && environment.shadows && (facts & FACT_CONTACT_LIGHT);
+        environment.tiledLights = environment.lights && (facts & FACT_LOCAL_LIGHTS) && LightingTiers::getLightMode() != LightMode::PER_OBJECT;
+        environment.oit = (facts & FACT_OIT_CAMERA) != 0;
         return environment;
     }
 
@@ -215,7 +243,9 @@ namespace {
             (e.fog ? 16u : 0u) | (e.lights2D ? 32u : 0u) | (e.shadows2D ? 64u : 0u) | (e.ssao ? 128u : 0u) |
             (e.ssr ? 256u : 0u) | (e.depthPrepass ? 512u : 0u) | ((uint32_t)e.lightCapacity << 10) | (e.sceneDepth ? (1u << 20) : 0u) |
             (e.postColor ? (1u << 21) : 0u) | (e.shadowsHQ ? (1u << 22) : 0u) | (e.atmosphereDepth ? (1u << 23) : 0u) |
-            (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u);
+            (e.litQualityHigh ? (1u << 24) : 0u) | (e.pbrTier == PbrTier::REDUCED ? (1u << 25) : 0u) |
+            (e.tiledLights ? (1u << 26) : 0u) | (e.capsuleShadows ? (1u << 27) : 0u) | (e.contactShadows ? (1u << 28) : 0u) |
+            (e.oit ? (1u << 29) : 0u);
     }
 
     // the states of the High shadow filters' variant bit ('Shq', RenderSystem::updateShadowTier)
@@ -306,6 +336,26 @@ namespace {
                 MeshShaderEnvironment other = environments[e];
                 other.litQualityHigh = !other.litQualityHigh;
                 if (distinct.insert(environmentBits(other)).second){
+                    environments.push_back(other);
+                }
+            }
+        }
+        // S57: the device tier decides Light Mode Automatic (Per Object on Low) and contact shadows
+        // (off on Low) at run time, so both states of each ship
+        {
+            const size_t tiered = environments.size();
+            for (size_t e = 0; e < tiered; e++){
+                MeshShaderEnvironment other = environments[e];
+                bool changed = false;
+                if (other.tiledLights && LightingTiers::getLightMode() == LightMode::AUTOMATIC){
+                    other.tiledLights = false;
+                    changed = true;
+                }
+                if (other.contactShadows){
+                    other.contactShadows = false;
+                    changed = true;
+                }
+                if (changed && distinct.insert(environmentBits(other)).second){
                     environments.push_back(other);
                 }
             }
@@ -641,6 +691,12 @@ namespace {
                     const uint16_t meshShaderId = ShaderPool::registerCustomShader(
                         RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines));
                     insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
+                    // the OIT render of an alpha-blended submesh (RenderSystem::loadSubmeshOit): its
+                    // material's blend decides at load, so any that may blend
+                    if (environment.oit && !hasPass && !terrain &&
+                            (submesh.material.blendMode == MaterialBlendMode::ALPHA || submesh.material.blendMode == MaterialBlendMode::AUTO)){
+                        insertKeys(ShaderType::MESH, variant.properties | ShaderPool::getLightingProperty(ShaderPool::LightingFeature::OIT), meshShaderId);
+                    }
                     if (variant.depth){
                         insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
                     }
@@ -1188,6 +1244,13 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     if (scene->isSSAOEnabled()){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSAO, 0));
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSAO_BLUR, 0));
+    }
+    // S57's passes: the contact shadows' mask, the OIT resolve
+    if (allFacts & FACT_CONTACT_LIGHT){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::LIGHTING_PASS, 0));
+    }
+    if (allFacts & FACT_OIT_CAMERA){
+        keys.insert(ShaderPool::getShaderKey(ShaderType::LIGHTING_PASS, 1));
     }
     if (scene->isSSREnabled()){
         keys.insert(ShaderPool::getShaderKey(ShaderType::SSR, 0));

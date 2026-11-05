@@ -88,6 +88,14 @@ void SokolCamera::setColorActions(LoadAction load, StoreAction store, Vector4 cl
     pass.action.colors[0].clear_value = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 }
 
+void SokolCamera::setColorActions(int attachment, LoadAction load, StoreAction store, Vector4 clearColor){
+    if (attachment < 0 || attachment >= SG_MAX_COLOR_ATTACHMENTS)
+        return;
+    pass.action.colors[attachment].load_action = toLoadAction(load);
+    pass.action.colors[attachment].store_action = toStoreAction(store);
+    pass.action.colors[attachment].clear_value = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+}
+
 void SokolCamera::setDepthStencilActions(LoadAction load, StoreAction store, float clearDepth, uint8_t clearStencil){
     // depth and stencil always alike: Metal takes the stencil store action from depth
     pass.action.depth.load_action = toLoadAction(load);

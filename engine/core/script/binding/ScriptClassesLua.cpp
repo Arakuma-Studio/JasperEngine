@@ -268,6 +268,7 @@ namespace {
             {"Light", hasComponent<LightComponent>()},
             {"Light2D", hasComponent<Light2DComponent>()},
             {"ShadowCaster2D", hasComponent<ShadowCaster2DComponent>()},
+            {"CapsuleShadowCaster", hasComponent<CapsuleShadowCasterComponent>()},
             {"Mesh", hasComponent<MeshComponent>()},
             {"Model", hasComponent<ModelComponent>()},
             {"Sprite", hasComponent<SpriteComponent>()},
