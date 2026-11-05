@@ -20,7 +20,9 @@
 
 using namespace jasperengine;
 
-#if JASPERENGINE_SOUND_LAYER && !defined(DISABLE_LUA_BINDINGS)
+// a condition of its own: the Lua API description reads the module from this line alone (S34 R5)
+#if JASPERENGINE_SOUND_LAYER
+#ifndef DISABLE_LUA_BINDINGS
 namespace {
 
     bool audioOptNumber(lua_State* L, int index, const char* field, float& out) {
@@ -106,9 +108,12 @@ namespace {
 
 }
 #endif
+#endif
 
 void LuaBinding::registerAudioClasses(lua_State* L) {
-#if JASPERENGINE_SOUND_LAYER && !defined(DISABLE_LUA_BINDINGS)
+    (void)L;
+#if JASPERENGINE_SOUND_LAYER
+#ifndef DISABLE_LUA_BINDINGS
     luabridge::getGlobalNamespace(L)
         .beginNamespace("AudioPlayOn")
         .addVariable("UIClick", AudioPlayOn::AudioPlayOn_UIClick)
@@ -143,7 +148,6 @@ void LuaBinding::registerAudioClasses(lua_State* L) {
         .addStaticFunction("play", &luaAudioTablePlay)
         .addStaticFunction("stopAll", &luaAudioTableStopAll)
         .endClass();
-#else
-    (void)L;
+#endif
 #endif
 }

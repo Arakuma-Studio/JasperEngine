@@ -114,7 +114,7 @@ ENGINE_AREAS = [(re.compile(p, re.I), g) for p, g in [
     (r"terrain|foliage", "engine: terrain"),
     (r"physics|body|joint|collider|character|buoyan|raycast", "engine: physics"),
     (r"video|webm", "engine: video"),
-    (r"soundevent|soundhandle|audioclipsource|audioimport|audio::play|audio::stopall", "engine: sound layer"),
+    (r"soundevent|soundhandle|triggersink|audiosystem::startevent|audiosystem::startmainevent|audio::play|audio::stopall", "engine: sound layer"),
     (r"audio|sound", "engine: audio"),
     (r"lua|script", "engine: Lua and scripts"),
     (r"shader|sokol|render|texture|framebuffer|material|light|shadow|camera|sky|postprocess|uber|gpu|draw", "engine: rendering"),
