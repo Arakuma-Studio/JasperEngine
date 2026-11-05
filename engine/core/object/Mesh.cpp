@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "Mesh.h"
+#include "component/Transform.h"
+#include "component/MeshComponent.h"
 #include "render/ObjectRender.h"
 #include "util/Color.h"
 #include "Log.h"
 #include "component/MirrorComponent.h"
+#include "render/LodFade.h"
 #include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -564,6 +567,62 @@ void Mesh::setLodBias(float lodBias){
 
 float Mesh::getLodBias() const{
     return getFirstMesh().mesh->lodBias;
+}
+
+void Mesh::setAllowGpuInstancing(bool allow){
+    // its batch variants are loaded with it
+    setOnAll(getTargetMeshes(), &MeshComponent::allowGpuInstancing, allow, true);
+}
+
+bool Mesh::isAllowGpuInstancing() const{
+    return getFirstMesh().mesh->allowGpuInstancing;
+}
+
+void Mesh::setLodFadeMode(LodFadeMode mode){
+    // a mesh that may fade loads its fade shaders (RenderSystem::prepareLodFade)
+    setOnAll(getTargetMeshes(), &MeshComponent::lodFadeMode, mode, true);
+}
+
+LodFadeMode Mesh::getLodFadeMode() const{
+    return getFirstMesh().mesh->lodFadeMode;
+}
+
+void Mesh::setLodAnimateCrossFading(bool animate){
+    setOnAll(getTargetMeshes(), &MeshComponent::lodAnimateCrossFading, animate, false);
+}
+
+bool Mesh::isLodAnimateCrossFading() const{
+    return getFirstMesh().mesh->lodAnimateCrossFading;
+}
+
+void Mesh::setLodFadeTransitionWidth(float width){
+    if (std::isfinite(width))
+        setOnAll(getTargetMeshes(), &MeshComponent::lodFadeTransitionWidth, std::clamp(width, 0.0f, 1.0f), false);
+}
+
+float Mesh::getLodFadeTransitionWidth() const{
+    return getFirstMesh().mesh->lodFadeTransitionWidth;
+}
+
+void Mesh::setLodCullBelow(float share){
+    if (std::isfinite(share))
+        setOnAll(getTargetMeshes(), &MeshComponent::lodCullBelow, std::clamp(share, 0.0f, 1.0f), false);
+}
+
+float Mesh::getLodCullBelow() const{
+    return getFirstMesh().mesh->lodCullBelow;
+}
+
+void Mesh::forceLod(int level){
+    setOnAll(getTargetMeshes(), &MeshComponent::lodForced, std::clamp(level, -1, MAX_MESH_LODS - 1), false);
+}
+
+int Mesh::getForcedLod() const{
+    return getFirstMesh().mesh->lodForced;
+}
+
+int Mesh::getCurrentLod() const{
+    return getFirstMesh().mesh->lodFade.plan.dominant();
 }
 
 void Mesh::setReceiveShadows(bool receiveShadows){

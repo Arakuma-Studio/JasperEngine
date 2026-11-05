@@ -1,0 +1,194 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 17df2eb89ad2085f
+--- 0
+preset: stormy
+rendering: auto
+coverage: -68
+density: 2142.6
+shapeScale: -0.44654828
+shapeFactor: 60
+erosionFactor: .nan
+erosionScale: 33
+bottomAltitude: -0.9442214
+altitudeRange: 106.71429
+earthCurvature: 17
+windDirection: 58.142857
+windSpeed: -2
+weatherMap:
+  textureType: 2D
+  source: path
+  path: sounds/hit.wav
+  minFilter: nearest
+  magFilter: linear
+  wrapU: repeat
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+weatherMapScale: 3e+38
+sunLightDimmer: 1e-45
+ambientLightDimmer: .inf
+maxDistance: 3e+38
+qualityOverride: project
+--- 1
+preset: cloudy
+rendering: sky_map
+coverage: 62.857143
+density: 4748.094
+shapeScale: .inf
+shapeFactor: 22
+erosionFactor: 1e-45
+erosionScale: -0.093876824
+bottomAltitude: -.inf
+altitudeRange: 0.03598764
+earthCurvature: 7759.5283
+windDirection: -0
+windSpeed: 7677.4263
+weatherMap:
+  textureType: 2D
+  source: path
+  path: textures/a.png
+  minFilter: linear_mipmap_nearest
+  magFilter: linear
+  wrapU: repeat
+  wrapV: clamp_to_border
+  releaseDataAfterLoad: true
+weatherMapScale: 1810.0806
+sunLightDimmer: -4
+ambientLightDimmer: 785.9539
+maxDistance: 0.7748812
+qualityOverride: medium
+--- 2
+preset: sparse
+rendering: sky_map
+coverage: 122
+density: 7021.796
+shapeScale: 83
+shapeFactor: -32
+erosionFactor: 3e+38
+erosionScale: -0
+bottomAltitude: .nan
+altitudeRange: 0.99520254
+earthCurvature: 108.42857
+windDirection: -29
+windSpeed: .nan
+weatherMap:
+  textureType: 2D
+  source: path
+  path: a b/c.png
+  minFilter: linear
+  magFilter: nearest
+  wrapU: clamp_to_border
+  wrapV: repeat
+  releaseDataAfterLoad: true
+weatherMapScale: -0
+sunLightDimmer: -42
+ambientLightDimmer: 10
+maxDistance: 17.571428
+qualityOverride: medium
+--- 3
+preset: stormy
+rendering: screen
+coverage: 0.49440598
+density: -86.14286
+shapeScale: 3e+38
+shapeFactor: -0.97289205
+erosionFactor: .nan
+erosionScale: 1e-45
+bottomAltitude: 0.5060835
+altitudeRange: 0.4877851
+earthCurvature: -.inf
+windDirection: -72.28571
+windSpeed: 0.8573492
+weatherMap: ~
+weatherMapScale: 1417.0654
+sunLightDimmer: 1e-45
+ambientLightDimmer: 76
+maxDistance: -123
+qualityOverride: medium
+--- 4
+preset: sparse
+rendering: screen
+coverage: 5905.4907
+density: 6081.097
+shapeScale: 0.76770985
+shapeFactor: 524.0001
+erosionFactor: .inf
+erosionScale: 41
+bottomAltitude: -100
+altitudeRange: 0.14975919
+earthCurvature: -0.7000032
+windDirection: 1e-45
+windSpeed: -128.14285
+weatherMap: ~
+weatherMapScale: 62
+sunLightDimmer: -26.285715
+ambientLightDimmer: 0.27267894
+maxDistance: -0
+qualityOverride: medium
+--- 5
+preset: stormy
+rendering: auto
+coverage: 4254.384
+density: .nan
+shapeScale: 9088.564
+shapeFactor: -29
+erosionFactor: 5910.9497
+erosionScale: -0
+bottomAltitude: -.inf
+altitudeRange: 0.08343638
+earthCurvature: -13
+windDirection: 919.7831
+windSpeed: 6
+weatherMap: ~
+weatherMapScale: .nan
+sunLightDimmer: .inf
+ambientLightDimmer: 83.42857
+maxDistance: 0.037799843
+qualityOverride: project
+--- 6
+preset: cloudy
+rendering: screen
+coverage: .nan
+density: 63
+shapeScale: -0.65417707
+shapeFactor: -135
+erosionFactor: 3e+38
+erosionScale: -0.95088625
+bottomAltitude: -0.31957996
+altitudeRange: -.inf
+earthCurvature: -30
+windDirection: 5095.023
+windSpeed: -93.85714
+weatherMap: ~
+weatherMapScale: 1e-45
+sunLightDimmer: 4843.059
+ambientLightDimmer: -0.8293863
+maxDistance: 3e+38
+qualityOverride: low
+--- 7
+preset: stormy
+rendering: screen
+coverage: -121.42857
+density: 0.5945837
+shapeScale: -44
+shapeFactor: 1553.2076
+erosionFactor: 92.14286
+erosionScale: .nan
+bottomAltitude: 0.36843672
+altitudeRange: 1e-45
+earthCurvature: 0.028994273
+windDirection: 3e+38
+windSpeed: .nan
+weatherMap:
+  textureType: 2D
+  source: path
+  path: ui/menu.html
+  minFilter: nearest
+  magFilter: nearest
+  wrapU: mirrored_repeat
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+weatherMapScale: -.inf
+sunLightDimmer: 3e+38
+ambientLightDimmer: 93
+maxDistance: -51.285713
+qualityOverride: low

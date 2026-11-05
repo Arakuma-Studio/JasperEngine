@@ -11,6 +11,7 @@
 // Logger's other sinks.
 
 #include <gtest/gtest.h>
+#include "jobs/JobStats.h"
 
 #include "ScriptDataTestSupport.h"
 

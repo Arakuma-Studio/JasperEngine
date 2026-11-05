@@ -14,6 +14,7 @@
 #include "math/Quaternion.h"
 #include "math/Matrix4.h"
 #include "subsystem/MeshSystem.h"
+#include "component/MeshComponent.h"
 #include "yaml-cpp/yaml.h"
 
 #include <atomic>
@@ -127,6 +128,11 @@ namespace jasperengine::editor{
             ShaderRef customDepthShader;
             bool renderInReflectionProbes = true;
             bool shadowsBillboard = false;
+            bool allowGpuInstancing = false;
+            LodFadeMode lodFadeMode = LodFadeMode();
+            bool lodAnimateCrossFading = false;
+            float lodFadeTransitionWidth = 0.0f;
+            float lodCullBelow = 0.0f;
             ShaderUniformValues shaderUniforms;
         };
         std::vector<PartMeshSettings> savedPartSettings;

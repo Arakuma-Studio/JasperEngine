@@ -49,6 +49,9 @@ namespace jasperengine::editor::ui {
         EditPhase consume(ImGuiID id, Gradient& gradient);
         void close();
 
+        // the window has the keyboard focus (App: its claim on the edit commands: it has no keys)
+        bool isFocused() const { return target != 0 && windowFocused; }
+
     private:
         GradientWindow() = default;
 
@@ -59,6 +62,7 @@ namespace jasperengine::editor::ui {
         std::string title;
         Gradient gradient;
         bool focusOnOpen = false;
+        bool windowFocused = false;
         int lastSeenFrame = -1;
         CommandHistory* history = nullptr;
         std::string stepName;

@@ -3,6 +3,7 @@
 
 // W4: Lua/C++ scripts, compile check, code editor sync
 #include "camera/ShakePreset.h"
+#include "io/watch/LinkedFolders.h"
 #include "media/VideoFormats.h"
 #include "McpTools.h"
 #include "DocumentFile.h"
@@ -214,7 +215,7 @@ std::map<std::string, FileStamp> scanProject(Project* project) {
     std::map<std::string, FileStamp> files;
     const fs::path root = project->getProjectPath();
     std::error_code ec;
-    for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+    for (watch::LinkedDirectoryIterator it(root, fs::directory_options::skip_permission_denied, ec), end;
          it != end && !ec; it.increment(ec)) {
         if (it->is_directory(ec)) {
             if (ProjectChecks::isSkippedDir(it->path())) it.disable_recursion_pending();

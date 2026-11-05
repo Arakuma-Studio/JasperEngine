@@ -24,6 +24,7 @@
 #pragma once
 
 #include "window/AnimationWindowClip.h"
+#include "component/Transform.h"
 #include "window/AnimationWindowClipUtil.h"
 #include "window/AnimationWindowClipCurves.h"
 #include "window/AnimationWindow.h"

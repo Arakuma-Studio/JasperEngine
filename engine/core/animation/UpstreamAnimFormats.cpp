@@ -119,22 +119,6 @@ namespace{
         }
     }
 
-    // the kept members as `, "key": value` (compact, the last of a repeated name)
-    template<size_t N>
-    std::string keptText(const KeptKeys& kept, const char* const (&keys)[N]){
-        std::string text;
-        for (size_t i = 0; i < kept.size(); i++){
-            if (known(keys, kept[i].first)) continue;
-            bool repeated = false;
-            for (size_t j = i + 1; j < kept.size(); j++){
-                if (kept[j].first == kept[i].first) repeated = true;
-            }
-            if (repeated) continue;
-            text += ", " + quote(kept[i].first) + ": " + (kept[i].second.empty() ? std::string("null") : kept[i].second);
-        }
-        return text;
-    }
-
     bool readString(const OJson& object, const char* key, std::string& out, const std::string& path, std::vector<ClipWarning>& warnings){
         auto it = object.find(key);
         if (it == object.end()) return false;

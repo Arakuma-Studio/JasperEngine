@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 #include "ModelLoadCmd.h"
+#include "component/BoneComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "sceneview/SurfacePlacement.h"
 
 #include "Stream.h"
@@ -287,6 +290,11 @@ namespace {
         to.customDepthShader = from.customDepthShader;
         to.renderInReflectionProbes = from.renderInReflectionProbes;
         to.shadowsBillboard = from.shadowsBillboard;
+        to.allowGpuInstancing = from.allowGpuInstancing;
+        to.lodFadeMode = from.lodFadeMode;
+        to.lodAnimateCrossFading = from.lodAnimateCrossFading;
+        to.lodFadeTransitionWidth = from.lodFadeTransitionWidth;
+        to.lodCullBelow = from.lodCullBelow;
         to.shaderUniforms = from.shaderUniforms;
     }
 }

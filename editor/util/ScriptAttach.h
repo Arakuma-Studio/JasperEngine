@@ -4,13 +4,17 @@
 #ifndef SCRIPTATTACH_H
 #define SCRIPTATTACH_H
 
-#include "component/ScriptComponent.h"
 #include "ecs/Entity.h"
 
 #include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
+
+namespace jasperengine {
+    enum class ScriptType;
+    struct ScriptEntry;
+}
 
 namespace jasperengine::editor {
 
@@ -19,7 +23,7 @@ namespace jasperengine::editor {
 
     // A script file of the project that can go on a GameObject
     struct ScriptCandidate {
-        ScriptType type = ScriptType::LUA;
+        ScriptType type{};             // set by findProjectScripts
         std::string name;               // Lua: the file name; C++: the class
         std::filesystem::path file;     // absolute: the .lua, or the C++ header
         std::filesystem::path source;   // C++: the .cpp beside the header

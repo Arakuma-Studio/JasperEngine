@@ -3,6 +3,8 @@
 
 #include "ScriptAttach.h"
 
+#include "component/ScriptComponent.h"
+
 #include "Out.h"
 #include "Project.h"
 #include "command/CommandHandle.h"

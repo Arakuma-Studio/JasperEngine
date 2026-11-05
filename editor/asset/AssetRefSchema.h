@@ -2,15 +2,18 @@
 // SPDX-License-Identifier: MIT
 
 // Every asset-reference field the editor knows, in one table: component, YAML key path,
-// expected asset type, path root, edge kind, and the accessor that reaches the field in
-// memory. Two consumers share it:
+// expected asset type, path root and edge kind. The component rows are generated from the
+// reflection tables (editor/reflect), and so is the walk that reaches their fields in memory;
+// materials, scene settings, scene file lists and project.yaml are small explicit lists here.
+// A new reference field of a component is only its field in the component's table: its type
+// (Texture, ShaderRef, AssetRef, FontArray, a list of them) or its .asset says the rest, and its
+// updateFlags are what a moved file reloads. AssetRefSchemaFrozen holds the rows of the hand
+// table this replaced. Two consumers share it:
 //   - forEachAssetRef walks references in memory (loaded scenes, prefab registries,
 //     materials) for resolution, rename hint refreshes, Find References of unsaved edits,
 //     the Missing Assets tracker and export;
 //   - the closed-file extractor walks the same fields in a scene, prefab, material or
 //     project.yaml file's YAML, so the dependency index covers files nobody has open.
-// A new reference field must be added here, or AssetRefSchema.CoversAllFields fails.
-// S08 replaces the hand-written table with one generated from reflection.
 
 #pragma once
 
@@ -30,6 +33,10 @@ namespace jasperengine {
     class EntityRegistry;
     class Scene;
     struct Material;
+}
+
+namespace jasperengine::editor::reflect {
+    struct ComponentDesc;
 }
 
 namespace jasperengine::editor {
@@ -68,6 +75,7 @@ namespace jasperengine::editor {
         AssetPathBase base;
         DepEdgeKind kind;             // SceneComponent for plain component fields (PrefabComponent inside prefabs)
         bool legacy = false;          // a key only old files have: read, never written
+        bool modelOrPrefab = false;   // expected by the path's extension (a spline pool's entry)
     };
 
     // One reference, as a visitor sees it
@@ -103,6 +111,8 @@ namespace jasperengine::editor {
     class AssetRefSchema {
     public:
         static const std::vector<AssetRefField>& fields();
+        // The rows generated for one component table
+        static std::vector<AssetRefField> fieldsOf(const reflect::ComponentDesc& desc);
         // The rows of a material, relative to the material node (submesh materials and .material files)
         static const std::vector<AssetRefField>& materialFields();
         // Scene settings, scene file lists and project.yaml rows

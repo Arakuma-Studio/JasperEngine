@@ -3137,6 +3137,7 @@ ENGINE_EVENT_ARGS = {
 # Handler arguments of other classes' event fields, by (class, field)
 EVENT_FIELD_ARGS = {
     ('Log', 'onMessageReceived'): ['message', 'stackTrace', 'level'],
+    ('Device', 'onThermalStateChanged'): ['state'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',

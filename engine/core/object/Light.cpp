@@ -460,6 +460,40 @@ void Light::requestShadowUpdate(){
     getComponent<LightComponent>().shadowUpdateRequested = true;
 }
 
+void Light::setContactShadows(bool contactShadows){
+    getComponent<LightComponent>().contactShadows = contactShadows;
+}
+
+bool Light::isContactShadows() const{
+    return getComponent<LightComponent>().contactShadows;
+}
+
+void Light::setContactShadowLength(float length){
+    if (std::isfinite(length))
+        getComponent<LightComponent>().contactShadowLength = std::max(length, 0.0f);
+}
+
+float Light::getContactShadowLength() const{
+    return getComponent<LightComponent>().contactShadowLength;
+}
+
+void Light::setContactShadowThickness(float thickness){
+    if (std::isfinite(thickness))
+        getComponent<LightComponent>().contactShadowThickness = std::max(thickness, 0.0f);
+}
+
+float Light::getContactShadowThickness() const{
+    return getComponent<LightComponent>().contactShadowThickness;
+}
+
+void Light::setContactShadowSampleCount(int samples){
+    getComponent<LightComponent>().contactShadowSampleCount = std::clamp(samples, 8, 16);
+}
+
+int Light::getContactShadowSampleCount() const{
+    return getComponent<LightComponent>().contactShadowSampleCount;
+}
+
 void Light::setEnabled(bool enabled){
     getComponent<LightComponent>().enabled = enabled;
 }

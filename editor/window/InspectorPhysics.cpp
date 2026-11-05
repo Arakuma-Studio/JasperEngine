@@ -5,6 +5,7 @@
 // draw them: per-collider-type rows, shape previews, body-picking rows).
 
 #include "InspectorWindow.h"
+#include "object/physics/Joint3D.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "command/PlayChangeReview.h"

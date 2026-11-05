@@ -2,6 +2,27 @@
 // SPDX-License-Identifier: MIT
 
 #include "ProjectUtils.h"
+#include "component/AlphaTweenComponent.h"
+#include "component/ColorTweenComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/LatticeComponent.h"
+#include "component/LatticeTracksComponent.h"
+#include "component/Light2DComponent.h"
+#include "component/MirrorComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/PositionTweenComponent.h"
+#include "component/RagdollComponent.h"
+#include "component/ReflectionProbeComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/RotationTweenComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/ScaleTweenComponent.h"
+#include "component/SpriteAnimationComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/TweenComponent.h"
+#include "component/ScriptComponent.h"
+#include "component/TrailRendererComponent.h"
+#include "component/OnScreenControlComponents.h"
 #include "reflect/Reflect.h"
 #include "io/AtomicFile.h"
 
@@ -34,6 +55,7 @@
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/UIDocumentComponent.h"
 #include "component/FluidSimulationComponent.h"
@@ -1915,6 +1937,7 @@ editor::ProjectUtils::EntityClassInfo editor::ProjectUtils::getEntityClassInfo(S
     if (signature.test(scene->getComponentId<TrailRendererComponent>())) return objectClass("TrailRenderer");
     if (signature.test(scene->getComponentId<Light2DComponent>()))     return objectClass("Light2D");
     if (signature.test(scene->getComponentId<ShadowCaster2DComponent>()))  return objectClass("ShadowCaster2D");
+    if (signature.test(scene->getComponentId<CapsuleShadowCasterComponent>())) return objectClass("CapsuleShadowCaster");
     if (signature.test(scene->getComponentId<LightComponent>()))       return objectClass("Light");
     if (signature.test(scene->getComponentId<CameraComponent>()))      return objectClass("Camera");
     if (signature.test(scene->getComponentId<ReflectionProbeComponent>())) return objectClass("ReflectionProbe");
