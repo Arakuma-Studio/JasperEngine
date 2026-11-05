@@ -840,7 +840,7 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
         item["pitch"] = {{"hz", hz}, {"confidence", rounded(confidence, 0.001)}};
     }
 
-    item["measured_kind"] = measuredKind(item, duration);
+    // the meter's fields first: the classification reads them
     if (meterThread.joinable()) meterThread.join();
     const LoudnessResult r = meter.result();
 
@@ -877,6 +877,8 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
     for (float v : meter.shortTermCurve()) shortTerm.push_back(rounded(v, 0.01));
     item["momentary"] = momentary;
     item["short_term"] = shortTerm;
+
+    item["measured_kind"] = measuredKind(item, duration);
 
     return item;
 }
