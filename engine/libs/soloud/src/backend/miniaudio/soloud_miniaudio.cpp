@@ -25,6 +25,11 @@ distribution.
 
 #include "soloud.h"
 
+// JasperEngine patch: TARGET_OS_IOS
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 #if !defined(WITH_MINIAUDIO)
 
 namespace SoLoud
@@ -57,7 +62,9 @@ namespace SoLoud
     }
 
     // JasperEngine patch: the iOS session category (Soloud::mIosSessionCategory), which miniaudio takes
-    // from a context. 0 leaves miniaudio its own default, and no context of ours.
+    // from a context. 0 leaves miniaudio its own default, and no context of ours. iOS only: elsewhere
+    // no player pays for it.
+#if defined(__APPLE__) && TARGET_OS_IOS
     static ma_context gContext;
     static bool gContextInited = false;
 
@@ -75,15 +82,23 @@ namespace SoLoud
         return &gContext;
     }
 
-    static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
+    static void soloud_miniaudio_uninit_context()
     {
-        ma_device_uninit(&gDevice);
-        // JasperEngine patch
         if (gContextInited)
         {
             ma_context_uninit(&gContext);
             gContextInited = false;
         }
+    }
+#else
+    static ma_context *soloud_miniaudio_context(unsigned int) { return NULL; }
+    static void soloud_miniaudio_uninit_context() {}
+#endif
+
+    static void soloud_miniaudio_deinit(SoLoud::Soloud *aSoloud)
+    {
+        ma_device_uninit(&gDevice);
+        soloud_miniaudio_uninit_context(); // JasperEngine patch
     }
 
     result miniaudio_init(SoLoud::Soloud *aSoloud, unsigned int aFlags, unsigned int aSamplerate, unsigned int aBuffer, unsigned int aChannels)
@@ -99,12 +114,7 @@ namespace SoLoud
         // JasperEngine patch: a context when the session category asks for one
         if (ma_device_init(soloud_miniaudio_context(aSoloud->mIosSessionCategory), &config, &gDevice) != MA_SUCCESS)
         {
-            // JasperEngine patch
-            if (gContextInited)
-            {
-                ma_context_uninit(&gContext);
-                gContextInited = false;
-            }
+            soloud_miniaudio_uninit_context(); // JasperEngine patch
             return UNKNOWN_ERROR;
         }
 

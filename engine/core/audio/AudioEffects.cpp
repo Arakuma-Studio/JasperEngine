@@ -302,6 +302,19 @@ namespace {
             recentCount = std::min(recentCount + 1, capacity);
         }
 
+        // frames [from, to) of the buffer pass as they are; a start replays the last of them
+        void keepDirect(const float* buffer, unsigned int from, unsigned int to, unsigned int bufferSize, unsigned int channels) {
+            float input[8];
+            for (unsigned int i = to - from > capacity ? to - capacity : from; i < to; i++) {
+                for (unsigned int c = 0; c < channels; c++) {
+                    const float x = buffer[i + c * bufferSize];
+                    input[c] = std::isfinite(x) ? x : 0.0f;
+                }
+                remember(input, channels);
+            }
+        }
+
+        // (out of the audio loop, and of its caller's inlining: called from three places)
         void publishReduction(double smallestGain, unsigned int samples) {
             const float db = smallestGain < 1.0 ? (float)(-20.0 * std::log10(std::max(smallestGain, 1e-6))) : 0.0f;
             readoutDb[readoutNext] = db;
@@ -378,15 +391,7 @@ namespace {
             const bool limiting = withDelay && mParam[LimiterFilter::BYPASS] < 0.5f;
             if (!limiting && !running) {
                 // bypassed: the signal as it is, kept for a start
-                float input[8];
-                const unsigned int kept = std::min(channels, 8u);
-                for (unsigned int i = samples > capacity ? samples - capacity : 0; i < samples; i++) {
-                    for (unsigned int c = 0; c < kept; c++) {
-                        const float x = buffer[i + c * bufferSize];
-                        input[c] = std::isfinite(x) ? x : 0.0f;
-                    }
-                    remember(input, kept);
-                }
+                keepDirect(buffer, 0, samples, bufferSize, std::min(channels, 8u));
                 started = true;
                 publishReduction(1.0, samples);
                 return;
@@ -429,13 +434,7 @@ namespace {
                     if (fadePosition == 0) {
                         // the fade out ended: the rest of the block is direct
                         running = false;
-                        for (unsigned int k = i; k < samples; k++) {
-                            for (unsigned int c = 0; c < active; c++) {
-                                const float x = buffer[k + c * bufferSize];
-                                input[c] = std::isfinite(x) ? x : 0.0f;
-                            }
-                            remember(input, active);
-                        }
+                        keepDirect(buffer, i, samples, bufferSize, active);
                         break;
                     }
                     fadePosition--;

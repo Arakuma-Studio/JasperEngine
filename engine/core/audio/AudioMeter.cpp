@@ -238,15 +238,17 @@ void AudioSpectrumBands::init(unsigned int rate, unsigned int channelCount){
     while (size < rate / 3) {
         size *= 2;
     }
+    overlap = size / 8;
     input.assign(size * channels, 0.0f);
-    // a sine window at half overlap: its squares add up to 1, so that the windows hold the signal's
-    // energy exactly. The first half of the first window is silence.
-    fill = size / 2;
+    // The first window's taper holds silence. A taper's square and the next window's add up to 1.
+    fill = overlap;
     pending = 0;
     windows = 0;
-    window.resize(size);
-    for (size_t i = 0; i < size; i++) {
-        window[i] = (float)std::sin(METER_PI * ((double)i + 0.5) / (double)size);
+    window.assign(size, 1.0f);
+    for (size_t i = 0; i < overlap; i++) {
+        const float taper = (float)std::sin(METER_PI * ((double)i + 0.5) / (double)(2 * overlap));
+        window[i] = taper;
+        window[size - 1 - i] = taper;
     }
     twiddleRe.resize(size / 2);
     twiddleIm.resize(size / 2);
@@ -336,16 +338,16 @@ void AudioSpectrumBands::process(const float* planar, size_t stride, size_t fram
 void AudioSpectrumBands::advanceWindow(){
     for (unsigned int c = 0; c < channels; c++) {
         float* line = input.data() + c * size;
-        std::copy(line + size / 2, line + size, line);
+        std::copy(line + size - overlap, line + size, line);
     }
-    fill = size / 2;
+    fill = overlap;
 }
 
 void AudioSpectrumBands::finish(){
-    // silence up to the end of this window, and of the next one for what is in its second half: every
-    // sample goes through its two windows
-    const bool secondHalf = pending > 0;
-    for (int i = 0; i < (secondHalf ? 2 : 1); i++) {
+    // silence up to the end of this window, and the next one for what reached the taper: every sample
+    // goes through all the windows it is in
+    const int remaining = pending > 0 ? 2 : 1;
+    for (int i = 0; i < remaining; i++) {
         for (unsigned int c = 0; c < channels; c++) {
             std::fill(input.data() + c * size + fill, input.data() + (size_t)(c + 1) * size, 0.0f);
         }
@@ -356,7 +358,7 @@ void AudioSpectrumBands::finish(){
 }
 
 uint64_t AudioSpectrumBands::windowedFrames() const{
-    return windows * (uint64_t)(size / 2);
+    return windows * (uint64_t)(size - overlap);
 }
 
 static double eighthPower(double x){
@@ -529,23 +531,35 @@ void AudioMeter::processRun(size_t frames, bool padding){
         }
 
         if (!padding) {
-            double channelPeak = peak;
-            double sum = 0.0;
-            double squares = 0.0;
-            uint64_t over = 0;
-            for (size_t i = 0; i < frames; i++) {
-                const double x = weighted[i];
-                const double magnitude = std::fabs(x);
-                channelPeak = std::max(channelPeak, magnitude);
-                over += magnitude >= CLIP_LEVEL ? 1 : 0;
-                sum += x;
-                squares += x * x;
+            double sum[4] = {};
+            double squares[4] = {};
+            size_t i = 0;
+            // in four lanes, which vectorize; one running sum waits for its last result on every sample
+            for (; i + 4 <= frames; i += 4) {
+                for (int lane = 0; lane < 4; lane++) {
+                    sum[lane] += weighted[i + lane];
+                    squares[lane] += weighted[i + lane] * weighted[i + lane];
+                }
             }
-            peak = channelPeak;
+            for (; i < frames; i++) {
+                sum[0] += weighted[i];
+                squares[0] += weighted[i] * weighted[i];
+            }
+            uint32_t over = 0;
+            for (size_t k = 0; k < frames; k++) {
+                over += std::fabs(samples[k]) >= (float)CLIP_LEVEL ? 1u : 0u;
+            }
             clipped += over;
-            channel.sum += sum;
-            channel.energy += squares;
-            truePeak = std::max(truePeak, (double)truePeakFilter.processChannel(c, samples, frames, (float)truePeak));
+            channel.sum += sum[0] + sum[1] + sum[2] + sum[3];
+            channel.energy += squares[0] + squares[1] + squares[2] + squares[3];
+            float largest = (float)peak;
+            for (size_t k = 0; k < frames; k++) {
+                if (std::fabs(samples[k]) > largest) {
+                    largest = std::fabs(samples[k]);
+                }
+            }
+            peak = largest;
+            truePeak = std::max(truePeak, std::max((double)largest, (double)truePeakFilter.processChannel(c, samples, frames, (float)truePeak)));
         }
     }
 

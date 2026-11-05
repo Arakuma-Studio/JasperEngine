@@ -77,8 +77,9 @@ namespace jasperengine{
     };
 
     // The same bands from a signal's power spectrum, what AudioMeter measures them with: a short-time
-    // FFT with windows that keep the signal's energy, read at the filters' magnitudes. Their levels
-    // agree within 0.3 dB; only what rings in a transient differs.
+    // FFT read at the filters' magnitudes, its windows overlapping by an eighth with tapers whose powers
+    // add up to 1, so that they keep the signal's energy and each sample costs little more than one
+    // transform. Their levels agree within 0.3 dB; only what rings in a transient differs.
     class JASPERENGINE_API AudioSpectrumBands{
     public:
         static constexpr int BANDS = AudioOctaveBank::BANDS;
@@ -97,8 +98,9 @@ namespace jasperengine{
         unsigned int sampleRate = 0;
         unsigned int channels = 0;
         size_t size = 0;
+        size_t overlap = 0;
         size_t fill = 0;
-        // frames in the second half of the window being filled
+        // frames added since the last window
         size_t pending = 0;
         uint64_t windows = 0;
         // per channel: `size` samples, oldest first
