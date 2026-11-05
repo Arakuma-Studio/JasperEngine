@@ -15,6 +15,8 @@ from harness import Editor, skip
 from htmlui_pixels import Shot
 
 EDITOR = {"create": True, "name": "Canvas Group"}
+CI_EXCLUDED = ("long-running (about 40 minutes on a loaded server: a test builds and runs a real Desktop player); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 
 TIMEOUT = 900
 

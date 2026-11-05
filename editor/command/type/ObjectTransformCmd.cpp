@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "ObjectTransformCmd.h"
+#include "component/RectTransformComponent.h"
+#include "component/Transform.h"
 #include "animation/ClipRecordHooks.h"
 
 #include <algorithm>

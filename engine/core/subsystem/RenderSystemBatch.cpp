@@ -687,7 +687,11 @@ void RenderSystem::drawBatchRunCallback(void* owner, BatchRun& run){
 
 bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, Transform& camTransform, PipelineType pipType,
                               InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int terrainView, int instanceView, const LodView* lodView){
-    if (!batchPassActive)
+    // an entry of a visible list without the submesh, the OIT accumulation, a fade-copies entry
+    // or a forward queue the OIT pass took this submesh from: drawMesh draws it (or nothing) as
+    // S55's queues ask
+    if (!batchPassActive || !(passSubmeshMask & 1u) || passSubmeshQueue == SubmeshQueue::OIT || passLodFade == LodFadePass::FADE ||
+            (passOit && mesh.numSubmeshes > 0 && drawsOit(mesh.submeshes[0])))
         return drawMesh(entity, mesh, transform, camera, camTransform, pipType, instmesh, terrain, tilemap, terrainView, instanceView, lodView);
 
     const Signature signature = scene->getSignature(entity);
@@ -738,7 +742,8 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
         batcher.getStats().settled++;
     }
 
-    if (batchPass.culls && mesh.worldAABB != AABB::ZERO && cullBatchRecord(*record))
+    // (a visible list culled it already: passPreCulled)
+    if (!passPreCulled && batchPass.culls && mesh.worldAABB != AABB::ZERO && cullBatchRecord(*record))
         return true;
 
     refreshSubmeshTextures(submesh, mesh.receiveLights, checkPBRFrabebufferUpdate(submesh.material));
@@ -769,7 +774,7 @@ bool RenderSystem::submitMesh(Entity entity, MeshComponent& mesh, Transform& tra
 bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], const vs_depth_t& params,
                                    InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType,
                                    int instanceView, const LodView* lodView){
-    if (!batchPassActive)
+    if (!batchPassActive || !(passSubmeshMask & 1u) || passLodFade == LodFadePass::FADE)
         return drawMeshDepth(entity, mesh, transform, cameraFar, frustumPlanes, params, instmesh, terrain, tilemap, forSSAO, pipelineType, instanceView, lodView);
 
     const Signature signature = scene->getSignature(entity);
@@ -825,7 +830,7 @@ bool RenderSystem::submitMeshDepth(Entity entity, MeshComponent& mesh, Transform
         batcher.getStats().settled++;
     }
 
-    if (frustumPlanes && mesh.worldAABB != AABB::ZERO){
+    if (!passPreCulled && frustumPlanes && mesh.worldAABB != AABB::ZERO){
         // (the pre-pass has the colour pass's planes, cascades and the scene depth their own)
         bool culled;
         if (batchPass.pass == BatchPass::DEPTH_PREPASS){
@@ -976,8 +981,15 @@ void RenderSystem::drawBatchRun(BatchRun& run){
     if (SokolPassRecorder::isDrawListEnabled())
         SokolPassRecorder::annotateNextDraw((uint16_t)std::min<uint32_t>(run.items, UINT16_MAX), (uint8_t)run.openedBy);
 
+    // the run draws its whole submesh, whichever queue entry flushed it (S55's pass state)
     const SubmeshQueue queue = passSubmeshQueue;
+    const uint32_t submeshMask = passSubmeshMask;
+    const bool preCulled = passPreCulled;
+    const LodFadePass lodFade = passLodFade;
     passSubmeshQueue = SubmeshQueue::ALL;
+    passSubmeshMask = 0xFFFFFFFFu;
+    passPreCulled = false;
+    passLodFade = LodFadePass::ALL;
     passBatchGeometry = &geometry;
     const BatchHead& head = run.head;
     if (run.key.pass == BatchPass::UI && head.ui){
@@ -996,6 +1008,9 @@ void RenderSystem::drawBatchRun(BatchRun& run){
     }
     passBatchGeometry = nullptr;
     passSubmeshQueue = queue;
+    passSubmeshMask = submeshMask;
+    passPreCulled = preCulled;
+    passLodFade = lodFade;
 }
 
 void RenderSystem::drawBatchGeometry(ObjectRender& render, Buffer& vertices, const BatchGeometry& batch){

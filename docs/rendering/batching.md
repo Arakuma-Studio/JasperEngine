@@ -19,6 +19,8 @@ change it while it runs with `Engine.dynamicBatching` (Lua) or `Engine::setDynam
 - **Every pass that draws them**: the colour pass, the camera's depth pre-pass, the scene-depth
   pass of scene inputs and the atmosphere, and shadow casters. The G-buffer pass of SSR draws
   them one by one.
+- **GPU Instancing** (S55) takes the mesh draws that did not batch: a batched draw is never
+  instanced, and an object drawn alone is instanced as before.
 
 Two objects join one draw when they come one after the other in the pass's order (the hierarchy
 order in 2D, the sorted queues in 3D) and share: the shader variant and render state, every

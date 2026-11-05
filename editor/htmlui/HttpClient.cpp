@@ -350,12 +350,28 @@ HttpResponse HttpClient::get(const std::string& url){
     const std::string mirror = mirrorDirectory();
     if (!mirror.empty())
         return getFromMirror(mirror, url);
+    return transfer(url, newTempFile(".body"), false);
+}
 
+HttpResponse HttpClient::getResuming(const std::string& url, const fs::path& partial){
+    const std::string mirror = mirrorDirectory();
+    if (mirror.empty())
+        return transfer(url, partial, true);
+    HttpResponse response = getFromMirror(mirror, url);
+    if (response.ok()){
+        std::error_code ec;
+        if (!editor::FileUtils::copyFileAtomic(response.bodyFile, partial, ec))
+            response.error = "cannot write " + partial.string() + ": " + ec.message();
+        response.bodyFile = partial;
+    }
+    return response;
+}
+
+HttpResponse HttpClient::transfer(const std::string& url, const fs::path& body, bool resume){
     HttpResponse response;
     response.finalUrl = url;
 
     const std::string requestUrl = encodeForRequest(rewrite(url));
-    const fs::path body = newTempFile(".body");
     const fs::path config = newTempFile(".curlrc");
     {
         std::lock_guard<std::mutex> lock(bodyMutex);
@@ -374,7 +390,8 @@ HttpResponse HttpClient::get(const std::string& url){
             << "max-redirs = 5\n"
             << "max-time = " << timeoutSeconds << "\n"
             << "max-filesize = " << maxFileSize << "\n"
-            << "fail-with-body\n"
+            // (resuming: an HTTP error's body would land after the bytes kept so far)
+            << (resume ? "continue-at = \"-\"\nfail\nconnect-timeout = 30\nspeed-limit = 1024\nspeed-time = 60\n" : "fail-with-body\n")
             << "write-out = \"%{http_code} %{content_type} %{url_effective}\\n\"\n"
             << "silent\n"
             << "show-error\n";

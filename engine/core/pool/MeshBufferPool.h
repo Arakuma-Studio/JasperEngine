@@ -19,7 +19,8 @@
 //   too); destroyBuffer lets it go; the GPU buffer is destroyed with its last holder, on the
 //   thread that lets it go (the async loading thread queues it, as SokolBuffer does).
 // - Keyed by the owner's address, the bytes' id in it (their address for an ExternalBuffer), size
-//   and type, or for content keys by the bytes' 128-bit hash (util/ContentHash.h), size and type; the entry keeps a weak reference to the owner, so a new owner at the address of a
+//   and type, or for content keys by the bytes' 128-bit hash (util/ContentHash.h), size and
+//   type; the entry keeps a weak reference to the owner, so a new owner at the address of a
 //   dead one (a model file reloaded) never finds the old bytes' buffer. A reloaded or invalidated
 //   model file (MeshSystem::invalidateModelFile) is parsed into a new owner: its meshes get new
 //   buffers as they reload, the old ones go with the last mesh still showing the old parse.
@@ -79,7 +80,8 @@ namespace jasperengine{
 
         // Makes the GPU buffer of `buffer` (its render): the shared one of its source or of its
         // bytes when it is shareable, else one of its own (BufferRender::createBuffer). False when
-        // it cannot be made (a sokol pool is full: SokolSystem logs it).
+        // it cannot be made (a sokol pool is full: SokolSystem logs it), or the bytes were released
+        // and no one holds their GPU buffer (ModelCpuData::ensure brings them back).
         static bool createRender(Buffer& buffer);
 
         // whether `render` holds the shared buffer of `buffer`'s current bytes (false when it

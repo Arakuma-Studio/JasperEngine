@@ -3,6 +3,7 @@
 
 #include "render/RenderBackendTime.h"
 #include "SokolCamera.h"
+#include "SokolObject.h"
 
 #include "System.h"
 #include "SokolPassRecorder.h"
@@ -86,6 +87,14 @@ void SokolCamera::setColorActions(LoadAction load, StoreAction store, Vector4 cl
     pass.action.colors[0].load_action = toLoadAction(load);
     pass.action.colors[0].store_action = toStoreAction(store);
     pass.action.colors[0].clear_value = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
+}
+
+void SokolCamera::setColorActions(int attachment, LoadAction load, StoreAction store, Vector4 clearColor){
+    if (attachment < 0 || attachment >= SG_MAX_COLOR_ATTACHMENTS)
+        return;
+    pass.action.colors[attachment].load_action = toLoadAction(load);
+    pass.action.colors[attachment].store_action = toStoreAction(store);
+    pass.action.colors[attachment].clear_value = { clearColor.x, clearColor.y, clearColor.z, clearColor.w };
 }
 
 void SokolCamera::setDepthStencilActions(LoadAction load, StoreAction store, float clearDepth, uint8_t clearStencil){
@@ -191,8 +200,9 @@ void SokolCamera::applyViewport(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
-    // (a batcher's held draws keep the viewport they were drawn for)
+    // the draws held for the rect before: the batcher's, then the instancing batch's
     SokolSystem::flushDeferred();
+    SokolDrawBatch::flush();
     sg_apply_viewport(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
 }
 
@@ -213,7 +223,9 @@ void SokolCamera::applyScissor(Rect rect){
 // (RenderSystem::isRenderingFlipped), so its bottom-left origin is the image's top there
 void SokolCamera::applyViewportTopLeft(int x, int y, int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    // the draws held for the rect before: the batcher's, then the instancing batch's
     SokolSystem::flushDeferred();
+    SokolDrawBatch::flush();
     sg_apply_viewport(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 

@@ -72,6 +72,8 @@ namespace jasperengine::editor {
         bool isOpen() const;
         // the window or one of its children has the keyboard focus (App: undo routing, keys)
         bool isFocused() const;
+        // Edit > Frame Selected (F) while it has focus: the image fits the view (App's claim)
+        void requestFit() { fitRequested = true; }
         // Another project is being opened: cancel, forget sources, results, targets, GPU images
         void resetForProjectSwitch();
 

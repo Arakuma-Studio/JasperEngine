@@ -13,6 +13,7 @@
 // invariants of spec 4.6.1; those tests skip with a message when the folder is absent.
 
 #include <gtest/gtest.h>
+#include "stream/UpstreamParticles.h"
 
 #include "vat/VatImportFixtures.h"
 

@@ -737,3 +737,25 @@ S52 lands after this branch and builds on two hooks:
   here); T15 counts GPU buffers of 1,500 sprites against the 2 x 1,500 of main instead of shrinking
   the pool (the pool is sized once per process); T13 (chunk growth) is covered by T15's 1,500 quads,
   which need a second chunk in their first frame (`runs_skipped` 0).
+
+### On top of S55 (Draw submission)
+
+S55's GPU Instancing landed on main first. Agreed split (Forge ledger): dynamic batching goes first,
+S55 instances the remaining mesh draws, and a draw is never both.
+
+- **One draw path.** A batched run draws through its head object's `drawMesh` / `drawMeshDepth` /
+  `drawUI` with `passBatchGeometry`; that branch draws before `offerDrawBatch`, so a run is never
+  offered to an instancing batch, and an object that drew alone is offered as before.
+- **One flush order.** The deferred runs and S55's held draw share the flush points: `endPass`, a
+  viewport change and every applied scissor rect draw the batcher's runs, then S55's held draw. The
+  foreign-draw hook moved out of `SokolPipelineCache::apply` (it drew newer runs ahead of an older
+  held draw) into `SokolObject::beginDraw` and `beginAccumulationDraw` (OIT) only.
+- **S55's queues feed the batcher.** The opaque queue, the depth pre-pass, the scene depth and the
+  shadow casters come from S55's visible lists (`buildVisibleQueue`): `submitMesh*` take each entry,
+  skip their own culling when it is `passPreCulled`, and leave to `drawMesh*` an entry without
+  submesh 0 (`passSubmeshMask`), a fade-copies entry, the OIT accumulation and a submesh the OIT pass
+  took. A run resets those pass flags while it draws (whichever entry flushed it). S55's material
+  sort of the visible list also keeps like sprites adjacent for STRICT runs.
+- **Not duplicated.** Uniform and pipeline skipping are S55's (`SokolDrawBatch::applyUniforms`,
+  `applyPipeline`); the batcher adds only the lazy scissor, which S55 does not track. The
+  `profiler_frame` `batching` object sits beside S55's `instanced_draws`.

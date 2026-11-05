@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "SokolPipelineCache.h"
-#include "SokolSystem.h"
 
 #include "Engine.h"
 #include "Log.h"
@@ -102,6 +101,7 @@ namespace {
     uint64_t missCount = 0;
     uint64_t applyCount = 0;
     uint32_t lastApplied = SG_INVALID_ID;
+    uint32_t lastAppliedEpoch = 1;
     std::atomic<uint32_t> pipelineGeneration{1};
 
     uint64_t fnv(uint64_t h, const void* data, size_t size){
@@ -660,18 +660,26 @@ size_t SokolPipelineCache::size(){
 }
 
 bool SokolPipelineCache::apply(sg_pipeline pipeline){
-    // a batcher's held draws first (SokolSystem::setDeferredFlush)
-    SokolSystem::beforeForeignDraw();
     if (pipeline.id == lastApplied)
         return false;
     sg_apply_pipeline(pipeline);
     lastApplied = pipeline.id;
+    lastAppliedEpoch++;
     applyCount++;
     return true;
 }
 
 void SokolPipelineCache::invalidateApplied(){
     lastApplied = SG_INVALID_ID;
+    lastAppliedEpoch++;
+}
+
+uint32_t SokolPipelineCache::appliedEpoch(){
+    return lastAppliedEpoch;
+}
+
+uint32_t SokolPipelineCache::appliedPipeline(){
+    return lastApplied;
 }
 
 uint64_t SokolPipelineCache::getMissCount(){

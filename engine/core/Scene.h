@@ -236,6 +236,12 @@ namespace jasperengine{
         void setMeshLodThreshold(float pixels);
         float getMeshLodThreshold() const;
 
+        // Cross Fade and Cross-fade Duration (seconds, 0.05..2) of the detail levels
+        void setMeshLodCrossFade(bool crossFade);
+        bool isMeshLodCrossFade() const;
+        void setMeshLodCrossFadeDuration(float seconds);
+        float getMeshLodCrossFadeDuration() const;
+
         void setDepthPrepassEnabled(bool enabled);
         bool isDepthPrepassEnabled() const;
 
@@ -314,6 +320,15 @@ namespace jasperengine{
         // the exposure (EV100, -6..24) lights in physical units are drawn at
         void setPhysicalLightEV100(float ev100);
         float getPhysicalLightEV100() const;
+
+        // capsule shadows (spec S57 R2): the lit variants take them while on (they reload);
+        // intensity 0..1, softness 0..2 (the penumbra's widening per metre along the light)
+        void setCapsuleShadowsEnabled(bool enabled);
+        bool isCapsuleShadowsEnabled() const;
+        void setCapsuleShadowIntensity(float intensity);
+        float getCapsuleShadowIntensity() const;
+        void setCapsuleShadowSoftness(float softness);
+        float getCapsuleShadowSoftness() const;
 
         void setAmbientLight2D(float intensity, Vector3 color);
         void setAmbientLight2D(float intensity);

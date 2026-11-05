@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ConsoleWindow.h"
+#include "window/ProjectWindow.h"
 
 #include "shortcuts/CommandCatalog.h"
 #include <cstdio>
@@ -504,12 +505,14 @@ void ConsoleWindow::rebuildRows() {
 }
 
 const LogData* ConsoleWindow::selectedLog() const {
-    if (!hasSelection) return nullptr;
-    for (auto it = logs.rbegin(); it != logs.rend(); ++it) {
-        if (it->id == selectedLogId) return &(*it);
-        if (it->id < selectedLogId) break;
+    if (!hasSelection || logs.empty()) return nullptr;
+    // Keep the newest selection constant-time; older ids are ordered even after eviction.
+    if (logs.back().id <= selectedLogId) {
+        return logs.back().id == selectedLogId ? &logs.back() : nullptr;
     }
-    return nullptr;
+    const auto found = std::lower_bound(logs.rbegin(), logs.rend(), selectedLogId,
+        [](const LogData& log, uint64_t id) { return log.id > id; });
+    return found != logs.rend() && found->id == selectedLogId ? &(*found) : nullptr;
 }
 
 void ConsoleWindow::copyAllToClipboard() const {

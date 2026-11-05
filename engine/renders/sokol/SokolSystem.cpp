@@ -17,6 +17,7 @@
 #include "sokol_gfx.h"
 #include "sokol_gpu_timer.h"
 #include "SokolCmdQueue.h"
+#include "SokolObject.h"
 #include "SokolPassPreview.h"
 #include "SokolPassRecorder.h"
 #include "SokolPipelineCache.h"
@@ -73,6 +74,9 @@ extern "C" void jasperengine_sg_pool_usage(int kind, int* used, int* free);
 // (sokol.cpp) Vulkan's per-frame buffers: 0 stream staging, 1 uniforms, 2 descriptors
 extern "C" bool jasperengine_sg_vk_frame_buffer_usage(int which, uint32_t* used, uint32_t* size, bool* overflown);
 extern "C" bool jasperengine_sg_vk_next_draw_descriptors(uint32_t limit, uint32_t* need, uint32_t* used, uint32_t* size);
+// (sokol.cpp) Vulkan: an upload past the stream staging buffer, through the copy staging path
+extern "C" bool jasperengine_sg_vk_update_buffer_alone(sg_buffer buf_id, const void* data, size_t size);
+extern "C" bool jasperengine_sg_vk_update_image_alone(sg_image img_id, const sg_image_data* data);
 
 namespace {
     // the pools, in GpuResourceKind order
@@ -109,6 +113,15 @@ namespace {
         uint64_t peak = 0;
         uint64_t skipped = 0;
         bool overflowLogged = false;
+        // An item larger than the whole limit (reserveAlone) never fits beside others: it is made
+        // alone, in a frame that took nothing before it, and fills that frame's budget (what comes
+        // after it waits for the next frame). One that finds the frame begun waits for the next,
+        // which keeps the budget for it (aloneWaiting). Before S55 R6 it was refused forever.
+        uint64_t frameAlone = 0;     // the bytes of the item made alone this frame
+        uint64_t frameDelayed = 0;   // the bytes of the items turned away for a later frame: not lost
+        bool aloneWaiting = false;   // one was turned away: the frame keeps the budget for it
+        bool aloneAsked = false;     // one asked this frame
+        bool aloneLogged = false;
 
         FrameBudget(const char* name, const char* contents, const char* items, const char* setting):
             name(name), contents(contents), items(items), setting(setting){}
@@ -119,15 +132,40 @@ namespace {
             enforced = hasBuffer;
             frameUsed = frameNeeded = frameSkipped = lastFrame = peak = skipped = 0;
             overflowLogged = false;
+            frameAlone = frameDelayed = 0;
+            aloneWaiting = aloneAsked = aloneLogged = false;
         }
 
         // an item placed at the end of what the frame took, the end then rounded up to `align`
-        // (sokol's shared buffers); false where enforced and it goes past the limit (not taken)
+        // (sokol's shared buffers); false where enforced and it goes past the limit (not taken),
+        // or while the frame keeps the budget for an item larger than the limit (reserveAlone)
         bool reserve(uint64_t size, uint64_t align){
             frameNeeded = roundUp(frameNeeded + size, align);
-            if (enforced && frameUsed + size > limit)
+            if (enforced && (frameUsed + size > limit || aloneWaiting || frameAlone > 0))
                 return false;
             frameUsed = roundUp(frameUsed + size, align);
+            return true;
+        }
+
+        // an item larger than the limit: true when it is made now, alone (the frame took nothing
+        // before it); it then fills the frame's budget
+        bool reserveAlone(uint64_t size){
+            aloneAsked = true;
+            if (frameUsed > 0 || frameAlone > 0){
+                aloneWaiting = true;
+                frameDelayed = roundUp(frameDelayed + size, 16);
+                return false;
+            }
+            aloneWaiting = false;
+            frameAlone = size;
+            frameUsed = limit;
+            if (!aloneLogged){
+                aloneLogged = true;
+                Log::warn("An upload of %llu bytes is larger than the GPU %s (%llu bytes a frame): it is made alone in "
+                          "its own frame, waiting for the GPU (slower). Raise Engine::GpuResourceLimits::%s "
+                          "(Engine::setGpuResourceLimits before the engine starts)\n",
+                          (unsigned long long)size, name, (unsigned long long)limit, setting);
+            }
             return true;
         }
 
@@ -152,9 +190,14 @@ namespace {
                               (unsigned long long)frameNeeded, contents, setting, (unsigned long long)limit, name, items);
                 }
             }
-            lastFrame = frameNeeded;
-            peak = std::max(peak, frameNeeded);
-            frameUsed = frameNeeded = frameSkipped = 0;
+            lastFrame = frameNeeded + frameAlone + frameDelayed;
+            peak = std::max(peak, lastFrame);
+            frameUsed = frameNeeded = frameSkipped = frameAlone = frameDelayed = 0;
+            // the item turned away is asked for again by its owner next frame; one not asked for
+            // again (its data went, or became smaller) keeps nothing waiting
+            if (!aloneAsked)
+                aloneWaiting = false;
+            aloneAsked = false;
         }
     };
 
@@ -398,6 +441,8 @@ namespace{
     SokolSystem::ScissorRect appliedScissor;
 
     void applyScissorRect(const SokolSystem::ScissorRect& rect){
+        // what the instancing batch holds was for the rect before
+        SokolDrawBatch::flush();
         if (rect.set)
             sg_apply_scissor_rect(rect.x, rect.y, rect.width, rect.height, rect.originTopLeft);
         appliedScissor = rect;
@@ -517,18 +562,21 @@ void SokolSystem::beginPass(const sg_pass& pass){
         nestedPasses++;
         Log::error("Render pass '%s' begun inside another: passes do not nest (an engine bug)", pass.label ? pass.label : "pass");
     }
+    // what a batch holds belongs to the pass that ends (SokolDrawBatch: its scope never spans one)
+    SokolDrawBatch::flush();
     sg_begin_pass(pass);
     passOpen = true;
     // sokol starts every pass with its whole target as the scissor
     requestedScissor = ScissorRect();
     appliedScissor = ScissorRect();
-    // a new pass has no pipeline applied (the dynamic path's "applied last")
+    // a new pass has no pipeline applied (the dynamic path's "applied last") nor uniforms
     SokolPipelineCache::invalidateApplied();
 }
 
 void SokolSystem::endPass(){
-    // the draws a batcher still holds belong to this pass
+    // the draws still held belong to this pass: the batcher's, then the instancing batch's
     flushDeferred();
+    SokolDrawBatch::flush();
     sg_end_pass();
     passOpen = false;
     // the Frame Debugger's preview of the pass that ended, when it asked for it (S15; its blit is
@@ -594,6 +642,7 @@ void SokolSystem::commit(){
     uniformBudget.endFrame();
     streamBudget.endFrame();
     descriptorBudget.endFrame();
+    SokolDrawBatch::endFrame();
 }
 
 bool SokolSystem::reserveUniformBytes(unsigned int size){
@@ -632,11 +681,24 @@ namespace{
     }
 }
 
+// an upload larger than the whole stream budget (it can never fit beside others): alone in its own
+// frame (FrameBudget::reserveAlone); Vulkan makes it through the copy staging path, which it fits in
+// chunks, the other backends write the resource as always
 bool SokolSystem::updateBuffer(sg_buffer buffer, const sg_range& data){
+    // (a held draw may read it: drawn before)
+    SokolDrawBatch::flush();
     if (streamUpdated(buffer)){
         const uint64_t size = data.size;
-        if (!reserveStreamBytes(&size, 1))
+        if (streamBudget.enforced && size > streamBudget.limit){
+            if (!streamBudget.reserveAlone(size)){
+                streamBudget.skip();
+                return false;
+            }
+            if (vulkanBuffers)
+                return jasperengine_sg_vk_update_buffer_alone(buffer, data.ptr, data.size);
+        }else if (!reserveStreamBytes(&size, 1)){
             return false;
+        }
     }
     sg_update_buffer(buffer, data);
     return true;
@@ -652,14 +714,27 @@ int SokolSystem::appendBuffer(sg_buffer buffer, const sg_range& data){
 }
 
 bool SokolSystem::updateImage(sg_image image, const sg_image_data& data){
+    SokolDrawBatch::flush();
     if (sg_query_image_state(image) == SG_RESOURCESTATE_VALID && sg_query_image_usage(image).stream_update){
         // sokol stages the image's mip levels (each slice of one together)
         const int mips = std::min(std::max(sg_query_image_num_mipmaps(image), 1), (int)SG_MAX_MIPMAPS);
         uint64_t sizes[SG_MAX_MIPMAPS] = {};
-        for (int mip = 0; mip < mips; mip++)
+        uint64_t total = 0;
+        for (int mip = 0; mip < mips; mip++){
             sizes[mip] = data.mip_levels[mip].size;
-        if (!reserveStreamBytes(sizes, mips))
+            total = roundUp(total + sizes[mip], 16);
+        }
+        // (as updateBuffer: larger than the whole budget, alone in its own frame)
+        if (streamBudget.enforced && total > streamBudget.limit){
+            if (!streamBudget.reserveAlone(total)){
+                streamBudget.skip();
+                return false;
+            }
+            if (vulkanBuffers)
+                return jasperengine_sg_vk_update_image_alone(image, &data);
+        }else if (!reserveStreamBytes(sizes, mips)){
             return false;
+        }
     }
     sg_update_image(image, data);
     return true;
@@ -709,6 +784,7 @@ void SokolSystem::overrideBudget(int kind, uint64_t limit, bool enforced){
     budget->limit = limit;
     budget->enforced = enforced;
     budget->overflowLogged = false;
+    budget->aloneWaiting = false;
 }
 
 void SokolSystem::restoreBudgets(){
@@ -718,6 +794,7 @@ void SokolSystem::restoreBudgets(){
         FrameBudget* budget = budgetOf(kind);
         budget->limit = configured[kind];
         budget->enforced = budget->backendBuffer;
+        budget->aloneWaiting = false;
     }
 }
 
@@ -735,6 +812,8 @@ void SokolSystem::shutdown(){
     // thumbnail job, an editor closing right after it opened): executed first, as the next
     // frame would have, or flush_commands waits forever for the render semaphore they hold
     SokolCmdQueue::execute_commands();
+    // and what the upload budget left for later frames
+    SokolCmdQueue::drain();
     SokolCmdQueue::flush_commands();
     SokolCmdQueue::wait_for_flush();
     SokolCmdQueue::finish();
@@ -742,6 +821,7 @@ void SokolSystem::shutdown(){
     SokolAsyncCreate::shutdown();
     SokolAsyncCreate::forgetWarmDraws();
     SokolPassPreview::destroy();
+    SokolDrawBatch::shutdown();
     SokolPipelineCache::clear();
     SokolTraceHub::uninstall();
 #if JASPERENGINE_PROFILER
@@ -784,6 +864,8 @@ const RenderFeatures& SokolSystem::getFeatures(){
         features.renderR16F = r16f.render;
         features.blendR16F = r16f.blend;
         features.filterR16F = r16f.filter;
+        features.msaaRGBA16F = rgba16f.msaa;
+        features.msaaR16F = r16f.msaa;
         features.maxTextureSize2D = sg_query_limits().max_image_size_2d;
         for (size_t f = 0; f < kGpuTextureFormatCount; f++)
             features.textureFormats.set((GpuTextureFormat)f, SokolTexture::isFormatSupported((GpuTextureFormat)f));

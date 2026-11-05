@@ -10,6 +10,7 @@ from harness import Editor
 from htmlui_pixels import decode_png
 
 EDITOR = {"create": True, "name": "Platform Services"}
+CI = True
 
 RECORDER = """---@class Recorder : ScriptInstance
 local Recorder = { properties = {} }

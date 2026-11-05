@@ -29,6 +29,8 @@ from htmlui_pixels import decode_png
 
 
 EDITOR = {"create": True, "name": "ParticlesTest"}
+CI_EXCLUDED = ("long-running (over 2 minutes on a loaded server: render modes compared in pixels, Unity import, a benchmark script); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 1200
 
 HERE = Path(__file__).resolve().parent

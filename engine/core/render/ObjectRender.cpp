@@ -123,8 +123,29 @@ bool ObjectRender::beginDraw(const PipelineState& state){
     return backend.beginDraw(state);
 }
 
-bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
-    return backend.beginDraw(pipType, disableFaceCulling, mirrored);
+bool ObjectRender::loadAlike(const ObjectRender& source, ShaderRender* shader){
+    primitiveType = source.primitiveType;
+    return backend.loadAlike(source.backend, shader);
+}
+
+void ObjectRender::shareBindings(const ObjectRender& source){
+    backend.shareBindings(source.backend);
+}
+
+bool ObjectRender::beginAccumulationDraw(PipelineType colorType, bool mirrored){
+    return backend.beginAccumulationDraw(colorType, mirrored);
+}
+
+bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader){
+    return backend.beginDraw(pipType, disableFaceCulling, mirrored, lodFadeShader);
+}
+
+bool ObjectRender::isLodFadeReady(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader){
+    return backend.isLodFadeReady(pipType, disableFaceCulling, mirrored, lodFadeShader);
+}
+
+uint32_t ObjectRender::getAppliedPipelineId() const{
+    return backend.getAppliedPipelineId();
 }
 
 void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){
@@ -141,7 +162,41 @@ void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsi
         triangles = vertexCount / 3;
     else if (primitiveType == PrimitiveType::TRIANGLE_STRIP && vertexCount > 2)
         triangles = vertexCount - 2;
-    Engine::addDrawStats(instanceCount, triangles * (instanceCount > 0 ? instanceCount : 1));
+    const uint64_t instances = instanceCount > 0 ? instanceCount : 1;
+    Engine::addDrawStats(instanceCount, triangles * instances, (uint64_t)vertexCount * instances);
+}
+
+void ObjectRender::addBatchInstanceAttributes(const int* locations, int count, BatchLayout layout){
+    backend.addBatchInstanceAttributes(locations, count, layout);
+}
+
+bool ObjectRender::linkBatchVariant(const ObjectRender& source, const ShaderData& sourceShader, const ShaderData& variantShader,
+                                    const std::string& objectBlock){
+    return backend.linkBatchVariant(source.backend, sourceShader, variantShader, objectBlock);
+}
+
+bool ObjectRender::isBatchVariant() const{
+    return backend.isBatchVariant();
+}
+
+const char* ObjectRender::getBatchLinkFailure() const{
+    return backend.getBatchLinkFailure();
+}
+
+void ObjectRender::setNextDrawBatch(ObjectRender* variant, int objectSlot, float lodFade){
+    backend.setNextDrawBatch(variant ? &variant->backend : nullptr, objectSlot, lodFade);
+}
+
+bool ObjectRender::bindStreamVertexBuffer(BufferRender* original, const void* data, size_t bytes){
+    return backend.bindStreamVertexBuffer(original->backend.get().id, data, bytes);
+}
+
+uint32_t ObjectRender::getVertexBufferId() const{
+    return backend.getVertexBufferId();
+}
+
+uint32_t ObjectRender::getIndexBufferId() const{
+    return backend.getIndexBufferId();
 }
 
 void ObjectRender::destroy(){

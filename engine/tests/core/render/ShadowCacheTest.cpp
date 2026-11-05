@@ -7,6 +7,7 @@
 
 #include "render/shadow/ShadowCache.h"
 #include "render/shadow/ShadowCasterRegistry.h"
+#include "component/MeshComponent.h"
 
 #include "math/Matrix4.h"
 
@@ -331,4 +332,47 @@ TEST(ShadowCasterRegistry, ReportsAddsMovesTogglesAndRemovals){
     EXPECT_EQ(registry.getChanges()[0].oldBounds, animated.bounds);
     EXPECT_FALSE(registry.getChanges()[0].newBounds.valid);
     EXPECT_EQ(registry.size(), 1u);
+}
+
+// S57 R2: a character whose Capsule Shadow Caster is Capsules Only leaves the shadow maps
+// (MeshComponent::castsShadowMaps, as the renderer feeds the registry): moving, it reports no
+// change, so the slot keeps skipping and its static cache stays valid. The same character casting
+// its shadow map redraws its rect every frame it moves.
+TEST(ShadowCache, CapsulesOnlyCharacterMovingKeepsTheStaticCacheValid){
+    for (bool capsulesOnly : {true, false}){
+        MeshComponent character;
+        character.castShadows = true;
+        character.capsuleShadowsOnly = capsulesOnly;
+
+        ShadowCasterState ground;
+        ground.bounds = box(0.0f, 0.0f, 0.0f, 5.0f);
+        ground.layerBit = 1u;
+        ground.isStatic = true;
+
+        const ShadowSlotInput input = slotInput();
+        ShadowSlotState state;
+        ShadowCasterRegistry registry;
+        for (uint64_t frame = 1; frame <= 8; frame++){
+            registry.beginUpdate();
+            registry.update(1, ground);
+            if (character.castsShadowMaps()){
+                ShadowCasterState walking;
+                walking.bounds = box(-3.0f + 0.5f * (float)frame, 0.0f, 1.0f);
+                walking.layerBit = 1u;
+                registry.update(2, walking);
+            }
+            registry.endUpdate();
+            const ShadowSlotDecision decision = ShadowCache::evaluate(state, input, registry.getChanges(), frame);
+            if (frame == 1)
+                continue;   // the first draw of the slot
+            if (capsulesOnly){
+                EXPECT_EQ(decision.path, ShadowSlotPath::SKIP) << "frame " << frame;
+                EXPECT_FALSE(decision.drawDynamic);
+            }else{
+                EXPECT_EQ(decision.path, ShadowSlotPath::RESTORE_DYNAMIC) << "frame " << frame;
+                EXPECT_EQ(decision.cause, ShadowDirtyCause::DYNAMIC_CASTER);
+            }
+            EXPECT_TRUE(state.staticValid) << "frame " << frame;
+        }
+    }
 }

@@ -40,9 +40,6 @@ Before editing these paths, read the rule file:
 - A user-facing feature gets editor UI with Unity-like names and undo.
 - A runtime feature gets a Lua API.
 - A user-facing feature gets MCP tools so agents can drive and check it.
-- Copied code keeps its header and gets a `NOTICE.md` entry.
-- A vendored directory needs a `NOTICE.md` row and a licence file.
-- An `engine/libs` directory also needs an entry in `engine/notices.json`.
 - A patch to vendored code follows that library's patch ledger beside it.
 
 ## What lives where
@@ -145,7 +142,6 @@ Run the generator and commit its output:
 - Lints check-changed does not run; run the one for each area you changed, with `python3`:
   - `tools/check_raw_writes.py`, `tools/check_stream_keys.py`: file writes, decoders.
   - `tools/ci/check-hardcoded-shortcuts.py`: editor keys.
-  - `tools/ci/check-notices.py`: vendored code.
 - After renaming a path or build target these docs name: `python3 tools/check_agent_docs.py`.
 - Unit tests: `tools/build.sh unit-tests`.
 - Narrow them with `UNIT_TEST_ARGS=--gtest_filter=...` and `UNIT_SUITE=core` or `UNIT_SUITE=editor`;
@@ -186,9 +182,10 @@ Writing tests (the rest is in `docs/testing.md`; read it before adding one):
 - Code must build warning-free with `WERROR=1`.
 - 4-space indent.
 - Code goes in the `jasperengine::` namespaces.
-- New first-party source files start with `// (c) Eduardo Doria and contributors` and
-  `// SPDX-License-Identifier: MIT`.
 - Match the surrounding naming and comment density.
+- Engine and editor sources include each component they use (`engine/core/component/Transform.h`); a header
+  that only names one forward-declares it (`engine/core/ecs/ComponentFwd.h`). `engine/core/Scene.h` and `editor/Project.h` do not
+  bring them; `tools/check_fanout.py` holds the limits (`docs/testing.md`, "Build speed").
 - Comments say why, not what.
 - A new `namespace {}` helper must not reuse a file-scope name from another source of the target:
   unity builds merge them.
@@ -221,9 +218,9 @@ Applies to names, descriptions, schemas, results, errors and the guide.
 - New tool text needs a case in `tools/mcp/eval/cases.py` that fails without it.
 - Cut text no case needs.
 - Put a rule where the agent reads it as it decides: the server enforces it, else the result says it
-  (`next` in `structuredContent`), else the description, a parameter, and last the guide.
-- A hint an agent must see goes in `structuredContent`: it is all a client like Claude Code shows
-  the model.
+  (`next` in `structuredContent`, on an error its text), else the description, a parameter, and last the guide.
+- A hint an agent must see goes in `structuredContent` (`next`) on a success, and in the error's text on an
+  error: a client like Claude Code shows the model only that part of each.
 - Names: area noun first, one word per concept.
 - Merge or extend before adding a near-duplicate tool.
 - Descriptions: what it does, its default or limit, the one misuse, the sibling tool.
