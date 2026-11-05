@@ -894,7 +894,6 @@ const FieldEntry kBody_LightComponent_fields[] = {
     JE_RF(LightComponent, enabled, 0x972110a8u, Bool),
     JE_RF(LightComponent, type, 0xd845926bu, Enum),
     JE_RF(LightComponent, direction, 0x29fae8dcu, Vector3),
-    JE_RF(LightComponent, worldDirection, 0xcd07003eu, Vector3),
     JE_RF(LightComponent, color, 0x5ebb5cf2u, Vector3),
     JE_RF(LightComponent, range, 0x69e249e8u, Float),
     JE_RF(LightComponent, intensity, 0x49535c50u, Float),

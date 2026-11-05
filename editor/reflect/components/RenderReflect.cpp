@@ -209,8 +209,10 @@ namespace {
         const MeshComponent& mesh = *static_cast<const MeshComponent*>(comp);
         if (!ctx.registry) return Stream::encodeMeshComponent(mesh);
         const bool isModel = Stream::isModelBackedMesh(ctx.entity, ctx.registry, ctx.signature);
-        const bool isGenerated = isModel || Stream::isGeneratedMesh(ctx.registry, ctx.signature);
-        return Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated);
+        const bool generatesGeometry = Stream::isGeneratedMesh(ctx.registry, ctx.signature);
+        const bool isGenerated = isModel || generatesGeometry;
+        return Stream::encodeMeshComponent(mesh, !isGenerated, !isModel, !isGenerated, Stream::savedSubmeshCount(mesh, ctx.registry, ctx.signature),
+                                           !generatesGeometry);
     }
 
     void decodeMesh(const YAML::Node& node, void* comp, const DecodeContext& ctx) {

@@ -194,6 +194,9 @@ namespace jasperengine{
 
         // Frames are authored in pixels, textureRect is in UV space
         static void setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite, Rect frameRect);
+        // What a Terrain needs of its height and blend maps, whatever a file said: a save and the
+        // generated code hold them too (the editor applies them on load and before a save)
+        static void applyTerrainMapSettings(TerrainComponent& terrain);
 
         // What each generator makes of its mesh before filling the geometry: the submesh
         // settings and the vertex attributes. The editor reads the shader variants of a
