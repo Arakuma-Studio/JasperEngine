@@ -36,6 +36,10 @@
 #include "particles/LegacyParticleSystem.h"
 
 namespace jasperengine{
+    enum class LodFadeMode;
+}
+
+namespace jasperengine{
     enum class ActionState;
     enum class AnchorPreset;
     enum class BuoyancyColumns;

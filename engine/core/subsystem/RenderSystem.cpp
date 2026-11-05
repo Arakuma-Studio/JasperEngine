@@ -28,6 +28,7 @@
 #include "render/UIDrawColor.h"
 #include "render/PipelineState.h"
 #include "render/LodFade.h"
+#include <cfloat>
 #include <optional>
 #include "htmlui/HtmlUIClock.h"
 #include "pool/ShaderPool.h"

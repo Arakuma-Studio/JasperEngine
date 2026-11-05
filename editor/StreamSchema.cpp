@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "StreamSchema.h"
+#include "render/LodFade.h"
 
 #include "reflect/Enums.h"
 
