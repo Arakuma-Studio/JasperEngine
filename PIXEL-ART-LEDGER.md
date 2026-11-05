@@ -202,9 +202,8 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
 
 ### Landing gate
 
-**Owner's order: no full suites until the very end.** The full suite runs once, after every spec
-has landed: `WERROR=1` linux and unit-tests, all unit tests, and `MCP_SUITE=all` (the slow
-build/tests switches).
+**Owner's order (2026-11-05): no full suites at all, not even at the end.** Verification uses the
+lighter, targeted runs below, for every spec and for the final check.
 
 Per spec, the merged tree passes:
 - `WERROR=1 tools/build.sh linux`, and the unit tests built with `RUN=0`;
@@ -220,6 +219,8 @@ list them. There is no CI.
 
 ## Log
 
+- 2026-11-05: Owner: skip full suites entirely, even at the end. Work is verified with lighter
+  runs only: `check-changed`, filtered unit tests, named MCP files, and the `WERROR` builds.
 - 2026-11-05: The S41 implementer stopped on an API weekly rate limit, and the session
   restarted. All background jobs died. `main` fast-forwarded to `origin/main` `547a6e964` (344
   commits from other programs: S53–S73). The S41, S43 and S44 implementers were revived and told
