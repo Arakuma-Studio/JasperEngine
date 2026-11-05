@@ -143,6 +143,13 @@ class Builds(unittest.TestCase):
             self.assertEqual(p.builds, ["linux", "unit-tests", "web", "android"], trigger)
             self.assertTrue(p.unit_all and p.mcp_all, trigger)
 
+    def test_the_engine_with_every_module_off(self):
+        for asks in ("engine/core/subsystem/PhysicsSystem.h", "engine/core/Foo.hpp", "engine/CMakeLists.txt",
+                     "tools/check-physics-off.sh", "engine/cmake/JasperPlayerVariants.cmake", "tools/build.sh"):
+            self.assertEqual(self.plan(asks, "docs/testing.md").modules_off, asks, asks)
+        for not_asks in ("engine/core/Foo.cpp", "editor/App.h", "engine/tests/core/Foo.h", "engine/renders/Foo.h", "docs/testing.md"):
+            self.assertEqual(self.plan(not_asks).modules_off, "", not_asks)
+
 
 DEPS = """\
 tests/core/CMakeFiles/jasperengine-core-tests.dir/FooTest.cpp.o: #deps 3, deps mtime 1 (VALID)
@@ -507,6 +514,36 @@ class Runs(unittest.TestCase):
         self.assertIn("headers compile alone (1 edited)", out)
         self.assertIn("FAIL (exit 1) header fan-out limits", out)
         self.assertEqual((self.root / "headers.txt").read_text(), "editor/App.h")
+
+    def test_a_core_header_builds_the_engine_with_every_module_off(self):
+        (self.root / "tools/check-physics-off.sh").write_text('echo "$@ WERROR=$WERROR" > args.txt\nexit "${MODULES_OFF_RC:-0}"\n')
+        sh(self.root, "git", "add", "-A")
+        sh(self.root, "git", "commit", "-qm", "the check")
+        sh(self.root, "git", "branch", "-qf", "oe-port", "HEAD")
+        (self.root / "engine/core").mkdir(parents=True, exist_ok=True)
+        (self.root / "engine/core/Module.h").write_text("int module();\n")
+        real = cc.in_image
+        cc.in_image = lambda: True
+        try:
+            code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+            self.assertIn("the engine with every module off (engine/core/Module.h changed)", out)
+            self.assertEqual(code, 0, out)
+            self.assertRegex((self.root / "args.txt").read_text(), r"^-j \d+ all-off WERROR=1$")
+            os.environ["MODULES_OFF_RC"] = "1"
+            code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+            self.assertEqual(code, 1, out)
+            self.assertIn("FAIL (exit 1) the engine with every module off", out)
+        finally:
+            cc.in_image = real
+            os.environ.pop("MODULES_OFF_RC", None)
+        # a source alone keeps it out
+        (self.root / "args.txt").unlink()
+        (self.root / "engine/core/Module.h").unlink()
+        (self.root / "engine/core/Module.cpp").write_text("int module = 2;\n")
+        code, out = self.run_main("--no-cache", "--no-mcp", "--keep-going")
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("every module off", out)
+        self.assertFalse((self.root / "args.txt").exists())
 
     def test_no_mcp_leaves_the_mcp_tests_out_and_is_not_cached(self):
         (self.root / "CMakeLists.txt").write_text("# changed\n")
