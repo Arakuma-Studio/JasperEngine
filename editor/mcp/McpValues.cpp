@@ -51,6 +51,7 @@
 #include "util/VideoTextureLink.h"
 #include "component/FluidSimulationComponent.h"
 #include "component/VideoPlayerComponent.h"
+#include "audio/SoundEvent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
@@ -290,6 +291,7 @@ bool isPhysicsMaterialProperty(ComponentType component, const std::string& prope
 
 bool isAssetPathProperty(ComponentType component, const std::string& propertyName) {
     return propertyName == "filename" || (component == ComponentType::PoseAnimatorComponent && propertyName == "animation") ||
+           (component == ComponentType::AudioSourceComponent && propertyName == "event") ||
            (component == ComponentType::AnimatorComponent && propertyName == "controller") ||
            isPlayerClipProperty(component, propertyName) || isVertexAnimationProperty(component, propertyName) ||
            isPhysicsMaterialProperty(component, propertyName);
@@ -2573,6 +2575,14 @@ Json McpValues::readProperty(ReadContext& ctx, const std::string& name, const Pr
         case PropertyType::Ease:
             return enumToJson((int)static_cast<Ease*>(ref)->getType(), easeOptions());
         case PropertyType::UInt:
+            if (ctx.component == ComponentType::AudioSourceComponent && name == "playOn") {
+                Json names = Json::array();
+                const unsigned int flags = *static_cast<unsigned int*>(ref);
+                for (uint32_t flag = 1; flag <= AudioPlayOn_Sensor3D; flag <<= 1) {
+                    if (flags & flag) names.push_back(audioPlayOnName(flag));
+                }
+                return names;
+            }
             return *static_cast<unsigned int*>(ref);
         case PropertyType::Font: {
             // the chain in use: the main font first, then its fallbacks
@@ -2922,6 +2932,21 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                     text = stored;
                 }
             }
+            if (component == ComponentType::AudioSourceComponent && propertyName == "event" && !text.empty()) {
+                // a .soundevent by its path or its GUID
+                if (Guid::isValidText(text)) {
+                    const fs::path found = project->getAssetDatabase().getPath(Guid::parse(text));
+                    if (found.empty()) {
+                        error = "event: no asset has the GUID " + text + ": pass a .soundevent path, or make one with edit_sound_event.";
+                        return nullptr;
+                    }
+                    text = FileUtils::pathToGenericUtf8(found);
+                }
+                if (!Util::isSoundEventFile(text)) {
+                    error = "event: '" + text + "' is no .soundevent: make one with edit_sound_event.";
+                    return nullptr;
+                }
+            }
             if (isAssetPathProperty(component, propertyName) && !assetPathFromJson(project, text, text, error)) return nullptr;
             // an Asset script property is project-relative: a GUID given names its file
             if (stringType == PropertyType::Asset && propertyName.compare(0, 8, "scripts[") == 0 && Guid::isValidText(text)) {
@@ -3128,6 +3153,16 @@ Command* McpValues::buildPropertyCommandUnlinked(Project* project, uint32_t scen
                                          Ease(static_cast<EaseType>(parsed)), onChanged);
         }
         case PropertyType::UInt:
+            if (component == ComponentType::AudioSourceComponent && propertyName == "playOn") {
+                if (!value.is_array()) return expect("a list of names (ui_click, ui_press, ui_hover, collision_2d, collision_3d, sensor_2d, sensor_3d)");
+                unsigned int flags = 0;
+                for (const Json& item : value) {
+                    const uint32_t flag = item.is_string() ? audioPlayOnFromName(item.get<std::string>()) : 0;
+                    if (flag == 0) return expect("a list of names (ui_click, ui_press, ui_hover, collision_2d, collision_3d, sensor_2d, sensor_3d)");
+                    flags |= flag;
+                }
+                return new PropertyCmd<unsigned int>(project, sceneId, entity, component, propertyName, flags, onChanged);
+            }
             if (!isIntegral(value) || integralValue(value) < 0) return expect("a non-negative integer");
             return new PropertyCmd<unsigned int>(project, sceneId, entity, component, propertyName,
                                                  static_cast<unsigned int>(integralValue(value)), onChanged);

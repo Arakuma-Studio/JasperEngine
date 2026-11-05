@@ -36,6 +36,8 @@ namespace jasperengine::player {
         double fixedFps = 0.0;
         double readyTimeout = 120.0;
         std::filesystem::path screenshot;
+        // where a development player writes its audio capture sessions
+        std::filesystem::path audioCapture;
         std::filesystem::path content;
         // 0: the game's window size
         int width = 0;

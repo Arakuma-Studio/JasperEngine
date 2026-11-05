@@ -151,6 +151,13 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("assets.createAvatarMask", "Create Avatar Mask", AppMenuCommand::AssetsCreateAvatarMask);
     b.menu("assets.createAnimationMontage", "Create Animation Montage", AppMenuCommand::AssetsCreateAnimationMontage);
     b.menu("assets.createAudioMixer", "Create Audio Mixer", AppMenuCommand::AssetsCreateAudioMixer);
+    b.menu("assets.createSoundEvent", "Create Sound Event", AppMenuCommand::AssetsCreateSoundEvent);
+    b.menu("assets.createSoundEventFromClips", "Create Sound Event from Clips", AppMenuCommand::AssetsCreateSoundEventFromClips);
+    b.menu("assets.createPlaceholderSound", "Create Placeholder Sound", AppMenuCommand::AssetsCreatePlaceholderSound);
+    b.menu("assets.reanalyzeAudio", "Reanalyze Audio", AppMenuCommand::AssetsReanalyzeAudio).description =
+        "Drop the cached measurements of the selected audio files: they are measured again";
+    b.menu("assets.importSoundEssentials", "Import Sound Essentials", AppMenuCommand::AssetsImportSoundEssentials).description =
+        "Import the 40 built-in CC0 clips into sounds/essentials (one undo step)";
     b.menu("assets.createShakePreset", "Create Shake Preset", AppMenuCommand::AssetsCreateShakePreset);
     b.menu("assets.createNativePlugin", "Create Native Plugin...", AppMenuCommand::AssetsCreateNativePlugin);
     b.menu("assets.showInFileManager", "Show in File Manager", AppMenuCommand::AssetsShowInFileManager);
@@ -223,6 +230,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("recorder.toggle", "Start Recording", AppMenuCommand::ToggleRecording, C::Global, "F10").description =
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
+    b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
+    b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
     b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
         "Start the Audio Mixer's integrated loudness and true-peak hold over";
@@ -386,6 +395,24 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("project.delete", "Delete Assets", C::Project, "Delete", "Backspace");
     b.add("project.rename", "Rename Asset", C::Project, "F2");
     b.gesture("project.resizeItems", "Resize Items", C::Project, "Ctrl+Mouse Wheel", "Change the icon size in 16 px steps");
+
+    b.group = "Sound Browser";
+    b.add("audioCaptures.playMoment", "Play Moment", C::AudioCaptures, "Enter");
+    b.add("audioCaptures.stop", "Stop", C::AudioCaptures, "Escape");
+    b.add("audioCaptures.nextMoment", "Next Moment", C::AudioCaptures, "Down");
+    b.add("audioCaptures.previousMoment", "Previous Moment", C::AudioCaptures, "Up");
+    b.add("soundBrowser.focusSearch", "Search Sounds", C::SoundBrowser, "Ctrl+F");
+    b.add("soundBrowser.next", "Next Sound", C::SoundBrowser, "Down", "Right");
+    b.add("soundBrowser.previous", "Previous Sound", C::SoundBrowser, "Up", "Left");
+    b.add("soundBrowser.play", "Play or Stop Sound", C::SoundBrowser, "Space");
+    b.add("soundBrowser.playMatched", "Play Sound Loudness-Matched", C::SoundBrowser, "Shift+Space");
+    b.add("soundBrowser.use", "Use Sound", C::SoundBrowser, "Enter").description = "Selects it; a built-in clip is imported first";
+    b.add("soundBrowser.selectAll", "Select All Sounds", C::SoundBrowser, "Ctrl+A");
+    b.add("soundBrowser.stop", "Stop Sound or Clear Search", C::SoundBrowser, "Escape");
+
+    b.group = "Sound Event";
+    b.add("soundEvent.audition", "Audition x8", C::Editor).description = "The selected Sound Event's next 8 plays, rendered offline";
+    b.add("soundEvent.matchLevels", "Match Clip Levels", C::Editor).description = "The selected Sound Event's clips at their average loudness";
 
     b.group = "Console";
     b.add("console.copy", "Copy Message", C::Console, "Ctrl+C");

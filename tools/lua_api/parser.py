@@ -2469,9 +2469,33 @@ OVERRIDES.update({
                 'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
         'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
     ('AudioSource', 'playOneShot'): {
-        'doc': ["Unity's PlayOneShot: the clip as an extra voice over what plays (volume x volumeScale, the",
-                "source's group, pitch, pan and position). Up to maxVoices voices; the oldest one-shot is stolen."],
+        'doc': ["Unity's PlayOneShot: the clip, or a Sound Event's pick (its .soundevent path or GUID), as an extra",
+                "voice over what plays (volume x volumeScale, the source's group, pitch, pan and position). Up to",
+                'maxVoices voices; the oldest one-shot is stolen.'],
         'overloads': [([('path', 'string'), ('volumeScale?', 'number')], '')]},
+    ('Audio', 'play'): {
+        'doc': ['A Sound Event (GUID or .soundevent path) or a clip path as a free voice. Without target or position it is 2D.',
+                'An unknown name gives an invalid handle and one warning per name per Play. Inside a physics callback it',
+                'starts at the frame\'s audio update.'],
+        'overloads': [([('eventOrClip', 'string'), ('opts?', 'AudioPlayOptions')], 'SoundHandle')]},
+    ('Audio', 'stopAll'): {
+        'doc': ['Stops the voices started by Audio.play, triggers and one-shots: all, or those routed to `group` or a group',
+                'below it. The count stopped (0 inside a physics callback, where it runs at the audio update).',
+                'AudioSystem.stopAll also stops the sources\' main voices.'],
+        'overloads': [([('group?', 'string')], 'integer')]},
+    ('Audio', 'mark'): {
+        'doc': ['Writes a marker line at this sample in the audio capture of the Play or player run; does nothing without one.',
+                'At most 200 bytes of label.'],
+        'overloads': [([('label', 'string')], '')]},
+    ('Audio', 'isCapturing'): {
+        'doc': ['True while this Play or player run writes an audio capture.'],
+        'overloads': [([], 'boolean')]},
+    ('SoundHandle', 'fadeOut'): {
+        'doc': ['To silence over `seconds`, then stops (opts.pause: pauses); the volume is put back.'],
+        'overloads': [([('seconds', 'number'), ('opts?', 'AudioFadeOutOptions')], '')]},
+    ('SoundHandle', 'fadeTo'): {
+        'doc': ['The volume moves to `volume` over `seconds`.'],
+        'overloads': [([('volume', 'number'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
     ('AudioSource', 'fadeIn'): {
         'doc': ['Plays from silence to the current volume over `seconds` (starting it when it is not playing).'],
         'overloads': [([('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},

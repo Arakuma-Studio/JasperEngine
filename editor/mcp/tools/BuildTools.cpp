@@ -638,9 +638,10 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
                     break;
                 }
         if (!report.contentManifest.empty()) result["content_manifest"] = FileUtils::pathToGenericUtf8(report.contentManifest);
-        for (const BuildWarning& warning : report.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
         if (!report.notes.empty()) result["notes"] = report.notes;
     }
+    // every mode: a source export ships the same clips and the same notices
+    for (const BuildWarning& warning : r.result.warnings) result["warnings"].push_back({{"code", warning.code}, {"message", warning.message}});
     if (progress.finished && !progress.failed) {
         result["artifacts"] = artifactsJson(outputDir);
         std::string message;

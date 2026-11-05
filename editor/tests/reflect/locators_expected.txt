@@ -251,6 +251,7 @@
 1010 ui/texture texture
 1010 ui/customShader shader
 1016 audiosource/filename audio
+1016 audiosource/event sound_event
 1021 button/textureNormal texture
 1021 button/textureHovered texture
 1021 button/texturePressed texture

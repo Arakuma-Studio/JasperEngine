@@ -48,6 +48,12 @@ namespace jasperengine::editor::mcp {
     void registerDataTools(McpRegistry& registry);
     // AudioTools.cpp: audio_mixer (the project's Audio Mixer asset)
     void registerAudioTools(McpRegistry& registry);
+    void registerAudioSessionTools(McpRegistry& registry);
+    void registerSoundTools(McpRegistry& registry);
+    // SoundEventTools.cpp: edit_sound_event (Sound Events, docs/specs/S37-sound-events.md)
+    void registerSoundEventTools(McpRegistry& registry);
+    // get_asset_info's block of a .soundevent
+    nlohmann::json soundEventInfo(Project* project, const std::filesystem::path& file);
     void registerScriptTools(McpRegistry& registry);
     void registerAssetTools(McpRegistry& registry);
     void registerMaterialsLightingTools(McpRegistry& registry);

@@ -6,6 +6,7 @@
 #include "reflect/Components.h"
 
 #include "Factory.h"
+#include "audio/SoundEvent.h"
 #include "pool/SoundPool.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CameraComponent.h"
@@ -109,6 +110,57 @@ namespace {
         audio.loadFailed = false;
     }
 
+    // AudioPlayOn flags: a list of names in scenes and MCP ([ui_click, collision_3d]), the flags
+    // in cooked scenes and exported code
+    YAML::Node playOnToYaml(const FieldDesc&, const void* value, const EncodeContext&) {
+        const uint32_t flags = *static_cast<const uint32_t*>(value);
+        YAML::Node node(YAML::NodeType::Sequence);
+        node.SetStyle(YAML::EmitterStyle::Flow);
+        for (uint32_t flag = 1; flag <= AudioPlayOn_Sensor3D; flag <<= 1) {
+            if (flags & flag) node.push_back(audioPlayOnName(flag));
+        }
+        return node;
+    }
+
+    bool playOnFromYaml(const FieldDesc&, const YAML::Node& node, void* value, const DecodeContext&, std::string& reason) {
+        if (!node.IsSequence()) {
+            reason = "expected a list of names (ui_click, collision_3d...)";
+            return false;
+        }
+        uint32_t flags = 0;
+        for (const YAML::Node& item : node) {
+            const uint32_t flag = item.IsScalar() ? audioPlayOnFromName(item.Scalar()) : 0;
+            if (flag == 0) {
+                reason = "unknown trigger '" + (item.IsScalar() ? item.Scalar() : std::string()) + "'";
+                return false;
+            }
+            flags |= flag;
+        }
+        *static_cast<uint32_t*>(value) = flags;
+        return true;
+    }
+
+    Json playOnSchema(const FieldDesc&) {
+        Json names = Json::array();
+        for (uint32_t flag = 1; flag <= AudioPlayOn_Sensor3D; flag <<= 1) names.push_back(audioPlayOnName(flag));
+        return Json{{"type", "array"}, {"items", Json{{"type", "string"}, {"enum", names}}}};
+    }
+
+    constexpr TypeOps audioPlayOnOps() {
+        TypeOps result = ops::UInt;
+        result.toYaml = &playOnToYaml;
+        result.fromYaml = &playOnFromYaml;
+        result.schema = &playOnSchema;
+        result.scalar = nullptr;
+        return result;
+    }
+    constexpr TypeOps kAudioPlayOnOps = audioPlayOnOps();
+
+    bool audioHasCollisionFlag(const void* audio) {
+        return static_cast<const AudioSourceComponent*>(audio)->playOn & (AudioPlayOn_Collision2D | AudioPlayOn_Collision3D);
+    }
+    bool audioClipMode(const void* audio) { return static_cast<const AudioSourceComponent*>(audio)->event.empty(); }
+
     constexpr FieldDesc kAudioSourceFields[] = {
         JE_FIELD(AudioSourceComponent, enabled, .flags = CodegenIfChanged),
         JE_FIELD(AudioSourceComponent, state, .ops = &kAudioStateOps, .enumDesc = &enums::kAudioSourceState, .updateFlags = kAudio),
@@ -153,6 +205,19 @@ namespace {
         JE_FIELD(AudioSourceComponent, maxVoices, .ops = &ops::IntClampedOnRead, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
                  .min = 1.0f, .max = 64.0f),
         JE_FIELD(AudioSourceComponent, ignoreListenerPause, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio),
+        // Sound Events and triggers (docs/specs/S37-sound-events.md R9), after upstream's fields
+        JE_FIELD(AudioSourceComponent, event, .ops = &ops::AssetRefIfSet, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
+                 .asset = AssetKind::SoundEvent, .label = "Event"),
+        JE_FIELD(AudioSourceComponent, playOn, .ops = &kAudioPlayOnOps, .flags = OmitIfDefault | CodegenIfChanged, .updateFlags = kAudio,
+                 .label = "Play On", .group = "Triggers"),
+        JE_FIELD(AudioSourceComponent, minImpactSpeed, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
+                 .unit = Unit::MetersPerSecond, .min = 0.0f, .step = 0.1f, .format = "%.2f", .group = "Triggers", .visibleIf = &audioHasCollisionFlag),
+        JE_FIELD(AudioSourceComponent, fullVolumeImpactSpeed, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
+                 .unit = Unit::MetersPerSecond, .min = 0.0f, .step = 0.1f, .format = "%.2f", .tooltip = "0 = no scaling", .group = "Triggers", .visibleIf = &audioHasCollisionFlag),
+        JE_FIELD(AudioSourceComponent, pitchRandomSemitones, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
+                 .min = 0.0f, .max = 24.0f, .step = 0.1f, .format = "%.2f", .label = "Random Pitch", .tooltip = "Each start: +- this many semitones (clip mode)", .group = "Variation", .visibleIf = &audioClipMode),
+        JE_FIELD(AudioSourceComponent, volumeRandomDb, .ops = &ops::FiniteFloat, .flags = OmitIfDefault | OmitIfNonFinite | CodegenIfChanged, .updateFlags = kAudio,
+                 .unit = Unit::Decibels, .min = 0.0f, .max = 60.0f, .step = 0.1f, .format = "%.2f", .label = "Random Volume", .tooltip = "Each start: -this .. 0 dB, never louder (clip mode)", .group = "Variation", .visibleIf = &audioClipMode),
         JE_FIELD(AudioSourceComponent, length, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
         JE_FIELD(AudioSourceComponent, playingTime, .flags = Transient | NoDefault | ReadOnly | Hidden, .unit = Unit::Seconds),
     };
@@ -161,7 +226,8 @@ namespace {
         "state", "filename", "enableClocked", "volume", "speed", "pan", "looping", "loopingPoint", "protectVoice", "inaudibleBehaviorMustTick",
         "inaudibleBehaviorKill", "minDistance", "maxDistance", "attenuationModel", "attenuationRolloffFactor", "dopplerFactor",
         // upstream's audio-mixer fields, only when not their default (upstream's Factory)
-        "outputGroupId", "outputGroup", "loadType", "priority", "maxVoices", "ignoreListenerPause"
+        "outputGroupId", "outputGroup", "loadType", "priority", "maxVoices", "ignoreListenerPause",
+        "event", "playOn", "minImpactSpeed", "fullVolumeImpactSpeed", "pitchRandomSemitones", "volumeRandomDb"
     };
 
     void audioSourceCodegen(const void* comp, const CodegenContext& ctx, std::string& out) {

@@ -12,6 +12,9 @@
 #include "EditorModal.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+
+#include "audio/SoundDrop.h"
+#include "window/SoundBrowserWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
@@ -117,6 +120,7 @@
 #include "Out.h"
 #include "subsystem/ActionSystem.h"
 #include "subsystem/PhysicsSystem.h"
+#include "audio/AudioCapture.h"
 #include "subsystem/AudioSystem.h"
 #include "pose/PoseAnimatorRuntime.h"
 #include "pose/PoseInspectorHooks.h"
@@ -8965,7 +8969,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     beginTable(cpType, getLabelSize("Audio Clip"));
 
-    if (entities.size() == 1) {
+    if (!sceneProject->scene->getComponent<AudioSourceComponent>(entities.front()).event.empty()) {
+        // the event plays: its clip is ignored (S37 R9)
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Audio Clip");
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("(played by the event)");
+    } else if (entities.size() == 1) {
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
 
@@ -9053,6 +9064,13 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                         }
                     }
                 }
+                // a built-in clip from the Sound Browser: imported first
+                if (const ImGuiPayload* builtin = ImGui::AcceptDragDropPayload(SoundBrowserWindow::BUILTIN_PAYLOAD)) {
+                    std::vector<std::string> sounds;
+                    std::string dropError;
+                    if (SoundDrop::resolve(project, builtin, sounds, dropError) && !sounds.empty()) setAudioFilename(sounds.front());
+                    if (!dropError.empty()) Out::warning("Sound drop: %s", dropError.c_str());
+                }
                 ImGui::EndDragDropTarget();
             }
         }
@@ -9079,14 +9097,18 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     endTable();
 
+    drawAudioEventRows(cpType, sceneProject, entities);
+
     if (entities.size() == 1) {
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
         bool sceneIsStopped = sceneProject->playState == ScenePlayState::STOPPED;
         SoundPreviewRuntime& ap = soundPreviewRuntime;
         bool isThisPreview = ap.active && ap.sceneId == sceneProject->id && ap.entity == entity;
+        // a capture's mix is the Play's alone
+        const bool capturing = AudioCapture::isActive();
 
-        if (ap.active && (!isThisPreview || !sceneIsStopped || ap.filename != audio.filename)) {
+        if (ap.active && (!isThisPreview || !sceneIsStopped || capturing || ap.filename != audio.filename)) {
             stopSoundPreview(!isThisPreview || ap.filename != audio.filename);
             isThisPreview = false;
         }
@@ -9097,7 +9119,7 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
         }
 
         ImGui::Separator();
-        ImGui::BeginDisabled(!sceneIsStopped || audio.filename.empty());
+        ImGui::BeginDisabled(!sceneIsStopped || audio.filename.empty() || capturing);
 
         if (isThisPreview && ap.playing) {
             if (ImGui::Button(ICON_FA_PAUSE "##audio_pause")) {
@@ -9110,6 +9132,9 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                 } else {
                     isThisPreview = true;
                 }
+            }
+            if (capturing && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("Audio preview is off while Play captures audio");
             }
         }
         ImGui::SameLine();
