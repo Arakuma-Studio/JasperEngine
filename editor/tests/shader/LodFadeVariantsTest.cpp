@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The LOD cross-fade variant (MESH bit 36 'Lfd', spec S54 R6, R10, AC6):
+// The LOD cross-fade variant (MESH bit 40 'Lfd', spec S54 R6, R10, AC6):
 // - it compiles for every backend an export targets (GLSL 300 es included) within the resource
 //   budget, with exactly its base variant's bindings, so a fading draw keeps the base's uniform
 //   and texture slots (lod-crossfade.md §7, the slot risk);

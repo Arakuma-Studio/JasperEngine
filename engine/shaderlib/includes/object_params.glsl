@@ -7,7 +7,11 @@
 //   i_objectNormal0..2  the normal matrix's first three columns (xyz: what a direction reads);
 //                       i_objectNormal0.w the instance's LOD fade
 //   i_objectMvp0..3     the model-view-projection matrix's columns
-// objectLodFade() is the draw's LOD cross-fade (S54: -1..1, 0 none).
+// objectLodFade() is the draw's LOD cross-fade (S54: -1..1, 0 none). It is a macro, not a
+// function: glslang numbers uniform blocks in the order the reachable code first reads them, and a
+// function defined here, called only by the fade variant, would read pbrParams before the
+// includes below read theirs (a skinned variant's u_vs_skinning), so the fade variant's block
+// slots would differ from its base's and the runtime would refuse it (sameLodFadeBindings).
 
 #ifdef HAS_AUTO_INSTANCING
     in vec4 i_objectModel0;
@@ -45,9 +49,7 @@
 
     #define pbrParams objectParams()
 
-    float objectLodFade(){
-        return i_objectNormal0.w;
-    }
+    #define objectLodFade() (i_objectNormal0.w)
 #else
     uniform u_vs_pbrParams {
         mat4 modelMatrix;
@@ -55,7 +57,5 @@
         mat4 mvpMatrix;
     } pbrParams;
 
-    float objectLodFade(){
-        return pbrParams.normalMatrix[0][3];
-    }
+    #define objectLodFade() (pbrParams.normalMatrix[0][3])
 #endif
