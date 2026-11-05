@@ -77,7 +77,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
-| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | M1 landed; rest in progress |
+| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Ready at `2b87a7e4e`; waits for the second full suite; iOS run waits for the Mac |
 | S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1 | In progress: M1-M7 committed, not gated; M8-M10 left |
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | In progress: M1-M4 committed, M5-M6 left |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | M5 needs S36 M1; merges with S62 (same file) | In progress |
@@ -110,12 +110,15 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 - 2026-11-04: S72: other programs' branches may hit "incomplete type" when they merge it: add the include in that source. `Transform.h` has only 7 files of margin before the fan-out limit of 150; if it trips, the check asks for a decision, which can be a higher limit stated in the S72 spec with its reason.
 
+- 2026-11-05: S38: AC9 accepted: Linux +5,440 bytes and wasm +3.5 KB are within budget; 2.6-2.9 KB gzipped against a 2 KB estimate is fine, for a limiter every new project uses. AC8 accepted: file mode meets 300 ms on H (276-281 ms) and the Mac (226 ms); 618-627 ms on loaded A, a Haswell VM. It is an editor-side measurement, not a game cost. Android not meaningful on an x86_64 emulator. AC7 stays open until the Mac is back.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
 - Temporaries a crash leaves in `Recordings/` are not swept (found by S62): they are single files named by pid, which `StagingFolders` does not cover.
 - Closing stdin during `wait` in Play hung the main thread for 118 s or more on S70's red build; not retested on the fix (found by S70).
 - `test_playhead_shortcuts_while_focused` failed once in S70's CI suite; its whole file passes, and with `-k` alone it fails 3 of 3. Cause not established.
+- S38 AC7: the iOS `ambient` session needs a check on a real device, by a person; `ios_packaging.sh` still has to run with the limiter when the Mac is back.
 - A relaunch on Android logs `Entity does not exist to get signature` (found by S67).
 - `list_missing_assets` is not found by agents while its `assets_pipeline` group is hidden (found by S68).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
