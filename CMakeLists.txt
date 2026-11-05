@@ -707,6 +707,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/publish/Publishing.cpp
     ${EDITOR_DIR}/platform/ExternalTools.cpp
     ${EDITOR_DIR}/platform/AndroidTools.cpp
+    ${EDITOR_DIR}/platform/PinnedDownload.cpp
     ${EDITOR_DIR}/platform/AndroidPackager.cpp
     ${EDITOR_DIR}/platform/WindowsResources.cpp
     ${EDITOR_DIR}/platform/MacBundle.cpp

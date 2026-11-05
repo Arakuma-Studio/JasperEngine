@@ -434,6 +434,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         if(GRAPHIC_BACKEND STREQUAL "gles3")
             add_definitions("-DSOKOL_GLES3")
             set(OPENGL_LIB GLESv3)
+        else()
+            # platform/android makes an EGL context and nothing else
+            message(FATAL_ERROR "Android supports GRAPHIC_BACKEND gles3 only (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-D\"lua_getlocaledecpoint()='.'\"")

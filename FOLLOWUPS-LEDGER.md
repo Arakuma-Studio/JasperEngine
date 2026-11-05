@@ -43,7 +43,7 @@ Overlaps: S65 stops at the loading thread, because `dc/mesh-memory` removes the 
 
 AGENTS.md (2026-11-04) requires the full suite before a push to `origin main` when the push needs it,
 such as a big feature; a small change does not. There is no CI, so nothing else checks a push. Big here:
-S65, S67, S68, S69, S70 and S35-S40. S72 was moved off this list: it changes includes, not behaviour. Several ready big features may share one full pass, on a local
+S65, S68, S69, S70 and S35-S40. Moved off this list: S72, which changes includes, not behaviour, and S67, whose code changes are small and were tested end to end for real; the next full pass still covers both. Several ready big features may share one full pass, on a local
 `main` holding all of them. The Mac runs after each group.
 
 ## Status
@@ -55,17 +55,18 @@ S65, S67, S68, S69, S70 and S35-S40. S72 was moved off this list: it changes inc
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
-| Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B | In progress |
+| Module-off builds | S72 broke engines compiled with modules off | `fix/module-off-build` | H | In progress |
+| Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
-| S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | In progress |
-| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A | In progress |
+| S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
+| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | In review: narrowing a test filter |
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B | In progress |
 | S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
-| S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, M | In progress |
-| S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | In progress |
-| S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | In progress |
-| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B | In progress |
+| S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
+| S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | Ready; in the full suite |
+| S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | Ready; in the full suite |
+| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B, H | Ready at `df51380dd`; waits for the second full suite |
 | S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | Done |
 | S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | Done |
 | S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | In progress |
@@ -112,12 +113,18 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
+- Temporaries a crash leaves in `Recordings/` are not swept (found by S62): they are single files named by pid, which `StagingFolders` does not cover.
+- Closing stdin during `wait` in Play hung the main thread for 118 s or more on S70's red build; not retested on the fix (found by S70).
+- `test_playhead_shortcuts_while_focused` failed once in S70's CI suite; its whole file passes, and with `-k` alone it fails 3 of 3. Cause not established.
 - A relaunch on Android logs `Entity does not exist to get signature` (found by S67).
 - `list_missing_assets` is not found by agents while its `assets_pipeline` group is hidden (found by S68).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
 
 ## Done
 
+- S67: Android and iOS packaging really run. Fixed: prebuilt iOS games never linked; exported `gradlew` was not executable; EC bundles could not sign; `android-emulator-test.sh` emptied its own expectations, so earlier passes without `--scene` proved less. Android release and development APK and AAB install, run, golden 0.00%. iOS simulator, both flavours, golden 0.00%. Eval 2/2, 0/2 without its text. Open: a signed IPA needs an Apple account; a source export's debug build fails the emulator's GLES check with `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` although its picture matches at 0.00% (emulator's driver suspected, not proven; check on a real phone); Gradle source exports use the debug key; iOS not rerun on the final merge, which touched none of its files.
+- `fix/locked-project-crash`: a refused editor exits with code 3 and never opens the shared temporary project. Red 60/64 and 58/64 crashes; private `TMPDIR` control 0/64; green 216/216. Windows and macOS inferred. Open: the Hub's `createTempProject` fallbacks still ignore failure; null checks should stop the crash there, but only the MCP path was tested.
+- S62: a recording that reports success is a good one. Every write is checked, the first failure stops recording while Play continues, output is published atomically, a partial stays only if it decodes. A frame waits for its loads in game time. Red on the old build: stand-in frames at game frames 10-12, injected failures reported as success. 27/27 recorder tests on the merge, including a real full 64 MB tmpfs; decoded audio matches the old reference. Whole `check-changed` hit its limit one merge back at 173 of 181 files (1108 passed); its 5 failures and 8 unfinished files pass by hand, load as the cause inferred. Eval 2/2, 0/2 without its text. Not compiled: Windows, macOS.
 - S72: a component header rebuilds a median of 29 editor files instead of 451, worst 143 instead of 454. Game code keeps the umbrella. `check_fanout.py` and `check_headers.py` guard it. Sanitizer builds install and run MCP tests, leak checks off. Open: web, Android, unity, Mac and sanitizer builds last passed on earlier merges, not the final one; Windows never compiled; `AtomicFile` timing tests fail on loaded H and pass alone.
 - S71: measured first: a Mesh's update flags cost 1083 µs a call on main; now 1.3 µs, same flags, every component under 2 µs. Stop also keeps a Mesh a Play only moved, which was never on main. Stop on 600 boxes went from 2.2x rebuilding them to 1.52x (changed) and 1.03x (moved). `CanvasGroupTest` budgets moved to `perfSlack()`, so that test no longer skips under load. `check-changed` passed one merge back; at the final commit a full build, 63 unit and 33 MCP tests. Open: the skipped reload shows no CPU saving under llvmpipe; not measured on a real GPU. A changed Mesh costs about 0.6 ms more on Stop.
 - Mac check: a real hang fixed: 1-9% of new FSEvents streams never report, and stopping one then hung forever. `start()` retries up to 3 streams, then polls. 0 hangs in 15 runs after, 1 before under load. The `Layers` hash difference is explained (17 of 3000 floats, at most 2 ULP: FMA contraction and one `sinf`), and that test now runs on Mac. Mac WERROR build: editor 2823 passed, 1 skipped; core 2849 passed, 16 skipped; 0 failed. S61's `PanelClaims` built and passed there; nobody has clicked the Mac menu. Open: polling watcher tests fail 5 of 10 under 14 CPU hogs (unchanged code); `Layers.PerformanceBudget` fails steadily on A (0.75 ms against 0.6 ms), passes on B; a test probe crashed 3 times with SIGBUS inside FSEvents, cause unknown.
@@ -146,3 +153,9 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S37 committed M1-M4. S35 started without waiting for S62, because only its Recorder audio part overlaps and S62 has not reported yet.
 - 2026-11-04: S69 found a crash already on `main`: under load, a second editor on a locked project segfaults in 61 of 64 launches, in `Project::getSelectedEntities`, instead of exiting with code 3. Fixing on its own branch.
 - 2026-11-04: S72 landed.
+- 2026-11-04: S62 landed. Fixed AGENTS.md on `main`: S72 named `Scene.h` and `Project.h` bare, which broke `test_red_controls`; I had skipped the MCP pass for S72.
+- 2026-11-04: S67 landed. A's disk should recover: its 72 GB tree is gone.
+- 2026-11-04: First full suite started on `int/full-pass-1` (`eb9f93aca`): `main` + S68 + S69 + the lock crash fix. Logs in `je-remote/logs/full-eb9f93aca`.
+- 2026-11-04: S72 broke Compile builds of projects without the HTML UI (found by S37): an engine with modules off no longer compiled. I landed S72 without a full pass and only checked the default configuration. Fix and guard on `fix/module-off-build`.
+- 2026-11-05: Five of six Claude accounts hit their weekly limit at about 23:30 UTC and every running agent stopped; this session moved to the last account (52% used; it resets 2026-11-07). Work is saved in the worktrees. Agents resume by priority: the two `main` bugs first, then what is close to landing, then sound.
+- 2026-11-05: Lock crash landed. Full unit run on `eb9f93aca`: 2885 core and 2946 editor tests, 0 failed, 1 load skip.
