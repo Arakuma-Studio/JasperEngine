@@ -772,15 +772,20 @@ Recorded during implementation (branch `dc/export-pipeline`).
    codes) has the eval case `guard_build_output_inside_project` (tools/mcp/eval/cases.py), and the
    detail went to `docs/mcp/guide/shipping.md`. The agent guide is unchanged. The live eval was not
    run here: it needs Orquester-managed accounts. `test_grade.py` passes.
-9. **Linked folders are followed (lead decision, S68 linked folders).** This overrides 6.1 and rule
-   7.2 ("links are not followed"). `copyAssets`, `copyLua` and `copyCustomShaderSources` walk with
-   `exportfiles::walk(..., followLinks=true)`: a linked folder ships at the path the editor reads it
-   by, under each name that reaches it. A link back to a folder it is in is a cycle, left out with
-   `W-LINK-CYCLE`. The other guards stay: no earlier export, failed copies fail the export. The
-   C++ header and script walks and the SDK mirror still do not follow folder links.
-10. **One shader-key function for S64.** `Project::collectBuildShaderKeys` is where S64 (shader
-    lists for closed scenes) adds its closed-scene keys. The exporter, Build Settings,
-    `get_build_info`/`generate_shaders` and the standalone cache already go through it.
+9. **Linked folders follow S68's walker.** This overrides 6.1 and rule 7.2. S68 (linked folders,
+   now on `main`) owns link following: `copyAssets`, `copyLua` and `copyCustomShaderSources` use
+   its `Exporter::walkTree`, which handles cycles, the export's own folder and the link budget. On
+   top of it this feature adds three things to that walker: the earlier-export skip, failed copies
+   and removals failing the export, and a root that cannot be listed failing it. That walker keeps
+   S68's `skip_permission_denied`, so an unreadable folder there is skipped without
+   `W-UNREADABLE-FOLDER`. `exportfiles::walk` (generated sources, C++ scripts, artifacts) does not
+   enter linked folders.
+10. **One shader-key function with S64.** S64 (shader lists for closed scenes) landed first, with
+    `Project::collectBuildShaderKeys` and `finishBuildShaderKeys` in `editor/project/
+    ProjectShaderLists.cpp`. This feature's dead-fork filter moved into those two functions (an
+    optional `deadForks` out-parameter), so there is a single implementation. The exporter, Build
+    Settings, `get_build_info`/`generate_shaders`, Play's startup and the standalone cache all go
+    through it.
 11. **T17 (prebuilt web favicon in the slow lane)** was not added: the MCP suite has no prebuilt web
     build. The prebuilt `finalizeWeb` and the Compile path share `Exporter::writeWebFavicon`, which
     T16 covers through the source export.

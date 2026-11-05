@@ -72,7 +72,7 @@ bool isSkippableOpenError(const std::error_code& ec) {
     return ec == std::errc::permission_denied || ec == std::errc::operation_not_permitted;
 }
 
-WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& visit, bool followLinks) {
+WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& visit) {
     WalkResult result;
     std::error_code ec;
     const fs::file_status rootStatus = fs::status(root, ec);
@@ -82,22 +82,10 @@ WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& vi
         return result;
     }
 
-    // a folder to walk, and (following links) the real folders above it: a link back to one of
-    // them is a cycle
-    struct Pending {
-        fs::path dir;
-        std::vector<fs::path> ancestors;
-    };
-    std::vector<Pending> pending;
-    {
-        Pending first{root, {}};
-        if (followLinks) first.ancestors.push_back(fs::canonical(root, ec));
-        pending.push_back(std::move(first));
-    }
+    std::vector<fs::path> pending{root};
     while (!pending.empty()) {
-        Pending current = std::move(pending.back());
+        const fs::path dir = pending.back();
         pending.pop_back();
-        const fs::path& dir = current.dir;
 
         fs::directory_iterator it(dir, ec);
         if (ec) {
@@ -124,7 +112,7 @@ WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& vi
             return a.path().filename() < b.path().filename();
         });
 
-        std::vector<Pending> subdirs;
+        std::vector<fs::path> subdirs;
         for (const fs::directory_entry& entry : entries) {
             const fs::path rel = entry.path().lexically_relative(root);
             if (rel.empty()) continue;
@@ -135,27 +123,13 @@ WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& vi
                 result.error = "Cannot read " + text(entry.path()) + ": " + statusError.message();
                 return result;
             }
-            const bool link = fs::is_symlink(linkStatus);
-            // a link's target; one leading nowhere is skipped like any broken file
-            const bool directory = fs::is_directory(linkStatus) ||
-                                   (link && fs::is_directory(entry.status(statusError)));
-            if (directory) {
-                // a link to a folder is followed only when asked (the project's linked folders)
-                if (link && !followLinks) continue;
-                Pending next{entry.path(), {}};
-                if (followLinks) {
-                    const fs::path real = fs::canonical(entry.path(), statusError);
-                    if (statusError) continue;
-                    if (std::find(current.ancestors.begin(), current.ancestors.end(), real) != current.ancestors.end()) {
-                        result.cycles.push_back(entry.path());
-                        continue;
-                    }
-                    next.ancestors = current.ancestors;
-                    next.ancestors.push_back(real);
-                }
-                if (!filter || filter(entry, rel) == DirAction::Descend) subdirs.push_back(std::move(next));
+            if (fs::is_directory(linkStatus)) {
+                if (!filter || filter(entry, rel) == DirAction::Descend) subdirs.push_back(entry.path());
                 continue;
             }
+            // a link to a folder is not entered (the linked-folder walk is Exporter::walkTree, S68);
+            // a link to a file is visited as that file
+            if (fs::is_symlink(linkStatus) && fs::is_directory(entry.status(statusError))) continue;
             if (!entry.is_regular_file(statusError)) continue;
             if (!visit(entry, rel)) {
                 result.ok = false;
@@ -163,7 +137,7 @@ WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& vi
             }
         }
         // depth first, in name order
-        for (auto subdir = subdirs.rbegin(); subdir != subdirs.rend(); ++subdir) pending.push_back(std::move(*subdir));
+        for (auto subdir = subdirs.rbegin(); subdir != subdirs.rend(); ++subdir) pending.push_back(*subdir);
     }
     return result;
 }

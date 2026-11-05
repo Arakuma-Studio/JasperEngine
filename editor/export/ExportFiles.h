@@ -22,8 +22,6 @@ namespace jasperengine::editor::exportfiles {
         std::string error;
         // folders that could not be opened for permission reasons, skipped
         std::vector<fs::path> unreadable;
-        // links (followLinks) back to a folder they are in, not followed
-        std::vector<fs::path> cycles;
     };
 
     enum class DirAction { Descend, Skip };
@@ -36,12 +34,11 @@ namespace jasperengine::editor::exportfiles {
     bool isSkippableOpenError(const std::error_code& ec);
 
     // Every regular file below `root` (and every directory, which `filter` decides on before it is
-    // entered), depth first. A link to a file is visited as that file; a link to a folder is
-    // followed only with followLinks (the project's linked folders, S68: reached by the path the
-    // editor reads them by), and one back to a folder it is in is a cycle, left out. `rel` is
+    // entered), depth first. A link to a file is visited as that file; a link to a folder is not
+    // entered (the project's linked folders are walked by Exporter::walkTree, S68). `rel` is
     // relative to root; an entry with an empty relative path is skipped. A root that is not a
     // directory fails.
-    WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& visit, bool followLinks = false);
+    WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& visit);
 
     // copy_file (overwriting) with the parent folders made; false with "Failed to copy <from> to
     // <to>: <reason>" in error

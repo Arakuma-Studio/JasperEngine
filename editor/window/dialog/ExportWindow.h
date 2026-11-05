@@ -63,6 +63,7 @@ namespace jasperengine::editor {
         // Build And Run: launch the built player once the export finishes.
         bool m_runAfterBuild = false;
         bool m_allowMissingAssets = false;
+        bool m_iosSimulator = false;
         bool m_launchDone = false;
         bool m_playerSettingsRequested = false;
         // Nested inside this modal, so it can open without closing Build Settings.
@@ -88,6 +89,7 @@ namespace jasperengine::editor {
             bool fromScene = false;
         };
         std::vector<ShaderEntry> m_shaderEntries;
+        ShaderListStatus m_shaderListStatus;
         int m_selectedShaderIndex = -1;
         std::set<ShaderKey> m_shaderAdditions;
         std::set<ShaderKey> m_shaderExclusions;
@@ -139,6 +141,7 @@ namespace jasperengine::editor {
         std::string m_playerRuntimeId;
         std::string m_playerRuntimeError;
         std::vector<std::string> m_androidMissing;    // the SDK tools a prebuilt Android build lacks
+        std::string m_iosXcodeMissing;                // why this computer cannot build the Xcode project
         // the installed Android runtime's native libraries per selected ABI (the package sizes shown)
         std::vector<std::pair<std::string, uint64_t>> m_androidLibrarySizes;
         void refreshPlayerState();

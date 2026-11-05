@@ -7,6 +7,7 @@
 // tests/fixtures/hires (README.md there: synthetic ground truth and four downscaled CC0 sprites).
 
 #include "spritenormals/SpriteMedia.h"
+#include "object/ui/Image.h"
 #include "spritenormals/SpriteNormals.h"
 #include "spritenormals/SpriteNormalsField.h"
 #include "spritenormals/SpriteNormalsPaint.h"

@@ -509,7 +509,8 @@ TEST(AudioMeter, EachBandReadsAToneAtItsCentre) {
         const double centre = AudioMeter::bandCentre(b);
         const std::vector<float> tone = toneSegments({{2.0, -12.0}}, kMeterRate, centre);
         const LoudnessResult r = AudioMeter::measure(tone.data(), tone.size(), kMeterRate, 1);
-        EXPECT_NEAR(r.bandsDb[(size_t)b], -12.0 + bandCentreGainDb(centre, kMeterRate), 0.1) << AudioMeter::bandLabel(b);
+        // (a window's main lobe is 9 Hz wide: at 31.5 Hz it reads a little of the band's slopes too)
+        EXPECT_NEAR(r.bandsDb[(size_t)b], -12.0 + bandCentreGainDb(centre, kMeterRate), 0.2) << AudioMeter::bandLabel(b);
         if (b > 0) {
             EXPECT_LT(r.bandsDb[(size_t)b - 1], -12.0 - 6.0) << AudioMeter::bandLabel(b) << " in the band below";
         }
@@ -530,6 +531,38 @@ TEST(AudioMeter, HighBandsAboveNyquistAreSilent) {
 TEST(AudioMeter, ANonSubToneHasAlmostNoSubShare) {
     const std::vector<float> tone = toneSegments({{2.0, -6.0}});
     EXPECT_LT(AudioMeter::measure(tone.data(), tone.size(), kMeterRate, 1).subShare, 0.001);
+}
+
+// a run through the filters and a sample at a time are the same filters
+TEST(AudioMeter, TheRunsOfTheFiltersEqualTheirSamples) {
+    const std::vector<float> samples = movingSignal(kMeterRate, 0.5);
+    std::vector<double> run(samples.size() / 2);
+    for (size_t i = 0; i < run.size(); i++) run[i] = samples[i * 2];
+
+    AudioKWeighting a;
+    AudioKWeighting b;
+    a.init(kMeterRate);
+    b.init(kMeterRate);
+    std::vector<double> filtered = run;
+    a.processRun(filtered.data(), filtered.size());
+    for (size_t i = 0; i < run.size(); i++) {
+        ASSERT_EQ(filtered[i], b.process(run[i])) << i;
+    }
+
+    AudioKWeighting c;
+    AudioKWeighting d;
+    AudioKWeighting e;
+    c.init(kMeterRate);
+    d.init(kMeterRate);
+    e.init(kMeterRate);
+    std::vector<double> paired = run;
+    std::vector<double> silent(run.size(), 0.0);
+    c.processRuns(d, paired.data(), silent.data(), paired.size());
+    for (size_t i = 0; i < run.size(); i++) {
+        ASSERT_EQ(paired[i], e.process(run[i])) << i;
+        ASSERT_EQ(silent[i], 0.0) << i;
+    }
+
 }
 
 TEST(AudioMeter, BandsOffLeaveTheirFieldsAtTheFloor) {
@@ -585,11 +618,15 @@ TEST(AudioMeter, BlockSizesDoNotChangeTheResult) {
     }
     const LoudnessResult a = whole.result();
     const LoudnessResult b = single.result();
-    EXPECT_EQ(a.integrated, b.integrated);
-    EXPECT_EQ(a.momentaryMax, b.momentaryMax);
-    EXPECT_EQ(a.shortTermMax, b.shortTermMax);
+    // the same frames summed in other runs: the last bits of a double, nothing more
+    ASSERT_TRUE(a.integrated && b.integrated && a.momentaryMax && b.momentaryMax && a.shortTermMax && b.shortTermMax);
+    EXPECT_NEAR(*a.integrated, *b.integrated, 1e-9);
+    EXPECT_NEAR(*a.momentaryMax, *b.momentaryMax, 1e-9);
+    EXPECT_NEAR(*a.shortTermMax, *b.shortTermMax, 1e-9);
     EXPECT_EQ(a.truePeakDb, b.truePeakDb);
-    EXPECT_EQ(a.bandsDb, b.bandsDb);
+    for (size_t band = 0; band < a.bandsDb.size(); band++) {
+        EXPECT_NEAR(a.bandsDb[band], b.bandsDb[band], 1e-9) << band;
+    }
 }
 
 // result() is a read: a stream goes on as if nobody had looked
@@ -658,7 +695,61 @@ TEST(AudioMeter, PaddingCountsInNoLevel) {
     EXPECT_EQ(file.frames, samples.size());
     EXPECT_DOUBLE_EQ(file.rmsDb, live.rmsDb);
     EXPECT_DOUBLE_EQ(file.samplePeakDb, live.samplePeakDb);
-    EXPECT_EQ(file.bandsDb, live.bandsDb);
+}
+
+// The bands come from the spectrum, the sample-by-sample bank has them from its filters: the same
+// magnitudes, the same levels. Bands 70 dB under the loudest one only hold each method's leakage.
+TEST(AudioMeter, TheBandsAgreeWithTheFilterBank) {
+    for (unsigned int rate : {44100u, 48000u, 96000u}) {
+        const std::vector<float> samples = movingSignal(rate, 6.0);
+        const size_t frames = samples.size() / 2;
+        const LoudnessResult r = AudioMeter::measure(samples.data(), frames, rate, 2);
+
+        AudioOctaveBank left;
+        AudioOctaveBank right;
+        left.init(rate);
+        right.init(rate);
+        double energy[AudioOctaveBank::BANDS + 1] = {};
+        for (size_t i = 0; i < frames; i++) {
+            double y[AudioOctaveBank::BANDS + 1];
+            left.process(samples[i * 2], y);
+            for (int b = 0; b <= AudioOctaveBank::BANDS; b++) energy[b] += y[b] * y[b];
+            right.process(samples[i * 2 + 1], y);
+            for (int b = 0; b <= AudioOctaveBank::BANDS; b++) energy[b] += y[b] * y[b];
+        }
+        const auto db = [frames](double e) { return 10.0 * std::log10(e / (double)(frames * 2)) + 3.0103; };
+        double loudest = -200.0;
+        for (int b = 0; b < AudioOctaveBank::BANDS; b++) loudest = std::max(loudest, db(energy[b]));
+        for (int b = 0; b < AudioOctaveBank::BANDS; b++) {
+            if (db(energy[b]) < loudest - 70.0) continue;
+            EXPECT_NEAR(r.bandsDb[(size_t)b], db(energy[b]), 0.3) << AudioMeter::bandLabel(b) << " at " << rate;
+        }
+        EXPECT_NEAR(r.subShare, energy[AudioOctaveBank::BANDS] / (double)(frames * 2) / r.meanSquare, 0.002) << rate;
+    }
+}
+
+// The windows hold all of a signal's energy, wherever it ends in a window: a tone at a band's centre
+// reads the band's gain over any length.
+TEST(AudioMeter, TheSpectrumKeepsAllTheEnergy) {
+    const double expected = -12.0 + bandCentreGainDb(1000.0, kMeterRate);
+    for (size_t frames : {size_t(4800), size_t(8192), size_t(16384), size_t(24576), size_t(40000), size_t(48000)}) {
+        std::vector<float> tone = toneSegments({{(double)frames / kMeterRate, -12.0}});
+        const LoudnessResult r = AudioMeter::measure(tone.data(), tone.size(), kMeterRate, 1);
+        EXPECT_NEAR(r.bandsDb[5], expected, 0.05) << frames;
+    }
+}
+
+// a stream's bands read before the end are the mean of the windows so far
+TEST(AudioMeter, AStreamsBandsCanBeReadBeforeTheEnd) {
+    const std::vector<float> tone = toneSegments({{1.0, -12.0}});
+    AudioMeter stream(kMeterRate, 1);
+    stream.process(tone.data(), 4800);
+    EXPECT_EQ(stream.result().bandsDb[5], AudioMeter::SILENCE_DB) << "before the first window";
+    stream.process(tone.data() + 4800, tone.size() - 4800);
+    const double expected = -12.0 + bandCentreGainDb(1000.0, kMeterRate);
+    EXPECT_NEAR(stream.result().bandsDb[5], expected, 0.5) << "the first windows hold silence";
+    stream.finish();
+    EXPECT_NEAR(stream.result().bandsDb[5], expected, 0.05);
 }
 
 // rates whose 10 ms are not a whole number of frames: the sub-block lengths vary, the grid stays

@@ -77,7 +77,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | impl |
+| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | review |
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | impl |
@@ -141,3 +141,17 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   red controls and lints; the lead runs the full suite once at landing, on a local `main` holding one or several
   ready features. All 16 agents told to trim queued jobs (keeping their queue place). mesh-memory finishes the full
   run it is already hours into; it counts toward its landing.
+- 2026-11-04 21:xx: **unicode-text** finished its gate (`check-changed`: Linux, web, Android builds; editor 2898,
+  core 2879 with one load flake that passed on rerun; HTML UI 28/28; MCP files; red controls all red). Independent
+  review: no blockers or compile errors found by reading the Windows/Apple code; 3 should-fix defects (logger
+  re-entry overwriting a repaired record, ANSI re-decode on the UTF-8 code page, crash-report paths on Windows
+  before 1903) and 4 minor items, being fixed. Integration branch `dc/integration` created; a trial merge into
+  current `main` conflicts only in `tools/mcp/eval/cases.py`. Disk: a janitor now deletes idle worktrees' Android and
+  web outputs when free space falls under 25 GB (Android builds leave 25 GB each).
+- 2026-11-05: the session's account hit its weekly limit, which stopped every agent mid-run (about a day lost). Found
+  the disk full (0 B) and 14 orphaned queued jobs: cancelled them, deleted every worktree's build trees (they are stale
+  after 304 upstream commits), raised the shared ccache to 40 GB. Merged `origin/main` (the Forge/meshoptimizer
+  program landed S53-S57, including S55's automatic GPU instancing; follow-ups landed S63, S64, S68, S69, S70, S73
+  and more). Owner's rule: no full suites anywhere; the brief's gate is now the WERROR editor build, the feature's
+  own tests and red controls, filtered affected suites, compile-only web/Android when relevant, and lints. Agents
+  revived in batches, closest to landing first.

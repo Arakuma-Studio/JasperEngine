@@ -6,6 +6,9 @@
 // Copyright (c) 2026 Gamecrafters Guild Limited and contributors, MIT License (NOTICE.md).
 
 #include "SearchPalette.h"
+#include "window/InspectorWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ProjectWindow.h"
 
 #include "App.h"
 #include "AppMenuCommand.h"

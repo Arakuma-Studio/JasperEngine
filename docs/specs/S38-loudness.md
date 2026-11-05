@@ -394,3 +394,51 @@ None new (R19: the effect table already exposes parameters).
    is also the check that the library needs no SoLoud. The "`audio` fixture files" are
    `engine/tests/core/fixtures/audio/` and the two other WAV files the repository has
    (`pickup.wav`, `beep.wav`), plus signals built by the test.
+
+### M2-M6
+
+6. **The limiter's DSP tests are core tests** (`engine/tests/core/audio/LimiterFilterTest.cpp`, the static
+   engine reaches the unexported `LimiterFilter`); AC2's file-format half and AC4 are in
+   `editor/tests/AudioMixerTest.cpp` as written.
+7. **R4's NaN guard zeroes and does not reset.** The filters behind it are FIR or hold finite values, so
+   nothing is poisoned, and a reset would drop the delay's audio (a click) for no gain.
+8. **AC3's "no step larger than the signal's own" holds exactly when the direct and the delayed signal are
+   in phase.** Out of phase, the 5 ms fade's own slope comes on top; the test allows 1.5 times the
+   signal's step there (a click would be many times it).
+9. **The output stage applies at once, not at the next init** (R7). AC6 asks for "the next Play", and the
+   audio stays open across Plays: a re-init would stop the editor's sounds. `mFlags` and the post-clip
+   scaler are read once per mix, so it is a plain write. The iOS session does wait for the next init.
+10. **project.yaml's keys are camelCase** as in the rest of its `audio:` node (`outputStage`,
+    `iosSessionCategory`, `loudnessTargetLufs` ...); `audio.output_stage` and so on are the registry's.
+11. **S35 is not on main yet**, so nothing here depends on its capture: AC4's `latency_samples`,
+    AC5's capture and R13's `limiter` lines are S35's to wire (`AudioMixer::getGroupLatencyFrames`,
+    `getEffectGainReductionDb`). Meanwhile `AudioMixerRuntimeTest.ANewProjectHoldsItsCeilingAtTheOutput`
+    measures SoLoud's output with `AudioMeter` for AC5, and AC6's comparison is against the tone's level
+    (a stereo 1 kHz tone reads as loud in LUFS as its peak in dBFS, EBU Tech 3341).
+12. **`test_loudness_readouts` is in `test_project_audio_defaults.py`** with AC5, on one editor.
+13. **The bands come from a short-time FFT, not from filters, in both modes** (R1, R16). The filter bank
+    was the budget: 44 biquads per sample, 2-3 s of CPU for a 3-minute stereo file against R16's 300 ms.
+    `AudioSpectrumBands` reads the same Butterworth magnitudes off a power spectrum (windows overlapping by
+    an eighth, tapers whose powers add up to 1, so that they keep the energy), within 0.3 dB of the filters
+    (`AudioMeter.TheBandsAgreeWithTheFilterBank`). A stream's bands read before `finish()` are the mean of
+    the windows so far, up to about 300 ms behind. `AudioOctaveBank` stays, sample by sample, for S35's
+    `levels.jsonl`, whose bands follow time.
+14. **The guide's Loudness section starts `docs/mcp/guide/sound.md`**, which S36 fills with the rest.
+15. **R16 and R17's reference machines are gone** (server F; no arm64 Android device or emulator here). AC8
+    is measured in CPU time with `je-bench-audio`, the least of 5 runs:
+
+    | Machine | File, 3 min stereo (R16: 300 ms) | Stream (R16: 1.5 %) | Limiter, true peak (R17: 2.5 %) |
+    |---|---|---|---|
+    | Ryzen 9 5900X, server H | 276-281 ms | 0.16 % | 0.30 % |
+    | Haswell VM, server A, loaded | 618-627 ms | 0.36 % | 0.62 % |
+
+    R16's file budget holds on H and not on A's shared VM. Android is not measured: the emulators on A and H
+    run x86_64 images, which say nothing about arm64 cores, so R17's Android number stays open.
+16. **`AudioEffects.cpp` is built with `-Os`** (not MSVC), and the session hook exists only in iOS builds, for
+    AC9. The limiter's CPU on H barely moves: 0.30 % against 0.28 % at `-O3`. Its default path stays bit-identical (`LimiterFilter.LimiterDefaultsBitIdentical`). Against `main`, a
+    release player grows by 5,440 bytes on Linux (budget 6 KB) and 3,458-3,485 bytes in wasm (budget 4 KB),
+    2,644-2,913 bytes gzipped: over the 2 KB estimate of 6.6.
+17. **AC7's device check is a human step and has not been done.** On a device: a new project's game respects
+    the silent switch and mixes with Music app playback; an existing project's does not change.
+18. **AC7's `tools/ci/ios_packaging.sh` has not run:** the Mac was unreachable. Before that, the iOS player built
+    and packaged with this work, ahead of the hook's final iOS-only form.

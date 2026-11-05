@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "media/VideoFormats.h"
+#include "htmlui/compat/CompatApi.h"
+#include "component/PrefabComponent.h"
 #include "media/VideoSourceFactory.h"
 #include "CommandLine.h"
 #include "log/Logger.h"
@@ -346,6 +348,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --frames <n>       Measured frames after warmup. Default: 180.\n"
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
+        << "      --gpu-instancing <on|off> Override the project's GPU Instancing for the run.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
         << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
         << "      --play             Measure the scene playing (Play: scripts, animation, physics run)\n"
@@ -1117,7 +1120,7 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                 if (name == "playStart") {
                     // Play does not start on a snapshot that would lose a GameObject
                     try {
-                        played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                        played.playStateSnapshot = Stream::encodePlaySnapshot(nullptr, &played);
                     } catch (const std::exception& e) {
                         Out::error("Failed to start scene: %s", e.what());
                         return false;
@@ -2040,8 +2043,10 @@ static int runAssets(int argc, char** argv, const std::string& commandName) {
     for (const AssetDatabase::OrphanMeta& orphan : tracker.getOrphanMetas()) {
         orphans.push_back({{"meta", orphan.metaPath}, {"asset", orphan.assetPath}, {"guid", orphan.guid.str()}});
     }
-    std::cout << Json{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
-                      {"resolved_by_path", healed}, {"orphan_metas", orphans}}.dump(2) << "\n";
+    Json report{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
+                {"resolved_by_path", healed}, {"orphan_metas", orphans}};
+    if (!tracker.getReadOnlyLinked().empty()) report["read_only_linked"] = tracker.getReadOnlyLinked();
+    std::cout << report.dump(2) << "\n";
     return missing.empty() ? 0 : 1;
 }
 
@@ -2574,7 +2579,7 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
     std::string extension = model.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     if (extension == ".fbx") {
-        // MeshSystem::getImportedModelPath: the project's import folder mirrors the assets folder
+        // MeshSystem::getFbxImportPath: the project's import folder mirrors the assets folder
         file = root / ".jasperengine" / "imported" / (model.lexically_relative(assets).generic_string() + ".glb");
         extension = ".glb";
     }

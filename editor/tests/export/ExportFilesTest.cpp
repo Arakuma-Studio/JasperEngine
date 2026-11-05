@@ -63,37 +63,6 @@ TEST(ExportFiles, WalkVisitsFilesSkipsFoldersAndStops) {
     EXPECT_EQ(visits, 1u);
 }
 
-// Linked folders ship as the editor reads them (S68): followed when asked, each under its own path,
-// and a link back to a folder it is in is a cycle, left out. Windows makes links only with a
-// privilege; the walk is the same there.
-#ifndef _WIN32
-TEST(ExportFiles, WalkFollowsLinkedFoldersAndStopsAtCycles) {
-    TestTempDir dir("export-walk-links");
-    TestTempDir::write(dir / "outside/shared/tree.png", "t");
-    TestTempDir::write(dir / "root/real/rock.png", "r");
-    fs::create_directory_symlink(dir / "outside/shared", dir / "root/shared");
-    fs::create_directory_symlink(dir / "root/real", dir / "root/alias");
-    fs::create_directory_symlink(dir / "root", dir / "root/real/up");
-    std::vector<std::string> seen;
-    auto collect = [&seen](const fs::directory_entry&, const fs::path& rel) {
-        seen.push_back(rel.generic_string());
-        return true;
-    };
-    const exportfiles::WalkResult followed = exportfiles::walk(dir / "root", nullptr, collect, true);
-    ASSERT_TRUE(followed.ok) << followed.error;
-    EXPECT_EQ(seen, (std::vector<std::string>{"alias/rock.png", "real/rock.png", "shared/tree.png"}))
-        << "a link to the project's own folder ships under both names";
-    // alias/up and real/up lead back to root
-    ASSERT_EQ(followed.cycles.size(), 2u);
-
-    seen.clear();
-    const exportfiles::WalkResult unfollowed = exportfiles::walk(dir / "root", nullptr, collect, false);
-    ASSERT_TRUE(unfollowed.ok) << unfollowed.error;
-    EXPECT_EQ(seen, (std::vector<std::string>{"real/rock.png"}));
-    EXPECT_TRUE(unfollowed.cycles.empty());
-}
-#endif
-
 TEST(ExportFiles, CopyFileFailsOverADirectory) {
     TestTempDir dir("export-copy");
     TestTempDir::write(dir / "src/logo.png", "png");
