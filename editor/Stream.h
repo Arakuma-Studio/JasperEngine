@@ -65,13 +65,10 @@ namespace jasperengine{
 namespace jasperengine::editor {
     class Workspace;
     class StreamTestAccess;
-    class LegacyCodecs;
 
     class Stream {
-        // jasperengine-editor-tests round-trips the private conversions too (editor/tests/stream),
-        // and keeps the codecs reflection replaced as the parity oracle (editor/tests/reflect/legacy)
+        // jasperengine-editor-tests round-trips the private conversions too (editor/tests/stream)
         friend class StreamTestAccess;
-        friend class LegacyCodecs;
 
     private:
 
@@ -114,7 +111,6 @@ namespace jasperengine::editor {
         static std::string uiDocumentRenderModeToString(UIDocumentRenderMode mode);
         static UIDocumentRenderMode stringToUIDocumentRenderMode(const std::string& str);
 
-        static std::string fluidOutputToString(FluidOutput output);
         static FluidOutput stringToFluidOutput(const std::string& str);
         // lattice enums: the lowercase enumerator names (spec §2.0)
         static std::string latticeInterpolationToString(LatticeInterpolation interpolation);
@@ -178,8 +174,6 @@ namespace jasperengine::editor {
         static LayoutGroupType stringToLayoutGroupType(const std::string& str);
         static std::string canvasGroupRenderModeToString(CanvasGroupRenderMode mode);
         static CanvasGroupRenderMode stringToCanvasGroupRenderMode(const std::string& str);
-        static std::string alphaTweenTargetToString(AlphaTweenTarget target);
-        static AlphaTweenTarget stringToAlphaTweenTarget(const std::string& str);
 
         static std::string scrollbarTypeToString(ScrollbarType type);
         static ScrollbarType stringToScrollbarType(const std::string& str);

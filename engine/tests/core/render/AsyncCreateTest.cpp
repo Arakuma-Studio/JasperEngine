@@ -437,6 +437,7 @@ TEST_F(AsyncCreateGpu, ClearWhileAVariantsMakeIsQueued){
         const uint16_t id = ShaderPool::registerCustomShader("tests/async_queued_clear.frag");
         ShaderPool::setShaderBuilder([data](ShaderKey){ return ShaderBuildResult(data, ResourceLoadState::Finished); });
         const uint32_t aliveBefore = sg_query_stats().total.shaders.alive;
+        const uint64_t createdBefore = SystemRender::getGpuCreationStats().createdShaders;
         std::shared_ptr<ShaderRender> kept;
         withAVariantsMakeQueued(0, id, [&](){
             kept = ShaderPool::get(ShaderType::POSTPROCESS, 0, id);
@@ -450,6 +451,7 @@ TEST_F(AsyncCreateGpu, ClearWhileAVariantsMakeIsQueued){
         ShaderPool::setShaderBuilder(nullptr);
         EXPECT_LE(sg_query_stats().total.shaders.alive, aliveBefore) << "a GPU shader was left over";
         EXPECT_TRUE(SystemRender::isGpuCreationIdle());
+        EXPECT_EQ(SystemRender::getGpuCreationStats().createdShaders, createdBefore) << "the make that found its handle gone is counted";
 
         // the pool works on: the same source from a new id, and the slot its handle had is not it
         ShaderData again;

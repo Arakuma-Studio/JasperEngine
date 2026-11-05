@@ -1,0 +1,162 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 90cb92a0d289ccee
+--- 0
+width: 4117
+height: 4078
+anchorPointLeft: -55
+anchorPointTop: 5912.221
+anchorPointRight: -0.31135526
+anchorPointBottom: 7798.821
+anchorOffsetLeft: 17
+anchorOffsetTop: -94839
+anchorOffsetRight: 4093
+anchorOffsetBottom: -19
+positionOffset: [1e-45, 0.96524554]
+pivot: [-0.67541623, 56]
+anchorPreset: NONE
+usingAnchors: false
+panel: 0
+containerBoxIndex: -13
+scissor: [-0.785638, 1e-45, 1.8571428, 3e+38]
+ignoreScissor: true
+ignoreEvents: false
+--- 1
+width: 274
+height: 4060
+anchorPointLeft: 122
+anchorPointTop: 39.285713
+anchorPointRight: 0.4727105
+anchorPointBottom: 8741.002
+anchorOffsetLeft: -6
+anchorOffsetTop: 58542
+anchorOffsetRight: -1
+anchorOffsetBottom: -20
+positionOffset: [72, -133.57143]
+pivot: [0, 1e-45]
+anchorPreset: FULL_LAYOUT
+usingAnchors: true
+panel: 346
+containerBoxIndex: -12
+scissor: [1e-45, 0, 95, -0.5922349]
+ignoreScissor: true
+ignoreEvents: false
+--- 2
+width: 4732
+height: 17
+anchorPointLeft: -132.42857
+anchorPointTop: 9360.449
+anchorPointRight: 85
+anchorPointBottom: 1e-45
+anchorOffsetLeft: 16
+anchorOffsetTop: 10
+anchorOffsetRight: 0
+anchorOffsetBottom: 11506
+positionOffset: [0.6273516, 3e+38]
+pivot: [54, 6489.77]
+anchorPreset: CENTER_LEFT
+usingAnchors: true
+panel: 0
+containerBoxIndex: 18
+scissor: [0, 1803.7686, -0.03232194, 0]
+ignoreScissor: false
+ignoreEvents: true
+--- 3
+width: 2526
+height: 1880
+anchorPointLeft: 28.857143
+anchorPointTop: 1e-45
+anchorPointRight: -0
+anchorPointBottom: -88.28571
+anchorOffsetLeft: 16
+anchorOffsetTop: 12187
+anchorOffsetRight: 0
+anchorOffsetBottom: 14
+positionOffset: [38.57143, -57]
+pivot: [3594.995, 44.857143]
+anchorPreset: TOP_WIDE
+usingAnchors: false
+panel: 278
+containerBoxIndex: 13
+scissor: [-0, -0.35022223, 3e+38, 0]
+ignoreScissor: false
+ignoreEvents: false
+--- 4
+width: 2701
+height: 2575
+anchorPointLeft: -115.57143
+anchorPointTop: 3e+38
+anchorPointRight: .inf
+anchorPointBottom: 95.42857
+anchorOffsetLeft: -8
+anchorOffsetTop: -12
+anchorOffsetRight: 4
+anchorOffsetBottom: -20
+positionOffset: [115.57143, -20]
+pivot: [39, -0.838541]
+anchorPreset: VERTICAL_CENTER_WIDE
+usingAnchors: false
+panel: 293
+containerBoxIndex: 5
+scissor: [-0.30027226, -0.5289792, 55, 5675.9385]
+ignoreScissor: true
+ignoreEvents: false
+--- 5
+width: 4171
+height: 2570
+anchorPointLeft: 1e-45
+anchorPointTop: -.inf
+anchorPointRight: -61
+anchorPointBottom: .inf
+anchorOffsetLeft: -8
+anchorOffsetTop: -17
+anchorOffsetRight: -6
+anchorOffsetBottom: 9
+positionOffset: [0.4510127, 0]
+pivot: [140.28572, -95.71429]
+anchorPreset: FULL_LAYOUT
+usingAnchors: true
+panel: 31
+containerBoxIndex: 13
+scissor: [-118.14286, 1821.0894, 0.30290282, 0]
+ignoreScissor: false
+ignoreEvents: false
+--- 6
+width: 3300
+height: 4294967295
+anchorPointLeft: -0.0027853018
+anchorPointTop: 10.428572
+anchorPointRight: -0.55091953
+anchorPointBottom: 6821.0874
+anchorOffsetLeft: -9
+anchorOffsetTop: 16
+anchorOffsetRight: 12
+anchorOffsetBottom: 8
+positionOffset: [0, 4479.399]
+pivot: [0, 0]
+anchorPreset: CENTER
+usingAnchors: true
+panel: 238
+containerBoxIndex: -9
+scissor: [4717.6816, 0, -0, 1e-45]
+ignoreScissor: true
+ignoreEvents: false
+--- 7
+width: 4498
+height: 4294967295
+anchorPointLeft: 0.2702472
+anchorPointTop: -119.28571
+anchorPointRight: 3e+38
+anchorPointBottom: -0.50628275
+anchorOffsetLeft: 9
+anchorOffsetTop: -4
+anchorOffsetRight: 1
+anchorOffsetBottom: -7
+positionOffset: [0.6159576, 35.041603]
+pivot: [1e-45, 0.011208277]
+anchorPreset: TOP_LEFT
+usingAnchors: false
+panel: 0
+containerBoxIndex: 6
+scissor: [1174.631, 9628.762, 0, 9]
+ignoreScissor: false
+ignoreEvents: true

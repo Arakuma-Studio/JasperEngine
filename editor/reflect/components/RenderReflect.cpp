@@ -197,7 +197,7 @@ namespace {
         JE_FIELD(MeshComponent, customDepthShader, .updateFlags = UpdateFlags_Shader_Reload),
         JE_FIELD(MeshComponent, shaderUniforms, .ops = &ops::ShaderUniformValues, .updateFlags = UpdateFlags_Shader_Uniforms),
         JE_FIELD(MeshComponent, numSubmeshes),
-        JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll),
+        JE_FIELD(MeshComponent, submeshes, .flags = ListTemplate, .updateFlags = kSubmeshAll, .assetCount = JE_COUNT(MeshComponent, numSubmeshes)),
         // one blend shape weight each ("morphWeights[2]"), so a prefab instance overrides weights
         // one by one (the Inspector's Blend Shapes rows, animation clips T3c); read every frame
         JE_FIELD(MeshComponent, morphWeights, .flags = ListElements | ListTemplate | NoCodegen),
@@ -332,9 +332,14 @@ namespace {
 
     constexpr uint64_t kTerrain = UpdateFlags_Terrain;
 
+    // the node tree and the physics heightfield are built from the map
+    void terrainHeightMapMoved(void* owner) {
+        static_cast<TerrainComponent*>(owner)->heightMapLoaded = false;
+    }
+
     constexpr FieldDesc kTerrainFields[] = {
         JE_FIELD(TerrainComponent, enabled),
-        JE_FIELD(TerrainComponent, heightMap, .updateFlags = kTerrain | kTerrainTexture | kFoliage),
+        JE_FIELD(TerrainComponent, heightMap, .updateFlags = kTerrain | kTerrainTexture | kFoliage, .assetMoved = &terrainHeightMapMoved),
         JE_FIELD(TerrainComponent, autoSetRanges, .updateFlags = kTerrain),
         JE_FIELD(TerrainComponent, offset),
         JE_FIELD(TerrainComponent, terrainSize, .updateFlags = kTerrain | kFoliage, .unit = Unit::Meters, .min = 0.0f),
@@ -404,7 +409,8 @@ namespace {
 
     constexpr FieldDesc kScriptFields[] = {
         // an enabled change runs onEnable / onDisable in Play (Catalog::updateEntity: UpdateFlags_Script_Enabled, as upstream's Catalog)
-        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden, .updateFlags = UpdateFlags_Script_Enabled),
+        JE_FIELD(ScriptComponent, scripts, .ops = &kScriptEntriesOps, .flags = NoDefault | Hidden, .updateFlags = UpdateFlags_Script_Enabled,
+                 .assetForm = AssetForm::ScriptEntries),
     };
 
     // A script property's value and its default (the script's declared one)
@@ -472,7 +478,7 @@ namespace {
 
     constexpr FieldDesc kPrefabFields[] = {
         JE_FIELD(PrefabComponent, name, .drawer = "label"),
-        JE_FIELD(PrefabComponent, path, .asset = AssetKind::Prefab, .drawer = "label"),
+        JE_FIELD(PrefabComponent, path, .asset = AssetKind::Prefab, .drawer = "label", .assetForm = AssetForm::PrefabRoot),
         JE_FIELD(PrefabComponent, guid, .label = "GUID", .drawer = "label"),
     };
 
@@ -601,6 +607,9 @@ const ComponentDesc kInstancedMeshDesc{
 namespace {
 
     // the keys its codec reads
+    // terrains saved before blend maps and surface layers
+    constexpr const char* kTerrainLegacyTextureKeys[] = {"blendMap", "textureLayers[]", "textureDetailRed", "textureDetailGreen", "textureDetailBlue"};
+
     constexpr const char* kTerrainKnownKeys[] = {"autoSetRanges", "blendMap", "blendMaps", "enabled", "foliageLayers", "heightMap", "levels", "maxHeight", "offset", "ranges", "resolution", "rootGridSize", "surfaceLayers", "terrainSize", "textureBaseTiles", "textureDetailTiles", "textureLayers"};
 
 }
@@ -612,6 +621,7 @@ const ComponentDesc kTerrainDesc{
     .codec = &kTerrainCodec,
     .codegen = JE_FACTORY_CODEGEN_PATH(createTerrainComponent),
     .extraKeys = kTerrainKnownKeys,
+    .legacyTextureKeys = kTerrainLegacyTextureKeys,
 };
 
 namespace {
