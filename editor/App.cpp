@@ -4716,6 +4716,13 @@ void editor::App::finishBenchmark() {
             first = false;
         }
         json << "}";
+        // GPU Instancing in the last measured frame: the draws that could batch, and why one did
+        // not join the batch before it (S55 R7)
+        const DrawBatchStats batch = SystemRender::getDrawBatchStats();
+        json << ",\n  \"drawBatch\": {\"offered\": " << batch.offeredDraws << ", \"instancedDraws\": " << batch.instancedDraws
+             << ", \"batchedInstances\": " << batch.batchedInstances << ", \"splitPipeline\": " << batch.splitPipeline
+             << ", \"splitElements\": " << batch.splitElements << ", \"splitBindings\": " << batch.splitBindings
+             << ", \"splitUniforms\": " << batch.splitUniforms << "}";
     }
     if (benchmarkUiStats) {
         // HtmlUIRenderStats averaged over the measured frames

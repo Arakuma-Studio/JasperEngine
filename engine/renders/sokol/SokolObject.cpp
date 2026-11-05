@@ -1565,7 +1565,7 @@ bool SokolDrawBatch::holdDraw(SokolObject* object, unsigned int base, unsigned i
     draw.lodFade = object->nextBatchLodFade;
     object->nextBatchVariant = nullptr;
     draw.variantPipeline = (draw.variant && draw.pipelineIndex >= 0 && draw.pipelineIndex < SokolObject::PIPELINE_TYPES)
-        ? draw.variant->pipelines[draw.pipelineIndex].id : SG_INVALID_ID;
+        ? draw.variant->pipelines[draw.pipelineIndex].id : (uint32_t)SG_INVALID_ID;
 
     // one instance of the plain pipeline whose variant was linked and whose object block can be
     // an instance's

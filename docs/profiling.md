@@ -109,6 +109,9 @@ uniformBytesKept, bufferUploadBytes, pipelinesApplied, bindingsApplied, aliveBuf
 alivePipelines}`, the game frame's counters averaged over the measured frames (with `--play`, the
 frame the Game view shows). `--gpu-instancing on|off` overrides the project's GPU Instancing for
 the run. The mesh benchmark gate (spec S55) runs both:
+`drawBatch {offered, instancedDraws, batchedInstances, splitPipeline, splitElements, splitBindings,
+splitUniforms}` is GPU Instancing in the last measured frame: the draws that could batch, and why one
+did not join the batch before it.
 
 ```sh
 python3 tools/fixtures/mesh-bench/generate.py /tmp/mesh-bench

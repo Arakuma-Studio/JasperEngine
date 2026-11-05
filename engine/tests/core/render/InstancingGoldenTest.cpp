@@ -140,8 +140,23 @@ namespace {
         }
 
         // an attachment of the frame's first pass of that label (the Frame Debugger's preview):
-        // attachment 0..3 colour, 4 depth (shown as depth); empty when it never came
+        // attachment 0..3 colour, 4 depth (shown as depth); empty when it never came. On Vulkan the
+        // preview's first capture comes back black while its pipeline is being made, ready all the
+        // same: a capture counts once it holds something, and these passes all draw or clear above 0
         static std::vector<uint8_t> passImage(const char* label, int attachment){
+            std::vector<uint8_t> rgba;
+            for (int attempt = 0; attempt < 120; attempt++){
+                rgba = capturePassImage(label, attachment);
+                for (size_t i = 0; i < rgba.size(); i += 4){
+                    if (rgba[i] != 0 || rgba[i + 1] != 0 || rgba[i + 2] != 0)
+                        return rgba;
+                }
+                GpuEnvironment::drawFrames(1);
+            }
+            return rgba;
+        }
+
+        static std::vector<uint8_t> capturePassImage(const char* label, int attachment){
             const PassCounts counts = passCounts(label);
             PassPreviewRequest request;
             request.viewTag = counts.viewTag;
