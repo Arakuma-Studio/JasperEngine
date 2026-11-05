@@ -7,6 +7,7 @@
 
 #include "Engine.h"
 #include "Scene.h"
+#include "component/SpriteComponent.h"
 #include "object/Camera.h"
 #include "object/Sprite.h"
 #include "subsystem/RenderSystem.h"

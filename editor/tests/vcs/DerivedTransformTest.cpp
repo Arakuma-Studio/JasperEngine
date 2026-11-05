@@ -14,6 +14,9 @@
 #include "util/Prefab.h"
 #include "Stream.h"
 #include "StreamMigrations.h"
+#include "component/CameraComponent.h"
+#include "component/LightComponent.h"
+#include "component/TerrainComponent.h"
 
 #include <gtest/gtest.h>
 
