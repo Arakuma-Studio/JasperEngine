@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshPreviewRender.h"
+#include "component/MeshComponent.h"
+#include "component/LightComponent.h"
 
 #include "Configs.h"
 #include "Stream.h"

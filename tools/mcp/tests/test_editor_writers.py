@@ -12,6 +12,8 @@ from pathlib import Path
 from harness import Editor, make_native_player, project_player_name, record_built_player, skip
 
 EDITOR = {"create": True, "name": "Editor Writers"}
+CI_EXCLUDED = ("long-running (about 3 minutes on a loaded server: saving, compiling twice and Play under the write guard); "
+               "in the full suite (MCP_SUITE=all) on the build servers")
 TIMEOUT = 1500
 
 GUARD = ("hidden folder", "named project.yaml", "regenerated on every build")

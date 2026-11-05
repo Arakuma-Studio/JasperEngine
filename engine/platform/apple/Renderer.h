@@ -24,6 +24,9 @@
 + (void)visibilityChanged:(BOOL)visible;
 // the update rate of a hidden window (Engine::getHiddenUpdateFps)
 + (double)hiddenUpdateFps;
+// NSProcessInfo.thermalState to Device (spec S56): at start (reading it once is what makes the
+// notifications come) and on NSProcessInfoThermalStateDidChangeNotification
++ (void)thermalStateChanged;
 + (void)orientationChanged;
 #if TARGET_OS_IPHONE
 // Screen.safeArea: the view's safeAreaInsets (points) times its contentScaleFactor, the drawable's

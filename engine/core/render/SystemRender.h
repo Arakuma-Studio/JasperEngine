@@ -34,6 +34,8 @@ namespace jasperengine{
         TextureFormatSupport textureFormats;
         bool renderRG16F = false, blendRG16F = false, filterRG16F = false;
         bool renderR16F = false, blendR16F = false, filterR16F = false;
+        // RGBA16F and R16F colour attachments can be multisampled (the OIT targets under MSAA)
+        bool msaaRGBA16F = false, msaaR16F = false;
         // the largest side of a 2D texture (0: unknown)
         int maxTextureSize2D = 0;
     };
@@ -93,6 +95,15 @@ namespace jasperengine{
 
         static void commitQueue();
         static void executeQueue();
+        // Upload pacing of the queued creations and updates (spec S56 R8): the bytes a frame
+        // uploads at most (QualityResolver::uploadBudgetBytes), a monotonic token of everything
+        // queued so far and whether it has all run, and the commands left for a later frame
+        static void setUploadBudget(uint64_t bytes);
+        static uint64_t getUploadBudget();
+        static uint64_t getUploadToken();
+        static bool isUploadTokenComplete(uint64_t token);
+        static size_t getDeferredUploadCount();
+        static uint64_t getUploadBytesLastFrame();
         static void commit();
         // frames committed so far: work that may run once per frame keys on it
         static uint64_t getFrameCount();
@@ -108,6 +119,18 @@ namespace jasperengine{
         static bool hasTextureFormatSupportOverride();
         // the dynamic pipeline cache (ObjectRender::beginDraw(PipelineState)): pipelines
         // created and applied since start, and how many it holds now
+        // Automatic GPU instancing and redundant state (spec S55, SokolDrawBatch), on while
+        // Project Settings > GPU Instancing is: a pipeline or uniform block already applied is not
+        // applied again, and between beginDrawBatch and endDrawBatch (a pass's opaque queue)
+        // consecutive draws of one mesh, material and pipeline that differ only in their object
+        // block become one instanced draw (ObjectRender::setNextDrawBatch)
+        static void setDrawBatching(bool enabled);
+        static bool isDrawBatching();
+        static void beginDrawBatch();
+        static void endDrawBatch();
+        // the last committed frame's
+        static DrawBatchStats getDrawBatchStats();
+
         static uint64_t getPipelineCacheMisses();
         static uint64_t getPipelineApplies();
         static size_t getPipelineCacheSize();

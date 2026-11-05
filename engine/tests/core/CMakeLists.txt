@@ -11,7 +11,8 @@
 # budgets (S26 R28-R31, docs/scene-view-picking.md), je-bench-particles the particle system's
 # (S20 R20-R26, docs/perf/particles.md), je-bench-nav navigation's (S19 R25-R30,
 # docs/perf/navigation.md), je-bench-splines the splines' (S18 R18-R21, docs/perf/splines.md),
-# je-bench-anim the Animator's (S21 R19-R20, docs/perf/animator.md)
+# je-bench-anim the Animator's (S21 R19-R20, docs/perf/animator.md), je-bench-audio the loudness
+# meter's and the limiter's (S38 R16-R17)
 # tools/perf/check_bench.py gates on, from their JSON output (docs/jobs-memory.md).
 
 file(GLOB_RECURSE CORE_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*Test.cpp)
@@ -181,7 +182,9 @@ add_executable(je-bench-nav ${CMAKE_CURRENT_SOURCE_DIR}/bench/NavBench.cpp ${COR
 # je-bench-splines: the spline budgets (S18 R18-R21, docs/perf/splines.md)
 add_executable(je-bench-splines ${CMAKE_CURRENT_SOURCE_DIR}/bench/SplineBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
 add_executable(je-bench-anim ${CMAKE_CURRENT_SOURCE_DIR}/bench/AnimBench.cpp ${CORE_TEST_ALLOCATION_COUNTER})
-foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim)
+# je-bench-audio: the loudness budgets (S38 R16-R17)
+add_executable(je-bench-audio ${CMAKE_CURRENT_SOURCE_DIR}/bench/AudioMeterBench.cpp)
+foreach(target je-bench-jobs je-bench-memory je-bench-picking je-bench-diag je-bench-particles je-bench-nav je-bench-splines je-bench-anim je-bench-audio)
     target_link_libraries(${target} PRIVATE jasperengine Threads::Threads)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/support)
     jasperengine_apply_cxx_standard(${target})

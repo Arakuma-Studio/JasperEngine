@@ -79,6 +79,9 @@ private:
     static int jasperengine_gamepad_button(int button);
 
     static void pollGamepads();
+    // the web's memory heuristic (spec S56 R7): the wasm heap near its maximum or, where the
+    // browser has performance.memory, the JS heap near its limit is a low-memory warning
+    static void pollMemoryPressure();
 
 public:
 
@@ -145,6 +148,7 @@ public:
     virtual std::string getDeviceModel() override;
     virtual jasperengine::DeviceType getDeviceType() override;
     virtual int getSystemMemorySize() override;
+    virtual std::string getGpuRendererName() override;
     virtual jasperengine::NetworkReachability getInternetReachability() override;
     virtual bool vibrate(int milliseconds) override;
     virtual bool hapticFeedback(jasperengine::HapticFeedback type) override;

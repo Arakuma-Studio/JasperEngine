@@ -12,6 +12,7 @@
 
 #include "imgui_internal.h"
 
+#include "Catalog.h"
 #include "Project.h"
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
@@ -38,9 +39,23 @@ namespace {
             case PbrLobe::TRANSMISSION: return "Light through the surface (glass, water): it shows the opaque scene behind it, refracted, and draws after the opaque objects. Objects drawn after it do not show through (KHR_materials_transmission).";
             case PbrLobe::VOLUME: return "The volume behind a transmissive surface: its thickness bends the refraction, and light is absorbed toward the attenuation colour over the attenuation distance (KHR_materials_volume). Needs Transmission.";
             case PbrLobe::SPECULAR: return "The reflectance of the dielectric base: its strength and tint, and the index of refraction that sets it (1.5 is glTF's default, 1.33 water, 2.4 diamond) (KHR_materials_specular, KHR_materials_ior).";
+            case PbrLobe::HAIR: return "Kajiya-Kay strands for hair cards: two highlights along the strands, shifted towards the root and the tip, with their colours and widths. The strands follow the mesh's tangent turned by Strand Rotation, or a Flow Map. Two specular lobes per light per pixel; use with Alpha Clip or Order Independent transparency.";
             case PbrLobe::HEX: return "The textures of UV set 0 sampled on three randomly rotated copies on a hex grid, which hides the repetition of a tiled texture (Mikkelsen 2022). Three taps per texture.";
             default: return "";
         }
+    }
+
+    const char* hairFieldHelp(const char* name) {
+        const std::string field = name;
+        if (field == "primaryColor") return "The light's own highlight along the strands (linear).";
+        if (field == "primaryShift") return "Moves the primary highlight along the strands, towards the root (positive) or the tip (negative).";
+        if (field == "primaryWidth") return "How wide the primary highlight spreads: narrow is glossy, wide is dull.";
+        if (field == "secondaryColor") return "The second, coloured highlight light makes inside the strands (linear, tinted by the base colour).";
+        if (field == "secondaryShift") return "Moves the secondary highlight along the strands, usually the other way from the primary.";
+        if (field == "secondaryWidth") return "How wide the secondary highlight spreads; usually wider than the primary.";
+        if (field == "rotation") return "Radians the strands turn from the mesh's tangent towards the bitangent (no Flow Map).";
+        if (field == "flowMap") return "The strands' direction per texel in tangent space (RG, 0.5 is none) instead of the tangent.";
+        return "";
     }
 
     // a fork of the built-in Lit keeps the lobes when it has the S11 hooks (its fragment stage
@@ -61,6 +76,108 @@ namespace {
         return hooks;
     }
 
+}
+
+// The value and map rows of one lobe (its enabled flag is its header's, or the Shading Model's)
+void editor::InspectorWindow::drawMaterialPbrLobeRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                      const std::string& prefix, PbrLobe lobe, const RowSettings& settingsMaterial){
+    for (const PbrField& field : MaterialPbr::getFields()){
+        if (field.lobe != lobe || field.type == PbrFieldType::Bool)
+            continue;
+        const std::string path = prefix + MaterialPbr::getFieldPath(field);
+        RowSettings settings = settingsMaterial;
+        settings.stepSize = 0.01f;
+        if (lobe == PbrLobe::HAIR)
+            settings.help = hairFieldHelp(field.name);
+        switch (field.type){
+            case PbrFieldType::Float:{
+                RowPropertyType type = RowPropertyType::Float;
+                if (field.minValue == 0.0f && field.maxValue == 1.0f)
+                    type = RowPropertyType::Float_0_1;
+                else if (field.minValue >= 0.0f)
+                    type = RowPropertyType::FloatPositive;
+                if (std::string(field.name) == "ior")
+                    settings.help = "1.5: glTF's default; 1.0 air, 1.33 water, 2.4 diamond. 0: no dielectric falloff (a full mirror).";
+                if (std::string(field.name) == "rotation" && lobe == PbrLobe::ANISOTROPY)
+                    settings.help = "Radians from the tangent toward the bitangent.";
+                if (std::string(field.name) == "attenuationDistance")
+                    settings.help = "World units over which light falls to the attenuation colour; 0 or empty: no absorption.";
+                propertyRow(type, cpType, path, field.label, sceneProject, entities, settings);
+                break;
+            }
+            case PbrFieldType::Vector2:
+                settings.stepSize = 1.0f;
+                settings.format = "%.0f";
+                propertyRow(RowPropertyType::Vector2, cpType, path, field.label, sceneProject, entities, settings);
+                break;
+            case PbrFieldType::Color:
+                propertyRow(RowPropertyType::Color3L, cpType, path, field.label, sceneProject, entities, settings);
+                break;
+            case PbrFieldType::Texture:
+                propertyRow(RowPropertyType::Texture, cpType, path, field.label, sceneProject, entities, settings);
+                break;
+            case PbrFieldType::TexCoord:
+                settings.intMin = 0;
+                settings.intMax = 1;
+                settings.help = "The UV set the map samples: 0 the first, 1 the second.";
+                propertyRow(RowPropertyType::Int, cpType, path, field.label, sceneProject, entities, settings);
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+void editor::InspectorWindow::drawMaterialShadingModelRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
+                                                           unsigned int submesh, const RowSettings& settingsMaterial){
+    Scene* scene = sceneProject->scene;
+    const uint32_t sceneId = sceneProject->id;
+    const std::string prefix = "submeshes[" + std::to_string(submesh) + "].material.pbr.";
+    const std::string enabledPath = prefix + "hair.enabled";
+
+    // the hair lobe's flag across the selection (mixed shows as a dash); a Terrain draws its layers
+    bool hair = false;
+    bool mixed = false;
+    bool first = true;
+    bool terrain = false;
+    for (Entity entity : entities){
+        terrain = terrain || scene->findComponent<TerrainComponent>(entity) != nullptr;
+        bool* value = Catalog::getPropertyRef<bool>(scene, entity, cpType, enabledPath);
+        if (!value) continue;
+        if (first) hair = *value;
+        else if (*value != hair) mixed = true;
+        first = false;
+    }
+    if (first || terrain)
+        return;
+
+    const char* const modelNames[] = {"Standard", "Hair"};
+    auto setModel = [&](ShadingModel model){
+        auto* multi = new MultiPropertyCmd();
+        for (Entity entity : entities)
+            multi->addPropertyCmd<bool>(project, sceneId, entity, cpType, enabledPath, model == ShadingModel::HAIR, settingsMaterial.onValueChanged);
+        CommandHandle::get(sceneId)->addCommandNoMerge(multi);
+    };
+
+    const ShadingModel current = hair ? ShadingModel::HAIR : ShadingModel::STANDARD;
+    if (propertyHeader("Shading Model", -1, !mixed && current != ShadingModel::STANDARD, settingsMaterial.child))
+        setModel(ShadingModel::STANDARD);
+    ImGui::SetNextItemWidth(-(ImGui::CalcTextSize("(?)").x + ImGui::GetStyle().ItemSpacing.x));
+    if (ImGui::BeginCombo("##shading_model", mixed ? "—" : modelNames[(int)current])){
+        for (int m = 0; m < 2; m++){
+            if (ImGui::Selectable(modelNames[m], !mixed && (int)current == m) && (mixed || (int)current != m))
+                setModel((ShadingModel)m);
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SameLine();
+    helpMarker(std::string("Standard: the metallic-roughness surface (and its Advanced Surface lobes). Hair: ") + lobeHelp(PbrLobe::HAIR));
+
+    if (hair && !mixed){
+        RowSettings settings = settingsMaterial;
+        settings.indent = true;
+        drawMaterialPbrLobeRows(cpType, sceneProject, entities, prefix, PbrLobe::HAIR, settings);
+    }
 }
 
 void editor::InspectorWindow::drawMaterialAdvancedSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
@@ -93,6 +210,9 @@ void editor::InspectorWindow::drawMaterialAdvancedSurfaceRows(ComponentType cpTy
 
     ImGui::BeginDisabled(terrain);
     for (const PbrLobeInfo& lobe : MaterialPbr::getLobes()){
+        // Hair is a shading model, not a layer: the Surface section's Shading Model row picks it
+        if (lobe.lobe == PbrLobe::HAIR)
+            continue;
         const std::string enabledPath = prefix + lobe.name + ".enabled";
         // the enabled flag across the selection (mixed shows as a dash)
         bool enabled = false;
@@ -137,49 +257,7 @@ void editor::InspectorWindow::drawMaterialAdvancedSurfaceRows(ComponentType cpTy
         if (open){
             beginTable(cpType, getLabelSize("Attenuation Distance"), (std::string("submeshes_material_pbr_") + lobe.name).c_str());
             ImGui::BeginDisabled(lobeDisabled || (!enabled && !mixed));
-            for (const PbrField& field : MaterialPbr::getFields()){
-                if (field.lobe != lobe.lobe || field.type == PbrFieldType::Bool)
-                    continue;
-                const std::string path = prefix + MaterialPbr::getFieldPath(field);
-                RowSettings settings = settingsMaterial;
-                settings.stepSize = 0.01f;
-                switch (field.type){
-                    case PbrFieldType::Float:{
-                        RowPropertyType type = RowPropertyType::Float;
-                        if (field.minValue == 0.0f && field.maxValue == 1.0f)
-                            type = RowPropertyType::Float_0_1;
-                        else if (field.minValue >= 0.0f)
-                            type = RowPropertyType::FloatPositive;
-                        if (std::string(field.name) == "ior")
-                            settings.help = "1.5: glTF's default; 1.0 air, 1.33 water, 2.4 diamond. 0: no dielectric falloff (a full mirror).";
-                        if (std::string(field.name) == "rotation" && lobe.lobe == PbrLobe::ANISOTROPY)
-                            settings.help = "Radians from the tangent toward the bitangent.";
-                        if (std::string(field.name) == "attenuationDistance")
-                            settings.help = "World units over which light falls to the attenuation colour; 0 or empty: no absorption.";
-                        propertyRow(type, cpType, path, field.label, sceneProject, entities, settings);
-                        break;
-                    }
-                    case PbrFieldType::Vector2:
-                        settings.stepSize = 1.0f;
-                        settings.format = "%.0f";
-                        propertyRow(RowPropertyType::Vector2, cpType, path, field.label, sceneProject, entities, settings);
-                        break;
-                    case PbrFieldType::Color:
-                        propertyRow(RowPropertyType::Color3L, cpType, path, field.label, sceneProject, entities, settings);
-                        break;
-                    case PbrFieldType::Texture:
-                        propertyRow(RowPropertyType::Texture, cpType, path, field.label, sceneProject, entities, settings);
-                        break;
-                    case PbrFieldType::TexCoord:
-                        settings.intMin = 0;
-                        settings.intMax = 1;
-                        settings.help = "The UV set the map samples: 0 the first, 1 the second.";
-                        propertyRow(RowPropertyType::Int, cpType, path, field.label, sceneProject, entities, settings);
-                        break;
-                    default:
-                        break;
-                }
-            }
+            drawMaterialPbrLobeRows(cpType, sceneProject, entities, prefix, lobe.lobe, settingsMaterial);
             ImGui::EndDisabled();
             endTable();
             ImGui::TreePop();

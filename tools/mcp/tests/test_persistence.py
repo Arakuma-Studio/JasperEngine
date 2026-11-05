@@ -6,6 +6,7 @@ and Play stop destroys it (its onDestroy runs) and leaves nothing behind."""
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Persistence"}
+CI = True
 
 MANAGER = """---@class Manager : ScriptInstance
 local Manager = {}

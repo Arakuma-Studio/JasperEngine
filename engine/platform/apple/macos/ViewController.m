@@ -55,6 +55,14 @@
                                                  name:NSWindowDidChangeScreenNotification
                                                object:nil];
 
+    // Device.thermalState (spec S56): read now, then on every change (the thermal response is off
+    // on desktops unless the project turns it on)
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(thermalStateChanged)
+                                                 name:NSProcessInfoThermalStateDidChangeNotification
+                                               object:nil];
+    [Renderer thermalStateChanged];
+
     // Unity's OnApplicationFocus: the game window is the key window
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(windowBecameKey:)
@@ -75,6 +83,11 @@
 - (void)occlusionChanged:(NSNotification *)notification
 {
     if (notification.object == self.view.window) [self updateVisibility];
+}
+
+- (void)thermalStateChanged
+{
+    [Renderer thermalStateChanged];
 }
 
 - (void)windowBecameKey:(NSNotification *)notification
