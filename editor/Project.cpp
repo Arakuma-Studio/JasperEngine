@@ -7558,7 +7558,7 @@ void editor::Project::writeSceneSource(SceneProject* sceneProject) {
 }
 
 void editor::Project::writeUnsavedSceneSources(std::vector<std::string>& written, std::vector<std::string>& notOpen) {
-    for (const SceneProject& sceneProject : scenes) {
+    for (SceneProject& sceneProject : scenes) {
         if (!sceneProject.filepath.empty()) continue;
         if (!sceneProject.scene) {
             notOpen.push_back(sceneProject.name);
