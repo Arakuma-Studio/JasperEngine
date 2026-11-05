@@ -1183,3 +1183,9 @@ Recorded while implementing (`feature/s43-palettes`).
   view the scene's Fixed Resolution does not reduce the render size (a 320×180 fixed resolution still dithers
   per screen pixel, where the exported game dithers per 4×4 art pixel), which is the editor's fixed-resolution
   path, not this spec's; recorded for S41/S42.
+- **AC19** has no golden test of its own: goldens rendered by this branch would not show that old content
+  renders as before. R44 rests on the code: every sprite.frag addition sits under `PALETTE_SWAP` /
+  `PALETTE_CYCLE` (and `includes/palette.glsl` declares nothing without them), the gameboy and posterize
+  changes are description text, `UBER_PALETTE` is the appended bit 18; the existing Shader*, PostProcessing*,
+  Uber* and Stream* suites pass. The `shaderPalettes` round trip and the rename redirect are
+  `test_palettes_lua.py::test_scene_keeps_the_binding`.
