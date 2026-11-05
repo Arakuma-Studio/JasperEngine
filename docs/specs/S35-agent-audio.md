@@ -652,3 +652,24 @@ does not fix audio; checks report changed thresholds."
 - **`html_click` has no scene:** a context does not know its scene; `scene` is empty on these lines.
 - **`voice_start.position` and the group levels' fader** are the values as of the frame's start: a fader moving during a chunk
   ramps in SoLoud but is one gain per chunk in the group's level and stem.
+- **AC14's "before" is S37's tip**, the branch this one builds on, not `main`: what S35 adds alone.
+
+## Measured (AC13, AC14)
+
+`AudioCaptureBench.PumpAndCaptureBudgets`, server B under load, 32 voices, 4 groups, a reverb, 60 fps, 48 kHz:
+
+| | ms a frame | budget |
+|---|---|---|
+| Null pump | 0.141 | |
+| deterministic pump | 0.135 (-4.0 %) | 0.6, and at most 5 % above Null |
+| capture on top | 0.115 | 0.4 |
+
+Release player, before and after, `full` variant:
+
+| Player | Before | After | Growth | Section 6.6's estimate |
+|---|---|---|---|---|
+| Linux glcore, stripped | 41,213,008 | 41,217,104 | 4,096 bytes (one file page) | at most 3 KB |
+| Web single-thread wasm, gzip | 9,867,146 | 9,867,712 | 566 bytes (3,009 raw) | at most 2 KB |
+| Android arm64 library, stripped | 34,314,400 | 34,320,232 | 5,832 bytes | none stated |
+
+The Linux and Android figures pass the 3 KB estimate by what the linker's pages and the tap's `std::function` list take; nothing of the capture itself is in them.
