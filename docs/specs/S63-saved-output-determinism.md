@@ -37,7 +37,8 @@ work it found these cases beyond R1 and R2, all fixed here:
 - A Terrain's height and blend maps had their wrap (and the height map its `releaseDataAfterLoad`) written by its first draw, the
   same bug as R2. Unlike the weather map these settings are not authored choices: the terrain needs them, so
   `MeshSystem::applyTerrainMapSettings` applies them on decode and before a save as well as on draw. A file saying otherwise
-  re-saves with them, drawn or not.
+  re-saves with them, drawn or not. It draws the same: the draw forced them before binding before this work as well, and
+  `test_terrain_maps_draw_the_same_whatever_wrap_an_old_file_says` shows Clamp and Repeat files give the same image.
 - A Terrain has its two submeshes only after its first run: a save writes two either way, and `maxSubmeshes` counts them.
 - A mesh a Sprite, Tilemap, Mesh Polygon, Terrain or Spline Extrude generates: its vertex counts and bounds are not written, and
   its geometry and attributes are not generated (the file never held them, the code held them when a frame had made them).
@@ -47,6 +48,10 @@ work it found these cases beyond R1 and R2, all fixed here:
 
 The Play snapshot is not a file: Stop puts a kept Mesh's `worldAABB` back from it, so it still holds what a frame computes
 (`Stream::encodePlaySnapshot`, `reflect::PlaySnapshotEncodeScope`).
+
+`Compat.CorpusRoundTrip` leaves out each of these only under the rule by which a save does, and compares Terrain scenes
+(`Compat.TheFilterHidesOnlyWhatASaveLeavesOut` holds the filter to that). `mesh.vertexCount` is not in a file (only a submesh's is), and a
+load sets it from the buffer when it is 0 (`RenderSystem`, `loadMesh`), so a game from a file and one from generated code start alike.
 
 R4: no format bump. Everything left out is read when an old file has it and recomputed otherwise, so old files load unchanged.
 

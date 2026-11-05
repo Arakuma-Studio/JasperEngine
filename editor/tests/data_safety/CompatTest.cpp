@@ -245,7 +245,7 @@ TEST(Compat, TheFilterHidesOnlyWhatASaveLeavesOut) {
     EXPECT_FALSE(same(plainMesh, bareMesh));
     EXPECT_TRUE(same(plainMesh + "      sprite:\n        width: 1\n", bareMesh + "      sprite:\n        width: 1\n"));
     EXPECT_FALSE(same("      mesh:\n        aabb: [1]\n", "      mesh:\n        {}\n"));
-    EXPECT_TRUE(same("      mesh:\n        worldAABB: [1]\n", "      mesh:\n        {}\n"));
+    EXPECT_TRUE(same("      mesh:\n        enabled: true\n        worldAABB: [1]\n", "      mesh:\n        enabled: true\n"));
 
     // a UI's own values stay
     EXPECT_FALSE(same("      ui:\n        vertexCount: 6\n", "      ui:\n        {}\n"));
