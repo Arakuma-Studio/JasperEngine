@@ -2815,7 +2815,7 @@ bool editor::Exporter::cookModels() {
     cookedModelSources = result.cookedSources;
     for (const ModelExportRow& row : result.rows)
         for (const auto& [family, cooked] : row.families)
-            cookedModelSizes[std::string(CookedModels::kCookedDir) + "/" + row.files.at(family)] = {row.assetPath, cooked.record.sourceBytes};
+            cookedModelSizes[std::string("assets/") + CookedModels::kCookedDir + "/" + row.files.at(family)] = {row.assetPath, cooked.record.sourceBytes};
     return true;
 }
 

@@ -286,7 +286,7 @@ void ModelImporterView::drawPreview(){
     if (ImGui::RadioButton("Source", !showCooked)) showCooked = false;
     ImGui::SameLine();
     if (ImGui::RadioButton("Cooked", showCooked)) showCooked = true;
-    ImGui::SameLine();
+    // a line of its own: the Inspector is too narrow for it beside the modes
     const int levels = geometry ? geometry->levelCount : 1;
     forceLod = std::min(forceLod, levels - 1);
     ImGui::SetNextItemWidth(-1);

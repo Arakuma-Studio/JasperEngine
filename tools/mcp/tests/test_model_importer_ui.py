@@ -140,7 +140,10 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
 
     # Window > Analysis > Mesh Optimization Audit
     await ed.call("run_command", id="window.meshAudit")
-    await wait_item(ed, "Duplicate %")
+    # each column shows its whole header (wider than its text, with room for the sort arrow)
+    for name in ("Triangles", "Vertices", "Duplicate %", "ACMR", "Overdraw", "Memory", "Download", "LODs", "Status"):
+        header = await wait_item(ed, name, "Mesh Optimization Audit")
+        ed.check(header["rect"]["width"] >= 6 * len(name) + 12, f"{name}'s column fits it: {header['rect']}")
     await ui_input.frames(ed, 10)
     await shot(ed, "4-mesh-audit")
 
@@ -153,7 +156,10 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     ed.check(report.exists(), f"build-report.json next to the export: {built}")
     data = json.loads(report.read_text())
     ed.check(data["categories"]["models"] > 0, f"the models' bytes: {data['categories']}")
-    ed.check(any(f.get("source") == "models/grid.glb" for f in data["largest"]), f"the grid's cook among the largest: {data['largest']}")
+    # the cook names its source, as the textures' do
+    cooks = [f for f in data["largest"] if f["category"] == "models"]
+    ed.check(cooks and all(f.get("source") for f in cooks), f"each model's source: {data['largest']}")
+    ed.check(any(f["source"] == "models/grid.glb" and f["source_bytes"] > f["bytes"] for f in cooks), f"the grid's cook, smaller than its source: {cooks}")
     await ed.call("run_command", id="window.buildReport")
     await wait_item(ed, "Source Size")
     await ui_input.frames(ed, 10)

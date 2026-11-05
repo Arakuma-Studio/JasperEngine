@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cctype>
 #include <set>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -96,7 +97,8 @@ void MeshAuditWindow::show(){
         ImGui::SetNextWindowFocus();
         focusRequested = false;
     }
-    ImGui::SetNextWindowSize(ImVec2(980, 480), ImGuiCond_FirstUseEver);
+    // wide enough for every column and the issues; a narrower window scrolls sideways
+    ImGui::SetNextWindowSize(ImVec2(std::min(1320.0f, ImGui::GetMainViewport()->WorkSize.x * 0.95f), 480.0f), ImGuiCond_FirstUseEver);
     if (!ImGui::Begin(WINDOW_NAME, &windowOpen)){
         ImGui::End();
         return;
@@ -156,20 +158,31 @@ void MeshAuditWindow::show(){
     ImGui::Text("%zu models: %lld tris | memory %s | download %s (sources %s)", shown.size(), triangles, ModelAudit::formatBytes(memory).c_str(),
                 ModelAudit::formatBytes(download).c_str(), ModelAudit::formatBytes(sourceDownload).c_str());
 
-    const ImGuiTableFlags flags = ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                  ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp;
-    if (ImGui::BeginTable("mesh_audit", 11, flags)){
-        ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-        ImGui::TableSetupColumn("Triangles", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_PreferSortDescending);
-        ImGui::TableSetupColumn("Vertices", ImGuiTableColumnFlags_PreferSortDescending);
-        ImGui::TableSetupColumn("Duplicate %", ImGuiTableColumnFlags_PreferSortDescending);
-        ImGui::TableSetupColumn("ACMR", ImGuiTableColumnFlags_PreferSortDescending);
-        ImGui::TableSetupColumn("Overdraw", ImGuiTableColumnFlags_PreferSortDescending);
-        ImGui::TableSetupColumn("Memory", ImGuiTableColumnFlags_PreferSortDescending);
-        ImGui::TableSetupColumn("Download", ImGuiTableColumnFlags_PreferSortDescending);
-        ImGui::TableSetupColumn("LODs", ImGuiTableColumnFlags_PreferSortDescending);
-        ImGui::TableSetupColumn("Status");
+    const ImGuiTableFlags flags = ImGuiTableFlags_Sortable | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY |
+                                  ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingFixedFit;
+    // the numbers keep the width of their whole header (its sort arrow too) or of a long value;
+    // Path and Issue share the rest, and have a floor below which the table scrolls sideways
+    struct FixedColumn { const char* name; const char* longest; ImGuiTableColumnFlags flags; };
+    const ImGuiTableColumnFlags descending = ImGuiTableColumnFlags_PreferSortDescending;
+    const FixedColumn numbers[] = {{"Triangles", "12,345,678", ImGuiTableColumnFlags_DefaultSort | descending}, {"Vertices", "12,345,678", descending},
+                                   {"Duplicate %", "100%", descending}, {"ACMR", "3.00", descending}, {"Overdraw", "12.34", descending},
+                                   {"Memory", "1023.9 MB", descending}, {"Download", "1023.9 MB", descending}, {"LODs", "3", descending},
+                                   {"Status", "not cooked", 0}};
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float arrow = ImGui::GetFontSize() + style.ItemInnerSpacing.x;
+    float fixedWidth = 0.0f;
+    std::vector<float> widths;
+    for (const FixedColumn& column : numbers){
+        widths.push_back(std::max(ImGui::CalcTextSize(column.name).x + arrow, ImGui::CalcTextSize(column.longest).x));
+        fixedWidth += widths.back() + style.CellPadding.x * 2.0f;
+    }
+    const float pathFloor = ImGui::GetFontSize() * 16.0f, issueFloor = ImGui::GetFontSize() * 24.0f;
+    const float innerWidth = std::max(ImGui::GetContentRegionAvail().x, fixedWidth + pathFloor + issueFloor);
+    if (ImGui::BeginTable("mesh_audit", 11, flags, ImVec2(0.0f, 0.0f), innerWidth)){
+        ImGui::TableSetupScrollFreeze(1, 1);
+        ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoHide, 3.0f);
+        for (size_t c = 0; c < widths.size(); c++)
+            ImGui::TableSetupColumn(numbers[c].name, ImGuiTableColumnFlags_WidthFixed | numbers[c].flags, widths[c]);
         ImGui::TableSetupColumn("Issue", ImGuiTableColumnFlags_WidthStretch, 4.0f);
         ImGui::TableHeadersRow();
         auto cooked = [](const ModelAuditRow* r){ return r->hasState && r->state.status == ModelCookStatus::Cooked; };
@@ -234,7 +247,17 @@ void MeshAuditWindow::show(){
                     ImGui::SameLine();
                     number++;
                 }
-                if (!row.issues.empty()) ImGui::TextDisabled("%s", row.issues.front().message.c_str());
+                if (!row.issues.empty()){
+                    ImGui::TextDisabled("%s", row.issues.front().message.c_str());
+                    if (ImGui::IsItemHovered()){
+                        // the column cuts it: every issue of the model, whole
+                        ImGui::BeginTooltip();
+                        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 40.0f);
+                        for (const ModelIssue& issue : row.issues) ImGui::TextUnformatted(issue.message.c_str());
+                        ImGui::PopTextWrapPos();
+                        ImGui::EndTooltip();
+                    }
+                }
                 ImGui::PopID();
             }
         }
