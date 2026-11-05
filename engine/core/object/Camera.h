@@ -11,6 +11,7 @@
 namespace jasperengine{
 
     struct CameraComponent;
+    enum class TransparencyMode : int; // render/OrderIndependentTransparency.h
 
     class JASPERENGINE_API Camera: public GameObject{
 

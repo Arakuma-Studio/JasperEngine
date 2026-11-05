@@ -13,6 +13,7 @@
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/ColorTweenComponent.h"
 #include "component/FogComponent.h"
 #include "component/ForceFieldComponent.h"

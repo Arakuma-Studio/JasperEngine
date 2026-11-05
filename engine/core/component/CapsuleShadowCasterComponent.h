@@ -4,7 +4,7 @@
 #ifndef CAPSULESHADOWCASTER_COMPONENT_H
 #define CAPSULESHADOWCASTER_COMPONENT_H
 
-#include "Engine.h"
+#include "Export.h"
 #include "ecs/Entity.h"
 #include "math/Vector3.h"
 

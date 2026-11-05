@@ -4,6 +4,7 @@
 #include "CapsuleShadowCaster.h"
 
 #include "Log.h"
+#include "component/Transform.h"
 #include "render/CapsuleShadows.h"
 
 #include <algorithm>

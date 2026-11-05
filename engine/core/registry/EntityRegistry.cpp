@@ -15,6 +15,7 @@
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/ColorTweenComponent.h"
