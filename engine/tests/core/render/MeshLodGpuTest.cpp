@@ -14,6 +14,7 @@
 #include "pool/MeshLodPool.h"
 #include "pool/ShaderPool.h"
 #include "render/LightingTiers.h"
+#include "shader/RuntimeShaderCompiler.h"
 #include "device/QualityResolver.h"
 #include "device/DeviceSettings.h"
 #include "subsystem/RenderSystem.h"
@@ -26,6 +27,7 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <fstream>
@@ -352,7 +354,8 @@ namespace {
         float biasFine = 1.0f;
         float biasCoarse = 1.0f;
 
-        void build(bool lit){
+        // waitForFade: until the fade variant is made (a test holding its build passes false)
+        void build(bool lit, bool waitForFade = true){
             scene.setMeshLodCrossFade(true);
             scene.setMeshLodCrossFadeDuration(0.5f);
             sphere.createSphere(1.5f, 48, 24);
@@ -383,14 +386,63 @@ namespace {
             biasFine = budget / (0.8f * e1);
             biasCoarse = budget / (1.25f * e1);
             sphere.setLodBias(biasFine);
-            MeshComponent* fading = &mesh;
-            const bool made = GpuEnvironment::runFrames([fading](){ return fading->lodFadeReady; }, 600);
-            ASSERT_TRUE(made) << "the fade variant was never made";
+            if (waitForFade){
+                ASSERT_TRUE(waitForFadeVariant()) << "the fade variant was never made";
+            }else{
+                GpuEnvironment::drawFrames(2);
+            }
             ASSERT_EQ(sphere.getCurrentLod(), 0);
+        }
+
+        bool waitForFadeVariant(){
+            MeshComponent* fading = &sphere.getComponent<MeshComponent>();
+            return GpuEnvironment::runFrames([fading](){ return fading->lodFadeReady; }, 600);
         }
 
         uint32_t appliedPipeline(){
             return sphere.getComponent<MeshComponent>().submeshes[0].render.getAppliedPipelineId();
+        }
+
+        // the frame without the sphere and with each level, against which an image counts its
+        // pixels both levels cover and its holes among them: those it drew neither level on
+        struct Coverage{
+            std::vector<uint8_t> background, fine, coarse;
+        };
+        struct Holes{
+            size_t both = 0, holes = 0;
+        };
+
+        Coverage levelCoverage(){
+            Coverage coverage;
+            sphere.setVisible(false);
+            GpuEnvironment::drawFrames(2);
+            coverage.background = readTarget();
+            sphere.setVisible(true);
+            auto level = [&](int forced){
+                sphere.forceLod(forced);
+                GpuEnvironment::drawFrames(2);
+                sphere.forceLod(-1);
+                return readTarget();
+            };
+            coverage.fine = level(0);
+            coverage.coarse = level(1);
+            return coverage;
+        }
+
+        static Holes countHoles(const std::vector<uint8_t>& image, const Coverage& coverage){
+            auto covered = [&](const std::vector<uint8_t>& drawn, size_t p){
+                return std::abs((int)drawn[p] - (int)coverage.background[p]) > 8 ||
+                       std::abs((int)drawn[p + 2] - (int)coverage.background[p + 2]) > 8;
+            };
+            Holes result;
+            for (size_t p = 0; p + 3 < image.size(); p += 4){
+                if (covered(coverage.fine, p) && covered(coverage.coarse, p)){
+                    result.both++;
+                    if (!covered(image, p))
+                        result.holes++;
+                }
+            }
+            return result;
         }
     };
 }
@@ -439,21 +491,7 @@ TEST_F(LodFadeGpu, TheTwoLevelsOfAFadeLeaveNoHole){
     JASPER_REQUIRE_GPU();
     build(false);
     MeshComponent& mesh = sphere.getComponent<MeshComponent>();
-    const std::vector<uint8_t> background = [&](){
-        sphere.setVisible(false);
-        GpuEnvironment::drawFrames(2);
-        std::vector<uint8_t> image = readTarget();
-        sphere.setVisible(true);
-        return image;
-    }();
-    auto coverage = [&](int level){
-        sphere.forceLod(level);
-        GpuEnvironment::drawFrames(2);
-        sphere.forceLod(-1);
-        return readTarget();
-    };
-    const std::vector<uint8_t> fine = coverage(0);
-    const std::vector<uint8_t> coarse = coverage(1);
+    const Coverage coverage = levelCoverage();
     // back on level 0 (a fade from the forced level), then the step
     GpuEnvironment::drawFrames(40);
     ASSERT_EQ(sphere.getCurrentLod(), 0);
@@ -463,19 +501,9 @@ TEST_F(LodFadeGpu, TheTwoLevelsOfAFadeLeaveNoHole){
     ASSERT_TRUE(mesh.lodFade.plan.fading());
     const std::vector<uint8_t> mid = readTarget();
 
-    size_t both = 0, holes = 0;
-    auto covered = [&](const std::vector<uint8_t>& image, size_t p){
-        return std::abs((int)image[p] - (int)background[p]) > 8 || std::abs((int)image[p + 2] - (int)background[p + 2]) > 8;
-    };
-    for (size_t p = 0; p + 3 < mid.size(); p += 4){
-        if (covered(fine, p) && covered(coarse, p)){
-            both++;
-            if (!covered(mid, p))
-                holes++;
-        }
-    }
-    ASSERT_GT(both, 1000u);
-    EXPECT_EQ(holes, 0u) << "pixels both levels cover that neither drew";
+    const Holes holes = countHoles(mid, coverage);
+    ASSERT_GT(holes.both, 1000u);
+    EXPECT_EQ(holes.holes, 0u) << "pixels both levels cover that neither drew";
 }
 
 // C4: the device tier's LOD Bias (QualityResolver, S56) multiplies into the selection once
@@ -545,5 +573,58 @@ TEST_F(LodFadeGpu, AFadingMeshUnderTiledLightsKeepsItsLighting){
     };
     EXPECT_GT(brightness(done), 40.0) << "the lamp lights the sphere";
     EXPECT_NEAR(brightness(mid), brightness(done), 6.0) << "the fade variant takes the tile lights";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// C2, the cold cache: the first ShaderPool::get of a fade variant the runtime compiler builds in
+// the background finds it building, and only a later get makes its program. The builder holds it
+// "building" (the hook AsyncCreateTest uses), so the first get cannot find it done. While held a
+// level change snaps, whole; once it can build, the variant is asked for again and the next level
+// change fades on it. Red control: asking for the variant once
+TEST_F(LodFadeGpu, ALevelChangeSnapsUntilItsFadeVariantIsBuilt){
+    JASPER_REQUIRE_GPU();
+    std::atomic<bool> held{true};
+    std::atomic<int> heldAsks{0};
+    const uint64_t fadeBit = ShaderPool::getLodFadeProperty();
+    ShaderPool::setShaderBuilder([&held, &heldAsks, fadeBit](ShaderKey key){
+        const bool fadeProgram = ShaderPool::getShaderTypeFromKey(key) == ShaderType::MESH &&
+                                 (ShaderPool::getPropertiesFromKey(key) & fadeBit);
+        if (fadeProgram && held.load()){
+            heldAsks.fetch_add(1);
+            return ShaderBuildResult({}, ResourceLoadState::Loading);
+        }
+        return RuntimeShaderCompiler::request(key);
+    });
+    struct BuilderReset{ ~BuilderReset(){ ShaderPool::setShaderBuilder(nullptr); } } reset;
+
+    ASSERT_NO_FATAL_FAILURE(build(false, false));
+    MeshComponent& mesh = sphere.getComponent<MeshComponent>();
+    EXPECT_GT(heldAsks.load(), 0) << "the fade variant was never asked for (or was already built)";
+    EXPECT_FALSE(mesh.lodFadeReady);
+    const uint32_t steady = appliedPipeline();
+    const Coverage coverage = levelCoverage();
+    GpuEnvironment::drawFrames(2);
+    ASSERT_EQ(sphere.getCurrentLod(), 0);
+
+    sphere.setLodBias(biasCoarse);
+    GpuEnvironment::drawFrames(2);
+    EXPECT_EQ(sphere.getCurrentLod(), 1) << "the level changes at once";
+    EXPECT_FALSE(mesh.lodFade.plan.fading()) << "a fade started with its variant still building";
+    EXPECT_EQ(render().getLodStats().fadeDraws, 0u);
+    EXPECT_EQ(appliedPipeline(), steady);
+    const Holes holes = countHoles(readTarget(), coverage);
+    ASSERT_GT(holes.both, 1000u);
+    EXPECT_EQ(holes.holes, 0u) << "pixels both levels cover that the snap left empty";
+
+    held.store(false);
+    ASSERT_TRUE(waitForFadeVariant()) << "the fade variant was never made once it could build";
+    ASSERT_EQ(sphere.getCurrentLod(), 1);
+
+    sphere.setLodBias(biasFine);
+    GpuEnvironment::drawFrames(15);
+    ASSERT_TRUE(mesh.lodFade.plan.fading()) << "the first level change after the build does not fade";
+    EXPECT_NE(appliedPipeline(), steady) << "a fading draw uses the fade variant";
+    EXPECT_EQ(render().getLodStats().fading, 1u);
+    EXPECT_EQ(render().getLodStats().fadeDraws, 2u);
     EXPECT_NO_ENGINE_ERRORS();
 }
