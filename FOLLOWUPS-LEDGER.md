@@ -59,14 +59,14 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
-| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Ready at `af2ddb2a3`; waits for the second full suite |
-| S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Ready at `ce69a75c4`; waits for the second full suite |
+| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Ready at `af2ddb2a3`; in the second full suite |
+| S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Ready at `ce69a75c4`; in the second full suite |
 | S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
 | S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | Done |
 | S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | Done |
-| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B, H | Ready at `df51380dd`; waits for the second full suite |
+| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B, A | Ready at `db9d3e129`; in the second full suite |
 | S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | Done |
 | S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | Done |
 | S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | Done |
@@ -77,7 +77,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
-| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Ready at `2b87a7e4e`; waits for the second full suite; iOS run waits for the Mac |
+| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Ready at `2b87a7e4e`; in the second full suite; iOS run waits for the Mac |
 | S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | Ready at `0ccbbf001`, after S37 and the full suite; R31 re-measured after S38 |
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | In progress: M1-M4 committed, M5-M6 left |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | M5 needs S36 M1; merges with S62 (same file) | In progress |
@@ -175,3 +175,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: First full suite on `eb9f93aca`: 1528 passed, 22 failed, 0 skipped; 7 failures are compile errors from the module-off bug (likely), the rest being rerun whole on H. Unit tests there: 2885 core, 2946 editor, 0 failed. S63 reviewed: `CorpusRoundTrip` filter narrowed, Terrain scenes back.
 - 2026-11-05: S73 landed. H and the Mac unreachable since about 04:50 UTC; agents on A and B.
 - 2026-11-05: S68 and S69 landed after the first full suite. Second full suite next: S63, S64, S70, S38, on `main`.
+- 2026-11-05: Second full suite started on `88090c2da` (`main`, S38, S63, S64, S70) on A and B, since H is down. Logs in `je-remote/logs/full-88090c2da`. S37 and S36 merge `main` after these land.
