@@ -2029,21 +2029,21 @@ Sets how clips play and where they came from, in their .meta: gain, trims, click
 
 Group: `audio` (listed once `tool_groups` enables it, callable either way)
 
-You can't hear: a Play's capture as numbers. status: sessions and what the next Play does. arm: the next Play captures, or not. report: loudness, peaks, groups, numbered events and markers, a timeline image. check: PASS/FAIL/WARN/SKIP verdicts, what limits each, how to fix it. jasper://docs/sound.
+You can't hear: a Play's capture as numbers. status; arm: whether the next Play captures; report: loudness, peaks, groups, numbered events and markers, an image; check: verdicts, what limits each, the fix. jasper://docs/sound.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `action` | `"status"` \| `"arm"` \| `"report"` \| `"check"` | yes |  |
 | `baseline` | string |  | A name or a session. |
-| `capture` | boolean |  | arm. Default true. |
+| `capture` | boolean |  | arm. |
 | `checks` | array of string |  | Default all. |
 | `end` | number |  | s. |
-| `events_limit` | integer (0..2000) |  | Default 200. |
+| `events_limit` | integer |  | Default 200. |
 | `expect` | array of object {align, entity, offset_ms, on, sound, within_ms} |  | What must sound. |
-| `fail_on` | `"fail"` \| `"warn"` |  | A verdict at it or worse is an error. |
+| `fail_on` | `"fail"` \| `"warn"` |  | Error at this verdict or worse. |
 | `image` | boolean |  | Default report yes, check no. |
-| `max_seconds` | integer (1..3600) |  | arm. |
-| `max_width` | integer (256..2048) |  |  |
+| `max_seconds` | integer |  | arm. |
+| `max_width` | integer |  |  |
 | `save_baseline` | string |  | A name. |
 | `session` | string |  | Default last; current, an id or a directory. |
 | `start` | number |  | s. |

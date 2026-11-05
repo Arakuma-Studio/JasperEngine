@@ -76,6 +76,7 @@ namespace jasperengine::editor {
         std::shared_ptr<RenderJob> renderJob;
         bool renderAgain = false;
         Texture timeline;
+        std::shared_ptr<RenderJob> timelinePixels;
         std::vector<Texture> retired;
         int textureGeneration = 0;
         int timelineWidth = 0;

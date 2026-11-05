@@ -193,9 +193,10 @@ void AudioCapturesWindow::pollJobs() {
             next.setData("editor:audio-captures:" + std::to_string(++textureGeneration), data);
             TextureRender* render = next.getRender();
             if (render && render->isCreated()) {
-                next.releaseData();
+                // (the pixels stay with the job: a Texture's releaseData frees what it was given)
                 if (!timeline.empty()) retired.push_back(timeline);
                 timeline = next;
+                timelinePixels = job;
                 timelineWidth = image.width;
                 timelineHeight = image.height;
             } else {
