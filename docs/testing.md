@@ -512,6 +512,11 @@ change: add it and rebuild. Test data goes in `engine/tests/core/fixtures/` or
 - A suite whose tests take more than 5 s each ends in `Slow`. Any other test stays under 1 s, and
   both binaries' CPU suites together under 60 s on 4 cores.
 - CTest labels follow the names: `gpu`, `slow`, else `unit`.
+- `ReflectParity.*` compares the reflection codec against frozen data
+  (`editor/tests/reflect/parity_golden/`): a field added to a reflection table adds its key there,
+  and `JASPER_TEST_UPDATE_GOLDEN=1` rewrites the files. `AssetRefSchemaFrozen.*` holds what the hand
+  table of asset references gave (`editor/tests/asset/asset_ref_*_frozen.txt`); those files are not
+  rewritten, a new reference field only adds rows.
 
 ### What the support library gives a test
 

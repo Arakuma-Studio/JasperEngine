@@ -1,0 +1,275 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest a171087d51ea58a1
+--- 0
+enabled: false
+type: spot
+direction: [9037.611, 0, 54.142857]
+worldDirection: [1e-45, -44, -39.714287]
+color: [54.42857, 0, -86.42857]
+range: -.inf
+intensity: -.inf
+innerConeCos: -0.7442147
+outerConeCos: 50
+spotMask: ~
+cullingMask: 1485121454
+shadows: false
+automaticShadowCamera: true
+shadowBias: 6712.5186
+mapResolution: 4294967295
+shadowCameraNearFar: [0, -1]
+numShadowCascades: 3085
+shading: PIXEL
+softShadows: false
+shadowStrength: 5921.4126
+shadowNormalBias: -0.88061523
+cascadeSplitMode: manual
+cascadeSplits: [78, 0, 74]
+shadowDistance: 6501.8354
+shadowAngularDiameter: -0.4667138
+shadowSourceRadius: 7712.1284
+volumetricIntensity: 104.85714
+intensityUnit: lux
+colorTemperature: 0.70539445
+--- 1
+enabled: false
+type: directional
+direction: [4235.8433, 0.59657, -131.14285]
+worldDirection: [-0.9394057, -83, -0.54440534]
+color: [7155.5586, 0, -0.42638186]
+range: -13.285714
+intensity: -31
+innerConeCos: .inf
+outerConeCos: 1e-45
+spotMask:
+  textureType: 2D
+  source: path
+  path: a b/c.png
+  minFilter: nearest_mipmap_nearest
+  magFilter: linear
+  wrapU: clamp_to_border
+  wrapV: clamp_to_border
+  releaseDataAfterLoad: true
+cullingMask: 4294967295
+shadows: false
+automaticShadowCamera: true
+shadowBias: 0.82760805
+mapResolution: 3795
+shadowCameraNearFar: [0, 1e-45]
+numShadowCascades: 4671
+shading: VERTEX
+softShadows: false
+shadowStrength: 0.8849965
+shadowNormalBias: 0.6489597
+cascadeSplitMode: manual
+cascadeSplits: [-0, -0, -0.19812179]
+shadowDistance: 12.755282
+shadowAngularDiameter: -0
+shadowSourceRadius: 0.4072244
+shadowUpdateMode: everyFrame
+volumetricIntensity: 12
+useColorTemperature: true
+colorTemperature: 8664.439
+--- 2
+enabled: true
+type: spot
+direction: [0, -83, -120.85714]
+worldDirection: [97, -55.142857, 6911.9976]
+color: [0.9825577, 0, -84.71429]
+range: 31
+intensity: 0.7228358
+innerConeCos: 1145.3994
+outerConeCos: 17
+spotMask:
+  textureType: 2D
+  source: path
+  path: fonts/Main.ttf
+  minFilter: nearest
+  magFilter: linear
+  wrapU: clamp_to_edge
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+cullingMask: 4294967295
+shadows: false
+automaticShadowCamera: false
+shadowBias: -92.71429
+mapResolution: 4733
+shadowCameraNearFar: [3e+38, 0]
+numShadowCascades: 820
+shading: VERTEX
+shadowStrength: 892.1425
+shadowNormalBias: 951.12415
+cascadeSplits: [0.40582916, 2939.4497, 1112.3428]
+shadowDistance: 4976.2725
+shadowAngularDiameter: .inf
+shadowSourceRadius: -0
+volumetricIntensity: 6874.2964
+useColorTemperature: true
+colorTemperature: 92
+--- 3
+enabled: false
+type: spot
+direction: [-66, -23, 8843.006]
+worldDirection: [38, 1452.3696, -0.6797947]
+color: [0, 0, -71.42857]
+range: -0.0022351705
+intensity: .nan
+innerConeCos: -0.5914225
+outerConeCos: 66
+spotMask:
+  textureType: 2D
+  source: path
+  path: fonts/Main.ttf
+  minFilter: nearest_mipmap_nearest
+  magFilter: linear
+  wrapU: clamp_to_border
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+cullingMask: 151102282
+shadows: true
+automaticShadowCamera: false
+shadowBias: 0.55981666
+mapResolution: 3559
+shadowCameraNearFar: [9136.066, 3e+38]
+numShadowCascades: 580
+shading: PIXEL
+softShadows: false
+shadowStrength: 0.9227745
+shadowNormalBias: 1e-45
+cascadeSplitMode: manual
+cascadeSplits: [-0.7786519, 0, -56]
+shadowDistance: 18
+shadowAngularDiameter: 0.34710467
+shadowSourceRadius: 100
+volumetricIntensity: 1e-45
+intensityUnit: lux
+useColorTemperature: true
+colorTemperature: 0.6608595
+--- 4
+enabled: false
+type: spot
+direction: [96, 63.714287, -0]
+worldDirection: [4, 3337.7407, 0.22973876]
+color: [-0.30413058, -0.53135234, 12.142858]
+range: .nan
+intensity: 1e-45
+innerConeCos: 75
+outerConeCos: -79.28571
+spotMask:
+  textureType: 2D
+  source: path
+  path: fonts/Main.ttf
+  minFilter: nearest
+  magFilter: nearest
+  wrapU: clamp_to_edge
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+cullingMask: 1955781024
+shadows: false
+automaticShadowCamera: true
+shadowBias: -0.23258747
+mapResolution: 149
+shadowCameraNearFar: [0.8966685, -0]
+numShadowCascades: 4294967295
+softShadows: false
+shadowStrength: -21.571428
+shadowNormalBias: 4578.329
+cascadeSplits: [113.85714, 52, 0]
+shadowDistance: 0.5725937
+shadowAngularDiameter: 30
+shadowSourceRadius: 1e-45
+shadowUpdateMode: everyFrame
+volumetricIntensity: -127.14286
+intensityUnit: lumen
+useColorTemperature: true
+colorTemperature: 6500
+--- 5
+enabled: false
+type: spot
+direction: [5573.258, -53, 3854.631]
+worldDirection: [1994.1503, 105.28571, 0.092446454]
+color: [9113.245, 0.26783213, -0]
+range: -0
+intensity: -10
+innerConeCos: -34
+outerConeCos: -0
+spotMask: ~
+cullingMask: 608486699
+shadows: true
+automaticShadowCamera: true
+shadowBias: 3e+38
+mapResolution: 1458
+shadowCameraNearFar: [-0.34688154, 0.018551879]
+numShadowCascades: 760
+shading: PIXEL
+softShadows: false
+shadowStrength: -95.42857
+shadowNormalBias: -1
+cascadeSplitMode: manual
+cascadeSplits: [1953.6139, 0, 9277.603]
+shadowDistance: -11
+shadowAngularDiameter: 6536.5576
+shadowSourceRadius: -0.9586624
+volumetricIntensity: 73.14286
+intensityUnit: lux
+colorTemperature: 5341.892
+--- 6
+enabled: true
+type: point
+direction: [8364.212, 141.85715, 4417.0015]
+worldDirection: [-63, 3e+38, -0.40837032]
+color: [75.42857, 3e+38, 1e-45]
+range: 24.285715
+intensity: 3e+38
+innerConeCos: -14.142858
+outerConeCos: 46.714287
+spotMask: ~
+cullingMask: 483302836
+shadows: false
+automaticShadowCamera: false
+shadowBias: 3e+38
+mapResolution: 877
+shadowCameraNearFar: [9116.055, -0.107460216]
+numShadowCascades: 2700
+shading: VERTEX
+shadowStrength: 1e-45
+shadowNormalBias: 89
+cascadeSplits: [-0.27097318, 7943.4272, -0.5078688]
+shadowDistance: -51
+shadowAngularDiameter: 4316.468
+shadowSourceRadius: -95
+shadowUpdateMode: everyFrame
+volumetricIntensity: 1e-45
+intensityUnit: lux
+useColorTemperature: true
+colorTemperature: 6579.6426
+--- 7
+enabled: true
+type: point
+direction: [0, -55, -115]
+worldDirection: [0.081212275, 0.031636283, -0.021510411]
+color: [70.42857, -31.142857, 1e-45]
+range: 68.71429
+intensity: -0.14363998
+innerConeCos: 8396.199
+outerConeCos: 3901.3257
+spotMask: ~
+cullingMask: 1779796000
+shadows: true
+automaticShadowCamera: true
+shadowBias: -55
+mapResolution: 3781
+shadowCameraNearFar: [-49, 0.42745277]
+numShadowCascades: 3327
+shading: PIXEL
+softShadows: false
+shadowStrength: .inf
+shadowNormalBias: 86
+cascadeSplitMode: manual
+cascadeSplits: [112, 0, 37]
+shadowDistance: 3e+38
+shadowAngularDiameter: 53
+shadowSourceRadius: -0.4190958
+volumetricIntensity: -121.85714
+intensityUnit: candela
+useColorTemperature: true
+colorTemperature: -71

@@ -18,6 +18,7 @@
 #include "util/AssetDatabase.h"
 
 #include "Catalog.h"
+#include "reflect/Reflect.h"
 #include "component/AudioSourceComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/LightComponent.h"
@@ -602,98 +603,28 @@ TEST(AssetIndex, EdgesOfClosedFiles) {
 
 // ==================================================================== AssetRefSchema
 
-// AC12: every asset-reference member of every component is in the table, and every Catalog
-// property that holds one is a row
+// AC12: every Catalog property that holds a reference, of every component, is a row. (The rows come
+// from the reflection tables; AssetRefSchemaFrozen holds what they must keep.)
 TEST(AssetRefSchema, CoversAllFields) {
-    using C = ComponentType;
-    const std::vector<std::pair<C, std::string>> members = {
-        {C::MeshComponent, "submeshes[].material.baseColorTexture"}, {C::MeshComponent, "submeshes[].material.emissiveTexture"},
-        {C::MeshComponent, "submeshes[].material.metallicRoughnessTexture"}, {C::MeshComponent, "submeshes[].material.occlusionTexture"},
-        {C::MeshComponent, "submeshes[].material.normalTexture"}, {C::MeshComponent, "submeshes[].material.shaderTextures{}"},
-        {C::MeshComponent, "submeshes[].material.shader"}, {C::MeshComponent, "submeshes[].material.name"},
-        {C::MeshComponent, "submeshes[].material.extraPass.shader"}, {C::MeshComponent, "submeshes[].material.extraPass.shaderTextures{}"},
-        {C::MeshComponent, "customShader"}, {C::MeshComponent, "customDepthShader"},
-        // the built-in Lit's extended lobes' maps (S11)
-        {C::MeshComponent, "submeshes[].material.pbr.clearcoat.map"}, {C::MeshComponent, "submeshes[].material.pbr.clearcoat.normalMap"},
-        {C::MeshComponent, "submeshes[].material.pbr.sheen.map"}, {C::MeshComponent, "submeshes[].material.pbr.anisotropy.map"},
-        {C::MeshComponent, "submeshes[].material.pbr.iridescence.map"}, {C::MeshComponent, "submeshes[].material.pbr.transmission.map"},
-        {C::MeshComponent, "submeshes[].material.pbr.specular.map"},
-        {C::UIComponent, "texture"}, {C::UIComponent, "customShader"}, {C::UIComponent, "shaderTextures{}"},
-        {C::ButtonComponent, "textureNormal"}, {C::ButtonComponent, "textureHovered"}, {C::ButtonComponent, "texturePressed"}, {C::ButtonComponent, "textureDisabled"},
-        {C::TextComponent, "font"},
-        {C::TerrainComponent, "heightMap"}, {C::TerrainComponent, "blendMaps[]"},
-        {C::TerrainComponent, "surfaceLayers[].colorTexture"}, {C::TerrainComponent, "surfaceLayers[].normalTexture"},
-        {C::TerrainComponent, "surfaceLayers[].roughnessTexture"}, {C::TerrainComponent, "surfaceLayers[].metallicTexture"},
-        {C::TerrainComponent, "surfaceLayers[].occlusionTexture"}, {C::TerrainComponent, "surfaceLayers[].heightTexture"},
-        {C::TerrainComponent, "foliageLayers[].meshPath"}, {C::TerrainComponent, "foliageLayers[].densityMap"},
-        {C::LightComponent, "spotMask"}, {C::ReflectionProbeComponent, "texture"},
-        {C::SkyboxComponent, "texture"}, {C::SkyboxComponent, "customShader"}, {C::SkyboxComponent, "shaderTextures{}"},
-        {C::PointsComponent, "texture"}, {C::PointsComponent, "customShader"}, {C::PointsComponent, "shaderTextures{}"},
-        {C::LineRendererComponent, "customShader"}, {C::LineRendererComponent, "shaderTextures{}"},
-        // upstream's Trail Renderer: its custom shader and the shader's textures, as the Line Renderer's
-        {C::TrailRendererComponent, "customShader"}, {C::TrailRendererComponent, "shaderTextures{}"},
-        {C::ModelComponent, "filename"}, {C::AudioSourceComponent, "filename"}, {C::UIDocumentComponent, "filename"},
-        {C::ScriptComponent, "scripts[].path"}, {C::ScriptComponent, "scripts[].headerPath"}, {C::ScriptComponent, "scripts[].properties[]"},
-        // the effect asset, and the asset paths an inline effect's modules hold (S20)
-        {C::ParticleSystemComponent, "effect"}, {C::ParticleSystemComponent, "inlineEffect"},
-        {C::PrefabComponent, ""},
-        // upstream's Pose Animator: its .poseanim (an AssetRef since the sync)
-        {C::PoseAnimatorComponent, "animation"},
-        // upstream's Animation Player: each clip entry, an .anim by GUID or a model's sub-clip
-        {C::AnimationPlayerComponent, "clips[]"},
-        // S19: a surface's baked .navmesh and a grid's .navgrid cells
-        {C::NavMeshSurfaceComponent, "navMeshData"}, {C::NavGridComponent, "gridData"},
-        // S18: the model or prefab of each entry of a spline placer's pools
-        {C::SplineInstantiateComponent, "items[].asset"}, {C::SplineInstantiateComponent, "posts[].asset"},
-        {C::SplineInstantiateComponent, "spans[].asset"}, {C::SplineInstantiateComponent, "gates[].asset"},
-        {C::SplineInstantiateComponent, "crests[].asset"}, {C::SplineInstantiateComponent, "caps[].asset"},
-        // S21's Animator: its Animator Controller (the clips and masks are in the .controller)
-        {C::AnimatorComponent, "controller"},
-        // upstream's Vertex Animator: its .vat, by GUID, with the mesh beside it
-        {C::VertexAnimatorComponent, "animation"},
-    };
-    std::set<std::pair<C, std::string>> rows;
-    for (const AssetRefField& field : AssetRefSchema::fields()) {
-        if (!field.legacy) rows.insert({field.component, field.path});
-    }
-    for (const auto& member : members) {
-        EXPECT_TRUE(rows.count(member)) << Catalog::getComponentName(member.first) << "." << member.second << " is not in AssetRefSchema";
-    }
-    EXPECT_EQ(rows.size(), members.size()) << "a row of AssetRefSchema is not in this test's member list";
-
-    // the Catalog side: every property of an asset type of these components has a row
     EntityRegistry registry;
-    const Entity entity = registry.createEntity();
-    MeshComponent mesh;
-    mesh.numSubmeshes = 1;
-    registry.addComponent<MeshComponent>(entity, mesh);
-    registry.addComponent<UIComponent>(entity, UIComponent{});
-    registry.addComponent<ButtonComponent>(entity, ButtonComponent{});
-    registry.addComponent<TextComponent>(entity, TextComponent{});
-    registry.addComponent<LightComponent>(entity, LightComponent{});
-    registry.addComponent<ReflectionProbeComponent>(entity, ReflectionProbeComponent{});
-    registry.addComponent<SkyboxComponent>(entity, SkyboxComponent{});
-    registry.addComponent<ModelComponent>(entity, ModelComponent{});
-    registry.addComponent<AudioSourceComponent>(entity, AudioSourceComponent{});
-    registry.addComponent<UIDocumentComponent>(entity, UIDocumentComponent{});
-    registry.addComponent<PointsComponent>(entity, PointsComponent{});
-    registry.addComponent<LineRendererComponent>(entity, LineRendererComponent{});
-    registry.addComponent<NavMeshSurfaceComponent>(entity, NavMeshSurfaceComponent{});
-    registry.addComponent<NavGridComponent>(entity, NavGridComponent{});
-    TerrainComponent terrain;
-    terrain.blendMaps.resize(1);
-    terrain.surfaceLayers.resize(1);
-    terrain.foliageLayers.resize(1);
-    registry.addComponent<TerrainComponent>(entity, terrain);
-    std::set<C> types;
-    for (const auto& member : members) types.insert(member.first);
-    for (C type : types) {
-        for (const auto& [name, property] : Catalog::findEntityProperties(&registry, entity, type)) {
+    for (const reflect::ComponentDesc* desc : reflect::all()) {
+        const Entity entity = registry.createEntity();
+        if (!desc->find(&registry, entity)) {
+            reflect::Value value(desc->body.ops);
+            desc->add(&registry, entity, value.get());
+        }
+        if (MeshComponent* mesh = registry.findComponent<MeshComponent>(entity)) mesh->numSubmeshes = 1;
+        if (TerrainComponent* terrain = registry.findComponent<TerrainComponent>(entity)) {
+            terrain->blendMaps.resize(1);
+            terrain->surfaceLayers.resize(1);
+            terrain->foliageLayers.resize(1);
+        }
+        for (const auto& [name, property] : Catalog::findEntityProperties(&registry, entity, desc->type)) {
             const bool assetTyped = property.type == PropertyType::Texture || property.type == PropertyType::Asset ||
                                     property.type == PropertyType::Shader || property.type == PropertyType::Font;
             if (!assetTyped) continue;
-            EXPECT_NE(AssetRefSchema::findRow(AssetRefScope::Component, type, name == "font" ? "font[0]" : name), nullptr)
-                << Catalog::getComponentName(type) << " property " << name << " holds an asset but has no AssetRefSchema row";
+            EXPECT_NE(AssetRefSchema::findRow(AssetRefScope::Component, desc->type, name == "font" ? "font[0]" : name), nullptr)
+                << Catalog::getComponentName(desc->type) << " property " << name << " holds an asset but has no AssetRefSchema row";
         }
     }
 }
