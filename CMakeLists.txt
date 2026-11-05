@@ -587,13 +587,17 @@ add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
 add_subdirectory(libs/ufbx)
 add_subdirectory(libs/tinyexr)
-jasperengine_apply_cxx_standard(nfd yaml-cpp tinyexr)
+# The model decoders games never carry (docs/specs/S53-model-import-cook.md R6): Draco meshes and
+# WebP images of glTF files, which the model cook transcodes
+add_subdirectory(editor/libs/draco)
+add_subdirectory(editor/libs/libwebp)
+jasperengine_apply_cxx_standard(nfd yaml-cpp tinyexr draco_decoder)
 # The standards the project setting offers (editor/util/CxxStandards.h) and the compiler floors
 # the Play plugin checks (Generator::getToolchainFloorCheck), from the engine's definitions
 get_directory_property(JASPERENGINE_CXX_STANDARDS DIRECTORY ${JASPERENGINE_ROOT} DEFINITION JASPERENGINE_CXX_STANDARDS)
 string(REPLACE ";" "," JASPERENGINE_CXX_STANDARD_LIST "${JASPERENGINE_CXX_STANDARDS}")
 
-foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr draco_decoder webp_decoder)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -696,6 +700,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
+    ${EDITOR_DIR}/cook/BuildReport.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
     ${EDITOR_DIR}/players/ModuleUsage.cpp
     ${EDITOR_DIR}/players/PlayerRuntimes.cpp
@@ -707,6 +712,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/publish/Publishing.cpp
     ${EDITOR_DIR}/platform/ExternalTools.cpp
     ${EDITOR_DIR}/platform/AndroidTools.cpp
+    ${EDITOR_DIR}/platform/PinnedDownload.cpp
     ${EDITOR_DIR}/platform/AndroidPackager.cpp
     ${EDITOR_DIR}/platform/WindowsResources.cpp
     ${EDITOR_DIR}/platform/MacBundle.cpp
@@ -729,6 +735,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
     ${EDITOR_DIR}/project/ProjectAssets.cpp
+    ${EDITOR_DIR}/project/ProjectShaderLists.cpp
     ${EDITOR_DIR}/project/ProjectDataSafety.cpp
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
@@ -798,6 +805,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/profiler/ProfilerWindow.cpp
     ${EDITOR_DIR}/mcp/McpAutoSync.cpp
     ${EDITOR_DIR}/mcp/McpCall.cpp
+    ${EDITOR_DIR}/mcp/McpDialogs.cpp
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
     ${EDITOR_DIR}/mcp/McpJobs.cpp
@@ -821,6 +829,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
     ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProfilerTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MeshLodTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DeviceTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
     ${EDITOR_DIR}/mcp/McpDataSafety.cpp
     ${EDITOR_DIR}/mcp/tools/EntityTools.cpp
@@ -837,6 +847,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MeshTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
@@ -940,6 +951,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
+    ${EDITOR_DIR}/util/GltfEditorDecoders.cpp
     ${EDITOR_DIR}/util/GlbBuilder.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
@@ -992,6 +1004,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/shortcuts/Chord.cpp
     ${EDITOR_DIR}/shortcuts/CommandCatalog.cpp
     ${EDITOR_DIR}/shortcuts/DefaultCommands.cpp
+    ${EDITOR_DIR}/shortcuts/PanelClaims.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutDispatcher.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutOverrides.cpp
     ${EDITOR_DIR}/shortcuts/ShortcutsWindow.cpp
@@ -1040,6 +1053,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/shader/ShaderBuilder.cpp
     ${EDITOR_DIR}/shader/ShaderVariantCollector.cpp
+    ${EDITOR_DIR}/shader/ShaderListCache.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
     ${EDITOR_DIR}/texture/AstcEncoder.cpp
@@ -1057,6 +1071,23 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureImportSettings.cpp
     ${EDITOR_DIR}/texture/TextureTypeInference.cpp
     ${EDITOR_DIR}/window/TextureImporterView.cpp
+    ${EDITOR_DIR}/window/ImporterFields.cpp
+    ${EDITOR_DIR}/window/ModelImporterView.cpp
+    ${EDITOR_DIR}/window/MeshAuditWindow.cpp
+    ${EDITOR_DIR}/window/BuildReportWindow.cpp
+    ${EDITOR_DIR}/model/GltfDocument.cpp
+    ${EDITOR_DIR}/model/ModelAudit.cpp
+    ${EDITOR_DIR}/model/ModelCookCache.cpp
+    ${EDITOR_DIR}/model/ModelCookQueue.cpp
+    ${EDITOR_DIR}/model/ModelCooker.cpp
+    ${EDITOR_DIR}/model/ModelExport.cpp
+    ${EDITOR_DIR}/model/ModelHeader.cpp
+    ${EDITOR_DIR}/model/ModelImportSettings.cpp
+    ${EDITOR_DIR}/model/ModelPreviewRaster.cpp
+    ${EDITOR_DIR}/model/ModelSettingsCmd.cpp
+    ${EDITOR_DIR}/model/ModelSettingsEdit.cpp
+    ${EDITOR_DIR}/model/ModelSourceDecode.cpp
+    ${EDITOR_DIR}/model/ModelUsage.cpp
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
@@ -1141,6 +1172,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/spline/SplineEditor.cpp
     ${EDITOR_DIR}/spline/SplinePresets.cpp
     ${EDITOR_DIR}/spline/SplineSceneRender.cpp
+    ${EDITOR_DIR}/render/SceneDrawModes.cpp
     ${EDITOR_DIR}/spline/SplineSceneTools.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/vat/VatAssetWriter.cpp
@@ -1187,6 +1219,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AudioMixerWindow.cpp
     ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
+    ${EDITOR_DIR}/window/EditorFilePicker.cpp
+    ${EDITOR_DIR}/window/EditorModal.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
@@ -1257,6 +1291,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/SetAssetMetaCmd.cpp
     ${EDITOR_DIR}/command/type/AudioSettingsCmd.cpp
     ${EDITOR_DIR}/audio/AudioMixerDocument.cpp
+    ${EDITOR_DIR}/audio/LoudnessMonitor.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp
@@ -1266,6 +1301,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/DeviceSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp
     ${EDITOR_DIR}/command/type/CreateMaterialFileCmd.cpp
@@ -1332,6 +1369,11 @@ list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mc
 jasperengine_skip_unity_build(
     REASON "the HTML UI importers, the MCP tools, the reflection tables and the version control providers: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
+set(JASPERENGINE_EDITOR_MODEL_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
+list(FILTER JASPERENGINE_EDITOR_MODEL_SOURCES INCLUDE REGEX "(^|/)editor/model/")
+jasperengine_skip_unity_build(
+    REASON "the model cook (S53): file helpers named as the texture cook's (readAll, fileTime, touch)"
+    SOURCES ${JASPERENGINE_EDITOR_MODEL_SOURCES})
 set(JASPERENGINE_EDITOR_SCENEVIEW_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
 list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(picking|sceneview)/")
 jasperengine_skip_unity_build(
@@ -1343,6 +1385,34 @@ jasperengine_skip_unity_build(
 jasperengine_skip_unity_build(
     REASON "file-local helpers or types named as in another editor source"
     SOURCES
+        ${EDITOR_DIR}/util/AssetDatabase.cpp
+        ${EDITOR_DIR}/util/NativePlugins.cpp
+        ${EDITOR_DIR}/window/AvatarWindow.cpp
+        ${EDITOR_DIR}/Out.cpp
+        ${EDITOR_DIR}/StreamSchema.cpp
+        ${EDITOR_DIR}/vat/VatAssetWriter.cpp
+        ${EDITOR_DIR}/vat/VatImportWrite.cpp
+        ${EDITOR_DIR}/window/InspectorAnimLayers.cpp
+        ${EDITOR_DIR}/window/InspectorWindowVat.cpp
+        ${EDITOR_DIR}/spritenormals/SpriteNormalsApply.cpp
+        ${EDITOR_DIR}/spritenormals/SpriteNormalsCheck.cpp
+        ${EDITOR_DIR}/util/VideoTextureLink.cpp
+        ${EDITOR_DIR}/vat/VatAssetFiles.cpp
+        ${EDITOR_DIR}/vat/VatBakeSession.cpp
+        ${EDITOR_DIR}/vat/VatBakeTypes.cpp
+        ${EDITOR_DIR}/vat/VatCli.cpp
+        ${EDITOR_DIR}/vat/VatDocument.cpp
+        ${EDITOR_DIR}/vat/VatFrontEnd.cpp
+        ${EDITOR_DIR}/vat/VatSceneActions.cpp
+        ${EDITOR_DIR}/vat/import/OpenVat.cpp
+        ${EDITOR_DIR}/window/AnimationWindowClipDraw.cpp
+        ${EDITOR_DIR}/window/InspectorWindowAnimLayers.cpp
+        ${EDITOR_DIR}/window/PhysicsPlacementWindow.cpp
+        ${EDITOR_DIR}/window/SpriteNormalsWindow.cpp
+        ${EDITOR_DIR}/window/TextureSynthesisWindow.cpp
+        ${EDITOR_DIR}/window/VertexAnimationBakerWindow.cpp
+        ${EDITOR_DIR}/widget/CurveEditorOps.cpp
+        ${EDITOR_DIR}/widget/GradientEditorOps.cpp
         ${EDITOR_DIR}/animation/AnimationClipController.cpp
         ${EDITOR_DIR}/animation/AnimationClipDocument.cpp
         ${EDITOR_DIR}/animation/AnimatorAssetDocument.cpp
@@ -1409,6 +1479,7 @@ function(configure_jasperengine_editor_target target_name)
     target_include_directories(${target_name} SYSTEM PRIVATE
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
+        engine/libs/meshoptimizer
         libs/tinyexpr
         libs/miniz
         ${OPENGL_INCLUDE_DIR}
@@ -1419,6 +1490,7 @@ function(configure_jasperengine_editor_target target_name)
     )
 
     target_compile_definitions(${target_name} PRIVATE
+        JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES
         "JASPERENGINE_CXX_STANDARD_LIST=${JASPERENGINE_CXX_STANDARD_LIST}"
         "JASPERENGINE_CXX_FLOOR_GNU=\"${JASPERENGINE_CXX_FLOOR_GNU}\""
         "JASPERENGINE_CXX_FLOOR_CLANG=\"${JASPERENGINE_CXX_FLOOR_Clang}\""
@@ -1443,6 +1515,8 @@ function(configure_jasperengine_editor_target target_name)
         basisu_encoder
         ufbx
         tinyexr
+        draco_decoder
+        webp_decoder
     )
 
     if(WIN32)
@@ -1470,7 +1544,8 @@ function(configure_jasperengine_editor_target target_name)
     jasperengine_skip_unity_build(
         REASON "Xlib.h defines None, Bool, Status, Always... as macros, which break every later source of the batch"
         SOURCES ${EDITOR_DIR}/util/Clipboard.cpp ${EDITOR_DIR}/mcp/tools/BuildTools.cpp
-                ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp)
+                ${EDITOR_DIR}/backend/BackendLinux.cpp ${JASPERENGINE_ROOT}/platform/linux/WindowLinux.cpp
+                ${EDITOR_DIR}/platform/ScreenColorX11.cpp ${EDITOR_DIR}/platform/LaunchKeysX11.cpp ${JASPERENGINE_ROOT}/platform/linux/HostServicesLinux.cpp)
     jasperengine_target_warnings(${target_name})
     jasperengine_target_unity_build(${target_name})
     get_target_property(targetType ${target_name} TYPE)
@@ -1677,15 +1752,22 @@ if(WIN32)
     list(APPEND JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor-cmd)
 endif()
 
+# What `cmake --install` installs for: the release configurations, and a sanitizer tree's (Debug
+# by default, tools/build.sh), whose install the MCP tests run like a normal one's
+set(JASPERENGINE_INSTALL_CONFIGURATIONS Release MinSizeRel)
+if(JASPERENGINE_SANITIZE)
+    list(APPEND JASPERENGINE_INSTALL_CONFIGURATIONS Debug RelWithDebInfo)
+endif()
+
 # The bundle already holds the dylib and engine/.
 if(APPLE)
     install(TARGETS jasperengine-editor
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             BUNDLE DESTINATION bin
     )
 else()
     install(TARGETS ${JASPERENGINE_EDITOR_INSTALL_TARGETS} jasperengine
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             RUNTIME DESTINATION bin
             LIBRARY DESTINATION bin
             ARCHIVE DESTINATION bin
@@ -1693,7 +1775,7 @@ else()
 
     if(JASPERENGINE_MINGW_RUNTIME)
         install(FILES ${JASPERENGINE_MINGW_RUNTIME}
-                CONFIGURATIONS Release MinSizeRel
+                CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
                 DESTINATION bin
         )
     endif()
@@ -1703,10 +1785,10 @@ else()
     install(CODE "execute_process(COMMAND \"${CMAKE_COMMAND}\" \"-DENGINE_SOURCE=${CMAKE_SOURCE_DIR}/engine\"
                       \"-DENGINE_DEST=\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/engine\" -DPRUNE_ONLY=ON -DINSTALL_EXCLUDES=ON
                       -P \"${CMAKE_SOURCE_DIR}/CopyEditorEngine.cmake\" COMMAND_ERROR_IS_FATAL ANY)"
-            CONFIGURATIONS Release MinSizeRel)
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS})
     install(DIRECTORY ${CMAKE_SOURCE_DIR}/engine
             DESTINATION bin
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
             PATTERN ".cxx" EXCLUDE
             PATTERN ".gradle" EXCLUDE
             PATTERN "build" EXCLUDE
@@ -1740,7 +1822,7 @@ endif()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${JASPERENGINE_CHECK_NOTICES})
 install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/NOTICE.md ${CMAKE_CURRENT_SOURCE_DIR}/LICENSE
         DESTINATION ${JASPERENGINE_NOTICES_DESTINATION}
-        CONFIGURATIONS Release MinSizeRel
+        CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
 )
 string(REPLACE "\n" ";" JASPERENGINE_LICENSE_MANIFEST "${JASPERENGINE_LICENSE_MANIFEST}")
 foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
@@ -1748,7 +1830,7 @@ foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
         install(FILES "${CMAKE_MATCH_1}"
                 DESTINATION ${JASPERENGINE_NOTICES_DESTINATION}/licenses
                 RENAME "${CMAKE_MATCH_2}"
-                CONFIGURATIONS Release MinSizeRel
+                CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
         )
     endif()
 endforeach()
@@ -1758,19 +1840,19 @@ endforeach()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/jasperengine-editor.desktop
             DESTINATION share/applications
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
     )
 
     install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/linux/com.jaspergameengine.editor.metainfo.xml
             DESTINATION share/metainfo
-            CONFIGURATIONS Release MinSizeRel
+            CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
     )
 
     foreach(icon_size IN ITEMS 16 32 48 64 128 256 512)
         install(FILES ${JASPERENGINE_LINUX_ICON_DIR}/jasperengine-editor-${icon_size}.png
                 DESTINATION share/icons/hicolor/${icon_size}x${icon_size}/apps
                 RENAME jasperengine-editor.png
-                CONFIGURATIONS Release MinSizeRel
+                CONFIGURATIONS ${JASPERENGINE_INSTALL_CONFIGURATIONS}
         )
     endforeach()
 endif()

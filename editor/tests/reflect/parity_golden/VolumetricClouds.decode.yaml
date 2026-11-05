@@ -1,0 +1,202 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 93d4d7fd9fa335ee
+--- 0
+preset: custom
+rendering: sky_map
+coverage: 8211.863
+density: 0.49077746
+shapeScale: -81
+shapeFactor: -0
+erosionFactor: -0
+erosionScale: 3e+38
+bottomAltitude: 79.71429
+altitudeRange: 0.2021712
+earthCurvature: 3616.5627
+windDirection: 80
+windSpeed: 93.57143
+weatherMap:
+  textureType: 2D
+  source: path
+  path: fonts/Main.ttf
+  minFilter: nearest_mipmap_linear
+  magFilter: linear
+  wrapU: clamp_to_border
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+weatherMapScale: -0
+sunLightDimmer: 8227.064
+ambientLightDimmer: -82.71429
+maxDistance: 1560.7275
+qualityOverride: low
+--- 1
+preset: sparse
+rendering: screen
+coverage: -0
+density: 1e-45
+shapeScale: -30
+shapeFactor: 8890.256
+erosionFactor: 9693.171
+erosionScale: 18.857143
+bottomAltitude: 5105.848
+altitudeRange: 4135.002
+earthCurvature: 42.857143
+windDirection: 19.857143
+windSpeed: 2164.9106
+weatherMap:
+  textureType: 2D
+  source: path
+  path: ui/menu.html
+  minFilter: nearest
+  magFilter: nearest
+  wrapU: mirrored_repeat
+  wrapV: repeat
+  releaseDataAfterLoad: true
+weatherMapScale: 9573.337
+sunLightDimmer: 1e-45
+ambientLightDimmer: 0.16250443
+maxDistance: 64
+qualityOverride: medium
+--- 2
+preset: sparse
+rendering: screen
+coverage: -0.7598391
+density: 6479.4707
+shapeScale: 3e+38
+shapeFactor: 3422.091
+erosionFactor: 1e-45
+erosionScale: 82.71429
+bottomAltitude: .inf
+altitudeRange: 4
+earthCurvature: -.inf
+windDirection: 78
+windSpeed: 2735.0686
+weatherMap: ~
+weatherMapScale: 1280.5063
+sunLightDimmer: .inf
+ambientLightDimmer: 7561.4873
+maxDistance: .nan
+qualityOverride: low
+--- 3
+preset: stormy
+rendering: auto
+coverage: 7675.689
+density: 65.28571
+shapeScale: .inf
+shapeFactor: -0.9703773
+erosionFactor: -61
+erosionScale: 16
+bottomAltitude: 9243.26
+altitudeRange: 59
+earthCurvature: -0.25447083
+windDirection: 0.64376146
+windSpeed: 3e+38
+weatherMap:
+  textureType: 2D
+  source: path
+  path: fonts/Main.ttf
+  minFilter: nearest_mipmap_linear
+  magFilter: nearest
+  wrapU: clamp_to_border
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+weatherMapScale: 1888.5648
+sunLightDimmer: 4809.1167
+ambientLightDimmer: -0.47092742
+maxDistance: 0.0041936683
+qualityOverride: medium
+--- 4
+preset: custom
+rendering: screen
+coverage: 0.38541964
+density: -68
+shapeScale: 1e-45
+shapeFactor: 4141.251
+erosionFactor: -70
+erosionScale: .inf
+bottomAltitude: -32
+altitudeRange: .inf
+earthCurvature: -44
+windDirection: 0.05976279
+windSpeed: .inf
+weatherMap: ~
+weatherMapScale: -0
+sunLightDimmer: 1e-45
+ambientLightDimmer: -0.68857867
+maxDistance: 7185.9727
+qualityOverride: low
+--- 5
+preset: sparse
+rendering: screen
+coverage: 4185.623
+density: -.inf
+shapeScale: .inf
+shapeFactor: 42.285713
+erosionFactor: -0
+erosionScale: 0.9159568
+bottomAltitude: -53
+altitudeRange: 5610.9736
+earthCurvature: 6079.104
+windDirection: 6762.395
+windSpeed: -8
+weatherMap:
+  textureType: 2D
+  source: path
+  path: a b/c.png
+  minFilter: nearest
+  magFilter: linear
+  wrapU: clamp_to_border
+  wrapV: mirrored_repeat
+  releaseDataAfterLoad: true
+weatherMapScale: 124.42857
+sunLightDimmer: -123.42857
+ambientLightDimmer: -0.5170105
+maxDistance: -0.20746897
+qualityOverride: low
+--- 6
+preset: stormy
+rendering: auto
+coverage: -97
+density: 0.7881353
+shapeScale: 39
+shapeFactor: 78
+erosionFactor: 17.142857
+erosionScale: 92.42857
+bottomAltitude: 9667.699
+altitudeRange: 0.81664586
+earthCurvature: .inf
+windDirection: .nan
+windSpeed: 75
+weatherMap:
+  textureType: 2D
+  source: path
+  path: a b/c.png
+  minFilter: linear_mipmap_nearest
+  magFilter: linear
+  wrapU: clamp_to_edge
+  wrapV: clamp_to_edge
+  releaseDataAfterLoad: true
+weatherMapScale: -78.71429
+sunLightDimmer: .inf
+ambientLightDimmer: 7194.229
+maxDistance: 0.3407288
+qualityOverride: low
+--- 7
+preset: stormy
+rendering: sky_map
+coverage: 5541.8394
+density: .inf
+shapeScale: .inf
+shapeFactor: 3
+erosionFactor: 25
+erosionScale: 3e+38
+bottomAltitude: .nan
+altitudeRange: -.inf
+earthCurvature: -38
+windDirection: -0.32043996
+windSpeed: 1e-45
+weatherMap: ~
+weatherMapScale: 76.42857
+sunLightDimmer: -.inf
+ambientLightDimmer: 90.28571
+maxDistance: 1e-45
+qualityOverride: medium

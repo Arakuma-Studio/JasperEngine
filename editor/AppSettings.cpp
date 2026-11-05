@@ -488,6 +488,8 @@ bool AppSettings::applySettings(const YAML::Node& node) {
                 if (gameNode["maximize_on_play"]) gameViewSettings.maximizeOnPlay = gameNode["maximize_on_play"].as<bool>();
                 if (gameNode["stats"]) gameViewSettings.showStats = gameNode["stats"].as<bool>();
                 if (gameNode["atmosphere_quality"]) gameViewSettings.atmosphereQuality = std::clamp(gameNode["atmosphere_quality"].as<int>(), -1, 3);
+                if (gameNode["device_tier"]) gameViewSettings.deviceTier = std::clamp(gameNode["device_tier"].as<int>(), -1, 3);
+                if (gameNode["device_platform"]) gameViewSettings.devicePlatform = std::clamp(gameNode["device_platform"].as<int>(), -1, 2);
                 if (gameNode["device"]) gameViewSettings.device = gameNode["device"].as<std::string>();
                 if (gameNode["orientation"]) gameViewSettings.orientation = gameNode["orientation"].as<int>();
                 if (gameNode["language"]) gameViewSettings.language = gameNode["language"].as<std::string>();
@@ -800,6 +802,8 @@ bool AppSettings::saveSettings() {
         gameNode["maximize_on_play"] = gameViewSettings.maximizeOnPlay;
         gameNode["stats"] = gameViewSettings.showStats;
         gameNode["atmosphere_quality"] = gameViewSettings.atmosphereQuality;
+        if (gameViewSettings.deviceTier >= 0) gameNode["device_tier"] = gameViewSettings.deviceTier;
+        if (gameViewSettings.devicePlatform >= 0) gameNode["device_platform"] = gameViewSettings.devicePlatform;
         if (!gameViewSettings.device.empty()) gameNode["device"] = gameViewSettings.device;
         if (gameViewSettings.orientation != GameViewSettings{}.orientation) gameNode["orientation"] = gameViewSettings.orientation;
         if (!gameViewSettings.language.empty()) gameNode["language"] = gameViewSettings.language;

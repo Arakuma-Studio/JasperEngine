@@ -3,6 +3,11 @@
 - test_project_lock (AC6): a second `jasperengine-editor mcp --headless -p` on the project another
   editor has open exits with code 3 and project_locked on stderr; with --ignore-lock it starts on
   that same project.
+- test_refused_editor_opens_nothing: that refusal exits with 3 without opening the temporary
+  project every editor shares, whether another editor holds that project's lock (it used to
+  segfault, the Inspector drawing a frame with no scene) or it does not exist (not made).
+- test_no_project_open_keeps_drawing: a project that does not open and a temporary project another
+  editor holds: no project, no scene, and an editor that stays up and answers.
 - test_crash_recovery (AC11): an edit, the Auto Save backup it makes (JE_AUTOSAVE_INTERVAL_TEST=1:
   every 2 s), kill -9, a new editor: open_scene says a backup is there and keeps it; recovery=restore
   brings the edit back, modified; save_scene deletes the backup. A second crash with
@@ -16,6 +21,7 @@
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
 import os
 import shutil
@@ -60,12 +66,13 @@ async def wait_for(cond, seconds: float, what: str) -> None:
     fail(f"timed out waiting for {what}")
 
 
-def second_instance(project: Path, extra: list[str], stdin: str = "") -> tuple[subprocess.CompletedProcess, Path]:
+def second_instance(project: Path, extra: list[str], stdin: str = "",
+                    env_extra: dict[str, str] | None = None) -> tuple[subprocess.CompletedProcess, Path]:
     """`<editor> mcp --headless --project <project>` (not a copy: the same directory)"""
     root = Path(tempfile.mkdtemp(prefix="jasper-lock-"))
     (root / "home").mkdir()
     scratch = Scratch(root=root, project=project, home=root / "home", stderr_log=root / "editor.stderr.log")
-    argv, env, cwd = harness.launch_spec(scratch, extra_args=extra)
+    argv, env, cwd = harness.launch_spec(scratch, extra_args=extra, extra_env=env_extra)
     try:
         run = subprocess.run(argv, cwd=str(cwd), env=env, input=stdin, capture_output=True, text=True, timeout=120)
     except subprocess.TimeoutExpired as e:
@@ -103,6 +110,78 @@ async def test_project_lock():
         # the first editor still holds its lock and works
         await first.call("get_project_summary")
         check(lock_owner(project)["pid"] == owner["pid"], "the first editor keeps the lock")
+
+
+TEMP_PROJECT = "MyJasperEngineProject"  # App::loadStartupProject's fallback, under the temp directory
+
+
+def hold_temp_project(temp_dir: Path, project_yaml: str):
+    """The temporary project as another live editor has it: there, and its lock (flock) held.
+    Close the returned file to release it."""
+    user = temp_dir / TEMP_PROJECT / ".jasperengine" / "user"
+    user.mkdir(parents=True)
+    (temp_dir / TEMP_PROJECT / "project.yaml").write_text(project_yaml)
+    held = open(user / "editor.lock", "w")
+    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    return held
+
+
+async def test_refused_editor_opens_nothing():
+    async with Editor(create=True, name="Lock Test") as first:
+        await first.call("get_project_summary")
+        project = first.project
+        owner = lock_owner(project)
+        temp_root = Path(tempfile.mkdtemp(prefix="jasper-lock-tmp-"))
+        try:
+            # held by another editor (another refused one, under load): the crash
+            busy = temp_root / "busy"
+            busy.mkdir()
+            held = hold_temp_project(busy, (project / "project.yaml").read_text())
+            try:
+                run, root = second_instance(project, [], env_extra={"TMPDIR": str(busy)})
+                shutil.rmtree(root, ignore_errors=True)
+            finally:
+                held.close()
+            check(run.returncode == 3, f"refused, temporary project held: exit 3, got {run.returncode}:\n{run.stderr[-2000:]}")
+            check(f"PID {owner['pid']}" in run.stderr, "the message names the owner's pid, not the temporary project's:\n" + run.stderr[-2000:])
+
+            # nothing there: nothing made
+            empty = temp_root / "empty"
+            empty.mkdir()
+            run, root = second_instance(project, [], env_extra={"TMPDIR": str(empty)})
+            shutil.rmtree(root, ignore_errors=True)
+            check(run.returncode == 3, f"refused, no temporary project: exit 3, got {run.returncode}:\n{run.stderr[-2000:]}")
+            check(f"PID {owner['pid']}" in run.stderr, "the message names the owner's pid:\n" + run.stderr[-2000:])
+            check(not (empty / TEMP_PROJECT).exists(), "a refused editor makes no temporary project")
+        finally:
+            shutil.rmtree(temp_root, ignore_errors=True)
+        await first.call("get_project_summary")
+
+
+async def test_no_project_open_keeps_drawing():
+    work = Path(tempfile.mkdtemp(prefix="jasper-noscene-"))
+    try:
+        broken = work / "broken"
+        broken.mkdir()
+        (broken / "project.yaml").write_text("{ this is not a project: [\n")
+        temp_dir = work / "tmp"
+        temp_dir.mkdir()
+        held = hold_temp_project(temp_dir, "name: held\n")
+        try:
+            async with Editor(project=broken, env={"TMPDIR": str(temp_dir)}) as ed:
+                # each answer is after frames with the Inspector and the other windows drawn
+                for _ in range(5):
+                    await ed.call("editor_status")
+                    await asyncio.sleep(0.2)
+                summary = await ed.call("get_project_summary")
+                check(not summary.get("scenes"), f"no scene is open: {summary}")
+                stderr = ed.stderr_text()
+                check("no project is open" in stderr, "stderr says no project is open:\n" + stderr[-2000:])
+                await ed.call("editor_status")
+        finally:
+            held.close()
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 async def crash(ed: Editor) -> None:

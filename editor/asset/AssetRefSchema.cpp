@@ -5,33 +5,16 @@
 
 #include "Engine.h"
 #include "Scene.h"
-#include "component/AudioSourceComponent.h"
-#include "component/ButtonComponent.h"
-#include "component/LightComponent.h"
-#include "component/LineRendererComponent.h"
-#include "component/TrailRendererComponent.h"
 #include "component/MeshComponent.h"
-#include "component/ModelComponent.h"
 #include "component/SpriteComponent.h"
-#include "component/PointsComponent.h"
-#include "component/PrefabComponent.h"
-#include "component/ReflectionProbeComponent.h"
 #include "component/ScriptComponent.h"
-#include "component/SkyboxComponent.h"
-#include "component/TerrainComponent.h"
-#include "component/TextComponent.h"
-#include "component/UIComponent.h"
-#include "component/UIDocumentComponent.h"
 #include "component/ParticleSystemComponent.h"
 #include "particles/ParticleEffectCodec.h"
 #include "particles/ParticleModules.h"
-#include "component/PoseAnimatorComponent.h"
-#include "component/AnimatorComponent.h"
-#include "component/AnimationPlayerComponent.h"
-#include "component/VertexAnimatorComponent.h"
-#include "component/SplineInstantiateComponent.h"
 #include "animation/ModelSubClips.h"
 #include "pool/TexturePool.h"
+#include "reflect/Reflect.h"
+#include "reflect/TypeOps.h"
 #include "registry/EntityRegistry.h"
 #include "util/Util.h"
 #include "texture/MaterialPbr.h"
@@ -50,19 +33,10 @@ namespace {
     }
 
     // a Spline Instantiate pool entry is a model (instanced) or a prefab (GameObjects)
-    constexpr const char* kSplinePools[] = {"items", "posts", "spans", "gates", "crests", "caps"};
-
     AssetType splinePieceExpectedType(const std::string& path) {
         const std::string suffix = ".prefab";
         const bool prefab = path.size() >= suffix.size() && path.compare(path.size() - suffix.size(), suffix.size(), suffix) == 0;
         return prefab ? AssetType::Prefab : AssetType::Model;
-    }
-
-    bool isSplinePoolRow(const std::string& path) {
-        for (const char* pool : kSplinePools) {
-            if (path == std::string(pool) + "[].asset") return true;
-        }
-        return false;
     }
 
     using Scope = AssetRefScope;
@@ -98,89 +72,223 @@ namespace {
         return rows;
     }
 
-    std::vector<AssetRefField> buildComponentFields() {
+    // ---- the component rows and the walk, from the reflection tables
+
+    // How the walk reaches what a field holds
+    enum class RefStep : uint8_t {
+        Struct, Array, Texture, Shader, Asset, Font, ShaderTextures, StringPath, ClipEntry, PrefabRoot, Scripts, InlineEffect, Material
+    };
+
+    struct RefWalkNode {
+        const reflect::FieldDesc* field = nullptr;
+        RefStep step = RefStep::Struct;
+        RefStep element = RefStep::Struct;                // Array: its elements (Struct: `children` of each)
+        size_t row = 0;                             // the field's row in the table
+        const reflect::FieldDesc* guid = nullptr;   // StringPath, ClipEntry, PrefabRoot: the GUID beside the path
+        std::vector<RefWalkNode> children;
+    };
+
+    struct RefComponentWalk {
+        const reflect::ComponentDesc* desc = nullptr;
+        std::vector<RefWalkNode> nodes;
+    };
+
+    AssetType rowExpectedType(reflect::AssetKind kind) {
+        using K = reflect::AssetKind;
+        switch (kind) {
+            case K::Texture: case K::Cubemap: return AssetType::Texture;
+            case K::Font: return AssetType::Font;
+            case K::Material: return AssetType::Material;
+            case K::Model: return AssetType::Model;
+            case K::Audio: return AssetType::Audio;
+            case K::Script: return AssetType::Script;
+            case K::Prefab: return AssetType::Prefab;
+            case K::Shader: return AssetType::Shader;
+            case K::UIDocument: return AssetType::UIDocument;
+            case K::Scene: return AssetType::Scene;
+            case K::PoseAnimation: return AssetType::PoseAnimation;
+            case K::AnimationClip: return AssetType::AnimationClip;
+            case K::AnimatorController: return AssetType::AnimatorController;
+            case K::VertexAnimation: return AssetType::VertexAnimation;
+            case K::AvatarMask: return AssetType::AvatarMask;
+            case K::NavMesh: return AssetType::NavMesh;
+            case K::NavGrid: return AssetType::NavGrid;
+            case K::ParticleEffect: return AssetType::ParticleEffect;
+            case K::None: case K::Any: case K::ModelOrPrefab: break;
+        }
+        return AssetType::Unknown;
+    }
+
+    // the root each reference of that kind has always used
+    AssetPathBase rowPathBase(reflect::AssetKind kind) {
+        using K = reflect::AssetKind;
+        return kind == K::Shader || kind == K::Script || kind == K::Prefab || kind == K::Material || kind == K::Scene ? Base::Project : Base::Assets;
+    }
+
+    const reflect::FieldDesc* siblingRefField(const reflect::StructDesc& desc, const std::string& name) {
+        for (const reflect::FieldDesc& field : desc.fields) {
+            if (name == field.name) return &field;
+        }
+        return nullptr;
+    }
+
+    // Generates one component's rows and walk: fields that lead to no reference are not in the
+    // walk, so a long list of plain values costs it nothing
+    class ComponentRefRows {
+    public:
+        ComponentRefRows(ComponentType component, std::vector<AssetRefField>& rows): component(component), rows(rows) {}
+
+        void collect(const reflect::StructDesc& desc, const std::string& prefix, std::vector<RefWalkNode>& out) {
+            for (const reflect::FieldDesc& field : desc.fields) {
+                if (!reflect::isSaved(field)) continue;
+                RefWalkNode node;
+                node.field = &field;
+                if (describe(desc, field, prefix, node)) out.push_back(std::move(node));
+            }
+        }
+
+        void legacyTexture(const char* key) {
+            rows.push_back({Scope::Component, component, key, Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneComponent, true});
+        }
+
+    private:
+        size_t add(const std::string& path, Shape shape, AssetType expected, Base base, Kind kind = Kind::SceneComponent) {
+            rows.push_back({Scope::Component, component, path, shape, expected, base, kind});
+            return rows.size() - 1;
+        }
+
+        size_t add(const std::string& path, Shape shape, reflect::AssetKind declared) {
+            const size_t row = add(path, shape, rowExpectedType(declared), rowPathBase(declared));
+            rows[row].modelOrPrefab = declared == reflect::AssetKind::ModelOrPrefab;
+            return row;
+        }
+
+        static bool refValueStep(const reflect::TypeOps* ops, RefStep& step, Shape& shape) {
+            switch (ops->propertyType) {
+                case PropertyType::Texture: step = RefStep::Texture; shape = Shape::Texture; return true;
+                case PropertyType::Shader: step = RefStep::Shader; shape = Shape::Shader; return true;
+                case PropertyType::Asset: step = RefStep::Asset; shape = Shape::Asset; return true;
+                case PropertyType::Font: step = RefStep::Font; shape = Shape::AssetList; return true;
+                default: return false;
+            }
+        }
+
+        // the path below an element without the dot after it ("clips[]"; "" at the component's root)
+        static std::string withoutDot(const std::string& prefix) {
+            return prefix.empty() ? prefix : prefix.substr(0, prefix.size() - 1);
+        }
+
+        bool describe(const reflect::StructDesc& desc, const reflect::FieldDesc& field, const std::string& prefix, RefWalkNode& node) {
+            const std::string path = prefix + field.yamlKey;
+            switch (field.assetForm) {
+                case reflect::AssetForm::ClipEntry:
+                    node.step = RefStep::ClipEntry;
+                    node.guid = siblingRefField(desc, "guid");
+                    node.row = add(withoutDot(prefix), Shape::ClipEntry, field.asset);
+                    return true;
+                case reflect::AssetForm::PrefabRoot:
+                    node.step = RefStep::PrefabRoot;
+                    node.guid = siblingRefField(desc, "guid");
+                    node.row = add(withoutDot(prefix), Shape::PrefabRef, field.asset);
+                    return true;
+                case reflect::AssetForm::ScriptEntries:
+                    node.step = RefStep::Scripts;
+                    // Lua entries are relative to the Lua directory (the extractor and visitor switch base)
+                    node.row = add(path + "[].path", Shape::Asset, AssetType::Script, Base::Project);
+                    add(path + "[].headerPath", Shape::Asset, AssetType::Script, Base::Project);
+                    add(path + "[].properties[]", Shape::ScriptProperty, AssetType::Unknown, Base::Project, Kind::ScriptProperty);
+                    return true;
+                case reflect::AssetForm::InlineEffect:
+                    node.step = RefStep::InlineEffect;
+                    node.row = add(path, Shape::ParticleEffect, AssetType::Unknown, Base::Assets);
+                    return true;
+                case reflect::AssetForm::Deduced:
+                    break;
+            }
+            RefStep step;
+            Shape shape;
+            if (field.ops->propertyType == PropertyType::Material) {
+                // the material rows below it, the material being an explicit list
+                node.step = RefStep::Material;
+                node.row = rows.size();
+                for (const AssetRefField& material : AssetRefSchema::materialFields()) {
+                    add(path + "." + material.path, material.shape, material.expected, material.base, material.kind);
+                }
+                return true;
+            }
+            if (field.ops == &reflect::ops::ShaderTextures) {
+                node.step = RefStep::ShaderTextures;
+                node.row = add(path + "{}", Shape::Texture, AssetType::Texture, Base::Assets);
+                return true;
+            }
+            if (field.kind == reflect::Kind::Struct && field.structDesc) {
+                node.step = RefStep::Struct;
+                collect(*field.structDesc, path + ".", node.children);
+                return !node.children.empty();
+            }
+            if (field.kind == reflect::Kind::Array && field.arrayOps) {
+                node.step = RefStep::Array;
+                if (field.structDesc) {
+                    collect(*field.structDesc, path + "[].", node.children);
+                    return !node.children.empty();
+                }
+                if (field.elementOps && refValueStep(field.elementOps, step, shape)) {
+                    node.element = step;
+                    node.row = add(path + "[]", shape, reflect::assetKindOf(field, field.elementOps));
+                    return true;
+                }
+                return false;
+            }
+            if (refValueStep(field.ops, step, shape)) {
+                node.step = step;
+                node.row = add(path, shape, reflect::assetKindOf(field, field.ops));
+                return true;
+            }
+            if (field.kind == reflect::Kind::String && field.asset != reflect::AssetKind::None) {
+                // a path string: its GUID as "<key>Guid", as an AssetRef writes it, or as "guid"
+                node.step = RefStep::StringPath;
+                node.guid = siblingRefField(desc, std::string(field.name) + "Guid");
+                if (node.guid) {
+                    node.row = add(path, Shape::Asset, field.asset);
+                } else {
+                    node.guid = siblingRefField(desc, "guid");
+                    node.row = add(path, Shape::GuidSibling, field.asset);
+                }
+                return true;
+            }
+            return false;
+        }
+
+        ComponentType component;
+        std::vector<AssetRefField>& rows;
+    };
+
+    void generateComponentRefs(const reflect::ComponentDesc& desc, std::vector<AssetRefField>& rows, std::vector<RefWalkNode>& nodes) {
+        ComponentRefRows generator(desc.type, rows);
+        generator.collect(desc.body, std::string(), nodes);
+        for (const char* key : desc.legacyTextureKeys) {
+            generator.legacyTexture(key);
+        }
+    }
+
+    struct GeneratedRefTable {
         std::vector<AssetRefField> rows;
-        auto row = [&](ComponentType component, const std::string& path, Shape shape, AssetType type, Base base,
-                       Kind kind = Kind::SceneComponent, bool legacy = false) {
-            rows.push_back({Scope::Component, component, path, shape, type, base, kind, legacy});
-        };
-        using C = ComponentType;
-        // the submesh materials: the material rows below "submeshes[].material."
-        for (const AssetRefField& material : AssetRefSchema::materialFields()) {
-            row(C::MeshComponent, "submeshes[].material." + material.path, material.shape, material.expected, material.base, material.kind);
+        std::vector<RefComponentWalk> walks;
+
+        GeneratedRefTable() {
+            for (const reflect::ComponentDesc* desc : reflect::all()) {
+                RefComponentWalk walk;
+                walk.desc = desc;
+                const size_t before = rows.size();
+                generateComponentRefs(*desc, rows, walk.nodes);
+                if (rows.size() != before && !walk.nodes.empty()) walks.push_back(std::move(walk));
+            }
         }
-        row(C::MeshComponent, "customShader", Shape::Shader, AssetType::Shader, Base::Project);
-        row(C::MeshComponent, "customDepthShader", Shape::Shader, AssetType::Shader, Base::Project);
+    };
 
-        row(C::UIComponent, "texture", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::UIComponent, "customShader", Shape::Shader, AssetType::Shader, Base::Project);
-        row(C::UIComponent, "shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets);
-
-        row(C::ButtonComponent, "textureNormal", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::ButtonComponent, "textureHovered", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::ButtonComponent, "texturePressed", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::ButtonComponent, "textureDisabled", Shape::Texture, AssetType::Texture, Base::Assets);
-
-        row(C::TextComponent, "font", Shape::AssetList, AssetType::Font, Base::Assets);
-
-        row(C::TerrainComponent, "heightMap", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::TerrainComponent, "blendMaps[]", Shape::Texture, AssetType::Texture, Base::Assets);
-        for (const char* layer : {"colorTexture", "normalTexture", "roughnessTexture", "metallicTexture", "occlusionTexture", "heightTexture"}) {
-            row(C::TerrainComponent, std::string("surfaceLayers[].") + layer, Shape::Texture, AssetType::Texture, Base::Assets);
-        }
-        row(C::TerrainComponent, "foliageLayers[].meshPath", Shape::Asset, AssetType::Model, Base::Assets);
-        row(C::TerrainComponent, "foliageLayers[].densityMap", Shape::Texture, AssetType::Texture, Base::Assets);
-        // terrains saved before blend maps and surface layers
-        row(C::TerrainComponent, "blendMap", Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneComponent, true);
-        row(C::TerrainComponent, "textureLayers[]", Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneComponent, true);
-        for (const char* legacy : {"textureDetailRed", "textureDetailGreen", "textureDetailBlue"}) {
-            row(C::TerrainComponent, legacy, Shape::Texture, AssetType::Texture, Base::Assets, Kind::SceneComponent, true);
-        }
-
-        row(C::LightComponent, "spotMask", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::ReflectionProbeComponent, "texture", Shape::Texture, AssetType::Texture, Base::Assets);
-
-        row(C::SkyboxComponent, "texture", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::SkyboxComponent, "customShader", Shape::Shader, AssetType::Shader, Base::Project);
-        row(C::SkyboxComponent, "shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets);
-
-        row(C::PointsComponent, "texture", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::PointsComponent, "customShader", Shape::Shader, AssetType::Shader, Base::Project);
-        row(C::PointsComponent, "shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets);
-
-        row(C::LineRendererComponent, "customShader", Shape::Shader, AssetType::Shader, Base::Project);
-        row(C::LineRendererComponent, "shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets);
-        row(C::TrailRendererComponent, "customShader", Shape::Shader, AssetType::Shader, Base::Project);
-        row(C::TrailRendererComponent, "shaderTextures{}", Shape::Texture, AssetType::Texture, Base::Assets);
-
-        row(C::ModelComponent, "filename", Shape::Asset, AssetType::Model, Base::Assets);
-        // a sheet sprite's sheet (S44): an .aseprite file or a texture
-        row(C::SpriteComponent, "sheet", Shape::Asset, AssetType::Unknown, Base::Assets);
-        row(C::AudioSourceComponent, "filename", Shape::Asset, AssetType::Audio, Base::Assets);
-        row(C::UIDocumentComponent, "filename", Shape::Asset, AssetType::UIDocument, Base::Assets);
-        row(C::PoseAnimatorComponent, "animation", Shape::Asset, AssetType::PoseAnimation, Base::Assets);
-        // each entry: "clips[2]" (an .anim, or the model of a "<model>#<clip>" sub-clip)
-        row(C::AnimationPlayerComponent, "clips[]", Shape::ClipEntry, AssetType::AnimationClip, Base::Assets);
-        row(C::NavMeshSurfaceComponent, "navMeshData", Shape::Asset, AssetType::NavMesh, Base::Assets);
-        row(C::NavGridComponent, "gridData", Shape::Asset, AssetType::NavGrid, Base::Assets);
-        // each pool entry: "posts[1].asset" (and "assetGuid"); a model or a prefab
-        for (const char* pool : kSplinePools) {
-            row(C::SplineInstantiateComponent, std::string(pool) + "[].asset", Shape::Asset, AssetType::Unknown, Base::Assets);
-        }
-        row(C::AnimatorComponent, "controller", Shape::Asset, AssetType::AnimatorController, Base::Assets);
-        // the .vat by its GUID (the sibling "guid") and path hint; its .vat.glb is the Model's filename
-        row(C::VertexAnimatorComponent, "animation", Shape::GuidSibling, AssetType::VertexAnimation, Base::Assets);
-
-        row(C::ParticleSystemComponent, "effect", Shape::Asset, AssetType::ParticleEffect, Base::Assets);
-        row(C::ParticleSystemComponent, "inlineEffect", Shape::ParticleEffect, AssetType::Unknown, Base::Assets);
-
-        // Lua entries are relative to the Lua directory (the extractor and visitor switch base)
-        row(C::ScriptComponent, "scripts[].path", Shape::Asset, AssetType::Script, Base::Project);
-        row(C::ScriptComponent, "scripts[].headerPath", Shape::Asset, AssetType::Script, Base::Project);
-        row(C::ScriptComponent, "scripts[].properties[]", Shape::ScriptProperty, AssetType::Unknown, Base::Project, Kind::ScriptProperty);
-
-        row(C::PrefabComponent, "", Shape::PrefabRef, AssetType::Prefab, Base::Project);
-        return rows;
+    const GeneratedRefTable& generatedRefTable() {
+        static const GeneratedRefTable table;
+        return table;
     }
 
     std::vector<AssetRefField> buildDocumentFields() {
@@ -250,6 +358,9 @@ namespace {
         bool changed = false;
         Entity entity = NULL_ENTITY;
         std::string component;
+        // the entity is a sheet sprite (S44 R48): submesh 0's base colour is its sheet's page, the
+        // sprite's reference, not the material's
+        bool sheetPage = false;
 
         AssetRefSite site(const AssetRefField& row, const std::string& field, uint32_t ordinal = 0,
                           AssetPathBase base = AssetPathBase::Project, bool baseOverride = false) const {
@@ -424,27 +535,6 @@ namespace {
         const AssetRefVisitor& visitor;
     };
 
-    template<class C, class F>
-    void eachComponent(EntityRegistry& registry, Entity only, RefVisit& visit, ComponentType type, F&& f) {
-        if (only != NULL_ENTITY) {
-            if (C* component = registry.findComponent<C>(only)) {
-                visit.entity = only;
-                visit.component = Catalog::getComponentName(type);
-                f(*component);
-            }
-            return;
-        }
-        auto* array = registry.getComponentArray<C>();
-        if (!array) {
-            return;
-        }
-        for (size_t i = 0; i < array->size(); i++) {
-            visit.entity = array->getEntity(i);
-            visit.component = Catalog::getComponentName(type);
-            f(array->getComponentFromIndex(i));
-        }
-    }
-
     struct MaterialChange {
         bool texture = false;
         bool shader = false;
@@ -519,218 +609,145 @@ namespace {
         return changed;
     }
 
+    void visitScriptEntries(RefVisit& visit, std::vector<ScriptEntry>& scripts) {
+        const AssetRefField& path = componentRow(ComponentType::ScriptComponent, "scripts[].path");
+        const AssetRefField& header = componentRow(ComponentType::ScriptComponent, "scripts[].headerPath");
+        for (size_t i = 0; i < scripts.size(); i++) {
+            ScriptEntry& entry = scripts[i];
+            const std::string prefix = "scripts[" + std::to_string(i) + "].";
+            const bool lua = entry.type == ScriptType::LUA;
+            visit.asset(entry.path, path, prefix + "path", lua ? AssetPathBase::Lua : AssetPathBase::Project, true);
+            visit.asset(entry.headerPath, header, prefix + "headerPath");
+            for (size_t p = 0; p < entry.properties.size(); p++) {
+                visitScriptProperty(visit, entry.properties[p], prefix + "properties[" + std::to_string(p) + "]");
+            }
+        }
+    }
+
+    // One component's moved references: what reloads
+    struct MovedRefs {
+        uint64_t flags = 0;
+        bool any = false;
+    };
+
+    bool visitRefValue(RefVisit& visit, RefStep step, void* value, const AssetRefField& row, const std::string& field) {
+        switch (step) {
+            case RefStep::Texture:
+                return visit.texture(*static_cast<Texture*>(value), row, field);
+            case RefStep::Shader:
+                return visit.shader(*static_cast<ShaderRef*>(value), row, field);
+            case RefStep::Asset: {
+                AssetRef& ref = *static_cast<AssetRef*>(value);
+                return visit.asset(ref, row, field, AssetPathBase::Project, false, row.modelOrPrefab ? splinePieceExpectedType(ref.path) : AssetType::Unknown);
+            }
+            default:
+                return false;
+        }
+    }
+
+    void walkRefFields(RefVisit& visit, const std::vector<RefWalkNode>& nodes, void* owner, const std::string& prefix, MovedRefs& moved) {
+        const std::vector<AssetRefField>& rows = AssetRefSchema::fields();
+        for (const RefWalkNode& node : nodes) {
+            const reflect::FieldDesc& field = *node.field;
+            void* value = field.ref(owner);
+            const std::string path = prefix + field.yamlKey;
+            bool pathChanged = false;
+            switch (node.step) {
+                case RefStep::Struct:
+                    walkRefFields(visit, node.children, value, path + ".", moved);
+                    continue;
+                case RefStep::Array: {
+                    size_t count = reflect::elementCount(field, owner, value);
+                    if (field.assetCount) count = std::min(count, field.assetCount(owner));
+                    for (size_t i = 0; i < count; i++) {
+                        void* element = field.arrayOps->at(value, i);
+                        const std::string elementPath = path + "[" + std::to_string(i) + "]";
+                        if (node.element == RefStep::Struct) {
+                            walkRefFields(visit, node.children, element, elementPath + ".", moved);
+                        } else {
+                            pathChanged |= visitRefValue(visit, node.element, element, rows[node.row], elementPath);
+                        }
+                    }
+                    break;
+                }
+                case RefStep::Font: {
+                    FontArray& fonts = *static_cast<FontArray*>(value);
+                    for (size_t i = 0; i < fonts.size(); i++) {
+                        pathChanged |= visit.asset(fonts[i], rows[node.row], path + "[" + std::to_string(i) + "]");
+                    }
+                    break;
+                }
+                case RefStep::ShaderTextures:
+                    pathChanged = visit.textureMap(*static_cast<std::vector<std::pair<std::string, Texture>>*>(value), rows[node.row], path + ".");
+                    break;
+                case RefStep::StringPath:
+                    pathChanged = visit.prefab(*static_cast<std::string*>(value), *static_cast<std::string*>(node.guid->ref(owner)), rows[node.row], path);
+                    break;
+                case RefStep::ClipEntry:
+                    // the entry is the element: "clips[2]"
+                    pathChanged = visit.clipEntry(*static_cast<std::string*>(value), *static_cast<std::string*>(node.guid->ref(owner)), rows[node.row],
+                                                  prefix.substr(0, prefix.size() - 1));
+                    break;
+                case RefStep::PrefabRoot:
+                    pathChanged = visit.prefab(*static_cast<std::string*>(value), *static_cast<std::string*>(node.guid->ref(owner)), rows[node.row], path);
+                    break;
+                case RefStep::Scripts:
+                    visitScriptEntries(visit, *static_cast<std::vector<ScriptEntry>*>(value));
+                    continue;
+                case RefStep::InlineEffect:
+                    pathChanged = visitInlineEffect(visit, *static_cast<particles::ParticleEffectDocument*>(value), rows[node.row], path);
+                    break;
+                case RefStep::Material: {
+                    const MaterialChange change = visitMaterial(visit, *static_cast<Material*>(value), path + ".",
+                                                                visit.sheetPage && path == "submeshes[0].material");
+                    if (change.texture) moved.flags |= UpdateFlags_Mesh_Texture;
+                    if (change.shader) moved.flags |= UpdateFlags_Mesh_Reload;
+                    moved.any |= change.texture || change.shader;
+                    continue;
+                }
+                default:
+                    pathChanged = visitRefValue(visit, node.step, value, rows[node.row], path);
+                    break;
+            }
+            if (pathChanged) {
+                moved.flags |= field.updateFlags;
+                moved.any = true;
+                if (field.assetMoved) field.assetMoved(owner);
+            }
+        }
+    }
+
+    void visitComponentRefs(EntityRegistry& registry, Entity entity, const RefComponentWalk& walk, RefVisit& visit) {
+        void* component = walk.desc->find(&registry, entity);
+        if (!component) {
+            return;
+        }
+        visit.entity = entity;
+        visit.component = Catalog::getComponentName(walk.desc->type);
+        const SpriteComponent* sprite = walk.desc->type == ComponentType::MeshComponent ? registry.findComponent<SpriteComponent>(entity) : nullptr;
+        visit.sheetPage = sprite && !sprite->sheet.empty();
+        MovedRefs moved;
+        walkRefFields(visit, walk.nodes, component, std::string(), moved);
+        if (moved.any) {
+            Catalog::updateEntity(&registry, entity, moved.flags);
+            if (walk.desc->edited) walk.desc->edited(&registry, entity);
+        }
+    }
+
     void visitRegistry(EntityRegistry& registry, Entity only, RefVisit& visit) {
-        using C = ComponentType;
-
-        eachComponent<MeshComponent>(registry, only, visit, C::MeshComponent, [&](MeshComponent& mesh) {
-            const SpriteComponent* sheetSprite = registry.findComponent<SpriteComponent>(visit.entity);
-            const bool sheetPage = sheetSprite && !sheetSprite->sheet.empty();
-            for (unsigned int s = 0; s < mesh.numSubmeshes; s++) {
-                const MaterialChange change = visitMaterial(visit, mesh.submeshes[s].material, "submeshes[" + std::to_string(s) + "].material.",
-                                                            sheetPage && s == 0);
-                if (change.texture) mesh.submeshes[s].needUpdateTexture = true;
-                if (change.shader) mesh.needReload = true;
+        for (const RefComponentWalk& walk : generatedRefTable().walks) {
+            if (only != NULL_ENTITY) {
+                visitComponentRefs(registry, only, walk, visit);
+                continue;
             }
-            // both visits run, whatever the first returns
-            const bool shaderChanged = visit.shader(mesh.customShader, componentRow(C::MeshComponent, "customShader"), "customShader");
-            const bool depthShaderChanged = visit.shader(mesh.customDepthShader, componentRow(C::MeshComponent, "customDepthShader"), "customDepthShader");
-            if (shaderChanged || depthShaderChanged) {
-                mesh.needReload = true;
+            ComponentArrayBase* array = registry.getComponentArray(walk.desc->componentId(&registry));
+            if (!array) {
+                continue;
             }
-        });
-
-        eachComponent<UIComponent>(registry, only, visit, C::UIComponent, [&](UIComponent& ui) {
-            if (visit.texture(ui.texture, componentRow(C::UIComponent, "texture"), "texture")) ui.needUpdateTexture = true;
-            // both visits run, whatever the first returns
-            const bool shaderChanged = visit.shader(ui.customShader, componentRow(C::UIComponent, "customShader"), "customShader");
-            const bool texturesChanged = visit.textureMap(ui.shaderTextures, componentRow(C::UIComponent, "shaderTextures{}"), "shaderTextures.");
-            if (shaderChanged || texturesChanged) {
-                ui.needReload = true;
+            for (size_t i = 0; i < array->size(); i++) {
+                visitComponentRefs(registry, array->getEntity(i), walk, visit);
             }
-        });
-
-        eachComponent<ButtonComponent>(registry, only, visit, C::ButtonComponent, [&](ButtonComponent& button) {
-            bool changed = visit.texture(button.textureNormal, componentRow(C::ButtonComponent, "textureNormal"), "textureNormal");
-            changed |= visit.texture(button.textureHovered, componentRow(C::ButtonComponent, "textureHovered"), "textureHovered");
-            changed |= visit.texture(button.texturePressed, componentRow(C::ButtonComponent, "texturePressed"), "texturePressed");
-            changed |= visit.texture(button.textureDisabled, componentRow(C::ButtonComponent, "textureDisabled"), "textureDisabled");
-            if (changed) button.needUpdateButton = true;
-        });
-
-        eachComponent<TextComponent>(registry, only, visit, C::TextComponent, [&](TextComponent& text) {
-            for (size_t i = 0; i < text.font.size(); i++) {
-                if (visit.asset(text.font[i], componentRow(C::TextComponent, "font"), "font[" + std::to_string(i) + "]")) {
-                    text.needReloadAtlas = true;
-                }
-            }
-        });
-
-        eachComponent<TerrainComponent>(registry, only, visit, C::TerrainComponent, [&](TerrainComponent& terrain) {
-            const bool heightMapChanged = visit.texture(terrain.heightMap, componentRow(C::TerrainComponent, "heightMap"), "heightMap");
-            bool textureChanged = heightMapChanged;
-            for (size_t i = 0; i < terrain.blendMaps.size(); i++) {
-                textureChanged |= visit.texture(terrain.blendMaps[i], componentRow(C::TerrainComponent, "blendMaps[]"), "blendMaps[" + std::to_string(i) + "]");
-            }
-            for (size_t i = 0; i < terrain.surfaceLayers.size(); i++) {
-                TerrainSurfaceLayer& layer = terrain.surfaceLayers[i];
-                const std::string prefix = "surfaceLayers[" + std::to_string(i) + "].";
-                const std::pair<const char*, Texture*> textures[] = {
-                    {"colorTexture", &layer.colorTexture}, {"normalTexture", &layer.normalTexture},
-                    {"roughnessTexture", &layer.roughnessTexture}, {"metallicTexture", &layer.metallicTexture},
-                    {"occlusionTexture", &layer.occlusionTexture}, {"heightTexture", &layer.heightTexture}};
-                for (const auto& [name, texture] : textures) {
-                    textureChanged |= visit.texture(*texture, componentRow(C::TerrainComponent, std::string("surfaceLayers[].") + name), prefix + name);
-                }
-            }
-            for (size_t i = 0; i < terrain.foliageLayers.size(); i++) {
-                TerrainFoliageLayer& layer = terrain.foliageLayers[i];
-                const std::string prefix = "foliageLayers[" + std::to_string(i) + "].";
-                // both visits run, whatever the first returns
-                const bool densityChanged = visit.texture(layer.densityMap, componentRow(C::TerrainComponent, "foliageLayers[].densityMap"), prefix + "densityMap");
-                const bool meshChanged = visit.asset(layer.meshPath, componentRow(C::TerrainComponent, "foliageLayers[].meshPath"), prefix + "meshPath");
-                if (densityChanged || meshChanged) {
-                    terrain.needUpdateFoliage = true;
-                }
-            }
-            // the node tree and the physics heightfield are built from the map
-            if (heightMapChanged) {
-                terrain.heightMapLoaded = false;
-                terrain.needUpdateTerrain = true;
-            }
-            if (textureChanged) terrain.needUpdateTexture = true;
-        });
-
-        eachComponent<LightComponent>(registry, only, visit, C::LightComponent, [&](LightComponent& light) {
-            if (visit.texture(light.spotMask, componentRow(C::LightComponent, "spotMask"), "spotMask")) light.needUpdateShadowCamera = true;
-        });
-
-        eachComponent<ReflectionProbeComponent>(registry, only, visit, C::ReflectionProbeComponent, [&](ReflectionProbeComponent& probe) {
-            if (visit.texture(probe.texture, componentRow(C::ReflectionProbeComponent, "texture"), "texture")) probe.needUpdate = true;
-        });
-
-        eachComponent<SkyboxComponent>(registry, only, visit, C::SkyboxComponent, [&](SkyboxComponent& sky) {
-            if (visit.texture(sky.texture, componentRow(C::SkyboxComponent, "texture"), "texture")) sky.needUpdateTexture = true;
-            // both visits run, whatever the first returns
-            const bool shaderChanged = visit.shader(sky.customShader, componentRow(C::SkyboxComponent, "customShader"), "customShader");
-            const bool texturesChanged = visit.textureMap(sky.shaderTextures, componentRow(C::SkyboxComponent, "shaderTextures{}"), "shaderTextures.");
-            if (shaderChanged || texturesChanged) {
-                sky.needReload = true;
-            }
-        });
-
-        eachComponent<PointsComponent>(registry, only, visit, C::PointsComponent, [&](PointsComponent& points) {
-            if (visit.texture(points.texture, componentRow(C::PointsComponent, "texture"), "texture")) points.needUpdateTexture = true;
-            // both visits run, whatever the first returns
-            const bool shaderChanged = visit.shader(points.customShader, componentRow(C::PointsComponent, "customShader"), "customShader");
-            const bool texturesChanged = visit.textureMap(points.shaderTextures, componentRow(C::PointsComponent, "shaderTextures{}"), "shaderTextures.");
-            if (shaderChanged || texturesChanged) {
-                points.needReload = true;
-            }
-        });
-
-        eachComponent<LineRendererComponent>(registry, only, visit, C::LineRendererComponent, [&](LineRendererComponent& lines) {
-            // both visits run, whatever the first returns
-            const bool shaderChanged = visit.shader(lines.customShader, componentRow(C::LineRendererComponent, "customShader"), "customShader");
-            const bool texturesChanged = visit.textureMap(lines.shaderTextures, componentRow(C::LineRendererComponent, "shaderTextures{}"), "shaderTextures.");
-            if (shaderChanged || texturesChanged) {
-                lines.needReload = true;
-            }
-        });
-
-        eachComponent<TrailRendererComponent>(registry, only, visit, C::TrailRendererComponent, [&](TrailRendererComponent& trail) {
-            // both visits run, whatever the first returns
-            const bool shaderChanged = visit.shader(trail.customShader, componentRow(C::TrailRendererComponent, "customShader"), "customShader");
-            const bool texturesChanged = visit.textureMap(trail.shaderTextures, componentRow(C::TrailRendererComponent, "shaderTextures{}"), "shaderTextures.");
-            if (shaderChanged || texturesChanged) {
-                trail.needReload = true;
-            }
-        });
-
-        eachComponent<ModelComponent>(registry, only, visit, C::ModelComponent, [&](ModelComponent& model) {
-            if (visit.asset(model.filename, componentRow(C::ModelComponent, "filename"), "filename")) model.needUpdateModel = true;
-        });
-
-        eachComponent<SpriteComponent>(registry, only, visit, C::SpriteComponent, [&](SpriteComponent& sprite) {
-            if (sprite.sheet.empty()) return;
-            if (visit.asset(sprite.sheet, componentRow(C::SpriteComponent, "sheet"), "sheet")) {
-                sprite.sheetData.reset();
-                sprite.needUpdateSprite = true;
-            }
-        });
-
-        eachComponent<AudioSourceComponent>(registry, only, visit, C::AudioSourceComponent, [&](AudioSourceComponent& audio) {
-            if (visit.asset(audio.filename, componentRow(C::AudioSourceComponent, "filename"), "filename")) {
-                audio.loaded = false;
-                audio.loadFailed = false;
-                audio.needUpdate = true;
-            }
-        });
-
-        eachComponent<ParticleSystemComponent>(registry, only, visit, C::ParticleSystemComponent, [&](ParticleSystemComponent& particles) {
-            bool changed = visit.asset(particles.effect, componentRow(C::ParticleSystemComponent, "effect"), "effect");
-            changed |= visitInlineEffect(visit, particles.inlineEffect, componentRow(C::ParticleSystemComponent, "inlineEffect"), "inlineEffect");
-            if (changed) particles.needReload = true;
-        });
-
-        eachComponent<UIDocumentComponent>(registry, only, visit, C::UIDocumentComponent, [&](UIDocumentComponent& document) {
-            if (visit.asset(document.filename, componentRow(C::UIDocumentComponent, "filename"), "filename")) document.needReload = true;
-        });
-
-        eachComponent<PoseAnimatorComponent>(registry, only, visit, C::PoseAnimatorComponent, [&](PoseAnimatorComponent& animator) {
-            if (visit.asset(animator.animation, componentRow(C::PoseAnimatorComponent, "animation"), "animation")) animator.needsLoad = true;
-        });
-
-        eachComponent<AnimatorComponent>(registry, only, visit, C::AnimatorComponent, [&](AnimatorComponent& animator) {
-            if (visit.asset(animator.controller, componentRow(C::AnimatorComponent, "controller"), "controller")) animator.needsLoad = true;
-        });
-
-        eachComponent<AnimationPlayerComponent>(registry, only, visit, C::AnimationPlayerComponent, [&](AnimationPlayerComponent& player) {
-            bool moved = false;
-            for (size_t i = 0; i < player.clips.size(); i++) {
-                AnimationPlayerClip& entry = player.clips[i];
-                moved |= visit.clipEntry(entry.clip, entry.guid, componentRow(C::AnimationPlayerComponent, "clips[]"),
-                                         "clips[" + std::to_string(i) + "]");
-            }
-            if (moved) player.needsLoad = true;
-        });
-
-        eachComponent<SplineInstantiateComponent>(registry, only, visit, C::SplineInstantiateComponent, [&](SplineInstantiateComponent& instantiate) {
-            // SplineSystem re-resolves a pool whose paths change (no flag to set)
-            std::vector<SplinePoolEntry>* pools[] = {&instantiate.items, &instantiate.posts, &instantiate.spans,
-                                                     &instantiate.gates, &instantiate.crests, &instantiate.caps};
-            for (size_t p = 0; p < std::size(pools); p++) {
-                const std::string name = kSplinePools[p];
-                for (size_t i = 0; i < pools[p]->size(); i++) {
-                    AssetRef& asset = (*pools[p])[i].asset;
-                    visit.asset(asset, componentRow(C::SplineInstantiateComponent, name + "[].asset"), name + "[" + std::to_string(i) + "].asset",
-                                AssetPathBase::Assets, false, splinePieceExpectedType(asset.path));
-                }
-            }
-        });
-
-        eachComponent<VertexAnimatorComponent>(registry, only, visit, C::VertexAnimatorComponent, [&](VertexAnimatorComponent& animator) {
-            if (visit.prefab(animator.animation, animator.guid, componentRow(C::VertexAnimatorComponent, "animation"), "animation")) {
-                animator.needsLoad = true;
-            }
-        });
-
-        eachComponent<ScriptComponent>(registry, only, visit, C::ScriptComponent, [&](ScriptComponent& scripts) {
-            for (size_t i = 0; i < scripts.scripts.size(); i++) {
-                ScriptEntry& entry = scripts.scripts[i];
-                const std::string prefix = "scripts[" + std::to_string(i) + "].";
-                const bool lua = entry.type == ScriptType::LUA;
-                visit.asset(entry.path, componentRow(C::ScriptComponent, "scripts[].path"), prefix + "path",
-                            lua ? AssetPathBase::Lua : AssetPathBase::Project, true);
-                visit.asset(entry.headerPath, componentRow(C::ScriptComponent, "scripts[].headerPath"), prefix + "headerPath");
-                for (size_t p = 0; p < entry.properties.size(); p++) {
-                    visitScriptProperty(visit, entry.properties[p], prefix + "properties[" + std::to_string(p) + "]");
-                }
-            }
-        });
-
-        eachComponent<PrefabComponent>(registry, only, visit, C::PrefabComponent, [&](PrefabComponent& prefab) {
-            visit.prefab(prefab.path, prefab.guid, componentRow(C::PrefabComponent, ""), "path");
-        });
+        }
     }
 
     // ---------------------------------------------------------------- files
@@ -879,7 +896,7 @@ namespace {
                             lua = scalar(parent["type"]) == "lua";
                         }
                         const AssetType expected = row.path == "postProcessing.lutTexture" ? lutExpectedType(scalar(value))
-                                                 : isSplinePoolRow(row.path) ? splinePieceExpectedType(scalar(value)) : AssetType::Unknown;
+                                                 : row.modelOrPrefab ? splinePieceExpectedType(scalar(value)) : AssetType::Unknown;
                         found(row, AssetRef(scalar(value), guid), field, 0, lua ? AssetPathBase::Lua : AssetPathBase::Project, lua, expected);
                         break;
                     }
@@ -1047,7 +1064,13 @@ const std::vector<AssetRefField>& AssetRefSchema::materialFields() {
 }
 
 const std::vector<AssetRefField>& AssetRefSchema::fields() {
-    static const std::vector<AssetRefField> rows = buildComponentFields();
+    return generatedRefTable().rows;
+}
+
+std::vector<AssetRefField> AssetRefSchema::fieldsOf(const reflect::ComponentDesc& desc) {
+    std::vector<AssetRefField> rows;
+    std::vector<RefWalkNode> nodes;
+    generateComponentRefs(desc, rows, nodes);
     return rows;
 }
 

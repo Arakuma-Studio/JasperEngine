@@ -6,6 +6,7 @@
 
 #include "Engine.h"
 #include "math/Rect.h"
+#include "buffer/ExternalBuffer.h"
 
 #include <vector>
 
@@ -111,10 +112,27 @@ namespace jasperengine{
         // with a Vertex Animation variant; the others have none there)
         unsigned int vatOffset = 0;
         unsigned int lodCount[MAX_MESH_LODS] = {};
+        // after the plain buckets, the copies of the instances cross-fading between two levels
+        // (spec S54 R8: each instance in a level's band twice, once per level, its fade in the
+        // first matrix column's w): per level, the copies keeping most of their pixels first
+        // (fadeDominant of them: what a pass drawing one level per instance draws)
+        unsigned int fadeCount[MAX_MESH_LODS] = {};
+        unsigned int fadeDominant[MAX_MESH_LODS] = {};
 
         unsigned int count() const{
             unsigned int total = 0;
             for (unsigned int c : lodCount) total += c;
+            for (unsigned int c : fadeCount) total += c;
+            return total;
+        }
+        unsigned int plainCount() const{
+            unsigned int total = 0;
+            for (unsigned int c : lodCount) total += c;
+            return total;
+        }
+        unsigned int fadeTotal() const{
+            unsigned int total = 0;
+            for (unsigned int c : fadeCount) total += c;
             return total;
         }
     };

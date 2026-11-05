@@ -237,3 +237,18 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Command | Shortcut | Context |
 |---|---|---|
 | Copy Message | Ctrl+C | Console |
+
+## Curve
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Frame Curve | F | Curve |
+| Delete Curve Keys | Delete / Backspace | Curve |
+| Copy Curve Keys | Ctrl+C | Curve |
+| Paste Curve Keys | Ctrl+V | Curve |
+
+## Color Picker
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Eyedropper | I | Color Picker |

@@ -192,6 +192,8 @@ async def test_source_export(ed: Editor):
     ed.check(Path(result["log_file"]).exists(), "build log file")
     ed.check_eq(result["errors"], [])
     await check_xcode_workspace(ed, out)
+    # S67: the Android project builds from a shell: the installed editor's copy has no exec bit to pass on
+    ed.check(os.access(out / "workspaces" / "androidstudio" / "gradlew", os.X_OK), "gradlew is executable")
     # web saves are prefixed per game: the default identifier is shared, so the project name
     # (bytes other than letters, digits, . and - escaped for the define)
     ed.check_in('set(JASPERENGINE_STORAGE_ID "Build_20Test")', (out / "CMakeLists.txt").read_text())

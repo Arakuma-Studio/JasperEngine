@@ -8,6 +8,7 @@
 // AnimationWindowClipDraw.cpp.
 
 #include "AnimationWindowClip.h"
+#include "component/Transform.h"
 #include "animation/ModelSubClips.h"
 #include "sprite/SpriteSheetPool.h"
 #include "animation/ClipPropertyNames.h"

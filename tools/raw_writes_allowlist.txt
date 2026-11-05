@@ -16,7 +16,7 @@ editor/Exporter.cpp :: std::ofstream(fs::path(path.string() + ".held")) :: the m
 editor/platform/AndroidPackager.cpp :: std::ofstream out(path, std::ios::binary); :: SecretFile: a signing password's file in the package's work folder, created empty so it is owner-only before the secret goes in (a temporary sibling would hold it with default permissions), removed after the signing
 editor/platform/AndroidPackager.cpp :: std::ofstream out(path, std::ios::binary | std::ios::trunc); :: SecretFile: the same file, now owner-only, takes the secret
 editor/recorder/RecorderSession.cpp :: void writeWavHeader(std::ofstream& out, uint32_t dataBytes) { :: the stream of the Sink's audio file below
-editor/recorder/RecorderSession.cpp :: std::ofstream wav; :: a movie's audio, streamed for the mux to the hidden .<movie>.audio.wav and its sizes patched at the end; FFmpeg's mux writes the movie and this file is removed, never published
+editor/recorder/RecorderSession.cpp :: std::ofstream wav; :: a movie's audio, streamed for the mux to a temporary sibling (every write checked) and its sizes patched at the end; FFmpeg's mux writes the movie and this file is removed, never published
 
 # output to a path the user named on the command line
 editor/App.cpp :: std::ofstream file(benchmarkOut); :: --benchmark-out report

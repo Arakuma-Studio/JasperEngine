@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneWindow.h"
+#include "component/TextComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "window/PhysicsPlacementWindow.h"
+#include "component/MeshPolygonComponent.h"
 #include "pixelart/aseprite/AsepriteSpriteSetup.h"
 #include "sprite/SpriteSheetPool.h"
 #include "widget/ColorField.h"
@@ -18,6 +22,10 @@
 #include "external/IconsFontAwesome6.h"
 #include "Backend.h"
 #include "subsystem/RenderSystem.h"
+#include "render/SystemRender.h"
+#include "render/RenderStats.h"
+#include "render/SceneDrawModes.h"
+#include "render/RenderUtil.h"
 #include "util/Util.h"
 #include "util/EntityPayload.h"
 #include "command/CommandHandle.h"
@@ -1552,6 +1560,29 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
             }
 
+            // Capsule Shadow Caster handles of a selected caster: the capsules' ends and radius
+            // (3D translate; the same side guard as the blocks above)
+            if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {
+                std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
+                if (selEntities.size() == 1 && !io.KeyShift && sceneProject->scene->findComponent<CapsuleShadowCasterComponent>(selEntities[0])) {
+                    Entity selEntity = selEntities[0];
+                    if (!sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+                        int handleHit = sceneProject->sceneRender->hitTestCapsuleHandle(selEntity, x, y);
+                        if (handleHit >= 0) {
+                            sceneProject->sceneRender->selectCapsuleHandle(selEntity, handleHit);
+                            subSelectionClickConsumesRelease[sceneId] = true;
+                            // Re-update so the gizmo jumps to the handle
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        } else if (sceneProject->sceneRender->getSelectedCapsuleHandleIndex() >= 0) {
+                            sceneProject->sceneRender->clearCapsuleHandleSelection();
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        }
+                    }
+                }
+            }
+
             // TranslateTracks keyframe point sub-selection within a selected tracks entity
             // (2D gizmo or 3D translate; same side guards as the line block above)
             if (gizmoSelected == GizmoSelected::OBJECT2D || gizmoSelected == GizmoSelected::TRANSLATE) {
@@ -1771,6 +1802,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 Entity prevTrackPointEntity = sceneProject->sceneRender->getSelectedTrackPointEntity();
                 int prevJointAnchorIndex = sceneProject->sceneRender->getSelectedJointAnchorIndex();
                 Entity prevJointAnchorEntity = sceneProject->sceneRender->getSelectedJointAnchorEntity();
+                int prevCapsuleHandleIndex = sceneProject->sceneRender->getSelectedCapsuleHandleIndex();
+                Entity prevCapsuleHandleEntity = sceneProject->sceneRender->getSelectedCapsuleHandleEntity();
 
                 // a click on empty space while lattice points are selected clears the points
                 // and keeps the lattice (the next one deselects it as usual); the same for the
@@ -1821,6 +1854,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
                 if (prevJointAnchorIndex >= 0 && !(soleHost && selAfter[0] == prevJointAnchorEntity)){
                     sceneProject->sceneRender->clearJointAnchorSelection();
+                }
+                if (prevCapsuleHandleIndex >= 0 && !(soleHost && selAfter[0] == prevCapsuleHandleEntity)){
+                    sceneProject->sceneRender->clearCapsuleHandleSelection();
                 }
             }
             subSelectionClickConsumesRelease[sceneId] = false;
@@ -1876,6 +1912,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 sceneProject->sceneRender->clearPolygonPointSelection();
                 sceneProject->sceneRender->clearTrackPointSelection();
                 sceneProject->sceneRender->clearJointAnchorSelection();
+                sceneProject->sceneRender->clearCapsuleHandleSelection();
                 project->selectObjectsByRect(sceneId, clickStartPos, clickEndPos);
                 project->clearInspectedAsset();
                 project->syncSceneRenderEditLayer(sceneId);
@@ -2732,6 +2769,45 @@ void editor::SceneWindow::show() {
             ImGui::TextDisabled("%s", sceneKindLabel);
             ImGui::SetItemTooltip("%s scene", sceneKindLabel);
 
+            // the Draw Mode and the Stats overlay (spec S54 R11, R12): editor only, saved with
+            // the workspace; a game always draws Shaded
+            if (sceneProject.sceneType == SceneType::SCENE_3D) {
+                ImGui::SameLine();
+                ViewDrawMode& drawMode = sceneProject.displaySettings.drawMode;
+                ImGui::SetNextItemWidth(Theme::dpi(140.0f));
+                if (ImGui::BeginCombo(("##DrawMode" + std::to_string(sceneProject.id)).c_str(), drawModeLabel(drawMode))) {
+                    static const char* const help[SCENE_DRAW_MODE_COUNT] = {
+                        "The scene as the game draws it",
+                        "Only the meshes' edges, at the detail level each draws",
+                        "The shaded scene with the meshes' edges over it",
+                        "Each mesh tinted by the detail level it draws: LOD 0 green, 1 blue, 2 amber, 3 red; a cross-fade dithers two",
+                        "Every layer of the meshes adds heat, nothing hides another: bright areas draw their pixels many times",
+                    };
+                    for (int mode = 0; mode < SCENE_DRAW_MODE_COUNT; mode++) {
+                        if (mode == (int)ViewDrawMode::LOD_LEVEL)
+                            ImGui::SeparatorText("Mesh Analysis");
+                        const ViewDrawMode item = (ViewDrawMode)mode;
+                        if (ImGui::Selectable(drawModeLabel(item), item == drawMode)) {
+                            drawMode = item;
+                            sceneProject.needUpdateRender = true;
+                            project->saveWorkspaceFile();
+                        }
+                        ImGui::SetItemTooltip("%s", help[mode]);
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::SetItemTooltip("Draw Mode of this Scene view (editor only)");
+                ImGui::SameLine();
+                bool& showStats = sceneProject.displaySettings.showStats;
+                ImGui::PushStyleColor(ImGuiCol_Button, showStats ? Theme::Colors::ButtonActivated : ImGui::GetStyle().Colors[ImGuiCol_Button]);
+                if (ImGui::Button((std::string(ICON_FA_CHART_SIMPLE) + "##SceneStats" + std::to_string(sceneProject.id)).c_str())) {
+                    showStats = !showStats;
+                    project->saveWorkspaceFile();
+                }
+                ImGui::PopStyleColor();
+                ImGui::SetItemTooltip("Stats: draw calls, triangles, vertices, detail levels and mesh memory of this view");
+            }
+
             // Physics (G) on: the orange badge
             if (PhysicsPlacementWindow* physics = Backend::getApp().getPhysicsPlacementWindow()) {
                 physics->drawSceneBadge(sceneProject.id);
@@ -2913,6 +2989,7 @@ void editor::SceneWindow::show() {
                     ui::registerViewImage(ImGui::GetWindowViewport()->ID, canvasMin,
                                           ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y), sceneProject.sceneRender->getFramebuffer());
                     particleOverlay.draw(project, &sceneProject, canvasMin, canvasAvail);
+                    drawDrawModeOverlays(sceneProject, canvasMin, ImVec2(canvasMin.x + canvasAvail.x, canvasMin.y + canvasAvail.y));
                     // an item over the image again, after the panel's widgets: the drop targets
                     // below (BeginDragDropTarget) take the last item, and an empty one a line
                     // lower would make them unreachable and give the canvas a scrollbar (which
@@ -3096,6 +3173,31 @@ void editor::SceneWindow::probeSceneView(SceneProject* sceneProject){
         max = ImVec2(std::max(max.x, screen.x), std::max(max.y, screen.y));
     }
     UIProbe::rect("scene.fluidSprite", min.x, min.y, max.x, max.y);
+}
+
+// the LOD Level legend and the Stats box over the Scene view (spec S54 R11, R12)
+void editor::SceneWindow::drawDrawModeOverlays(SceneProject& sceneProject, ImVec2 imageMin, ImVec2 imageMax){
+    if (sceneProject.sceneType != SceneType::SCENE_3D || !sceneProject.scene)
+        return;
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    if (sceneProject.displaySettings.drawMode == ViewDrawMode::LOD_LEVEL)
+        drawLodLegend(drawList, imageMin, imageMax);
+    if (!sceneProject.displaySettings.showStats)
+        return;
+    // in Edit mode the Scene view is the engine's frame, while playing a view of its own
+    const bool playing = project->isPlaySessionActive();
+    const uint32_t tag = playing ? SCENE_VIEW_ID : SystemRender::FRAME_STATS_FRAME;
+    const RenderStats stats = SystemRender::getRenderStats(tag);
+    RenderSystem* render = sceneProject.scene->getSystem<RenderSystem>().get();
+    const LodFrameStats lod = !render ? LodFrameStats() : (playing ? render->getViewLodStats(SCENE_VIEW_ID) : render->getLodStats());
+    std::vector<std::string> lines = {"Statistics"};
+    char line[160];
+    std::snprintf(line, sizeof(line), "Draw calls: %u   Tris: %llu", stats.drawCalls, (unsigned long long)stats.triangles);
+    lines.push_back(line);
+    appendMeshStatsLines(lines, stats.vertices, lod, sceneProject.scene->isMeshLodEnabled());
+    if (drawModeHasWires(sceneProject.displaySettings.drawMode) && sceneProject.sceneRender && sceneProject.sceneRender->isWireframeTruncated())
+        lines.push_back("Wires: the nearest meshes only");
+    drawStatsBox(drawList, imageMin, imageMax, lines);
 }
 
 void editor::SceneWindow::drawFluidBrushCursor(SceneProject* sceneProject){

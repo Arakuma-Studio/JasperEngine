@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimationClipDocument.h"
+#include "component/AnimationPlayerComponent.h"
 #include "sprite/SpriteSheetPool.h"
 #include "AnimatorAssetDocument.h"
 

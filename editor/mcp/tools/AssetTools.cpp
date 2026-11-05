@@ -5,6 +5,7 @@
 #include "SpriteTools.h"
 #include "sprite/SpriteSheetPool.h"
 #include "asset/AssetOps.h"
+#include "io/watch/LinkedFolders.h"
 #include "asset/AssetTypes.h"
 #include "camera/ShakePreset.h"
 #include "camera/ShakeInstance.h"
@@ -64,6 +65,7 @@
 #include "util/Base64.h"
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
+#include "model/ModelAudit.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
@@ -814,7 +816,7 @@ void listAssetsTool(const CallPtr& call) {
         entries.push_back(item);
     };
     if (recursive) {
-        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec; it.increment(ec)) {
+        for (watch::LinkedDirectoryIterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec; it.increment(ec)) {
             if (it->is_directory(ec) && ProjectChecks::isSkippedDir(it->path())) {
                 it.disable_recursion_pending();
                 continue;
@@ -946,6 +948,9 @@ void getAssetInfoTool(const CallPtr& call) {
         } else {
             info = modelInfo(file, error);
         }
+        // the model cook (S53 R23): required extensions, cooked sizes and status per platform
+        if (project->isInsideAssetsPath(file) && isModelSource(project->normalizeToAssetsRelative(file).generic_string()))
+            data["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(file).generic_string());
         if (info.is_null()) data["error"] = error;
         else {
             data["model"] = info;
@@ -2003,7 +2008,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     };
     for (const fs::path& path : changed) {
         if (fs::is_directory(path, ec)) {
-            for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, ec), end;
+            for (watch::LinkedDirectoryIterator it(path, fs::directory_options::skip_permission_denied, ec), end;
                  !ec && it != end; it.increment(ec)) {
                 if (it->is_regular_file(ec)) importFbx(it->path());
             }

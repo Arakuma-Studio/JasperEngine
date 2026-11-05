@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpAutoSync.h"
+#include "io/watch/LinkedFolders.h"
 
 #include "McpContext.h"
 #include "McpServer.h"
@@ -19,7 +20,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
+#include <fstream>
 #include <set>
+#include <thread>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -55,8 +59,17 @@ constexpr size_t REPORT_PATHS_MAX = 50;
 // Filesystem timestamps come from a coarse clock that can lag the real time by a tick: a
 // write made just after a call started may be stamped slightly before it.
 constexpr int64_t SETTLE_SLACK_NS = 15'000'000;
-// the writing calls whose run the journal pick-up remembers
-constexpr size_t TOOL_WINDOWS_MAX = 32;
+// A stamp read less than this after its mtime may be shared by a later write in the same clock
+// tick (1-16 ms on ext4, NTFS, APFS; FAT's 2 s at worst): verified by content until it is older.
+// Generous on purpose: a tool's write is restamped only after syncFiles' work, which under load can
+// come well after the write's tick.
+constexpr int64_t RACY_NS = 2'000'000'000;
+// Racy files up to this size are hashed whole; of a larger one (a texture) its first and last
+// chunk: a fresh 64 MB texture read whole on every scan made each call around it 0.5 s slower
+constexpr uint64_t HASH_WHOLE_MAX_BYTES = 1u << 20;
+constexpr std::streamsize HASH_CHUNK_BYTES = 64 * 1024;
+// The barrier before the journal is read (either side of a call)
+constexpr std::chrono::milliseconds JOURNAL_FLUSH_TIMEOUT{250};
 
 struct FileStat {
     int64_t mtime = 0;
@@ -92,6 +105,43 @@ bool statPath(const std::string& path, FileStat& out) {
 
 int64_t toNs(std::chrono::system_clock::time_point t) {
     return std::chrono::duration_cast<std::chrono::nanoseconds>(t.time_since_epoch()).count();
+}
+
+int64_t nowNs() {
+    return toNs(std::chrono::system_clock::now());
+}
+
+// `readNs` is taken before the stat, so a stamp is called settled only when it surely is
+bool isRacy(int64_t mtime, int64_t readNs) {
+    return mtime >= readNs - RACY_NS;
+}
+
+// 64-bit FNV-1a of the file's content (of a part of it past HASH_WHOLE_MAX_BYTES); false when it
+// can't be read
+bool hashFile(const std::string& path, uint64_t size, uint64_t& out) {
+    std::ifstream in(FileUtils::pathFromUtf8(path), std::ios::binary);
+    if (!in) return false;
+    uint64_t hash = 14695981039346656037ULL;
+    char buffer[HASH_CHUNK_BYTES];
+    auto add = [&](bool toEnd) {
+        do {
+            in.read(buffer, sizeof(buffer));
+            const std::streamsize got = in.gcount();
+            for (std::streamsize i = 0; i < got; i++) {
+                hash ^= static_cast<unsigned char>(buffer[i]);
+                hash *= 1099511628211ULL;
+            }
+        } while (toEnd && in);
+    };
+    if (size <= HASH_WHOLE_MAX_BYTES) {
+        add(true);
+    } else {
+        add(false);
+        in.seekg(-HASH_CHUNK_BYTES, std::ios::end);
+        add(true);
+    }
+    out = hash;
+    return !in.bad();
 }
 
 double msSince(std::chrono::steady_clock::time_point start) {
@@ -278,7 +328,9 @@ void McpAutoSync::baseline(const fs::path& projectRoot) {
     code.clear();
     assets.clear();
     dirs.clear();
+    linkedFolders.clear();
     hot.clear();
+    racyFiles.clear();
     pendingExternal.clear();
     deferred.clear();
     dirCursor.clear();
@@ -287,12 +339,26 @@ void McpAutoSync::baseline(const fs::path& projectRoot) {
     walkDir("", nullptr, 0);
 }
 
+// A linked folder out of the project is one of its folders (S68): entered once. A link inside
+// the project (its target is walked by its own name) or leading to a folder holding the project is not.
+bool McpAutoSync::entersFolder(const fs::directory_entry& entry, const std::string& rel) {
+    if (!watch::isLink(entry)) return true;
+    if (dirs.count(rel)) return true;
+    watch::LinkFollower follower(root);
+    for (const auto& [link, real] : linkedFolders) follower.alreadyEntered(real);
+    const fs::path real = follower.enter(entry.path());
+    if (real.empty()) return false;
+    linkedFolders[rel] = real;
+    return true;
+}
+
 // Records a folder and everything under it; with `changes`, files not known yet are added
 // (and known ones with another stamp modified)
 void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, int depth) {
+    const int64_t readNs = nowNs();
     FileStat st;
     if (!statPath(absolute(rel), st) || !st.isDir) return;
-    dirs[rel] = st.mtime;
+    dirs[rel] = {st.mtime, isRacy(st.mtime, readNs)};
     if (depth >= MAX_DEPTH) return;
 
     std::error_code ec;
@@ -301,10 +367,9 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
         const std::string name = FileUtils::pathToUtf8(it->path().filename());
         if (name.empty() || name[0] == '.') continue;
         std::error_code typeEc;
-        if (it->is_symlink(typeEc) && it->is_directory(typeEc)) continue;   // no cycles
         const std::string child = childOf(rel, name);
         if (it->is_directory(typeEc)) {
-            if (!isSkippedDirName(name)) walkDir(child, changes, depth + 1);
+            if (!isSkippedDirName(name) && entersFolder(*it, child)) walkDir(child, changes, depth + 1);
             continue;
         }
         if (!tracks(child)) continue;
@@ -312,15 +377,14 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
         if (!statPath(absolute(child), fileStat) || fileStat.isDir) continue;
         FileMap& map = mapFor(child);
         auto found = map.find(child);
-        const Stamp stamp{fileStat.mtime, fileStat.size};
         if (found == map.end()) {
-            map[child] = stamp;
+            record(child, fileStat.mtime, fileStat.size, readNs);
             if (changes) {
                 changes->push_back({child, 'a', fileStat.mtime});
                 markHot(child);
             }
-        } else if (found->second.mtime != stamp.mtime || found->second.size != stamp.size) {
-            found->second = stamp;
+        } else if (found->second.mtime != fileStat.mtime || found->second.size != fileStat.size) {
+            record(child, fileStat.mtime, fileStat.size, readNs);
             if (changes) {
                 changes->push_back({child, 'm', fileStat.mtime});
                 markHot(child);
@@ -385,6 +449,10 @@ void McpAutoSync::removeTree(const std::string& relDir, std::vector<Change>* cha
     for (auto it = dirs.lower_bound(prefix); it != dirs.end() && it->first.compare(0, prefix.size(), prefix) == 0;) {
         it = dirs.erase(it);
     }
+    linkedFolders.erase(relDir);
+    for (auto it = linkedFolders.lower_bound(prefix); it != linkedFolders.end() && it->first.compare(0, prefix.size(), prefix) == 0;) {
+        it = linkedFolders.erase(it);
+    }
 }
 
 void McpAutoSync::checkFile(const std::string& rel, std::vector<Change>& changes) {
@@ -392,6 +460,7 @@ void McpAutoSync::checkFile(const std::string& rel, std::vector<Change>& changes
     FileMap& map = mapFor(rel);
     auto it = map.find(rel);
     if (it == map.end()) return;
+    const int64_t readNs = nowNs();
     FileStat st;
     if (!statPath(absolute(rel), st) || st.isDir) {
         map.erase(it);
@@ -400,7 +469,7 @@ void McpAutoSync::checkFile(const std::string& rel, std::vector<Change>& changes
         return;
     }
     if (st.mtime != it->second.mtime || st.size != it->second.size) {
-        it->second = {st.mtime, st.size};
+        record(rel, st.mtime, st.size, readNs);
         changes.push_back({rel, 'm', st.mtime});
         markHot(rel);
     }
@@ -412,14 +481,16 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
     scanChecked++;
     auto known = dirs.find(rel);
     if (known == dirs.end()) return;
+    const int64_t readNs = nowNs();
     FileStat st;
     if (!statPath(absolute(rel), st) || !st.isDir) {
         if (rel.empty()) return;   // the project folder itself is gone: nothing sensible to do
         removeTree(rel, &changes);
         return;
     }
-    if (st.mtime == known->second) return;
-    known->second = st.mtime;
+    // A racy mtime may hide an entry added in the same clock tick: listed again until it is not
+    if (st.mtime == known->second.mtime && !known->second.racy) return;
+    known->second = {st.mtime, isRacy(st.mtime, readNs)};
 
     std::set<std::string> presentFiles, presentDirs;
     std::error_code ec;
@@ -428,10 +499,9 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
         const std::string name = FileUtils::pathToUtf8(it->path().filename());
         if (name.empty() || name[0] == '.') continue;
         std::error_code typeEc;
-        if (it->is_symlink(typeEc) && it->is_directory(typeEc)) continue;
         const std::string child = childOf(rel, name);
         if (it->is_directory(typeEc)) {
-            if (isSkippedDirName(name)) continue;
+            if (isSkippedDirName(name) || !entersFolder(*it, child)) continue;
             presentDirs.insert(child);
             if (!dirs.count(child)) walkDir(child, &changes, 1);
             continue;
@@ -442,7 +512,7 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
         if (map.count(child)) continue;   // modifications: checkFile
         FileStat fileStat;
         if (!statPath(absolute(child), fileStat) || fileStat.isDir) continue;
-        map[child] = {fileStat.mtime, fileStat.size};
+        record(child, fileStat.mtime, fileStat.size, readNs);
         changes.push_back({child, 'a', fileStat.mtime});
         markHot(child);
     }
@@ -513,8 +583,60 @@ void McpAutoSync::scan(std::vector<Change>& changes, double budgetMs, size_t min
                assetsDeadline, minAssets)) complete = false;
 }
 
+void McpAutoSync::record(const std::string& rel, int64_t mtime, uint64_t size, int64_t readNs) {
+    Stamp stamp{mtime, size};
+    if (isRacy(mtime, readNs)) {
+        stamp.racy = true;
+        // (unreadable now: the first verification that can read it takes its hash)
+        if (!hashFile(absolute(rel), size, stamp.hash)) stamp.hash = 0;
+        racyFiles.insert({mtime, rel});
+    }
+    mapFor(rel)[rel] = stamp;
+}
+
+void McpAutoSync::verifyRacy(std::vector<Change>& changes, double budgetMs) {
+    if (racyFiles.empty()) return;
+    const auto start = std::chrono::steady_clock::now();
+    const auto budget = std::chrono::microseconds(static_cast<int64_t>(budgetMs * 1000.0));
+    size_t done = 0;
+    // Newest first: a tool's file just written, whatever a checkout of thousands left racy. What
+    // the budget leaves stays racy for a later scan, whose stamps are never trusted before.
+    const std::vector<std::pair<int64_t, std::string>> entries(racyFiles.rbegin(), racyFiles.rend());
+    for (const auto& entry : entries) {
+        if (done >= MIN_ITEMS && std::chrono::steady_clock::now() - start >= budget) return;
+        const auto& [mtime, rel] = entry;
+        FileMap& map = mapFor(rel);
+        auto it = map.find(rel);
+        // stale: removed, or stamped again since (with an entry of its own if still racy)
+        if (it == map.end() || !it->second.racy || it->second.mtime != mtime) {
+            racyFiles.erase(entry);
+            continue;
+        }
+        done++;
+        const size_t before = changes.size();
+        checkFile(rel, changes);
+        if (changes.size() != before) {
+            racyFiles.erase(entry);
+            continue;
+        }
+        const int64_t readNs = nowNs();
+        uint64_t hash = 0;
+        if (!hashFile(absolute(rel), it->second.size, hash)) continue;   // unreadable now: still racy
+        const bool modified = it->second.hash != 0 && hash != it->second.hash;
+        it->second.hash = hash;
+        it->second.racy = isRacy(mtime, readNs);
+        if (!it->second.racy) racyFiles.erase(entry);
+        if (!modified) continue;
+        // The same stat as what the hot reload applied, which outside its own racy window it trusts
+        HotReloadService::get().forgetApplied((root / FileUtils::pathFromUtf8(rel)).lexically_normal());
+        changes.push_back({rel, 'm', mtime});
+        markHot(rel);
+    }
+}
+
 void McpAutoSync::restamp(const std::string& rel) {
     if (rel.empty() || rel.rfind("../", 0) == 0 || rel == ".." || insideSkippedDir(rel)) return;
+    const int64_t readNs = nowNs();
     FileStat st;
     const bool exists = statPath(absolute(rel), st);
     if (!exists) {
@@ -530,7 +652,9 @@ void McpAutoSync::restamp(const std::string& rel) {
         return;
     }
     if (!tracks(rel)) return;
-    mapFor(rel)[rel] = {st.mtime, st.size};
+    // the tool's write as it left the file: a later write with the same stat differs in content
+    record(rel, st.mtime, st.size, readNs);
+    markHot(rel);
 }
 
 void McpAutoSync::merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report, uint64_t sequence) {
@@ -662,13 +786,14 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     // the file watcher's journal when it runs; the stat scan when it is off, degraded, behind
     // (an overflow) or its flush timed out (R29)
     heldAtCall = 0;
-    const std::string source = takeJournal(found) ? "watcher" : "scan";
+    const std::string source = takeJournal(found, false) ? "watcher" : "scan";
     if (source == "scan") {
         bool complete = true;
         scan(found, SCAN_BUDGET_MS, MIN_ITEMS, complete);
         lastScanChecked = scanChecked;
         lastComplete = complete;
     }
+    verifyRacy(found, SCAN_BUDGET_MS);
     lastSource = source;
     lastScanMs = msSince(started);
     lastScanCpuMs = threadCpuMs() - cpuStart;
@@ -676,7 +801,7 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     // One entry per path: this scan, what the last settle left, and (once Play stopped) what
     // Play deferred
     std::map<std::string, Pending> merged;
-    for (auto& [rel, pending] : pendingExternal) merge(merged, rel, pending.kind, pending.report);
+    for (auto& [rel, pending] : pendingExternal) merge(merged, rel, pending.kind, pending.report, pending.sequence);
     pendingExternal.clear();
     // a changed model is picked up (its sub-clips reload) but is not news to report
     for (const Change& change : found) merge(merged, change.rel, change.kind, !isModelSourceFile(change.rel), change.sequence);
@@ -843,16 +968,21 @@ void McpAutoSync::beforeCall(McpContext& ctx, const CallPtr& call, const std::st
     call->waitUntil([pending]() { return HotReloadService::get().idleFor(pending); }, 10000, finish);
 }
 
-bool McpAutoSync::takeJournal(std::vector<Change>& found) {
+bool McpAutoSync::takeJournal(std::vector<Change>& found, bool settling) {
     FileWatchService& watcher = FileWatchService::get();
     if (!watcher.isAttached()) return false;
     const FileWatchService::State state = watcher.stats().state;
     if (state == FileWatchService::State::Off || state == FileWatchService::State::Degraded) return false;
-    if (!watcher.flush(std::chrono::milliseconds(250))) return false;
+    // A settle is on the way to a tool's result: its barrier fills the journal and leaves the
+    // reloads to the next frame's pump. Where the barrier is not a mere drain, the settle scans:
+    // what it stamps, the watcher's later report of it finds handled.
+    if (settling ? !(watcher.flushIsDrain() && watcher.flushJournal(JOURNAL_FLUSH_TIMEOUT)) : !watcher.flush(JOURNAL_FLUSH_TIMEOUT)) return false;
     const std::vector<FileChange> journal = watcher.journalSince(journalCursor);
     std::vector<Change> taken;
-    // Handled already: the baseline holds what the disk holds (sync_files picked it up before
-    // the watcher delivered it, a writing call's settle stamped it, or it came and went)
+    std::vector<std::string> editorWrites;
+    // Handled already: the baseline holds what the disk holds (sync_files picked it up before the
+    // watcher delivered it, a scan stamped it, or it came and went). A same-stat rewrite passes
+    // here and is verifyRacy's.
     std::map<std::string, bool> handled;
     auto isHandled = [&](const std::string& key) {
         auto known = handled.find(key);
@@ -866,23 +996,31 @@ bool McpAutoSync::takeJournal(std::vector<Change>& found) {
         handled[key] = same;
         return same;
     };
+    auto keyOf = [&](const fs::path& path, std::string& key) {
+        const fs::path rel = path.lexically_normal().lexically_relative(root.lexically_normal());
+        if (rel.empty() || rel.is_absolute()) return false;
+        key = FileUtils::pathToGenericUtf8(rel);
+        return key != "." && key.rfind("..", 0) != 0 && !insideSkippedDir(key) && tracks(key);
+    };
     for (const FileChange& change : journal) {
         // fell behind the ring: everything may have changed, the scan looks
         if (change.kind == FileChangeKind::Rescan && change.path == watcher.getRoot()) return false;
-        // the editor's own writes are not external (the tools handled theirs), nor what a
-        // writing call stamped while it ran (a tool writing past the atomic writer)
-        if (change.kind == FileChangeKind::Rescan || change.directory || change.origin == ChangeOrigin::Editor) continue;
-        if (change.kind != FileChangeKind::Removed && std::any_of(toolWindows.begin(), toolWindows.end(), [&](const auto& window) {
-                return change.mtimeNs >= window.first && change.mtimeNs <= window.second;
-            })) {
+        if (change.kind == FileChangeKind::Rescan || change.directory) continue;
+        std::string key;
+        // the editor's own writes are not external: the baseline only follows them
+        if (change.origin == ChangeOrigin::Editor) {
+            if (keyOf(change.path, key)) editorWrites.push_back(key);
+            if (change.kind == FileChangeKind::Moved && keyOf(change.oldPath, key)) editorWrites.push_back(key);
             continue;
         }
         auto add = [&](const fs::path& path, char kind) {
-            const fs::path rel = path.lexically_normal().lexically_relative(root.lexically_normal());
-            if (rel.empty() || rel.is_absolute()) return;
-            const std::string key = FileUtils::pathToGenericUtf8(rel);
-            if (key == "." || key.rfind("..", 0) == 0 || insideSkippedDir(key) || !tracks(key) || isHandled(key)) return;
-            taken.push_back({key, kind, change.mtimeNs, true, change.sequence});
+            if (!keyOf(path, key) || isHandled(key)) return;
+            // when, for a settle's "stamped before the call": a removal and a rename leave their
+            // time on the folder (a rename keeps the file's own mtime)
+            int64_t when = change.mtimeNs;
+            if (settling && change.kind == FileChangeKind::Removed) when = nearestDirTime(key);
+            if (settling && change.kind == FileChangeKind::Moved) when = std::max(when, nearestDirTime(key));
+            taken.push_back({key, kind, when, true, change.sequence});
         };
         switch (change.kind) {
             case FileChangeKind::Added: add(change.path, 'a'); break;
@@ -895,41 +1033,44 @@ bool McpAutoSync::takeJournal(std::vector<Change>& found) {
             case FileChangeKind::Rescan: break;
         }
     }
-    // the scan's baseline follows, so its settle (and a later fallback) does not find them again
-    for (const Change& change : taken) {
-        restamp(change.rel);
-        markHot(change.rel);
-    }
+    // the scan's baseline follows, so verifyRacy, a settle and a later fallback do not find them again
+    for (const std::string& key : editorWrites) restamp(key);
+    for (const Change& change : taken) restamp(change.rel);
     found.insert(found.end(), taken.begin(), taken.end());
     // Auto Refresh off: what waited in the journal for this call (editor_status pending)
-    heldAtCall = HotReloadService::get().getAutoRefresh() ? 0 : taken.size();
+    if (!settling) heldAtCall = HotReloadService::get().getAutoRefresh() ? 0 : taken.size();
     return true;
 }
 
-void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chrono::system_clock::time_point start,
-                            std::chrono::system_clock::time_point end) {
+void McpAutoSync::afterCall(McpContext& ctx, const std::string& tool, std::chrono::system_clock::time_point start) {
     if (writingCalls > 0) writingCalls--;
-    // the journal's safety net: what a writing call stamped inside its run is its own
-    toolWindows.emplace_back(toNs(start) - SETTLE_SLACK_NS, toNs(end) + SETTLE_SLACK_NS / 5);
-    while (toolWindows.size() > TOOL_WINDOWS_MAX) toolWindows.pop_front();
     bool rebased = false;
     if (tool == "sync_files" || !ensureRoot(ctx, &rebased) || rebased) return;
+
+    // The harness makes the settle late on purpose, so a race with the client's next write is not
+    // left to timing (test_autosync_race.py)
+    if (const char* delay = std::getenv("JASPER_TEST_SETTLE_DELAY_MS")) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(std::clamp(std::atol(delay), 0L, 10000L)));
+    }
 
     const auto started = std::chrono::steady_clock::now();
     const double cpuStart = threadCpuMs();
     std::vector<Change> found;
-    bool complete = true;
-    scan(found, SETTLE_BUDGET_MS, 0, complete);
+    if (!takeJournal(found, true)) {
+        bool complete = true;
+        scan(found, SETTLE_BUDGET_MS, 0, complete);
+    }
+    verifyRacy(found, SETTLE_BUDGET_MS);
     lastSettleMs = msSince(started);
     lastSettleCpuMs = threadCpuMs() - cpuStart;
-    if (found.empty()) return;
 
-    // Stamped inside the call: the tool's own writes, which the tool handled (the scan has
-    // taken their new stamps). Older: external, for the next call.
+    // The result is not sent yet, so nothing the client writes once it has it is here: what changed
+    // is the tool's own, which the tool handled (the baseline has taken the new stamps). Stamped
+    // before the call: an older change (found now because the pick-up was waiting, or copied with
+    // its time), external for the next call.
     const int64_t from = toNs(start) - SETTLE_SLACK_NS;
-    const int64_t to = toNs(end) + SETTLE_SLACK_NS / 5;
     for (const Change& change : found) {
-        if (change.when < from || change.when > to) merge(pendingExternal, change.rel, change.kind, true);
+        if (change.when < from) merge(pendingExternal, change.rel, change.kind, !isModelSourceFile(change.rel), change.sequence);
     }
 }
 

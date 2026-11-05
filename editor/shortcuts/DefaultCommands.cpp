@@ -224,6 +224,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
+    b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
+        "Start the Audio Mixer's integrated loudness and true-peak hold over";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
@@ -237,6 +239,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
     b.menu("window.systems", "Systems", AppMenuCommand::ToggleSystems);
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
+    b.menu("window.meshAudit", "Mesh Optimization Audit", AppMenuCommand::ToggleMeshAudit);
+    b.menu("window.buildReport", "Build Report", AppMenuCommand::ToggleBuildReport);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
     b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);
     b.menu("window.vcs.history", "History", AppMenuCommand::ToggleVcsHistory);
@@ -400,6 +404,17 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
 
     b.group = "Console";
     b.add("console.copy", "Copy Message", C::Console, "Ctrl+C");
+
+    // The Curve window (docs/editor/curves.md): while it has focus
+    b.group = "Curve";
+    b.add("curve.frame", "Frame Curve", C::Curve, "F").description = "The selected keys, else the whole curve";
+    b.add("curve.delete", "Delete Curve Keys", C::Curve, "Delete", "Backspace");
+    b.add("curve.copy", "Copy Curve Keys", C::Curve, "Ctrl+C");
+    b.add("curve.paste", "Paste Curve Keys", C::Curve, "Ctrl+V").description = "At the pointer's time, else at the last click's";
+
+    // The Color window (docs/editor/color-picker.md): while it has focus
+    b.group = "Color Picker";
+    b.add("colorPicker.eyedropper", "Eyedropper", C::ColorPicker, "I").description = "Take a colour from anywhere on the screen";
 
     return out;
 }

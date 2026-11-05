@@ -21,10 +21,11 @@ Repeat until everything is pushed.
 
 ## Other programs on `main`
 
-Two other programs push to `origin/main` at the same time, so fetch before every landing. Whoever lands second merges onto the first.
+Other programs push to `origin/main` at the same time, so fetch before every landing. Whoever lands second merges onto the first.
 
 - Pixel art: specs S41-S52, `PIXEL-ART-LEDGER.md`, `feature/sNN-*`.
 - Doriax catch-up: `docs/doriax-catchup/LEDGER.md`, `docs/superpowers/specs/2026-11-04-*`, `dc/*`.
+- Forge/meshoptimizer: S53-S57, `docs/forge-meshopt-analysis/LEDGER.md`.
 
 This program's specs are S61-S73, because the pixel art specs took S41-S52 first. Worktree folders keep their old names (`je-wt/s41` holds S61, add 20).
 
@@ -42,7 +43,7 @@ Overlaps: S65 stops at the loading thread, because `dc/mesh-memory` removes the 
 
 AGENTS.md (2026-11-04) requires the full suite before a push to `origin main` when the push needs it,
 such as a big feature; a small change does not. There is no CI, so nothing else checks a push. Big here:
-S65, S67, S68, S69, S70, S72 and S35-S40. Several ready big features may share one full pass, on a local
+S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not behaviour, and S67, whose code changes are small and were tested end to end for real; the next full pass still covers both. Several ready big features may share one full pass, on a local
 `main` holding all of them. The Mac runs after each group.
 
 ## Status
@@ -51,21 +52,25 @@ S65, S67, S68, S69, S70, S72 and S35-S40. Several ready big features may share o
 
 | Spec | What | Branch | Server | Status |
 |---|---|---|---|---|
-| Mac | Final `main` on macOS | `fix/mac-final-main` | M | In progress |
-| CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | In progress |
-| S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | In progress |
-| S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | In progress |
-| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A | In progress |
-| S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B | In progress |
-| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | In progress |
-| S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | In progress |
-| S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, M | In progress |
-| S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | In progress |
-| S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | In progress |
-| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B | In progress |
-| S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | In progress |
-| S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | In progress |
-| S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | In progress |
+| Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
+| CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
+| S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
+| Root attack | `.meta` written outside through a swapped root or a plain link, on `main` since S68 | `fix/root-attack-meta` | B, A | Done |
+| Module-off builds | S72 broke engines compiled with modules off | `fix/module-off-build` | H | Done |
+| Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
+| Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
+| S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
+| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Done |
+| S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Done |
+| S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
+| S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
+| S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
+| S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | Done |
+| S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | Done |
+| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B, A | Done |
+| S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | Done |
+| S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | Done |
+| S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | Done |
 
 ### Sound layer
 
@@ -73,12 +78,12 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
-| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | In progress: M1 |
-| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1 | Waiting |
-| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Waiting |
-| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S38 M1; M5 needs S36 M1 | Waiting |
-| S39 | Music | `feat/s39-music` | S35, S36, S37 | Waiting |
-| S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | Waiting |
+| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Done, except the iOS run, which waits for the Mac |
+| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | In the third full suite; R31 re-measured on H or the Mac |
+| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Ready at `87b9bea22`; in the third full suite with S35 and S36 |
+| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | Ready at `35c704a4c` with S37's AC8; in the third full suite |
+| S39 | Music | `feat/s39-music` | S35, S36, S37 | In progress, from the third suite's tree |
+| S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | In progress, from the third suite's tree |
 
 ## Decisions
 
@@ -100,13 +105,52 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
   `copyLua` and `copyCustomShaderSources` follow links. `test_linked_folders_export.py` fails if they stop.
 - 2026-11-04: MCP eval: agents add cases but cannot run them. The integrator runs new cases at landing, on Orquester accounts.
 
+- 2026-11-04: MCP hints on errors go in the error text. S69's eval showed that for an error result Claude Code shows the model only the text, so `next` in `structuredContent` is never read there. This narrows the AGENTS.md "MCP text" rule; S69 updates that rule, and every program adding refusals should read this.
+
+- 2026-11-04: S65 waits for `dc/mesh-memory`: one test (`AnObjOfManyMaterialsLoadsWhole`, and the player's `obj=24` line) stays red until the capacities go. Note for mesh-memory: its flatten test must use a preview load, because S65 stops plain threads baking.
+
+- 2026-11-04: S72: other programs' branches may hit "incomplete type" when they merge it: add the include in that source. `Transform.h` has only 7 files of margin before the fan-out limit of 150; if it trips, the check asks for a decision, which can be a higher limit stated in the S72 spec with its reason.
+
+- 2026-11-05: S38: AC9 accepted: Linux +5,440 bytes and wasm +3.5 KB are within budget; 2.6-2.9 KB gzipped against a 2 KB estimate is fine, for a limiter every new project uses. AC8 accepted: file mode meets 300 ms on H (276-281 ms) and the Mac (226 ms); 618-627 ms on loaded A, a Haswell VM. It is an editor-side measurement, not a game cost. Android not meaningful on an x86_64 emulator. AC7 stays open until the Mac is back.
+
+- 2026-11-05: S36: R31 (3-minute OGG, 1.2 s) is judged on H or the Mac after S38 lands, not on A. The pinned-zip licence test cannot run, because kenney.nl no longer serves the zips; the licence files match byte for byte, accepted.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
+- Temporaries a crash leaves in `Recordings/` are not swept (found by S62): they are single files named by pid, which `StagingFolders` does not cover.
+- Closing stdin during `wait` in Play hung the main thread for 118 s or more on S70's red build; not retested on the fix (found by S70).
+- `test_playhead_shortcuts_while_focused` failed once in S70's CI suite; its whole file passes, and with `-k` alone it fails 3 of 3. Cause not established.
+- S38 AC7: the iOS `ambient` session needs a check on a real device, by a person; `ios_packaging.sh` still has to run with the limiter when the Mac is back.
+- S36's line telling agents about `generate_sound` reaches only projects whose generated AGENTS.md was regenerated after it.
+- A relaunch on Android logs `Entity does not exist to get signature` (found by S67).
+- `list_missing_assets` is not found by agents while its `assets_pipeline` group is hidden (found by S68).
+- `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
 
 ## Done
 
-Nothing yet.
+- S67: Android and iOS packaging really run. Fixed: prebuilt iOS games never linked; exported `gradlew` was not executable; EC bundles could not sign; `android-emulator-test.sh` emptied its own expectations, so earlier passes without `--scene` proved less. Android release and development APK and AAB install, run, golden 0.00%. iOS simulator, both flavours, golden 0.00%. Eval 2/2, 0/2 without its text. Open: a signed IPA needs an Apple account; a source export's debug build fails the emulator's GLES check with `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` although its picture matches at 0.00% (emulator's driver suspected, not proven; check on a real phone); Gradle source exports use the debug key; iOS not rerun on the final merge, which touched none of its files.
+- `fix/root-attack-meta`: nothing writes or ships through a root that no longer leads where it was pinned. Fixed three things: S68's scan wrote `.meta` files outside through a swapped root or a plain `lib` link; an export shipped files from a swapped root; saves re-pinned the roots, so a save could trust a swapped one. Red on the control editor; green: five MCP files 27 passed, `test_root_attacks` 16/16 at `-j 4`. Open: `AssetIdentityLinks` last ran before the final merge; the export check at the start of a Build window or CLI export is not tested; watcher and listings still follow a swapped root and write nothing.
+- Second full suite, on `88090c2da` (`main`, S38, S63, S64, S70): unit tests 2909 core and 2984 editor, 0 failed, 0 skipped. MCP 1578 passed, 9 failed, 0 skipped. Rerun whole on B: 48 passed, 6 failed. Of those, `test_render_perf` and `test_scene_view_ui` pass one at a time (13/13); `test_normal_recording` was the new-project limiter, and now pins a no-limiter project; three `test_root_attacks` failures are on `fix/root-attack-meta`. The landed tree differs from the tested one only by that test and this ledger.
+- S38: new projects get a true-peak limiter at -1 dBTP, a -18 LUFS target and a linear output stage; a project without them records `main`'s audio bit for bit, pinned by a test. Eval 2/2, 0/2 without its text. Open: iOS packaging with the limiter; the `ambient` session on a real device; the removal of 4 dead fields not yet confirmed on Clang.
+- S70: a writing call answers after its settle; racy stamps are checked by content. Red 1 passed, 11 failed on `main`'s behaviour; 20/20 clean under load. Found and fixed a hang with file pickers. Open: Windows and macOS inferred; `test_playhead_shortcuts_while_focused` depends on earlier tests.
+- S64: `get_build_info`, `generate_shaders`, Play and export share one complete shader list, cached by file hash. Worst call 0.97 ms against 50 ms. Eval 4/4, 0/4 without `shaders_job_id`.
+- S63: saved files do not depend on draw history: 45 of 45 scenes match, from 42 differing. Ten cases fixed. Open: no control shows a clamped weather map draws differently; no sprite goldens exist, so sprites rest on the new `SpriteFramesGpu` tests.
+- S69: all 71 modal dialogs go through `EditorModal`, kept so by a lint. `editor_status` reports title, message, choices and fields; `respond_dialog` takes `values`; headless file pickers take `values.path`. Fixed: Loading closing a dialog opened once (red first). Eval 12/12, against 0/2, 0/4, 0/2 on `main`'s surface. Two screenshots byte-identical to `main`. Open: many modal sites are not driven by a test (the test's table gives reasons); windowed native pickers are reported but cannot be answered; web and Android not built for it.
+- S68: linked folders behave like normal folders. Every export mode ships them; one file has one GUID; a link out of the project is a normal folder. A real desktop game and a web game load a linked texture and Lua module; macOS ASan 68/68; eval 2/2 and 0/2 without its text. Red on the control editor: 8 failed. Open: iOS export not run; Windows junctions by reading only; MCP write tools stay refused through links out.
+- First full suite, on `eb9f93aca` (`main`, S68, S69, lock crash): 1528 passed, 22 failed, 0 skipped; unit tests 2885 core and 2946 editor, 0 failed. With the module-off fix, the failed files rerun whole: 139 passed, 3 failed; those three files one at a time: 35 passed, 0 failed. `test_animation_properties_export` passed in the H rerun. `test_golden_resave` only timed out at 1800 s and was not rerun here; S63 passes it on its branch. The final merge had a WERROR build and `test_protocol`, `test_editor_modals` and both linked-folder files: 47 passed, 1 slow test skipped.
+- S73: `AssetRefSchema`'s component rows come from reflection, which found two references the hand table missed (`weatherMap`, a layer's `mask`). The legacy oracle became 76 golden files, passing with the oracle before its deletion. `keptText` removed, shader counter fixed with a red run. Open: goldens not run on Mac or Windows; `-Wunused` checked with GCC only.
+- `fix/module-off-build`: engines with modules off compile again. Red: `all-off` failed in 19 units. All six single-module-off builds, `both-off`, `all-off` and the variants pass; a real Compile test passes; `players` built for release glcore. `check-changed` guards it with `all-off`. Not run: gles3, Vulkan and development players, web module-off builds; its MCP selection is left to the full suite.
+- `fix/locked-project-crash`: a refused editor exits with code 3 and never opens the shared temporary project. Red 60/64 and 58/64 crashes; private `TMPDIR` control 0/64; green 216/216. Windows and macOS inferred. Open: the Hub's `createTempProject` fallbacks still ignore failure; null checks should stop the crash there, but only the MCP path was tested.
+- S62: a recording that reports success is a good one. Every write is checked, the first failure stops recording while Play continues, output is published atomically, a partial stays only if it decodes. A frame waits for its loads in game time. Red on the old build: stand-in frames at game frames 10-12, injected failures reported as success. 27/27 recorder tests on the merge, including a real full 64 MB tmpfs; decoded audio matches the old reference. Whole `check-changed` hit its limit one merge back at 173 of 181 files (1108 passed); its 5 failures and 8 unfinished files pass by hand, load as the cause inferred. Eval 2/2, 0/2 without its text. Not compiled: Windows, macOS.
+- S72: a component header rebuilds a median of 29 editor files instead of 451, worst 143 instead of 454. Game code keeps the umbrella. `check_fanout.py` and `check_headers.py` guard it. Sanitizer builds install and run MCP tests, leak checks off. Open: web, Android, unity, Mac and sanitizer builds last passed on earlier merges, not the final one; Windows never compiled; `AtomicFile` timing tests fail on loaded H and pass alone.
+- S71: measured first: a Mesh's update flags cost 1083 µs a call on main; now 1.3 µs, same flags, every component under 2 µs. Stop also keeps a Mesh a Play only moved, which was never on main. Stop on 600 boxes went from 2.2x rebuilding them to 1.52x (changed) and 1.03x (moved). `CanvasGroupTest` budgets moved to `perfSlack()`, so that test no longer skips under load. `check-changed` passed one merge back; at the final commit a full build, 63 unit and 33 MCP tests. Open: the skipped reload shows no CPU saving under llvmpipe; not measured on a real GPU. A changed Mesh costs about 0.6 ms more on Stop.
+- Mac check: a real hang fixed: 1-9% of new FSEvents streams never report, and stopping one then hung forever. `start()` retries up to 3 streams, then polls. 0 hangs in 15 runs after, 1 before under load. The `Layers` hash difference is explained (17 of 3000 floats, at most 2 ULP: FMA contraction and one `sinf`), and that test now runs on Mac. Mac WERROR build: editor 2823 passed, 1 skipped; core 2849 passed, 16 skipped; 0 failed. S61's `PanelClaims` built and passed there; nobody has clicked the Mac menu. Open: polling watcher tests fail 5 of 10 under 14 CPU hogs (unchanged code); `Layers.PerformanceBudget` fails steadily on A (0.75 ms against 0.6 ms), passes on B; a test probe crashed 3 times with SIGBUS inside FSEvents, cause unknown.
+- S66: crash leftovers clean themselves up. Copies hold an S03 lock; a dead owner's folder is removed at start and before each copy; older folders without a marker are listed in the Hub and MCP, and Remove asks first. Build and 4/4 tests on the final merge; CI suite 1,267 passed on the previous merge, with 2 failures that pass alone on the same build (cause not established) plus the death test, since fixed. Eval: both cases 2/2, and 0/2 without their text. Not done: Show in Folder never clicked; a removal request with no import earlier in the conversation does not find the tool; no case covers it.
+- S61: a key acts on the focused panel (`PanelClaims`), and curve and eyedropper keys are rebindable. The bug was real: Delete in the Curve window deleted a selected GameObject. MCP 202-file selection 1291 passed; its 3 failures were fixed (one was S61's test; two were fixed by merging `main`); affected 10 files 132 passed; eval 2/2, and 0/2 without its text. Whole `check-changed` not green, because a root CMake line demands the whole suite; the next full pass covers it. macOS not built yet: next Mac run. Unit tests last ran before its final merges.
+- `fix/texture-synth-death-test`: root causes found with a core under gdb; test-only fix. Failures 182/840 before, 0/350 after, ASan 30/30. A 1-in-160 crash needs more runs than 350 to rule out, but `exit()` is gone, which was its cause. Inferred: the real Linux editor stops this work before exit.
+- S38 M1: `AudioMeter` and `TruePeak`. Meter tests 61 passed, 0 failed, 0 skipped; pyloudnorm agrees within 0.1 LU; WERROR build. Whole check-changed not run, on my say: a library nothing else uses cannot change the CI suite's result. Open for S38 M6: file mode took 1964 ms against a 300 ms budget on loaded H.
+- `fix/ci-suite-classify`: `--suite ci` runs again. 26 files CI = True, 20 CI_EXCLUDED with reasons, a guard in check-changed. Also fixed two tests pinning guide text origin cut. New CI files 112 passed, 0 failed, 0 skipped; both edited files whole 55 passed. Whole check-changed not run: it would select 47 MCP files, some building real players, for a change that only adds a constant to the 20 excluded files.
 
 ## Log
 
@@ -115,3 +159,32 @@ Nothing yet.
 - 2026-11-04: Merged origin/main (`e8142a81e`, lean MCP surface; someone else is pushing to origin, so fetch before every landing). B's jobs per slot cut from 8 to 4 (load was 28 on 12 cores).
 - 2026-11-04: User pointed to new remote changes. Merged origin/main `297562c95`: pixel art specs, Doriax catch-up specs, AGENTS.md rewrite, GitHub workflows removed. Renumbered this program to S61-S73. Told every agent.
 - 2026-11-04: S68's red run: 4 of its tests fail on the control editor as intended; one more was fixed so it does too (not yet rerun).
+- 2026-11-04: First landing: `fix/ci-suite-classify`. S69 found a real bug: the Loading popup swallows a dialog opened once; fixing with a red test. S63's guard: 42 of 45 fixture scenes differ on the unfixed tree (somewhat inflated).
+- 2026-11-04: S38 M1 landed; S36 and S37 started. S61's red runs: Delete in the Curve window really did delete GameObjects. It waits on `fix/texture-synth-death-test` and its eval case. Other programs on `main`: also Forge/meshoptimizer S53-S57 and engine-gaps.
+- 2026-11-04: S61 and the death test landed. S63's guard is green: 45 of 45 scenes match byte for byte, after fixing 3 more draw-history bugs. S67: real iOS and Android runs pass; its work found `android-emulator-test.sh` emptying its own expectations, so earlier passes without `--scene` proved less. A's disk reached 27 GB free: removed S66's tree and the dangling images (54 GB free now).
+- 2026-11-04: S66 landed. Mac check found a real FSEvents hang and explained the `Layers` hash; re-merging. It also forked about 2,800 processes on the user's Mac by mistake for about 7 minutes; killed, told the user.
+- 2026-11-04: Mac check landed. The fork accident came from `mac_watch_stress.sh`: bash 3.2 rejects `read -t 0.5`, so each pass left a `tail` and a subshell behind. The script is gone from the Mac and its rewrite waits with `sleep 1`.
+- 2026-11-04: S71 landed.
+- 2026-11-04: S65 parked, tree done, waiting for `dc/mesh-memory`.
+- 2026-11-04: Correction: I told the user GitHub SSH was still refused and the key needed checking on their side. That was stale: I had last tested it at 09:50 UTC. It works (retested 14:20), and the key never needed anything. The refusal was real but temporary: other sessions on this host logged the same error until at least 11:10 UTC. Cause unknown. Git is back on the normal SSH remote.
+- 2026-11-04: S36 committed M1-M7 on its branch, so S37 M6 can build on it. Over budget, not yet measured properly: a 3-minute OGG took 6.3 s against 1.2 s, and an uncached 1 s clip took 63 ms against 40 ms, both on loaded H.
+- 2026-11-04: S37 committed M1-M4. S35 started without waiting for S62, because only its Recorder audio part overlaps and S62 has not reported yet.
+- 2026-11-04: S69 found a crash already on `main`: under load, a second editor on a locked project segfaults in 61 of 64 launches, in `Project::getSelectedEntities`, instead of exiting with code 3. Fixing on its own branch.
+- 2026-11-04: S72 landed.
+- 2026-11-04: S62 landed. Fixed AGENTS.md on `main`: S72 named `Scene.h` and `Project.h` bare, which broke `test_red_controls`; I had skipped the MCP pass for S72.
+- 2026-11-04: S67 landed. A's disk should recover: its 72 GB tree is gone.
+- 2026-11-04: First full suite started on `int/full-pass-1` (`eb9f93aca`): `main` + S68 + S69 + the lock crash fix. Logs in `je-remote/logs/full-eb9f93aca`.
+- 2026-11-04: S72 broke Compile builds of projects without the HTML UI (found by S37): an engine with modules off no longer compiled. I landed S72 without a full pass and only checked the default configuration. Fix and guard on `fix/module-off-build`.
+- 2026-11-05: Five of six Claude accounts hit their weekly limit at about 23:30 UTC and every running agent stopped; this session moved to the last account (52% used; it resets 2026-11-07). Work is saved in the worktrees. Agents resume by priority: the two `main` bugs first, then what is close to landing, then sound.
+- 2026-11-05: Lock crash landed. Full unit run on `eb9f93aca`: 2885 core and 2946 editor tests, 0 failed, 1 load skip.
+- 2026-11-05: Module-off fix landed. The Mac is unreachable since at least 02:37 UTC.
+- 2026-11-05: S35, S36 and S37 resumed: the last account used 3% of its week in the three hours since the restart.
+- 2026-11-05: First full suite on `eb9f93aca`: 1528 passed, 22 failed, 0 skipped; 7 failures are compile errors from the module-off bug (likely), the rest being rerun whole on H. Unit tests there: 2885 core, 2946 editor, 0 failed. S63 reviewed: `CorpusRoundTrip` filter narrowed, Terrain scenes back.
+- 2026-11-05: S73 landed. H and the Mac unreachable since about 04:50 UTC; agents on A and B.
+- 2026-11-05: S68 and S69 landed after the first full suite. Second full suite next: S63, S64, S70, S38, on `main`.
+- 2026-11-05: Second full suite started on `88090c2da` (`main`, S38, S63, S64, S70) on A and B, since H is down. Logs in `je-remote/logs/full-88090c2da`. S37 and S36 merge `main` after these land.
+- 2026-11-05: S38, S63, S64 and S70 landed. Next: `fix/root-attack-meta`, then S37 and S36 merge `main`, then a third full suite.
+- 2026-11-05: Root attack fix landed. The save re-pin dates from `6092353d1` (2026-10-28), before this program.
+- 2026-11-05: S37 ready; S38's meter change moved band values in 700 of 927 library items, so S36's analysis data was regenerated. S35 done except its merge; it fixed the Master bus pan ramp so chunked and single-call mixes match, and the recording pin moved to `821d2802…`.
+- 2026-11-05: Third full suite started on `fcd2613ad` (`main` and S35, which holds S36 and S37). S39 and S40 started from that tree.
+- 2026-11-05: Origin: the Forge/meshoptimizer program (S53-S57) landed, 141 commits, without its final full suite. `main` fast-forwarded. The third suite's tree (S35, S36, S37) predates it and conflicts with it in `TOOLS.md`, `Exporter.cpp`, `Generator.cpp`, `McpInstructions.cpp`, `GameWindow.cpp` and `cases.py`: the trio merges it after the suite, then a build and the affected tests.

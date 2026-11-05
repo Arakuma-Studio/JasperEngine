@@ -1,0 +1,1 @@
+Released the CPU copy of assets/models/ClearCoatTest/ClearCoatTest.gltf, loaded from je-cooked/models/

@@ -24,3 +24,24 @@ pressing Build for those targets must get a working app. Everything in the path 
 - AC1. Logs and screenshots of R1 and R4 under `je-evidence/s47`, listed in the final report.
 - AC2. R2's failure-case tests in `editor/tests`. `PublishingTest` and `BuildMethodTest` extended.
 - AC3. `tools/check-changed` green; docs for Android and iOS export corrected to what really works.
+
+## 4. Deviations
+
+- R1 ("prebuilt or source export"): both are run (`ANDROID_PACKAGING_SOURCE=1` adds the source export). Build itself takes
+  the prebuilt path: a project with native code is refused with a pointer to the source export. Gradle signs a source
+  export with the debug key: its Gradle project has no signing config for the project's keystore, so a source export's
+  release key is set up in Android Studio. R3's release keystore is the prebuilt path's.
+- R4: with no team, a device build is a success with the warning `W-IOS-NO-TEAM`, not a failure: the output folder
+  is replaced only on success, and the Xcode project and the unsigned device `.app` are what such a user needs.
+- Added beyond the spec, because R4 needs them from the editor: `build_project ios_simulator` and a Simulator switch in Build
+  Settings (only the CLI could make a simulator build), and the editor finds an Xcode in `/Applications` when
+  `xcode-select` is on the Command Line Tools, through `DEVELOPER_DIR` for its own tools.
+- `publish` now also refuses an unsigned App Bundle (no signature block in `META-INF`).
+- Android's Vulkan player is withdrawn: S30's table lists it, but `platform/android` makes only an EGL context, the
+  engine's CMake set no sokol backend for it, and `-PjasperBackend=vulkan` never compiled, which also failed `tools/build.sh
+  players` for Android. Build Settings, `get_build_info` and `--backend` offer gles3 only, and CMake
+  says why. A real Android Vulkan backend is a feature of its own.
+- Open, not fixed here: a source export's debug APK fails `android-emulator-test.sh`'s GLES check on the emulator, with
+  `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` from sokol's debug-only check, right after the emulator's own
+  `eglCodecCommon: depth attachment not complete`. Its screen still matches the golden, and the prebuilt builds compile that check
+  out. Whether a device reports it too is not known.

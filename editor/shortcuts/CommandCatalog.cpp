@@ -38,6 +38,8 @@ const char* jasperengine::editor::shortcutContextName(ShortcutContext context) {
         case ShortcutContext::Console: return "Console";
         case ShortcutContext::Animation: return "Animation";
         case ShortcutContext::PoseAnimation: return "Pose Animation";
+        case ShortcutContext::Curve: return "Curve";
+        case ShortcutContext::ColorPicker: return "Color Picker";
         case ShortcutContext::SpritePreview: return "Sprite Preview";
     }
     return "Editor";
@@ -53,6 +55,8 @@ const char* jasperengine::editor::shortcutContextKey(ShortcutContext context) {
         case ShortcutContext::Console: return "console";
         case ShortcutContext::Animation: return "animation";
         case ShortcutContext::PoseAnimation: return "pose_animation";
+        case ShortcutContext::Curve: return "curve";
+        case ShortcutContext::ColorPicker: return "color_picker";
         case ShortcutContext::SpritePreview: return "sprite_preview";
     }
     return "editor";
