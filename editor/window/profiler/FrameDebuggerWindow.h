@@ -45,7 +45,6 @@ namespace jasperengine::editor {
         bool enabled = false;
         bool frozen = false;
         bool drawList = false;
-        bool gpuLeased = false;
         uint32_t viewTag = 0xFFFFFFFFu;
         PassList passes;
         int selectedPass = -1;
