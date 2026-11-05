@@ -154,3 +154,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S67 landed. A's disk should recover: its 72 GB tree is gone.
 - 2026-11-04: First full suite started on `int/full-pass-1` (`eb9f93aca`): `main` + S68 + S69 + the lock crash fix. Logs in `je-remote/logs/full-eb9f93aca`.
 - 2026-11-04: S72 broke Compile builds of projects without the HTML UI (found by S37): an engine with modules off no longer compiled. I landed S72 without a full pass and only checked the default configuration. Fix and guard on `fix/module-off-build`.
+- 2026-11-05: Five of six Claude accounts hit their weekly limit at about 23:30 UTC and every running agent stopped; this session moved to the last account (52% used; it resets 2026-11-07). Work is saved in the worktrees. Agents resume by priority: the two `main` bugs first, then what is close to landing, then sound.
