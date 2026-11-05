@@ -6,6 +6,7 @@ Set JASPER_SLOW_BUILD=1 to run it: it compiles the engine.
 """
 
 import asyncio
+import json
 import os
 from pathlib import Path
 
@@ -45,8 +46,11 @@ async def test_a_compile_build_without_the_features_leaves_the_module_out(ed: Ed
     ed.check_eq(job["status"], "succeeded", f"{job}")
     ed.check_eq(job["result"]["method_used"], "compile", f"{job}")
     ed.check("soundlayer" not in job["result"]["modules"], f"{job['result']['module_reasons']}")
-    caches = [p.read_text(errors="replace") for p in (Path(EDITOR["env"]["XDG_CACHE_HOME"]) / "jasperengine" / "compile-builds").rglob("CMakeCache.txt")]
-    ed.check(any("JASPERENGINE_SOUND_LAYER:BOOL=OFF" in c for c in caches), f"the compile tree: {len(caches)} caches")
+    tree = Path(EDITOR["env"]["XDG_CACHE_HOME"]) / "jasperengine" / "compile-builds"
+    ed.check(list(tree.rglob("Audio.cpp.o")) == [] and list(tree.rglob("SoundEventLibrary.cpp.o")) == [], "the module's objects are not compiled")
+    ed.check(list(tree.rglob("AudioSource.cpp.o")), "the tree compiled the engine it is searched for")
+    manifest = json.loads(next(out.rglob("content-manifest.json")).read_text())
+    ed.check("soundlayer" not in manifest["modules"], f"{manifest['modules']}")
 
     raw = await ed.call_raw("run_build", {"after_ready": True, "fixed_fps": 60, "quit_after": 30, "screenshot": False})
     ed.check(not raw.is_error, raw.text)

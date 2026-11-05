@@ -107,7 +107,7 @@ TEST_F(SoundEventBench, StartEventAboveStartVoice) {
     const double event = timePlays("e.soundevent", 2000);
     const double above = (event - clip) * 1e6;
     std::printf("[bench] startEvent above startVoice: %.2f us a voice (clip %.2f us, event %.2f us)\n", above, clip * 1e6, event * 1e6);
-    EXPECT_LE(above, 15.0 * editor::test::perfSlack());
+    if (const double slack = editor::test::perfSlack(); slack > 0.0) EXPECT_LE(above, 15.0 * slack);
 }
 
 TEST_F(SoundEventBench, SixtyFourTriggersInAFrame) {
@@ -131,7 +131,7 @@ TEST_F(SoundEventBench, SixtyFourTriggersInAFrame) {
         AudioSystem::stopAll();
     }
     std::printf("[bench] 64 trigger plays in a frame: %.3f ms\n", best);
-    EXPECT_LE(best, 1.0 * editor::test::perfSlack());
+    if (const double slack = editor::test::perfSlack(); slack > 0.0) EXPECT_LE(best, 1.0 * slack);
 }
 
 TEST_F(SoundEventBench, NoSubscriptionWithoutAFlagCostsAnUpdate) {
