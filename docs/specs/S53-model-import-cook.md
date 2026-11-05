@@ -436,7 +436,7 @@ Out of scope:
 ## 11. Deviations (s41-importer)
 
 - **R11 (runtime release of CPU copies):** the editor side is complete: the Automatic analysis and
-  its reasons, the Inspector's "Kept: ..." / "Released after upload" line, `inspect_models`'
+  its reasons, the Inspector's "Kept: ..." / "Nothing at runtime reads it" line, `inspect_models`'
   `read_write`, and the export's per-model `keepCpuData` in `index.json`. The player does **not
   yet** free the parsed buffers: the buffers a model's meshes draw from point into the shared
   parse (`ModelPool`), meshes reload from those bytes on several runtime paths (a material or
