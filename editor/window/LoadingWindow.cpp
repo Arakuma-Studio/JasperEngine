@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "LoadingWindow.h"
+#include "EditorModal.h"
 #include "Backend.h"
 #include "Theme.h"
 #include "resources/icons/jasperengine-logo_png.h"
@@ -26,8 +27,21 @@ void LoadingWindow::show() {
         app.requestRedraw();
     }
 
+    showBuilds(hasBuilds);
+}
+
+void LoadingWindow::showBuilds(bool hasBuilds) {
     if (hasBuilds && !ImGui::IsDragDropActive()) {
+        // a dialog asked for during the builds took its place: it comes back after that dialog
+        if (wasShowing && !ImGui::IsPopupOpen("Loading")) {
+            wasShowing = false;
+        }
         if (!wasShowing) {
+            // ImGui keeps one popup per level, so opening this one closes the one that is open, and a dialog
+            // opened once would never come back: the progress waits for it
+            if (ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel)) {
+                return;
+            }
             ImGui::OpenPopup("Loading");
             wasShowing = true;
         }
@@ -119,7 +133,8 @@ void LoadingWindow::drawProgressModal(const OverallBuildProgress& progress) {
                             ImGuiWindowFlags_NoSavedSettings |
                             ImGuiWindowFlags_AlwaysAutoResize;
 
-    if (ImGui::BeginPopupModal("Loading", nullptr, flags)) {
+    // a progress indicator that closes by itself: nothing for an agent to answer (EditorModal)
+    if (EditorModal::begin("Loading", nullptr, flags, EditorModal::Role::Progress)) {
         if (progress.hasActiveBuilds) {
             if (ImGui::TreeNode("resource_list", "Preparing %d assets", progress.totalBuilds)) {
                 std::vector<ResourceBuildInfo> allBuilds = ResourceProgress::getAllActiveBuilds();

@@ -249,7 +249,8 @@ bool prefabPathArg(Project* project, const std::string& text, bool mustExist, fs
         error = "No prefab at \"" + generic(rel) + "\". List the project's prefabs with list_prefabs.";
         return false;
     }
-    relative = rel;
+    // an existing prefab is the asset, whichever path of its file was given
+    relative = mustExist ? project->getPrefabAssetPath(rel) : rel;
     return true;
 }
 

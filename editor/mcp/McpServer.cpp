@@ -6,6 +6,7 @@
 
 #include "McpAutoSync.h"
 #include "McpContext.h"
+#include "McpDialogs.h"
 #include "McpInstances.h"
 #include "McpToolGroups.h"
 #include "McpTransportHttp.h"
@@ -18,11 +19,14 @@
 #include "AppSettings.h"
 #include "EditorVersion.h"
 #include "Out.h"
+#include "Platform.h"
+#include "window/EditorFilePicker.h"
 #include "thread/ResourceProgress.h"
 #include "Project.h"
 #include "util/ProjectFileWrites.h"
 #include "profiler/Profile.h"
 #include "profiler/FrameTimes.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 #include <chrono>
@@ -161,6 +165,19 @@ void McpServer::start(App& app) {
     buildToolRegistry(reg);
     chooseInitialToolGroups();
 
+    EditorFilePicker::Host pickerHost;
+    pickerHost.route = [this]() {
+        if (!Platform::isHeadless()) return EditorFilePicker::Route::Native;
+        std::lock_guard<std::mutex> lock(sessionMutex);
+        return sessions.empty() ? EditorFilePicker::Route::Cancel : EditorFilePicker::Route::Agent;
+    };
+    pickerHost.opened = [this]() { onFilePickerOpened(); };
+    pickerHost.baseDirectory = [this]() {
+        Project* project = ctx ? ctx->project() : nullptr;
+        return project ? FileUtils::pathToUtf8(project->getProjectPath()) : std::string();
+    };
+    EditorFilePicker::setHost(std::move(pickerHost));
+
     // notifications/message: off until a session asks (logging/setLevel)
     auto sink = std::make_unique<CallbackSink>("mcp", [this](const LogRecord& record) { sendLogNotification(record); });
     sink->minLevel.store(LogLevel::Off, std::memory_order_relaxed);
@@ -232,6 +249,8 @@ Json McpServer::listTools(const SessionPtr& session, const Json& params) const {
 
 void McpServer::stop() {
     if (!started) return;
+    EditorFilePicker::abandon();
+    EditorFilePicker::setHost({});
     if (logSink) {
         Logger::removeSink(logSink);
         logSink = 0;
@@ -517,6 +536,8 @@ void McpServer::closeSession(const std::string& id) {
     {
         std::lock_guard<std::mutex> lock(sessionMutex);
         sessions.erase(id);
+        // nobody left to answer a picker that waits for an agent
+        if (sessions.empty()) EditorFilePicker::abandon();
     }
     updateLogSinkLevel();
     // Its pending requests have nobody to answer to
@@ -867,6 +888,10 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
         const std::string uri = params["uri"].get<std::string>();
         // Resource not found: -32002 up to 2025-11-25, Invalid params since
         const int notFound = modern ? -32602 : -32002;
+        if (EditorDialogInfo picker; EditorFilePicker::info(picker)) {
+            reply->respond(makeError(id, -32603, dialogBlockMessage(picker)));
+            return;
+        }
         runOnMainThread([this, id, uri, reply, notFound]() {
             // a resource that writes (project-agents makes AGENTS.md / CLAUDE.md) stays beneath the project
             McpWriteScope writeScope;
@@ -938,6 +963,10 @@ void McpServer::handleRequest(const SessionPtr& session, const Json& message, co
                 reply->respond(makeError(id, -32602, "Prompt " + name + " needs argument " + arg.name + "."));
                 return;
             }
+        }
+        if (EditorDialogInfo picker; EditorFilePicker::info(picker)) {
+            reply->respond(makeError(id, -32603, dialogBlockMessage(picker)));
+            return;
         }
         runOnMainThread([this, id, name, args, reply]() {
             const PromptDef* def = reg.findPrompt(name);
@@ -1099,8 +1128,17 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
         return;
     }
 
+    // Checked after the call is in inflight: a picker that opens from now on finds it there
+    if (EditorDialogInfo picker; EditorFilePicker::info(picker)) {
+        answerDuringFilePicker(call, picker);
+        return;
+    }
+
     trace("queued", name + " " + key);
     runOnMainThread([this, call, name, key, autoSync]() {
+        // refused while it waited: a file picker opened (onFilePickerOpened)
+        if (call->completed()) return;
+        call->markStarted();
         trace("run", name + " " + key);
         if (!reg.findTool(name)) {
             call->fail("Unknown tool: " + name);
@@ -1168,19 +1206,81 @@ void McpServer::runSettles() {
     }
 }
 
+void McpServer::answerDuringFilePicker(const CallPtr& call, const EditorDialogInfo& picker) {
+    const std::string& tool = call->tool();
+    if (tool == "editor_status") {
+        call->ok("Open dialog: \"" + picker.title + "\". Nothing else runs until it is answered.", Json{{"dialog", dialogJson(picker)}});
+        return;
+    }
+    if (tool != "respond_dialog") {
+        call->fail(dialogBlockMessage(picker) + " Nothing runs until it is answered.", Json{{"dialog", dialogJson(picker)}});
+        return;
+    }
+    std::string error;
+    if (!answerFilePicker(call->args(), error)) {
+        call->fail(error, Json{{"dialog", dialogJson(picker)}});
+        return;
+    }
+    // what the code that opened the picker did with the answer takes the main thread's next frames
+    const std::string title = picker.title;
+    const std::string choice = call->args().value("choice", "");
+    runOnMainThread([call, title, choice]() {
+        call->afterFrames(2, [call, title, choice]() { reportDialogAnswer(call, title, choice); });
+    });
+}
+
+void McpServer::onFilePickerOpened() {
+    EditorDialogInfo picker;
+    if (!EditorFilePicker::info(picker)) return;
+    const Json data = Json{{"dialog", dialogJson(picker)}};
+    const std::string refused = dialogBlockMessage(picker) + " This call was stopped by it: retry it after answering.";
+
+    // A client that sends one call at a time would never get to answer while it waits for these.
+    // Calls in the main thread's queue have not begun: nothing of them has happened.
+    std::vector<CallPtr> calls;
+    {
+        std::lock_guard<std::mutex> lock(inflightMutex);
+        for (const auto& [key, weak] : inflight) {
+            if (CallPtr call = weak.lock()) calls.push_back(call);
+        }
+    }
+    for (const CallPtr& call : calls) {
+        const ToolDef* def = reg.findTool(call->tool());
+        if (def && !def->offMainThread && !call->started()) call->fail(refused, data);
+    }
+    // The tool that opened it (run_command, a menu item) only returns when it is answered, which its
+    // client would wait for: it replies now, with what to answer
+    if (!runningHandlers.empty()) {
+        const CallPtr opener = runningHandlers.back();
+        if (!opener->completed()) {
+            opener->ok(dialogBlockMessage(picker), data);
+        }
+    }
+    // Those waiting for frames that will not come until it closes: respond_dialog replies now,
+    // reads and controls stop; an edit's continuation goes on after the picker, and so does a batch
+    const std::vector<CallPtr> waiting = [this]() {
+        std::vector<CallPtr> out;
+        for (const Deferred& item : deferred) out.push_back(item.call);
+        return out;
+    }();
+    for (const CallPtr& call : waiting) {
+        if (call->completed()) continue;
+        if (std::function<void()> early = call->takeOnFilePicker()) {
+            early();
+            continue;
+        }
+        const ToolDef* def = reg.findTool(call->tool());
+        if (def && call->tool() != "batch" && (def->annotations.readOnly || effectiveActivity(*def) == ToolActivity::Control)) {
+            call->fail(refused, data);
+        }
+    }
+}
+
 std::string McpServer::blockingDialogMessage() const {
     if (!appPtr) return {};
     EditorDialogInfo dialog;
     if (!appPtr->getOpenDialog(dialog)) return {};
-    std::string text = "The editor is showing the dialog \"" + dialog.title + "\"";
-    if (!dialog.message.empty()) text += " (" + dialog.message + ")";
-    if (!dialog.choices.empty()) {
-        text += ". Answer it with respond_dialog, choice one of:";
-        for (const std::string& choice : dialog.choices) text += " " + choice;
-    } else {
-        text += ", which only a human can close in the editor window";
-    }
-    return text + ".";
+    return dialogBlockMessage(dialog);
 }
 
 bool McpServer::mayChange(const ToolDef& def, const Json& args) {
@@ -1331,46 +1431,22 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
     }
     if (refuseIfBusy(call, effectiveActivity(def))) return;
 
-    // An info alert left from earlier only needs OK; anything else needs an answer first
+    // An info alert (or an error box) left from earlier only needs OK; anything else needs an
+    // answer first, except a modal window built to keep concurrent edits (Project Settings)
     std::string notes;
     EditorDialogInfo dialog;
-    if (!def.annotations.readOnly && app.getOpenDialog(dialog) && dialog.kind == "progress") {
-        // the editor's own build progress (shaders compiling for files just written): an edit
-        // waits for it as a human at the window does, then runs
-        const ToolDef* waiting = &def;
-        call->waitUntil([this]() {
-            EditorDialogInfo open;
-            return !appPtr->getOpenDialog(open) || open.kind != "progress";
-        }, 120000, [this, call, waiting](bool timedOut) {
-            if (timedOut) {
-                // the builds still open, named: one that never ends is a bug, not a slow build
-                std::string open;
-                Json builds = Json::array();
-                const auto now = std::chrono::steady_clock::now();
-                for (const jasperengine::ResourceBuildInfo& build : jasperengine::ResourceProgress::getAllActiveBuilds()) {
-                    const long seconds = (long)std::chrono::duration_cast<std::chrono::seconds>(now - build.startTime).count();
-                    const std::string type = jasperengine::ResourceProgress::getResourceTypeName(build.type);
-                    if (builds.size() < 8) open += (open.empty() ? "" : ", ") + type + " " + build.name + " (" + std::to_string(seconds) + " s)";
-                    builds.push_back({{"type", type}, {"name", build.name}, {"progress", build.progress}, {"seconds", seconds}});
-                }
-                call->fail("The editor's builds (\"Loading\") did not finish within 120 s" +
-                           (open.empty() ? std::string() : ": " + open) + "; the edit was not run. Retry.",
-                           Json{{"busy", {{"builds", builds}}}});
-                return;
-            }
-            execute(call, *waiting);
-        });
-        return;
-    }
-    if (!def.annotations.readOnly && app.getOpenDialog(dialog)) {
-        if (dialog.kind == "alert" && dialog.choices.size() == 1 && dialog.choices[0] == "ok") {
+    if (!def.annotations.readOnly && app.getOpenDialog(dialog) && dialog.blocksEdits) {
+        if ((dialog.kind == "alert" || dialog.kind == "modal") && dialog.choices.size() == 1 && dialog.choices[0] == "ok" &&
+            dialog.fields.empty() && dialog.disabledChoices.empty()) {
             std::string error;
-            app.answerDialog("ok", error);
-            notes += "\n(Dismissed an editor alert shown earlier: " + dialog.title + ": " + dialog.message + ")";
-        } else if (def.name != "respond_dialog" && def.name != "batch") {
+            app.answerDialog("ok", {}, error);
+            notes += "\n(Dismissed an editor " + std::string(dialog.kind == "alert" ? "alert" : "message") + " shown earlier: " +
+                     dialog.title + (dialog.message.empty() ? std::string() : ": " + dialog.message) + ")";
+        } else if (def.name != "respond_dialog" && def.name != "batch" &&
+                   // focus_window's page and close act on Preferences itself
+                   !(def.name == "focus_window" && dialog.title == "Preferences" && call->args().value("window", "") == "preferences")) {
             call->fail(blockingDialogMessage() + " Edits are refused until it is answered.",
-                       Json{{"dialog", {{"kind", dialog.kind}, {"title", dialog.title}, {"message", dialog.message},
-                                        {"choices", dialog.choices}}}});
+                       Json{{"dialog", dialogJson(dialog)}});
             return;
         }
     }
@@ -1409,7 +1485,7 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         if (raised.choices.size() == 1) {
             // An info alert only needs OK; mostly errors the tool reported this way
             std::string error;
-            app.answerDialog("ok", error);
+            app.answerDialog("ok", {}, error);
             result.text += "\nEditor alert: " + raised.title + ": " + raised.message;
         } else {
             result.text += "\nThe editor now asks \"" + raised.title + "\": " + raised.message +
@@ -1434,6 +1510,11 @@ void McpServer::execute(const CallPtr& call, const ToolDef& def) {
         // an agent's edit in the frame's profile (benches tell an edit's frame from others: S32 R22)
         JE_PROFILE_SCOPE("MCP tool");
         if (onMainThread) FrameTimes::markHostWork();
+        struct RunningHandler {
+            std::vector<CallPtr>& stack;
+            RunningHandler(std::vector<CallPtr>& s, const CallPtr& c) : stack(s) { stack.push_back(c); }
+            ~RunningHandler() { stack.pop_back(); }
+        } running(runningHandlers, call);
         def.handler(call);
     } catch (const Json::type_error& e) {
         // an argument a handler read without checking its type: still an error the agent can fix

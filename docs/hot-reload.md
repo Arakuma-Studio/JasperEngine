@@ -122,3 +122,10 @@ Inside `engine/core/io/watch/`: `FileWatcher` (one backend thread per root), the
 main-thread pump within 1 ms a frame, the `flush()` barrier) and `SharedFileReader` (reads that
 let another program replace the file on Windows). In games nothing is watched: Android, iOS and
 the web have no backend, and players never start the service.
+
+## Linked folders
+
+A folder linked in from out of the project is watched like one of its folders (S68): each such
+folder gets a backend of its own on its real path, whose changes are reported by the path under the
+link. A folder two links lead to is watched once. A link inside the project adds nothing to watch: its
+target is watched by its own name. A link made or removed while watching starts or stops the watch.

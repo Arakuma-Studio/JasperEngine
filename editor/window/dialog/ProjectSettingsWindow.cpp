@@ -3,6 +3,8 @@
 
 #include "ProjectSettingsWindow.h"
 #include "window/ProjectWindow.h"
+#include "io/watch/LinkedFolders.h"
+#include "window/EditorModal.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"
 #include "widget/ColorField.h"
@@ -969,10 +971,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     {
         std::error_code ec;
         const fs::path assets = project->getAssetsPath();
-        for (auto it = fs::recursive_directory_iterator(assets, fs::directory_options::skip_permission_denied, ec);
-             !ec && it != fs::recursive_directory_iterator(); it.increment(ec)){
+        for (watch::LinkedDirectoryIterator it(assets, fs::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end; it.increment(ec)){
             if (it->is_regular_file(ec) && it->path().extension() == ".inputactions")
-                m_inputActionsFiles.push_back(fs::relative(it->path(), project->getProjectPath(), ec));
+                m_inputActionsFiles.push_back(project->normalizeToProjectRelative(it->path()));
         }
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
@@ -1148,7 +1150,9 @@ void ProjectSettingsWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              projectNoScrollFlags;
 
-    bool popupOpen = ImGui::BeginPopupModal("Project Settings##ProjectSettingsModal", &m_isOpen, flags);
+    // OK applies only what the page changed, over the project's settings as they are then, so an
+    // agent's concurrent set_project_settings survives it (phase 2 M4): no refusal of edits meanwhile
+    bool popupOpen = EditorModal::begin("Project Settings##ProjectSettingsModal", &m_isOpen, flags, EditorModal::Role::MergesEdits);
 
     if (popupOpen) {
         if (!m_isOpen) {
@@ -1224,7 +1228,7 @@ void ProjectSettingsWindow::drawSettings() {
     const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
-    if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
         if (applySettings()) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
@@ -1245,7 +1249,7 @@ void ProjectSettingsWindow::drawSettings() {
 
     ImGui::SameLine();
     // Escape cancels a Listen of the Input page first
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) ||
         (!listening && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();

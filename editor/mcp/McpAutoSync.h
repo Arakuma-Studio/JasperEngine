@@ -169,6 +169,8 @@ namespace jasperengine::editor::mcp {
         FileMap code;                              // Lua, C++, shaders, materials, .html/.htm/.css
         FileMap assets;                            // images, fonts, .json/.lottie
         std::map<std::string, DirStamp> dirs;      // project-relative folder ("" = root) -> stamp
+        std::map<std::string, std::filesystem::path> linkedFolders;   // the links entered -> where each leads
+        bool entersFolder(const std::filesystem::directory_entry& entry, const std::string& rel);
         std::vector<std::string> hot;              // recently changed files, newest last
         // The racy files, by mtime: what a scan or a pick-up verifies (entries go stale, verifyRacy drops them)
         std::set<std::pair<int64_t, std::string>> racyFiles;

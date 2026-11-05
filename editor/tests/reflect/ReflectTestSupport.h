@@ -5,7 +5,12 @@
 
 // Random component values for the reflection tests (docs/specs/S08-reflection.md AC3, AC4): every
 // field of a table set to a random value of its type (NaN, infinities and -0 included unless
-// finiteOnly), and comparisons of two components field by field.
+// finiteOnly).
+//
+// The values are data: editor/tests/reflect/parity_golden holds what they encode to. So they are
+// the same on every compiler (std::mt19937's output is standard, the std:: distributions' results
+// are not), and a field's values come from its name, not from the fields before it: a field added
+// to a table adds its key to that data and changes no other line.
 
 #include "reflect/Reflect.h"
 #include "reflect/TypeOps.h"
@@ -26,12 +31,15 @@ namespace jasperengine::editor::test {
 
     class RandomValues {
     public:
-        explicit RandomValues(uint32_t seed, bool finiteOnly = false): rng(seed), finite(finiteOnly) {}
+        explicit RandomValues(uint32_t seed, bool finiteOnly = false): rng(seed), base(seed), finite(finiteOnly) {}
 
         // no GameObject references (a fixture scene whose GameObjects name nothing that is not there)
         void withoutReferences() { noReferences = true; }
 
-        int integer(int low, int high) { return std::uniform_int_distribution<int>(low, high)(rng); }
+        int integer(int low, int high) {
+            const uint64_t range = static_cast<uint64_t>(static_cast<int64_t>(high) - low + 1);
+            return static_cast<int>(low + static_cast<int64_t>(rng() % range));
+        }
         bool chance(int percent) { return integer(0, 99) < percent; }
 
         float number() {
@@ -49,8 +57,8 @@ namespace jasperengine::editor::test {
             switch (integer(0, 3)) {
                 case 0: return static_cast<float>(integer(-100, 100));
                 case 1: return static_cast<float>(integer(-1000, 1000)) / 7.0f;
-                case 2: return std::uniform_real_distribution<float>(-1.0f, 1.0f)(rng);
-                default: return std::uniform_real_distribution<float>(0.0f, 10000.0f)(rng);
+                case 2: return static_cast<float>(unit() * 2.0 - 1.0);
+                default: return static_cast<float>(unit() * 10000.0);
             }
         }
 
@@ -85,7 +93,21 @@ namespace jasperengine::editor::test {
         void fillStruct(const reflect::StructDesc& desc, void* owner);
 
     private:
+        double unit() { return static_cast<double>(rng()) / 4294967296.0; }
+
+        static uint32_t mixed(uint32_t scope, uint32_t value) {
+            return (scope ^ value) * 16777619u + 2166136261u;
+        }
+        static uint32_t mixed(uint32_t scope, const char* name) {
+            for (; *name; name++) scope = mixed(scope, static_cast<uint32_t>(static_cast<unsigned char>(*name)));
+            return scope;
+        }
+
+        void fillFields(const reflect::StructDesc& desc, void* owner);
+
         std::mt19937 rng;
+        uint32_t base;           // what the next fillStruct starts from
+        uint32_t scope = 0;      // the struct being filled
         bool finite;
         bool noReferences = false;
     };
@@ -162,18 +184,24 @@ namespace jasperengine::editor::test {
                 return;
             }
             case Kind::Struct:
-                if (field.structDesc) fillStruct(*field.structDesc, value);
+                if (field.structDesc) fillFields(*field.structDesc, value);
                 return;
             case Kind::Array: {
                 if (!field.arrayOps || (!field.elementOps && !field.structDesc)) return;
                 const size_t size = static_cast<size_t>(integer(0, 4));
                 field.arrayOps->resize(value, size);
                 const size_t actual = field.arrayOps->size(value);
+                const uint32_t arrayScope = scope;
                 for (size_t i = 0; i < actual; i++) {
                     void* element = field.arrayOps->at(value, i);
-                    if (field.structDesc) fillStruct(*field.structDesc, element);
-                    else fill(field, field.elementOps, element);
+                    if (field.structDesc) {
+                        scope = mixed(arrayScope, static_cast<uint32_t>(i));
+                        fillFields(*field.structDesc, element);
+                    } else {
+                        fill(field, field.elementOps, element);
+                    }
                 }
+                scope = arrayScope;
                 return;
             }
             default:
@@ -182,31 +210,22 @@ namespace jasperengine::editor::test {
     }
 
     inline void RandomValues::fillStruct(const reflect::StructDesc& desc, void* owner) {
+        scope = base = mixed(base, 1u);
+        fillFields(desc, owner);
+        // what the caller draws next does not depend on the fields either
+        rng.seed(mixed(base, 2u));
+    }
+
+    inline void RandomValues::fillFields(const reflect::StructDesc& desc, void* owner) {
+        const uint32_t structScope = scope;
         for (const reflect::FieldDesc& field : desc.fields) {
             if (field.flags & reflect::Proxy) continue;
             if (!reflect::isSaved(field)) continue;
+            scope = mixed(structScope, field.name);
+            rng.seed(scope);
             fill(field, field.ops, field.ref(owner));
         }
-    }
-
-    // Every saved field equal, floats bitwise (NaN equals the same NaN), with the first
-    // difference's path
-    inline bool sameSavedValues(const reflect::StructDesc& desc, const void* a, const void* b, std::string& difference,
-                                const std::string& prefix = std::string()) {
-        for (const reflect::FieldDesc& field : desc.fields) {
-            if (!reflect::isSaved(field)) continue;
-            void* x = field.ref(const_cast<void*>(a));
-            void* y = field.ref(const_cast<void*>(b));
-            if (field.kind == reflect::Kind::Struct && field.structDesc) {
-                if (!sameSavedValues(*field.structDesc, x, y, difference, prefix + field.name + ".")) return false;
-                continue;
-            }
-            if (!field.ops->equals || !field.ops->equals(x, y, -1.0f)) {
-                difference = prefix + field.name;
-                return false;
-            }
-        }
-        return true;
+        scope = structScope;
     }
 
     // The framebuffers the camera values a test made own (CameraComponent allocates one, which only

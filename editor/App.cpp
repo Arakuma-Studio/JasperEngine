@@ -87,6 +87,8 @@
 #include "widget/GradientField.h"
 #include "widget/FieldEdit.h"
 #include "mcp/McpServer.h"
+#include "window/EditorFilePicker.h"
+#include "window/EditorModal.h"
 #include "mcp/McpAutoSync.h"
 #include "mcp/tools/McpTools.h"
 #include "reload/HotReloadService.h"
@@ -1829,7 +1831,7 @@ void editor::App::showAlert(){
         alertPendingChoice.clear();
         const std::string popupName = alert.title + "##AlertModal";
         alert.needShow = false;
-        if (ImGui::IsPopupOpen(popupName.c_str()) && ImGui::BeginPopupModal(popupName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::IsPopupOpen(popupName.c_str()) && EditorModal::begin(popupName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
@@ -1851,7 +1853,7 @@ void editor::App::showAlert(){
                                 ImGuiWindowFlags_NoSavedSettings |
                                 ImGuiWindowFlags_Modal;
 
-        if (ImGui::BeginPopupModal((alert.title + "##AlertModal").c_str(), nullptr, flags)) {
+        if (EditorModal::begin((alert.title + "##AlertModal").c_str(), nullptr, flags)) {
             ImGui::Text("%s", alert.message.c_str());
             if (!alert.note.empty()) {
                 ImGui::Spacing();
@@ -2713,7 +2715,7 @@ void editor::App::show(){
         if (hubCreation) {
             ImGui::OpenPopup("Creating Project##hub");
         }
-        if (ImGui::BeginPopupModal("Creating Project##hub", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+        if (EditorModal::begin("Creating Project##hub", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove, EditorModal::Role::Progress)) {
             if (!hubCreation) ImGui::CloseCurrentPopup();
             else ImGui::Text("Creating %s from %s...", hubCreation->name.c_str(), hubCreation->info.name.c_str());
             ImGui::EndPopup();
@@ -3254,11 +3256,16 @@ void editor::App::loadStartupProject() {
                 std::fprintf(stderr, "[mcp] project_locked: closing the editor\n");
                 startupExitCode = 3;
                 // the main loop exits after the next frame (consumeBenchmarkExit): closing
-                // before the first frame leaves the render queue waiting on shutdown, and that
-                // frame wants a project (the empty temporary one, as when a load fails)
+                // before the first frame leaves the render queue waiting on shutdown. That frame
+                // is the loading window (projectLoading stays set, as for a failed benchmark): a
+                // refused editor opens nothing, and the temporary project is one directory
+                // shared by every editor, so other refused editors may hold its lock
                 benchmarkExit = true;
+                return;
             }
-            project.createTempProject("MyJasperEngineProject");
+            if (!project.createTempProject("MyJasperEngineProject")) {
+                std::fprintf(stderr, "[mcp] the temporary project could not be opened either: no project is open\n");
+            }
         }
         projectLoading = false;
         requestRedraw();
@@ -3521,11 +3528,12 @@ void editor::App::drawSaveProjectAsTemplate() {
         ImGui::OpenPopup("Save Project as Template##saveTemplate");
         saveTemplatePopup = false;
     }
-    if (!ImGui::BeginPopupModal("Save Project as Template##saveTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (!EditorModal::begin("Save Project as Template##saveTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
     ImGui::TextUnformatted("Name");
     ImGui::SetNextItemWidth(Theme::dpi(320.0f));
-    ImGui::InputText("##templateName", saveTemplateName.data(), saveTemplateName.size());
+    EditorModal::inputText("##templateName", "name", saveTemplateName.data(), saveTemplateName.size());
     ImGui::TextUnformatted("Description");
+    EditorModal::field("description", saveTemplateDescription.data(), saveTemplateDescription.size());
     ImGui::InputTextMultiline("##templateDescription", saveTemplateDescription.data(), saveTemplateDescription.size(),
                               ImVec2(Theme::dpi(320.0f), Theme::dpi(70.0f)));
     const std::string id = hub::slugify(saveTemplateName.data());
@@ -3533,11 +3541,13 @@ void editor::App::drawSaveProjectAsTemplate() {
     std::error_code ec;
     std::string problem = !hub::isValidCatalogId(id) ? "The name needs letters or digits." : std::string();
     if (problem.empty() && std::filesystem::exists(userDir / id, ec)) problem = "A template \"" + id + "\" exists.";
+    EditorModal::message("Save this project as a template of the Project Hub.");
+    EditorModal::error(!saveTemplateMessage.empty() ? saveTemplateMessage : problem);
     if (!problem.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", problem.c_str());
     else ImGui::TextDisabled("%s", (userDir / id).string().c_str());
     if (!saveTemplateMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", saveTemplateMessage.c_str());
     ImGui::BeginDisabled(!problem.empty());
-    if (ImGui::Button("Save", ImVec2(Theme::dpi(100.0f), 0))) {
+    if (EditorModal::button("Save", "ok", ImVec2(Theme::dpi(100.0f), 0))) {
         // the thumbnail is the Scene view (480 wide)
         std::vector<uint8_t> png;
         if (SceneProject* scene = project.getSelectedScene(); scene && scene->sceneRender) {
@@ -3556,7 +3566,7 @@ void editor::App::drawSaveProjectAsTemplate() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(Theme::dpi(100.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+    if (EditorModal::button("Cancel", "cancel", ImVec2(Theme::dpi(100.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }
 
@@ -3610,6 +3620,8 @@ void editor::App::quitWithoutPrompts(const std::string& reason) {
 
 bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
     out = EditorDialogInfo();
+    // it holds the main thread, so nothing below can change while it is open
+    if (EditorFilePicker::info(out)) return true;
     if (alert.needShow) {
         out.kind = "alert";
         out.title = alert.title;
@@ -3629,50 +3641,50 @@ bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
         }
         return true;
     }
-    if (sceneSaveDialog.isOpen() || projectSaveDialog.isOpen()) {
-        out.kind = "save_dialog";
-        out.title = sceneSaveDialog.isOpen() ? "Save Scene" : "Save Project";
-        out.message = "asks a human where to save; cancel it and save with an explicit path instead";
+    // Every other modal, as the last frame drew it (MCP calls run before this frame's windows)
+    const bool modal = EditorModal::topModal(out);
+    if (!sceneSaveDialog.isOpen() && !projectSaveDialog.isOpen()) return modal;
+    const std::string saveTitle = sceneSaveDialog.isOpen() ? "Save Scene" : "Save Project";
+    // something it opened, on top of it
+    if (modal && out.title != saveTitle) return true;
+    out.kind = "save_dialog";
+    out.title = saveTitle;
+    // a save dialog no frame has drawn yet has only its cancel, which needs no frame
+    if (!modal) {
+        out.message = "asks where to save; cancel it and save with an explicit path instead";
         out.choices = {"cancel"};
-        return true;
     }
-    if (ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal()) {
-        std::string name = modal->Name ? modal->Name : "";
-        const size_t idPos = name.find("##");
-        if (idPos != std::string::npos) name.resize(idPos);
-        // LoadingWindow's progress of the shader, texture and model builds: no answer, it
-        // closes when they are done
-        out.kind = name == "Loading" && ResourceProgress::hasActiveBuilds() ? "progress" : "modal";
-        out.title = name;
-        return true;
-    }
-    return false;
+    return true;
 }
 
-bool editor::App::answerDialog(const std::string& choice, std::string& error) {
+bool editor::App::answerDialog(const std::string& choice, const std::map<std::string, EditorDialogValue>& values, std::string& error) {
     EditorDialogInfo dialog;
     if (!getOpenDialog(dialog)) {
         error = "No dialog is open.";
         return false;
     }
-    if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
-        if (dialog.kind == "progress") {
-            error = "The editor is building shaders, textures or models (\"" + dialog.title + "\"): it closes by itself when they are done.";
-        } else if (dialog.choices.empty()) {
-            error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
-        } else {
+    if (dialog.kind == "alert") {
+        if (!values.empty()) {
+            error = "The alert \"" + dialog.title + "\" has no fields to fill.";
+            return false;
+        }
+        if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
             error = "Choice must be one of:";
             for (const std::string& valid : dialog.choices) error += " " + valid;
             error += ".";
+            return false;
         }
-        return false;
-    }
-    if (dialog.kind == "alert") {
         // Pressed in showAlert on the next frame, through the button's own code path
         alertPendingChoice = choice;
-    } else if (dialog.kind == "save_dialog") {
+    } else if (dialog.kind == "save_dialog" && choice == "cancel") {
         sceneSaveDialog.requestCancel();
         projectSaveDialog.requestCancel();
+    } else if (dialog.choices.empty() && dialog.disabledChoices.empty() && dialog.fields.empty()) {
+        error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
+        return false;
+    } else if (!EditorModal::answer(choice, values, error)) {
+        // pressed when the modal is next drawn, through the button's own code path
+        return false;
     }
     requestRedraw();
     return true;

@@ -3,6 +3,7 @@
 
 #include "animation/AnimatorAssetDocument.h"
 #include "window/PoseAnimationWindow.h"
+#include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"
@@ -2335,10 +2336,11 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         ImGui::OpenPopup("Delete Confirmation");
     }
 
-    if (ImGui::BeginPopupModal("Delete Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize)){
+    if (EditorModal::begin("Delete Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize)){
         ImGui::Text("Are you sure you want to delete the following items?");
         ImGui::Separator();
         int fileCount = 0;
+        std::string listedNames;
         // a Vertex Animation's .vat and .vat.glb go together: both are listed (one question)
         std::vector<fs::path> listed;
         for (const auto& fileName : selectedFiles){
@@ -2348,6 +2350,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         for (size_t i = 0; i < withPairs.size(); i++){
             if (fileCount < 10){
                 const std::string name = withPairs[i].lexically_relative(currentPath).generic_string();
+                listedNames += (listedNames.empty() ? "" : ", ") + name;
                 if (i < listed.size()){
                     ImGui::BulletText("%s", name.c_str());
                 }else{
@@ -2356,6 +2359,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             }
             fileCount++;
         }
+        EditorModal::message("Are you sure you want to delete the following items? " + listedNames +
+                             (fileCount > 10 ? " and " + std::to_string(fileCount - 10) + " more" : std::string()));
         if (fileCount > 10){
             ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "And %d more items...", fileCount - 10);
         }
@@ -2367,7 +2372,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - totalWidth) / 2.0f);
 
-        if (ImGui::Button("Yes", ImVec2(buttonWidth, 0))){
+        if (EditorModal::button("Yes", "yes", ImVec2(buttonWidth, 0))){
             std::vector<fs::path> pathsToDelete;
             for (const auto& fileName : selectedFiles){
                 fs::path filePath = currentPath / fileName;
@@ -2386,7 +2391,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
         ImGui::SameLine();
 
-        if (ImGui::Button("No", ImVec2(buttonWidth, 0))){
+        if (EditorModal::button("No", "no", ImVec2(buttonWidth, 0))){
             showDeleteConfirmation = false;
             ImGui::CloseCurrentPopup();
         }
@@ -2787,7 +2792,7 @@ void editor::ProjectWindow::handleNewDirectory(){
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     }
 
-    if (ImGui::BeginPopupModal("Create New Directory", &isCreatingNewDirectory, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Create New Directory", &isCreatingNewDirectory, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Enter directory name:");
 
         // Auto-focus the input field when the popup opens
@@ -2795,7 +2800,8 @@ void editor::ProjectWindow::handleNewDirectory(){
             ImGui::SetKeyboardFocusHere();
         }
 
-        bool enterPressed = ImGui::InputText("##newdir", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        bool enterPressed = EditorModal::inputText("##newdir", "name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        EditorModal::message(std::string("Enter directory name: \"") + nameBuffer + "\" (in " + currentPath.filename().string() + ")");
 
         // Calculate total width of the buttons
         float buttonWidth = 120.0f;
@@ -2806,14 +2812,14 @@ void editor::ProjectWindow::handleNewDirectory(){
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - totalWidth) * 0.5f);
 
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0))) {
+        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0))) {
             isCreatingNewDirectory = false;
             ImGui::CloseCurrentPopup();
         }
 
         ImGui::SameLine();
 
-        bool confirmed = ImGui::Button("Create", ImVec2(buttonWidth, 0)) || enterPressed;
+        bool confirmed = EditorModal::button("Create", "yes", ImVec2(buttonWidth, 0)) || enterPressed;
         if (confirmed) {
             std::string dirName = nameBuffer;
             if (!dirName.empty()) {
@@ -2839,45 +2845,48 @@ void editor::ProjectWindow::handleNewDirectory(){
         }
 
         // Error popup for existing directory
-        if (ImGui::BeginPopupModal("Directory Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Directory Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("A directory with this name already exists.");
+            EditorModal::message("A directory with this name already exists.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
         // Error popup for creation failure
-        if (ImGui::BeginPopupModal("Creation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Creation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Failed to create the directory.");
+            EditorModal::message("Failed to create the directory.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
         // Error popup for invalid name
-        if (ImGui::BeginPopupModal("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Please enter a valid directory name.");
+            EditorModal::message("Please enter a valid directory name.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -2906,7 +2915,7 @@ void editor::ProjectWindow::handleRename(){
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     }
 
-    if (ImGui::BeginPopupModal("Rename File", &isRenaming, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Rename File", &isRenaming, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Rename '%s' to:", fileBeingRenamed.c_str());
 
         // Auto-focus the input field when the popup opens
@@ -2933,7 +2942,8 @@ void editor::ProjectWindow::handleRename(){
             return 0;
         };
 
-        bool enterPressed = ImGui::InputText("##rename", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackAlways, selectNameCallback, &renameSelectPending);
+        bool enterPressed = EditorModal::inputText("##rename", "name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackAlways, selectNameCallback, &renameSelectPending);
+        EditorModal::message("Rename '" + fileBeingRenamed + "' to: \"" + nameBuffer + "\"");
 
         // Calculate total width of the buttons
         float buttonWidth = 120.0f;
@@ -2944,7 +2954,7 @@ void editor::ProjectWindow::handleRename(){
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - totalWidth) * 0.5f);
 
-        bool confirmed = ImGui::Button("OK", ImVec2(buttonWidth, 0)) || enterPressed;
+        bool confirmed = EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0)) || enterPressed;
         if (confirmed) {
             std::string newName = nameBuffer;
             if (!newName.empty() && newName != fileBeingRenamed) {
@@ -2996,51 +3006,54 @@ void editor::ProjectWindow::handleRename(){
             ImGui::CloseCurrentPopup();
         }
 
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0))) {
+        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0))) {
             isRenaming = false;
             ImGui::CloseCurrentPopup();
         }
 
         // Error popup for existing file
-        if (ImGui::BeginPopupModal("File Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("File Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("A file with this name already exists.");
+            EditorModal::message("A file with this name already exists.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
         // Error popup for rename failure
-        if (ImGui::BeginPopupModal("Rename Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Rename Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextUnformatted(renameErrorText.empty() ? "Failed to rename the file." : renameErrorText.c_str());
+            EditorModal::message(renameErrorText.empty() ? "Failed to rename the file." : renameErrorText);
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
         // Error popup for invalid name
-        if (ImGui::BeginPopupModal("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Please enter a valid file name.");
+            EditorModal::message("Please enter a valid file name.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -3660,18 +3673,19 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     }
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (!ImGui::BeginPopupModal(POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (!EditorModal::begin(POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
         return;
     }
     // Unity's dialog
     ImGui::TextUnformatted("Would you like to create a new original Prefab or a variant of this Prefab?");
+    EditorModal::message("Would you like to create a new original Prefab or a variant of this Prefab?");
     ImGui::TextDisabled("%s", pendingPrefabDrop.prefabs.size() > 1 ?
         "Prefab instance roots of the selection become variants of their Prefabs; the other GameObjects original Prefabs" :
         ("'" + pendingPrefabDrop.firstInstance + "' is a Prefab instance").c_str());
     ImGui::Spacing();
     const float buttonWidth = Theme::dpi(130.0f);
     bool done = false;
-    if (ImGui::Button("Original Prefab", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("Original Prefab", "yes", ImVec2(buttonWidth, 0))) {
         PoseEditSession::suspendActive();
         PoseEditSession::suspendActiveFor(pendingPrefabDrop.sceneId, prefabEntities(pendingPrefabDrop.prefabs));
         CommandHandle::get(pendingPrefabDrop.sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, pendingPrefabDrop.prefabs));
@@ -3679,7 +3693,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     }
     ImGui::SetItemTooltip("A new Prefab of these GameObjects: the instance is unpacked into it (nested Prefabs stay nested)");
     ImGui::SameLine();
-    if (ImGui::Button("Prefab Variant", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("Prefab Variant", "no", ImVec2(buttonWidth, 0))) {
         std::vector<std::pair<fs::path, YAML::Node>> prefabs = pendingPrefabDrop.prefabs;
         for (size_t i = 0; i < prefabs.size(); i++) {
             if (i < pendingPrefabDrop.instanceRoots.size() && pendingPrefabDrop.instanceRoots[i]) {
@@ -3697,7 +3711,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     }
     ImGui::SetItemTooltip("A Prefab Variant of the instance's Prefab: its overrides become the variant's, and it is an instance of the variant");
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         done = true;
     }
     if (done) {

@@ -7,10 +7,12 @@
 #include "FileWatchService.h"
 #include "WatchTestSupport.h"
 #include "AllocationCounter.h"
+#include "LinkedFolders.h"
 
 #include <algorithm>
 #include <atomic>
 #include <mutex>
+#include <set>
 #include <thread>
 
 using namespace jasperengine;
@@ -44,6 +46,94 @@ namespace {
         return out;
     }
 
+}
+
+// S68 R8: a folder linked in from out of the root is watched as one of its folders, under the link's
+// name; the link to itself inside it ends the walk; a link made while watching starts being watched
+TEST_P(FileWatchServiceTests, SeesChangesThroughLinkedFolders) {
+    WatchTempDir elsewhere;
+    writeText(elsewhere.path / "lib" / "a.txt", "a");
+    fs::create_directories(elsewhere.path / "lib" / "sub");
+    std::error_code ec;
+    fs::create_directory_symlink(elsewhere.path / "lib", elsewhere.path / "lib" / "loop", ec);
+    fs::create_directory_symlink(elsewhere.path / "lib", dir.path / "shared", ec);
+    if (ec) GTEST_SKIP() << "no symbolic links here";
+    startWatching();
+    EXPECT_TRUE(service.indexMatchesDiskForTesting());
+
+    std::vector<FileChange> got;
+    FileWatchSubscription subscription = service.subscribe({}, [&](std::span<const FileChange> batch) {
+        got.insert(got.end(), batch.begin(), batch.end());
+    });
+    auto sawAt = [&](const fs::path& path, FileChangeKind kind) {
+        return std::any_of(got.begin(), got.end(), [&](const FileChange& c) { return c.path == path && c.kind == kind; });
+    };
+    auto settled = [&](const fs::path& path, FileChangeKind kind) {
+        return waitFor([&]() {
+            service.flush(timeLimit(ms(1000)));
+            return sawAt(path, kind);
+        }, timeLimit(ms(10000)));
+    };
+
+    writeText(elsewhere.path / "lib" / "a.txt", "changed");
+    EXPECT_TRUE(settled(dir.path / "shared" / "a.txt", FileChangeKind::Modified)) << pathsOf(got);
+    writeText(elsewhere.path / "lib" / "sub" / "new.txt", "new");
+    EXPECT_TRUE(settled(dir.path / "shared" / "sub" / "new.txt", FileChangeKind::Added)) << pathsOf(got);
+    fs::remove(elsewhere.path / "lib" / "a.txt", ec);
+    EXPECT_TRUE(settled(dir.path / "shared" / "a.txt", FileChangeKind::Removed)) << pathsOf(got);
+    EXPECT_FALSE(std::any_of(got.begin(), got.end(), [&](const FileChange& c) { return c.path.generic_string().find("/loop/") != std::string::npos; }))
+        << "the link to itself is not followed";
+
+    // made while watching
+    WatchTempDir later;
+    writeText(later.path / "b.txt", "b");
+    fs::create_directory_symlink(later.path, dir.path / "later", ec);
+    ASSERT_FALSE(ec);
+    EXPECT_TRUE(settled(dir.path / "later" / "b.txt", FileChangeKind::Added)) << pathsOf(got);
+    got.clear();
+    EXPECT_TRUE(waitFor([&]() {
+        writeText(later.path / "b.txt", "changed " + std::to_string(got.size()));
+        service.flush(timeLimit(ms(1000)));
+        return sawAt(dir.path / "later" / "b.txt", FileChangeKind::Modified);
+    }, timeLimit(ms(10000)))) << pathsOf(got);
+
+    // the link removed: what it held is gone, the folder itself is not touched
+    got.clear();
+    fs::remove(dir.path / "later", ec);
+    EXPECT_TRUE(settled(dir.path / "later" / "b.txt", FileChangeKind::Removed)) << pathsOf(got);
+    EXPECT_TRUE(fs::exists(later.path / "b.txt"));
+    service.stop();
+}
+
+// A link inside the root, or to a folder holding it, adds nothing to watch: the walk ends
+TEST(LinkedFolders, FollowerEntersLinksOutOfTheRootOnce) {
+    WatchTempDir base;
+    const fs::path root = base.path / "root";
+    fs::create_directories(root / "real");
+    fs::create_directories(base.path / "out");
+    std::error_code ec;
+    fs::create_directory_symlink(root / "real", root / "inside", ec);
+    fs::create_directory_symlink(base.path, root / "up", ec);
+    fs::create_directory_symlink(base.path / "out", root / "first", ec);
+    fs::create_directory_symlink(base.path / "out", root / "second", ec);
+    fs::create_symlink(base.path / "nowhere", root / "dangling", ec);
+    if (ec) GTEST_SKIP() << "no symbolic links here";
+    watch::LinkFollower follower(root);
+    EXPECT_TRUE(follower.enter(root / "inside").empty());
+    EXPECT_TRUE(follower.enter(root / "up").empty());
+    EXPECT_TRUE(follower.enter(root / "dangling").empty());
+    EXPECT_EQ(follower.enter(root / "first"), base.path / "out");
+    EXPECT_TRUE(follower.enter(root / "second").empty());
+
+    // the iterator: every entry of the root once, what the entered link holds under its name
+    writeText(base.path / "out" / "held.txt", "x");
+    std::set<std::string> seen;
+    for (watch::LinkedDirectoryIterator it(root, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end; it.increment(ec)) {
+        seen.insert(it->path().lexically_relative(root).generic_string());
+    }
+    EXPECT_TRUE(seen.count("real") && seen.count("inside") && seen.count("up") && seen.count("dangling"));
+    EXPECT_EQ(seen.count("first/held.txt") + seen.count("second/held.txt"), 1u) << "one link enters it";
+    EXPECT_FALSE(std::any_of(seen.begin(), seen.end(), [](const std::string& path) { return path.rfind("up/", 0) == 0; }));
 }
 
 TEST_P(FileWatchServiceTests, FlushBarrier) {

@@ -24,6 +24,7 @@
 
 namespace jasperengine::editor {
     class App;
+    struct EditorDialogInfo;
 }
 
 namespace jasperengine::editor::mcp {
@@ -286,6 +287,7 @@ namespace jasperengine::editor::mcp {
         void updateLogSinkLevel();
 
         std::vector<Deferred> deferred;   // main thread only
+        std::vector<CallPtr> runningHandlers;   // main thread only: the tools on the stack (a batch's steps nest)
 
         // The result of a call that may write files waits for its settle (McpAutoSync::afterCall):
         // whatever the client writes once it has the result is then newer than that settle, so it
@@ -318,6 +320,10 @@ namespace jasperengine::editor::mcp {
         // The agent guide, saying so when the session is read-only
         std::string instructionsFor(const McpSession& session) const;
         void runOnMainThread(std::function<void()> task);
+        // A file picker holds the main thread (EditorFilePicker): what the transports do meanwhile,
+        // and, when it opens, what happens to the calls that wait for that thread
+        void answerDuringFilePicker(const CallPtr& call, const EditorDialogInfo& picker);
+        void onFilePickerOpened();
         // Gates + handler. complete() is already wired into the call.
         void execute(const CallPtr& call, const ToolDef& def);
         uint64_t beginActivity(const std::string& client, const std::string& tool, const Json& args);

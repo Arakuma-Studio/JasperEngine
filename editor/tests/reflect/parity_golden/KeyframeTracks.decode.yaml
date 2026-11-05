@@ -1,0 +1,84 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest d489c86b7e871040
+--- 0
+index: 7
+interpolation: 28
+loop: false
+relative: true
+times:
+  - 133.14285
+  - 1e-45
+  - .inf
+--- 1
+index: 8
+interpolation: 91.57143
+loop: false
+relative: false
+times: ~
+easings:
+  - LINEAR
+  - QUINT_IN_OUT
+--- 2
+index: 12
+interpolation: 0.39382762
+loop: false
+relative: true
+times:
+  - 53.857143
+  - 7529.7393
+--- 3
+index: -54316
+interpolation: -58.714287
+loop: false
+relative: false
+times:
+  - 1516.5361
+  - 4882.5537
+  - -0.97242004
+easings:
+  - SINE_IN_OUT
+  - BOUNCE_OUT
+--- 4
+index: 17
+interpolation: 5069.9653
+loop: false
+relative: true
+times:
+  - 2116.1853
+  - 0.37635913
+  - -0.23366852
+easings:
+  - QUINT_OUT
+  - CIRC_IN
+--- 5
+index: -20
+interpolation: 0.17790712
+loop: false
+relative: true
+times:
+  - .nan
+  - 1e-45
+  - 2
+easings:
+  - EXPO_OUT
+  - SINE_OUT
+--- 6
+index: 3
+interpolation: 5588.104
+loop: false
+relative: true
+times:
+  - -.inf
+--- 7
+index: -59358
+interpolation: 8031.6006
+loop: true
+relative: false
+times:
+  - -0.010972009
+  - 6230.268
+easings:
+  - SINE_IN
+  - CUSTOM
+  - ELASTIC_OUT
+  - ELASTIC_IN
