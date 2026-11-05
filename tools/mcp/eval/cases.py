@@ -875,6 +875,31 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "bad_shader_list_incomplete",
+        "kind": "bad",
+        "what_happened": "get_build_info hands the closed scenes it has no time for to a job and answers with the list so far "
+                         "(63 of 71 in the test that found the gap); reporting that count ships a build plan that misses shaders.",
+        "text_at_issue": "get_build_info result: shaders_complete, shaders_pending_scenes, shaders_job_id",
+        "source": "docs/specs/S64-shader-lists.md R3",
+        "prompt": "How many shader variants will a build of this project ship? I need the exact number.",
+        "mocks": [
+            {"tool": "get_build_info", "after": "get_job", "result": dict(ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 71 "
+                "shader(s).", {"shader_count": 71, "shaders_complete": True, "shaders_unreadable_scenes": []}), real=True)},
+            {"tool": "get_build_info", "result": dict(ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 63 "
+                "shader(s). The shader list is incomplete, 2 closed scene(s) left: get_job job-7 until it ends, then get_build_info again.",
+                {"shader_count": 63, "shaders_complete": False, "shaders_pending_scenes": ["Hud", "Level2"],
+                 "shaders_job_id": "job-7"}), real=True)},
+            {"tool": "get_job", "result": ok(
+                "Read the closed scenes' shaders: succeeded - The shader list is complete: get_build_info answers now.",
+                {"id": "job-7", "status": "succeeded", "result": {"unreadable_scenes": []}})},
+        ],
+        "checks": {"calls": [{"tool": "get_job", "args": {"job_id": "job-7"}}], "last_call": "get_build_info",
+                   "reply_must": [r"\b71\b"], "must_not_call": ["generate_shaders", "build_project"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_record_failed_write",
         "kind": "guard",
         "what_happened": "A record_game whose write failed leaves Play running and nothing at the output path: the agent stops "
@@ -995,6 +1020,32 @@ CASES = [
                              {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}}],
                    "reply_must": ["Hero"]},
         "max_turns": 10,
+    },
+    {
+        "id": "guard_true_peak_limiter",
+        "kind": "guard",
+        "what_happened": "The audio guide names the limiter's truePeak and lookahead; an agent asked for a dBTP ceiling must set "
+                         "them instead of a plain limiter, which lets inter-sample peaks through.",
+        "text_at_issue": "docs/mcp/guide/audio.md effects table: 'lookahead ... with truePeak 1 and at least 1.5 ms it holds "
+                         "threshold + 0.1 dB in true peak'",
+        "source": "S38 guide text; no failure on record",
+        "prompt": "This project is from an old version and its mixer has no limiter. Keep the game's Master output under -1 dBTP.",
+        # a new project (the eval's) has the limiter already: this one is an old project's
+        "files": {"audio/Main.mixer": '{\n  "format": "jasperengine.mixer",\n  "version": 1,\n  "updateMode": "scaled",\n'
+                                      '  "groups": [\n    {\n      "id": "00000001",\n      "name": "Master",\n      "parent": null,\n'
+                                      '      "volume": 0\n    }\n  ]\n}\n'},
+        "mocks": [
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [], "latency_ms": 0}]})},
+            {"tool": "audio_mixer", "args": {"action": "edit"}, "result": ok(
+                "Edited audio/Main.mixer (1 op, one undo step).", {"mixer": "audio/Main.mixer"})},
+        ],
+        "checks": {"any_of": [
+            {"calls": [{"tool": "audio_mixer", "args": {"action": "edit", "ops": [
+                {"op": "add_effect", "type": "limiter", "params": {"truePeak": 1, "lookahead": "*"}}]}}]},
+            {"file_must": {"audio/Main.mixer": [r'"truePeak"\s*:\s*1', r'"lookahead"\s*:\s*[1-5]']}}]},
+        "max_turns": 12,
     },
     {
         "id": "bad_ios_simulator_without_an_account",

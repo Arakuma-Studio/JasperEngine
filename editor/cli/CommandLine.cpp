@@ -1107,7 +1107,7 @@ static bool runSceneDumpOps(Project& project, const YAML::Node& ops) {
                 if (name == "playStart") {
                     // Play does not start on a snapshot that would lose a GameObject
                     try {
-                        played.playStateSnapshot = Stream::encodeSceneProject(nullptr, &played);
+                        played.playStateSnapshot = Stream::encodePlaySnapshot(nullptr, &played);
                     } catch (const std::exception& e) {
                         Out::error("Failed to start scene: %s", e.what());
                         return false;

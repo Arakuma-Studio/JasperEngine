@@ -60,6 +60,9 @@ every background mesh BVH build pending that long: the MCP tests use it to see t
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 `JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
+`JASPER_SHADER_LIST_SYNC_MS=<ms>` is the time `get_build_info` may read closed scenes before it hands
+the rest to a job; 0 always hands them over (`tools/mcp/tests/test_shader_lists.py`).
+`JASPER_SHADER_LIST_WRITE_HOLD_FILE=<path>` holds the write of that cache while the file exists, up to 20 s (same test).
 `JASPER_TEST_RECORDER_FAIL=<list>` forces Recorder failures (`editor/recorder/RecorderSettings.h`): `audio@N`,
 `audio-header`, `video@N`, `encoder-kill@N`, `mux`, `png@N`, `publish` (they read as a full disk),
 `hold-limit=<ms>` (the wait for a frame's loads) and `free=<MB>` (the free space seen); read once per
@@ -392,8 +395,10 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   function nearly every editor runs selects the 10 quickest files that run it), the changed test files, the files that call a
   changed MCP tool (by its tool names), that load a changed fixture, test project, Lua script,
   shader, HTML, scene or material (by path), and, for an engine change, the files that run a prebuilt
-  game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), and those that compile a
-  game when what the compile path reads changes (`COMPILE_PATHS`).
+  game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), those that compile a
+  game when what the compile path reads changes (`COMPILE_PATHS`), and the guard of what a save
+  writes (`test_saved_output_determinism.py`, spec S63) when serialization or code generation
+  changes (`SAVED_OUTPUT_PATHS`).
   No map, a map older than 14 days or 400 commits, or a changed source the map does not know (new
   code), or a file no test names adds the CI suite; code the map knows that no test executes
   selects nothing, and the summary says so. A selected test that skips

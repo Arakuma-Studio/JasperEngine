@@ -7,7 +7,6 @@
 #include "McpJson.h"
 
 #include <chrono>
-#include <deque>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -43,10 +42,21 @@ namespace jasperengine::editor::mcp {
     //
     // Files the MCP tools write themselves are not external: syncFiles (the funnel of
     // write_file, create_script, the material and asset tools) restamps what it handled, and
-    // after each call that may write files a "settle" scan takes every change stamped inside
-    // the call's time window as the tool's own, already handled by it (fork_shader,
-    // screenshots saved into the project, terrain maps...): absorbed, not picked up again.
-    // Changes older than the call stay external and are reported by the next call.
+    // after each call that may write files a "settle" takes every change it finds as the tool's
+    // own, already handled by it (fork_shader, screenshots saved into the project, terrain
+    // maps...): absorbed, not picked up again. It reads the journal behind a barrier, or scans
+    // where the barrier is not a mere drain. The server sends that call's result only after its
+    // settle (McpServer::runSettles), so whatever the client writes once it has the result is
+    // newer than the settle and reported by the next call, at any delay and with any stamp.
+    // Changes stamped before the call started stay external and are reported by the next call.
+    // A program writing while a call runs, with a stamp from inside the call, can't be told from
+    // the tool (that would need every editor write path to report its writes): absorbed.
+    //
+    // A file or folder stamp read less than 2 s after its mtime is "racy": a write in the same
+    // filesystem clock tick could leave it equal. Racy files are verified by a hash of their
+    // content on every scan and pick-up (the journal can't tell either: the watcher compares the
+    // same stat), racy folders listed again by the stat scan (a new file is in the journal),
+    // until a scan reads them 2 s after their mtime.
     //
     // While a scene plays, the editor does not re-parse scripts (Play restores the scene from a
     // snapshot when it stops), so changes are listed with `deferred` (Lua syntax still checked)
@@ -79,10 +89,10 @@ namespace jasperengine::editor::mcp {
         void beforeCall(McpContext& ctx, const CallPtr& call, const std::string& tool,
                         std::function<void(Json report)> run);
 
-        // When a top-level call has completed (post it to the main thread: never from inside
-        // a handler). Takes the changes stamped inside [start, end] as the tool's own.
-        void afterCall(McpContext& ctx, const std::string& tool,
-                       std::chrono::system_clock::time_point start, std::chrono::system_clock::time_point end);
+        // When a top-level call has completed, before its result is sent (main thread, never
+        // from inside a handler). Takes what changed since the pick-up before it as the tool's
+        // own, except changes stamped before `start` (when its handler started).
+        void afterCall(McpContext& ctx, const std::string& tool, std::chrono::system_clock::time_point start);
 
         // A call that may write files starts its handler (McpServer; afterCall ends it): while one
         // runs, the hot reload holds the watcher's batches, so the call's writes reload once,
@@ -127,6 +137,12 @@ namespace jasperengine::editor::mcp {
         struct Stamp {
             int64_t mtime = 0;     // ns since the Unix epoch
             uint64_t size = 0;
+            bool racy = false;     // read less than 2 s after its mtime: verified by `hash`
+            uint64_t hash = 0;     // of the content, while racy (0: not read yet)
+        };
+        struct DirStamp {
+            int64_t mtime = 0;
+            bool racy = false;     // read less than 2 s after its mtime: the scan lists it again
         };
         using FileMap = std::map<std::string, Stamp>;   // project-relative generic path -> stamp
         struct Change {
@@ -144,7 +160,6 @@ namespace jasperengine::editor::mcp {
 
         int writingCalls = 0;                      // callStarted() without afterCall yet
         uint64_t journalCursor = 1;                // the file watcher's journal, next to read
-        std::deque<std::pair<int64_t, int64_t>> toolWindows;   // recent writing calls' [start, end] (ns)
         std::string lastSource = "scan";           // what the last pick-up read: watcher or scan
         size_t heldAtCall = 0;
         std::chrono::steady_clock::time_point lastCallStart{};
@@ -153,10 +168,12 @@ namespace jasperengine::editor::mcp {
         bool startupBaselineTaken = false;
         FileMap code;                              // Lua, C++, shaders, materials, .html/.htm/.css
         FileMap assets;                            // images, fonts, .json/.lottie
-        std::map<std::string, int64_t> dirs;       // project-relative folder ("" = root) -> mtime
+        std::map<std::string, DirStamp> dirs;      // project-relative folder ("" = root) -> stamp
         std::map<std::string, std::filesystem::path> linkedFolders;   // the links entered -> where each leads
         bool entersFolder(const std::filesystem::directory_entry& entry, const std::string& rel);
         std::vector<std::string> hot;              // recently changed files, newest last
+        // The racy files, by mtime: what a scan or a pick-up verifies (entries go stale, verifyRacy drops them)
+        std::set<std::pair<int64_t, std::string>> racyFiles;
         std::string dirCursor, codeCursor, assetCursor;
 
         // Found by a settle scan but older than the call: reported by the next call
@@ -184,6 +201,11 @@ namespace jasperengine::editor::mcp {
         FileMap& mapFor(const std::string& rel);
         bool insideSkippedDir(const std::string& rel) const;
         void restamp(const std::string& rel);
+        // The stamp of a file just stat'ed at `readNs` (with its hash when racy)
+        void record(const std::string& rel, int64_t mtime, uint64_t size, int64_t readNs);
+        // Racy files whose stat did not move: another content is a modification. Within a time
+        // budget, newest first (at least MIN_ITEMS).
+        void verifyRacy(std::vector<Change>& changes, double budgetMs);
 
         static void merge(std::map<std::string, Pending>& into, const std::string& rel, char kind, bool report, uint64_t sequence = 0);
         // syncFiles' problems as reported ({path, line?, message} + the UI keys when present)
@@ -192,9 +214,10 @@ namespace jasperengine::editor::mcp {
         static void addUiReport(Json& report, const Json& reloaded, int current);
         // Runs the sync_files pick-up on the changes; the report (null if none is reportable)
         Json process(McpContext& ctx, const std::vector<Change>& changes);
-        // The file watcher's changes since the last call (its journal, after a flush); false
-        // when it does not run, is degraded, fell behind or the flush timed out (the scan then)
-        bool takeJournal(std::vector<Change>& found);
+        // The file watcher's changes since the last read (its journal, after a flush); false
+        // when it does not run, is degraded, fell behind or the flush timed out (the scan then).
+        // `settling`: for a call's settle, which also scans where the flush is not a mere drain.
+        bool takeJournal(std::vector<Change>& found, bool settling);
     };
 
 }

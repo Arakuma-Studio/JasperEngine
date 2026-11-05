@@ -81,7 +81,9 @@ it saves. That call's result carries `external_changes`:
      problems: [{path, line, message}], ...}
 
 `source` says whether the change came from the watcher's journal or from the stat scan used when
-the watcher is off or degraded. The call waits up to 10 s for the reloads it started; what still
+the watcher is off or degraded. A file written once a call's result has arrived is reported by the
+next call, however soon and whatever its timestamp; a file another program writes while a tool call
+runs, stamped during that call, is taken for the tool's own. The call waits up to 10 s for the reloads it started; what still
 reloads is in `pending`. A reload that failed is a problem (the previous version is kept). A
 change the watcher already reloaded before the call is reported once and reloaded once, with
 the problems that reload found; the HTML UI documents it reloaded are in `ui_reloaded` when the

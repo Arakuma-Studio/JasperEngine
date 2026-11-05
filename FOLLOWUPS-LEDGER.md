@@ -59,14 +59,14 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
-| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Ready at `af2ddb2a3`; in the second full suite |
-| S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Ready at `ce69a75c4`; in the second full suite |
+| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Done |
+| S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Done |
 | S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
 | S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | Done |
 | S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | Done |
-| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B, A | Ready at `db9d3e129`; in the second full suite |
+| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B, A | Done |
 | S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | Done |
 | S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | Done |
 | S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | Done |
@@ -77,7 +77,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
-| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Ready at `2b87a7e4e`; in the second full suite; iOS run waits for the Mac |
+| S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Done, except the iOS run, which waits for the Mac |
 | S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | Ready at `0ccbbf001`, after S37 and the full suite; R31 re-measured after S38 |
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | In progress: M1-M4 committed, M5-M6 left |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | M5 needs S36 M1; merges with S62 (same file) | In progress |
@@ -129,6 +129,11 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 ## Done
 
 - S67: Android and iOS packaging really run. Fixed: prebuilt iOS games never linked; exported `gradlew` was not executable; EC bundles could not sign; `android-emulator-test.sh` emptied its own expectations, so earlier passes without `--scene` proved less. Android release and development APK and AAB install, run, golden 0.00%. iOS simulator, both flavours, golden 0.00%. Eval 2/2, 0/2 without its text. Open: a signed IPA needs an Apple account; a source export's debug build fails the emulator's GLES check with `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` although its picture matches at 0.00% (emulator's driver suspected, not proven; check on a real phone); Gradle source exports use the debug key; iOS not rerun on the final merge, which touched none of its files.
+- Second full suite, on `88090c2da` (`main`, S38, S63, S64, S70): unit tests 2909 core and 2984 editor, 0 failed, 0 skipped. MCP 1578 passed, 9 failed, 0 skipped. Rerun whole on B: 48 passed, 6 failed. Of those, `test_render_perf` and `test_scene_view_ui` pass one at a time (13/13); `test_normal_recording` was the new-project limiter, and now pins a no-limiter project; three `test_root_attacks` failures are on `fix/root-attack-meta`. The landed tree differs from the tested one only by that test and this ledger.
+- S38: new projects get a true-peak limiter at -1 dBTP, a -18 LUFS target and a linear output stage; a project without them records `main`'s audio bit for bit, pinned by a test. Eval 2/2, 0/2 without its text. Open: iOS packaging with the limiter; the `ambient` session on a real device; the removal of 4 dead fields not yet confirmed on Clang.
+- S70: a writing call answers after its settle; racy stamps are checked by content. Red 1 passed, 11 failed on `main`'s behaviour; 20/20 clean under load. Found and fixed a hang with file pickers. Open: Windows and macOS inferred; `test_playhead_shortcuts_while_focused` depends on earlier tests.
+- S64: `get_build_info`, `generate_shaders`, Play and export share one complete shader list, cached by file hash. Worst call 0.97 ms against 50 ms. Eval 4/4, 0/4 without `shaders_job_id`.
+- S63: saved files do not depend on draw history: 45 of 45 scenes match, from 42 differing. Ten cases fixed. Open: no control shows a clamped weather map draws differently; no sprite goldens exist, so sprites rest on the new `SpriteFramesGpu` tests.
 - S69: all 71 modal dialogs go through `EditorModal`, kept so by a lint. `editor_status` reports title, message, choices and fields; `respond_dialog` takes `values`; headless file pickers take `values.path`. Fixed: Loading closing a dialog opened once (red first). Eval 12/12, against 0/2, 0/4, 0/2 on `main`'s surface. Two screenshots byte-identical to `main`. Open: many modal sites are not driven by a test (the test's table gives reasons); windowed native pickers are reported but cannot be answered; web and Android not built for it.
 - S68: linked folders behave like normal folders. Every export mode ships them; one file has one GUID; a link out of the project is a normal folder. A real desktop game and a web game load a linked texture and Lua module; macOS ASan 68/68; eval 2/2 and 0/2 without its text. Red on the control editor: 8 failed. Open: iOS export not run; Windows junctions by reading only; MCP write tools stay refused through links out.
 - First full suite, on `eb9f93aca` (`main`, S68, S69, lock crash): 1528 passed, 22 failed, 0 skipped; unit tests 2885 core and 2946 editor, 0 failed. With the module-off fix, the failed files rerun whole: 139 passed, 3 failed; those three files one at a time: 35 passed, 0 failed. `test_animation_properties_export` passed in the H rerun. `test_golden_resave` only timed out at 1800 s and was not rerun here; S63 passes it on its branch. The final merge had a WERROR build and `test_protocol`, `test_editor_modals` and both linked-folder files: 47 passed, 1 slow test skipped.
@@ -176,3 +181,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: S73 landed. H and the Mac unreachable since about 04:50 UTC; agents on A and B.
 - 2026-11-05: S68 and S69 landed after the first full suite. Second full suite next: S63, S64, S70, S38, on `main`.
 - 2026-11-05: Second full suite started on `88090c2da` (`main`, S38, S63, S64, S70) on A and B, since H is down. Logs in `je-remote/logs/full-88090c2da`. S37 and S36 merge `main` after these land.
+- 2026-11-05: S38, S63, S64 and S70 landed. Next: `fix/root-attack-meta`, then S37 and S36 merge `main`, then a third full suite.

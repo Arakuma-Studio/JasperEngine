@@ -69,7 +69,6 @@ namespace jasperengine::editor {
         std::string sourceKey, cookedKey, compositeKey;
         std::shared_ptr<PreviewJob> sourceJob, cookedJob;
         PreviewImage source, cooked;
-        int sourceLevels = 1, cookedLevels = 1;
         Texture previewTexture;
         int previewSerial = 0;
         int previewWidth = 0, previewHeight = 0;

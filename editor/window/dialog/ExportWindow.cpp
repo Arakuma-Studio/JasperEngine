@@ -129,15 +129,19 @@ const char* ExportWindow::localExportMode() const {
 }
 
 void ExportWindow::refreshShaderSelection() {
-    // Stored keys are refreshed on scene save; include live components added since then.
+    // The list a build ships before this window's picks (Project::refreshClosedSceneShaderKeys):
+    // closed scenes as their files are now; what takes longer than a blink goes on in
+    // drawShaderSection, a scene a frame
     std::set<ShaderKey> sceneKeys;
     if (m_project) {
-        for (const auto& scene : m_project->getScenes()) {
-            std::set<ShaderKey> keys = scene.shaderKeys;
-            m_project->collectSceneShaderKeys(&scene, keys);
-            m_project->collectRequiredShaderKeys(&scene, keys);
-            for (ShaderKey key : keys) sceneKeys.insert(ShaderPool::normalizeKey(key));
+        if (!m_project->isGeneratedExportRunning()) {
+            ShaderListLimit limit;
+            limit.maxMillis = 100;
+            m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(limit);
         }
+        std::set<ShaderKey> collected;
+        m_project->collectBuildShaderKeys(collected);
+        sceneKeys = m_project->finishBuildShaderKeys(collected, {}, {});
     }
 
     std::set<ShaderKey> keys = sceneKeys;
@@ -849,6 +853,10 @@ void ExportWindow::drawShaderSection() {
 
     ImGui::Spacing();
 
+    if (!m_shaderListStatus.complete()) {
+        ImGui::TextDisabled("Reading %d closed scene(s) for this list...", (int)m_shaderListStatus.pendingScenes.size());
+    }
+
     ImGui::BeginChild("ShaderList", ImVec2(0, Theme::dpi(160.0f)), true);
     {
         for (int i = 0; i < (int)m_shaderEntries.size(); i++) {
@@ -1043,6 +1051,16 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         drawBackendSection();
     }
 
+    // a scene a frame, unfolded or not: a scene it cannot read is shown below, outside the section
+    if (m_project && !m_shaderListStatus.complete() && !m_project->isGeneratedExportRunning()) {
+        ShaderListLimit oneScene;
+        oneScene.maxScenes = 1;
+        m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(oneScene);
+        if (m_shaderListStatus.complete()) {
+            refreshShaderSelection();
+        }
+    }
+
     if (Theme::foldoutHeader("Shaders")) {
         drawShaderSection();
         ImGui::Spacing();
@@ -1072,6 +1090,10 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     }
     if (targetNotEmpty) {
         ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " The output directory is not empty: existing files will be overwritten");
+    }
+    for (const UnreadableScene& scene : m_shaderListStatus.unreadableScenes) {
+        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Cannot read scene %s: its shaders may be missing from the build", scene.path.c_str());
+        ImGui::SetItemTooltip("%s\nThe shader list holds what it last knew of this scene.", scene.error.c_str());
     }
 
     bool hasSavedScenes = false;

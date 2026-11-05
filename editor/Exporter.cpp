@@ -1196,37 +1196,12 @@ void editor::Exporter::resolveShaderKeys() {
             keys.insert(ShaderPool::normalizeKey(key));
         }
     } else {
-        // each scene's saved keys and, where it is loaded, what its objects were loaded with
-        // and what its content needs now (a save writes no loaded state: Project::
-        // collectSavedShaderKeys), as the Export window and MCP's build list them
-        for (const auto& sceneProject : project->getScenes()) {
-            std::set<ShaderKey> sceneKeys = sceneProject.shaderKeys;
-            project->collectSceneShaderKeys(&sceneProject, sceneKeys);
-            project->collectRequiredShaderKeys(&sceneProject, sceneKeys);
-            for (ShaderKey key : sceneKeys) {
-                keys.insert(ShaderPool::normalizeKey(key));
-            }
-        }
+        // the list every consumer shares (Project::collectBuildShaderKeys): each scene's saved
+        // keys and, where it is loaded, what its objects were loaded with and what its content needs
+        // now (a save writes no loaded state: Project::collectSavedShaderKeys)
+        project->collectBuildShaderKeys(keys);
     }
-    // what every build ships (the FLATTEN Canvas Group composite), whatever the scenes hold
-    std::set<ShaderKey> required;
-    ShaderVariantCollector::addBuildRequiredKeys(required);
-    for (ShaderKey key : required) {
-        keys.insert(ShaderPool::normalizeKey(key));
-    }
-    for (ShaderKey key : config.shaderAdditions) {
-        keys.insert(ShaderPool::normalizeKey(key));
-    }
-    // the shader warm-up list's variants (spec S32 R11): what Play used ships, even when no scene
-    // records it (a material a script swaps in)
-    if (project->getShaderCreationSettings().includeInBuilds && loadShaderWarmup()) {
-        for (ShaderKey key : ShaderWarmup::getShaderKeys()) {
-            keys.insert(ShaderPool::normalizeKey(key));
-        }
-    }
-    for (ShaderKey key : config.shaderExclusions) {
-        keys.erase(ShaderPool::normalizeKey(key));
-    }
+    keys = project->finishBuildShaderKeys(keys, config.shaderAdditions, config.shaderExclusions);
 
     config.selectedShaderKeys = std::move(keys);
 }
@@ -2262,6 +2237,18 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 project->loadScene(sceneProject.filepath, false, false, true);
 
                 temporarilyLoaded.push_back(sceneProject.id);
+            }
+
+            // A scene that did not load (or that the project only knows by name) is not in this
+            // build as it is now: what it needs comes from its last known list
+            for (const auto& sceneProject : scenes) {
+                if (!sceneProject.filepath.empty() && !sceneProject.scene) {
+                    Out::warning("Scene '%s' (%s) cannot be read: this build uses what it last knew of it, and its shaders may be incomplete.",
+                                 sceneProject.name.c_str(), sceneProject.filepath.generic_string().c_str());
+                }
+            }
+            for (const auto& [position, path] : project->getUnresolvedScenes()) {
+                Out::warning("Scene %s is in the project and cannot be read: it is not in this build.", path.generic_string().c_str());
             }
 
             // Every FBX model needs its current import before the sources describe it
