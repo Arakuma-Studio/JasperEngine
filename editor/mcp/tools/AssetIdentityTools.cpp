@@ -258,7 +258,18 @@ void listMissingAssetsTool(const CallPtr& call) {
         for (const Json& group : missing) {
             text += "\n" + group["last_path"].get<std::string>() + " (" + std::to_string(group["referrers"].size()) + " reference(s))";
         }
-        call->ok(text, Json{{"missing", missing}, {"resolved_by_path", healed}, {"orphan_metas", orphans}});
+        Json result{{"missing", missing}, {"resolved_by_path", healed}, {"orphan_metas", orphans}};
+        // only when a linked folder can't be written: a project without one reads as it did
+        if (!openOnly && !tracker.getReadOnlyLinked().empty()) {
+            result["read_only_linked"] = tracker.getReadOnlyLinked();
+            // named here: a client like Claude Code shows the model this text of a result like this one
+            constexpr size_t SHOWN = 20;
+            const std::vector<std::string>& readOnly = tracker.getReadOnlyLinked();
+            text += "\n" + std::to_string(readOnly.size()) + " asset(s) in a read-only linked folder (they work; their GUIDs are not saved beside them):";
+            for (size_t i = 0; i < std::min(readOnly.size(), SHOWN); i++) text += "\n" + readOnly[i];
+            if (readOnly.size() > SHOWN) text += "\n... and " + std::to_string(readOnly.size() - SHOWN) + " more";
+        }
+        call->ok(text, result);
     });
 }
 

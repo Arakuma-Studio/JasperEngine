@@ -23,6 +23,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import harness
 from harness import Editor, REPO
 
 EDITOR = {"project": REPO / "tools" / "fixtures" / "pose-animation", "xvfb": "harness", "ui_probe": True}
@@ -404,3 +405,25 @@ async def test_animator_window_live_parameters(ed: Editor):
         ed.check_eq((ed.project / CONTROLLER).read_text(), S["text"], "the file is unchanged")
     finally:
         await ed.call("play", action="stop")
+
+
+async def test_delete_goes_to_the_window_not_the_scene(ed: Editor):
+    """S61 AC2: Delete with a state selected removes the state, never the selected Hero."""
+    ui = Ui(ed)
+    await ed.call("select_entities", entities=["Hero"])
+    heroes = len(harness.find_key(await ed.call("find_entities", name="Hero*"), "entities") or [])
+    await ed.call("focus_window", window="animator")
+    await ui.focus_x()
+    await ed.call("wait", frames=10)
+    names = [state["name"] for state in controller_states(await controller(ed))]
+    ed.check(len(names) > 1, f"states to delete: {names}")
+    last = await ui.item(f"animator.state.{len(names) - 1}")
+    await ui.click(*center(last))
+    await ui.frames(6)
+    await ui.key("Delete")
+    await ui.frames(10)
+    ed.check_eq([state["name"] for state in controller_states(await controller(ed))], names[:-1], "Delete removed the selected state")
+    ed.check_eq(len(harness.find_key(await ed.call("find_entities", name="Hero*"), "entities") or []), heroes, "Hero survives")
+    await ed.call("undo", scope="project")
+    await ui.frames(10)
+    ed.check_eq([state["name"] for state in controller_states(await controller(ed))], names, "one undo step")

@@ -22,6 +22,7 @@
 #include "window/vcs/VcsOverlay.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 
@@ -119,14 +120,17 @@ void VcsUi::drawDialogs() {
     bool close = false;
     std::function<void()> chosen;
     ImGui::SetNextWindowSizeConstraints(ImVec2(Theme::dpi(320.0f), 0.0f), ImVec2(Theme::dpi(640.0f), FLT_MAX));
-    if (ImGui::BeginPopupModal(popupId.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin(popupId.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message(dialog.message);
         ImGui::PushTextWrapPos(Theme::dpi(600.0f));
         ImGui::TextUnformatted(dialog.message.c_str());
         ImGui::PopTextWrapPos();
         ImGui::Spacing();
         for (size_t i = 0; i < dialog.choices.size(); i++) {
             if (i > 0) ImGui::SameLine();
-            if (ImGui::Button(dialog.choices[i].first.c_str())) {
+            // a null action is the Cancel of ask(); the others answer by their label's words
+            const std::string choice = dialog.choices[i].second ? EditorModal::choiceOf(dialog.choices[i].first) : std::string("cancel");
+            if (EditorModal::button(dialog.choices[i].first.c_str(), choice.c_str())) {
                 chosen = dialog.choices[i].second;
                 close = true;
             }

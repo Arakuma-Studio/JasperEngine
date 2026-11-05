@@ -32,6 +32,10 @@
 #include <random>
 #include <sstream>
 #include <thread>
+#include "Catalog.h"
+#include "htmlui/HttpClient.h"
+#include "window/widget/InputTextContextMenu.h"
+#include "htmlui/compat/css/RewriteSession.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN

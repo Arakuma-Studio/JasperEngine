@@ -6,9 +6,11 @@
 
 #include "SubSystem.h"
 #include <functional>
+#include "render/ViewDrawMode.h"
 #include <string>
 #include <vector>
 #include "AtmosphereRenderer.h"
+#include "RenderSystemLighting.h"
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/ModelComponent.h"
@@ -29,6 +31,7 @@
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
 #include "render/ObjectRender.h"
+#include "render/VisibleList.h"
 #include "render/CameraRender.h"
 #include "render/BufferRender.h"
 #include "render/FramebufferRender.h"
@@ -404,6 +407,13 @@ namespace jasperengine{
 		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
 		// fog, volumetric clouds)
 		bool atmosphereDepth = false;
+		// S57 (RenderSystemLighting.cpp): the pixel lights come from screen tiles ('Til'), the
+		// shadowed lit variants take capsule ('Cap') and contact ('Cts') shadows (contact shadows
+		// need every opaque mesh's depth program), alpha-blended submeshes an OIT render ('Oit')
+		bool tiledLights = false;
+		bool capsuleShadows = false;
+		bool contactShadows = false;
+		bool oit = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -560,7 +570,15 @@ namespace jasperengine{
 		PbrVariant pbr;
 	};
 
+	// The automatic GPU instancing variants of a submesh (spec S55 R1): its colour and depth
+	// variants with HAS_AUTO_INSTANCING ('Aui'), each 0 when the submesh draws alone in those passes
+	struct SubmeshBatchVariant {
+		uint64_t properties = 0;        // ShaderType::MESH
+		uint64_t depthProperties = 0;   // ShaderType::DEPTH
+	};
+
 	class FluidSystem;
+
 
 	class JASPERENGINE_API RenderSystem : public SubSystem {
 		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
@@ -599,6 +617,13 @@ namespace jasperengine{
 			TrailRendererComponent* trail = nullptr;
 		};
 
+		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
+		enum class LodFadePass : uint8_t{
+			ALL,    // all: single meshes as planned, an instance view's plain and dominant copies
+			PLAIN,  // no fading draw: the depth pre-pass, an instanced mesh's first queue entry
+			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
+		};
+
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
 		struct OpaqueRenderData{
 			Entity entity;
@@ -612,6 +637,18 @@ namespace jasperengine{
 			int sortPriority;
 			// submission (transform) order: equal priority and distance draw in it
 			uint32_t order;
+			// cross-fading detail levels (spec S54 R6): drawn after the others, with the discard
+			// variant (the plan of the view's last frame: only the order depends on it)
+			bool fading = false;
+			// an instanced mesh with fade copies has two entries: its plain draws, its fading ones
+			LodFadePass lodPass = LodFadePass::ALL;
+			// with GPU Instancing (spec S55): the submeshes this entry draws (one each for a mesh
+			// that can batch; the rest of a mesh in one entry) and the batch key its draws group by
+			// (VisibleList::groupBatches; 0: it batches with nothing); all and 0 without
+			uint32_t submeshMask = 0xFFFFFFFFu;
+			uint64_t batchKey = 0;
+			// its bounds were culled by the visible list (drawMesh does not test them again)
+			bool preCulled = false;
 		};
 
 		// One merged run of tilemap indices to draw, in elements relative to the
@@ -633,12 +670,16 @@ namespace jasperengine{
 			}
 		};
 
-		// draw order of the opaque queue of a 3D pass: the lowest sort priority, then the
-		// nearest, then the submission order
+		// draw order of the opaque queue of a 3D pass: the lowest sort priority, then the meshes
+		// that do not fade (the discard of fading ones turns off early depth and hidden surface
+		// removal for their draws only, so they come after: Apple, PowerVR and Arm's order), then
+		// the nearest, then the submission order
 		struct OpaqueRenderComparison{
 			bool operator()(const OpaqueRenderData& lhs, const OpaqueRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
+				if (lhs.fading != rhs.fading)
+					return !lhs.fading;
 				if (lhs.distanceToCamera != rhs.distanceToCamera)
 					return lhs.distanceToCamera < rhs.distanceToCamera;
 				return lhs.order < rhs.order;
@@ -649,6 +690,18 @@ namespace jasperengine{
 		// face), kept between passes so a pass allocates nothing once they have grown
 		std::vector<OpaqueRenderData> opaqueQueue;
 		std::vector<TransparentRenderData> transparentQueue;
+		// what the mesh draws of the pass being drawn make of the LOD cross-fade
+		LodFadePass passLodFade = LodFadePass::ALL;
+		// a pass's visible list (spec S55 R4): its candidates and their results, kept between
+		// passes like the queues
+		std::vector<VisibleCandidate> visibleCandidates;
+		std::vector<VisibleResult> visibleResults;
+		std::vector<OpaqueRenderData> visibleEntries;
+		std::vector<int> visiblePriorities;
+		std::vector<uint64_t> visibleKeys;
+		std::vector<uint32_t> visibleOrder;
+		// the depth passes' lists (renderOpaqueDepth, a shadow slot's casters)
+		std::vector<OpaqueRenderData> depthQueue;
 
 		struct SpotMaskAtlasEntry{
 			std::string sourceId;
@@ -824,16 +877,29 @@ namespace jasperengine{
 			ExternalBuffer vatBuffer;
 			size_t vatCapacity = 0;
 			bool needUpload = false;
+			// the GPU buffers hold data: false while an upload was refused (past the frame's stream
+			// budget, tried again next frame), when its instances are not drawn rather than drawn
+			// from what the buffer held before (spec S55 R6)
+			bool current = true;
 		};
 		bool instanceViewsDirty;
 
-		// error a view hides at a distance: threshold * (perUnit * distance + constant)
+		// error a view hides at a distance: threshold * (perUnit * distance + constant) / bias
 		struct LodView{
 			Vector3 origin;
 			float perUnit = 0;   // perspective: units per pixel at distance 1
 			float constant = 0;  // orthographic: units per pixel
 			float threshold = 1;
+			float bias = 1;      // the project's and device tier's LOD Bias (QualityResolver), times each mesh's
+			float viewHeight = 1; // pixels (Cull Below Screen Height)
 			bool enabled = false;
+			// a camera view whose plan fades (planMeshLod): the main camera of draw() or of an
+			// editor view; shadow, probe and other cameras select one level, statelessly
+			bool fades = false;
+			bool crossFade = false;  // the scene's Cross Fade
+			float fadeDuration = 0.5f;
+			float fadeDeltaTime = 0;  // the fade clock's seconds since the view's last frame
+			uint64_t frame = 0;       // the view's frame, from 1
 		};
 
 		// where a pass keeps a UI element's clip rect: the RectTransform's own in draw()
@@ -955,6 +1021,9 @@ namespace jasperengine{
 			uint64_t instanceBuild = 0;
 			uint64_t instanceRevision = 0;
 			uint64_t instanceShadowHash = 0;
+
+			// its screen-tile light lists (Light Mode Tiled; null until a Tiled pass draws)
+			std::unique_ptr<TiledLightsView> tiledLights;
 
 			// draw count it was last prepared in (unused ones are freed)
 			uint64_t lastUsed = 0;
@@ -1084,6 +1153,15 @@ namespace jasperengine{
 		struct RenderView{
 			InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
 			LodView lodView;
+			// the detail levels this view drew: the frame being drawn, and the last one done
+			LodFrameStats lodStats;
+			LodFrameStats lodStatsDone;
+			// the fade clock's reading at the view's last frame (planMeshLod)
+			double lodClock = -1.0;
+#ifdef JASPERENGINE_EDITOR
+			// the fades of a secondary view (the main view's live in MeshComponent::lodFade)
+			std::unordered_map<Entity, MeshLodFade> lodFades;
+#endif
 
 			// lighting and shadow maps of the view camera
 			CameraShadows shadows;
@@ -1098,6 +1176,8 @@ namespace jasperengine{
 			unsigned int ssrWidth = 0;
 			unsigned int ssrHeight = 0;
 			Framebuffer gbufferFramebuffer;    // MRT: color[0] packed depth, color[1] view-space normal/roughness/metallic
+			// the contact shadows' mask and the OIT targets of its main camera (null: none drawn)
+			std::unique_ptr<LightingViewTargets> lightingTargets;
 			Framebuffer sceneColorFramebuffer; // offscreen opaque scene color (top-left)
 			Framebuffer ssrFramebuffer;        // reflection color + mask (logical orientation)
 			Framebuffer ssrBlurFramebuffer;    // glossy-blurred reflection
@@ -1173,6 +1253,8 @@ namespace jasperengine{
 			bool disableFog = false;
 			// its camera passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
+			// the Scene view's Draw Mode (ViewDesc::drawMode)
+			ViewDrawMode drawMode = ViewDrawMode::SHADED;
 			// the view's copy of its camera, sized for the view: the scene's camera
 			// component is never touched (it may be drawn by the frame or another view)
 			CameraComponent camera;
@@ -1305,7 +1387,10 @@ namespace jasperengine{
 			unsigned int instanceCount = 1;
 			unsigned int instanceFirst = 0;
 			unsigned int vatFirst = 0;     // the first instance's Vertex Animation state
+			// the level a pass drawing one level draws (the plan's dominant one)
 			unsigned int lod = 0;
+			// the view's plan (planMeshLod): a fading one draws both levels in the colour pass
+			LodDraw plan;
 		};
 		Entity activeReflectionProbe = NULL_ENTITY;
 		// the scene's sky: its first SkyboxComponent, as last loaded (another one leads the
@@ -1437,6 +1522,27 @@ namespace jasperengine{
 		void setShadowDebug(const ShadowDebugSettings& settings);
 		const ShadowDebugSettings& getShadowDebug() const{ return shadowDebug; }
 		const ShadowStats& getShadowStats() const{ return shadowStats; }
+
+		// S57's lighting this update and its last frame (get_render_stats "lighting")
+		struct LightingStats{
+			LightMode lightMode = LightMode::AUTOMATIC;   // the project's
+			LightingTier tier = LightingTier::HIGH;
+			bool tiledLights = false;
+			int tileColumns = 0;
+			int tileRows = 0;
+			bool tileStatsValid = false;
+			TiledLights::Stats tiles;
+			bool capsuleShadows = false;
+			int capsuleCasters = 0;
+			int capsules = 0;
+			bool contactShadows = false;
+			int contactWidth = 0;
+			int contactHeight = 0;
+			bool oit = false;
+			bool oitFallback = false;
+			int oitDraws = 0;
+		};
+		LightingStats getLightingStats() const;
 		// the shadow quality tier the scene renders with
 		ShadowTier getEffectiveShadowTier() const{ return shadowTier; }
 		// the atlases as a colour image (the Atlas debug view): null unless that view is on
@@ -1512,6 +1618,16 @@ namespace jasperengine{
 		// per-draw scratch of drawMesh
 		object_lights_t objectLightsBlock;
 		fs_lighting_t legacyLightingBlock;
+		// S57: the fragment block of a Tiled variant, the capsule and contact shadows' block and
+		// what the scene's lighting features are this update
+		tiled_object_lights_t tiledObjectLightsBlock;
+		light_occlusion_t lightOcclusionBlock;
+		LightingFeatureState lighting;
+		// the camera pass being drawn: its contact mask (null: white), whether it draws OIT
+		TextureRender* passContactMask = nullptr;
+		bool passOit = false;
+		// a Capsule Shadow Caster set to Capsules Only was applied to the meshes
+		bool capsuleShadowsOnlyMarked = false;
 		fs_lighting2d_t fs_lighting2d;
 		fs_fog_t fs_fog;
 		// the height fog of the camera pass being drawn (u_fs_heightFog), and the atmosphere:
@@ -1683,6 +1799,10 @@ namespace jasperengine{
 		uint64_t postProcessGlobalsVersion = 0; // ShaderGlobals version the pass values bind
 		// the scene's PostProcessingSettings changed since they were applied (phase 4)
 		bool postProcessingDirty = true;
+		// the QualityResolver revision the post-processing tiers, the LOD picks and the SSAO
+		// variants follow (a device tier, a thermal step)
+		uint32_t qualityRevisionSeen = 0;
+		bool qualitySSAO = false;
 		// what the applied settings turn on (getPostProcessingTiers), and their colour LUTs
 		PostProcessingTiers postTiers;
 		// MeshShaderEnvironment::postColor the objects load with (the variant bit)
@@ -1768,8 +1888,18 @@ namespace jasperengine{
 		// which submeshes a drawMesh / drawMeshDepth call draws: a split mesh
 		// (MeshComponent::splitQueues) draws its opaque ones in the opaque queue and the
 		// depth pre-passes, its blended ones in the transparent queue
-		enum class SubmeshQueue { ALL, OPAQUE, TRANSPARENT };
+		// OIT: an OIT camera's accumulation pass (its submeshes with an OIT render; the other
+		// queues leave them out while passOit)
+		enum class SubmeshQueue { ALL, OPAQUE, TRANSPARENT, OIT };
 		SubmeshQueue passSubmeshQueue = SubmeshQueue::ALL;
+		// the submeshes the draw being made draws (a visible list's entry: OpaqueRenderData::
+		// submeshMask), and whether that list culled it already (spec S55 R4: drawMesh and
+		// drawMeshDepth test the frustum again otherwise)
+		uint32_t passSubmeshMask = 0xFFFFFFFFu;
+		bool passPreCulled = false;
+		// the GPU Instancing setting the meshes were loaded with (a change reloads them: the
+		// batch variants are only loaded while it is on)
+		bool loadedGpuInstancing = true;
 		// the camera pass being drawn: its block and textures (null: the neutral fallbacks)
 		scene_inputs_t passSceneBlock;
 		TextureRender* passSceneDepth = nullptr;
@@ -1875,6 +2005,52 @@ namespace jasperengine{
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
 		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;
+
+		//-----S57 lighting (RenderSystemLighting.cpp)-----
+		// what the variants take this update (Light Mode, capsule and contact shadows, OIT): a
+		// change reloads them
+		void updateLightingFeatures();
+		// after the scene lights: the Capsules Only meshes, the nearest casters' capsules and the
+		// lights taking capsule and contact shadows (their spot_shadow.w bits 12 and 13)
+		void updateLightingOcclusion(const Transform& mainCameraTransform);
+		int lightOcclusionBits(int sceneLight) const;
+		// the object's lights of a variant into its blocks (the Tiled form for 'Til')
+		void applyObjectLights(ObjectRender& render, int slotVS, unsigned int sizeVS, int slotFS, unsigned int sizeFS,
+		                       const MeshComponent& mesh, uint64_t properties, uint32_t& builtLightBits);
+		// a submesh variant's S57 blocks and textures: resolved at load, bound per draw
+		void loadLightingFeatureSlots(Submesh& submesh, ShaderData& shaderData);
+		void applyLightingFeatures(Submesh& submesh, ObjectRender& render, const MeshComponent& mesh);
+		// the Hair shading model's values into a lobe variant's u_fs_pbrParams
+		void writePbrHairBlock(const Submesh& submesh, unsigned char* block, size_t size) const;
+		// the screen-tile lists of the pass being drawn: the job started (begin) once its view is
+		// known, the texture uploaded before the colour pass (finish; synchronous: both)
+		void beginTiledLights(CameraShadows& target, const CameraComponent& camera, const Transform& cameraTransform,
+		                      const Rect& viewport, unsigned int targetHeight, bool flipped);
+		void finishTiledLights(CameraShadows& target);
+		// the contact shadows' mask of the main camera from its packed depth (null: none)
+		TextureRender* renderContactShadows(CameraComponent& camera, TextureRender* depth, unsigned int width, unsigned int height);
+		// the block of the pass's capsule and contact shadows, before its colour pass
+		void fillLightOcclusion(const Rect& colorViewport, unsigned int targetHeight, bool flipped);
+		// OIT: whether this colour pass draws it (supported, a target with depth to share), the
+		// accumulation pass of its OIT submeshes and its resolve over the colour pass
+		bool usesOit(const CameraComponent& camera, int msaaSamples) const;
+		bool hasOitDraws(const std::vector<TransparentRenderData>& renders);
+		bool renderOitAccumulation(CameraComponent& camera, Transform& cameraTransform, FramebufferRender* colorTarget, int msaaSamples,
+		                           const Rect& viewport, bool viewportApplied, const std::vector<TransparentRenderData>& renders,
+		                           int terrainView, int instanceView, const LodView* lodView);
+		void drawOitResolve(PipelineType colorPip, int msaaSamples);
+		// an alpha-blended submesh's OIT render (loadMesh, after its colour render), and its release
+		bool loadSubmeshOit(MeshComponent& mesh, unsigned int submeshIndex, uint64_t colorProperties, uint16_t customShaderId,
+		                    const RenderState& colorState, bool transparentQueue);
+		void finishSubmeshOit(Submesh& submesh);
+		void releaseSubmeshOit(Submesh& submesh);
+		bool drawsOit(const Submesh& submesh) const;
+		// frees what the features left unused (their targets, passes and programs)
+		void releaseLightingFeatures(bool all);
+		// asks for the fullscreen programs of the features on (contact shadows, the OIT resolve)
+		// the frame they turn on, so the scene's load waits for them (lightingPassesLoading)
+		void requestLightingPasses();
+		bool lightingPassesLoading() const;
 		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
 		// filled by updatePassFrame after the contract members (fillFrameBlock)
 		void fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const;
@@ -2108,6 +2284,7 @@ namespace jasperengine{
 			LodAttribute index;
 			LodAttribute normal;
 			LodAttribute uv;
+			LodAttribute skinWeights;
 		};
 		void updateMeshLods(Entity entity, MeshComponent& mesh, bool rehash);
 		static LodAttribute findSubmeshAttribute(Submesh& submesh, std::map<std::string, Buffer*>& buffers, AttributeType type);
@@ -2133,6 +2310,54 @@ namespace jasperengine{
 		                          const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits);
 		// the vertex attributes of the submesh (its buffers, its own attributes, the instance
 		// buffer) bound to a render; the index count when indexed, else the mesh's vertex count
+		// The batch variants (spec S55 R1): their shaders asked for with the submesh's others
+		// (their builds start together; a load does not wait for them), then loaded on render's
+		// and depthRender's vertex layouts and linked to them; pending: a shader still building
+		// (the mesh reloads when it is ready, needVariantReload)
+		void requestSubmeshBatchShaders(MeshComponent& mesh, Submesh& submesh, const SubmeshShaderInputs& inputs,
+		                                const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
+		                                const std::string& depthShaderSrc);
+		void loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submesh, uint16_t pipelines, const RenderState& colorState,
+		                              uint16_t depthPipelines, const RenderState& depthState, bool allDepthAttributes, int msaaSamples,
+		                              BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, bool& pending);
+		void releaseSubmeshBatchVariants(Submesh& submesh, bool keepShaders);
+		// the bounds of the vertices a submesh draws (Submesh::localBounds), from its float
+		// positions and indices; shared by the submeshes over the same buffers
+		void updateSubmeshBounds(MeshComponent& mesh);
+		// the submesh's shadow indices (Submesh::shadowIndices), made or found shared
+		std::shared_ptr<ShadowIndexBuffer> shadowIndexBuffer(MeshComponent& mesh, Submesh& submesh);
+		// the shadow indices the depth draw being made draws level 0 with (null: its own)
+		ShadowIndexBuffer* passShadowIndices = nullptr;
+		// The terrain nodes a shadow slot draws (spec S55 R5), as the records of TerrainView's
+		// buffers (position, size, range, resolution) and the eye they morph from
+		struct ShadowTerrainCut{
+			std::vector<float> nodes[2];
+			Vector3 eye;
+		};
+		ShadowTerrainCut shadowTerrainScratch;
+		// the cut of the terrain the shadow caster being drawn has (null: the camera's whole cut)
+		const ShadowTerrainCut* passShadowTerrain = nullptr;
+		// A dynamic terrain caster's cut is the camera's without the nodes outside the slot's
+		// frustum; a static caster's (MeshComponent::staticShadowCaster) is its own from the slot's
+		// light camera, which then depends on the slot alone: the S10 static layer keeps it while
+		// the camera moves
+		ShadowTerrainCut& shadowTerrainCut(Entity entity, TerrainComponent& terrain, Transform& transform, const MeshComponent& mesh,
+		                                   const LightCamera& shadowCamera);
+		// CDLOD selection (terrainNodeLODSelect) from eye inside the frustum, into cut, leaving the
+		// nodes' own state (the camera's selection) as it is
+		bool selectShadowTerrainNode(TerrainComponent& terrain, const Transform& transform, const Vector3& eye, float cameraFar,
+		                             const Plane frustumPlanes[6], TerrainNode& node, int lodLevel, ShadowTerrainCut& cut);
+		// the detail levels of a point light's cube face (as shadowLodView for its atlas)
+		LodView pointFaceLodView(const LightComponent& light, int lightIndex, int face) const;
+		bool usesShadowIndices(const MeshComponent& mesh, const Submesh& submesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain) const;
+		// what the next draw of this object may join (ObjectRender::setNextDrawBatch), when the
+		// draw can batch: the plain pipeline of a batch-variant submesh
+		void offerDrawBatch(ObjectRender& render, ObjectRender& variant, int objectSlot, bool mirrored);
+		// The opaque queue of a pass with GPU Instancing (spec S55 R2, R4), in the order it has: the
+		// entries culled at once (on jobs) against the pass's frustum, mesh then submesh, those of
+		// a mesh that can batch split one per submesh, the draws of one batch key brought together
+		// within their priority (VisibleList::groupBatches); the culled ones counted
+		void buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines);
 		unsigned int bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
 		                                   BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
 		                                   InstancedMeshComponent* instmesh);
@@ -2150,9 +2375,37 @@ namespace jasperengine{
 		void releaseMeshLods(MeshComponent& mesh);
 		static bool isMeshLodPending(Submesh& submesh);
 		void updateMeshLodErrors(MeshComponent& mesh);
-		LodView computeLodView(const CameraComponent& camera, const Transform& cameraTransform) const;
+		LodView computeLodView(const CameraComponent& camera, const Transform& cameraTransform, float viewHeight = 0.0f, bool shadowBias = false) const;
 		void updateMainLodView(CameraComponent& camera, Transform& cameraTransform);
+		// a camera view's next frame: its frame number and fade clock (planMeshLod)
+		void advanceLodView(LodView& view, double& clock);
 		unsigned int selectMeshLod(const MeshComponent& mesh, const LodView* view, float distance, float worldScale) const;
+		// the projected height (pixels) of world bounds in a view, at that distance
+		static float lodScreenHeight(const LodView& view, const AABB& bounds, float distance);
+		// the mesh's plan in a view that fades (once per view frame, every pass of the frame
+		// draws it): its level, a time or distance cross-fade, culled for its size
+		const LodDraw& planMeshLod(Entity entity, MeshComponent& mesh, const LodView& view, float distance, float worldScale);
+		// the fade state of the mesh in the view being drawn
+		MeshLodFade& lodFadeState(Entity entity, MeshComponent& mesh);
+		// whether the mesh may cross-fade at all (the scene's and its settings, a built-in
+		// shader), and whether its fade pipelines are ready now
+		bool canLodFade(const MeshComponent& mesh) const;
+		// a submesh's fade variant (MESH 'Lfd') asked for and checked against its base
+		// variant's bindings (spec S54 §6); false while not ready, or never for this submesh
+		bool prepareSubmeshLodFade(Submesh& submesh, PipelineType pipType, bool mirrored);
+	public:
+		// a LOD fade variant's reflection binds what its base variant's does (checked at load)
+		static bool sameLodFadeBindings(const ShaderData& base, const ShaderData& fade);
+		// a loaded submesh's positions (mesh space) and the triangles of one of its detail levels
+		// over them (the level's indices, or the submesh's own for 0 or a level it lacks); false
+		// when the submesh has no CPU geometry the levels read (the editor's wireframe, captures)
+		static bool readSubmeshLevel(MeshComponent& mesh, unsigned int submeshIndex, unsigned int level,
+		                             std::vector<Vector3>& positions, std::vector<uint32_t>& indices);
+		// what the level builder reads of a loaded submesh (its positions, indices and the
+		// attributes that guide it, decoded to floats); false when it has none to build from
+		static bool readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source);
+	private:
+		void releaseSubmeshLodFade(Submesh& submesh);
 		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;
 		// projective atlas slots the shadow pass of the camera being drawn fills, into shadowSlots
 		const std::vector<ShadowSlot>& collectShadowSlots();
@@ -2189,7 +2442,13 @@ namespace jasperengine{
 		BufferRender* instanceVatBuffer(int instanceView);
 		// the Vertex Animator of every mesh: its variant, payload, u_vs_vat and bounds (once a frame)
 		void updateVertexAnimations();
-		void drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount);
+		// fade: the colour pass's fading draws (the plan's two levels, or an instance view's fade
+		// buckets), else the plan's dominant level and the instance view's plain and dominant copies
+		// beforeLevel (the editor's LOD Level Draw Mode) runs before each level's draw
+		void drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount,
+		                         const std::function<void(unsigned int)>* beforeLevel = nullptr);
+		void drawSubmeshFade(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView,
+		                     const MeshDraw& draw, int slotVSParams, const Matrix4* objectBlock, const std::function<void(unsigned int)>* beforeLevel = nullptr);
 
 		// terrain
 		bool terrainNodeLODSelect(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainNode& terrainNode, int lodLevel, TerrainView& view);
@@ -2220,6 +2479,8 @@ namespace jasperengine{
 		unsigned int lightCascades(const CameraShadows& shadows, int lightIndex, const LightComponent& light) const;
 		const InstanceViewRange& instanceRange(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const;
 		BufferRender* instanceBuffer(int instanceView);
+		// the view whose buffer instanceBuffer gives
+		const InstanceView& instanceViewOf(int instanceView);
 		Vector3 instanceFadeEye(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const;
 		bool isBatchVisible(Entity entity, const MeshComponent& mesh, const Transform& transform, const InstancedMeshComponent* instmesh, int instanceView, const float cameraFar, const Plane frustumPlanes[6]);
 		TerrainView& terrainViewData(Entity entity, TerrainComponent& terrain, int terrainView);
@@ -2491,6 +2752,8 @@ namespace jasperengine{
 		// Editor-only viewport debug override (see member declaration). Free to toggle:
 		// meshes draw with no-culling variants of their pipelines, built once on first use.
 		void setDisableFaceCulling(bool disableFaceCulling);
+		// the Draw Mode of the frame's view (the Scene view in Edit mode; editor only)
+		void setDrawMode(ViewDrawMode drawMode);
 
 		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
 		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's
@@ -2571,6 +2834,18 @@ namespace jasperengine{
 		static SubmeshShaderInputs getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror,
 		                                                  const std::string& sceneMeshShader = std::string());
 		static SubmeshShaderVariant getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		// Its automatic GPU instancing variants (spec S55 R1) while GPU Instancing is on and the
+		// mesh allows it: an opaque submesh of the built-in or a library shader without
+		// skinning, morph targets, a lattice, a Vertex Animation, an extra pass, a texture rect,
+		// a mirror, a terrain or an InstancedMesh, whose vertex inputs leave room for the
+		// instance's vectors (a fork, which keeps its own object block, never batches)
+		// the vertices a submesh's positions hold (its own attribute's, else the mesh buffer's)
+		static unsigned int submeshVertexCount(const MeshComponent& mesh, const Submesh& submesh);
+		// the most vertices of a mesh dynamic batching takes (sprite-batching), which is never instanced
+		static constexpr unsigned int DYNAMIC_BATCH_MAX_VERTICES = 64;
+		static SubmeshBatchVariant getSubmeshBatchVariant(const MeshComponent& mesh, const Submesh& submesh, const SubmeshShaderInputs& inputs,
+		                                                  const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
+		                                                  const std::string& depthShaderSrc);
 		// The lighting mode a submesh draws with: the material's when the shader lists it,
 		// else the shader's default (the first of its manifest's @lighting, NONE without one;
 		// the built-in Lit and forks without a manifest: PIXEL, listing PIXEL, VERTEX, MIXED,
@@ -2788,6 +3063,9 @@ namespace jasperengine{
 		};
 		SceneInputDetails getSceneInputDetails();
 		bool hasPendingMeshLods() const;
+
+		// the detail levels the main view (draw()) drew in its last frame
+		LodFrameStats getLodStats() const;
 	
 #ifdef JASPERENGINE_EDITOR
 		// Editor gizmos and icons that live in the scene they annotate. Only the passes
@@ -2830,10 +3108,16 @@ namespace jasperengine{
 			float canvasHeight = 0.0f;
 			// off: no shadow maps are drawn for the view and its fragments read no shadow
 			bool shadows = true;
+			ViewDrawMode drawMode = ViewDrawMode::SHADED;
 		};
 		void drawView(uint32_t viewId, const ViewDesc& desc);
+		// the level a mesh drew in an editor view's last frame (its plan's dominant level;
+		// LOD_CULLED: culled for its size), 0 before it drew there
+		unsigned int getViewMeshLod(uint32_t viewId, Entity entity) const;
 		// frees what a view created
 		void releaseView(uint32_t viewId);
+		// the detail levels an editor view drew in its last frame (its Stats overlay)
+		LodFrameStats getViewLodStats(uint32_t viewId) const;
 #endif
 
 		void load() override;

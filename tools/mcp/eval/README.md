@@ -66,7 +66,7 @@ A case is a dict in `cases.py`: `id`, `kind` (bad, guard, control), `what_happen
 from, paraphrased: no user data), `prompt`, optional `history` (prior turns, written as a
 resumable session), `mocks` (results in the server's real shapes: `{"recorded": key}` reuses a
 result `dump_surface.py` recorded; `"after": tool` answers only once that tool succeeded, so a
-read after a write shows the write), `playing`, `shell`, `files`, `groups_enabled`,
+read after a write shows the write; `"after_error": tool`, once it returned an error), `playing`, `shell`, `files`, `groups_enabled`,
 `max_turns`, and `checks` (see `grade.py`). `world.py` answers what a case does not mock: one
 scene "Main" with a camera, ground, player, enemy and crate. A call nobody mocked fails with
 "eval stub: no canned result" and is listed in the sample's `unmocked`: mock it before trusting

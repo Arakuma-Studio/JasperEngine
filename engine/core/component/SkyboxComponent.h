@@ -10,6 +10,10 @@
 #include "texture/Material.h"
 #include <string>
 #include <memory>
+#include "buffer/InterleavedBuffer.h"
+#include "io/watch/FileIdentity.h"
+#include "render/ObjectRender.h"
+#include "render/ShaderRender.h"
 
 namespace jasperengine{
 

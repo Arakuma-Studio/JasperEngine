@@ -864,7 +864,7 @@ bool editor::InspectorWindow::drawMaterialShaderRows(ComponentType cpType, Scene
 }
 
 void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities,
-                                                      unsigned int submesh, const RowSettings& settingsMaterial){
+                                                      unsigned int submesh, const RowSettings& settingsMaterial, bool litRows){
     Scene* scene = sceneProject->scene;
     const std::string prefix = "submeshes[" + std::to_string(submesh) + "].material.";
     MeshComponent* mesh = scene->findComponent<MeshComponent>(entities[0]);
@@ -947,6 +947,8 @@ void editor::InspectorWindow::drawMaterialSurfaceRows(ComponentType cpType, Scen
                         "Per Vertex (diffuse only, cheapest), Mixed (each light's Shading decides), None (unlit). "
                         "Only the modes this shader supports are listed; Auto is its default.";
     propertyRow(RowPropertyType::Enum, cpType, prefix + "lighting", "Lighting", sceneProject, entities, settingsEnum);
+    if (litRows)
+        drawMaterialShadingModelRows(cpType, sceneProject, entities, submesh, settingsMaterial);
 
     // stencil and colour write (phase 2): Auto names the shader's rule
     drawStencilColorWriteRows(cpType, sceneProject, entities, prefix, [scene, submesh](Entity entity) {

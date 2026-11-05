@@ -4,6 +4,7 @@
 #ifndef PROGRESSBAR_COMPONENT_H
 #define PROGRESSBAR_COMPONENT_H
 
+#include "Export.h"
 #include "ecs/Entity.h"
 
 namespace jasperengine{

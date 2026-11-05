@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteNormalsWindow.h"
+#include "component/TilemapComponent.h"
 
 #include "App.h"
 #include "Backend.h"
@@ -4841,7 +4842,6 @@ void SpriteNormalsWindow::handleShortcuts() {
     if (count > 1 && ImGui::IsKeyPressed(ImGuiKey_Comma, true)) setFrame(frame <= 0 ? count - 1 : frame - 1);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
     if (count > 1 && ImGui::IsKeyPressed(ImGuiKey_Period, true)) setFrame((frame + 1) % count);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
     if (ImGui::IsKeyPressed(ImGuiKey_O, false)) setOrbit(!orbit);  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
-    if (ImGui::IsKeyPressed(ImGuiKey_F, false)) fitRequested = true;  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
     if (ImGui::IsKeyPressed(ImGuiKey_0, false)) {  // shortcut-lint: allow the tool window's own keys while it is focused (handleShortcuts)
         zoom = 1.0f;
         pan = ImVec2(0, 0);
