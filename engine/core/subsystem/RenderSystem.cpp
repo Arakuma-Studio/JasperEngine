@@ -9373,7 +9373,7 @@ namespace{
     // one detail level of a submesh: its own range (level 0) or the pool's level range, through
     // the levels' index buffer; a level the submesh lacks draws its coarsest. shadowIndices: level 0's
     // position-only indices (a shadow pass, spec S55 R5); a coarser level draws its own range
-    void drawSubmeshLevel(ObjectRender& render, Submesh& submesh, unsigned int level, unsigned int instances, const ShadowIndexBuffer* shadowIndices = nullptr){
+    void drawSubmeshLevel(ObjectRender& render, Submesh& submesh, unsigned int level, unsigned int instances, ShadowIndexBuffer* shadowIndices = nullptr){
         if (instances == 0 || level == LOD_CULLED)
             return;
         const MeshLodData* lodData = submesh.lodData.get();
