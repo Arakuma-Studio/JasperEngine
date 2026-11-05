@@ -19,7 +19,9 @@
 
 #include "soloud.h"
 
+#include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <fstream>
 #include <functional>
 #include <string>
@@ -228,6 +230,45 @@ TEST_F(DeterministicDriverTest, LatencyIsOneSampleForEachBusOnTheWay) {
     }
 }
 
+// S62 pinned a movie's bytes when the Recorder mixed a game frame in one call: chunks of 512 differ from
+// that only while SoLoud ramps a voice in over its first mix call (soloud.cpp, pani), 1,600 frames there
+TEST_F(DeterministicDriverTest, ChunksDifferFromOneCallOnlyInTheFirstRamp) {
+    writeMonoWav(root / "assets" / "tone.wav", 44100, 44100, [](uint32_t i) { return 0.5 * std::sin(2.0 * M_PI * 1000.0 * i / 44100.0); });
+    AudioSource tone = source("tone.wav");
+    tone.setLooping(true);
+
+    tone.play();
+    std::vector<float> oneCall;
+    for (int k = 0; k < 30; k++) {
+        AudioMixer::update(1.0 / 30.0, 1.0 / 30.0);
+        scene->getSystem<AudioSystem>()->update(1.0 / 30.0);
+        std::vector<float> block(1600 * 2);
+        AudioSystem::getSoloud().mix(block.data(), 1600);
+        oneCall.insert(oneCall.end(), block.begin(), block.end());
+    }
+    tone.stop();
+    frame(0.0);
+    AudioSystem::close();
+    output.clear();
+
+    tone.play();
+    for (int k = 0; k < 30; k++) frame(1.0 / 30.0);
+    ASSERT_EQ(output.size(), oneCall.size());
+
+    size_t firstDifferent = oneCall.size(), lastDifferent = 0;
+    float largest = 0.0f;
+    for (size_t i = 0; i < oneCall.size(); i++) {
+        const float difference = std::fabs(output[i] - oneCall[i]);
+        if (difference > 0.0f) {
+            firstDifferent = std::min(firstDifferent, i);
+            lastDifferent = i;
+            largest = std::max(largest, difference);
+        }
+    }
+    std::printf("[chunks] first different frame %zu, last %zu, largest difference %g\n", firstDifferent / 2, lastDifferent / 2, largest);
+    EXPECT_LT(lastDifferent / 2, 1600u) << "the first call's ramp only";
+}
+
 TEST_F(DeterministicDriverTest, MixerIsBuilt) {
     std::string error;
     ASSERT_TRUE(AudioMixer::loadFromText(lowPassMixer, "test.mixer", &error)) << error;
@@ -262,6 +303,22 @@ TEST_F(DeterministicDriverTest, LoadsAreSynchronousWhileAsyncLoadingIsOn) {
     EXPECT_EQ(result.state, ResourceLoadState::Finished) << "no frame waits for it";
     EXPECT_TRUE(result.data);
     Engine::setAsyncLoading(false);
+}
+
+TEST_F(DeterministicDriverTest, AStartThatWaitedForItsClipSaysSo) {
+    writeClick("click.wav", 48000);
+    AudioSource sound = source("click.wav");
+    std::vector<AudioVoiceLine> lines;
+    AudioSystem::setVoiceObserver([&lines](const AudioVoiceLine& line) { lines.push_back(line); });
+    // what a one-shot holds when an earlier frame found its clip still loading
+    AudioPendingOneShot waited;
+    waited.filename = "click.wav";
+    waited.waited = 0.01;
+    sound.getComponent<AudioSourceComponent>().pendingOneShots.push_back(waited);
+    frame();
+    AudioSystem::setVoiceObserver(nullptr);
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_EQ(lines[0].loadDelay, 480u) << "the frames it waited, in the line that makes the session not deterministic";
 }
 
 TEST_F(DeterministicDriverTest, SilentAudioOpensItWhenNothingIsSelected) {

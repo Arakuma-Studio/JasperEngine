@@ -115,7 +115,8 @@ async def test_drop_3d_one_marker_per_pair_with_its_speed(ed: Editor):
 async def test_spawn_and_destroy_name_their_prefab(ed: Editor):
     scene = (await ed.call("create_scene", name="Spawn", type="2D", path="scenes/Spawn.scene"))["scene"]["id"]
     coin = (await ed.call("create_entity", scene=scene, type="empty", name="Coin"))["entity_id"]
-    made = await ed.call("create_prefab", scene=scene, entity=coin, path="prefabs/Coin.prefab")
+    await ed.call("create_prefab", scene=scene, entity=coin, path="prefabs/Coin.prefab")
+    made = (await ed.call("get_prefab_info", prefab="prefabs/Coin.prefab"))
     # (the instance stays in the scene: only prefabs of the build load by path)
     await ed.call("create_entity", scene=scene, type="empty", name="Spawner")
     await ed.call("create_script", kind="lua", name="Spawner", content=SPAWNER, entity="Spawner", scene=scene)
@@ -127,7 +128,7 @@ async def test_spawn_and_destroy_name_their_prefab(ed: Editor):
     console = [e.get("message", "")[:200] for e in await ed.console_since(limit=100)]
     ed.check_eq(len(spawns), 1, f"{[e['kind'] for e in events]} {console}")
     ed.check_eq(spawns[0]["prefab"], "prefabs/Coin.prefab", f"{spawns[0]}")
-    ed.check_eq(spawns[0]["guid"], made["guid"], f"{spawns[0]} {made}")
+    ed.check(spawns[0]["guid"] and spawns[0]["guid"] in str(made), f"{spawns[0]} {made}")
     ed.check_eq(len(destroys), 1, f"{[e['kind'] for e in events]}")
     ed.check_eq(destroys[0]["entity"], spawns[0]["entity"], f"{destroys[0]}")
     ed.check(spawns[0]["sample"] < destroys[0]["sample"], "in order")

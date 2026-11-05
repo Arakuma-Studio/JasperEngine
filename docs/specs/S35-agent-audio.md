@@ -610,6 +610,11 @@ does not fix audio; checks report changed thresholds."
 
 ## Deviations
 
+- **A Recorder movie's first frame of audio changes:** S62 pinned its bytes with one mix call a frame; R2's chunks ramp a
+  voice in over its first 512 frames, not 1,600 (SoLoud's ramp lasts the mix call). Nothing else moves: one call a frame on
+  this driver gives S62's exact hash, and the chunks differ from it only inside the first 1,600 frames (largest difference
+  0.056 on a 0.5 tone, `DeterministicDriverTest.ChunksDifferFromOneCallOnlyInTheFirstRamp`). The pin is updated, with this reason.
+- **AC5's unwritable root is a file where a folder goes**, not a read-only folder: the tests run as root in some images.
 - **`voice` is the capture's own serial, not SoLoud's handle:** handles count every play since the process began, so two
   runs of one editor differed and R8's bytes could not hold. Found by `test_deterministic_twice`.
 - **AC8's 1 kHz band reads 0.53 dB under the tone, not within 0.5:** `AudioOctaveBank`'s 4th-order Butterworth edges lie a

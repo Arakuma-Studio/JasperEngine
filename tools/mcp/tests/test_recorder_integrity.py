@@ -35,9 +35,12 @@ WIDTH, HEIGHT = 320, 180
 AT = 10              # the game frame the script changes the look at
 FRAMES = 30
 
-# The decoded PCM of test_normal_recording's MOV (no lossy codec, so no FFmpeg version in it), from
-# the build before S62 (main at f9beac071): the recorder's rewrite did not touch a normal recording
-REFERENCE_AUDIO_SHA256 = "408859a6ce060fa90c3699b5ff1a6b5b591250bc4dfd428f102bdd367b53c500"
+# The decoded PCM of test_normal_recording's MOV (no lossy codec, so no FFmpeg version in it). S62 took
+# it from the build before its rewrite (408859a6...). S35 changed it on purpose: the deterministic
+# driver mixes a frame in chunks of at most 512, and SoLoud ramps a voice's start over the mix call.
+# Mixing each frame in one call on S35's driver still gives S62's hash, and the chunks differ from that
+# only in the first call (DeterministicDriverTest.ChunksDifferFromOneCallOnlyInTheFirstRamp).
+REFERENCE_AUDIO_SHA256 = "90d8e3dde9c824d26562241530da29031ae93fb31ccf504d4ba9763401e1337f"
 REFERENCE_AUDIO_BYTES = 576000
 
 
