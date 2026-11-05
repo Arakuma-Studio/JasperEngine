@@ -22,6 +22,8 @@ namespace jasperengine{
 
         void set(const double coefficients[5]);
         double process(double x);
+        // a whole run, in place
+        void processRun(double* samples, size_t count);
         // In digital silence the state rings down into denormals and can stay there in a limit cycle,
         // which costs many times the CPU on some processors. This lets go of a state that small; every
         // 10 ms is often enough, long before it gets there, and leaves process() without a branch.
@@ -35,12 +37,17 @@ namespace jasperengine{
 
         void init(unsigned int sampleRate);
         double process(double x);
+        void processRun(double* samples, size_t count);
+        // two channels' runs at once: an IIR filter's speed is the wait for its own last output, and
+        // that wait can be shared. `other` has the same coefficients.
+        void processRuns(AudioKWeighting& other, double* samples, double* otherSamples, size_t count);
         // AudioBiquad::settle
         void settle();
     };
 
-    // One channel's octave band bank: 10 bands centred on AudioMeter::bandCentre (4th-order
-    // Butterworth band-passes) and the sub band (20-60 Hz)
+    // One channel's octave band bank, sample by sample, for levels that follow the signal in time: 10
+    // bands centred on AudioMeter::bandCentre (4th-order Butterworth band-passes) and the sub band
+    // (20-60 Hz). A whole signal's levels are AudioSpectrumBands', at a tenth of the cost.
     class JASPERENGINE_API AudioOctaveBank{
     public:
         static constexpr int BANDS = 10;
@@ -67,6 +74,45 @@ namespace jasperengine{
         Band sub;
 
         static void initBand(Band& band, double low, double high, unsigned int sampleRate);
+    };
+
+    // The same bands from a signal's power spectrum, what AudioMeter measures them with: a short-time
+    // FFT read at the filters' magnitudes, its windows overlapping by an eighth with tapers whose powers
+    // add up to 1, so that they keep the signal's energy and each sample costs little more than one
+    // transform. Their levels agree within 0.3 dB; only what rings in a transient differs.
+    class JASPERENGINE_API AudioSpectrumBands{
+    public:
+        static constexpr int BANDS = AudioOctaveBank::BANDS;
+
+        void init(unsigned int sampleRate, unsigned int channels);
+        // frames of each channel, channel c at planar + c * stride
+        void process(const float* planar, size_t stride, size_t frames);
+        // the frames still in the buffers, then silence: all the signal counts in full
+        void finish();
+        // the energy over all channels of what went through windows so far, per band; energy[BANDS]
+        // the sub band's. The frames that energy is worth, for a mean before finish().
+        void energy(double energy[BANDS + 1]) const;
+        uint64_t windowedFrames() const;
+
+    private:
+        unsigned int sampleRate = 0;
+        unsigned int channels = 0;
+        size_t size = 0;
+        size_t overlap = 0;
+        size_t fill = 0;
+        // frames added since the last window
+        size_t pending = 0;
+        uint64_t windows = 0;
+        // per channel: `size` samples, oldest first
+        std::vector<float> input;
+        std::vector<float> window;
+        std::vector<float> twiddleRe, twiddleIm;
+        std::vector<float> re, im, workRe, workIm;
+        // the sum of each bin's power over all windows
+        std::vector<double> power;
+
+        void transformWindows();
+        void advanceWindow();
     };
 
     // What AudioMeter measured. A loudness with no value (nothing above the -70 LUFS gate, a signal
@@ -104,7 +150,8 @@ namespace jasperengine{
         // samples (all channels) that were NaN or infinite: metered as 0
         uint64_t nonFinite = 0;
 
-        // the octave bands (AudioMeter::bandCentre): AES17 dBFS of each band's mean square over all
+        // Measured in windows of about a third of a second: a stream's are complete after finish(), and
+        // floored before its first window. The octave bands (AudioMeter::bandCentre): AES17 dBFS of each band's mean square over all
         // channels, and those mean squares. The sub band (20-60 Hz): its mean square and its share
         // of the signal's, 0..1. All at the floor when AudioMeterOptions::bands is off.
         std::array<double, AudioOctaveBank::BANDS> bandsDb = {SILENCE_DB, SILENCE_DB, SILENCE_DB, SILENCE_DB, SILENCE_DB,
@@ -159,8 +206,8 @@ namespace jasperengine{
         void process(const float* interleaved, size_t frames);
         // planar[c] holds channel c's frames
         void processPlanar(const float* const* planar, size_t frames);
-        // File mode: adds the trailing silence; later process() calls do nothing. Stream mode:
-        // nothing to add. result() may be read before and after it.
+        // Later process() calls do nothing. Completes the bands; File mode also adds the trailing
+        // silence. result() may be read before and after it.
         void finish();
         bool isFinished() const;
 
@@ -170,6 +217,11 @@ namespace jasperengine{
         // which has no value, is NaN.
         std::vector<float> momentaryCurve() const;
         std::vector<float> shortTermCurve() const;
+
+        // The window that ends with the signal so far, for a live readout (O(1), unlike result());
+        // empty before its first 10 ms, and the short-term one before 3 s.
+        std::optional<double> momentaryNow() const;
+        std::optional<double> shortTermNow() const;
 
         // a whole signal in File mode
         static LoudnessResult measure(const float* interleaved, size_t frames, unsigned int sampleRate,
@@ -195,13 +247,12 @@ namespace jasperengine{
             AudioKWeighting kWeighting;
             double weight = 1.0;
 
-            AudioOctaveBank bands;
-            double bandEnergy[BANDS] = {};
-            double subEnergy = 0.0;
-
             double sum = 0.0;
             double energy = 0.0;
         };
+
+        // frames at most in one run through the filters
+        static constexpr size_t RUN_FRAMES = 1024;
 
         unsigned int sampleRate;
         unsigned int channels;
@@ -211,6 +262,10 @@ namespace jasperengine{
 
         std::vector<Channel> state;
         TruePeak truePeakFilter;
+        AudioSpectrumBands spectrum;
+        std::vector<float> run;
+        // channel c at c * RUN_FRAMES
+        std::vector<double> weightedRun;
 
         // frames through the K-weighting (padding included), frames of the signal
         uint64_t processed = 0;
@@ -237,9 +292,12 @@ namespace jasperengine{
         // before the start are silence
         double windowEnergy(int64_t end, int64_t length) const;
         double windowLoudness(int64_t end, int64_t length) const;
-        void frame(const double* x, bool padding);
-        // a sample as metered: a NaN or an infinity would poison the filters and the sums for good
-        double finite(float sample);
+        // How many of these frames the next run takes: up to a sub-block's end
+        size_t runFramesNow(size_t frames) const;
+        // The frames in `run`, channel c at c * RUN_FRAMES, all finite: a NaN or an infinity would
+        // poison the filters and the sums for good, so process() counts each and meters it as 0.
+        // The padding goes through the K-weighting only.
+        void processRun(size_t frames, bool padding);
     };
 
 }

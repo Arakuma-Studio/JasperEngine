@@ -1022,6 +1022,32 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_true_peak_limiter",
+        "kind": "guard",
+        "what_happened": "The audio guide names the limiter's truePeak and lookahead; an agent asked for a dBTP ceiling must set "
+                         "them instead of a plain limiter, which lets inter-sample peaks through.",
+        "text_at_issue": "docs/mcp/guide/audio.md effects table: 'lookahead ... with truePeak 1 and at least 1.5 ms it holds "
+                         "threshold + 0.1 dB in true peak'",
+        "source": "S38 guide text; no failure on record",
+        "prompt": "This project is from an old version and its mixer has no limiter. Keep the game's Master output under -1 dBTP.",
+        # a new project (the eval's) has the limiter already: this one is an old project's
+        "files": {"audio/Main.mixer": '{\n  "format": "jasperengine.mixer",\n  "version": 1,\n  "updateMode": "scaled",\n'
+                                      '  "groups": [\n    {\n      "id": "00000001",\n      "name": "Master",\n      "parent": null,\n'
+                                      '      "volume": 0\n    }\n  ]\n}\n'},
+        "mocks": [
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [], "latency_ms": 0}]})},
+            {"tool": "audio_mixer", "args": {"action": "edit"}, "result": ok(
+                "Edited audio/Main.mixer (1 op, one undo step).", {"mixer": "audio/Main.mixer"})},
+        ],
+        "checks": {"any_of": [
+            {"calls": [{"tool": "audio_mixer", "args": {"action": "edit", "ops": [
+                {"op": "add_effect", "type": "limiter", "params": {"truePeak": 1, "lookahead": "*"}}]}}]},
+            {"file_must": {"audio/Main.mixer": [r'"truePeak"\s*:\s*1', r'"lookahead"\s*:\s*[1-5]']}}]},
+        "max_turns": 12,
+    },
+    {
         "id": "bad_ios_simulator_without_an_account",
         "kind": "bad",
         "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",

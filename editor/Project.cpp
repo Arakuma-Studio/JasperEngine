@@ -3023,7 +3023,9 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.maxRealVoices = std::clamp(audioSettings.maxRealVoices, 1, 255);
     audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
     if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
-    AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate});
+    AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
+                            AudioSystem::outputStageFromName(audioSettings.outputStage),
+                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory)});
     AudioMixerDocument::setDefaultOutputGroup(audioSettings.defaultOutputGroup);
     if (mixerChanged || AudioMixer::getPath() != audioSettings.mixer) {
         applyAudioMixer();
@@ -6428,6 +6430,16 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             modelLoaded = true;
             // a project this version creates keeps its binaries in Git LFS (R21)
             vcsProjectSettings.lfs = true;
+            // ... and ships at a sane level (S38 R8): a Master true-peak limiter, the linear output
+            // stage that lets its ceiling hold at the device, the ambient iOS session
+            {
+                std::string audioError;
+                if (AudioMixerDocument::writeNewProjectMixer(getAssetsPath(), &audioError)) {
+                    setAudioSettings(AudioMixerDocument::newProjectAudioSettings());
+                } else {
+                    Out::warning("%s", audioError.c_str());
+                }
+            }
             openAssetDatabase();
             if (watchFiles) HotReloadService::get().startWatching(*this);
         // the project's editor menus (a text scan of its Editor folders: no project code runs)

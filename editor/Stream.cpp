@@ -2934,6 +2934,11 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audio.maxVoices != defaults.maxVoices) audioNode["maxVoices"] = audio.maxVoices;
         if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
         if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
+        if (audio.loudnessTargetLufs != defaults.loudnessTargetLufs) audioNode["loudnessTargetLufs"] = audio.loudnessTargetLufs;
+        if (audio.loudnessToleranceLu != defaults.loudnessToleranceLu) audioNode["loudnessToleranceLu"] = audio.loudnessToleranceLu;
+        if (audio.truePeakCeilingDbtp != defaults.truePeakCeilingDbtp) audioNode["truePeakCeilingDbtp"] = audio.truePeakCeilingDbtp;
+        if (audio.outputStage != defaults.outputStage) audioNode["outputStage"] = audio.outputStage;
+        if (audio.iosSessionCategory != defaults.iosSessionCategory) audioNode["iosSessionCategory"] = audio.iosSessionCategory;
         if (audioNode.size()) root["audio"] = audioNode;
     }
 
@@ -3660,6 +3665,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (audioNode["maxVoices"]) audio.maxVoices = YamlNumbers::as<int>(audioNode["maxVoices"]);
             if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
             if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
+            if (audioNode["loudnessTargetLufs"]) audio.loudnessTargetLufs = YamlNumbers::as<float>(audioNode["loudnessTargetLufs"]);
+            if (audioNode["loudnessToleranceLu"]) audio.loudnessToleranceLu = YamlNumbers::as<float>(audioNode["loudnessToleranceLu"]);
+            if (audioNode["truePeakCeilingDbtp"]) audio.truePeakCeilingDbtp = YamlNumbers::as<float>(audioNode["truePeakCeilingDbtp"]);
+            if (audioNode["outputStage"]) audio.outputStage = audioNode["outputStage"].as<std::string>();
+            if (audioNode["iosSessionCategory"]) audio.iosSessionCategory = audioNode["iosSessionCategory"].as<std::string>();
         }
         // also without a node: a project opened after another one does not keep its mixer
         project->setAudioSettings(audio);
