@@ -233,8 +233,8 @@ void drawBeatGrid(ImDrawList* draw, const AudioMusicGrid::Candidate& grid, ImVec
         if (!bar && !beats) continue;
         const float x = origin.x + (float)(ms / fileMs) * width;
         const float tick = bar ? height : height * 0.15f;
-        if (atTop) draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + (bar ? height * 0.5f : tick)), colour, bar ? 1.5f : 1.0f);
-        else draw->AddLine(ImVec2(x, origin.y + height - tick), ImVec2(x, origin.y + height), colour, bar ? 1.5f : 1.0f);
+        if (atTop) draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + (bar ? height * 0.5f : tick)), colour, bar ? 2.0f : 1.0f);
+        else draw->AddLine(ImVec2(x, origin.y + height - tick), ImVec2(x, origin.y + height), colour, bar ? 2.0f : 1.0f);
     }
 }
 
@@ -416,9 +416,9 @@ void editor::InspectorWindow::drawAudioClipAsset(const fs::path& asset) {
         if (view.detection && view.detection->done && view.detection->grid.hasTempo()) {
             const AudioMusicGrid::Grid& grid = view.detection->grid;
             if (!grid.confident && grid.candidates.size() > 1) {
-                drawBeatGrid(draw, grid.candidates[1], origin, width, height, fileMs, IM_COL32(240, 120, 200, 200), true);
+                drawBeatGrid(draw, grid.candidates[1], origin, width, height, fileMs, IM_COL32(255, 120, 200, 255), true);
             }
-            drawBeatGrid(draw, grid.candidates[0], origin, width, height, fileMs, IM_COL32(90, 200, 250, 220), false);
+            drawBeatGrid(draw, grid.candidates[0], origin, width, height, fileMs, IM_COL32(70, 190, 255, 255), false);
         }
     }
 

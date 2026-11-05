@@ -2019,7 +2019,7 @@ Sets how clips play and where they came from, in their .meta: gain, trims, click
 | `labels` | array of string |  | S25 labels to set: replaces the clips' labels. |
 | `paths` | array of string | yes | Sound files inside the assets folder. |
 | `provenance` | object |  | Provenance keys: licence, licence_url, author, attribution, source, url. |
-| `settings` | object |  | Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms. |
+| `settings` | object |  | Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms, music. |
 
 
 ## Audio captures

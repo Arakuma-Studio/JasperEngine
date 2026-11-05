@@ -3,7 +3,7 @@ writes nothing; Use writes the detected block as one undo step, "Set Tempo from 
 $JASPER_EVIDENCE_DIR when set.
 
 Real input through ui_input (xdotool in the harness's Xvfb). Oracles: the .meta on disk (PyYAML), the click
-track's parameters, the grid's colour in the editor's screenshot."""
+track's parameters, the grid's colour inside the waveform in the editor's screenshot."""
 
 from __future__ import annotations
 
@@ -24,12 +24,13 @@ CI = True
 EDITOR = {"xvfb": "harness", "create": True, "name": "Music Editor"}
 TIMEOUT = 600
 RATE = 48000
-# InspectorAudioClip.cpp's beat grid colour
-GRID_RGB = (90, 200, 250)
+# InspectorAudioClip.cpp's beat grid
+GRID_RGB = (70, 190, 255)
 
 
 async def editor_shot(ed: Editor, name: str) -> bytes:
-    shot = await ed.call_raw("screenshot", {"view": "editor"})
+    # unscaled, so window coordinates are pixels and a 1 px tick keeps its colour
+    shot = await ed.call_raw("screenshot", {"view": "editor", "max_width": 8192})
     ed.check(shot.images, "the editor screenshot")
     png = shot.images[0][0]
     folder = os.environ.get("JASPER_EVIDENCE_DIR")
@@ -39,13 +40,16 @@ async def editor_shot(ed: Editor, name: str) -> bytes:
     return png
 
 
-def grid_pixels(png: bytes) -> int:
+def grid_pixels(png: bytes, band: dict) -> int:
+    """pixels of the grid's blue inside the waveform's rows, from its left edge rightwards"""
+    left, top, tall = (band["x"], band["y"], band["height"]) if isinstance(band, dict) else (band[0], band[1], band[3])
     width, height, channels, rows = decode_png(png)
     count = 0
-    for row in rows:
-        for x in range(width):
+    for y in range(max(0, int(top)), min(height, int(top + tall))):
+        row = rows[y]
+        for x in range(max(0, int(left)), width):
             r, g, b = row[x * channels], row[x * channels + 1], row[x * channels + 2]
-            if abs(r - GRID_RGB[0]) <= 45 and abs(g - GRID_RGB[1]) <= 45 and abs(b - GRID_RGB[2]) <= 45:
+            if abs(r - GRID_RGB[0]) <= 24 and abs(g - GRID_RGB[1]) <= 24 and abs(b - GRID_RGB[2]) <= 24:
                 count += 1
     return count
 
@@ -76,6 +80,9 @@ async def test_clip_view_detect_and_use(ed: Editor):
     await select_clip(ed, ui, rel)
     for label in ("BPM", "Beats per Bar", "First Beat", "Detect"):
         ed.check(await ui.find(label, window="Inspector", frames=120), f"the view has {label}")
+    handle = await ui.find("##audio.handle.trim_head", window="Inspector", frames=600)
+    ed.check(handle, "the waveform is in")
+    band = handle["rect"]
     await ui.frames()
     before_shot = await editor_shot(ed, "clip-view-before-detect")
     meta = ed.project / (rel + ".meta")
@@ -86,8 +93,9 @@ async def test_clip_view_detect_and_use(ed: Editor):
     await ui.frames()
     detected_shot = await editor_shot(ed, "clip-view-detected")
     ed.check_eq(meta.read_text(), before, "Detect writes nothing")
-    grown = grid_pixels(detected_shot) - grid_pixels(before_shot)
-    ed.check(grown >= 200, f"the beat grid is drawn over the waveform ({grown} more grid-coloured pixels)")
+    before_grid, detected_grid = grid_pixels(before_shot, band), grid_pixels(detected_shot, band)
+    # 4 bars of 2 px over the waveform's height alone are hundreds of pixels
+    ed.check(before_grid < 20 and detected_grid >= 300, f"the beat grid is drawn over the waveform ({before_grid} -> {detected_grid} pixels)")
 
     await ui.click_item("Use", window="Inspector")
     await ui.frames()
