@@ -72,6 +72,7 @@ its models for that platform. No budget for a platform is an error, never a pass
 
 ### Read/Write
 
-`read_write: automatic` keeps a model's CPU copy in games only when something reads it there
-(a Mesh Collider, a navigation bake at runtime, a particle mesh shape, a skinned mesh, runtime LOD
-building, a script calling `createMeshCollider`); `read_write.reasons` in a record says why.
+`read_write.keep` says whether something in a game reads a model's CPU copy (a Mesh Collider, a
+navigation bake at runtime, a particle mesh shape, a skinned mesh, runtime LOD building, a script
+calling `createMeshCollider`) and `reasons` which. Exports record it; players do not free the copy
+yet, so it changes no memory today.

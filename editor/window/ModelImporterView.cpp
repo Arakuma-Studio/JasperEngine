@@ -313,10 +313,12 @@ void ModelImporterView::drawMeshes(const ResolvedModelSettings& r){
         const ModelReadWriteDecision& decision = rows[0].readWrite;
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(1);
+        ImGui::PushTextWrapPos(0.0f);
         if (decision.keep)
             ImGui::TextDisabled("Kept: %s", decision.reasons.empty() ? "" : decision.reasons.front().c_str());
         else
-            ImGui::TextDisabled("Released after upload: nothing at runtime reads it");
+            ImGui::TextDisabled("Nothing at runtime reads it");
+        ImGui::PopTextWrapPos();
         if (decision.reasons.size() > 1 && ImGui::IsItemHovered()){
             ImGui::BeginTooltip();
             for (const std::string& reason : decision.reasons) ImGui::TextUnformatted(reason.c_str());
@@ -371,19 +373,22 @@ void ModelImporterView::drawBeforeAfter(){
             draw->AddRectFilled(ImVec2(x, at.y), ImVec2(std::min(x + w, at.x + width), at.y + height), kLodColors[std::min<size_t>(l, 3)]);
             char label[48];
             std::snprintf(label, sizeof(label), "LOD %zu  %.0f%%", l, switches[l] * 100.0f);
-            draw->AddText(ImVec2(x + 4.0f, at.y + 2.0f), IM_COL32(20, 20, 20, 255), label);
+            // a level too narrow for its label: the table below has its numbers
+            if (ImGui::CalcTextSize(label).x + 8.0f <= w)
+                draw->AddText(ImVec2(x + 4.0f, at.y + 2.0f), IM_COL32(20, 20, 20, 255), label);
             x += w;
         }
         ImGui::InvisibleButton("##lod_bar", ImVec2(width, height));
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("About the screen height each level draws below, in a 1080-pixel view at the scene's default Threshold "
                               "and LOD Bias 1 (read only: selection follows the levels' errors).");
-        if (ImGui::BeginTable("model_lods", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp)){
+        // short cells and headers: the Inspector is about 350 pixels wide (the tooltips say the rest)
+        if (ImGui::BeginTable("model_lods", 5, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingFixedFit)){
             ImGui::TableSetupColumn("Level");
-            ImGui::TableSetupColumn("Triangles");
-            ImGui::TableSetupColumn("% of source");
+            ImGui::TableSetupColumn("Tris");
+            ImGui::TableSetupColumn("Share");
             ImGui::TableSetupColumn("Differs by at most");
-            ImGui::TableSetupColumn("Switches below");
+            ImGui::TableSetupColumn("Below");
             ImGui::TableHeadersRow();
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted("LOD 0");
@@ -397,8 +402,10 @@ void ModelImporterView::drawBeforeAfter(){
                 ImGui::TableSetColumnIndex(0); ImGui::Text("LOD %d", level.level);
                 ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(countText(level.triangles).c_str());
                 ImGui::TableSetColumnIndex(2); ImGui::Text("%.0f%%", level.share * 100.0);
-                ImGui::TableSetColumnIndex(3); ImGui::Text("%.2g%% of model size", level.deviation * 100.0);
-                ImGui::TableSetColumnIndex(4); ImGui::Text("about %.0f%% of screen", switches[l + 1] * 100.0f);
+                ImGui::TableSetColumnIndex(3); ImGui::Text("%.2g%%", level.deviation * 100.0);
+                ImGui::SetItemTooltip("The largest distance measured from the source's surface, as a share of the model's size.");
+                ImGui::TableSetColumnIndex(4); ImGui::Text("~%.0f%%", switches[l + 1] * 100.0f);
+                ImGui::SetItemTooltip("About the screen height this level draws below (the bar above says how it is measured).");
             }
             ImGui::EndTable();
         }
@@ -476,7 +483,21 @@ void ModelImporterView::drawIssues(){
         ImGui::TextColored(color, "%s %s", error ? ICON_FA_CIRCLE_XMARK : ICON_FA_TRIANGLE_EXCLAMATION, issue.message.c_str());
         ImGui::PopTextWrapPos();
         // the failure row's actions (R18) and each warning's fix
-        if (issue.fix == ModelIssue::Fix::Settings && ImGui::SmallButton(issue.fixLabel.c_str())){
+        // the row's buttons on the line under its message, wrapping at the Inspector's edge (a
+        // SameLine right after wrapped text would go on from the end of the text)
+        bool anyAction = false;
+        auto actionButton = [&anyAction](const char* label){
+            if (anyAction){
+                const ImGuiStyle& style = ImGui::GetStyle();
+                const float width = ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.0f;
+                const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+                if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + width <= right)
+                    ImGui::SameLine();
+            }
+            anyAction = true;
+            return ImGui::SmallButton(label);
+        };
+        if (issue.fix == ModelIssue::Fix::Settings && actionButton(issue.fixLabel.c_str())){
             ModelSettingsEdit edit;
             for (const auto& [key, value] : issue.settings.items())
                 edit.set.push_back({ModelAudit::metaKeyOf(key), value.is_boolean() ? YAML::Node(value.get<bool>()) : YAML::Node(value.get<std::string>())});
@@ -491,11 +512,11 @@ void ModelImporterView::drawIssues(){
         const bool cooked = row.hasState && row.state.status == ModelCookStatus::Cooked;
         const bool transcode = issue.code == "gltf-cook-transcodes" && !cooked;
         const bool recook = issue.fix == ModelIssue::Fix::Reimport || transcode || (error && issue.code != "gltf-required-extension");
-        if (recook && ImGui::SmallButton(transcode ? "Cook anyway" : "Reimport")){
+        if (recook && actionButton(transcode ? "Cook anyway" : "Reimport")){
             ModelCookQueue::get().invalidate(assetPaths[0]);
             ModelCookQueue::get().request(assetPaths[0], shownFamily(), ModelCookQueue::Selected);
         }
-        if (issue.fix == ModelIssue::Fix::SceneLod && ImGui::SmallButton(issue.fixLabel.c_str())){
+        if (issue.fix == ModelIssue::Fix::SceneLod && actionButton(issue.fixLabel.c_str())){
             for (SceneProject& scene : project->getScenes()){
                 if (project->normalizeToProjectRelative(scene.filepath).generic_string() != issue.scene || !scene.scene)
                     continue;
@@ -504,10 +525,8 @@ void ModelImporterView::drawIssues(){
             }
         }
         if (error){
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Open Console")) editor::getEditorHost().openConsole();
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Show in Explorer"))
+            if (actionButton("Open Console")) editor::getEditorHost().openConsole();
+            if (actionButton("Show in Explorer"))
                 EditorSettingsWindow::openInFileManager((project->getAssetsPath() / FileUtils::pathFromUtf8(assetPaths[0])).parent_path());
         }
         ImGui::PopID();

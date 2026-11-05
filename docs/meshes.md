@@ -59,7 +59,7 @@ and acts on what it finds:
 | Mesh Compression | Off, Lossless, Low, Medium, High | Off: no codec. Lossless: `KHR_meshopt_compression`, the same values bit for bit. Low, Medium, High: fewer bits (below), then the codec; positions stay floats. |
 | Weld Vertices | on, off | With Everything, merges vertices whose every attribute is the same. |
 | Index Format | Auto, 16 bit, 32 bit | Auto takes 16 bits when a mesh has 65,535 vertices or fewer; 16 bit on a larger mesh fails the cook with the reason. |
-| Read/Write | Automatic, On | Whether games keep the mesh data on the CPU after upload (below). |
+| Read/Write | Automatic, On | Whether anything in a game needs the mesh data on the CPU after upload (below). |
 | Normals | Import, Calculate | Calculate: area-weighted normals, creased at the Smoothing Angle (0-180, default 60). |
 | Generate LODs | Automatic, On, Off | Automatic bakes the levels the runtime would build (the runtime's recipe); On bakes LOD Count (1-3) levels of the Reduction; Off bakes none. |
 | Reduction | Preserve Detail, Balanced, Smallest | Each level keeps 60% (with an error cap of 0.5% of the mesh's size), 50%, or 35% (crossing attribute seams) of the triangles of the one before. |
@@ -95,13 +95,14 @@ source surface, as a share of the model's size) and about where it switches (a 1
 
 ## Read/Write
 
-With Automatic, a game keeps a model's CPU copy only when something at runtime reads it: a Mesh
+With Automatic, the cook works out whether anything at runtime reads a model's CPU copy: a Mesh
 Collider or convex hull built from its mesh, a navigation surface that bakes at runtime, a particle
 mesh shape, a skinned mesh (poses and retargeting), runtime LOD building (a scene with Mesh LOD on
 and no baked levels), or scripts that call a mesh-reading API (`createMeshCollider`,
 `createConvexHullCollider`, a navigation bake: Project Settings > Mesh > Keep CPU Data for Scripts
 decides, automatic by default). The Inspector shows the reason; the export writes the decision into
-`index.json` (`keepCpuData`). The editor always keeps the data.
+`index.json` (`keepCpuData`). Players do not free the copy yet: that follows the mesh storage work
+(spec S53, Deviations), so today this setting changes no memory.
 
 ## Project Settings > Mesh and the render budgets
 
