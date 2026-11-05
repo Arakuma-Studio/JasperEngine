@@ -146,6 +146,20 @@ void LuaBinding::registerAudioClasses(lua_State* L) {
         .addStaticFunction("mark", +[](const std::string& label) { AudioCapture::mark(label, true); })
         .addStaticFunction("isCapturing", +[]() { return AudioCapture::isActive(); })
         .endClass();
+#elif !defined(DISABLE_LUA_BINDINGS)
+    // without the sound layer: a script that marks its moments behaves the same (Audio.play is the layer's)
+    lua_newtable(L);
+    lua_pushcfunction(L, [](lua_State* state) -> int {
+        AudioCapture::mark(luaL_checkstring(state, 1), true);
+        return 0;
+    });
+    lua_setfield(L, -2, "mark");
+    lua_pushcfunction(L, [](lua_State* state) -> int {
+        lua_pushboolean(state, AudioCapture::isActive());
+        return 1;
+    });
+    lua_setfield(L, -2, "isCapturing");
+    lua_setglobal(L, "Audio");
 #else
     (void)L;
 #endif
