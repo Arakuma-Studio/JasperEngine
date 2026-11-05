@@ -556,3 +556,5 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
 - **AC11's tests are `test_audio_events_prebuilt.py` and `test_audio_module_compile.py`**, not `test_build.py::test_sound_events_prebuilt`: each needs its own project,
   and the second a project that never held an event. Picks are read from the voice lines until S35's player capture lands.
 - **`editor/audio/SoundDrop` adds the drops** of M6 (a sound onto a Button, an entity or empty scene space); a built-in sound is imported first, on one undo step with the assignment.
+- **The module's size is measured on Linux only** (S34's last M entry): the Android and wasm players were not built for it.
+- **AC12's budgets are printed, not enforced, without `JASPER_TEST_PERF_SLACK`**, as for every wall-clock test. Server F no longer exists, and the bench run was not on the benchmark server.

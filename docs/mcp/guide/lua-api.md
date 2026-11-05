@@ -2356,6 +2356,8 @@ end
 
 ### 4.12 AudioSource (EntityHandle)
 
+Clips that vary (footsteps, hits: no repeats, random pitch and volume) need no script: a Sound Event does it as data (`edit_sound_event`, group audio; then `event` on the AudioSource, `jasper://docs/sound`).
+
 Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)`, `destroySound()`,
 `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()`, `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
