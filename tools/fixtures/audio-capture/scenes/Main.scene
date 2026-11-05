@@ -1,6 +1,6 @@
 formatVersion: 7
-guid: 459510c9cbcfff6b04de3fa90695cf74
-id: 1688657387
+guid: eae9b3490159503b38ae9e91d480a3e1
+id: 2579869450
 name: Main
 scene:
   backgroundColor: [0.231, 0.298, 0.475, 1]
@@ -50,7 +50,7 @@ entities:
     components:
       audiosource:
         enabled: true
-        state: stopped
+        state: playing
         filename: sounds/loop.wav
         filenameGuid: 191d2c38839fe3203d70b506772f5110
         enableClocked: false

@@ -16,7 +16,7 @@ windowResizable: true
 luaDir: .
 versionControl:
   lfs: true
-startSceneId: 1688657387
+startSceneId: 2579869450
 scenes:
   - filepath: scenes/Main.scene
-    filepathGuid: 459510c9cbcfff6b04de3fa90695cf74
+    filepathGuid: eae9b3490159503b38ae9e91d480a3e1
