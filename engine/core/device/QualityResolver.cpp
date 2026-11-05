@@ -50,6 +50,11 @@ namespace {
         return a;
     }
 
+    std::vector<QualityResolverState>& stateStack(){
+        static std::vector<QualityResolverState>* stack = new std::vector<QualityResolverState>();
+        return *stack;
+    }
+
     const std::optional<float>& resolvedCell(DeviceOverride field){
         return qualityState().effective.get(field);
     }
@@ -189,6 +194,26 @@ void QualityResolver::resetResponse(){
     s.applied = ThermalState::Nominal;
     s.below = 0.0;
     s.memoryDrop = 0;
+    changed();
+}
+
+void QualityResolver::pushState(){
+    stateStack().push_back(qualityState());
+}
+
+void QualityResolver::popState(){
+    if (stateStack().empty())
+        return;
+    qualityState() = stateStack().back();
+    stateStack().pop_back();
+    changed();
+}
+
+void QualityResolver::forceThermalResponse(ThermalState state){
+    QualityResolverState& s = qualityState();
+    s.reported = state;
+    s.applied = state;
+    s.below = 0.0;
     changed();
 }
 
