@@ -40,6 +40,8 @@ namespace jasperengine {
         std::weak_ptr<const void> shareOwner;
         uint64_t shareId;
         bool shareSource;
+        // its bytes were freed by their owner (ModelCpuData): size, attributes and GPU buffer stay
+        bool dataReleased = false;
 
     public:
         Buffer();
@@ -136,6 +138,7 @@ namespace jasperengine {
         // a source is set and its owner is alive
         bool hasShareSource() const;
         const std::weak_ptr<const void>& getShareOwner() const;
+        bool isDataReleased() const { return dataReleased; }
         uint64_t getShareId() const;
     };
 

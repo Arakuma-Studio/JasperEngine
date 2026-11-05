@@ -9,6 +9,7 @@
 #include "component/InputFieldComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/TextEffectComponent.h"
+#include "EditorModal.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 #include "reflect/Reflect.h"
@@ -78,6 +79,8 @@
 #include "util/Color.h"
 #include "util/LightPhotometry.h"
 #include "render/SceneRender2D.h"
+#include "render/CapsuleShadows.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "window/ProjectWindow.h"
 #include "window/HierarchyWindow.h"
 #include "App.h"
@@ -94,6 +97,7 @@
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
+#include "component/InstancedMeshComponent.h"
 #include "component/ColorTweenComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/PositionTweenComponent.h"
@@ -190,6 +194,7 @@ static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWind
 static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kShadowCaster2DShape);
 static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightShading);
 static std::vector<editor::EnumEntry>& entriesCullingMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCullingMode);
+static std::vector<editor::EnumEntry>& entriesLodFadeMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLodFadeMode);
 static std::vector<editor::EnumEntry>& entriesFogType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kFogType);
 static std::vector<editor::EnumEntry>& entriesFogColorMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kFogColorMode);
 static std::vector<editor::EnumEntry>& entriesAtmosphereQualityOverride = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAtmosphereQualityOverride);
@@ -197,6 +202,9 @@ static std::vector<editor::EnumEntry>& entriesCloudsRendering = *editor::Inspect
 static std::vector<editor::EnumEntry>& entriesReflectionProbeMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kReflectionProbeMode);
 static std::vector<editor::EnumEntry>& entriesReflectionProbeUpdateMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kReflectionProbeUpdateMode);
 static std::vector<editor::EnumEntry>& entriesCameraType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCameraType);
+static std::vector<editor::EnumEntry>& entriesTransparencyMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTransparencyMode);
+static std::vector<editor::EnumEntry>& entriesCapsuleCastShadows = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCapsuleCastShadows);
+static std::vector<editor::EnumEntry>& entriesCapsuleDirection = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCapsuleDirection);
 // render-target framebuffers have no mipmaps, so only the non-mipmap filters apply
 static std::vector<editor::EnumEntry>& entriesTextureFilter = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTextureFilter, editor::reflect::enums::bit((int)TextureFilter::NEAREST) | editor::reflect::enums::bit((int)TextureFilter::LINEAR));
 // full filter set for a texture's minification (mipmap variants trigger mipmap generation)
@@ -1222,14 +1230,15 @@ void editor::InspectorWindow::drawFontSlot(ComponentType cpType, const std::stri
     ImGui::PopStyleVar();
 
     // Error popup modal
-    if (ImGui::BeginPopupModal("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Selected file must be within the assets directory.");
+        EditorModal::message("Selected file must be within the assets directory.");
         ImGui::Separator();
 
         float buttonWidth = 120;
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-        if (ImGui::Button("OK", ImVec2(120, 0))) {
+        if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -2171,18 +2180,20 @@ void editor::InspectorWindow::drawLayerCombo(SceneProject* sceneProject, const s
     }
 
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Change Layer##change_layer_children", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)){
+    if (EditorModal::begin("Change Layer##change_layer_children", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)){
         const std::string layerName = TagManager::layerToName(pendingLayer);
         ImGui::Text("Do you want to set layer to %s for all child objects as well?",
             layerName.empty() ? std::to_string(pendingLayer).c_str() : layerName.c_str());
+        EditorModal::message("Do you want to set layer to " + (layerName.empty() ? std::to_string(pendingLayer) : layerName) +
+                             " for all child objects as well?");
         ImGui::Spacing();
 
         int choice = 0; // 1 children, 2 this object only, 3 cancel
-        if (ImGui::Button("Yes, change children")) choice = 1;
+        if (EditorModal::button("Yes, change children", "yes")) choice = 1;
         ImGui::SameLine();
-        if (ImGui::Button("No, this object only")) choice = 2;
+        if (EditorModal::button("No, this object only", "no")) choice = 2;
         ImGui::SameLine();
-        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) choice = 3;
+        if (EditorModal::button("Cancel", "cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) choice = 3;
 
         if (choice != 0){
             // the selection may have changed scene or lost entities while the dialog was open
@@ -4936,14 +4947,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
 
         // Error popup modal
-        if (ImGui::BeginPopupModal("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be within the assets directory.");
+            EditorModal::message("Selected file must be within the assets directory.");
             ImGui::Separator();
 
             float buttonWidth = 120;
             float windowWidth = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -5110,14 +5122,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
             dragDropResourcesTextureCube(cpType, id, dragMin, dragMax, sceneProject, entities);
 
-            if (ImGui::BeginPopupModal("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (EditorModal::begin("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
                 ImGui::Text("Selected file must be within the assets directory.");
+                EditorModal::message("Selected file must be within the assets directory.");
                 ImGui::Separator();
 
                 float buttonWidth = 120;
                 float windowWidth = ImGui::GetWindowSize().x;
                 ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-                if (ImGui::Button("OK", ImVec2(120, 0))) {
+                if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndPopup();
@@ -5226,14 +5239,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 dragDropResourcesTextureCube(cpType, id, dragMin, dragMax, sceneProject, entities, static_cast<int>(faceIndex));
 
                 // Error popup modal
-                if (ImGui::BeginPopupModal("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+                if (EditorModal::begin("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
                     ImGui::Text("Selected file must be within the assets directory.");
+                    EditorModal::message("Selected file must be within the assets directory.");
                     ImGui::Separator();
 
                     float buttonWidth = 120;
                     float windowWidth = ImGui::GetWindowSize().x;
                     ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-                    if (ImGui::Button("OK", ImVec2(120, 0))) {
+                    if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::EndPopup();
@@ -5595,14 +5609,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             restoreMatDropPreview();
         }
 
-        if (ImGui::BeginPopupModal("File Import Error##material", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("File Import Error##material", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be within the project directory.");
+            EditorModal::message("Selected file must be within the project directory.");
             ImGui::Separator();
 
             float buttonWidth = 120;
             float windowWidth = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -7340,7 +7355,7 @@ void editor::InspectorWindow::drawShaderFilesPopup(const std::string& popupName,
 }
 
 void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    beginTable(cpType, getLabelSize("Receive Shadows"));
+    beginTable(cpType, getLabelSize("Cull Below Screen Height"));
 
     // Static variables for shape parameters
     static PrimitiveParameters shapeParams;
@@ -7582,7 +7597,47 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
         lodBiasSettings.help = "Scales how far detail is kept: above 1 keeps it longer, below 1 drops it sooner.";
         lodBiasSettings.secondColSize = 6 * ImGui::GetFontSize();
         propertyRow(RowPropertyType::FloatPositive, cpType, "lodBias", "Detail Bias", sceneProject, entities, lodBiasSettings);
+
+        // how a level change shows (spec S54 R9, Unity's LOD Group)
+        const MeshComponent& lodMesh = sceneProject->scene->getComponent<MeshComponent>(entities[0]);
+        const bool instanced = sceneProject->scene->findComponent<InstancedMeshComponent>(entities[0]) != nullptr;
+        RowSettings fadeModeSettings;
+        fadeModeSettings.enumEntries = &entriesLodFadeMode;
+        fadeModeSettings.help = "Cross Fade blends between detail levels with a short dithered fade instead of switching at once "
+                                "(fading objects draw twice for the duration). None switches at once.";
+        propertyRow(RowPropertyType::Enum, cpType, "lodFadeMode", "Fade Mode", sceneProject, entities, fadeModeSettings);
+        if (lodMesh.lodFadeMode == LodFadeMode::CROSS_FADE){
+            if (!instanced){
+                RowSettings animateSettings;
+                animateSettings.indent = true;
+                animateSettings.help = "Fade over the scene's Cross-fade Duration when the level changes (fading objects draw twice for the "
+                                       "duration). Off: fade over a band of distance (Fade Transition Width).";
+                propertyRow(RowPropertyType::Bool, cpType, "lodAnimateCrossFading", "Animate Cross-fading", sceneProject, entities, animateSettings);
+            }
+            if (instanced || !lodMesh.lodAnimateCrossFading){
+                RowSettings widthSettings;
+                widthSettings.indent = true;
+                widthSettings.floatMin = 0.0f;
+                widthSettings.floatMax = 1.0f;
+                widthSettings.help = std::string(instanced ? "Instanced meshes always fade by distance. " : "") +
+                                     "The share of each level's distance band over which it fades into the next one: objects in "
+                                     "the band draw twice (both levels) while they stay there.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, "lodFadeTransitionWidth", "Fade Transition Width", sceneProject, entities, widthSettings);
+            }
+        }
+        RowSettings cullBelowSettings;
+        cullBelowSettings.floatMin = 0.0f;
+        cullBelowSettings.floatMax = 1.0f;
+        cullBelowSettings.format = "%.3f";
+        cullBelowSettings.help = "Stop drawing this mesh when it covers less than this share of the view's height (0.02: 2 %). "
+                                 "0 never culls it. With Cross Fade it fades out (fading objects draw twice for the duration).";
+        propertyRow(RowPropertyType::Float_0_1, cpType, "lodCullBelow", "Cull Below Screen Height", sceneProject, entities, cullBelowSettings);
     }
+
+    RowSettings instancingSettings;
+    instancingSettings.help = "Let this mesh draw in one instanced draw with the opaque meshes of the same mesh, material and shader "
+                              "while Project Settings > Graphics > GPU Instancing is on (the image stays the same). Turn off to draw it alone.";
+    propertyRow(RowPropertyType::Bool, cpType, "allowGpuInstancing", "Allow GPU Instancing", sceneProject, entities, instancingSettings);
 
     RowSettings reflectionProbeSettings;
     reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep a GameObject out of its own reflection.";
@@ -7818,7 +7873,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             }
 
             separatorText("Surface");
-            drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+            drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial, pbrRows);
 
             separatorText("Extra pass");
             drawMaterialExtraPassRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
@@ -7924,13 +7979,14 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
             ImGui::SetTooltip("%s", canClearModel ? "None: unload the model" : clearReason.c_str());
         }
 
-        if (ImGui::BeginPopupModal("Model Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Model Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be within the assets directory.");
+            EditorModal::message("Selected file must be within the assets directory.");
             ImGui::Separator();
             float bw = 120;
             float ww = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((ww - bw) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -8967,7 +9023,7 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
     Scene* scene = sceneProject->scene;
     CameraComponent& camera = scene->getComponent<CameraComponent>(entities[0]);
 
-    float firstColSize = std::max(getLabelSize("Auto Resize"), getLabelSize("Culling Mask"));
+    float firstColSize = std::max({getLabelSize("Auto Resize"), getLabelSize("Culling Mask"), getLabelSize("Transparency Mode")});
 
     beginTable(cpType, firstColSize);
 
@@ -9007,6 +9063,22 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
 
     propertyRow(RowPropertyType::Bool, cpType, "depthTest", "Depth Test", sceneProject, entities, defaultSettings);
     propertyRow(RowPropertyType::Bool, cpType, "autoResize", "Auto Resize", sceneProject, entities, defaultSettings);
+
+    // S57 R4: weighted blended OIT for the alpha-blended materials
+    RowSettings transparencySettings;
+    transparencySettings.enumEntries = &entriesTransparencyMode;
+    transparencySettings.help = "Sorted draws blended renderers back to front, one at a time. Order Independent draws alpha-blended "
+                                "materials through weighted blended OIT: one extra pass into RGBA16F+R16F targets and a fullscreen "
+                                "resolve; Sorted on devices without half-float targets. Additive and multiply blending stay sorted.";
+    propertyRow(RowPropertyType::Enum, cpType, "transparencyMode", "Transparency Mode", sceneProject, entities, transparencySettings);
+    if (camera.transparencyMode == TransparencyMode::ORDER_INDEPENDENT){
+        RowSettings weightSettings;
+        weightSettings.indent = true;
+        weightSettings.stepSize = 0.01f;
+        weightSettings.format = "%.4f";
+        weightSettings.help = "Multiplies the view depths the OIT weight takes: lower it for large scenes, so far layers keep their weight.";
+        propertyRow(RowPropertyType::FloatPositive, cpType, "oitWeightScale", "OIT Weight Scale", sceneProject, entities, weightSettings);
+    }
 
     if (entities.size() == 1 && sceneProject->sceneRender && sceneWindow) {
         Entity cameraEntity = entities[0];
@@ -9173,13 +9245,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
             }
         }
 
-        if (ImGui::BeginPopupModal("Audio Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Audio Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be an audio file within the project directory.");
+            EditorModal::message("Selected file must be an audio file within the project directory.");
             ImGui::Separator();
             float buttonModalWidth = 120;
             float windowWidth = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((windowWidth - buttonModalWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -9286,13 +9359,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
         ImGui::EndDisabled();
 
-        if (ImGui::BeginPopupModal("Audio Preview Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Audio Preview Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextWrapped("%s", ap.error.c_str());
+            EditorModal::message(ap.error);
             ImGui::Separator();
             float buttonModalWidth = 120;
             float windowWidth = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((windowWidth - buttonModalWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -10383,6 +10457,160 @@ void editor::InspectorWindow::drawShadowCaster2DComponent(ComponentType cpType, 
     }
 }
 
+void editor::InspectorWindow::drawCapsuleShadowCasterComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    CapsuleShadowCasterComponent& caster = scene->getComponent<CapsuleShadowCasterComponent>(entities[0]);
+
+    RowSettings settingsCast;
+    settingsCast.enumEntries = &entriesCapsuleCastShadows;
+    settingsCast.help = "On: the meshes also cast their shadow-map shadows (their own Cast Shadows decides). Capsules Only: the meshes "
+                        "leave the shadow maps, so a moving character keeps the static shadow cache valid.";
+
+    beginTable(cpType, getLabelSize("Cast Shadows"));
+    propertyRow(RowPropertyType::Enum, cpType, "castShadows", "Cast Shadows", sceneProject, entities, settingsCast);
+    endTable();
+
+    if (!scene->isCapsuleShadowsEnabled()){
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("The scene's Capsule Shadows are off (Inspector with nothing selected > Shadows): these capsules cast nothing.");
+        ImGui::PopStyleColor();
+    }
+
+    if (entities.size() != 1)
+        return;
+    Entity entity = entities[0];
+    const int maxCapsules = CapsuleShadowCasterComponent::MAX_CAPSULES;
+
+    auto setCapsules = [&](const std::vector<CapsuleShadowShape>& capsules){
+        auto* capsulesCmd = new PropertyCmd<std::vector<CapsuleShadowShape>>(project, sceneProject->id, entity, cpType, "capsules", capsules);
+        capsulesCmd->setNoMerge();
+        CommandHandle::get(sceneProject->id)->addCommand(capsulesCmd);
+    };
+
+    separatorText("Capsules");
+
+    // the capsule whose handle is sub-selected in the Scene view
+    int selectedCapsule = -1;
+    if (sceneProject->sceneRender && sceneProject->sceneRender->getSelectedCapsuleHandleEntity() == entity &&
+        sceneProject->sceneRender->getSelectedCapsuleHandleIndex() >= 0){
+        selectedCapsule = sceneProject->sceneRender->getSelectedCapsuleHandleIndex() / SceneRender::CAPSULE_HANDLES;
+    }
+
+    RowSettings settingsBone;
+    settingsBone.help = "The name of the bone (a GameObject under this one) the capsule follows. Empty: this GameObject.";
+    RowSettings settingsSize;
+    settingsSize.stepSize = 0.01f;
+    settingsSize.format = "%.3f";
+    RowSettings settingsRadius = settingsSize;
+    settingsRadius.help = "Metres, scaled by the bone's scale.";
+    RowSettings settingsLength = settingsSize;
+    settingsLength.help = "Metres between the centres of the two caps, scaled by the bone's scale.";
+    RowSettings settingsOffset = settingsSize;
+    settingsOffset.help = "The capsule's centre in the bone's space.";
+    RowSettings settingsDirection;
+    settingsDirection.enumEntries = &entriesCapsuleDirection;
+    settingsDirection.help = "The bone axis the capsule lies along.";
+
+    for (size_t i = 0; i < caster.capsules.size(); i++){
+        ImGui::PushID((int)i);
+        const std::string prefix = "capsules[" + std::to_string(i) + "]";
+        const std::string title = (selectedCapsule == (int)i ? std::string(ICON_FA_CARET_RIGHT " ") : std::string()) +
+                                  "Capsule " + std::to_string(i + 1) +
+                                  (caster.capsules[i].bone.empty() ? std::string() : " (" + caster.capsules[i].bone + ")");
+
+        if (selectedCapsule == (int)i)
+            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
+        ImGui::SeparatorText(title.c_str());
+        if (selectedCapsule == (int)i)
+            ImGui::PopStyleColor();
+
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float iconWidth = ImGui::GetFrameHeight();
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - iconWidth));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]);
+        const bool remove = ImGui::Button(ICON_FA_TRASH_CAN "##capsule_remove", ImVec2(iconWidth, 0));
+        ImGui::PopStyleColor(2);
+        ImGui::SetItemTooltip("Remove capsule");
+        if (remove){
+            std::vector<CapsuleShadowShape> capsules = caster.capsules;
+            capsules.erase(capsules.begin() + (std::ptrdiff_t)i);
+            if (sceneProject->sceneRender && selectedCapsule >= (int)i)
+                sceneProject->sceneRender->clearCapsuleHandleSelection();
+            setCapsules(capsules);
+            ImGui::PopID();
+            break;
+        }
+
+        beginTable(cpType, getLabelSize("Direction"), "capsule_shape");
+        propertyRow(RowPropertyType::String, cpType, prefix + ".bone", "Bone", sceneProject, entities, settingsBone);
+        propertyRow(RowPropertyType::FloatPositive, cpType, prefix + ".radius", "Radius", sceneProject, entities, settingsRadius);
+        propertyRow(RowPropertyType::FloatPositive, cpType, prefix + ".length", "Length", sceneProject, entities, settingsLength);
+        propertyRow(RowPropertyType::Vector3, cpType, prefix + ".offset", "Offset", sceneProject, entities, settingsOffset);
+        propertyRow(RowPropertyType::Enum, cpType, prefix + ".direction", "Direction", sceneProject, entities, settingsDirection);
+        endTable();
+        ImGui::PopID();
+    }
+
+    const float buttonWidth = std::max(0.0f, (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f);
+    ImGui::BeginDisabled((int)caster.capsules.size() >= maxCapsules);
+    if (ImGui::Button(ICON_FA_PLUS " Add Capsule##capsuleshadowcaster", ImVec2(buttonWidth, 0))){
+        std::vector<CapsuleShadowShape> capsules = caster.capsules;
+        capsules.push_back(CapsuleShadowShape());
+        setCapsules(capsules);
+    }
+    ImGui::EndDisabled();
+    if ((int)caster.capsules.size() >= maxCapsules)
+        ImGui::SetItemTooltip("A caster has at most %d capsules.", maxCapsules);
+    ImGui::SameLine();
+
+    // Fit To Skeleton: the capsules of the humanoid bones under this GameObject, in world space
+    // (the fit reads the rest pose from the bones' current transforms)
+    if (ImGui::Button(ICON_FA_PERSON " Fit To Skeleton##capsuleshadowcaster", ImVec2(buttonWidth, 0))){
+        std::vector<CapsuleShadows::Bone> bones;
+        auto transforms = scene->getComponentArray<Transform>();
+        if (scene->findComponent<Transform>(entity)){
+            // the GameObject's branch is contiguous in the Transforms, parents before children
+            const size_t first = transforms->getIndex(entity);
+            const size_t last = scene->findBranchLastIndex(entity);
+            std::map<Entity, int> indexOf;
+            for (size_t t = first; t <= last && t < transforms->size(); t++){
+                const Entity bone = transforms->getEntity(t);
+                const Transform& transform = transforms->getComponentFromIndex(t);
+                CapsuleShadows::Bone entry;
+                entry.name = scene->getEntityName(bone);
+                auto parent = indexOf.find(transform.parent);
+                entry.parent = (t == first || parent == indexOf.end()) ? -1 : parent->second;
+                entry.position = transform.worldPosition;
+                entry.rotation = transform.worldRotation;
+                entry.scale = transform.worldScale;
+                indexOf[bone] = (int)bones.size();
+                bones.push_back(entry);
+            }
+        }
+        std::vector<CapsuleShadowShape> capsules;
+        std::string error;
+        if (CapsuleShadows::fitToSkeleton(bones, capsules, &error)){
+            capsuleFitError.clear();
+            capsuleFitErrorEntity = NULL_ENTITY;
+            if (sceneProject->sceneRender)
+                sceneProject->sceneRender->clearCapsuleHandleSelection();
+            setCapsules(capsules);
+        }else{
+            capsuleFitError = "Fit To Skeleton: " + error + ".";
+            capsuleFitErrorEntity = entity;
+        }
+    }
+    ImGui::SetItemTooltip("Replaces the capsules with eight on the humanoid bones under this GameObject (head, spine, legs and feet), "
+                          "sized by the body's height.");
+
+    if (capsuleFitErrorEntity == entity && !capsuleFitError.empty()){
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
+        ImGui::TextWrapped("%s", capsuleFitError.c_str());
+        ImGui::PopStyleColor();
+    }
+}
+
 bool editor::InspectorWindow::beginFoldout(const char* label){
     const bool open = ImGui::TreeNodeEx(label, ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
     if (open && layoutRecording){
@@ -10963,12 +11191,13 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
             }
         }
 
-        if (ImGui::BeginPopupModal("HTML Document Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("HTML Document Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be an .html, .htm or .rml file within the assets directory.");
+            EditorModal::message("Selected file must be an .html, .htm or .rml file within the assets directory.");
             ImGui::Separator();
             const float buttonModalWidth = 120;
             ImGui::SetCursorPosX((ImGui::GetWindowSize().x - buttonModalWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(buttonModalWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonModalWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -11147,12 +11376,13 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
             }
         }
 
-        if (ImGui::BeginPopupModal("Pose Animation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Pose Animation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be a .poseanim file within the assets directory.");
+            EditorModal::message("Selected file must be a .poseanim file within the assets directory.");
             ImGui::Separator();
             const float buttonModalWidth = 120;
             ImGui::SetCursorPosX((ImGui::GetWindowSize().x - buttonModalWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(buttonModalWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonModalWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -12496,8 +12726,17 @@ void editor::InspectorWindow::show(){
     // while someone else holds their lock (S29 R28)
     if (!project->getInspectedAssets().empty()) {
         if (!textureImporter) textureImporter = std::make_unique<TextureImporterView>(project);
+        if (!modelImporter) modelImporter = std::make_unique<ModelImporterView>(project);
         const bool assetsLocked = drawVcsLockBanner(project->getInspectedAssets());
         if (assetsLocked) ImGui::BeginDisabled(true);
+        // model files: their import settings (S53 R16), the Animation tab their clip table
+        if (modelImporter->draw(project->getInspectedAssets(), [this](const std::string& relative) {
+                drawModelClipsAsset(project->getAssetsPath() / FileUtils::pathFromUtf8(relative), relative);
+            })) {
+            if (assetsLocked) ImGui::EndDisabled();
+            ImGui::End();
+            return;
+        }
         // one image that is a generated sprite normal map or the source of one: upstream's asset
         // view of it (its recipe, stale line, Regenerate), above the import settings
         const std::vector<std::filesystem::path>& inspectedFiles = project->getInspectedAssets();
@@ -12805,7 +13044,7 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Mesh Detail (LOD)");
 
                 if (ImGui::BeginTable("scene_lod_settings_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Threshold"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Cross-fade Duration"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     drawScenePropertyRow<bool>(sceneProject, "mesh_lod_enabled", "Enabled", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
@@ -12813,6 +13052,13 @@ void editor::InspectorWindow::show(){
                     if (jasperengine::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "mesh_lod_enabled")) {
                         drawScenePropertyRow<float>(sceneProject, "mesh_lod_threshold", "Threshold", ScenePropertyInputType::SliderFloat, -1.0f, 0.25f, 8.0f,
                             "Screen pixels of geometric error a simplified mesh may show. Lower keeps more detail.");
+                        drawScenePropertyRow<bool>(sceneProject, "mesh_lod_cross_fade", "Cross Fade", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                            "Blend between detail levels with a short dithered fade instead of switching at once: fading objects draw twice for the duration. "
+                            "Off: no fade shaders are built or shipped.");
+                        if (jasperengine::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "mesh_lod_cross_fade")) {
+                            drawScenePropertyRow<float>(sceneProject, "mesh_lod_cross_fade_duration", "Cross-fade Duration", ScenePropertyInputType::SliderFloat, -1.0f, 0.05f, 2.0f,
+                                "Seconds a level change fades over (Unity's LODGroup.crossFadeAnimationDuration): fading objects draw twice for the duration.");
+                        }
                     }
 
                     ImGui::EndTable();

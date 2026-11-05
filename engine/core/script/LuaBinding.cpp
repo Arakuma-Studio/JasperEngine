@@ -52,6 +52,7 @@
 #include "object/Light.h"
 #include "object/Light2D.h"
 #include "object/ShadowCaster2D.h"
+#include "object/CapsuleShadowCaster.h"
 #include "object/Camera.h"
 #include "object/Bone.h"
 #include "object/environment/Fog.h"
@@ -1128,6 +1129,7 @@ bool LuaBinding::pushEntityHandleByType(lua_State* L, jasperengine::Scene* scene
     DISPATCH_TYPE(Light, "light");
     DISPATCH_TYPE(Light2D, "light2d");
     DISPATCH_TYPE(ShadowCaster2D, "shadowcaster2d");
+    DISPATCH_TYPE(CapsuleShadowCaster, "capsuleshadowcaster");
     DISPATCH_TYPE(Mesh, "mesh");
     DISPATCH_TYPE(Primitive, "primitive");
     DISPATCH_TYPE(Lattice, "lattice");

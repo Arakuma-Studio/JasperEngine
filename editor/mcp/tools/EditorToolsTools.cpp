@@ -117,15 +117,24 @@ void recordGameTool(const CallPtr& call) {
         Json files = Json::array();
         for (const fs::path& file : result.files) files.push_back(FileUtils::pathToGenericUtf8(file));
         if (settings.kind == recorder::Kind::ImageSequence) data["files"] = files;
-        else data["movie"] = FileUtils::pathToGenericUtf8(result.output);
+        else if (result.ok) data["movie"] = FileUtils::pathToGenericUtf8(result.output);
         data["sidecar"] = FileUtils::pathToGenericUtf8(result.sidecar);
         if (result.overriddenFixedFps > 0.0) data["overrode_fixed_fps"] = result.overriddenFixedFps;
-        if (job->cancelRequested()) {
+        // (a failed write is a failure, stopped or not)
+        if (job->cancelRequested() && result.failedStep.empty()) {
             job->markCancelled("Stopped after " + std::to_string(result.frames) + " frame(s); the output is finalised.");
             return;
         }
-        if (result.ok) job->succeed("Recorded " + std::to_string(result.frames) + " frames to " + FileUtils::pathToGenericUtf8(result.output) + ".", data);
-        else job->fail("The recording failed: " + result.error + ".", data);
+        if (result.ok) {
+            job->succeed("Recorded " + std::to_string(result.frames) + " frames to " + FileUtils::pathToGenericUtf8(result.output) + ".", data);
+            return;
+        }
+        std::string message = "The recording failed: " + result.error + ".";
+        // (in the text: of an error, that is all a client like Claude Code shows the model)
+        if (!result.failedStep.empty()) {
+            message += " The output path holds nothing and Play is still running: stop it (play action stop), fix the cause, then record again.";
+        }
+        job->fail(message, data);
     });
     replyWhenJobDone(call, job, args.value("wait", true), args.value("timeout_seconds", 300.0), [](const McpJob& done) {
         Json result = done.result();

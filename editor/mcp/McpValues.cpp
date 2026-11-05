@@ -2155,15 +2155,15 @@ bool McpValues::materialPbrFromJson(Project* project, SceneProject* scene, const
         return true;
     }
     if (!value.is_object()) {
-        error = "pbr is an object of lobes: clearcoat, sheen, anisotropy, iridescence, transmission, volume, specular, hex "
-                "(each {field: value}, partial values merge), or null for none.";
+        error = "pbr is an object of lobes: clearcoat, sheen, anisotropy, iridescence, transmission, volume, specular, hex, "
+                "hair (the Hair shading model: hair.enabled) (each {field: value}, partial values merge), or null for none.";
         return false;
     }
     for (auto lobeIt = value.begin(); lobeIt != value.end(); ++lobeIt) {
         const PbrLobeInfo* lobe = MaterialPbr::findLobe(lobeIt.key());
         if (!lobe) {
             error = "pbr: unknown lobe "" + lobeIt.key() + ""; valid: clearcoat, sheen, anisotropy, iridescence, transmission, "
-                    "volume, specular, hex.";
+                    "volume, specular, hex, hair.";
             return false;
         }
         if (!lobeIt.value().is_object()) {

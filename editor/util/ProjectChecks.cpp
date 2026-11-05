@@ -4,6 +4,7 @@
 #include "ProjectChecks.h"
 #include "component/ScriptComponent.h"
 #include "io/AtomicFile.h"
+#include "io/watch/LinkedFolders.h"
 #include "component/ActionComponent.h"
 #include "component/PointsComponent.h"
 #include "component/ParticleSystemComponent.h"
@@ -206,7 +207,7 @@ bool editor::ProjectChecks::readFile(const fs::path& path, std::string& content)
 std::vector<fs::path> editor::ProjectChecks::findProjectFiles(const fs::path& projectRoot, const std::vector<std::string>& extensions) {
     std::vector<fs::path> files;
     std::error_code ec;
-    for (fs::recursive_directory_iterator it(projectRoot, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
+    for (watch::LinkedDirectoryIterator it(projectRoot, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec;
          it.increment(ec)) {
         const fs::path& path = it->path();
         const std::string name = path.filename().string();

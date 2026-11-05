@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderForkDialog.h"
+#include "window/EditorModal.h"
 
 #include "external/IconsFontAwesome6.h"
 #include "util/ProjectUtils.h"
@@ -109,7 +110,7 @@ void ShaderForkDialog::show() {
     ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize |
                                    ImGuiWindowFlags_NoSavedSettings |
                                    ImGuiWindowFlags_Modal;
-    if (!ImGui::BeginPopupModal(popupName, nullptr, flags)) {
+    if (!EditorModal::begin(popupName, nullptr, flags)) {
         if (m_isOpen) {
             m_isOpen = false;
             if (m_onCancel)
@@ -118,10 +119,11 @@ void ShaderForkDialog::show() {
         return;
     }
 
-    if (!m_librarySource.empty())
-        ImGui::Text("Fork %s", m_librarySource.c_str());
-    else
-        ImGui::Text("Fork the built-in %s shader", shaderTypeName(m_shaderType));
+    const std::string title = m_librarySource.empty()
+        ? std::string("Fork the built-in ") + shaderTypeName(m_shaderType) + " shader"
+        : "Fork " + m_librarySource;
+    ImGui::TextUnformatted(title.c_str());
+    EditorModal::message(title);
     ImGui::Separator();
 
     if (!Util::isInsidePath(std::filesystem::path(m_selectedPath), m_projectPath))
@@ -156,12 +158,12 @@ void ShaderForkDialog::show() {
 
     ImGui::TextUnformatted("Shader Name");
     ImGui::SetNextItemWidth(-1);
-    bool enterPressed = ImGui::InputText(
-        "##shader_fork_name", m_nameBuffer, sizeof(m_nameBuffer),
+    bool enterPressed = EditorModal::inputText(
+        "##shader_fork_name", "name", m_nameBuffer, sizeof(m_nameBuffer),
         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCharFilter,
         shaderNameCharFilter);
 
-    ImGui::Checkbox("Also fork shader includes", &m_forkIncludes);
+    EditorModal::checkbox("Also fork shader includes", "fork_includes", &m_forkIncludes);
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Copy the built-in includes so you can edit them.\n"
                           "The fork is placed in a folder of its own so those copies\n"
@@ -193,6 +195,7 @@ void ShaderForkDialog::show() {
         }
     } else {
         ImGui::TextColored(ImVec4(1.f, 0.5f, 0.f, 1.f), "%s", preview.error.c_str());
+        EditorModal::error(preview.error);
     }
 
     ImGui::Separator();
@@ -202,7 +205,7 @@ void ShaderForkDialog::show() {
     ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
     ImGui::BeginDisabled(!preview.valid);
-    if (ImGui::Button("Create", ImVec2(120, 0)) || (enterPressed && preview.valid)) {
+    if (EditorModal::button("Create", "yes", ImVec2(120, 0)) || (enterPressed && preview.valid)) {
         if (m_onCreate)
             m_onCreate(directory, name, m_forkIncludes);
         m_isOpen = false;
@@ -210,7 +213,7 @@ void ShaderForkDialog::show() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(120, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(120, 0)) ||
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         if (m_onCancel)

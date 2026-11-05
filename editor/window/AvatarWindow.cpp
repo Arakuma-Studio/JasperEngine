@@ -22,6 +22,7 @@
 #include "util/ProjectChecks.h"
 #include "util/ProjectFileWrites.h"
 #include "util/Util.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -812,7 +813,10 @@ void editor::AvatarWindow::drawClosePrompt(){
         ImGui::OpenPopup("Unsaved Avatar###AvatarClose");
         closePrompt = false;
     }
-    if (ImGui::BeginPopupModal("Unsaved Avatar###AvatarClose", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
+    if (EditorModal::begin("Unsaved Avatar###AvatarClose", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
+        EditorModal::message("Apply the changes to " + FileUtils::pathToUtf8(FileUtils::pathFromUtf8(model).filename()) + ".humanoid" +
+                             (pendingOpen ? " before opening another Avatar?" : "?"));
+        EditorModal::error(statusError ? status : std::string());
         ImGui::Text(pendingOpen ? "Apply the changes to %s.humanoid before opening another Avatar?" : "Apply the changes to %s.humanoid?",
                     FileUtils::pathToUtf8(FileUtils::pathFromUtf8(model).filename()).c_str());
         // then: the requested model's Avatar, or the window closes
@@ -830,7 +834,7 @@ void editor::AvatarWindow::drawClosePrompt(){
         };
         // a failed Apply keeps the prompt (and the pending open) with its reason; Discard or Cancel
         if (statusError && !status.empty()) ImGui::TextColored(Theme::Colors::ErrorText, "%s", status.c_str());
-        if (ImGui::Button("Apply")){
+        if (EditorModal::button("Apply", "yes")){
             std::string error;
             if (apply(&error)){
                 next();
@@ -838,13 +842,13 @@ void editor::AvatarWindow::drawClosePrompt(){
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Discard")){
+        if (EditorModal::button("Discard", "no")){
             discard();
             next();
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")){
+        if (EditorModal::button("Cancel", "cancel")){
             pendingOpen = false;
             ImGui::CloseCurrentPopup();
         }

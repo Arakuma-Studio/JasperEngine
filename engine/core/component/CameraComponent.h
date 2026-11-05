@@ -11,6 +11,7 @@
 #include "math/Plane.h"
 #include "texture/Framebuffer.h"
 #include "render/CameraRender.h"
+#include "render/OrderIndependentTransparency.h"
 #include "registry/TagManager.h"
 
 #define DEFAULT_ORTHO_NEAR          -10
@@ -87,6 +88,11 @@ namespace jasperengine{
 
         // draw transparent renderables back to front (needs depthTest)
         bool transparentSort = true;
+        // how alpha-blended materials draw (spec S57 R4): Sorted back to front, or Order
+        // Independent (weighted blended OIT, Sorted where the device cannot), whose depth weight
+        // takes view distances times oitWeightScale (lower for large scenes)
+        TransparencyMode transparencyMode = TransparencyMode::SORTED;
+        float oitWeightScale = 1.0f;
 
         // false makes the camera ignore the depth buffer and composite in submission
         // order, like a 2D canvas. Instance and point batches follow the main camera

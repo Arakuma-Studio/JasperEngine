@@ -10,7 +10,6 @@
 
 #include "Factory.h"
 
-#include <cstring>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -27,10 +26,7 @@ namespace {
     }
 
     void emit(const StructDesc& desc, const FieldDesc& field, const void* owner, const CodegenContext& ctx, std::string& out) {
-        if (!exported(field)) return;
-        for (const char* name : ctx.omit) {
-            if (std::strcmp(name, field.name) == 0) return;
-        }
+        if (!exported(field) || (field.derivedIf && field.derivedIf(owner))) return;
         const void* value = field.ref(const_cast<void*>(owner));
         if (field.flags & CodegenIfChanged) {
             const void* def = defaultValue(desc, field);

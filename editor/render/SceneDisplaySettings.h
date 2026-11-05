@@ -4,6 +4,7 @@
 #pragma once
 
 #include "navigation/NavigationOverlay.h"
+#include "render/ViewDrawMode.h"
 
 namespace jasperengine::editor{
 
@@ -38,6 +39,9 @@ namespace jasperengine::editor{
         bool showAllLattices     = false;
         // the AI Navigation overlay (S19; navigation/NavigationOverlay.h)
         NavOverlaySettings navigation;
+        // the Draw Mode (spec S54 R11) and the Stats overlay of the Scene view
+        ViewDrawMode drawMode = ViewDrawMode::SHADED;
+        bool showStats = false;
     };
 
 }
