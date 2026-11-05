@@ -66,4 +66,4 @@ parameters sit inside `sprite-batching`, not S55.
 | S54 | impl |
 | S55 | impl |
 | S56 | merged into `mesh-lod-forge` (linux, web, android built; its tests and MCP files pass) |
-| S57 | impl |
+| S57 | merged into `mesh-lod-forge` (WERROR linux, web, android; its tests pass). GPU costs measured on llvmpipe only |

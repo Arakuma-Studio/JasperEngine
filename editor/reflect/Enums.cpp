@@ -37,8 +37,10 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/Joint3DComponent.h"
 #include "component/AlphaTweenComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/OnScreenControlComponents.h"
 #include "render/LineRibbonBuilder.h"
+#include "render/OrderIndependentTransparency.h"
 
 #include <cctype>
 
@@ -653,6 +655,24 @@ namespace {
         {v(ShadowUpdateMode::ON_DEMAND), "onDemand", "On Demand", "ShadowUpdateMode::ON_DEMAND", "on_demand"},
     };
 
+    // S57's: the tokens are the engine's names (OrderIndependentTransparency::getModeName)
+    constexpr EnumItem kTransparencyModeItems[] = {
+        {v(TransparencyMode::SORTED), "sorted", "Sorted", "TransparencyMode::SORTED"},
+        {v(TransparencyMode::ORDER_INDEPENDENT), "order_independent", "Order Independent", "TransparencyMode::ORDER_INDEPENDENT"},
+    };
+
+    constexpr EnumItem kCapsuleCastShadowsItems[] = {
+        {v(CapsuleCastShadows::ON), "on", "On", "CapsuleCastShadows::ON"},
+        {v(CapsuleCastShadows::CAPSULES_ONLY), "capsules_only", "Capsules Only", "CapsuleCastShadows::CAPSULES_ONLY"},
+    };
+
+    // Unity's CapsuleCollider Direction names
+    constexpr EnumItem kCapsuleDirectionItems[] = {
+        {v(CapsuleDirection::X_AXIS), "x_axis", "X-Axis", "CapsuleDirection::X_AXIS"},
+        {v(CapsuleDirection::Y_AXIS), "y_axis", "Y-Axis", "CapsuleDirection::Y_AXIS"},
+        {v(CapsuleDirection::Z_AXIS), "z_axis", "Z-Axis", "CapsuleDirection::Z_AXIS"},
+    };
+
     constexpr EnumItem kTextureAlphaBorderItems[] = {
         {v(TextureAlphaBorder::FIX), "fix", "Fix", "TextureAlphaBorder::FIX"},
         {v(TextureAlphaBorder::KEEP), "keep", "Keep", "TextureAlphaBorder::KEEP"},
@@ -777,6 +797,9 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kScrollbarType{"ScrollbarType", kScrollbarTypeItems, v(ScrollbarType::VERTICAL)};
     const EnumDesc kShadowCaster2DShape{"ShadowCaster2DShape", kShadowCaster2DShapeItems, v(ShadowCaster2DShape::AUTO_QUAD)};
     const EnumDesc kShadowUpdateMode{"ShadowUpdateMode", kShadowUpdateModeItems, v(ShadowUpdateMode::AUTO)};
+    const EnumDesc kTransparencyMode{"TransparencyMode", kTransparencyModeItems, v(TransparencyMode::SORTED)};
+    const EnumDesc kCapsuleCastShadows{"CapsuleCastShadows", kCapsuleCastShadowsItems, v(CapsuleCastShadows::ON)};
+    const EnumDesc kCapsuleDirection{"CapsuleDirection", kCapsuleDirectionItems, v(CapsuleDirection::Y_AXIS)};
     const EnumDesc kTextureAlphaBorder{"TextureAlphaBorder", kTextureAlphaBorderItems, v(TextureAlphaBorder::AUTO), nullptr, kTextureAlphaBorderOrder};
     const EnumDesc kTextureFilter{"TextureFilter", kTextureFilterItems, v(TextureFilter::LINEAR)};
     const EnumDesc kTextureWrap{"TextureWrap", kTextureWrapItems, v(TextureWrap::REPEAT)};

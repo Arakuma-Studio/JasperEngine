@@ -16,6 +16,7 @@
 #include "util/ShellEnv.h"
 #include "util/Util.h"
 #include "render/shadow/ShadowTiers.h"
+#include "render/LightingTiers.h"
 #include "engine_lua_stubs.h"
 #include "util/ProjectChecks.h"
 #include "util/EditorFingerprint.h"
@@ -2325,6 +2326,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "#include <fstream>\n";
     mainContent += "#include <iterator>\n";
     mainContent += "#endif\n";
+    // Project Settings > Graphics > Light Mode, the editor's own (Project::setLightMode): only
+    // when not Automatic, the engine's default
+    const LightMode lightMode = LightingTiers::getLightMode();
+    if (lightMode != LightMode::AUTOMATIC)
+        mainContent += "#include \"render/LightingTiers.h\"\n";
 
     // Include prefab headers (contain declarations for prefab creation functions)
     for (const auto& prefabData : prefabs) {
@@ -2587,6 +2593,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                 tierNames[std::clamp(static_cast<int>(tier), 0, 3)] + ");\n";
         }
     }
+    if (lightMode != LightMode::AUTOMATIC)
+        mainContent += std::string("    LightingTiers::setLightMode(") +
+            (lightMode == LightMode::TILED ? "LightMode::TILED" : "LightMode::PER_OBJECT") + ");\n";
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
     // The native plugins of plugins/native that the platform being built cannot run: a call to

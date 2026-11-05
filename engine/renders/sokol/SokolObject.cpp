@@ -979,6 +979,86 @@ bool SokolObject::endLoadDynamic(PrimitiveType primitiveType, IndexType indexTyp
     return dynamicLoaded;
 }
 
+bool SokolObject::loadAlike(const SokolObject& source, ShaderRender* shader){
+    beginLoad(PrimitiveType::TRIANGLES);
+    bind = source.bind;
+    loadIndexBuffer = source.loadIndexBuffer;
+    loadIndexOffset = source.loadIndexOffset;
+    bufferToBindSlot = source.bufferToBindSlot;
+    bindSlotIndex = source.bindSlotIndex;
+    pipeline_desc = source.pipeline_desc;
+    loadState = source.loadState;
+    msaaSamples = source.msaaSamples;
+    blendOverride = source.blendOverride;
+    blendState = source.blendState;
+    immediatePipelines = source.immediatePipelines;
+    setShader(shader);
+    checkVertexInputs();
+    return pipeline_desc.shader.id != SG_INVALID_ID;
+}
+
+void SokolObject::shareBindings(const SokolObject& source){
+    bind = source.bind;
+}
+
+bool SokolObject::beginAccumulationDraw(PipelineType colorType, bool mirrored){
+    uniformsDropped = false; // a new draw: its uniforms come next
+    RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    drawWaiting = false;
+    if (pipeline_desc.shader.id == SG_INVALID_ID || sg_query_shader_state(pipeline_desc.shader) != SG_RESOURCESTATE_VALID){
+        drawWaiting = pipeline_desc.shader.id != SG_INVALID_ID && sg_query_shader_state(pipeline_desc.shader) == SG_RESOURCESTATE_ALLOC;
+        waitingDraws += drawWaiting ? 1 : 0;
+        return false;
+    }
+
+    const int index = pipelineIndex(colorType);
+    const uint8_t kind = mirrored ? VARIANT_ACCUMULATE_MIRRORED : VARIANT_ACCUMULATE;
+    const SokolVariantRefs::Variant* held = variants.find(kind, (uint8_t)index);
+    if (!held){
+        sg_pipeline_desc desc = makePipelineDesc(colorType);
+        desc.color_count = 2;
+        desc.colors[0].pixel_format = SG_PIXELFORMAT_RGBA16F;
+        desc.colors[1].pixel_format = SG_PIXELFORMAT_R16F;
+        // one blend state for both targets (GL and GLES3 have no other): the colour and the
+        // weight sum, the alpha keeps the product of (1 - alpha)
+        for (int c = 0; c < 2; c++){
+            sg_blend_state& blend = desc.colors[c].blend;
+            blend.enabled = true;
+            blend.src_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.dst_factor_rgb = SG_BLENDFACTOR_ONE;
+            blend.op_rgb = SG_BLENDOP_ADD;
+            blend.src_factor_alpha = SG_BLENDFACTOR_ZERO;
+            blend.dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA;
+            blend.op_alpha = SG_BLENDOP_ADD;
+            desc.colors[c].write_mask = SG_COLORMASK_RGBA;
+        }
+        desc.depth.write_enabled = false;
+        desc.stencil = {};
+        if (mirrored){
+            desc.face_winding = (desc.face_winding == SG_FACEWINDING_CCW) ? SG_FACEWINDING_CW : SG_FACEWINDING_CCW;
+        }
+        desc.label = "oit-accumulation-pipeline";
+        variants.add(kind, (uint8_t)index, SokolPipelineCache::acquireVariant(desc));
+        held = variants.find(kind, (uint8_t)index);
+    }
+    if (!held || held->pipeline.id == SG_INVALID_ID)
+        return false;
+    const sg_resource_state state = sg_query_pipeline_state(held->pipeline);
+    if (state != SG_RESOURCESTATE_VALID){
+        drawWaiting = state == SG_RESOURCESTATE_ALLOC;
+        waitingDraws += drawWaiting ? 1 : 0;
+        return false;
+    }
+    if (!isDynamicWarm(held->pipeline)){
+        drawWaiting = true;
+        waitingDraws++;
+        return false;
+    }
+    sg_apply_pipeline(held->pipeline);
+    SokolPipelineCache::invalidateApplied();
+    return true;
+}
+
 bool SokolObject::beginDraw(const PipelineState& state){
     uniformsDropped = false; // a new draw: its uniforms come next
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)

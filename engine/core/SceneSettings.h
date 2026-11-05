@@ -371,6 +371,13 @@ namespace jasperengine{
 
         // new scenes shade at HIGH; a scene file without the key is STANDARD (as it was drawn)
         LitQuality litQuality = LitQuality::HIGH;
+        // Capsule shadows (spec S57 R2): the main directional light's soft occlusion by the
+        // capsules of the Capsule Shadow Casters nearest the camera (at most 4), on every lit
+        // receiver; intensity scales it, softness widens the penumbra per metre along the light
+        bool capsuleShadowsEnabled = false;
+        float capsuleShadowIntensity = 1.0f;
+        float capsuleShadowSoftness = 0.25f;
+
         // the camera exposure lights authored in physical units (lux, candela, lumen) are drawn
         // at (util/LightPhotometry.h): Sunny 15, Overcast 12, Interior 7, Night 2. Lights in
         // engine units ignore it.

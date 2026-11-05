@@ -30,6 +30,10 @@
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
 #include "render/shadow/ShadowTiers.h"
+#include "render/LightingTiers.h"
+#include "render/OrderIndependentTransparency.h"
+#include "component/CapsuleShadowCasterComponent.h"
+#include "texture/MaterialPbr.h"
 #include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
 #include "Log.h"
@@ -189,6 +193,12 @@ namespace luabridge
     // 3D shadows (S10)
     template<> struct Stack<ShadowType> : EnumWrapper<ShadowType>{};
     template<> struct Stack<ShadowUpdateMode> : EnumWrapper<ShadowUpdateMode>{};
+    // S57's lighting
+    template<> struct Stack<TransparencyMode> : EnumWrapper<TransparencyMode>{};
+    template<> struct Stack<ShadingModel> : EnumWrapper<ShadingModel>{};
+    template<> struct Stack<CapsuleCastShadows> : EnumWrapper<CapsuleCastShadows>{};
+    template<> struct Stack<CapsuleDirection> : EnumWrapper<CapsuleDirection>{};
+    template<> struct Stack<LightMode> : EnumWrapper<LightMode>{};
     template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
     template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};

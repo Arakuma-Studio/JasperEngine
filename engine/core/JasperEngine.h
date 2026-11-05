@@ -140,6 +140,7 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/RectTransformComponent.h"
 #include "component/UIDocumentComponent.h"
 
@@ -206,6 +207,7 @@
 #include "object/Animator.h"
 #include "object/GameObject.h"
 #include "object/ShadowCaster2D.h"
+#include "object/CapsuleShadowCaster.h"
 #include "object/Points.h"
 #ifdef JASPERENGINE_PHYSICS_2D
 #include "object/physics/Rigidbody2D.h"
