@@ -18,6 +18,7 @@ get_prefab_info, get_entity, list_missing_assets. Runs in a copy of tools/fixtur
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -305,8 +306,7 @@ async def test_a_root_swapped_for_a_link_is_not_scanned(ed: Editor):
         out = ed.scratch.root / "export-swapped-root"
         r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "platform": "linux", "backends": ["opengl"],
                                                 "overwrite": True, "timeout_seconds": 300})
-        said = r.text + json.dumps(r.structured or {})
-        ed.check("no longer leads where it did" in said, f"an export through a swapped root fails and says why: {said[:600]}")
+        ed.check(r.is_error or (r.structured or {}).get("status") == "failed", f"an export through a swapped root is refused: {r.text[:400]}")
         ed.check(not (out / "project" / "assets" / "keep.txt").exists(), "and ships nothing of what the root leads to now")
     finally:
         if root.is_symlink():
@@ -317,6 +317,49 @@ async def test_a_root_swapped_for_a_link_is_not_scanned(ed: Editor):
     await pickup(ed)
     r = await ed.call_raw("write_file", {"path": "assets/back.txt", "content": "ok\n"})
     ed.check(not r.is_error, f"the root back: writes work again: {r.text[:300]}")
+
+
+async def test_an_export_stops_when_a_root_is_swapped_during_it(ed: Editor):
+    """build_project's preflight sees a root swapped before it starts. Swapped once the export runs (held by
+    JASPER_TEST_EXPORT_HOLD, the state the Build window and the CLI start in, which have no preflight), the game
+    would ship whatever the root leads to now: the export fails and says why"""
+    require_links()
+    base = Path(tempfile.mkdtemp(prefix="jasper-export-swap-"))
+    hold, held = base / "hold", base / "hold.held"
+    outside = base / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("secret\n")
+    try:
+        async with Editor(project=EDITOR["project"], label="export-swap", env={"JASPER_TEST_EXPORT_HOLD": str(hold)}) as swap:
+            await pickup(swap)
+            root, aside = swap.project / "assets", swap.project / "assets_export_aside"
+            out = swap.scratch.root / "export-swapped"
+            hold.write_text("hold\n")
+            job = await swap.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
+                                  allow_missing_assets=True, overwrite=True, timeout_seconds=900, wait=False)
+            job_id = job.get("job_id") or job.get("id")
+            swap.check(job_id, f"build_project with wait false gives a job: {job}")
+            for _ in range(6000):
+                if held.exists():
+                    break
+                await asyncio.sleep(0.05)
+            swap.check(held.exists(), "the export reached the hold")
+            os.rename(root, aside)
+            os.symlink(outside, root)
+            hold.unlink()
+            done = {}
+            for _ in range(1800):
+                done = await swap.call("get_job", job_id=job_id)
+                if done.get("status") not in ("running", "queued", "pending"):
+                    break
+                await asyncio.sleep(0.25)
+            root.unlink()
+            os.rename(aside, root)
+            swap.check(not (out / "project" / "assets" / "keep.txt").exists(), f"nothing of what the root leads to now ships: {str(done)[:400]}")
+            swap.check_eq(done.get("status"), "failed", f"the export fails: {str(done)[:400]}")
+            swap.check_in("no longer leads where it did", json.dumps(done), "and says why")
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
 
 
 async def test_a_root_that_was_a_link_when_the_project_opened_is_a_root(ed: Editor):
