@@ -434,6 +434,9 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         if(GRAPHIC_BACKEND STREQUAL "gles3")
             add_definitions("-DSOKOL_GLES3")
             set(OPENGL_LIB GLESv3)
+        else()
+            # platform/android makes an EGL context and nothing else
+            message(FATAL_ERROR "Android supports GRAPHIC_BACKEND gles3 only (got '${GRAPHIC_BACKEND}')")
         endif()
 
         add_definitions("-D\"lua_getlocaledecpoint()='.'\"")
@@ -1267,6 +1270,14 @@ endif()
 if(NOT MSVC)
     target_compile_options(meshoptimizer PRIVATE -ffp-contract=off)
 endif()
+# The glTF loader's meshopt decoder (docs/specs/S53-model-import-cook.md R27): WebAssembly has no
+# run-time SIMD detection, so the codec and filters take simd128 at build time, with the particle
+# kernels' switch (JASPERENGINE_WASM_SIMD, core/particles/ParticleSources.cmake; OFF stays scalar).
+# Only these two files: the simplifier keeps the scalar maths the LOD and placement tests pin.
+if(EMSCRIPTEN AND (NOT DEFINED JASPERENGINE_WASM_SIMD OR JASPERENGINE_WASM_SIMD))
+    set_source_files_properties(libs/meshoptimizer/vertexcodec.cpp libs/meshoptimizer/vertexfilter.cpp
+        DIRECTORY libs/meshoptimizer PROPERTIES COMPILE_OPTIONS -msimd128)
+endif()
 
 # One C++ standard for every object of the binary: libc++ template definitions instantiated
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into
@@ -1337,6 +1348,11 @@ set(JASPERENGINE_SRCS
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
     core/Log.cpp
+    core/device/Device.cpp
+    core/device/DeviceSettings.cpp
+    core/device/GpuTierDatabase.cpp
+    core/device/GpuTiersData.cpp
+    core/device/QualityResolver.cpp
     core/diag/CrashHandler.cpp
     core/diag/CrashHandlerPosix.cpp
     core/diag/CrashHandlerWin.cpp
@@ -1531,6 +1547,7 @@ set(JASPERENGINE_SRCS
     core/io/watch/FileIdentity.cpp
     core/io/watch/FileWatchService.cpp
     core/io/watch/FileWatcher.cpp
+    core/io/watch/LinkedFolders.cpp
     core/io/watch/ProjectFileIndex.cpp
     core/io/watch/SharedFileReader.cpp
     core/io/watch/backends/FsEventsBackend.cpp
@@ -1586,6 +1603,7 @@ set(JASPERENGINE_SRCS
     core/object/Animator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
+    core/object/CapsuleShadowCaster.cpp
     core/object/Points.cpp
     core/object/Primitive.cpp
     core/object/Sprite.cpp
@@ -1661,16 +1679,23 @@ set(JASPERENGINE_SRCS
     core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
     core/render/LineRibbonBuilder.cpp
+    core/render/LodFade.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
+    core/render/VisibleList.cpp
     core/render/shadow/CascadeFit.cpp
     core/render/shadow/ShadowCache.cpp
     core/render/shadow/ShadowCasterRegistry.cpp
     core/render/shadow/ShadowSlotPlanner.cpp
     core/render/shadow/ShadowTiers.cpp
     core/render/shadow/ShadowTypes.cpp
+    core/render/CapsuleShadows.cpp
+    core/render/ContactShadows.cpp
+    core/render/LightingTiers.cpp
+    core/render/OrderIndependentTransparency.cpp
+    core/render/TiledLights.cpp
     core/script/AsyncOwner.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
@@ -1737,6 +1762,7 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/MeshSystemGltfPbr.cpp
+    core/subsystem/GltfNormalize.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/WaterSystem.cpp
     core/subsystem/AtmosphereRenderer.cpp
@@ -1746,6 +1772,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemLighting.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp
@@ -1756,6 +1783,8 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
+    core/model/CookedModels.cpp
+    core/model/ModelCpuData.cpp
     core/texture/BasisTranscode.cpp
     core/texture/CookedTextures.cpp
     core/texture/Framebuffer.cpp
@@ -2024,6 +2053,34 @@ endif()
 jasperengine_skip_unity_build(
     REASON "file-local helpers or types named as in another engine source"
     SOURCES
+        core/subsystem/ActionSystemPlayers.cpp
+        core/animation/ClipBinding.cpp
+        core/media/VideoStream.cpp
+        core/pose/PoseDofs.cpp
+        core/shader/ShaderGlobals.cpp
+        core/animation/AnimationPlayerRuntime.cpp
+        core/animation/HumanoidClip.cpp
+        core/animation/UpstreamAnimFormats.cpp
+        core/audio/AudioEffects.cpp
+        core/audio/AudioMixer.cpp
+        core/camera/ShakePreset.cpp
+        core/diag/HangStackCapture.cpp
+        core/media/MediaByteSource.cpp
+        core/media/VideoFormats.cpp
+        core/object/TrailRenderer.cpp
+        core/pool/AnimatorAssetPool.cpp
+        core/pool/PhysicsMaterialPool.cpp
+        core/pool/TexturePool.cpp
+        core/pool/VertexAnimationPool.cpp
+        core/pose/HumanoidMap.cpp
+        core/script/binding/GameObjectClassesLua.cpp
+        core/script/binding/IOClassesLua.cpp
+        core/script/binding/NativeClassesLua.cpp
+        core/script/binding/NetClassesLua.cpp
+        core/subsystem/ActionSystemLayers.cpp
+        core/subsystem/CharacterController2DSystem.cpp
+        core/subsystem/PhysicsSystemJoints3D.cpp
+        core/subsystem/VertexAnimatorSystem.cpp
         core/Input.cpp
         core/animation/AnimatorAssetIO.cpp
         core/diag/CrashHandlerPosix.cpp
@@ -2046,6 +2103,10 @@ jasperengine_skip_unity_build(
         renders/sokol/SokolPassRecorder.cpp)
 jasperengine_target_unity_build(jasperengine)
 jasperengine_target_pch(jasperengine)
+
+# the engine's sources include the components they use (registry/EntityRegistry.h); a game's own
+# code, built without it, keeps all of them through Scene.h
+target_compile_definitions(jasperengine PRIVATE JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES)
 
 target_compile_definitions(jasperengine
     PUBLIC
@@ -2151,6 +2212,11 @@ jasperengine_skip_unity_build(
 if(NOT MSVC)
     set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+# Every player links the limiter (S38 6.6), and most run it on one bus, with room to spare in its budget
+# (R17): it is built for size. Its result does not depend on it: no fast-math, no contraction here.
+if(NOT MSVC)
+    set_source_files_properties(core/audio/AudioEffects.cpp PROPERTIES COMPILE_OPTIONS "-Os")
 endif()
 # the cooked-texture runtime the web downloads, optimised for size there like the Basis
 # transcoder (spec S14 R21): its hot loops are the transcoder's and Zstandard's

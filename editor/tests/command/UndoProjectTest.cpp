@@ -6,6 +6,7 @@
 // Changes review (R26-R29, AC13).
 
 #include "UndoFakeCommand.h"
+#include "component/Transform.h"
 
 #include "Project.h"
 #include "command/PlayChangeReview.h"
@@ -99,7 +100,7 @@ namespace {
         // Play as the CLI's playStart/playStop emulate it: the snapshot, the history's floor,
         // and Stop's capture, restore and review
         void beginPlay() {
-            scene->playStateSnapshot = Stream::encodeSceneProject(nullptr, scene);
+            scene->playStateSnapshot = Stream::encodePlaySnapshot(nullptr, scene);
             scene->playPrefabState = project->capturePlayPrefabState(scene);
             const std::vector<Entity> alive = scene->scene->getEntityList();
             scene->playStateEntities = std::set<Entity>(alive.begin(), alive.end());

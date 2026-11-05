@@ -9,6 +9,7 @@
 // unaddressable the same way everywhere (relative fails, descendantPaths skips, a reason).
 
 #include <gtest/gtest.h>
+#include "component/Transform.h"
 
 #include "animation/ClipBinding.h"
 #include "registry/EntityRegistry.h"

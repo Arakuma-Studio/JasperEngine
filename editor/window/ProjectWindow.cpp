@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: MIT
 
 #include "animation/AnimatorAssetDocument.h"
+#include "window/PoseAnimationWindow.h"
+#include "EditorModal.h"
 #include "animation/AnimatorEditorHooks.h"
 #include "ProjectWindow.h"
 #include "window/vcs/VcsUi.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 #include "util/EditorScripts.h"
 #include "asset/AssetTypes.h"
 #include "window/AssetPanels.h"
@@ -2196,8 +2199,35 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
                 if (!file.isDirectory && FbxImporter::isFbxFile(file.name)){
                     if (ImGui::MenuItem(ICON_FA_ROTATE " Reimport")) {
                         project->importFbxModel(currentPath / file.name, true);
+                        if (ModelCookQueue::get().getProject() == project && project->isInsideAssetsPath(currentPath / file.name)) {
+                            const std::string assetPath = project->normalizeToAssetsRelative(currentPath / file.name).generic_string();
+                            ModelCookQueue::get().invalidate(assetPath);
+                            ModelCookQueue::get().request(assetPath, ModelFamily::Desktop, ModelCookQueue::Selected);
+                        }
                     }
-                    ImGui::SetItemTooltip("Convert the FBX into its .glb again (it is reimported by itself when it or its textures change)");
+                    ImGui::SetItemTooltip("Convert the FBX into its .glb again and cook it (it is reimported by itself when it or its textures change)");
+                    ImGui::Separator();
+                }else if (!file.isDirectory && isModelSource(file.name) && ModelCookQueue::get().getProject() == project){
+                    // models: cook again (S53 R13); the selected ones, or every model
+                    const bool reimport = ImGui::MenuItem(ICON_FA_ARROWS_ROTATE " Reimport");
+                    uiBuilding.contextMenu.push_back({"Reimport", lastItemRect()});
+                    ImGui::SetItemTooltip("Cooks the selected models again for the desktop (the cache answers when nothing changed)");
+                    const bool reimportAll = ImGui::MenuItem(ICON_FA_ARROWS_ROTATE " Reimport All Models");
+                    uiBuilding.contextMenu.push_back({"Reimport All Models", lastItemRect()});
+                    if (reimport) {
+                        std::vector<fs::path> chosen = getSelectedFiles();
+                        if (std::find(chosen.begin(), chosen.end(), currentPath / file.name) == chosen.end()) chosen = {currentPath / file.name};
+                        for (const fs::path& path : chosen) {
+                            if (!project->isInsideAssetsPath(path) || !isModelSource(path.filename().string())) continue;
+                            const std::string assetPath = project->normalizeToAssetsRelative(path).generic_string();
+                            ModelCookQueue::get().invalidate(assetPath);
+                            ModelCookQueue::get().request(assetPath, ModelFamily::Desktop, ModelCookQueue::Selected);
+                        }
+                    }
+                    if (reimportAll) {
+                        ModelCookQueue::get().invalidateAll();
+                        ModelCookQueue::get().requestAll({ModelFamily::Desktop});
+                    }
                     ImGui::Separator();
                 }
 
@@ -2334,10 +2364,11 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         ImGui::OpenPopup("Delete Confirmation");
     }
 
-    if (ImGui::BeginPopupModal("Delete Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize)){
+    if (EditorModal::begin("Delete Confirmation", NULL, ImGuiWindowFlags_AlwaysAutoResize)){
         ImGui::Text("Are you sure you want to delete the following items?");
         ImGui::Separator();
         int fileCount = 0;
+        std::string listedNames;
         // a Vertex Animation's .vat and .vat.glb go together: both are listed (one question)
         std::vector<fs::path> listed;
         for (const auto& fileName : selectedFiles){
@@ -2347,6 +2378,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         for (size_t i = 0; i < withPairs.size(); i++){
             if (fileCount < 10){
                 const std::string name = withPairs[i].lexically_relative(currentPath).generic_string();
+                listedNames += (listedNames.empty() ? "" : ", ") + name;
                 if (i < listed.size()){
                     ImGui::BulletText("%s", name.c_str());
                 }else{
@@ -2355,6 +2387,8 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
             }
             fileCount++;
         }
+        EditorModal::message("Are you sure you want to delete the following items? " + listedNames +
+                             (fileCount > 10 ? " and " + std::to_string(fileCount - 10) + " more" : std::string()));
         if (fileCount > 10){
             ImGui::TextColored(ImVec4(0.7f, 0.7f, 0.7f, 1.0f), "And %d more items...", fileCount - 10);
         }
@@ -2366,7 +2400,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - totalWidth) / 2.0f);
 
-        if (ImGui::Button("Yes", ImVec2(buttonWidth, 0))){
+        if (EditorModal::button("Yes", "yes", ImVec2(buttonWidth, 0))){
             std::vector<fs::path> pathsToDelete;
             for (const auto& fileName : selectedFiles){
                 fs::path filePath = currentPath / fileName;
@@ -2385,7 +2419,7 @@ void editor::ProjectWindow::renderFileListing(bool showDirectories){
 
         ImGui::SameLine();
 
-        if (ImGui::Button("No", ImVec2(buttonWidth, 0))){
+        if (EditorModal::button("No", "no", ImVec2(buttonWidth, 0))){
             showDeleteConfirmation = false;
             ImGui::CloseCurrentPopup();
         }
@@ -2786,7 +2820,7 @@ void editor::ProjectWindow::handleNewDirectory(){
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     }
 
-    if (ImGui::BeginPopupModal("Create New Directory", &isCreatingNewDirectory, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Create New Directory", &isCreatingNewDirectory, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Enter directory name:");
 
         // Auto-focus the input field when the popup opens
@@ -2794,7 +2828,8 @@ void editor::ProjectWindow::handleNewDirectory(){
             ImGui::SetKeyboardFocusHere();
         }
 
-        bool enterPressed = ImGui::InputText("##newdir", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        bool enterPressed = EditorModal::inputText("##newdir", "name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        EditorModal::message(std::string("Enter directory name: \"") + nameBuffer + "\" (in " + currentPath.filename().string() + ")");
 
         // Calculate total width of the buttons
         float buttonWidth = 120.0f;
@@ -2805,14 +2840,14 @@ void editor::ProjectWindow::handleNewDirectory(){
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - totalWidth) * 0.5f);
 
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0))) {
+        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0))) {
             isCreatingNewDirectory = false;
             ImGui::CloseCurrentPopup();
         }
 
         ImGui::SameLine();
 
-        bool confirmed = ImGui::Button("Create", ImVec2(buttonWidth, 0)) || enterPressed;
+        bool confirmed = EditorModal::button("Create", "yes", ImVec2(buttonWidth, 0)) || enterPressed;
         if (confirmed) {
             std::string dirName = nameBuffer;
             if (!dirName.empty()) {
@@ -2838,45 +2873,48 @@ void editor::ProjectWindow::handleNewDirectory(){
         }
 
         // Error popup for existing directory
-        if (ImGui::BeginPopupModal("Directory Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Directory Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("A directory with this name already exists.");
+            EditorModal::message("A directory with this name already exists.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
         // Error popup for creation failure
-        if (ImGui::BeginPopupModal("Creation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Creation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Failed to create the directory.");
+            EditorModal::message("Failed to create the directory.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
         // Error popup for invalid name
-        if (ImGui::BeginPopupModal("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Please enter a valid directory name.");
+            EditorModal::message("Please enter a valid directory name.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -2905,7 +2943,7 @@ void editor::ProjectWindow::handleRename(){
         ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
     }
 
-    if (ImGui::BeginPopupModal("Rename File", &isRenaming, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Rename File", &isRenaming, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Rename '%s' to:", fileBeingRenamed.c_str());
 
         // Auto-focus the input field when the popup opens
@@ -2932,7 +2970,8 @@ void editor::ProjectWindow::handleRename(){
             return 0;
         };
 
-        bool enterPressed = ImGui::InputText("##rename", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackAlways, selectNameCallback, &renameSelectPending);
+        bool enterPressed = EditorModal::inputText("##rename", "name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackAlways, selectNameCallback, &renameSelectPending);
+        EditorModal::message("Rename '" + fileBeingRenamed + "' to: \"" + nameBuffer + "\"");
 
         // Calculate total width of the buttons
         float buttonWidth = 120.0f;
@@ -2943,7 +2982,7 @@ void editor::ProjectWindow::handleRename(){
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - totalWidth) * 0.5f);
 
-        bool confirmed = ImGui::Button("OK", ImVec2(buttonWidth, 0)) || enterPressed;
+        bool confirmed = EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0)) || enterPressed;
         if (confirmed) {
             std::string newName = nameBuffer;
             if (!newName.empty() && newName != fileBeingRenamed) {
@@ -2995,51 +3034,54 @@ void editor::ProjectWindow::handleRename(){
             ImGui::CloseCurrentPopup();
         }
 
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0))) {
+        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0))) {
             isRenaming = false;
             ImGui::CloseCurrentPopup();
         }
 
         // Error popup for existing file
-        if (ImGui::BeginPopupModal("File Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("File Already Exists", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("A file with this name already exists.");
+            EditorModal::message("A file with this name already exists.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
         // Error popup for rename failure
-        if (ImGui::BeginPopupModal("Rename Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Rename Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextUnformatted(renameErrorText.empty() ? "Failed to rename the file." : renameErrorText.c_str());
+            EditorModal::message(renameErrorText.empty() ? "Failed to rename the file." : renameErrorText);
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
         }
 
         // Error popup for invalid name
-        if (ImGui::BeginPopupModal("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Invalid Name", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Please enter a valid file name.");
+            EditorModal::message("Please enter a valid file name.");
             ImGui::Separator();
 
             float popupWidth = ImGui::GetWindowSize().x;
             float buttonWidth = 120.0f;
             ImGui::SetCursorPosX((popupWidth - buttonWidth) * 0.5f);
 
-            if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -3659,18 +3701,19 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     }
     ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (!ImGui::BeginPopupModal(POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (!EditorModal::begin(POPUP, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
         return;
     }
     // Unity's dialog
     ImGui::TextUnformatted("Would you like to create a new original Prefab or a variant of this Prefab?");
+    EditorModal::message("Would you like to create a new original Prefab or a variant of this Prefab?");
     ImGui::TextDisabled("%s", pendingPrefabDrop.prefabs.size() > 1 ?
         "Prefab instance roots of the selection become variants of their Prefabs; the other GameObjects original Prefabs" :
         ("'" + pendingPrefabDrop.firstInstance + "' is a Prefab instance").c_str());
     ImGui::Spacing();
     const float buttonWidth = Theme::dpi(130.0f);
     bool done = false;
-    if (ImGui::Button("Original Prefab", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("Original Prefab", "yes", ImVec2(buttonWidth, 0))) {
         PoseEditSession::suspendActive();
         PoseEditSession::suspendActiveFor(pendingPrefabDrop.sceneId, prefabEntities(pendingPrefabDrop.prefabs));
         CommandHandle::get(pendingPrefabDrop.sceneId)->addCommandNoMerge(new CreatePrefabCmd(project, pendingPrefabDrop.sceneId, pendingPrefabDrop.prefabs));
@@ -3678,7 +3721,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     }
     ImGui::SetItemTooltip("A new Prefab of these GameObjects: the instance is unpacked into it (nested Prefabs stay nested)");
     ImGui::SameLine();
-    if (ImGui::Button("Prefab Variant", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("Prefab Variant", "no", ImVec2(buttonWidth, 0))) {
         std::vector<std::pair<fs::path, YAML::Node>> prefabs = pendingPrefabDrop.prefabs;
         for (size_t i = 0; i < prefabs.size(); i++) {
             if (i < pendingPrefabDrop.instanceRoots.size() && pendingPrefabDrop.instanceRoots[i]) {
@@ -3696,7 +3739,7 @@ void editor::ProjectWindow::showPrefabOrVariantPopup() {
     }
     ImGui::SetItemTooltip("A Prefab Variant of the instance's Prefab: its overrides become the variant's, and it is an instance of the variant");
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         done = true;
     }
     if (done) {
@@ -4622,27 +4665,76 @@ void editor::ProjectWindow::assetsShowInFileManager() {
 }
 
 void editor::ProjectWindow::drawTextureCookBadge(ImDrawList* drawList, const FileEntry& file, ImVec2 min, ImVec2 max) {
-    if (file.type != FileType::IMAGE || file.isDirectory) return;
-    TextureCookQueue& cooks = TextureCookQueue::get();
-    if (cooks.getProject() != project) return;
+    if (file.isDirectory) return;
     const fs::path absolute = currentPath / file.name;
     if (!project->isInsideAssetsPath(absolute)) return;
-    const TextureCookStatus status = cooks.badgeStatus(project->normalizeToAssetsRelative(absolute).generic_string());
     const char* icon = nullptr;
     ImU32 color = 0;
-    const char* tooltip = nullptr;
-    switch (status) {
-        case TextureCookStatus::Queued: icon = ICON_FA_HOURGLASS_HALF; color = IM_COL32(200, 200, 200, 230); tooltip = "Texture cook queued"; break;
-        case TextureCookStatus::Cooking: icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Cooking the texture"; break;
-        case TextureCookStatus::Failed: icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The texture cook failed: the Inspector shows why"; break;
-        default: return;
+    std::string tooltip;
+    if (file.type == FileType::IMAGE) {
+        TextureCookQueue& cooks = TextureCookQueue::get();
+        if (cooks.getProject() != project) return;
+        switch (cooks.badgeStatus(project->normalizeToAssetsRelative(absolute).generic_string())) {
+            case TextureCookStatus::Queued: icon = ICON_FA_HOURGLASS_HALF; color = IM_COL32(200, 200, 200, 230); tooltip = "Texture cook queued"; break;
+            case TextureCookStatus::Cooking: icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Cooking the texture"; break;
+            case TextureCookStatus::Failed: icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The texture cook failed: the Inspector shows why"; break;
+            default: return;
+        }
+    } else if (isModelSource(file.name)) {
+        // models: cooked, cooking or failed (S53 R13, R18)
+        ModelCookQueue& cooks = ModelCookQueue::get();
+        if (cooks.getProject() != project) return;
+        const std::string assetPath = project->normalizeToAssetsRelative(absolute).generic_string();
+        switch (cooks.badgeStatus(assetPath)) {
+            case ModelCookStatus::Queued: icon = ICON_FA_HOURGLASS_HALF; color = IM_COL32(200, 200, 200, 230); tooltip = "Model cook queued"; break;
+            case ModelCookStatus::Cooking: icon = ICON_FA_GEAR; color = IM_COL32(120, 200, 255, 240); tooltip = "Cooking the model"; break;
+            case ModelCookStatus::Failed: icon = ICON_FA_TRIANGLE_EXCLAMATION; color = IM_COL32(255, 110, 90, 255); tooltip = "The model cook failed: the Inspector shows why"; break;
+            case ModelCookStatus::Cooked: {
+                ModelCookState state;
+                if (!cooks.getState(assetPath, ModelFamily::Desktop, state) || state.stale) return;
+                icon = ICON_FA_CHECK;
+                color = IM_COL32(130, 210, 140, 220);
+                const ModelCookRecord& record = state.record;
+                const double saved = record.sourceBytes > 0 ? 100.0 * (1.0 - (double)record.diskBytes / (double)record.sourceBytes) : 0.0;
+                char text[160];
+                std::snprintf(text, sizeof(text), "Cooked for desktop (%s): %.0f%% smaller download", meshCompressionLabel(state.resolved.meshCompression), saved);
+                tooltip = text;
+                // what the loader finds in the source (S53 R5): an error fails export
+                const GltfDiagnostic* worst = nullptr;
+                for (const GltfDiagnostic& diagnostic : record.diagnostics) {
+                    if (diagnostic.cookFixes || diagnostic.severity == GltfDiagnosticSeverity::Info) continue;
+                    if (!worst || (diagnostic.severity == GltfDiagnosticSeverity::Error && worst->severity != GltfDiagnosticSeverity::Error)) worst = &diagnostic;
+                }
+                if (worst) {
+                    const bool isError = worst->severity == GltfDiagnosticSeverity::Error;
+                    icon = ICON_FA_TRIANGLE_EXCLAMATION;
+                    color = isError ? IM_COL32(255, 110, 90, 255) : IM_COL32(240, 190, 80, 255);
+                    tooltip = (isError ? "Load error (export fails): " : "Load warning: ") + worst->text();
+                }
+                break;
+            }
+            default: {
+                // not cooked yet: what its last load found
+                const std::vector<GltfDiagnostic> found = ModelLoadDiagnostics::get(absolute.generic_string());
+                const auto error = std::find_if(found.begin(), found.end(), [](const GltfDiagnostic& d) {
+                    return d.severity == GltfDiagnosticSeverity::Error && !d.cookFixes;
+                });
+                if (error == found.end()) return;
+                icon = ICON_FA_TRIANGLE_EXCLAMATION;
+                color = IM_COL32(255, 110, 90, 255);
+                tooltip = "Load error (export fails): " + error->text();
+                break;
+            }
+        }
+    } else {
+        return;
     }
     const float size = std::max(Theme::dpi(9.0f), std::min(max.x - min.x, max.y - min.y) * 0.3f);
     const ImVec2 at(max.x - size - Theme::dpi(1.0f), max.y - size - Theme::dpi(1.0f));
     drawList->AddRectFilled(ImVec2(at.x - Theme::dpi(1.0f), at.y - Theme::dpi(1.0f)), ImVec2(at.x + size + Theme::dpi(1.0f), at.y + size + Theme::dpi(1.0f)),
                             IM_COL32(20, 20, 20, 170), Theme::dpi(2.0f));
     drawList->AddText(ImGui::GetFont(), size, at, color, icon);
-    if (ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size, at.y + size))) ImGui::SetTooltip("%s", tooltip);
+    if (ImGui::IsMouseHoveringRect(at, ImVec2(at.x + size, at.y + size))) ImGui::SetTooltip("%s", tooltip.c_str());
 }
 
 std::vector<fs::path> editor::ProjectWindow::getSelectedFiles() const {

@@ -7,8 +7,13 @@
 #include "GameObject.h"
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
+#include "texture/Material.h"
 
 namespace jasperengine{
+
+    struct InstanceData;
+
+    enum class LodFadeMode;
 
     class JASPERENGINE_API Mesh: public GameObject{
     public:
@@ -105,6 +110,25 @@ namespace jasperengine{
 
         void setLodBias(float lodBias);
         float getLodBias() const;
+
+        // Allow GPU Instancing (spec S55): its draws may batch with those of its like
+        void setAllowGpuInstancing(bool allow);
+        bool isAllowGpuInstancing() const;
+        // spec S54 R9: Fade Mode, Animate Cross-fading, Fade Transition Width (0..1) and Cull
+        // Below Screen Height (share of the view, 0..1; 0 never culls)
+        void setLodFadeMode(LodFadeMode mode);
+        LodFadeMode getLodFadeMode() const;
+        void setLodAnimateCrossFading(bool animate);
+        bool isLodAnimateCrossFading() const;
+        void setLodFadeTransitionWidth(float width);
+        float getLodFadeTransitionWidth() const;
+        void setLodCullBelow(float share);
+        float getLodCullBelow() const;
+        // draws this level in every view (-1: automatic again); the level the main view drew
+        // last (LOD_CULLED: culled for its size)
+        void forceLod(int level);
+        int getForcedLod() const;
+        int getCurrentLod() const;
 
         void setRenderInReflectionProbes(bool renderInReflectionProbes);
         bool isRenderInReflectionProbes() const;

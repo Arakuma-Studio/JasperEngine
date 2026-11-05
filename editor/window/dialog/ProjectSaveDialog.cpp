@@ -8,6 +8,8 @@
 #include "Backend.h"
 #include "window/Widgets.h"
 #include "external/IconsFontAwesome6.h"
+#include "window/EditorModal.h"
+#include "util/FileUtils.h"
 
 #include <algorithm>
 
@@ -40,18 +42,21 @@ void ProjectSaveDialog::show() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    bool popupOpen = ImGui::BeginPopupModal("Save Project##SaveProjectModal", nullptr, flags);
+    bool popupOpen = EditorModal::begin("Save Project##SaveProjectModal", nullptr, flags);
 
     float popupWidth = 300;
 
     if (popupOpen) {
+        EditorModal::message("Where to save the project: name and location (an empty folder), then ok; or cancel it and save with an explicit path.");
         ImGui::TextUnformatted("Project Name");
         ImGui::SetNextItemWidth(popupWidth);
-        ImGui::InputText("##projectName", m_projectNameBuffer, sizeof(m_projectNameBuffer));
+        EditorModal::inputText("##projectName", "name", m_projectNameBuffer, sizeof(m_projectNameBuffer));
 
         ImGui::TextUnformatted("Location");
 
         Vector2 pathDisplaySize = Vector2(popupWidth - ImGui::CalcTextSize("Browse").x - ImGui::GetStyle().ItemSpacing.x - ImGui::GetStyle().FramePadding.x * 2, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2);
+        std::string agentLocation = FileUtils::pathToUtf8(m_projectPath);
+        if (EditorModal::pathField("location", agentLocation)) m_projectPath = FileUtils::pathFromUtf8(agentLocation);
         Widgets::pathDisplay("##ProjectPath", m_projectPath, pathDisplaySize);
 
         ImGui::SameLine();
@@ -68,6 +73,7 @@ void ProjectSaveDialog::show() {
 
         std::string projectName = m_projectNameBuffer;
         bool canSave = !projectName.empty() && !m_projectPath.empty();
+        EditorModal::error(canSave ? std::string() : std::string("The name and the location are needed."));
         
         // Check if the selected directory is empty if it exists
         if (!m_projectPath.empty() && std::filesystem::exists(m_projectPath)) {
@@ -75,6 +81,7 @@ void ProjectSaveDialog::show() {
                 canSave = false;
                 ImGui::TextColored(ImVec4(1.0f, 0.0f, 0.0f, 1.0f), 
                                   "Choose an empty folder for the project.");
+                EditorModal::error("Choose an empty folder for the project.");
             }
         }
 
@@ -85,7 +92,7 @@ void ProjectSaveDialog::show() {
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
         ImGui::BeginDisabled(!canSave);
-        if (ImGui::Button("Save", ImVec2(120, 0))) {
+        if (EditorModal::button("Save", "ok", ImVec2(120, 0))) {
             if (m_onSave) {
                 m_onSave(projectName, m_projectPath);
             }
@@ -96,7 +103,7 @@ void ProjectSaveDialog::show() {
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0)) || m_cancelRequested ||
+        if (EditorModal::button("Cancel", "cancel", ImVec2(120, 0)) || m_cancelRequested ||
             (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
             m_isOpen = false;
             m_cancelRequested = false;

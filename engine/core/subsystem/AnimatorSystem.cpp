@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AnimatorSystem.h"
+#include "component/CharacterControllerComponent.h"
 
 #include "Engine.h"
 #include "Log.h"

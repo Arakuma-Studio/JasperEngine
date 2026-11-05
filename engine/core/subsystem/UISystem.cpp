@@ -2,6 +2,25 @@
 // SPDX-License-Identifier: MIT
 
 #include "UISystem.h"
+#include "component/ActionComponent.h"
+#include "component/TweenComponent.h"
+#include "component/ButtonComponent.h"
+#include "component/CameraComponent.h"
+#include "component/CanvasGroupComponent.h"
+#include "component/ImageComponent.h"
+#include "component/InputFieldComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/PanelComponent.h"
+#include "component/PointsComponent.h"
+#include "component/PolygonComponent.h"
+#include "component/ProgressbarComponent.h"
+#include "component/SafeAreaComponent.h"
+#include "component/ScrollbarComponent.h"
+#include "component/TextComponent.h"
+#include "component/TextEffectComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
 
 #include <algorithm>
 #include <cctype>

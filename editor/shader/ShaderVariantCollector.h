@@ -75,6 +75,11 @@ namespace jasperengine::editor {
     // (the platform's tier) both, and so does a scene whose scripts set the quality
     // (scriptsSetShadowQuality). An export drops them for the backends no platform of which
     // has a High tier (ShadowTiers::cooksHighFilters).
+    //
+    // Every Device Tier the project's settings let a player apply (spec S56), with the thermal
+    // steps of the families whose Thermal Response is on, is collected too: a tier's render scale
+    // below 1 needs the uber pass's upscale ('Scl'), and its SSAO, bloom, Lit Quality, shadow,
+    // light and volumetrics cells other mesh and uber variants.
     class ShaderVariantCollector {
     public:
         // The variants every build ships whatever its scenes hold (added by the Exporter, never
@@ -114,6 +119,14 @@ namespace jasperengine::editor {
         // switch flipped alone when they name none. Returns non-zero BLIT feature sets.
         static std::set<uint32_t> plausibleUberFeatures(const PostProcessingSettings& settings, bool scriptsSetPostProcessing,
                                                         const std::vector<std::string>& namedFields);
+
+    private:
+        // collectScene's work under the Device Tier QualityResolver holds now
+        static void collectSceneUnderTier(Scene* scene, const ShaderVariantContent& sceneContent,
+                                          const std::vector<ShaderVariantContent>& prefabContents, std::set<ShaderKey>& keys,
+                                          const std::filesystem::path& projectRoot, bool scriptsSetPostProcessing,
+                                          const std::vector<std::string>& scriptPostProcessingFields, bool allLightCapacities,
+                                          bool scriptsSetShadowQuality, bool scriptsSetLitQuality, PbrTier mobilePbrTier);
     };
 
 }
