@@ -329,6 +329,9 @@ namespace jasperengine::editor {
         // script reads the file by; real is where the entry is on disk. A link to a folder that holds
         // it (it would hold itself) is left out with a warning. ec: the root could not be listed.
         void walkTree(const fs::path& root, const TreeVisitor& visit, std::error_code& ec);
+        // False, with the error set, when a trusted root of the project leads elsewhere than when it
+        // was pinned: the game would ship whatever is there now
+        bool checkRootsPinned();
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);

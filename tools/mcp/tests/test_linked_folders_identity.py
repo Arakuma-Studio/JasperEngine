@@ -18,6 +18,7 @@ get_prefab_info, get_entity, list_missing_assets. Runs in a copy of tools/fixtur
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -283,6 +284,141 @@ async def test_file_links_and_hard_links_are_the_same_file(ed: Editor):
 
 
 # -- a link out of the project ----------------------------------------------------------------------
+
+
+async def test_a_root_swapped_for_a_link_is_not_scanned(ed: Editor):
+    """test_root_attacks' swap with the database's look at the disk forced: there a scan lands in the
+    window only on a loaded machine. The root is pinned, so the scan neither reads nor writes through it"""
+    require_links()
+    outside = Path(tempfile.mkdtemp(prefix="jasper-swapped-root-"))
+    root = ed.project / "assets"
+    aside = ed.project / "assets_swapped_aside"
+    try:
+        # the editor has the project open, roots pinned: else this is a root linked before the load
+        await pickup(ed)
+        (outside / "keep.txt").write_text("x")
+        (outside / "tile.png").write_bytes(png_bytes())
+        os.rename(root, aside)
+        os.symlink(outside, root)
+        await pickup(ed)
+        ed.check_eq(sorted(os.listdir(outside)), ["keep.txt", "tile.png"], "nothing written through the swapped root")
+        ed.check_eq((await asset(ed, "assets/tile.png"))[0], None, "and nothing of it is an asset")
+        # a save does not pin the root again
+        await ed.call_raw("save_project", {})
+        r = await ed.call_raw("write_file", {"path": "assets/pwn.txt", "content": "pwned\n"})
+        ed.check(r.is_error, f"a write into the swapped root after a save: {r.text[:300]}")
+        ed.check_eq(sorted(os.listdir(outside)), ["keep.txt", "tile.png"], "still nothing written through it")
+        out = ed.scratch.root / "export-swapped-root"
+        r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "platform": "linux", "backends": ["opengl"],
+                                                "overwrite": True, "timeout_seconds": 300})
+        ed.check(r.is_error or (r.structured or {}).get("status") == "failed", f"an export through a swapped root is refused: {r.text[:400]}")
+        ed.check(not (out / "project" / "assets" / "keep.txt").exists(), "and ships nothing of what the root leads to now")
+    finally:
+        if root.is_symlink():
+            root.unlink()
+        if aside.exists():
+            os.rename(aside, root)
+        shutil.rmtree(outside, ignore_errors=True)
+    await pickup(ed)
+    r = await ed.call_raw("write_file", {"path": "assets/back.txt", "content": "ok\n"})
+    ed.check(not r.is_error, f"the root back: writes work again: {r.text[:300]}")
+
+
+async def test_an_export_stops_when_a_root_is_swapped_during_it(ed: Editor):
+    """build_project's preflight sees a root swapped before it starts. Swapped once the export runs (held by
+    JASPER_TEST_EXPORT_HOLD, the state the Build window and the CLI start in, which have no preflight), the game
+    would ship whatever the root leads to now: the export fails and says why"""
+    require_links()
+    base = Path(tempfile.mkdtemp(prefix="jasper-export-swap-"))
+    hold, held = base / "hold", base / "hold.held"
+    outside = base / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("secret\n")
+    try:
+        # a new project: this fixture's HTML document, missing once its root moves, would fail the export for its own reason
+        async with Editor(create=True, name="Export Swap", label="export-swap", env={"JASPER_TEST_EXPORT_HOLD": str(hold)}) as swap:
+            project = Path((await swap.call("get_project_summary"))["path"])   # (made by the editor: it is there now)
+            root, aside = project / "assets", project / "assets_export_aside"
+            root.mkdir(exist_ok=True)
+            (project / "scripts").mkdir(exist_ok=True)
+            await swap.call("set_project_settings", values={"editor.assets_dir": "assets", "scripting.lua_dir": "scripts"})
+            await swap.call("save_project", untitled_scene_dir=".")
+            await pickup(swap)
+            out = swap.scratch.root / "export-swapped"
+            hold.write_text("hold\n")
+            job = await swap.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
+                                  allow_missing_assets=True, overwrite=True, timeout_seconds=900, wait=False)
+            job_id = job.get("job_id") or job.get("id")
+            swap.check(job_id, f"build_project with wait false gives a job: {job}")
+            for _ in range(6000):
+                if held.exists():
+                    break
+                await asyncio.sleep(0.05)
+            swap.check(held.exists(), "the export reached the hold")
+            os.rename(root, aside)
+            os.symlink(outside, root)
+            hold.unlink()
+            done = {}
+            for _ in range(1800):
+                done = await swap.call("get_job", job_id=job_id)
+                if done.get("status") not in ("running", "queued", "pending"):
+                    break
+                await asyncio.sleep(0.25)
+            root.unlink()
+            os.rename(aside, root)
+            swap.check(not (out / "project" / "assets" / "keep.txt").exists(), f"nothing of what the root leads to now ships: {str(done)[:400]}")
+            swap.check_eq(done.get("status"), "failed", f"the export fails: {str(done)[:400]}")
+            swap.check_in("no longer leads where it did", json.dumps(done), "and says why")
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+
+
+async def test_a_root_that_was_a_link_when_the_project_opened_is_a_root(ed: Editor):
+    """The assets root is linked in when the editor starts on the project: pinned so, it is the assets
+    directory, with its data files (a .txt is an asset only there) and metas beside them, and a swap this is not"""
+    require_links()
+    base = Path(tempfile.mkdtemp(prefix="jasper-linked-root-"))
+    # a sibling of the project's scratch folder: the old "../../name" assets directory held no file by
+    # lexically_relative, while a deeper target ("../../a/b") held everything by accident
+    outside = Path(tempfile.mkdtemp(prefix="jasper-linked-root-target-"))
+    try:
+        (outside / "keep.txt").write_text("x")
+        (outside / "tile.png").write_bytes(png_bytes())
+        source = base / "project"
+        shutil.copytree(EDITOR["project"], source)
+        shutil.rmtree(source / "assets")
+        os.symlink(outside, source / "assets")
+        async with Editor(project=source) as linked:
+            await pickup(linked)
+            ed.check_eq(sorted(os.listdir(outside)), ["keep.txt", "keep.txt.meta", "tile.png", "tile.png.meta"], "both are assets of the root")
+            ed.check((await asset(linked, "assets/keep.txt"))[0], "the data file has its GUID")
+            r = await linked.call_raw("build_project", {"mode": "source", "output_dir": str(linked.scratch.root / "export-linked-root"), "platform": "linux",
+                                                        "backends": ["opengl"], "overwrite": True, "timeout_seconds": 300})
+            ed.check("no longer leads where it did" not in r.text, f"a root linked at the load is not a swapped one: {r.text[:400]}")
+    finally:
+        shutil.rmtree(base, ignore_errors=True)
+        shutil.rmtree(outside, ignore_errors=True)
+
+
+async def test_a_link_beside_the_asset_roots_is_left_alone(ed: Editor):
+    """`lib` at the project root leads out of it, and is under neither the assets nor the Lua root: what the
+    editor scans and writes stops there, as a read of it still works"""
+    require_links()
+    outside = Path(tempfile.mkdtemp(prefix="jasper-linked-beside-"))
+    try:
+        (outside / "tile.png").write_bytes(png_bytes())
+        (outside / "notes.txt").write_text("beside the roots\n")
+        os.symlink(outside, ed.project / "lib")
+        await pickup(ed)
+        ed.check_eq(sorted(os.listdir(outside)), ["notes.txt", "tile.png"], "no meta beside a file of that folder")
+        read = await ed.call_raw("read_file", {"path": "lib/notes.txt"})
+        ed.check(not read.is_error and "beside the roots" in read.text, f"a read through it works: {read.text[:300]}")
+        ed.check_eq(sorted(os.listdir(outside)), ["notes.txt", "tile.png"], "and writes nothing")
+    finally:
+        link = ed.project / "lib"
+        if link.is_symlink():
+            link.unlink()
+        shutil.rmtree(outside, ignore_errors=True)
 
 
 async def test_a_link_out_of_the_project_is_a_project_folder(ed: Editor):

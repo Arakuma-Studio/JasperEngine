@@ -399,8 +399,11 @@ fs::path editor::Project::normalizeToProjectRelative(const fs::path& path) const
         if (!ec) {
             relativePath = relativePath.lexically_normal();
             // a link out of the project is a folder of the project: its files keep the path
-            // they are reached by, not "../.." (S68 R7)
+            // they are reached by, not "../.." (S68 R7). The spelling first: the database is
+            // closed while it opens, and the assets root it is given may be such a link.
             if (!relativePath.empty() && *relativePath.begin() == "..") {
+                const fs::path spelled = normalizedPath.lexically_relative(projectPath.lexically_normal());
+                if (!spelled.empty() && *spelled.begin() != "..") return spelled;
                 const fs::path known = assetDatabase.toRelative(normalizedPath);
                 if (!known.empty() && !known.is_absolute() && *known.begin() != "..") return known;
             }
@@ -1846,15 +1849,18 @@ std::vector<std::filesystem::path> editor::Project::getTrustedRoots() const{
 
 void editor::Project::refreshTrustedRoots(){
     auto resolvedRoots = std::make_shared<std::vector<std::filesystem::path>>();
+    std::vector<AssetDatabase::PinnedRoot> pinned;
     if (!projectPath.empty()){
         for (const std::filesystem::path& root : {projectPath, getAssetsPath(), getLuaPath()}){
             const std::filesystem::path resolved = safewrite::resolvedPath(root);
             if (resolved.empty()) continue;
+            pinned.push_back({root.lexically_normal(), resolved});
             if (std::find(resolvedRoots->begin(), resolvedRoots->end(), resolved) != resolvedRoots->end()) continue;
             resolvedRoots->push_back(resolved);
             safewrite::pinTrustedRoot(resolved);
         }
     }
+    assetDatabase.setPinnedRoots(std::move(pinned), projectPath.empty() ? std::filesystem::path() : getLuaPath().lexically_normal());
     std::atomic_store(&trustedRoots, std::shared_ptr<const std::vector<std::filesystem::path>>(std::move(resolvedRoots)));
 }
 
@@ -2317,6 +2323,10 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
         }
 
         if (!entry.is_regular_file() || !Util::isMaterialFile(entry.path().string())){
+            continue;
+        }
+        // this walk goes through links, and nobody named this file: only where the editor may write
+        if (!assetDatabase.allowsWritesAt(entry.path())){
             continue;
         }
 
@@ -6837,7 +6847,8 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     std::filesystem::path oldPath = projectPath;
 
     projectPath = path;
-    refreshTrustedRoots();
+    // only for a new place: a save in place must not take a root swapped since for the pinned one
+    if (oldPath != path) refreshTrustedRoots();
     // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
     UserSettingsStore::instance().unload();
 

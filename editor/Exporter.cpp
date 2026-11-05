@@ -1042,6 +1042,8 @@ void editor::Exporter::runExport() {
         ~GeneratedExportGuard() { if (project) project->endGeneratedExport(); }
     } generatedGuard(project);
 
+    if (project && !checkRootsPinned()) return;
+
     // a player for a target: prebuilt, or this export's Desktop/Web build (S30 D1)
     if (project && config.mode == ExportMode::Player) {
         if (config.method == BuildMethod::Auto) {
@@ -2872,8 +2874,19 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
     walk(root, fs::path());
 }
 
+bool editor::Exporter::checkRootsPinned() {
+    const std::vector<fs::path> moved = project->getAssetDatabase().getMovedRoots();
+    if (moved.empty()) return true;
+    setError("Cannot export: \"" + FileUtils::pathToGenericUtf8(moved.front().lexically_proximate(project->getProjectPath())) +
+             "\" no longer leads where it did when the project loaded, so the game would ship whatever is there now. "
+             "Put it back, or open the project again if the change is meant.");
+    return false;
+}
+
 bool editor::Exporter::copyAssets() {
     setProgress("Copying assets...", 0.35f);
+    // (again here: an export takes long enough for a root to be swapped during it)
+    if (!checkRootsPinned()) return false;
 
     const fs::path assetsSrc = getAssetsSourceDir();
 
@@ -3127,6 +3140,7 @@ bool editor::Exporter::copyCustomShaderSources() {
 
 bool editor::Exporter::copyLua() {
     setProgress("Copying Lua scripts...", 0.3f);
+    if (!checkRootsPinned()) return false;
 
     // Cleared before the early returns: with no lua tree, assets keeps the Lua files
     luaCopiedSources.clear();

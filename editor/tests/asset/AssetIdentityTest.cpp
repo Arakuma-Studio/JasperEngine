@@ -16,6 +16,7 @@
 #include "asset/ModelSubAssets.h"
 #include "asset/TextReferences.h"
 #include "util/AssetDatabase.h"
+#include "util/SafeWrite.h"
 
 #include "Catalog.h"
 #include "reflect/Reflect.h"
@@ -1167,6 +1168,74 @@ TEST(AssetIdentityLinks, ReadOnlyTargetIsReported) {
     EXPECT_EQ(p.database.getGuid("assets/shared/tile.png"), guid);
     EXPECT_TRUE(fs::is_regular_file(shared / "tile.png.meta"));
     EXPECT_TRUE(p.database.getReadOnlyLinkedAssets().empty());
+}
+
+// A link out of the project that is not under the assets root is a plain folder of the disk: not walked,
+// and nothing written there, even when an import names a file behind it
+TEST(AssetIdentityLinks, LinkOutsideTheAssetRootIsNotScanned) {
+    LinkProject p;
+    write(p.outside / "tile.png", "png");
+    if (!makeDirLink(p.outside, p.project / "lib")) GTEST_SKIP() << "no symbolic links here";
+    p.open();
+    EXPECT_FALSE(fs::exists(p.outside / "tile.png.meta"));
+    EXPECT_TRUE(p.database.getGuid("lib/tile.png").empty());
+    EXPECT_TRUE(p.database.refresh().empty());
+    EXPECT_TRUE(p.database.importAssets("lib/tile.png").empty());
+    EXPECT_TRUE(p.database.importAssets("lib").empty());
+    EXPECT_FALSE(fs::exists(p.outside / "tile.png.meta"));
+    EXPECT_FALSE(p.database.allowsWritesAt(p.project / "lib" / "tile.png"));
+    EXPECT_TRUE(p.database.allowsWritesAt(p.project / "assets" / "tile.png"));
+
+    // the same link under the assets root is what the user linked in
+    ASSERT_TRUE(makeDirLink(p.outside, p.project / "assets" / "lib"));
+    p.database.refresh();
+    EXPECT_FALSE(p.database.getGuid("assets/lib/tile.png").empty());
+    EXPECT_TRUE(fs::is_regular_file(p.outside / "tile.png.meta"));
+}
+
+// A pinned root swapped for a link: not read, not written, whichever operation comes; back, it works
+TEST(AssetIdentityLinks, RootSwappedForALinkIsNotFollowed) {
+    LinkProject p;
+    write(p.outside / "tile.png", "png");
+    write(p.project / "assets" / "own.png", "own");
+    const fs::path root = p.project / "assets";
+    p.database.setPinnedRoots({{root, safewrite::resolvedPath(root)}}, fs::path());
+    p.open();
+    const std::string own = p.database.getGuid("assets/own.png");
+    ASSERT_FALSE(own.empty());
+
+    fs::rename(root, p.project / "assets_moved");
+    if (!makeDirLink(p.outside, root)) GTEST_SKIP() << "no symbolic links here";
+    p.database.refresh();
+    EXPECT_TRUE(p.database.getGuid("assets/tile.png").empty());
+    p.database.importAssets("assets/tile.png");
+    p.database.importAssets("assets");
+    p.database.registerAsset("assets/tile.png", LINK_GUID_A);
+    EXPECT_FALSE(fs::exists(p.outside / "tile.png.meta")) << "nothing written through the swapped root";
+    EXPECT_FALSE(p.database.allowsWritesAt(root / "tile.png"));
+
+    p.database.close();
+    p.open();
+    EXPECT_FALSE(fs::exists(p.outside / "tile.png.meta")) << "nor by the scan on open";
+    EXPECT_TRUE(p.database.getGuid("assets/tile.png").empty());
+
+    fs::remove(root);
+    fs::rename(p.project / "assets_moved", root);
+    p.database.refresh();
+    EXPECT_EQ(p.database.getGuid("assets/own.png"), own);
+    EXPECT_TRUE(p.database.allowsWritesAt(root / "tile.png"));
+
+    // a root that was a link when it was pinned stays followed
+    const fs::path linked = p.dir.path / "linked_project";
+    fs::create_directories(linked);
+    write(p.outside / "second" / "b.png", "png");
+    ASSERT_TRUE(makeDirLink(p.outside / "second", linked / "assets"));
+    AssetDatabase other;
+    other.setBackgroundHashing(false);
+    other.setPinnedRoots({{linked / "assets", safewrite::resolvedPath(linked / "assets")}}, fs::path());
+    other.open(linked, "assets");
+    EXPECT_FALSE(other.getGuid("assets/b.png").empty());
+    EXPECT_TRUE(fs::is_regular_file(p.outside / "second" / "b.png.meta"));
 }
 
 // R8: a project without links: no table, keys as written, no change
