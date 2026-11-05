@@ -80,8 +80,8 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 |---|---|---|---|---|
 | S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Done, except the iOS run, which waits for the Mac |
 | S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | Ready at `0ccbbf001`, after S37 and the full suite; R31 re-measured after S38 |
-| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Ready except AC8 (needs S35); checking its merge of `main`; third full suite next, with S36 |
-| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | M5 needs S36 M1; merges with S62 (same file) | In progress |
+| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Ready at `87b9bea22` except AC8, which S35 adds; lands with S35 and S36 after the third full suite |
+| S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | M0-M7 done at `7074116bf`; merging S37 and `main`, adding S37's AC8; then the third full suite |
 | S39 | Music | `feat/s39-music` | S35, S36, S37 | Waiting |
 | S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | Waiting |
 
@@ -185,3 +185,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: Second full suite started on `88090c2da` (`main`, S38, S63, S64, S70) on A and B, since H is down. Logs in `je-remote/logs/full-88090c2da`. S37 and S36 merge `main` after these land.
 - 2026-11-05: S38, S63, S64 and S70 landed. Next: `fix/root-attack-meta`, then S37 and S36 merge `main`, then a third full suite.
 - 2026-11-05: Root attack fix landed. The save re-pin dates from `6092353d1` (2026-10-28), before this program.
+- 2026-11-05: S37 ready; S38's meter change moved band values in 700 of 927 library items, so S36's analysis data was regenerated. S35 done except its merge; it fixed the Master bus pan ramp so chunked and single-call mixes match, and the recording pin moved to `821d2802…`.
