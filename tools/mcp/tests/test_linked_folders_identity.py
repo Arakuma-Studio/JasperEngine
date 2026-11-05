@@ -324,9 +324,10 @@ async def test_a_root_that_was_a_link_when_the_project_opened_is_a_root(ed: Edit
     directory, with its data files (a .txt is an asset only there) and metas beside them, and a swap this is not"""
     require_links()
     base = Path(tempfile.mkdtemp(prefix="jasper-linked-root-"))
+    # a sibling of the project's scratch folder: the old "../../name" assets directory held no file by
+    # lexically_relative, while a deeper target ("../../a/b") held everything by accident
+    outside = Path(tempfile.mkdtemp(prefix="jasper-linked-root-target-"))
     try:
-        outside = base / "outside"
-        outside.mkdir()
         (outside / "keep.txt").write_text("x")
         (outside / "tile.png").write_bytes(png_bytes())
         source = base / "project"
@@ -342,6 +343,7 @@ async def test_a_root_that_was_a_link_when_the_project_opened_is_a_root(ed: Edit
             ed.check("no longer leads where it did" not in r.text, f"a root linked at the load is not a swapped one: {r.text[:400]}")
     finally:
         shutil.rmtree(base, ignore_errors=True)
+        shutil.rmtree(outside, ignore_errors=True)
 
 
 async def test_a_link_beside_the_asset_roots_is_left_alone(ed: Editor):
