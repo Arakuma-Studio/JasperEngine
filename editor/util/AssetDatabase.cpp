@@ -387,12 +387,15 @@ struct editor::AssetDatabase::LinkTable {
     std::vector<std::pair<fs::path, std::string>> outside;
     // links not followed, with a warning: leading to a folder that holds the project
     std::vector<std::string> leftOut;
+    // ... a root, or a link on the way to one, that leads elsewhere than when it was pinned
+    std::vector<std::string> movedRoots;
     // the walk through the links stopped at its bound
     bool truncated = false;
 
-    bool empty() const { return aliases.empty() && outside.empty() && leftOut.empty() && !truncated; }
+    bool empty() const { return aliases.empty() && outside.empty() && leftOut.empty() && movedRoots.empty() && !truncated; }
     bool operator==(const LinkTable& other) const {
-        return aliases == other.aliases && outside == other.outside && leftOut == other.leftOut && truncated == other.truncated;
+        return aliases == other.aliases && outside == other.outside && leftOut == other.leftOut && movedRoots == other.movedRoots &&
+               truncated == other.truncated;
     }
 
     // The project path of a real path out of the project, "" when no link leads there
@@ -461,6 +464,12 @@ void editor::AssetDatabase::installLinks(std::shared_ptr<const LinkTable> table)
                              link.c_str());
             }
         }
+        for (const std::string& link : table->movedRoots) {
+            if (warnedLinks.insert("moved:" + link).second) {
+                Out::warning("\"%s\" no longer leads where it did when the project loaded, and a project root is on the way: nothing is read or written "
+                             "through it. Put it back, or open the project again if the change is meant.", link.c_str());
+            }
+        }
         if (table->truncated && warnedLinks.insert(std::string()).second) {
             Out::warning("The folders linked into the project hold more than %zu entries: the asset database stops there", linkedEntryLimit.load());
         }
@@ -508,6 +517,61 @@ bool editor::AssetDatabase::isLinkedOut(const std::string& relative) const {
         if (relative == name || relative.compare(0, name.size() + 1, name + "/") == 0) return true;
     }
     return false;
+}
+
+void editor::AssetDatabase::setPinnedRoots(std::vector<PinnedRoot> roots, const fs::path& luaRoot) {
+    auto next = std::make_shared<Pins>();
+    next->roots = std::move(roots);
+    next->luaRoot = luaRoot;
+    std::atomic_store(&pins, std::shared_ptr<const Pins>(std::move(next)));
+}
+
+bool editor::AssetDatabase::crossesMovedRoot(const fs::path& full) const {
+    const std::shared_ptr<const Pins> current = std::atomic_load(&pins);
+    if (!current) return false;
+    for (const PinnedRoot& root : current->roots) {
+        if ((safewrite::isAtOrBelow(full, root.spelled) || safewrite::isAtOrBelow(root.spelled, full)) &&
+            safewrite::resolvedPath(root.spelled) != root.real) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool editor::AssetDatabase::linksFollowedAt(const fs::path& full) const {
+    if (assetsDir.empty() || assetsDir == ".") return true;
+    auto holds = [&](const fs::path& root) {
+        return !root.empty() && (safewrite::isAtOrBelow(full, root) || safewrite::isAtOrBelow(root, full));
+    };
+    if (holds(projectPath / assetsDir)) return true;
+    // (a Lua root at the project root, the default, holds every link: it says nothing of what the user linked)
+    const std::shared_ptr<const Pins> current = std::atomic_load(&pins);
+    return current && !current->luaRoot.empty() && !safewrite::isAtOrBelow(projectPath, current->luaRoot) && holds(current->luaRoot);
+}
+
+bool editor::AssetDatabase::identityWritableAt(const fs::path& full) const {
+    if (crossesMovedRoot(full)) return false;
+    const fs::path real = safewrite::resolvedPath(full);
+    const fs::path realProject = safewrite::resolvedPath(projectPath);
+    if (real.empty() || realProject.empty()) return false;
+    return safewrite::isAtOrBelow(real, realProject) || linksFollowedAt(full);
+}
+
+bool editor::AssetDatabase::identityTargetAllowed(const fs::path& target) const {
+    const fs::path full = target.lexically_normal();
+    // a link at the name is followed by the write: where it leads decides
+    if (watch::isLink(full)) return identityWritableAt(full);
+    const std::string folder = full.parent_path().generic_string();
+    auto known = writableFolders.find(folder);
+    if (known != writableFolders.end()) return known->second;
+    const bool writable = identityWritableAt(full.parent_path());
+    writableFolders[folder] = writable;
+    return writable;
+}
+
+bool editor::AssetDatabase::allowsWritesAt(const fs::path& path) const {
+    std::lock_guard<std::recursive_mutex> lock(mutex);
+    return !isOpen() || identityWritableAt(path.lexically_normal());
 }
 
 bool editor::AssetDatabase::sameFile(const std::string& a, const std::string& b) const {
@@ -1126,6 +1190,9 @@ bool editor::AssetDatabase::writeIdentity(const Entry& entry) const {
         return true;
     }
     const AssetTypeInfo& info = AssetTypes::info(entry.type);
+    if (!identityTargetAllowed(projectPath / (info.identity == AssetIdentity::InFile ? fs::path(entry.path) : AssetTypes::metaPathFor(entry.path)))) {
+        return false;
+    }
     if (info.identity == AssetIdentity::InFile) {
         Guid current;
         std::vector<Guid> currentFormer;
@@ -1330,6 +1397,10 @@ void editor::AssetDatabase::collect(const fs::path& fullPath, std::vector<std::s
         if (linkTable() && insideProject(known)) start = projectPath / known;
         if (insideProject(known) && watch::isLink(start) && fs::is_directory(start, ec)) pending.insert(known.generic_string());
     }
+    // named on its own (an import, a hint): by the rule the walk below applies to links
+    if (fullPath != projectPath && pending.empty() && !identityTargetAllowed(start)) {
+        return;
+    }
     if (pending.empty() && fs::is_regular_file(start, ec)) {
         consider(start);
         // a file's meta goes with it
@@ -1408,6 +1479,10 @@ void editor::AssetDatabase::collectLinks(std::set<std::string>& pending, std::ve
         if (AssetTypes::isSkippedDirectory(fs::path(relative).filename().string())) continue;
         const fs::path real = safewrite::resolvedPath(full);
         if (real.empty()) continue;
+        if (crossesMovedRoot(full.lexically_normal())) {
+            if (std::find(table.movedRoots.begin(), table.movedRoots.end(), relative) == table.movedRoots.end()) table.movedRoots.push_back(relative);
+            continue;
+        }
         if (watch::isAtOrBelowReal(realProject, real)) {
             if (std::find(table.leftOut.begin(), table.leftOut.end(), relative) == table.leftOut.end()) table.leftOut.push_back(relative);
             continue;
@@ -1420,6 +1495,7 @@ void editor::AssetDatabase::collectLinks(std::set<std::string>& pending, std::ve
                 continue;
             }
         }
+        if (!linksFollowedAt(full.lexically_normal())) continue;
         if (const std::string named = table.nameOfOutside(real); !named.empty() && named != relative) {
             // the same place by a second name: `loop` inside a linked folder leading to itself ends here
             table.aliases[relativeKeyOf(relative)] = named;
@@ -1812,6 +1888,7 @@ void editor::AssetDatabase::open(const fs::path& path, const fs::path& assetsDir
     projectPath = path;
     assetsDir = assetsDirectory;
     caseInsensitive = detectCaseInsensitive(projectPath);
+    forgetWritableFolders();
 
     std::map<std::string, Entry> cached;
     loadCache(cached);
@@ -2001,6 +2078,7 @@ void editor::AssetDatabase::close() {
     conflicts.clear();
     std::atomic_store(&links, std::shared_ptr<const LinkTable>());
     warnedLinks.clear();
+    writableFolders.clear();
     hardLinks.clear();
     readOnlyLinked.clear();
     warnedReadOnly.clear();
@@ -2062,6 +2140,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::refresh(const 
         return changes;
     }
     bool dirty = false;
+    forgetWritableFolders();
     installLinks(scan.links);
 
     const std::vector<std::string>& metas = scan.metas;
@@ -2484,6 +2563,7 @@ std::vector<std::pair<fs::path, std::string>> editor::AssetDatabase::getLinkedOu
 
 bool editor::AssetDatabase::addFormerGuid(const fs::path& path, const Guid& former, std::string* error) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    forgetWritableFolders();
     auto it = byPath.find(key(path));
     if (it == byPath.end()) {
         if (error) *error = "no asset at " + toRelative(path).generic_string();
@@ -2513,6 +2593,7 @@ bool editor::AssetDatabase::addFormerGuid(const fs::path& path, const Guid& form
 
 bool editor::AssetDatabase::removeFormerGuid(const fs::path& path, const Guid& former, std::string* error) {
     std::lock_guard<std::recursive_mutex> lock(mutex);
+    forgetWritableFolders();
     auto it = byPath.find(key(path));
     if (it == byPath.end()) {
         if (error) *error = "no asset at " + toRelative(path).generic_string();
@@ -2661,6 +2742,7 @@ std::vector<editor::AssetDatabase::Change> editor::AssetDatabase::importAssets(c
         return changes;
     }
     bool dirty = false;
+    forgetWritableFolders();
     std::vector<std::string> assets, metas;
     // what this walk meets joins what the last scan knows; the next scan has the whole picture
     const std::shared_ptr<const LinkTable> knownLinks = linkTable();
@@ -2777,6 +2859,7 @@ void editor::AssetDatabase::registerAsset(const fs::path& path, const std::strin
     if (!isOpen() || guid.isNull()) {
         return;
     }
+    forgetWritableFolders();
     std::string relative = toRelative(path).generic_string();
     const AssetTypeInfo* info = AssetTypes::find(relative, assetsDir);
     if (!info) {

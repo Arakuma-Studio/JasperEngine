@@ -73,3 +73,8 @@ Identity (D-1, D-2):
 - D9 (MCP text, AGENTS.md "MCP text"). `list_missing_assets`' description is unchanged; `read_only_linked` is a result key, and its text names the assets, only when any
   exist. Eval: `guard_read_only_linked` and `guard_linked_folder_rules` pass with the text and fail without it (surfaces of this branch and of the control editor). The first
   run of the read-only case changed the tool: agents said "the check doesn't say which asset", as Claude Code shows them the text of this result, so the text names them.
+- D10 (R7's reach, found by `test_root_attacks.py`). Identity follows a link out of the project only at, below or on the way to the assets or Lua root (a Lua root at the project
+  root counts only when the assets root is the project root too, as it is the default and says nothing of what was linked). A root pinned at load that leads elsewhere now (`safewrite::pinTrustedRoot`)
+  is not scanned and not written through, by `AssetDatabase::writeIdentity` and by every walk. Exports walk the assets and Lua roots as R1 says, and the project root for shader sources, so a link beside the roots ships only those. Read-only walks (the watcher, listings, exports) are not
+  stopped by a swapped root: they write nothing.
+

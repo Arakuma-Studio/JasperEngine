@@ -23,6 +23,9 @@
 // path by that table's text, so it costs no file system call and a project without links pays
 // nothing. A hard link of a tracked file is compared by file identity where copies are decided,
 // and is an alias of the asset tracked first, never an entry.
+// What is scanned, and written, out of the project is what the user linked under the assets or Lua
+// root: a link elsewhere (a `lib` folder at the project root) is not walked. A root that no longer
+// leads where it was pinned (setPinnedRoots) is not followed at all, whatever it leads to now.
 
 #pragma once
 
@@ -142,6 +145,17 @@ namespace jasperengine::editor {
         // nothing; no project lock, maybe next to an open editor): the identities open() and the
         // edits would write (metas, in-file GUIDs) and the cache stay in memory. Before open().
         void setReadOnly(bool enabled) { readOnly = enabled; }
+        // The project's trusted roots as they resolved when pinned (util/SafeWrite.h), and its Lua
+        // root: nothing is scanned or written through a root that leads elsewhere now. Any thread.
+        struct PinnedRoot {
+            std::filesystem::path spelled;
+            std::filesystem::path real;
+        };
+        void setPinnedRoots(std::vector<PinnedRoot> roots, const std::filesystem::path& luaRoot);
+        // Whether the editor may write `path` (absolute) on its own, with no agent or person naming
+        // it: false through a root that leads elsewhere now, or out of the project by a link that is
+        // not under the assets or Lua root
+        bool allowsWritesAt(const std::filesystem::path& path) const;
         bool isReadOnly() const { return readOnly; }
         void close();
         // The temporary siblings of atomic writes the last open() walked past (the project's
@@ -294,6 +308,12 @@ namespace jasperengine::editor {
         std::map<std::string, Entry> orphanLast;             // key(asset path) -> what the cache knew of an orphan's asset
         std::vector<RedirectConflict> conflicts;
         std::shared_ptr<const LinkTable> links;              // read lock-free (std::atomic_load): the background walk uses it too
+        struct Pins {
+            std::vector<PinnedRoot> roots;
+            std::filesystem::path luaRoot;
+        };
+        std::shared_ptr<const Pins> pins;                    // the same
+        mutable std::unordered_map<std::string, bool> writableFolders;   // one operation's answers: a folder is resolved once
         std::set<std::string> warnedLinks;                   // each link left out, warned about once
         std::unordered_map<std::string, std::string> hardLinks;   // key(a hard link's path) -> key of the tracked path of that file
         std::set<std::string> readOnlyLinked;                // key -> assets getReadOnlyLinkedAssets lists
@@ -347,6 +367,14 @@ namespace jasperengine::editor {
         void forgetLink(const std::string& relative);
         // Under a link leading out of the project
         bool isLinkedOut(const std::string& relative) const;
+        // `full` is at or below, or at or above, a root that no longer leads where it was pinned
+        bool crossesMovedRoot(const std::filesystem::path& full) const;
+        // A link at `full` may be walked out of the project: at, below or on the way to the assets or Lua root
+        bool linksFollowedAt(const std::filesystem::path& full) const;
+        bool identityWritableAt(const std::filesystem::path& full) const;
+        // ... with one answer per folder until the next forgetWritableFolders, the start of an operation
+        bool identityTargetAllowed(const std::filesystem::path& target) const;
+        void forgetWritableFolders() const { writableFolders.clear(); }
         // Both paths open one file (std::filesystem::equivalent: device and inode, or volume and file index)
         bool sameFile(const std::string& a, const std::string& b) const;
         // The tracked path of the file at `relative` when it is another name of it: the path `guid`

@@ -1841,15 +1841,18 @@ std::vector<std::filesystem::path> editor::Project::getTrustedRoots() const{
 
 void editor::Project::refreshTrustedRoots(){
     auto resolvedRoots = std::make_shared<std::vector<std::filesystem::path>>();
+    std::vector<AssetDatabase::PinnedRoot> pinned;
     if (!projectPath.empty()){
         for (const std::filesystem::path& root : {projectPath, getAssetsPath(), getLuaPath()}){
             const std::filesystem::path resolved = safewrite::resolvedPath(root);
             if (resolved.empty()) continue;
+            pinned.push_back({root.lexically_normal(), resolved});
             if (std::find(resolvedRoots->begin(), resolvedRoots->end(), resolved) != resolvedRoots->end()) continue;
             resolvedRoots->push_back(resolved);
             safewrite::pinTrustedRoot(resolved);
         }
     }
+    assetDatabase.setPinnedRoots(std::move(pinned), projectPath.empty() ? std::filesystem::path() : getLuaPath().lexically_normal());
     std::atomic_store(&trustedRoots, std::shared_ptr<const std::vector<std::filesystem::path>>(std::move(resolvedRoots)));
 }
 
@@ -2312,6 +2315,10 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
         }
 
         if (!entry.is_regular_file() || !Util::isMaterialFile(entry.path().string())){
+            continue;
+        }
+        // this walk goes through links, and nobody named this file: only where the editor may write
+        if (!assetDatabase.allowsWritesAt(entry.path())){
             continue;
         }
 

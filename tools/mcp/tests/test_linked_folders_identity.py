@@ -285,6 +285,27 @@ async def test_file_links_and_hard_links_are_the_same_file(ed: Editor):
 # -- a link out of the project ----------------------------------------------------------------------
 
 
+async def test_a_link_beside_the_asset_roots_is_left_alone(ed: Editor):
+    """`lib` at the project root leads out of it, and is under neither the assets nor the Lua root: what the
+    editor scans and writes stops there, as a read of it still works"""
+    require_links()
+    outside = Path(tempfile.mkdtemp(prefix="jasper-linked-beside-"))
+    try:
+        (outside / "tile.png").write_bytes(png_bytes())
+        (outside / "notes.txt").write_text("beside the roots\n")
+        os.symlink(outside, ed.project / "lib")
+        await pickup(ed)
+        ed.check_eq(sorted(os.listdir(outside)), ["notes.txt", "tile.png"], "no meta beside a file of that folder")
+        read = await ed.call_raw("read_file", {"path": "lib/notes.txt"})
+        ed.check(not read.is_error and "beside the roots" in read.text, f"a read through it works: {read.text[:300]}")
+        ed.check_eq(sorted(os.listdir(outside)), ["notes.txt", "tile.png"], "and writes nothing")
+    finally:
+        link = ed.project / "lib"
+        if link.is_symlink():
+            link.unlink()
+        shutil.rmtree(outside, ignore_errors=True)
+
+
 async def test_a_link_out_of_the_project_is_a_project_folder(ed: Editor):
     require_links()
     outside = Path(tempfile.mkdtemp(prefix="jasper-linked-library-"))
