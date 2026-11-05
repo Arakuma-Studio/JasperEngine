@@ -3261,11 +3261,16 @@ void editor::App::loadStartupProject() {
                 std::fprintf(stderr, "[mcp] project_locked: closing the editor\n");
                 startupExitCode = 3;
                 // the main loop exits after the next frame (consumeBenchmarkExit): closing
-                // before the first frame leaves the render queue waiting on shutdown, and that
-                // frame wants a project (the empty temporary one, as when a load fails)
+                // before the first frame leaves the render queue waiting on shutdown. That frame
+                // is the loading window (projectLoading stays set, as for a failed benchmark): a
+                // refused editor opens nothing, and the temporary project is one directory
+                // shared by every editor, so other refused editors may hold its lock
                 benchmarkExit = true;
+                return;
             }
-            project.createTempProject("MyJasperEngineProject");
+            if (!project.createTempProject("MyJasperEngineProject")) {
+                std::fprintf(stderr, "[mcp] the temporary project could not be opened either: no project is open\n");
+            }
         }
         projectLoading = false;
         requestRedraw();

@@ -349,7 +349,10 @@ continue to fail on any native crash.
   a changed `Foo.cpp` counts through `Foo.h` and everything that includes it), and the MCP test
   files the coverage map ties to the change (below). Everything for the root CMake, `docker/`,
   `tools/build.sh`, the toolchain and the lockfiles; the whole MCP suite for a change of its harness
-  (`harness.py`, `run_tests.py`, `build_cache.py`); nothing for docs.
+  (`harness.py`, `run_tests.py`, `build_cache.py`); nothing for docs. A header under `engine/core` or
+  `engine/CMakeLists.txt` also builds the engine with every optional module off
+  (`tools/check-physics-off.sh all-off`): the editor's engine has every module, so only this shows a
+  source that got a header through a module's code, which breaks Compile builds and the smaller players.
 - **Before pushing to `origin main`, only when the pushed changes need it (a big feature, not a
   small fix): the full suite** (`MCP_SUITE=all JASPER_SLOW_BUILD=1
   JASPER_SLOW_TESTS=1`), plus the WERROR Linux
