@@ -74,6 +74,7 @@ async def test_lists_the_session_shows_the_lanes_and_plays_a_moment(ed: Editor):
     await rect_of(ed, "audioCaptures.verdict")
     await rect_of(ed, "audioCaptures.listenBanner")
     moment = await rect_of(ed, "audioCaptures.moment.0")
+    await rect_of(ed, "audioCaptures.moment.2")
     await keep_shot(ed, "captures")
 
     ui = Ui(ed)

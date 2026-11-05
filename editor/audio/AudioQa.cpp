@@ -826,7 +826,7 @@ AudioQa::Json AudioQa::run(const AudioSessionData& data, const Request& request)
     }
     if (listen.size() < 3) addListen(data.startSeconds, "the start");
     if (listen.size() < 3) addListen((data.startSeconds + data.endSeconds) * 0.5, "the middle");
-    if (listen.size() < 3) addListen(std::max(data.startSeconds, data.endSeconds - 0.5), "the end");
+    if (listen.size() < 3) addListen(data.endSeconds, "the end");
 
     // the audit: what differs from the defaults
     const AudioQaSettings defaults;

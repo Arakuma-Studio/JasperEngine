@@ -120,7 +120,6 @@ The editor makes, finds and fixes sound files: no scripts, no audio bytes, no we
 generate_sound (like: one fitting a clip). A real recording: search_sounds, then import_files. Too quiet or
 clicking: analyze_audio (you cannot hear), set_audio_import_settings. Varied plays (footsteps), or takes in one
 file: edit_sound_event.
-Does it play, how loud, on time? A Play's capture: audio_session (group audio).
 jasper://docs/sound.
 )JE";
 }

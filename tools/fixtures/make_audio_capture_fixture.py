@@ -47,7 +47,7 @@ async def main() -> None:
         await ed.call("sync_files")
         scene = (await ed.call("create_scene", name="Main", type="2D", path="scenes/Main.scene"))["scene"]["id"]
         await ed.call("create_entity", scene=scene, name="Source", type="audio_source")
-        await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {"filename": "sounds/loop.wav", "looping": True}})
+        await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {"filename": "sounds/loop.wav", "looping": True, "state": "playing"}})
         await ed.call("create_script", kind="lua", name="CaptureProbe", content=PROBE, entity="Source", scene=scene)
         await ed.call("save_scene", scene=scene)
         await ed.call("edit_build_scenes", action="set_start", scene=scene)
