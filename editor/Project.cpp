@@ -325,6 +325,7 @@ editor::Project::~Project(){
     playStartupTask.wait();
     playStopTask.wait();
     sceneSaveTask.wait();
+    shaderListWrite.wait();
     // the hooks point here: an editor or tool with a later Project installs its own
     if (UndoTimeline::getProjectHistory() == &projectHistory){
         UndoTimeline::setProjectHistory(nullptr);
@@ -4009,19 +4010,33 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
     std::vector<ShaderVariantContent> prefabContents;
     std::vector<std::unique_ptr<EntityRegistry>> fileRegistries;
     std::vector<std::unique_ptr<Scene>> previewScenes;
+    std::set<fs::path> loadedBefore;
+    for (const auto& [path, asset] : prefabAssets) {
+        loadedBefore.insert(path);
+    }
     for (const PrefabSceneInfo& info : collectAllPrefabs()) {
         ShaderVariantContent content;
+        const Prefab* loadedPrefab = getPrefab(info.prefabPath);
+        Prefab fromFile;
+        if (!loadedPrefab || !loadedPrefab->registry) {
+            try {
+                fromFile.loadRegistry(DocumentFiles::read(getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
+            } catch (const std::exception& e) {
+                Out::error("Failed to read prefab %s for its shaders: %s", info.prefabPath.string().c_str(), e.what());
+                continue;
+            }
+            loadedPrefab = nullptr;
+        }
         // A Prefab Variant, or a prefab holding instances of others: most of what an instance
         // draws is in the other prefabs and in what each level overrides of them, so its
-        // content is an instance of it as the editor makes it (PREFABS.md 17, 18)
-        const Prefab* loadedPrefab = getPrefab(info.prefabPath);
+        // content is an instance of it as the editor makes it (PREFABS.md 17, 18), loaded or not:
+        // the list is the same whichever scenes are open
+        const Prefab& prefab = loadedPrefab ? *loadedPrefab : fromFile;
         bool layered = false;
-        if (loadedPrefab && loadedPrefab->registry) {
-            for (Entity entity : loadedPrefab->registryEntities) {
-                if (loadedPrefab->isInstanceRoot(entity)) {
-                    layered = true;
-                    break;
-                }
+        for (Entity entity : prefab.registryEntities) {
+            if (prefab.isInstanceRoot(entity)) {
+                layered = true;
+                break;
             }
         }
         if (layered) {
@@ -4035,23 +4050,17 @@ void editor::Project::collectRequiredShaderKeys(const SceneProject* sceneProject
                 continue;
             }
         }
-        if (const Prefab* prefab = getPrefab(info.prefabPath); prefab && prefab->registry) {
-            content.registry = prefab->registry.get();
-            content.entities = prefab->registryEntities;
+        if (loadedPrefab) {
+            content.registry = loadedPrefab->registry.get();
+            content.entities = loadedPrefab->registryEntities;
         } else {
-            try {
-                Prefab loaded;
-                loaded.loadRegistry(DocumentFiles::read(getProjectPath() / info.prefabPath, DocumentKind::Prefab).root);
-                content.entities = loaded.registryEntities;
-                content.registry = loaded.registry.get();
-                fileRegistries.push_back(std::move(loaded.registry));
-            } catch (const std::exception& e) {
-                Out::error("Failed to read prefab %s for its shaders: %s", info.prefabPath.string().c_str(), e.what());
-                continue;
-            }
+            content.entities = fromFile.registryEntities;
+            content.registry = fromFile.registry.get();
+            fileRegistries.push_back(std::move(fromFile.registry));
         }
         prefabContents.push_back(std::move(content));
     }
+    const_cast<Project*>(this)->forgetPrefabsLoadedSince(loadedBefore);
 
     const bool scriptsPost = scriptsSetPostProcessing();
     ShaderVariantCollector::collectScene(sceneProject->scene, sceneContent, prefabContents, keys, getProjectPath(), scriptsSetLightCapacity(),
@@ -4111,18 +4120,6 @@ std::vector<std::string> editor::Project::scriptsPostProcessingFields() const {
         }
     }
     return named;
-}
-
-std::set<ShaderKey> editor::Project::collectStandaloneShaderKeys() {
-    // the generated main.cpp registers every scene stack, so any of them can be loaded
-    std::set<ShaderKey> shaderKeys;
-    for (const auto& sceneProject : getScenes()) {
-        shaderKeys.insert(sceneProject.shaderKeys.begin(), sceneProject.shaderKeys.end());
-        // stored keys are only as new as the last save of that scene
-        collectSceneShaderKeys(&sceneProject, shaderKeys);
-        collectRequiredShaderKeys(&sceneProject, shaderKeys);
-    }
-    return shaderKeys;
 }
 
 void editor::Project::buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys) {
@@ -7317,6 +7314,10 @@ bool editor::Project::saveSceneFile(SceneProject* sceneProject, const std::files
         sceneProject->filepath = relPath;
         // Saving into a path the project only knew as missing resolves it
         clearUnresolvedScene(relPath);
+        // a background save runs off the main thread, where the cache lives
+        if (sceneProject->playState != ScenePlayState::SAVING) {
+            rememberSavedShaderKeys(*sceneProject, sceneProject->diskSha1);
+        }
         // Terrain map writes are asynchronous; when any failed to reach disk the
         // save is incomplete even though the scene YAML is written: keep the
         // scene dirty so quit/open flows still prompt, and report failure so
@@ -7543,6 +7544,11 @@ void editor::Project::markGeneratedSourcesDirty() {
 void editor::Project::beginGeneratedExport() {
     std::lock_guard<std::mutex> lock(generatedMutex);
     generatedExports++;
+}
+
+bool editor::Project::isGeneratedExportRunning() const {
+    std::lock_guard<std::mutex> lock(generatedMutex);
+    return generatedExports > 0;
 }
 
 void editor::Project::endGeneratedExport() {
@@ -9627,6 +9633,31 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
             failPlayStartup(session, sceneId, "Cannot play: " + FileUtils::pathToUtf8(stillLoading.filename()) +
                 " is still loading. Play again once it finishes.");
             return;
+        }
+
+        // The closed scenes' shader keys that changed, a scene a task so the editor keeps drawing
+        // (the prepared task below reads what is left, normally nothing)
+        for (bool complete = false; !complete;) {
+            auto refreshed = std::make_shared<std::promise<bool>>();
+            std::future<bool> refreshedFuture = refreshed->get_future();
+            editor::getEditorHost().enqueueMainThreadTask([this, refreshed]() {
+                bool done = true;
+                try {
+                    ShaderListLimit oneScene;
+                    oneScene.maxScenes = 1;
+                    done = refreshClosedSceneShaderKeys(oneScene).complete();
+                } catch (const std::exception& e) {
+                    Out::error("Reading the closed scenes' shaders: %s", e.what());
+                }
+                refreshed->set_value(done);
+            });
+            while (refreshedFuture.wait_for(std::chrono::milliseconds(10)) != std::future_status::ready) {
+                if (isCancelled()) {
+                    markStartupDone();
+                    return;
+                }
+            }
+            complete = refreshedFuture.get();
         }
 
         // What reads or changes the scenes runs on the main thread, as one task: there MCP calls,

@@ -40,6 +40,7 @@
 #include "window/SpriteNormalsWindowSettings.h"
 #include "input/InputActions.h"
 #include "shader/ShaderGlobals.h"
+#include "shader/ShaderListCache.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -49,6 +50,7 @@
 #include <future>
 #include "jobs/JobSystem.h"
 #include <map>
+#include <cstdint>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -577,6 +579,27 @@ namespace jasperengine::editor{
         std::set<ShaderKey> exclusions;
     };
 
+    // A scene of the project whose file cannot be read: the shader list holds what it last knew of it
+    struct UnreadableScene {
+        std::string name;
+        std::string path;   // project-relative
+        std::string error;
+    };
+
+    // How much Project::refreshClosedSceneShaderKeys may read before it stops and says what is left
+    struct ShaderListLimit {
+        size_t maxScenes = SIZE_MAX;
+        std::int64_t maxMillis = -1;  // -1: no limit
+        std::uintmax_t maxFileBytes = UINTMAX_MAX;
+    };
+
+    struct ShaderListStatus {
+        std::vector<std::string> pendingScenes;   // not read yet (their names): their keys are the last known
+        std::vector<UnreadableScene> unreadableScenes;
+        size_t scenesRead = 0;
+        bool complete() const { return pendingScenes.empty(); }
+    };
+
     struct SourceCodeExportSettings {
         std::set<ShaderBackend> graphicBackends;
         bool graphicBackendsConfigured = false;
@@ -1008,8 +1031,15 @@ namespace jasperengine::editor{
         std::atomic<bool> generatedSourcesDirty{false};
         // An export and updateGeneratedSources never write .jasperengine/generated at once: the
         // exports running (beginGeneratedExport), and the lock the regeneration writes under
-        std::mutex generatedMutex;
+        mutable std::mutex generatedMutex;
         int generatedExports = 0;
+
+        ShaderListCache shaderListCache;
+        std::filesystem::path shaderListCacheProject;  // whose file it holds
+        jobs::Task<bool> shaderListWrite;              // its file being written (ioWriteChannel)
+        // A scene file that did not read as a scene, not read again until its stamp changes
+        struct ShaderListFailure { std::int64_t writeTime = 0; std::uintmax_t size = 0; std::string error; };
+        std::map<std::string, ShaderListFailure> shaderListFailures;
 
         std::vector<SceneProject> scenes;
 
@@ -1432,10 +1462,26 @@ namespace jasperengine::editor{
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
 
         // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
-        // and cannot compile, so a variant the editor never draws with is missing there. The
-        // keys are read from the scenes (main thread), the build runs anywhere.
-        std::set<ShaderKey> collectStandaloneShaderKeys();
+        // and cannot compile: it runs anywhere, over the keys collectStandaloneShaderKeys read.
         void buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys);
+
+        // ---- S64: the cache of closed scenes' keys
+        // What a closed scene's keys read besides its file: the prefabs every scene lists, the
+        // files they and the collector read, the editor that computed them
+        std::string shaderListContext() const;
+        void loadShaderListCache();
+        // Off the main thread, one at a time: what changes meanwhile goes with the next list
+        void writeShaderListCache();
+        std::filesystem::path shaderListCachePath() const;
+        // What a closed scene needs, computed from its file: its keys (the file's, what its content
+        // needs) and the prefabs it lists, which become sceneProject's. False with error when
+        // the file cannot be read as a scene.
+        bool readClosedSceneShaderKeys(SceneProject& sceneProject, ShaderListCache::Entry& entry, bool& prefabsChanged, std::string& error);
+        // After a save: the file holds these keys, so closing it reads nothing
+        void rememberSavedShaderKeys(const SceneProject& sceneProject, const std::string& sha1);
+        // Forgets the prefab assets a read brought in, which no scene has an instance of
+        void forgetPrefabsLoadedSince(const std::set<std::filesystem::path>& loadedBefore);
+        void setClosedScenePrefabs(SceneProject& sceneProject, const std::vector<std::string>& prefabs) const;
 
     private:
         // see getInspectedAsset()
@@ -1496,6 +1542,31 @@ namespace jasperengine::editor{
         ~Project();
         Project(const Project&) = delete;
         Project& operator=(const Project&) = delete;
+
+        // ---- The project's shader list (docs/specs/S64-shader-lists.md). One source for an export,
+        // generate_shaders, get_build_info, Play's startup and the Build Settings window:
+        // refreshClosedSceneShaderKeys (not needed right after an export's saves), then
+        // collectBuildShaderKeys, then finishBuildShaderKeys.
+        //
+        // Makes each closed scene's shaderKeys what an export would find: its file's keys and what
+        // its content needs, computed from its file as an export's load and save do, without
+        // drawing or any GPU work. Cached by the file's hash (ShaderListCache): an unchanged
+        // project reads no scene. Main thread; a scene read is a load's stall, so what can take long
+        // goes through `limit` and comes again for what is pending. Unreadable scenes are named.
+        ShaderListStatus refreshClosedSceneShaderKeys(const ShaderListLimit& limit = {});
+        // What the scenes need, normalized: each one's keys, and what an open one has loaded and
+        // needs now. Any thread an export runs on.
+        void collectBuildShaderKeys(std::set<ShaderKey>& keys) const;
+        // The list of a build from what the scenes need: what every build ships, the additions and
+        // the warm-up list in, the exclusions out
+        std::set<ShaderKey> finishBuildShaderKeys(const std::set<ShaderKey>& sceneKeys, const std::set<ShaderKey>& additions,
+                                                  const std::set<ShaderKey>& exclusions) const;
+
+        // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
+        // and cannot compile, so a variant the editor never draws with is missing there. The
+        // keys are read from the scenes (main thread), the build runs anywhere. The same list as
+        // an export's, whichever scenes are open (S64).
+        std::set<ShaderKey> collectStandaloneShaderKeys();
 
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
@@ -2022,6 +2093,9 @@ namespace jasperengine::editor{
         // the export has finished, keeping the dirty flag, so what changed meanwhile is regenerated
         // after it. Waits for a regeneration in progress.
         void beginGeneratedExport();
+        // An export is running: its worker reads the project, so what changes it (reading a closed
+        // scene's prefabs) waits
+        bool isGeneratedExportRunning() const;
         void endGeneratedExport();
 
         //=== Linked Material part ===
