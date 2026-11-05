@@ -14,9 +14,10 @@
 # variant-<name> for each release player of engine/player/variants.json. A module added to those
 # files joins these variants without a change here.
 #
-# Build dirs: build/physics-off-<variant> (kept: a second run is incremental). No debug information
-# and no optimizer: this checks what compiles and links, and ccache then reuses every source a
-# module's switch does not change between the variants; tools/build.sh players builds the real thing.
+# Build dirs: build/physics-off-<variant> (kept: a second run is incremental). No optimizer, and no
+# debug information but in variant-<name>, which links as a release player does (LTO, split symbols):
+# this checks what compiles and links, and ccache reuses every source a module's switch does not
+# change between the variants; tools/build.sh players builds the real thing.
 # WERROR=1 makes warnings errors, as tools/build.sh does. Exit 0 when every variant links; the
 # failing variants' errors are printed.
 set -uo pipefail
