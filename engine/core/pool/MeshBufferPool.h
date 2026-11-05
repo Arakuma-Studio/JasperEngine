@@ -73,7 +73,8 @@ namespace jasperengine{
 
         // Makes the GPU buffer of `buffer` (its render): the shared one of its source when it is
         // shareable, else one of its own (BufferRender::createBuffer). False when it cannot be
-        // made (a sokol pool is full: SokolSystem logs it).
+        // made (a sokol pool is full: SokolSystem logs it), or the bytes were released and no one
+        // holds their GPU buffer (ModelCpuData::ensure brings them back).
         static bool createRender(Buffer& buffer);
 
         // whether `render` holds the shared buffer of `buffer`'s current bytes (false when it

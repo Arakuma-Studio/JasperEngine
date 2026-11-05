@@ -69,76 +69,125 @@ def first_difference(actual: str, expected: str) -> str:
     return "(same lines, different bytes)"
 
 
-# Values the editor computes from its own view (the canvas size of the Scene or Game view), not
-# from the scene: a save writes what the last frame laid out, so they follow the editor's window
-# layout, not the code under test (S26's fix of a stray scrollbar made the Scene view 11 px wider
-# and moved every one of them). They are masked in the goldens and in the re-saves alike:
-# - a RectTransform's scissor, the UI layout's clip rectangle in canvas pixels (Derived): no
-#   longer written at all (NotWritten, found by tools/ci/upgrade_from_main), so its lines are
-#   dropped from the goldens (captured before) rather than masked;
-# - an autoResize camera's clips and aspect, which updateCamera sets from the canvas each frame
-#   (an orthographic camera its clips, a perspective one its aspect); a camera without autoResize
-#   keeps its own and is compared.
+# What the goldens' editor wrote and this one leaves out, because the engine computes it when the
+# scene runs (S29 R20, S63). The goldens stay the capture from before S08 (see above), so these lines
+# are taken out of a golden before the comparison:
+# - an autoResize camera's clips and aspect, the canvas's: masked as VIEW_MASKED when captured;
+# - a Light's worldDirection and a Mesh's or UI's worldAABB;
+# - a Terrain's ranges under Auto Ranges, set from the camera's far clip;
+# - of a mesh a component generates, the vertex counts of its submeshes and its bounds;
+# - in the code: a mesh's vertexCount (set when it loads), a rigidbody's runtime flags and, of a mesh
+#   a component generates, the geometry (the scene file never held it, the code held it when a
+#   frame had made it).
 VIEW_MASKED = "<view>"
-CAMERA_VIEW_KEYS = ("leftClip", "rightClip", "bottomClip", "topClip", "aspect")
-SCISSOR_LINE = re.compile(r"^\s*scissor: .*$")
-CAMERA_LINE = re.compile(r"^(\s*)camera:\s*$")
-CAMERA_VIEW_LINE = re.compile(r"^(\s*)(" + "|".join(CAMERA_VIEW_KEYS) + r"): .*$")
-CODE_CAMERA = re.compile(r"^\s*CameraComponent (\w+);\s*$")
+GENERATED_MESH_COMPONENTS = ("sprite", "tilemap", "meshpolygon", "terrain", "splineextrude")
+# (a prefab member's Mesh override names no Sprite; the prefab fixtures' overridden Meshes are Sprites')
+GENERATED_MESH_CODE = re.compile(r"addComponent<(?:Sprite|Tilemap|MeshPolygon|Terrain|SplineExtrude)Component>|getComponent<MeshComponent>\(prefabMembers_")
+CAMERA_CLIP_KEYS = ("leftClip", "rightClip", "bottomClip", "topClip", "aspect")
+DERIVED_CODE_DROPPED = re.compile(r"^\s*(?:mesh\.vertexCount = \d+|rigidbody(?:2d)?\.(?:needReloadBody|needUpdateColliders|newBody) = \w+);$")
+GENERATED_CODE_DROPPED = re.compile(r"^\s*mesh\.(?:submeshes\[\d+\]\.vertexCount = |buffer\.|indices\.)")
 
 
-def masked_view(text: str) -> str:
-    """A saved scene or prefab with the values derived from the editor's view masked"""
+def indent_of(line: str) -> int:
+    return len(line) - len(line.lstrip())
+
+
+def block_end(lines: list[str], start: int) -> int:
+    """The line after the block of the mapping key on line `start`"""
+    indent = indent_of(lines[start])
+    end = start + 1
+    while end < len(lines) and (not lines[end].strip() or indent_of(lines[end]) > indent):
+        end += 1
+    return end
+
+
+def scene_golden_as_now(golden: str) -> str:
+    """A golden scene or prefab file without the lines this editor no longer writes"""
+    lines = golden.splitlines(keepends=True)
+    dropped: set[int] = set()
+    for i, line in enumerate(lines):
+        text = line.strip()
+        if text.endswith(": " + VIEW_MASKED) or text.startswith("worldDirection: "):
+            dropped.add(i)
+        elif text == "worldAABB:":
+            dropped.update(range(i, block_end(lines, i)))
+        elif text == "components:" and indent_of(line) > 0:   # (a GameObject's; a prefab's root keeps its old block)
+            end = block_end(lines, i)
+            keys = {lines[k].strip()[:-1]: k for k in range(i + 1, end) if indent_of(lines[k]) == indent_of(line) + 2 and lines[k].strip().endswith(":")}
+            if "terrain" in keys:
+                terrain_end = block_end(lines, keys["terrain"])
+                body = range(keys["terrain"] + 1, terrain_end)
+                if any(lines[k].strip() == "autoSetRanges: true" for k in body):
+                    for k in body:
+                        if lines[k].strip() == "ranges:":
+                            dropped.update(range(k, block_end(lines, k)))
+            if "mesh" in keys and any(name in keys for name in GENERATED_MESH_COMPONENTS):
+                mesh_end = block_end(lines, keys["mesh"])
+                for k in range(keys["mesh"], mesh_end):
+                    if lines[k].strip().startswith("vertexCount: "):
+                        dropped.add(k)
+                    elif lines[k].strip() in ("aabb:", "verticesAABB:"):
+                        dropped.update(range(k, block_end(lines, k)))
+    return "".join(line for i, line in enumerate(lines) if i not in dropped)
+
+
+def without_camera_clips(text: str) -> str:
+    """A saved file without the clips and aspect of an autoResize camera. The goldens masked them when
+    captured, so a golden has no value to compare with those of the one kind still written: a
+    camera that renders to a texture (its size is the texture's)."""
     lines = text.splitlines(keepends=True)
-    out: list[str] = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if SCISSOR_LINE.match(line.rstrip("\n")):
-            i += 1
-            continue
-        camera = CAMERA_LINE.match(line.rstrip("\n"))
-        if not camera:
-            out.append(line)
-            i += 1
-            continue
-        indent = len(camera.group(1))
-        block = [line]
-        i += 1
-        while i < len(lines) and (not lines[i].strip() or len(lines[i]) - len(lines[i].lstrip()) > indent):
-            block.append(lines[i])
-            i += 1
-        if any(b.strip() == "autoResize: true" for b in block):
-            block = [CAMERA_VIEW_LINE.sub(lambda m: f"{m.group(1)}{m.group(2)}: {VIEW_MASKED}", b.rstrip("\n")) + "\n"
-                     if CAMERA_VIEW_LINE.match(b.rstrip("\n")) else b for b in block]
-        out.extend(block)
-    return "".join(out)
+    dropped: set[int] = set()
+    for i, line in enumerate(lines):
+        if line.strip() == "camera:":
+            body = range(i + 1, block_end(lines, i))
+            if any(lines[k].strip() == "autoResize: true" for k in body):
+                dropped.update(k for k in body if lines[k].strip().startswith(tuple(key + ": " for key in CAMERA_CLIP_KEYS)))
+    return "".join(line for i, line in enumerate(lines) if i not in dropped)
 
 
-def masked_view_code(text: str) -> str:
-    """Generated scene code with an autoResize camera's view-derived assignments masked"""
+def code_without_camera_clips(text: str) -> str:
+    """Scene code without those values"""
     lines = text.splitlines(keepends=True)
-    out: list[str] = []
-    i = 0
-    while i < len(lines):
-        declared = CODE_CAMERA.match(lines[i].rstrip("\n"))
+    dropped: set[int] = set()
+    for i, line in enumerate(lines):
+        declared = re.match(r"^\s*CameraComponent (\w+);\s*$", line)
         if not declared:
-            out.append(lines[i])
-            i += 1
             continue
         name = declared.group(1)
-        block = [lines[i]]
-        i += 1
-        # the component's assignments, up to the line that adds it
-        while i < len(lines) and lines[i].lstrip().startswith(name + "."):
-            block.append(lines[i])
+        end = i + 1
+        while end < len(lines) and lines[end].lstrip().startswith(name + "."):
+            end += 1
+        if any(lines[k].strip() == f"{name}.autoResize = true;" for k in range(i + 1, end)):
+            dropped.update(k for k in range(i + 1, end) if lines[k].lstrip().startswith(tuple(f"{name}.{key} = " for key in CAMERA_CLIP_KEYS)))
+    return "".join(line for i, line in enumerate(lines) if i not in dropped)
+
+
+def code_golden_as_now(golden: str) -> str:
+    """Golden scene code without what this editor no longer generates. One GameObject's code runs
+    from its `// Entity` comment to the next"""
+    lines = golden.splitlines(keepends=True)
+    starts = [i for i, line in enumerate(lines) if line.lstrip().startswith("// Entity ")] + [len(lines)]
+    dropped: set[int] = set()
+    for first, last in zip([0] + starts, starts):
+        section = lines[first:last]
+        generated = any(GENERATED_MESH_CODE.search(line) for line in section)
+        auto_ranges = any(line.strip() == "terrain.autoSetRanges = true;" for line in section)
+        i = first
+        while i < last:
+            line = lines[i].rstrip("\n")
+            following = lines[i + 1].strip() if i + 1 < last else ""
+            if line.endswith(f" = {VIEW_MASKED};") or DERIVED_CODE_DROPPED.match(line) or (auto_ranges and line.lstrip().startswith("terrain.ranges = {")):
+                dropped.add(i)
+            elif generated and GENERATED_CODE_DROPPED.match(line):
+                dropped.add(i)
+            elif generated and line.strip() == "{" and (following == "Attribute attr;" or following.startswith("static const unsigned char data[]")):
+                end = i + 1
+                while lines[end].rstrip("\n") != line.replace("{", "}"):
+                    end += 1
+                dropped.update(range(i, end + 1))
+                i = end
             i += 1
-        if any(b.strip() == f"{name}.autoResize = true;" for b in block):
-            view = re.compile(r"^(\s*" + re.escape(name) + r"\.(?:" + "|".join(CAMERA_VIEW_KEYS) + r")) = .*;$")
-            block = [view.sub(lambda m: f"{m.group(1)} = {VIEW_MASKED};", b.rstrip("\n")) + "\n" if view.match(b.rstrip("\n")) else b
-                     for b in block]
-        out.extend(block)
-    return "".join(out)
+    return "".join(line for i, line in enumerate(lines) if i not in dropped)
 
 
 MAX_VALUES_BLOCK = re.compile(r"(?m)^maxValues:\n(?:  .*\n)*")
@@ -150,29 +199,6 @@ def max_values_as_now(golden: str, actual: str) -> str:
     (none for a scene saved without it): the actual block, or none, stands for the golden's"""
     now = MAX_VALUES_BLOCK.search(actual)
     return MAX_VALUES_BLOCK.sub(lambda m: now.group(0) if now else "", golden, count=1)
-
-
-def default_camera_as_now(golden: str) -> str:
-    """Golden scene code without its Default Camera's view-derived assignments: this editor leaves
-    them out (the game sizes that camera from its own canvas), the goldens' editor wrote them"""
-    lines = golden.splitlines(keepends=True)
-    out: list[str] = []
-    default_camera = False
-    name = None
-    for line in lines:
-        if "// Default Camera" in line:
-            default_camera = True
-        declared = CODE_CAMERA.match(line.rstrip("\n"))
-        if default_camera and declared:
-            name = declared.group(1)
-            default_camera = False
-        elif name and not line.lstrip().startswith(name + "."):
-            name = None
-        if name and re.match(r"^\s*" + re.escape(name) + r"\.(?:" + "|".join(CAMERA_VIEW_KEYS) + r") = " + re.escape(VIEW_MASKED) + ";$",
-                             line.rstrip("\n")):
-            continue
-        out.append(line)
-    return "".join(out)
 
 
 def normalized_scene(text: str) -> str:
@@ -198,16 +224,16 @@ def normalized_scene(text: str) -> str:
         if current:
             entries.append(current)
         out.extend(sorted(entries))
-    return masked_view("".join(out))
+    return without_camera_clips("".join(out))
 
 
 def normalized_source(text: str, project: Path) -> str:
-    return masked_view_code(text.replace(str(project), "<project>").replace(project.as_posix(), "<project>"))
+    return code_without_camera_clips(text.replace(str(project), "<project>").replace(project.as_posix(), "<project>"))
 
 
 def compare_or_update(path: Path, actual: str, what: str, mismatches: list[str], golden_filter=None) -> None:
-    """golden_filter: applied to the golden before the comparison (masked_view: the goldens were
-    captured with the scissor lines the editor no longer writes)."""
+    """golden_filter: applied to the golden before the comparison (scene_golden_as_now,
+    code_golden_as_now: the goldens hold lines the editor no longer writes)."""
     if UPDATE:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(actual, encoding="utf-8", newline="")
@@ -280,7 +306,7 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
                 break
         actual = normalized_scene(text)
         compare_or_update(GOLDEN / name / (rel + ".golden"), actual, f"{name}/{rel}", mismatches,
-                          golden_filter=lambda golden: max_values_as_now(masked_view(golden), actual))
+                          golden_filter=lambda golden: max_values_as_now(scene_golden_as_now(golden), actual))
     prefabs = sorted(p.relative_to(project).as_posix() for p in project.rglob("*.prefab")
                      if ".jasperengine" not in p.parts)
     for rel in prefabs:
@@ -288,8 +314,8 @@ async def resave(ed: Editor, project: Path, name: str, mismatches: list[str], so
         await ed.call("prefab_mode", action="save", allow_data_loss=True)
         await ed.call("prefab_mode", action="close", unsaved="discard")
         text = (project / rel).read_text(encoding="utf-8")
-        compare_or_update(GOLDEN / name / (rel + ".golden"), masked_view(text), f"{name}/{rel}", mismatches,
-                          golden_filter=masked_view)
+        compare_or_update(GOLDEN / name / (rel + ".golden"), without_camera_clips(text), f"{name}/{rel}", mismatches,
+                          golden_filter=scene_golden_as_now)
     await ed.call("save_project")
     compare_or_update(GOLDEN / name / "project.yaml.golden", (project / "project.yaml").read_text(encoding="utf-8"),
                       f"{name}/project.yaml", mismatches)
@@ -337,7 +363,7 @@ async def test_codegen_golden():
     mismatches: list[str] = []
     for key, text in sorted(SOURCES.items()):
         compare_or_update(GOLDEN / "codegen" / (key + ".golden"), text, f"generated {key}", mismatches,
-                          golden_filter=default_camera_as_now)
+                          golden_filter=code_golden_as_now)
     check(not mismatches, "generated C++ differs from the goldens:\n" + "\n".join(mismatches[:20]))
 
 

@@ -101,6 +101,9 @@ namespace jasperengine::editor::reflect {
         // the elements of a list as push_backs (pushBackCleared: a clear() first)
         void pushBackStatements(const FieldDesc&, const void*, const std::string&, const CodegenContext&, std::string&);
         void pushBackClearedStatements(const FieldDesc&, const void*, const std::string&, const CodegenContext&, std::string&);
+        // a list of structs exported as push_backs of each element's aggregate initializer (its
+        // members in table order, which must be their declaration order)
+        void structPushBackStatements(const FieldDesc&, const void*, const std::string&, const CodegenContext&, std::string&);
 
         bool skipEmptyAssetPath(const FieldDesc&, const void* value);
 

@@ -4,6 +4,7 @@
 #include "ProjectFileIndex.h"
 
 #include <algorithm>
+#include <optional>
 #include <unordered_map>
 
 using namespace jasperengine;
@@ -37,6 +38,21 @@ bool ProjectFileIndex::indexes(const std::string& name) {
 void ProjectFileIndex::reset(const fs::path& root) {
     rootPath = root.lexically_normal();
     entries.clear();
+    if (!linkedRoots.empty()) linkedVersion++;
+    linkedRoots.clear();
+}
+
+void ProjectFileIndex::dropLinkedFolders(const std::string& key) {
+    if (linkedRoots.empty()) return;
+    const size_t before = linkedRoots.size();
+    if (key.empty()) {
+        linkedRoots.clear();
+    } else {
+        linkedRoots.erase(key);
+        auto range = subtree(linkedRoots, key);
+        linkedRoots.erase(range.first, range.second);
+    }
+    if (linkedRoots.size() != before) linkedVersion++;
 }
 
 fs::path ProjectFileIndex::absolute(const std::string& key) const {
@@ -47,7 +63,7 @@ bool ProjectFileIndex::keyOf(const fs::path& path, std::string& key) const {
     return watch::relativeTo(rootPath, path, key);
 }
 
-void ProjectFileIndex::walk(const std::string& key, std::map<std::string, Entry>& out, const std::atomic<bool>* cancel, int depth) const {
+void ProjectFileIndex::walk(const std::string& key, std::map<std::string, Entry>& out, const std::atomic<bool>* cancel, int depth, LinkWalk* links) const {
     if (depth > MAX_DEPTH) return;
     std::error_code ec;
     fs::directory_iterator it(absolute(key), fs::directory_options::skip_permission_denied, ec);
@@ -55,21 +71,36 @@ void ProjectFileIndex::walk(const std::string& key, std::map<std::string, Entry>
         if (cancel && cancel->load(std::memory_order_relaxed)) return;
         const std::string name = watch::pathToUtf8(it->path().filename());
         if (!indexes(name)) continue;
-        std::error_code typeEc;
-        // a symlinked folder could loop: its link is listed, not followed
-        const bool link = it->is_symlink(typeEc);
+        // a linked folder could loop: its link is listed, and followed only when the link follower
+        // says (a folder out of the root, once)
+        const bool link = watch::isLink(*it);
         Entry entry;
         if (!watch::statPath(it->path(), entry)) continue;
         const std::string child = childKey(key, name);
         out[child] = entry;
-        if (entry.directory && !link) walk(child, out, cancel, depth + 1);
+        if (!entry.directory) continue;
+        if (!link) {
+            walk(child, out, cancel, depth + 1, links);
+        } else if (links) {
+            const fs::path real = links->follower.enter(it->path());
+            if (real.empty()) continue;
+            links->found[child] = real;
+            walk(child, out, cancel, depth + 1, links);
+        }
     }
 }
 
 void ProjectFileIndex::build(const std::atomic<bool>* cancel) {
     entries.clear();
     if (rootPath.empty()) return;
-    walk("", entries, cancel, 0);
+    if (!followLinks) {
+        walk("", entries, cancel, 0, nullptr);
+        return;
+    }
+    LinkWalk links(rootPath);
+    walk("", entries, cancel, 0, &links);
+    if (links.found != linkedRoots) linkedVersion++;
+    linkedRoots = std::move(links.found);
 }
 
 bool ProjectFileIndex::find(const fs::path& path, Entry& out) const {
@@ -94,6 +125,7 @@ void ProjectFileIndex::set(const fs::path& path, const Entry& entry) {
         // a folder replaced by a file: what it held is gone
         auto range = subtree(entries, key);
         entries.erase(range.first, range.second);
+        dropLinkedFolders(key);
     }
     entries[key] = entry;
 }
@@ -101,6 +133,7 @@ void ProjectFileIndex::set(const fs::path& path, const Entry& entry) {
 void ProjectFileIndex::erase(const fs::path& path) {
     std::string key;
     if (!keyOf(path, key)) return;
+    dropLinkedFolders(key);
     if (key.empty()) {
         entries.clear();
         return;
@@ -134,6 +167,16 @@ void ProjectFileIndex::move(const fs::path& from, const fs::path& to) {
     auto old = subtree(entries, toKey);
     entries.erase(old.first, old.second);
     for (auto& [key, entry] : moved) entries[key] = entry;
+    // a link moved with its folder leads where it did
+    if (!linkedRoots.empty()) {
+        std::map<std::string, fs::path> remapped;
+        for (const auto& [link, real] : linkedRoots) {
+            const bool inside = link == fromKey || link.compare(0, fromKey.size() + 1, fromKey + "/") == 0;
+            remapped[inside ? toKey + link.substr(fromKey.size()) : link] = real;
+        }
+        if (remapped != linkedRoots) linkedVersion++;
+        linkedRoots = std::move(remapped);
+    }
 }
 
 std::vector<std::pair<fs::path, ProjectFileIndex::Entry>> ProjectFileIndex::under(const fs::path& dir) const {
@@ -154,17 +197,33 @@ std::vector<FileChange> ProjectFileIndex::diff(const fs::path& dir, const std::a
     std::string key;
     if (!keyOf(dir, key)) return out;
 
-    // What is on disk now under `key` (and `key` itself)
+    // What is on disk now under `key` (and `key` itself). A partial walk knows the folders the
+    // rest of the index went through: they are entered there, not again here.
+    std::optional<LinkWalk> links;
+    if (followLinks) {
+        links.emplace(rootPath);
+        for (const auto& [link, real] : linkedRoots) {
+            const bool below = key.empty() || link == key || link.compare(0, key.size() + 1, key + "/") == 0;
+            if (!below) links->follower.alreadyEntered(real);
+        }
+    }
     std::map<std::string, Entry> disk;
     if (!key.empty()) {
         Entry self;
         const std::string name = watch::pathToUtf8(dir.filename());
         if (indexes(name) && watch::statPath(dir, self)) {
             disk[key] = self;
-            if (self.directory) walk(key, disk, cancel, 0);
+            if (self.directory) {
+                if (!links || !watch::isLink(dir)) {
+                    walk(key, disk, cancel, 0, links ? &*links : nullptr);
+                } else if (const fs::path real = links->follower.enter(dir); !real.empty()) {
+                    links->found[key] = real;
+                    walk(key, disk, cancel, 0, &*links);
+                }
+            }
         }
     } else {
-        walk("", disk, cancel, 0);
+        walk("", disk, cancel, 0, links ? &*links : nullptr);
     }
     if (cancel && cancel->load(std::memory_order_relaxed)) return out;
 
@@ -257,12 +316,28 @@ std::vector<FileChange> ProjectFileIndex::diff(const fs::path& dir, const std::a
         entries.clear();
     }
     for (auto& [path, entry] : disk) entries[path] = entry;
+    if (links) {
+        // the links below `key` are what this walk found
+        std::map<std::string, fs::path> linked = linkedRoots;
+        if (key.empty()) {
+            linked.clear();
+        } else {
+            linked.erase(key);
+            auto below = subtree(linked, key);
+            linked.erase(below.first, below.second);
+        }
+        linked.insert(links->found.begin(), links->found.end());
+        if (linked != linkedRoots) linkedVersion++;
+        linkedRoots = std::move(linked);
+    }
     return out;
 }
 
 bool ProjectFileIndex::matchesDisk() const {
     std::map<std::string, Entry> disk;
-    walk("", disk, nullptr, 0);
+    std::optional<LinkWalk> links;
+    if (followLinks) links.emplace(rootPath);
+    walk("", disk, nullptr, 0, links ? &*links : nullptr);
     if (disk.size() != entries.size()) return false;
     for (const auto& [path, entry] : disk) {
         auto it = entries.find(path);

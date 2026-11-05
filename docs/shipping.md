@@ -106,15 +106,35 @@ runtime from pieces (`obj["get" .. "Rigidbody"]`) is the one use the build canno
 **Project Settings > Player > Strip Engine Code** off for such a project (every module its
 settings allow ships).
 
+## The shaders a build ships
+
+Build Settings lists the shader variants a build compiles: what each scene needs, what every build
+ships, the warm-up list and your additions, without what you excluded. Closed scenes count: each is
+read from its file as it is now (no GPU work) and remembered by the file's hash, so an unchanged
+project reads none of them. The list shows "Reading N closed scene(s)..." while that takes a moment,
+and names a scene whose file cannot be read: the list then holds what it last knew of it. Play's
+startup and every export use the same list.
+
 ## Platforms
 
 - **Android** needs the Android SDK's build-tools (35 or newer: aapt2, zipalign, apksigner), the
   target platform's `android.jar` and a JDK (keytool, jarsigner); an App Bundle also needs
-  bundletool, which the editor downloads once. No NDK, CMake or Gradle. Set the SDK and JDK in
-  Preferences > External Tools when they are not in `ANDROID_HOME` / `JAVA_HOME`. The keystore is
-  Project Settings > Android > Keystore; its passwords are asked when building (or
-  `JASPER_ANDROID_KS_PASS` and `JASPER_ANDROID_KEY_PASS`) and never saved. Without a keystore the
-  debug key signs the build (fine for testing, refused by stores).
+  bundletool 1.17.2, which the first bundle build downloads from Google's GitHub releases into the
+  user's cache (`jasperengine/tools/`). Its SHA-256 is pinned: a file that differs is not kept. A
+  broken download is retried and resumed; offline, the build fails with the URL and where to put
+  the file by hand. No NDK, CMake or Gradle. Set the SDK and JDK in Preferences > External Tools
+  when they are not in `ANDROID_HOME` / `JAVA_HOME`.
+
+  Signing: without a keystore the debug key (`~/.android/debug.keystore`, made when missing) signs
+  the build, fine for testing and refused by stores (a release build warns `W-ANDROID-DEBUG-KEY`).
+  A release keystore is Project Settings > Android > Keystore and Key Alias, RSA or EC, JKS or
+  PKCS12; its passwords are asked when building (or `JASPER_ANDROID_KS_PASS` and
+  `JASPER_ANDROID_KEY_PASS`), go to the tools through owner-only files, and are never saved or
+  logged. The key is checked before any packaging: a wrong store password, a wrong key password
+  and an unknown alias each fail at once and say which.
+
+  A source export is an Android Studio project (`workspaces/androidstudio`, `./gradlew assembleDebug
+  bundleDebug`). Gradle signs it with the debug key; set up a release key in Android Studio.
 
   Project Settings > Android > Package Format picks what Build makes:
   - **App Bundle** (`aab`, the default) is what Google Play takes. Play gives each device only its
@@ -127,9 +147,21 @@ settings allow ships).
   Build Settings shows each choice's download size, from the installed runtime's libraries.
   Unselect the ABIs a game does not need under Architectures (arm64-v8a covers nearly every
   device sold since 2017).
-- **iOS** needs a Mac with Xcode. On other computers the build is the Xcode project ("Open on a
-  Mac with Xcode"). Project Settings > iOS holds the team id and the export method
-  (development, ad-hoc, app-store).
+- **iOS** needs a Mac with a full Xcode (the Command Line Tools have no `xcodebuild`). The build
+  uses `DEVELOPER_DIR` when set, else the active developer directory, else the Xcode in
+  `/Applications` (the Mac's `xcode-select` setting is not changed). On other computers, or
+  without Xcode, the build is the Xcode project ("Open on a Mac with Xcode"). Project Settings >
+  iOS holds the team id and the export method (development, ad-hoc, app-store).
+  - `--ios-simulator` (`ios_simulator` in `build_project`): an unsigned `.app` for the simulator,
+    no account needed. `xcrun simctl install` and `launch` run it.
+  - For a device, no Team ID: the project is compiled and linked for a device and stops before
+    signing, with the warning `W-IOS-NO-TEAM`; the `.app` installs on nothing, and the Xcode
+    project is there to open.
+  - For a device, with a Team ID: `xcodebuild archive` and `-exportArchive` make the `.ipa`. This
+    needs the team's account in Xcode > Settings > Accounts; without it the build fails and says
+    so. What `tools/ci/ios_packaging.sh` runs is on the simulator, the device build up to signing
+    and an unsigned archive; a signed `.ipa` has not been made in any test, as that needs an
+    Apple developer account.
 - **macOS**: the bundle is signed ad hoc by `codesign` on a Mac, or by `rcodesign` anywhere
   (Preferences > External Tools); an unsigned arm64 build does not start on Apple silicon.
 - **Web**: the page runs the pthreads player when the page is cross-origin isolated (COOP/COEP

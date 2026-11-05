@@ -32,6 +32,9 @@ namespace jasperengine::editor {
         std::string engineVersion;
         std::string gitSha;
         std::string contentFormatVersion;
+        // the cooked model formats it decodes (CookedModels::kFormatVersion, S53 R30); empty in a
+        // runtime built before model cooks
+        std::vector<int> modelCookFormats;
         // the fixed array capacities of a player packaged before components grew their arrays
         // (MAX_SUBMESHES, ...): such a player is never chosen (Exporter::chooseBuildMethod)
         std::map<std::string, unsigned int> capacities;

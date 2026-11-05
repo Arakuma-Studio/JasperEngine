@@ -8,6 +8,7 @@
 #include "util/ProjectUtils.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/OnScreenControlComponents.h"
+#include "model/ModelAudit.h"
 #include "McpTools.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
@@ -5109,6 +5110,14 @@ void getModelInfoTool(const CallPtr& call) {
     }
     Json info = modelInfoJson(target, target.entity);
     if (!boolOr(call->args(), "include_bones", true)) info.erase("bones");
+    // the model cook of its file (S53 R23)
+    {
+        Project* project = call->ctx().project();
+        const std::string& filename = scene->getComponent<ModelComponent>(target.entity).filename;
+        const fs::path absolute = filename.empty() ? fs::path() : project->resolveAssetPath(filename).lexically_normal();
+        if (!filename.empty() && project->isInsideAssetsPath(absolute) && isModelSource(project->normalizeToAssetsRelative(absolute).generic_string()))
+            info["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(absolute).generic_string());
+    }
     call->ok("Model \"" + scene->getEntityName(target.entity) + "\": " + std::to_string(info["meshes"].size()) + " mesh(es), " +
              std::to_string(info["bone_count"].get<size_t>()) + " bone(s), " + std::to_string(info["animations"].size()) + " animation(s).", info);
 }

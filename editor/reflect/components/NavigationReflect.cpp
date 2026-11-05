@@ -130,7 +130,7 @@ namespace {
         JE_FIELD(NavMeshSurfaceComponent, minRegionArea, .label = "Minimum Region Area", .tooltip = "Islands smaller than this (square metres) are dropped."),
         JE_FIELD(NavMeshSurfaceComponent, plane, .enumDesc = &enums::kNavPlane, .tooltip = "XZ for 3D scenes (Y up); XY for 2D scenes: Collider2D footprints on the scene's plane."),
         JE_FIELD(NavMeshSurfaceComponent, runtimeCarving, .tooltip = "Keep tile-cache layers so carving NavMesh Obstacles cut it at runtime (about 30% more memory)."),
-        JE_FIELD(NavMeshSurfaceComponent, navMeshData, .label = "NavMesh Data", .tooltip = "The baked .navmesh asset."),
+        JE_FIELD(NavMeshSurfaceComponent, navMeshData, .asset = AssetKind::NavMesh, .label = "NavMesh Data", .tooltip = "The baked .navmesh asset."),
     };
 
     const ComponentCodec kNavMeshSurfaceCodec = JE_STREAM_CODEC(NavMeshSurfaceComponent, encodeNavMeshSurfaceComponent,
@@ -251,7 +251,7 @@ namespace {
         JE_FIELD(NavGridComponent, emptyCellArea, .label = "Cells Without Tiles", .tooltip = "The area of cells no tile covers."),
         JE_FIELD(NavGridComponent, collidersBlock, .tooltip = "Static Collider2D footprints block the cells under them."),
         JE_FIELD(NavGridComponent, autoRebuild),
-        JE_FIELD(NavGridComponent, gridData),
+        JE_FIELD(NavGridComponent, gridData, .asset = AssetKind::NavGrid),
     };
 
     const ComponentCodec kNavGridCodec = JE_STREAM_CODEC(NavGridComponent, encodeNavGridComponent, decodeNavGridComponent);
