@@ -614,4 +614,6 @@ compiles under WERROR (`it17.off.log`).
   Mac's 0.95 s, before S38, is the number to beat.
 - **Importing mixed sources.** `import_files` refuses built-in references mixed with other sources: a call has one plan
   and one undo step.
-
+- **The pipeline's pins run on Python 3.12, fetched by uv.** `numpy==2.5.4` needs Python 3.12 and the build image has 3.10, so
+  the tests' `uv run` and the scripts' documented commands pass `--python 3.12`. Older pins that install on 3.10 move values
+  by up to 0.01, so the committed data would no longer be reproduced byte for byte.

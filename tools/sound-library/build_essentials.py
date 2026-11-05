@@ -21,7 +21,7 @@ measure and all need numpy, soundfile and pyloudnorm; fetch, extract and verify
 use the standard library only. The versions below reproduce the committed
 manifest byte for byte (other versions may move a value by 0.01):
 
-    uv run --no-project --with numpy==2.5.4 --with soundfile==0.14.0 \\
+    uv run --no-project --python 3.12 --with numpy==2.5.4 --with soundfile==0.14.0 \\
         --with pyloudnorm==0.2.0 --with scipy==1.18.1 \\
         tools/sound-library/build_essentials.py all --cache /tmp/kenney
 
