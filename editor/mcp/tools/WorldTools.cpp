@@ -41,6 +41,10 @@
 #include "subsystem/PhysicsSystem.h"
 #include "component/ActionComponent.h"
 #include "component/AnimationComponent.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/AudioSourceComponent.h"
+#include "animation/ClipAudio.h"
+#include "audio/AudioMixer.h"
 #include "component/BoneComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/ImageComponent.h"
@@ -3074,6 +3078,9 @@ std::string actionKind(Scene* scene, Entity action) {
     if (scene->findComponent<SpriteAnimationComponent>(action)) return "sprite_animation";
     if (scene->findComponent<ParticleSystemComponent>(action)) return "particles";
     if (scene->findComponent<AnimationComponent>(action)) return "animation";
+    // the legacy timeline's sound (S40 R17, R18)
+    if (const AudioSourceComponent* audio = scene->findComponent<AudioSourceComponent>(action)) return audio->event.empty() ? "audio" : "sound_event";
+    if (scene->findComponent<AudioSnapshotComponent>(action)) return "mixer_snapshot";
     return "action";
 }
 
@@ -3489,6 +3496,7 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
     ActionComponent* action = scene->findComponent<ActionComponent>(animation);
     ActionSystem* actions = scene->getSystem<ActionSystem>().get();
     Json list = Json::array();
+    Json audioList = Json::array();
     float length = 0.0f;
     for (size_t i = 0; i < anim.actions.size(); i++) {
         const ActionFrame& frame = anim.actions[i];
@@ -3527,10 +3535,36 @@ Json animationJson(const Target& target, Entity animation, size_t keyLimit) {
             if (auto* p = scene->findComponent<AlphaTweenComponent>(frame.action)) { t["from"] = p->startAlpha; t["to"] = p->endAlpha; }
             item["tween"] = t;
         }
+        // audio and snapshot actions also list as audio[] (S40 R25), in edit_animation's audio form
+        if (kind == "audio" || kind == "sound_event" || kind == "mixer_snapshot") {
+            Json cue = {{"index", i}, {"time", frame.startTime}, {"duration", frame.duration}, {"effective_duration", effective},
+                        {"lane", frame.track}, {"name", scene->getEntityName(frame.action)}};
+            if (const AudioSourceComponent* audio = scene->findComponent<AudioSourceComponent>(frame.action)) {
+                const AssetRef& sound = audio->event.empty() ? audio->filename : audio->event;
+                Json ref = {{"path", clip_tools::toolPath(target.project, sound.path)}};
+                if (!sound.guid.isNull()) ref["guid"] = sound.guid.str();
+                cue["sound"] = ref;
+                cue["volume_db"] = audio->volume > 0.0 ? 20.0 * std::log10(audio->volume) : -60.0;
+                cue["pitch_semitones"] = audio->speed > 0.0f ? 12.0 * std::log2((double)audio->speed) : 0.0;
+                if (!audio->outputGroupName.empty()) cue["group"] = audio->outputGroupName;
+                cue["spatial"] = audio->attenuationModel != AudioSourceAttenuation::NO_ATTENUATION;
+            }
+            if (const AudioSnapshotComponent* snapshot = scene->findComponent<AudioSnapshotComponent>(frame.action)) {
+                cue["snapshot"] = snapshot->snapshot;
+                cue["seconds"] = snapshot->seconds;
+                cue["unscaled"] = snapshot->unscaled;
+                cue["revert"] = snapshot->revert;
+            }
+            if (ActionComponent* ac = scene->findComponent<ActionComponent>(frame.action)) {
+                if (ac->target != NULL_ENTITY && scene->isEntityCreated(ac->target)) cue["path"] = McpRefs::entityPath(target.scene, ac->target);
+            }
+            audioList.push_back(cue);
+        }
         list.push_back(item);
     }
     Json out = {{"animation", entityJson(target, animation)}, {"loop", anim.loop}, {"duration", anim.duration},
                 {"length", length}, {"actions", list}};
+    if (!audioList.empty()) out["audio"] = audioList;
     if (action) {
         out["target"] = action->target != NULL_ENTITY && scene->isEntityCreated(action->target) ? entityJson(target, action->target) : Json(nullptr);
         out["autoplay"] = action->state == ActionState::Running;
@@ -3811,6 +3845,54 @@ void editAnimationTool(const CallPtr& call) {
         }
     }
 
+    // Audio and Mixer Snapshot actions (S40 R25): edit_animation's cue items, time = the frame's start
+    int audioCreated = 0;
+    if (has(args, "audio")) {
+        if (!args["audio"].is_array()) { failWith("audio must be an array of {time, sound | snapshot, path, duration, lane, ...}."); return; }
+        for (size_t a = 0; a < args["audio"].size(); a++) {
+            const Json& item = args["audio"][a];
+            const std::string where = "audio[" + std::to_string(a) + "]";
+            ClipAudioCue cue;
+            if (!clip_tools::readAudioCue(target.project, item, where, true, cue, error)) { failWith(error); return; }
+            Entity actionTarget = animTarget;
+            if (!cue.path.empty() && (actionTarget = resolveRef(target.scene, Json(cue.path), error)) == NULL_ENTITY) { failWith(where + ".path: " + error); return; }
+            const float duration = numberOr(item, "duration", 0.0f);
+            if (has(item, "duration") && (!item["duration"].is_number() || duration < 0.0f)) {
+                failWith(where + ".duration must be seconds >= 0 (0: as long as its sound or transition)."); return;
+            }
+            const bool snapshot = cue.kind == ClipCueKind::Snapshot;
+            const bool event = !snapshot && lowerText(fs::path(cue.sound.path).extension().string()) == ".soundevent";
+            const EntityCreationType type = snapshot ? EntityCreationType::MIXER_SNAPSHOT_ACTION
+                                                     : event ? EntityCreationType::SOUND_EVENT_ACTION : EntityCreationType::AUDIO_ACTION;
+            const std::string name = !cue.name.empty() ? cue.name
+                                   : snapshot ? "Mixer Snapshot: " + cue.snapshot : "Audio: " + fs::path(cue.sound.path).stem().string();
+            auto* create = new CreateEntityCmd(target.project, target.sceneId(), name, type, actionTarget);
+            std::unique_ptr<CreateEntityCmd> guard(create);
+            if (snapshot) {
+                create->addProperty<std::string>(ComponentType::AudioSnapshotComponent, "snapshot", cue.snapshot);
+                create->addProperty<float>(ComponentType::AudioSnapshotComponent, "seconds", cue.seconds);
+                if (cue.unscaled) create->addProperty<bool>(ComponentType::AudioSnapshotComponent, "unscaled", *cue.unscaled);
+            } else {
+                create->addProperty<AssetRef>(ComponentType::AudioSourceComponent, event ? "event" : "filename", cue.sound);
+                if (cue.volumeDb != 0.0f) create->addProperty<double>(ComponentType::AudioSourceComponent, "volume", std::pow(10.0, (double)cue.volumeDb / 20.0));
+                if (cue.pitchSemitones != 0.0f) create->addProperty<float>(ComponentType::AudioSourceComponent, "speed", (float)std::pow(2.0, (double)cue.pitchSemitones / 12.0));
+                if (!cue.group.empty()) {
+                    create->addProperty<std::string>(ComponentType::AudioSourceComponent, "outputGroupName", cue.group);
+                    create->addProperty<std::string>(ComponentType::AudioSourceComponent, "outputGroup", AudioMixer::findGroupId(cue.group));
+                }
+                if (cue.spatial) create->addProperty<AudioSourceAttenuation>(ComponentType::AudioSourceComponent, "attenuationModel", AudioSourceAttenuation::INVERSE_DISTANCE);
+            }
+            if (!step.add(guard.release())) { failWith(where + ": could not create the action."); return; }
+            ActionFrame frame;
+            frame.startTime = cue.time;
+            frame.duration = duration;
+            frame.action = create->getEntity();
+            frame.track = static_cast<uint32_t>(std::max(0, intOr(item, "lane", static_cast<int>(nextLane++))));
+            kept.push_back(frame);
+            audioCreated++;
+        }
+    }
+
     // Existing actions (tweens, tracks, sprite animations, particles, nested animations)
     if (has(args, "add_actions")) {
         if (!args["add_actions"].is_array()) { failWith("add_actions must be an array of {action, start_time, duration, lane}."); return; }
@@ -3855,7 +3937,8 @@ void editAnimationTool(const CallPtr& call) {
     data["created"] = created;
     call->ok(std::string(created ? "Created" : "Updated") + " animation \"" + scene->getEntityName(animation) + "\": " +
              std::to_string(kept.size()) + " action(s); " + std::to_string(tracksCreated) + " track(s) created, " +
-             std::to_string(tracksWritten) + " rewritten, " + std::to_string(tweensCreated) + " tween(s) added (one undo step).", data);
+             std::to_string(tracksWritten) + " rewritten, " + std::to_string(tweensCreated) + " tween(s), " + std::to_string(audioCreated) +
+             " audio action(s) added (one undo step).", data);
 }
 
 void getAnimationTool(const CallPtr& call) {
@@ -5696,7 +5779,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose "
         "Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
         "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
-        "property: component + property; humanoid: bone.",
+        "property: component + property; humanoid: bone. audio: sound cues (clip) or audio actions.",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
@@ -5721,6 +5804,10 @@ void registerWorldTools(McpRegistry& registry) {
             }, {"channel", "keys"}), "")},
             {"events", array(object({{"time", number("")}, {"function", string("")}, {"args", array(any(""), "")}}, {"time", "function"}), "")},
             {"events_mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
+            {"audio", array(object({{"time", number("")}, {"sound", any("")}, {"source", string("")}, {"snapshot", string("")},
+                                    {"path", string("")}, {"spatial", boolean("")}, {"volume_db", number("")}, {"pitch_semitones", number("")},
+                                    {"group", string("")}, {"stop", stringEnum("", {"none", "state_exit"})}, {"seconds", number("")},
+                                    {"duration", number("")}, {"lane", integer("")}}, {"time"}, true), "")},
             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
             {"frame_rate", number("")},
             {"length", number("")},

@@ -173,6 +173,24 @@ Recipes: **footsteps** are a `shuffle` with small pitch and volume ranges and a 
 **UI clicks** a `random` event on a Button's AudioSource with `playOn: ["ui_click"]`; **impacts** an event on
 a Rigidbody's AudioSource with `playOn: ["collision_3d"]`, `minImpactSpeed` and `fullVolumeImpactSpeed`.
 
+## Timeline audio
+
+Sound that must land on an animation frame goes on the clip, not in a script: `edit_animation {clip, audio}`
+cues (jasper://docs/animation, Audio cues) start on the sample of the crossing in the Animation Player, the
+Animator and montages; an entity Animation takes the same items as audio and Mixer Snapshot actions.
+
+- **Footsteps:** a `shuffle` Sound Event of steps, one cue per contact frame:
+  `{"time": 0.32, "sound": "assets/sounds/steps.soundevent", "spatial": true, "path": "Body/LeftFoot"}`. To put the
+  step's transient on the foot's contact frame, set `time` = contact − (`onset.peak_ms` of `analyze_audio` on the event's
+  clip) / 1000; the Animation window's Align Peak to Playhead does the same. `get_animation {clip}` gives each cue's `length`.
+- **Engine loop:** a looping AudioSource on the car, a `source` cue at 0 with `stop: "state_exit"`, and property tracks
+  `component: "audiosource"`, `property: "volume"` / `"speed"` on the same path shape it while the state plays.
+- **Build-up:** a `snapshot` cue (`{"time": 2.0, "snapshot": "Build", "seconds": 0.5}`) moves the mixer; a later cue
+  moves it back. Snapshots are the project mixer's.
+- **Check:** capture the Play (below): each fired cue is a `cue` line (`clip`, `cue`, `kind`, `player`, `state`,
+  `position`, `delay_samples`, `timeline`) followed by its `voice_start` (owner `cue` or `main`, cause `animation`) on
+  the same sample plus `delay_samples`; a snapshot cue writes a `mixer` line with `cause: "animation"`.
+
 ## Capture a Play
 
 A Play captures when the editor has no output device (the usual case for an agent), or after
