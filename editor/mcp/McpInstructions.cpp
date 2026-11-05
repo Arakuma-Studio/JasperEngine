@@ -119,6 +119,7 @@ step; allow_data_loss): jasper://docs/<area>.
 The editor makes, finds and fixes sound files: no scripts, no audio bytes, no web (group audio). A sound to make:
 generate_sound (like: one fitting a clip). A real recording: search_sounds, then import_files. Too quiet or
 clicking: analyze_audio (you cannot hear), set_audio_import_settings. Takes in one file: edit_sound_event slice.
+Whether it plays in the game, how loud, on time: audio_session, on a Play's capture.
 jasper://docs/sound.
 )JE";
 }

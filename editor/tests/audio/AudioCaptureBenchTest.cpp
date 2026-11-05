@@ -141,7 +141,7 @@ TEST_F(AudioCaptureBench, PumpAndCaptureBudgets) {
     const double capture = captured - pump;
 
     std::printf("[bench] 32 voices, 4 groups, a reverb: Null pump %.3f ms a frame, deterministic pump %.3f ms (%+.1f %%), capture on top %.3f ms\n", null, pump, (pump / null - 1.0) * 100.0, capture);
-    const double slack = testsupport::perfSlack();
+    const double slack = editor::test::perfSlack();
     if (slack > 0.0) {
         EXPECT_LE(pump, 0.6 * slack) << "R27";
         EXPECT_LE(pump, null * 1.05 * slack) << "R27: the same work as the Null pump";
