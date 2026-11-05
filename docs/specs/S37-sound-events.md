@@ -538,7 +538,6 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
   the event's own `delay_ms` stays exact to the sample (R7).
 - **`AudioStealPolicy` and the source cap:** a play's voices never steal from each other through `maxVoices`. A voice
   with no one-shot to steal is rejected with reason `max_voices` (a reason R14 did not list).
-- **The Lua bindings are not yet under `#if JASPERENGINE_SOUND_LAYER`:** the module is M7's.
 - **`AudioSource.event` and S73.** `main` still has the hand-written `AssetRefSchema` table, so `event` has a hand row and a
   `CoversAllFields` entry. S73 generates that table and deletes `LegacyCodecs.cpp`. Whichever lands second: take S73's
   files; add `SoundEvent` to S73's `AssetKind`, `rowExpectedType` (`AssetType::SoundEvent`) and `assetKindName`; add
