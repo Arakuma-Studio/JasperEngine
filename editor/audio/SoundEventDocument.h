@@ -5,6 +5,8 @@
 
 #include "audio/SoundEventIO.h"
 
+#include "json.hpp"
+
 #include <filesystem>
 #include <map>
 #include <string>
@@ -32,6 +34,17 @@ namespace jasperengine::editor {
         // rewritten in every event of the project that holds them. Follows a clip's move or
         // rename, and the undo of one, so its event always names it. The files it rewrote.
         static std::vector<std::filesystem::path> relinkGuids(Project* project, const std::map<std::string, std::filesystem::path>& moved);
+
+        // The MCP values on a def (R1's keys; `clips` items take a path, a GUID or {clip, weight, ...};
+        // `output_group` a group by name; null resets a key). False + error naming the key.
+        static bool applyValues(Project* project, SoundEventDef& def, const nlohmann::json& values, std::string* error);
+        // the values as MCP reports them: R1's keys with `output_group`'s name
+        static nlohmann::json describe(const SoundEventDef& def);
+        // What a look at the def and its files finds without decoding: clips missing from the
+        // project, a group not in the mixer
+        static std::vector<std::string> problems(Project* project, const SoundEventDef& def);
+        // A clip by its path or GUID as a reference: its assets-relative path and its GUID ("" with error: an unknown GUID)
+        static AssetRef clipRef(Project* project, const std::string& pathOrGuid, std::string* error);
     };
 
 }

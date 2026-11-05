@@ -447,6 +447,7 @@ float AudioSource::getPitch() const{
     return getSpeed();
 }
 
+#if JASPERENGINE_SOUND_LAYER
 void AudioSource::setEvent(const std::string& pathOrGuid){
     AudioSourceComponent& audio = getComponent<AudioSourceComponent>();
     AssetRef ref;
@@ -520,6 +521,8 @@ void AudioSource::setVolumeRandomDb(float db){
 float AudioSource::getVolumeRandomDb() const{
     return getComponent<AudioSourceComponent>().volumeRandomDb;
 }
+
+#endif // JASPERENGINE_SOUND_LAYER
 
 void AudioSource::playOneShot(const std::string& filename, float volumeScale){
     AudioSourceComponent& audio = getComponent<AudioSourceComponent>();

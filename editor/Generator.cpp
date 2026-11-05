@@ -2829,8 +2829,8 @@ std::string editor::Generator::audioInitSource(const AudioSettings& audioSetting
     if (audioSettings.maxRealVoices != defaults.maxRealVoices || audioSettings.maxVoices != defaults.maxVoices ||
         audioSettings.sampleRate != defaults.sampleRate || audioSettings.seed != defaults.seed) {
         source += "    AudioSystem::configure({" + std::to_string(audioSettings.maxRealVoices) + ", " +
-                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate) + ", " +
-                  std::to_string(audioSettings.seed) + "u});\n";
+                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate) +
+                  (audioSettings.seed != defaults.seed ? ", " + std::to_string(audioSettings.seed) + "u" : std::string()) + "});\n";
     }
     if (!audioSettings.mixer.empty()) {
         source += "    AudioMixer::load(" + Factory::formatString(audioSettings.mixer) + ");\n";

@@ -222,7 +222,8 @@ namespace jasperengine{
 		void releaseSample(AudioSourceComponent& audio);
 		unsigned int startVoice(AudioSourceComponent& audio, SoLoud::AudioSource& sample, float volume, bool use3D,
 		                        const Vector3& position, bool mainVoice, const AudioVoiceExtras& extras = AudioVoiceExtras());
-		void applyVoiceParameters(AudioSourceComponent& audio, unsigned int handle, bool mainVoice, bool use3D, float speedScale = 1.0f, bool eventLoop = false);
+		void applyVoiceParameters(AudioSourceComponent& audio, unsigned int handle, bool mainVoice, bool use3D, float speedScale = 1.0f, bool eventLoop = false,
+		                          SoLoud::AudioSource* sample = nullptr);
 		void apply3dParameters(AudioSourceComponent& audio, unsigned int handle, const Vector3& position, const Vector3& velocity,
 		                       const SoundEventSpatial* spatial = nullptr);
 		// Starts an event (docs/specs/S37-sound-events.md R6), the one function every caller uses:

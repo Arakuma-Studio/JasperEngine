@@ -873,6 +873,154 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "bad_sound_too_quiet_no_measure",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "Sound-layer sessions: agents cannot hear, guessed a clip's level from a user's words and rewrote the "
+                         "bytes or set a voice volume, never measuring it or using the clip's own import settings.",
+        "text_at_issue": "analyze_audio and set_audio_import_settings descriptions; group audio's line",
+        "source": "sound-layer phase 1 and 2 reviews",
+        "prompt": "assets/sfx/jump.wav is too quiet and it clicks at its start. Fix that clip; every sound source that plays "
+                  "it should get the fix.",
+        "mocks": [
+            {"tool": "get_asset_info", "result": ok(
+                "assets/sfx/jump.wav: audio, 0.18 s, -31.2 LUFS-M; analyze_audio has its notes.",
+                {"path": "assets/sfx/jump.wav", "type": "audio", "data": {"audio": {"duration_s": 0.18, "momentary_max": -31.2}}})},
+            {"tool": "analyze_audio", "result": ok(
+                "1. assets/sfx/jump.wav: -31.2 LUFS-M, TP -14.0 dBTP, transient (jump); starts at -6.0 dB re its peak",
+                {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "kind": "transient", "type": "jump",
+                            "loudness": {"momentary_max": -31.2}, "peak": {"true_peak_dbtp": -14.0},
+                            "notes": [{"id": "loudness_target", "text": "momentary max -31.2 LUFS is 13.2 LU under the jump target (-18 LUFS)"},
+                                      {"id": "edge_click", "text": "starts at -6.0 dB re its peak: clicks every time it plays; "
+                                                                   "fade_in_ms 0.5 in its import settings fixes it",
+                                       "fix": {"fade_in_ms": 0.5}}]}],
+                 "errors": [], "image": None})},
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/sfx/jump.wav: -18.2 LUFS-M, 0.180 s",
+                {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "settings": {"gain_db": 13, "fade_in_ms": 0.5},
+                            "analysis": {"momentary_max": -18.2, "notes": []}}]})},
+        ],
+        "checks": {"calls": [{"tool": "analyze_audio"}, {"tool": "set_audio_import_settings", "args": {"settings": {"fade_in_ms": "*"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_sound_layered_family",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "S36 M8: the layered presets are chosen by name and character; an agent asked for a wooden hit should "
+                         "use impact with family wood rather than a thump recipe tuned by hand.",
+        "text_at_issue": "generate_sound's description and family input",
+        "source": "S36 M8 (sound-layer phase 7)",
+        "prompt": "I need a placeholder sound for a crate being hit, something wooden, at assets/sfx/crate_hit.wav.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/crate_hit.wav: 0.19 s, -18.0 LUFS-M, TP -4.1 dBTP, transient (impact) [seed 5, gain +3.20 dB]",
+                {"files": [{"path": "assets/sfx/crate_hit.wav", "preset": "impact", "family": "wood", "seed": 5}], "type": "impact", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "impact", "family": "wood"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+    },
+    {
+        "id": "guard_sound_slice_takes",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/footsteps_all.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "guard",
+        "what_happened": "S36 M9: a file holding several takes should become a shuffle Sound Event through edit_sound_event slice, "
+                         "not one AudioSource playing the whole file or clips cut by hand.",
+        "text_at_issue": "edit_sound_event's description and slice input",
+        "source": "S36 M9 (sound-layer phase 7)",
+        "prompt": "assets/sfx/footsteps_all.wav has about ten footstep takes one after another. Set up assets/sfx/footsteps.soundevent so each play picks a different take.",
+        "mocks": [
+            {"tool": "get_asset_info", "result": ok(
+                "assets/sfx/footsteps_all.wav: audio, 9.40 s, -18.0 LUFS-M; 10 onsets.",
+                {"path": "assets/sfx/footsteps_all.wav", "type": "audio", "data": {"audio": {"duration_s": 9.4, "momentary_max": -18.0}}})},
+            {"tool": "edit_sound_event", "result": ok(
+                "Created assets/sfx/footsteps.soundevent: shuffle, 10 clip(s). One undo step. No problems.",
+                {"event": "assets/sfx/footsteps.soundevent", "problems": [], "slices": [{"n": 1, "path": "assets/sfx/footsteps_01.wav"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sound_event", "args": {"slice": {"source": "assets/sfx/footsteps_all.wav"}}}],
+                   "must_not_call": ["write_file", "run_shell"]},
+    },
+    {
+        "id": "guard_sound_fit_like",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/door_licensed.ogg": "OggS\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "guard",
+        "what_happened": "S36 M10: asked for a placeholder like an existing clip, an agent should fit one with like instead of "
+                         "picking a preset by eye or copying the file, which keeps its licence problem.",
+        "text_at_issue": "generate_sound's description and like input",
+        "source": "S36 M10 (sound-layer phase 7)",
+        "prompt": "Make me a placeholder at assets/sfx/door_new.wav that sounds like assets/sfx/door_licensed.ogg, but which we can ship without its licence worries for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/door_new.wav: 0.41 s, -18.0 LUFS-M, TP -3.0 dBTP, transient (impact) [seed 1, gain +1.40 dB]\n"
+                "fit to assets/sfx/door_licensed.ogg: distance 1.42 (similar; defaults 3.10) after 64 renders",
+                {"files": [{"path": "assets/sfx/door_new.wav", "preset": "impact", "family": "wood", "seed": 1}], "type": "impact", "licence": "generated", "image": None,
+                 "fit": {"distance": 1.42, "grade": "similar", "renders": 64}})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"like": "assets/sfx/door_licensed.ogg"}}],
+                   "must_not_call": ["write_file", "import_files", "copy_asset"]},
+    },
+    {
+        "id": "guard_placeholder_sound",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "Sound-layer sessions: with no audio file at hand, an agent should make a placeholder instead of "
+                         "writing bytes by hand or searching the web.",
+        "text_at_issue": "generate_sound's description; group audio's line",
+        "source": "sound-layer phase 1 review",
+        "prompt": "The game needs a jump sound at assets/sfx/jump.wav and I have no audio files. Make one that will do for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset jump (type jump, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/jump.wav: 0.31 s, -18.1 LUFS-M, TP -3.2 dBTP, tonal (jump) [seed 77, gain +2.10 dB]",
+                {"files": [{"path": "assets/sfx/jump.wav", "preset": "jump", "seed": 77}], "type": "jump", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "jump"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_builtin_sound_search",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "An agent asked for a real recorded sound looked for one on the web, though 967 CC0 clips ship with the editor.",
+        "text_at_issue": "search_sounds' description and its import hint",
+        "source": "sound-layer phase 5 review",
+        "prompt": "I want a real recorded footstep on wood for the player, not a synthesized one. Put one in assets/sfx. No internet here.",
+        "mocks": [
+            {"tool": "search_sounds", "result": ok(
+                "3 sound(s):\n1. essentials:footstep/wood_1 (clip) footstep transient, 310 ms, -20.1 LUFS-M; labels footstep, wood\n"
+                "2. library:footstep/kenney_wood_1 (clip) footstep transient, 280 ms, -21.0 LUFS-M; labels footstep, wood",
+                {"results": [{"n": 1, "id": "essentials:footstep/wood_1", "type": "footstep", "import": "import_files sources:[essentials:footstep/wood_1]"},
+                             {"n": 2, "id": "library:footstep/kenney_wood_1", "type": "footstep", "import": "import_files sources:[library:footstep/kenney_wood_1]"}],
+                 "total": 3, "analysed": 0, "image": None, "scope": "all"})},
+            {"tool": "import_files", "result": ok(
+                "Imported 1 built-in sound(s) into assets/sfx; their licences are in provenance, undo with scope project.",
+                {"imported": ["assets/sfx/footstep/wood_1.ogg"], "skipped": []})},
+        ],
+        "checks": {"calls": [{"tool": "search_sounds"}, {"tool": "import_files", "args": {"sources": "*", "to_dir": "re:assets/sfx"}}],
+                   "must_not_call": ["generate_sound"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "bad_ios_simulator_without_an_account",
+        "kind": "bad",
+        "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",
+        "text_at_issue": "build_project ios_simulator: 'Unsigned simulator .app.'",
+        "source": "docs/specs/S67-packaging-tests.md R4",
+        "prompt": "I don't have an Apple developer account, but I'd like to try this game in the iOS Simulator on this Mac. Build it for that.",
+        "mocks": [
+            {"tool": "build_project", "result": ok("Build succeeded.", {"status": "succeeded", "result": {"method_used": "prebuilt"}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_import_reports_a_leftover",
         "kind": "guard",
         "what_happened": "A crashed older editor left a staging folder without an owner marker beside the import. It may hold the "
@@ -911,6 +1059,24 @@ CASES = [
         ],
         "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
                    "shell_must_not": [r"\brm\b.*importing"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_footsteps_built_in_lua",
+        "kind": "bad",
+        "what_happened": "Asked for varied footsteps, an agent wrote a Lua table of clips with math.random and its own pitch "
+                         "code. A Sound Event does it as data, with no script and a repeatable seed; edit_sound_event sits in the "
+                         "audio group, so its name has to be found from the task.",
+        "text_at_issue": "SoundTools.cpp edit_sound_event: name and description; McpToolGroups.cpp audio: its line",
+        "source": "docs/specs/S37-sound-events.md R20",
+        "prompt": "The project has sounds/step_1.wav, sounds/step_2.wav and sounds/step_3.wav. Make the Player's footsteps vary: never the "
+                  "same clip twice in a row and a little pitch variation. The Player already has an AudioSource.",
+        "mocks": [
+            {"tool": "edit_sound_event", "result": ok("Created sounds/steps.soundevent: shuffle, 3 clip(s). One undo step. No problems.",
+                                                      {"event": "sounds/steps.soundevent", "problems": [], "renditions": []})},
+            {"tool": "set_properties", "result": ok("Set 1 value on Player.", {"changed": 1})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sound_event"}], "must_not_call": [{"tool": "create_script"}]},
         "max_turns": 10,
     },
 ]

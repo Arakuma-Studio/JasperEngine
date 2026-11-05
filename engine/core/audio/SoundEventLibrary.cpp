@@ -1,6 +1,10 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/AudioSourceComponent.h"
+
+#if JASPERENGINE_SOUND_LAYER
+
 #include "SoundEventLibrary.h"
 
 #include "Log.h"
@@ -311,3 +315,5 @@ std::vector<SoundEventPick> SoundEventLibrary::preview(const SoundEventDef& def,
     for (int i = 0; i < count; i++) picks.push_back(pickWith(def, runtime, key, seed));
     return picks;
 }
+
+#endif // JASPERENGINE_SOUND_LAYER

@@ -11,6 +11,9 @@
 #include "component/TextEffectComponent.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
+
+#include "audio/SoundDrop.h"
+#include "window/SoundBrowserWindow.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "util/EditorScripts.h"
@@ -8957,7 +8960,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
     beginTable(cpType, getLabelSize("Audio Clip"));
 
-    if (entities.size() == 1) {
+    if (!sceneProject->scene->getComponent<AudioSourceComponent>(entities.front()).event.empty()) {
+        // the event plays: its clip is ignored (S37 R9)
+        ImGui::TableNextRow();
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("Audio Clip");
+        ImGui::TableNextColumn();
+        ImGui::TextDisabled("(played by the event)");
+    } else if (entities.size() == 1) {
         Entity entity = entities[0];
         AudioSourceComponent& audio = sceneProject->scene->getComponent<AudioSourceComponent>(entity);
 
@@ -9045,6 +9055,13 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
                         }
                     }
                 }
+                // a built-in clip from the Sound Browser: imported first
+                if (const ImGuiPayload* builtin = ImGui::AcceptDragDropPayload(SoundBrowserWindow::BUILTIN_PAYLOAD)) {
+                    std::vector<std::string> sounds;
+                    std::string dropError;
+                    if (SoundDrop::resolve(project, builtin, sounds, dropError) && !sounds.empty()) setAudioFilename(sounds.front());
+                    if (!dropError.empty()) Out::warning("Sound drop: %s", dropError.c_str());
+                }
                 ImGui::EndDragDropTarget();
             }
         }
@@ -9069,6 +9086,8 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
     propertyRow(RowPropertyType::Enum, cpType, "state", "State", sceneProject, entities, stateSettings);
 
     endTable();
+
+    drawAudioEventRows(cpType, sceneProject, entities);
 
     if (entities.size() == 1) {
         Entity entity = entities[0];

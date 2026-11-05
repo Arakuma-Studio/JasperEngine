@@ -7,6 +7,13 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
+
+#include "audio/SoundEventDocument.h"
+#include "util/ProjectChecks.h"
+
+#include "audio/AudioCredits.h"
+#include "audio/AudioImport.h"
+#include "audio/AudioImportRegistry.h"
 #include "shader/ShaderWarmup.h"
 #include "shader/ShaderVariantCollector.h"
 #include "player/PlayerModules.h"
@@ -1115,10 +1122,12 @@ void editor::Exporter::runExport() {
     if (!copyLua()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!checkHtmlUIReferences()) return;
+    checkSoundEventClips();
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!cookTextures()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyAssets()) return;
+    if (!writeAudioImports()) return;
     if (!writeAssetMap()) return;
     if (isCancelled()) { setError("Build cancelled"); return; }
     if (!copyCustomShaderSources()) return;
@@ -1304,8 +1313,8 @@ fs::path editor::Exporter::getBuildCacheDir() const {
 }
 
 std::vector<std::string> editor::Exporter::compiledModules() const {
-    // what Project Settings allow (the HTML UI and its video have no switch of their own)
-    std::vector<std::string> modules = {"htmlui", "video"};
+    // what Project Settings allow (the HTML UI, its video and the sound layer have no switch of their own)
+    std::vector<std::string> modules = {"htmlui", "video", "soundlayer"};
     if (project->isRuntimeShadersEnabled()) modules.push_back("runtimeshaders");
     if (project->isPhysics3DEnabled()) modules.push_back("physics3d");
     if (project->isPhysics2DEnabled()) modules.push_back("physics2d");
@@ -2504,6 +2513,22 @@ bool editor::Exporter::checkHtmlUIReferences(const fs::path& projectPath, const 
     return errors.empty();
 }
 
+void editor::Exporter::checkSoundEventClips() {
+    // a missing clip is a warning: the game plays the event's other clips
+    for (const fs::path& file : ProjectChecks::findProjectFiles(project->getProjectPath().lexically_normal(), {".soundevent"})) {
+        SoundEventDef def;
+        std::string error;
+        const std::string name = project->normalizeToAssetsRelative(file).generic_string();
+        if (!SoundEventDocument::read(file, def, &error)) {
+            Out::warning("Sound Event %s does not read, so it will not play: %s", name.c_str(), error.c_str());
+            continue;
+        }
+        for (const std::string& problem : SoundEventDocument::problems(project, def)) {
+            if (problem.find("missing clip") != std::string::npos) Out::warning("Sound Event %s: %s", name.c_str(), problem.c_str());
+        }
+    }
+}
+
 bool editor::Exporter::checkHtmlUIReferences() {
     if (htmlUIDocuments.empty()) {
         return true;
@@ -2754,6 +2779,46 @@ bool editor::Exporter::cookTextures() {
     return true;
 }
 
+bool editor::Exporter::writeAudioImports() {
+    std::vector<std::string> problems;
+    const std::string text = AudioImportRegistry::exportText(AudioImportRegistry::collect(*project, problems));
+    for (const std::string& problem : problems) warn("W-AUDIO-IMPORT", "import settings not exported: " + problem);
+    // a project without settings writes no file: its build is byte-identical to one without this
+    if (text.empty()) return true;
+    const fs::path target = getExportProjectRoot() / "assets" / AudioImportTable::FILE_NAME;
+    const io::WriteResult written = io::writeFileAtomic(target, text);
+    if (!written.ok()) {
+        setError("Can't write " + target.string() + ": " + written.message);
+        return false;
+    }
+    return true;
+}
+
+bool editor::Exporter::writeAudioCredits() {
+    const fs::path file = config.targetDir / "licenses" / AudioCredits::FILE_NAME;
+    std::error_code removed;
+    fs::remove(file, removed);
+    std::vector<fs::path> shipped;
+    const fs::path assets = project->getAssetsPath();
+    std::error_code ec;
+    for (auto it = fs::recursive_directory_iterator(getExportProjectRoot() / "assets", fs::directory_options::skip_permission_denied, ec);
+         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+        if (it->is_regular_file(ec)) shipped.push_back(fs::relative(it->path(), getExportProjectRoot() / "assets", ec));
+    }
+    const AudioCredits::Report report = AudioCredits::collect(assets, shipped);
+    const std::string licence = AudioCredits::licenceWarning(report);
+    if (!licence.empty()) warn("W-AUDIO-LICENCE", licence);
+    const std::string placeholder = AudioCredits::placeholderWarning(report);
+    if (!placeholder.empty()) warn("W-AUDIO-PLACEHOLDER", placeholder);
+    if (report.empty() || !project->getAudioSettings().creditsFile) return true;
+    const io::WriteResult written = io::writeFileAtomic(file, AudioCredits::render(report, project->getName()));
+    if (!written.ok()) {
+        setError("The audio credits: " + written.message);
+        return false;
+    }
+    return true;
+}
+
 bool editor::Exporter::copyAssets() {
     setProgress("Copying assets...", 0.35f);
 
@@ -2795,6 +2860,12 @@ bool editor::Exporter::copyAssets() {
         // The cooked textures' directory (S14)
         if (firstComponent == CookedTextures::kCookedDir) {
             setError("\"" + firstComponent + "\" is reserved for the cooked textures. Rename " + entry.path().string());
+            return false;
+        }
+
+        // The exporter writes the clips' import settings there (S36)
+        if (relPath == AudioImportTable::FILE_NAME) {
+            setError("\"" + std::string(AudioImportTable::FILE_NAME) + "\" is reserved for the audio import settings. Rename " + entry.path().string());
             return false;
         }
 
@@ -3600,6 +3671,7 @@ bool editor::Exporter::copyEngine() {
         moduleSwitch("JASPERENGINE_RUNTIME_SHADERS", "runtimeshaders");
         moduleSwitch("JASPERENGINE_HTMLUI", "htmlui");
         moduleSwitch("JASPERENGINE_VIDEO", "video");
+        moduleSwitch("JASPERENGINE_SOUND_LAYER", "soundlayer");
         // Development Build: the profiler in a Release game (a source export builds it as one)
         if (config.developmentBuild) {
             projectSettings += indent + "set(JASPERENGINE_DEVELOPMENT_BUILD ON)";
@@ -4043,6 +4115,13 @@ bool editor::Exporter::writeAndroidProjectSettings() {
         normalizeNewlines(out);
         return true;
     };
+
+    // ./gradlew from a shell: the installed editor's copy of the engine has lost its exec bit
+    {
+        std::error_code permissionError;
+        fs::permissions(config.targetDir / "workspaces" / "androidstudio" / "gradlew",
+                        fs::perms::owner_exec | fs::perms::group_exec | fs::perms::others_exec, fs::perm_options::add, permissionError);
+    }
 
     const fs::path androidAppDir = config.targetDir / "workspaces" / "androidstudio" / "app";
     const fs::path buildGradlePath = androidAppDir / "build.gradle";
@@ -6057,11 +6136,11 @@ bool editor::Exporter::writeEffectLicense() {
         setError("The OpenEngine notice: " + error);
         return false;
     }
-    return true;
+    return writeAudioCredits();
 }
 
 bool editor::Exporter::copyLicenses() {
-    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath()}) {
+    for (const char* relative : {effectLicensePath(), fluidLicensePath(), postFxLicensePath(), openEngineLicensePath(), "licenses/THIRD-PARTY-AUDIO.txt"}) {
         const fs::path source = config.targetDir / relative;
         const fs::path target = config.destinationDir / relative;
         std::error_code ec;

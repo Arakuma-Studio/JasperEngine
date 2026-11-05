@@ -626,6 +626,7 @@ TEST(AssetRefSchema, CoversAllFields) {
         {C::TerrainComponent, "surfaceLayers[].roughnessTexture"}, {C::TerrainComponent, "surfaceLayers[].metallicTexture"},
         {C::TerrainComponent, "surfaceLayers[].occlusionTexture"}, {C::TerrainComponent, "surfaceLayers[].heightTexture"},
         {C::TerrainComponent, "foliageLayers[].meshPath"}, {C::TerrainComponent, "foliageLayers[].densityMap"},
+        {C::AudioSourceComponent, "event"},
         {C::LightComponent, "spotMask"}, {C::ReflectionProbeComponent, "texture"},
         {C::SkyboxComponent, "texture"}, {C::SkyboxComponent, "customShader"}, {C::SkyboxComponent, "shaderTextures{}"},
         {C::PointsComponent, "texture"}, {C::PointsComponent, "customShader"}, {C::PointsComponent, "shaderTextures{}"},

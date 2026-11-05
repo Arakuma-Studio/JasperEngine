@@ -539,3 +539,21 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
 - **`AudioStealPolicy` and the source cap:** a play's voices never steal from each other through `maxVoices`. A voice
   with no one-shot to steal is rejected with reason `max_voices` (a reason R14 did not list).
 - **The Lua bindings are not yet under `#if JASPERENGINE_SOUND_LAYER`:** the module is M7's.
+- **`AudioSource.event` and S73.** `main` still has the hand-written `AssetRefSchema` table, so `event` has a hand row and a
+  `CoversAllFields` entry. S73 generates that table and deletes `LegacyCodecs.cpp`. Whichever lands second: take S73's
+  files; add `SoundEvent` to S73's `AssetKind`, `rowExpectedType` (`AssetType::SoundEvent`) and `assetKindName`; add
+  `component	AudioSourceComponent	event	asset	sound_event	assets	scene_component` to `asset_ref_rows_frozen.txt`;
+  and regenerate S73's frozen parity data, so the six new AudioSource fields are in it.
+- **`SoundSearch::eventProblems`** is added as S36 left it (the analysis cache, near-duplicates, inaudible layers). Match Levels
+  lives in `SoundEventRender::matchLevels`, not `SoundSearch`: it measures clips as they play, with their import settings.
+- **The Browser's detail pane is the Inspector** for project sounds: selecting a card inspects the asset, which is S36's clip view
+  or R16's editor. A built-in clip has no file yet, so the Browser shows its description and licence.
+- **Previews stop for a capture through `AudioSystem::isOfflineCapture()`** (the Recorder). S35 adds its own capture to that test.
+- **AudioSource's rows are in the hand drawer `drawAudioComponent`** (`drawAudioEventRows`), not named drawers: the component has no
+  reflection-drawn Inspector to host them.
+- **R16's labels row is read-only:** labels are edited in the Project window's bar, S25's one place for them.
+- **AC12's bench is in `editor/tests/audio/SoundEventBenchTest.cpp`** (suite `SoundEventBench`), not `engine/tests/core/bench`: it plays through the same
+  `AudioSystem` as the other runtime tests, with the fixtures the editor's test target already has. Server F no longer exists; it ran on the server named in the report.
+- **AC11's tests are `test_audio_events_prebuilt.py` and `test_audio_module_compile.py`**, not `test_build.py::test_sound_events_prebuilt`: each needs its own project,
+  and the second a project that never held an event. Picks are read from the voice lines until S35's player capture lands.
+- **`editor/audio/SoundDrop` adds the drops** of M6 (a sound onto a Button, an entity or empty scene space); a built-in sound is imported first, on one undo step with the assignment.

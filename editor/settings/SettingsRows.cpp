@@ -2049,6 +2049,27 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        {
+            Setting s;
+            s.key = "audio.credits_file";
+            s.type = "bool";
+            s.description = "Exports write licenses/THIRD-PARTY-AUDIO.txt, the licences of the shipped clips with a provenance.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().creditsFile); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "true or false";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.creditsFile = value.get<bool>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+
         // ---- scripting
         {
             Setting s;
@@ -2534,6 +2555,28 @@ std::vector<Setting> mcpSettingsTable() {
                          [] { return AppSettings::getCMakePath(); }, [](const std::string& v) { AppSettings::setCMakePath(v); });
         stringPreference("preferences.emsdk_path", "External Tools: Emscripten SDK root for Web builds (\"\" = EMSDK / PATH).",
                          [] { return AppSettings::getEmsdkPath(); }, [](const std::string& v) { AppSettings::setEmsdkPath(v); });
+        for (const auto& [key, description, getter, setter] : std::initializer_list<std::tuple<const char*, const char*, bool (*)(), void (*)(bool)>>{
+                 {"preferences.sound_browser_autoplay", "Sound Browser: selecting a sound plays it.", &AppSettings::getSoundBrowserAutoplay, &AppSettings::setSoundBrowserAutoplay},
+                 {"preferences.sound_browser_match_loudness", "Sound Browser: auditions play at -20 LUFS-M, so sounds compare by character.", &AppSettings::getSoundBrowserMatchLoudness, &AppSettings::setSoundBrowserMatchLoudness}}) {
+            Setting s;
+            s.key = key;
+            s.type = "bool";
+            s.preference = true;
+            s.description = description;
+            s.get = [getter = getter](SettingsContext&) { return Json(getter()); };
+            s.set = [setter = setter](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                if (!value.is_boolean()) {
+                    error = "must be true or false";
+                    return false;
+                }
+                if (apply) {
+                    setter(value.get<bool>());
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(s);
+        }
         {
             Setting s;
             s.key = "preferences.project_hub_at_startup";
@@ -2828,6 +2871,8 @@ const Placement placements[] = {
     {"preferences.error_pause", "General", "Console", "Error Pause", "console"},
     {"preferences.simulate_touch", "General", "Game View", "Simulate Touch", "game view mouse finger"},
     {"preferences.default_export_dir", "General", "", "Default Build Directory", "output export"},
+    {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
+    {"preferences.sound_browser_match_loudness", "General", "Sound Browser", "Match Loudness", "sound browser audition loudness lufs"},
     {"preferences.project_hub_at_startup", "General", "", "Show Project Hub at Startup", "project hub startup launcher templates"},
     {"preferences.cmake_path", "External Tools", "Desktop Build", "CMake", "cmake executable"},
     {"preferences.build_c_compiler", "External Tools", "Desktop Build", "Compiler", "compiler kit c"},

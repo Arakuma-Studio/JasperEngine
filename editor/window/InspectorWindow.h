@@ -429,6 +429,12 @@ namespace jasperengine::editor{
         void syncCameraShakePreview(SceneProject* shown, const std::vector<Entity>& selection);
         // a selected .mixer: groups, exposed parameters, snapshots; Use as Project Mixer, Open in Audio Mixer
         void drawAudioMixerAsset(const std::filesystem::path& asset);
+        // a selected .soundevent: its editor, problems, Match Levels and Audition (InspectorSoundEvent.cpp)
+        void drawSoundEventAsset(const std::filesystem::path& asset);
+        // AudioSource: the Event, Play On, impact and Variation rows and their warnings
+        void drawAudioEventRows(ComponentType cpType, SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // an audio file: its measurements, import settings, provenance and audition (InspectorAudioClip.cpp)
+        void drawAudioClipAsset(const std::filesystem::path& asset);
         // a .physicsmaterial: friction, bounciness and their combine modes (InspectorPhysics2D.cpp)
         void drawPhysicsMaterialAsset(const std::filesystem::path& asset);
         // a .physicsmaterial path field (drop from the Project window, pick, clear) with undo
@@ -960,6 +966,10 @@ namespace jasperengine::editor{
         static std::vector<EnumEntry>* enumEntries(const reflect::EnumDesc& desc, uint64_t mask = 0);
         // the power-of-two sizes of a size slider (shadow maps, probes)
         static std::vector<int> powerOfTwoSizes;
+
+        // the commands soundEvent.audition and soundEvent.matchLevels, on the inspected .soundevent
+        void requestSoundEventAudition();
+        void requestSoundEventMatchLevels();
 
         static constexpr const char* WINDOW_NAME = "Inspector";
 

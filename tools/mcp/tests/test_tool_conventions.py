@@ -35,7 +35,7 @@ SNAKE = re.compile(r"[a-z][a-z0-9]*(?:_[a-z0-9]+)*")
 # A new tool's first word (R20: get_/list_/set_/create_/delete_, edit_<thing> for multi-op tools,
 # and the other verbs today's tools use)
 VERBS = {
-    "get", "list", "set", "create", "delete", "edit", "add", "remove", "find", "open", "close", "save", "run",
+    "analyze", "get", "list", "set", "create", "delete", "edit", "add", "remove", "find", "open", "close", "save", "run",
     "start", "stop", "apply", "import", "export", "read", "write", "check", "compile", "generate", "select",
     "move", "rename", "copy", "paste", "duplicate", "update", "reset", "inspect", "assert", "send", "sample",
     "sculpt", "bake", "capture", "record", "play", "preview", "sync", "search", "view", "focus", "frame", "link",

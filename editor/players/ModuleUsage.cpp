@@ -8,6 +8,8 @@
 #include "DocumentFile.h"
 #include "util/Prefab.h"
 #include "util/Util.h"
+#include "audio/AudioImportRegistry.h"
+#include "component/AudioSourceComponent.h"
 #include "util/LuaApiData.h"
 #include "player/PlayerModules.h"
 
@@ -270,6 +272,7 @@ namespace {
             }
             if (scan.debugOverlayInBuilds) add("htmlui", "Project Settings", "Debug > Overlay (an HTML UI document)");
             if (scan.navigationInBuilds) add("navigation", "Project Settings", "Navigation > Include in Builds");
+            if (scan.audioImportTable) add("soundlayer", "Audio clips", "import settings that change what a clip plays");
             for (const std::string& source : scan.cppScripts)
                 for (const std::string& module : detectedModules()) add(module, source, "C++ script (it can use any engine code)");
             for (const ModuleContent& content : scan.contents) scanContent(content);
@@ -323,6 +326,11 @@ namespace {
                 if (!registry->isEntityCreated(entity)) continue;
                 const std::string object = registry->getEntityName(entity);
                 auto has = [&](auto* component) { return component != nullptr; };
+                if (const AudioSourceComponent* audio = registry->findComponent<AudioSourceComponent>(entity)) {
+                    if (!audio->event.empty()) add("soundlayer", content.label, "Audio Source " + object + " plays a Sound Event");
+                    if (audio->playOn != 0) add("soundlayer", content.label, "Audio Source " + object + " has Play On triggers");
+                    if (audio->pitchRandomSemitones != 0.0f || audio->volumeRandomDb != 0.0f) add("soundlayer", content.label, "Audio Source " + object + " has random ranges");
+                }
                 if (has(registry->findComponent<UIDocumentComponent>(entity))) add("htmlui", content.label, "UI Document on " + object);
                 if (has(registry->findComponent<VideoPlayerComponent>(entity))) addVideoPlayer(content.label, "Video Player on " + object);
                 if (has(registry->findComponent<RigidbodyComponent>(entity))) add("physics3d", content.label, "Rigidbody on " + object);
@@ -548,6 +556,8 @@ ModuleScan ModuleUsageDetector::collect(Project* project) {
     ModuleScan scan;
     scan.stripEngineCode = project->isStripEngineCode();
     scan.navigationInBuilds = project->getNavigationSettings().includeInBuilds;
+    std::vector<std::string> importProblems;
+    scan.audioImportTable = !AudioImportRegistry::collect(*project, importProblems).empty();
     const DebugSettings::Mode overlay = project->getDebugSettings().overlay;
     scan.debugOverlayInBuilds = overlay == DebugSettings::Mode::AllBuilds ||
                                 (overlay == DebugSettings::Mode::Development && project->isDevelopmentBuild());

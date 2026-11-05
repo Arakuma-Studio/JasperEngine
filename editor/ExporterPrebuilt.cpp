@@ -469,10 +469,12 @@ bool editor::Exporter::runPrebuilt() {
     if (cancelled()) return false;
     if (!copyLua()) return false;
     if (!checkHtmlUIReferences()) return false;
+    checkSoundEventClips();
     if (cancelled()) return false;
     if (!cookTextures()) return false;
     if (cancelled()) return false;
     if (!copyAssets()) return false;
+    if (!writeAudioImports()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
     if (cancelled()) return false;
@@ -1180,10 +1182,12 @@ bool editor::Exporter::finalizeIOS() {
     std::string error;
     std::vector<std::string> notes;
     std::vector<fs::path> artifacts;
-    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, error)) {
+    std::vector<BuildWarning> warnings;
+    if (!platform::buildIosProject(settings, commandRunner, [this]() { return isCancelled(); }, artifacts, notes, warnings, error)) {
         setError(error);
         return false;
     }
+    for (const BuildWarning& warning : warnings) warn(warning.code, warning.message);
     for (const std::string& note : notes) Out::info("%s", note.c_str());
     std::lock_guard<std::mutex> lock(progressMutex);
     result.notes = notes;

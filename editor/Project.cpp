@@ -93,6 +93,7 @@
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
 #include "audio/SoundEventLibrary.h"
+#include "audio/AudioImportRegistry.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
 #include "subsystem/CameraControlSystem.h"
@@ -3064,6 +3065,7 @@ void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>
             SoundEventLibrary::reload(normalizeToAssetsRelative(path).generic_string());
         }
     }
+    if (isAnyScenePlaying()) AudioImportRegistry::filesChanged(*this, changed);
     const fs::path mixer = getAudioMixerFile();
     if (mixer.empty()) return;
     for (const fs::path& path : changed) {
@@ -3151,6 +3153,8 @@ void editor::Project::resetPlayAudio(bool starting) const{
     AudioMixer::resetRuntime(starting);
     if (starting) AudioMixer::loadRemembered();
     AudioSystem::resetSoundEventRuntime();
+    if (starting) AudioImportRegistry::registerProject(*this);
+    else AudioImportTable::clear();
 }
 
 const editor::LoadingSettings& editor::Project::getLoadingSettings() const{

@@ -10,11 +10,14 @@
 #include "asset/AssetType.h"
 #include "asset/AssetTypes.h"
 #include "audio/SoundEventIO.h"
+#include "audio/SoundTypes.h"
 #include "util/AssetDatabase.h"
 
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <string>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;
@@ -115,4 +118,11 @@ TEST(SoundEventAsset, OneEdgePerClipByGuidThenPath) {
     EXPECT_EQ(edges[2].field, "clips[2].clip");
     EXPECT_TRUE(edges[2].target.isNull());
     EXPECT_EQ(edges[2].targetPath, "assets/sounds/gone.wav");
+}
+
+// the engine cannot include the editor's header, so the event's "type" vocabulary is listed twice
+TEST(SoundEventAsset, TheTypeVocabularyIsTheEditors) {
+    std::vector<std::string> editorTypes;
+    for (const SoundTypes::SoundType& type : SoundTypes::all()) editorTypes.push_back(type.name);
+    EXPECT_EQ(SoundEventIO::soundTypes(), editorTypes);
 }

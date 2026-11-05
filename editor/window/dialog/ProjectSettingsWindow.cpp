@@ -2204,6 +2204,14 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 endSettingsRow("The mixer group new Audio Sources play through.");
             }
 
+            if (settingsui::beginRow("audio.credits_file")) {
+                if (projectBeginSettingsRow("Audio Credits File", audio.creditsFile != defaults.creditsFile)) {
+                    audio.creditsFile = defaults.creditsFile;
+                }
+                ImGui::Checkbox("##AudioCreditsFile", &audio.creditsFile);
+                endSettingsRow("Exports write licenses/THIRD-PARTY-AUDIO.txt, the licences of the shipped clips with a provenance.");
+            }
+
             if (settingsui::beginRow("audio.max_real_voices")) {
                 if (projectBeginSettingsRow("Max Real Voices", audio.maxRealVoices != defaults.maxRealVoices)) {
                     audio.maxRealVoices = defaults.maxRealVoices;

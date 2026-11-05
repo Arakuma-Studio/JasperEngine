@@ -524,6 +524,75 @@ None (R29).
   clip of any licence (64 bounded renders, no model, no audio copied), the reference recorded in
   `provenance.reference`.
 
+## Progress
+
+- The squashed library commit is 21.5 MiB of files (`du -sb editor/resources/sound-library/library`: 22,538,857 bytes): 927 clips, manifest v4, analysis v1, 11 licence files (R34).
+
+AC13's measurements, in CPU seconds (`time`, over the same binary's startup, on the same files; `je-evidence/s36/mac-bench-before.log`,
+`meter-h.log`, `meter-m.log`, `it10.prof.log`). The wall times 63 ms and 6.3 s came from a loaded H and say nothing either way:
+
+| `analyze_audio`, uncached | Budget (R31) | Mac, idle (load 2 of 14 cores) | H, Ryzen 5900X (load 13 to 39 of 24 threads) |
+|---|---|---|---|
+| 1 s clip | 40 ms | 10 ms | at most 13 ms |
+| 3-minute stereo OGG | 1.2 s | 0.95 s | 3.3 s at load 13, 5.2 s at load 23 |
+| of which `AudioMeter` on `main` | | 0.51 s | 3.6 s at load 39 |
+| of which `AudioMeter` on S38's branch (70e471bf2) | | 0.24 s | 0.8 s at load 39 |
+
+No S36 code changed for these: both are inside the budget on the quiet machine. H's gap on the long file is mostly the meter's
+44 biquads per sample, which S38's branch replaces (S38's decision 13); the rest of H's 5.2 s at load 23 is decode 0.33 s, spectral
+frames 0.85 s, stereo 0.2 s and defects 0.3 s. Inferred, not measured together: with S38 merged, the Mac's 3-minute file takes
+about 0.7 s.
+
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **The class is `AudioClipSource` (R10)**, in `engine/core/audio/ClipSource.{h,cpp}`: `jasperengine::ClipSource` is already an
+  enum of the animation clips (`animation/AnimationClip.h`). S37, S39 and S40 read "ClipSource" as this class.
+- **`AssetMeta::isKnown` is unchanged (R8).** The spec asked it to list `provenance`, but that list holds the sections
+  `AssetMeta` writes itself, and `setSection` refuses them. Being unknown is what keeps `provenance` byte for byte.
+- **Files and their `.meta` go through `WriteFilesCmd` (R15, R18).** `generate_sound` and built-in imports write the
+  clip and a complete `.meta` (minted GUID, or the existing one and its other sections) as items of one command: one
+  undo step that needs no second command, and no moment with a clip that has a GUID but no sections. `AssetOps` has no
+  create operation. `set_audio_import_settings` and the Inspector use `SetAssetMetaCmd` as R9 says.
+- **R4 cache of a clip as it plays.** The file `<sha1>-i<hash>-v<N>.json` holds the whole played analysis (R3), so
+  sound-layer's per-file list of four played regions is gone, and with it its eviction.
+- **`AudioImportTable::find` returns a copy (`std::optional`), not a pointer.** The pool's load jobs read the table while
+  the main thread sets it.
+- **The table loads on the first `SoundPool::loadClip` (R12),** once per process, not at engine start: that is the one
+  place every platform and export method passes before a clip plays, and a game with no table pays one failed open.
+- **`analyze_audio` and `search_sounds` wait 60 s, then hand over the job (R28)**, through `replyWhenJobDone`, with no
+  `wait` parameter: the budget has no room for it, and images only travel in the reply. A job an agent polls has the items.
+- **A `kind event` filter finds nothing until S37 M6 lands** (its branch lists events in `SoundSearch`), and `analyze_audio capture` reads sessions from disk with no
+  running capture known until S35 lands (tested on session directories written by the test).
+- **`test_audio_ogg` cuts ffmpeg's decode to the last page's granule.** The Vorbis spec makes the last page's granule the
+  stream's length, and an encoder ends a clip that way. ffmpeg 4.4.2 (the image's) does not trim: it hands over whole
+  decoded packets. Verified on 61 of the 967 OGGs, sampled evenly (`je-evidence/s36/ogg-overrun.log`): libsndfile, which
+  decodes through libvorbisfile, returned exactly the granule on 61 of 61, while ffmpeg returned 41 to 978 frames more on
+  61 of 61 (221,056 against 220,500 on `spaceEngineLow_000.ogg`). ffmpeg 6.1.1 on this host instead returns 128 frames fewer on
+  `wood.ogg` and `error.ogg`, so ffmpeg's end depends on its version. Where both decode, every channel matches libsndfile
+  within 3e-7. The editor loads each at the granule, as libsndfile does, so the difference is ffmpeg's and not ours.
+- **This branch merges `feat/s37-sound-events` (M9).** `edit_sound_event` and S37's writer are S37 M1 and M5, which were on
+  its branch and not on `main`, so the branch holds S37 M1-M5 and whichever of the two lands second has nothing to merge
+  but its own commits.
+- **`soundlayer` is wired in both streams.** S37 §6.6 defines the module; S36 added the option, the module name, the variants and
+  `engine/core/audio/SoundLayerSources.cmake`, S37 M7 its own detections and sources. The merge keeps one of each.
+- **`like` refuses `params`,** which the search owns: a fit's result can be adjusted afterwards with `params` and its seed.
+  `compare` is the default image of one fitted file and not a value of `image`, which keeps the schema inside its budget.
+- **`SoundFit` measures a file's head and tail at -60 dB re its peak,** not dBFS: phase 7 §2.3.2 calls every measure
+  level-independent, which the raw render and the written file need.
+- **`force` applies to `noise` layers, `brightness` to `sweep` too:** phase 7 §2.2.3 names noise layers for force, and §2.2.4
+  every filter for brightness, and a sweep's band-pass is a filter.
+- **The variety report has its own near-duplicate limit, `VARIETY_NEAR_DUPLICATE_DISTANCE` 0.020** (phase 7 §2.2.5 uses A4's
+  `NEAR_DUPLICATE_DISTANCE`, and its example says "none under 0.020"). A4's is 0.075 here, from an event's distinct clips.
+  At 0.075, seeds 1 to 8 called 15 of the 16 families near-duplicates (`test_audio_design`, red run `je-evidence/s36/it11.mcp.log`),
+  whose advice is empty: a preset's seeds are close by design.
+- **The agent guide gains a Sound section**, in place of "sound (analyze_audio)" among its other areas. On the first eval, agents
+  with only core listed made no sound tool call in 10 of 10 samples, writing a WAV by script or giving up. The section took
+  the slice prompt from 0 of 2 to 2 of 4. The prompts that read as file work (placeholder, layered, fit, search, "too quiet")
+  stayed at 0 of 10 with the audio group hidden, even told in the guide to enable it, and reach 10 of 10 once it is listed.
+  So all six sound cases set `groups_enabled` and measure the tools' text. An agent finding the group by itself remains a known gap.
+- **`edit_sound_event`'s `slice` is an open object in the schema, its keys checked in the handler.** A closed one costs about
+  300 characters, and S37 §6.1 reserves 150.
+- **`preview` reports `source.licensed`, not the licence's fields.** The event's reply says what is unknown in `problems`.
+- **Importing mixed sources.** `import_files` refuses built-in references mixed with other sources: a call has one plan
+  and one undo step.
+

@@ -1156,6 +1156,18 @@ setters do nothing; a value that is not a number is refused with a warning.
 `AudioPlayOn` (flags, add them): `UIClick` 1, `UIPress` 2, `UIHover` 4, `Collision2D` 8, `Collision3D`
 16, `Sensor2D` 32, `Sensor3D` 64: what plays an AudioSource by itself (`AudioSource.playOn`).
 
+```lua
+-- a footstep that follows this object, a fade of one play, and a Button that clicks by itself
+local step = Audio.play("events/footstep.soundevent", {target = self, volume = 0.8, group = "SFX"})
+if step:isValid() then
+    step:fadeOut(0.2)
+end
+local sound = AudioSource(self.scene, self.entity)
+sound.event = "events/click.soundevent"
+sound.playOn = AudioPlayOn.UIClick + AudioPlayOn.UIHover
+Audio.stopAll("SFX")
+```
+
 `AudioListener` (static, Unity's): `pause` (rw: every source but the `ignoreListenerPause` ones
 holds; a pause menu), `volume` (rw, 0..1, everything).
 
