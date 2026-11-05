@@ -203,6 +203,56 @@ async def test_a_save_while_the_texture_loads_generates_the_same(ed: Editor):
         held.check(code == loaded_code, f"the code, the texture still loading: {first_difference(loaded_code.encode(), code.encode())}")
 
 
+# -- a Terrain's maps ---------------------------------------------------------------------------------
+
+
+def terrain_maps_with_wrap(text: str, wrap: str) -> str:
+    """The scene with this wrap on its Terrain's height and blend maps only (not its surface layers)"""
+    lines = text.split("\n")
+    out = []
+    block = None
+    for line in lines:
+        stripped = line.strip()
+        indent = len(line) - len(line.lstrip())
+        if stripped in ("heightMap:", "blendMaps:"):
+            block = indent
+        elif block is not None and stripped and indent <= block:
+            block = None
+        if block is not None and stripped.startswith(("wrapU: ", "wrapV: ")):
+            line = line[:indent] + stripped.split(":")[0] + ": " + wrap
+        out.append(line)
+    return "\n".join(out)
+
+
+async def test_terrain_maps_draw_the_same_whatever_wrap_an_old_file_says():
+    """An old scene's height and blend maps, Clamp or Repeat in the file, draw the same: a Terrain has
+    always drawn them clamped (RenderSystem::loadTerrainTextures, before and after S63, which also
+    applies that on load and before a save). Hiding the Terrain changes the image, so it is in it."""
+    rel = "Hex.scene"
+    async with Editor(project=FIXTURES / "pbr-extended-export", label="terrain-maps") as ed:
+        path = ed.project / rel
+        authored = path.read_text()
+        ed.check("wrapU: repeat" in authored, "the fixture's maps say Repeat, as an old file does")
+        shots = {}
+        for wrap in ("repeat", "clamp_to_edge", "repeat"):
+            await ed.call("create_scene", name="Holder", type="2D", path=f"Holder-{len(shots)}-{wrap}.scene")
+            for scene in (await ed.call("list_scenes"))["scenes"]:
+                if scene.get("path") == rel and scene.get("opened"):
+                    await ed.call("close_scene", scene=scene["id"], unsaved="discard")
+            path.write_text(terrain_maps_with_wrap(authored, wrap))
+            sid = (await ed.call("open_scene", scene=rel))["scene"]["id"]
+            await draw_with_assets(ed, sid)
+            shot = await ed.call_raw("screenshot", {"view": "game", "scene": sid, "max_width": 640, "timeout_seconds": SHOT_TIMEOUT})
+            ed.check(not shot.is_error, f"the view draws: {shot.text[:300]}")
+            first_shot = shots.setdefault(wrap, shot.images[0][0])
+            ed.check_eq(first_shot, shot.images[0][0], f"{wrap}: the same file draws the same when opened again")
+        ed.check_eq(shots["clamp_to_edge"], shots["repeat"], "a Clamp file draws what a Repeat file draws")
+        await ed.call("set_properties", scene=sid, entity="Terrain", values={"transform": {"visible": False}})
+        await draw_with_assets(ed, sid)
+        hidden = await ed.call_raw("screenshot", {"view": "game", "scene": sid, "max_width": 640, "timeout_seconds": SHOT_TIMEOUT})
+        ed.check(not hidden.is_error and hidden.images[0][0] != shots["repeat"], "the Terrain is in the image the comparison looks at")
+
+
 # -- R2: the weather map's wrap --------------------------------------------------------------------------
 
 

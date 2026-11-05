@@ -257,6 +257,14 @@ TEST(Stream, ATerrainSavesWhatItsFirstRunLeaves) {
     for (const YAML::Node& submesh : components["mesh"]["submeshes"]) EXPECT_FALSE(submesh["vertexCount"]);
     EXPECT_FALSE(components["mesh"]["aabb"]);
     EXPECT_FALSE(components["mesh"]["verticesAABB"]);
+
+    // a file that already says clamped stays as it was: forcing them changes nothing there
+    std::string clamped = old;
+    for (size_t at = clamped.find("repeat"); at != std::string::npos; at = clamped.find("repeat")) clamped.replace(at, 6, "clamp_to_edge");
+    const YAML::Node clampedSaved = YAML::Load(encodeSceneText(decodeSceneText(clamped, "clamped.scene")));
+    const YAML::Node clampedTerrain = clampedSaved["entities"][0]["components"]["terrain"];
+    EXPECT_EQ(YAML::Dump(clampedTerrain["heightMap"]), YAML::Dump(components["terrain"]["heightMap"]));
+    EXPECT_EQ(YAML::Dump(clampedTerrain["blendMaps"]), YAML::Dump(components["terrain"]["blendMaps"]));
 }
 
 // A RectTransform's scissor is the clip rectangle the last draw computed, in the pixels of the view

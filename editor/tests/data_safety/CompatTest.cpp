@@ -11,13 +11,18 @@
 #include "Stream.h"
 #include "StreamMigrations.h"
 #include "StreamPreserved.h"
+#include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
 #include "util/Prefab.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstdio>
+#include <initializer_list>
 #include <sstream>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -101,42 +106,102 @@ namespace {
         return out;
     }
 
-    // The input's lines without the values saves no longer write, on both sides: the transforms'
-    // derived values (scene format 4, docs/specs/S29-version-control.md R20), a RectTransform's
-    // scissor, and what a frame computes (docs/specs/S63-saved-output-determinism.md): a canvas-sized
-    // camera's clips and aspect, a Light's world direction, the bounds and vertex counts of a mesh
-    // that generates its geometry, a Mesh's world bounds, a Terrain's Auto Ranges
+    // The input's lines without the transforms' derived values, which saves no longer write
+    // (scene format 4, docs/specs/S29-version-control.md R20)
     std::string withoutDerivedTransform(const std::string& text) {
+        // and a RectTransform's scissor, the clip rectangle of the last draw (no longer written either)
         static const char* const keys[] = {"worldPosition:", "worldRotation:", "worldScale:", "localMatrix:", "modelMatrix:", "normalMatrix:",
-                                           "scissor:", "leftClip:", "rightClip:", "bottomClip:", "topClip:", "aspect:", "worldDirection:",
-                                           "vertexCount:"};
-        static const char* const blocks[] = {"aabb:", "verticesAABB:", "worldAABB:", "ranges:"};
-        const auto startsWith = [](const std::string& line, size_t start, const char* key) {
-            return start != std::string::npos && line.compare(start, std::char_traits<char>::length(key), key) == 0;
-        };
+                                           "scissor:"};
         std::istringstream in(text);
         std::string line, out;
-        size_t blockIndent = std::string::npos;
         while (std::getline(in, line)) {
             const size_t start = line.find_first_not_of(' ');
-            if (blockIndent != std::string::npos) {
-                // its lines are deeper, or list items at its own depth
-                if (start != std::string::npos && (start > blockIndent || (start == blockIndent && line[start] == '-'))) continue;
-                blockIndent = std::string::npos;
-            }
             bool derived = false;
             for (const char* key : keys) {
-                if (startsWith(line, start, key)) derived = true;
-            }
-            for (const char* key : blocks) {
-                if (startsWith(line, start, key)) {
-                    derived = true;
-                    blockIndent = start;
-                }
+                if (start != std::string::npos && line.compare(start, std::char_traits<char>::length(key), key) == 0) derived = true;
             }
             if (!derived) out += line + "\n";
         }
         return out;
+    }
+
+    bool flagOr(const YAML::Node& map, const char* key, bool fallback) {
+        const YAML::Node value = std::as_const(map)[key];
+        return value && value.IsScalar() ? value.as<bool>() : fallback;
+    }
+
+    void removeKeys(YAML::Node map, std::initializer_list<const char*> keys) {
+        if (!map || !map.IsMap()) return;
+        for (const char* key : keys) map.remove(key);
+    }
+
+    // One GameObject's components without what a frame computes, each only under the rule by which
+    // a save leaves it out (docs/specs/S63-saved-output-determinism.md). The same key elsewhere (an
+    // authored camera's clips, a plain Mesh's vertex counts and bounds, a UI's bounds and vertex
+    // count, ranges set by hand) is compared.
+    void removeComputedValues(YAML::Node components) {
+        const CameraComponent cameraDefaults;
+        const TerrainComponent terrainDefaults;
+        YAML::Node camera = components["camera"];
+        if (camera && camera.IsMap() && flagOr(camera, "autoResize", cameraDefaults.autoResize) &&
+            !flagOr(camera, "renderToTexture", cameraDefaults.renderToTexture)) {
+            removeKeys(camera, {"leftClip", "rightClip", "bottomClip", "topClip", "aspect"});
+        }
+        removeKeys(components["light"], {"worldDirection"});
+        removeKeys(components["ui"], {"worldAABB"});
+
+        YAML::Node mesh = components["mesh"];
+        removeKeys(mesh, {"worldAABB"});
+        const bool generated = components["sprite"] || components["tilemap"] || components["meshpolygon"] || components["terrain"] ||
+                               components["splineextrude"];
+        if (mesh && mesh.IsMap() && generated) {
+            removeKeys(mesh, {"aabb", "verticesAABB"});
+            YAML::Node submeshes = mesh["submeshes"];
+            if (submeshes && submeshes.IsSequence()) {
+                for (YAML::Node submesh : submeshes) removeKeys(submesh, {"vertexCount"});
+            }
+        }
+
+        YAML::Node terrain = components["terrain"];
+        if (!terrain || !terrain.IsMap()) return;
+        if (flagOr(terrain, "autoSetRanges", terrainDefaults.autoSetRanges)) removeKeys(terrain, {"ranges"});
+        // what MeshSystem::applyTerrainMapSettings gives its maps
+        removeKeys(terrain["heightMap"], {"wrapU", "wrapV", "releaseDataAfterLoad"});
+        YAML::Node blendMaps = terrain["blendMaps"];
+        if (blendMaps && blendMaps.IsSequence()) {
+            for (YAML::Node blendMap : blendMaps) removeKeys(blendMap, {"wrapU", "wrapV"});
+        }
+        // a Terrain's two submeshes exist before it first ran: those no edit touched are as none,
+        // and a submesh with an authored value is compared
+        if (mesh && mesh.IsMap()) {
+            const std::string unbuilt = YAML::Dump(Stream::encodeSubmesh(Submesh{}, true, false));
+            YAML::Node kept(YAML::NodeType::Sequence);
+            YAML::Node submeshes = mesh["submeshes"];
+            if (submeshes && submeshes.IsSequence()) {
+                for (YAML::Node submesh : submeshes) {
+                    if (YAML::Dump(submesh) != unbuilt) kept.push_back(submesh);
+                }
+            }
+            mesh.remove("submeshes");
+            if (kept.size() > 0) mesh["submeshes"] = kept;
+        }
+    }
+
+    void removeComputedValuesUnder(YAML::Node node) {
+        if (node.IsMap()) {
+            YAML::Node components = node["components"];
+            if (components && components.IsMap()) removeComputedValues(components);
+            for (auto it = node.begin(); it != node.end(); ++it) removeComputedValuesUnder(it->second);
+        } else if (node.IsSequence()) {
+            for (YAML::Node child : node) removeComputedValuesUnder(child);
+        }
+    }
+
+    // A document's text as the comparison sees it, without what a frame computes
+    std::string withoutComputedValues(const std::string& text) {
+        YAML::Node root = YAML::Load(text);
+        removeComputedValuesUnder(root);
+        return YAML::Dump(root) + "\n";
     }
 
     // The input's lines without the format version line
@@ -152,6 +217,46 @@ namespace {
         return out;
     }
 
+}
+
+// The comparison below must still see a lost value: the filter takes out only what a save leaves out
+TEST(Compat, TheFilterHidesOnlyWhatASaveLeavesOut) {
+    const auto entity = [](const std::string& components) { return "entities:\n  - name: A\n    components:\n" + components; };
+    const auto same = [&](const std::string& a, const std::string& b) { return withoutComputedValues(entity(a)) == withoutComputedValues(entity(b)); };
+
+    // a camera: its clips and aspect are computed only when the canvas sizes it
+    EXPECT_TRUE(same("      camera:\n        autoResize: true\n        aspect: 2\n        rightClip: 9\n", "      camera:\n        autoResize: true\n"));
+    EXPECT_FALSE(same("      camera:\n        autoResize: false\n        aspect: 2\n", "      camera:\n        autoResize: false\n"));
+    EXPECT_FALSE(same("      camera:\n        autoResize: false\n        rightClip: 9\n", "      camera:\n        autoResize: false\n"));
+    EXPECT_FALSE(same("      camera:\n        autoResize: true\n        renderToTexture: true\n        aspect: 2\n",
+                      "      camera:\n        autoResize: true\n        renderToTexture: true\n"));
+    EXPECT_FALSE(same("      camera:\n        autoResize: true\n        yfov: 1\n", "      camera:\n        autoResize: true\n"));
+
+    // a mesh: its vertex counts and bounds are computed only when a component generates its geometry
+    const std::string plainMesh = "      mesh:\n        aabb: [1]\n        verticesAABB: [2]\n        submeshes:\n          - vertexCount: 6\n";
+    const std::string bareMesh = "      mesh:\n        submeshes:\n          - {}\n";
+    EXPECT_FALSE(same(plainMesh, bareMesh));
+    EXPECT_TRUE(same(plainMesh + "      sprite:\n        width: 1\n", bareMesh + "      sprite:\n        width: 1\n"));
+    EXPECT_FALSE(same("      mesh:\n        aabb: [1]\n", "      mesh:\n        {}\n"));
+    EXPECT_TRUE(same("      mesh:\n        worldAABB: [1]\n", "      mesh:\n        {}\n"));
+
+    // a UI's own values stay
+    EXPECT_FALSE(same("      ui:\n        vertexCount: 6\n", "      ui:\n        {}\n"));
+    EXPECT_FALSE(same("      ui:\n        aabb: [1]\n", "      ui:\n        {}\n"));
+
+    // a terrain: ranges are computed only under Auto Ranges, and only its maps' first-run settings go
+    EXPECT_TRUE(same("      terrain:\n        autoSetRanges: true\n        ranges: [1]\n", "      terrain:\n        autoSetRanges: true\n"));
+    EXPECT_FALSE(same("      terrain:\n        autoSetRanges: false\n        ranges: [1]\n", "      terrain:\n        autoSetRanges: false\n"));
+    EXPECT_TRUE(same("      terrain:\n        heightMap:\n          path: a\n          wrapU: repeat\n", "      terrain:\n        heightMap:\n          path: a\n"));
+    EXPECT_FALSE(same("      terrain:\n        heightMap:\n          path: a\n", "      terrain:\n        heightMap:\n          path: b\n"));
+    EXPECT_FALSE(same("      terrain:\n        heightMap:\n          minFilter: nearest\n", "      terrain:\n        heightMap:\n          {}\n"));
+    // an authored submesh of a terrain's mesh is compared
+    EXPECT_FALSE(same("      terrain: {}\n      mesh:\n        submeshes:\n          - material:\n              name: Rock\n",
+                      "      terrain: {}\n      mesh:\n        submeshes: ~\n"));
+    const std::string unbuilt = YAML::Dump(Stream::encodeSubmesh(Submesh{}, true, false));
+    YAML::Node builtRoot = YAML::Load(entity("      terrain: {}\n      mesh:\n        submeshes: ~\n"));
+    builtRoot["entities"][0]["components"]["mesh"]["submeshes"].push_back(YAML::Load(unbuilt));
+    EXPECT_EQ(withoutComputedValues(YAML::Dump(builtRoot)), withoutComputedValues(entity("      terrain: {}\n      mesh:\n        submeshes: ~\n")));
 }
 
 TEST(Compat, CorpusRoundTrip) {
@@ -179,15 +284,13 @@ TEST(Compat, CorpusRoundTrip) {
                                    // a model's images are textures by id (the model file's path on the
                                    // machine that saved it), which a bare decode cannot load
                                    original.find("|gltf-image|") == std::string::npos &&
-                                   // a Terrain's maps and submeshes take what its first run gives them
-                                   original.find("\n      terrain:") == std::string::npos &&
                                    // old Particle Systems (S20 D9's, origin/main's version 2) become
                                    // inline effects on their targets: their GameObjects change
                                    (original.find("particlesystem:") == std::string::npos || original.find("inlineEffect:") != std::string::npos);
         if (editorWritten) {
             const std::string difference =
-                firstDifference(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first)))),
-                                withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original)))));
+                firstDifference(withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(first))))),
+                                withoutComputedValues(withoutDerivedTransform(withoutShadowMigration(withoutShaderKeys(withoutVersionLine(original))))));
             EXPECT_TRUE(difference.empty()) << "the save changed more than the version line, at " << difference;
             EXPECT_EQ(shaderKeySet(first), shaderKeySet(original)) << "the shader keys";
             EXPECT_EQ(first.rfind("formatVersion: " + std::to_string(StreamMigrations::currentVersion(DocumentKind::Scene)) + "\n", 0), 0u);
