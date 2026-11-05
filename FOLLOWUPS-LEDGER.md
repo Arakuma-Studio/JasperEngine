@@ -184,4 +184,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: S68 and S69 landed after the first full suite. Second full suite next: S63, S64, S70, S38, on `main`.
 - 2026-11-05: Second full suite started on `88090c2da` (`main`, S38, S63, S64, S70) on A and B, since H is down. Logs in `je-remote/logs/full-88090c2da`. S37 and S36 merge `main` after these land.
 - 2026-11-05: S38, S63, S64 and S70 landed. Next: `fix/root-attack-meta`, then S37 and S36 merge `main`, then a third full suite.
-- 2026-11-05: Root attack fix landed. The save re-pin was older than this program; a push to `origin` had been carrying it.
+- 2026-11-05: Root attack fix landed. The save re-pin dates from `6092353d1` (2026-10-28), before this program.
