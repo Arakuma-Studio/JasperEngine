@@ -12,6 +12,7 @@
 #include "command/type/ClipSceneActions.h"
 #include "imgui.h"
 #include "util/FileUtils.h"
+#include "window/EditorModal.h"
 
 #include <cstdio>
 #include <filesystem>
@@ -70,23 +71,27 @@ void HumanoidConvertDialog::draw(Project* project){
         s.requested = false;
         ImGui::OpenPopup("Convert to Humanoid Clip###HumanoidConvert");
     }
-    if (!ImGui::BeginPopupModal("Convert to Humanoid Clip###HumanoidConvert", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (!EditorModal::begin("Convert to Humanoid Clip###HumanoidConvert", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    EditorModal::message("Convert " + s.source + " to a humanoid clip.");
+    EditorModal::error(s.error);
     ImGui::TextUnformatted(s.source.c_str());
     ImGui::TextColored(Theme::Colors::SubtleText, "A humanoid clip plays on any humanoid character (its rotations are relative to\n"
                        "the neutral pose of the rig it was made on).");
     ImGui::SetNextItemWidth(Theme::dpi(360.0f));
+    EditorModal::pathField("model", s.model, sizeof(s.model));
     ImGui::InputText("Source model", s.model, sizeof(s.model));
     ImGui::SetItemTooltip("The model (asset-relative .gltf / .glb / .fbx) whose rig the clip was made on; its .humanoid Avatar applies");
     ImGui::SetNextItemWidth(Theme::dpi(360.0f));
+    EditorModal::pathField("output", s.output, sizeof(s.output));
     ImGui::InputText("Output", s.output, sizeof(s.output));
     ImGui::SetItemTooltip("The new .anim (project-relative)");
     if (s.player != NULL_ENTITY){
-        ImGui::Checkbox("Use in this player", &s.usePlayer);
+        EditorModal::checkbox("Use in this player", "use_in_player", &s.usePlayer);
         ImGui::SetItemTooltip("The Animation Player entry plays the new clip (one scene undo step with the file)");
     }
     if (!s.error.empty()) ImGui::TextColored(Theme::Colors::ErrorText, "%s", s.error.c_str());
     ImGui::BeginDisabled(s.model[0] == '\0' || s.output[0] == '\0');
-    if (ImGui::Button("Convert")){
+    if (EditorModal::button("Convert", "ok")){
         ClipActionResult result;
         std::string error;
         const bool use = s.player != NULL_ENTITY && s.usePlayer;
@@ -100,6 +105,6 @@ void HumanoidConvertDialog::draw(Project* project){
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }

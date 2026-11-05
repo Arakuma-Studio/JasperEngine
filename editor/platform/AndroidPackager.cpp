@@ -69,6 +69,87 @@ namespace {
         }
     };
 
+    // The key a package is signed with, its passwords in owner-only files for as long as it lives
+    struct SigningKey {
+        fs::path keystore;
+        std::string alias;
+        SecretFile storeSecret, keySecret;
+    };
+
+    // The project's keystore, or the debug one (made when missing), checked before any packaging: a
+    // wrong password or alias fails here with what to change. The passwords go through files, on
+    // no command line and in no log.
+    bool prepareSigningKey(const AndroidPackage& package, const AndroidToolchain& tools, CommandRunner& runner,
+                           std::vector<BuildWarning>& warnings, SigningKey& key, std::string& error) {
+        std::error_code ec;
+        key.keystore = package.keystore;
+        key.alias = package.keystoreAlias;
+        std::string storePassword = package.keystorePassword;
+        std::string keyPassword = package.keyPassword;
+        if (key.keystore.empty()) {
+            const char* home = std::getenv("HOME");
+#ifdef _WIN32
+            if (!home) home = std::getenv("USERPROFILE");
+#endif
+            key.keystore = fs::path(home ? home : ".") / ".android" / "debug.keystore";
+            key.alias = "androiddebugkey";
+            storePassword = "android";
+            keyPassword = "android";
+            if (!package.debug)
+                warnings.push_back({"W-ANDROID-DEBUG-KEY", "signed with the debug keystore (" + key.keystore.string() +
+                                                               "): set Project Settings > Android > Keystore for a release the stores accept"});
+            if (!fs::exists(key.keystore, ec)) {
+                fs::create_directories(key.keystore.parent_path(), ec);
+                if (!run(runner, {tools.keytool.path.string(), "-J-Duser.language=en", "-genkeypair", "-v", "-keystore", key.keystore.string(),
+                                  "-storepass", "android", "-alias", "androiddebugkey", "-keypass", "android", "-keyalg", "RSA", "-keysize",
+                                  "2048", "-validity", "10000", "-dname", "CN=Android Debug,O=Android,C=US"},
+                         package.workDir, error))
+                    return false;
+            }
+        } else {
+            if (!fs::is_regular_file(key.keystore, ec)) {
+                error = "the keystore " + key.keystore.string() + " does not exist (Project Settings > Android > Keystore)";
+                return false;
+            }
+            if (storePassword.empty()) {
+                const char* env = std::getenv("JASPER_ANDROID_KS_PASS");
+                if (env) storePassword = env;
+            }
+            if (keyPassword.empty()) {
+                const char* env = std::getenv("JASPER_ANDROID_KEY_PASS");
+                keyPassword = env ? env : storePassword;
+            }
+            if (storePassword.empty()) {
+                error = "the keystore " + key.keystore.string() + " needs its password: enter it in Build Settings, or set JASPER_ANDROID_KS_PASS "
+                        "(it is never saved)";
+                return false;
+            }
+            if (key.alias.empty()) {
+                error = "the keystore " + key.keystore.string() + " has no alias set (Project Settings > Android > Keystore)";
+                return false;
+            }
+        }
+        if (!key.storeSecret.write(package.workDir, ".ks-pass", storePassword) || !key.keySecret.write(package.workDir, ".key-pass", keyPassword)) {
+            error = "cannot pass the keystore passwords to the signing tool";
+            return false;
+        }
+        // a certificate request reads the private key, so it needs the store and the key password;
+        // it changes nothing, and its output stays out of the build log
+        std::string output;
+        int code = -1;
+        const fs::path request = package.workDir / ".key-check.csr";
+        runner.runArgs({tools.keytool.path.string(), "-J-Duser.language=en", "-certreq", "-keystore", key.keystore.string(), "-alias", key.alias,
+                        "-storepass:file", key.storeSecret.path.string(), "-keypass:file", key.keySecret.path.string(), "-file", request.string()},
+                       package.workDir, [&output](const std::string& line) { output += line + "\n"; }, &code);
+        fs::remove(request, ec);
+        if (code != 0) {
+            error = describeKeystoreFailure(output, key.keystore, key.alias);
+            if (error.empty()) error = "keytool cannot read the key " + key.alias + " of " + key.keystore.string() + " (exit " + std::to_string(code) + "):\n" + output;
+            return false;
+        }
+        return true;
+    }
+
     bool copyTree(const fs::path& from, const fs::path& to, std::string& error) {
         std::error_code ec;
         fs::create_directories(to, ec);
@@ -80,6 +161,19 @@ namespace {
         return true;
     }
 
+}
+
+std::string platform::describeKeystoreFailure(const std::string& output, const fs::path& keystore, const std::string& alias) {
+    const auto says = [&output](const char* text) { return output.find(text) != std::string::npos; };
+    if (says("keystore password was incorrect") || says("password was incorrect"))
+        return "the password of the keystore " + keystore.string() + " is wrong: enter the right one in Build Settings, or set JASPER_ANDROID_KS_PASS";
+    if (says("Cannot recover key") || says("Get Key failed") || says("UnrecoverableKeyException"))
+        return "the password of the key " + alias + " in " + keystore.string() + " is wrong: enter the right one in Build Settings, or set JASPER_ANDROID_KEY_PASS";
+    if (says("does not exist") || says("has no key"))
+        return "the keystore " + keystore.string() + " has no key named " + alias + " (Project Settings > Android > Key Alias)";
+    if (says("keystore format") || says("Unrecognized") || says("not a keystore") || says("Illegal") || says("toDerInputStream"))
+        return keystore.string() + " is not a keystore (Project Settings > Android > Keystore)";
+    return "";
 }
 
 bool platform::writeAndroidManifest(const AndroidPackage& package, const std::string& templateText, std::string& manifest, std::string& error) {
@@ -164,7 +258,7 @@ std::vector<std::pair<std::string, uint64_t>> platform::androidLibrarySizes(cons
 bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner& runner, const std::function<bool()>& cancelled,
                                    std::vector<BuildWarning>& warnings, std::string& error) {
     const bool bundle = package.format == AndroidFormat::Aab;
-    const AndroidToolchain tools = AndroidTools::discover(package.settings.targetSdk, bundle, true);
+    const AndroidToolchain tools = AndroidTools::discover(package.settings.targetSdk);
     if (!tools.ok()) {
         error = "the Android tools are missing (a prebuilt Android build needs no NDK, CMake or Gradle, but these):";
         for (const std::string& missing : tools.missing) error += "\n  - " + missing;
@@ -184,6 +278,18 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
     }
     fs::remove_all(package.workDir, ec);
     fs::create_directories(package.workDir, ec);
+
+    // before any work: the signing key, and for a bundle the bundletool jar
+    SigningKey key;
+    if (!prepareSigningKey(package, tools, runner, warnings, key, error)) return false;
+    fs::path bundletool = package.bundletool;
+    if (bundle && bundletool.empty()) {
+        bundletool = AndroidTools::bundletoolJar(cancelled, error);
+        if (bundletool.empty()) {
+            if (error == "cancelled") error = "Build cancelled";
+            return false;
+        }
+    }
 
     // 1. the manifest
     std::string templateText, manifest;
@@ -305,77 +411,28 @@ bool platform::buildAndroidPackage(const AndroidPackage& package, CommandRunner&
         return false;
     }
 
-    // 5. the signing key
-    fs::path keystore = package.keystore;
-    std::string alias = package.keystoreAlias;
-    std::string storePassword = package.keystorePassword;
-    std::string keyPassword = package.keyPassword;
-    if (keystore.empty()) {
-        const char* home = std::getenv("HOME");
-#ifdef _WIN32
-        if (!home) home = std::getenv("USERPROFILE");
-#endif
-        keystore = fs::path(home ? home : ".") / ".android" / "debug.keystore";
-        alias = "androiddebugkey";
-        storePassword = "android";
-        keyPassword = "android";
-        if (!package.debug)
-            warnings.push_back({"W-ANDROID-DEBUG-KEY", "signed with the debug keystore (" + keystore.string() +
-                                                           "): set Project Settings > Android > Keystore for a release the stores accept"});
-        if (!fs::exists(keystore, ec)) {
-            fs::create_directories(keystore.parent_path(), ec);
-            if (!run(runner, {tools.keytool.path.string(), "-genkeypair", "-v", "-keystore", keystore.string(), "-storepass", "android",
-                              "-alias", "androiddebugkey", "-keypass", "android", "-keyalg", "RSA", "-keysize", "2048", "-validity", "10000",
-                              "-dname", "CN=Android Debug,O=Android,C=US"},
-                     package.workDir, error))
-                return false;
-        }
-    } else {
-        if (storePassword.empty()) {
-            const char* env = std::getenv("JASPER_ANDROID_KS_PASS");
-            if (env) storePassword = env;
-        }
-        if (keyPassword.empty()) {
-            const char* env = std::getenv("JASPER_ANDROID_KEY_PASS");
-            keyPassword = env ? env : storePassword;
-        }
-        if (storePassword.empty()) {
-            error = "the keystore " + keystore.string() + " needs its password: enter it in Build Settings, or set JASPER_ANDROID_KS_PASS "
-                    "(it is never saved)";
-            return false;
-        }
-        if (alias.empty()) {
-            error = "the keystore " + keystore.string() + " has no alias set (Project Settings > Android > Keystore)";
-            return false;
-        }
-    }
-    SecretFile storeSecret, keySecret;
-    if (!storeSecret.write(package.workDir, ".ks-pass", storePassword) || !keySecret.write(package.workDir, ".key-pass", keyPassword)) {
-        error = "cannot pass the keystore passwords to the signing tool";
-        return false;
-    }
-
     if (bundle) {
-        // 6. a bundle: bundletool builds it, jarsigner signs it
+        // 5. a bundle: bundletool builds it, jarsigner signs it
         const fs::path unsignedBundle = package.workDir / "unsigned.aab";
-        if (!run(runner, {tools.java.path.string(), "-jar", tools.bundletool.string(), "build-bundle", "--modules=" + assembled.string(),
+        if (!run(runner, {tools.java.path.string(), "-jar", bundletool.string(), "build-bundle", "--modules=" + assembled.string(),
                           "--output=" + unsignedBundle.string(), "--overwrite"},
                  package.workDir, error))
             return false;
-        if (!run(runner, {tools.jarsigner.path.string(), "-keystore", keystore.string(), "-storepass:file", storeSecret.path.string(),
-                          "-keypass:file", keySecret.path.string(), "-sigalg", "SHA256withRSA", "-digestalg", "SHA-256", "-signedjar",
-                          package.output.string(), unsignedBundle.string(), alias},
+        // (no -sigalg: the one that fits the key, which may be EC)
+        if (!run(runner, {tools.jarsigner.path.string(), "-keystore", key.keystore.string(), "-storepass:file", key.storeSecret.path.string(),
+                          "-keypass:file", key.keySecret.path.string(), "-digestalg", "SHA-256", "-signedjar",
+                          package.output.string(), unsignedBundle.string(), key.alias},
                  package.workDir, error))
             return false;
         return true;
     }
 
-    // 6. an APK: aligned (native libraries on 16 KB pages), signed, verified
+    // 5. an APK: aligned (native libraries on 16 KB pages), signed, verified
     const fs::path aligned = package.workDir / "aligned.apk";
     if (!run(runner, {tools.zipalign.path.string(), "-P", "16", "-f", "4", assembled.string(), aligned.string()}, package.workDir, error))
         return false;
-    std::vector<std::string> sign = {tools.apksigner.path.string(), "sign", "--ks", keystore.string(), "--ks-key-alias", alias,
-                                     "--ks-pass", "file:" + storeSecret.path.string(), "--key-pass", "file:" + keySecret.path.string(),
+    std::vector<std::string> sign = {tools.apksigner.path.string(), "sign", "--ks", key.keystore.string(), "--ks-key-alias", key.alias,
+                                     "--ks-pass", "file:" + key.storeSecret.path.string(), "--key-pass", "file:" + key.keySecret.path.string(),
                                      "--v2-signing-enabled", "true", "--v3-signing-enabled", "true"};
     // devices before Android 7 (API 24) read only v1 signatures
     sign.push_back("--v1-signing-enabled");

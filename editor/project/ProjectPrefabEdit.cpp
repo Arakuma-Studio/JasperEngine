@@ -6,6 +6,10 @@
 // are instance overrides (ProjectPrefabInstanceEdit.cpp).
 
 #include "Project.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/Transform.h"
+#include "component/PrefabComponent.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"

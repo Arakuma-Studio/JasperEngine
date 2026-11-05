@@ -90,7 +90,6 @@ std::vector<std::string> editor::platformBackends(BuildPlatform platform) {
         case BuildPlatform::Windows: return {"d3d11", "glcore", "vulkan"};
         case BuildPlatform::Linux: return {"glcore", "vulkan", "gles3"};
         case BuildPlatform::MacOS: return {"metal", "glcore"};
-        // OpenGL ES 3 only: the engine's Android build has no other backend (engine/CMakeLists.txt)
         case BuildPlatform::Android: return {"gles3"};
         case BuildPlatform::IOS: return {"metal"};
         case BuildPlatform::Web: return {"gles3"};

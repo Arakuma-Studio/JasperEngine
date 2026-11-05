@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: MIT
 
 #include "TerrainEditWindow.h"
+#include "component/PrefabComponent.h"
+#include "component/InstancedMeshComponent.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 #include "widget/ColorPickerWindow.h"
 #include "DocumentFile.h"
 #include "util/FileUtils.h"

@@ -23,8 +23,7 @@ FLAVOUR="${1:?release or development}"
 OUT="${2:-build/players-build/android-$FLAVOUR}"
 BACKEND="${3:-gles3}"
 PLAYER_VARIANT="${4:-full}"
-# Android builds have OpenGL ES 3 only (engine/CMakeLists.txt)
-[[ "$BACKEND" == gles3 ]] || { echo "backend is gles3 on Android (got $BACKEND)" >&2; exit 1; }
+[[ "$BACKEND" == gles3 ]] || { echo "the backend is gles3 on Android: its platform layer makes an EGL context only (got $BACKEND)" >&2; exit 1; }
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 case "$FLAVOUR" in
     release) TASK=assembleRelease; VARIANT=release ;;

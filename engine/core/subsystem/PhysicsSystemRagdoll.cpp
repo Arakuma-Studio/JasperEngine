@@ -6,6 +6,7 @@
 // on) and simulated (dynamic parts moving the bones, the player paused), and self collision.
 
 #include "PhysicsSystem.h"
+#include "component/Transform.h"
 
 // 3D physics only (JASPERENGINE_PHYSICS_3D, from PhysicsSystem.h's includes)
 #ifdef JASPERENGINE_PHYSICS_3D

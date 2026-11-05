@@ -1,0 +1,126 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 6d7fea115bdac299
+--- 0
+loop: true
+duration: 57.142857
+ownedActions: false
+defaultFadeTime: 0.9648409
+actions: ~
+--- 1
+loop: false
+duration: 0.17956586
+ownedActions: false
+defaultFadeTime: 64
+actions:
+  - track: 2445
+    startTime: -0.7406184
+    duration: -4
+    action: 0
+  - track: 1593
+    startTime: 84.71429
+    duration: 3e+38
+    action: 262
+  - track: 2830
+    startTime: .nan
+    duration: -0
+    action: 0
+--- 2
+loop: true
+duration: 108
+ownedActions: true
+defaultFadeTime: -13.857142
+actions:
+  - track: 1702
+    startTime: -87
+    duration: 70.71429
+    action: 290
+  - track: 4294967295
+    startTime: 87
+    duration: 4485.5845
+    action: 151
+--- 3
+loop: false
+duration: -.inf
+ownedActions: false
+defaultFadeTime: -0.91161907
+actions:
+  - track: 1106
+    startTime: 30.714285
+    duration: -0
+    action: 11
+  - track: 4758
+    startTime: .inf
+    duration: 0.64558727
+    action: 341
+  - track: 2649
+    startTime: -62.57143
+    duration: -.inf
+    action: 227
+--- 4
+loop: false
+duration: -7
+ownedActions: true
+defaultFadeTime: -70
+actions:
+  - track: 1707
+    startTime: 82.42857
+    duration: -0
+    action: 169
+  - track: 1761
+    startTime: -42.714287
+    duration: 1e-45
+    action: 3
+  - track: 2384
+    startTime: 3e+38
+    duration: 7245.46
+    action: 0
+  - track: 1961
+    startTime: 8732.863
+    duration: -134.14285
+    action: 0
+--- 5
+loop: false
+duration: 643.9358
+ownedActions: false
+defaultFadeTime: .inf
+actions:
+  - track: 1726
+    startTime: 0.023208387
+    duration: 3194.8745
+    action: 0
+--- 6
+loop: false
+duration: -82.71429
+ownedActions: false
+defaultFadeTime: -0.15740252
+actions:
+  - track: 4604
+    startTime: -133.71428
+    duration: 0.5329728
+    action: 100
+  - track: 1277
+    startTime: 0.7678813
+    duration: -0.38172796
+    action: 0
+  - track: 2936
+    startTime: -0.586293
+    duration: 1e-45
+    action: 235
+--- 7
+loop: false
+duration: 0.99534863
+ownedActions: false
+defaultFadeTime: 50
+actions:
+  - track: 2288
+    startTime: -80.14286
+    duration: -46
+    action: 4
+  - track: 4180
+    startTime: 8243.189
+    duration: 1200.7937
+    action: 228
+  - track: 4907
+    startTime: 8565.556
+    duration: .inf
+    action: 116

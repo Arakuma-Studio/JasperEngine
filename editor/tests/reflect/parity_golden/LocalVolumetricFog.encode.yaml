@@ -1,0 +1,82 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 3b700b7b8c1d71a2
+--- 0
+shape: sphere
+size: [0.9695469, 0.30754706, 5329.9956]
+attenuationDistance: 58
+albedo: [1e-45, -0.46282494, 3e+38]
+blendDistance: -131.28572
+falloff: linear
+noiseIntensity: -41.42857
+noiseScale: 1e-45
+scrollSpeed: [-29, 0, -74]
+--- 1
+shape: box
+size: [-0, 66, 29]
+attenuationDistance: -99
+albedo: [9958.568, -14, -0]
+blendDistance: 3e+38
+falloff: exponential
+noiseIntensity: 24.571428
+noiseScale: -22
+scrollSpeed: [7916.4863, -113.28571, 7]
+--- 2
+shape: sphere
+size: [122.28571, -85, 7466.8306]
+attenuationDistance: 1e-45
+albedo: [-91, -85, -127]
+blendDistance: -5.428571
+falloff: exponential
+noiseIntensity: -.inf
+noiseScale: 3e+38
+scrollSpeed: [0.5880975, -0, -11]
+--- 3
+shape: box
+size: [43, 0, 6653.07]
+attenuationDistance: 8186.65
+albedo: [69.42857, -16, -0.4579743]
+blendDistance: 3e+38
+falloff: exponential
+noiseIntensity: 682.53644
+noiseScale: 9571.274
+scrollSpeed: [-81.42857, 0, 64]
+--- 4
+shape: sphere
+size: [3e+38, 3e+38, 0.04170755]
+attenuationDistance: 857.1063
+albedo: [6, -120.42857, -0.18204242]
+blendDistance: .nan
+falloff: linear
+noiseIntensity: -.inf
+noiseScale: 5464.7104
+scrollSpeed: [0, 0.51477903, -56]
+--- 5
+shape: box
+size: [0, -87.85714, 7064.4854]
+attenuationDistance: 2380.2622
+albedo: [7729.4995, 36, 3e+38]
+blendDistance: -0
+falloff: linear
+noiseIntensity: 0.42740893
+noiseScale: 136.14285
+scrollSpeed: [-90, 9877.414, 0.5599827]
+--- 6
+shape: box
+size: [1e-45, 6758.809, -0.33175105]
+attenuationDistance: .nan
+albedo: [-91.42857, 863.14154, -25]
+blendDistance: -75
+falloff: linear
+noiseIntensity: 4443.7837
+noiseScale: 8598.912
+scrollSpeed: [0, 0, 1.8571428]
+--- 7
+shape: box
+size: [-0.32691562, 0, 43]
+attenuationDistance: 34.285713
+albedo: [-91, 0, -0.12777683]
+blendDistance: -80.57143
+falloff: exponential
+noiseIntensity: 1328.225
+noiseScale: 0.985424
+scrollSpeed: [1e-45, -17, 0.69744545]
