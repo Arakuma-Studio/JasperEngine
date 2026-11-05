@@ -59,8 +59,8 @@ S65, S68, S69, S70 and S35-S40. Moved off this list: S72, which changes includes
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
-| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | In review: narrowing a test filter |
-| S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B | In progress |
+| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Ready at `af2ddb2a3`; waits for the second full suite |
+| S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Ready at `ce69a75c4`; waits for the second full suite |
 | S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
@@ -69,7 +69,7 @@ S65, S68, S69, S70 and S35-S40. Moved off this list: S72, which changes includes
 | S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B, H | Ready at `df51380dd`; waits for the second full suite |
 | S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | Done |
 | S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | Done |
-| S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | In progress |
+| S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | Done |
 
 ### Sound layer
 
@@ -123,6 +123,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 ## Done
 
 - S67: Android and iOS packaging really run. Fixed: prebuilt iOS games never linked; exported `gradlew` was not executable; EC bundles could not sign; `android-emulator-test.sh` emptied its own expectations, so earlier passes without `--scene` proved less. Android release and development APK and AAB install, run, golden 0.00%. iOS simulator, both flavours, golden 0.00%. Eval 2/2, 0/2 without its text. Open: a signed IPA needs an Apple account; a source export's debug build fails the emulator's GLES check with `GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE` although its picture matches at 0.00% (emulator's driver suspected, not proven; check on a real phone); Gradle source exports use the debug key; iOS not rerun on the final merge, which touched none of its files.
+- S73: `AssetRefSchema`'s component rows come from reflection, which found two references the hand table missed (`weatherMap`, a layer's `mask`). The legacy oracle became 76 golden files, passing with the oracle before its deletion. `keptText` removed, shader counter fixed with a red run. Open: goldens not run on Mac or Windows; `-Wunused` checked with GCC only.
 - `fix/module-off-build`: engines with modules off compile again. Red: `all-off` failed in 19 units. All six single-module-off builds, `both-off`, `all-off` and the variants pass; a real Compile test passes; `players` built for release glcore. `check-changed` guards it with `all-off`. Not run: gles3, Vulkan and development players, web module-off builds; its MCP selection is left to the full suite.
 - `fix/locked-project-crash`: a refused editor exits with code 3 and never opens the shared temporary project. Red 60/64 and 58/64 crashes; private `TMPDIR` control 0/64; green 216/216. Windows and macOS inferred. Open: the Hub's `createTempProject` fallbacks still ignore failure; null checks should stop the crash there, but only the MCP path was tested.
 - S62: a recording that reports success is a good one. Every write is checked, the first failure stops recording while Play continues, output is published atomically, a partial stays only if it decodes. A frame waits for its loads in game time. Red on the old build: stand-in frames at game frames 10-12, injected failures reported as success. 27/27 recorder tests on the merge, including a real full 64 MB tmpfs; decoded audio matches the old reference. Whole `check-changed` hit its limit one merge back at 173 of 181 files (1108 passed); its 5 failures and 8 unfinished files pass by hand, load as the cause inferred. Eval 2/2, 0/2 without its text. Not compiled: Windows, macOS.
@@ -162,3 +163,5 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: Lock crash landed. Full unit run on `eb9f93aca`: 2885 core and 2946 editor tests, 0 failed, 1 load skip.
 - 2026-11-05: Module-off fix landed. The Mac is unreachable since at least 02:37 UTC.
 - 2026-11-05: S35, S36 and S37 resumed: the last account used 3% of its week in the three hours since the restart.
+- 2026-11-05: First full suite on `eb9f93aca`: 1528 passed, 22 failed, 0 skipped; 7 failures are compile errors from the module-off bug (likely), the rest being rerun whole on H. Unit tests there: 2885 core, 2946 editor, 0 failed. S63 reviewed: `CorpusRoundTrip` filter narrowed, Terrain scenes back.
+- 2026-11-05: S73 landed. H and the Mac unreachable since about 04:50 UTC; agents on A and B.

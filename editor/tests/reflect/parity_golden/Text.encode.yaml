@@ -1,0 +1,142 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 83562f6041bb8868
+--- 0
+font: [fonts/F0.ttf, fonts/F1.ttf, fonts/F2.ttf, fonts/F3.ttf]
+text: "  padded  "
+fontSize: 317
+multiline: true
+maxTextSize: 169
+fixedWidth: false
+fixedHeight: true
+pivotBaseline: true
+pivotCentered: false
+outlineWidth: .nan
+outlineColor: [4875.966, -0, 141.85715, -124.14286]
+shadowColor: [0, -5.857143, 40.857143, 9898.166]
+shadowOffset: [105.42857, 1366.032]
+shadowSoftness: 0.47148538
+shadowDilate: -110.85714
+visibleCharacters: -8
+--- 1
+font: [fonts/F0.ttf]
+text: true
+fontSize: 4929
+multiline: false
+maxTextSize: 945
+fixedWidth: false
+fixedHeight: false
+pivotBaseline: true
+pivotCentered: false
+outlineWidth: 2166.342
+outlineColor: [0.37051225, 0, 0, -0]
+shadowColor: [5422.695, 0.7775784, -53.714287, 0.19297175]
+shadowOffset: [-0, 1456.3378]
+shadowSoftness: 0.9795933
+shadowDilate: 1756.6619
+visibleCharacters: -10
+--- 2
+font: []
+text: "multi\nline"
+fontSize: 3498
+multiline: false
+maxTextSize: 2259
+fixedWidth: false
+fixedHeight: false
+pivotBaseline: true
+pivotCentered: false
+outlineWidth: .inf
+outlineColor: [-0, 6010.211, -108.71429, 3e+38]
+shadowEnabled: true
+shadowColor: [8612.253, 5123.0054, 121.71429, -107]
+shadowOffset: [5292.935, 19.028124]
+shadowSoftness: .inf
+shadowDilate: -0.90799654
+visibleCharacters: -17
+--- 3
+font: [fonts/F0.ttf, fonts/F1.ttf]
+text: with "quotes"
+fontSize: 2609
+multiline: false
+maxTextSize: 1960
+fixedWidth: true
+fixedHeight: true
+pivotBaseline: false
+pivotCentered: true
+outlineWidth: .inf
+outlineColor: [0.31115672, -61.57143, 0.5953465, 0.95927495]
+shadowEnabled: true
+shadowColor: [4569.5356, 0, 2554.2754, 17]
+shadowOffset: [101.71429, 1e-45]
+shadowSoftness: 0.2857143
+shadowDilate: 3e+38
+visibleCharacters: -17
+--- 4
+font: []
+text: textures/a.png
+fontSize: 4294967295
+multiline: true
+maxTextSize: 3382
+fixedWidth: false
+fixedHeight: true
+pivotBaseline: false
+pivotCentered: true
+outlineWidth: -93
+outlineColor: [104.71429, 0, 2698.5674, 3e+38]
+shadowEnabled: true
+shadowColor: [69.71429, 0.9640227, 0, 0]
+shadowOffset: [1e-45, 3e+38]
+shadowSoftness: 1e-45
+visibleCharacters: -12
+--- 5
+font: []
+text: true
+fontSize: 1632
+multiline: false
+maxTextSize: 1654
+fixedWidth: true
+fixedHeight: true
+pivotBaseline: false
+pivotCentered: true
+outlineWidth: -57
+outlineColor: [-57.57143, 0, 43, -0.52759516]
+shadowColor: [0, 0.6692841, 585.7565, 847.4395]
+shadowOffset: [-0.113736905, 34]
+shadowSoftness: 986.53687
+shadowDilate: -49.857143
+visibleCharacters: 1
+--- 6
+font: [fonts/F0.ttf]
+text: "- dash"
+fontSize: 4929
+multiline: false
+maxTextSize: 2014
+fixedWidth: false
+fixedHeight: false
+pivotBaseline: true
+pivotCentered: false
+outlineWidth: 84.71429
+outlineColor: [-0, 7423.4126, 0.34046715, 3489.342]
+shadowEnabled: true
+shadowColor: [9223.204, 9091.31, 3e+38, 5723.6865]
+shadowOffset: [-0.95130086, 0.5805234]
+shadowSoftness: -14.857142
+shadowDilate: 162.16138
+visibleCharacters: 19
+--- 7
+font: ["", "", fonts/F2.ttf, fonts/F3.ttf]
+text: with "quotes"
+fontSize: 1287
+multiline: true
+maxTextSize: 3861
+fixedWidth: true
+fixedHeight: true
+pivotBaseline: false
+pivotCentered: true
+outlineWidth: 5977.078
+outlineColor: [0.7512765, 0, 42.42857, 0]
+shadowEnabled: true
+shadowColor: [-90.85714, -0.6031803, -0.27067783, 135.85715]
+shadowOffset: [-88.14286, 3e+38]
+shadowSoftness: .nan
+shadowDilate: 3e+38
+visibleCharacters: -19

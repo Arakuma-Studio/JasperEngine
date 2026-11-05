@@ -915,22 +915,6 @@ CanvasGroupRenderMode editor::Stream::stringToCanvasGroupRenderMode(const std::s
     return upper == "FLATTEN" ? CanvasGroupRenderMode::FLATTEN : CanvasGroupRenderMode::PER_ELEMENT;
 }
 
-std::string editor::Stream::alphaTweenTargetToString(AlphaTweenTarget target) {
-    switch (target) {
-        case AlphaTweenTarget::COLOR: return "COLOR";
-        case AlphaTweenTarget::CANVAS_GROUP: return "CANVAS_GROUP";
-        default: return "AUTO";
-    }
-}
-
-AlphaTweenTarget editor::Stream::stringToAlphaTweenTarget(const std::string& str) {
-    std::string upper = str;
-    std::transform(upper.begin(), upper.end(), upper.begin(), [](unsigned char c){ return (char)std::toupper(c); });
-    if (upper == "COLOR") return AlphaTweenTarget::COLOR;
-    if (upper == "CANVAS_GROUP") return AlphaTweenTarget::CANVAS_GROUP;
-    return AlphaTweenTarget::AUTO;
-}
-
 LayoutGroupType editor::Stream::stringToLayoutGroupType(const std::string& str) {
     return StreamSchema::layoutGroupType().fromString(str);
 }
@@ -1029,10 +1013,6 @@ std::string editor::Stream::uiDocumentRenderModeToString(UIDocumentRenderMode mo
 
 UIDocumentRenderMode editor::Stream::stringToUIDocumentRenderMode(const std::string& str) {
     return StreamSchema::uiDocumentRenderMode().fromString(str);
-}
-
-std::string editor::Stream::fluidOutputToString(FluidOutput output) {
-    return StreamSchema::fluidOutput().toString(output);
 }
 
 FluidOutput editor::Stream::stringToFluidOutput(const std::string& str) {

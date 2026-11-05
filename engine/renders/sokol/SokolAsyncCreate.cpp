@@ -886,6 +886,9 @@ sg_shader SokolAsyncCreate::makeShader(const sg_shader_desc& desc){
 
 void SokolAsyncCreate::initShader(sg_shader shader, const sg_shader_desc& desc){
     State& s = state();
+    // a strand's queued make whose handle was destroyed first (ShaderPool::clear): nothing to make or count
+    if (sg_query_shader_state(shader) == SG_RESOURCESTATE_INVALID)
+        return;
     if (!asyncOn(s)){
         // the render thread's creation, timed like the asynchronous paths' share of it
         JE_PROFILE_SCOPE("GPU create submit");
