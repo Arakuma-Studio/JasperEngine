@@ -554,3 +554,5 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
 - **`editor/audio/SoundDrop` adds the drops** of M6 (a sound onto a Button, an entity or empty scene space); a built-in sound is imported first, on one undo step with the assignment.
 - **The module's size is measured on Linux only** (S34's last M entry): the Android and wasm players were not built for it.
 - **AC12's budgets are printed, not enforced, without `JASPER_TEST_PERF_SLACK`**, as for every wall-clock test. Server F no longer exists, and the bench run was not on the benchmark server.
+- **AC8 is S35's** (`tools/mcp/tests/test_audio_capture_events.py`): the capture's `instance` and `by_instance` are numbered from 1
+  in each session, since the editor's counter runs on between Plays and two runs must be the same bytes.

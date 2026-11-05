@@ -242,6 +242,7 @@ AudioSessionReader::Json AudioSessionReader::report(const AudioSessionData& data
     int eventsTotal = 0, markersTotal = 0;
     int started = 0, stopped = 0, stolen = 0, rejected = 0;
     std::map<std::string, int> byClip;
+    std::map<std::string, std::pair<std::string, int>> byEvent;   // GUID > path, starts
     for (const Json& line : data.events) {
         const std::string kind = line.value("kind", "");
         const bool voice = isVoiceKind(kind);
@@ -255,6 +256,11 @@ AudioSessionReader::Json AudioSessionReader::report(const AudioSessionData& data
             if (kind == "voice_start") {
                 started++;
                 byClip[line.value("clip", "")]++;
+                if (line.contains("event")) {
+                    auto& entry = byEvent[line.value("event", "")];
+                    entry.first = line.value("event_path", "");
+                    entry.second++;
+                }
             } else if (kind == "voice_stop") {
                 stopped++;
                 if (line.value("reason", "").rfind("stolen", 0) == 0) stolen++;
@@ -281,7 +287,10 @@ AudioSessionReader::Json AudioSessionReader::report(const AudioSessionData& data
     out["markers_truncated"] = markersTotal > (int)markers.size();
     Json clips = Json::array();
     for (const auto& [clip, count] : byClip) clips.push_back({{"clip", clip}, {"plays", count}});
-    out["voices"] = {{"started", started}, {"stopped", stopped}, {"stolen", stolen}, {"rejected", rejected}, {"peak", voicesPeak(data, "")}, {"by_clip", clips}};
+    Json eventStarts = Json::array();
+    for (const auto& [event, entry] : byEvent) eventStarts.push_back({{"event", event}, {"event_path", entry.first}, {"starts", entry.second}});
+    out["voices"] = {{"started", started}, {"stopped", stopped}, {"stolen", stolen}, {"rejected", rejected}, {"peak", voicesPeak(data, "")},
+                     {"by_clip", clips}, {"by_event", eventStarts}};
     out["mixer"] = mixer;
     return out;
 }

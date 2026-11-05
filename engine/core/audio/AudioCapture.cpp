@@ -442,6 +442,8 @@ namespace {
 
         std::vector<ActiveVoice> voices;
         uint64_t nextVoice = 1;
+        // what the lines call a Sound Event's play: its counter runs on over every Play of the editor
+        std::map<uint64_t, uint64_t> instances;
         int voicesPeak = 0;
         double fixedDelta = -1.0;
         std::set<std::string> notDeterministic;
@@ -678,14 +680,26 @@ namespace {
         line.text("scene", voice.scene).text("group", voice.group).text("group_id", voice.groupId).text("owner", voice.owner);
     }
 
-    void stopLine(const ActiveVoice& voice, const char* reason) {
+    uint64_t instanceSerial(uint64_t instance) {
+        if (instance == 0) return 0;
+        std::map<uint64_t, uint64_t>& instances = captureSession->instances;
+        auto found = instances.find(instance);
+        if (found != instances.end()) return found->second;
+        const uint64_t serial = instances.size() + 1;
+        instances.emplace(instance, serial);
+        return serial;
+    }
+
+    void stopLine(const ActiveVoice& voice, const char* reason, uint64_t byInstance = 0) {
         CaptureSession& s = *captureSession;
         const uint64_t sample = sampleNow();
         const uint64_t paused = voice.pausedFrames + (voice.paused && sample > voice.pausedAt ? sample - voice.pausedAt : 0);
         const uint64_t lived = sample > voice.startSample + voice.delay ? sample - voice.startSample - voice.delay : 0;
         AudioCapture::Line line("voice_stop");
         voiceCommon(line, voice);
-        line.text("reason", reason).number("played_s", (double)(lived > paused ? lived - paused : 0) / s.rate, 6);
+        line.text("reason", reason);
+        if (byInstance) line.integer("by_instance", (int64_t)instanceSerial(byInstance));
+        line.number("played_s", (double)(lived > paused ? lived - paused : 0) / s.rate, 6);
     }
 
     const char* causeOf(const AudioVoiceLine& line) {
@@ -736,7 +750,7 @@ namespace {
                 if (!line.eventPath.empty()) out.text("event_path", line.eventPath);
                 if (line.variation >= 0) out.integer("variation", line.variation);
                 if (line.layer >= 0) out.integer("layer", line.layer);
-                if (line.instance) out.integer("instance", (int64_t)line.instance);
+                if (line.instance) out.integer("instance", (int64_t)instanceSerial(line.instance));
                 if (line.delayFrames) out.integer("delay_samples", line.delayFrames);
                 if (line.loadDelay) {
                     out.integer("load_delay", line.loadDelay);
@@ -749,7 +763,7 @@ namespace {
             case AudioVoiceLine::Kind::Stop: {
                 ActiveVoice* voice = findVoice(line.handle);
                 if (!voice) break;
-                stopLine(*voice, line.reason);
+                stopLine(*voice, line.reason, line.byInstance);
                 s.voices.erase(s.voices.begin() + (voice - s.voices.data()));
                 break;
             }
@@ -773,7 +787,9 @@ namespace {
                 if (path.empty()) out.null("entity").null("entity_id");
                 else out.text("entity", path).integer("entity_id", (int64_t)line.entity);
                 out.text("scene", sceneNameOf(line.scene)).text("group", mixerGroupName(line.group)).text("group_id", line.group);
-                out.text("owner", line.owner).text("reason", line.reason).integer("priority", line.priority);
+                out.text("owner", line.owner).text("cause", line.cause).text("reason", line.reason).integer("priority", line.priority);
+                if (line.trigger[0]) out.text("trigger", line.trigger);
+                if (line.impactSpeed >= 0.0f) out.number("impact_speed", line.impactSpeed, 4);
                 if (!line.event.empty()) out.text("event", line.event);
                 if (!line.eventPath.empty()) out.text("event_path", line.eventPath);
                 break;
