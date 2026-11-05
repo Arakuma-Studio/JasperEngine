@@ -31,6 +31,7 @@
 #include "animation/ClipRecordHooks.h"
 #include "AppSettings.h"
 #include "shortcuts/CommandCatalog.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <map>
@@ -2484,19 +2485,22 @@ void editor::PoseAnimationWindow::drawMappingPopup(){
     }
     ImGui::SetNextWindowSize(ImVec2(Theme::dpi(560.0f), Theme::dpi(560.0f)), ImGuiCond_Appearing);
     bool open = mappingOpen;
-    if (!ImGui::BeginPopupModal("Map Bones###PoseMapBones", &open)){
+    if (!EditorModal::begin("Map Bones###PoseMapBones", &open)){
         if (!open) mappingOpen = false;
         return;
     }
     if (!mappingInfo){
         ImGui::TextUnformatted("The model is gone.");
-        if (ImGui::Button("Close")){
+        EditorModal::message("The model is gone.");
+        if (EditorModal::button("Close", "ok")){
             mappingOpen = false;
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
         return;
     }
+    EditorModal::message("Pick the skeleton bone of each humanoid slot (a field per slot; the empty text: none). Apply writes " +
+                         editor::FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(mappingInfo->model).filename()) + ".humanoid (one undo step).");
     ImGui::TextWrapped("Pick the skeleton bone of each humanoid slot. Slots marked * are required; \"Auto\" uses the name-based detection. "
                        "Apply writes %s.humanoid (one undo step).", editor::FileUtils::pathToUtf8(editor::FileUtils::pathFromUtf8(mappingInfo->model).filename()).c_str());
     ImGui::SetNextItemWidth(Theme::dpi(220.0f));
@@ -2530,6 +2534,8 @@ void editor::PoseAnimationWindow::drawMappingPopup(){
                 ImGui::Text("%s%s", info.name, info.required ? " *" : "");
                 ImGui::TableSetColumnIndex(1);
                 const std::optional<std::string>& override = mappingOverrides[b];
+                std::string agentBone = override ? *override : mappingInfo->humanoid.bones[b];
+                if (EditorModal::field(info.name, agentBone)) mappingOverrides[b] = agentBone;
                 const std::string current = override ? *override : mappingInfo->humanoid.bones[b];
                 const std::string preview = current.empty() ? std::string("(none)") : current;
                 ImGui::SetNextItemWidth(-Theme::dpi(50.0f));
@@ -2564,6 +2570,7 @@ void editor::PoseAnimationWindow::drawMappingPopup(){
         ImGui::EndTable();
     }
     const bool unreadable = !mappingInfo->sidecarError.empty();
+    EditorModal::error(!mappingError.empty() ? mappingError : unreadable ? PoseRigProvider::unreadableSidecarRefusal(mappingInfo->sidecarError) : std::string());
     if (!mappingError.empty()){
         ImGui::TextColored(Theme::Colors::ErrorText, "%s", mappingError.c_str());
     }else if (unreadable){
@@ -2574,10 +2581,10 @@ void editor::PoseAnimationWindow::drawMappingPopup(){
         ImGui::NewLine();
     }
     ImGui::BeginDisabled(unreadable);
-    if (ImGui::Button("Apply")) applyMapping();
+    if (EditorModal::button("Apply", "ok")) applyMapping();
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")){
+    if (EditorModal::button("Cancel", "cancel")){
         mappingOpen = false;
         ImGui::CloseCurrentPopup();
     }

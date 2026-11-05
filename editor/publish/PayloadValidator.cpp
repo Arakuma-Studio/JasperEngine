@@ -211,7 +211,15 @@ namespace {
                 return true;
             }};
         checkContent(content, relative + "!" + assets, findings);
-        if (!bundle) {
+        if (bundle) {
+            // bundles have no apksigner: jarsigner's signature block is what Google Play looks for
+            const bool isSigned = std::any_of(names.begin(), names.end(), [](const std::string& name) {
+                if (name.rfind("META-INF/", 0) != 0) return false;
+                const std::string extension = fs::path(name).extension().string();
+                return extension == ".RSA" || extension == ".EC" || extension == ".DSA";
+            });
+            if (!isSigned) findings.push_back(relative + ": the bundle is not signed (no signature block in META-INF)");
+        } else {
             std::string output;
             bool verified = false;
             if (target.verifyApk) {

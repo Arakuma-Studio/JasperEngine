@@ -4,12 +4,14 @@
 #ifndef CAMERA_COMPONENT_H
 #define CAMERA_COMPONENT_H
 
+#include "camera/CameraType.h"
 #include "math/Vector3.h"
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
 #include "math/Plane.h"
 #include "texture/Framebuffer.h"
 #include "render/CameraRender.h"
+#include "render/OrderIndependentTransparency.h"
 #include "registry/TagManager.h"
 
 #define DEFAULT_ORTHO_NEAR          -10
@@ -18,12 +20,6 @@
 #define DEFAULT_PERSPECTIVE_FAR     200
 
 namespace jasperengine{
-
-    enum class CameraType{
-        CAMERA_UI,
-        CAMERA_ORTHO,
-        CAMERA_PERSPECTIVE
-    };
 
     enum FrustumPlane{
         FRUSTUM_PLANE_NEAR   = 0,
@@ -92,6 +88,11 @@ namespace jasperengine{
 
         // draw transparent renderables back to front (needs depthTest)
         bool transparentSort = true;
+        // how alpha-blended materials draw (spec S57 R4): Sorted back to front, or Order
+        // Independent (weighted blended OIT, Sorted where the device cannot), whose depth weight
+        // takes view distances times oitWeightScale (lower for large scenes)
+        TransparencyMode transparencyMode = TransparencyMode::SORTED;
+        float oitWeightScale = 1.0f;
 
         // false makes the camera ignore the depth buffer and composite in submission
         // order, like a 2D canvas. Instance and point batches follow the main camera

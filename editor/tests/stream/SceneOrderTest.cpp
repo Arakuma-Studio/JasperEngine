@@ -8,6 +8,7 @@
 // and test_scene_order.py in a running editor).
 
 #include "Project.h"
+#include "component/Transform.h"
 #include "Stream.h"
 #include "util/ProjectUtils.h"
 

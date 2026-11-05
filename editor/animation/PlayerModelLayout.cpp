@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "PlayerModelLayout.h"
+#include "component/ModelComponent.h"
+#include "component/Transform.h"
 
 #include "Out.h"
 #include "Project.h"

@@ -1,0 +1,122 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest a148f78af4d7bd60
+--- 0
+position: [0, 0.5113953, -78]
+rotation: [75, 0, -0, -0]
+scale: [0, 1e-45, 0.9939436]
+worldPosition: [-118, -58.142857, 3639.8254]
+worldRotation: [3e+38, 90.71429, 0.19684908, -0]
+worldScale: [-0.97333413, -17.714285, 0]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: true
+billboardRotation: [1e-45, 44, 0.88133764, 0]
+billboard: true
+fakeBillboard: true
+cylindricalBillboard: false
+--- 1
+position: [-0.19949938, -61, 0]
+rotation: [-0, 6638.0083, -46.142857, 0]
+scale: [-142.14285, 0, -11.428572]
+worldPosition: [0, -0.063699126, 3615.1743]
+worldRotation: [91.57143, 0.4174221, -0.9000512, -0.41672647]
+worldScale: [0, 3e+38, -9]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: false
+billboardRotation: [64, 0, 3706.329, 0.21141154]
+billboard: false
+fakeBillboard: false
+cylindricalBillboard: false
+--- 2
+position: [5662.6943, 1e-45, -61]
+rotation: [-73, 0, -136.28572, 2662.8408]
+scale: [-0.9209442, -110.71429, -66.28571]
+worldPosition: [0.72493607, 107.14286, -0.5025479]
+worldRotation: [72, 0.5220561, 1e-45, 0]
+worldScale: [0.72728044, 24, 0.40913504]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: true
+billboardRotation: [-31, 3e+38, 0.9037837, 67.71429]
+billboard: true
+fakeBillboard: false
+cylindricalBillboard: false
+--- 3
+position: [0, 3e+38, -0.59286666]
+rotation: [7781.725, 9826.787, -13, 8070.2656]
+scale: [3e+38, 0.51677805, 0]
+worldPosition: [4971.4673, 0, 3e+38]
+worldRotation: [-0.88260496, 9474.415, 1e-45, 3e+38]
+worldScale: [0.030816954, 12, 0]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: true
+billboardRotation: [7676.4194, 6372.1387, -3, 2885.4827]
+billboard: false
+fakeBillboard: true
+cylindricalBillboard: false
+--- 4
+position: [14, 1e-45, -0]
+rotation: [93, -0.7739484, 0.08736232, -0.42857143]
+scale: [-58, 0, 1e-45]
+worldPosition: [-0.054761875, 1e-45, 9632.263]
+worldRotation: [-2.857143, -30, 0, 0]
+worldScale: [4456.617, -62, 3e+38]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: true
+billboardRotation: [-13, 7979.0576, -31, 0]
+billboard: false
+fakeBillboard: false
+cylindricalBillboard: false
+--- 5
+position: [-64.85714, 0.014924055, -0.41827258]
+rotation: [63, 2127.6565, 3e+38, -50]
+scale: [56, 9558.019, -65]
+worldPosition: [5516.043, 0, -90.28571]
+worldRotation: [-12, -0, -0.13896385, 118.71429]
+worldScale: [-0, 0, 0.69949126]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: true
+billboardRotation: [3e+38, 55, -65, 1e-45]
+billboard: false
+fakeBillboard: false
+cylindricalBillboard: false
+--- 6
+position: [0.53067106, 91.42857, 91]
+rotation: [-87, 1370.8801, -7.428571, 3e+38]
+scale: [-0.4650555, 87, -67.42857]
+worldPosition: [-0.8997941, 1e-45, -0.8703558]
+worldRotation: [-39, 4915.353, 7696.6255, 7192.8545]
+worldScale: [0, -115.42857, 0]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: true
+billboardRotation: [7331.8916, 1809.5653, 0, -0]
+billboard: false
+fakeBillboard: true
+cylindricalBillboard: true
+--- 7
+position: [-95.28571, -135.14285, 1e-45]
+rotation: [1, 0, 23, 83.42857]
+scale: [-0.07202365, -16, 0]
+worldPosition: [-98.14286, 138.85715, -129.14285]
+worldRotation: [985.2211, 0.05008831, 6484.7104, -55]
+worldScale: [1e-45, 36, 76]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: true
+billboardRotation: [3e+38, 0, -79, 1e-45]
+billboard: true
+fakeBillboard: false
+cylindricalBillboard: false

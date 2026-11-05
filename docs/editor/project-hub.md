@@ -30,7 +30,8 @@ Pick a template, a **Project Name** (default "New Project") and a **Location** (
 used, else `~/JasperEngine Projects`). **Create** stays disabled while `<location>/<name>` exists
 and is not empty, with the reason. The project is created off the main thread and opens on the
 template's start scene. It is built next to the target (`<name>.importing`) and moved there whole:
-a failure or a crash midway leaves `<location>/<name>` as it was, and a failure removes the rest.
+a failure or a crash midway leaves `<location>/<name>` as it was, and a failure removes the rest
+(a crash: see [Leftovers of a crash](#leftovers-of-a-crash)).
 
 Built-in templates:
 
@@ -63,3 +64,29 @@ New projects get Git LFS settings for version control (version-control.md).
   pulled. Credentials are your credential manager's or SSH keys' (no password prompt).
 
 Both show the progress and the last lines of the log, and **Cancel** removes what was written.
+
+## Leftovers of a crash
+
+An import, a new project and **Save Project as Template...** build their copy in a staging folder
+(`<name>.importing` beside the target, `<settings dir>/templates/.staging/` for a template) with an
+owner marker beside it, `<name>.importing.lock`, whose file lock the editor holds while it copies.
+The system frees the lock when the editor dies, however it dies. So:
+
+- **An editor that was killed or crashed leaves nothing for you to find.** When an editor starts, and
+  before each import or template copy, the staging folders whose owner died are removed, and the
+  next import of the same project gets the plain name. Removing takes place off the main thread;
+  one that fails (a file still open on Windows) is written to the Console and retried next time.
+- **A second editor at work is never touched**: its lock is held. It may even import beside yours.
+- **Folders with such a name but no marker are never removed by themselves**: an editor from before
+  this feature made them, or they are your own, so they may hold your files. **Leftover Folders**
+  on the Projects and Import pages lists them with **Show in Folder** and **Remove** (which asks
+  first). So does a folder whose owner cannot be told, on a network share without file locks: an
+  import there warns in the Console that its folder will not clean up by itself. A recent project
+  with such a name is not listed.
+
+The Hub only looks in the folders it knows: the parents of your recent projects, the last location
+and the folders of copies still running (`<settings dir>/hub-staging/` notes those for as long as they
+run), one level deep. An older leftover elsewhere shows when you import into its folder.
+
+Agents: `import_project` and `create_project {template}` list leftovers in their result;
+`clear_project_leftovers` (group `editor_tools`) sweeps, lists and removes them.

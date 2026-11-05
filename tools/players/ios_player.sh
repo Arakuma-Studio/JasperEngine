@@ -38,8 +38,15 @@ for sdk in iphoneos iphonesimulator; do
         -DCMAKE_OSX_ARCHITECTURES="$archs" -DJASPERENGINE_PLAYER=ON -DGRAPHIC_BACKEND=metal \
         -DJASPERENGINE_DEVELOPMENT_BUILD="$DEV" -DJASPERENGINE_PLAYER_VARIANT="$VARIANT"
     cmake --build "$tree" --config Release --target jasperengine-player -- CODE_SIGNING_ALLOWED=NO
-    # every static library of the tree (the engine's and its libraries'), merged into one
-    mapfile -t archives < <(find "$tree" -path "*Release-$sdk*" -name '*.a' | sort)
+    # every static library of the tree (its libraries', and the engine's in Release/), merged into one;
+    # nothing under build/: Xcode's intermediates hold the same objects again (per-architecture copies,
+    # object libraries such as dav1d's), which -all_load would link twice. (No mapfile: a Mac's
+    # /bin/bash is 3.2.)
+    archives=()
+    while IFS= read -r archive; do archives+=("$archive"); done < <(find "$tree" \( -path "*Release-$sdk*" -o -path "$tree/Release/*" \) -name '*.a' -not -path "$tree/build/*" | sort)
+    repeated="$(for archive in "${archives[@]}"; do basename "$archive"; done | sort | uniq -d)"
+    [[ -z "$repeated" ]] || { echo "the same library twice in $tree: $repeated" >&2; exit 1; }
+    [[ " ${archives[*]} " == *"/libjasperengine.a "* ]] || { echo "no libjasperengine.a in $tree" >&2; exit 1; }
     [[ ${#archives[@]} -gt 0 ]] || { echo "no static libraries in $tree" >&2; exit 1; }
     mkdir -p "$tree/merged"
     libtool -static -o "$tree/merged/libJasperEnginePlayer.a" "${archives[@]}"

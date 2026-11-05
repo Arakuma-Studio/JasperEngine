@@ -10,6 +10,10 @@
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
 #include "camera/ShakerRuntime.h"
+#include "component/CameraFollowComponent.h"
+#include "component/CameraShakerComponent.h"
+#include "component/CharacterController2DComponent.h"
+#include "component/CharacterControllerComponent.h"
 #include "object/physics/Joint3D.h"
 #include "object/physics/Rigidbody.h"
 #include "McpTools.h"
@@ -37,6 +41,7 @@
 #include "input/InputControlPath.h"
 #include "Platform.h"
 #include "audio/AudioMixer.h"
+#include "audio/LoudnessMonitor.h"
 #include "subsystem/AudioSystem.h"
 #include "Project.h"
 #include "Screen.h"
@@ -631,6 +636,11 @@ Json playAudioJson() {
     Json out = {{"voices", AudioSystem::getVoiceCount()}, {"mixer_meters", meters}};
     if (!AudioSystem::isOutputAvailable()) out["output"] = "none (mixing without a device)";
     if (AudioSystem::isListenerPaused()) out["listener_paused"] = true;
+    // from the first read until Stop: a first read's value is null, the next ones measure
+    LoudnessMonitor::get().requestByAgent();
+    const LoudnessMonitor::Reading reading = LoudnessMonitor::get().reading();
+    out["loudness"] = {{"momentary_lufs", reading.momentary ? Json(std::round(*reading.momentary * 100.0) / 100.0) : Json(nullptr)},
+                       {"true_peak_dbtp", std::round(reading.truePeakDb * 100.0) / 100.0}};
     return out;
 }
 

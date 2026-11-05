@@ -15,10 +15,13 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace jasperengine;
@@ -34,8 +37,16 @@ namespace {
     // a marker not reported this long after it was written is written again (one written while
     // the stream was not live yet is never reported)
     constexpr std::chrono::milliseconds MARKER_REWRITE{100};
-    // how long start() waits for its stream to report changes
-    constexpr std::chrono::milliseconds START_LIVE_TIMEOUT{2000};
+    // how long start() waits for a stream to report changes (the live ones took about a second at
+    // most, over 900 streams on macOS 26), and how many streams it tries
+    constexpr std::chrono::milliseconds START_LIVE_TIMEOUT{1500};
+    constexpr int START_ATTEMPTS = 3;
+    // setFsEventsDeadStreamsForTesting: how many of the next streams report nothing
+    std::atomic<int> deadStreamsForTesting{0};
+    // how often a barrier asks fseventsd again for what it holds
+    constexpr std::chrono::milliseconds FLUSH_ASK{2};
+    // a barrier without a marker: the longest a flush's events take to be reported
+    constexpr std::chrono::milliseconds PLAIN_FLUSH_WAIT{100};
 
 }
 
@@ -54,6 +65,10 @@ namespace jasperengine::watch {
         void injectOverflowForTesting() override;
 
     private:
+        // the stream on `realRoot`, not yet known to be live; false when it cannot be made
+        bool openStream(std::string& error);
+        void closeStream();
+
         fs::path root;
         // what FSEvents names paths by: the root with its symlinks resolved (/var/folders/...
         // is reported as /private/var/folders/...)
@@ -61,6 +76,7 @@ namespace jasperengine::watch {
         WatchSink* sink = nullptr;
         FSEventStreamRef stream = nullptr;
         dispatch_queue_t queue = nullptr;
+        bool deadForTesting = false;
         std::mutex flushMutex;
         // the barrier (flush, start): the markers of the barrier in progress are those numbered
         // from markerFloor (0: none in progress) up to markerGeneration, the last one written;
@@ -98,6 +114,30 @@ bool FsEventsBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::stri
     realRoot = fs::weakly_canonical(root, ec).lexically_normal();
     if (ec || realRoot.empty()) realRoot = root;
 
+    // A stream that starts "since now" reports nothing until fseventsd registered it, which
+    // FSEventStreamStart does not wait for: a change in the first moments was lost now and
+    // then (FileWatcherTests.CreateModifyDeleteRename/Native on macOS 26). Started means live.
+    // On macOS 26 some new streams, 1 to 9 in 100 from run to run, are not served at all (any
+    // process, with or without a flush): 20 s later they still report nothing, so they are replaced,
+    // and a later one on the same root is served. With none live the service polls.
+    std::lock_guard<std::mutex> lock(flushMutex);
+    for (int attempt = 0; attempt < START_ATTEMPTS; attempt++) {
+        if (!openStream(error)) return false;
+        if (barrier(std::chrono::steady_clock::now() + START_LIVE_TIMEOUT)) return true;
+        closeStream();
+    }
+    error = "FSEvents reports nothing for this folder";
+    return false;
+}
+
+bool FsEventsBackend::openStream(std::string& error) {
+    deadForTesting = false;
+    for (int dead = deadStreamsForTesting.load(); dead > 0;) {
+        if (deadStreamsForTesting.compare_exchange_weak(dead, dead - 1)) {
+            deadForTesting = true;
+            break;
+        }
+    }
     CFStringRef path = CFStringCreateWithCString(nullptr, realRoot.c_str(), kCFStringEncodingUTF8);
     if (!path) {
         error = "the project path is not valid UTF-8";
@@ -131,15 +171,14 @@ bool FsEventsBackend::start(const fs::path& rootIn, WatchSink& sinkIn, std::stri
         error = "FSEventStreamStart failed";
         return false;
     }
-    // A stream that starts "since now" reports nothing until fseventsd registered it, which
-    // FSEventStreamStart does not wait for: a change in the first moments was lost now and
-    // then (FileWatcherTests.CreateModifyDeleteRename/Native on macOS 26). Started means live.
-    std::lock_guard<std::mutex> lock(flushMutex);
-    barrier(std::chrono::steady_clock::now() + START_LIVE_TIMEOUT);
     return true;
 }
 
 void FsEventsBackend::stop() {
+    closeStream();
+}
+
+void FsEventsBackend::closeStream() {
     if (stream) {
         FSEventStreamStop(stream);
         FSEventStreamSetDispatchQueue(stream, nullptr);
@@ -162,6 +201,7 @@ void FsEventsBackend::callback(ConstFSEventStreamRef, void* info, size_t count, 
 }
 
 void FsEventsBackend::handle(size_t count, const char* const* paths, const FSEventStreamEventFlags* flags) {
+    if (deadForTesting) return;
     std::vector<RawEvent> events;
     bool rootChanged = false;
     uint64_t marker = 0;
@@ -235,12 +275,14 @@ fs::path FsEventsBackend::writeMarker() {
     return path;
 }
 
-// FSEventStreamFlushSync alone is no barrier (S05 R7): it delivers what fseventsd holds, and a
-// write that completed just before it has usually not reached fseventsd yet (999 of 1,000
-// misses in FileWatchServiceTests.FlushBarrier on macOS 26). FSEvents delivers in event id
-// order, so once the stream reports a marker file written now, every change completed before
-// it has been delivered too. Markers are numbered: a late one of an earlier barrier is never
-// taken for this one's. Without a writable root it is the plain flush.
+// A flush alone is no barrier (S05 R7): it delivers what fseventsd holds, and a write that
+// completed just before it has usually not reached fseventsd yet (999 of 1,000 misses in
+// FileWatchServiceTests.FlushBarrier on macOS 26). FSEvents delivers in event id order, so once
+// the stream reports a marker file written now, every change completed before it has been
+// delivered too. Markers are numbered: a late one of an earlier barrier is never taken for this
+// one's. Without a writable root it is the plain flush.
+// FSEventStreamFlushAsync, never FlushSync: FlushSync has no timeout, and on a stream fseventsd
+// does not serve (start()) it never returns, past the deadline, so that stop() never ended either.
 bool FsEventsBackend::barrier(std::chrono::steady_clock::time_point deadline) {
     std::error_code ec;
     fs::create_directories(root / FLUSH_MARKER_FOLDER, ec);
@@ -254,7 +296,8 @@ bool FsEventsBackend::barrier(std::chrono::steady_clock::time_point deadline) {
     if (path.empty()) {
         std::lock_guard<std::mutex> lock(markerMutex);
         markerFloor = 0;
-        FSEventStreamFlushSync(stream);
+        FSEventStreamFlushAsync(stream);
+        std::this_thread::sleep_until(std::min(deadline, std::chrono::steady_clock::now() + PLAIN_FLUSH_WAIT));
         return true;
     }
     written.push_back(path);
@@ -262,12 +305,12 @@ bool FsEventsBackend::barrier(std::chrono::steady_clock::time_point deadline) {
 
     bool seen = false;
     while (true) {
-        // runs the callback for every event fseventsd holds before it returns
-        FSEventStreamFlushSync(stream);
+        // the callback reports what fseventsd holds, the marker among it, on the stream's queue
+        FSEventStreamFlushAsync(stream);
         const auto now = std::chrono::steady_clock::now();
         {
             std::unique_lock<std::mutex> lock(markerMutex);
-            markerSeenCv.wait_until(lock, std::min(deadline, now + std::chrono::milliseconds(2)), [this]() { return markerSeen; });
+            markerSeenCv.wait_until(lock, std::min(deadline, now + FLUSH_ASK), [this]() { return markerSeen; });
             if (markerSeen || std::chrono::steady_clock::now() >= deadline) {
                 seen = markerSeen;
                 markerFloor = 0;
@@ -300,6 +343,10 @@ void FsEventsBackend::injectOverflowForTesting() {
 
 std::unique_ptr<FileWatcher> jasperengine::watch::createFsEventsBackend() {
     return std::make_unique<FsEventsBackend>();
+}
+
+void jasperengine::watch::setFsEventsDeadStreamsForTesting(int count) {
+    deadStreamsForTesting = count;
 }
 
 #endif

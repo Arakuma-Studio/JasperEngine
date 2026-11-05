@@ -17,6 +17,7 @@ import time
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Physics 2D Inspector", "xvfb": "harness", "ui_probe": True}
+CI = True
 TIMEOUT = 900
 
 

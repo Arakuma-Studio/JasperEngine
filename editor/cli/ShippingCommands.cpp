@@ -308,6 +308,12 @@ int ShippingCommands::runBuild(int argc, char** argv, const char* executableName
         for (const BuildWarning& warning : result.warnings) warnings.push_back({{"code", warning.code}, {"message", warning.message}});
         report["warnings"] = warnings;
         report["notes"] = result.notes;
+        // S53 R21: what ships, by category
+        if (!result.buildReport.empty()) {
+            report["build_report"] = result.buildReport.string();
+            report["build_bytes"] = result.buildBytes;
+            report["build_categories"] = result.buildCategories;
+        }
         if (!ok) report["error"] = error;
         std::printf("%s\n", report.dump(2).c_str());
     } else {

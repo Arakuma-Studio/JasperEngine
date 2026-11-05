@@ -8,7 +8,7 @@ A runtime is a directory named by its id (<platform>-<arch>-<backend>-<flavour>[
 release variant of engine/player/variants.json, docs/specs/S34-player-size.md R4; the full player
 has the plain id):
 
-    player-info.json          schema 1: id, engineVersion, gitSha, contentFormatVersion, capacities,
+    player-info.json          schema 1: id, engineVersion, gitSha, contentFormatVersion, modelCookFormats, capacities,
                               features (the variant's modules), variant, notices,
                               executables {path: sha256}, executable
     files/                    what a build stages as it is (the executable; the web's two players
@@ -88,6 +88,16 @@ def content_format_version() -> str:
     if not major or not minor:
         raise SystemExit("engine/core/serialization/CookedScene.h has no FORMAT_MAJOR/FORMAT_MINOR")
     return f"{major.group(1)}.{minor.group(1)}"
+
+
+def model_cook_formats() -> list:
+    """The cooked model formats the player decodes (engine/core/model/CookedModels.h): an export
+    refuses a runtime without the one it writes (S53 R30)."""
+    text = (REPO / "engine/core/model/CookedModels.h").read_text(encoding="utf-8")
+    version = re.search(r"kFormatVersion = (\d+)", text)
+    if not version:
+        raise SystemExit("engine/core/model/CookedModels.h has no kFormatVersion")
+    return list(range(1, int(version.group(1)) + 1))
 
 
 def engine_version() -> str:
@@ -241,6 +251,7 @@ def package(args: argparse.Namespace) -> Path:
             "engineVersion": args.engine_version or engine_version(),
             "gitSha": git_sha(),
             "contentFormatVersion": content_format_version(),
+            "modelCookFormats": model_cook_formats(),
             "capacities": capacities(),
             "features": features,
             "variant": variant["name"],
