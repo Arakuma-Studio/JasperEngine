@@ -7,6 +7,16 @@
 // menu items as commands (S23 R42).
 
 #include "App.h"
+#include "window/HierarchyWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/MainToolbar.h"
+#include "window/ProjectWindow.h"
+#include "render/SceneRender.h"
+#include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
+#include "window/GameWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "window/TerrainEditWindow.h"
 
 #include "AppMenuCommand.h"
 #include "Backend.h"

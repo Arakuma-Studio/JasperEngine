@@ -6,6 +6,8 @@
 #include "Backend.h"
 #include "Theme.h"
 #include "util/UIProbe.h"
+#include "window/EditorModal.h"
+#include "util/FileUtils.h"
 #include <algorithm>
 #include <cstring>
 #include <utility>
@@ -144,7 +146,7 @@ void SceneSaveDialog::show() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    bool popupOpen = ImGui::BeginPopupModal("Save Scene##SaveSceneModal", nullptr, flags);
+    bool popupOpen = EditorModal::begin("Save Scene##SaveSceneModal", nullptr, flags);
 
     if (popupOpen) {
         if (ImGui::BeginChild("DirectoryBrowser", ImVec2(300, 200), true)) {
@@ -184,9 +186,17 @@ void SceneSaveDialog::show() {
         }
         ImGui::EndChild();
 
+        EditorModal::message("Where to save the scene: name and folder (a folder of the project, relative to it), then ok; or "
+                             "cancel it and save with an explicit path.");
+        // an agent gives the folder as a path, a human clicks it in the tree above
+        std::string folder = FileUtils::pathToGenericUtf8(fs::relative(m_selectedPath, m_projectPath));
+        if (EditorModal::pathField("folder", folder)) {
+            const fs::path chosen = fs::u8path(folder);
+            m_selectedPath = (chosen.is_absolute() ? chosen : m_projectPath / chosen).string();
+        }
         ImGui::TextUnformatted("Scene Name");
         ImGui::SetNextItemWidth(-1);
-        ImGui::InputText("##fileName", m_fileNameBuffer, sizeof(m_fileNameBuffer));
+        EditorModal::inputText("##fileName", "name", m_fileNameBuffer, sizeof(m_fileNameBuffer));
         UIProbe::item("sceneSave.name");
 
         const fs::path saveDir = fs::relative(m_selectedPath, m_projectPath);
@@ -196,7 +206,11 @@ void SceneSaveDialog::show() {
         const std::string typed = m_fileNameBuffer;
         const std::string fileName = withSceneExtension(typed);
         const fs::path fullPath = (fs::path(m_selectedPath) / fileName).lexically_normal();
-        const std::string problem = nameProblem(m_projectPath, fs::path(m_selectedPath), typed, m_pathProblem);
+        std::error_code folderError;
+        std::string problem = nameProblem(m_projectPath, fs::path(m_selectedPath), typed, m_pathProblem);
+        if (problem.empty() && !fs::is_directory(m_selectedPath, folderError)) {
+            problem = "The folder " + m_selectedPath + " does not exist.";
+        }
         const bool canSave = problem.empty();
 
         if (!problem.empty()) {
@@ -210,6 +224,7 @@ void SceneSaveDialog::show() {
                 ImGui::TextColored(Theme::Colors::WarningText, "%s exists and will be replaced.", fileName.c_str());
             }
         }
+        EditorModal::error(problem);
 
         ImGui::Separator();
 
@@ -218,8 +233,7 @@ void SceneSaveDialog::show() {
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - buttonsWidth));
 
         ImGui::BeginDisabled(!canSave);
-        const bool savePressed = ImGui::Button("Save", ImVec2(120, 0)) ||
-            (canSave && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Enter, false));
+        const bool savePressed = EditorModal::button("Save", "ok", ImVec2(120, 0));
         UIProbe::item("sceneSave.save");
         ImGui::EndDisabled();
         bool finished = false;
@@ -229,10 +243,10 @@ void SceneSaveDialog::show() {
             finished = true;
         }
 
-        if (!finished) {
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel", ImVec2(120, 0)) || m_cancelRequested ||
-                (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+        ImGui::SameLine();
+        if (EditorModal::button("Cancel", "cancel", ImVec2(120, 0)) || m_cancelRequested ||
+            (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
+            if (!finished) {
                 ImGui::CloseCurrentPopup();
                 finishCancel();
             }

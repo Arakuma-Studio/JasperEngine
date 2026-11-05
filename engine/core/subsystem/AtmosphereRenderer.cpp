@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "Log.h"
 #include "Engine.h"
+#include "device/QualityResolver.h"
 #include "component/FogComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
@@ -242,7 +243,8 @@ AtmosphereQuality AtmosphereRenderer::viewQuality() const{
         return Engine::getAtmosphereQuality();
     if (rs->rv().atmosphereQuality >= 0)
         return (AtmosphereQuality)rs->rv().atmosphereQuality;
-    return Engine::getAtmosphereQualityDefault();
+    // the device tier may turn the volumetrics off (QualityResolver)
+    return QualityResolver::volumetrics(Engine::getAtmosphereQualityDefault());
 }
 
 void AtmosphereRenderer::clearHeightFog(height_fog_t& block){
@@ -724,15 +726,23 @@ float AtmosphereRenderer::cameraAltitudeFade(const Transform& cameraTransform) c
 }
 
 TextureRender* AtmosphereRenderer::weatherTexture(){
-    // the component's map once loaded (it tiles), else the built-in one
-    if (!clouds->weatherMap.empty()){
-        clouds->weatherMap.setWrapU(TextureWrap::REPEAT);
-        clouds->weatherMap.setWrapV(TextureWrap::REPEAT);
-        TextureRender* render = clouds->weatherMap.getRender(nullptr);
-        if (render && render->isCreated())
-            return render;
+    // the component's map once loaded, else the built-in one
+    if (clouds->weatherMap.empty())
+        return &noiseWeather;
+    Texture* map = &clouds->weatherMap;
+    // It always tiles. Its wrap is authored data, saved with the component, so another wrap's
+    // map draws through a copy with the repeat sampler
+    if (map->getWrapU() != TextureWrap::REPEAT || map->getWrapV() != TextureWrap::REPEAT){
+        if (tiledWeatherSource != *map){
+            tiledWeatherSource = *map;
+            tiledWeatherMap = *map;
+            tiledWeatherMap.setWrapU(TextureWrap::REPEAT);
+            tiledWeatherMap.setWrapV(TextureWrap::REPEAT);
+        }
+        map = &tiledWeatherMap;
     }
-    return &noiseWeather;
+    TextureRender* render = map->getRender(nullptr);
+    return render && render->isCreated() ? render : &noiseWeather;
 }
 
 void AtmosphereRenderer::fillClouds(clouds_t& block, const CameraComponent& camera, const Transform& cameraTransform, const AtmosphereTier& tier,
@@ -1130,6 +1140,8 @@ void AtmosphereRenderer::endFrame(){
 }
 
 void AtmosphereRenderer::destroy(){
+    tiledWeatherSource = Texture();
+    tiledWeatherMap = Texture();
     for (int kind = 0; kind < PROGRAM_COUNT; kind++){
         Program& program = programs[kind];
         if (program.loaded)

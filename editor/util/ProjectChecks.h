@@ -4,7 +4,6 @@
 #pragma once
 
 #include "Generator.h"
-#include "component/ScriptComponent.h"
 #include "htmlui/compat/CompatOptions.h"
 #include "htmlui/compat/Diagnostics.h"
 #include "script/ScriptProperty.h"

@@ -9,6 +9,7 @@
 // in AnimationClipControllerTest.
 
 #include <gtest/gtest.h>
+#include "component/Transform.h"
 
 #include "support/EditorTestSupport.h"
 

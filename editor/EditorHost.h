@@ -126,6 +126,12 @@ namespace jasperengine::editor {
         virtual void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe);
         // Window > Audio > Audio Mixer with a .mixer (empty: the project's mixer, made on first use)
         virtual void openAudioMixerWindow(const std::filesystem::path& mixer = {});
+        // Window > Analysis > Build Report with an export's build-report.json (S53 R21)
+        virtual void openBuildReport(const std::filesystem::path& report);
+        // Window > Analysis > Mesh Optimization Audit (S53 R20)
+        virtual void openMeshAudit();
+        // the Console, shown and focused (an importer's failure row)
+        virtual void openConsole();
         // Window > Animation > Vertex Animation Baker with a source: a model, prefab, .anim,
         // .poseanim or Houdini / OpenVAT export ("Bake Vertex Animation...", "Import as Vertex
         // Animation..."), or a .vat (its recipe: "Open in Baker"); bakeNow runs it at once

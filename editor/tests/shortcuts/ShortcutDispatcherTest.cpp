@@ -6,6 +6,9 @@
 // the keys they must.
 
 #include "shortcuts/ShortcutTestSupport.h"
+#include "shortcuts/Chord.h"
+#include "shortcuts/CommandCatalog.h"
+#include "shortcuts/ShortcutDispatcher.h"
 
 #include <gtest/gtest.h>
 

@@ -14,8 +14,10 @@
 #include "navigation/NavTypes.h"
 #include "registry/PhysicsLayers.h"
 #include "render/AtmosphereQuality.h"
+#include "render/LightingTiers.h"
 #include "render/shadow/ShadowTiers.h"
 #include "texture/MaterialPbr.h"
+#include "device/DeviceSettings.h"
 
 #include "json.hpp"
 
@@ -84,8 +86,13 @@ namespace jasperengine::player {
         bool sdfPrimitives = true;
         bool transformAwareText = true;
         PbrTier mobilePbrTier = PbrTier::REDUCED;
+        // Project Settings > Graphics > Light Mode
+        LightMode lightMode = LightMode::AUTOMATIC;
         // per ShadowTiers platform
         std::array<ShadowTier, ShadowTiers::PLATFORM_COUNT> shadowTiers{};
+        // Project Settings > Quality > Device Tiers, the LOD biases, Thermal Response and the
+        // upload budget (spec S56): "device", what differs from the defaults
+        DeviceSettings device;
         std::vector<std::string> tags;
         std::vector<std::string> layerNames;
         std::array<uint32_t, MAX_LAYERS> collision3D{};
@@ -108,6 +115,8 @@ namespace jasperengine::player {
         int audioMaxRealVoices = 32;
         int audioMaxVoices = 256;
         int audioSampleRate = 0;
+        std::string audioOutputStage = "roundoff";
+        std::string audioIosSession = "default";
 
         PlayerConfig();
 

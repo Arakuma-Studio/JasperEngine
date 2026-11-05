@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteNormalsWindow.h"
+#include "component/TilemapComponent.h"
 
 #include "App.h"
 #include "Backend.h"

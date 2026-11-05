@@ -70,14 +70,14 @@ Environment variables go in front of `slot` (they are inherited).
 Build-queue rules (the two slots are the program's bottleneck; a cold build takes 30-50 minutes):
 - Always `WERROR=1` on `linux` and `unit-tests`: one configuration means one incremental tree shared by your
   iterations and the gate, and shared ccache hits across worktrees (a flag change recompiles everything).
-- Red controls run in your own worktree: revert the fix temporarily, rebuild incrementally, run only the regression
+- Red controls run in your own worktree: revert the fix temporarily with a patch (`git diff > fix.patch`, `git apply -R fix.patch`; never `git stash`, whose stack is shared by every worktree of the repository), rebuild incrementally, run only the regression
   tests, restore. Never a scratch copy of the repository (a cold build each).
 - One heavy job queued per agent at a time; chain related steps into one `slot` call.
 - Iterate with `SKIP_ENGINE=1`, `UNIT_SUITE=core|editor` and filters; no full suites (the lead runs them at landing).
 - Disk: the host has 301 GB for every worktree and a full gate leaves about 40 GB of build trees. Never make
   scratch copies of the repository; build no extra configurations (`CXX_STANDARD`, `SANITIZE`, `UNITY`, other
   `BUILD_TYPE`s) unless your spec needs them; once a suite has passed for the last time, delete its tree
-  (`build/linux/htmlui-tests-*`, `build/web*`, `build/android*`). The lead deletes a feature's build trees after it
+  (`build/linux/htmlui-tests-*`, `build/web*`, `build/android*`, and after an Android build `engine/workspaces/androidstudio/app/.cxx` and `app/build`, about 25 GB). The lead deletes a feature's build trees after it
   merges. The external fixture project
 (`build/fixture-unity`) does not exist on this host: tests that need it skip or fail for that reason only; say so.
 Windows, macOS and iOS cannot be built here: keep that code compiling by careful reading, `#ifdef` discipline and
@@ -90,17 +90,19 @@ scripts (each has `--check`).
 1. Every requirement and acceptance criterion of your spec is implemented, or deviated from in writing.
 2. Every bug fix has a regression test that failed without the fix: run it red first (stash or revert the fix) and
    record the command and result.
-3. Gate, from your worktree, after merging the current local `main` into your branch (`git merge main`; resolve
-   conflicts keeping both sides' intent), as AGENTS.md defines it per commit:
-   - `WERROR=1 slot tools/check-changed --base main`: it builds and runs exactly what your diff can affect (the
-     editor, the unit suites whose sources see the change, the MCP files its coverage map ties to it, web/Android
-     for engine code);
-   - your spec's own tests and red controls, and `test_protocol.py`, `test_stubs.py`, `test_docs.py` when tools,
-     Lua or docs changed;
+3. Gate (owner's rule, 2026-11-05: no full suites, anywhere). From your worktree, after merging the current local
+   `main` into your branch (`git merge main`; resolve conflicts keeping both sides' intent):
+   - `WERROR=1 SKIP_ENGINE=1 slot tools/build.sh linux` (the editor, warning-free);
+   - your spec's own unit tests and red controls, filtered (`UNIT_TEST_ARGS='--gtest_filter=...'`, `UNIT_SUITE`),
+     plus the existing unit suites of the files you changed, filtered by suite name;
+   - your MCP test files, plus `test_protocol.py`, `test_stubs.py`, `test_docs.py` when tools, Lua or docs changed;
+   - compile-only `slot tools/build.sh web` / `android` when you changed engine runtime or platform code (delete
+     the Android outputs afterwards); one smoke test only if your spec is about export or packaging;
    - the lints of the areas you changed (`tools/check_raw_writes.py`, `tools/check_stream_keys.py`,
      `tools/ci/check-hardcoded-shortcuts.py`, `tools/ci/check-notices.py`, `tools/check_agent_docs.py`).
-   Do NOT run the full unit suite, the full or slow MCP suite, or web/Android/htmlui/smoke beyond what check-changed
-   selects: the lead runs the full suite once at landing, on the merged `main`, shared by several features.
+   `tools/check-changed` only if `--dry-run` shows a narrow plan; never when it plans the whole unit or MCP suite.
+   No full unit suite, no full or slow MCP suite. Keep a watcher armed while a job of yours is queued or running,
+   and do not end your turn until it has reported.
    There is no CI: nothing checks Windows, macOS or iOS code except your reading. Say exactly what was not compiled.
    X programs run with `tools/with-xvfb.sh`, not `xvfb-run`.
 4. Docs: user docs under `docs/`, `docs/mcp/guide/*.md`, `docs/unity-glossary.md`, Lua API docs; MCP tool docs

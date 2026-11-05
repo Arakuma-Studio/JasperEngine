@@ -27,6 +27,7 @@
 #include <cstdint>
 
 #include "imgui.h"
+#include "render/preview/MaterialRender.h"
 
 namespace fs = std::filesystem;
 
