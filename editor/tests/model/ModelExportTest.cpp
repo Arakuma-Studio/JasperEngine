@@ -86,8 +86,8 @@ TEST(ModelExport, ALoadErrorFailsTheExportNamingTheFile){
     jasperengine::test::TestTempDir dir{"model-export-error"};
     std::unique_ptr<Project> project = loadFixture(dir.path());
     ASSERT_TRUE(project);
-    // a model that requires an extension the engine does not read (S53 R5): it cooks, the
-    // game would load it without that extension, so the export stops
+    // a model that requires an extension the engine does not read (S53 R5): the game would load
+    // it without that extension, so it does not cook and the export stops
     const nlohmann::ordered_json gltf = {{"asset", {{"version", "2.0"}}}, {"extensionsUsed", {"VENDOR_required_test"}},
             {"extensionsRequired", {"VENDOR_required_test"}}, {"meshes", nlohmann::ordered_json::array()}};
     std::ofstream(dir.path() / "assets" / "models" / "unread.gltf") << gltf.dump();

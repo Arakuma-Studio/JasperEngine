@@ -57,8 +57,8 @@ puts settings back to their defaults. They live in the model's `.meta` under
 ### What the loader finds
 
 `inspect_models` with `paths` returns `load_diagnostics`, what a game's loader finds in the source,
-and issues from them: `gltf-required-extension` (an extension the engine cannot read: the export
-fails until the model is exported again without it), `gltf-load-warning`, and
+and issues from them: `gltf-required-extension` (an extension the engine cannot read: the model's
+status is `failed` and exports stop until it is exported again without it), `gltf-load-warning`, and
 `gltf-cook-transcodes` (Draco, WebP: the cook removes them, nothing to do). A record's
 `transcoded` lists what the cook decoded; `authored_lod_primitives` counts the primitives whose
 levels are the file's own `MSFT_lod`.

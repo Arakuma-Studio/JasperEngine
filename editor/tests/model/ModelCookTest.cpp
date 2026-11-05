@@ -555,7 +555,7 @@ TEST(ModelCook, CooksAreDeterministicAndCachedByContent){
     cache.close();
 }
 
-TEST(ModelCook, AFileItCannotRewriteShipsAsItIsAndAnUnreadExtensionIsAnError){
+TEST(ModelCook, AFileItCannotRewriteShipsAsItIsAndAnUnreadExtensionFails){
     ScratchDir scratch("model-cook-foreign");
     std::vector<uint8_t> bytes = makeTestModel(6, true);
     GltfDocument doc;
@@ -573,17 +573,17 @@ TEST(ModelCook, AFileItCannotRewriteShipsAsItIsAndAnUnreadExtensionIsAnError){
     ASSERT_FALSE(cooked.record.warnings.empty());
     EXPECT_NE(cooked.record.warnings[0].find("VENDOR_blob"), std::string::npos) << cooked.record.warnings[0];
 
-    // a required extension the engine does not read: the cook keeps it, and records the
-    // loader's Error that fails an export (R5)
+    // a required extension the engine does not read: the cook fails with the loader's Error,
+    // and its record keeps the finding (R5)
     root = doc.json();
     root["extensionsRequired"] = GJson::array({"VENDOR_required_test"});
     root["extensionsUsed"] = GJson::array({"VENDOR_required_test"});
     const fs::path unread = writeSource(scratch, GltfDocument::writeGlb(root, doc.getBuffers()[0]), "unread.glb");
-    ASSERT_TRUE(cookModel(unread, ResolvedModelSettings(), cooked));
+    const ::testing::AssertionResult refused = cookModel(unread, ResolvedModelSettings(), cooked);
+    ASSERT_FALSE(refused);
+    EXPECT_NE(std::string(refused.message()).find("VENDOR_required_test"), std::string::npos) << refused.message();
     const std::string blocking = ModelSourceDecode::blockingError(cooked.record.diagnostics);
     EXPECT_NE(blocking.find("VENDOR_required_test"), std::string::npos) << blocking;
-    const std::vector<std::string> required = cooked.doc.requiredExtensions();
-    EXPECT_NE(std::find(required.begin(), required.end(), "VENDOR_required_test"), required.end());
 
     // Draco listed but used by no primitive: dropped, a player has nothing to decode
     root = doc.json();

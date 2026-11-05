@@ -48,8 +48,9 @@ and acts on what it finds:
   (`JE_mesh_lods`, with the file's `MSFT_screencoverage` as each level's `coverage`); the others set
   how many levels the cook generates and how small the last one gets. Generate LODs Off bakes none.
 - **What the loader reports** (an extension it cannot read, a stream it cannot decode) shows in the
-  Inspector, on the model's badge and in `inspect_models`. An error fails the export naming the
-  file; a warning does not.
+  Inspector, on the model's badge and in `inspect_models`. An error fails the cook, and an export
+  stops naming the file (the editor still loads the source so you can look at it); a warning does
+  not.
 
 ## Settings (the Model Import inspector)
 

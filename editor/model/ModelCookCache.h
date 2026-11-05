@@ -32,7 +32,7 @@ namespace jasperengine::editor {
 
     // bumped when the cook's output changes for the same inputs (a pass, the layout it writes,
     // the codec parameters): every model cooks again through the cache key
-    constexpr int kModelCookVersion = 2;
+    constexpr int kModelCookVersion = 3;
 
     // geometry as the GPU holds it
     struct ModelGeometryStats {

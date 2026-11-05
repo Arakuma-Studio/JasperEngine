@@ -351,7 +351,8 @@ void ModelImporterView::drawBeforeAfter(){
         return;
     const ModelAuditRow& row = rows[0];
     const bool cooked = row.hasState && row.state.status == ModelCookStatus::Cooked && !row.state.stale;
-    const char* pending = row.hasState && (row.state.status == ModelCookStatus::Queued || row.state.status == ModelCookStatus::Cooking || row.state.stale)
+    const char* pending = row.hasState && row.state.status == ModelCookStatus::Failed ? "failed"
+                          : row.hasState && (row.state.status == ModelCookStatus::Queued || row.state.status == ModelCookStatus::Cooking || row.state.stale)
                               ? "cooking..." : "not cooked yet";
     const ModelCookRecord& record = row.state.record;
     // the levels: a read-only bar and the table
@@ -435,7 +436,8 @@ void ModelImporterView::drawBeforeAfter(){
          bytesText(record.after.memoryBytes()), savedText((double)record.before.memoryBytes(), (double)record.after.memoryBytes()));
     line("Download", cooked ? bytesText(record.sourceBytes) : bytesText(row.header.fileBytes), bytesText(record.diskBytes),
          savedText((double)record.sourceBytes, (double)record.diskBytes));
-    line("Visual Change", "", record.visualChange(), "");
+    if (cooked)
+        line("Visual Change", "", record.visualChange(), "");
     ImGui::EndTable();
 }
 

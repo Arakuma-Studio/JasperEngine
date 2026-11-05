@@ -527,6 +527,8 @@ void ModelCookQueue::collectJobs(){
                 state.stale = false;
                 state.error = job->result.error;
                 state.resolved = job->request.settings;
+                // the loader's findings that explain it (R5)
+                state.record = job->result.record;
             }
             if (landed)
                 reloads.push_back(job->assetPath);

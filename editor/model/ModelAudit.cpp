@@ -108,10 +108,16 @@ ModelAuditRow ModelAudit::row(Project& project, const std::string& assetPath, Mo
     row.usage = usage.usageOf(assetPath);
     const bool baked = row.hasState && row.state.status == ModelCookStatus::Cooked && row.state.record.lodPrimitives > 0;
     row.readWrite = usage.decideReadWrite(assetPath, row.resolved.readWrite, project.getModelSettings().scriptMeshData, row.header.skinned, baked);
-    if (row.hasState && row.state.status == ModelCookStatus::Cooked)
+    if (row.hasState && (row.state.status == ModelCookStatus::Cooked || row.state.status == ModelCookStatus::Failed))
         row.diagnostics = row.state.record.diagnostics;
+    // the last load's, unless the cook's record has the finding: their messages name the file by
+    // different paths (asset-relative, absolute), so a finding is what it is about
     for (const GltfDiagnostic& diagnostic : ModelLoadDiagnostics::get(absolute.generic_string())){
-        if (std::find(row.diagnostics.begin(), row.diagnostics.end(), diagnostic) == row.diagnostics.end())
+        const bool known = std::any_of(row.diagnostics.begin(), row.diagnostics.end(), [&diagnostic](const GltfDiagnostic& d){
+            return d.severity == diagnostic.severity && d.extension == diagnostic.extension && d.part == diagnostic.part &&
+                   d.cookFixes == diagnostic.cookFixes && (!d.extension.empty() || !d.part.empty() || d.message == diagnostic.message);
+        });
+        if (!known)
             row.diagnostics.push_back(diagnostic);
     }
     row.issues = issues(row);
@@ -140,17 +146,23 @@ std::vector<ModelIssue> ModelAudit::issues(const ModelAuditRow& row){
             add("gltf-cook-transcodes", "info", diagnostic.text());
         }else if (diagnostic.severity == GltfDiagnosticSeverity::Error){
             ModelIssue* issue = add(diagnostic.extension.empty() ? "gltf-load-error" : "gltf-required-extension", "error",
-                                    diagnostic.text() + "; export fails until it is fixed");
+                                    diagnostic.text() + "; it does not cook, and exports fail, until it is fixed");
             issue->fix = ModelIssue::Fix::OpenImporter;
             issue->fixLabel = "Open the importer";
         }else if (diagnostic.severity == GltfDiagnosticSeverity::Warning){
             add("gltf-load-warning", "warning", diagnostic.text());
         }
     }
+    // (a cook the loader's error stopped is that issue, once)
+    const bool explained = row.hasState && std::any_of(row.diagnostics.begin(), row.diagnostics.end(), [&row](const GltfDiagnostic& d){
+        return d.severity == GltfDiagnosticSeverity::Error && d.text() == row.state.error;
+    });
     if (row.hasState && row.state.status == ModelCookStatus::Failed){
-        ModelIssue* issue = add("mesh-cook-failed", "error", name + ": the cook failed: " + row.state.error);
-        issue->fix = ModelIssue::Fix::Reimport;
-        issue->fixLabel = "Reimport";
+        if (!explained){
+            ModelIssue* issue = add("mesh-cook-failed", "error", name + ": the cook failed: " + row.state.error);
+            issue->fix = ModelIssue::Fix::Reimport;
+            issue->fixLabel = "Reimport";
+        }
     }else if (!row.hasState || row.state.status == ModelCookStatus::None){
         ModelIssue* issue = add("mesh-not-cooked", "info", name + " is not cooked for " + std::string(modelFamilyName(row.family)) + " yet");
         issue->fix = ModelIssue::Fix::Reimport;

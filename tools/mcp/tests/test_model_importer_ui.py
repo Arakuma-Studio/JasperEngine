@@ -122,15 +122,24 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     await shot(ed, "2-model-importer-multi")
 
     # a model with a load error: the failure row and its actions
-    await ed.call("reimport_models", paths=["assets/models/unread.gltf"])
+    failed = await ed.call_raw("reimport_models", {"paths": ["assets/models/unread.gltf"]})
+    ed.check(failed.is_error, f"a model with a load error does not cook: {failed.text}")
     state = await ui(ed)
     await click(ed, entry(state, "unread.gltf"))
     await wait_item(ed, "Show in Explorer", "Inspector")
     await ui_input.frames(ed, 6)
     await shot(ed, "3-model-failure-row")
+    # selected and shown, its thumbnail has loaded the source: one finding whichever path named it,
+    # and a failed status, no measured cook
+    model = (await ed.call("inspect_models", paths=["assets/models/unread.gltf"]))["models"][0]
+    ed.check_eq(model["status"], "failed", "the row's status")
+    ed.check_eq(model["cook"]["status"], "failed", "its cook")
+    found = [d for d in model["load_diagnostics"] if d["extension"] == "VENDOR_required_test"]
+    ed.check_eq(len(found), 1, f"one finding: {model['load_diagnostics']}")
+    ed.check_eq(len([i for i in model["issues"] if i["severity"] == "error"]), 1, f"one error row: {model['issues']}")
 
     # Window > Analysis > Mesh Optimization Audit
-    await ed.call("run_command", command="window.meshAudit")
+    await ed.call("run_command", id="window.meshAudit")
     await wait_item(ed, "Duplicate %")
     await ui_input.frames(ed, 10)
     await shot(ed, "4-mesh-audit")
@@ -145,7 +154,7 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     data = json.loads(report.read_text())
     ed.check(data["categories"]["models"] > 0, f"the models' bytes: {data['categories']}")
     ed.check(any(f.get("source") == "models/grid.glb" for f in data["largest"]), f"the grid's cook among the largest: {data['largest']}")
-    await ed.call("run_command", command="window.buildReport")
+    await ed.call("run_command", id="window.buildReport")
     await wait_item(ed, "Source Size")
     await ui_input.frames(ed, 10)
     await shot(ed, "5-build-report")

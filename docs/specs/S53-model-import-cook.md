@@ -400,8 +400,9 @@ Out of scope:
 - **Load findings (R5):** the Inspector rows, the Audit, the badge and `inspect_models`
   (`load_diagnostics`, issue codes `gltf-required-extension`, `gltf-load-error`,
   `gltf-load-warning`, `gltf-cook-transcodes`) show the cook record's findings and the model's
-  last load (`ModelLoadDiagnostics`). An Error the cook does not remove fails the export naming
-  the file. "Cook anyway" (R18) recooks a Draco or WebP model not cooked yet; an unread extension
+  last load (`ModelLoadDiagnostics`), one row per finding whichever path its message names. An
+  Error the cook does not remove fails the cook (Status `failed`, no measured numbers), and so the
+  export, naming the file; the editor keeps loading the source. "Cook anyway" (R18) recooks a Draco or WebP model not cooked yet; an unread extension
   offers Open Console and Show in Explorer.
 - **The index codec turns triangles:** `KHR_meshopt_compression`'s TRIANGLES mode may rotate a
   triangle's corners (winding kept). LOD 0's lists take one codec round trip before the levels are

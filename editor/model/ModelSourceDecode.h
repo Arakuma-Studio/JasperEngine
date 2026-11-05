@@ -49,7 +49,7 @@ namespace jasperengine::editor {
         static bool transcodeImages(GltfDocument& doc, bool basisFallback, std::vector<std::string>& transcoded, std::string& error);
 
         // the first Error of the load that the cook does not remove (an extension the engine
-        // cannot read): what fails an export (R5); empty when none
+        // cannot read): what fails the cook, and so the export (R5); empty when none
         static std::string blockingError(const std::vector<GltfDiagnostic>& diagnostics);
     };
 

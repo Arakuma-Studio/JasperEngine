@@ -174,10 +174,16 @@ async def test_load_findings(ed: Editor):
               "extensionsRequired": ["VENDOR_required_test"], "meshes": []}
     (ed.project / rel).write_text(json.dumps(unread))
     await ed.call("sync_files", paths=[rel])
-    await cooked(ed, rel)
+    # the cook fails (isError, as `call` exits 1), and says so everywhere
+    r = await ed.call_raw("reimport_models", {"paths": [rel]})
+    ed.check(r.is_error, f"a failed cook is an error: {r.text}")
+    ed.check_eq(r.structured["models"][0]["status"], "failed", "reimport_models' record")
     model = (await ed.call("inspect_models", paths=[rel]))["models"][0]
-    codes = [issue["code"] for issue in model["issues"]]
-    ed.check("gltf-required-extension" in codes, f"the loader's error is an issue: {model['issues']}")
+    ed.check_eq(model["status"], "failed", "inspect_models' status")
+    ed.check_eq(model["cook"]["status"], "failed", "its cook")
+    ed.check("record" not in model["cook"], f"no measured cook of a failed one: {model['cook']}")
+    errors = [issue["code"] for issue in model["issues"] if issue["severity"] == "error"]
+    ed.check_eq(errors, ["gltf-required-extension"], f"the loader's error is one issue: {model['issues']}")
     found = model["load_diagnostics"]
     ed.check(any(d["severity"] == "error" and d["extension"] == "VENDOR_required_test" and not d["cook_fixes"] for d in found),
              f"load_diagnostics: {found}")

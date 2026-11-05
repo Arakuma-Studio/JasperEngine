@@ -7,7 +7,6 @@
 #include "htmlui/compat/Hash.h"
 #include "io/AtomicFile.h"
 #include "model/ModelHeader.h"
-#include "model/ModelSourceDecode.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
 
@@ -77,11 +76,6 @@ ModelExportResult ModelExport::cookForExport(Project& project, ModelExportInputs
             if (result.error.empty())
                 result.error = item.assetPath + " (" + modelFamilyName(item.family) + "): " + item.result.error;
         }else{
-            // an Error the loader reports in the source fails the export (S53 R5): the game would
-            // load the model wrong or not at all
-            const std::string blocking = ModelSourceDecode::blockingError(item.result.record.diagnostics);
-            if (!blocking.empty() && result.error.empty())
-                result.error = item.assetPath + ": " + blocking;
             item.result.cacheHit ? result.cacheHits++ : result.cooked++;
             const bool baked = item.result.record.lodPrimitives > 0;
             row.readWrite[item.family] = ModelUsageIndex::decide(inputs.usage[item.assetPath], inputs.scriptReaders, item.request.settings.readWrite,

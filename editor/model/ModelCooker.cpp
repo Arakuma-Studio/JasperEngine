@@ -1655,6 +1655,13 @@ namespace {
         if (!ModelSourceDecode::inspect(request.source, request.assetPath, load, error))
             return false;
         record.diagnostics = load.result.diagnostics;
+        // a game would load it wrong: the cook fails, and with it the export (R5). The editor keeps
+        // loading the source, so the model can still be looked at.
+        const std::string blocking = ModelSourceDecode::blockingError(record.diagnostics);
+        if (!blocking.empty()){
+            error = blocking;
+            return false;
+        }
         const bool draco = std::find(load.result.handledExtensions.begin(), load.result.handledExtensions.end(),
                                      "KHR_draco_mesh_compression") != load.result.handledExtensions.end();
         if (!ModelSourceDecode::takeDraco(doc, load, error))
