@@ -612,6 +612,9 @@ namespace {
     private:
         Scene* scene;
         bool lentBaseColor = false;     // the mesh being collected shows a fluid's output
+        // the mesh being collected is a 3D mesh that may get detail levels (not a terrain,
+        // sprite, tilemap or polygon: RenderSystem::updateMeshLods)
+        bool meshHasLevels = false;
         const std::vector<MeshShaderEnvironment>& environments;
         // the post colour bit's states, for the points, lines and sky (meshes: environments)
         const std::vector<bool>& postColor;
@@ -689,9 +692,13 @@ namespace {
                 for (const MeshShaderEnvironment& environment : environments){
                     const SubmeshShaderVariant variant = RenderSystem::getSubmeshShaderVariant(environment, inputs);
                     // the reference takes the variant's built-in Lit defines (lobes, Lit Quality)
-                    const std::string meshShaderSrc = RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines);
-                    const uint16_t meshShaderId = ShaderPool::registerCustomShader(meshShaderSrc);
+                    const std::string meshShader = RenderSystem::getSubmeshShaderReference(mesh, submesh, sceneMeshShader, variant.litDefines);
+                    const uint16_t meshShaderId = ShaderPool::registerCustomShader(meshShader);
                     insertKeys(ShaderType::MESH, variant.properties, meshShaderId);
+                    // its LOD cross-fade variant (spec S54 R10): only for a mesh that can fade,
+                    // so with Cross Fade or Mesh LOD off a build ships none
+                    if (meshMayFade(mesh, submesh, meshShader, depthShaderId))
+                        insertKeys(ShaderType::MESH, variant.properties | ShaderPool::getLodFadeProperty(), meshShaderId);
                     // the OIT render of an alpha-blended submesh (RenderSystem::loadSubmeshOit): its
                     // material's blend decides at load, so any that may blend
                     if (environment.oit && !hasPass && !terrain &&
@@ -736,6 +743,7 @@ namespace {
             const bool sprite = registry->findComponent<SpriteComponent>(entity) != nullptr;
             const bool tilemap = registry->findComponent<TilemapComponent>(entity) != nullptr;
             const bool polygon = registry->findComponent<MeshPolygonComponent>(entity) != nullptr;
+            meshHasLevels = !(terrain || sprite || tilemap || polygon);
             if (terrain || sprite || tilemap || polygon){
                 // A terrain without a height map is never built, see MeshSystem::createOrUpdateTerrain
                 if (terrain && terrain->heightMap.empty()){
@@ -776,6 +784,14 @@ namespace {
             }
         }
 
+        // RenderSystem's rules (updateMeshLods, loadMesh's lodFadeCapable): levels and a fade
+        // for a triangle mesh of the built-in shaders, with the scene's and its own settings on
+        bool meshMayFade(const MeshComponent& mesh, const Submesh& submesh, const std::string& meshShader, uint16_t depthShaderId) const{
+            return meshHasLevels && scene->isMeshLodEnabled() && scene->isMeshLodCrossFade() && mesh.lodEnabled &&
+                   mesh.lodFadeMode == LodFadeMode::CROSS_FADE && submesh.primitiveType == PrimitiveType::TRIANGLES &&
+                   (meshShader.empty() || ShaderReference::isBuiltin(meshShader)) && depthShaderId == 0;
+        }
+
         // the submesh as it draws with a texture lent to its base colour
         static Submesh lent(Submesh submesh){
             static Framebuffer lentOutput;   // never made: it only makes the texture non-empty
@@ -788,6 +804,7 @@ namespace {
         // and the renderer settings of the mesh they load into
         void collectModelSubmeshes(EntityRegistry* registry, Entity entity, const MeshComponent& mesh, const std::vector<Submesh>& probed,
                                    bool vatMesh = false){
+            meshHasLevels = true;
             const InstancedMeshComponent* instmesh = registry ? registry->findComponent<InstancedMeshComponent>(entity) : nullptr;
             const bool mirror = registry && registry->findComponent<MirrorComponent>(entity) != nullptr;
             const bool lattice = registry && LatticeRender::isLatticeTarget(registry, entity);

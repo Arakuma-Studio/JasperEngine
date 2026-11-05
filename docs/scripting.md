@@ -233,6 +233,34 @@ inverses for undo. Graph kinds (a material graph, an animation graph) register t
 with `GraphRegistry`. MCP `list_graph_kinds`, `get_graph`, `validate_graph` and `edit_graph`
 work on any kind. This spec ships no graph editor and no visual scripting.
 
+## Mesh detail levels from Lua
+
+A Mesh's detail level settings (docs/lod.md) are Lua properties, with the Inspector's names:
+
+| Lua | Inspector | Values |
+|---|---|---|
+| `mesh.lodEnabled`, `mesh.lodBias` | Detail Levels, Detail Bias | bool; above 1 keeps detail longer |
+| `mesh.fadeMode` | Fade Mode | `LodFadeMode.CROSS_FADE` (default), `LodFadeMode.NONE` |
+| `mesh.animateCrossFade` | Animate Cross-fading | bool (default true): fade over the scene's Cross-fade Duration |
+| `mesh.fadeTransitionWidth` | Fade Transition Width | 0..1 (default 0.1): the distance fade, and always an Instanced Mesh's |
+| `mesh.cullBelow` | Cull Below Screen Height | 0..1 share of the view's height (0: never culled) |
+| `mesh:forceLod(level)`, `mesh.forcedLod` | | draws that level in every view; -1 is automatic again |
+| `mesh.currentLod` (read-only) | | the level the main view drew last (4: culled for its size) |
+| `scene.meshLodEnabled`, `scene.meshLodThreshold` | Mesh Detail (LOD) Enabled, Threshold | bool; pixels |
+| `scene.crossFade`, `scene.crossFadeDuration` | Cross Fade, Cross-fade Duration | bool; 0.05..2 seconds |
+
+```lua
+local mesh = Mesh(scene, self.entity)
+mesh.fadeMode = LodFadeMode.CROSS_FADE
+mesh.cullBelow = 0.02      -- not drawn under 2 % of the screen's height
+mesh:forceLod(2)           -- a cutscene keeps it at LOD 2
+mesh:forceLod(-1)          -- automatic again
+print(mesh.currentLod)
+```
+
+A fading object draws twice for the fade's duration; with `scene.crossFade` off no fade shader
+is built or shipped.
+
 ## Device tiers: Device
 
 `Device` is the device the game runs on (`docs/device-tiers.md`):

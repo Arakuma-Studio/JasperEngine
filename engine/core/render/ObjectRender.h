@@ -80,7 +80,14 @@ namespace jasperengine {
         // built on first use too: a draw whose transform mirrors the mesh (its triangles turn on
         // screen) keeps culling its back faces and gl_FrontFacing true on its front
         // (RenderSystem::isMirroredDraw)
-        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false);
+        // lodFadeShader draws with the pipeline's LOD cross-fade variant on that shader (the
+        // submesh's MESH 'Lfd' variant, whose bindings are its shader's; spec S54 R6), made on
+        // first use and shared like the mirrored one; false while it is not ready
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false, ShaderRender* lodFadeShader = nullptr);
+        // that fade variant made (asked for on the first call) and warm: a fade may start
+        bool isLodFadeReady(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader);
+        // the backend id of the pipeline the last beginDraw applied (0: none; diagnostics, tests)
+        uint32_t getAppliedPipelineId() const;
         // the pipeline of that state from the pipeline cache (created on first use), applied
         // unless it is the one applied last in this pass; false while the shader is not ready
         bool beginDraw(const PipelineState& state);

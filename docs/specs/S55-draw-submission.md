@@ -228,12 +228,18 @@ From `jasper-render.md`, with file and line citations there:
 - **Shadow LOD Bias** is S56's `quality.shadow_lod_bias` (`QualityResolver::shadowLodBias()`, contract
   C4): a multiplier of the error a shadow pass accepts, which S55 applies the same way to point
   light faces (which now select levels at all), reflection probe faces and render-to-texture cameras.
-- **New projects take `quality.shadow_lod_bias: 0.5`** (owner decision): every built-in template sets
-  it (`tools/templates/make_project_templates.py`), so a new project's shadow maps, point light faces,
-  probes and render-to-texture cameras accept twice the error of their view: one detail level coarser
-  on curved surfaces, where a level halves the triangles and the deviation grows with the square of
-  the edges. A project.yaml without the key (every project made before) keeps S56's 1.0 and renders as
-  it did (`NewProjectShadowLodBias`). The mesh bench is generated with 0.5, as a new project.
+- **New projects keep `quality.shadow_lod_bias` at 1.0.** The owner's decision was 0.5 in every template
+  if that is one coarser level, else the value that is. Measured: doubling the allowed error is 1.04
+  levels on the fixture sphere's chain. S54 then landed `SHADOW_LOD_COARSER` (2), which already doubles
+  it at 1.0, so 1.0 is the one coarser level and 0.5 would be about two. The templates set no key, and
+  old and new projects read the same value (`NewProjectShadowLodBias`). Reversible by setting the key.
+- **Fading draws stay single draws.** S54's fade variant draws both levels alone, on `Lfd`'s pipeline;
+  they never join a batch and no 'Aui' + 'Lfd' program exists. They sort after the others of their
+  priority (`buildVisibleQueue` groups within runs of one priority and fade state); non-fading draws
+  keep their plain pipelines and early depth. `objectLodFade()` is the lane on both paths, so a batch
+  that carries fades later needs no shader change.
+- **Probe faces and render-to-texture cameras** keep S55 R5's Shadow LOD Bias in `computeLodView`. S54's
+  notes say probe captures keep LOD 0; R5 asks otherwise, and at bias 1.0 they select by their own view.
 - **Static terrain casters:** a terrain with `staticShadowCaster` draws, in each shadow slot, a cut
   of its own selected from the slot's light camera (from above the cascade's centre by its radius,
   so bigger texels take coarser nodes); it no longer depends on the camera and stays in the S10

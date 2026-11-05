@@ -351,8 +351,12 @@ namespace jasperengine{
         bool shadowCascadeBlend = true;
 
         // off builds no levels at all; a detail level is drawn once its error projects below this many pixels
-        bool meshLodEnabled = false;
+        bool meshLodEnabled = true;
         float meshLodThreshold = 1.0f;
+        // level changes cross-fade with a dither over this many seconds (spec S54 R6); off builds
+        // and ships no fade shader
+        bool meshLodCrossFade = true;
+        float meshLodCrossFadeDuration = 0.5f;
 
         // depth-only pass before the opaque draws; pays off with heavy overdraw
         bool depthPrepassEnabled = false;

@@ -59,6 +59,8 @@ namespace jasperengine{
         // a reference acquired by the caller in the current context (replaces one of that kind
         // and type from an earlier context)
         void add(uint8_t kind, uint8_t type, sg_pipeline pipeline);
+        // releases the references of the kinds from `kind` on
+        void removeFrom(uint8_t kind);
         void clear();
 
     private:
@@ -184,7 +186,7 @@ namespace jasperengine{
         uint32_t warmedPipeline[PIPELINE_TYPES];
         uint64_t warmKey[PIPELINE_TYPES];
         std::vector<std::pair<uint32_t, uint64_t>> dynamicWarm;
-        bool isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key);
+        bool isWarm(sg_pipeline pipeline, uint32_t& warmed, uint64_t& key, sg_shader shader);
         bool isDynamicWarm(sg_pipeline pipeline);
         void resetWarm();
 
@@ -207,7 +209,24 @@ namespace jasperengine{
         // (beginAccumulationDraw): unmirrored and mirrored, by the colour pipeline type they follow
         static constexpr uint8_t VARIANT_ACCUMULATE = 3;
         static constexpr uint8_t VARIANT_ACCUMULATE_MIRRORED = 4;
+        // The LOD cross-fade's (spec S54 R6): the same description on the fade variant of the
+        // shader ('Lfd', its bindings the base's: RenderSystem checks them), and its mirrored and
+        // no-cull forms (+ the kinds above); made for fading draws only
+        static constexpr uint8_t VARIANT_LOD_FADE = 5;
+        // the editor's Overdraw Draw Mode: additive, no depth test or write, no culling
+        static constexpr uint8_t VARIANT_OVERDRAW = 9;
         SokolVariantRefs variants;
+        // the fade variant's shader the VARIANT_LOD_FADE kinds were made on, and their GL warm
+        // draws (apart from the base pipelines', which the same object keeps drawing)
+        uint32_t lodFadeShaderId = SG_INVALID_ID;
+        uint32_t lodFadeWarmed[PIPELINE_TYPES];
+        uint64_t lodFadeWarmKey[PIPELINE_TYPES];
+        // the pipeline the last beginDraw applied (diagnostics, tests)
+        uint32_t appliedPipeline = SG_INVALID_ID;
+        // the pipeline of a type for a draw: a variant made on first use (mirrored, no cull,
+        // LOD fade), or the type's own; waits (false, drawWaiting) while it is being made
+        enum class Selection { READY, WAIT, FAIL };
+        Selection selectPipeline(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader, sg_pipeline& selected);
         // types whose pipeline already culls nothing (its no-cull variant is itself), by bit index
         uint16_t noCullSame;
 
@@ -265,6 +284,9 @@ namespace jasperengine{
         void resetPipelines();
 
     public:
+        // the colour draws until it is turned off take the Overdraw variant (the editor's Scene
+        // view Draw Mode; ignored outside the editor)
+        static void setOverdraw(bool overdraw);
         // pipelines made by every object and not destroyed yet (diagnostics)
         static int getLivePipelineCount();
         // the shared pipeline variants alive (SokolPipelineCache::variantCount)
@@ -316,7 +338,10 @@ namespace jasperengine{
         // disableFaceCulling draws with a variant of the pipeline that culls no face
         // (editor-only debug views; ignored elsewhere); mirrored with one whose face winding is
         // reversed (a draw whose transform mirrors the mesh)
-        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false);
+        bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false, ShaderRender* lodFadeShader = nullptr);
+        // the LOD fade variant of that draw made (asked for on the first call) and warm
+        bool isLodFadeReady(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader);
+        uint32_t getAppliedPipelineId() const;
         // the cached pipeline of that state (SokolPipelineCache), applied unless it is the one
         // applied last in this pass
         bool beginDraw(const PipelineState& state);

@@ -130,6 +130,9 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     w.boolean(scene.isCapsuleShadowsEnabled());
     w.f32(scene.getCapsuleShadowIntensity());
     w.f32(scene.getCapsuleShadowSoftness());
+    // format 1.2 (S54)
+    w.boolean(scene.isMeshLodCrossFade());
+    w.f32(scene.getMeshLodCrossFadeDuration());
 }
 
 void cook::readSceneSettings(Reader& r, Scene& scene) {
@@ -210,4 +213,8 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     scene.setCapsuleShadowsEnabled(r.boolean());
     scene.setCapsuleShadowIntensity(r.f32());
     scene.setCapsuleShadowSoftness(r.f32());
+    // a 1.1 record ends here: the LOD cross-fade keeps its defaults (format 1.2)
+    if (r.atEnd()) return;
+    scene.setMeshLodCrossFade(r.boolean());
+    scene.setMeshLodCrossFadeDuration(r.f32());
 }

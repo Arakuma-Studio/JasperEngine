@@ -258,9 +258,7 @@ def main():
     (out / "project.yaml").write_text(
         "name: Mesh Bench\ncanvasWidth: 1280\ncanvasHeight: 720\nscalingMode: letterbox\nvsync: false\n"
         "windowMode: windowed\nwindowWidth: 1280\nwindowHeight: 720\nwindowResizable: true\n"
-        "assetsDir: assets\nluaDir: scripts\nstartSceneId: 1\nscenes:\n  - filepath: Main Scene.scene\n"
-        # what a new project (the editor's templates) sets: shadow passes one detail level coarser
-        "device:\n  shadow_lod_bias: 0.5\n")
+        "assetsDir: assets\nluaDir: scripts\nstartSceneId: 1\nscenes:\n  - filepath: Main Scene.scene\n")
     identity = ("        position: [0, 0, 0]\n        rotation: [1, 0, 0, 0]\n        scale: [1, 1, 1]\n")
     (out / "Main Scene.scene").write_text(
         "id: 1\nname: Main Scene\nscene:\n  backgroundColor: [0.42, 0.55, 0.72, 1]\n  gravity2D: [0, -9.81]\n"

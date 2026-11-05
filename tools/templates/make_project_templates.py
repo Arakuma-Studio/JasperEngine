@@ -30,10 +30,6 @@ import pngdiff  # noqa: E402
 from harness import Editor  # noqa: E402
 
 THUMB_W, THUMB_H = 480, 270
-# quality.shadow_lod_bias of every new project: twice the error a shadow map accepts, one detail level
-# coarser on curved surfaces (a level halves the triangles, and a surface's deviation grows with the
-# square of its edges), which a shadow at its texel size does not show
-NEW_PROJECT_SHADOW_LOD_BIAS = 0.5
 # a template takes the project, never the editor's per-user state or build output (TemplateCatalog.cpp),
 # nor the files the editor generates into every project it opens or builds (Generator.cpp: the
 # editor-integration files, written when missing with this editor's version, and the root
@@ -202,9 +198,6 @@ async def make(template_id: str, out_dir: Path) -> None:
     info = INFO[template_id]
     async with Editor(create=True, name=info["name"], label=f"template-{template_id}") as ed:
         await BUILDERS[template_id](ed)
-        # a new project's shadow maps take coarser detail levels than their view (spec S55 R5: S56's
-        # Shadow LOD Bias; a project.yaml without the key, every project before, keeps 1)
-        await ed.call("set_project_settings", values={"quality.shadow_lod_bias": NEW_PROJECT_SHADOW_LOD_BIAS})
         await ed.call("save_project")
         await ed.call("configure_game_view", aspect="16:9")
         await ed.call("wait", frames=30)

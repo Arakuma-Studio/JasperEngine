@@ -165,6 +165,8 @@ namespace jasperengine{
         // the variant bit of a Vertex Animation (includes/vat.glsl; HAS_VAT, with `bones`
         // HAS_VAT_BONES) of MESH, DEPTH and GBUFFER, 0 for another type; getVatProperties: both
         static uint64_t getVatProperty(ShaderType shaderType, bool bones);
+        // MESH's LOD cross-fade bit ('Lfd', spec S54): the dithered variant of fading draws
+        static uint64_t getLodFadeProperty();
         static uint64_t getVatProperties(ShaderType shaderType);
         // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
         // instance, spec S55) of MESH and DEPTH, 0 for another type

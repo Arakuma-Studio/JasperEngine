@@ -56,6 +56,6 @@
     } pbrParams;
 
     float objectLodFade(){
-        return 0.0;
+        return pbrParams.normalMatrix[0][3];
     }
 #endif

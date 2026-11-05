@@ -1,10 +1,9 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The Shadow LOD Bias of new projects (spec S55 R5, Decisions): every built-in template makes a
-// project whose shadow maps take coarser detail levels (quality.shadow_lod_bias 0.5, S56's
-// multiplier), while a project.yaml without the key (every project made before) reads 1.0 and
-// renders as it did.
+// The Shadow LOD Bias of new projects (spec S55 Decisions): 1.0, which S54's SHADOW_LOD_COARSER makes
+// one detail level coarser than the camera's rule, as a project.yaml without the key reads. A template
+// that set 0.5 would cast two levels coarser.
 
 #include "Project.h"
 #include "Stream.h"
@@ -22,7 +21,7 @@ using jasperengine::test::TestTempDir;
 using namespace jasperengine::editor::hub;
 namespace fs = std::filesystem;
 
-TEST(NewProjectShadowLodBias, TemplatesCoarsenShadowsOldProjectsKeepOne) {
+TEST(NewProjectShadowLodBias, TemplatesAndOldProjectsReadOne) {
     TestTempDir dir("shadow-lod-bias");
     const std::vector<ProjectTemplate> list = templates::all(templates::userDirectory(dir.path() / "settings"));
     for (const char* id : {"empty", "3d", "2d", "ui"}) {
@@ -33,7 +32,7 @@ TEST(NewProjectShadowLodBias, TemplatesCoarsenShadowsOldProjectsKeepOne) {
         ASSERT_TRUE(templates::materialize(*info, made, error)) << id << ": " << error;
         Project project;
         Stream::decodeProject(&project, YAML::LoadFile((made / "project.yaml").string()), Workspace());
-        EXPECT_FLOAT_EQ(project.getDeviceSettings().shadowLodBias, 0.5f) << id;
+        EXPECT_FLOAT_EQ(project.getDeviceSettings().shadowLodBias, 1.0f) << id;
     }
     // a project.yaml from before: no device block
     Project old;

@@ -5,11 +5,11 @@
 
 <dir> is a project tools/fixtures/mesh-bench/generate.py wrote. The scene plays through
 `jasperengine-editor benchmark --play`: with GPU Instancing off (every draw alone, the
-submission before S55) and on, and on again with the project's Shadow LOD Bias at 1.0 (what a
-project without the key reads: shadows at the colour pass's detail) and at 0.25. The result
-("bench": "mesh-bench") holds the deterministic counters of the on run (draw calls by pass,
-triangles, uniform bytes, buffers: gated exactly), the drops R9 gates by its minimums (draws and
-uniform bytes from off to on, shadow triangles from bias 1.0 to the project's 0.5) and the times
+submission before S55) and on, and on again with the project's Shadow LOD Bias at 2.0 (it undoes
+S54's coarser rule: shadows at the camera's rule) and at 0.5. The result ("bench": "mesh-bench")
+holds the deterministic counters of the on run (draw calls by pass, triangles, uniform bytes,
+buffers: gated exactly), the drops the gate holds (draws and uniform bytes from off to on, shadow
+triangles from bias 2.0 to the default 1.0) and the times
 (informational). --check runs tools/perf/check_bench.py on it against
 tools/perf/bench-thresholds.json.
 """
@@ -49,8 +49,8 @@ def project_with_bias(project: str, bias: float, scratch: Path) -> str:
     shutil.copytree(project, copy)
     yaml = copy / "project.yaml"
     text = yaml.read_text()
-    assert "shadow_lod_bias: 0.5" in text, "the bench project sets Shadow LOD Bias 0.5"
-    yaml.write_text(text.replace("shadow_lod_bias: 0.5", f"shadow_lod_bias: {bias}"))
+    assert "shadow_lod_bias" not in text, "the bench project keeps the default Shadow LOD Bias"
+    yaml.write_text(text + f"device:\n  shadow_lod_bias: {bias}\n")
     return str(copy)
 
 
@@ -70,8 +70,8 @@ def main() -> int:
         scratch = Path(directory)
         off = run(editor, project, "off", args.frames, args.warmup, scratch, "off")
         on = run(editor, project, "on", args.frames, args.warmup, scratch, "on")
-        full = run(editor, project_with_bias(project, 1.0, scratch), "on", args.frames, args.warmup, scratch, "bias1")
-        quarter = run(editor, project_with_bias(project, 0.25, scratch), "on", args.frames, args.warmup, scratch, "bias025")
+        finer = run(editor, project_with_bias(project, 2.0, scratch), "on", args.frames, args.warmup, scratch, "bias2")
+        coarser = run(editor, project_with_bias(project, 0.5, scratch), "on", args.frames, args.warmup, scratch, "bias05")
 
     r_off, r_on = off["render"], on["render"]
     ratio = lambda a, b: a / b if b else 0.0
@@ -92,7 +92,7 @@ def main() -> int:
         "alive_images": r_on["aliveImages"],
         # R9: off to on
         "main_draw_call_ratio": ratio(r_off["mainDrawCalls"], r_on["mainDrawCalls"]),
-        "shadow_triangle_drop": drop(full["render"]["shadowTriangles"], r_on["shadowTriangles"]),
+        "shadow_triangle_drop": drop(finer["render"]["shadowTriangles"], r_on["shadowTriangles"]),
         "uniform_byte_drop": drop(r_off["uniformBytes"], r_on["uniformBytes"]),
         "render_cpu_ms_drop": drop(off["renderCpuMs"]["median"], on["renderCpuMs"]["median"]),
         # informational: times and the off run's counters
@@ -103,12 +103,11 @@ def main() -> int:
         "main_draw_calls_off": r_off["mainDrawCalls"],
         "shadow_draw_calls_off": r_off["shadowDrawCalls"],
         "shadow_triangles_off": r_off["shadowTriangles"],
-        "shadow_triangles_bias_1": full["render"]["shadowTriangles"],
-        "shadow_triangles_bias_025": quarter["render"]["shadowTriangles"],
-        "main_triangles_bias_1": full["render"]["mainTriangles"],
+        "shadow_triangles_bias_2": finer["render"]["shadowTriangles"],
+        "shadow_triangles_bias_05": coarser["render"]["shadowTriangles"],
         "uniform_bytes_off": r_off["uniformBytes"],
     }
-    summary = {"bench": "mesh-bench", "results": results, "off": off, "on": on, "bias_1": full, "bias_025": quarter}
+    summary = {"bench": "mesh-bench", "results": results, "off": off, "on": on, "bias_2": finer, "bias_05": coarser}
     print(json.dumps(results, indent=1))
     path = Path(args.json) if args.json else None
     if path:

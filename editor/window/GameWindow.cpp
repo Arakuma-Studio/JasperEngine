@@ -26,6 +26,11 @@
 #include "external/IconsFontAwesome6.h"
 #include "net/Http.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "render/SystemRender.h"
+#include "render/RenderStats.h"
+#include "render/SceneDrawModes.h"
+#include "render/RenderUtil.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -1283,6 +1288,13 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
 
     char lines[14][112];
     int lineCount = 5;
+    // the view's vertices and detail levels (spec S54 R12): the frame while playing, else the Game view's own
+    const bool playing = project && project->isPlaySessionActive();
+    const RenderStats viewStats = SystemRender::getRenderStats(playing ? SystemRender::FRAME_STATS_FRAME : GAME_VIEW_ID);
+    RenderSystem* render = (sceneProject && sceneProject->scene) ? sceneProject->scene->getSystem<RenderSystem>().get() : nullptr;
+    const LodFrameStats lod = !render ? LodFrameStats() : (playing ? render->getLodStats() : render->getViewLodStats(GAME_VIEW_ID));
+    std::vector<std::string> meshLines;
+    appendMeshStatsLines(meshLines, playing ? frameStats.vertices : viewStats.vertices, lod, sceneProject && sceneProject->scene && sceneProject->scene->isMeshLodEnabled());
     snprintf(lines[0], sizeof(lines[0]), "Statistics");
     snprintf(lines[1], sizeof(lines[1]), "Graphics: %.1f FPS (%.1f ms)", fps, ms);
     snprintf(lines[2], sizeof(lines[2]), "Draw calls: %u   Tris: %llu", frameStats.drawCalls, (unsigned long long)frameStats.triangles);
@@ -1351,20 +1363,8 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
         lineCount++;
     }
 
-    float boxWidth = 0.0f;
-    for (int i = 0; i < lineCount; i++) boxWidth = std::max(boxWidth, ImGui::CalcTextSize(lines[i]).x);
-    const ImVec2 pad = Theme::dpi(ImVec2(10.0f, 8.0f));
-    const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
-    const ImVec2 boxSize(boxWidth + pad.x * 2.0f, lineHeight * (float)lineCount + pad.y * 2.0f - ImGui::GetStyle().ItemSpacing.y);
-
-    const float margin = Theme::dpi(8.0f);
-    ImVec2 boxMin(imageMax.x - boxSize.x - margin, imageMin.y + margin);
-    boxMin.x = std::max(boxMin.x, imageMin.x + margin);
-
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    drawList->AddRectFilled(boxMin, ImVec2(boxMin.x + boxSize.x, boxMin.y + boxSize.y), IM_COL32(20, 20, 20, 210), Theme::dpi(3.0f));
-    for (int i = 0; i < lineCount; i++) {
-        const ImU32 color = i == 0 ? IM_COL32(255, 255, 255, 255) : IM_COL32(200, 200, 200, 255);
-        drawList->AddText(ImVec2(boxMin.x + pad.x, boxMin.y + pad.y + lineHeight * i), color, lines[i]);
-    }
+    std::vector<std::string> all(lines, lines + lineCount);
+    // after "Draw calls: ... Tris: ..."
+    all.insert(all.begin() + 3, meshLines.begin(), meshLines.end());
+    drawStatsBox(ImGui::GetWindowDrawList(), imageMin, imageMax, all);
 }

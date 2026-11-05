@@ -69,6 +69,7 @@ namespace {
             Engine::removeScene(&scene);
             Engine::setGpuInstancingEnabled(true);
             LightingTiers::setLightMode(LightMode::AUTOMATIC);
+            Engine::setFixedDeltatime(0.0);
         }
 
         Primitive& add(){
@@ -366,12 +367,76 @@ TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnderTiledLights){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// New projects take Shadow LOD Bias 0.5 to draw shadows one detail level coarser. The bias divides
-// the shadow views' threshold (computeLodView), so it doubles the error a level may have; a level
-// is the last one of the chain within that error (selectMeshLod). What that is in levels depends
-// on how fast a generated chain's error grows: measured here across the range of distances where
-// the choice changes.
-TEST_F(InstancingGoldenGpu, ShadowLodBiasHalfIsOneCoarserLevel){
+// A mesh mid-fade (S54 R6, contract C3) among draws that batch: it stays single draws on the fade
+// variant, its dither and its levels the same pixel for pixel with GPU Instancing on and off, at the
+// same fade time (a fixed frame delta).
+TEST_F(InstancingGoldenGpu, FadingMeshAmongBatchesMatchesUnbatched){
+    JASPER_REQUIRE_GPU();
+    sun.setShadowUpdateMode(ShadowUpdateMode::EVERY_FRAME);
+    scene.setMeshLodEnabled(true);
+    scene.setMeshLodCrossFade(true);
+    scene.setMeshLodCrossFadeDuration(0.5f);
+    Engine::setFixedDeltatime(1.0 / 60.0);
+    buildScene();
+    Primitive sphere(&scene);
+    sphere.createSphere(1.5f, 48, 24);
+    sphere.setColor(0.85f, 0.55f, 0.2f);
+    sphere.setPosition(0.0f, 2.5f, 3.0f);
+
+    Engine::setGpuInstancingEnabled(false);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    MeshComponent& mesh = sphere.getComponent<MeshComponent>();
+    MeshComponent* fading = &mesh;
+    ASSERT_TRUE(GpuEnvironment::runFrames([fading](){ return fading->numLods > 2; })) << "the sphere got no levels";
+    // a step of its LOD Bias under 2x (a bigger jump in a frame is a camera cut, which snaps) from
+    // level 0 to level 1
+    const CameraComponent& cameraComponent = camera.getComponent<CameraComponent>();
+    const float distance = mesh.worldAABB.distance(Vector3(0.0f, 7.0f, 11.0f));
+    const float budget = scene.getMeshLodThreshold() * 2.0f * std::tan(cameraComponent.yfov * 0.5f) /
+                         (float)GpuEnvironment::target().getHeight() * distance;
+    ASSERT_GT(mesh.lodError[2], 1.6f * mesh.lodError[1]) << "the step must reach level 1 and stay there";
+    const float biasFine = budget / (0.8f * mesh.lodError[1]);
+    const float biasCoarse = budget / (1.25f * mesh.lodError[1]);
+
+    // the sphere steady at level 0, its fade variant made; 15 frames into a fade
+    const auto midFade = [&](uint32_t* steady){
+        sphere.setLodBias(biasFine);
+        EXPECT_TRUE(render());
+        EXPECT_TRUE(GpuEnvironment::runFrames([fading](){ return fading->lodFadeReady; }, 600)) << "the fade variant was never made";
+        GpuEnvironment::drawFrames(40);
+        EXPECT_EQ(sphere.getCurrentLod(), 0);
+        *steady = mesh.submeshes[0].render.getAppliedPipelineId();
+        sphere.setLodBias(biasCoarse);
+        GpuEnvironment::drawFrames(15);
+        return readTarget();
+    };
+
+    uint32_t steadyOff = 0;
+    const std::vector<uint8_t> unbatched = midFade(&steadyOff);
+    EXPECT_EQ(scene.getSystem<RenderSystem>()->getLodStats().fadeDraws, 2u);
+    EXPECT_EQ(SystemRender::getDrawBatchStats().instancedDraws, 0u);
+
+    Engine::setGpuInstancingEnabled(true);
+    uint32_t steadyOn = 0;
+    const std::vector<uint8_t> batched = midFade(&steadyOn);
+    const LodFrameStats lod = scene.getSystem<RenderSystem>()->getLodStats();
+    const DrawBatchStats stats = SystemRender::getDrawBatchStats();
+    std::printf("[instancing] mid-fade: %u fading, %u fade draws, %u instanced draws for %u draws\n", lod.fading, lod.fadeDraws,
+                stats.instancedDraws, stats.batchedInstances);
+    EXPECT_EQ(lod.fading, 1u);
+    EXPECT_EQ(lod.fadeDraws, 2u) << "the fading mesh's two levels, single draws";
+    EXPECT_NE(mesh.submeshes[0].render.getAppliedPipelineId(), steadyOn) << "a fading draw uses the fade variant";
+    EXPECT_GT(stats.instancedDraws, 0u);
+    EXPECT_GE(stats.batchedInstances, 30u);
+    EXPECT_EQ(differentPixels(unbatched, batched), 0u) << "pixels that differ mid-fade with GPU Instancing on";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// Shadow maps cast about one detail level coarser (S54's SHADOW_LOD_COARSER, at the default Shadow LOD
+// Bias 1): that factor is the error a level may have, and a level is the last one of the chain within
+// that error (selectMeshLod). What that is in levels depends on how fast a generated chain's error
+// grows: measured here across the range of distances where the choice changes.
+TEST_F(InstancingGoldenGpu, ShadowLodCoarserIsOneLevel){
     JASPER_REQUIRE_GPU();
     scene.setMeshLodEnabled(true);
     Model model(&scene);
@@ -400,13 +465,14 @@ TEST_F(InstancingGoldenGpu, ShadowLodBiasHalfIsOneCoarserLevel){
     const float last = mesh.lodError[mesh.numLods - 1];
     ASSERT_GT(first, 0.0f);
     constexpr int STEPS = 256;
+    constexpr float COARSER = 2.0f;   // RenderSystemShared.h's SHADOW_LOD_COARSER
     float coarser = 0.0f;
     for (int i = 0; i < STEPS; i++){
         const float allowed = first * std::pow(last / first, (float)i / (float)(STEPS - 1));
-        coarser += (float)levelWithin(allowed * 2.0f) - (float)levelWithin(allowed);
+        coarser += (float)levelWithin(allowed * COARSER) - (float)levelWithin(allowed);
     }
     coarser /= (float)STEPS;
-    std::printf("[instancing] Shadow LOD Bias 0.5: %.2f levels coarser on average\n", coarser);
+    std::printf("[instancing] a shadow map's budget: %.2f levels coarser on average\n", coarser);
     EXPECT_GE(coarser, 0.5f);
     EXPECT_LE(coarser, 1.5f);
     EXPECT_NO_ENGINE_ERRORS();

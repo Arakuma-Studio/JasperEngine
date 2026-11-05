@@ -62,9 +62,9 @@ namespace {
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
     // bits 0-31, bit 32, the lattice deformer ('Ltc'), bit 33, S10's high shadow filters ('Shq'),
-    // bits 34-35, the Vertex Animation ('Vat', 'Vab'), and bits 36-39, S57's lighting ('Til',
-    // 'Cap', 'Cts', 'Oit')
-    const uint64_t meshValidMask = 0xFFFFFFFFFFULL;
+    // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
+    // 'Cap', 'Cts', 'Oit'), and bit 40, S54's LOD cross-fade ('Lfd')
+    const uint64_t meshValidMask = 0x1FFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 

@@ -183,6 +183,7 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
         {"draw_calls", stats.drawCalls},
         {"instances", stats.instances},
         {"triangles", stats.triangles},
+        {"vertices", stats.vertices},
         {"passes", stats.passes},
         {"pipelines_applied", stats.pipelinesApplied},
         {"bindings_applied", stats.bindingsApplied},
@@ -254,6 +255,17 @@ void getRenderStatsTool(const CallPtr& call){
     // the selected (or playing) scene's HTML UI: HtmlUIRenderStats, as inspect_ui's render_stats (S16 R27)
     Project* project = call->ctx().project();
     const SceneProject* sceneProject = project ? project->getSelectedScene() : nullptr;
+    // its detail levels in that view (S54 R12): the frame's main view (the Scene view in Edit
+    // mode, the game while playing), else the editor view the tag names
+    if (sceneProject && sceneProject->scene){
+        if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>()){
+            const LodFrameStats lod = tag == FRAME_TAG ? render->getLodStats() : render->getViewLodStats(tag);
+            Json histogram = Json::array();
+            for (uint32_t count : lod.levels) histogram.push_back(count);
+            data["lod"] = {{"lod_histogram", histogram}, {"fading", lod.fading}, {"culled_by_size", lod.culledBySize},
+                           {"fade_draws", lod.fadeDraws}};
+        }
+    }
     if (sceneProject && sceneProject->scene){
         if (std::shared_ptr<UIDocumentSystem> documents = sceneProject->scene->getSystem<UIDocumentSystem>()){
             if (documents->hasDocuments()){
@@ -1080,9 +1092,9 @@ void registerProfilerTools(McpRegistry& registry){
         tool.name = "get_render_stats";
         tool.title = "Get Render Stats";
         tool.description =
-            "A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive "
-            "resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,"
-            "max_main_ms,warmup}. One frame is one sample. "
+            "A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, "
+            "alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,"
+            "pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}. One frame is one sample. "
             "gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.";
         tool.inputSchema = object({{"view", viewSchema()}});
         tool.annotations.readOnly = true;

@@ -1041,8 +1041,11 @@ bool RenderSystem::bindViewShadowMaps(ShaderData& shaderData, ObjectRender& rend
 RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
-    // the project's Shadow LOD Bias and the device tier's (QualityResolver, contract C4)
-    view.threshold = SHADOW_LOD_TEXELS / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    // shadow LOD (spec S54 R7): the light's own error budget, about one level coarser than the
+    // camera's rule (SHADOW_LOD_COARSER) over the project's and the device tier's Shadow LOD Bias
+    // (QualityResolver, contract C4: above 1 keeps detail); casters snap, never fade
+    view.threshold = SHADOW_LOD_TEXELS * SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    view.bias = QualityResolver::lodBias();
 
     const LightCamera& shadowCamera = lightCamera(lightIndex, light, cameraIndex);
     const Matrix4& projection = shadowCamera.lightProjectionMatrix;
@@ -1059,8 +1062,9 @@ RenderSystem::LodView RenderSystem::shadowLodView(const LightComponent& light, i
 RenderSystem::LodView RenderSystem::pointFaceLodView(const LightComponent& light, int lightIndex, int face) const{
     LodView view;
     view.enabled = scene->isMeshLodEnabled();
-    // as a shadow slot's: the project's and the device tier's Shadow LOD Bias (QualityResolver, C4)
-    view.threshold = SHADOW_LOD_TEXELS / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    // as a shadow slot's: the light's own budget, over the Shadow LOD Bias (QualityResolver, C4)
+    view.threshold = SHADOW_LOD_TEXELS * SHADOW_LOD_COARSER / std::max(QualityResolver::shadowLodBias(), 0.001f);
+    view.bias = QualityResolver::lodBias();
     const LightCamera& faceCamera = lightCamera(lightIndex, light, face);
     const Matrix4& projection = faceCamera.lightProjectionMatrix;
     const int slot = std::max(light.shadowMapIndex, 0) + face;

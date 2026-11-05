@@ -577,6 +577,53 @@ CASES = [
         "max_turns": 8,
     },
 
+    {
+        "id": "bad_lod_levels_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked how a model's detail levels look and where they switch, agents placed copies of the model at "
+                         "distances, moved the camera and screenshotted each, guessing which level drew; capture_model_lods "
+                         "(meshes group) draws every level side by side with its triangles, error and switch height.",
+        "text_at_issue": "capture_model_lods: 'Contact sheet of a mesh's detail levels ... the screen height it switches "
+                         "below'; tool groups line 'meshes: ... detail levels (LOD) and their captures'",
+        "source": "S54 R14 (docs/forge-meshopt-analysis/jasper-ux-agents.md, LOD verification walkthrough)",
+        "prompt": "Before we ship to phones: show me what the detail levels of models/rock.glb look like, and at what size on "
+                  "screen each one kicks in. Don't change the scene.",
+        "mocks": [
+            {"tool": "capture_model_lods", "args": {"path": "re:rock\\.glb"}, "result": ok(
+                "models/rock.glb: 4 level(s) (built as the runtime would). LOD 0: 4800 tris; LOD 1: 2400 tris, error 0.0031, "
+                "below 645 px, PSNR 38.2 dB; LOD 2: 1200 tris, error 0.0074, below 270 px, PSNR 33.0 dB; LOD 3: 600 tris, "
+                "error 0.0160, below 125 px, PSNR 28.4 dB;",
+                {"path": "models/rock.glb", "source": "built", "levels": [
+                    {"level": 0, "triangles": 4800, "error": 0.0, "switches_below_px": None, "psnr_db": None},
+                    {"level": 1, "triangles": 2400, "error": 0.0031, "switches_below_px": 645, "psnr_db": 38.2},
+                    {"level": 2, "triangles": 1200, "error": 0.0074, "switches_below_px": 270, "psnr_db": 33.0},
+                    {"level": 3, "triangles": 600, "error": 0.016, "switches_below_px": 125, "psnr_db": 28.4}]})},
+        ],
+        "checks": {"calls": [{"tool": "capture_model_lods", "args": {"path": "re:rock\\.glb"}}],
+                   "must_not_call": ["create_entity", "instantiate_prefab", "set_scene_camera"], "reply_must": [r"645|270|125"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_lod_tint_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked which objects draw which detail level, agents changed materials to colour objects by "
+                         "their level and later had to put the materials back; the Scene view's LOD Level Draw Mode "
+                         "tints every mesh by the level it draws, editor only.",
+        "text_at_issue": "set_scene_camera display: '... draw_mode: \"lod_level\"'; meshes guide 'See the levels in "
+                         "the Scene view'",
+        "source": "S54 R11 (docs/forge-meshopt-analysis/jasper-ux-human.md 6.3)",
+        "prompt": "In the Main scene, show me which objects are drawing which LOD level right now. Don't change any "
+                  "object or material.",
+        "mocks": [
+            {"tool": "set_scene_camera", "args": {}, "result": ok(
+                "Scene view camera of \"Main\": {}.", {"display": {"draw_mode": "lod_level", "show_stats": True}})},
+            {"tool": "screenshot", "args": {}, "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "lod_level"}}}],
+                   "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
+        "max_turns": 10,
+    },
+
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
         "id": "guard_play_and_look",

@@ -120,8 +120,16 @@ bool ObjectRender::beginAccumulationDraw(PipelineType colorType, bool mirrored){
     return backend.beginAccumulationDraw(colorType, mirrored);
 }
 
-bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
-    return backend.beginDraw(pipType, disableFaceCulling, mirrored);
+bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader){
+    return backend.beginDraw(pipType, disableFaceCulling, mirrored, lodFadeShader);
+}
+
+bool ObjectRender::isLodFadeReady(PipelineType pipType, bool disableFaceCulling, bool mirrored, ShaderRender* lodFadeShader){
+    return backend.isLodFadeReady(pipType, disableFaceCulling, mirrored, lodFadeShader);
+}
+
+uint32_t ObjectRender::getAppliedPipelineId() const{
+    return backend.getAppliedPipelineId();
 }
 
 void ObjectRender::applyUniformBlock(int slot, unsigned int count, void* data){
@@ -138,7 +146,8 @@ void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsi
         triangles = vertexCount / 3;
     else if (primitiveType == PrimitiveType::TRIANGLE_STRIP && vertexCount > 2)
         triangles = vertexCount - 2;
-    Engine::addDrawStats(instanceCount, triangles * (instanceCount > 0 ? instanceCount : 1));
+    const uint64_t instances = instanceCount > 0 ? instanceCount : 1;
+    Engine::addDrawStats(instanceCount, triangles * instances, (uint64_t)vertexCount * instances);
 }
 
 void ObjectRender::addBatchInstanceAttributes(const int* locations, int count, BatchLayout layout){

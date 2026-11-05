@@ -251,6 +251,8 @@ const float M_PI = 3.141592653589793;
 #endif
 // the post-processing colour (USE_POST_COLOR; after lit_frame.glsl, which holds its parameters)
 #include "includes/post_color.glsl"
+// the LOD cross-fade's dither (USE_LOD_FADE): LOD_FADE_CLIP() before every colour write (no semicolon)
+#include "includes/lod_fade.glsl"
 
 void main() {
     #ifdef PBR_HEX_ACTIVE
@@ -292,6 +294,7 @@ void main() {
         #ifdef HAS_FOG
             baseColor.rgb = getFogColor(baseColor.rgb);
         #endif
+        LOD_FADE_CLIP()
         #ifdef USE_POST_COLOR
             g_finalColor = postColorEncodeBlended(baseColor);
         #else
@@ -428,6 +431,7 @@ void main() {
             float screenAO = texture(sampler2D(u_ssaoTexture, u_ssao_smp), ssaoUV).r;
             // debug: visualize the raw AO buffer (SSAO flags 1 set)
             if (fract(ssaoFlags * 0.5) > 0.25){
+                LOD_FADE_CLIP()
                 g_finalColor = vec4(vec3(screenAO), 1.0);
                 return;
             }
@@ -527,6 +531,7 @@ void main() {
             // the Scene view's shadow debug views replace the shading (includes/lights.glsl)
             vec4 shadowDebug = shadowDebugColor(v_position, n);
             if (shadowDebug.a > 0.5){
+                LOD_FADE_CLIP()
                 g_finalColor = vec4(linearTosRGB(shadowDebug.rgb), 1.0);
                 return;
             }
@@ -536,6 +541,7 @@ void main() {
             color.rgb = getFogColor(color.rgb);
         #endif
 
+        LOD_FADE_CLIP()
         #ifdef USE_POST_COLOR
             g_finalColor = postColorEncodeBlended(vec4(color.rgb, baseColor.a));
         #else

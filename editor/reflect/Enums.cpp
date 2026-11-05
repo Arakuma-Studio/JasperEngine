@@ -33,6 +33,7 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/LineRendererComponent.h"
+#include "render/LodFade.h"
 #include "component/PhysicsCommon.h"
 #include "component/Rigidbody2DComponent.h"
 #include "component/Joint3DComponent.h"
@@ -499,6 +500,11 @@ namespace {
         {v(LightShading::VERTEX), "VERTEX", "Per Vertex", "LightShading::VERTEX", "vertex"},
     };
 
+    constexpr EnumItem kLodFadeModeItems[] = {
+        {v(LodFadeMode::NONE), "none", "None", "LodFadeMode::NONE"},
+        {v(LodFadeMode::CROSS_FADE), "cross_fade", "Cross Fade", "LodFadeMode::CROSS_FADE"},
+    };
+
     constexpr EnumItem kLightTypeItems[] = {
         {v(LightType::DIRECTIONAL), "directional", "Directional", "LightType::DIRECTIONAL"},
         {v(LightType::POINT), "point", "Point", "LightType::POINT"},
@@ -776,6 +782,7 @@ namespace jasperengine::editor::reflect::enums {
     const EnumDesc kLightUnit{"LightUnit", kLightUnitItems, v(LightUnit::ENGINE)};
     const EnumDesc kLightShading{"LightShading", kLightShadingItems, v(LightShading::BOTH)};
     const EnumDesc kLightType{"LightType", kLightTypeItems, v(LightType::DIRECTIONAL)};
+    const EnumDesc kLodFadeMode{"LodFadeMode", kLodFadeModeItems, v(LodFadeMode::CROSS_FADE)};
     const EnumDesc kMaterialAlphaMode{"MaterialAlphaMode", kMaterialAlphaModeItems, v(MaterialAlphaMode::AUTO)};
     const EnumDesc kMaterialBlendMode{"MaterialBlendMode", kMaterialBlendModeItems, v(MaterialBlendMode::AUTO)};
     const EnumDesc kMaterialCullMode{"MaterialCullMode", kMaterialCullModeItems, v(MaterialCullMode::AUTO)};

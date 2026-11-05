@@ -85,6 +85,8 @@ namespace jasperengine::editor::mcp {
     void registerDiagnosticsTools(McpRegistry& registry);
     void registerAtmosphereTools(McpRegistry& registry);
     void registerProfilerTools(McpRegistry& registry);
+    // S54: capture_model_lods (group meshes, shared with S53's model import tools)
+    void registerMeshLodTools(McpRegistry& registry);
     void registerDeviceTools(McpRegistry& registry);
     void registerScriptingTools(McpRegistry& registry);
     void registerGraphTools(McpRegistry& registry);

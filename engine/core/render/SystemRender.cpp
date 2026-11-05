@@ -379,6 +379,7 @@ RenderStats SystemRender::getRenderStats(uint32_t viewTag){
             stats.drawCalls += pass.draws;
             stats.instances += pass.instances;
             stats.triangles += pass.triangles;
+            stats.vertices += pass.elements;
         }
         if (!pass.executed)
             continue;
@@ -404,6 +405,7 @@ RenderStats SystemRender::getRenderStats(uint32_t viewTag){
         stats.drawCalls = frame.drawCalls;
         stats.instances = frame.instances;
         stats.triangles = frame.triangles;
+        stats.vertices = frame.vertices;
         stats.visible = frame.visible;
         stats.culled = frame.culled;
     }

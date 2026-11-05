@@ -95,6 +95,7 @@
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
 #include "component/BoneComponent.h"
+#include "component/InstancedMeshComponent.h"
 #include "component/ColorTweenComponent.h"
 #include "component/KeyframeTracksComponent.h"
 #include "component/PositionTweenComponent.h"
@@ -191,6 +192,7 @@ static std::vector<editor::EnumEntry>& entriesLightType = *editor::InspectorWind
 static std::vector<editor::EnumEntry>& entriesShadowCaster2DShape = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kShadowCaster2DShape);
 static std::vector<editor::EnumEntry>& entriesLightShading = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLightShading);
 static std::vector<editor::EnumEntry>& entriesCullingMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCullingMode);
+static std::vector<editor::EnumEntry>& entriesLodFadeMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kLodFadeMode);
 static std::vector<editor::EnumEntry>& entriesFogType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kFogType);
 static std::vector<editor::EnumEntry>& entriesFogColorMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kFogColorMode);
 static std::vector<editor::EnumEntry>& entriesAtmosphereQualityOverride = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kAtmosphereQualityOverride);
@@ -7220,7 +7222,7 @@ void editor::InspectorWindow::drawShaderFilesPopup(const std::string& popupName,
 }
 
 void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
-    beginTable(cpType, getLabelSize("Receive Shadows"));
+    beginTable(cpType, getLabelSize("Cull Below Screen Height"));
 
     // Static variables for shape parameters
     static PrimitiveParameters shapeParams;
@@ -7462,6 +7464,41 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
         lodBiasSettings.help = "Scales how far detail is kept: above 1 keeps it longer, below 1 drops it sooner.";
         lodBiasSettings.secondColSize = 6 * ImGui::GetFontSize();
         propertyRow(RowPropertyType::FloatPositive, cpType, "lodBias", "Detail Bias", sceneProject, entities, lodBiasSettings);
+
+        // how a level change shows (spec S54 R9, Unity's LOD Group)
+        const MeshComponent& lodMesh = sceneProject->scene->getComponent<MeshComponent>(entities[0]);
+        const bool instanced = sceneProject->scene->findComponent<InstancedMeshComponent>(entities[0]) != nullptr;
+        RowSettings fadeModeSettings;
+        fadeModeSettings.enumEntries = &entriesLodFadeMode;
+        fadeModeSettings.help = "Cross Fade blends between detail levels with a short dithered fade instead of switching at once "
+                                "(fading objects draw twice for the duration). None switches at once.";
+        propertyRow(RowPropertyType::Enum, cpType, "lodFadeMode", "Fade Mode", sceneProject, entities, fadeModeSettings);
+        if (lodMesh.lodFadeMode == LodFadeMode::CROSS_FADE){
+            if (!instanced){
+                RowSettings animateSettings;
+                animateSettings.indent = true;
+                animateSettings.help = "Fade over the scene's Cross-fade Duration when the level changes (fading objects draw twice for the "
+                                       "duration). Off: fade over a band of distance (Fade Transition Width).";
+                propertyRow(RowPropertyType::Bool, cpType, "lodAnimateCrossFading", "Animate Cross-fading", sceneProject, entities, animateSettings);
+            }
+            if (instanced || !lodMesh.lodAnimateCrossFading){
+                RowSettings widthSettings;
+                widthSettings.indent = true;
+                widthSettings.floatMin = 0.0f;
+                widthSettings.floatMax = 1.0f;
+                widthSettings.help = std::string(instanced ? "Instanced meshes always fade by distance. " : "") +
+                                     "The share of each level's distance band over which it fades into the next one: objects in "
+                                     "the band draw twice (both levels) while they stay there.";
+                propertyRow(RowPropertyType::Float_0_1, cpType, "lodFadeTransitionWidth", "Fade Transition Width", sceneProject, entities, widthSettings);
+            }
+        }
+        RowSettings cullBelowSettings;
+        cullBelowSettings.floatMin = 0.0f;
+        cullBelowSettings.floatMax = 1.0f;
+        cullBelowSettings.format = "%.3f";
+        cullBelowSettings.help = "Stop drawing this mesh when it covers less than this share of the view's height (0.02: 2 %). "
+                                 "0 never culls it. With Cross Fade it fades out (fading objects draw twice for the duration).";
+        propertyRow(RowPropertyType::Float_0_1, cpType, "lodCullBelow", "Cull Below Screen Height", sceneProject, entities, cullBelowSettings);
     }
 
     RowSettings instancingSettings;
@@ -12860,7 +12897,7 @@ void editor::InspectorWindow::show(){
                 ImGui::SeparatorText("Mesh Detail (LOD)");
 
                 if (ImGui::BeginTable("scene_lod_settings_table", 2, tableFlags)) {
-                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Threshold"));
+                    ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthFixed, getLabelSize("Cross-fade Duration"));
                     ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_WidthStretch);
 
                     drawScenePropertyRow<bool>(sceneProject, "mesh_lod_enabled", "Enabled", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
@@ -12868,6 +12905,13 @@ void editor::InspectorWindow::show(){
                     if (jasperengine::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "mesh_lod_enabled")) {
                         drawScenePropertyRow<float>(sceneProject, "mesh_lod_threshold", "Threshold", ScenePropertyInputType::SliderFloat, -1.0f, 0.25f, 8.0f,
                             "Screen pixels of geometric error a simplified mesh may show. Lower keeps more detail.");
+                        drawScenePropertyRow<bool>(sceneProject, "mesh_lod_cross_fade", "Cross Fade", ScenePropertyInputType::Checkbox, -1.0f, 0.0f, 1.0f,
+                            "Blend between detail levels with a short dithered fade instead of switching at once: fading objects draw twice for the duration. "
+                            "Off: no fade shaders are built or shipped.");
+                        if (jasperengine::editor::Catalog::getSceneProperty<bool>(sceneProject->scene, "mesh_lod_cross_fade")) {
+                            drawScenePropertyRow<float>(sceneProject, "mesh_lod_cross_fade_duration", "Cross-fade Duration", ScenePropertyInputType::SliderFloat, -1.0f, 0.05f, 2.0f,
+                                "Seconds a level change fades over (Unity's LODGroup.crossFadeAnimationDuration): fading objects draw twice for the duration.");
+                        }
                     }
 
                     ImGui::EndTable();

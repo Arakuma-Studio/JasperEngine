@@ -129,6 +129,16 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["receiveShadows"] = YamlNumbers::text(mesh.receiveShadows);
     node["lodEnabled"] = YamlNumbers::text(mesh.lodEnabled);
     node["lodBias"] = YamlNumbers::text(mesh.lodBias);
+    // the fade settings (spec S54 R9) only away from their defaults (MeshComponent's), so a
+    // scene saved before them re-saves byte for byte
+    if (mesh.lodFadeMode != LodFadeMode::CROSS_FADE)
+        node["lodFadeMode"] = StreamSchema::lodFadeMode().toString(mesh.lodFadeMode);
+    if (!mesh.lodAnimateCrossFading)
+        node["lodAnimateCrossFading"] = YamlNumbers::text(mesh.lodAnimateCrossFading);
+    if (mesh.lodFadeTransitionWidth != 0.1f)
+        node["lodFadeTransitionWidth"] = YamlNumbers::text(mesh.lodFadeTransitionWidth);
+    if (mesh.lodCullBelow != 0.0f)
+        node["lodCullBelow"] = YamlNumbers::text(mesh.lodCullBelow);
     node["renderInReflectionProbes"] = YamlNumbers::text(mesh.renderInReflectionProbes);
     node["shadowsBillboard"] = YamlNumbers::text(mesh.shadowsBillboard);
     if (mesh.staticShadowCaster)
@@ -227,6 +237,11 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["receiveShadows"]) mesh.receiveShadows = YamlNumbers::as<bool>(node["receiveShadows"]);
     if (node["lodEnabled"]) mesh.lodEnabled = YamlNumbers::as<bool>(node["lodEnabled"]);
     mesh.lodBias = decodeFinite(node["lodBias"], mesh.lodBias);
+    // (omitted when at their defaults)
+    mesh.lodFadeMode = node["lodFadeMode"] ? decodeEnum(node, "lodFadeMode", StreamSchema::lodFadeMode()) : LodFadeMode::CROSS_FADE;
+    mesh.lodAnimateCrossFading = node["lodAnimateCrossFading"] ? YamlNumbers::as<bool>(node["lodAnimateCrossFading"]) : true;
+    mesh.lodFadeTransitionWidth = std::clamp(decodeFinite(node["lodFadeTransitionWidth"], 0.1f), 0.0f, 1.0f);
+    mesh.lodCullBelow = std::clamp(decodeFinite(node["lodCullBelow"], 0.0f), 0.0f, 1.0f);
     if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = YamlNumbers::as<bool>(node["renderInReflectionProbes"]);
     if (node["shadowsBillboard"]) mesh.shadowsBillboard = YamlNumbers::as<bool>(node["shadowsBillboard"]);
     // omitted when false

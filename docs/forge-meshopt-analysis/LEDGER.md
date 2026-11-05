@@ -63,7 +63,7 @@ parameters sit inside `sprite-batching`, not S55.
 | Spec | Status |
 |---|---|
 | S53 | impl: loader half merged into `mesh-lod-forge` (ccd15bf4f); importer half in progress |
-| S54 | impl |
+| S54 | merged into `mesh-lod-forge` (WERROR linux, Vulkan, its tests pass; web and android before the S57 merge, rerun at the final gate) |
 | S55 | impl |
 | S56 | merged into `mesh-lod-forge` (linux, web, android built; its tests and MCP files pass) |
 | S57 | merged into `mesh-lod-forge` (WERROR linux, web, android; its tests pass). GPU costs measured on llvmpipe only |

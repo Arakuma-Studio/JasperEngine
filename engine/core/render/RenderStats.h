@@ -161,6 +161,7 @@ namespace jasperengine{
         uint32_t drawCalls = 0;
         uint32_t instances = 0;
         uint64_t triangles = 0;
+        uint64_t vertices = 0;      // indices or vertices the draws ran (the frame's: times their instances)
         // from the pass list: this view's frame
         uint32_t passes = 0;
         uint32_t draws = 0;

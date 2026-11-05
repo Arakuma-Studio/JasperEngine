@@ -101,6 +101,7 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `profiling` | S15 |
 | `device` | S56 (`get_device_info`, `set_device_simulation`; the tier table through `set_project_settings`) |
 | `rendering_fx` | S11 (`get_material_variant`, `set_light_unit`), S12, S13 |
+| `meshes` | S53 (model import and cook, render budgets), S54 (`capture_model_lods`) |
 | `splines` | S18 |
 | `terrain` | S31: `sculpt_terrain`, `set_terrain_maps`, `sample_terrain` (out of core to fit the budget) |
 | `navigation` | S19 |

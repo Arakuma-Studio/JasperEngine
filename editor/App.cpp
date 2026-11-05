@@ -5467,7 +5467,8 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
     // v45: S57's lighting (MESH 'Til', 'Cap', 'Cts', 'Oit' at bits 36-39, the Hair lobe's
     //      PBR_HAIR in u_fs_pbrParams, includes/lights.glsl's tiled and occlusion forms).
-    // v46: S54's (its bit and this version are kept for it).
+    // v46: S54's LOD cross-fade: MESH 'Lfd' (includes/lod_fade.glsl in mesh.vert and mesh.frag), and
+    //      every instance matrix read with its first column's w as 0.
     // v47: S55's automatic GPU instancing: mesh and depth programs take their object block from
     //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
     return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v47";

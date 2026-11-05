@@ -156,6 +156,18 @@
       "Front"
      ]
     ],
+    "lodFadeMode": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "cross_fade",
+      "Cross Fade"
+     ]
+    ],
     "submeshes[0].material.alphaMode": [
      [
       0,
@@ -10813,8 +10825,12 @@
     "eBuffers",
     "enabled",
     "indices",
+    "lodAnimateCrossFading",
     "lodBias",
+    "lodCullBelow",
     "lodEnabled",
+    "lodFadeMode",
+    "lodFadeTransitionWidth",
     "mirroredWinding",
     "morphTargetCount",
     "morphWeights",
@@ -10870,7 +10886,17 @@
      0,
      true
     ],
+    "lodAnimateCrossFading": [
+     0,
+     0,
+     true
+    ],
     "lodBias": [
+     2,
+     0,
+     true
+    ],
+    "lodCullBelow": [
      2,
      0,
      true
@@ -10878,6 +10904,16 @@
     "lodEnabled": [
      0,
      8,
+     true
+    ],
+    "lodFadeMode": [
+     13,
+     8,
+     true
+    ],
+    "lodFadeTransitionWidth": [
+     2,
+     0,
      true
     ],
     "morphWeights[0]": [
@@ -20437,7 +20473,17 @@
      0,
      true
     ],
+    "lodAnimateCrossFading": [
+     0,
+     0,
+     true
+    ],
     "lodBias": [
+     2,
+     0,
+     true
+    ],
+    "lodCullBelow": [
      2,
      0,
      true
@@ -20445,6 +20491,16 @@
     "lodEnabled": [
      0,
      8,
+     true
+    ],
+    "lodFadeMode": [
+     13,
+     8,
+     true
+    ],
+    "lodFadeTransitionWidth": [
+     2,
+     0,
      true
     ],
     "morphWeights[]": [
@@ -43668,7 +43724,17 @@
     0,
     true
    ],
+   "lodAnimateCrossFading": [
+    0,
+    0,
+    true
+   ],
    "lodBias": [
+    2,
+    0,
+    true
+   ],
+   "lodCullBelow": [
     2,
     0,
     true
@@ -43676,6 +43742,16 @@
    "lodEnabled": [
     0,
     8,
+    true
+   ],
+   "lodFadeMode": [
+    13,
+    8,
+    true
+   ],
+   "lodFadeTransitionWidth": [
+    2,
+    0,
     true
    ],
    "morphWeights[N]": [

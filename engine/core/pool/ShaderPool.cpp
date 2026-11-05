@@ -653,6 +653,12 @@ uint64_t ShaderPool::getLightingProperty(ShaderPool::LightingFeature feature){
     return 0;
 }
 
+// MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
+// fading draws use
+uint64_t ShaderPool::getLodFadeProperty(){
+    return shaderPropertyBit(40);
+}
+
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
@@ -767,6 +773,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 37: return shortName ? "Cap" : "Capsule Shadows";
             case 38: return shortName ? "Cts" : "Contact Shadows";
             case 39: return shortName ? "Oit" : "Order Independent Transparency";
+            // the LOD cross-fade's dither, for fading draws only (getLodFadeProperty)
+            case 40: return shortName ? "Lfd" : "Lod Fade";
             // automatic GPU instancing (HAS_AUTO_INSTANCING, includes/object_params.glsl, S55):
             // the object block per instance (getAutoInstancingProperty)
             case 41: return shortName ? "Aui" : "Auto Instancing";
