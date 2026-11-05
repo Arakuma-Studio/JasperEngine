@@ -11,6 +11,7 @@
 
 #include "imgui.h"
 #include "imgui_internal.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <system_error>
@@ -565,20 +566,22 @@ void LayoutManager::drawDialogs() {
 
     auto nameDialog = [this](const char* popup, const char* prompt, const char* button, const std::function<bool(const std::string&, std::string&)>& accept) {
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-        if (!ImGui::BeginPopupModal(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) return;
+        if (!EditorModal::begin(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) return;
         ImGui::TextUnformatted(prompt);
+        EditorModal::message(prompt);
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 18.0f);
-        const bool enter = ImGui::InputText("##LayoutName", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool enter = EditorModal::inputText("##LayoutName", "name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
         std::string why;
         const bool valid = LayoutPresets::isValidName(nameBuffer, &why);
         if (!valid) ImGui::TextDisabled("%s", why.c_str());
+        EditorModal::error(valid ? std::string() : why);
         ImGui::Separator();
         ImGui::BeginDisabled(!valid);
-        const bool pressed = ImGui::Button(button, ImVec2(ImGui::GetFontSize() * 6.0f, 0.0f));
+        const bool pressed = EditorModal::button(button, "ok", ImVec2(ImGui::GetFontSize() * 6.0f, 0.0f));
         ImGui::EndDisabled();
         ImGui::SameLine();
-        const bool cancel = ImGui::Button("Cancel", ImVec2(ImGui::GetFontSize() * 6.0f, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+        const bool cancel = EditorModal::button("Cancel", "cancel", ImVec2(ImGui::GetFontSize() * 6.0f, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
         if ((pressed || enter) && valid) {
             std::string error;
             if (accept(nameBuffer, error)) {
@@ -600,9 +603,14 @@ void LayoutManager::drawDialogs() {
     });
 
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal(exportPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (EditorModal::begin(exportPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
         const std::vector<LayoutPresetInfo> list = presets();
         ImGui::TextUnformatted("Layout to save:");
+        EditorModal::message("Layout to save; ok asks where (a file picker).");
+        std::vector<std::string> exportOptions;
+        for (const LayoutPresetInfo& info : list) exportOptions.push_back(info.name);
+        if (list.size() > 1) exportOptions.push_back("Every saved layout");
+        EditorModal::enumField("layout", exportChoice, exportOptions);
         for (int i = 0; i < static_cast<int>(list.size()); i++) {
             ImGui::RadioButton(list[i].name.c_str(), &exportChoice, i);
         }
@@ -612,9 +620,9 @@ void LayoutManager::drawDialogs() {
         ImGui::EndDisabled();
         if (!anyUser) ImGui::SetItemTooltip("Save a layout first (Window > Layouts > Save Layout...)");
         ImGui::Separator();
-        const bool pressed = ImGui::Button("Save...", ImVec2(ImGui::GetFontSize() * 6.0f, 0.0f));
+        const bool pressed = EditorModal::button("Save...", "ok", ImVec2(ImGui::GetFontSize() * 6.0f, 0.0f));
         ImGui::SameLine();
-        const bool cancel = ImGui::Button("Cancel", ImVec2(ImGui::GetFontSize() * 6.0f, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+        const bool cancel = EditorModal::button("Cancel", "cancel", ImVec2(ImGui::GetFontSize() * 6.0f, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
         if (pressed) {
             const bool all = exportChoice >= static_cast<int>(list.size());
             const std::string name = all ? std::string() : list[std::clamp(exportChoice, 0, static_cast<int>(list.size()) - 1)].name;
