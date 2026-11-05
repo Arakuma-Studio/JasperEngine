@@ -2844,10 +2844,18 @@ std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
 std::string editor::Generator::audioInitSource(const AudioSettings& audioSettings) {
     std::string source;
     const AudioSettings defaults;
+    const bool outputChanged = audioSettings.outputStage != defaults.outputStage || audioSettings.iosSessionCategory != defaults.iosSessionCategory;
     if (audioSettings.maxRealVoices != defaults.maxRealVoices || audioSettings.maxVoices != defaults.maxVoices ||
-        audioSettings.sampleRate != defaults.sampleRate) {
+        audioSettings.sampleRate != defaults.sampleRate || outputChanged) {
         source += "    AudioSystem::configure({" + std::to_string(audioSettings.maxRealVoices) + ", " +
-                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate) + "});\n";
+                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate);
+        if (outputChanged) {
+            source += std::string(", AudioOutputStage::") + (audioSettings.outputStage == "linear" ? "Linear" : "Roundoff");
+            const std::string& session = audioSettings.iosSessionCategory;
+            source += std::string(", IosAudioSession::") +
+                      (session == "ambient" ? "Ambient" : session == "solo_ambient" ? "SoloAmbient" : session == "playback" ? "Playback" : "Default");
+        }
+        source += "});\n";
     }
     if (!audioSettings.mixer.empty()) {
         source += "    AudioMixer::load(" + Factory::formatString(audioSettings.mixer) + ");\n";

@@ -564,6 +564,63 @@ TEST_F(AtmosphereGpu, VolumetricClouds){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
+// The wrap of a component's weather map is its authored setting, saved with the scene: a draw does
+// not write it (spec S63), and the clouds tile whatever it says
+TEST_F(AtmosphereGpu, AWeatherMapTilesWhateverItsWrap){
+    JASPER_REQUIRE_GPU();
+    ground(20000.0f, Vector3(0.3f, 0.35f, 0.28f));
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.4f, -0.5f, -1.0f);
+    sun.setIntensity(2.5f);
+    sun.setShadows(false);
+    camera.setPosition(0.0f, 20.0f, 0.0f);
+    camera.setTarget(0.0f, 400.0f, -1500.0f);
+    camera.setFarClip(50000.0f);
+
+    // full cover on one half of the map, none on the other: clamped, it would stay one colour past
+    // its edge; tiled, bands of cloud repeat every kilometre of the scale
+    const int size = 16;
+    std::vector<uint8_t> pixels((size_t)size * size * 4, 255);
+    for (int y = 0; y < size; y++){
+        for (int x = 0; x < size; x++){
+            uint8_t* p = &pixels[((size_t)y * size + x) * 4];
+            p[0] = p[1] = p[2] = x < size / 2 ? 255 : 0;
+        }
+    }
+    const auto weatherData = [&](){
+        return TextureData(size, size, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data());
+    };
+
+    VolumetricClouds clouds(&scene);
+    clouds.setPreset(CloudsPreset::OVERCAST);
+    clouds.setWindSpeed(0.0f);
+    clouds.setWeatherMapScale(2.0f);
+    Texture& map = scene.getComponent<VolumetricCloudsComponent>(clouds.getEntity()).weatherMap;
+
+    for (AtmosphereQuality quality : {AtmosphereQuality::MEDIUM, AtmosphereQuality::HIGH}){
+        Engine::setAtmosphereQuality(quality);
+
+        map.setData("weather-repeat", weatherData());
+        ASSERT_TRUE(settleClouds(scene));
+        EXPECT_TRUE(info().cloudsActive);
+        const std::vector<uint8_t> tiled = readTarget();
+
+        map.setData("weather-clamp", weatherData());
+        map.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+        map.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+        ASSERT_TRUE(settleClouds(scene));
+        EXPECT_TRUE(info().cloudsActive);
+        EXPECT_EQ(map.getWrapU(), TextureWrap::CLAMP_TO_EDGE) << "a draw wrote the component's wrap";
+        EXPECT_EQ(map.getWrapV(), TextureWrap::CLAMP_TO_EDGE) << "a draw wrote the component's wrap";
+        EXPECT_LE(meanDifference(tiled, readTarget()), 0.05) << "the clouds tile whatever the wrap";
+
+        map.setWrapU(TextureWrap::REPEAT);
+        map.setWrapV(TextureWrap::REPEAT);
+    }
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
 TEST_F(AtmosphereGpu, ScreenCloudsHideFarTerrain){
     JASPER_REQUIRE_GPU();
     ground(40000.0f, Vector3(0.3f, 0.35f, 0.28f));

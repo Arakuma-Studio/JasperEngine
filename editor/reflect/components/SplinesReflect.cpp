@@ -350,7 +350,7 @@ namespace {
     // ---------------------------------------------------------------- Spline Instantiate
 
     constexpr FieldDesc kSplinePoolEntryFields[] = {
-        JE_FIELD(SplinePoolEntry, asset, .asset = AssetKind::Any, .tooltip = "A model (instanced) or a prefab (GameObjects)."),
+        JE_FIELD(SplinePoolEntry, asset, .asset = AssetKind::ModelOrPrefab, .tooltip = "A model (instanced) or a prefab (GameObjects)."),
         JE_FIELD(SplinePoolEntry, weight, .ops = &ops::FiniteFloat, .flags = kOmitFloat, .min = 0.0f),
     };
 

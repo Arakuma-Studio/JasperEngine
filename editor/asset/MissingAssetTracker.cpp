@@ -101,5 +101,6 @@ void MissingAssetTracker::update(const AssetDatabase& database, const AssetIndex
     groups = std::move(nextGroups);
     resolvedByPath = std::move(nextHealed);
     orphanMetas = database.getOrphanMetas();
+    readOnlyLinked = database.getReadOnlyLinkedAssets();
     version++;
 }

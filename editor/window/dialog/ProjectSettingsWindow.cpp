@@ -3,6 +3,8 @@
 
 #include "ProjectSettingsWindow.h"
 #include "window/ProjectWindow.h"
+#include "io/watch/LinkedFolders.h"
+#include "window/EditorModal.h"
 #include "widget/ColorMath.h"
 #include "window/PlayInput.h"
 #include "widget/ColorField.h"
@@ -23,6 +25,7 @@
 #include "SettingsCategoryList.h"
 #include "asset/AssetMap.h"
 #include "window/CanvasScalerFields.h"
+#include "audio/LoudnessMonitor.h"
 #include "command/type/AudioSettingsCmd.h"
 #include "audio/AudioMixer.h"
 #include "subsystem/AudioSystem.h"
@@ -979,10 +982,10 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     {
         std::error_code ec;
         const fs::path assets = project->getAssetsPath();
-        for (auto it = fs::recursive_directory_iterator(assets, fs::directory_options::skip_permission_denied, ec);
-             !ec && it != fs::recursive_directory_iterator(); it.increment(ec)){
+        for (watch::LinkedDirectoryIterator it(assets, fs::directory_options::skip_permission_denied, ec), end;
+             !ec && it != end; it.increment(ec)){
             if (it->is_regular_file(ec) && it->path().extension() == ".inputactions")
-                m_inputActionsFiles.push_back(fs::relative(it->path(), project->getProjectPath(), ec));
+                m_inputActionsFiles.push_back(project->normalizeToProjectRelative(it->path()));
         }
         std::sort(m_inputActionsFiles.begin(), m_inputActionsFiles.end());
     }
@@ -1161,7 +1164,9 @@ void ProjectSettingsWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              projectNoScrollFlags;
 
-    bool popupOpen = ImGui::BeginPopupModal("Project Settings##ProjectSettingsModal", &m_isOpen, flags);
+    // OK applies only what the page changed, over the project's settings as they are then, so an
+    // agent's concurrent set_project_settings survives it (phase 2 M4): no refusal of edits meanwhile
+    bool popupOpen = EditorModal::begin("Project Settings##ProjectSettingsModal", &m_isOpen, flags, EditorModal::Role::MergesEdits);
 
     if (popupOpen) {
         if (!m_isOpen) {
@@ -1238,7 +1243,7 @@ void ProjectSettingsWindow::drawSettings() {
     const bool canSave = hasAbi && tagsAndLayersProblem.empty() && inputProblem.empty() && shaderGlobalsProblem.empty();
 
     ImGui::BeginDisabled(!canSave);
-    if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
         if (applySettings()) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
@@ -1259,7 +1264,7 @@ void ProjectSettingsWindow::drawSettings() {
 
     ImGui::SameLine();
     // Escape cancels a Listen of the Input page first
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) ||
         (!listening && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
@@ -2648,12 +2653,58 @@ void ProjectSettingsWindow::drawAudioSettings() {
                 endSettingsRow("The output's sample rate. It applies the next time the audio opens (exports: at start).");
             }
 
+            const float loudnessHelpWidth = -helpMarkerWidth();
+            auto measurement = [&](const char* key, const char* label, const char* id, float& value, float reset, float minimum, float maximum,
+                                   const char* format, const char* help) {
+                if (!settingsui::beginRow(key)) return;
+                if (projectBeginSettingsRow(label, value != reset)) value = reset;
+                ImGui::SetNextItemWidth(loudnessHelpWidth);
+                ImGui::DragFloat(id, &value, 0.1f, minimum, maximum, format);
+                value = std::clamp(value, minimum, maximum);
+                endSettingsRow(help);
+            };
+            measurement("audio.loudness_target_lufs", "Loudness Target", "##AudioLoudnessTarget", audio.loudnessTargetLufs, defaults.loudnessTargetLufs,
+                        -40.0f, -6.0f, "%.1f LUFS", "Measurement only: changing the target changes no sound. The Audio Mixer and the agents read against it.");
+            measurement("audio.loudness_tolerance_lu", "Loudness Tolerance", "##AudioLoudnessTolerance", audio.loudnessToleranceLu, defaults.loudnessToleranceLu,
+                        0.5f, 10.0f, "%.1f LU", "Measurement only: how far from the target still passes.");
+            measurement("audio.true_peak_ceiling_dbtp", "True Peak Ceiling", "##AudioTruePeakCeiling", audio.truePeakCeilingDbtp, defaults.truePeakCeilingDbtp,
+                        -12.0f, 0.0f, "%.1f dBTP", "Measurement only: a limiter's Threshold on the Master is what holds it.");
+
+            if (settingsui::beginRow("audio.output_stage")) {
+                if (projectBeginSettingsRow("Output Stage", audio.outputStage != defaults.outputStage)) audio.outputStage = defaults.outputStage;
+                int stage = audio.outputStage == "linear" ? 1 : 0;
+                static const char* stageNames[] = {"Round-off (soft clip, -1.66 dB)", "Linear (hard clip at 0 dBFS)"};
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##AudioOutputStage", &stage, stageNames, 2)) audio.outputStage = stage == 1 ? "linear" : "roundoff";
+                endSettingsRow("What the output does to the mix. Linear lets a Master limiter's ceiling hold at the device; "
+                               "without a limiter it clips when Master goes over 0 dBFS.");
+            }
+
+            if (settingsui::beginRow("audio.ios_session_category")) {
+                if (projectBeginSettingsRow("iOS Audio Session", audio.iosSessionCategory != defaults.iosSessionCategory)) audio.iosSessionCategory = defaults.iosSessionCategory;
+                static const char* sessionValues[] = {"default", "ambient", "solo_ambient", "playback"};
+                static const char* sessionNames[] = {"Default (miniaudio's)", "Ambient", "Solo Ambient", "Playback"};
+                int session = 0;
+                for (int i = 0; i < 4; i++) if (audio.iosSessionCategory == sessionValues[i]) session = i;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                if (ImGui::Combo("##AudioIosSession", &session, sessionNames, 4)) audio.iosSessionCategory = sessionValues[session];
+                endSettingsRow("iOS only. Ambient respects the silent switch and mixes with the player's music. "
+                               "Default ignores the switch and interrupts the music.");
+            }
+
             ImGui::EndTable();
         }
 
         ImGui::Spacing();
         if (ImGui::Button(ICON_FA_SLIDERS " Open Audio Mixer")) {
             editor::getEditorHost().openAudioMixerWindow(m_audioMixerBuffer[0] ? m_project->resolveAssetPath(FileUtils::pathFromUtf8(m_audioMixerBuffer)) : fs::path());
+        }
+        if (m_project && m_project->isAnyScenePlaying()) {
+            LoudnessMonitor::get().markVisible();
+            const LoudnessMonitor::Reading reading = LoudnessMonitor::get().reading();
+            if (reading.momentary) {
+                ImGui::Text("Master: %.1f LUFS (target %.1f)", *reading.momentary, m_audioSettings.loudnessTargetLufs);
+            }
         }
         ImGui::SameLine();
         ImGui::TextDisabled("%s", AudioSystem::isInited() ? (std::string("Output: ") + (AudioSystem::isOutputAvailable() ? AudioSystem::getBackendName() : "none (" + AudioSystem::getBackendName() + ")")).c_str() : "");

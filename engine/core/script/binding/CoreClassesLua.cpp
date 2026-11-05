@@ -804,7 +804,7 @@ namespace{
         if (!luaBodyPairArgs<is2D>(L, function, scene, a, b)){
             return 0;
         }
-        const bool ignore = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3) != 0;
+        [[maybe_unused]] const bool ignore = lua_isnoneornil(L, 3) ? true : lua_toboolean(L, 3) != 0;
         if constexpr (is2D){
 #ifdef JASPERENGINE_PHYSICS_2D
             scene->getSystem<PhysicsSystem>()->setIgnoreCollision2D(a, b, ignore);

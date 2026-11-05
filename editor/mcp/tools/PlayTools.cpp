@@ -41,6 +41,7 @@
 #include "input/InputControlPath.h"
 #include "Platform.h"
 #include "audio/AudioMixer.h"
+#include "audio/LoudnessMonitor.h"
 #include "subsystem/AudioSystem.h"
 #include "Project.h"
 #include "Screen.h"
@@ -635,6 +636,11 @@ Json playAudioJson() {
     Json out = {{"voices", AudioSystem::getVoiceCount()}, {"mixer_meters", meters}};
     if (!AudioSystem::isOutputAvailable()) out["output"] = "none (mixing without a device)";
     if (AudioSystem::isListenerPaused()) out["listener_paused"] = true;
+    // from the first read until Stop: a first read's value is null, the next ones measure
+    LoudnessMonitor::get().requestByAgent();
+    const LoudnessMonitor::Reading reading = LoudnessMonitor::get().reading();
+    out["loudness"] = {{"momentary_lufs", reading.momentary ? Json(std::round(*reading.momentary * 100.0) / 100.0) : Json(nullptr)},
+                       {"true_peak_dbtp", std::round(reading.truePeakDb * 100.0) / 100.0}};
     return out;
 }
 

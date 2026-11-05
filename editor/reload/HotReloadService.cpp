@@ -241,6 +241,10 @@ bool HotReloadService::isCurrent(const FileChange& change) const {
     return it->second.contentHash != 0 && contentHashOf(change.path) == it->second.contentHash;
 }
 
+void HotReloadService::forgetApplied(const fs::path& path) {
+    applied.erase(appliedKey(path));
+}
+
 void HotReloadService::stamp(const fs::path& path, const Seen* seen, uint64_t sequence) {
     if (!seen) {
         applied.erase(appliedKey(path));

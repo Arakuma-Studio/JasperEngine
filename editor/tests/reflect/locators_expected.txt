@@ -271,13 +271,13 @@
 1021 button/textureHovered texture
 1021 button/texturePressed texture
 1021 button/textureDisabled texture
-1033 particlesystem/effect any
+1033 particlesystem/effect particle_effect
 1044 text/font[0] font
 1052 reflectionprobe/texture cubemap
 1053 uidocument/filename ui_document
 1060 volumetricclouds/weatherMap texture
 1066 poseanimator/animation pose_animation
-1068 navmeshsurface/navMeshData any
-1073 navgrid/gridData any
+1068 navmeshsurface/navMeshData navmesh
+1073 navgrid/gridData navgrid
 1078 animator/controller animator_controller
 1080 trailrenderer/customShader shader

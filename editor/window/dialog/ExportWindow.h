@@ -86,6 +86,7 @@ namespace jasperengine::editor {
             bool fromScene = false;
         };
         std::vector<ShaderEntry> m_shaderEntries;
+        ShaderListStatus m_shaderListStatus;
         int m_selectedShaderIndex = -1;
         std::set<ShaderKey> m_shaderAdditions;
         std::set<ShaderKey> m_shaderExclusions;

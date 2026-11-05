@@ -21,7 +21,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
 | Android packaging | what Build makes for Android, run for real: APK and App Bundle from the prebuilt player, the bundletool download (real URL), the debug and release keys, wrong passwords, `publish prepare`, then both installed on the emulator and their screens compared with the golden | `tools/ci/android_packaging.sh` (needs `tools/build.sh linux`, the Android player; KVM: server A) | `build/android-packaging/` |
 | iOS packaging | what Build makes for iOS on a Mac: the Xcode project through `xcodebuild`, installed and launched on a simulator device of its own (no window), a device build as far as signing, the IPA path without a developer account, `publish prepare` | `tools/ci/ios_packaging.sh` (needs the editor on a Mac with Xcode, `tools/players/ios_player.sh`; `IOS_PACKAGING_GOLDEN=1` compares the screen with `tools/fixtures/unified-lighting/golden/ios/screen.png`, from an iPhone 17 simulator) | `build/ios-packaging/` |
-| Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -60,6 +60,9 @@ every background mesh BVH build pending that long: the MCP tests use it to see t
 waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 `JASPER_TEXTURE_LOAD_DELAY_MS=<ms>` holds every async texture decode that long: a screenshot must
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
+`JASPER_SHADER_LIST_SYNC_MS=<ms>` is the time `get_build_info` may read closed scenes before it hands
+the rest to a job; 0 always hands them over (`tools/mcp/tests/test_shader_lists.py`).
+`JASPER_SHADER_LIST_WRITE_HOLD_FILE=<path>` holds the write of that cache while the file exists, up to 20 s (same test).
 `JASPER_TEST_RECORDER_FAIL=<list>` forces Recorder failures (`editor/recorder/RecorderSettings.h`): `audio@N`,
 `audio-header`, `video@N`, `encoder-kill@N`, `mux`, `png@N`, `publish` (they read as a full disk),
 `hold-limit=<ms>` (the wait for a frame's loads) and `free=<MB>` (the free space seen); read once per
@@ -221,6 +224,15 @@ A new test that needs a game that runs builds it prebuilt. One that needs what o
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
 
+### Linked folders in a web game (S68 AC2)
+
+`tools/mcp/tests/test_linked_folders_export.py` builds and runs a Desktop game with
+`JASPER_SLOW_BUILD=1`. A web game needs the web image, which has no editor, so it takes two steps:
+`JASPER_LINKED_WEB_EXPORT=build/linked-web tools/mcp/run-tests.sh tools/mcp/tests/test_linked_folders_export.py -k web_export` leaves
+the source export there (the links resolved into real files), then `tools/web/linked_folder_game.sh build/linked-web`, in the web
+image, builds it and runs `tools/web/browser_gate.py` on it with `tools/web/gates/linked-folder-game.json`:
+the centre pixel is the linked texture's red and the console has the linked Lua module's line.
+
 ### Test projects
 
 `tools/test-projects/<name>/` are small engine projects (`main.cpp`, `lua/`, `assets/`) that a
@@ -349,7 +361,10 @@ continue to fail on any native crash.
   a changed `Foo.cpp` counts through `Foo.h` and everything that includes it), and the MCP test
   files the coverage map ties to the change (below). Everything for the root CMake, `docker/`,
   `tools/build.sh`, the toolchain and the lockfiles; the whole MCP suite for a change of its harness
-  (`harness.py`, `run_tests.py`, `build_cache.py`); nothing for docs.
+  (`harness.py`, `run_tests.py`, `build_cache.py`); nothing for docs. A header under `engine/core` or
+  `engine/CMakeLists.txt` also builds the engine with every optional module off
+  (`tools/check-physics-off.sh all-off`): the editor's engine has every module, so only this shows a
+  source that got a header through a module's code, which breaks Compile builds and the smaller players.
 - **Before pushing to `origin main`, only when the pushed changes need it (a big feature, not a
   small fix): the full suite** (`MCP_SUITE=all JASPER_SLOW_BUILD=1
   JASPER_SLOW_TESTS=1`), plus the WERROR Linux
@@ -380,8 +395,10 @@ tools/build.sh exec linux tools/check-changed # inside the Linux image (no web o
   function nearly every editor runs selects the 10 quickest files that run it), the changed test files, the files that call a
   changed MCP tool (by its tool names), that load a changed fixture, test project, Lua script,
   shader, HTML, scene or material (by path), and, for an engine change, the files that run a prebuilt
-  game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), and those that compile a
-  game when what the compile path reads changes (`COMPILE_PATHS`).
+  game (`GAME_BUILD_FILES`: it runs engine code no editor coverage sees), those that compile a
+  game when what the compile path reads changes (`COMPILE_PATHS`), and the guard of what a save
+  writes (`test_saved_output_determinism.py`, spec S63) when serialization or code generation
+  changes (`SAVED_OUTPUT_PATHS`).
   No map, a map older than 14 days or 400 commits, or a changed source the map does not know (new
   code), or a file no test names adds the CI suite; code the map knows that no test executes
   selects nothing, and the summary says so. A selected test that skips
@@ -509,6 +526,11 @@ change: add it and rebuild. Test data goes in `engine/tests/core/fixtures/` or
 - A suite whose tests take more than 5 s each ends in `Slow`. Any other test stays under 1 s, and
   both binaries' CPU suites together under 60 s on 4 cores.
 - CTest labels follow the names: `gpu`, `slow`, else `unit`.
+- `ReflectParity.*` compares the reflection codec against frozen data
+  (`editor/tests/reflect/parity_golden/`): a field added to a reflection table adds its key there,
+  and `JASPER_TEST_UPDATE_GOLDEN=1` rewrites the files. `AssetRefSchemaFrozen.*` holds what the hand
+  table of asset references gave (`editor/tests/asset/asset_ref_*_frozen.txt`); those files are not
+  rewritten, a new reference field only adds rows.
 
 ### What the support library gives a test
 

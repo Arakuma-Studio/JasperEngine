@@ -29,3 +29,35 @@ choices or message, so an agent gets stuck on most of them.
 - AC2. Ported `test_editor_modals.py`, failing on main first. Unit tests for `EditorModal`.
 - AC3. The lint has no exceptions other than `EditorModal.cpp` itself.
 - AC4. Screenshots of two dialogs, unchanged against main. `tools/check-changed` green.
+
+## Deviations
+- **Choices are not limited to ok/yes/no/cancel.** `respond_dialog.choice` is a string, one of the dialog's
+  `choices`: a button with no such meaning has a word of its own (`build_and_run`, a VCS dialog's label). Without
+  this Build And Run and the VCS dialogs could not be answered.
+- **A native picker in a windowed editor is reported, not answered (R5).** NFD offers no way to close its dialog from
+  outside. `editor_status` says it is there, from the transport thread (the main thread is inside the dialog);
+  `respond_dialog` says only a human can answer it. An agent that must drive pickers uses `--headless`, where every
+  picker waits for `values.path`. No caller of `FileDialogs` changed.
+- **While a picker waits, only `editor_status` and `respond_dialog` run.** The main thread is held as a native dialog
+  holds it, so a read tool cannot run; the transport refuses it at once, naming the answer, instead of hanging. Calls
+  already queued or waiting for frames when it opens get the same refusal, the call that opened it replies at once
+  (a client that sends one call at a time could never answer otherwise), and an edit's continuation resumes afterwards.
+- **Role::Progress removes the "edit waits for Loading" path of McpServer::execute** (R4, "as in the reference"). The
+  wait (39befe24c) ran only when a call reached `execute` from the tick after the windows, the one moment ImGui
+  reported the modal; a Loading modal is now not a dialog anywhere, so edits run under it as they did on the common path.
+- **Fields are declared with `EditorModal::field` (and `pathField`, `enumField`) as well as the widget wrappers**, for
+  values whose widget edits something else (radio buttons, tree selections, custom path displays). Lists a human clicks
+  (Choose Asset, Replace Prefab) are an `enum` or a `path` field naming the row.
+- **`EditorDialogInfo` moved to `EditorModal.h`** (so its unit tests need no `App.h`).
+- **A save takes a moment and can go on to another dialog.** `editor_status.playing` is true while a scene is `saving`
+  (as before S69), and in a temporary project Save All goes from Save Scene to Save Project once the save ends, so a reply
+  with no `dialog` does not mean none follows.
+- **The Loading popup no longer closes a dialog.** ImGui keeps one
+  popup per level, so when builds started `OpenPopup("Loading")` replaced whatever was open, and a dialog opened once
+  was gone for good: a person or agent who asked for it while a project's shaders were starting saw nothing happen. The
+  progress now waits while another popup is open and comes up once it closes; a dialog asked for during builds opens as
+  before, and the progress returns after it. A person sees the dialog stay where it used to vanish.
+- **A refusal's instructions are in the error's text, not in `next`.** Eval `dialog_refusal_answers_the_box_first`,
+  sonnet, 2 samples: for an `isError` result Claude Code showed the model the text and not `structuredContent`, so a `next` there
+  was never read and both samples failed. A picker's message needs no instructions either: with them stripped from the mock,
+  `dialog_answers_a_file_picker` passed 4 of 4 on the schema and fields alone, so they were cut.

@@ -3843,9 +3843,10 @@ void MeshSystem::resetTerrainToUnbuilt(TerrainComponent& terrain, MeshComponent&
 }
 
 bool MeshSystem::createTerrain(TerrainComponent& terrain, MeshComponent& mesh){
+    applyTerrainMapSettings(terrain);
+
     // Check heightmap loading state BEFORE clearing buffers to avoid leaving
     // the mesh with empty data when the heightmap is still loading.
-    terrain.heightMap.setReleaseDataAfterLoad(false);
 
     if (!terrain.heightMap.empty()){
         TextureLoadResult texResult = terrain.heightMap.load();
@@ -4469,6 +4470,19 @@ void MeshSystem::updateTerrainFoliage(Entity entity, TerrainComponent& terrain, 
     }
 
     terrain.needUpdateFoliage = false;
+}
+
+void MeshSystem::applyTerrainMapSettings(TerrainComponent& terrain){
+    // The heightmap and the blend map span the whole 0..1 range, so their borders must read
+    // the border texels, not the REPEAT blend with the opposite edge (detail maps are tiled).
+    terrain.heightMap.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+    terrain.heightMap.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    for (Texture& blendMap : terrain.blendMaps){
+        blendMap.setWrapU(TextureWrap::CLAMP_TO_EDGE);
+        blendMap.setWrapV(TextureWrap::CLAMP_TO_EDGE);
+    }
+    // the terrain's heights are read back from its pixels
+    terrain.heightMap.setReleaseDataAfterLoad(false);
 }
 
 void MeshSystem::updateTerrainAutoRanges(TerrainComponent& terrain){

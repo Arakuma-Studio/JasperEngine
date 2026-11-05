@@ -115,6 +115,8 @@ namespace jasperengine::player {
         int audioMaxRealVoices = 32;
         int audioMaxVoices = 256;
         int audioSampleRate = 0;
+        std::string audioOutputStage = "roundoff";
+        std::string audioIosSession = "default";
 
         PlayerConfig();
 

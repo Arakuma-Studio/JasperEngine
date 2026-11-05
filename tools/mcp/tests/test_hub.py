@@ -68,6 +68,10 @@ async def test_create_from_templates(ed: Editor):
         errors = [e for e in console.get("entries", []) if e.get("level") == "error"]
         ed.check(not errors, f"{template} loads without errors: {errors[:5]}")
         project = yaml.safe_load((target / "project.yaml").read_text())
+        # a template with no audio node of its own starts as any new project (S38 R8)
+        ed.check_eq(project.get("audio", {}).get("outputStage"), "linear", f"{template}: the new-project audio")
+        mixer = project["audio"]["mixer"]
+        ed.check((target / project.get("assetsDir", ".") / mixer).is_file(), f"{template}: {mixer}")
         ed.check(project.get("versionControl", {}).get("lfs", False) is True or "lfs: true" in (target / "project.yaml").read_text(),
                  f"{template}: a new project gets Git LFS (S29 R21)")
         # mesh detail levels are on in every new project, with the cross-fade (S54 R1, AC9)

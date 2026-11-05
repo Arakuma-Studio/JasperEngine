@@ -1189,6 +1189,7 @@ bool keepInMove(const T&, Entity, const CloneContext&) {
     return true;
 }
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
 // a joint to a body outside the moved GameObjects (the bodies are in different worlds then)
 bool jointBodiesMove(const std::initializer_list<Entity>& bodies, Entity sourceEntity, const CloneContext& ctx) {
     for (Entity body : bodies) {
@@ -1199,6 +1200,7 @@ bool jointBodiesMove(const std::initializer_list<Entity>& bodies, Entity sourceE
     }
     return true;
 }
+#endif
 
 #ifdef JASPERENGINE_PHYSICS_2D
 template<>

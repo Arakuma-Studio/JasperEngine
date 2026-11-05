@@ -9,6 +9,7 @@
 #include "component/InputFieldComponent.h"
 #include "component/LayoutGroupComponent.h"
 #include "component/TextEffectComponent.h"
+#include "EditorModal.h"
 #include "window/dialog/RagdollWizardDialog.h"
 #include "InspectorWindow.h"
 #include "reflect/Reflect.h"
@@ -1181,14 +1182,15 @@ void editor::InspectorWindow::drawFontSlot(ComponentType cpType, const std::stri
     ImGui::PopStyleVar();
 
     // Error popup modal
-    if (ImGui::BeginPopupModal("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::Text("Selected file must be within the assets directory.");
+        EditorModal::message("Selected file must be within the assets directory.");
         ImGui::Separator();
 
         float buttonWidth = 120;
         float windowWidth = ImGui::GetWindowSize().x;
         ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-        if (ImGui::Button("OK", ImVec2(120, 0))) {
+        if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -2076,18 +2078,20 @@ void editor::InspectorWindow::drawLayerCombo(SceneProject* sceneProject, const s
     }
 
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Change Layer##change_layer_children", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)){
+    if (EditorModal::begin("Change Layer##change_layer_children", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)){
         const std::string layerName = TagManager::layerToName(pendingLayer);
         ImGui::Text("Do you want to set layer to %s for all child objects as well?",
             layerName.empty() ? std::to_string(pendingLayer).c_str() : layerName.c_str());
+        EditorModal::message("Do you want to set layer to " + (layerName.empty() ? std::to_string(pendingLayer) : layerName) +
+                             " for all child objects as well?");
         ImGui::Spacing();
 
         int choice = 0; // 1 children, 2 this object only, 3 cancel
-        if (ImGui::Button("Yes, change children")) choice = 1;
+        if (EditorModal::button("Yes, change children", "yes")) choice = 1;
         ImGui::SameLine();
-        if (ImGui::Button("No, this object only")) choice = 2;
+        if (EditorModal::button("No, this object only", "no")) choice = 2;
         ImGui::SameLine();
-        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) choice = 3;
+        if (EditorModal::button("Cancel", "cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) choice = 3;
 
         if (choice != 0){
             // the selection may have changed scene or lost entities while the dialog was open
@@ -4841,14 +4845,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
         }
 
         // Error popup modal
-        if (ImGui::BeginPopupModal("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("File Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be within the assets directory.");
+            EditorModal::message("Selected file must be within the assets directory.");
             ImGui::Separator();
 
             float buttonWidth = 120;
             float windowWidth = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -5015,14 +5020,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
 
             dragDropResourcesTextureCube(cpType, id, dragMin, dragMax, sceneProject, entities);
 
-            if (ImGui::BeginPopupModal("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+            if (EditorModal::begin("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
                 ImGui::Text("Selected file must be within the assets directory.");
+                EditorModal::message("Selected file must be within the assets directory.");
                 ImGui::Separator();
 
                 float buttonWidth = 120;
                 float windowWidth = ImGui::GetWindowSize().x;
                 ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-                if (ImGui::Button("OK", ImVec2(120, 0))) {
+                if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                     ImGui::CloseCurrentPopup();
                 }
                 ImGui::EndPopup();
@@ -5131,14 +5137,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
                 dragDropResourcesTextureCube(cpType, id, dragMin, dragMax, sceneProject, entities, static_cast<int>(faceIndex));
 
                 // Error popup modal
-                if (ImGui::BeginPopupModal("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+                if (EditorModal::begin("File Import Error##cube", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
                     ImGui::Text("Selected file must be within the assets directory.");
+                    EditorModal::message("Selected file must be within the assets directory.");
                     ImGui::Separator();
 
                     float buttonWidth = 120;
                     float windowWidth = ImGui::GetWindowSize().x;
                     ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-                    if (ImGui::Button("OK", ImVec2(120, 0))) {
+                    if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                         ImGui::CloseCurrentPopup();
                     }
                     ImGui::EndPopup();
@@ -5500,14 +5507,15 @@ bool editor::InspectorWindow::propertyRow(RowPropertyType type, ComponentType cp
             restoreMatDropPreview();
         }
 
-        if (ImGui::BeginPopupModal("File Import Error##material", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("File Import Error##material", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be within the project directory.");
+            EditorModal::message("Selected file must be within the project directory.");
             ImGui::Separator();
 
             float buttonWidth = 120;
             float windowWidth = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((windowWidth - buttonWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -7846,13 +7854,14 @@ void editor::InspectorWindow::drawModelComponent(ComponentType cpType, SceneProj
             ImGui::SetTooltip("%s", canClearModel ? "None: unload the model" : clearReason.c_str());
         }
 
-        if (ImGui::BeginPopupModal("Model Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Model Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be within the assets directory.");
+            EditorModal::message("Selected file must be within the assets directory.");
             ImGui::Separator();
             float bw = 120;
             float ww = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((ww - bw) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -9111,13 +9120,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
             }
         }
 
-        if (ImGui::BeginPopupModal("Audio Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Audio Import Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be an audio file within the project directory.");
+            EditorModal::message("Selected file must be an audio file within the project directory.");
             ImGui::Separator();
             float buttonModalWidth = 120;
             float windowWidth = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((windowWidth - buttonModalWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -9224,13 +9234,14 @@ void editor::InspectorWindow::drawAudioComponent(ComponentType cpType, SceneProj
 
         ImGui::EndDisabled();
 
-        if (ImGui::BeginPopupModal("Audio Preview Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Audio Preview Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::TextWrapped("%s", ap.error.c_str());
+            EditorModal::message(ap.error);
             ImGui::Separator();
             float buttonModalWidth = 120;
             float windowWidth = ImGui::GetWindowSize().x;
             ImGui::SetCursorPosX((windowWidth - buttonModalWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(120, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(120, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -11055,12 +11066,13 @@ void editor::InspectorWindow::drawUIDocumentComponent(ComponentType cpType, Scen
             }
         }
 
-        if (ImGui::BeginPopupModal("HTML Document Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("HTML Document Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be an .html, .htm or .rml file within the assets directory.");
+            EditorModal::message("Selected file must be an .html, .htm or .rml file within the assets directory.");
             ImGui::Separator();
             const float buttonModalWidth = 120;
             ImGui::SetCursorPosX((ImGui::GetWindowSize().x - buttonModalWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(buttonModalWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonModalWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();
@@ -11239,12 +11251,13 @@ void editor::InspectorWindow::drawPoseAnimatorComponent(ComponentType cpType, Sc
             }
         }
 
-        if (ImGui::BeginPopupModal("Pose Animation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (EditorModal::begin("Pose Animation Error", NULL, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::Text("Selected file must be a .poseanim file within the assets directory.");
+            EditorModal::message("Selected file must be a .poseanim file within the assets directory.");
             ImGui::Separator();
             const float buttonModalWidth = 120;
             ImGui::SetCursorPosX((ImGui::GetWindowSize().x - buttonModalWidth) * 0.5f);
-            if (ImGui::Button("OK", ImVec2(buttonModalWidth, 0))) {
+            if (EditorModal::button("OK", "ok", ImVec2(buttonModalWidth, 0))) {
                 ImGui::CloseCurrentPopup();
             }
             ImGui::EndPopup();

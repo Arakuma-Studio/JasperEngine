@@ -35,6 +35,13 @@ namespace {
     bool cameraOrderIndependent(const void* camera) {
         return static_cast<const CameraComponent*>(camera)->transparencyMode == TransparencyMode::ORDER_INDEPENDENT;
     }
+    // its clips and aspect are the canvas's, set when it becomes the scene's camera and each
+    // time the canvas changes (RenderSystem::updateCameraSizeForCanvas): in the editor, the size
+    // of the view that drew last
+    bool cameraSizedByCanvas(const void* camera) {
+        const CameraComponent* component = static_cast<const CameraComponent*>(camera);
+        return component->autoResize && !component->renderToTexture;
+    }
 
     constexpr uint64_t kCamera = UpdateFlags_Camera;
 
@@ -49,17 +56,17 @@ namespace {
         JE_FIELD(CameraComponent, up, .ops = &ops::FiniteVector3Always, .flags = OmitIfNonFinite, .updateFlags = kCamera, .drawer = "direction",
                  .uiOrder = 4),
         JE_FIELD_NAMED(CameraComponent, leftClip, "left", .yamlKey = "leftClip", .ops = &ops::FiniteFloatAlways, .flags = OmitIfNonFinite,
-                       .updateFlags = kCamera, .visibleIf = &cameraOrthographic, .uiOrder = 7),
+                       .updateFlags = kCamera, .visibleIf = &cameraOrthographic, .uiOrder = 7, .derivedIf = &cameraSizedByCanvas),
         JE_FIELD_NAMED(CameraComponent, rightClip, "right", .yamlKey = "rightClip", .ops = &ops::FiniteFloatAlways, .flags = OmitIfNonFinite,
-                       .updateFlags = kCamera, .visibleIf = &cameraOrthographic, .uiOrder = 8),
+                       .updateFlags = kCamera, .visibleIf = &cameraOrthographic, .uiOrder = 8, .derivedIf = &cameraSizedByCanvas),
         JE_FIELD_NAMED(CameraComponent, bottomClip, "bottom", .yamlKey = "bottomClip", .ops = &ops::FiniteFloatAlways, .flags = OmitIfNonFinite,
-                       .updateFlags = kCamera, .visibleIf = &cameraOrthographic, .uiOrder = 9),
+                       .updateFlags = kCamera, .visibleIf = &cameraOrthographic, .uiOrder = 9, .derivedIf = &cameraSizedByCanvas),
         JE_FIELD_NAMED(CameraComponent, topClip, "top", .yamlKey = "topClip", .ops = &ops::FiniteFloatAlways, .flags = OmitIfNonFinite,
-                       .updateFlags = kCamera, .visibleIf = &cameraOrthographic, .uiOrder = 10),
+                       .updateFlags = kCamera, .visibleIf = &cameraOrthographic, .uiOrder = 10, .derivedIf = &cameraSizedByCanvas),
         JE_FIELD(CameraComponent, yfov, .ops = &ops::PositiveFiniteFloatAlways, .updateFlags = kCamera, .unit = Unit::Radians,
                  .step = 0.01f, .format = "%.3f", .label = "Y FOV", .visibleIf = &cameraPerspective, .uiOrder = 5),
         JE_FIELD(CameraComponent, aspect, .ops = &ops::PositiveFiniteFloatAlways, .updateFlags = kCamera, .visibleIf = &cameraPerspective,
-                 .uiOrder = 6),
+                 .uiOrder = 6, .derivedIf = &cameraSizedByCanvas),
         JE_FIELD_NAMED(CameraComponent, nearClip, "near", .yamlKey = "nearClip", .ops = &ops::FiniteFloatAlways, .flags = OmitIfNonFinite,
                        .updateFlags = kCamera, .unit = Unit::Meters, .uiOrder = 11),
         JE_FIELD_NAMED(CameraComponent, farClip, "far", .yamlKey = "farClip", .ops = &ops::FiniteFloatAlways, .flags = OmitIfNonFinite,
@@ -108,10 +115,17 @@ namespace {
 
     constexpr uint64_t kAudio = UpdateFlags_AudioSource;
 
+    // what was loaded came from the old path
+    void audioFileMoved(void* owner) {
+        AudioSourceComponent& audio = *static_cast<AudioSourceComponent*>(owner);
+        audio.loaded = false;
+        audio.loadFailed = false;
+    }
+
     constexpr FieldDesc kAudioSourceFields[] = {
         JE_FIELD(AudioSourceComponent, enabled, .flags = CodegenIfChanged),
         JE_FIELD(AudioSourceComponent, state, .ops = &kAudioStateOps, .enumDesc = &enums::kAudioSourceState, .updateFlags = kAudio),
-        JE_FIELD(AudioSourceComponent, filename, .ops = &ops::AssetRefIfSet, .updateFlags = kAudio, .asset = AssetKind::Audio, .label = "Audio Clip"),
+        JE_FIELD(AudioSourceComponent, filename, .ops = &ops::AssetRefIfSet, .updateFlags = kAudio, .asset = AssetKind::Audio, .label = "Audio Clip", .assetMoved = &audioFileMoved),
         JE_FIELD(AudioSourceComponent, enableClocked, .updateFlags = kAudio, .label = "Clocked", .group = "Playback", .uiOrder = 7),
         JE_FIELD(AudioSourceComponent, volume, .ops = &ops::FiniteDouble, .flags = OmitIfNonFinite, .updateFlags = kAudio, .min = 0.0f,
                  .step = 0.01f, .format = "%.3f", .group = "Playback", .uiOrder = 1),
