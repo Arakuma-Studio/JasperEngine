@@ -26,6 +26,8 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+# a run that never ends must not hold the machine
+RUN_TIMEOUT_SECONDS = 900
 
 
 def run(editor: str, project: str, instancing: str, frames: int, warmup: int, scratch: Path, name: str) -> dict:
@@ -37,7 +39,7 @@ def run(editor: str, project: str, instancing: str, frames: int, warmup: int, sc
     command = [editor, "benchmark", "--project", project, "--play", "--frames", str(frames), "--warmup", str(warmup),
                "--gpu-instancing", instancing, "--name", "mesh-bench-" + name, "--out", str(out)]
     print(" ".join(command), flush=True)
-    subprocess.run(command, check=True, cwd=cwd)
+    subprocess.run(command, check=True, cwd=cwd, timeout=RUN_TIMEOUT_SECONDS)
     return json.loads(out.read_text())
 
 

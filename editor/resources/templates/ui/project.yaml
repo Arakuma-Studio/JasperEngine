@@ -6,6 +6,8 @@ scalingMode: fitwidth
 textureStrategy: none
 vsync: true
 htmlUiMsaaSamples: 4
+device:
+  shadow_lod_bias: 0.5
 htmlUiGlyphAtlasMiB: 0
 htmlUiSdfPrimitives: true
 htmlUiTransformAwareText: true

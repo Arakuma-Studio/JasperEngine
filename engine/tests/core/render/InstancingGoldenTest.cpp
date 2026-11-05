@@ -27,6 +27,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -264,6 +265,8 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     const PassCounts depthOff = passCounts("depth pre-pass");
     const std::vector<uint8_t> frameOff = readTarget();
     const std::vector<uint8_t> shadowImageOff = passImage("shadow", 4);
+    // the control: the atlas read again, nothing changed
+    const std::vector<uint8_t> shadowImageOffAgain = passImage("shadow", 4);
     const std::vector<uint8_t> depthImageOff = passImage("depth pre-pass", 0);
 
     Engine::setGpuInstancingEnabled(true);
@@ -286,8 +289,21 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     EXPECT_LT(depthOn.draws + 30, depthOff.draws);
     EXPECT_EQ(depthOn.instances, depthOff.instances);
 
+    const auto describe = [](const char* name, const std::vector<uint8_t>& image){
+        uint8_t low = 255;
+        uint8_t high = 0;
+        for (size_t i = 0; i < image.size(); i += 4){
+            low = std::min(low, image[i]);
+            high = std::max(high, image[i]);
+        }
+        std::printf("[instancing] %s: %zu bytes, red %u..%u\n", name, image.size(), (unsigned)low, (unsigned)high);
+    };
+    describe("shadow atlas off", shadowImageOff);
+    describe("shadow atlas off, again", shadowImageOffAgain);
+    describe("shadow atlas on", shadowImageOn);
     ASSERT_FALSE(shadowImageOff.empty());
     ASSERT_FALSE(depthImageOff.empty());
+    EXPECT_EQ(differentPixels(shadowImageOff, shadowImageOffAgain), 0u) << "the atlas read twice, nothing changed: the readback does not hold";
     EXPECT_EQ(differentPixels(shadowImageOff, shadowImageOn), 0u) << "shadow atlas pixels that differ";
     EXPECT_EQ(differentPixels(depthImageOff, depthImageOn), 0u) << "depth pre-pass pixels that differ";
     EXPECT_EQ(differentPixels(frameOff, frameOn), 0u) << "frame pixels that differ";
