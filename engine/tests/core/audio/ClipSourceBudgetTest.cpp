@@ -5,7 +5,7 @@
 // no fades (the common case: its fades and trims cost only the frames they cover). Measured on the mix, what a
 // voice costs an audio thread: SoLoud's null driver mixing one looping voice block by block, the fastest of
 // several runs. Opt-in: a wall-clock budget on a shared builder is noise, so a person runs it by filter on a quiet
-// machine.
+// machine, with BUILD_TYPE=Release as players ship: the unit tests' default -O2 leaves the gain loop scalar.
 
 #include "audio/AudioImport.h"
 #include "audio/ClipSource.h"

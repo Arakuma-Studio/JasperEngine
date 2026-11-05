@@ -53,6 +53,8 @@ const double SPECTRAL_FLOOR_DBFS = -70.0;
 // keep the first
 const int ONSET_PEAK_FRAMES = 2;
 const int ONSET_MEDIAN_FRAMES = 8;
+// long enough that a thread costs far less than it saves
+const double CONCURRENT_METER_SECONDS = 20.0;
 const double ONSET_MAX_SHARE = 0.1;
 const double ONSET_REFINE_SHARE = 0.1;
 const double ONSET_MIN_GAP_SECONDS = 0.050;
@@ -615,44 +617,16 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
     AudioMeter meter(signal.sampleRate, channels, options);
     std::vector<const float*> planes;
     for (unsigned int c = 0; c < channels; c++) planes.push_back(signal.channel(c));
-    meter.processPlanar(planes.data(), n);
-    meter.finish();
-    const LoudnessResult r = meter.result();
+    // a long file's meter runs beside the spectral stages (R31): they read the same samples and share nothing else
+    const auto runMeter = [&meter, &planes, n]() {
+        meter.processPlanar(planes.data(), n);
+        meter.finish();
+    };
+    std::thread meterThread;
+    if (duration >= CONCURRENT_METER_SECONDS) meterThread = std::thread(runMeter);
+    else runMeter();
 
     Json item;
-    item["non_finite"] = signal.nonFinite + r.nonFinite;
-    item["loudness"] = {
-        {"integrated_lufs", rounded(r.integrated.value_or(NaN), 0.01)},
-        {"short_term_max", rounded(r.shortTermMax.value_or(NaN), 0.01)},
-        {"momentary_max", rounded(r.momentaryMax.value_or(NaN), 0.01)},
-        {"lra", rounded(r.lra.value_or(NaN), 0.01)}
-    };
-    item["peak"] = {
-        {"sample_dbfs", rounded(r.samplePeakDb, 0.01)},
-        {"true_peak_dbtp", rounded(r.truePeakDb, 0.01)},
-        {"clipped", r.clipped}
-    };
-    item["rms_dbfs"] = rounded(r.rmsDb, 0.01);
-    item["dc_offset"] = rounded(r.dcOffset, 0.0001);
-
-    Json bandsDb = Json::object();
-    Json bandShare = Json::object();
-    double bandTotal = 0.0;
-    for (int b = 0; b < AudioMeter::BANDS; b++) bandTotal += r.bandsMeanSquare[b];
-    for (int b = 0; b < AudioMeter::BANDS; b++) {
-        bandsDb[AudioMeter::bandLabel(b)] = rounded(r.bandsDb[b], 0.01);
-        bandShare[AudioMeter::bandLabel(b)] = rounded(bandTotal > 0.0 ? r.bandsMeanSquare[b] / bandTotal : 0.0, 0.001);
-    }
-    item["bands_db"] = bandsDb;
-    item["band_share"] = bandShare;
-    item["sub_share"] = rounded(r.subShare, 0.001);
-
-    Json momentary = Json::array();
-    for (float v : meter.momentaryCurve()) momentary.push_back(rounded(v, 0.01));
-    Json shortTerm = Json::array();
-    for (float v : meter.shortTermCurve()) shortTerm.push_back(rounded(v, 0.01));
-    item["momentary"] = momentary;
-    item["short_term"] = shortTerm;
     // -- spectral features and flux on the mono downmix
     const std::vector<float> mono = signal.mono();
     const size_t frames = spectralFrames(n);
@@ -867,6 +841,43 @@ Json AudioAnalysis::measure(const Signal& signal, AudioMeterMode mode, std::vect
     }
 
     item["measured_kind"] = measuredKind(item, duration);
+    if (meterThread.joinable()) meterThread.join();
+    const LoudnessResult r = meter.result();
+
+    item["non_finite"] = signal.nonFinite + r.nonFinite;
+    item["loudness"] = {
+        {"integrated_lufs", rounded(r.integrated.value_or(NaN), 0.01)},
+        {"short_term_max", rounded(r.shortTermMax.value_or(NaN), 0.01)},
+        {"momentary_max", rounded(r.momentaryMax.value_or(NaN), 0.01)},
+        {"lra", rounded(r.lra.value_or(NaN), 0.01)}
+    };
+    item["peak"] = {
+        {"sample_dbfs", rounded(r.samplePeakDb, 0.01)},
+        {"true_peak_dbtp", rounded(r.truePeakDb, 0.01)},
+        {"clipped", r.clipped}
+    };
+    item["rms_dbfs"] = rounded(r.rmsDb, 0.01);
+    item["dc_offset"] = rounded(r.dcOffset, 0.0001);
+
+    Json bandsDb = Json::object();
+    Json bandShare = Json::object();
+    double bandTotal = 0.0;
+    for (int b = 0; b < AudioMeter::BANDS; b++) bandTotal += r.bandsMeanSquare[b];
+    for (int b = 0; b < AudioMeter::BANDS; b++) {
+        bandsDb[AudioMeter::bandLabel(b)] = rounded(r.bandsDb[b], 0.01);
+        bandShare[AudioMeter::bandLabel(b)] = rounded(bandTotal > 0.0 ? r.bandsMeanSquare[b] / bandTotal : 0.0, 0.001);
+    }
+    item["bands_db"] = bandsDb;
+    item["band_share"] = bandShare;
+    item["sub_share"] = rounded(r.subShare, 0.001);
+
+    Json momentary = Json::array();
+    for (float v : meter.momentaryCurve()) momentary.push_back(rounded(v, 0.01));
+    Json shortTerm = Json::array();
+    for (float v : meter.shortTermCurve()) shortTerm.push_back(rounded(v, 0.01));
+    item["momentary"] = momentary;
+    item["short_term"] = shortTerm;
+
     return item;
 }
 
