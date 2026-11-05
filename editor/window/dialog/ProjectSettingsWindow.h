@@ -43,6 +43,7 @@ namespace jasperengine::editor {
         float m_foliageDistanceScale[3] = {1.0f, 1.0f, 1.0f};
         // Texture (S14 R24)
         TextureProjectSettings m_textureSettings;
+        ModelProjectSettings m_modelSettings;
         PlayerLoggingSettings m_playerLogging;
         PlayerCrashSettings m_playerCrash;
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
@@ -73,6 +74,11 @@ namespace jasperengine::editor {
         ThreadingProjectSettings m_threading;
         ShaderCreationProjectSettings m_shaderCreation;
         HtmlUiRenderSettings m_htmlUiRender;
+        DrawSubmissionSettings m_drawSubmission;
+        // Quality > Device Tiers and the rest of the device settings (S56), and the platform
+        // group the table shows
+        DeviceSettings m_deviceSettings;
+        int m_deviceTierGroup = 1;
         NavigationProjectSettings m_navigation;
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
@@ -93,6 +99,7 @@ namespace jasperengine::editor {
         Physics3DWorldSettings m_physics3DWorld;
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
+        int m_lightModeIndex = 0;
         bool m_packNativeResources = false;
         // S30: Build Settings' method (auto, prebuilt, compile) and the content pack
         int m_buildMethodIndex = 0;
@@ -240,12 +247,15 @@ namespace jasperengine::editor {
         bool drawShaderGlobalTexture(const char* id, ShaderGlobalType type, std::string& path);
         void refreshShaderGlobalUses();
         void drawQualitySettings();
+        void drawDeviceTierSettings();
+        void drawUploadBudgetSettings();
         void drawTextureSettings();
         void drawPhysicsSettings();
         void drawPhysics2DSettings();
         void drawInputSettings();
         void drawAudioSettings();
         void drawNavigationSettings();
+        void drawMeshSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);

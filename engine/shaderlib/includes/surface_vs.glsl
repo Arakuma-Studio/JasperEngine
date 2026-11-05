@@ -99,11 +99,8 @@
 //   - USE_SHADOWS (pixel lights that receive shadows): nothing here; the fragment stage
 //     calls lightShadow, which computes the shadow coordinates from v_position.
 
-uniform u_vs_pbrParams {
-    mat4 modelMatrix;
-    mat4 normalMatrix;
-    mat4 mvpMatrix;
-} pbrParams;
+// pbrParams: per draw, or per instance in an automatically instanced batch
+#include "includes/object_params.glsl"
 
 // same expression as the depth programs, so a depth pre-pass and this pass agree bit for bit
 invariant gl_Position;
@@ -380,7 +377,7 @@ void main() {
     #endif
 
     #ifdef HAS_INSTANCING
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * vec4(position, 1.0);
         objectNormal = normalize(instanceNormal(mat3(instanceMatrix), objectNormal));
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT

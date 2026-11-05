@@ -4,6 +4,10 @@
 // W1: the Inspector: get_entity, components (add, remove, reset, copy/paste values),
 // set_properties (every property type), set_transform, list_component_types
 #include "McpTools.h"
+#include "component/TrailRendererComponent.h"
+#include "component/ModelComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/Transform.h"
 #include "component/ParticleSystemComponent.h"
 
 #include "mcp/McpCall.h"

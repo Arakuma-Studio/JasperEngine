@@ -64,6 +64,9 @@ namespace jasperengine{
     struct TerrainView{
         // 0 = fullRes, 1 = halfRes; selected and uploaded independently once per frame
         InterleavedBuffer nodesbuffer[2];
+        // the TerrainComponent::nodes each record of nodesbuffer is, in its order (a shadow slot
+        // culls them one by one, spec S55 R5)
+        std::vector<uint32_t> nodeIndices[2];
         // per-view morph origin, paired with this view's node selection
         Vector3 nodesEyePos;
         bool needUpdateNodesBuffer = false;

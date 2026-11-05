@@ -113,7 +113,7 @@ void main() {
         vec4 objPos = vec4(getSkinPosition(latticePosition, boneTransform), 1.0);
         latticeNormal = normalize(getSkinNormal(latticeNormal, boneTransform));
         #ifdef HAS_INSTANCING
-            mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+            mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
             vec4 pos = instanceMatrix * objPos;
             latticeNormal = instanceNormal(mat3(instanceMatrix), latticeNormal);
             #ifdef USE_INSTANCE_FADE
@@ -129,7 +129,7 @@ void main() {
     vec3 objNormal = getNormalObj(boneTransform, objPos);
 
     #ifdef HAS_INSTANCING
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * objPos;
         #ifdef USE_INSTANCE_FADE
             pos.xyz = mix(i_matrix_col4.xyz, pos.xyz, instanceFadeVisible(i_matrix_col4.xyz));

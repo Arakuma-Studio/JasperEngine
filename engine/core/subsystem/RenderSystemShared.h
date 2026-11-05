@@ -62,6 +62,9 @@ namespace jasperengine::rendershared {
 
     // shadow-map texels of error a caster may lose, well inside the PCF blur
     inline constexpr float SHADOW_LOD_TEXELS = 2.0f;
+    // shadow maps cast from about one detail level coarser than the camera's rule picks (spec S54
+    // R7, the default Shadow LOD Bias 1 keeps it)
+    inline constexpr float SHADOW_LOD_COARSER = 2.0f;
 
     // an instanced mesh with culling off keeps its whole batch, bounds or not
     inline bool cullsBatch(const MeshComponent& mesh, const InstancedMeshComponent* instmesh){

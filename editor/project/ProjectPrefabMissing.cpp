@@ -6,6 +6,7 @@
 // comes back. The data path is described in editor/project/PREFABS.md.
 
 #include "Project.h"
+#include "component/PrefabComponent.h"
 #include "Out.h"
 #include "Stream.h"
 #include "util/CameraTextureLink.h"

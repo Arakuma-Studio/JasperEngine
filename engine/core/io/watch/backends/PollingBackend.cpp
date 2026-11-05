@@ -9,6 +9,7 @@
 
 #include "Backends.h"
 #include "jobs/detail/TimedWait.h"
+#include "LinkedFolders.h"
 #include "ProjectFileIndex.h"
 
 #include <algorithm>
@@ -205,7 +206,16 @@ void PollingBackend::scanFolders(std::vector<RawEvent>& events) {
         }
         ProjectFileIndex::Entry known;
         index.find(index.absolute(key), known);
-        if (now.mtimeNs != known.mtimeNs || racyFolders.count(key)) changed.push_back(key);
+        if (now.mtimeNs != known.mtimeNs || racyFolders.count(key)) {
+            // a link to a folder is an entry here, not a folder of this tree: listing it would take
+            // its target's entries for new ones (and a link to itself, level after level). The
+            // service gives a linked folder a backend of its own.
+            if (isLink(index.absolute(key))) {
+                racyFolders.erase(key);
+                continue;
+            }
+            changed.push_back(key);
+        }
     }
     for (const std::string& key : gone) racyFolders.erase(key);
     if (changed.empty()) return;

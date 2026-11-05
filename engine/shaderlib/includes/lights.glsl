@@ -37,6 +37,14 @@
 //   - USE_SHADOWS (pixel lights that receive shadows): call lightShadow for the pixel
 //     lights; it computes the shadow coordinates from the world position (no varyings).
 //
+// Light Mode Tiled (USE_TILED_LIGHTS, includes/tiled_lights.glsl): the fragment stage's pixel
+// lights are the lights of its screen tile, up to 32 (LIGHT_CAPACITY is that cap there), in
+// scene order; pixelLightCount() is the tile's count. The vertex stage keeps the object's own
+// vertex lights. A shader written against the functions above needs no change.
+//
+// Capsule and contact shadows (USE_CAPSULE_SHADOWS, USE_CONTACT_SHADOWS, with USE_SHADOWS):
+// lightShadow includes the occlusion of the lights that take them (includes/light_occlusion.glsl).
+//
 // Fragment stage: with USE_PUNCTUAL, spot lights with a projected mask apply it
 // (u_spotMaskAtlas, declared here); with USE_SHADOWS the shadow maps and their blocks are
 // declared here (includes/shadow_data.glsl) and lightShadow samples them
@@ -59,6 +67,7 @@
 //   color_outer      rgb linear colour * intensity; w spot outer cone cos (-2 point)
 //   spot_shadow      xy spot projection up (octahedral), z mask aspect (0 = no mask),
 //                    w (shadow map index + 1) | cascades << 6 | mask atlas tile << 9
+//                    | occlusion << 12 (1 capsule shadows, 2 contact shadows: light_occlusion.glsl)
 // The SH ambient follows the vertex arrays: the vertex stage declares it only in vertex
 // mode (no USE_PUNCTUAL), where it adds the ambient itself.
 
@@ -75,6 +84,13 @@ uniform u_vs_objectLights {
         vec4 shB;
     #endif
 } objectLights;
+#endif
+
+#if defined(LIGHTS_FS) && !defined(LIGHTS_FS_DECLARED) && defined(USE_TILED_LIGHTS)
+// Light Mode Tiled: the fragment stage's pixel lights are its screen tile's (includes/tiled_lights.glsl)
+#define LIGHTS_FS_DECLARED
+#define LIGHTS_TILED
+#include "includes/tiled_lights.glsl"
 #endif
 
 #if defined(LIGHTS_FS) && !defined(LIGHTS_FS_DECLARED)
@@ -119,6 +135,10 @@ uniform u_fs_objectLights {
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
     #include "includes/shadow_sampling.glsl"
 #endif
+// capsule and contact shadows (S57): occlusion of the shadowed lights that take them
+#if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS) && (defined(USE_CAPSULE_SHADOWS) || defined(USE_CONTACT_SHADOWS))
+    #define LIGHT_OCCLUSION
+#endif
 
 struct LightSample {
     vec3 direction;    // normalised, from the surface towards the light
@@ -127,9 +147,15 @@ struct LightSample {
     int index;
 };
 
+#ifdef LIGHTS_TILED
+int pixelLightCount(){
+    return tiledLightCount();
+}
+#else
 int pixelLightCount(){
     return int(objectLights.counts.x);
 }
+#endif
 
 int vertexLightCount(){
     return int(objectLights.counts.y);
@@ -148,16 +174,33 @@ vec3 lightsOctahedralDecode(vec2 e){
 // premultiplied by the intensity, which is 1. The vertex stage leaves out what only pixel
 // lights read (spot projection, mask, shadows).
 Light getLightData(int index){
+#ifdef LIGHTS_TILED
+    int record = tiledLightRecord(index);
+    vec4 positionType = tiledLightsTexel(record);
+    vec4 directionInner = tiledLightsTexel(record + 1);
+    vec4 colorOuter = tiledLightsTexel(record + 2);
+    vec4 tiledSpotShadow = tiledLightsTexel(record + 3);
+    // a light the object does not take adds nothing (no colour, no shadow)
+    if (tiledLightExcluded(record)){
+        colorOuter.xyz = vec3(0.0);
+        tiledSpotShadow.w = 0.0;
+    }
+#else
     vec4 positionType = objectLights.position_type[index];
     vec4 directionInner = objectLights.direction_inner[index];
     vec4 colorOuter = objectLights.color_outer[index];
+#endif
     int type = (positionType.w < 0.5) ? LightType_Directional : ((colorOuter.w < -1.5) ? LightType_Point : LightType_Spot);
     vec3 spotUp = vec3(0.0, 1.0, 0.0);
     float maskAspect = 0.0;
     int shadowMapIndex = -1;
     int cascades = 0;
     #ifdef LIGHTS_FS_DECLARED
+        #ifdef LIGHTS_TILED
+        vec4 spotShadow = tiledSpotShadow;
+        #else
         vec4 spotShadow = objectLights.spot_shadow[index];
+        #endif
         spotUp = lightsOctahedralDecode(spotShadow.xy);
         maskAspect = spotShadow.z;
         int packedShadow = int(spotShadow.w);
@@ -271,11 +314,15 @@ vec3 vertexDiffuse(vec3 worldPosition, vec3 worldNormal){
     return diffuse * LIGHT_INV_PI;
 }
 
+#ifdef LIGHT_OCCLUSION
+    #include "includes/light_occlusion.glsl"
+#endif
+
 #if defined(LIGHTS_FS_DECLARED) && defined(USE_SHADOWS)
-// 1 = lit, 0 = in shadow; a pixel light without a shadow map is always lit. dpdx and dpdy are
-// the receiver plane's derivatives (dFdx/dFdy of worldPosition) taken in uniform control flow:
-// a caller that calls this inside a per-fragment branch takes them before it
-float lightShadowD(int index, vec3 worldPosition, vec3 worldNormal, vec3 dpdx, vec3 dpdy){
+// the shadow map's term: 1 = lit, 0 = in shadow; a pixel light without a shadow map is always lit.
+// dpdx and dpdy are the receiver plane's derivatives (dFdx/dFdy of worldPosition), taken in
+// uniform control flow
+float lightShadowMapD(int index, vec3 worldPosition, vec3 worldNormal, vec3 dpdx, vec3 dpdy){
     Light light = getLightData(index);
     if (!light.shadows){
         return 1.0;
@@ -288,6 +335,17 @@ float lightShadowD(int index, vec3 worldPosition, vec3 worldNormal, vec3 dpdx, v
         return shadowSpot(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
     }
     return shadowPoint(light.shadowMapIndex, light.position, worldPosition, worldNormal, towardsLight, dpdx, dpdy);
+}
+
+// the light's shadow, with the capsule and contact shadows of the light
+// (includes/light_occlusion.glsl) under LIGHT_OCCLUSION; a caller inside a per-fragment branch
+// takes the derivatives before it
+float lightShadowD(int index, vec3 worldPosition, vec3 worldNormal, vec3 dpdx, vec3 dpdy){
+    float shadow = lightShadowMapD(index, worldPosition, worldNormal, dpdx, dpdy);
+    #ifdef LIGHT_OCCLUSION
+        shadow *= lightOcclusion(index, worldPosition, worldNormal);
+    #endif
+    return shadow;
 }
 
 // the same, taking the derivatives here: call it in uniform control flow (the light loop)

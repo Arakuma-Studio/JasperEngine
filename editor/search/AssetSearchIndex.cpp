@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AssetSearchIndex.h"
+#include "io/watch/LinkedFolders.h"
 
 #include "Project.h"
 #include "asset/AssetTypes.h"
@@ -59,7 +60,7 @@ void AssetSearchIndex::startFolderWalk() {
     folderWalk = jobs::submit([root]() {
         auto folders = std::make_shared<std::vector<std::string>>();
         std::error_code ec;
-        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end;
+        for (watch::LinkedDirectoryIterator it(root, fs::directory_options::skip_permission_denied, ec), end; !ec && it != end;
              it.increment(ec)) {
             if (jobs::cancelRequested()) break;
             std::error_code entryEc;

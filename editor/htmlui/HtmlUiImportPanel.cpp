@@ -19,6 +19,7 @@
 
 #include "imgui.h"
 #include "util/FileUtils.h"
+#include "window/EditorModal.h"
 
 #include <chrono>
 #include <map>
@@ -128,10 +129,11 @@ void HtmlUiImportPanel::draw(Project* project, SceneProject* sceneProject, Entit
     }
     ImGui::SetItemTooltip("Remove the imports no document of the project references, and their files");
 
-    if (ImGui::BeginPopupModal("Remove unused imports##htmlui", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
+    if (EditorModal::begin("Remove unused imports##htmlui", nullptr, ImGuiWindowFlags_AlwaysAutoResize)){
+        EditorModal::message("Remove every imported resource no .html/.css file of the project references, and delete its files from assets?");
         ImGui::TextUnformatted("Remove every imported resource no .html/.css file of the project references,\nand delete its files from assets?");
         ImGui::Separator();
-        if (ImGui::Button("Remove", ImVec2(120, 0))){
+        if (EditorModal::button("Remove", "yes", ImVec2(120, 0))){
             const RemoveUnusedResult result = removeUnusedImports(target);
             if (!result.error.empty()){
                 Out::error("[HTML UI] Remove unused imports failed: %s", result.error.c_str());
@@ -148,7 +150,7 @@ void HtmlUiImportPanel::draw(Project* project, SceneProject* sceneProject, Entit
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120, 0)))
+        if (EditorModal::button("Cancel", "cancel", ImVec2(120, 0)))
             ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }

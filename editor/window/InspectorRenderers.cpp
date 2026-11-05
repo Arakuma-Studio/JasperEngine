@@ -5,6 +5,7 @@
 // sub-selection, frame lists, particle modules).
 
 #include "InspectorWindow.h"
+#include "component/InstancedMeshComponent.h"
 #include "reflect/Reflect.h"
 #include "reflect/Enums.h"
 #include "command/PlayChangeReview.h"

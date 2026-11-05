@@ -2,6 +2,15 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender2D.h"
+#include "component/AudioSourceComponent.h"
+#include "component/LayoutGroupComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/OnScreenControlComponents.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/UIDocumentComponent.h"
+#include "object/Sprite.h"
+#include "subsystem/RenderSystem.h"
+#include "component/CharacterController2DComponent.h"
 
 #include "Project.h"
 #include "LineDrawUtils.h"

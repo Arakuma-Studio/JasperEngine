@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ScenesWindow.h"
+#include "window/EditorModal.h"
 #include "Theme.h"
 #include "Out.h"
 
@@ -81,7 +82,7 @@ void ScenesWindow::show() {
                              ImGuiWindowFlags_NoResize |
                              scenesNoScrollFlags;
 
-    if (ImGui::BeginPopupModal("Scenes in Build##ScenesModal", &m_isOpen, flags)) {
+    if (EditorModal::begin("Scenes in Build##ScenesModal", &m_isOpen, flags)) {
         if (!m_isOpen) {
             ImGui::CloseCurrentPopup();
         } else {
@@ -94,6 +95,8 @@ void ScenesWindow::show() {
 void ScenesWindow::drawScenes() {
     const ImGuiStyle& style = ImGui::GetStyle();
 
+    EditorModal::message("Only the checked scenes are part of the project and its builds; unchecking one keeps its file on disk. "
+                         "edit_build_scenes does the same without this window.");
     ImGui::TextWrapped("Only the checked scenes are part of the project and its builds. "
                        "Unchecking one keeps its file on disk.");
     ImGui::Spacing();
@@ -172,7 +175,7 @@ void ScenesWindow::drawScenes() {
     const float buttonsWidth = buttonWidth * 2.0f + style.ItemSpacing.x;
     ImGui::SetCursorPos(ImVec2(style.WindowPadding.x + std::max(0.0f, footerWidth - buttonsWidth), footerY));
 
-    if (ImGui::Button("OK", ImVec2(buttonWidth, 0))) {
+    if (EditorModal::button("OK", "ok", ImVec2(buttonWidth, 0))) {
         applyScenes();
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
@@ -180,7 +183,7 @@ void ScenesWindow::drawScenes() {
 
     ImGui::SameLine();
 
-    if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0)) ||
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         m_isOpen = false;
         ImGui::CloseCurrentPopup();
