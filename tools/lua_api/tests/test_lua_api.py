@@ -116,11 +116,15 @@ class LuaApiJson(unittest.TestCase):
         self.assertEqual(member('GameObject', 'setPosition')['modules'], [])
         enums = {e['name']: e for e in api()['enums']}
         self.assertEqual(enums['Joint3DType']['modules'], ['physics3d'])
+        # the sound layer's names, which ModuleUsage reads to keep the module in a Compile build
+        self.assertEqual(classes['Audio']['modules'], ['soundlayer'])
+        self.assertEqual(classes['SoundHandle']['modules'], ['soundlayer'])
+        self.assertEqual(enums['AudioPlayOn']['modules'], ['soundlayer'])
         for c in classes.values():
             for key in ('modules',):
                 self.assertIsInstance(c[key], list)
                 for m in c['methods'] + c['properties']:
-                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d'}, m['name'])
+                    self.assertTrue(set(m['modules']) <= {'htmlui', 'video', 'physics2d', 'physics3d', 'soundlayer'}, m['name'])
 
 
 class Emitters(unittest.TestCase):

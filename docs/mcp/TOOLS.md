@@ -1911,7 +1911,7 @@ The project's UserSettings/PlayerPrefs store, shared with the game in Play (chan
 
 Group: `audio` (listed once `tool_groups` enables it, callable either way). Hints: idempotent
 
-Create or change a .soundevent (Unity's Audio Random Container): clips played by weight, shuffle, sequence or as layers, with pitch, volume and delay ranges, a cooldown and an instance limit. Scenes refer to it by GUID, so move_asset it freely; an AudioSource plays it through set_properties `event`. One undo step; during Play the next plays use it. Result: problems, and with audition the picks and loudness of the next plays. Keys: jasper://docs/audio. slice: cut a multi-take file into clips.
+Create or change a .soundevent (Unity's Audio Random Container): clips played by weight, shuffle, sequence or as layers, with pitch, volume and delay ranges, a cooldown and an instance limit. Scenes refer to it by GUID, so move_asset it freely; an AudioSource plays it through set_properties `event`. One undo step; during Play the next plays use it. Result: problems, and with audition the picks and loudness of the next plays. Keys: jasper://docs/sound. slice: cut a multi-take file into clips.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
