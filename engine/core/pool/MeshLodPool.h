@@ -63,21 +63,24 @@ namespace jasperengine{
     struct MeshLodRecipe{
         unsigned int levels = MAX_MESH_LODS - 1; // levels after LOD 0, at most MAX_MESH_LODS - 1
         float ratio = 0.5f;                      // share of the triangles of the level before that a level keeps
-        float targetError = 0.02f;               // the most a level may deviate, as a share of the mesh's size
+        float targetError = 0.15f;               // the most a level may deviate, as a share of the mesh's size
         bool permissive = false;                 // collapses across attribute seams too (meshopt_SimplifyPermissive)
 
         // the levels the runtime builds when nothing baked them (Balanced, 3 levels)
         static MeshLodRecipe runtime();
-        // levels after LOD 0 (1-3) at a Reduction: Preserve Detail keeps 0.6 a level within 1 % of
-        // the size, Balanced 0.5 within 2 %, Smallest 0.35 within 5 % and across seams
+        // levels after LOD 0 (1-3) at a Reduction: Preserve Detail keeps 0.6 a level within 5 % of
+        // the size, Balanced 0.5 within 15 %, Smallest 0.35 within 30 % and across seams. The budget
+        // only stops degenerate collapses: selection already draws a level of a large error only
+        // while the mesh is small on screen, so a tighter one cuts the distant levels short
         static MeshLodRecipe forReduction(MeshLodReduction reduction, unsigned int levels);
     };
 
     // The version of the level builder (buildLevels and its recipes). A cooked model's baked
     // levels (JE_mesh_lods.recipe) of another version are not used: the runtime builds its own.
     // The cook's cache key carries it. 2: geometric errors, weights by attribute, error budgets,
-    // permissive retry, skinned meshes (spec S54 R2)
-    constexpr int kMeshLodRecipe = 2;
+    // permissive retry, skinned meshes (spec S54 R2). 3: budgets that let the chains reach their
+    // distant levels
+    constexpr int kMeshLodRecipe = 3;
 
     // the glTF extension of a cooked primitive's baked levels (spec S54 contract C1)
     constexpr const char* MESH_LODS_GLTF_EXTENSION = "JE_mesh_lods";
