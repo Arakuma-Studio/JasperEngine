@@ -59,7 +59,7 @@ S65, S68, S69, S70 and S35-S40. Moved off this list: S72, which changes includes
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
-| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A | In progress |
+| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | In review: narrowing a test filter |
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B | In progress |
 | S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
