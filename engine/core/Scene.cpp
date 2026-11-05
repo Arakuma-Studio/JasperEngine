@@ -589,6 +589,33 @@ float Scene::getPhysicalLightEV100() const{
     return settings.physicalLightEV100;
 }
 
+void Scene::setCapsuleShadowsEnabled(bool enabled){
+    // the lit variants take capsule shadows or leave them (RenderSystem::updateLightingFeatures)
+    settings.capsuleShadowsEnabled = enabled;
+}
+
+bool Scene::isCapsuleShadowsEnabled() const{
+    return settings.capsuleShadowsEnabled;
+}
+
+void Scene::setCapsuleShadowIntensity(float intensity){
+    if (std::isfinite(intensity))
+        settings.capsuleShadowIntensity = std::clamp(intensity, 0.0f, 1.0f);
+}
+
+float Scene::getCapsuleShadowIntensity() const{
+    return settings.capsuleShadowIntensity;
+}
+
+void Scene::setCapsuleShadowSoftness(float softness){
+    if (std::isfinite(softness))
+        settings.capsuleShadowSoftness = std::clamp(softness, 0.0f, 2.0f);
+}
+
+float Scene::getCapsuleShadowSoftness() const{
+    return settings.capsuleShadowSoftness;
+}
+
 void Scene::setAmbientLight2D(float intensity, Vector3 color){
     settings.ambientLight2DIntensity = intensity;
     settings.ambientLight2DColor = Color::sRGBToLinear(color);

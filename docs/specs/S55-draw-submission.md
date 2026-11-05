@@ -199,7 +199,7 @@ From `jasper-render.md`, with file and line citations there:
   same expressions on the same values (`InstancingGoldenGpu` compares the images pixel for pixel).
   The colour/tint is not per instance: draws with different material bytes never batch.
 - **The shader switch** is `includes/object_params.glsl` / `object_depth_params.glsl`: under
-  `HAS_AUTO_INSTANCING` ('Aui', MESH bit 36, DEPTH bit 18) `pbrParams` / `depthParams` are a macro over
+  `HAS_AUTO_INSTANCING` ('Aui', MESH bit 41, DEPTH bit 18) `pbrParams` / `depthParams` are a macro over
   the instance attributes, else the uniform block as before. `mesh.vert`, `depth.vert`,
   `surface_vs.glsl` and `surface_depth_vs.glsl` include them, so the built-in Lit and every library
   shader batch without change. A fork keeps its own block: `linkBatchVariant` sees the block still in

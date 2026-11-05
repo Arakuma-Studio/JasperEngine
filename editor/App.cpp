@@ -5465,9 +5465,12 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
     // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
-    // v45: S55's automatic GPU instancing: mesh and depth programs take their object block from
-    //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 36, DEPTH 18).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v45";
+    // v45: S57's lighting (MESH 'Til', 'Cap', 'Cts', 'Oit' at bits 36-39, the Hair lobe's
+    //      PBR_HAIR in u_fs_pbrParams, includes/lights.glsl's tiled and occlusion forms).
+    // v46: S54's (its bit and this version are kept for it).
+    // v47: S55's automatic GPU instancing: mesh and depth programs take their object block from
+    //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v47";
 }
 
 void editor::App::pushTabNotificationStyle(){

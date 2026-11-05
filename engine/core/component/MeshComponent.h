@@ -124,6 +124,20 @@ namespace jasperengine{
     // by RenderSystem::loadMesh and drawn by drawMesh before (Before passes, ahead of all the
     // mesh's submeshes) or after (After passes, after all of them) the mesh's main draws. A
     // submesh without an extra pass has none (Submesh::extraPass is null).
+    // The OIT accumulation render of an alpha-blended submesh (spec S57 R4): its colour variant
+    // with USE_OIT ('Oit'), drawn on the submesh's own vertex layout and bindings
+    // (ObjectRender::loadAlike) into the camera's accumulation targets
+    struct JASPERENGINE_API SubmeshOit{
+        ObjectRender render;
+        std::shared_ptr<ShaderRender> shader;
+        uint64_t shaderProperties = 0;
+        uint16_t customShaderId = 0;
+        int slotFSOit = -1;
+        bool loaded = false;
+        // its variant failed to build or does not match the colour variant's blocks: Sorted
+        bool failed = false;
+    };
+
     struct JASPERENGINE_API SubmeshExtraPass{
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
@@ -260,6 +274,14 @@ namespace jasperengine{
         uint16_t pbrParamsSize = 0;
         uint16_t pbrExtOffset = 0;
         int16_t pbrSetsOffset = -1;
+        // and the Hair shading model's three vec4 after them (spec S57 R5; -1: no hair)
+        int16_t pbrHairOffset = -1;
+        // u_fs_lightOcclusion (includes/light_occlusion.glsl: capsule and contact shadows),
+        // u_tiledLights and u_contactShadowTexture of the S57 variants ('Til', 'Cap', 'Cts')
+        int slotFSLightOcclusion = -1;
+        unsigned int sizeFSLightOcclusion = 0;
+        std::pair<int, int> slotTiledLights = {-1, -1};
+        std::pair<int, int> slotContactShadows = {-1, -1};
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
@@ -358,6 +380,9 @@ namespace jasperengine{
 
         // the material's extra pass as loaded (null: none, nothing allocated)
         std::shared_ptr<SubmeshExtraPass> extraPass;
+        // its weighted blended OIT render (an alpha-blended submesh while a camera of the scene
+        // draws Order Independent; null: none, nothing allocated)
+        std::shared_ptr<SubmeshOit> oit;
         // MeshComponent::smoothNormals entry its position attribute uses (-1: none)
         int smoothNormals = -1;
 
@@ -509,6 +534,11 @@ namespace jasperengine{
         bool castShadows = true;
         bool receiveShadows = true;
         bool shadowsBillboard = true;
+        // runtime: a Capsule Shadow Caster set to Capsules Only holds it (on its GameObject or
+        // an ancestor): its shadow is the capsules', it draws into no shadow map (spec S57 R2)
+        bool capsuleShadowsOnly = false;
+        // what the shadow passes and the shadow cache take it as
+        bool castsShadowMaps() const { return castShadows && !capsuleShadowsOnly; }
         // its shadows are cached in the static layer: redrawn only when it (or another static
         // caster of the slot) changes, while dynamic casters move over it (docs/rendering/shadows.md)
         bool staticShadowCaster = false;

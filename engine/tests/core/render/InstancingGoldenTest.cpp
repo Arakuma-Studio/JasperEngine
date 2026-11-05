@@ -14,6 +14,8 @@
 #include "object/Light.h"
 #include "object/Model.h"
 #include "object/Primitive.h"
+#include "pool/ShaderPool.h"
+#include "render/LightingTiers.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 #include "render/shadow/ShadowTypes.h"
@@ -66,6 +68,7 @@ namespace {
             models.clear();
             Engine::removeScene(&scene);
             Engine::setGpuInstancingEnabled(true);
+            LightingTiers::setLightMode(LightMode::AUTOMATIC);
         }
 
         Primitive& add(){
@@ -322,6 +325,44 @@ TEST_F(InstancingGoldenGpu, ShadowAndDepthPassesBatch){
     EXPECT_EQ(differentPixels(shadowImageOff, shadowImageOn), 0u) << "shadow atlas pixels that differ";
     EXPECT_EQ(differentPixels(depthImageOff, depthImageOn), 0u) << "depth pre-pass pixels that differ";
     EXPECT_EQ(differentPixels(frameOff, frameOn), 0u) << "frame pixels that differ";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+// Light Mode Tiled (S57): the batch variants take the colour program's 'Til' with its bindings, and
+// the frame is the same pixel for pixel.
+TEST_F(InstancingGoldenGpu, BatchedFrameMatchesUnderTiledLights){
+    JASPER_REQUIRE_GPU();
+    buildScene();
+    std::vector<std::unique_ptr<Light>> lights;
+    for (int i = 0; i < 12; i++){
+        lights.push_back(std::make_unique<Light>(&scene));
+        Light& light = *lights.back();
+        light.setType(LightType::POINT);
+        light.setPosition(-5.0f + 2.0f * (float)(i % 4), 1.5f, -4.0f + 3.0f * (float)(i / 4));
+        light.setColor((i % 3) == 0 ? 1.0f : 0.3f, (i % 3) == 1 ? 1.0f : 0.3f, (i % 3) == 2 ? 1.0f : 0.3f);
+        light.setIntensity(8.0f);
+        light.setRange(4.0f);
+    }
+    LightingTiers::setLightMode(LightMode::TILED);
+
+    Engine::setGpuInstancingEnabled(false);
+    ASSERT_TRUE(render()) << "the scene never finished loading";
+    ASSERT_TRUE(scene.getSystem<RenderSystem>()->getLightingStats().tiledLights);
+    const std::vector<uint8_t> unbatched = readTarget();
+    EXPECT_EQ(SystemRender::getDrawBatchStats().instancedDraws, 0u);
+
+    Engine::setGpuInstancingEnabled(true);
+    ASSERT_TRUE(render()) << "the batch variants never finished loading";
+    ASSERT_TRUE(scene.getSystem<RenderSystem>()->getLightingStats().tiledLights);
+    const std::vector<uint8_t> batched = readTarget();
+    const DrawBatchStats stats = SystemRender::getDrawBatchStats();
+    const Submesh& first = scene.getComponent<MeshComponent>(models[0]->getEntity()).submeshes[0];
+    std::printf("[instancing] tiled: %u instanced draws for %u draws, batch properties %llx\n", stats.instancedDraws,
+                stats.batchedInstances, (unsigned long long)first.batchShaderProperties);
+    EXPECT_NE(first.batchShaderProperties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS), 0u);
+    EXPECT_GT(stats.instancedDraws, 0u);
+    EXPECT_GE(stats.batchedInstances, 30u);
+    EXPECT_EQ(differentPixels(unbatched, batched), 0u) << "pixels that differ with GPU Instancing on under Tiled lights";
     EXPECT_NO_ENGINE_ERRORS();
 }
 

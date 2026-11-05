@@ -683,6 +683,59 @@ CASES = [
         "max_turns": 8,
     },
     {
+        "id": "guard_capsule_shadows",
+        "kind": "guard",
+        "what_happened": "S57 adds capsule shadows: a Capsule Shadow Caster (Cast Shadows: Capsules Only) plus the scene's "
+                         "capsule_shadows_enabled. Without the scene setting the caster draws nothing, and an agent that only "
+                         "turns the mesh's Cast Shadows off loses the character's shadow.",
+        "text_at_issue": "set_scene_settings names (capsule_shadows_enabled: 'soft shadows of the main directional light from "
+                         "the capsules of the 4 Capsule Shadow Casters nearest the camera ...'); jasper://docs/lighting",
+        "source": "docs/specs/S57-forge-lighting.md R2",
+        "prompt": "The Crate stands in for our walking character. Give it soft capsule shadows instead of shadow-map shadows, "
+                  "so moving it never redraws the cached shadow map.",
+        "mocks": [
+            {"tool": "add_component", "args": {"component": "re:(?i)capsule"}, "result": ok(
+                "Added capsuleshadowcaster to GameObject 15 \"Crate\".", {"entity": {"id": 15}})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 15 \"Crate\".", {"entity": {"id": 15}})},
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\ncapsule_shadows_enabled = true\ncapsule_shadow_intensity = 1\n"
+                "capsule_shadow_softness = 0.25",
+                {"scene_id": 1, "settings": {"capsule_shadows_enabled": True, "capsule_shadow_intensity": 1.0,
+                                             "capsule_shadow_softness": 0.25}})},
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["capsule_shadows_enabled"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"entity": "re:Crate|^15$", "component": "re:(?i)capsule"}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"capsule_shadows_enabled": True}}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_light_mode_setting",
+        "kind": "guard",
+        "what_happened": "S57 adds the project setting graphics.light_mode (Automatic, Per Object, Tiled). Raising Max "
+                         "Lights Per Object is the old answer to 'my many lamps are missing', and costs every object.",
+        "text_at_issue": "graphics.light_mode description: 'How lit meshes find their point and spot lights. Tiled lights "
+                         "every point and spot light per pixel from screen tiles (Forward+, up to 32 a tile ...)'",
+        "source": "docs/specs/S57-forge-lighting.md R1",
+        "prompt": "Our night market has about 60 small point lights; set the project to light them per pixel from screen "
+                  "tiles (Forward+) on every platform.",
+        "mocks": [
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "graphics.light_mode: tiled", {"graphics.light_mode": "tiled"})},
+            {"tool": "get_project_settings", "result": ok(
+                "graphics.light_mode: automatic (automatic, per_object, tiled: how lit meshes find their point and spot "
+                "lights; Automatic is Tiled on Medium tiers and above)", {"graphics.light_mode": "automatic"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["graphics.light_mode"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"graphics.light_mode": "tiled"}}}],
+                   "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"max_lights_per_object": "*"}}}],
+                   "edits_must_not": [r"project\.yaml$"], "shell_must_not": [YAML_WRITE]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_physics_body",
         "kind": "guard",
         "what_happened": "In-editor-era models added a Rigidbody without a collider, pre-scaled collider sizes or guessed them "
@@ -948,6 +1001,8 @@ CASES = [
         "checks": {"calls": [{"tool": "clear_project_leftovers", "args": {"remove": ["re:Old\\.importing"]}}],
                    "shell_must_not": [r"\brm\b.*importing"]},
         "max_turns": 10,
+    },
+    {
         "id": "guard_device_simulation",
         "kind": "guard",
         "what_happened": "Seeing a game as a low-end phone renders it needs the Game view's device simulation in Play: the "

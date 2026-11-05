@@ -203,6 +203,10 @@ namespace jasperengine{
         static constexpr uint8_t VARIANT_MIRRORED = 0;
         static constexpr uint8_t VARIANT_NO_CULL = 1;
         static constexpr uint8_t VARIANT_MIRRORED_NO_CULL = 2;
+        // the weighted blended OIT accumulation pipelines of an object loaded alike another
+        // (beginAccumulationDraw): unmirrored and mirrored, by the colour pipeline type they follow
+        static constexpr uint8_t VARIANT_ACCUMULATE = 3;
+        static constexpr uint8_t VARIANT_ACCUMULATE_MIRRORED = 4;
         SokolVariantRefs variants;
         // types whose pipeline already culls nothing (its no-cull variant is itself), by bit index
         uint16_t noCullSame;
@@ -299,6 +303,15 @@ namespace jasperengine{
         bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
         // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
+        // another variant of source's shader (the same vertex inputs and bindings) on source's
+        // vertex layout, bindings and render state; creates no pipeline (beginAccumulationDraw)
+        bool loadAlike(const SokolObject& source, ShaderRender* shader);
+        // source's bindings (buffers, textures) as they are now, for the next draws
+        void shareBindings(const SokolObject& source);
+        // the weighted blended OIT accumulation (RenderSystem, includes/oit.glsl): the pipeline of
+        // colorType (PIP_RTT or PIP_MSAA) with two colour targets, RGBA16F and R16F, both blended
+        // RGB ONE, ONE and alpha ZERO, ONE_MINUS_SRC_ALPHA, writing no depth. Made on first use
+        bool beginAccumulationDraw(PipelineType colorType, bool mirrored);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face
         // (editor-only debug views; ignored elsewhere); mirrored with one whose face winding is

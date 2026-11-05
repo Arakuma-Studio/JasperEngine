@@ -79,6 +79,9 @@ static const int textureStrategyCount = sizeof(textureStrategyValues) / sizeof(t
 static const char* mobilePbrTierNames[] = { "Full", "Reduced" };
 static const PbrTier mobilePbrTierValues[] = { PbrTier::FULL, PbrTier::REDUCED };
 static int findMobilePbrTierIndex(PbrTier tier) { return tier == PbrTier::FULL ? 0 : 1; }
+// LightMode's order (its values are the indices)
+static const char* lightModeNames[] = { "Automatic", "Per Object", "Tiled" };
+static const int lightModeCount = sizeof(lightModeNames) / sizeof(lightModeNames[0]);
 
 static const char* windowModeNames[] = { "Windowed", "Maximized", "Fullscreen" };
 static const WindowMode windowModeValues[] = { WindowMode::WINDOWED, WindowMode::MAXIMIZED, WindowMode::FULLSCREEN };
@@ -982,6 +985,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_physics3DWorld = project->getPhysics3DWorldSettings();
     m_runtimeShadersEnabled = project->isRuntimeShadersEnabled();
     m_mobilePbrTierIndex = findMobilePbrTierIndex(project->getMobilePbrTier());
+    m_lightModeIndex = static_cast<int>(project->getLightMode());
 
     const PresentationSettings& presentation = project->getPresentationSettings();
     m_defaultOrientationIndex = findDefaultOrientationIndex(presentation.defaultOrientation);
@@ -1881,6 +1885,15 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
             drawComboSetting("Mobile PBR Tier", "##MobilePbrTier", mobilePbrTierNames, 2, m_mobilePbrTierIndex, findMobilePbrTierIndex(Project::defaultMobilePbrTier),
                 "Android, iOS and HTML5 exports with Reduced leave out iridescence, anisotropy direction maps and clear coat normal maps "
                 "of the built-in Lit's extended lobes (fewer and lighter shader variants). Desktop exports and the editor draw everything.");
+        }
+
+        if (settingsui::beginRow("graphics.light_mode")) {
+            drawComboSetting("Light Mode", "##LightMode", lightModeNames, lightModeCount, m_lightModeIndex, static_cast<int>(Project::defaultLightMode),
+                "How lit meshes find their point and spot lights:\n"
+                "- Tiled lights every point and spot light per pixel from screen tiles (Forward+, up to 32 a tile; a per-frame CPU job "
+                "and one data texture)\n"
+                "- Per Object caps each object's lights at Max Lights Per Object (the rest fold into its ambient)\n"
+                "- Automatic is Tiled on Medium tiers and above, Per Object on Low");
         }
 
         // Shadows: the quality tier a scene of Quality Auto renders with, per platform
@@ -4627,6 +4640,7 @@ bool ProjectSettingsWindow::applySettings() {
     m_project->setPhysics3DWorldSettings(m_physics3DWorld);
     m_project->setRuntimeShadersEnabled(m_runtimeShadersEnabled);
     m_project->setMobilePbrTier(mobilePbrTierValues[m_mobilePbrTierIndex]);
+    m_project->setLightMode(static_cast<LightMode>(std::clamp(m_lightModeIndex, 0, lightModeCount - 1)));
 
     // The project already carries the values applied above
     const std::string inheritedName = m_project->getApplicationName();

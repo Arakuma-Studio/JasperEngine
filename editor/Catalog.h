@@ -221,12 +221,14 @@ namespace jasperengine::editor{
         // Unity's VideoPlayer
         VideoPlayerComponent,
         // drives a RectTransform to Screen.safeArea
-        SafeAreaComponent
+        SafeAreaComponent,
+        // soft capsule shadows of a character from its bones (S57 R2)
+        CapsuleShadowCasterComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::SafeAreaComponent;
+    constexpr ComponentType LastComponentType = ComponentType::CapsuleShadowCasterComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;
@@ -529,6 +531,21 @@ namespace jasperengine::editor{
                     return scene->isShadowCascadeBlend();
                 }
             }
+            else if (propertyName == "capsule_shadows_enabled") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    return scene->isCapsuleShadowsEnabled();
+                }
+            }
+            else if (propertyName == "capsule_shadow_intensity") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getCapsuleShadowIntensity();
+                }
+            }
+            else if (propertyName == "capsule_shadow_softness") {
+                if constexpr (std::is_same_v<T, float>) {
+                    return scene->getCapsuleShadowSoftness();
+                }
+            }
             else if (propertyName == "shadows_debug_view") {
                 if constexpr (std::is_same_v<T, ShadowDebugView>) {
                     return scene ? scene->getShadowDebugView() : ShadowDebugView::NONE;
@@ -790,6 +807,15 @@ namespace jasperengine::editor{
             else if (propertyName == "shadow_cascade_blend") {
                 if constexpr (std::is_same_v<T, bool>) return d.shadowCascadeBlend;
             }
+            else if (propertyName == "capsule_shadows_enabled") {
+                if constexpr (std::is_same_v<T, bool>) return d.capsuleShadowsEnabled;
+            }
+            else if (propertyName == "capsule_shadow_intensity") {
+                if constexpr (std::is_same_v<T, float>) return d.capsuleShadowIntensity;
+            }
+            else if (propertyName == "capsule_shadow_softness") {
+                if constexpr (std::is_same_v<T, float>) return d.capsuleShadowSoftness;
+            }
             else if (propertyName == "shadows_debug_view") {
                 if constexpr (std::is_same_v<T, ShadowDebugView>) return ShadowDebugView::NONE;
             }
@@ -960,6 +986,21 @@ namespace jasperengine::editor{
             else if (propertyName == "shadow_cascade_blend") {
                 if constexpr (std::is_same_v<T, bool>) {
                     scene->setShadowCascadeBlend(value);
+                }
+            }
+            else if (propertyName == "capsule_shadows_enabled") {
+                if constexpr (std::is_same_v<T, bool>) {
+                    scene->setCapsuleShadowsEnabled(value);
+                }
+            }
+            else if (propertyName == "capsule_shadow_intensity") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setCapsuleShadowIntensity(value);
+                }
+            }
+            else if (propertyName == "capsule_shadow_softness") {
+                if constexpr (std::is_same_v<T, float>) {
+                    scene->setCapsuleShadowSoftness(value);
                 }
             }
             else if (propertyName == "shadows_debug_view") {

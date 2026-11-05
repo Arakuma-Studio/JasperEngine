@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include "AtmosphereRenderer.h"
+#include "RenderSystemLighting.h"
 #include "component/MeshComponent.h"
 #include "component/InstancedMeshComponent.h"
 #include "component/ModelComponent.h"
@@ -405,6 +406,13 @@ namespace jasperengine{
 		// the atmosphere's depth pre-pass needs every opaque mesh's depth program (volumetric
 		// fog, volumetric clouds)
 		bool atmosphereDepth = false;
+		// S57 (RenderSystemLighting.cpp): the pixel lights come from screen tiles ('Til'), the
+		// shadowed lit variants take capsule ('Cap') and contact ('Cts') shadows (contact shadows
+		// need every opaque mesh's depth program), alpha-blended submeshes an OIT render ('Oit')
+		bool tiledLights = false;
+		bool capsuleShadows = false;
+		bool contactShadows = false;
+		bool oit = false;
 	};
 
 	// The uber pass's compile-time features (shader library phase 4): the property bits of a
@@ -985,6 +993,9 @@ namespace jasperengine{
 			uint64_t instanceRevision = 0;
 			uint64_t instanceShadowHash = 0;
 
+			// its screen-tile light lists (Light Mode Tiled; null until a Tiled pass draws)
+			std::unique_ptr<TiledLightsView> tiledLights;
+
 			// draw count it was last prepared in (unused ones are freed)
 			uint64_t lastUsed = 0;
 
@@ -1127,6 +1138,8 @@ namespace jasperengine{
 			unsigned int ssrWidth = 0;
 			unsigned int ssrHeight = 0;
 			Framebuffer gbufferFramebuffer;    // MRT: color[0] packed depth, color[1] view-space normal/roughness/metallic
+			// the contact shadows' mask and the OIT targets of its main camera (null: none drawn)
+			std::unique_ptr<LightingViewTargets> lightingTargets;
 			Framebuffer sceneColorFramebuffer; // offscreen opaque scene color (top-left)
 			Framebuffer ssrFramebuffer;        // reflection color + mask (logical orientation)
 			Framebuffer ssrBlurFramebuffer;    // glossy-blurred reflection
@@ -1466,6 +1479,27 @@ namespace jasperengine{
 		void setShadowDebug(const ShadowDebugSettings& settings);
 		const ShadowDebugSettings& getShadowDebug() const{ return shadowDebug; }
 		const ShadowStats& getShadowStats() const{ return shadowStats; }
+
+		// S57's lighting this update and its last frame (get_render_stats "lighting")
+		struct LightingStats{
+			LightMode lightMode = LightMode::AUTOMATIC;   // the project's
+			LightingTier tier = LightingTier::HIGH;
+			bool tiledLights = false;
+			int tileColumns = 0;
+			int tileRows = 0;
+			bool tileStatsValid = false;
+			TiledLights::Stats tiles;
+			bool capsuleShadows = false;
+			int capsuleCasters = 0;
+			int capsules = 0;
+			bool contactShadows = false;
+			int contactWidth = 0;
+			int contactHeight = 0;
+			bool oit = false;
+			bool oitFallback = false;
+			int oitDraws = 0;
+		};
+		LightingStats getLightingStats() const;
 		// the shadow quality tier the scene renders with
 		ShadowTier getEffectiveShadowTier() const{ return shadowTier; }
 		// the atlases as a colour image (the Atlas debug view): null unless that view is on
@@ -1541,6 +1575,16 @@ namespace jasperengine{
 		// per-draw scratch of drawMesh
 		object_lights_t objectLightsBlock;
 		fs_lighting_t legacyLightingBlock;
+		// S57: the fragment block of a Tiled variant, the capsule and contact shadows' block and
+		// what the scene's lighting features are this update
+		tiled_object_lights_t tiledObjectLightsBlock;
+		light_occlusion_t lightOcclusionBlock;
+		LightingFeatureState lighting;
+		// the camera pass being drawn: its contact mask (null: white), whether it draws OIT
+		TextureRender* passContactMask = nullptr;
+		bool passOit = false;
+		// a Capsule Shadow Caster set to Capsules Only was applied to the meshes
+		bool capsuleShadowsOnlyMarked = false;
 		fs_lighting2d_t fs_lighting2d;
 		fs_fog_t fs_fog;
 		// the height fog of the camera pass being drawn (u_fs_heightFog), and the atmosphere:
@@ -1801,7 +1845,9 @@ namespace jasperengine{
 		// which submeshes a drawMesh / drawMeshDepth call draws: a split mesh
 		// (MeshComponent::splitQueues) draws its opaque ones in the opaque queue and the
 		// depth pre-passes, its blended ones in the transparent queue
-		enum class SubmeshQueue { ALL, OPAQUE, TRANSPARENT };
+		// OIT: an OIT camera's accumulation pass (its submeshes with an OIT render; the other
+		// queues leave them out while passOit)
+		enum class SubmeshQueue { ALL, OPAQUE, TRANSPARENT, OIT };
 		SubmeshQueue passSubmeshQueue = SubmeshQueue::ALL;
 		// the submeshes the draw being made draws (a visible list's entry: OpaqueRenderData::
 		// submeshMask), and whether that list culled it already (spec S55 R4: drawMesh and
@@ -1916,6 +1962,52 @@ namespace jasperengine{
 		int passLightCascades(const SceneLight& light) const;
 		// the legacy u_fs_lighting of an older fork: the object's first pixel lights
 		void buildLegacyLighting(const MeshComponent& mesh, uint64_t properties, fs_lighting_t& block) const;
+
+		//-----S57 lighting (RenderSystemLighting.cpp)-----
+		// what the variants take this update (Light Mode, capsule and contact shadows, OIT): a
+		// change reloads them
+		void updateLightingFeatures();
+		// after the scene lights: the Capsules Only meshes, the nearest casters' capsules and the
+		// lights taking capsule and contact shadows (their spot_shadow.w bits 12 and 13)
+		void updateLightingOcclusion(const Transform& mainCameraTransform);
+		int lightOcclusionBits(int sceneLight) const;
+		// the object's lights of a variant into its blocks (the Tiled form for 'Til')
+		void applyObjectLights(ObjectRender& render, int slotVS, unsigned int sizeVS, int slotFS, unsigned int sizeFS,
+		                       const MeshComponent& mesh, uint64_t properties, uint32_t& builtLightBits);
+		// a submesh variant's S57 blocks and textures: resolved at load, bound per draw
+		void loadLightingFeatureSlots(Submesh& submesh, ShaderData& shaderData);
+		void applyLightingFeatures(Submesh& submesh, ObjectRender& render, const MeshComponent& mesh);
+		// the Hair shading model's values into a lobe variant's u_fs_pbrParams
+		void writePbrHairBlock(const Submesh& submesh, unsigned char* block, size_t size) const;
+		// the screen-tile lists of the pass being drawn: the job started (begin) once its view is
+		// known, the texture uploaded before the colour pass (finish; synchronous: both)
+		void beginTiledLights(CameraShadows& target, const CameraComponent& camera, const Transform& cameraTransform,
+		                      const Rect& viewport, unsigned int targetHeight, bool flipped);
+		void finishTiledLights(CameraShadows& target);
+		// the contact shadows' mask of the main camera from its packed depth (null: none)
+		TextureRender* renderContactShadows(CameraComponent& camera, TextureRender* depth, unsigned int width, unsigned int height);
+		// the block of the pass's capsule and contact shadows, before its colour pass
+		void fillLightOcclusion(const Rect& colorViewport, unsigned int targetHeight, bool flipped);
+		// OIT: whether this colour pass draws it (supported, a target with depth to share), the
+		// accumulation pass of its OIT submeshes and its resolve over the colour pass
+		bool usesOit(const CameraComponent& camera, int msaaSamples) const;
+		bool hasOitDraws(const std::vector<TransparentRenderData>& renders);
+		bool renderOitAccumulation(CameraComponent& camera, Transform& cameraTransform, FramebufferRender* colorTarget, int msaaSamples,
+		                           const Rect& viewport, bool viewportApplied, const std::vector<TransparentRenderData>& renders,
+		                           int terrainView, int instanceView, const LodView* lodView);
+		void drawOitResolve(PipelineType colorPip, int msaaSamples);
+		// an alpha-blended submesh's OIT render (loadMesh, after its colour render), and its release
+		bool loadSubmeshOit(MeshComponent& mesh, unsigned int submeshIndex, uint64_t colorProperties, uint16_t customShaderId,
+		                    const RenderState& colorState, bool transparentQueue);
+		void finishSubmeshOit(Submesh& submesh);
+		void releaseSubmeshOit(Submesh& submesh);
+		bool drawsOit(const Submesh& submesh) const;
+		// frees what the features left unused (their targets, passes and programs)
+		void releaseLightingFeatures(bool all);
+		// asks for the fullscreen programs of the features on (contact shadows, the OIT resolve)
+		// the frame they turn on, so the scene's load waits for them (lightingPassesLoading)
+		void requestLightingPasses();
+		bool lightingPassesLoading() const;
 		// the engine-internal members of the frame block (lighting, environment, viewport, fog),
 		// filled by updatePassFrame after the contract members (fillFrameBlock)
 		void fillFrameLighting(frame_t& frame, lit_frame_t& litFrame, const CameraComponent& camera) const;

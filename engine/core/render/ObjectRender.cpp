@@ -107,6 +107,19 @@ bool ObjectRender::beginDraw(const PipelineState& state){
     return backend.beginDraw(state);
 }
 
+bool ObjectRender::loadAlike(const ObjectRender& source, ShaderRender* shader){
+    primitiveType = source.primitiveType;
+    return backend.loadAlike(source.backend, shader);
+}
+
+void ObjectRender::shareBindings(const ObjectRender& source){
+    backend.shareBindings(source.backend);
+}
+
+bool ObjectRender::beginAccumulationDraw(PipelineType colorType, bool mirrored){
+    return backend.beginAccumulationDraw(colorType, mirrored);
+}
+
 bool ObjectRender::beginDraw(PipelineType pipType, bool disableFaceCulling, bool mirrored){
     return backend.beginDraw(pipType, disableFaceCulling, mirrored);
 }

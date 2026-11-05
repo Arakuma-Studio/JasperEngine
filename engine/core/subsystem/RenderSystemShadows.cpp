@@ -464,7 +464,7 @@ void RenderSystem::ensureCasterLayers(){
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++){
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded || mesh.needReload || !mesh.castShadows)
+        if (!mesh.loaded || mesh.needReload || !mesh.castsShadowMaps())
             continue;
         Entity entity = meshes->getEntity(i);
         Transform* transform = scene->findComponent<Transform>(entity);
@@ -557,7 +557,7 @@ void RenderSystem::updateShadowCasters(){
     auto meshes = scene->getComponentArray<MeshComponent>();
     for (int i = 0; i < meshes->size(); i++){
         MeshComponent& mesh = meshes->getComponentFromIndex(i);
-        if (!mesh.loaded || mesh.needReload || !mesh.castShadows)
+        if (!mesh.loaded || mesh.needReload || !mesh.castsShadowMaps())
             continue;
         const Entity entity = meshes->getEntity(i);
         Transform* transform = scene->findComponent<Transform>(entity);
@@ -1546,7 +1546,7 @@ void RenderSystem::buildCameraShadowInstances(CameraShadows& target){
         CameraShadows::InstanceRanges& ranges = target.instanceRanges[entity];
         ranges.build = target.instanceBuild;
         ranges.slots.fill(InstanceViewRange());
-        if (!mesh || !transform || !mesh->loaded || !mesh->castShadows)
+        if (!mesh || !transform || !mesh->loaded || !mesh->castsShadowMaps())
             continue;
 
         // the frame's list, the one this camera's color pass draws

@@ -64,6 +64,11 @@ AllComponents:
     rotation: [1, 0, 0, 0]
     scale: [1, 1, 1]
     modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 80, 0, 0, 1]
+  CapsuleShadowCasterComponent:
+    position: [90, 0, 0]
+    rotation: [1, 0, 0, 0]
+    scale: [1, 1, 1]
+    modelMatrix: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 90, 0, 0, 1]
   CharacterController2DComponent:
     position: [61, 0, 0]
     rotation: [1, 0, 0, 0]

@@ -2552,8 +2552,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["htmlUiSdfPrimitives"] = htmlUiRender.sdfPrimitives;
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
     }
-    // graphics.shadowTier.<platform>, only the platforms away from their default tier; GPU
-    // Instancing (S55) when off
+    // graphics.shadowTier.<platform>, only the platforms away from their default tier,
+    // graphics.lightMode when not Automatic, and GPU Instancing (S55) when off
     {
         YAML::Node graphics;
         YAML::Node tiers;
@@ -2567,6 +2567,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         const DrawSubmissionSettings& drawSubmission = project->getDrawSubmissionSettings();
         if (drawSubmission.gpuInstancing != DrawSubmissionSettings().gpuInstancing)
             graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
+        if (project->getLightMode() != Project::defaultLightMode)
+            graphics["lightMode"] = LightingTiers::getModeName(project->getLightMode());
         if (graphics.size() > 0)
             root["graphics"] = graphics;
     }
@@ -3217,6 +3219,19 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
                 tier = StreamSchema::shadowTier().fromString(value.Scalar());
         }
         project->setShadowTier(platform, tier);
+    }
+    // graphics.lightMode: absent or unknown is Automatic
+    {
+        LightMode lightMode = Project::defaultLightMode;
+        const YAML::Node graphics = node["graphics"];
+        if (graphics && graphics.IsMap() && graphics["lightMode"] && graphics["lightMode"].IsScalar()){
+            const std::string name = graphics["lightMode"].Scalar();
+            if (!LightingTiers::modeFromName(name.c_str(), lightMode)){
+                StreamLoad::unknownEnumValue(graphics["lightMode"], "LightMode", {"automatic", "per_object", "tiled"});
+                lightMode = Project::defaultLightMode;
+            }
+        }
+        project->setLightMode(lightMode);
     }
 
     if (node["windowMode"]) {
@@ -4390,6 +4405,13 @@ YAML::Node editor::Stream::encodeScene(Scene* scene) {
         sceneNode["litQuality"] = StreamSchema::litQuality().toString(scene->getLitQuality());
     if (scene->getPhysicalLightEV100() != SceneSettings().physicalLightEV100)
         sceneNode["physicalLightEV100"] = YamlNumbers::text(scene->getPhysicalLightEV100());
+    // capsule shadows (S57 R2): written only away from their defaults
+    if (scene->isCapsuleShadowsEnabled() != SceneSettings().capsuleShadowsEnabled)
+        sceneNode["capsuleShadowsEnabled"] = scene->isCapsuleShadowsEnabled();
+    if (scene->getCapsuleShadowIntensity() != SceneSettings().capsuleShadowIntensity)
+        sceneNode["capsuleShadowIntensity"] = YamlNumbers::text(scene->getCapsuleShadowIntensity());
+    if (scene->getCapsuleShadowSoftness() != SceneSettings().capsuleShadowSoftness)
+        sceneNode["capsuleShadowSoftness"] = YamlNumbers::text(scene->getCapsuleShadowSoftness());
     sceneNode["ambientLight2DIntensity"] = scene->getAmbientLight2DIntensity();
     sceneNode["ambientLight2DColor"] = encodeVector3(scene->getAmbientLight2DColor());
     sceneNode["shadow2DQuality"] = shadowQualityToString(scene->getShadow2DQuality());
@@ -4523,6 +4545,9 @@ Scene* editor::Stream::decodeScene(Scene* scene, const YAML::Node& node) {
     scene->setMaxLightsPerObject(node["maxLightsPerObject"] ? YamlNumbers::as<int>(node["maxLightsPerObject"]) : SceneSettings().maxLightsPerObject);
     scene->setLitQuality(node["litQuality"] ? decodeEnum(node, "litQuality", StreamSchema::litQuality()) : LitQuality::STANDARD);
     scene->setPhysicalLightEV100(decodeFinite(node["physicalLightEV100"], SceneSettings().physicalLightEV100));
+    scene->setCapsuleShadowsEnabled(node["capsuleShadowsEnabled"] ? YamlNumbers::as<bool>(node["capsuleShadowsEnabled"]) : SceneSettings().capsuleShadowsEnabled);
+    scene->setCapsuleShadowIntensity(decodeFinite(node["capsuleShadowIntensity"], SceneSettings().capsuleShadowIntensity));
+    scene->setCapsuleShadowSoftness(decodeFinite(node["capsuleShadowSoftness"], SceneSettings().capsuleShadowSoftness));
 
     if (node["ambientLight2DIntensity"] && node["ambientLight2DColor"]) {
         scene->setAmbientLight2D(

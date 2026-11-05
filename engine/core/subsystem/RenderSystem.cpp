@@ -933,6 +933,8 @@ void RenderSystem::destroy(){
     activeView = &primaryView;
 #endif
 
+    // S57's passes, targets and lists, before the views go
+    releaseLightingFeatures(true);
     destroySSAO();
     destroySSR();
     destroyBlit();
@@ -2129,7 +2131,9 @@ void RenderSystem::buildObjectLights(const MeshComponent& mesh, uint64_t propert
         const int cascades = perPixel ? passLightCascades(light) : 0;
         if (!perPixel)
             spotShadow[n].z = 0.0f;
-        spotShadow[n].w = (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9));
+        // (bits 12-13: the capsule and contact shadows a shadowed pixel light takes, S57)
+        const int occlusion = perPixel ? lightOcclusionBits(order[n]) : 0;
+        spotShadow[n].w = (float)((std::max(shadowSlot + 1, 0) & 63) | ((cascades & 7) << 6) | ((tile & 7) << 9) | (occlusion << 12));
     }
 }
 
@@ -2870,6 +2874,13 @@ void RenderSystem::renderReflectionProbeCapture(){
     // the camera's unflipped ones
     updatePassFrame(captureCamera, captureTransform, Vector2((float)resolution, (float)resolution));
     passResolution = Vector2((float)resolution, (float)resolution);
+    // the face's screen-tile lists and capsule shadows (S57; no contact shadows: no depth pre-pass)
+    if (lighting.tiledLights){
+        beginTiledLights(captureShadows, captureCamera, captureTransform, Rect(0, 0, (float)resolution, (float)resolution), resolution, isRenderingFlipped(captureCamera));
+        finishTiledLights(captureShadows);
+    }
+    if (lighting.capsuleShadows || lighting.contactShadows)
+        fillLightOcclusion(Rect(0, 0, (float)resolution, (float)resolution), resolution, isRenderingFlipped(captureCamera));
     runtime.capturePass.setClearColor(probe->includeSky ? scene->getBackgroundColor() : Vector4(0.0f, 0.0f, 0.0f, 1.0f));
     runtime.capturePass.setLabel("reflection probe");
     runtime.capturePass.startRenderPass(&runtime.captureFramebuffer, (size_t)face);
@@ -3158,6 +3169,10 @@ MeshShaderEnvironment RenderSystem::getMeshShaderEnvironment() const{
     environment.postColor = postColorVariants;
     environment.litQualityHigh = QualityResolver::litQuality(scene->getLitQuality()) == LitQuality::HIGH;
     environment.pbrTier = MaterialPbr::getRuntimeTier();
+    environment.tiledLights = lighting.tiledLights;
+    environment.capsuleShadows = lighting.capsuleShadows;
+    environment.contactShadows = lighting.contactShadows;
+    environment.oit = lighting.oit;
     return environment;
 }
 
@@ -3829,9 +3844,16 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // are lighting: an unlit variant keeps hex tiling only. A 2D shadow atlas takes one extension
     // map slot (16 fragment textures at most). A lobe's map samples the mesh's UVs as the core maps
     // do, and has no slot without them (includes/pbr_ext_slots.glsl).
+    // S57: the screen-tile lists and the contact shadows' mask are a texture each, which an
+    // extension map slot gives up as the 2D shadow atlas does; a painted terrain (at 16 textures
+    // already) keeps its object lists and draws no contact shadows
+    const bool p_tiledLights = environment.tiledLights && p_punctual && !p_terrainSurface;
+    const bool p_contactShadows = environment.contactShadows && p_receiveShadows && !p_terrainSurface;
+    const bool p_capsuleShadows = environment.capsuleShadows && p_receiveShadows;
     if (!manifest && inputs.material){
         const MaterialLighting pbrLighting = p_unlit ? MaterialLighting::NONE : lighting;
-        variant.pbr = MaterialPbr::getPbrVariant(*inputs.material, pbrLighting, inputs.terrain, environment.pbrTier, p_shadows2d ? 1 : 0);
+        const int reservedMaps = (p_shadows2d ? 1 : 0) + (p_tiledLights ? 1 : 0) + (p_contactShadows ? 1 : 0);
+        variant.pbr = MaterialPbr::getPbrVariant(*inputs.material, pbrLighting, inputs.terrain, environment.pbrTier, reservedMaps);
         if (!variant.pbr.maps.empty() && inputs.texCoord1){
             p_hasTexture1 = true;
             p_hasTexture2 = inputs.texCoord2;
@@ -3927,6 +3949,13 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // the High and Ultra shadow filters (S10): only a variant receiving shadows has them
     if (environment.shadowsHQ && p_receiveShadows)
         variant.properties |= ShaderPool::getShadowsHQProperty();
+    // S57's lighting (the OIT bit is the OIT render's own variant, loadSubmeshOit)
+    if (p_tiledLights)
+        variant.properties |= ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS);
+    if (p_capsuleShadows)
+        variant.properties |= ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CAPSULE_SHADOWS);
+    if (p_contactShadows)
+        variant.properties |= ShaderPool::getLightingProperty(ShaderPool::LightingFeature::CONTACT_SHADOWS);
 
     // the built-in Lit's defines beyond the property bits (and a fork's of it, which has no
     // manifest): the material's lobes and hex tiling, the Terrain's hex tiled layers, the High
@@ -3947,7 +3976,7 @@ SubmeshShaderVariant RenderSystem::getSubmeshShaderVariant(const MeshShaderEnvir
     // (SSR uses its own G-buffer shader). A depth fork is built even without a
     // pass, so its uniforms and build errors show up in the editor.
     variant.depthPass = (environment.shadows && inputs.castShadows) || environment.ssao || environment.depthPrepass || environment.sceneDepth
-                        || environment.atmosphereDepth;
+                        || environment.atmosphereDepth || environment.contactShadows;
     variant.depth = variant.depthPass || inputs.customDepthShader;
     if (variant.depth){
         // a library depth program gets the inputs its manifest requires, as the color pass
@@ -6569,6 +6598,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         mesh.submeshes[i].pbrParamsSize = 0;
         mesh.submeshes[i].pbrExtOffset = 0;
         mesh.submeshes[i].pbrSetsOffset = -1;
+        mesh.submeshes[i].pbrHairOffset = -1;
         if (mesh.submeshes[i].litDefineBits != 0 && mesh.submeshes[i].customShaderId != 0){
             unsigned int paramsSize = 0;
             if (const std::vector<ShaderUniform>* members = shaderData.getUniformBlockMembers("u_fs_pbrParams", paramsSize)){
@@ -6579,6 +6609,8 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                         mesh.submeshes[i].pbrExtOffset = (uint16_t)member.offset;
                     }else if (name == "set0"){
                         mesh.submeshes[i].pbrSetsOffset = (int16_t)member.offset;
+                    }else if (name == "hair0"){
+                        mesh.submeshes[i].pbrHairOffset = (int16_t)member.offset;
                     }
                 }
             }
@@ -6620,6 +6652,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
                 mesh.submeshes[i].slotFSPointShadowData = shaderData.getUniformBlockIndexByName("u_fs_point_shadow_data");
             }
         }
+        loadLightingFeatureSlots(mesh.submeshes[i], shaderData);
         if (p_light2d){
             mesh.submeshes[i].slotFSLighting2D = shaderData.getUniformBlockIndex(UniformBlockType::FS_LIGHTING2D);
         }
@@ -6829,6 +6862,10 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         mesh.submeshes[i].libraryBindings.postColorBlend = postColorBlendOf(colorState, mesh.submeshes[i].manifest != nullptr);
         if (!render.endLoad(pipelines, colorState, msaaPipelineSamples)){
+            return false;
+        }
+        // its OIT render while a camera of the scene draws Order Independent (S57)
+        if (!loadSubmeshOit(mesh, (unsigned int)i, meshProperties, mesh.submeshes[i].customShaderId, colorState, transparentQueue)){
             return false;
         }
 
@@ -8619,13 +8656,14 @@ void RenderSystem::drawSubmeshExtraPass(Entity entity, MeshComponent& mesh, unsi
     if (lit){
         loadSpotMaskTexture(shaderData, render);
         if (extra.slotVSObjectLights != -1 || extra.slotFSObjectLights != -1){
-            const uint32_t lightBits = static_cast<uint32_t>(properties & (shaderPropertyBit(3) | shaderPropertyBit(28) | shaderPropertyBit(29) | shaderPropertyBit(30)));
-            if (lightBits != builtLightBits){
-                buildObjectLights(mesh, properties, objectLightsBlock);
-                builtLightBits = lightBits;
+            applyObjectLights(render, extra.slotVSObjectLights, extra.sizeVSObjectLights, extra.slotFSObjectLights, extra.sizeFSObjectLights,
+                              mesh, properties, builtLightBits);
+            // a Tiled variant's lists (S57)
+            if (properties & ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS)){
+                const TiledLightsView* tiles = ps().tiledLights.get();
+                render.addTexture(shaderData.getTextureIndexByName("u_tiledLights"), ShaderStageType::FRAGMENT,
+                                  (tiles && tiles->uploaded) ? (TextureRender*)&tiles->texture : &lighting.emptyTiles);
             }
-            render.applyUniformBlock(extra.slotVSObjectLights, extra.sizeVSObjectLights, &objectLightsBlock);
-            render.applyUniformBlock(extra.slotFSObjectLights, extra.sizeFSObjectLights, &objectLightsBlock);
         }
         if (extra.slotFSLitFrame != -1){
             lit_frame_block_t& litFrame = passLitFrameBlocks[extra.libraryBindings.postColorBlend];
@@ -8831,7 +8869,7 @@ void RenderSystem::buildInstanceViews(CameraComponent& mainCamera, Transform& ma
             mainCamera.farClip, mainCamera.frustumPlanes, rv().lodView, eye, eye, Vector3::ZERO, order);
 
         for (const ShadowSlot& shadow : shadowSlots){
-            if (!mesh->castShadows){
+            if (!mesh->castsShadowMaps()){
                 instmesh.views[1 + shadow.slot] = InstanceViewRange();
                 continue;
             }
@@ -9247,8 +9285,15 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
         // and of a visible list's entry, its submeshes (passSubmeshMask)
         const uint32_t submeshMask = passSubmeshMask;
         auto inQueue = [&](int i){
-            return (i >= 32 || (submeshMask & (1u << i))) && (submeshQueue == SubmeshQueue::ALL ||
-                (submeshQueue == SubmeshQueue::TRANSPARENT) == mesh.submeshes[i].alphaBlend);
+            if (i < 32 && !(submeshMask & (1u << i)))
+                return false;
+            // an OIT camera draws the submeshes with an OIT render in its accumulation pass alone
+            if (submeshQueue == SubmeshQueue::OIT)
+                return drawsOit(mesh.submeshes[i]);
+            if (passOit && drawsOit(mesh.submeshes[i]))
+                return false;
+            return submeshQueue == SubmeshQueue::ALL ||
+                (submeshQueue == SubmeshQueue::TRANSPARENT) == mesh.submeshes[i].alphaBlend;
         };
         bool hasBeforePasses = false;
         bool hasAfterPasses = false;
@@ -9300,7 +9345,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
             if (tilemap && !selectTilemapChunks(*tilemap, i, camera.farClip, camera.frustumPlanes))
                 continue;
 
-            ObjectRender& render = mesh.submeshes[i].render;
+            // the OIT accumulation pass draws the submesh's OIT render, on its colour render's bindings
+            const bool oitDraw = submeshQueue == SubmeshQueue::OIT;
+            ObjectRender& render = oitDraw ? mesh.submeshes[i].oit->render : mesh.submeshes[i].render;
 
             if (terrain){
                 instanceCount = terrainNodes->nodesbuffer[i].getCount();
@@ -9325,11 +9372,13 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 const TextureBindMark bindMark = markTextureBinding();
                 if (loadPBRTextures(mesh.submeshes[i].material, shaderData, mesh.submeshes[i].render, mesh.receiveLights) &&
                         loadPbrExtTextures(mesh.submeshes[i], shaderData, mesh.submeshes[i].render) &&
-                        bindShaderTextures(libraryBindings, render, mesh.submeshes[i].material.shaderTextures)){
+                        bindShaderTextures(libraryBindings, mesh.submeshes[i].render, mesh.submeshes[i].material.shaderTextures)){
                     mesh.submeshes[i].needUpdateTexture = false;
                     noteTextureBinding(mesh.submeshes[i], bindMark);
                 }
             }
+            if (oitDraw)
+                render.shareBindings(mesh.submeshes[i].render);
             // a FluidSimulation shown on this mesh (output MATERIAL): its image as submesh 0's
             // base colour, lent for the draw (the material keeps its own texture)
             if (i == 0 && frameFluids && frameFluids->hasMaterialFluids()){
@@ -9337,7 +9386,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                     render.addTexture(mesh.submeshes[i].shader.get()->shaderData.getTextureIndex(TextureShaderType::BASECOLOR), ShaderStageType::FRAGMENT, fluidTexture);
             }
 
-            if (!render.beginDraw(pipType, passNoFaceCulling(), mirroredDraw)){
+            if (!(oitDraw ? render.beginAccumulationDraw(pipType, mirroredDraw) : render.beginDraw(pipType, passNoFaceCulling(), mirroredDraw))){
                 // a submesh whose pipeline is still being created or warmed (spec S32) draws
                 // nothing this frame, the others draw
                 if (render.isDrawWaiting())
@@ -9407,13 +9456,9 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 loadSpotMaskTexture(lightingShaderData, render);
                 // the object's lights, split for this submesh's lighting mode
                 if (mesh.submeshes[i].slotVSObjectLights != -1 || mesh.submeshes[i].slotFSObjectLights != -1){
-                    const uint32_t lightBits = static_cast<uint32_t>(mesh.submeshes[i].shaderProperties & (shaderPropertyBit(3) | shaderPropertyBit(28) | shaderPropertyBit(29) | shaderPropertyBit(30)));
-                    if (lightBits != builtLightBits){
-                        buildObjectLights(mesh, mesh.submeshes[i].shaderProperties, objectLightsBlock);
-                        builtLightBits = lightBits;
-                    }
-                    render.applyUniformBlock(mesh.submeshes[i].slotVSObjectLights, mesh.submeshes[i].sizeVSObjectLights, &objectLightsBlock);
-                    render.applyUniformBlock(mesh.submeshes[i].slotFSObjectLights, mesh.submeshes[i].sizeFSObjectLights, &objectLightsBlock);
+                    applyObjectLights(render, mesh.submeshes[i].slotVSObjectLights, mesh.submeshes[i].sizeVSObjectLights,
+                                      mesh.submeshes[i].slotFSObjectLights, mesh.submeshes[i].sizeFSObjectLights,
+                                      mesh, mesh.submeshes[i].shaderProperties, builtLightBits);
                 }
                 if (mesh.submeshes[i].slotFSLitFrame != -1){
                     // a variant with the post colour has its parameters first (lit_frame_block_t)
@@ -9442,6 +9487,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                                       rv().currentSSAOTexture ? rv().currentSSAOTexture : &emptyWhite);
                 }
             }
+            // S57: the screen-tile lists, the capsule and contact shadows, the OIT weight
+            applyLightingFeatures(mesh.submeshes[i], render, mesh);
 
             // USE_LIGHT2D (property bit 22): dedicated 2D light path; composes with
             // both unlit (sprites) and lit submeshes, so it is applied independently
@@ -9526,6 +9573,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                         setsFloat[k] = (float)sets[k];
                     std::memcpy(block + sub.pbrSetsOffset, setsFloat, sizeof(setsFloat));
                 }
+                writePbrHairBlock(sub, block, size);
                 render.applyUniformBlock(sub.slotFSParams, size, block);
             }
 
@@ -9551,7 +9599,8 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
                 }
             }else{
                 // (GPU Instancing: it may join the draws of its like, spec S55)
-                if (!instmesh && !terrain)
+                // (not an OIT draw: its render is not the one the batch variant was made from)
+                if (!instmesh && !terrain && !oitDraw)
                     offerDrawBatch(render, mesh.submeshes[i].batchRender, mesh.submeshes[i].slotVSParams, mirroredDraw || passNoFaceCulling() || viewMirrorBound);
                 drawSubmeshGeometry(render, entity, mesh, i, instmesh, instanceView, draw.lod, instanceCount);
             }
@@ -9577,7 +9626,7 @@ bool RenderSystem::drawMesh(Entity entity, MeshComponent& mesh, Transform& trans
 
 bool RenderSystem::drawMeshDepth(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_depth_t vsDepthParams, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, bool forSSAO, PipelineType pipelineType, int instanceView, const LodView* lodView){
     // shadow passes only draw casters; the SSAO depth pre-pass draws every opaque mesh
-    if (mesh.loaded && !mesh.needReload && (mesh.castShadows || forSSAO)){
+    if (mesh.loaded && !mesh.needReload && (mesh.castsShadowMaps() || forSSAO)){
 
         if (terrain && terrain->needUpdateTexture){
             return false;
@@ -11465,6 +11514,7 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.batchRender.destroy();
         submesh.batchDepthRender.destroy();
         submesh.shadowIndices.reset();
+        releaseSubmeshOit(submesh);
 
         //Shaders uniforms
         submesh.slotVSParams = -1;
@@ -11474,6 +11524,11 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         submesh.pbrParamsSize = 0;
         submesh.pbrExtOffset = 0;
         submesh.pbrSetsOffset = -1;
+        submesh.pbrHairOffset = -1;
+        submesh.slotFSLightOcclusion = -1;
+        submesh.sizeFSLightOcclusion = 0;
+        submesh.slotTiledLights = {-1, -1};
+        submesh.slotContactShadows = {-1, -1};
         submesh.slotVSFade = -1;
         // set only when the variant has them (loadMesh): a reload without must not keep them
         submesh.slotFSFog = -1;
@@ -13840,6 +13895,16 @@ static bool isShaderUnavailable(const std::shared_ptr<ShaderRender>& shader, Sha
     return shader && !shader->isCreated() && ShaderPool::isShaderBuildFailed(type, properties, customId);
 }
 
+// S57: a submesh's Order Independent variant still building (it draws Sorted meanwhile)
+static bool isMeshOitBuilding(const MeshComponent& mesh){
+    for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
+        const std::shared_ptr<SubmeshOit>& oit = mesh.submeshes[s].oit;
+        if (oit && !oit->loaded && !oit->failed)
+            return true;
+    }
+    return false;
+}
+
 static bool isMeshShaderUnavailable(const MeshComponent& mesh){
     for (unsigned int s = 0; s < mesh.numSubmeshes; s++){
         const Submesh& submesh = mesh.submeshes[s];
@@ -13887,7 +13952,7 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
                                    mesh.numExternalBuffers == 0 && (!model || !model->needUpdateModel);
         // a mesh drawing its previous variant while the new one builds is still loading; one
         // whose load found a GPU pool full has failed (not drawn, nothing to wait for)
-        visit((mesh.loaded && !mesh.needVariantReload) || mesh.loadFailed || mesh.loadMissingBuffer || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
+        visit((mesh.loaded && !mesh.needVariantReload && !isMeshOitBuilding(mesh)) || mesh.loadFailed || mesh.loadMissingBuffer || (!mesh.loadCalled && isMeshShaderUnavailable(mesh)) ||
               nothingToLoad || scene->findComponent<SplineExtrudeComponent>(entity) != nullptr, entity, "mesh");
     }
 
@@ -13951,6 +14016,8 @@ void RenderSystem::forEachLoad(const std::function<void(bool, Entity, const char
 
     // the atmosphere's passes (their shaders, the clouds' noise bake)
     visit(!atmosphere.isLoading(), NULL_ENTITY, "atmosphere");
+    // S57's fullscreen passes (contact shadows, the OIT resolve) of the features on
+    visit(!lightingPassesLoading(), NULL_ENTITY, "lighting passes");
 }
 
 void RenderSystem::updateCameraFrustumPlanes(const Matrix4 viewProjectionMatrix, Plane* frustumPlanes){
@@ -14842,6 +14909,12 @@ void RenderSystem::updateSceneColorRedirect(CameraComponent& mainCamera){
         seen = points && transform && transform->visible && isRenderActive(user.first) && isLayerVisible(user.first, mainCamera.cullingMask);
     }
 
+    // an Order Independent camera's accumulation pass shares the colour pass's depth, which
+    // the swapchain's is not (S57)
+    if (!seen && mainCamera.transparencyMode == TransparencyMode::ORDER_INDEPENDENT && lighting.oit &&
+            OrderIndependentTransparency::isSupported(msaaPipelineSamples))
+        seen = true;
+
     // kept some frames after the last one seen: an object at the edge of the view does not
     // switch it every frame (each switch remakes the matrices with the other Y flip)
     static const int HOLD_FRAMES = 30;
@@ -15316,6 +15389,8 @@ void RenderSystem::update(double dt){
             needReloadMeshVariants();
         }
     }
+    // S57: Light Mode, capsule and contact shadows and OIT, as the variants take them
+    updateLightingFeatures();
 
     // the scene's sky is its first SkyboxComponent (SkyboxComponent.h); the others are not loaded
     auto skys = scene->getComponentArray<SkyboxComponent>();
@@ -15439,7 +15514,7 @@ void RenderSystem::update(double dt){
                     scene->markPickDirty(entity);
                 }
 
-                InstanceViewSettings viewSettings = {instmesh->cullInstances, mesh.castShadows, mesh.lodEnabled, mesh.lodBias, instmesh->cullDistance};
+                InstanceViewSettings viewSettings = {instmesh->cullInstances, mesh.castsShadowMaps(), mesh.lodEnabled, mesh.lodBias, instmesh->cullDistance};
                 if (transform.needUpdate || viewSettings != instmesh->viewSettings){
                     instmesh->viewSettings = viewSettings;
                     instanceViewsDirty = true;
@@ -15471,6 +15546,9 @@ void RenderSystem::update(double dt){
 
             bool expectedTransparent = false;
             for (int s = 0; s < mesh.numSubmeshes; s++){
+                // S57: an Order Independent variant still building since the load
+                if (mesh.submeshes[s].oit && !mesh.submeshes[s].oit->loaded)
+                    finishSubmeshOit(mesh.submeshes[s]);
                 const MaterialAlphaMode alphaMode = mesh.submeshes[s].material.alphaMode;
                 // the queue the render state resolves to (legacy: alpha blended materials)
                 bool blended = false;
@@ -15877,6 +15955,8 @@ void RenderSystem::update(double dt){
     // every light as the objects' lists copy it, then the lights each mesh is lit by
     updateSceneLights();
     updateObjectLights();
+    // the capsules, Capsules Only casters and the lights taking capsule and contact shadows
+    updateLightingOcclusion(mainCameraTransform);
 
     // the shadow casters of this update, then the shadow cameras fitted with them
     updateShadowCasters();
@@ -16512,6 +16592,11 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             sceneInputStats.passes++;
     }
 
+    // S57: the pass's screen-tile lists, built by a job while the passes below are recorded
+    const bool passFlippedEarly = isRenderingFlipped(camera);
+    if (lighting.tiledLights)
+        beginTiledLights(ps(), camera, cameraTransform, sceneInputViewport, sceneInputTargetHeight, passFlippedEarly);
+
     // The atmosphere (docs/specs/S12-atmosphere.md): what this pass draws of it, and before
     // its colour pass the reduced-resolution passes (volumetric fog, Screen clouds, the Sky
     // Map's refresh). The volumetric passes read the packed depth of the pass: an effect's
@@ -16536,6 +16621,25 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     // the scene colour is copied out of an offscreen colour target (the swapchain cannot be read)
     const bool copySceneColorPending = (sceneInputs & ShaderRequire_SceneColor) && offscreenTarget;
 
+    // S57's contact shadows (the main camera): the mask from the pass's packed depth, an
+    // effect's above or a depth pre-pass of their own the scene inputs then share
+    passContactMask = nullptr;
+    if (lighting.contactShadows && isMainCamera && lighting.contactLight >= 0){
+        const unsigned int depthWidth = (unsigned int)sceneInputViewport.getWidth();
+        const unsigned int depthHeight = (unsigned int)sceneInputViewport.getHeight();
+        TextureRender* contactDepth = sharedSceneDepth;
+        if (!contactDepth){
+            if (SceneInputTarget* depthTarget = ensureSceneInputTarget(false, depthWidth, depthHeight)){
+                renderOpaqueDepth(camera, depthTarget->framebuffer, depthWidth, depthHeight, isMainCamera ? 0 : -1,
+                                  isMainCamera ? &rv().lodView : nullptr, perCameraMVP ? &cameraTransform : nullptr);
+                contactDepth = &depthTarget->framebuffer.getRender().getColorTexture();
+                sharedSceneDepth = contactDepth;
+            }
+        }
+        if (contactDepth)
+            passContactMask = renderContactShadows(camera, contactDepth, depthWidth, depthHeight);
+    }
+
     // the scene depth: the opaque meshes' depth pre-pass of this camera, drawn here unless an
     // effect above drew it already
     if (sceneInputs & ShaderRequire_SceneDepth){
@@ -16555,10 +16659,19 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
             }
         }
     }
+    // S57: the tile lists uploaded and the capsule and contact shadows' block, before the colour pass
+    if (lighting.tiledLights)
+        finishTiledLights(ps());
+    if (lighting.capsuleShadows || lighting.contactShadows)
+        fillLightOcclusion(sceneInputViewport, sceneInputTargetHeight, passFlippedEarly);
+
     PipelineType colorPip = colorPipeline(camera, offscreenTarget);
     if (passMsaa > 1)
         colorPip = camera.depthTest ? PIP_MSAA : PIP_MSAA_NODEPTH;
     bool distanceSort = sortsByDistance(camera);
+    // S57: an Order Independent camera's accumulation pass loads the colour pass's depth, so
+    // that pass keeps it (a split pass)
+    const bool oitPlanned = offscreenTarget && distanceSort && usesOit(camera, passMsaa);
 
     if (isBaseLayer() || pass.renderToTexture){
         camera.render.setClearColor(scene->getBackgroundColor());
@@ -16596,7 +16709,7 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
                 colorPip = colorPipeline(camera, offscreenTarget);
             }
         }
-        if (copySceneColorPending){
+        if (copySceneColorPending || oitPlanned){
             camera.render.startSplitRenderPass(framebuffer);
         }else{
             camera.render.startRenderPass(framebuffer);
@@ -17121,6 +17234,21 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
 
     //---------Draw transparent renderers----------
     std::sort(transparentRenders.begin(), transparentRenders.end(), TransparentRenderComparison());
+    // S57: an Order Independent camera's alpha-blended submeshes accumulate in a pass of their
+    // own, resolved over the scene; the sorted loop below draws the rest
+    if (oitPlanned && colorTarget && hasOitDraws(transparentRenders)){
+        camera.render.endRenderPass();
+        const bool accumulated = renderOitAccumulation(camera, cameraTransform, colorTarget, passMsaa, colorPassViewport,
+                                                       colorPassViewportApplied, transparentRenders, terrainView, instanceView, lodView);
+        camera.render.resumeRenderPass(colorTarget);
+        if (colorPassViewportApplied){
+            camera.render.applyViewport(colorPassViewport);
+        }
+        if (accumulated){
+            drawOitResolve(colorPip, passMsaa);
+            passOit = true;
+        }
+    }
     for (const TransparentRenderData& renderData : transparentRenders){
 
         if (renderData.type == TransparentRenderType::MESH){
@@ -17159,6 +17287,8 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     camera.render.setMultisample(nullptr);
     passSceneDepth = nullptr;
     passSceneColor = nullptr;
+    passContactMask = nullptr;
+    passOit = false;
 
 #ifdef JASPERENGINE_EDITOR
     passDisablesFaceCulling = false;
@@ -17851,6 +17981,13 @@ RenderSystem::RenderView& RenderSystem::getSecondaryView(uint32_t viewId){
 
 void RenderSystem::destroyRenderView(RenderView& view){
     view.atmosphere.destroy();
+    // S57's contact mask and OIT targets, and the view camera's tile lists
+    if (view.lightingTargets){
+        view.lightingTargets->contactMask.destroyFramebuffer();
+        view.lightingTargets->oit.destroyFramebuffer();
+        view.lightingTargets.reset();
+    }
+    view.shadows.tiledLights.reset();
     view.ssaoDepthFramebuffer.destroy();
     view.ssaoFramebuffer.destroy();
     view.ssaoBlurFramebuffer.destroy();
@@ -18353,7 +18490,7 @@ void RenderSystem::buildViewInstances(RenderView& view, CameraComponent& camera,
             camera.farClip, camera.frustumPlanes, view.lodView, eye, eye, direction, order);
 
         for (const ShadowSlot& shadow : shadowSlots){
-            if (!mesh->castShadows)
+            if (!mesh->castsShadowMaps())
                 continue;
             const LightCamera& shadowCamera = lightCamera(shadow.lightIndex, *shadow.light, shadow.cameraIndex);
             LodView shadowLod = shadowLodView(*shadow.light, shadow.lightIndex, shadow.cameraIndex, shadow.slot);

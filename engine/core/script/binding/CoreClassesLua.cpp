@@ -95,6 +95,14 @@ namespace {
         }
     };
 
+    // Material.shadingModel: the Hair lobe's flag as the Lit's Shading Model
+    ShadingModel materialShadingModel(const Material* self){
+        return MaterialPbr::getShadingModel(self->pbr.get());
+    }
+    void setMaterialShadingModel(Material* self, ShadingModel model){
+        MaterialPbr::setShadingModel(self->pbr.edit(), model);
+    }
+
     // What Log.category(name) returns: a category's trace/debug/info/warn/error
     struct LuaLogCategory {
         LogCategory* category;
@@ -1832,6 +1840,35 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addVariable("SOFT", ShadowType::SOFT)
         .endNamespace();
 
+    // S57's lighting
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("TransparencyMode")
+        .addVariable("SORTED", TransparencyMode::SORTED)
+        .addVariable("ORDER_INDEPENDENT", TransparencyMode::ORDER_INDEPENDENT)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("ShadingModel")
+        .addVariable("STANDARD", ShadingModel::STANDARD)
+        .addVariable("HAIR", ShadingModel::HAIR)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CapsuleCastShadows")
+        .addVariable("ON", CapsuleCastShadows::ON)
+        .addVariable("CAPSULES_ONLY", CapsuleCastShadows::CAPSULES_ONLY)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("CapsuleDirection")
+        .addVariable("X_AXIS", CapsuleDirection::X_AXIS)
+        .addVariable("Y_AXIS", CapsuleDirection::Y_AXIS)
+        .addVariable("Z_AXIS", CapsuleDirection::Z_AXIS)
+        .endNamespace();
+    luabridge::getGlobalNamespace(L)
+        .beginNamespace("LightMode")
+        .addVariable("AUTOMATIC", LightMode::AUTOMATIC)
+        .addVariable("PER_OBJECT", LightMode::PER_OBJECT)
+        .addVariable("TILED", LightMode::TILED)
+        .endNamespace();
+
     luabridge::getGlobalNamespace(L)
         .beginNamespace("ShadowUpdateMode")
         .addVariable("AUTO", ShadowUpdateMode::AUTO)
@@ -2994,6 +3031,15 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         PBR_LUA_PROPERTY("hexTilingEnabled", hex, Hex, enabled)
         PBR_LUA_PROPERTY("hexTilingRotation", hex, Hex, rotation)
         PBR_LUA_PROPERTY("hexTilingContrast", hex, Hex, contrast)
+        // the Hair shading model (S57)
+        .addProperty("shadingModel", &materialShadingModel, &setMaterialShadingModel)
+        PBR_LUA_PROPERTY("hairPrimaryColor", hair, Hair, primaryColor)
+        PBR_LUA_PROPERTY("hairPrimaryShift", hair, Hair, primaryShift)
+        PBR_LUA_PROPERTY("hairPrimaryWidth", hair, Hair, primaryWidth)
+        PBR_LUA_PROPERTY("hairSecondaryColor", hair, Hair, secondaryColor)
+        PBR_LUA_PROPERTY("hairSecondaryShift", hair, Hair, secondaryShift)
+        PBR_LUA_PROPERTY("hairSecondaryWidth", hair, Hair, secondaryWidth)
+        PBR_LUA_PROPERTY("hairRotation", hair, Hair, rotation)
         PBR_LUA_TEXTURE("clearcoatTexture", clearcoat, Clearcoat, map)
         PBR_LUA_TEXTURE("clearcoatNormalTexture", clearcoat, Clearcoat, normalMap)
         PBR_LUA_TEXTURE("sheenTexture", sheen, Sheen, map)
@@ -3001,6 +3047,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         PBR_LUA_TEXTURE("iridescenceTexture", iridescence, Iridescence, map)
         PBR_LUA_TEXTURE("transmissionTexture", transmission, Transmission, map)
         PBR_LUA_TEXTURE("specularTexture", specular, Specular, map)
+        PBR_LUA_TEXTURE("hairFlowTexture", hair, Hair, flowMap)
         .addProperty("baseColorTexture", &Material::baseColorTexture)
         .addProperty("emissiveTexture", &Material::emissiveTexture)
         .addProperty("metallicRoughnessTexture", &Material::metallicRoughnessTexture)
@@ -3196,6 +3243,9 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         // physical units are drawn at (EV100)
         .addProperty("litQuality", &Scene::getLitQuality, &Scene::setLitQuality)
         .addProperty("physicalLightEV100", &Scene::getPhysicalLightEV100, &Scene::setPhysicalLightEV100)
+        .addProperty("capsuleShadowsEnabled", &Scene::isCapsuleShadowsEnabled, &Scene::setCapsuleShadowsEnabled)
+        .addProperty("capsuleShadowIntensity", &Scene::getCapsuleShadowIntensity, &Scene::setCapsuleShadowIntensity)
+        .addProperty("capsuleShadowSoftness", &Scene::getCapsuleShadowSoftness, &Scene::setCapsuleShadowSoftness)
         .addProperty("ambientLight2DColor", &Scene::getAmbientLight2DColor, (void (Scene::*)(Vector3))&Scene::setAmbientLight2D)
         .addProperty("ambientLight2DIntensity", &Scene::getAmbientLight2DIntensity, (void (Scene::*)(float))&Scene::setAmbientLight2D)
         .addFunction("getAmbientLight2DColorLinear", &Scene::getAmbientLight2DColorLinear)

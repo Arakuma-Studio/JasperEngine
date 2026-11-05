@@ -77,6 +77,8 @@
 #include "util/Color.h"
 #include "util/LightPhotometry.h"
 #include "render/SceneRender2D.h"
+#include "render/CapsuleShadows.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "window/ProjectWindow.h"
 #include "window/HierarchyWindow.h"
 #include "App.h"
@@ -196,6 +198,9 @@ static std::vector<editor::EnumEntry>& entriesCloudsRendering = *editor::Inspect
 static std::vector<editor::EnumEntry>& entriesReflectionProbeMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kReflectionProbeMode);
 static std::vector<editor::EnumEntry>& entriesReflectionProbeUpdateMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kReflectionProbeUpdateMode);
 static std::vector<editor::EnumEntry>& entriesCameraType = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCameraType);
+static std::vector<editor::EnumEntry>& entriesTransparencyMode = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTransparencyMode);
+static std::vector<editor::EnumEntry>& entriesCapsuleCastShadows = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCapsuleCastShadows);
+static std::vector<editor::EnumEntry>& entriesCapsuleDirection = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kCapsuleDirection);
 // render-target framebuffers have no mipmaps, so only the non-mipmap filters apply
 static std::vector<editor::EnumEntry>& entriesTextureFilter = *editor::InspectorWindow::enumEntries(editor::reflect::enums::kTextureFilter, editor::reflect::enums::bit((int)TextureFilter::NEAREST) | editor::reflect::enums::bit((int)TextureFilter::LINEAR));
 // full filter set for a texture's minification (mipmap variants trigger mipmap generation)
@@ -7698,7 +7703,7 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
             }
 
             separatorText("Surface");
-            drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
+            drawMaterialSurfaceRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial, pbrRows);
 
             separatorText("Extra pass");
             drawMaterialExtraPassRows(cpType, sceneProject, entities, (unsigned int)s, settingsMaterial);
@@ -8847,7 +8852,7 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
     Scene* scene = sceneProject->scene;
     CameraComponent& camera = scene->getComponent<CameraComponent>(entities[0]);
 
-    float firstColSize = std::max(getLabelSize("Auto Resize"), getLabelSize("Culling Mask"));
+    float firstColSize = std::max({getLabelSize("Auto Resize"), getLabelSize("Culling Mask"), getLabelSize("Transparency Mode")});
 
     beginTable(cpType, firstColSize);
 
@@ -8887,6 +8892,22 @@ void editor::InspectorWindow::drawCameraComponent(ComponentType cpType, ScenePro
 
     propertyRow(RowPropertyType::Bool, cpType, "depthTest", "Depth Test", sceneProject, entities, defaultSettings);
     propertyRow(RowPropertyType::Bool, cpType, "autoResize", "Auto Resize", sceneProject, entities, defaultSettings);
+
+    // S57 R4: weighted blended OIT for the alpha-blended materials
+    RowSettings transparencySettings;
+    transparencySettings.enumEntries = &entriesTransparencyMode;
+    transparencySettings.help = "Sorted draws blended renderers back to front, one at a time. Order Independent draws alpha-blended "
+                                "materials through weighted blended OIT: one extra pass into RGBA16F+R16F targets and a fullscreen "
+                                "resolve; Sorted on devices without half-float targets. Additive and multiply blending stay sorted.";
+    propertyRow(RowPropertyType::Enum, cpType, "transparencyMode", "Transparency Mode", sceneProject, entities, transparencySettings);
+    if (camera.transparencyMode == TransparencyMode::ORDER_INDEPENDENT){
+        RowSettings weightSettings;
+        weightSettings.indent = true;
+        weightSettings.stepSize = 0.01f;
+        weightSettings.format = "%.4f";
+        weightSettings.help = "Multiplies the view depths the OIT weight takes: lower it for large scenes, so far layers keep their weight.";
+        propertyRow(RowPropertyType::FloatPositive, cpType, "oitWeightScale", "OIT Weight Scale", sceneProject, entities, weightSettings);
+    }
 
     if (entities.size() == 1 && sceneProject->sceneRender && sceneWindow) {
         Entity cameraEntity = entities[0];
@@ -10260,6 +10281,160 @@ void editor::InspectorWindow::drawShadowCaster2DComponent(ComponentType cpType, 
             }
             setPoints(newPoints, false);
         }
+    }
+}
+
+void editor::InspectorWindow::drawCapsuleShadowCasterComponent(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
+    Scene* scene = sceneProject->scene;
+    CapsuleShadowCasterComponent& caster = scene->getComponent<CapsuleShadowCasterComponent>(entities[0]);
+
+    RowSettings settingsCast;
+    settingsCast.enumEntries = &entriesCapsuleCastShadows;
+    settingsCast.help = "On: the meshes also cast their shadow-map shadows (their own Cast Shadows decides). Capsules Only: the meshes "
+                        "leave the shadow maps, so a moving character keeps the static shadow cache valid.";
+
+    beginTable(cpType, getLabelSize("Cast Shadows"));
+    propertyRow(RowPropertyType::Enum, cpType, "castShadows", "Cast Shadows", sceneProject, entities, settingsCast);
+    endTable();
+
+    if (!scene->isCapsuleShadowsEnabled()){
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("The scene's Capsule Shadows are off (Inspector with nothing selected > Shadows): these capsules cast nothing.");
+        ImGui::PopStyleColor();
+    }
+
+    if (entities.size() != 1)
+        return;
+    Entity entity = entities[0];
+    const int maxCapsules = CapsuleShadowCasterComponent::MAX_CAPSULES;
+
+    auto setCapsules = [&](const std::vector<CapsuleShadowShape>& capsules){
+        auto* capsulesCmd = new PropertyCmd<std::vector<CapsuleShadowShape>>(project, sceneProject->id, entity, cpType, "capsules", capsules);
+        capsulesCmd->setNoMerge();
+        CommandHandle::get(sceneProject->id)->addCommand(capsulesCmd);
+    };
+
+    separatorText("Capsules");
+
+    // the capsule whose handle is sub-selected in the Scene view
+    int selectedCapsule = -1;
+    if (sceneProject->sceneRender && sceneProject->sceneRender->getSelectedCapsuleHandleEntity() == entity &&
+        sceneProject->sceneRender->getSelectedCapsuleHandleIndex() >= 0){
+        selectedCapsule = sceneProject->sceneRender->getSelectedCapsuleHandleIndex() / SceneRender::CAPSULE_HANDLES;
+    }
+
+    RowSettings settingsBone;
+    settingsBone.help = "The name of the bone (a GameObject under this one) the capsule follows. Empty: this GameObject.";
+    RowSettings settingsSize;
+    settingsSize.stepSize = 0.01f;
+    settingsSize.format = "%.3f";
+    RowSettings settingsRadius = settingsSize;
+    settingsRadius.help = "Metres, scaled by the bone's scale.";
+    RowSettings settingsLength = settingsSize;
+    settingsLength.help = "Metres between the centres of the two caps, scaled by the bone's scale.";
+    RowSettings settingsOffset = settingsSize;
+    settingsOffset.help = "The capsule's centre in the bone's space.";
+    RowSettings settingsDirection;
+    settingsDirection.enumEntries = &entriesCapsuleDirection;
+    settingsDirection.help = "The bone axis the capsule lies along.";
+
+    for (size_t i = 0; i < caster.capsules.size(); i++){
+        ImGui::PushID((int)i);
+        const std::string prefix = "capsules[" + std::to_string(i) + "]";
+        const std::string title = (selectedCapsule == (int)i ? std::string(ICON_FA_CARET_RIGHT " ") : std::string()) +
+                                  "Capsule " + std::to_string(i + 1) +
+                                  (caster.capsules[i].bone.empty() ? std::string() : " (" + caster.capsules[i].bone + ")");
+
+        if (selectedCapsule == (int)i)
+            ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::SubSelectionText);
+        ImGui::SeparatorText(title.c_str());
+        if (selectedCapsule == (int)i)
+            ImGui::PopStyleColor();
+
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float iconWidth = ImGui::GetFrameHeight();
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - iconWidth));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0, 0, 0, 0));
+        ImGui::PushStyleColor(ImGuiCol_Text, style.Colors[ImGuiCol_TextDisabled]);
+        const bool remove = ImGui::Button(ICON_FA_TRASH_CAN "##capsule_remove", ImVec2(iconWidth, 0));
+        ImGui::PopStyleColor(2);
+        ImGui::SetItemTooltip("Remove capsule");
+        if (remove){
+            std::vector<CapsuleShadowShape> capsules = caster.capsules;
+            capsules.erase(capsules.begin() + (std::ptrdiff_t)i);
+            if (sceneProject->sceneRender && selectedCapsule >= (int)i)
+                sceneProject->sceneRender->clearCapsuleHandleSelection();
+            setCapsules(capsules);
+            ImGui::PopID();
+            break;
+        }
+
+        beginTable(cpType, getLabelSize("Direction"), "capsule_shape");
+        propertyRow(RowPropertyType::String, cpType, prefix + ".bone", "Bone", sceneProject, entities, settingsBone);
+        propertyRow(RowPropertyType::FloatPositive, cpType, prefix + ".radius", "Radius", sceneProject, entities, settingsRadius);
+        propertyRow(RowPropertyType::FloatPositive, cpType, prefix + ".length", "Length", sceneProject, entities, settingsLength);
+        propertyRow(RowPropertyType::Vector3, cpType, prefix + ".offset", "Offset", sceneProject, entities, settingsOffset);
+        propertyRow(RowPropertyType::Enum, cpType, prefix + ".direction", "Direction", sceneProject, entities, settingsDirection);
+        endTable();
+        ImGui::PopID();
+    }
+
+    const float buttonWidth = std::max(0.0f, (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5f);
+    ImGui::BeginDisabled((int)caster.capsules.size() >= maxCapsules);
+    if (ImGui::Button(ICON_FA_PLUS " Add Capsule##capsuleshadowcaster", ImVec2(buttonWidth, 0))){
+        std::vector<CapsuleShadowShape> capsules = caster.capsules;
+        capsules.push_back(CapsuleShadowShape());
+        setCapsules(capsules);
+    }
+    ImGui::EndDisabled();
+    if ((int)caster.capsules.size() >= maxCapsules)
+        ImGui::SetItemTooltip("A caster has at most %d capsules.", maxCapsules);
+    ImGui::SameLine();
+
+    // Fit To Skeleton: the capsules of the humanoid bones under this GameObject, in world space
+    // (the fit reads the rest pose from the bones' current transforms)
+    if (ImGui::Button(ICON_FA_PERSON " Fit To Skeleton##capsuleshadowcaster", ImVec2(buttonWidth, 0))){
+        std::vector<CapsuleShadows::Bone> bones;
+        auto transforms = scene->getComponentArray<Transform>();
+        if (scene->findComponent<Transform>(entity)){
+            // the GameObject's branch is contiguous in the Transforms, parents before children
+            const size_t first = transforms->getIndex(entity);
+            const size_t last = scene->findBranchLastIndex(entity);
+            std::map<Entity, int> indexOf;
+            for (size_t t = first; t <= last && t < transforms->size(); t++){
+                const Entity bone = transforms->getEntity(t);
+                const Transform& transform = transforms->getComponentFromIndex(t);
+                CapsuleShadows::Bone entry;
+                entry.name = scene->getEntityName(bone);
+                auto parent = indexOf.find(transform.parent);
+                entry.parent = (t == first || parent == indexOf.end()) ? -1 : parent->second;
+                entry.position = transform.worldPosition;
+                entry.rotation = transform.worldRotation;
+                entry.scale = transform.worldScale;
+                indexOf[bone] = (int)bones.size();
+                bones.push_back(entry);
+            }
+        }
+        std::vector<CapsuleShadowShape> capsules;
+        std::string error;
+        if (CapsuleShadows::fitToSkeleton(bones, capsules, &error)){
+            capsuleFitError.clear();
+            capsuleFitErrorEntity = NULL_ENTITY;
+            if (sceneProject->sceneRender)
+                sceneProject->sceneRender->clearCapsuleHandleSelection();
+            setCapsules(capsules);
+        }else{
+            capsuleFitError = "Fit To Skeleton: " + error + ".";
+            capsuleFitErrorEntity = entity;
+        }
+    }
+    ImGui::SetItemTooltip("Replaces the capsules with eight on the humanoid bones under this GameObject (head, spine, legs and feet), "
+                          "sized by the body's height.");
+
+    if (capsuleFitErrorEntity == entity && !capsuleFitError.empty()){
+        ImGui::PushStyleColor(ImGuiCol_Text, Theme::Colors::ErrorText);
+        ImGui::TextWrapped("%s", capsuleFitError.c_str());
+        ImGui::PopStyleColor();
     }
 }
 

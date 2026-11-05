@@ -169,6 +169,10 @@ namespace jasperengine{
         // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
         // instance, spec S55) of MESH and DEPTH, 0 for another type
         static uint64_t getAutoInstancingProperty(ShaderType shaderType);
+        // S57's MESH bits: 'Til' (Light Mode Tiled), 'Cap' (capsule shadows), 'Cts' (contact
+        // shadows) and 'Oit' (an alpha-blended submesh's OIT accumulation render)
+        enum class LightingFeature { TILED_LIGHTS, CAPSULE_SHADOWS, CONTACT_SHADOWS, OIT };
+        static uint64_t getLightingProperty(LightingFeature feature);
         static std::string getShaderPropertyName(ShaderType shaderType, int bit, bool shortName = true);
         static ShaderType getShaderTypeFromKey(ShaderKey key);
         static uint64_t getPropertiesFromKey(ShaderKey key);

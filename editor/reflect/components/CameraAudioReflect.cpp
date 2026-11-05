@@ -32,6 +32,9 @@ namespace {
         return type == CameraType::CAMERA_ORTHO || type == CameraType::CAMERA_UI;
     }
     bool cameraRendersToTexture(const void* camera) { return static_cast<const CameraComponent*>(camera)->renderToTexture; }
+    bool cameraOrderIndependent(const void* camera) {
+        return static_cast<const CameraComponent*>(camera)->transparencyMode == TransparencyMode::ORDER_INDEPENDENT;
+    }
 
     constexpr uint64_t kCamera = UpdateFlags_Camera;
 
@@ -75,11 +78,21 @@ namespace {
         JE_FIELD(CameraComponent, framebufferFilter, .enumDesc = &enums::kTextureFilter, .label = "Filter", .group = "Render Target",
                  .visibleIf = &cameraRendersToTexture, .uiOrder = 17,
                  .enumMask = enums::bit((int)TextureFilter::NEAREST) | enums::bit((int)TextureFilter::LINEAR)),
+        // S57 R4: read by RenderSystem each frame (it reloads the variants itself), written only
+        // away from their defaults
+        JE_FIELD(CameraComponent, transparencyMode, .enumDesc = &enums::kTransparencyMode, .flags = OmitIfDefault | CodegenIfChanged,
+                 .tooltip = "Sorted draws blended renderers back to front. Order Independent draws alpha-blended materials through "
+                            "weighted blended OIT: one extra pass into RGBA16F+R16F targets and a fullscreen resolve; Sorted on "
+                            "devices without half-float targets.",
+                 .uiOrder = 18),
+        JE_FIELD(CameraComponent, oitWeightScale, .flags = OmitIfDefault | CodegenIfChanged, .min = 0.0001f, .label = "OIT Weight Scale",
+                 .tooltip = "Multiplies the view depths the OIT weight takes: lower it for large scenes, so far layers keep their weight.",
+                 .visibleIf = &cameraOrderIndependent, .uiOrder = 19),
     };
 
     constexpr const char* kCameraCodegenOrder[] = {
         "type", "target", "up", "left", "right", "bottom", "top", "yfov", "aspect", "near", "far", "renderToTexture", "transparentSort",
-        "depthTest", "cullingMask", "useTarget", "autoResize", "framebufferWidth", "framebufferHeight", "framebufferFilter", "enabled"
+        "depthTest", "cullingMask", "useTarget", "autoResize", "framebufferWidth", "framebufferHeight", "framebufferFilter", "transparencyMode", "oitWeightScale", "enabled"
     };
 
     // ---------------------------------------------------------------- Audio Source
