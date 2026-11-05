@@ -766,3 +766,8 @@ Recorded during the implementation (branch `dc/mesh-memory`).
 13. **Measured sizes** (Linux, libstdc++, `MeshMemory.SizeofCeilings`): `SokolObject` 752 B (2,528 before),
     `ObjectRender` 768 (2,544), `Submesh` 6,448 (11,776), `MeshComponent` 1,672 (204,928), `SpriteComponent` 72
     (6,192), `TilemapComponent` 152 (125,992); a sprite's mesh with its arrays 8,128 B, 25x less.
+14. **AC10 and AC11 not measured on a running editor.** The host's two build slots were the bottleneck and the
+    lead stopped further long runs on branches; the frame-time comparison of a 5,000-sprite scene (AC11) and the
+    editor's resident size after Play (AC10) were not taken. `HeapTrim.ReturnsFreedPagesOnGlibc` checks the trim
+    itself; no per-frame code path gained work beyond a predictable branch (6.1) and the full MCP suite showed no
+    timing regression of its own.
