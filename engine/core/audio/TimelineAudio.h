@@ -53,9 +53,11 @@ namespace jasperengine {
     class JASPERENGINE_API TimelineAudio {
     public:
         // R5: the output frames a start waits inside the frame when crossed at `fraction` of it
-        // (clamped to [0, 1]): round(fraction x the frame's unscaled seconds x the output rate)
-        static uint32_t delayFrames(double fraction);
-        // the same for a crossing `seconds` into an update of `span` seconds (any scale)
+        // (clamped to [0, 1]): round(fraction x the frame's unscaled seconds x the output rate).
+        // `span`: the update's scaled seconds, for an update stepped outside an engine frame
+        // (the frame's unscaled seconds are then span / the time scale)
+        static uint32_t delayFrames(double fraction, double span = 0.0);
+        // the same for a crossing `seconds` into an update of `span` seconds
         static uint32_t delayFramesAt(double seconds, double span);
 
         // Fires one crossed cue of a clip playing on `root` (R6): a sound cue as a free voice, a
