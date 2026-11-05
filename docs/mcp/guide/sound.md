@@ -20,6 +20,9 @@ paths; over 48 items page with `offset`. `get_asset_info` gives a smaller summar
 - `defects`: `edges`, `clicks`, `tail`, `gaps`, `resonance`, `aliasing` with `cuts` of its trims.
 - `notes[]`: `{id, text, fix?}`, in plain language. `fix` holds the `set_audio_import_settings` keys that fix it.
   `differences_vs_1` says in words how each later item differs from the first.
+- `music` (a `loop` kind or `music` type): the detected `bpm`, `first_beat_ms`, `beats_per_bar_guess`.
+  When `confident`, pass `fix` as `settings`; otherwise pick from `candidates` (half or double tempo).
+  `agrees`: the clip's `music` already lays this grid.
 
 A clip with import settings is measured **as the engine plays it**, gain, trims and fades applied and
 the seam at its loop region's wrap. `played` gives that region, `source` the raw file's numbers, and the
@@ -42,6 +45,7 @@ fresh analysis. A null key resets it; a default key is not written.
 | `fade_in_ms`, `fade_out_ms` | 0 to 1000, raised cosine | 0 |
 | `loop_start_ms` | >= 0, or -1: the trimmed start | -1 |
 | `loop_end_ms` | after the start, or -1: the trimmed end | -1 |
+| `music` | `{bpm: 20-400, beats_per_bar: 1-16, first_beat_ms: >= 0}`, beat 1 from the file's start | none |
 
 The engine plays these in Play and in every export: a looping voice wraps at the loop region, and fades
 never shape a wrap. Settings that do not fit the file are refused, naming the frames. A clip without

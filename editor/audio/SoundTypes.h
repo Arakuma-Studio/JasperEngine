@@ -367,6 +367,40 @@ namespace jasperengine::editor::SoundTypes {
     inline constexpr double SLICE_MAX_SOURCE_SECONDS = 120.0;
     inline constexpr uint64_t SLICE_MAX_BYTES = 32ull * 1024 * 1024;
 
+    // -- music grid: tempo and downbeat detection (AudioMusicGrid, S39 R16), measurement definitions
+
+    // a file shorter than this is not judged
+    inline constexpr double MUSIC_GRID_MIN_SECONDS = 4.0;
+    // the onset envelope's band, and the low band the downbeat's accents are read from, Hz
+    inline constexpr double MUSIC_GRID_LOW_HZ = 30.0;
+    inline constexpr double MUSIC_GRID_HIGH_HZ = 16000.0;
+    inline constexpr double MUSIC_GRID_DOWNBEAT_HIGH_HZ = 200.0;
+    // log(1 + MUSIC_GRID_COMPRESSION x |X|): a quiet attack counts beside a loud one
+    inline constexpr double MUSIC_GRID_COMPRESSION = 100.0;
+    // the envelope loses its moving mean over +- this
+    inline constexpr double MUSIC_GRID_MEAN_SECONDS = 0.25;
+    // the tempos searched, and the prior: a log-normal around PRIOR_BPM, an octave wide
+    inline constexpr double MUSIC_GRID_MIN_BPM = 40.0;
+    inline constexpr double MUSIC_GRID_MAX_BPM = 240.0;
+    inline constexpr double MUSIC_GRID_PRIOR_BPM = 120.0;
+    // Ellis' tightness: how hard the tracker holds the period
+    inline constexpr double MUSIC_GRID_TIGHTNESS = 100.0;
+    // a beat moves onto the largest attack within +- this share of a beat
+    inline constexpr double MUSIC_GRID_SNAP_BEATS = 1.0 / 8.0;
+    // a moved beat further than this share of a beat off the line is left out of it
+    inline constexpr double MUSIC_GRID_OUTLIER_BEATS = 1.0 / 16.0;
+    // three beats a bar win only when their accent is this much stronger than four's
+    inline constexpr double MUSIC_GRID_THREE_MARGIN = 1.2;
+    // pulse clarity under this: no tempo; it or the downbeat confidence under LOW: not confident
+    inline constexpr double GRID_NO_PULSE = 0.1;
+    inline constexpr double GRID_LOW_CONFIDENCE = 0.3;
+    // a loop region further than this from a whole number of beats drifts (beat_drift)
+    inline constexpr double MUSIC_GRID_DRIFT_BEATS = 0.02;
+    // a clip's music block agrees with the detection: bpm within AGREE_BPM (8 bars drift by 13 ms at
+    // 120 bpm), the same beats per bar, beat 1 within AGREE_MS of one of the detection's bar lines
+    inline constexpr double MUSIC_GRID_AGREE_BPM = 0.1;
+    inline constexpr double MUSIC_GRID_AGREE_MS = 5.0;
+
     // -- Sound Event problems
 
     // two clips of an event whose search_sounds similar_to distance is under this sound like one

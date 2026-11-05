@@ -414,6 +414,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("soundEvent.audition", "Audition x8", C::Editor).description = "The selected Sound Event's next 8 plays, rendered offline";
     b.add("soundEvent.matchLevels", "Match Clip Levels", C::Editor).description = "The selected Sound Event's clips at their average loudness";
 
+    b.group = "Audio Clip";
+    b.add("audioClip.detectTempo", "Detect Tempo", C::Editor).description =
+        "The selected audio file's tempo, beats per bar and first beat, drawn in its Inspector; Use writes them";
+
     b.group = "Console";
     b.add("console.copy", "Copy Message", C::Console, "Ctrl+C");
 

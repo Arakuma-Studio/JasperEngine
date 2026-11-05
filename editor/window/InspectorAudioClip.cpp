@@ -3,8 +3,9 @@
 
 // The Inspector's view of an audio file (spec S36 R25; Unity's AudioClip import inspector): the
 // waveform or spectrogram with its onsets and peak, the measurements and notes of the clip as it
-// plays, Import Settings with draggable handles (Apply and Revert as the Texture Importer's),
-// Provenance, labels, and Audition through the engine's own AudioClipSource.
+// plays, Import Settings with draggable handles (Apply and Revert as the Texture Importer's) and
+// its tempo with Detect and Use (S39 R18), Provenance, labels, and Audition through the engine's
+// own AudioClipSource.
 #include "InspectorWindow.h"
 
 #include "Backend.h"
@@ -15,6 +16,7 @@
 #include "audio/AudioImportRegistry.h"
 #include "audio/AudioImportSettings.h"
 #include "audio/AudioMixer.h"
+#include "audio/AudioMusicGrid.h"
 #include "audio/AudioProvenance.h"
 #include "audio/AudioWaveform.h"
 #include "audio/ClipDefects.h"
@@ -83,7 +85,23 @@ struct ClipView {
     std::shared_ptr<AudioClipSource> voiceClip;
     unsigned int voice = 0;
     bool matchLoudness = false;
+
+    // Detect Tempo: the file's beat grid from a Background job, shown until another file is
+    // inspected; nothing is written before Use
+    struct Detection {
+        AudioMusicGrid::Grid grid;
+        std::string error;
+        std::atomic<bool> done{false};
+    };
+    std::shared_ptr<Detection> detection;
 };
+
+// audioClip.detectTempo asked for this asset (the Project window's menu selects it first, so the
+// request outlives the view's reset to the new asset)
+fs::path& detectRequest() {
+    static fs::path request;
+    return request;
+}
 
 // never destroyed: its texture would go after the graphics device
 ClipView& clipView() {
@@ -187,6 +205,56 @@ void loadSpectrogram(ClipView& view) {
     }, {jobs::Lane::Background, jobs::GateClass::Default, "audio-clip-spectrogram"});
 }
 
+void startDetection(const Project* project, ClipView& view) {
+    auto detection = std::make_shared<ClipView::Detection>();
+    view.detection = detection;
+    const fs::path file = view.asset;
+    const fs::path cache = AudioAnalysis::cacheDirectory(project->getProjectPath());
+    jobs::submit([detection, file, cache]() {
+        AudioMusicGrid::get(file, cache, detection->grid, detection->error);
+        detection->done.store(true);
+        getEditorHost().enqueueMainThreadTask([]() {});
+    }, {jobs::Lane::Background, jobs::GateClass::Default, "audio-clip-tempo"});
+}
+
+// A candidate's grid over the picture: a tick a beat (left out when beats crowd closer than
+// 3 px), a full-height line a bar
+void drawBeatGrid(ImDrawList* draw, const AudioMusicGrid::Candidate& grid, ImVec2 origin, float width, float height, double fileMs, ImU32 colour,
+                  bool atTop) {
+    if (grid.bpm <= 0.0 || fileMs <= 0.0) return;
+    const double beatMs = 60000.0 / grid.bpm;
+    const bool beats = beatMs / fileMs * width >= 3.0;
+    const long first = (long)std::floor(-grid.firstBeatMs / beatMs);
+    for (long k = first;; k++) {
+        const double ms = grid.firstBeatMs + (double)k * beatMs;
+        if (ms > fileMs) break;
+        if (ms < 0.0) continue;
+        const bool bar = ((k % grid.beatsPerBar) + grid.beatsPerBar) % grid.beatsPerBar == 0;
+        if (!bar && !beats) continue;
+        const float x = origin.x + (float)(ms / fileMs) * width;
+        const float tick = bar ? height : height * 0.15f;
+        if (atTop) draw->AddLine(ImVec2(x, origin.y), ImVec2(x, origin.y + (bar ? height * 0.5f : tick)), colour, bar ? 1.5f : 1.0f);
+        else draw->AddLine(ImVec2(x, origin.y + height - tick), ImVec2(x, origin.y + height), colour, bar ? 1.5f : 1.0f);
+    }
+}
+
+// Writes a detected grid into the clip's music block as one undo step; the other fields being
+// edited stay as they are
+void useGrid(Project* project, ClipView& view, const AudioMusicGrid::Candidate& candidate) {
+    AudioImportSettings next = view.stored;
+    next.music = AudioMusicGrid::musicOf(candidate);
+    project->refreshAssetDatabase(true);
+    auto* command = new SetAssetMetaCmd(project, project->normalizeToProjectRelative(view.asset), AudioImportSettings::metaKey, next.toYaml());
+    command->setAction("Set Tempo from Detection");
+    command->setNoMerge();
+    if (project->getProjectCommandHistory()->addCommand(command)) {
+        AudioImportSettings edited = view.edited;
+        reloadSections(view);
+        edited.music = view.stored.music;
+        view.edited = edited;
+    }
+}
+
 std::string millisText(double ms) {
     char text[32];
     std::snprintf(text, sizeof(text), ms >= 100.0 ? "%.0f ms" : "%.1f ms", ms);
@@ -238,6 +306,10 @@ bool textField(const char* label, std::string& value, bool readOnly = false) {
 
 } // namespace
 
+void editor::InspectorWindow::requestAudioClipDetectTempo() {
+    detectRequest() = project->getInspectedAsset();
+}
+
 void editor::InspectorWindow::drawAudioClipAsset(const fs::path& asset) {
     ClipView& view = clipView();
     if (view.asset != asset) {
@@ -250,6 +322,11 @@ void editor::InspectorWindow::drawAudioClipAsset(const fs::path& asset) {
                view.editedProvenance.values == view.storedProvenance.values) {
         // an undo, another program, or set_audio_import_settings: what is on disk now
         reloadSections(view);
+    }
+
+    if (!detectRequest().empty() && (detectRequest() == asset || detectRequest() == project->getInspectedAsset())) {
+        detectRequest().clear();
+        startDetection(project, view);
     }
 
     drawAssetHeader(ICON_FA_VOLUME_HIGH, asset, "Audio Clip");
@@ -334,6 +411,14 @@ void editor::InspectorWindow::drawAudioClipAsset(const fs::path& asset) {
         if (peakMs >= 0.0) {
             const float x = xOfMs(peakMs + startMs);
             draw->AddLine(ImVec2(x, origin.y + height - 8.0f), ImVec2(x, origin.y + height), IM_COL32(250, 140, 60, 255));
+        }
+        // the detected beat grid; the second candidate too, from the top, when the first is unsure
+        if (view.detection && view.detection->done && view.detection->grid.hasTempo()) {
+            const AudioMusicGrid::Grid& grid = view.detection->grid;
+            if (!grid.confident && grid.candidates.size() > 1) {
+                drawBeatGrid(draw, grid.candidates[1], origin, width, height, fileMs, IM_COL32(240, 120, 200, 200), true);
+            }
+            drawBeatGrid(draw, grid.candidates[0], origin, width, height, fileMs, IM_COL32(90, 200, 250, 220), false);
         }
     }
 
@@ -448,6 +533,44 @@ void editor::InspectorWindow::drawAudioClipAsset(const fs::path& asset) {
         dragField("Fade Out", view.edited.fadeOutMs, 0.0, AudioImportSettings::FADE_MAX_MS, "%.1f ms");
         dragField("Loop Start", view.edited.loopStartMs, -1.0, std::max(fileMs, 1.0), view.edited.loopStartMs < 0.0 ? "Trimmed Start" : "%.1f ms");
         dragField("Loop End", view.edited.loopEndMs, -1.0, std::max(fileMs, 1.0), view.edited.loopEndMs < 0.0 ? "Trimmed End" : "%.1f ms");
+
+        // -- tempo: beat 1 from the file's start, before the trims
+        AudioImportSettings::Music& music = view.edited.music;
+        const double bpmBefore = music.bpm;
+        dragField("BPM", music.bpm, 0.0, AudioImportSettings::BPM_MAX, music.bpm <= 0.0 ? "None" : "%.2f");
+        // 0 is no tempo: a drag up from it starts at the lowest tempo, a drag down below that ends it
+        if (music.bpm > 0.0 && music.bpm < AudioImportSettings::BPM_MIN) music.bpm = bpmBefore <= 0.0 ? AudioImportSettings::BPM_MIN : 0.0;
+        if (music.bpm <= 0.0) music = AudioImportSettings::Music();
+        ImGui::BeginDisabled(music.bpm <= 0.0);
+        ImGui::DragInt("Beats per Bar", &music.beatsPerBar, 0.05f, 1, AudioImportSettings::BEATS_PER_BAR_MAX, "%d", ImGuiSliderFlags_AlwaysClamp);
+        dragField("First Beat", music.firstBeatMs, 0.0, std::max(fileMs, 1.0), "%.1f ms");
+        ImGui::EndDisabled();
+
+        const bool detecting = view.detection && !view.detection->done;
+        ImGui::BeginDisabled(detecting);
+        if (ImGui::Button(detecting ? "Detecting..." : "Detect")) startDetection(project, view);
+        ImGui::EndDisabled();
+        if (view.detection && view.detection->done) {
+            const AudioMusicGrid::Grid& grid = view.detection->grid;
+            if (!view.detection->error.empty()) {
+                ImGui::SameLine();
+                ImGui::TextColored(Theme::Colors::WarningText, "%s", view.detection->error.c_str());
+            } else if (grid.hasTempo()) {
+                ImGui::SameLine();
+                if (ImGui::Button("Use")) useGrid(project, view, grid.candidates[0]);
+                if (!grid.confident && grid.candidates.size() > 1) {
+                    ImGui::SameLine();
+                    char alternative[64];
+                    std::snprintf(alternative, sizeof(alternative), "Use %.2f BPM", grid.candidates[1].bpm);
+                    if (ImGui::Button(alternative)) useGrid(project, view, grid.candidates[1]);
+                }
+            }
+            if (view.detection->error.empty()) {
+                ImGui::PushTextWrapPos(0.0f);
+                ImGui::TextDisabled("%s", AudioMusicGrid::line(grid).c_str());
+                ImGui::PopTextWrapPos();
+            }
+        }
 
         std::string problem;
         const bool valid = view.edited.validate(problem);
