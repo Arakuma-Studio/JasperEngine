@@ -317,7 +317,8 @@ void MissingAssetsWindow::show() {
     MissingAssetTracker& tracker = project->getMissingAssets();
     tracker.update(project->getAssetDatabase(), project->getAssetIndex(), ImGui::GetFrameCount() % 30 == 0);
 
-    if (tracker.getGroups().empty() && tracker.getResolvedByPath().empty() && tracker.getOrphanMetas().empty()) {
+    if (tracker.getGroups().empty() && tracker.getResolvedByPath().empty() && tracker.getOrphanMetas().empty() &&
+        tracker.getReadOnlyLinked().empty()) {
         ImGui::TextDisabled(ICON_FA_CIRCLE_CHECK " Every asset reference of the project resolves.");
         ImGui::End();
         drawPicker();
@@ -388,6 +389,14 @@ void MissingAssetsWindow::show() {
                 panelRunProjectCommand(project, new DeleteOrphanMetaCmd(project, orphan.metaPath), "Delete Meta");
             }
             ImGui::PopID();
+        }
+    }
+    if (!tracker.getReadOnlyLinked().empty()) {
+        ImGui::SeparatorText("Read-only linked files");
+        ImGui::TextDisabled("A linked folder cannot be written: these assets work, and keep their GUIDs in the editor only.");
+        for (const std::string& path : tracker.getReadOnlyLinked()) {
+            ImGui::TextDisabled(ICON_FA_LOCK " %s", path.c_str());
+            ImGui::SetItemTooltip("Its identity (its .meta or GUID line) cannot be written beside the file. Give the folder write access, or copy it into the project, so the GUID is saved with it.");
         }
     }
     ImGui::EndChild();

@@ -169,6 +169,42 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_linked_folder_rules",
+        "kind": "guard",
+        "what_happened": "A folder linked in from out of the project is a folder of the project for the asset database and exports, "
+                         "with its metas beside its files, but the write tools stay refused there: an agent asked answers that from the "
+                         "asset guide, and neither promises a write nor tells the user to copy the folder in to ship it.",
+        "text_at_issue": "docs/mcp/guide/assets.md, 'Linked folders and files'",
+        "source": "docs/specs/S68-linked-folders.md R1, R7, Deviation D1",
+        "prompt": "I symlinked my shared art library into assets/shared; it lives outside the project. Going by the editor's asset "
+                  "guide: where do the .meta files of those assets go, do the files ship in an exported game, and can your write_file "
+                  "tool add a new file there? Answer in a few lines, change nothing.",
+        "checks": {"must_not_call": ["write_file", "create_folder", "move_asset"],
+                   "reply_must": [r"beside|next to|alongside|same folder", r"ship|included|exported", r"refus"],
+                   "reply_must_not": [r"(copy|move) (it|them|the (folder|files|library)) into the project (first|to ship|so (it|they) ship)",
+                                      r"(guide|docs?) (says nothing|doesn.?t)|isn.?t stated|doesn.?t say|inference|probably|haven.?t (tested|confirmed)"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_read_only_linked",
+        "kind": "guard",
+        "what_happened": "A folder linked in from a read-only drive: its assets work with GUIDs the editor keeps, nothing is missing. "
+                         "The result says so, and the agent reports it rather than taking it for a failure or changing permissions.",
+        "text_at_issue": "list_missing_assets result: read_only_linked and its line",
+        "source": "docs/specs/S68-linked-folders.md R7",
+        "prompt": "Run the editor's missing assets check and tell me what it says about this project. Change nothing.",
+        "groups_enabled": ["assets_pipeline"],
+        "mocks": [
+            {"tool": "list_missing_assets", "result": ok(
+                "0 missing asset(s), 0 resolved by path, 0 orphan meta(s).\n1 asset(s) in a read-only linked folder "
+                "(they work; their GUIDs are not saved beside them):\nassets/lib/locked/tile.png",
+                {"missing": [], "resolved_by_path": [], "orphan_metas": [], "read_only_linked": ["assets/lib/locked/tile.png"]})},
+        ],
+        "checks": {"calls": ["list_missing_assets"], "reply_must": [r"read-only", r"tile\.png"],
+                   "must_not_call": ["write_file", "delete_asset", "move_asset"], "shell_must_not": [r"chmod"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_curve_keys_rebind",
         "kind": "guard",
         "what_happened": "Asked to rebind a Curve window key, agents read the project, then the engine source, and told the user "

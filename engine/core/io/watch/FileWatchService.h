@@ -175,6 +175,7 @@ namespace jasperengine {
         struct Subscriber;
         class Sink;
         class CoalescerEnvironment;
+        class LinkedSink;
         struct Shared;
 
         std::unique_ptr<Shared> shared;
@@ -183,6 +184,9 @@ namespace jasperengine {
         void unsubscribe(uint64_t id);
         void dispatcherLoop();
         void switchToPolling(const std::string& reason);
+        // A backend for each folder the index went through a link to (S68 R8: backends do not cross
+        // links, so what such a folder holds is watched from its own real path)
+        void syncLinkedWatches();
         // Turns settled changes into delivered ones (index, ledger, journal, queues). Holds
         // the state lock.
         void processLocked(std::vector<FileChange>& changes);

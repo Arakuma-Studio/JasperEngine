@@ -72,6 +72,45 @@ mesh:
         nameGuid: 0a4f...
 ```
 
+## Linked folders and files
+
+A folder or file link inside the project (a symbolic link, an NTFS junction, a mount point) works
+the way a real folder does. One file is one asset, with one GUID, whatever the paths it is reached by.
+
+- **A link to a place inside the project** is a second name. Nothing is tracked under it and it
+  gets no metas: the asset stays at its real path. A lookup, a reference or an instance made by
+  the link's path names the asset by its GUID and stores the real path as its hint.
+  A file link is the file it leads to, and `list_prefabs` shows it once.
+- **A hard link of a tracked file** is compared by file identity (`std::filesystem::equivalent`), so
+  it is never taken for a copy and gets no new GUID. The path tracked first stays the asset's, and
+  no meta is written for the other. A real copy (another file with the same GUID) gets a new GUID.
+- **A link to a place out of the project** is a project folder, as in Unity. Its assets are tracked
+  under the link's name (`assets/shared/tile.png`), each `.meta` lies beside the file in the folder
+  the link leads to, and a linked file's meta beside the link. The scan goes through links inside it too.
+  Two links to one such folder are one folder: the first name in path order has the assets, and
+  the second is another name of them.
+- **A folder moved and linked at its old name** is a move: GUIDs, bytes and references survive, the hints follow.
+- **A cycle** ends the walk. A link back to a folder already walked is another name of it; a link
+  to a folder that holds the project (`assets/up` leading to the project root) is left out, with
+  a warning. The walk through links stops at 500,000 entries, with a warning. A link that leads
+  nowhere is a missing file, silently.
+- **A read-only target** is no failure. Assets there work: a file without an identity on disk gets the
+  GUID its path derives, kept by the database, so it is the same every session. Missing Assets lists
+  them under "Read-only linked files" (`read_only_linked` in `list_missing_assets`). Give the folder
+  write access and the metas are written on the next open.
+- **Changes through a link** are seen: the file watcher watches each folder linked in from out of
+  the project from its own real path, and reports its files by their project paths.
+- **Exports** ship every file the editor reaches through a link, at the path the editor reads it by, in
+  every mode: assets, Lua and custom shader sources. A link to the project's own folder ships under
+  both names. A linked file ships inside the export tree. A link that would hold itself is left out,
+  with a warning naming it.
+
+**MCP write tools stay inside the project.** The agent write sandbox (`write_file`, `move_asset`,
+`delete_asset` and the others, `docs/mcp/DESIGN.md`) refuses a path that resolves through a link out of the
+project, and `search_files` does not read through one: reading, referencing, listing and exporting work, and the
+database's own metas are written beside the files. To let an agent edit such a folder, copy it into
+the project. Links inside the project are written through.
+
 ## Renaming, moving, deleting
 
 - **In the editor** (the Project window, `move_asset`, `delete_asset`): the file and its meta

@@ -14,6 +14,15 @@
 // cached in .jasperengine/assetdb/index.json (a deletable cache: deleting it changes no
 // result). The contracts are in docs/specs/S04-asset-identity.md and
 // editor/project/PREFABS.md §3.
+//
+// Links (S68). One file is one asset, whatever the paths it is reached by. A link (symbolic link,
+// junction, mount point) leading into the project is another name of a file or folder the scan
+// reaches anyway: nothing is tracked under it, and a lookup by it answers with the real path. A link
+// leading out of the project is a folder of the project: what it holds is tracked under the link's
+// name, its metas beside the files. The scan learns the links (LinkTable); a lookup translates a
+// path by that table's text, so it costs no file system call and a project without links pays
+// nothing. A hard link of a tracked file is compared by file identity where copies are decided,
+// and is an alias of the asset tracked first, never an entry.
 
 #pragma once
 
@@ -27,6 +36,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <set>
 #include <unordered_set>
 #include <mutex>
 #include <string>
@@ -144,6 +154,9 @@ namespace jasperengine::editor {
         // outside the editor), applied to the database and returned
         std::vector<Change> refresh();
 
+        // What a scan found of the project's links (see the top of this file)
+        struct LinkTable;
+
         // The walk refresh() compares: every tracked file and meta with its time and size.
         // scanDisk() changes nothing and takes the lock only to start, so a background thread
         // runs it (the editor's poll, R23); refresh(scan) applies it, and does nothing for a
@@ -159,6 +172,7 @@ namespace jasperengine::editor {
             };
             std::vector<File> assets;
             std::vector<std::string> metas;
+            std::shared_ptr<const LinkTable> links;   // none when the project has no links
             uint64_t version = 0;
             bool valid = false;
         };
@@ -195,6 +209,13 @@ namespace jasperengine::editor {
 
         std::vector<OrphanMeta> getOrphanMetas() const;
         std::vector<RedirectConflict> getRedirectConflicts() const;
+        // Assets in a folder linked in from out of the project whose identity cannot be written there
+        // (a read-only target): their GUIDs live in the database, derived from their paths so they
+        // are stable, and the Missing Assets panel lists them
+        std::vector<std::string> getReadOnlyLinkedAssets() const;
+        // The real folders and files the project links to out of itself, with the project path each is
+        // tracked under
+        std::vector<std::pair<std::filesystem::path, std::string>> getLinkedOutTargets() const;
 
         // ---- edits
 
@@ -219,8 +240,11 @@ namespace jasperengine::editor {
         // A file the editor wrote with this GUID
         void registerAsset(const std::filesystem::path& path, const std::string& guid);
 
+        // Where the database knows a path by: project-relative, through the links the last scan found
         std::filesystem::path toRelative(const std::filesystem::path& path) const;
         const std::filesystem::path& getProjectPath() const { return projectPath; }
+        // Stops a scan's walk through links after this many entries (the bound of S68 R7; tests)
+        static void setLinkedEntryLimitForTesting(size_t limit);
 
         // The content hashes still being computed in the background (tests and the bench wait)
         void waitForBackgroundWork();
@@ -269,6 +293,11 @@ namespace jasperengine::editor {
         std::map<std::string, OrphanMeta> orphans;           // key(meta path) -> orphan
         std::map<std::string, Entry> orphanLast;             // key(asset path) -> what the cache knew of an orphan's asset
         std::vector<RedirectConflict> conflicts;
+        std::shared_ptr<const LinkTable> links;              // read lock-free (std::atomic_load): the background walk uses it too
+        std::set<std::string> warnedLinks;                   // each link left out, warned about once
+        std::unordered_map<std::string, std::string> hardLinks;   // key(a hard link's path) -> key of the tracked path of that file
+        std::set<std::string> readOnlyLinked;                // key -> assets getReadOnlyLinkedAssets lists
+        std::set<std::string> warnedReadOnly;                // the linked folders reported in the log
 
         // background content hashing
         // background content hashes and cache writes: one S06 strand (Background lane, FIFO,
@@ -307,6 +336,28 @@ namespace jasperengine::editor {
         std::string relativeKeyOf(const std::string& relative) const;
         bool fileExists(const std::string& relative) const;
         void statFile(const std::string& relative, std::filesystem::file_time_type& time, uint64_t& size) const;
+        // The entry a path names: tracked at it, through a link, or a hard link's
+        const Entry* findEntry(const std::filesystem::path& path) const;
+        std::shared_ptr<const LinkTable> linkTable() const;
+        void installLinks(std::shared_ptr<const LinkTable> table);
+        // `oldRelative` (and what is under it) is now `newRelative` in the table
+        void renameInLinks(const std::string& oldRelative, const std::string& newRelative);
+        // `relative` is a name of the table of its own: the entry of a link, as opposed to what it leads to
+        bool isLinkAlias(const std::string& relative) const;
+        void forgetLink(const std::string& relative);
+        // Under a link leading out of the project
+        bool isLinkedOut(const std::string& relative) const;
+        // Both paths open one file (std::filesystem::equivalent: device and inode, or volume and file index)
+        bool sameFile(const std::string& a, const std::string& b) const;
+        // The tracked path of the file at `relative` when it is another name of it: the path `guid`
+        // has, else (a file without identity, only when it has several hard links) any tracked
+        // path of one. "" when it is a file of its own.
+        std::string hardLinkOwner(const std::string& relative, const Guid& guid) const;
+        // `relative` is an alias of the asset at `owner`: no entry, nothing written
+        void addHardLink(const std::string& relative, const std::string& owner);
+        // After writeIdentity of a sidecar's meta: `written` false under a link out is a read-only
+        // target (reported, and not tried again by every refresh)
+        void noteIdentityWrite(Entry& entry, bool written);
 
         void insert(Entry entry);
         void erase(const std::string& relative);
@@ -331,8 +382,13 @@ namespace jasperengine::editor {
 
         // Tracked files and metas below a path (the path itself when it is a file), relative
         // temporaries, when given, receives the atomic-write temps the walk passes (io::isTemporarySiblingName)
+        // table receives the links the walk meets
         void collect(const std::filesystem::path& fullPath, std::vector<std::string>& assets, std::vector<std::string>& metas,
-                     std::vector<std::filesystem::path>* temporaries = nullptr) const;
+                     LinkTable& table, std::vector<std::filesystem::path>* temporaries = nullptr) const;
+        // The links `collect` met (project-relative): each settled in the table, in path order, and
+        // the folders leading out of the project walked
+        void collectLinks(std::set<std::string>& pending, std::vector<std::string>& assets, std::vector<std::string>& metas,
+                          LinkTable& table) const;
         // Files without identity adopt orphan metas that match them (R5); returns the adopted
         std::vector<Change> adoptOrphans(std::vector<std::string>& withoutIdentity);
         // presentKeys: the keys of the assets the walk found (a meta beside one is no orphan, no stat)

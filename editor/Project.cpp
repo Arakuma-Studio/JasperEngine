@@ -10,6 +10,7 @@
 #include "subsystem/RenderSystem.h"
 #include "component/ButtonComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "io/watch/LinkedFolders.h"
 #include "diag/HangWatchdog.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ScriptReloadService.h"
@@ -391,7 +392,14 @@ fs::path editor::Project::normalizeToProjectRelative(const fs::path& path) const
     if (normalizedPath.is_absolute()) {
         fs::path relativePath = fs::relative(normalizedPath, projectPath, ec);
         if (!ec) {
-            return relativePath.lexically_normal();
+            relativePath = relativePath.lexically_normal();
+            // a link out of the project is a folder of the project: its files keep the path
+            // they are reached by, not "../.." (S68 R7)
+            if (!relativePath.empty() && *relativePath.begin() == "..") {
+                const fs::path known = assetDatabase.toRelative(normalizedPath);
+                if (!known.empty() && !known.is_absolute() && *known.begin() != "..") return known;
+            }
+            return relativePath;
         }
     }
 
@@ -1165,7 +1173,7 @@ fs::path editor::Project::applyModelReloads(bool synchronous) {
 
 void editor::Project::importFbxModels() {
     std::error_code ec;
-    for (fs::recursive_directory_iterator it(getAssetsPath(), fs::directory_options::skip_permission_denied, ec), end;
+    for (watch::LinkedDirectoryIterator it(getAssetsPath(), fs::directory_options::skip_permission_denied, ec), end;
          !ec && it != end; it.increment(ec)) {
         // Hidden, build, Recordings and EditorSettings directories hold no assets (S27 R31)
         if (it->is_directory(ec) && isNonAssetDir(it->path())) {
@@ -2081,6 +2089,13 @@ void editor::Project::resetPlayShaderGlobals() const{
     ShaderGlobals::resetToDefaults();
 }
 
+// `path` as spelled, when it is under `root`: below a folder linked in from out of the project,
+// where std::filesystem::relative (which resolves links) leaves the root (S68 R7)
+static std::filesystem::path spelledBelowRoot(const std::filesystem::path& path, const std::filesystem::path& root){
+    const std::filesystem::path spelled = path.lexically_normal().lexically_relative(root.lexically_normal());
+    return spelled.empty() || *spelled.begin() == ".." ? std::filesystem::path() : spelled;
+}
+
 static bool isInsideRoot(const std::filesystem::path& path, const std::filesystem::path& root){
     std::error_code ec;
     std::filesystem::path relativePath = std::filesystem::relative(path, root, ec);
@@ -2088,7 +2103,7 @@ static bool isInsideRoot(const std::filesystem::path& path, const std::filesyste
         return false;
     }
 
-    return *relativePath.begin() != "..";
+    return *relativePath.begin() != ".." || !spelledBelowRoot(path, root).empty();
 }
 
 static std::filesystem::path resolveRootDir(const std::filesystem::path& projectPath, const std::filesystem::path& dir){
@@ -2125,6 +2140,9 @@ static std::filesystem::path normalizeAgainstRoot(const std::filesystem::path& r
     std::filesystem::path relativePath = std::filesystem::relative(normalizedPath, root, ec);
     if (ec || relativePath.empty()){
         return normalizedPath;
+    }
+    if (*relativePath.begin() == ".."){
+        if (std::filesystem::path spelled = spelledBelowRoot(normalizedPath, root); !spelled.empty()) return spelled;
     }
 
     return relativePath.lexically_normal();
@@ -2284,8 +2302,8 @@ bool editor::Project::visitMaterialFiles(const std::function<bool(Material&)>& v
     std::error_code ec;
     bool changed = false;
 
-    for (auto it = fs::recursive_directory_iterator(projectPath, fs::directory_options::skip_permission_denied, ec);
-         it != fs::recursive_directory_iterator(); ++it){
+    for (watch::LinkedDirectoryIterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
+         it != end; it.increment(ec)){
         const auto& entry = *it;
 
         if (entry.is_directory() && isNonAssetDir(entry.path())){
@@ -9199,7 +9217,7 @@ std::vector<std::filesystem::path> editor::Project::findProjectFiles(const std::
 
     std::error_code ec;
 
-    for (fs::recursive_directory_iterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
+    for (watch::LinkedDirectoryIterator it(projectPath, fs::directory_options::skip_permission_denied, ec), end;
          it != end && !ec; it.increment(ec)) {
         const fs::directory_entry& entry = *it;
 
@@ -9222,6 +9240,8 @@ std::vector<std::filesystem::path> editor::Project::findProjectFiles(const std::
     }
 
     std::sort(files.begin(), files.end());
+    // a file link to a project file is that file (normalizeToProjectRelative resolves it)
+    files.erase(std::unique(files.begin(), files.end()), files.end());
 
     return files;
 }

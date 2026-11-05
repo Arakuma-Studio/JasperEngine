@@ -221,6 +221,15 @@ A new test that needs a game that runs builds it prebuilt. One that needs what o
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
 
+### Linked folders in a web game (S68 AC2)
+
+`tools/mcp/tests/test_linked_folders_export.py` builds and runs a Desktop game with
+`JASPER_SLOW_BUILD=1`. A web game needs the web image, which has no editor, so it takes two steps:
+`JASPER_LINKED_WEB_EXPORT=build/linked-web tools/mcp/run-tests.sh tools/mcp/tests/test_linked_folders_export.py -k web_export` leaves
+the source export there (the links resolved into real files), then `tools/web/linked_folder_game.sh build/linked-web`, in the web
+image, builds it and runs `tools/web/browser_gate.py` on it with `tools/web/gates/linked-folder-game.json`:
+the centre pixel is the linked texture's red and the console has the linked Lua module's line.
+
 ### Test projects
 
 `tools/test-projects/<name>/` are small engine projects (`main.cpp`, `lua/`, `assets/`) that a
