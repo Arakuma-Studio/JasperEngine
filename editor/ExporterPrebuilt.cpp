@@ -326,6 +326,8 @@ void editor::Exporter::runPlayerBuild() {
         discardStaging();
         return;
     }
+    measureBuildEngine(config.destinationDir);
+    if (!writeBuildReport(config.destinationDir, "prebuilt")) return;
     setProgressRaw("Build complete", 1.0f);
     {
         std::lock_guard<std::mutex> lock(progressMutex);
@@ -472,6 +474,8 @@ bool editor::Exporter::runPrebuilt() {
     if (cancelled()) return false;
     if (!cookTextures()) return false;
     if (cancelled()) return false;
+    if (!cookModels()) return false;
+    if (cancelled()) return false;
     if (!copyAssets()) return false;
     if (!writeAssetMap()) return false;
     if (!copyCustomShaderSources()) return false;
@@ -487,6 +491,9 @@ bool editor::Exporter::runPrebuilt() {
     if (!stagePlayer()) return false;
     if (cancelled()) return false;
     if (!stageNotices()) return false;
+    // what ships, measured before the pack hides it (S53 R21)
+    buildReport = BuildReport();
+    measureBuildContent(contentDir);
     if (!packContent()) return false;
     if (cancelled()) return false;
     if (!writeContentManifest(true)) return false;

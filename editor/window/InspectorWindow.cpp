@@ -12583,8 +12583,17 @@ void editor::InspectorWindow::show(){
     // while someone else holds their lock (S29 R28)
     if (!project->getInspectedAssets().empty()) {
         if (!textureImporter) textureImporter = std::make_unique<TextureImporterView>(project);
+        if (!modelImporter) modelImporter = std::make_unique<ModelImporterView>(project);
         const bool assetsLocked = drawVcsLockBanner(project->getInspectedAssets());
         if (assetsLocked) ImGui::BeginDisabled(true);
+        // model files: their import settings (S53 R16), the Animation tab their clip table
+        if (modelImporter->draw(project->getInspectedAssets(), [this](const std::string& relative) {
+                drawModelClipsAsset(project->getAssetsPath() / FileUtils::pathFromUtf8(relative), relative);
+            })) {
+            if (assetsLocked) ImGui::EndDisabled();
+            ImGui::End();
+            return;
+        }
         // one image that is a generated sprite normal map or the source of one: upstream's asset
         // view of it (its recipe, stale line, Regenerate), above the import settings
         const std::vector<std::filesystem::path>& inspectedFiles = project->getInspectedAssets();

@@ -84,6 +84,8 @@ namespace jasperengine::editor{
     class AssetReferencesWindow;
     class SpriteNormalsWatcher;
     class JobsMemoryWindow;
+    class MeshAuditWindow;
+    class BuildReportWindow;
     class ProfilerWindow;
     class FrameDebuggerWindow;
     class UndoHistoryWindow;
@@ -255,6 +257,8 @@ namespace jasperengine::editor{
         MissingAssetsWindow* missingAssetsWindow;
         AssetReferencesWindow* assetReferencesWindow;
         JobsMemoryWindow* jobsMemoryWindow;
+        MeshAuditWindow* meshAuditWindow;
+        BuildReportWindow* buildReportWindow;
         ProfilerWindow* profilerWindow;
         FrameDebuggerWindow* frameDebuggerWindow;
         UndoHistoryWindow* undoHistoryWindow;
@@ -673,6 +677,9 @@ namespace jasperengine::editor{
         MainToolbar* getMainToolbar() const;
         void openTextureSynthesis(const std::filesystem::path& image, bool editRecipe) override;
         void openAudioMixerWindow(const std::filesystem::path& mixer = {}) override;
+        void openBuildReport(const std::filesystem::path& report) override;
+        void openMeshAudit() override;
+        void openConsole() override;
         void openVertexAnimationBaker(const std::filesystem::path& path, bool bakeNow) override;
         // Game view: setOpen()/isOpen() toggle it (Window menu), requestFocus() shows it
         GameWindow* getGameWindow() const;

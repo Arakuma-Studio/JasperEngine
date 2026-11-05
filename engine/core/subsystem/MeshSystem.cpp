@@ -29,6 +29,7 @@
 #include "thread/ResourceProgress.h"
 #include "io/AssetIOService.h"
 #include "subsystem/RenderSystem.h"
+#include "model/CookedModels.h"
 #include "texture/CookedTextures.h"
 #include "texture/Ktx2.h"
 #include "util/Angle.h"
@@ -401,6 +402,11 @@ static std::string withoutCookedImageWarnings(const std::string& warn, const tin
     return out;
 }
 
+// a binary glTF by its bytes ("glTF"): a cooked .glb stands in for a .gltf source too
+static bool isGlbData(const unsigned char* data, size_t size){
+    return size >= 4 && data[0] == 'g' && data[1] == 'l' && data[2] == 'T' && data[3] == 'F';
+}
+
 // An FBX model loads from the .glb the editor imported it into (getImportedModelPath)
 static bool isFbxModelFile(const std::string& filename){
     std::string ext = FileData::getFilePathExtension(filename);
@@ -409,6 +415,14 @@ static bool isFbxModelFile(const std::string& filename){
 }
 
 std::string MeshSystem::getImportedModelPath(const std::string& filename){
+    CookedModelEntry cooked;
+    if (CookedModels::find(filename, cooked)){
+        return cooked.file;
+    }
+    return isFbxModelFile(filename) ? getFbxImportPath(filename) : filename;
+}
+
+std::string MeshSystem::getFbxImportPath(const std::string& filename){
     const std::string importPath = System::instance().getImportPath();
     if (importPath.empty()){
         return filename + ".glb";
@@ -1385,21 +1399,30 @@ bool MeshSystem::normalizeGLTF(tinygltf::Model& model, const std::string& filena
     return false;
 }
 
-bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename){
+bool MeshSystem::readGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename){
     std::string ext = FileData::getFilePathExtension(filename);
     std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
-    bool loaded = false;
-    if (ext == "fbx"){
+    // a cooked .glb or an FBX's import: read from there, resolved against the source's directory
+    const std::string read = getImportedModelPath(filename);
+    if (read != filename){
         std::vector<unsigned char> data;
-        if (!readWholeFile(&data, err, getImportedModelPath(filename), nullptr) || data.empty()){
+        if (!readWholeFile(&data, err, read, nullptr) || data.empty()){
             return false;
         }
-        loaded = loader.LoadBinaryFromMemory(model, err, warn, data.data(), static_cast<unsigned int>(data.size()), FileData::getBaseDir(filename));
-    }else if (ext == "glb"){
-        loaded = loader.LoadBinaryFromFile(model, err, warn, filename);
-    }else{
-        loaded = loader.LoadASCIIFromFile(model, err, warn, filename);
+        if (isGlbData(data.data(), data.size())){
+            return loader.LoadBinaryFromMemory(model, err, warn, data.data(), static_cast<unsigned int>(data.size()), FileData::getBaseDir(filename));
+        }
+        return loader.LoadASCIIFromString(model, err, warn, reinterpret_cast<const char*>(data.data()), static_cast<unsigned int>(data.size()),
+                                          FileData::getBaseDir(filename));
     }
+    if (ext == "glb"){
+        return loader.LoadBinaryFromFile(model, err, warn, filename);
+    }
+    return loader.LoadASCIIFromFile(model, err, warn, filename);
+}
+
+bool MeshSystem::loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename){
+    const bool loaded = readGLTFFile(loader, model, err, warn, filename);
     // what the parse gives, as core glTF (docs/specs/S53-model-import-cook.md R1)
     if (!loaded || (err && !err->empty()))
         return loaded;
@@ -1764,11 +1787,10 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::loadModelFileOnWor
 
             // the main file from the bytes read; buffers and images it names through the
             // file callbacks, relative to its directory (as LoadBinaryFromFile does). An FBX
-            // loads from its imported .glb: the bytes read are that file's (loadGLTFFile).
-            std::string ext = FileData::getFilePathExtension(filename);
-            std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+            // loads from its imported .glb and a cooked model from its cooked .glb: the bytes
+            // read are that file's (getImportedModelPath), binary or not by their first bytes.
             const std::string baseDir = FileData::getBaseDir(filename);
-            if (ext == "glb" || ext == "fbx") {
+            if (isGlbData(bytes.data(), bytes.size())) {
                 result->success = loader.LoadBinaryFromMemory(result->gltfModel.get(), &result->err, &result->warn, bytes.data(), (unsigned int)bytes.size(), baseDir);
             }else{
                 result->success = loader.LoadASCIIFromString(result->gltfModel.get(), &result->err, &result->warn, reinterpret_cast<const char*>(bytes.data()), (unsigned int)bytes.size(), baseDir);
@@ -1855,7 +1877,7 @@ std::shared_ptr<MeshSystem::AsyncModelLoadResult> MeshSystem::pollOrStartAsyncMo
 
             // the file on an asset reader thread, the parse as a Background job
             AssetIOService::ReadRequest request;
-            request.path = isFbxModelFile(filename) ? getImportedModelPath(filename) : filename;
+            request.path = obj ? filename : getImportedModelPath(filename);
             request.priority = IOPriority::Normal;
             request.name = obj ? "obj-parse" : "gltf-parse";
             request.onFailure = [buildId](const std::string&) {
@@ -1939,7 +1961,7 @@ std::shared_ptr<MeshSystem::ModelReload> MeshSystem::parseModelForReload(const s
     // the whole file (the I/O service's read, with its retry window for a file being replaced)
     std::vector<uint8_t> bytes;
     std::string readError;
-    if (!AssetIOService::readFile(filename, 0, 0, bytes, readError))
+    if (!AssetIOService::readFile(reload->obj ? filename : getImportedModelPath(filename), 0, 0, bytes, readError))
         throw std::runtime_error(readError);
     reload->result = loadModelFileOnWorker(filename, reload->obj, 0, bytes);
     if (!reload->result || !reload->result->success){

@@ -41,6 +41,7 @@ namespace jasperengine::editor {
         int m_atmosphereQuality[3] = {3, 1, 1};
         // Texture (S14 R24)
         TextureProjectSettings m_textureSettings;
+        ModelProjectSettings m_modelSettings;
         PlayerLoggingSettings m_playerLogging;
         PlayerCrashSettings m_playerCrash;
         int m_htmlUiMsaaIndex = 2;   // htmlUiMsaaValues: 1, 2, 4, 8
@@ -251,6 +252,7 @@ namespace jasperengine::editor {
         void drawInputSettings();
         void drawAudioSettings();
         void drawNavigationSettings();
+        void drawMeshSettings();
         // Unity's triangular Layer Collision Matrix over the named layers (as typed in
         // Tags and Layers, not yet applied)
         void drawLayerCollisionMatrix(const char* id, LayerCollisionRows& rows);

@@ -67,6 +67,9 @@
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/MeshAuditWindow.h"
+#include "window/BuildReportWindow.h"
+#include "window/ImporterFields.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
@@ -97,6 +100,7 @@
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -237,6 +241,8 @@ editor::App::App(){
     missingAssetsWindow = new MissingAssetsWindow(&project);
     assetReferencesWindow = new AssetReferencesWindow(&project);
     jobsMemoryWindow = new JobsMemoryWindow();
+    meshAuditWindow = new MeshAuditWindow(&project);
+    buildReportWindow = new BuildReportWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
@@ -736,7 +742,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
             catalogItem("window.frameDebugger", windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
             catalogItem("window.systems", windowMenuLabel(SystemsWindow::WINDOW_NAME)),
-            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
+            catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
+            catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
@@ -987,6 +995,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleJobsMemory:
             showEditorWindow(jobsMemoryWindow);
+            break;
+        case AppMenuCommand::ToggleMeshAudit:
+            showEditorWindow(meshAuditWindow);
+            break;
+        case AppMenuCommand::ToggleBuildReport:
+            showEditorWindow(buildReportWindow);
             break;
         case AppMenuCommand::ToggleUndoHistory:
             showEditorWindow(undoHistoryWindow);
@@ -2821,6 +2835,8 @@ void editor::App::show(){
     showAlert();
 
     sceneSaveDialog.show();
+    // the importers' edits not applied, asked about before a selection change, Play or the close
+    ImporterPrompt::draw();
     projectSaveDialog.show();
     dataSafetyDialogs.show(project);
     exportWindow.show();
@@ -2871,6 +2887,8 @@ void editor::App::show(){
     missingAssetsWindow->show();
     assetReferencesWindow->show();
     jobsMemoryWindow->show();
+    meshAuditWindow->show();
+    buildReportWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
@@ -3743,6 +3761,10 @@ void editor::App::pollExternalChanges(){
         TextureCookQueue& cooks = TextureCookQueue::get();
         if (cooks.getProject() != &project) cooks.attach(&project);
         wake = cooks.update() || wake;
+        // and model cooks (S53 R13): cooked on the Background lane, the models showing them reloaded here
+        ModelCookQueue& models = ModelCookQueue::get();
+        if (models.getProject() != &project) models.attach(&project);
+        wake = models.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -5549,6 +5571,18 @@ editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
 }
 
+void editor::App::openBuildReport(const std::filesystem::path& report){
+    buildReportWindow->open(report);
+}
+
+void editor::App::openMeshAudit(){
+    showEditorWindow(meshAuditWindow);
+}
+
+void editor::App::openConsole(){
+    showEditorWindow(consoleWindow);
+}
+
 void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
     audioMixerWindow->open(mixer);
 }
@@ -5957,6 +5991,8 @@ void editor::App::exit() {
         Backend::closeWindow();
         return;
     }
+    // import settings edited and not applied (S53 R17): asked first, the close follows Apply or Revert
+    if (ImporterPrompt::guard([this]() { exit(); })) return;
 
     // Check if any modal popup is currently open (including ComponentAddDialog, ScriptCreateDialog, etc.)
     ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal();

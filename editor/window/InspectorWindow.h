@@ -17,6 +17,7 @@
 #include "window/dialog/ScriptCreateDialog.h"
 #include "window/dialog/ShaderForkDialog.h"
 #include "window/TextureImporterView.h"
+#include "window/ModelImporterView.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "window/dialog/TextureSlicerToolDialog.h"
 #include "vcs/scene/SceneDiff.h"
@@ -201,6 +202,8 @@ namespace jasperengine::editor{
     private:
         // the Project window's texture files: their import settings (S14)
         std::unique_ptr<TextureImporterView> textureImporter;
+        // and its model files (S53)
+        std::unique_ptr<ModelImporterView> modelImporter;
         Project* project;
         SceneWindow* sceneWindow;
         Command* cmd;

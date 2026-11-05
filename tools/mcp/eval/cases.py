@@ -318,6 +318,74 @@ CASES = [
         "max_turns": 24,
     },
     {
+        "id": "guard_meshes_dry_run",
+        "kind": "guard",
+        "what_happened": "Asked to shrink a game's models for mobile, an agent must find the meshes group, measure the models, "
+                         "try lossy compression as a dry run before writing it, and apply it with set_model_import_settings "
+                         "instead of editing .meta files or re-exporting the sources (S53: new tools and text).",
+        "text_at_issue": "Guide 'Other areas' meshes (inspect_models, check_render_budgets); inspect_models' dry run (settings); "
+                         "set_model_import_settings' 'Dry run first'",
+        "source": "synthetic guard (S53 R22, R24)",
+        "files": GAME_FILES,
+        "prompt": "The mobile build downloads too much. Make the 3D models smaller for mobile without changing how they look "
+                  "much, and tell me how much it saves. Check before you change anything.",
+        "mocks": [
+            {"tool": "inspect_models", "args": {"settings": "re:."}, "result": ok(
+                "Dry run (nothing written; the numbers are the real cook's):\nassets/models/rock.glb: 41,204 tris, memory 3.2 MB -> 1.3 MB, "
+                "download 4.1 MB -> 0.6 MB, 3 LODs, change: Up to 0.02% of the model's size",
+                {"dry_run": True, "written": False, "models": [{"path": "assets/models/rock.glb", "platform": "mobile",
+                 "predicted": {"source_bytes": 4300000, "download_bytes": 630000, "visual_change": "Up to 0.02% of the model's size"}}]})},
+            {"tool": "inspect_models", "result": ok(
+                "2 model(s), all models, mobile: 52,000 tris, memory 4.0 MB, download 5.2 MB, 2 cooked, 0 error(s), 0 warning(s).\n"
+                "assets/models/rock.glb: 41,204 tris, 3.2 MB, 4.1 MB download, 3 LODs, cooked; rock.glb downloads 4.1 MB: Mesh "
+                "Compression Medium stores it in fewer bits (dry run with inspect_models settings first)",
+                {"platform": "mobile", "total": 2, "models": [{"path": "assets/models/rock.glb", "download_bytes": 4300000, "issues": [
+                    {"code": "mesh-download-large", "severity": "info", "message": "rock.glb downloads 4.1 MB",
+                     "fix": {"tool": "set_model_import_settings", "arguments": {"paths": ["assets/models/rock.glb"], "settings": {"mesh_compression": "medium"}}}}]},
+                    {"path": "assets/models/tree.glb", "download_bytes": 900000, "issues": []}]})},
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["assets/models/rock.glb"], "unchanged": 0, "models": [{"path": "assets/models/rock.glb", "download_bytes": 630000}]})},
+            {"tool": "reimport_models", "result": ok("Reimported 2 model(s).", {"models": []})},
+        ],
+        "checks": {"calls": ["inspect_models", "set_model_import_settings"],
+                   "order": [[{"tool": "inspect_models", "args": {"settings": "re:."}}, "set_model_import_settings"]],
+                   "must_not_call": ["write_file"], "shell_must_not": [r"\.meta", r"gltfpack"],
+                   "reply_must": [r"MB|%"]},
+        "max_turns": 24,
+    },
+    {
+        "id": "guard_meshes_load_error",
+        "kind": "guard",
+        "what_happened": "An export fails because a model requires a glTF extension the engine cannot read. The agent must read "
+                         "the model's load findings, tell the user to export the model again without that extension, and not "
+                         "try import settings or edit the .meta / the file (S53 R5: the loader's findings in inspect_models).",
+        "text_at_issue": "Guide meshes 'What the loader finds' (gltf-required-extension: status failed, exports stop until the model is "
+                         "exported again without it); inspect_models' load_diagnostics",
+        "source": "synthetic guard (S53 R5, R22)",
+        "files": GAME_FILES,
+        "prompt": "The export fails with something about assets/models/crate.glb. Find out why and tell me what to do; don't "
+                  "change anything yet.",
+        "mocks": [
+            {"tool": "inspect_models", "result": ok(
+                "1 model(s), desktop: 1,200 tris, memory 0.1 MB, download 0.1 MB, 0 cooked, 1 error(s), 0 warning(s).\n"
+                "assets/models/crate.glb: glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; "
+                "it is loaded without it (export the model again without VENDOR_shapes); it does not cook, and exports fail, until it is fixed",
+                {"platform": "desktop", "total": 1, "models": [{"path": "assets/models/crate.glb", "status": "failed", "issues": [
+                    {"code": "gltf-required-extension", "severity": "error",
+                     "message": "glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; it is loaded "
+                                "without it (export the model again without VENDOR_shapes); it does not cook, and exports fail, until it is fixed"}],
+                    "load_diagnostics": [{"severity": "error", "extension": "VENDOR_shapes", "part": "",
+                                          "message": "glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; it is loaded without it",
+                                          "fix": "export the model again without VENDOR_shapes", "cook_fixes": False}]}]})},
+            {"tool": "reimport_models", "result": ok("Reimported 1 model(s).", {"models": []})},
+        ],
+        "checks": {"calls": ["inspect_models"],
+                   "must_not_call": ["set_model_import_settings", "write_file"], "shell_must_not": [r"\.meta", r"gltfpack"],
+                   "reply_must": [r"VENDOR_shapes", r"(?i)export|re-?export"]},
+        "max_turns": 16,
+    },
+    {
         "id": "bad_game_view_resolution",
         "kind": "bad",
         "what_happened": "Asked for a 20:9 phone view, agents sent configure_game_view {aspect: '20:9'}, got the aspect enum "

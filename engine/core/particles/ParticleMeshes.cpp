@@ -8,6 +8,7 @@
 #include "io/File.h"
 #include "io/FileData.h"
 #include "io/ResourcePack.h"
+#include "subsystem/MeshSystem.h"
 #include "subsystem/GltfNormalize.h"
 
 #include "tiny_gltf.h"
@@ -237,8 +238,8 @@ namespace {
         // the shapes take geometry only: images stay undecoded (a KTX2 or WebP one too)
         loader.SetImagesAsIs(true);
         std::string err, warn;
-        const bool binary = FileData::getFilePathExtension(path) == "glb";
-        const bool ok = binary ? loader.LoadBinaryFromFile(&model, &err, &warn, path) : loader.LoadASCIIFromFile(&model, &err, &warn, path);
+        // through the models' one redirect (a cooked .glb, an FBX's import: S53 R12)
+        const bool ok = MeshSystem::readGLTFFile(loader, &model, &err, &warn, path);
         if (!ok){
             if (error) *error = err.empty() ? "cannot read " + path : err;
             return false;

@@ -105,8 +105,6 @@ namespace jasperengine{
         static bool fileExists(const std::string &abs_filename, void *);
         static bool readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *);
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
-        // An FBX is read from its imported .glb, with texture URIs still relative to the FBX
-        static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
         // GltfNormalize::run on a parse; false with the error in `err` when the model cannot be used
         static bool normalizeGLTF(tinygltf::Model& model, const std::string& filename, std::string* err);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
@@ -261,9 +259,20 @@ namespace jasperengine{
         // relative; from a project since moved, the longest tail of it that names a file in
         // assetsRoot. Any other id is returned unchanged.
         static std::string migrateModelTextureId(const std::string& id, const std::string& assetsRoot);
+        // The file a reader loads for a model (S53 R12, every parse site asks here): its cooked
+        // .glb when there is one (CookedModels: the export's index, the editor's cook cache),
+        // else an FBX's imported .glb, else the file itself. A cooked .glb keeps the source's
+        // image URIs: they resolve against the source's directory.
+        static std::string getImportedModelPath(const std::string& filename);
         // The .glb an FBX is imported into: in the editor's import cache (System::getImportPath),
         // next to the FBX in an exported game (<name>.fbx.glb)
-        static std::string getImportedModelPath(const std::string& filename);
+        static std::string getFbxImportPath(const std::string& filename);
+        // Parses a model file through getImportedModelPath (a cooked .glb or an FBX's import is
+        // read instead, with texture and buffer URIs still relative to the source): every glTF
+        // parse site goes through it
+        static bool readGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
+        // readGLTFFile, then normalizeGLTF: the model as core glTF
+        static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
 
         // Submesh edits (Submesh::overrideFields) carried across a load, keyed by the ordinal of
         // the primitive that built each one. The loaders do this themselves; it is public for the

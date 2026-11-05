@@ -2961,6 +2961,12 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (textureNode.size() > 0) root["texture"] = textureNode;
     }
 
+    {
+        // Project Settings > Mesh and the render budgets (S53 R19, R25): only what differs
+        const YAML::Node meshNode = encodeModelProjectSettings(project->getModelSettings());
+        if (meshNode.size() > 0) root["mesh"] = meshNode;
+    }
+
     // Project Settings > Audio: only what differs from the defaults (old projects have no node)
     {
         const AudioSettings& audio = project->getAudioSettings();
@@ -3715,6 +3721,9 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         TextureProjectSettings textureSettings;
         decodeTextureProjectSettings(node["texture"], textureSettings);
         project->setTextureSettings(textureSettings);
+        ModelProjectSettings modelSettings;
+        decodeModelProjectSettings(node["mesh"], modelSettings);
+        project->setModelSettings(modelSettings);
         AudioSettings audio;
         if (node["audio"] && node["audio"].IsMap()) {
             const YAML::Node audioNode = node["audio"];

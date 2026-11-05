@@ -30,7 +30,9 @@
 #include "input/InputActions.h"
 #include "players/PlayerRuntimes.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 #include "texture/TextureImportSettings.h"
+#include "model/ModelImportSettings.h"
 #include "log/Logger.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpValues.h"
@@ -1715,6 +1717,139 @@ std::vector<Setting> mcpSettingsTable() {
                            [](const TextureProjectSettings& t) { return Json(t.globalCacheDir); },
                            [](TextureProjectSettings& t, const Json& v, std::string& e) { return readString(v, t.globalCacheDir, e); });
         }
+        // ---- mesh (Project Settings > Mesh, S53 R19) and the render budgets (Quality, R25)
+        {
+            auto meshSetting = [&](const std::string& key, const std::string& type, const std::string& description,
+                                   std::function<Json(const ModelProjectSettings&)> get,
+                                   std::function<bool(ModelProjectSettings&, const Json&, std::string&)> set,
+                                   std::vector<std::string> values = {}) {
+                Setting s;
+                s.key = key;
+                s.type = type;
+                s.description = description;
+                s.values = std::move(values);
+                s.get = [get](SettingsContext& ctx) { return get(ctx.project()->getModelSettings()); };
+                s.set = [set](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                    ModelProjectSettings next = ctx.project()->getModelSettings();
+                    if (!set(next, value, error)) return false;
+                    if (apply) ctx.project()->setModelSettings(next);
+                    return true;
+                };
+                add(s);
+            };
+            for (size_t f = 0; f < kModelFamilyCount; f++) {
+                const std::string family = modelFamilyName((ModelFamily)f);
+                // each R8 setting's default for models that do not set it ("" = the built-in default)
+                for (const std::string& metaKey : modelSettingKeys()) {
+                    const std::vector<std::string>& choices = modelEnumValues(metaKey);
+                    const bool isBool = metaKey == "weldVertices" || metaKey == "shipSource";
+                    std::vector<std::string> values;
+                    if (!choices.empty()) {
+                        values = choices;
+                        values.insert(values.begin(), "");
+                    }
+                    std::string snake;
+                    for (char c : metaKey) snake += std::isupper((unsigned char)c) ? std::string("_") + (char)std::tolower((unsigned char)c) : std::string(1, c);
+                    meshSetting("mesh.defaults." + family + "." + snake, !choices.empty() ? "enum" : isBool ? "bool" : metaKey == "lodCount" ? "int" : "float",
+                                "Default " + snake + " of " + family + " cooks for models that do not set it.",
+                                [f, metaKey](const ModelProjectSettings& m) {
+                                    ModelProjectSettings one;
+                                    one.defaults[f] = m.defaults[f];
+                                    const YAML::Node encoded = encodeModelProjectSettings(one);
+                                    const YAML::Node value = encoded["defaults"] ? encoded["defaults"][modelFamilyName((ModelFamily)f)][metaKey] : YAML::Node();
+                                    if (!value) return Json(nullptr);
+                                    const std::string text = value.Scalar();
+                                    if (text == "true" || text == "false") return Json(text == "true");
+                                    if (metaKey == "lodCount") return Json(std::atoi(text.c_str()));
+                                    if (metaKey == "smoothingAngle") return Json(std::atof(text.c_str()));
+                                    return Json(text);
+                                },
+                                [f, metaKey](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                    ModelProjectSettings one;
+                                    one.defaults[f] = m.defaults[f];
+                                    YAML::Node encoded = encodeModelProjectSettings(one);
+                                    const std::string family = modelFamilyName((ModelFamily)f);
+                                    if (!encoded["defaults"]) encoded["defaults"] = YAML::Node(YAML::NodeType::Map);
+                                    if (!encoded["defaults"][family]) encoded["defaults"][family] = YAML::Node(YAML::NodeType::Map);
+                                    YAML::Node block = encoded["defaults"][family];
+                                    if (v.is_null() || (v.is_string() && v.get<std::string>().empty())) {
+                                        block.remove(metaKey);
+                                    } else {
+                                        YAML::Node value = v.is_boolean() ? YAML::Node(v.get<bool>()) : v.is_number_integer() ? YAML::Node(v.get<long long>())
+                                                         : v.is_number() ? YAML::Node(v.get<double>()) : v.is_string() ? YAML::Node(v.get<std::string>()) : YAML::Node();
+                                        if (!value || !validateModelSettingsField(metaKey, value, e)) {
+                                            if (e.empty()) e = "expected a boolean, number or string";
+                                            return false;
+                                        }
+                                        block[metaKey] = value;
+                                    }
+                                    ModelProjectSettings decoded;
+                                    decodeModelProjectSettings(encoded, decoded);
+                                    m.defaults[f] = decoded.defaults[f];
+                                    return true;
+                                }, values);
+                }
+                meshSetting("quality.render_budgets." + family + ".triangles", "int",
+                            "Triangles a " + family + " scene may draw (check_render_budgets; 0 = no limit).",
+                            [f](const ModelProjectSettings& m) { return Json(m.renderBudgets[f].triangles); },
+                            [f](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                long long n;
+                                if (!readInt(v, 0, 1LL << 40, n, e)) return false;
+                                m.renderBudgets[f].triangles = n;
+                                return true;
+                            });
+                meshSetting("quality.render_budgets." + family + ".draw_calls", "int",
+                            "Draw calls a " + family + " scene may make (0 = no limit).",
+                            [f](const ModelProjectSettings& m) { return Json(m.renderBudgets[f].drawCalls); },
+                            [f](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                long long n;
+                                if (!readInt(v, 0, 1LL << 32, n, e)) return false;
+                                m.renderBudgets[f].drawCalls = n;
+                                return true;
+                            });
+                meshSetting("quality.render_budgets." + family + ".mesh_memory_mb", "float",
+                            "MB of mesh data a " + family + " scene's models may hold on the GPU (0 = no limit).",
+                            [f](const ModelProjectSettings& m) { return Json(m.renderBudgets[f].meshMemoryMB); },
+                            [f](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                double n;
+                                if (!readNumber(v, 0.0, 1e9, n, e)) return false;
+                                m.renderBudgets[f].meshMemoryMB = n;
+                                return true;
+                            });
+                meshSetting("quality.render_budgets." + family + ".download_mb", "float",
+                            "MB a " + family + " scene's cooked model files may download (0 = no limit).",
+                            [f](const ModelProjectSettings& m) { return Json(m.renderBudgets[f].downloadMB); },
+                            [f](ModelProjectSettings& m, const Json& v, std::string& e) {
+                                double n;
+                                if (!readNumber(v, 0.0, 1e9, n, e)) return false;
+                                m.renderBudgets[f].downloadMB = n;
+                                return true;
+                            });
+            }
+            meshSetting("mesh.cache_size_mb", "int", "MB the cooked model cache keeps (least recently used first).",
+                        [](const ModelProjectSettings& m) { return Json(m.cacheSizeMB); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            long long mb;
+                            if (!readInt(v, 64, 1 << 20, mb, e)) return false;
+                            m.cacheSizeMB = (int)mb;
+                            return true;
+                        });
+            meshSetting("mesh.keep_cpu_data_for_scripts", "enum",
+                        "Whether models keep their CPU mesh data for scripts: automatic (when a script calls a mesh-reading API), keep or release.",
+                        [](const ModelProjectSettings& m) { return Json(scriptMeshDataName(m.scriptMeshData)); },
+                        [](ModelProjectSettings& m, const Json& v, std::string& e) {
+                            std::string name;
+                            if (!readString(v, name, e)) return false;
+                            for (ScriptMeshData d : {ScriptMeshData::Automatic, ScriptMeshData::Keep, ScriptMeshData::Release}) {
+                                if (name == scriptMeshDataName(d)) {
+                                    m.scriptMeshData = d;
+                                    return true;
+                                }
+                            }
+                            e = "\"" + name + "\" is not one of automatic, keep, release";
+                            return false;
+                        }, {"automatic", "keep", "release"});
+        }
         {
             Setting s;
             s.key = "graphics.html_ui_msaa_samples";
@@ -3078,6 +3213,34 @@ void textureRowPlacement(const std::string& key, SettingRow& row) {
     }
 }
 
+// mesh.defaults.<platform>.<setting>, mesh.*, quality.render_budgets.<platform>.<metric> (S53)
+void meshRowPlacement(const std::string& key, SettingRow& row) {
+    static const std::map<std::string, const char*> labels = {
+        {"optimize_mesh", "Optimize Mesh"}, {"mesh_compression", "Mesh Compression"}, {"weld_vertices", "Weld Vertices"},
+        {"index_format", "Index Format"}, {"read_write", "Read/Write"}, {"normals", "Normals"}, {"smoothing_angle", "Smoothing Angle"},
+        {"generate_lods", "Generate LODs"}, {"lod_count", "LOD Count"}, {"lod_reduction", "Reduction"}, {"ship_source", "Ship Source Files"},
+        {"cache_size_mb", "Cache Size (MB)"}, {"keep_cpu_data_for_scripts", "Keep CPU Data for Scripts"},
+        {"triangles", "Triangle Budget"}, {"draw_calls", "Draw Call Budget"}, {"mesh_memory_mb", "Mesh Memory Budget (MB)"},
+        {"download_mb", "Download Budget (MB)"}};
+    static const std::map<std::string, const char*> platforms = {{"desktop", "Desktop"}, {"mobile", "Mobile"}, {"web", "Web"}};
+    const std::string leaf = key.substr(key.rfind('.') + 1);
+    auto label = labels.find(leaf);
+    row.label = label != labels.end() ? label->second : titleCase(key);
+    std::string platform;
+    for (const auto& [name, title] : platforms)
+        if (key.find("." + name + ".") != std::string::npos) platform = title;
+    if (!platform.empty()) row.label += " (" + platform + ")";
+    if (key.rfind("quality.", 0) == 0) {
+        row.page = "Quality";
+        row.section = "Render Budgets";
+        row.keywords = "render budget triangles draw calls memory download check_render_budgets";
+    } else {
+        row.page = "Mesh";
+        row.section = key.rfind("mesh.defaults.", 0) == 0 ? "Defaults" : "Cache";
+        row.keywords = "mesh model import cook";
+    }
+}
+
 const Placement* placementOf(const std::string& key) {
     for (const Placement& placement : placements) {
         if (key == placement.key) return &placement;
@@ -3146,6 +3309,7 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
                                                        "pods swift packages spm entitlements deployment target script urls sdk"},
         {"Editor", SettingsScope::Project, 12, "version control assets labels"},
         {"Navigation", SettingsScope::Project, 13, "navigation navmesh agents areas crowd grid pathfinding ai"},
+        {"Mesh", SettingsScope::Project, 14, "mesh model import cook optimize compression lod meshopt read write cache audit"},
         {"General", SettingsScope::Preference, 0, "editor auto save backup html ui"},
         {"Code Editor", SettingsScope::Preference, 1, "font"},
         {"Asset Pipeline", SettingsScope::Preference, 2, "refresh watcher hot reload"},
@@ -3187,6 +3351,8 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
             row.keywords = placement->keywords;
         } else if (setting.key.rfind("texture.", 0) == 0) {
             textureRowPlacement(setting.key, row);
+        } else if (setting.key.rfind("mesh.", 0) == 0 || setting.key.rfind("quality.render_budgets.", 0) == 0) {
+            meshRowPlacement(setting.key, row);
         } else if (setting.key.rfind("shader_creation.", 0) == 0) {
             shaderCreationRowPlacement(setting.key, row);
         } else if (setting.key.rfind("debug.", 0) == 0) {
@@ -3236,6 +3402,11 @@ void registerBuiltinSettings(SettingsRegistry& registry) {
         [](SettingsContext&) {
             return InputActions::isLoaded() ? Json(InputActions::getOverridesKey()) : Json(nullptr);
         }, "Players' rebinding is kept per asset in the user settings; Reset clears the editor's copy, which Play uses."));
+    addOrAbort(registry, uiRow("mesh.clear_cache", "Mesh", "Cache", "Mesh Cache", "clear cooked models cache size audit",
+        [](SettingsContext& ctx) {
+            ModelCookQueue& cooks = ModelCookQueue::get();
+            return cooks.getProject() == ctx.project() ? Json(cooks.getCache().totalBytes()) : Json(nullptr);
+        }, "The cooked model cache's size, Clear Mesh Cache (reimport_models cooks again) and the Mesh Optimization Audit."));
     addOrAbort(registry, uiRow("texture.clear_cache", "Texture", "Cache", "Texture Cache", "clear cooked textures cache size",
         [](SettingsContext& ctx) {
             TextureCookQueue& cooks = TextureCookQueue::get();
