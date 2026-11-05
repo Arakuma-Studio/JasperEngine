@@ -6250,7 +6250,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
         }
 
         // released bytes (S53 R11): the GPU buffer a mesh still holds, else the file is read again
-        if (buf.second->isDataReleased() && !MeshBufferPool::createRender(*buf.second)) {
+        if (buf.second->isDataReleased() && !bufferRender->isCreated() && !MeshBufferPool::createRender(*buf.second)) {
             ModelCpuData::ensure(mesh, "a GPU upload");
         }
 
