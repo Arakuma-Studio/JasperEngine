@@ -610,18 +610,16 @@ does not fix audio; checks report changed thresholds."
 
 ## Deviations
 
-- **Chunks and a voice's start:** what differed was not the voice but the Master bus: `playBus` set the bus's unity pan on a running
-  voice, which ramped from the centre's 0.707 over the first mix call of the audio. The bus now starts paused with its pan, so its first
-  sample is at unity and the mix does not depend on the chunk size. A Recorder movie's hash changes for this, not for R2. A volume a game
-  moves during a Play (`setVolume`, a fader) still ramps over one mix call: making that independent of chunks means a per-voice fixed-length
-  ramp in SoLoud's mix loop, which is not simple and is left as is.
+- **What a Recorder movie decodes to changes, on purpose, in its first 1,600 frames only.** S62 pinned `408859a6...`; the pin is now `821d2802...`.
+  The cause was not the voice but the Master bus: `playBus` set the bus's unity pan on a running voice, which ramped from the centre's 0.707
+  over the first mix call of the audio, so the output depended on that call's length (red: `DeterministicDriverTest.AStartDoesNotDependOnTheChunks`,
+  48 kHz and 44.1 kHz clips, frames 3 to 1,599 differ by up to 0.056; one call a frame on the driver reproduced S62's exact hash). The bus now starts
+  paused with its pan, so the first sample is at unity and one call and chunks of 512 are the same samples at both rates. A volume a game moves during
+  a Play (`setVolume`, a fader) still ramps over one mix call: making that chunk-independent means a per-voice fixed-length ramp in SoLoud's mix loop,
+  which is not simple and is left as is.
 - **`loudness` and `true_peak` read S38's keys when they exist**, else S38's defaults (-18 LUFS +- 2, -1 dBTP): S38's settings are not on `main` yet.
 - **The `audio-qa` and `audio-markers` fixtures are not used:** each test makes its scenes over MCP, which keeps the seed next to its check.
 - **AC13 is a gtest (`AudioCaptureBenchTest`) with `perfSlack()`**, not `tools/perf/audio_capture_bench`: AGENTS.md's way of reporting wall-clock budgets. Server F no longer exists.
-- **A Recorder movie's first frame of audio changes:** S62 pinned its bytes with one mix call a frame; R2's chunks ramp a
-  voice in over its first 512 frames, not 1,600 (SoLoud's ramp lasts the mix call). Nothing else moves: one call a frame on
-  this driver gives S62's exact hash, and the chunks differ from it only inside the first 1,600 frames (largest difference
-  0.056 on a 0.5 tone, `DeterministicDriverTest.ChunksDifferFromOneCallOnlyInTheFirstRamp`). The pin is updated, with this reason.
 - **AC5's unwritable root is a file where a folder goes**, not a read-only folder: the tests run as root in some images.
 - **`voice` is the capture's own serial, not SoLoud's handle:** handles count every play since the process began, so two
   runs of one editor differed and R8's bytes could not hold. Found by `test_deterministic_twice`.
@@ -636,6 +634,8 @@ does not fix audio; checks report changed thresholds."
   S37's "mixed on a null driver" (a seed is `audio.seed` on the Null fallback too); `getOutputMode()` tells the new driver
   apart. S37's voice lines stay in release players, where R13 wanted nothing: they cost one bool per site, and
   `JASPERENGINE_AUDIO_TRACE` is useful there.
+- **`play start` also says a Play is capturing** (`audio_capture`, and a text line). Found by the eval: agents played and read runtime state, and never reached
+  `audio_session` until the result told them. It replaces a line in the agent guide, which the eval showed nothing needs.
 - **`stopVoice` writes the stop line itself**, with the reason of a `StopReason` scope around the stop, so no stop has a
   second path. `ended` is found after each mix, and is stamped at the end of the frame that ended it.
 - **An explicit `JASPERENGINE_AUDIO_BACKEND=null|nosound` does not capture by default** (R4 says "no device"): a test that
