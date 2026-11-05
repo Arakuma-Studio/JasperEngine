@@ -29,7 +29,7 @@ AudioBaseline::Json AudioBaseline::build(const AudioSessionData& data, double ma
         if (!data.inRange(line)) continue;
         const std::string kind = line.value("kind", "");
         if (kind == "voice_start") {
-            const std::string key = line.value("clip", "") + "|" + (line["entity"].is_string() ? line["entity"].get<std::string>() : std::string());
+            const std::string key = line.value("clip", "") + "|" + (line.contains("entity") && line["entity"].is_string() ? line["entity"].get<std::string>() : std::string());
             const int64_t stamp = (int64_t)line.value("sample", (uint64_t)0) - (int64_t)data.startFrame;
             const int64_t onset = AudioQa::onsetFrame(data, stamp, data.rate, marginDb);
             starts.push_back({{"key", key}, {"n", startCounts[key]++}, {"t", line.value("t", 0.0)},

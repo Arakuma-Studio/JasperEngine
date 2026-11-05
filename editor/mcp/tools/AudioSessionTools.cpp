@@ -194,7 +194,11 @@ ToolResult reportResult(const SessionWork& work) {
 void reportAction(const CallPtr& call, std::shared_ptr<SessionWork> work) {
     JobPtr job = call->ctx().jobs().create("audio_session", "Report on audio capture " + work->capture.id);
     jobs::submit([work, job]() {
-        runReport(*work);
+        try {
+            runReport(*work);
+        } catch (const std::exception& e) {
+            work->error = std::string("Reading the capture failed: ") + e.what();
+        }
         if (work->error.empty()) job->succeed("Reported.", work->data);
         else job->fail(work->error);
     }, {jobs::Lane::Background, jobs::GateClass::Default, "audio-session-report"});
@@ -329,7 +333,11 @@ void checkAction(const CallPtr& call, std::shared_ptr<SessionWork> work) {
 
     JobPtr job = ctx.jobs().create("audio_session", "Check audio capture " + work->capture.id);
     jobs::submit([work, job]() {
-        runCheck(*work);
+        try {
+            runCheck(*work);
+        } catch (const std::exception& e) {
+            work->error = std::string("Checking the capture failed: ") + e.what();
+        }
         if (work->error.empty()) job->succeed("Checked.", work->data);
         else job->fail(work->error);
     }, {jobs::Lane::Background, jobs::GateClass::Default, "audio-session-check"});
@@ -413,41 +421,39 @@ void audioSessionTool(const CallPtr& call) {
 void registerAudioSessionTools(McpRegistry& registry) {
     using namespace schema;
 
-    Json checks = array(string(""), "Default all.");
-    Json expectItem = object({
-        {"on", string("A marker kind or an Audio.mark label.")},
-        {"entity", entityRef()},
-        {"sound", string("A clip path part or an event.")},
-        {"within_ms", number("", 0, 500)},
-        {"offset_ms", number("", -10000, 10000)},
-        {"align", stringEnum("", {"onset", "peak", "end"})}
-    }, {"on"});
-    Json expect = array(expectItem, "What must sound; rules in jasper://docs/sound.");
-    expect["maxItems"] = MAX_EXPECT;
+    // the rules and the vocabularies are in the guide; the handler validates
+    Json expect = array(object({
+        {"on", string("")},
+        {"entity", string("")},
+        {"sound", string("")},
+        {"within_ms", number("")},
+        {"offset_ms", number("")},
+        {"align", string("")}
+    }, {"on"}), "What must sound.");
 
     ToolDef tool;
     tool.name = "audio_session";
     tool.title = "Audio Session";
     tool.description =
         "You can't hear: a Play's capture as numbers. status: sessions and what the next Play does. arm: the next Play "
-        "captures (a device mutes), or not. report: loudness, peaks, groups, numbered events and markers, a timeline image. "
-        "check: PASS/FAIL/WARN/SKIP verdicts, what limits each, how to fix it. Guide: jasper://docs/sound.";
+        "captures, or not. report: loudness, peaks, groups, numbered events and markers, a timeline image. check: "
+        "PASS/FAIL/WARN/SKIP verdicts, what limits each, how to fix it. jasper://docs/sound.";
     tool.inputSchema = object({
         {"action", stringEnum("", {"status", "arm", "report", "check"})},
-        {"session", withDefault(string("last, current, or a session id or directory."), "last")},
-        {"start", number("Range start, s.", 0, 86400)},
-        {"end", number("Range end, s.", 0, 86400)},
-        {"events_limit", withDefault(integer("", 0, MAX_EVENTS), DEFAULT_EVENTS)},
-        {"image", boolean("The timeline. Default: report yes, check no.")},
-        {"max_width", withDefault(integer("", AudioImages::MIN_WIDTH, AudioImages::MAX_WIDTH), DEFAULT_WIDTH)},
-        {"capture", withDefault(boolean("arm."), true)},
+        {"session", string("Default last; current, an id or a directory.")},
+        {"start", number("s.")},
+        {"end", number("s.")},
+        {"events_limit", integer("Default 200.", 0, MAX_EVENTS)},
+        {"image", boolean("Default report yes, check no.")},
+        {"max_width", integer("", AudioImages::MIN_WIDTH, AudioImages::MAX_WIDTH)},
+        {"capture", boolean("arm. Default true.")},
         {"max_seconds", integer("arm.", 1, 3600)},
         {"stems", boolean("arm.")},
-        {"checks", checks},
+        {"checks", array(string(""), "Default all.")},
         {"expect", expect},
-        {"baseline", string("check: a baseline name or a session.")},
-        {"save_baseline", string("check: writes baselines/audio/<name>.json.")},
-        {"fail_on", stringEnum("check: a verdict at or above it is an error.", {"fail", "warn"})}
+        {"baseline", string("A name or a session.")},
+        {"save_baseline", string("A name.")},
+        {"fail_on", stringEnum("A verdict at it or worse is an error.", {"fail", "warn"})}
     }, {"action"});
     tool.writesFiles = [](const Json& args) { return args.contains("save_baseline"); };
     tool.activity = ToolActivity::Read;

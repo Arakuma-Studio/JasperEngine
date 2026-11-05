@@ -288,7 +288,7 @@ void AudioCapturesWindow::drawSessions() {
 }
 
 void AudioCapturesWindow::drawTimeline() {
-    renderWidth = (int)ImGui::GetContentRegionAvail().x;
+    renderWidth = std::max((int)ImGui::GetContentRegionAvail().x, AudioImages::MIN_WIDTH);
     if (selected < 0) return;
     requestRender();
     if (timeline.empty()) {
@@ -364,6 +364,7 @@ void AudioCapturesWindow::show() {
         if (previewHandle != 0) stopMoment();
         return;
     }
+    ImGui::SetNextWindowSize(ImVec2(Theme::dpi(960.0f), Theme::dpi(720.0f)), ImGuiCond_FirstUseEver);
     // the window's keys are commands: ImGui's own arrows and Enter would move its selection too
     if (!ImGui::Begin(WINDOW_NAME, &windowOpen, ImGuiWindowFlags_NoNavInputs)) {
         focused = false;
@@ -371,7 +372,7 @@ void AudioCapturesWindow::show() {
         return;
     }
     focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    UIProbe::item("audioCaptures");
+    UIProbe::rect("audioCaptures", ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowPos().x + ImGui::GetWindowSize().x, ImGui::GetWindowPos().y + ImGui::GetWindowSize().y);
 
     pollJobs();
     const double now = ImGui::GetTime();

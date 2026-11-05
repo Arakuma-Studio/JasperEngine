@@ -190,17 +190,54 @@ async def test_coverage_click_with_no_sound_and_its_fix(ed: Editor):
     ed.check("within_ms" in bad, f"the error lists the keys: {bad}")
 
 
-async def test_true_peak_hot_master_and_its_fix(ed: Editor):
+def write_session(ed: Editor, name: str, seconds: float, dbfs: float, extra: list | None = None) -> Path:
+    """A session on disk with a tone of this level and a line every 100 ms: a master hotter than the engine's clipper lets
+    through, S38's limiter lines, 60 s of audio without playing them"""
+    root = ed.project / ".jasperengine/audio/captures" / name
+    root.mkdir(parents=True)
+    tone = sine(1000.0, seconds, RATE, dbfs)
+    data = b"".join(struct.pack("<ff", value, value) for value in tone)
+    (root / "master.wav").write_bytes(b"RIFF" + struct.pack("<I", 44 + 12 + len(data)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 3, 2, RATE, RATE * 8, 8, 32) +
+                                      b"fact" + struct.pack("<II", 4, len(tone)) + b"data" + struct.pack("<I", len(data)) + data)
+    events = [{"format": "jasperengine.audio-events", "version": 1}]
+    levels = [{"format": "jasperengine.audio-levels", "version": 1}]
+    bands = [dbfs] * 10
+    for i in range(int(seconds * 10)):
+        sample = i * 4800
+        events.append({"n": i + 1, "kind": "marker", "sample": sample, "t": sample / RATE, "frame": i, "game_time": sample / RATE, "label": "m", "source": "lua"})
+        levels.append({"sample": sample + 4800, "t": (sample + 4800) / RATE, "master": {"peak_db": dbfs, "rms_db": dbfs, "bands_db": bands},
+                       "groups": {"Master": {"peak_db": dbfs, "rms_db": dbfs, "bands_db": bands}}, "voices": []})
+    events += extra or []
+    (root / "events.jsonl").write_text("".join(json.dumps(line) + "\n" for line in events))
+    (root / "levels.jsonl").write_text("".join(json.dumps(line) + "\n" for line in levels))
+    (root / "session.json").write_text(json.dumps({"format": "jasperengine.audio-capture", "version": 1, "session": name, "state": "complete", "scene": "Written", "sample_rate": RATE, "channels": 2,
+                                                   "samples": len(tone), "duration_s": seconds, "captured_samples": len(tone), "files": {"master": "master.wav", "events": "events.jsonl", "levels": "levels.jsonl", "stems": []}}))
+    return root
+
+
+async def test_true_peak(ed: Editor):
+    # the engine's round-off clipper holds two voices at full scale under the ceiling: what the mixer guarantees
     hot = await capture(ed, await scene_with(ed, "Hot", [{"filename": "sounds/hot.wav", "state": "playing"}, {"filename": "sounds/hot.wav", "state": "playing"}]), 30)
     result = await check(ed, hot, "true_peak", "clipping")
     peak = of(result, "true_peak")
-    ed.check(peak["status"] in ("FAIL", "WARN"), f"{peak}")
-    ed.check_eq(peak["kind"], "mixer", f"{peak}")
+    ed.check_eq((peak["kind"], peak["status"]), ("mixer", "PASS"), f"{peak}")
     _, _, samples = read_float_wav(hot / "master.wav")
     ed.check(peak["measured"] >= ref.true_peak_dbtp_lower_bound(samples) - 0.01, f"a true peak is never under the sample peak: {peak['measured']}")
     ed.check_eq(of(result, "clipping")["measured"], ref.clipped_samples(samples), "the clipped samples, counted here")
-    soft = await capture(ed, await scene_with(ed, "Soft", [{"filename": "sounds/soft.wav", "state": "playing"}]), 30)
-    ed.check_eq(of(await check(ed, soft, "true_peak"), "true_peak")["status"], "PASS", "a soft sound")
+    # a hotter master than that (a session from before a clipper, a stem read as one)
+    over = write_session(ed, "20200101-000000-01", 1.0, 0.0)
+    result = await check(ed, over, "true_peak", "clipping")
+    ed.check_eq(of(result, "true_peak")["status"], "FAIL", f"{of(result, 'true_peak')}")
+    ed.check("ceiling" in of(result, "true_peak")["limited_by"], f"{of(result, 'true_peak')}")
+    ed.check_eq(of(result, "clipping")["status"], "FAIL", f"{of(result, 'clipping')}")
+    _, _, samples = read_float_wav(over / "master.wav")
+    ed.check_eq(of(result, "clipping")["measured"], ref.clipped_samples(samples), "the clipped samples, counted here")
+    # S38's limiter lines: under the ceiling, but too hot
+    limited = write_session(ed, "20200101-000000-02", 1.0, -6.0, [{"n": 99, "kind": "limiter", "sample": 24000, "t": 0.5, "frame": 30, "game_time": 0.5, "gain_reduction_db": 8.0}])
+    warned = of(await check(ed, limited, "true_peak"), "true_peak")
+    ed.check_eq(warned["status"], "WARN", f"{warned}")
+    ed.check_eq(warned["threshold_source"], "audio.qa.limiter_warn_db", f"{warned}")
+    ed.check("too hot" in warned["limited_by"] and warned["at"] == [0.5], f"{warned}")
 
 
 async def test_silence_gap_in_music_and_its_fix(ed: Editor):
@@ -305,27 +342,7 @@ async def test_fail_on_is_an_error_naming_the_fix(ed: Editor):
 
 async def test_check_cost(ed: Editor):
     """R29, on a session written here: 60 s of a tone with a line every 100 ms."""
-    root = ed.project / ".jasperengine/audio/captures/20200101-000000-00"
-    root.mkdir(parents=True)
-    tone = sine(1000.0, 60.0, RATE, -12.0)
-    write_float = bytearray()
-    for value in tone:
-        write_float += struct.pack("<ff", value, value)
-    data = bytes(write_float)
-    (root / "master.wav").write_bytes(b"RIFF" + struct.pack("<I", 44 + 12 + len(data)) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 3, 2, RATE, RATE * 8, 8, 32) +
-                                      b"fact" + struct.pack("<II", 4, len(tone)) + b"data" + struct.pack("<I", len(data)) + data)
-    events = [{"format": "jasperengine.audio-events", "version": 1}]
-    levels = [{"format": "jasperengine.audio-levels", "version": 1}]
-    bands = [-12.0] * 10
-    for i in range(600):
-        sample = i * 4800
-        events.append({"n": i + 1, "kind": "marker", "sample": sample, "t": sample / RATE, "frame": i, "game_time": sample / RATE, "label": "m", "source": "lua"})
-        levels.append({"sample": sample + 4800, "t": (sample + 4800) / RATE, "master": {"peak_db": -12, "rms_db": -12, "bands_db": bands},
-                       "groups": {"Master": {"peak_db": -12, "rms_db": -12, "bands_db": bands}}, "voices": []})
-    (root / "events.jsonl").write_text("".join(json.dumps(line) + "\n" for line in events))
-    (root / "levels.jsonl").write_text("".join(json.dumps(line) + "\n" for line in levels))
-    (root / "session.json").write_text(json.dumps({"format": "jasperengine.audio-capture", "version": 1, "session": root.name, "state": "complete", "scene": "Cost", "sample_rate": RATE,
-                                                   "channels": 2, "samples": len(tone), "duration_s": 60.0, "captured_samples": len(tone), "files": {"master": "master.wav", "events": "events.jsonl", "levels": "levels.jsonl", "stems": []}}))
+    root = write_session(ed, "20200101-000000-00", 60.0, -12.0)
     started = time.monotonic()
     await ed.call("audio_session", action="report", session=root.name, image=False)
     report = time.monotonic() - started

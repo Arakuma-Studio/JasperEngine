@@ -87,7 +87,7 @@ PREDATING_NAMES = {
 
 # Upstream's tools (origin/main, absorbed by SYNC#4) keep upstream's names: its scripts, docs and
 # tests call them so (audio-mixer, native-bridge, PlayerPrefs)
-UPSTREAM_NAMES = {"audio_mixer", "native_plugins", "user_settings"}
+UPSTREAM_NAMES = {"audio_mixer", "audio_session", "native_plugins", "user_settings"}
 
 
 def schema_problems(schema, path: str, top: bool = False) -> list[str]:

@@ -361,13 +361,15 @@ namespace {
         for (const Json& start : c.starts) {
             const std::string group = start.value("group", "");
             const Json& clip = clipAnalysis(c, start.value("clip", ""));
-            const Json bands = clip.value("bands_db", Json::array());
-            if (bands.size() != (size_t)AudioMeter::BANDS) continue;
+            // S36's bands, by their labels
+            const Json bands = clip.value("bands_db", Json::object());
+            if (!bands.is_object() || bands.empty()) continue;
             int dominant = 0;
             double level = -1e9;
             for (int b = 0; b < AudioMeter::BANDS; b++) {
-                if (bands[b].is_number() && bands[b].get<double>() > level) {
-                    level = bands[b].get<double>();
+                const char* label = AudioMeter::bandLabel(b);
+                if (bands.contains(label) && bands[label].is_number() && bands[label].get<double>() > level) {
+                    level = bands[label].get<double>();
                     dominant = b;
                 }
             }

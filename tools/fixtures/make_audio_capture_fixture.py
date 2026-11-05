@@ -50,9 +50,12 @@ async def main() -> None:
         await ed.call("set_properties", scene=scene, entity="Source", values={"audiosource": {"filename": "sounds/loop.wav", "looping": True}})
         await ed.call("create_script", kind="lua", name="CaptureProbe", content=PROBE, entity="Source", scene=scene)
         await ed.call("save_scene", scene=scene)
+        await ed.call("edit_build_scenes", action="set_start", scene=scene)
+        await ed.call("edit_build_scenes", action="remove", scene="New Scene.scene")
         await ed.call("save_project")
         shutil.rmtree(out, ignore_errors=True)
-        shutil.copytree(ed.project, out, ignore=shutil.ignore_patterns(".jasperengine", "build", "AGENTS.md", "CLAUDE.md", ".claude", ".mcp.json", ".cursor", ".codex"))
+        shutil.copytree(ed.project, out, ignore=shutil.ignore_patterns(".jasperengine", "build", "AGENTS.md", "CLAUDE.md", ".claude", ".mcp.json", ".cursor", ".codex",
+                                                                  ".vscode", ".clangd", ".luarc.json", ".gitignore", ".gitattributes", "CMakeLists.txt", "New Scene.scene"))
     print(f"wrote {out}")
 
 

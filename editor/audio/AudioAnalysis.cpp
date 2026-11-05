@@ -2504,9 +2504,25 @@ std::vector<AudioAnalysis::Capture> AudioAnalysis::listCaptures(const fs::path& 
 
 bool AudioAnalysis::findCapture(const fs::path& root, const std::string& reference, const std::string& liveSession, Capture& capture,
                                 std::string& error) {
+    // a directory: a player's --audio-capture session, anywhere
+    if (reference.find_first_of("/\\") != std::string::npos) {
+        std::ifstream in(fs::path(reference) / "session.json", std::ios::binary);
+        Json session = in ? Json::parse(in, nullptr, false) : Json();
+        if (!session.is_object()) {
+            error = reference + " is not a capture session: it has no session.json.";
+            return false;
+        }
+        capture.id = fs::path(reference).lexically_normal().filename().string();
+        capture.directory = reference;
+        capture.state = session.value("state", std::string("aborted"));
+        capture.live = !liveSession.empty() && capture.id == liveSession && capture.state == "capturing";
+        if (capture.state == "capturing" && !capture.live) capture.state = "aborted";
+        capture.session = std::move(session);
+        return true;
+    }
     const std::vector<Capture> sessions = listCaptures(root, liveSession);
     if (sessions.empty()) {
-        error = "No capture yet: play with audio_capture (on by default without an audio device)";
+        error = "No capture yet: a Play captures without an audio device, or after audio_session {action: \"arm\"}.";
         return false;
     }
     if (reference == "current") {

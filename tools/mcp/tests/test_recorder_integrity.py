@@ -35,12 +35,11 @@ WIDTH, HEIGHT = 320, 180
 AT = 10              # the game frame the script changes the look at
 FRAMES = 30
 
-# The decoded PCM of test_normal_recording's MOV (no lossy codec, so no FFmpeg version in it). S62 took
-# it from the build before its rewrite (408859a6...). S35 changed it on purpose: the deterministic
-# driver mixes a frame in chunks of at most 512, and SoLoud ramps a voice's start over the mix call.
-# Mixing each frame in one call on S35's driver still gives S62's hash, and the chunks differ from that
-# only in the first call (DeterministicDriverTest.ChunksDifferFromOneCallOnlyInTheFirstRamp).
-REFERENCE_AUDIO_SHA256 = "90d8e3dde9c824d26562241530da29031ae93fb31ccf504d4ba9763401e1337f"
+# The decoded PCM of test_normal_recording's MOV (no lossy codec, so no FFmpeg version in it). S62 took 408859a6... from
+# the build before its rewrite. S35 changed it on purpose: the Master bus used to ramp from 0.707 to 1 over the first mix
+# call of the audio, 1,600 frames of a movie at 30 fps, and now starts at 1 (DeterministicDriverTest.AStartDoesNotDependOnTheChunks);
+# the first 1,600 frames are all that moved. The check below says so of this movie.
+REFERENCE_AUDIO_SHA256 = "821d2802ac2d201da702683b85b37d080a8460d0139e16e0261a96336099cf8f"
 REFERENCE_AUDIO_BYTES = 576000
 
 
@@ -318,6 +317,9 @@ async def test_normal_recording():
         print(f"[recorder] decoded audio: {len(pcm)} bytes, sha256 {digest}")
         ed.check_eq(len(pcm), REFERENCE_AUDIO_BYTES, "3 s of 48 kHz 16-bit stereo")
         ed.check(any(b != 0 for b in pcm[:48000]), "the tone is in it")
+        samples = struct.unpack(f"<{9600}h", pcm[:19200])
+        first, later = max(abs(v) for v in samples[:960]), max(abs(v) for v in samples[4800:])
+        ed.check(abs(first - later) <= 2, f"a 1 kHz tone is at its level from its first 10 ms: {first} vs {later} later")
         ed.check_eq(digest, REFERENCE_AUDIO_SHA256, "the decoded audio is the reference's")
         ed.check_eq(sorted(p.name for p in out.iterdir()), ["take.mov", "take.mov.recording.json"], "nothing else in the folder")
         # the same with MP4 and its AAC: the length within one AAC frame
