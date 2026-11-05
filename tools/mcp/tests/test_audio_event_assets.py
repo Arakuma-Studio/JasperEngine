@@ -25,7 +25,8 @@ async def guid_of(ed: Editor, path: str) -> str:
 async def test_setup(ed: Editor):
     write_tone(ed.project / "sounds/a.wav")
     write_tone(ed.project / "sounds/b.wav")
-    await ed.call("sync_files")
+    # by name: a full sync this soon after the start can compare against a baseline that already holds them
+    await ed.call("sync_files", paths=["sounds/a.wav", "sounds/b.wav"])
     a = await guid_of(ed, "sounds/a.wav")
     b = await guid_of(ed, "sounds/b.wav")
     body = {"format": "jasperengine.soundevent", "version": 1, "mode": "shuffle", "clips": [
