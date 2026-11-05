@@ -59,7 +59,7 @@ S65, S68, S69, S70 and S35-S40. Moved off this list: S72, which changes includes
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
 | S62 | Recorder full disk and readback | `feat/s62-recorder-integrity` | A | Done |
-| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | In review: narrowing a test filter |
+| S63 | Sprite frames and weather map saves | `feat/s63-saved-output-determinism` | A, H | Ready at `af2ddb2a3`; waits for the second full suite |
 | S64 | Shader lists for closed scenes | `feat/s64-shader-lists` | B, H | Ready at `ce69a75c4`; waits for the second full suite |
 | S65 | Models on the loading thread (capacities are `dc/mesh-memory`'s) | `feat/s65-model-capacity` | H | Parked: lands after `dc/mesh-memory`, at `814143214` |
 | S66 | Crash leftovers | `feat/s66-crash-leftovers` | H | Done |
@@ -162,3 +162,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: Lock crash landed. Full unit run on `eb9f93aca`: 2885 core and 2946 editor tests, 0 failed, 1 load skip.
 - 2026-11-05: Module-off fix landed. The Mac is unreachable since at least 02:37 UTC.
 - 2026-11-05: S35, S36 and S37 resumed: the last account used 3% of its week in the three hours since the restart.
+- 2026-11-05: First full suite on `eb9f93aca`: 1528 passed, 22 failed, 0 skipped; 7 failures are compile errors from the module-off bug (likely), the rest being rerun whole on H. Unit tests there: 2885 core, 2946 editor, 0 failed. S63 reviewed: `CorpusRoundTrip` filter narrowed, Terrain scenes back.
