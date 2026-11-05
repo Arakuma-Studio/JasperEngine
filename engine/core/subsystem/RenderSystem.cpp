@@ -9371,8 +9371,9 @@ void RenderSystem::bindInstances(ObjectRender& render, InstancedMeshComponent& i
 
 namespace{
     // one detail level of a submesh: its own range (level 0) or the pool's level range, through
-    // the levels' index buffer; a level the submesh lacks draws its coarsest
-    void drawSubmeshLevel(ObjectRender& render, Submesh& submesh, unsigned int level, unsigned int instances){
+    // the levels' index buffer; a level the submesh lacks draws its coarsest. shadowIndices: level 0's
+    // position-only indices (a shadow pass, spec S55 R5); a coarser level draws its own range
+    void drawSubmeshLevel(ObjectRender& render, Submesh& submesh, unsigned int level, unsigned int instances, const ShadowIndexBuffer* shadowIndices = nullptr){
         if (instances == 0 || level == LOD_CULLED)
             return;
         const MeshLodData* lodData = submesh.lodData.get();
@@ -9382,9 +9383,9 @@ namespace{
             render.setIndexBuffer(submesh.lodIndices.getRender());
             render.draw(lodData->levels[level].indexBase, lodData->levels[level].indexCount, instances);
             render.resetIndexBuffer();
-        }else if (passShadowIndices){
-            // the same triangles over the first vertex of each position (a shadow pass)
-            render.setIndexBuffer(passShadowIndices->buffer.getRender());
+        }else if (shadowIndices){
+            // the same triangles over the first vertex of each position
+            render.setIndexBuffer(shadowIndices->buffer.getRender());
             render.draw(0, submesh.vertexCount, instances);
             render.resetIndexBuffer();
         }else{
@@ -9496,7 +9497,7 @@ void RenderSystem::drawSubmeshGeometry(ObjectRender& render, Entity entity, Mesh
             if (beforeLevel)
                 (*beforeLevel)(level);
             bindInstances(render, *instmesh, instanceView, first, vatFirst);
-            drawSubmeshLevel(render, submesh, level, instances);
+            drawSubmeshLevel(render, submesh, level, instances, passShadowIndices);
         };
         for (unsigned int l = 0; l < MAX_MESH_LODS; l++){
             drawBucket(l, range.lodCount[l]);
@@ -9513,7 +9514,7 @@ void RenderSystem::drawSubmeshGeometry(ObjectRender& render, Entity entity, Mesh
     }else{
         if (instmesh)
             bindInstances(render, *instmesh, instanceView, 0, 0);
-        drawSubmeshLevel(render, submesh, lod, instanceCount);
+        drawSubmeshLevel(render, submesh, lod, instanceCount, passShadowIndices);
     }
 }
 

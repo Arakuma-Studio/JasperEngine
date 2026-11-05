@@ -333,6 +333,9 @@ R9's targets.
 - **R6 "stale data is never drawn"** is held for instance views (their draws skip a frame while their
   upload waits) and terrain nodes; a skinned mesh whose bones upload waits draws the pose before.
 - **Shadow index buffers are made at load time**, not cooked: S53's cook does not write them.
+- **Position-only indices cover level 0 only.** A coarser level draws its own range of the levels'
+  index buffer, so under S54's coarser shadow rule fewer shadow draws use them. The triangles are the
+  same; only the saving in vertex shader runs is smaller.
 - **R5 "Shadow LOD Bias, default one coarser level"** is S56's multiplier (default 1, the same level
   as the error threshold selects), not a count of levels: S55 had made it an integer setting under
   the same key, dropped when S56 landed (contract C4).

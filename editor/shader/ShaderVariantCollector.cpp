@@ -709,7 +709,7 @@ namespace {
                         insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
                     }
                     // its GPU Instancing variants (with the project's setting, RenderSystem::loadMesh)
-                    const SubmeshBatchVariant batch = RenderSystem::getSubmeshBatchVariant(mesh, submesh, inputs, variant, meshShaderSrc, depthShaderSrc);
+                    const SubmeshBatchVariant batch = RenderSystem::getSubmeshBatchVariant(mesh, submesh, inputs, variant, meshShader, depthShaderSrc);
                     if (batch.properties){
                         insertKeys(ShaderType::MESH, batch.properties, meshShaderId);
                     }

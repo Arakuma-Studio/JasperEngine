@@ -2060,7 +2060,7 @@ bool SokolObject::batchPipeline(int index, const sg_bindings& bindings, sg_pipel
     // (the GL warm draw with the batch's bindings: its textures are the source's)
     const sg_bindings own = bind;
     bind = bindings;
-    const bool warm = isWarm(pipeline, warmedPipeline[index], warmKey[index]);
+    const bool warm = isWarm(pipeline, warmedPipeline[index], warmKey[index], pipeline_desc.shader);
     bind = own;
     return warm;
 }
