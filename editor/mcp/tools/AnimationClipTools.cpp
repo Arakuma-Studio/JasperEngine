@@ -471,7 +471,7 @@ bool parseAudioCue(Project* project, const Json& item, const std::string& where,
     if (!text("group", cue.group) || !text("name", cue.name) || !flag("spatial", cue.spatial) || !flag("follow_speed", cue.followSpeed)) return false;
     if (!ranged("volume_db", anim::CUE_MIN_VOLUME_DB, anim::CUE_MAX_VOLUME_DB, cue.volumeDb) ||
         !ranged("pitch_semitones", -anim::CUE_MAX_PITCH_SEMITONES, anim::CUE_MAX_PITCH_SEMITONES, cue.pitchSemitones) ||
-        !ranged("seconds", 0.0f, 3600.0f, cue.seconds)) return false;
+        !ranged("seconds", 0.0f, 600.0f, cue.seconds)) return false;
     if (item.contains("unscaled")) {
         bool unscaled = false;
         if (!flag("unscaled", unscaled)) return false;

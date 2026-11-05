@@ -5779,7 +5779,7 @@ void registerWorldTools(McpRegistry& registry) {
         "Keyframes in seconds (guide: jasper://docs/animation). clip (.anim): tracks by path from the root whose "
         "Animation Player plays it; create {from?, humanoid {model?}}; one project undo step. No clip: an entity "
         "Animation under target (tweens, actions; a scene step). tracks: channel + keys {time, value|points, ease}; "
-        "property: component + property; humanoid: bone. audio: sound cues (clip) or audio actions.",
+        "property: component + property; humanoid: bone. audio: sound cues (no clip: audio actions).",
         object({
             {"scene", sceneRef()},
             {"clip", assetPath("")},
@@ -5804,10 +5804,8 @@ void registerWorldTools(McpRegistry& registry) {
             }, {"channel", "keys"}), "")},
             {"events", array(object({{"time", number("")}, {"function", string("")}, {"args", array(any(""), "")}}, {"time", "function"}), "")},
             {"events_mode", withDefault(stringEnum("", {"replace", "merge"}), "replace")},
-            {"audio", array(object({{"time", number("")}, {"sound", any("")}, {"source", string("")}, {"snapshot", string("")},
-                                    {"path", string("")}, {"spatial", boolean("")}, {"volume_db", number("")}, {"pitch_semitones", number("")},
-                                    {"group", string("")}, {"stop", stringEnum("", {"none", "state_exit"})}, {"seconds", number("")},
-                                    {"duration", number("")}, {"lane", integer("")}}, {"time"}, true), "")},
+            // the cue's other keys (path, spatial, volume_db, stop, duration...) are the guide's; the handler checks them
+            {"audio", array(object({{"time", number("")}, {"sound", any("")}, {"source", string("")}, {"snapshot", string("")}}, {"time"}, true), "")},
             {"wrap", stringEnum("", {"once", "loop", "ping_pong", "clamp_forever"})},
             {"frame_rate", number("")},
             {"length", number("")},
