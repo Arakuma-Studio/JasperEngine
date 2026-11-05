@@ -747,13 +747,13 @@ Gates: `tools/check-changed` per commit; `tool_budget.py --check tools/mcp/budge
    agent never saw C++, Physics, Prefabs, Shaders, HTML/CSS UI, Other areas or the Tool groups line (the line that
    tells it to call `tool_groups`; the eval itself runs Claude Code, so it measured the cut guide). What changed:
    - `McpInstructions.cpp` is two literals around the generated groups line: head = intro (with the pointer
-     `No "## Other areas" below? Your client cut this text: read it all with read_file jasper://guide.`), Addressing,
+     `No "## Other areas" below? Then read it all: read_file jasper://guide.`), Addressing,
      The loop, Building scenes, then **Tool groups**; tail = Code, Undo, Lua, Unity names, C++, Physics, Prefabs,
      Shaders, HTML/CSS UI, Other areas. Unity names moved after the cut (the pointer leads there).
    - "Building scenes" is one short section (assemble in the editor, script properties, spawn from a Prefab, make what
      repeats a Prefab, animation through `edit_animation`); the HUD rule is not repeated there (the HTML/CSS UI digest
      and `create_ui`'s result carry it). The Prefabs digest loses its runtime signature (in `prefabs.md` and the Lua
-     digest). Measured: 6,679 bytes, 13 under the line; the cut keeps intro, Addressing, The loop, Building scenes,
+     digest). Measured after merging `main` on 2026-11-05: 6,672 bytes, 20 under the line; the cut keeps intro, Addressing, The loop, Building scenes,
      Tool groups, Code and Undo.
    - Rules agents need at the moment they act went into results (`next`, the lean rules' preferred place):
      `create_ui` in a 3D scene says where a HUD goes; `duplicate_entities` of a plain GameObject suggests a Prefab.

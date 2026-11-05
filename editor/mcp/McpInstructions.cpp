@@ -33,7 +33,7 @@ You drive a running JasperEngine editor (Unity-style: Hierarchy, Inspector, Cons
 views; Lua or C++ scripts). Each tool edit is one undoable command, live to a human watching. Build
 scenes with tools, write code with your own file tools, verify by playing, screenshots and the
 Console. Area references: jasper://docs/<area> (the list: jasper://docs). No "## Other areas"
-below? Your client cut this text: read it all with read_file jasper://guide.
+below? Then read it all: read_file jasper://guide.
 
 ## Addressing
 - scene: id, name or project-relative .scene path; omitted = the selected scene (while playing,
@@ -57,10 +57,9 @@ A long call past timeout_seconds returns a job id: get_job. An error says what w
 the valid choices: fix the arguments, don't repeat the call.
 
 ## Building scenes
-Place what a scene uses in the editor, with real values; scripts reach it through GameObject
-script properties and spawn only what can't be placed ahead (bullets, waves): GameObject.instantiate
-of a Prefab property. Make what repeats a Prefab (create_prefab). Authored motion (spins, doors,
-fades): edit_animation, not per-frame script code. More: jasper://docs/authoring.
+Place what a scene uses in the editor with real values; scripts reach it through script properties
+and spawn only what can't be placed ahead, from a Prefab property. Make what repeats a Prefab
+(create_prefab); authored motion is edit_animation, not per-frame code (jasper://docs/authoring).
 )JE";
 }
 
@@ -111,7 +110,7 @@ transform (jasper://docs/physics).
 
 ## Prefabs
 An edit on an instance overrides that instance only: apply it to the asset or edit in prefab_mode.
-A prefab only loaded by path (PrefabAsset.load) must be standalone (set_standalone_prefab).
+A prefab only loaded by path must be standalone (set_standalone_prefab).
 
 ## Shaders and materials
 Library first: list_shaders, then a submesh material's shader (create_material / update_material,
