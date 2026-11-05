@@ -51,8 +51,6 @@ namespace {
     constexpr uint64_t MAX_EVENT_LINES = 100000;
     constexpr uint32_t LEVEL_FRAMES = 4800;
     constexpr size_t MAX_LABEL_BYTES = 200;
-    // past this much silence a band filter's tail is gone: it is not run again until sound comes
-    constexpr uint64_t BANK_REST_FRAMES = 48000;
     constexpr size_t STREAM_BUFFER_BYTES = 256 * 1024;
 
     // ---- JSON text: flat lines and one small file, in the same bytes on every run
@@ -247,47 +245,123 @@ namespace {
         uint64_t frames = 0;
     };
 
-    // ---- 100 ms of a signal: peak, RMS and the octave bands
+    // ---- 100 ms of a signal: peak, RMS and the octave bands. AudioOctaveBank on every signal of every
+    // sample cost 6.7 ms a frame (32 voices, 4 groups): the bands come from a spectrum of each window's
+    // last 85 ms, a thousandth of that work, on one complex FFT per signal (L + iR: both channels' energy)
+
+    constexpr int SPECTRUM_SIZE = 4096;
+
+    struct SpectrumTables {
+        std::vector<float> hann;
+        std::vector<float> cosines;
+        std::vector<float> sines;
+        std::vector<int> reversed;
+        double windowEnergy = 0.0;
+
+        SpectrumTables() {
+            hann.resize(SPECTRUM_SIZE);
+            cosines.resize(SPECTRUM_SIZE / 2);
+            sines.resize(SPECTRUM_SIZE / 2);
+            reversed.resize(SPECTRUM_SIZE);
+            const double tau = 6.283185307179586476925;
+            int bits = 0;
+            while ((1 << bits) < SPECTRUM_SIZE) bits++;
+            for (int i = 0; i < SPECTRUM_SIZE; i++) {
+                hann[i] = (float)(0.5 - 0.5 * std::cos(tau * (i + 0.5) / SPECTRUM_SIZE));
+                windowEnergy += (double)hann[i] * hann[i];
+                int r = 0;
+                for (int b = 0; b < bits; b++) r |= ((i >> b) & 1) << (bits - 1 - b);
+                reversed[i] = r;
+            }
+            for (int i = 0; i < SPECTRUM_SIZE / 2; i++) {
+                cosines[i] = (float)std::cos(tau * i / SPECTRUM_SIZE);
+                sines[i] = (float)-std::sin(tau * i / SPECTRUM_SIZE);
+            }
+        }
+    };
+
+    const SpectrumTables& spectrumTables() {
+        static const SpectrumTables tables;
+        return tables;
+    }
+
+    // what the bands' energy is at: mean squares of the two channels
+    void octaveMeanSquares(const std::vector<float>& ring, size_t next, unsigned int rate, double out[AudioOctaveBank::BANDS]) {
+        const SpectrumTables& tables = spectrumTables();
+        static std::vector<float> re(SPECTRUM_SIZE), im(SPECTRUM_SIZE);
+        for (int i = 0; i < SPECTRUM_SIZE; i++) {
+            const size_t at = (next + (size_t)i) % SPECTRUM_SIZE;
+            const int to = tables.reversed[i];
+            re[to] = ring[at * 2] * tables.hann[i];
+            im[to] = ring[at * 2 + 1] * tables.hann[i];
+        }
+        for (int length = 2; length <= SPECTRUM_SIZE; length *= 2) {
+            const int half = length / 2;
+            const int step = SPECTRUM_SIZE / length;
+            for (int start = 0; start < SPECTRUM_SIZE; start += length) {
+                for (int k = 0; k < half; k++) {
+                    const float wr = tables.cosines[k * step], wi = tables.sines[k * step];
+                    const int a = start + k, b = a + half;
+                    const float tr = re[b] * wr - im[b] * wi;
+                    const float ti = re[b] * wi + im[b] * wr;
+                    re[b] = re[a] - tr;
+                    im[b] = im[a] - ti;
+                    re[a] += tr;
+                    im[a] += ti;
+                }
+            }
+        }
+        const double perBin = (double)rate / SPECTRUM_SIZE;
+        const double scale = 1.0 / (2.0 * SPECTRUM_SIZE * tables.windowEnergy);
+        for (int band = 0; band < AudioOctaveBank::BANDS; band++) {
+            const double centre = AudioMeter::bandCentre(band);
+            const int low = std::max(1, (int)std::ceil(centre / std::sqrt(2.0) / perBin));
+            const int high = std::min(SPECTRUM_SIZE / 2 - 1, (int)std::ceil(centre * std::sqrt(2.0) / perBin) - 1);
+            double energy = 0.0;
+            for (int k = low; k <= high; k++) {
+                const int m = SPECTRUM_SIZE - k;
+                energy += (double)re[k] * re[k] + (double)im[k] * im[k] + (double)re[m] * re[m] + (double)im[m] * im[m];
+            }
+            out[band] = energy * scale;
+        }
+    }
 
     struct LevelMeter {
-        AudioOctaveBank bank[2];
+        std::vector<float> ring;
+        size_t next = 0;
+        unsigned int sampleRate = 48000;
+        float windowPeak = 0.0f;
         double peak = 0.0;
         double squares = 0.0;
-        double bandSquares[AudioOctaveBank::BANDS] = {};
         uint64_t frames = 0;
-        uint64_t silentFrames = BANK_REST_FRAMES;
-        int settleIn = 0;
 
         void init(unsigned int rate) {
-            for (AudioOctaveBank& side : bank) side.init(rate);
+            sampleRate = rate;
+            ring.assign((size_t)SPECTRUM_SIZE * 2, 0.0f);
         }
 
         void add(const float* interleaved, uint32_t count) {
             float blockPeak = 0.0f;
-            for (uint32_t i = 0; i < count * 2; i++) blockPeak = std::max(blockPeak, std::fabs(interleaved[i]));
-            frames += count;
-            silentFrames = blockPeak == 0.0f ? silentFrames + count : 0;
-            if (silentFrames >= BANK_REST_FRAMES) return;
-            peak = std::max(peak, (double)blockPeak);
-            double y[AudioOctaveBank::BANDS + 1];
+            double blockSquares = 0.0;
             for (uint32_t i = 0; i < count; i++) {
-                for (int side = 0; side < 2; side++) {
-                    const double x = interleaved[i * 2 + side];
-                    squares += x * x;
-                    bank[side].process(x, y);
-                    for (int b = 0; b < AudioOctaveBank::BANDS; b++) bandSquares[b] += y[b] * y[b];
-                }
+                const float left = interleaved[i * 2], right = interleaved[i * 2 + 1];
+                blockPeak = std::max({blockPeak, std::fabs(left), std::fabs(right)});
+                blockSquares += (double)left * left + (double)right * right;
+                ring[next * 2] = left;
+                ring[next * 2 + 1] = right;
+                next = (next + 1) % SPECTRUM_SIZE;
             }
-            settleIn -= (int)count;
-            if (settleIn <= 0) {
-                settleIn = 480;
-                for (AudioOctaveBank& side : bank) side.settle();
-            }
+            frames += count;
+            peak = std::max(peak, (double)blockPeak);
+            windowPeak = std::max(windowPeak, blockPeak);
+            squares += blockSquares;
         }
 
         // {peak_db, rms_db, bands_db[10]}, and the next window starts
         void take(std::string& out) {
             const double samples = (double)std::max<uint64_t>(frames, 1) * 2.0;
+            double bands[AudioOctaveBank::BANDS] = {};
+            if (windowPeak > 0.0f) octaveMeanSquares(ring, next, sampleRate, bands);
             out += "{\"peak_db\":";
             jsonNumber(out, levelDb(peak), 2);
             out += ",\"rms_db\":";
@@ -295,12 +369,12 @@ namespace {
             out += ",\"bands_db\":[";
             for (int b = 0; b < AudioOctaveBank::BANDS; b++) {
                 if (b) out += ',';
-                jsonNumber(out, aes17Db(bandSquares[b] / samples), 2);
+                jsonNumber(out, aes17Db(bands[b]), 2);
             }
             out += "]}";
             peak = 0.0;
             squares = 0.0;
-            std::fill(std::begin(bandSquares), std::end(bandSquares), 0.0);
+            windowPeak = 0.0f;
             frames = 0;
         }
     };

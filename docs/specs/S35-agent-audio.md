@@ -625,8 +625,9 @@ does not fix audio; checks report changed thresholds."
 - **AC5's unwritable root is a file where a folder goes**, not a read-only folder: the tests run as root in some images.
 - **`voice` is the capture's own serial, not SoLoud's handle:** handles count every play since the process began, so two
   runs of one editor differed and R8's bytes could not hold. Found by `test_deterministic_twice`.
-- **AC8's 1 kHz band reads 0.53 dB under the tone, not within 0.5:** `AudioOctaveBank`'s 4th-order Butterworth edges lie a
-  half octave from its centre, -0.26 dB each there. The test allows 0.6 dB.
+- **`levels.jsonl`'s bands are a spectrum, not `AudioOctaveBank`:** the bank on five signals cost 6.7 ms a frame against R28's 0.4 ms
+  (`AudioCaptureBench`, the red run). Each 100 ms line takes a Hann FFT of its last 85 ms, summed over the bank's octave edges, so a click in
+  a line's first 15 ms can read low in the bands (not in `peak_db` or `rms_db`).
 - **R8's latency is not one constant:** measured (`DeterministicDriverTest.LatencyIsOneSampleForEachBusOnTheWay`), a voice
   reaches the output 1 sample late, plus 1 for each bus on its way: 2 through Master, 3 through a group under it. Each
   `voice_start` has its `latency_samples`; `session.json`'s is Master's. The checks subtract the voice's.

@@ -303,10 +303,9 @@ async def test_levels_and_stems():
         tail = samples[-2 * 9600:]
         peak_db = 20 * math.log10(max(abs(v) for v in tail))
         band = line["groups"]["Music"]["bands_db"][5]
-        # (the bank's edges take 0.53 dB off its centre: 4th-order Butterworth, a half octave away on each side)
-        ed.check(abs(band - line["groups"]["Music"]["peak_db"]) < 0.6, f"a 1 kHz tone is its 1 kHz band: {line['groups']['Music']}")
+        ed.check(abs(band - line["groups"]["Music"]["peak_db"]) < 0.5, f"a 1 kHz tone is its 1 kHz band: {line['groups']['Music']}")
         ed.check(abs(line["master"]["peak_db"] - peak_db) < 0.1, f"master peak {line['master']['peak_db']} vs the WAV's {peak_db}")
-        ed.check(abs(line["master"]["bands_db"][5] - peak_db) < 0.6, f"master's 1k band {line['master']['bands_db']} vs {peak_db}")
+        ed.check(abs(line["master"]["bands_db"][5] - peak_db) < 0.5, f"master's 1k band {line['master']['bands_db']} vs {peak_db}")
         ed.check(all(b < band - 10 for i, b in enumerate(line["groups"]["Music"]["bands_db"]) if abs(i - 5) >= 2),
                  f"nothing far from 1 kHz: {line['groups']['Music']['bands_db']}")
         voices = line["voices"]
