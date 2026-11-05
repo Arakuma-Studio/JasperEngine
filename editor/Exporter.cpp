@@ -2984,7 +2984,7 @@ bool editor::Exporter::copyAssets() {
                 importRelPath += ".glb";
                 fs::remove(assetsDst / importRelPath, ec);
             }
-            continue;
+            return TreeStep::Enter;
         }
 
         // The native plugins' sources and SDKs go into the platform projects (copyNativePlugins)
