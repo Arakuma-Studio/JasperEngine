@@ -332,9 +332,10 @@ async def test_an_export_stops_when_a_root_is_swapped_during_it(ed: Editor):
     try:
         # a new project: this fixture's HTML document, missing once its root moves, would fail the export for its own reason
         async with Editor(create=True, name="Export Swap", label="export-swap", env={"JASPER_TEST_EXPORT_HOLD": str(hold)}) as swap:
-            root, aside = swap.project / "assets", swap.project / "assets_export_aside"
+            project = Path((await swap.call("get_project_summary"))["path"])   # (made by the editor: it is there now)
+            root, aside = project / "assets", project / "assets_export_aside"
             root.mkdir(exist_ok=True)
-            (swap.project / "scripts").mkdir(exist_ok=True)
+            (project / "scripts").mkdir(exist_ok=True)
             await swap.call("set_project_settings", values={"editor.assets_dir": "assets", "scripting.lua_dir": "scripts"})
             await swap.call("save_project", untitled_scene_dir=".")
             await pickup(swap)
