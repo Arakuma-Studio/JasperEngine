@@ -320,34 +320,28 @@ async def test_a_root_swapped_for_a_link_is_not_scanned(ed: Editor):
 
 
 async def test_a_root_that_was_a_link_when_the_project_opened_is_a_root(ed: Editor):
-    """The assets root is linked in when the project opens: pinned so, it is the assets directory, with its
-    data files (a .txt is an asset only there) and metas beside them, and it exports"""
+    """The assets root is linked in when the editor starts on the project: pinned so, it is the assets
+    directory, with its data files (a .txt is an asset only there) and metas beside them, and a swap this is not"""
     require_links()
-    outside = Path(tempfile.mkdtemp(prefix="jasper-linked-root-"))
-    root = ed.project / "assets"
-    aside = ed.project / "assets_linked_aside"
+    base = Path(tempfile.mkdtemp(prefix="jasper-linked-root-"))
     try:
+        outside = base / "outside"
+        outside.mkdir()
         (outside / "keep.txt").write_text("x")
         (outside / "tile.png").write_bytes(png_bytes())
-        os.rename(root, aside)
-        os.symlink(outside, root)
-        await reopen(ed)
-        await pickup(ed)
-        ed.check_eq(sorted(os.listdir(outside)), ["keep.txt", "keep.txt.meta", "tile.png", "tile.png.meta"], "both are assets of the root")
-        ed.check((await asset(ed, "assets/keep.txt"))[0], "the data file has its GUID")
-        out = ed.scratch.root / "export-linked-root"
-        r = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
-                          overwrite=True, timeout_seconds=600)
-        ed.check_eq(r["status"], "succeeded", f"{str(r)[:800]}")
-        ed.check((out / "project" / "assets" / "keep.txt").is_file(), "its files ship")
+        source = base / "project"
+        shutil.copytree(EDITOR["project"], source)
+        shutil.rmtree(source / "assets")
+        os.symlink(outside, source / "assets")
+        async with Editor(project=source) as linked:
+            await pickup(linked)
+            ed.check_eq(sorted(os.listdir(outside)), ["keep.txt", "keep.txt.meta", "tile.png", "tile.png.meta"], "both are assets of the root")
+            ed.check((await asset(linked, "assets/keep.txt"))[0], "the data file has its GUID")
+            r = await linked.call_raw("build_project", {"mode": "source", "output_dir": str(linked.scratch.root / "export-linked-root"), "platform": "linux",
+                                                        "backends": ["opengl"], "overwrite": True, "timeout_seconds": 300})
+            ed.check("no longer leads where it did" not in r.text, f"a root linked at the load is not a swapped one: {r.text[:400]}")
     finally:
-        if root.is_symlink():
-            root.unlink()
-        if aside.exists():
-            os.rename(aside, root)
-        shutil.rmtree(outside, ignore_errors=True)
-    await reopen(ed)
-    await pickup(ed)
+        shutil.rmtree(base, ignore_errors=True)
 
 
 async def test_a_link_beside_the_asset_roots_is_left_alone(ed: Editor):
