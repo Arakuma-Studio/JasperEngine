@@ -111,6 +111,7 @@ namespace {
 #endif
 
 void LuaBinding::registerAudioClasses(lua_State* L) {
+    (void)L;
 #if JASPERENGINE_SOUND_LAYER
 #ifndef DISABLE_LUA_BINDINGS
     luabridge::getGlobalNamespace(L)
@@ -147,8 +148,6 @@ void LuaBinding::registerAudioClasses(lua_State* L) {
         .addStaticFunction("play", &luaAudioTablePlay)
         .addStaticFunction("stopAll", &luaAudioTableStopAll)
         .endClass();
-    return;
 #endif
 #endif
-    (void)L;
 }
