@@ -14,12 +14,9 @@
 //   } customParams;
 
 // mvpMatrix is lightVPMatrix * modelMatrix computed once, so a depth prepass matches
-// mesh.vert bit for bit; a fork may still multiply the two itself
-uniform u_vs_depthParams {
-    mat4 modelMatrix;
-    mat4 lightVPMatrix;
-    mat4 mvpMatrix;
-} depthParams;
+// mesh.vert bit for bit; a fork may still multiply the two itself (u_vs_depthParams, or per
+// instance in an automatically instanced batch: includes/object_depth_params.glsl)
+#include "includes/object_depth_params.glsl"
 
 invariant gl_Position;
 
@@ -101,11 +98,11 @@ void main() {
         #endif
         vec4 pos = vec4(getSkinPosition(latticePosition, boneTransform), 1.0);
         #ifdef HAS_INSTANCING
-            mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+            mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
             pos = instanceMatrix * pos;
         #endif
     #elif defined(HAS_INSTANCING)
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix *  getPosition(boneTransform);
     #else
         vec4 pos = getPosition(boneTransform);

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Generator.h"
+#include "object/FluidSimulation.h"
+#include "component/PrefabComponent.h"
 #include "util/NativePlugins.h"
 #include "Factory.h"
 #include "App.h"
@@ -14,6 +16,7 @@
 #include "util/ShellEnv.h"
 #include "util/Util.h"
 #include "render/shadow/ShadowTiers.h"
+#include "render/LightingTiers.h"
 #include "engine_lua_stubs.h"
 #include "util/ProjectChecks.h"
 #include "util/EditorFingerprint.h"
@@ -1712,7 +1715,9 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- Lua API stubs: `" + api + "/lua/` (lua-language-server: `.luarc.json`); start a script with "
                      "`---@class <FileName> : ScriptInstance`. C++ API: the headers in `" + api + "/` (clangd: `.clangd`).\n";
     agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
-                     "errors); as an agent hook after every edit: `check --project <this directory> --hook`.\n\n";
+                     "errors); as an agent hook after every edit: `check --project <this directory> --hook`.\n";
+    agentsContent += "- Models are cooked (smaller, same image; settings in each model's `.meta`): `inspect_models` finds the costly ones, "
+                     "`check_render_budgets` holds a scene to `quality.render_budgets` (`tool_groups` `meshes`).\n\n";
     agentsContent += "## Building scenes\n\n";
     agentsContent += "Place what a scene uses with the editor tools; scripts drive it through GameObject script properties and spawn "
                      "only what can't be placed ahead, from a Prefab. Make what repeats a Prefab; animate with `edit_animation`, not "
@@ -2325,6 +2330,11 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
     mainContent += "#include <fstream>\n";
     mainContent += "#include <iterator>\n";
     mainContent += "#endif\n";
+    // Project Settings > Graphics > Light Mode, the editor's own (Project::setLightMode): only
+    // when not Automatic, the engine's default
+    const LightMode lightMode = LightingTiers::getLightMode();
+    if (lightMode != LightMode::AUTOMATIC)
+        mainContent += "#include \"render/LightingTiers.h\"\n";
 
     // Include prefab headers (contain declarations for prefab creation functions)
     for (const auto& prefabData : prefabs) {
@@ -2563,6 +2573,10 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
         mainContent += "    Engine::setTextureDefaults(" + groups[0] + ", " + groups[1] + ", " + groups[2] + ");\n";
     }
 
+    // the Device Tier the GPU gets and its overrides (Project Settings > Quality > Device Tiers),
+    // before any scene: what differs from the defaults, "{}" for a default project
+    mainContent += "    Device::configure(R\"JEDEVICE(" + deviceSettingsJson + ")JEDEVICE\");\n";
+
     // MSAA of the HTML UI targets (Project Settings > Graphics), before any document draws
     mainContent += "    UIDocumentSystem::setPreferredSampleCount(" + std::to_string(htmlUiMsaaSamples) + ");\n";
     // the HTML UI's glyph atlas budget, SDF primitives and transform-aware text (S16)
@@ -2583,6 +2597,12 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                 tierNames[std::clamp(static_cast<int>(tier), 0, 3)] + ");\n";
         }
     }
+    // GPU Instancing (spec S55), written when off
+    if (!drawSubmission.gpuInstancing)
+        mainContent += "    Engine::setGpuInstancingEnabled(false);\n";
+    if (lightMode != LightMode::AUTOMATIC)
+        mainContent += std::string("    LightingTiers::setLightMode(") +
+            (lightMode == LightMode::TILED ? "LightMode::TILED" : "LightMode::PER_OBJECT") + ");\n";
     // Project Settings > Player > Allow Insecure HTTP: the same policy as the editor's Play
     mainContent += std::string("    Http::setInsecureHttpAllowed(") + (allowInsecureHttp ? "true" : "false") + ");\n";
     // The native plugins of plugins/native that the platform being built cannot run: a call to
@@ -2828,10 +2848,18 @@ std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
 std::string editor::Generator::audioInitSource(const AudioSettings& audioSettings) {
     std::string source;
     const AudioSettings defaults;
+    const bool outputChanged = audioSettings.outputStage != defaults.outputStage || audioSettings.iosSessionCategory != defaults.iosSessionCategory;
     if (audioSettings.maxRealVoices != defaults.maxRealVoices || audioSettings.maxVoices != defaults.maxVoices ||
-        audioSettings.sampleRate != defaults.sampleRate) {
+        audioSettings.sampleRate != defaults.sampleRate || outputChanged) {
         source += "    AudioSystem::configure({" + std::to_string(audioSettings.maxRealVoices) + ", " +
-                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate) + "});\n";
+                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate);
+        if (outputChanged) {
+            source += std::string(", AudioOutputStage::") + (audioSettings.outputStage == "linear" ? "Linear" : "Roundoff");
+            const std::string& session = audioSettings.iosSessionCategory;
+            source += std::string(", IosAudioSession::") +
+                      (session == "ambient" ? "Ambient" : session == "solo_ambient" ? "SoloAmbient" : session == "playback" ? "Playback" : "Default");
+        }
+        source += "});\n";
     }
     if (!audioSettings.mixer.empty()) {
         source += "    AudioMixer::load(" + Factory::formatString(audioSettings.mixer) + ");\n";

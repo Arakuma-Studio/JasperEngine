@@ -40,7 +40,9 @@ runtimes (`tools/build.sh players`, then `JASPER_PLAYERS_DIR`). Without the runt
 compiles when this computer can.
 
 `get_build_info platforms.<name>.tools_missing[]` names what a platform's build lacks (Android:
-build-tools, platform, JDK; the bundletool jar is downloaded for `aab`).
+build-tools, platform, JDK; the bundletool jar is downloaded by the first `aab` build, its SHA-256
+pinned; iOS: a Mac with a full Xcode). An iOS device build without a team stops before signing with
+`W-IOS-NO-TEAM`; a wrong Android keystore password or alias fails before any packaging and says which.
 
 **Shader overrides** (Build Settings > Shaders): a build compiles the shader variants the scenes
 need, plus the ones added by hand and minus the ones excluded. `get_build_info include_shaders`

@@ -221,6 +221,7 @@ SPEC_GROUPS = {
                         "retarget_asset_references", "clear_asset_references",
                         "get_texture_import_settings", "set_texture_import_settings", "reimport_textures",  # S14
                         "get_texture_cook_report"],
+    "device": ["get_device_info", "set_device_simulation"],                                # S56
 }
 
 

@@ -46,6 +46,11 @@
             "tools": 7,
             "spec": "S15 (its 7 tools within 7,000 characters)"
         },
+        "device": {
+            "chars": 1500,
+            "tools": 2,
+            "spec": "S56 (get_device_info and set_device_simulation within 1,500 characters; the tier table goes through set_project_settings)"
+        },
         "splines": {
             "chars": 6000,
             "tools": 12,

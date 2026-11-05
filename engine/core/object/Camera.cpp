@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Camera.h"
+#include <cmath>
 
 #include "util/Angle.h"
 #include "Engine.h"
@@ -608,6 +609,23 @@ void Camera::setFramebufferFilter(TextureFilter filter){
 	if (camera.renderToTexture){
 		scene->getSystem<RenderSystem>()->updateFramebuffer(camera);
 	}
+}
+
+void Camera::setTransparencyMode(TransparencyMode mode){
+    getComponent<CameraComponent>().transparencyMode = mode;
+}
+
+TransparencyMode Camera::getTransparencyMode() const{
+    return getComponent<CameraComponent>().transparencyMode;
+}
+
+void Camera::setOitWeightScale(float scale){
+    if (std::isfinite(scale))
+        getComponent<CameraComponent>().oitWeightScale = std::max(scale, 0.0001f);
+}
+
+float Camera::getOitWeightScale() const{
+    return getComponent<CameraComponent>().oitWeightScale;
 }
 
 void Camera::setTransparentSort(bool transparentSort){

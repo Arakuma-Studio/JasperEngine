@@ -1,0 +1,60 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 792517be6e8d0bb5
+--- 0
+shape: autoquad
+closed: true
+enabled: true
+points:
+  - [0.8673004, 946.9185]
+  - [89.19172, 0.15585542]
+  - [0.9937109, -83.14286]
+--- 1
+shape: autoquad
+closed: true
+enabled: false
+points:
+  - [0.6410522, 4993.711]
+  - [0.09697746, 3e+38]
+--- 2
+shape: autoquad
+closed: false
+enabled: true
+points:
+  - [0, 1e-45]
+--- 3
+shape: polygon
+closed: false
+enabled: true
+points:
+  - [-25, 4979.4873]
+  - [66, 4408.708]
+  - [-0.1790436, 4460.7236]
+  - [-140, 3e+38]
+--- 4
+shape: autoquad
+closed: true
+enabled: false
+points:
+  - [0.25930294, 5.714286]
+--- 5
+shape: autoquad
+closed: true
+enabled: true
+points:
+  - [0, -0.911125]
+  - [-35, -0.4809663]
+  - [-32, 7478.4736]
+--- 6
+shape: polygon
+closed: true
+enabled: true
+points:
+  - [78.14286, 3e+38]
+  - [-0.7499005, -8]
+  - [194.23232, 696.266]
+--- 7
+shape: autoquad
+closed: false
+enabled: false
+points:
+  - [3e+38, -8]

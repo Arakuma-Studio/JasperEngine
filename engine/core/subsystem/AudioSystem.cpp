@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "AudioSystem.h"
+#include "component/CameraComponent.h"
+#include "component/Transform.h"
 #include "PlatformConfig.h"
 #include "manager/SceneManager.h"
 
@@ -11,6 +13,10 @@
 
 #include "soloud.h"
 #include "soloud_wav.h"
+
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -157,14 +163,37 @@ SoLoud::Soloud& AudioSystem::getSoloud(){
 };
 
 void AudioSystem::configure(const AudioConfig& newConfig){
+    const AudioOutputStage stageBefore = config.outputStage;
     config = newConfig;
     config.maxRealVoices = std::clamp(config.maxRealVoices, 1, 255);
     config.maxVoices = std::clamp(config.maxVoices, 1, 1000);
     if (config.sampleRate < 0) config.sampleRate = 0;
     if (inited) {
-        // the real voices apply at once; the sample rate at the next init
+        // the real voices and the output stage apply at once; the sample rate at the next init
         AudioMixer::onAudioInit();
+        if (config.outputStage != stageBefore) applyOutputStage();
     }
+}
+
+AudioOutputStage AudioSystem::outputStageFromName(const std::string& name){
+    return name == "linear" ? AudioOutputStage::Linear : AudioOutputStage::Roundoff;
+}
+
+IosAudioSession AudioSystem::iosSessionFromName(const std::string& name){
+    if (name == "ambient") return IosAudioSession::Ambient;
+    if (name == "solo_ambient") return IosAudioSession::SoloAmbient;
+    if (name == "playback") return IosAudioSession::Playback;
+    return IosAudioSession::Default;
+}
+
+void AudioSystem::applyOutputStage(){
+    SoLoud::Soloud& soloud = getSoloud();
+    const bool linear = config.outputStage == AudioOutputStage::Linear;
+    // the mixer reads both once per mix
+    soloud.mFlags = linear ? (soloud.mFlags & ~(unsigned int)SoLoud::Soloud::CLIP_ROUNDOFF)
+                           : (soloud.mFlags | (unsigned int)SoLoud::Soloud::CLIP_ROUNDOFF);
+    soloud.setPostClipScaler(linear ? 1.0f : 0.95f);
+    Log::print("Audio output stage: %s", config.outputStage == AudioOutputStage::Linear ? "linear" : "roundoff");
 }
 
 const AudioConfig& AudioSystem::getConfig(){
@@ -212,7 +241,10 @@ bool AudioSystem::init(){
         }
 
         SoLoud::Soloud& soloud = getSoloud();
-        const unsigned int flags = SoLoud::Soloud::CLIP_ROUNDOFF;
+        const unsigned int flags = config.outputStage == AudioOutputStage::Linear ? 0 : (unsigned int)SoLoud::Soloud::CLIP_ROUNDOFF;
+#if defined(__APPLE__) && TARGET_OS_IOS
+        soloud.mIosSessionCategory = (unsigned int)config.iosSession;
+#endif
         const unsigned int rate = config.sampleRate > 0 ? (unsigned int)config.sampleRate : (unsigned int)SoLoud::Soloud::AUTO;
         SoLoud::result result = SoLoud::SO_NO_ERROR + 1;
 
@@ -238,6 +270,7 @@ bool AudioSystem::init(){
         }
 
         soloud.setGlobalVolume(globalVolume);
+        applyOutputStage();
 
         inited = true;
 
@@ -294,13 +327,14 @@ void AudioSystem::getVoiceCounts(uint32_t& active, uint32_t& max){
 bool AudioSystem::beginOfflineCapture(unsigned int sampleRate, unsigned int channels){
     // whatever plays now stops: the capture starts with the scene
     deInit();
-    SoLoud::result result = getSoloud().init(SoLoud::Soloud::CLIP_ROUNDOFF, SoLoud::Soloud::NULLDRIVER, sampleRate,
-                                             SoLoud::Soloud::AUTO, channels);
+    const unsigned int flags = config.outputStage == AudioOutputStage::Linear ? 0 : (unsigned int)SoLoud::Soloud::CLIP_ROUNDOFF;
+    SoLoud::result result = getSoloud().init(flags, SoLoud::Soloud::NULLDRIVER, sampleRate, SoLoud::Soloud::AUTO, channels);
     if (result != SoLoud::SOLOUD_ERRORS::SO_NO_ERROR) {
         Log::warn("Offline audio capture unavailable (%s)", getSoloud().getErrorString(result));
         return false;
     }
     getSoloud().setGlobalVolume(globalVolume);
+    applyOutputStage();
     inited = true;
     offlineCapture = true;
     // the mixer's buses, as init() makes them: the capture hears the groups, their effects and mutes

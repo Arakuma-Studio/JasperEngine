@@ -4,7 +4,8 @@
 // glTF KHR_materials_* (docs/specs/S11-materials-lighting.md R4, AC4): hand-written fixtures
 // (fixtures/gltf, one triangle and a material each) load to the exact factors, maps and UV
 // sets; missing values are the defaults, out-of-range ones clamped, a non-finite one warns
-// once; an unsupported extension warns (an error when required) and the model still loads.
+// once; an unsupported extension warns (an error when required, with what to do) and the model
+// still loads.
 // The Khronos sample models (engine/tests/render/assets/khronos) load without an error. CPU only.
 
 #include "Engine.h"
@@ -247,16 +248,19 @@ TEST_F(GltfMaterialExtensionsTest, UnsupportedWarns){
     const Material& material = load("unsupported");
     // the model loads, its clear coat with it
     EXPECT_TRUE(material.pbr->clearcoat.enabled);
-    // one warning per extension, however many textures use it
-    EXPECT_EQ(log.count(D_LOG_WARN, "KHR_texture_transform"), 1u);
+    // one warning per extension, however many textures use it (the fixtures name extensions
+    // nobody defines: the loader reads the ones they used to name since S53, KHR_texture_transform
+    // and EXT_meshopt_compression)
+    EXPECT_EQ(log.count(D_LOG_WARN, "EXT_unknown_texture_extension"), 1u);
     EXPECT_EQ(log.count(D_LOG_WARN, "KHR_lights_punctual"), 1u);
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
 
-    // a required one is an error, and the model still loads
+    // a required one is an error that says what to do, and the model still loads
     LogCapture required;
     load("unsupported_required");
-    EXPECT_EQ(required.count(D_LOG_ERROR, "EXT_meshopt_compression"), 1u);
-    EXPECT_EQ(required.count(D_LOG_WARN, "EXT_meshopt_compression"), 0u);
+    EXPECT_EQ(required.count(D_LOG_ERROR, "EXT_unknown_required_extension"), 1u);
+    EXPECT_EQ(required.count(D_LOG_ERROR, "export the model again without EXT_unknown_required_extension"), 1u);
+    EXPECT_EQ(required.count(D_LOG_WARN, "EXT_unknown_required_extension"), 0u);
 }
 
 TEST_F(GltfMaterialExtensionsTest, KhronosSampleModelsLoad){
