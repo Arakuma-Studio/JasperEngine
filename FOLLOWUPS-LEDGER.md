@@ -78,7 +78,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
 | S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Ready at `2b87a7e4e`; waits for the second full suite; iOS run waits for the Mac |
-| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | M1-M10 done at `c37fd4b95`; fixing how agents find the tools; R31 re-measured after S38 |
+| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | Ready at `0ccbbf001`, after S37 and the full suite; R31 re-measured after S38 |
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | In progress: M1-M4 committed, M5-M6 left |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | M5 needs S36 M1; merges with S62 (same file) | In progress |
 | S39 | Music | `feat/s39-music` | S35, S36, S37 | Waiting |
@@ -121,6 +121,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - Closing stdin during `wait` in Play hung the main thread for 118 s or more on S70's red build; not retested on the fix (found by S70).
 - `test_playhead_shortcuts_while_focused` failed once in S70's CI suite; its whole file passes, and with `-k` alone it fails 3 of 3. Cause not established.
 - S38 AC7: the iOS `ambient` session needs a check on a real device, by a person; `ios_packaging.sh` still has to run with the limiter when the Mac is back.
+- S36's line telling agents about `generate_sound` reaches only projects whose generated AGENTS.md was regenerated after it.
 - A relaunch on Android logs `Entity does not exist to get signature` (found by S67).
 - `list_missing_assets` is not found by agents while its `assets_pipeline` group is hidden (found by S68).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
