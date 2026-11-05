@@ -1534,6 +1534,7 @@ set(JASPERENGINE_SRCS
     core/io/watch/FileIdentity.cpp
     core/io/watch/FileWatchService.cpp
     core/io/watch/FileWatcher.cpp
+    core/io/watch/LinkedFolders.cpp
     core/io/watch/ProjectFileIndex.cpp
     core/io/watch/SharedFileReader.cpp
     core/io/watch/backends/FsEventsBackend.cpp

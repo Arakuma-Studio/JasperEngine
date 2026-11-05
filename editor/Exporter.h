@@ -215,8 +215,13 @@ namespace jasperengine::editor {
         bool holdFinish = false;
         bool keepBuildSymbols(const fs::path& executable);
 
-        // Lua sources copyLua() shipped, so copyAssets() can skip them
+        // Lua sources copyLua() shipped (where they are on disk: the assets walk may reach them
+        // through a link), so copyAssets() can skip them
         std::set<fs::path> luaCopiedSources;
+        // Linked folders walkTree() left out (where each link is on disk), so each is warned about
+        // once per export: the shader copy walks the project root and reaches the assets' links again
+        std::set<fs::path> leftOutLinks;
+        size_t treeLinksEntered = 0;
         // Paths copyLua() wrote, relative to the lua tree, so copyAssets() can keep
         // Android's merged assets root free of paths both trees would ship
         std::set<fs::path> luaExportedPaths;
@@ -313,6 +318,15 @@ namespace jasperengine::editor {
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
         bool cookTextures();
+        // What walkTree() does after visiting an entry: enter it (a folder; a file goes on to the
+        // next entry), skip what it holds, or stop the walk
+        enum class TreeStep { Enter, Skip, Stop };
+        using TreeVisitor = std::function<TreeStep(const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real)>;
+        // A tree as the editor reaches it (S68 R1, R2): each folder listed, a link of any kind entered
+        // as a folder under its own name, so relPath (never canonicalized) is the path a scene or
+        // script reads the file by; real is where the entry is on disk. A link to a folder that holds
+        // it (it would hold itself) is left out with a warning. ec: the root could not be listed.
+        void walkTree(const fs::path& root, const TreeVisitor& visit, std::error_code& ec);
         bool copyAssets();
         // a .cube LUT cooked to <destination's name>.jlut; false (warned) when it does not parse
         bool cookColorLut(const fs::path& source, const fs::path& destination);

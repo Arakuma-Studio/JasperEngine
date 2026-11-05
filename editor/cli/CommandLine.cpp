@@ -2030,8 +2030,10 @@ static int runAssets(int argc, char** argv, const std::string& commandName) {
     for (const AssetDatabase::OrphanMeta& orphan : tracker.getOrphanMetas()) {
         orphans.push_back({{"meta", orphan.metaPath}, {"asset", orphan.assetPath}, {"guid", orphan.guid.str()}});
     }
-    std::cout << Json{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
-                      {"resolved_by_path", healed}, {"orphan_metas", orphans}}.dump(2) << "\n";
+    Json report{{"assets", project.getAssetDatabase().assetCount()}, {"missing", missing},
+                {"resolved_by_path", healed}, {"orphan_metas", orphans}};
+    if (!tracker.getReadOnlyLinked().empty()) report["read_only_linked"] = tracker.getReadOnlyLinked();
+    std::cout << report.dump(2) << "\n";
     return missing.empty() ? 0 : 1;
 }
 

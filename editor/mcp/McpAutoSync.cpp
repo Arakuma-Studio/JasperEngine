@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpAutoSync.h"
+#include "io/watch/LinkedFolders.h"
 
 #include "McpContext.h"
 #include "McpServer.h"
@@ -278,6 +279,7 @@ void McpAutoSync::baseline(const fs::path& projectRoot) {
     code.clear();
     assets.clear();
     dirs.clear();
+    linkedFolders.clear();
     hot.clear();
     pendingExternal.clear();
     deferred.clear();
@@ -285,6 +287,19 @@ void McpAutoSync::baseline(const fs::path& projectRoot) {
     codeCursor.clear();
     assetCursor.clear();
     walkDir("", nullptr, 0);
+}
+
+// A linked folder out of the project is one of its folders (S68): entered once. A link inside
+// the project (its target is walked by its own name) or leading to a folder holding the project is not.
+bool McpAutoSync::entersFolder(const fs::directory_entry& entry, const std::string& rel) {
+    if (!watch::isLink(entry)) return true;
+    if (dirs.count(rel)) return true;
+    watch::LinkFollower follower(root);
+    for (const auto& [link, real] : linkedFolders) follower.alreadyEntered(real);
+    const fs::path real = follower.enter(entry.path());
+    if (real.empty()) return false;
+    linkedFolders[rel] = real;
+    return true;
 }
 
 // Records a folder and everything under it; with `changes`, files not known yet are added
@@ -301,10 +316,9 @@ void McpAutoSync::walkDir(const std::string& rel, std::vector<Change>* changes, 
         const std::string name = FileUtils::pathToUtf8(it->path().filename());
         if (name.empty() || name[0] == '.') continue;
         std::error_code typeEc;
-        if (it->is_symlink(typeEc) && it->is_directory(typeEc)) continue;   // no cycles
         const std::string child = childOf(rel, name);
         if (it->is_directory(typeEc)) {
-            if (!isSkippedDirName(name)) walkDir(child, changes, depth + 1);
+            if (!isSkippedDirName(name) && entersFolder(*it, child)) walkDir(child, changes, depth + 1);
             continue;
         }
         if (!tracks(child)) continue;
@@ -385,6 +399,10 @@ void McpAutoSync::removeTree(const std::string& relDir, std::vector<Change>* cha
     for (auto it = dirs.lower_bound(prefix); it != dirs.end() && it->first.compare(0, prefix.size(), prefix) == 0;) {
         it = dirs.erase(it);
     }
+    linkedFolders.erase(relDir);
+    for (auto it = linkedFolders.lower_bound(prefix); it != linkedFolders.end() && it->first.compare(0, prefix.size(), prefix) == 0;) {
+        it = linkedFolders.erase(it);
+    }
 }
 
 void McpAutoSync::checkFile(const std::string& rel, std::vector<Change>& changes) {
@@ -428,10 +446,9 @@ void McpAutoSync::checkDir(const std::string& rel, std::vector<Change>& changes)
         const std::string name = FileUtils::pathToUtf8(it->path().filename());
         if (name.empty() || name[0] == '.') continue;
         std::error_code typeEc;
-        if (it->is_symlink(typeEc) && it->is_directory(typeEc)) continue;
         const std::string child = childOf(rel, name);
         if (it->is_directory(typeEc)) {
-            if (isSkippedDirName(name)) continue;
+            if (isSkippedDirName(name) || !entersFolder(*it, child)) continue;
             presentDirs.insert(child);
             if (!dirs.count(child)) walkDir(child, &changes, 1);
             continue;

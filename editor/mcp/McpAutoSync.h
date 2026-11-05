@@ -154,6 +154,8 @@ namespace jasperengine::editor::mcp {
         FileMap code;                              // Lua, C++, shaders, materials, .html/.htm/.css
         FileMap assets;                            // images, fonts, .json/.lottie
         std::map<std::string, int64_t> dirs;       // project-relative folder ("" = root) -> mtime
+        std::map<std::string, std::filesystem::path> linkedFolders;   // the links entered -> where each leads
+        bool entersFolder(const std::filesystem::directory_entry& entry, const std::string& rel);
         std::vector<std::string> hot;              // recently changed files, newest last
         std::string dirCursor, codeCursor, assetCursor;
 

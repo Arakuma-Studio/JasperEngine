@@ -21,7 +21,7 @@ The design and acceptance record is `docs/specs/S02-build-ci-tests.md`.
 | Crash diagnostics | the crash handler's report folders, sessions, hook and ring, the hang watchdog (`HangWatchdog.*`, `Crash*` in `jasperengine-core-tests`, which start `jasperengine-crash-test`, `engine/tests/crash/CrashTestMain.cpp`), the symbolication tool, the web crash hooks | `tools/build.sh unit-tests`; `python3 -I tools/crash/test_symbolicate.py <jasperengine-crash-test>`; `WEB_PROJECT=crash-diagnostics tools/build.sh web`, then `GATE=crash-diagnostics tools/build.sh web-gate` | as above |
 | Android packaging | what Build makes for Android, run for real: APK and App Bundle from the prebuilt player, the bundletool download (real URL), the debug and release keys, wrong passwords, `publish prepare`, then both installed on the emulator and their screens compared with the golden | `tools/ci/android_packaging.sh` (needs `tools/build.sh linux`, the Android player; KVM: server A) | `build/android-packaging/` |
 | iOS packaging | what Build makes for iOS on a Mac: the Xcode project through `xcodebuild`, installed and launched on a simulator device of its own (no window), a device build as far as signing, the IPA path without a developer account, `publish prepare` | `tools/ci/ios_packaging.sh` (needs the editor on a Mac with Xcode, `tools/players/ios_player.sh`; `IOS_PACKAGING_GOLDEN=1` compares the screen with `tools/fixtures/unified-lighting/golden/ios/screen.png`, from an iPhone 17 simulator) | `build/ios-packaging/` |
-| Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
+| Tool checks | the CI scripts' own tests, the presets, the HTML UI golden ledger | `python3 tools/ci/test_gtest_gate.py`, `python3 tools/ci/test_smoke_jit_hangs.py`, `python3 tools/ci/test_android_screen_check.py`, `python3 tools/ci/test_check_notices.py`, `python3 tools/ci/test_check_golden_ledger.py`, `python3 tools/htmlui/check_golden_ledger.py`, `python3 tools/check-editor-modals.py` (`--self-test`), `tools/build.sh exec linux tools/ci/check-presets.sh` | stdout |
 
 The only host requirement is Docker. Builds go to `build/<target>/`, a ccache shared by every
 worktree of a checkout makes rebuilds cheap.
@@ -220,6 +220,15 @@ The cache cannot hide a bug:
 A new test that needs a game that runs builds it prebuilt. One that needs what only a compiled
 game has (C++ scripts, `ProjectBuild.cmake`, capacities above the player's, AdMob, no runtime
 shader compiler, compiler output) compiles, and joins the table above with its reason.
+
+### Linked folders in a web game (S68 AC2)
+
+`tools/mcp/tests/test_linked_folders_export.py` builds and runs a Desktop game with
+`JASPER_SLOW_BUILD=1`. A web game needs the web image, which has no editor, so it takes two steps:
+`JASPER_LINKED_WEB_EXPORT=build/linked-web tools/mcp/run-tests.sh tools/mcp/tests/test_linked_folders_export.py -k web_export` leaves
+the source export there (the links resolved into real files), then `tools/web/linked_folder_game.sh build/linked-web`, in the web
+image, builds it and runs `tools/web/browser_gate.py` on it with `tools/web/gates/linked-folder-game.json`:
+the centre pixel is the linked texture's red and the console has the linked Lua module's line.
 
 ### Test projects
 

@@ -40,6 +40,10 @@
 #include "component/UIDocumentComponent.h"
 #include "registry/EntityRegistry.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include <algorithm>
 #include <chrono>
 #include <fstream>
@@ -812,4 +816,370 @@ TEST(AssetDatabase, StaleScanIsDropped) {
     EXPECT_FALSE(database.getAssetGuid("assets/b.png").isNull());
     const AssetDatabase::DiskScan now = database.scanDisk();
     EXPECT_TRUE(database.refresh(now).empty());
+}
+
+// ==================================================================== links and hard links (S68)
+
+namespace {
+
+    const char* const LINK_GUID_A = "aaaa0000000011112222333344445555";
+    const char* const LINK_GUID_B = "bbbb0000000011112222333344445555";
+
+    std::string prefabText(const std::string& guid, const std::string& name = "Thing") {
+        return "guid: " + guid + "\nname: " + name + "\n";
+    }
+
+    bool makeDirLink(const fs::path& target, const fs::path& link) {
+        std::error_code ec;
+        fs::create_directories(link.parent_path(), ec);
+        fs::create_directory_symlink(target, link, ec);
+        return !ec;
+    }
+
+    bool makeFileLink(const fs::path& target, const fs::path& link) {
+        std::error_code ec;
+        fs::create_symlink(target, link, ec);
+        return !ec;
+    }
+
+    bool makeHardLink(const fs::path& target, const fs::path& link) {
+        std::error_code ec;
+        fs::create_hard_link(target, link, ec);
+        return !ec;
+    }
+
+    // a project with its assets folder, and a place outside it
+    struct LinkProject {
+        AssetTestDir dir;
+        fs::path project = dir.path / "project";
+        fs::path outside = dir.path / "outside";
+        AssetDatabase database;
+        LinkProject() {
+            fs::create_directories(project / "assets");
+            fs::create_directories(outside);
+        }
+        void open() {
+            database.setBackgroundHashing(false);
+            database.open(project, "assets");
+        }
+    };
+
+    bool tracked(const AssetDatabase& database, const std::string& path) {
+        bool found = false;
+        database.forEachAsset([&](const AssetDatabase::AssetInfo& info) { found = found || info.path == path; });
+        return found;
+    }
+
+    bool runningAsRoot() {
+#ifdef _WIN32
+        return false;
+#else
+        return ::geteuid() == 0;
+#endif
+    }
+
+}
+
+// R4: the file reached by a file link or a hard link is that file: no new GUID, nothing written;
+// a real copy still gets one
+TEST(AssetIdentityLinks, OneFileIsNeverACopy) {
+    LinkProject p;
+    const fs::path file = p.project / "assets" / "a.prefab";
+    write(file, prefabText(LINK_GUID_A));
+    const std::string bytes = read(file);
+    if (!makeFileLink(file, p.project / "assets" / "sym.prefab")) GTEST_SKIP() << "no symbolic links here";
+    ASSERT_TRUE(makeHardLink(file, p.project / "assets" / "hard.prefab"));
+    write(p.project / "assets" / "copy.prefab", bytes);
+
+    for (int pass = 0; pass < 2; pass++) {
+        if (pass == 0) p.open();                // the scan on open
+        else {
+            p.database.close();
+            p.open();                           // and from the cache
+        }
+        EXPECT_EQ(read(file), bytes) << "pass " << pass;
+        const std::string copied = AssetDatabase::readGuid(p.project / "assets" / "copy.prefab");
+        EXPECT_NE(copied, LINK_GUID_A) << "a real copy gets a GUID of its own";
+        EXPECT_EQ(p.database.getGuid("assets/a.prefab"), LINK_GUID_A);
+        EXPECT_EQ(p.database.getGuid("assets/sym.prefab"), LINK_GUID_A);
+        EXPECT_EQ(p.database.getGuid("assets/hard.prefab"), LINK_GUID_A);
+        EXPECT_EQ(p.database.getGuid(p.project / "assets" / "hard.prefab"), LINK_GUID_A);
+        EXPECT_EQ(p.database.getGuid("assets/copy.prefab"), copied);
+        EXPECT_EQ(p.database.getPath(std::string(LINK_GUID_A)), fs::path("assets/a.prefab"));
+        EXPECT_FALSE(tracked(p.database, "assets/sym.prefab"));
+        EXPECT_FALSE(tracked(p.database, "assets/hard.prefab"));
+    }
+
+    // made while the project is open: the refresh and an import decide the same
+    const fs::path other = p.project / "assets" / "b.prefab";
+    write(other, prefabText(LINK_GUID_B));
+    ASSERT_TRUE(makeHardLink(other, p.project / "assets" / "bhard.prefab"));
+    p.database.refresh();
+    EXPECT_EQ(p.database.getGuid("assets/bhard.prefab"), LINK_GUID_B);
+    EXPECT_EQ(p.database.getPath(std::string(LINK_GUID_B)), fs::path("assets/b.prefab")) << "the path tracked first stays the asset's";
+    EXPECT_EQ(AssetDatabase::readGuid(other), LINK_GUID_B);
+    EXPECT_TRUE(p.database.refresh().empty()) << "and the next refresh has nothing to say";
+
+    ASSERT_TRUE(makeHardLink(other, p.project / "assets" / "bhard2.prefab"));
+    p.database.importAssets("assets/bhard2.prefab");
+    EXPECT_EQ(AssetDatabase::readGuid(other), LINK_GUID_B);
+    EXPECT_EQ(p.database.getPath(std::string(LINK_GUID_B)), fs::path("assets/b.prefab"));
+
+    // a save by the hard link's path keeps the asset where it is
+    p.database.registerAsset("assets/bhard.prefab", LINK_GUID_B);
+    EXPECT_EQ(p.database.getPath(std::string(LINK_GUID_B)), fs::path("assets/b.prefab"));
+}
+
+// R4: a sidecar asset's hard link is no asset of its own: no second meta, the same GUID. Written
+// without a meta it never gets a new identity.
+TEST(AssetIdentityLinks, HardLinkOfASidecarAssetGetsNoMeta) {
+    LinkProject p;
+    const fs::path file = p.project / "assets" / "tile.png";
+    write(file, "not really a png");
+    p.open();
+    const std::string guid = p.database.getGuid("assets/tile.png");
+    ASSERT_FALSE(guid.empty());
+    if (!makeHardLink(file, p.project / "assets" / "tile2.png")) GTEST_SKIP() << "no hard links here";
+    p.database.refresh();
+    EXPECT_EQ(p.database.getGuid("assets/tile2.png"), guid);
+    EXPECT_FALSE(fs::exists(p.project / "assets" / "tile2.png.meta"));
+    p.database.close();
+    p.open();
+    EXPECT_EQ(p.database.getGuid("assets/tile2.png"), guid);
+    EXPECT_EQ(p.database.getPath(guid), fs::path("assets/tile.png"));
+    EXPECT_FALSE(fs::exists(p.project / "assets" / "tile2.png.meta"));
+}
+
+// R5: one asset, one path. A link to a project folder: lookups through it answer with the real path
+// (no entries, no metas under it, no file system call needed), and a real copy made through it is a copy.
+TEST(AssetIdentityLinks, LinkToAProjectFolderIsOneAssetUnderTwoNames) {
+    LinkProject p;
+    write(p.project / "assets" / "real" / "a.prefab", prefabText(LINK_GUID_A));
+    write(p.project / "assets" / "real" / "tile.png", "png");
+    if (!makeDirLink(p.project / "assets" / "real", p.project / "assets" / "alias")) GTEST_SKIP() << "no symbolic links here";
+    p.open();
+    const std::string tile = p.database.getGuid("assets/real/tile.png");
+    ASSERT_FALSE(tile.empty());
+
+    EXPECT_EQ(p.database.getGuid("assets/alias/a.prefab"), LINK_GUID_A);
+    EXPECT_EQ(p.database.getGuid(p.project / "assets" / "alias" / "a.prefab"), LINK_GUID_A);
+    EXPECT_EQ(p.database.getGuid("assets/alias/tile.png"), tile);
+    EXPECT_EQ(p.database.toRelative("assets/alias/tile.png"), fs::path("assets/real/tile.png"));
+    EXPECT_EQ(p.database.lookupPath("assets/alias/tile.png").path, "assets/real/tile.png");
+    const AssetDatabase::Resolution byHint = p.database.resolve(Guid(), "assets/alias/tile.png", AssetType::Texture, true, true);
+    EXPECT_EQ(byHint.path, "assets/real/tile.png") << "a reference made by the alias stores the real path";
+    size_t count = 0;
+    p.database.forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        EXPECT_EQ(info.path.find("alias"), std::string::npos) << info.path;
+        count++;
+    });
+    EXPECT_EQ(count, 2u);
+
+    // a real copy made through the link is a new asset, at its real path
+    fs::copy_file(p.project / "assets" / "real" / "a.prefab", p.project / "assets" / "alias" / "c.prefab");
+    p.database.refresh();
+    const std::string copied = AssetDatabase::readGuid(p.project / "assets" / "real" / "c.prefab");
+    EXPECT_NE(copied, LINK_GUID_A);
+    EXPECT_EQ(p.database.getPath(copied), fs::path("assets/real/c.prefab"));
+    EXPECT_EQ(p.database.getGuid("assets/alias/c.prefab"), copied);
+    EXPECT_EQ(AssetDatabase::readGuid(p.project / "assets" / "real" / "a.prefab"), LINK_GUID_A);
+
+    // the link itself deleted or moved: what it leads to stays
+    fs::rename(p.project / "assets" / "alias", p.project / "assets" / "alias2");
+    EXPECT_TRUE(p.database.moveAssets("assets/alias", "assets/alias2").empty());
+    EXPECT_EQ(p.database.getGuid("assets/alias2/a.prefab"), LINK_GUID_A);
+    EXPECT_EQ(p.database.getPath(std::string(LINK_GUID_A)), fs::path("assets/real/a.prefab"));
+    fs::remove(p.project / "assets" / "alias2");
+    EXPECT_TRUE(p.database.removeAssets("assets/alias2").empty());
+    EXPECT_EQ(p.database.getPath(std::string(LINK_GUID_A)), fs::path("assets/real/a.prefab"));
+    EXPECT_TRUE(p.database.getGuid("assets/alias2/a.prefab").empty());
+    EXPECT_TRUE(p.database.refresh().empty());
+}
+
+// R6: a folder moved and linked at its old name is a move: the files keep their bytes and GUIDs, the
+// change says Moved, so references keep finding them; moved back, the same
+TEST(AssetIdentityLinks, FolderMovedBehindALinkIsAMove) {
+    LinkProject p;
+    const fs::path old = p.project / "assets" / "kit";
+    const fs::path moved = p.project / "assets" / "kit_real";
+    write(old / "a.prefab", prefabText(LINK_GUID_A));
+    write(old / "tile.png", "png");
+    p.open();
+    const std::string tile = p.database.getGuid("assets/kit/tile.png");
+    const std::string prefabBytes = read(old / "a.prefab"), metaBytes = read(old / "tile.png.meta");
+
+    fs::rename(old, moved);
+    if (!makeDirLink(moved, old)) GTEST_SKIP() << "no symbolic links here";
+    std::map<std::string, std::string> movedFrom;
+    for (const AssetDatabase::Change& change : p.database.refresh()) {
+        EXPECT_EQ(change.type, AssetDatabase::Change::Type::Moved) << change.path;
+        movedFrom[change.path.generic_string()] = change.oldPath.generic_string();
+    }
+    EXPECT_EQ(movedFrom["assets/kit_real/a.prefab"], "assets/kit/a.prefab");
+    EXPECT_EQ(movedFrom["assets/kit_real/tile.png"], "assets/kit/tile.png");
+    EXPECT_EQ(read(moved / "a.prefab"), prefabBytes);
+    EXPECT_EQ(read(moved / "tile.png.meta"), metaBytes);
+    EXPECT_EQ(p.database.getGuid("assets/kit_real/a.prefab"), LINK_GUID_A);
+    EXPECT_EQ(p.database.getGuid("assets/kit/a.prefab"), LINK_GUID_A);
+    EXPECT_EQ(p.database.getPath(tile), fs::path("assets/kit_real/tile.png"));
+    EXPECT_EQ(p.database.resolve(Guid::parse(tile), "assets/kit/tile.png", AssetType::Texture, true).path, "assets/kit_real/tile.png");
+
+    p.database.close();
+    p.open();
+    EXPECT_EQ(p.database.getPath(tile), fs::path("assets/kit_real/tile.png"));
+    EXPECT_EQ(read(moved / "a.prefab"), prefabBytes);
+
+    fs::remove(old);
+    fs::rename(moved, old);
+    p.database.refresh();
+    EXPECT_EQ(p.database.getPath(tile), fs::path("assets/kit/tile.png"));
+    EXPECT_EQ(read(old / "a.prefab"), prefabBytes);
+}
+
+// R7: a link out of the project is a project folder: indexed by the project path, metas beside the
+// files, the nested links followed, cycles and a link to a folder holding the project ended
+TEST(AssetIdentityLinks, LinkOutOfTheProjectIsAProjectFolder) {
+    LinkProject p;
+    const fs::path shared = p.outside / "shared";
+    write(shared / "tile.png", "png");
+    write(shared / "sub" / "a.prefab", prefabText(LINK_GUID_A));
+    write(p.outside / "extra" / "more.json", "{}");
+    write(p.outside / "single.png", "single");
+    if (!makeDirLink(shared, p.project / "assets" / "shared")) GTEST_SKIP() << "no symbolic links here";
+    ASSERT_TRUE(makeDirLink(p.outside / "extra", shared / "more"));
+    ASSERT_TRUE(makeDirLink(shared, shared / "loop"));             // leads to the folder it is in
+    ASSERT_TRUE(makeDirLink(shared / "sub", shared / "sub" / "self"));
+    ASSERT_TRUE(makeDirLink(p.project, p.project / "assets" / "up"));   // leads to the project
+    ASSERT_TRUE(makeDirLink(p.dir.path, shared / "above"));        // leads to what holds both
+    ASSERT_TRUE(makeDirLink(p.outside / "nowhere", p.project / "assets" / "broken"));
+    ASSERT_TRUE(makeFileLink(p.outside / "single.png", p.project / "assets" / "single.png"));
+    p.open();
+
+    const std::string tile = p.database.getGuid("assets/shared/tile.png");
+    ASSERT_FALSE(tile.empty());
+    EXPECT_TRUE(fs::is_regular_file(shared / "tile.png.meta")) << "the meta lies beside the file";
+    EXPECT_EQ(p.database.getGuid("assets/shared/sub/a.prefab"), LINK_GUID_A);
+    EXPECT_FALSE(p.database.getGuid("assets/shared/more/more.json").empty()) << "a link inside a linked folder";
+    EXPECT_TRUE(fs::is_regular_file(p.outside / "extra" / "more.json.meta"));
+    EXPECT_FALSE(p.database.getGuid("assets/single.png").empty());
+    EXPECT_TRUE(fs::is_regular_file(p.project / "assets" / "single.png.meta")) << "a linked file's meta lies beside its project path";
+    EXPECT_EQ(p.database.getPath(tile), fs::path("assets/shared/tile.png"));
+    EXPECT_EQ(p.database.getGuid(p.project / "assets" / "shared" / "tile.png"), tile);
+    EXPECT_EQ(p.database.getGuid(shared / "tile.png"), tile) << "its real path names it too";
+    EXPECT_EQ(p.database.getGuid("assets/shared/loop/loop/tile.png"), tile) << "the path through the cycle names the same asset";
+    p.database.forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        EXPECT_EQ(info.path.find("/loop"), std::string::npos) << info.path;
+        EXPECT_EQ(info.path.find("/self"), std::string::npos) << info.path;
+        EXPECT_NE(info.path.rfind("assets/up", 0), 0u) << info.path;
+        EXPECT_EQ(info.path.find(".."), std::string::npos) << info.path;
+    });
+    EXPECT_EQ(p.database.getOrphanMetas().size(), 0u);
+
+    // the same on the next session, from the metas
+    const std::string meta = read(shared / "tile.png.meta");
+    p.database.close();
+    p.open();
+    EXPECT_EQ(p.database.getGuid("assets/shared/tile.png"), tile);
+    EXPECT_EQ(read(shared / "tile.png.meta"), meta);
+    EXPECT_TRUE(p.database.refresh().empty()) << "the walk of a linked folder finds it as it is";
+
+    // two names for one outside folder: one asset, at the first name in path order
+    ASSERT_TRUE(makeDirLink(shared, p.project / "assets" / "zshared"));
+    p.database.refresh();
+    EXPECT_EQ(p.database.getPath(tile), fs::path("assets/shared/tile.png"));
+    EXPECT_EQ(p.database.getGuid("assets/zshared/tile.png"), tile);
+
+    // a change seen through the link
+    write(shared / "tile.png", "another png");
+    touchLater(shared / "tile.png");
+    bool modified = false;
+    for (const AssetDatabase::Change& change : p.database.refresh()) {
+        modified = modified || (change.type == AssetDatabase::Change::Type::Modified && change.path == fs::path("assets/shared/tile.png"));
+    }
+    EXPECT_TRUE(modified);
+
+    // the link removed: its assets leave the project, the target's files stay
+    fs::remove(p.project / "assets" / "shared");
+    fs::remove(p.project / "assets" / "zshared");
+    p.database.refresh();
+    EXPECT_TRUE(p.database.getGuid("assets/shared/tile.png").empty());
+    EXPECT_TRUE(fs::is_regular_file(shared / "tile.png.meta"));
+}
+
+// R7: bounded: the walk through links stops at its limit, with what it reached kept
+TEST(AssetIdentityLinks, WalkThroughLinksIsBounded) {
+    LinkProject p;
+    for (int i = 0; i < 40; i++) write(p.outside / "big" / ("f" + std::to_string(i) + ".txt"), "x");
+    if (!makeDirLink(p.outside / "big", p.project / "assets" / "big")) GTEST_SKIP() << "no symbolic links here";
+    write(p.project / "assets" / "own.txt", "mine");
+    AssetDatabase::setLinkedEntryLimitForTesting(10);
+    p.open();
+    size_t linked = 0;
+    p.database.forEachAsset([&](const AssetDatabase::AssetInfo& info) {
+        if (info.path.rfind("assets/big/", 0) == 0) linked++;
+    });
+    AssetDatabase::setLinkedEntryLimitForTesting(0);
+    EXPECT_LE(linked, 10u);
+    EXPECT_FALSE(p.database.getGuid("assets/own.txt").empty());
+}
+
+// R7: a read-only target is reported, not a failure: the assets work with stable GUIDs, nothing is
+// tried again by every refresh. (As root, who writes through a read-only folder, a folder at the
+// meta's name makes the write fail the same way.)
+TEST(AssetIdentityLinks, ReadOnlyTargetIsReported) {
+    LinkProject p;
+    const fs::path shared = p.outside / "shared";
+    write(shared / "tile.png", "png");
+    if (!makeDirLink(shared, p.project / "assets" / "shared")) GTEST_SKIP() << "no symbolic links here";
+    const bool root = runningAsRoot();
+    if (root) {
+        fs::create_directories(shared / "tile.png.meta" / "blocker");
+    } else {
+        fs::permissions(shared, fs::perms::owner_read | fs::perms::owner_exec);
+    }
+    struct Restore {
+        fs::path folder;
+        ~Restore() {
+            std::error_code ec;
+            fs::permissions(folder, fs::perms::owner_all, ec);
+        }
+    } restore{shared};
+    p.open();
+    const std::string guid = p.database.getGuid("assets/shared/tile.png");
+    EXPECT_EQ(guid, AssetDatabase::legacyGuid("assets/shared/tile.png")) << "derived from its path: the same next session";
+    EXPECT_FALSE(fs::is_regular_file(shared / "tile.png.meta"));
+    EXPECT_EQ(p.database.getReadOnlyLinkedAssets(), std::vector<std::string>{"assets/shared/tile.png"});
+    EXPECT_TRUE(p.database.refresh().empty()) << "no write tried again, no change reported";
+
+    p.database.close();
+    p.open();
+    EXPECT_EQ(p.database.getGuid("assets/shared/tile.png"), guid);
+    EXPECT_EQ(p.database.getReadOnlyLinkedAssets().size(), 1u);
+
+    // writable again: the identity lands beside the file and the report goes
+    if (root) {
+        fs::remove_all(shared / "tile.png.meta");
+    } else {
+        fs::permissions(shared, fs::perms::owner_all);
+    }
+    p.database.close();
+    p.open();
+    EXPECT_EQ(p.database.getGuid("assets/shared/tile.png"), guid);
+    EXPECT_TRUE(fs::is_regular_file(shared / "tile.png.meta"));
+    EXPECT_TRUE(p.database.getReadOnlyLinkedAssets().empty());
+}
+
+// R8: a project without links: no table, keys as written, no change
+TEST(AssetIdentityLinks, NoLinksChangeNothing) {
+    LinkProject p;
+    write(p.project / "assets" / "a.prefab", prefabText(LINK_GUID_A));
+    write(p.project / "assets" / "tile.png", "png");
+    p.open();
+    EXPECT_TRUE(p.database.getLinkedOutTargets().empty());
+    EXPECT_EQ(p.database.toRelative("assets/nothing/../tile.png"), fs::path("assets/tile.png"));
+    EXPECT_EQ(p.database.toRelative(p.project / "assets" / "tile.png"), fs::path("assets/tile.png"));
+    EXPECT_EQ(p.database.getReadOnlyLinkedAssets().size(), 0u);
+    EXPECT_TRUE(p.database.refresh().empty());
+    // (what a real copy does is in OneFileIsNeverACopy; the cache keeps the format it had)
+    EXPECT_TRUE(fs::is_regular_file(p.project / ".jasperengine" / "assetdb" / "index.json"));
 }

@@ -12,6 +12,7 @@
 #include "util/FileUtils.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cmath>
@@ -844,16 +845,18 @@ void AudioMixerWindow::drawPopups() {
         ImGui::OpenPopup("Expose Parameter##AudioMixer");
         openExposePopup = false;
     }
-    if (ImGui::BeginPopupModal("Expose Parameter##AudioMixer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Expose Parameter##AudioMixer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message("Expose " + AudioMixerIO::describeTarget(def, exposeTarget) + " to scripts as:");
         ImGui::Text("Expose %s to scripts as:", AudioMixerIO::describeTarget(def, exposeTarget).c_str());
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-        const bool enter = ImGui::InputText("##exposeName", exposeName, sizeof(exposeName), ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool enter = EditorModal::inputText("##exposeName", "name", exposeName, sizeof(exposeName), ImGuiInputTextFlags_EnterReturnsTrue);
         const std::string name = exposeName;
         const bool taken = def.findExposed(name) != nullptr;
         if (taken) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "'%s' is exposed already", name.c_str());
+        EditorModal::error(taken ? "'" + name + "' is exposed already" : name.empty() ? "The name is empty." : std::string());
         ImGui::TextDisabled("Lua: AudioMixer.setFloat(\"%s\", value)", name.c_str());
         ImGui::BeginDisabled(name.empty() || taken);
-        if (ImGui::Button("Expose") || (enter && !name.empty() && !taken)) {
+        if (EditorModal::button("Expose", "ok") || (enter && !name.empty() && !taken)) {
             AudioMixerDef next = def;
             next.exposed.push_back({name, exposeTarget, false});
             commit(next);
@@ -861,7 +864,7 @@ void AudioMixerWindow::drawPopups() {
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 
@@ -869,7 +872,7 @@ void AudioMixerWindow::drawPopups() {
         ImGui::OpenPopup("Delete Group##AudioMixer");
         openDeletePopup = false;
     }
-    if (ImGui::BeginPopupModal("Delete Group##AudioMixer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Delete Group##AudioMixer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         const AudioMixerGroupDef* group = def.findGroupById(pendingDeleteGroup);
         if (!group) {
             ImGui::CloseCurrentPopup();
@@ -877,14 +880,16 @@ void AudioMixerWindow::drawPopups() {
             const size_t count = AudioMixerDocument::subtree(def, group->id).size();
             ImGui::Text("Delete '%s'%s?", group->name.c_str(), count > 1 ? (" and its " + std::to_string(count - 1) + " subgroup(s)").c_str() : "");
             ImGui::TextDisabled("Its Audio Sources play through Master until a group of that name exists again.");
-            if (ImGui::Button("Delete")) {
+            EditorModal::message("Delete '" + group->name + "'" + (count > 1 ? " and its " + std::to_string(count - 1) + " subgroup(s)" : std::string()) +
+                                 "? Its Audio Sources play through Master until a group of that name exists again.");
+            if (EditorModal::button("Delete", "yes")) {
                 AudioMixerDef next = def;
                 AudioMixerDocument::removeGroup(next, group->id);
                 if (commit(next) && selectedGroup == pendingDeleteGroup) selectedGroup.clear();
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+            if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
