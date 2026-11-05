@@ -37,6 +37,7 @@
 #include "Project.h"
 #include "net/Http.h"
 #include "mcp/McpActivityWindow.h"
+#include "component/CameraComponent.h"
 #include "render/SceneRender.h"
 #include "render/SceneRender2D.h"
 #include "pool/ShaderPool.h"

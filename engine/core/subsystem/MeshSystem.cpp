@@ -12,6 +12,7 @@
 #include "component/ScaleTracksComponent.h"
 #include "component/TranslateTracksComponent.h"
 #include "component/MeshPolygonComponent.h"
+#include "component/InstancedMeshComponent.h"
 
 #include "Scene.h"
 #include "Engine.h"
