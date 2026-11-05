@@ -155,6 +155,23 @@ TEST_P(FileWatchServiceTests, FlushBarrier) {
     EXPECT_EQ(misses, 0);
 }
 
+TEST_P(FileWatchServiceTests, FlushJournalLeavesDeliveryToThePump) {
+    startWatching();
+    std::vector<FileChange> got;
+    FileWatchSubscription subscription = service.subscribe({}, [&](std::span<const FileChange> batch) {
+        got.insert(got.end(), batch.begin(), batch.end());
+    });
+    const fs::path file = dir.path / "journal.txt";
+    uint64_t cursor = service.journalHead();
+    writeText(file, "x");
+    ASSERT_TRUE(service.flushJournal(timeLimit(ms(250))));
+    const std::vector<FileChange> journal = service.journalSince(cursor);
+    EXPECT_TRUE(std::any_of(journal.begin(), journal.end(), [&](const FileChange& c) { return c.path == file; }));
+    EXPECT_TRUE(got.empty());
+    service.pump(1000.0);
+    EXPECT_TRUE(std::any_of(got.begin(), got.end(), [&](const FileChange& c) { return c.path == file; }));
+}
+
 TEST_P(FileWatchServiceTests, UnsubscribeWaitsForInFlight) {
     startWatching();
     std::atomic<bool> started{false}, finished{false};

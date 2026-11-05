@@ -121,6 +121,12 @@ namespace jasperengine {
         // call has been delivered (main-thread subscribers too when called on the main
         // thread), the quiet window bypassed. False: no watcher, or the timeout passed.
         bool flush(std::chrono::milliseconds timeout);
+        // The same barrier for the journal only: main-thread subscribers get their batches from
+        // the next pump, so nothing they do runs in the caller (a settle on the way to a result)
+        bool flushJournal(std::chrono::milliseconds timeout);
+        // The barrier only drains what the system holds (inotify, ReadDirectoryChangesW), rather
+        // than a marker's trip through fseventsd or a walk of the project
+        bool flushIsDrain() const;
 
         // Auto Refresh off (R15): changes still reach the index and the journal, not the
         // subscribers. The editor's own writes are delivered all the same.
@@ -183,6 +189,7 @@ namespace jasperengine {
 
         void unsubscribe(uint64_t id);
         void dispatcherLoop();
+        bool barrier(std::chrono::milliseconds timeout, bool deliverToMainHere);
         void switchToPolling(const std::string& reason);
         // A backend for each folder the index went through a link to (S68 R8: backends do not cross
         // links, so what such a folder holds is watched from its own real path)

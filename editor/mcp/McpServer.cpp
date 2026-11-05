@@ -40,6 +40,13 @@ using namespace jasperengine::editor::mcp;
 
 namespace {
 
+// A tool's handler is running on this stack: McpServer::runSettles waits for it to return
+struct HandlerOnStack {
+    int& depth;
+    explicit HandlerOnStack(int& depthIn) : depth(depthIn) { depth++; }
+    ~HandlerOnStack() { depth--; }
+};
+
 // Versions that open with an initialize handshake, newest first: an unknown client version
 // gets the newest. 2026-07-28 (McpServer::MODERN_PROTOCOL_VERSION) has no handshake.
 const char* const LEGACY_PROTOCOL_VERSIONS[] = {
@@ -259,6 +266,12 @@ void McpServer::stop() {
         item.call->requestCancel();
         item.call->fail("The editor is shutting down.");
     }
+    // Answers still waiting for their settle go out now; what completes after this answers at once
+    {
+        std::lock_guard<std::mutex> lock(settleMutex);
+        settlesClosed = true;
+    }
+    runSettles();
     // Let the answers already given reach the stdio client before the process exits
     if (stdioTransport) stdioTransport->flush(2000);
 }
@@ -1055,24 +1068,23 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
             }
             endActivity(seq, result, done.elapsedMs(), done.cancelled());
             trace("done", done.tool() + " " + key + (done.cancelled() ? " cancelled" : result.isError ? " error" : " ok"));
-            // What the tool wrote is its own, not an external change: settled on the main
-            // thread once the handler has returned (before the client's next call runs)
-            if (autoSync->settle && autoSync->start != std::chrono::system_clock::time_point{}) {
-                const auto start = autoSync->start;
-                const auto end = std::chrono::system_clock::now();
-                const std::string tool = done.tool();
-                runOnMainThread([this, tool, start, end]() {
-                    if (ctx) McpAutoSync::get().afterCall(*ctx, tool, start, end);
-                });
-            }
             // A cancelled request gets no response (MCP cancellation)
+            std::function<void()> respond;
             if (!done.cancelled()) {
                 Json out = result.toJson();
                 McpAutoSync::attach(out, autoSync->report);
                 capResultSize(out);
-                reply->respond(makeResult(id, std::move(out)));
+                auto response = std::make_shared<Json>(makeResult(id, std::move(out)));
+                respond = [reply, response]() { reply->respond(std::move(*response)); };
             } else {
-                reply->cancelled();
+                respond = [reply]() { reply->cancelled(); };
+            }
+            // What the tool wrote is its own, not an external change: settled on the main thread
+            // once the handler has returned, and only then answered
+            if (autoSync->settle && autoSync->start != std::chrono::system_clock::time_point{}) {
+                queueSettle({done.tool(), autoSync->start, std::move(respond)});
+            } else {
+                respond();
             }
         });
 
@@ -1142,7 +1154,12 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
             }
             autoSync->start = std::chrono::system_clock::now();
             if (autoSync->settle) McpAutoSync::get().callStarted();
-            execute(call, *def);
+            {
+                HandlerOnStack onStack(handlersOnStack);
+                execute(call, *def);
+            }
+            // the handler has returned: a call it completed is settled and answered in this frame
+            runSettles();
         });
     });
 }
@@ -1150,6 +1167,58 @@ void McpServer::handleToolsCall(const SessionPtr& session, const Json& id, const
 void McpServer::runOnMainThread(std::function<void()> task) {
     if (!appPtr) return;
     appPtr->enqueueMainThreadTask(std::move(task));
+}
+
+void McpServer::queueSettle(Settle settle) {
+    bool queued = false;
+    {
+        std::lock_guard<std::mutex> lock(settleMutex);
+        if (!settlesClosed) {
+            settles.push_back(std::move(settle));
+            queued = true;
+        }
+    }
+    if (!queued) {
+        settle.respond();
+        return;
+    }
+    // (checked after the push: onFilePickerOpened answers what was queued before it)
+    if (EditorFilePicker::isOpen()) answerSettlesNow();
+    // A handler or deferred callback on this stack runs the queue once it has returned; a completion
+    // anywhere else (a job's thread, another main-thread task) by a task of its own
+    if (appPtr->isMainThread() && handlersOnStack > 0) return;
+    runOnMainThread([this]() { runSettles(); });
+}
+
+void McpServer::runSettles() {
+    if (handlersOnStack > 0) return;
+    std::vector<Settle> pending;
+    {
+        std::lock_guard<std::mutex> lock(settleMutex);
+        pending.swap(settles);
+    }
+    for (Settle& settle : pending) {
+        // whatever happens to the settle, the client gets its answer
+        try {
+            if (ctx) McpAutoSync::get().afterCall(*ctx, settle.tool, settle.start);
+        } catch (const std::exception& e) {
+            Out::error("MCP auto-sync: the settle after %s failed: %s", settle.tool.c_str(), e.what());
+        }
+        if (settle.respond) settle.respond();
+    }
+}
+
+void McpServer::answerSettlesNow() {
+    std::vector<std::function<void()>> answers;
+    {
+        std::lock_guard<std::mutex> lock(settleMutex);
+        for (Settle& settle : settles) {
+            if (!settle.respond) continue;
+            answers.push_back(std::move(settle.respond));
+            settle.respond = nullptr;
+        }
+    }
+    for (const std::function<void()>& answer : answers) answer();
 }
 
 void McpServer::answerDuringFilePicker(const CallPtr& call, const EditorDialogInfo& picker) {
@@ -1176,6 +1245,8 @@ void McpServer::answerDuringFilePicker(const CallPtr& call, const EditorDialogIn
 }
 
 void McpServer::onFilePickerOpened() {
+    // their settles need this thread, which the picker now holds
+    answerSettlesNow();
     EditorDialogInfo picker;
     if (!EditorFilePicker::info(picker)) return;
     const Json data = Json{{"dialog", dialogJson(picker)}};
@@ -1543,6 +1614,7 @@ void McpServer::tick() {
     current.swap(deferred);
     std::vector<Deferred> keep;
     const auto now = std::chrono::steady_clock::now();
+    handlersOnStack++;
 
     for (Deferred& item : current) {
         const CallPtr& call = item.call;
@@ -1598,6 +1670,10 @@ void McpServer::tick() {
 
     // New deferrals added by callbacks went to `deferred`
     for (Deferred& item : keep) deferred.push_back(std::move(item));
+
+    // Calls the callbacks above completed: settled and answered now that they have returned
+    handlersOnStack--;
+    runSettles();
 
     // Keep the loop drawing frames (instead of idling) while anything waits
     if (!deferred.empty() && appPtr) appPtr->requestRedraw();
