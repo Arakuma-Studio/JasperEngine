@@ -2,6 +2,22 @@
 // SPDX-License-Identifier: MIT
 
 #include "SceneRender.h"
+#include "LayerViewCamera.h"
+#include "component/AudioSourceComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/NavGridComponent.h"
+#include "component/NavMeshAgentComponent.h"
+#include "component/NavMeshLinkComponent.h"
+#include "component/NavMeshModifierComponent.h"
+#include "component/NavMeshObstacleComponent.h"
+#include "component/NavMeshSurfaceComponent.h"
+#include "component/TextComponent.h"
+#include "subsystem/ActionSystem.h"
+#include "subsystem/MeshSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "subsystem/UIDocumentSystem.h"
+#include "subsystem/UISystem.h"
+#include "object/Sprite.h"
 #include "spline/SplineEditor.h"
 #include "profiler/Profile.h"
 
@@ -120,6 +136,10 @@ void editor::SceneRender::dropParticleShapeLines(const std::set<Entity>& current
             ++it;
         }
     }
+}
+
+void editor::SceneRender::setEditorOverlay(Entity entity){
+    scene->getSystem<RenderSystem>()->setEditorOverlay(entity, true);
 }
 
 editor::SceneRender::SceneRender(Scene* scene, bool use2DGizmos, bool enable3DOverlays, float gizmoScale, float selectionOffset): toolslayer(use2DGizmos), uilayer(enable3DOverlays){

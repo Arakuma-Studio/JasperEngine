@@ -20,6 +20,10 @@
 #include <type_traits>
 #include <utility>
 
+// Every component for code outside the engine (a game's scripts have always had them through Scene.h).
+// The engine's and the editor's own sources include the ones they use (tools/check_fanout.py): an
+// edit of a component rebuilds those, not everything that reaches this header.
+#ifndef JASPERENGINE_EXPLICIT_COMPONENT_INCLUDES
 #include "component/MeshComponent.h"
 #include "component/ModelComponent.h"
 #include "component/BoneComponent.h"
@@ -107,12 +111,14 @@
 #include "component/PrefabComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "component/CameraFollowComponent.h"
+#endif
 
 namespace jasperengine {
 
     enum class EntityPool { User, System };
 
     class Scene;
+    struct Transform;
 
     // Data the editor keeps next to a registry: what a scene file held that the editor could
     // not read, written back on save (editor/StreamPreserved.h). The engine never reads it; it
@@ -497,7 +503,7 @@ namespace jasperengine {
             }
 
             if constexpr (std::is_same_v<T, Transform>) {
-                Transform* removed = componentManager.findComponent<Transform>(entity);
+                T* removed = componentManager.findComponent<T>(entity);
                 const bool hadParent = removed && removed->parent != NULL_ENTITY;
                 // children are reparented to its parent: a hierarchy change when it had either
                 if (changeTransformChildren(entity) || hadParent) {

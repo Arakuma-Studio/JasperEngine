@@ -361,6 +361,13 @@ namespace {
             sun.setDirection(-0.4f, -1.0f, -0.6f);
             sun.setIntensity(1.5f);
             sun.setShadows(false);
+            // a cold cache: what the sphere draws with builds in the background, its fade variant
+            // too, whose program a later ShaderPool::get makes (waited for, not a count of frames)
+            struct AsyncCompile{
+                bool before = ShaderPool::isAsyncCompilation();
+                AsyncCompile(){ ShaderPool::setAsyncCompilation(true); }
+                ~AsyncCompile(){ ShaderPool::setAsyncCompilation(before); }
+            } asyncCompile;
             ASSERT_TRUE(settle());
 
             // the budget the main view gives the sphere: threshold x pixel size at its distance
@@ -375,14 +382,8 @@ namespace {
             biasFine = budget / (0.8f * e1);
             biasCoarse = budget / (1.25f * e1);
             sphere.setLodBias(biasFine);
-            // the fade variant is asked for once the sphere has levels, built in the background
-            // (a cold cache: nothing has it yet) and made before a fade starts: waited for, not a
-            // count of frames
-            const bool async = ShaderPool::isAsyncCompilation();
-            ShaderPool::setAsyncCompilation(true);
             MeshComponent* fading = &mesh;
             const bool made = GpuEnvironment::runFrames([fading](){ return fading->lodFadeReady; }, 600);
-            ShaderPool::setAsyncCompilation(async);
             ASSERT_TRUE(made) << "the fade variant was never made";
             ASSERT_EQ(sphere.getCurrentLod(), 0);
         }

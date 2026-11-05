@@ -19,9 +19,12 @@
 #include "Scene.h"
 #include "DebugSettings.h"
 #include "registry/TagManager.h"
-#include "Factory.h"
 #include "util/Prefab.h"
 #include "util/CommandRunner.h"
+#include "Factory.h"
+#include "io/watch/FileIdentity.h"
+#include "manager/SceneManager.h"
+#include "shader/ShaderGlobals.h"
 
 namespace fs = std::filesystem;
 

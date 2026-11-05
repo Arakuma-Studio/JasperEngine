@@ -7,16 +7,12 @@
 #include "SubSystem.h"
 
 
-#include "component/MeshComponent.h"
-#include "component/ModelComponent.h"
-#include "component/SpriteComponent.h"
-#include "component/MeshPolygonComponent.h"
-#include "component/CameraComponent.h"
-#include "component/InstancedMeshComponent.h"
-#include "component/TerrainComponent.h"
-#include "component/TilemapComponent.h"
-#include "component/Transform.h"
+#include "ecs/ComponentFwd.h"
 #include "math/Ray.h"
+#include "math/Rect.h"
+#include "texture/Material.h"
+#include "texture/MaterialPbr.h"
+#include "texture/Texture.h"
 #include "texture/TexturePack.h"
 #include "subsystem/GltfNormalize.h"
 
@@ -27,6 +23,14 @@
 #include <set>
 #include <string>
 #include <unordered_map>
+#include "component/MeshComponent.h"
+#include "component/TerrainComponent.h"
+#include "io/watch/FileIdentity.h"
+#include "math/Rect.h"
+#include "texture/Material.h"
+#include "texture/MaterialPbr.h"
+#include "texture/Texture.h"
+#include "util/OutOfLineValue.h"
 
 namespace tinygltf {
     struct Accessor;
@@ -37,6 +41,10 @@ namespace tinygltf {
 }
 
 namespace jasperengine{
+
+    struct InstanceData;
+    struct Submesh;
+    struct TerrainFoliageLayer;
 
     class JASPERENGINE_API MeshSystem : public SubSystem {
 

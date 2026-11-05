@@ -6,7 +6,6 @@
 #include "physics/PhysicsDebugLines.h"
 #include "SceneRender.h"
 
-#include "JasperEngine.h"
 #include "gizmo/ViewportGizmo.h"
 
 #include <cstddef>
@@ -14,6 +13,23 @@
 #include <functional>
 #include <unordered_set>
 #include <vector>
+#include "ecs/ComponentFwd.h"
+#include "io/watch/FileIdentity.h"
+
+namespace jasperengine{
+    class Sprite;
+    enum class LightType;
+    struct BuoyancyComponent;
+    struct CharacterControllerComponent;
+    struct ForceFieldComponent;
+    struct LightComponent;
+    struct LocalVolumetricFogComponent;
+    struct ParticleSystemComponent;
+    struct PolygonPoint;
+    struct ReflectionProbeComponent;
+    struct TranslateTracksComponent;
+    struct WaterVolumeComponent;
+}
 
 namespace jasperengine::editor{
 

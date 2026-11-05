@@ -13,6 +13,7 @@
 // base) and its masked-out rows.
 
 #include <gtest/gtest.h>
+#include "component/Transform.h"
 
 #include "support/EditorTestSupport.h"
 

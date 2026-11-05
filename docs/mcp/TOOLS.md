@@ -2791,6 +2791,7 @@ File > Build Settings > Build, as a job. player: a game per platform (prebuilt, 
 | `build_type` | `"Release"` \| `"Debug"` \| `"RelWithDebInfo"` \| `"MinSizeRel"` |  | Default: `"Release"`. |
 | `development` | boolean |  |  |
 | `graphics_api` | string |  | opengl/vulkan/d3d11/metal-macos/opengles. Remembered. |
+| `ios_simulator` | boolean |  | Unsigned simulator .app. |
 | `method` | `"auto"` \| `"prebuilt"` \| `"compile"` |  | Default: `"auto"`. |
 | `mode` | `"player"` \| `"desktop"` \| `"web"` \| `"source"` |  | Default: `"desktop"`. |
 | `output_dir` | string |  | Absolute, outside the project. |

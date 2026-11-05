@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "manager/ObjectManager.h"
+#include "component/OnScreenControlComponents.h"
 #include "Engine.h"
 #include "subsystem/ParticleSubsystem.h"
 #include "shader/ShaderGlobals.h"

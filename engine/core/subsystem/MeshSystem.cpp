@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshSystem.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/AnimationPlayerComponent.h"
+#include "component/BoneComponent.h"
+#include "component/KeyframeTracksComponent.h"
+#include "component/MorphTracksComponent.h"
+#include "component/RotateTracksComponent.h"
+#include "component/ScaleTracksComponent.h"
+#include "component/TranslateTracksComponent.h"
+#include "component/MeshPolygonComponent.h"
 
 #include "Scene.h"
 #include "Engine.h"

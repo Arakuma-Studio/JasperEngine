@@ -4,6 +4,8 @@
 #ifndef IMAGE_COMPONENT_H
 #define IMAGE_COMPONENT_H
 
+#include "Export.h"
+
 namespace jasperengine{
 
     struct JASPERENGINE_API ImageComponent{

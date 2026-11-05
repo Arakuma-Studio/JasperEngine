@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ShaderVariantCollector.h"
+#include "component/VolumetricCloudsComponent.h"
 
 #include "Engine.h"
 #include "System.h"

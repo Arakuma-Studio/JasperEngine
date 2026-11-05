@@ -35,6 +35,17 @@
 #include <map>
 #include <memory>
 #include <set>
+#include "render/preview/MaterialRender.h"
+#include "component/AudioSourceComponent.h"
+#include "component/TextComponent.h"
+#include "io/watch/FileIdentity.h"
+#include "render/ShaderRender.h"
+#include "subsystem/MeshSystem.h"
+
+namespace jasperengine{
+    struct ImageComponent;
+    struct MeshComponent;
+}
 
 namespace jasperengine::particles {
     struct ParticleEffectDocument;

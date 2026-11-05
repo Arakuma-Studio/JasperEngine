@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "Project.h"
+#include "render/LayerViewCamera.h"
+#include "component/MirrorComponent.h"
+#include "script/LuaBinding.h"
+#include "subsystem/ActionSystem.h"
+#include "subsystem/AudioSystem.h"
+#include "subsystem/RenderSystem.h"
+#include "component/ButtonComponent.h"
+#include "component/MeshPolygonComponent.h"
 #include "diag/HangWatchdog.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ScriptReloadService.h"

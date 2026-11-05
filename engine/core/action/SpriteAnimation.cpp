@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "SpriteAnimation.h"
+#include "component/SpriteAnimationComponent.h"
 
 using namespace jasperengine;
 

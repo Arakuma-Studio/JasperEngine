@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "media/VideoFormats.h"
+#include "htmlui/compat/CompatApi.h"
+#include "component/PrefabComponent.h"
 #include "media/VideoSourceFactory.h"
 #include "CommandLine.h"
 #include "log/Logger.h"

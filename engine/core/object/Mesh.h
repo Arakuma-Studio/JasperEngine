@@ -7,8 +7,11 @@
 #include "GameObject.h"
 #include "buffer/InterleavedBuffer.h"
 #include "buffer/IndexBuffer.h"
+#include "texture/Material.h"
 
 namespace jasperengine{
+
+    struct InstanceData;
 
     class JASPERENGINE_API Mesh: public GameObject{
     public:
