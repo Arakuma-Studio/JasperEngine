@@ -11554,6 +11554,10 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         if (!preserveAssets){
             mesh.eBuffers[i].clearAll();
         }
+        // a reload keeps the GPU buffer of bytes that are gone from the CPU (S53 R11): making it
+        // again would read the file back
+        if (preserveAssets && mesh.eBuffers[i].isDataReleased())
+            continue;
         mesh.eBuffers[i].getRender()->destroyBuffer();
     }
 
