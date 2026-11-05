@@ -7,6 +7,7 @@
 #include "Scene.h"
 #include "Log.h"
 #include "Engine.h"
+#include "device/QualityResolver.h"
 #include "component/FogComponent.h"
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
@@ -242,7 +243,8 @@ AtmosphereQuality AtmosphereRenderer::viewQuality() const{
         return Engine::getAtmosphereQuality();
     if (rs->rv().atmosphereQuality >= 0)
         return (AtmosphereQuality)rs->rv().atmosphereQuality;
-    return Engine::getAtmosphereQualityDefault();
+    // the device tier may turn the volumetrics off (QualityResolver)
+    return QualityResolver::volumetrics(Engine::getAtmosphereQualityDefault());
 }
 
 void AtmosphereRenderer::clearHeightFog(height_fog_t& block){

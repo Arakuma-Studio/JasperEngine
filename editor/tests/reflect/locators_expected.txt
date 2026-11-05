@@ -15,6 +15,7 @@
 1003 mesh/submeshes[0].material.pbr.iridescence.map texture
 1003 mesh/submeshes[0].material.pbr.transmission.map texture
 1003 mesh/submeshes[0].material.pbr.specular.map texture
+1003 mesh/submeshes[0].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[1].material.name material
 1003 mesh/submeshes[1].material.baseColorTexture texture
 1003 mesh/submeshes[1].material.emissiveTexture texture
@@ -30,6 +31,7 @@
 1003 mesh/submeshes[1].material.pbr.iridescence.map texture
 1003 mesh/submeshes[1].material.pbr.transmission.map texture
 1003 mesh/submeshes[1].material.pbr.specular.map texture
+1003 mesh/submeshes[1].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[2].material.name material
 1003 mesh/submeshes[2].material.baseColorTexture texture
 1003 mesh/submeshes[2].material.emissiveTexture texture
@@ -45,6 +47,7 @@
 1003 mesh/submeshes[2].material.pbr.iridescence.map texture
 1003 mesh/submeshes[2].material.pbr.transmission.map texture
 1003 mesh/submeshes[2].material.pbr.specular.map texture
+1003 mesh/submeshes[2].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[3].material.name material
 1003 mesh/submeshes[3].material.baseColorTexture texture
 1003 mesh/submeshes[3].material.emissiveTexture texture
@@ -60,6 +63,7 @@
 1003 mesh/submeshes[3].material.pbr.iridescence.map texture
 1003 mesh/submeshes[3].material.pbr.transmission.map texture
 1003 mesh/submeshes[3].material.pbr.specular.map texture
+1003 mesh/submeshes[3].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[4].material.name material
 1003 mesh/submeshes[4].material.baseColorTexture texture
 1003 mesh/submeshes[4].material.emissiveTexture texture
@@ -75,6 +79,7 @@
 1003 mesh/submeshes[4].material.pbr.iridescence.map texture
 1003 mesh/submeshes[4].material.pbr.transmission.map texture
 1003 mesh/submeshes[4].material.pbr.specular.map texture
+1003 mesh/submeshes[4].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[5].material.name material
 1003 mesh/submeshes[5].material.baseColorTexture texture
 1003 mesh/submeshes[5].material.emissiveTexture texture
@@ -90,6 +95,7 @@
 1003 mesh/submeshes[5].material.pbr.iridescence.map texture
 1003 mesh/submeshes[5].material.pbr.transmission.map texture
 1003 mesh/submeshes[5].material.pbr.specular.map texture
+1003 mesh/submeshes[5].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[6].material.name material
 1003 mesh/submeshes[6].material.baseColorTexture texture
 1003 mesh/submeshes[6].material.emissiveTexture texture
@@ -105,6 +111,7 @@
 1003 mesh/submeshes[6].material.pbr.iridescence.map texture
 1003 mesh/submeshes[6].material.pbr.transmission.map texture
 1003 mesh/submeshes[6].material.pbr.specular.map texture
+1003 mesh/submeshes[6].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[7].material.name material
 1003 mesh/submeshes[7].material.baseColorTexture texture
 1003 mesh/submeshes[7].material.emissiveTexture texture
@@ -120,6 +127,7 @@
 1003 mesh/submeshes[7].material.pbr.iridescence.map texture
 1003 mesh/submeshes[7].material.pbr.transmission.map texture
 1003 mesh/submeshes[7].material.pbr.specular.map texture
+1003 mesh/submeshes[7].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[8].material.name material
 1003 mesh/submeshes[8].material.baseColorTexture texture
 1003 mesh/submeshes[8].material.emissiveTexture texture
@@ -135,6 +143,7 @@
 1003 mesh/submeshes[8].material.pbr.iridescence.map texture
 1003 mesh/submeshes[8].material.pbr.transmission.map texture
 1003 mesh/submeshes[8].material.pbr.specular.map texture
+1003 mesh/submeshes[8].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[9].material.name material
 1003 mesh/submeshes[9].material.baseColorTexture texture
 1003 mesh/submeshes[9].material.emissiveTexture texture
@@ -150,6 +159,7 @@
 1003 mesh/submeshes[9].material.pbr.iridescence.map texture
 1003 mesh/submeshes[9].material.pbr.transmission.map texture
 1003 mesh/submeshes[9].material.pbr.specular.map texture
+1003 mesh/submeshes[9].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[10].material.name material
 1003 mesh/submeshes[10].material.baseColorTexture texture
 1003 mesh/submeshes[10].material.emissiveTexture texture
@@ -165,6 +175,7 @@
 1003 mesh/submeshes[10].material.pbr.iridescence.map texture
 1003 mesh/submeshes[10].material.pbr.transmission.map texture
 1003 mesh/submeshes[10].material.pbr.specular.map texture
+1003 mesh/submeshes[10].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[11].material.name material
 1003 mesh/submeshes[11].material.baseColorTexture texture
 1003 mesh/submeshes[11].material.emissiveTexture texture
@@ -180,6 +191,7 @@
 1003 mesh/submeshes[11].material.pbr.iridescence.map texture
 1003 mesh/submeshes[11].material.pbr.transmission.map texture
 1003 mesh/submeshes[11].material.pbr.specular.map texture
+1003 mesh/submeshes[11].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[12].material.name material
 1003 mesh/submeshes[12].material.baseColorTexture texture
 1003 mesh/submeshes[12].material.emissiveTexture texture
@@ -195,6 +207,7 @@
 1003 mesh/submeshes[12].material.pbr.iridescence.map texture
 1003 mesh/submeshes[12].material.pbr.transmission.map texture
 1003 mesh/submeshes[12].material.pbr.specular.map texture
+1003 mesh/submeshes[12].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[13].material.name material
 1003 mesh/submeshes[13].material.baseColorTexture texture
 1003 mesh/submeshes[13].material.emissiveTexture texture
@@ -210,6 +223,7 @@
 1003 mesh/submeshes[13].material.pbr.iridescence.map texture
 1003 mesh/submeshes[13].material.pbr.transmission.map texture
 1003 mesh/submeshes[13].material.pbr.specular.map texture
+1003 mesh/submeshes[13].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[14].material.name material
 1003 mesh/submeshes[14].material.baseColorTexture texture
 1003 mesh/submeshes[14].material.emissiveTexture texture
@@ -225,6 +239,7 @@
 1003 mesh/submeshes[14].material.pbr.iridescence.map texture
 1003 mesh/submeshes[14].material.pbr.transmission.map texture
 1003 mesh/submeshes[14].material.pbr.specular.map texture
+1003 mesh/submeshes[14].material.pbr.hair.flowMap texture
 1003 mesh/submeshes[15].material.name material
 1003 mesh/submeshes[15].material.baseColorTexture texture
 1003 mesh/submeshes[15].material.emissiveTexture texture
@@ -240,6 +255,7 @@
 1003 mesh/submeshes[15].material.pbr.iridescence.map texture
 1003 mesh/submeshes[15].material.pbr.transmission.map texture
 1003 mesh/submeshes[15].material.pbr.specular.map texture
+1003 mesh/submeshes[15].material.pbr.hair.flowMap texture
 1004 linerenderer/customShader shader
 1005 light/spotMask texture
 1006 terrain/heightMap texture

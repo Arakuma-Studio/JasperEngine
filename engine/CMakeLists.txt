@@ -1270,6 +1270,14 @@ endif()
 if(NOT MSVC)
     target_compile_options(meshoptimizer PRIVATE -ffp-contract=off)
 endif()
+# The glTF loader's meshopt decoder (docs/specs/S53-model-import-cook.md R27): WebAssembly has no
+# run-time SIMD detection, so the codec and filters take simd128 at build time, with the particle
+# kernels' switch (JASPERENGINE_WASM_SIMD, core/particles/ParticleSources.cmake; OFF stays scalar).
+# Only these two files: the simplifier keeps the scalar maths the LOD and placement tests pin.
+if(EMSCRIPTEN AND (NOT DEFINED JASPERENGINE_WASM_SIMD OR JASPERENGINE_WASM_SIMD))
+    set_source_files_properties(libs/meshoptimizer/vertexcodec.cpp libs/meshoptimizer/vertexfilter.cpp
+        DIRECTORY libs/meshoptimizer PROPERTIES COMPILE_OPTIONS -msimd128)
+endif()
 
 # One C++ standard for every object of the binary: libc++ template definitions instantiated
 # at two standards across a library boundary (tinygltf and RmlUi pass std containers into
@@ -1340,6 +1348,11 @@ set(JASPERENGINE_SRCS
     core/input/InputControlNames.cpp
     core/input/InputManagerFormat.cpp
     core/Log.cpp
+    core/device/Device.cpp
+    core/device/DeviceSettings.cpp
+    core/device/GpuTierDatabase.cpp
+    core/device/GpuTiersData.cpp
+    core/device/QualityResolver.cpp
     core/diag/CrashHandler.cpp
     core/diag/CrashHandlerPosix.cpp
     core/diag/CrashHandlerWin.cpp
@@ -1590,6 +1603,7 @@ set(JASPERENGINE_SRCS
     core/object/Animator.cpp
     core/object/GameObject.cpp
     core/object/ShadowCaster2D.cpp
+    core/object/CapsuleShadowCaster.cpp
     core/object/Points.cpp
     core/object/Primitive.cpp
     core/object/Sprite.cpp
@@ -1665,16 +1679,23 @@ set(JASPERENGINE_SRCS
     core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
     core/render/LineRibbonBuilder.cpp
+    core/render/LodFade.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
+    core/render/VisibleList.cpp
     core/render/shadow/CascadeFit.cpp
     core/render/shadow/ShadowCache.cpp
     core/render/shadow/ShadowCasterRegistry.cpp
     core/render/shadow/ShadowSlotPlanner.cpp
     core/render/shadow/ShadowTiers.cpp
     core/render/shadow/ShadowTypes.cpp
+    core/render/CapsuleShadows.cpp
+    core/render/ContactShadows.cpp
+    core/render/LightingTiers.cpp
+    core/render/OrderIndependentTransparency.cpp
+    core/render/TiledLights.cpp
     core/script/AsyncOwner.cpp
     core/script/LuaBinding.cpp
     core/script/LuaFunctionBase.cpp
@@ -1741,6 +1762,7 @@ set(JASPERENGINE_SRCS
     core/lattice/LatticePresets.cpp
     core/lattice/LatticeRender.cpp
     core/subsystem/MeshSystemGltfPbr.cpp
+    core/subsystem/GltfNormalize.cpp
     core/subsystem/PhysicsSystem.cpp
     core/subsystem/WaterSystem.cpp
     core/subsystem/AtmosphereRenderer.cpp
@@ -1750,6 +1772,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/PhysicsSystemDebugDraw.cpp
     core/subsystem/RenderSystem.cpp
     core/subsystem/RenderSystemShadows.cpp
+    core/subsystem/RenderSystemLighting.cpp
     core/subsystem/UISystem.cpp
     core/subsystem/UISystemPointer.cpp
     core/subsystem/UIDocumentSystem.cpp
@@ -1760,6 +1783,8 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
+    core/model/CookedModels.cpp
+    core/model/ModelCpuData.cpp
     core/texture/BasisTranscode.cpp
     core/texture/CookedTextures.cpp
     core/texture/Framebuffer.cpp

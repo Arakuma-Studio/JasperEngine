@@ -5,6 +5,7 @@
 
 #include "PlatformConfig.h"
 #include "player/RunControl.h"
+#include "device/Device.h"
 
 #include <cstdio>
 
@@ -61,5 +62,8 @@ int jasperengine::player::launch(const std::vector<std::string>& args, ParseMode
     }
     if (options.headless || options.silentAudio)
         config.silentAudio = true;
+    DeviceTier tier;
+    if (!options.deviceTier.empty() && DeviceNames::tierFromName(options.deviceTier.c_str(), tier))
+        Device::setTier(tier);
     return -1;
 }

@@ -5,6 +5,7 @@
 
 #include "Project.h"
 #include "ShippingTypes.h"
+#include "cook/BuildReport.h"
 #include "cook/SceneCooker.h"
 #include "players/ModuleUsage.h"
 #include "shader/ShaderBuilder.h"
@@ -12,6 +13,7 @@
 #include "util/CommandRunner.h"
 
 #include <filesystem>
+#include <map>
 #include <set>
 #include <vector>
 #include <string>
@@ -124,6 +126,10 @@ namespace jasperengine::editor {
         std::vector<std::string> modules;
         std::vector<ModuleEvidence> moduleEvidence;
         std::vector<std::string> modulesLeftOut;
+        // S53 R21: build-report.json next to the export, and its numbers
+        fs::path buildReport;
+        uint64_t buildBytes = 0;
+        std::map<std::string, uint64_t> buildCategories;
     };
 
     struct ExportProgress {
@@ -186,6 +192,12 @@ namespace jasperengine::editor {
         // S14: the texture sources the export's cooks replaced (asset-relative), which
         // copyAssets() leaves out
         std::set<std::string> cookedTextureSources;
+        // S53: the same for models (and the .bin files only they read)
+        std::set<std::string> cookedModelSources;
+        // S53 R21: what the export's cooks measured, for the Build Report: a cooked file's build
+        // path -> its source asset and that source's bytes
+        std::map<std::string, std::pair<std::string, uint64_t>> cookedModelSizes;
+        BuildReport buildReport;
 
         // S30: the Player build's report, the cooked scenes and prefabs loadAndSaveAllScenes()
         // made while every scene was loaded, and the player runtime it stages
@@ -318,6 +330,14 @@ namespace jasperengine::editor {
         // S14: every texture source cooked for the families of the export, into
         // assets/je-cooked/<family>; a cook error fails the export, naming the file
         bool cookTextures();
+        // S53: every model source cooked for the families of the export, into
+        // assets/je-cooked/models; a cook error fails the export, naming the file
+        bool cookModels();
+        // S53 R21: the build's content (`contentRoot`'s assets and lua trees, before packing),
+        // its engine files, and the report written next to the export
+        void measureBuildContent(const fs::path& contentRoot);
+        void measureBuildEngine(const fs::path& root);
+        bool writeBuildReport(const fs::path& outputDir, const std::string& method);
         // What walkTree() does after visiting an entry: enter it (a folder; a file goes on to the
         // next entry), skip what it holds, or stop the walk
         enum class TreeStep { Enter, Skip, Stop };

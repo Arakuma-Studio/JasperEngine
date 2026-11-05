@@ -9,6 +9,7 @@
 #include "window/PlayInput.h"
 #include "window/DeviceProfiles.h"
 #include "window/GameResolutions.h"
+#include "device/Device.h"
 
 #include <set>
 
@@ -97,6 +98,8 @@ namespace jasperengine::editor {
         // the safe rectangle drawn over an image of w x h: Screen's in Play, the device's stopped
         Rect safeAreaInImage(float w, float h) const;
         void drawDeviceMenu();
+        // Device: Auto | Low | Medium | High | Ultra, its platform family and thermal state (S56)
+        void drawDeviceTierMenu();
         void drawToolbar();
         void drawContent(uint32_t sceneId);
         void drawStats(ImVec2 imageMin, ImVec2 imageMax, const SceneProject* sceneProject);
@@ -145,6 +148,10 @@ namespace jasperengine::editor {
         // sets them as if picked there (MCP configure_game_view)
         const GameViewSettings& getSettings();
         void applySettings(const GameViewSettings& newSettings);
+        // what Play simulates of the device (Device::setSimulation, applied each frame of Play):
+        // the toolbar's Device Tier, platform family (Auto: Mobile with a simulated phone) and
+        // thermal state
+        DeviceSimulation getDeviceSimulation() const;
         static int getAspectCount();
         // the simulated device's safe rectangle in a game image of w x h pixels (MCP screenshot
         // safe_area_in_image); false without a device

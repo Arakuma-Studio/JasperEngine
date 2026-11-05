@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import sys
@@ -42,6 +43,14 @@ class GradeTest(unittest.TestCase):
             {"type": "tool_use", "name": "Bash", "input": {"command": "grep -r speed scripts"}},
             {"type": "tool_use", "name": "Edit", "input": {"file_path": "/p/scenes/Main.scene"}},
             mcp("read_console", since=4), result="Playing; the Console is clean."))
+
+    def test_no_case_was_merged_into_another(self):
+        # a merge that drops the "}, {" between two cases still parses: the later keys silently win
+        tree = ast.parse((Path(__file__).parent / "cases.py").read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Dict):
+                keys = [key.value for key in node.keys if isinstance(key, ast.Constant)]
+                self.assertEqual(len(keys), len(set(keys)), f"duplicate keys in the dict at line {node.lineno}")
 
     def test_parse(self):
         self.assertEqual([c["tool"] for c in self.trace.calls], ["editor_status", "play", "read_console"])

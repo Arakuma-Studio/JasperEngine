@@ -51,6 +51,7 @@
 #include "Backend.h"
 #include "manager/SceneManager.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
@@ -68,6 +69,9 @@
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/MeshAuditWindow.h"
+#include "window/BuildReportWindow.h"
+#include "window/ImporterFields.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
@@ -100,6 +104,7 @@
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -240,6 +245,8 @@ editor::App::App(){
     missingAssetsWindow = new MissingAssetsWindow(&project);
     assetReferencesWindow = new AssetReferencesWindow(&project);
     jobsMemoryWindow = new JobsMemoryWindow();
+    meshAuditWindow = new MeshAuditWindow(&project);
+    buildReportWindow = new BuildReportWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
@@ -739,7 +746,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
             catalogItem("window.frameDebugger", windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
             catalogItem("window.systems", windowMenuLabel(SystemsWindow::WINDOW_NAME)),
-            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
+            catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
+            catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
@@ -990,6 +999,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleJobsMemory:
             showEditorWindow(jobsMemoryWindow);
+            break;
+        case AppMenuCommand::ToggleMeshAudit:
+            showEditorWindow(meshAuditWindow);
+            break;
+        case AppMenuCommand::ToggleBuildReport:
+            showEditorWindow(buildReportWindow);
             break;
         case AppMenuCommand::ToggleUndoHistory:
             showEditorWindow(undoHistoryWindow);
@@ -2827,6 +2842,8 @@ void editor::App::show(){
     showAlert();
 
     sceneSaveDialog.show();
+    // the importers' edits not applied, asked about before a selection change, Play or the close
+    ImporterPrompt::draw();
     projectSaveDialog.show();
     dataSafetyDialogs.show(project);
     exportWindow.show();
@@ -2877,6 +2894,8 @@ void editor::App::show(){
     missingAssetsWindow->show();
     assetReferencesWindow->show();
     jobsMemoryWindow->show();
+    meshAuditWindow->show();
+    buildReportWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
@@ -3013,6 +3032,10 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--mesh-lod") {
             if (const char* value = requireValue(i, "--mesh-lod"))
                 benchmarkMeshLod = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--gpu-instancing") {
+            // the project's GPU Instancing for this run (not saved): S55's before and after
+            if (const char* value = requireValue(i, "--gpu-instancing"))
+                benchmarkGpuInstancing = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
@@ -3763,6 +3786,10 @@ void editor::App::pollExternalChanges(){
         TextureCookQueue& cooks = TextureCookQueue::get();
         if (cooks.getProject() != &project) cooks.attach(&project);
         wake = cooks.update() || wake;
+        // and model cooks (S53 R13): cooked on the Background lane, the models showing them reloaded here
+        ModelCookQueue& models = ModelCookQueue::get();
+        if (models.getProject() != &project) models.attach(&project);
+        wake = models.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -4135,6 +4162,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
     if (sceneProject.scene)
         sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
+    // and with the Game view's simulated Device Tier, platform family and thermal state (Play
+    // stop ends it: Engine::resetApplicationState)
+    Device::setSimulation(gameWindow->getDeviceSimulation());
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
@@ -4454,6 +4484,8 @@ void editor::App::tickBenchmark() {
         }
         if (benchmarkMeshLod >= 0)
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
+        if (benchmarkGpuInstancing >= 0)
+            Engine::setGpuInstancingEnabled(benchmarkGpuInstancing != 0);
         if (benchmarkDepthPrepass >= 0)
             selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
         if (benchmarkLitQuality >= 0)
@@ -4503,6 +4535,8 @@ void editor::App::tickBenchmark() {
             benchmarkPhaseFrames = 0;
             benchmarkFps.clear();
             benchmarkDraws.clear();
+            benchmarkRenderStats.clear();
+            benchmarkRenderCpuMs.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
             benchmarkUiTotals.clear();
@@ -4532,6 +4566,8 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
+        benchmarkRenderStats.push_back(SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME));
+        benchmarkRenderCpuMs.push_back(Engine::getFrameDrawCpuTime() * 1000.0);
         if (benchmarkUiStats) {
             // the scene's documents (screen and texture-mode contexts), this frame
             std::shared_ptr<UIDocumentSystem> documents = selected->scene->getSystem<UIDocumentSystem>();
@@ -4686,6 +4722,51 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    // the scenes' draw and the commit of each measured frame (the render submission, S55 R9)
+    json << ",\n  \"renderCpuMs\": {\"median\": " << stat(benchmarkRenderCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkRenderCpuMs, 0.95)
+         << ", \"mean\": " << mean(benchmarkRenderCpuMs) << "}";
+    {
+        // the game frame's render counters averaged over the measured frames (S55 R7; with --play
+        // the frame the Game view shows): deterministic for a still scene
+        const struct { const char* name; double (*value)(const RenderStats&); } counters[] = {
+            {"mainDrawCalls", [](const RenderStats& r) { return (double)r.mainDraws; }},
+            {"shadowDrawCalls", [](const RenderStats& r) { return (double)r.shadowDraws; }},
+            {"depthDrawCalls", [](const RenderStats& r) { return (double)r.depthDraws; }},
+            {"otherDrawCalls", [](const RenderStats& r) { return (double)r.otherDraws; }},
+            {"mainTriangles", [](const RenderStats& r) { return (double)r.mainTriangles; }},
+            {"shadowTriangles", [](const RenderStats& r) { return (double)r.shadowTriangles; }},
+            {"instancedDraws", [](const RenderStats& r) { return (double)r.instancedDraws; }},
+            {"batchedInstances", [](const RenderStats& r) { return (double)r.batchedInstances; }},
+            {"visible", [](const RenderStats& r) { return (double)r.visible; }},
+            {"culled", [](const RenderStats& r) { return (double)r.culled; }},
+            {"uniformBytes", [](const RenderStats& r) { return (double)r.uniformBytes; }},
+            {"uniformBytesKept", [](const RenderStats& r) { return (double)r.uniformBytesKept; }},
+            {"bufferUploadBytes", [](const RenderStats& r) { return (double)r.bufferUploadBytes; }},
+            {"pipelinesApplied", [](const RenderStats& r) { return (double)r.pipelinesApplied; }},
+            {"bindingsApplied", [](const RenderStats& r) { return (double)r.bindingsApplied; }},
+            {"aliveBuffers", [](const RenderStats& r) { return (double)r.aliveBuffers; }},
+            {"aliveImages", [](const RenderStats& r) { return (double)r.aliveImages; }},
+            {"alivePipelines", [](const RenderStats& r) { return (double)r.alivePipelines; }},
+        };
+        json << ",\n  \"render\": {";
+        bool first = true;
+        for (const auto& counter : counters) {
+            double sum = 0.0;
+            for (const RenderStats& frameStats : benchmarkRenderStats)
+                sum += counter.value(frameStats);
+            json << (first ? "" : ", ") << "\"" << counter.name << "\": "
+                 << (benchmarkRenderStats.empty() ? 0.0 : sum / static_cast<double>(benchmarkRenderStats.size()));
+            first = false;
+        }
+        json << "}";
+        // GPU Instancing in the last measured frame: the draws that could batch, and why one did
+        // not join the batch before it (S55 R7)
+        const DrawBatchStats batch = SystemRender::getDrawBatchStats();
+        json << ",\n  \"drawBatch\": {\"offered\": " << batch.offeredDraws << ", \"instancedDraws\": " << batch.instancedDraws
+             << ", \"batchedInstances\": " << batch.batchedInstances << ", \"splitPipeline\": " << batch.splitPipeline
+             << ", \"splitElements\": " << batch.splitElements << ", \"splitBindings\": " << batch.splitBindings
+             << ", \"splitUniforms\": " << batch.splitUniforms << "}";
+    }
     if (benchmarkUiStats) {
         // HtmlUIRenderStats averaged over the measured frames
         json << ",\n  \"htmlUi\": {";
@@ -5427,7 +5508,15 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
     // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v44";
+    // v45: S57's lighting (MESH 'Til', 'Cap', 'Cts', 'Oit' at bits 36-39, the Hair lobe's
+    //      PBR_HAIR in u_fs_pbrParams, includes/lights.glsl's tiled and occlusion forms).
+    // v46: S54's LOD cross-fade: MESH 'Lfd' (includes/lod_fade.glsl in mesh.vert and mesh.frag), and
+    //      every instance matrix read with its first column's w as 0.
+    // v47: S55's automatic GPU instancing: mesh and depth programs take their object block from
+    //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
+    // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
+    //      skinned fade variant's uniform block slots differed from its base's.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v48";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5560,6 +5649,18 @@ void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, un
 
 editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
+}
+
+void editor::App::openBuildReport(const std::filesystem::path& report){
+    buildReportWindow->open(report);
+}
+
+void editor::App::openMeshAudit(){
+    showEditorWindow(meshAuditWindow);
+}
+
+void editor::App::openConsole(){
+    showEditorWindow(consoleWindow);
 }
 
 void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
@@ -5970,6 +6071,8 @@ void editor::App::exit() {
         Backend::closeWindow();
         return;
     }
+    // import settings edited and not applied (S53 R17): asked first, the close follows Apply or Revert
+    if (ImporterPrompt::guard([this]() { exit(); })) return;
 
     // Check if any modal popup is currently open (including ComponentAddDialog, ScriptCreateDialog, etc.)
     ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal();

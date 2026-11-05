@@ -34,7 +34,10 @@
 #include "physics/PlacementSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
+#include "render/LightingTiers.h"
+#include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
+#include "model/ModelImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
 #include "window/SpriteNormalsWindowSettings.h"
@@ -888,8 +891,15 @@ namespace jasperengine::editor{
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
+        // graphics.gpu_instancing, quality.shadow_lod_bias (spec S55)
+        DrawSubmissionSettings drawSubmission;
+        // Project Settings > Quality > Device Tiers, LOD biases, Thermal Response and Graphics >
+        // Upload Budget (spec S56): project.yaml's device block
+        DeviceSettings deviceSettings;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
+        // graphics.light_mode: how lit meshes find their pixel lights (S57 R1)
+        LightMode lightMode = defaultLightMode;
         WindowMode windowMode;
         unsigned int windowWidth;
         unsigned int windowHeight;
@@ -963,6 +973,7 @@ namespace jasperengine::editor{
         mutable bool debugSettingsInPlay = false;
         TerrainEditorSettings terrainEditorSettings;
         TextureProjectSettings textureSettings;
+        ModelProjectSettings modelSettings;
         std::vector<std::filesystem::path> inspectedAssets;
         PhysicsPlacementSettings physicsPlacementSettings;
         NavigationProjectSettings navigationSettings;
@@ -1536,6 +1547,7 @@ namespace jasperengine::editor{
         static constexpr bool defaultPhysics3DEnabled = true;
         static constexpr bool defaultRuntimeShadersEnabled = true;
         static constexpr PbrTier defaultMobilePbrTier = PbrTier::REDUCED;
+        static constexpr LightMode defaultLightMode = LightMode::AUTOMATIC;
         static constexpr int defaultCxxStandard = cxxStandards[0];
 
         Project();
@@ -1655,7 +1667,16 @@ namespace jasperengine::editor{
         // editor's documents at once and written into exports
         void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
         const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;
+        // the Device Tier table and the rest of the device settings (docs/device-tiers.md): the
+        // editor's QualityResolver takes them at once (its Game view simulates a tier in Play),
+        // exports bake them in (main.cpp's Device::configure, game.json's device)
+        void setDeviceSettings(const DeviceSettings& settings);
+        const DeviceSettings& getDeviceSettings() const;
         static bool isValidHtmlUiGlyphAtlasMiB(int mib);
+
+        // GPU Instancing (spec S55): applied to the editor's scenes at once and written into exports
+        void setDrawSubmissionSettings(const DrawSubmissionSettings& settings);
+        const DrawSubmissionSettings& getDrawSubmissionSettings() const;
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the
         // editor's scenes at once and written into exports (docs/rendering/shadows.md)
@@ -1664,6 +1685,11 @@ namespace jasperengine::editor{
         // lower-case platform names of the setting: macos, ios, web, android, linux, windows
         static const char* getShadowTierPlatformName(int platform);
         static int findShadowTierPlatform(const std::string& name);
+
+        // Light Mode (Project Settings > Graphics): applied to the editor's rendering at once and
+        // written into exports when not Automatic
+        void setLightMode(LightMode mode);
+        LightMode getLightMode() const;
 
         void setWindowMode(WindowMode windowMode);
         WindowMode getWindowMode() const;
@@ -1968,6 +1994,11 @@ namespace jasperengine::editor{
         const TextureProjectSettings& getTextureSettings() const;
         // stores them; the cook queue re-keys what they change
         void setTextureSettings(const TextureProjectSettings& settings);
+        // Project Settings > Mesh (S53 R19) and Quality's render budgets (R25): per-platform
+        // model import defaults, the cook cache, scripts' mesh data
+        const ModelProjectSettings& getModelSettings() const;
+        // stores them; the model cook queue re-keys every model
+        void setModelSettings(const ModelProjectSettings& settings);
         // The Physics Placement panel's settings, per user (workspace.yaml)
         PhysicsPlacementSettings& getPhysicsPlacementSettings();
         const PhysicsPlacementSettings& getPhysicsPlacementSettings() const;

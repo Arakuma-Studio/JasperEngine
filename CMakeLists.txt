@@ -587,13 +587,17 @@ add_subdirectory(libs/nfd)
 add_subdirectory(libs/yaml-cpp)
 add_subdirectory(libs/ufbx)
 add_subdirectory(libs/tinyexr)
-jasperengine_apply_cxx_standard(nfd yaml-cpp tinyexr)
+# The model decoders games never carry (docs/specs/S53-model-import-cook.md R6): Draco meshes and
+# WebP images of glTF files, which the model cook transcodes
+add_subdirectory(editor/libs/draco)
+add_subdirectory(editor/libs/libwebp)
+jasperengine_apply_cxx_standard(nfd yaml-cpp tinyexr draco_decoder)
 # The standards the project setting offers (editor/util/CxxStandards.h) and the compiler floors
 # the Play plugin checks (Generator::getToolchainFloorCheck), from the engine's definitions
 get_directory_property(JASPERENGINE_CXX_STANDARDS DIRECTORY ${JASPERENGINE_ROOT} DEFINITION JASPERENGINE_CXX_STANDARDS)
 string(REPLACE ";" "," JASPERENGINE_CXX_STANDARD_LIST "${JASPERENGINE_CXX_STANDARDS}")
 
-foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr)
+foreach(lib IN ITEMS nfd yaml-cpp ufbx tinyexr draco_decoder webp_decoder)
     target_compile_options(${lib} PRIVATE ${EXTERNAL_WARNING_FLAG})
     # Reaches the headers they export to the editor, which ImGui gets below
     get_target_property(lib_includes ${lib} INTERFACE_INCLUDE_DIRECTORIES)
@@ -696,6 +700,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
+    ${EDITOR_DIR}/cook/BuildReport.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
     ${EDITOR_DIR}/players/ModuleUsage.cpp
     ${EDITOR_DIR}/players/PlayerRuntimes.cpp
@@ -824,6 +829,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
     ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProfilerTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MeshLodTools.cpp
+    ${EDITOR_DIR}/mcp/tools/DeviceTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
     ${EDITOR_DIR}/mcp/McpDataSafety.cpp
     ${EDITOR_DIR}/mcp/tools/EntityTools.cpp
@@ -840,6 +847,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MeshTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
@@ -943,6 +951,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/util/PngWriter.cpp
     ${EDITOR_DIR}/util/FloatImage.cpp
     ${EDITOR_DIR}/util/FbxImporter.cpp
+    ${EDITOR_DIR}/util/GltfEditorDecoders.cpp
     ${EDITOR_DIR}/util/GlbBuilder.cpp
     ${JASPERENGINE_TEXSYNTH_SOURCES}
     ${EDITOR_DIR}/texsynth/SynthesisCli.cpp
@@ -1062,6 +1071,23 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureImportSettings.cpp
     ${EDITOR_DIR}/texture/TextureTypeInference.cpp
     ${EDITOR_DIR}/window/TextureImporterView.cpp
+    ${EDITOR_DIR}/window/ImporterFields.cpp
+    ${EDITOR_DIR}/window/ModelImporterView.cpp
+    ${EDITOR_DIR}/window/MeshAuditWindow.cpp
+    ${EDITOR_DIR}/window/BuildReportWindow.cpp
+    ${EDITOR_DIR}/model/GltfDocument.cpp
+    ${EDITOR_DIR}/model/ModelAudit.cpp
+    ${EDITOR_DIR}/model/ModelCookCache.cpp
+    ${EDITOR_DIR}/model/ModelCookQueue.cpp
+    ${EDITOR_DIR}/model/ModelCooker.cpp
+    ${EDITOR_DIR}/model/ModelExport.cpp
+    ${EDITOR_DIR}/model/ModelHeader.cpp
+    ${EDITOR_DIR}/model/ModelImportSettings.cpp
+    ${EDITOR_DIR}/model/ModelPreviewRaster.cpp
+    ${EDITOR_DIR}/model/ModelSettingsCmd.cpp
+    ${EDITOR_DIR}/model/ModelSettingsEdit.cpp
+    ${EDITOR_DIR}/model/ModelSourceDecode.cpp
+    ${EDITOR_DIR}/model/ModelUsage.cpp
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
@@ -1146,6 +1172,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/spline/SplineEditor.cpp
     ${EDITOR_DIR}/spline/SplinePresets.cpp
     ${EDITOR_DIR}/spline/SplineSceneRender.cpp
+    ${EDITOR_DIR}/render/SceneDrawModes.cpp
     ${EDITOR_DIR}/spline/SplineSceneTools.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/vat/VatAssetWriter.cpp
@@ -1274,6 +1301,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/ThreadingSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/ShaderCreationSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/HtmlUiRenderSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/DrawSubmissionSettingsCmd.cpp
+    ${EDITOR_DIR}/command/type/DeviceSettingsCmd.cpp
     ${EDITOR_DIR}/command/type/DeleteFileCmd.cpp
     ${EDITOR_DIR}/command/type/SetMainCameraCmd.cpp
     ${EDITOR_DIR}/command/type/CreateMaterialFileCmd.cpp
@@ -1337,6 +1366,11 @@ list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mc
 jasperengine_skip_unity_build(
     REASON "the HTML UI importers, the MCP tools, the reflection tables and the version control providers: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
+set(JASPERENGINE_EDITOR_MODEL_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
+list(FILTER JASPERENGINE_EDITOR_MODEL_SOURCES INCLUDE REGEX "(^|/)editor/model/")
+jasperengine_skip_unity_build(
+    REASON "the model cook (S53): file helpers named as the texture cook's (readAll, fileTime, touch)"
+    SOURCES ${JASPERENGINE_EDITOR_MODEL_SOURCES})
 set(JASPERENGINE_EDITOR_SCENEVIEW_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
 list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(picking|sceneview)/")
 jasperengine_skip_unity_build(
@@ -1442,6 +1476,7 @@ function(configure_jasperengine_editor_target target_name)
     target_include_directories(${target_name} SYSTEM PRIVATE
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
+        engine/libs/meshoptimizer
         libs/tinyexpr
         libs/miniz
         ${OPENGL_INCLUDE_DIR}
@@ -1477,6 +1512,8 @@ function(configure_jasperengine_editor_target target_name)
         basisu_encoder
         ufbx
         tinyexr
+        draco_decoder
+        webp_decoder
     )
 
     if(WIN32)
