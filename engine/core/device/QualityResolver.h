@@ -77,6 +77,12 @@ namespace jasperengine {
 
         // the thermal and memory response back to rest (Play stop, a test)
         static void resetResponse();
+        // Saves everything, and puts it back: the export's shader collection resolves the scene
+        // under every tier and thermal step a device can reach, then restores the editor's state
+        static void pushState();
+        static void popState();
+        // the response as if the platform reported `state` and it had applied at once
+        static void forceThermalResponse(ThermalState state);
         // everything back to its defaults (tests)
         static void reset();
 

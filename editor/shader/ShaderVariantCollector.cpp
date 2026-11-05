@@ -32,6 +32,7 @@
 #include "component/CapsuleShadowCasterComponent.h"
 #include "component/CameraComponent.h"
 #include "render/LightingTiers.h"
+#include "device/QualityResolver.h"
 #include "component/SkyboxComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/TerrainComponent.h"
@@ -206,17 +207,19 @@ namespace {
         // RenderSystem::checkLightsAndShadow
         const LightState lightState = scene->getLightState();
         environment.lights = lightState == LightState::ON || (lightState == LightState::AUTO && (facts & FACT_LIGHTS));
-        environment.lightCapacity = RenderSystem::getLightCapacity(scene->getMaxLightsPerObject());
+        // the device tier in effect while collecting (QualityResolver, as RenderSystem reads them)
+        environment.lightCapacity = RenderSystem::getLightCapacity(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject()));
         environment.shadows = (facts & FACT_SHADOW_LIGHTS) != 0;
         environment.ibl = (facts & FACT_SKY_IBL) != 0;
         environment.reflectionProbes = (facts & FACT_PROBES) != 0;
         environment.fog = (facts & FACT_FOG) != 0;
         // RenderSystem::update: the height fog variants, the atmosphere's depth programs
-        environment.atmosphereDepth = (facts & (FACT_VOLUMETRIC_FOG | FACT_CLOUDS)) != 0;
+        environment.atmosphereDepth = (facts & (FACT_VOLUMETRIC_FOG | FACT_CLOUDS)) != 0 &&
+                                      QualityResolver::volumetrics(AtmosphereQuality::HIGH) != AtmosphereQuality::OFF;
         environment.lights2D = (facts & FACT_LIGHTS_2D) != 0;
         // RenderSystem::loadLights2D: a shadow-casting 2D light with an occluder to cast
         environment.shadows2D = (facts & FACT_SHADOW_LIGHTS_2D) && (facts & FACT_OCCLUDERS_2D);
-        environment.ssao = scene->isSSAOEnabled();
+        environment.ssao = QualityResolver::ssao(scene->isSSAOEnabled());
         environment.ssr = scene->isSSREnabled();
         environment.depthPrepass = scene->isDepthPrepassEnabled();
         // a scene default shader reading the scene depth with its default features is drawn by
@@ -227,7 +230,7 @@ namespace {
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::MESH), {}) ||
             readsSceneDepth(scene->getDefaultCustomShader(ShaderType::POINTS), {}) ||
             postProcessReadsDepth(scene);
-        environment.litQualityHigh = scene->getLitQuality() == LitQuality::HIGH;
+        environment.litQualityHigh = QualityResolver::litQuality(scene->getLitQuality()) == LitQuality::HIGH;
         // S57: capsule shadows of a scene enabling them; Tiled and contact shadows follow the
         // device's tier as well (lightingStates adds their other state); OIT a camera asking
         environment.capsuleShadows = environment.lights && environment.shadows && scene->isCapsuleShadowsEnabled() &&
@@ -253,6 +256,9 @@ namespace {
     // tier, which an export filters per backend: ShadowTiers::cooksHighFilters) and when a
     // script sets the quality
     std::vector<bool> shadowHQStates(Scene* scene, bool scriptsSetShadowQuality){
+        // a device tier capping the shadows below High has no High filters
+        if (!ShadowTiers::usesHighFilters(QualityResolver::shadowTier(ShadowTier::ULTRA)))
+            return {false};
         if (scriptsSetShadowQuality)
             return {false, true};
         switch (scene->getShadowQuality()){
@@ -1238,6 +1244,51 @@ void editor::ShaderVariantCollector::collectScene(Scene* scene, const ShaderVari
     if (!scene || !sceneContent.registry){
         return;
     }
+    // Every Device Tier a player can apply, and the thermal steps that move between them (spec
+    // S56): its render scale (the uber pass's upscale), post effects it turns off, Lit Quality,
+    // shadow tier, light count and volumetrics change the variants the game draws with. The
+    // project's settings decide which states exist; each distinct one is collected once.
+    QualityResolver::pushState();
+    std::set<std::string> resolved;
+    auto collectUnderTier = [&](){
+        const PostProcessingTiers tiers = RenderSystem::getPostProcessingTiers(scene->getPostProcessing());
+        const std::string signature = std::to_string(tiers.uberFeatures) + (tiers.uber ? "u" : "") + (tiers.tailColor ? "t" : "") +
+            (QualityResolver::ssao(true) ? "s" : "") + (QualityResolver::bloom(true) ? "b" : "") +
+            std::to_string((int)QualityResolver::litQuality(LitQuality::HIGH)) +
+            std::to_string((int)QualityResolver::shadowTier(ShadowTier::ULTRA)) +
+            std::to_string(QualityResolver::maxPixelLights(scene->getMaxLightsPerObject())) +
+            (QualityResolver::volumetrics(AtmosphereQuality::HIGH) == AtmosphereQuality::OFF ? "v" : "");
+        if (!resolved.insert(signature).second)
+            return;
+        collectSceneUnderTier(scene, sceneContent, prefabContents, keys, projectRoot, scriptsSetPostProcessing, scriptPostProcessingFields,
+                              allLightCapacities, scriptsSetShadowQuality, scriptsSetLitQuality, mobilePbrTier);
+    };
+    QualityResolver::setTier(std::nullopt);
+    QualityResolver::forceThermalResponse(ThermalState::Nominal);
+    collectUnderTier();
+    for (int g = 0; g < DEVICE_PLATFORM_GROUP_COUNT; g++){
+        QualityResolver::setPlatformGroup((DevicePlatformGroup)g);
+        const bool thermal = QualityResolver::getSettings().thermalResponse[g];
+        for (int t = 0; t < DEVICE_TIER_COUNT; t++){
+            QualityResolver::setTier((DeviceTier)t);
+            for (ThermalState state : {ThermalState::Nominal, ThermalState::Serious, ThermalState::Critical}){
+                if (state != ThermalState::Nominal && !thermal)
+                    continue;
+                QualityResolver::forceThermalResponse(state);
+                collectUnderTier();
+            }
+        }
+    }
+    QualityResolver::popState();
+}
+
+void editor::ShaderVariantCollector::collectSceneUnderTier(Scene* scene, const ShaderVariantContent& sceneContent,
+                                                           const std::vector<ShaderVariantContent>& prefabContents,
+                                                           std::set<ShaderKey>& keys, const fs::path& projectRoot,
+                                                           bool scriptsSetPostProcessing,
+                                                           const std::vector<std::string>& scriptPostProcessingFields,
+                                                           bool allLightCapacities, bool scriptsSetShadowQuality,
+                                                           bool scriptsSetLitQuality, PbrTier mobilePbrTier){
     const std::vector<bool> postColor = postColorStates(scene, scriptsSetPostProcessing);
 
     const uint32_t sceneFacts = collectFacts(sceneContent, scene);
