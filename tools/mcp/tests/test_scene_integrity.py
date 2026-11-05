@@ -9,12 +9,26 @@ The headless Project tests (editor/tests/project/SceneIntegrityTest.cpp) own the
 over another scene, scenes outside the project, project.yaml entries, id clashes at load.
 """
 
+import asyncio
 import re
 
 from harness import Editor
 
 EDITOR = {"create": True}
 CI = True
+
+
+async def dialog(ed: Editor):
+    return (await ed.call("editor_status")).get("dialog")
+
+
+async def wait_dialog(ed: Editor, title: str, seconds: float = 20.0):
+    for _ in range(int(seconds / 0.25)):
+        d = await dialog(ed)
+        if d and d.get("title") == title:
+            return d
+        await asyncio.sleep(0.25)
+    return None
 
 
 def root_value(text: str, key: str) -> str:
@@ -173,3 +187,47 @@ async def test_scene_view_follows_the_scene_the_game_loads(ed: Editor):
         ed.check("Pillar" in names, f"the pillar is under the view's centre: {got}")
     finally:
         await ed.call("play", action="stop")
+
+
+async def test_save_dialog_refuses_another_scenes_file(ed: Editor):
+    """The Save Scene dialog warned "will be replaced" and wrote over another scene's file."""
+    await ed.call("create_scene", name="Taken", type="3D", path="Taken")
+    taken = (ed.project / "Taken.scene").read_bytes()
+    draft = (await ed.call("create_scene", name="Draft", type="3D"))["scene"]["id"]
+    await ed.call("select_scene", scene=draft)
+    await ed.call("create_entity", scene=draft, name="Dirty", type="empty")
+
+    await ed.call("run_command", id="file.save")
+    d = await wait_dialog(ed, "Save Scene")
+    ed.check(d, "Ctrl+S on the untitled scene asks")
+    r = await ed.call_raw("respond_dialog", {"choice": "ok", "values": {"name": "Taken", "folder": "."}})
+    ed.check(r.is_error and "is the file of scene" in r.text, f"refused: {r.text[:300]}")
+    d = await dialog(ed)
+    ed.check(d and "is the file of scene" in d.get("error", ""), f"the dialog says why: {d}")
+    ed.check_eq((ed.project / "Taken.scene").read_bytes(), taken, "Taken.scene is untouched")
+
+    r = await ed.call_raw("respond_dialog", {"choice": "ok", "values": {"name": "../Outside"}})
+    ed.check(r.is_error, f"a name leaving the folder is refused: {r.text[:300]}")
+    await ed.call("respond_dialog", choice="cancel")
+    ed.check_eq(await dialog(ed), None, "cancelled")
+    listed = await scenes_by_name(ed)
+    ed.check_eq(listed["Draft"].get("path", ""), "", f"a cancelled dialog gives no path: {listed['Draft']}")
+
+
+async def test_save_all_asks_for_untitled_scenes(ed: Editor):
+    """Save All saved only scenes with changes: an untouched untitled scene was never saved."""
+    await ed.call("create_scene", name="Saved Before", type="3D", path="scenes/SavedBefore")
+    await ed.call("create_scene", name="Untouched", type="3D")
+    await ed.call("run_command", id="file.saveAll")
+    d = await wait_dialog(ed, "Save Scene")
+    ed.check(d, f"Save All asks where to save the untitled scene: {await dialog(ed)}")
+    await ed.call("respond_dialog", choice="ok", values={"name": "Untouched", "folder": "scenes"})
+    for _ in range(80):
+        if (ed.project / "scenes" / "Untouched.scene").exists():
+            break
+        await asyncio.sleep(0.25)
+    ed.check((ed.project / "scenes" / "Untouched.scene").exists(), "saved where the dialog said")
+    # a project in the temporary folder then asks where the project goes
+    if await wait_dialog(ed, "Save Project", seconds=10):
+        await ed.call("respond_dialog", choice="cancel")
+

@@ -1013,3 +1013,10 @@ Recorded during the implementation (branch `dc/scene-integrity`).
    `bad_child_scene_on_closed_parent` and `bad_move_next_to_skybox` in `tools/mcp/eval/cases.py`.
 9. **Escape** follows the lead decision across specs: the focused Game view delivers Escape to the game
    (runtime-core) and the same press releases a captured or confined cursor (`PlayInput::forward`).
+10. **The project-switch test** is not an MCP test: since S69, every MCP edit (`open_project` included) is
+    refused while a modal dialog is open, so only a native menu (macOS) can switch projects under an open
+    Save dialog. `App::cancelSaveDialogs` stays (run before every switch and at exit); its parts, the
+    dialogs' `abandon()` and close-as-Cancel, are unit-tested.
+11. **The Save dialog tests use `respond_dialog`** (S69's EditorModal fields `name` and `folder`)
+    instead of real input: the refusal reaches agents as `EditorModal::error`, so it is the same check.
+

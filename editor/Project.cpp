@@ -132,6 +132,8 @@
 #include "component/VideoPlayerComponent.h"
 #include "Engine.h"
 #include "project/SceneFileIdentity.h"
+#include "component/CameraComponent.h"
+#include "component/Transform.h"
 #include "device/Device.h"
 #include "shader/ShaderWarmup.h"
 #include "Input.h"

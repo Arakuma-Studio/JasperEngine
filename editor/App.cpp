@@ -3,6 +3,7 @@
 
 #include "App.h"
 #include "render/ViewCameraMirror.h"
+#include "component/Transform.h"
 #include "component/CameraShakerComponent.h"
 #include "pool/ShaderPool.h"
 #include "render/SceneRender.h"

@@ -1,10 +1,8 @@
 # (c) Eduardo Doria and contributors
 # SPDX-License-Identifier: MIT
 """Scene integrity with real input (docs/superpowers/specs/2026-11-04-scene-integrity-design.md):
-the Save Scene dialog refuses another scene's file and names that leave the folder, Save All asks
-for untitled scenes, a project switch closes the old project's save dialogs, a child scene's
-GameObject dragged in the Hierarchy is a reference only, and Escape gives a game-captured cursor
-back to the editor while the game still gets the key.
+a child scene's GameObject dragged in the Hierarchy is a reference only, and Escape gives a
+game-captured cursor back to the editor while the game still gets the key.
 
 Clicks and keys are xdotool in the harness's Xvfb, aimed where find_ui_item says a control is.
 """
@@ -17,19 +15,6 @@ CI = True
 TIMEOUT = 1200
 
 
-async def dialog(ed: Editor) -> dict:
-    return (await ed.call("editor_status")).get("dialog") or {}
-
-
-async def wait_for_dialog(ed: Editor, kind: str, frames: int = 40) -> dict:
-    for _ in range(frames):
-        open_dialog = await dialog(ed)
-        if open_dialog.get("kind") == kind:
-            return open_dialog
-        await ed.call("wait", frames=2)
-    raise TestFailure(f"no {kind} dialog opened: {await ed.call('editor_status')}")
-
-
 async def item(ed: Editor, label: str, window: str | None = None) -> dict:
     args = {"label": label}
     if window:
@@ -38,56 +23,6 @@ async def item(ed: Editor, label: str, window: str | None = None) -> dict:
     if not items:
         raise TestFailure(f"find_ui_item: no visible {label!r}" + (f" in {window!r}" if window else ""))
     return items[0]
-
-
-async def test_save_dialog_refuses_another_scenes_file(ed: Editor):
-    ui = Ui(ed)
-    ui.focus()
-    await ed.call("create_scene", name="Taken", type="3D", path="Taken")
-    taken = (ed.project / "Taken.scene").read_bytes()
-    draft = (await ed.call("create_scene", name="Draft", type="3D"))["scene"]["id"]
-    await ed.call("select_scene", scene=draft)
-
-    await ed.call("run_command", command="file.save")
-    await wait_for_dialog(ed, "save_dialog")
-    name = await item(ed, "##fileName", "Save Scene")
-    await ui.click(ui.centre(name))
-    await ui.key("ctrl+a")
-    await ui.type("Taken")
-    await ui.frames(4)
-    save = await item(ed, "Save", "Save Scene")
-    ed.check_eq(save.get("enabled"), False, f"Save is disabled over another scene's file: {save}")
-    await ui.click(ui.centre(save))
-    ed.check_eq((ed.project / "Taken.scene").read_bytes(), taken, "Taken.scene is untouched")
-
-    await ui.click(ui.centre(name))
-    await ui.key("ctrl+a")
-    await ui.type("../Outside")
-    await ui.frames(4)
-    ed.check_eq((await item(ed, "Save", "Save Scene")).get("enabled"), False, "a name leaving the folder is refused")
-
-    await ed.call("respond_dialog", choice="cancel")
-    await ed.call("wait", frames=4)
-    ed.check_eq(await dialog(ed), {}, "cancelled")
-
-
-async def test_save_all_asks_for_untitled_scenes(ed: Editor):
-    await ed.call("create_scene", name="Untouched", type="3D")
-    await ed.call("run_command", command="file.saveAll")
-    open_dialog = await wait_for_dialog(ed, "save_dialog")
-    ed.check_eq(open_dialog.get("title"), "Save Scene", f"Save All asks where to save the untitled scene: {open_dialog}")
-    await ed.call("respond_dialog", choice="cancel")
-    await ed.call("wait", frames=4)
-
-
-async def test_project_switch_closes_save_dialogs(ed: Editor):
-    await ed.call("create_scene", name="Pending", type="3D")
-    await ed.call("run_command", command="file.save")
-    await wait_for_dialog(ed, "save_dialog")
-    other = ed.project.parent / (ed.project.name + "-other")
-    await ed.call("open_project", path=str(other), create=True, name="Other", unsaved="discard")
-    await ed.call("wait", frames=6)
-    ed.check_eq(await dialog(ed), {}, "the old project's Save Scene dialog closed with it")
 
 
 async def test_child_scene_drag_is_reference_only(ed: Editor):
@@ -165,7 +100,7 @@ async def test_escape_releases_a_captured_cursor(ed: Editor):
         await ui.click(ui.centre(game))
         await ui.frames(4)
         ed.check_eq((await ed.call("get_play_state"))["input"]["cursor"]["released_to_editor"], False, "a click took it back")
-        await ed.call("run_command", command="playmode.releaseCursor")
+        await ed.call("run_command", id="playmode.releaseCursor")
         await ui.frames(2)
         ed.check_eq((await ed.call("get_play_state"))["input"]["cursor"]["released_to_editor"], True, "the command releases it")
     finally:
