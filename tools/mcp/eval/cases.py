@@ -1067,17 +1067,19 @@ CASES = [
         "what_happened": "Asked for varied footsteps, an agent wrote a Lua table of clips with math.random and its own pitch "
                          "code. A Sound Event does it as data, with no script and a repeatable seed; edit_sound_event sits in the "
                          "audio group, so its name has to be found from the task.",
-        "text_at_issue": "SoundTools.cpp edit_sound_event: name and description; McpToolGroups.cpp audio: its line",
+        "text_at_issue": "SoundEventTools.cpp edit_sound_event: name and description; McpToolGroups.cpp audio: its line",
         "source": "docs/specs/S37-sound-events.md R20",
-        "prompt": "The project has sounds/step_1.wav, sounds/step_2.wav and sounds/step_3.wav. Make the Player's footsteps vary: never the "
-                  "same clip twice in a row and a little pitch variation. The Player already has an AudioSource.",
+        "files": {f"assets/sounds/step_{n}.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000 for n in (1, 2, 3)},
+        "prompt": "The project has assets/sounds/step_1.wav, step_2.wav and step_3.wav. Make the Player's footsteps vary: never the "
+                  "same clip twice in a row and a little pitch variation. Add an AudioSource to the Player for them.",
         "mocks": [
             {"tool": "edit_sound_event", "result": ok("Created sounds/steps.soundevent: shuffle, 3 clip(s). One undo step. No problems.",
                                                       {"event": "sounds/steps.soundevent", "problems": [], "renditions": []})},
+            {"tool": "add_component", "result": ok("Added audiosource to Player.", {"added": "audiosource"})},
             {"tool": "set_properties", "result": ok("Set 1 value on Player.", {"changed": 1})},
         ],
         "checks": {"calls": [{"tool": "edit_sound_event"}], "must_not_call": [{"tool": "create_script"}]},
-        "max_turns": 10,
+        "max_turns": 14,
     },
     {
         "id": "bad_says_sound_plays_without_capture",
