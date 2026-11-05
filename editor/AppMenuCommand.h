@@ -130,6 +130,7 @@ namespace jasperengine::editor {
         // upstream (audio-mixer, native-bridge, camera-shake): after S27's
         ToggleAudioMixer,             // Window > Audio > Audio Mixer
         ToggleSoundBrowser,           // Window > Audio > Sound Browser
+        ToggleAudioCaptures,          // Window > Audio > Captures
         AssetsCreateAudioMixer,
         AssetsCreateSoundEvent,
         AssetsCreateSoundEventFromClips,

@@ -72,6 +72,7 @@ namespace jasperengine::editor{
     class TextureSynthesisWindow;
     class AudioMixerWindow;
     class SoundBrowserWindow;
+    class AudioCapturesWindow;
     class VertexAnimationBakerWindow;
     class PhysicsPlacementWindow;
     class SystemsWindow;
@@ -247,6 +248,7 @@ namespace jasperengine::editor{
         TextureSynthesisWindow* textureSynthesisWindow;
         AudioMixerWindow* audioMixerWindow;
         SoundBrowserWindow* soundBrowserWindow;
+        AudioCapturesWindow* audioCapturesWindow;
         VertexAnimationBakerWindow* vertexAnimationBakerWindow;
         PhysicsPlacementWindow* physicsPlacementWindow;
         SpriteNormalsWindow* spriteNormalsWindow;

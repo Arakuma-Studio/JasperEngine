@@ -3090,7 +3090,14 @@ const std::string& editor::Project::getAudioCaptureError() const{
     return audioCaptureError;
 }
 
+std::string editor::Project::takeAudioCaptureSession(){
+    std::string session;
+    session.swap(playAudioCaptureSession);
+    return session;
+}
+
 void editor::Project::preparePlayAudioCapture(){
+    playAudioCaptureSession.clear();
     playAudioCapture = audioCaptureArm;
     audioCaptureArm = AudioCaptureArm();
     audioCaptureError.clear();
@@ -3129,7 +3136,9 @@ void editor::Project::beginPlayAudioCapture(const SceneProject* mainSceneProject
     if (!AudioCapture::begin(options, &error)) {
         audioCaptureError = "this Play is not captured: " + error;
         Out::error("Audio capture: %s", audioCaptureError.c_str());
+        return;
     }
+    playAudioCaptureSession = AudioCapture::sessionId();
 }
 
 void editor::Project::endPlayAudioCapture(){

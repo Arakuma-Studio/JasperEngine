@@ -849,6 +849,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AtmosphereTools.cpp
     ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
     ${EDITOR_DIR}/mcp/tools/DataTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AudioSessionTools.cpp
     ${EDITOR_DIR}/mcp/tools/AudioTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
@@ -1281,6 +1282,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundEventDocument.cpp
     ${EDITOR_DIR}/audio/SoundEventRender.cpp
     ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
     ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
     ${EDITOR_DIR}/audio/SoundDrop.cpp
     ${EDITOR_DIR}/mcp/tools/SoundEventTools.cpp
@@ -1297,6 +1299,11 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/SoundDesign.cpp
     ${EDITOR_DIR}/audio/SoundFit.cpp
     ${EDITOR_DIR}/audio/SoundSearch.cpp
+    ${EDITOR_DIR}/audio/AudioBaseline.cpp
+    ${EDITOR_DIR}/audio/AudioQa.cpp
+    ${EDITOR_DIR}/audio/AudioQaSettings.cpp
+    ${EDITOR_DIR}/audio/AudioSessionReader.cpp
+    ${EDITOR_DIR}/audio/AudioTimelineImage.cpp
     ${EDITOR_DIR}/audio/SoundSlicer.cpp
     ${EDITOR_DIR}/audio/SoundSynth.cpp
     ${JASPERENGINE_ROOT}/libs/soloud/src/audiosource/sfxr/soloud_sfxr.cpp

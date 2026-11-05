@@ -253,7 +253,7 @@ namespace jasperengine::editor {
         // YYYYMMDD-HHMMSS-NN
         static bool isSessionId(const std::string& name);
         // The sessions under root, oldest first. A session.json still "capturing" is the live
-        // session when its id is liveSession (AudioSystem::getCaptureSession(), "" when no
+        // session when its id is liveSession (AudioCapture::sessionId(), "" when no
         // capture runs); otherwise it was left by a crash and reads "aborted".
         static std::vector<Capture> listCaptures(const std::filesystem::path& root, const std::string& liveSession);
         // "current" (the live session), "last" (the newest one that is not live) or a session id

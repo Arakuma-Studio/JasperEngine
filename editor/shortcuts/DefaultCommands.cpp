@@ -231,6 +231,7 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
+    b.menu("window.audioCaptures", "Audio Captures", AppMenuCommand::ToggleAudioCaptures);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
@@ -394,6 +395,10 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.gesture("project.resizeItems", "Resize Items", C::Project, "Ctrl+Mouse Wheel", "Change the icon size in 16 px steps");
 
     b.group = "Sound Browser";
+    b.add("audioCaptures.playMoment", "Play Moment", C::AudioCaptures, "Enter");
+    b.add("audioCaptures.stop", "Stop", C::AudioCaptures, "Escape");
+    b.add("audioCaptures.nextMoment", "Next Moment", C::AudioCaptures, "Down");
+    b.add("audioCaptures.previousMoment", "Previous Moment", C::AudioCaptures, "Up");
     b.add("soundBrowser.focusSearch", "Search Sounds", C::SoundBrowser, "Ctrl+F");
     b.add("soundBrowser.next", "Next Sound", C::SoundBrowser, "Down", "Right");
     b.add("soundBrowser.previous", "Previous Sound", C::SoundBrowser, "Up", "Left");

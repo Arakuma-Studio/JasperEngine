@@ -40,7 +40,12 @@
 #include "input/InputActions.h"
 #include "input/InputControlPath.h"
 #include "Platform.h"
+#include <filesystem>
+#include <memory>
+#include "audio/AudioAnalysis.h"
 #include "audio/AudioMixer.h"
+#include "audio/AudioSessionReader.h"
+#include "jobs/JobSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "Project.h"
 #include "Screen.h"
@@ -1627,6 +1632,35 @@ void playStop(const CallPtr& call, std::function<void()> after) {
         if (!kept.is_null()) data["kept_changes"] = kept;
         std::string text = "Stopped. " + sessionSummaryText(last) + " The scene is back to its edit-time state." + keepNote;
         if (!data["problems"].empty()) text += "\nProblems during the session:\n" + w3::formatConsoleText(data["problems"], 4000);
+        // the capture's numbers, read off the main thread (R20)
+        const std::string session = c.project()->takeAudioCaptureSession();
+        if (!session.empty()) {
+            const std::filesystem::path root = AudioAnalysis::captureRoot(c.project()->getProjectPath());
+            auto summary = std::make_shared<Json>();
+            JobPtr job = c.jobs().create("play_audio_summary", "Measure the audio capture");
+            jobs::submit([root, session, summary, job]() {
+                AudioAnalysis::Capture capture;
+                AudioSessionData audio;
+                std::string error;
+                if (AudioAnalysis::findCapture(root, session, std::string(), capture, error) && AudioSessionReader::load(capture, 0.0, -1.0, audio, error)) {
+                    *summary = AudioSessionReader::stopSummary(audio);
+                    job->succeed("Measured.", *summary);
+                } else {
+                    job->fail(error);
+                }
+            }, {jobs::Lane::Background, jobs::GateClass::Default, "play-audio-summary"});
+            replyWhenJobDone(call, job, true, 120.0, [data, text, summary](const McpJob&) mutable {
+                if (summary->is_object()) {
+                    const Json& audio = *summary;
+                    data["audio"] = audio;
+                    const auto number = [&audio](const char* key) { return audio[key].is_number() ? std::to_string(audio[key].get<double>()).substr(0, 6) : std::string("none"); };
+                    text += "\nAudio capture " + audio.value("session", "") + ": " + number("duration_s") + " s, " + number("integrated_lufs") + " LUFS, momentary max " +
+                            number("momentary_max") + ", true peak " + number("true_peak_dbtp") + " dBTP, " + std::to_string(audio.value("voices_started", 0)) + " voices. Next: audio_session report.";
+                }
+                return ToolResult::success(text, data);
+            });
+            return;
+        }
         call->ok(text, data);
     });
 }

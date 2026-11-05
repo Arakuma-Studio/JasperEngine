@@ -40,6 +40,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerSoundEventTools, "Sound Events", "audio"},
     {registerAudioTools, "Audio Mixer", "audio"},   // upstream (audio-mixer): out of core to fit the budget (S31)
     {registerSoundTools, "Sound files", "audio"},   // S36
+    {registerAudioSessionTools, "Audio captures", "audio"},   // S35
     {registerScriptTools, "Scripts", ""},
     {registerAssetTools, "Assets, materials and shaders", ""},
     {registerSynthesisTools, "Texture synthesis", "assets_pipeline"},   // upstream (texture synthesis)

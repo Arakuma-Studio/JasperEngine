@@ -19,7 +19,9 @@
 #include "Project.h"
 #include "util/AssetDatabase.h"
 #include "audio/AudioAnalysis.h"
+#include "audio/AudioCapture.h"
 #include "audio/AudioCompare.h"
+#include "audio/AudioSessionReader.h"
 #include "audio/AudioImages.h"
 #include "audio/AudioImportSettings.h"
 #include "audio/AudioProvenance.h"
@@ -288,7 +290,9 @@ bool readCaptureFile(const CallPtr& call, AnalyzeWork& work, const std::string& 
         call->fail("Session " + work.session.id + " names an invalid master file.");
         return false;
     }
-    fs::path audioFile = work.session.directory / master;
+    // (a live or crashed session is still under its temporary name)
+    fs::path audioFile = AudioSessionReader::audioFile(work.session.directory, master);
+    if (audioFile.empty()) audioFile = work.session.directory / master;
     if (group != "master") {
         const Json stems = files.is_object() ? files.value("stems", Json::array()) : Json::array();
         std::string stem;
@@ -304,7 +308,8 @@ bool readCaptureFile(const CallPtr& call, AnalyzeWork& work, const std::string& 
             call->fail("Session " + work.session.id + " names an invalid stem file for " + group + ".");
             return false;
         }
-        audioFile = work.session.directory / relative;
+        audioFile = AudioSessionReader::audioFile(work.session.directory, relative.generic_string());
+        if (audioFile.empty()) audioFile = work.session.directory / relative;
         master = stem;
         work.group = group;
     }
@@ -427,7 +432,7 @@ void analyzeAudioTool(const CallPtr& call) {
     } else {
         std::string error;
         const fs::path root = AudioAnalysis::captureRoot(project->getProjectPath());
-        if (!args["capture"].is_string() || !AudioAnalysis::findCapture(root, args["capture"].get<std::string>(), std::string(), work->session, error)) {
+        if (!args["capture"].is_string() || !AudioAnalysis::findCapture(root, args["capture"].get<std::string>(), AudioCapture::sessionId(), work->session, error)) {
             call->fail(error.empty() ? std::string("capture is \"last\", \"current\", a session id or a session directory.") : error);
             return;
         }

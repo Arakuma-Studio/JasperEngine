@@ -7,6 +7,7 @@
 // menu items as commands (S23 R42).
 
 #include "App.h"
+#include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
@@ -369,6 +370,15 @@ void editor::App::registerCommands(){
     browser("soundBrowser.selectAll", [this]() { soundBrowserWindow->selectAll(); });
     browser("soundBrowser.stop", [this]() { soundBrowserWindow->stopOrClear(); }, true);
 
+    // ---- Window > Audio > Captures, while it has focus
+    auto captures = [&bind, this](const char* id, std::function<void()> run) {
+        bind(id, [run](const CommandArgs&) { run(); }, [this]() { return audioCapturesWindow->isOpen(); }, []() { return !ImGui::GetIO().WantTextInput; });
+    };
+    captures("audioCaptures.playMoment", [this]() { audioCapturesWindow->playMoment(); });
+    captures("audioCaptures.stop", [this]() { audioCapturesWindow->stopMoment(); });
+    captures("audioCaptures.nextMoment", [this]() { audioCapturesWindow->selectMoment(1); });
+    captures("audioCaptures.previousMoment", [this]() { audioCapturesWindow->selectMoment(-1); });
+
     // ---- The Curve window and the Color window, while they have focus
     using CurveCommand = ui::CurveEditor::Command;
     auto curve = [&bind](const char* id, CurveCommand command) {
@@ -499,6 +509,7 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (ui::CurveWindow::get().isFocused()) state.panels.push_back(ShortcutContext::Curve);
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
     if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
+    if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     return state;
 }

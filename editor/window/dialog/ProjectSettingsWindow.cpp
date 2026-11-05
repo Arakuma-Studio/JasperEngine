@@ -2247,6 +2247,37 @@ void ProjectSettingsWindow::drawAudioSettings() {
                                "A run with a device draws its own at each start.");
             }
 
+            for (const AudioQaField& field : audioQaFields()) {
+                if (!settingsui::beginRow(field.key)) continue;
+                const bool changed = field.real ? audio.qa.*field.real != defaults.qa.*field.real : audio.qa.*field.whole != defaults.qa.*field.whole;
+                if (projectBeginSettingsRow(field.label, changed)) {
+                    if (field.real) audio.qa.*field.real = defaults.qa.*field.real;
+                    else audio.qa.*field.whole = defaults.qa.*field.whole;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::PushID(field.key);
+                if (field.real) {
+                    ImGui::DragFloat("##value", &(audio.qa.*field.real), 0.1f, (float)field.minimum, (float)field.maximum);
+                    audio.qa.*field.real = std::clamp(audio.qa.*field.real, (float)field.minimum, (float)field.maximum);
+                } else {
+                    ImGui::DragInt("##value", &(audio.qa.*field.whole), 1.0f, (int)field.minimum, (int)field.maximum);
+                    audio.qa.*field.whole = std::clamp(audio.qa.*field.whole, (int)field.minimum, (int)field.maximum);
+                }
+                ImGui::PopID();
+                endSettingsRow((std::string(field.help) + " Changing these does not fix audio; checks report changed thresholds.").c_str());
+            }
+
+            if (settingsui::beginRow("audio.qa.music_group")) {
+                if (projectBeginSettingsRow("Music Group", audio.qa.musicGroup != defaults.qa.musicGroup)) {
+                    audio.qa.musicGroup = defaults.qa.musicGroup;
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                char musicGroup[128];
+                std::snprintf(musicGroup, sizeof(musicGroup), "%s", audio.qa.musicGroup.c_str());
+                if (ImGui::InputText("##AudioMusicGroup", musicGroup, sizeof(musicGroup))) audio.qa.musicGroup = musicGroup;
+                endSettingsRow("The mixer group of the game's music, for the silence check. Changing these does not fix audio; checks report changed thresholds.");
+            }
+
             if (settingsui::beginRow("audio.capture_max_seconds")) {
                 if (projectBeginSettingsRow("Capture Max Seconds", audio.captureMaxSeconds != defaults.captureMaxSeconds)) {
                     audio.captureMaxSeconds = defaults.captureMaxSeconds;

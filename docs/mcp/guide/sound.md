@@ -26,7 +26,7 @@ the seam at its loop region's wrap. `played` gives that region, `source` the raw
 note `as_it_plays` says so. Results are cached by content in `.jasperengine/cache/audio`.
 
 `image` adds a picture, `max_width` wide: `waveform`, `spectrogram`, `both` or `sheet` (the default for
-several items, numbered as `n`). A capture (`capture: "last"`, S35) takes `start`, `end` and `group`.
+several items, numbered as `n`). A capture (`capture: "last"`) takes `start`, `end` and `group`.
 
 ## Import settings
 
@@ -172,3 +172,64 @@ Make one with `edit_sound_event`, then point an AudioSource at it with `set_prop
 Recipes: **footsteps** are a `shuffle` with small pitch and volume ranges and a `cooldown_ms`;
 **UI clicks** a `random` event on a Button's AudioSource with `playOn: ["ui_click"]`; **impacts** an event on
 a Rigidbody's AudioSource with `playOn: ["collision_3d"]`, `minImpactSpeed` and `fullVolumeImpactSpeed`.
+
+## Capture a Play
+
+A Play captures when the editor has no output device (the usual case for an agent), or after
+`audio_session {action: "arm"}`, which applies to the next `play start` or `restart` and is used once (`capture: false`
+turns the default off; `max_seconds`, `stems`). It runs on the deterministic driver: 48 kHz stereo, mixed once a frame by
+game time, and the device is muted. With `play {fixed_fps}` and the same input and `audio.seed`, `master.wav`,
+`events.jsonl` and `levels.jsonl` are the same bytes on every run. A player does the same with
+`--headless --fixed-fps 60 --audio-capture <dir>` (development players; read it with `session: "<dir>/<id>"`).
+
+`play stop` returns `audio`: the session, its loudness and its counts. `audio_session` then reads it:
+
+- `status`: what the next Play does, and the sessions, newest first.
+- `report {session, start, end, events_limit, image, max_width}`: `loudness`, `peak`, `groups`, `voices`, `mixer`, and the
+  moments numbered as on the timeline: `events` (`E<n>`, voices) and `markers` (`M<n>`: gameplay).
+- `session` is `last` (the default), `current` (the Play still running), an id, or a directory.
+
+`Audio.mark("label")` puts your own moment on the clock; collisions, sensors, UI presses, clicks and hovers, HTML UI clicks,
+animation events, spawns, destroys, scene loads and input are marked for you. Project Settings > Audio: `audio.capture_max_seconds`
+(audio stops growing, events go on), `audio.capture_keep`, `audio.capture_stems`.
+
+## Checks
+
+`audio_session {action: "check", session, checks, expect, baseline, save_baseline, fail_on, image}`: `verdict`, and for each check
+`status` (PASS, FAIL, WARN, SKIP), `measured`, `threshold` and where it comes from, `limited_by`, `at` (times), `fix_hint`.
+
+| Check | What it says |
+|---|---|
+| `loudness` | integrated LUFS within `audio.loudness_target_lufs` +- `audio.loudness_tolerance_lu`; SKIP under `audio.qa.loudness_min_seconds` of gated audio |
+| `true_peak` | at most `audio.true_peak_ceiling_dbtp` + 0.1 dB |
+| `clipping` | no output sample at full scale |
+| `coverage` | each moment of an `expect` rule has its sound; without rules, a marker kind and entity sounded only some of the times |
+| `sync` | the audible onset comes within `audio.qa.head_silence_max_ms` of the stamp |
+| `audibility` | a voice's main band stands `audio.qa.audibility_margin_db` over the other groups; `limited_by` names the group and the band |
+| `voice_budget` | WARN near `audio.max_voices`; FAIL when a voice of `audio.qa.important_priority` or better is lost |
+| `ducking` | a `duck` effect drops its group while the side chain plays |
+| `silence` | no gap over `audio.qa.max_silence_seconds` after the first voice of `audio.qa.music_group` |
+| `load_delay` | WARN for a voice that waited for its load |
+| `repetition` | WARN for one clip `audio.qa.repeat_min_plays` times in a row from one source |
+| `regression` | against `baseline`: starts within `audio.qa.regression_timing_ms`, bands within `audio.qa.regression_band_db` |
+
+`expect` items: `{on, entity, sound, within_ms, offset_ms, align}`. `on` is a marker kind (`ui_click`, `collision_3d`...) or an
+`Audio.mark` label, `sound` a clip path's part or an event, `align` the point of the sound that must be there: `onset`, `peak`, `end`.
+
+`save_baseline: "<name>"` writes `baselines/audio/<name>.json` (one undo step); `baseline` takes that name or a session.
+
+A script or a build step: `batch` with `play {action: "start", fixed_fps: 60}`, `wait {frames}`, `play {action: "stop"}`,
+`audio_session {action: "check", fail_on: "fail"}`. `fail_on` makes the verdict an error, and
+`jasperengine-editor call audio_session '{"action":"check","fail_on":"fail"}'` exit 1.
+
+## Rules
+
+- Never claim a sound plays without a capture. Report the numbers.
+- Fix the sound or the mix; never move a threshold to pass. `thresholds.changed` shows every threshold that differs from its default.
+- After `audio.qa.fix_rounds` failures of one check in a row, `guidance` says to stop: report what it measured.
+- A check never changes anything; it suggests.
+
+## Hand over to a human
+
+Numbers cannot say whether a sound is right. `check` gives `listen`: 3 to 5 moments `{t, why}`. Ask the user to open
+Window > Audio > Captures, select the session and play them (Enter on a row, Escape stops).

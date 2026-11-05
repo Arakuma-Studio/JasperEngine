@@ -10,6 +10,7 @@
 #include "window/AnimatorWindow.h"
 #include "window/AssetPanels.h"
 #include "window/AudioMixerWindow.h"
+#include "window/AudioCapturesWindow.h"
 #include "window/SoundBrowserWindow.h"
 #include "window/AvatarWindow.h"
 #include "window/CodeEditor.h"
@@ -228,6 +229,7 @@ editor::App::App(){
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
     soundBrowserWindow = new SoundBrowserWindow(&project);
+    audioCapturesWindow = new AudioCapturesWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -725,6 +727,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         }),
         menuSubmenu("Audio", {
             catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME)),
+            catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
             catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
@@ -1009,6 +1012,9 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleSoundBrowser:
             soundBrowserWindow->open();
+            break;
+        case AppMenuCommand::ToggleAudioCaptures:
+            audioCapturesWindow->open();
             break;
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
@@ -2882,6 +2888,7 @@ void editor::App::show(){
     textureSynthesisWindow->show();
     audioMixerWindow->show();
     soundBrowserWindow->show();
+    audioCapturesWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -4953,6 +4960,7 @@ void editor::App::prepareForProjectSwitch() {
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
     soundBrowserWindow->resetForProjectSwitch();
+    audioCapturesWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();

@@ -80,6 +80,8 @@ namespace jasperengine {
         struct GroupMeter {
             std::string id;
             std::string name;
+            // its parent's name, "" for Master
+            std::string parent;
             const MeterFilter* meter = nullptr;
         };
         static std::vector<GroupMeter> getGroupMeters();

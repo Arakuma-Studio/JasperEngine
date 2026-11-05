@@ -363,6 +363,7 @@ namespace {
         std::map<const MeterFilter*, GroupCapture*> groupOfMeter;
         // the mixer's id > name map at begin
         std::string mixerMap;
+        std::string mixerParents;
         std::string mixerPath;
 
         std::vector<ActiveVoice> voices;
@@ -794,7 +795,7 @@ namespace {
         field("truncated", s.truncated ? "true" : "false");
         field("max_seconds", std::to_string(s.options.maxSeconds));
         field("files", "{\"master\": \"master.wav\", \"events\": \"events.jsonl\", \"levels\": \"levels.jsonl\", \"stems\": " + list(stems) + "}");
-        field("mixer", "{\"path\": " + quoted(s.mixerPath) + ", \"groups\": " + s.mixerMap + "}");
+        field("mixer", "{\"path\": " + quoted(s.mixerPath) + ", \"groups\": " + s.mixerMap + ", \"parents\": " + s.mixerParents + "}");
         field("output_stage", "{\"clipper\": \"roundoff\", \"post_clip_scaler\": " + decimal(soloud.getPostClipScaler(), 6) + "}");
         field("counts", counts);
         field("events_dropped", std::to_string(s.eventsDropped));
@@ -994,14 +995,21 @@ bool AudioCapture::begin(const AudioCaptureOptions& options, std::string* error)
     lastSessionPath = directory;
 
     std::string mixerMap = "{";
+    std::string parents = "{";
     for (const AudioMixer::GroupMeter& info : AudioMixer::getGroupMeters()) {
         addGroup(info);
         if (mixerMap.size() > 1) mixerMap += ", ";
         jsonQuoted(mixerMap, info.id);
         mixerMap += ": ";
         jsonQuoted(mixerMap, info.name);
+        if (info.parent.empty()) continue;
+        if (parents.size() > 1) parents += ", ";
+        jsonQuoted(parents, info.name);
+        parents += ": ";
+        jsonQuoted(parents, info.parent);
     }
     s.mixerMap = mixerMap + "}";
+    s.mixerParents = parents + "}";
 
     s.pendingEvents = std::string("{\"format\":\"") + FORMAT_EVENTS + "\",\"version\":" + std::to_string(FORMAT_VERSION) + "}\n";
     s.pendingLevels = std::string("{\"format\":\"") + FORMAT_LEVELS + "\",\"version\":" + std::to_string(FORMAT_VERSION) + "}\n";

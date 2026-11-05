@@ -468,10 +468,13 @@ namespace {
         for (EffectState& effect : group.effects) effect.applied.clear();
 
         GroupState* parent = group.parentId.empty() ? nullptr : findState(group.parentId);
+        // started paused: the pan below is its pan from its first sample. Set on a running voice it would
+        // ramp from the centre's 0.707 over the next mix call, so a game's first sounds would depend on
+        // how long that call is (a setVolume while paused takes the channel volumes at once).
         if (parent && parent->bus && parent->handle) {
-            group.handle = parent->bus->play(*group.bus, 1.0f, 0.0f, false);
+            group.handle = parent->bus->play(*group.bus, 1.0f, 0.0f, true);
         } else {
-            group.handle = soloud.play(*group.bus, 1.0f, 0.0f, false);
+            group.handle = soloud.play(*group.bus, 1.0f, 0.0f, true);
         }
         if (group.handle) {
             // SoLoud learns a bus's own handle only when something plays through it; a bus stopped
@@ -482,6 +485,8 @@ namespace {
             // a bus passes its stereo through at unity: SoLoud's centre pan (constant power, 0.707
             // per side) would take 3 dB off at every level of the tree
             soloud.setPanAbsolute(group.handle, 1.0f, 1.0f);
+            soloud.setVolume(group.handle, 1.0f);
+            soloud.setPause(group.handle, false);
         }
     }
 
@@ -1091,7 +1096,9 @@ std::vector<AudioMixer::GroupMeter> AudioMixer::getGroupMeters(){
     ensureInitialized();
     std::vector<GroupMeter> out;
     for (const auto& group : state().groups) {
-        if (group->meter && group->bus && group->handle) out.push_back({group->id, group->name, group->meter.get()});
+        if (!group->meter || !group->bus || !group->handle) continue;
+        const GroupState* parent = group->parentId.empty() ? nullptr : findState(group->parentId);
+        out.push_back({group->id, group->name, parent ? parent->name : std::string(), group->meter.get()});
     }
     return out;
 }

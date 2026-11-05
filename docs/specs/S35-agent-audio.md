@@ -610,6 +610,14 @@ does not fix audio; checks report changed thresholds."
 
 ## Deviations
 
+- **Chunks and a voice's start:** what differed was not the voice but the Master bus: `playBus` set the bus's unity pan on a running
+  voice, which ramped from the centre's 0.707 over the first mix call of the audio. The bus now starts paused with its pan, so its first
+  sample is at unity and the mix does not depend on the chunk size. A Recorder movie's hash changes for this, not for R2. A volume a game
+  moves during a Play (`setVolume`, a fader) still ramps over one mix call: making that independent of chunks means a per-voice fixed-length
+  ramp in SoLoud's mix loop, which is not simple and is left as is.
+- **`loudness` and `true_peak` read S38's keys when they exist**, else S38's defaults (-18 LUFS +- 2, -1 dBTP): S38's settings are not on `main` yet.
+- **The `audio-qa` and `audio-markers` fixtures are not used:** each test makes its scenes over MCP, which keeps the seed next to its check.
+- **AC13 is a gtest (`AudioCaptureBenchTest`) with `perfSlack()`**, not `tools/perf/audio_capture_bench`: AGENTS.md's way of reporting wall-clock budgets. Server F no longer exists.
 - **A Recorder movie's first frame of audio changes:** S62 pinned its bytes with one mix call a frame; R2's chunks ramp a
   voice in over its first 512 frames, not 1,600 (SoLoud's ramp lasts the mix call). Nothing else moves: one call a frame on
   this driver gives S62's exact hash, and the chunks differ from it only inside the first 1,600 frames (largest difference

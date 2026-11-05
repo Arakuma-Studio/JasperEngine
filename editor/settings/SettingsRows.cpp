@@ -1973,6 +1973,51 @@ std::vector<Setting> mcpSettingsTable() {
         audioInt("audio.seed", "The seed of Sound Event picks in a run without a device (default 1), so it repeats. A run with a device draws its own.", 0, 2147483647LL, &AudioSettings::seed);
         audioInt("audio.capture_max_seconds", "Seconds of audio a Play's capture keeps (default 120); its events go on being logged after them.", 1, 3600, &AudioSettings::captureMaxSeconds);
         audioInt("audio.capture_keep", "Capture sessions kept in the project (default 3); the oldest goes first.", 1, 20, &AudioSettings::captureKeep);
+        for (const AudioQaField& field : audioQaFields()) {
+            Setting s;
+            s.key = field.key;
+            s.type = field.real ? "number" : "int";
+            s.description = field.help;
+            s.get = [&field](SettingsContext& ctx) {
+                const AudioQaSettings& qa = ctx.project()->getAudioSettings().qa;
+                return field.real ? Json(qa.*field.real) : Json(qa.*field.whole);
+            };
+            s.set = [&field](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < field.minimum || value.get<double>() > field.maximum ||
+                    (field.whole && !value.is_number_integer())) {
+                    error = "must be a number from " + std::to_string(field.minimum) + " to " + std::to_string(field.maximum);
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    if (field.real) settings.qa.*field.real = value.get<float>();
+                    else settings.qa.*field.whole = value.get<int>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
+        {
+            Setting s;
+            s.key = "audio.qa.music_group";
+            s.type = "string";
+            s.description = "The mixer group of the game's music, for the silence check.";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().qa.musicGroup); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string()) {
+                    error = "must be a group name";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.qa.musicGroup = value.get<std::string>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(std::move(s));
+        }
         {
             Setting s;
             s.key = "audio.capture_stems";
@@ -2833,6 +2878,21 @@ const Placement placements[] = {
     {"audio.capture_max_seconds", "Audio", "Capture and QA", "Capture Max Seconds", "capture session length truncate"},
     {"audio.capture_keep", "Audio", "Capture and QA", "Capture Keep", "capture sessions kept delete oldest"},
     {"audio.capture_stems", "Audio", "Capture and QA", "Capture Stems", "capture stems groups wav"},
+    {"audio.qa.head_silence_max_ms", "Audio", "Capture and QA", "Head Silence Max (ms)", "check sync head silence"},
+    {"audio.qa.sync_tolerance_ms", "Audio", "Capture and QA", "Sync Tolerance (ms)", "check coverage sync"},
+    {"audio.qa.audibility_margin_db", "Audio", "Capture and QA", "Audibility Margin (dB)", "check masking"},
+    {"audio.qa.voice_budget_warn", "Audio", "Capture and QA", "Voice Budget Warning", "check voices"},
+    {"audio.qa.important_priority", "Audio", "Capture and QA", "Important Priority", "check voices stolen"},
+    {"audio.qa.voice_over_music_db", "Audio", "Capture and QA", "Voice Over Music (dB)", "check duck"},
+    {"audio.qa.max_silence_seconds", "Audio", "Capture and QA", "Max Silence (s)", "check gap music"},
+    {"audio.qa.music_group", "Audio", "Capture and QA", "Music Group", "check music silence"},
+    {"audio.qa.loudness_min_seconds", "Audio", "Capture and QA", "Loudness Min Seconds", "check lufs"},
+    {"audio.qa.limiter_warn_db", "Audio", "Capture and QA", "Limiter Warning (dB)", "check limiter hot"},
+    {"audio.qa.fix_rounds", "Audio", "Capture and QA", "Fix Rounds", "check agent stop report"},
+    {"audio.qa.repeat_min_plays", "Audio", "Capture and QA", "Repeat Min Plays", "check repetition"},
+    {"audio.qa.repeat_window_s", "Audio", "Capture and QA", "Repeat Window (s)", "check repetition"},
+    {"audio.qa.regression_timing_ms", "Audio", "Capture and QA", "Regression Timing (ms)", "check baseline"},
+    {"audio.qa.regression_band_db", "Audio", "Capture and QA", "Regression Band (dB)", "check baseline"},
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},

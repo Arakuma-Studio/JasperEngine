@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "audio/AudioQaSettings.h"
 #include "render/GpuCreation.h"
 #include <array>
 #include <functional>
@@ -177,12 +178,13 @@ namespace jasperengine::editor {
         int captureMaxSeconds = 120;
         int captureKeep = 3;
         bool captureStems = false;
+        AudioQaSettings qa;
         bool creditsFile = true;        // exports write licenses/THIRD-PARTY-AUDIO.txt
 
         bool operator==(const AudioSettings& other) const {
             return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
                    sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && seed == other.seed &&
-                   captureMaxSeconds == other.captureMaxSeconds && captureKeep == other.captureKeep && captureStems == other.captureStems &&
+                   captureMaxSeconds == other.captureMaxSeconds && captureKeep == other.captureKeep && captureStems == other.captureStems && qa == other.qa &&
                    creditsFile == other.creditsFile;
         }
         bool operator!=(const AudioSettings& other) const { return !(*this == other); }

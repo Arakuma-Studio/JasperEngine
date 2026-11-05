@@ -1877,6 +1877,8 @@ namespace jasperengine::editor{
         const AudioCaptureArm& getAudioCaptureArm() const;
         // why this Play is not captured though it should be; "" when it is or need not be
         const std::string& getAudioCaptureError() const;
+        // the session of the Play that just stopped, once ("" when it did not capture)
+        std::string takeAudioCaptureSession();
         void setAudioSettings(const AudioSettings& settings);
         // the project mixer's file (absolute; empty when none is set)
         std::filesystem::path getAudioMixerFile() const;
@@ -1899,6 +1901,7 @@ namespace jasperengine::editor{
         bool playAudioCaptureWanted = false;
         bool playHoldsAudioDriver = false;
         std::string audioCaptureError;
+        std::string playAudioCaptureSession;
         void preparePlayAudioCapture();
         void beginPlayAudioCapture(const SceneProject* mainSceneProject);
         void endPlayAudioCapture();
