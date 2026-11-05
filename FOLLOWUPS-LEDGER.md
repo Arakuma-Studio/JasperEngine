@@ -66,7 +66,7 @@ S65, S68, S69, S70 and S35-S40. Moved off this list: S72, which changes includes
 | S67 | Android and iOS packaging, bundletool | `feat/s67-packaging-tests` | A, H, M | Done |
 | S68 | Linked folders, one file one GUID | `feat/s68-linked-folders` | B | Ready; in the full suite |
 | S69 | Dialogs through `EditorModal` | `feat/s69-editor-modal` | B | Ready; in the full suite |
-| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B | In progress |
+| S70 | Auto-sync settles before the reply | `feat/s70-autosync-settle` | B, H | Ready at `df51380dd`; waits for the second full suite |
 | S71 | A-3, Mesh update flags | `feat/s71-mesh-update-flags` | H | Done |
 | S72 | 521-file header fan-out; sanitizer installs | `feat/s72-build-hygiene` | H | Done |
 | S73 | `AssetRefSchema`, oracle, `keptText`, `createdShaders` | `feat/s73-code-cleanups` | B | In progress |
@@ -114,6 +114,8 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 - Android Vulkan backend (found by S67).
 - Temporaries a crash leaves in `Recordings/` are not swept (found by S62): they are single files named by pid, which `StagingFolders` does not cover.
+- Closing stdin during `wait` in Play hung the main thread for 118 s or more on S70's red build; not retested on the fix (found by S70).
+- `test_playhead_shortcuts_while_focused` failed once in S70's CI suite; its whole file passes, and with `-k` alone it fails 3 of 3. Cause not established.
 - A relaunch on Android logs `Entity does not exist to get signature` (found by S67).
 - `list_missing_assets` is not found by agents while its `assets_pipeline` group is hidden (found by S68).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
