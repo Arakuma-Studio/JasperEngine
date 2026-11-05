@@ -45,6 +45,9 @@ work it found these cases beyond R1 and R2, all fixed here:
 - A 3D scene with no Camera generates the Scene view's camera, whose field of view and clips came from its first draw. They are
   applied before a save (`Project::applyFirstDrawSettings`).
 
+The Play snapshot is not a file: Stop puts a kept Mesh's `worldAABB` back from it, so it still holds what a frame computes
+(`Stream::encodePlaySnapshot`, `reflect::PlaySnapshotEncodeScope`).
+
 R4: no format bump. Everything left out is read when an old file has it and recomputed otherwise, so old files load unchanged.
 
 What stays different, with the reason:
