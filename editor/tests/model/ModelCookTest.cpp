@@ -19,6 +19,8 @@
 #include "model/ModelCooker.h"
 #include "model/ModelSourceDecode.h"
 #include "pool/MeshLodPool.h"
+#include "subsystem/GltfNormalize.h"
+#include "tiny_gltf.h"
 
 #include "meshoptimizer.h"
 
@@ -651,5 +653,47 @@ TEST(ModelCookBench, HundredThousandTrianglesUnderTwoSeconds){
                     cooked.record.diskBytes / 1048576.0);
         if (perfSlack() > 0.0)
             EXPECT_LE(cooked.record.cookMs / 1000.0, 2.0 * perfSlack());
+    }
+}
+
+TEST(ModelCookBench, ACookedModelLoadsNoSlowerThanItsSource){
+    // spec S53 R28: reading a file and normalising it, what a load does before any draw: the
+    // cook's decode against the source's larger file (the budget holds on the benchmark run,
+    // JASPER_TEST_PERF_SLACK; elsewhere it is printed)
+    ScratchDir scratch("model-cook-load-bench");
+    GltfBuild build;
+    GridOptions grid;
+    grid.quads = 224;      // 100,352 triangles
+    grid.welded = false;
+    const GJson primitive = addGridPrimitive(build, grid);
+    build.json["meshes"].push_back({{"name", "Terrain"}, {"primitives", GJson::array({primitive})}});
+    build.json["nodes"] = GJson::array({{{"mesh", 0}}});
+    const fs::path source = writeSource(scratch, build.glb());
+    auto loadSeconds = [](const fs::path& file){
+        double best = 1e9;
+        for (int take = 0; take < 5; take++){
+            const auto start = std::chrono::steady_clock::now();
+            std::ifstream in(file, std::ios::binary);
+            const std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            tinygltf::Model model;
+            tinygltf::TinyGLTF loader;
+            std::string err, warn;
+            const bool parsed = loader.LoadBinaryFromMemory(&model, &err, &warn, bytes.data(), (unsigned int)bytes.size(), "");
+            GltfNormalizeResult result;
+            const bool normalized = parsed && GltfNormalize::normalize(model, "bench", result);
+            EXPECT_TRUE(normalized) << err << result.firstError();
+            best = std::min(best, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
+        }
+        return best;
+    };
+    const double sourceSeconds = loadSeconds(source);
+    for (MeshCompression compression : {MeshCompression::Lossless, MeshCompression::Medium}){
+        Cooked cooked;
+        ASSERT_TRUE(cookModel(source, settingsOf(OptimizeMesh::Everything, compression, GenerateLods::Automatic), cooked));
+        const fs::path file = writeSource(scratch, cooked.glb, std::string("cooked_") + meshCompressionName(compression) + ".glb");
+        const double seconds = loadSeconds(file);
+        std::printf("[bench] load of 100,352 triangles: source %.1f ms, %s cook %.1f ms\n", sourceSeconds * 1000.0, meshCompressionName(compression), seconds * 1000.0);
+        if (perfSlack() > 0.0)
+            EXPECT_LE(seconds, sourceSeconds * perfSlack());
     }
 }

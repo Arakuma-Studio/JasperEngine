@@ -19,7 +19,9 @@
 #include "object/Model.h"
 #include "particles/ParticleMeshes.h"
 #include "picking/PickGeometry.h"
+#include "pool/MeshLodPool.h"
 #include "pool/ModelPool.h"
+#include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "util/MeshTriangles.h"
 
@@ -52,6 +54,19 @@ namespace {
 
     const char* const kAsset = "asset://models/source.glb";
 
+    size_t differingPixels(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b){
+        if (a.size() != b.size() || a.empty())
+            return (size_t)-1;
+        size_t count = 0;
+        for (size_t i = 0; i < a.size(); i += 4){
+            bool differs = false;
+            for (size_t c = 0; c < 3; c++)
+                differs = differs || std::abs((int)a[i + c] - (int)b[i + c]) > 2;
+            count += differs ? 1 : 0;
+        }
+        return count;
+    }
+
     class EditorLikeSystem : public TestSystem {
     public:
         bool isEditor() override { return true; }
@@ -72,6 +87,7 @@ namespace {
             camera.activate();
             light.setType(LightType::DIRECTIONAL);
             light.setDirection(-0.4f, -1.0f, -0.6f);
+            light.setIntensity(1.5f);
             Engine::setScene(&scene);
             Engine::setFixedDeltatime(1.0 / 60.0);
             // what an exported game's index.json says of the model
@@ -162,15 +178,13 @@ TEST_F(ModelCpuDataGpu, ReleasesTheFilesBytesAfterUploadAndKeepsDrawing){
             if (parse->buffers[(size_t)mesh->eBuffers[b].getModelBuffer()].name != MeshSystem::kSyntheticBufferName)
                 EXPECT_TRUE(mesh->eBuffers[b].isDataReleased() && !mesh->eBuffers[b].getData());
 
-    const CompareResult same = compareImages(before, frame(), (int)GpuEnvironment::target().getWidth(), (int)GpuEnvironment::target().getHeight());
-    EXPECT_TRUE(same.passed) << same.message;
+    EXPECT_EQ(differingPixels(before, frame()), 0u);
 
     // a reload (a material or a view change) binds the same GPU buffers
     for (MeshComponent* mesh : meshes)
         mesh->needReload = true;
     ASSERT_TRUE(settle());
-    const CompareResult reloaded = compareImages(before, frame(), (int)GpuEnvironment::target().getWidth(), (int)GpuEnvironment::target().getHeight());
-    EXPECT_TRUE(reloaded.passed) << reloaded.message;
+    EXPECT_EQ(differingPixels(before, frame()), 0u);
     EXPECT_EQ(fileBytes(*parse), 0u) << "a reload read the file again";
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
 }
@@ -206,7 +220,7 @@ TEST_F(ModelCpuDataGpu, AReaderGetsTheBytesBackAndTheyStay){
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
 }
 
-// R11: a later load of the file, and a lost GPU buffer, read it again and draw the same
+// R11: a later load of the file reads it again, and draws the same
 TEST_F(ModelCpuDataGpu, ALaterLoadOfTheFileDraws){
     JASPER_REQUIRE_GPU();
     LogCapture log;
@@ -223,18 +237,30 @@ TEST_F(ModelCpuDataGpu, ALaterLoadOfTheFileDraws){
     second.setVisible(false);
     ASSERT_TRUE(settle());
     EXPECT_GT(fileBytes(*parse), 0u);
-    const CompareResult same = compareImages(before, frame(), (int)GpuEnvironment::target().getWidth(), (int)GpuEnvironment::target().getHeight());
-    EXPECT_TRUE(same.passed) << same.message;
+    EXPECT_EQ(differingPixels(before, frame()), 0u);
 
-    // the GPU buffers gone (a lost context): the upload finds the bytes
+    EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
+}
+
+// R11: the GPU buffers gone with nothing else holding them (a lost context): the file is read again
+TEST_F(ModelCpuDataGpu, ALostGpuBufferReadsTheFileAgain){
+    JASPER_REQUIRE_GPU();
+    LogCapture log;
+    Model model(&scene);
+    ASSERT_TRUE(model.loadModel(kAsset));
+    ASSERT_TRUE(settle());
+    const std::vector<uint8_t> before = frame();
+    const std::shared_ptr<tinygltf::Model> parse = model.getComponent<ModelComponent>().gltfModel;
+    ModelCpuData::update({&scene}, true);
+    ASSERT_EQ(fileBytes(*parse), 0u);
     for (MeshComponent* mesh : meshesOf(parse)){
         for (unsigned int b = 0; b < mesh->numExternalBuffers; b++)
             mesh->eBuffers[b].getRender()->destroyBuffer();
         mesh->needReload = true;
     }
     ASSERT_TRUE(settle());
-    const CompareResult again = compareImages(before, frame(), (int)GpuEnvironment::target().getWidth(), (int)GpuEnvironment::target().getHeight());
-    EXPECT_TRUE(again.passed) << again.message;
+    EXPECT_GT(fileBytes(*parse), 0u);
+    EXPECT_EQ(differingPixels(before, frame()), 0u);
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
 }
 
@@ -258,12 +284,12 @@ TEST_F(ModelCpuDataGpu, KeepCpuDataKeepsTheBytesForEachReader){
     picking::PickGeometryLayout layout;
     EXPECT_TRUE(picking::resolveSources(*meshes[0], layout));
     // a particle mesh shape
-    ParticleMeshData shape;
+    particles::ParticleMeshData shape;
     std::string error;
-    EXPECT_TRUE(ParticleMeshes::model(kAsset, 0, shape, &error)) << error;
+    EXPECT_TRUE(particles::ParticleMeshes::model(kAsset, 0, shape, &error)) << error;
     // runtime levels read the mesh's bytes
     MeshLodSource source;
-    EXPECT_TRUE(scene.getSystem<RenderSystem>()->readMeshLodSource(*meshes[0], 0, source));
+    EXPECT_TRUE(RenderSystem::readSubmeshLodSource(*meshes[0], 0, source));
     EXPECT_FALSE(source.positions.empty());
     EXPECT_EQ(fileBytes(*parse), held);
 }
@@ -277,9 +303,9 @@ TEST_F(ModelCpuDataGpu, AParticleMeshShapeReadsTheFileAfterARelease){
     const std::shared_ptr<tinygltf::Model> parse = model.getComponent<ModelComponent>().gltfModel;
     ModelCpuData::update({&scene}, true);
     ASSERT_EQ(fileBytes(*parse), 0u);
-    ParticleMeshData shape;
+    particles::ParticleMeshData shape;
     std::string error;
-    EXPECT_TRUE(ParticleMeshes::model(kAsset, 0, shape, &error)) << error;
+    EXPECT_TRUE(particles::ParticleMeshes::model(kAsset, 0, shape, &error)) << error;
     EXPECT_EQ(fileBytes(*parse), 0u);
 }
 
@@ -297,7 +323,6 @@ TEST_F(ModelCpuDataGpu, TheEditorNeverReleases){
 // AC7: a golden of the cook at Medium, which its source's image matches within the golden's limits
 TEST_F(ModelCpuDataGpu, MediumCookDrawsWhatItsSourceDraws){
     JASPER_REQUIRE_GPU();
-    GpuEnvironment::setView(512, 512, 512, 512, Scaling::FITWIDTH);
     Model cooked(&scene);
     ASSERT_TRUE(cooked.loadModel(s41Fixture("cooked_medium.glb")));
     ASSERT_TRUE(settle());

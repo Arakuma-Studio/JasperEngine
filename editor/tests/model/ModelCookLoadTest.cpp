@@ -28,7 +28,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
+#include <iterator>
 
 namespace fs = std::filesystem;
 using namespace jasperengine;
@@ -233,11 +235,37 @@ TEST(ModelCookLoad, MsftLodLevelsBecomeTheBaseMeshesBakedLevels){
     ASSERT_TRUE(baked);
     EXPECT_EQ(baked->numLevels, 3u);
     EXPECT_EQ(recipe, kMeshLodRecipe);
+    // the lower levels' own primitives show the same bytes, not a second copy of them
+    for (size_t l = 0; l < 2; l++){
+        const size_t lowerMesh = sourceRoot["nodes"][lod["ids"][l].get<size_t>()]["mesh"].get<size_t>();
+        const GJson& lower = root["meshes"][lowerMesh]["primitives"][0];
+        EXPECT_EQ(lower["indices"], levels[l]["indices"]);
+        EXPECT_EQ(lower["attributes"], primitive["attributes"]);
+        const size_t authoredIndices = sourceRoot["meshes"][lowerMesh]["primitives"][0]["indices"].get<size_t>();
+        EXPECT_FALSE(root["accessors"][authoredIndices].contains("bufferView")) << "no bytes for what nothing reads";
+    }
     // Generate LODs Off: no levels
     ASSERT_TRUE(cookFile(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::Off), ModelFamily::Desktop,
                          glb, record, error)) << error;
     EXPECT_EQ(record.authoredLodPrimitives, 0);
     EXPECT_TRUE(record.lods.empty());
+}
+
+// AC7: the core tests' Medium golden draws this file: it stays the cook's output
+// (JASPER_TEST_UPDATE_GOLDEN=1 writes it)
+TEST(ModelCookLoad, TheMediumFixtureIsTheCookOfTheSource){
+    std::string error;
+    std::vector<uint8_t> glb;
+    ModelCookRecord record;
+    ASSERT_TRUE(cookFile(s41Fixture("source.glb"), settingsOf(OptimizeMesh::Everything, MeshCompression::Medium), ModelFamily::Desktop,
+                         glb, record, error)) << error;
+    const fs::path fixture = s41Fixture("cooked_medium.glb");
+    if (std::getenv("JASPER_TEST_UPDATE_GOLDEN"))
+        std::ofstream(fixture, std::ios::binary).write(reinterpret_cast<const char*>(glb.data()), (std::streamsize)glb.size());
+    std::ifstream in(fixture, std::ios::binary);
+    ASSERT_TRUE(in) << fixture << ": run with JASPER_TEST_UPDATE_GOLDEN=1 once the cook's output changes on purpose";
+    const std::vector<uint8_t> held((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    EXPECT_EQ(held, glb) << "the cook's output changed: JASPER_TEST_UPDATE_GOLDEN=1 writes the fixture again";
 }
 
 TEST(ModelCookLoad, TheEditorLoadsTheCookedFileThroughItsRedirect){
