@@ -27,6 +27,7 @@
 
 #pragma once
 
+#include "audio/TimelineAudioPreview.h"
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationPlayerRuntime.h"
@@ -139,6 +140,10 @@ namespace jasperengine::editor{
         float getLength() const;
         // per frame while the window shows (advances a playing preview, re-applies after edits)
         void update(double dt);
+        // the clip's audio cues heard while the preview plays (S40 R11): the preview voices now and
+        // the starts since the preview began (tests, preview_animation)
+        int previewAudioVoices();
+        uint64_t previewAudioStarts() const;
         // update(dt) at most once per editor frame `frame` (ImGui::GetFrameCount()): the App's
         // per-frame hook (AnimationClipAppHooks::frame) and the Animation window may both call it
         void update(double dt, int frame);
@@ -336,6 +341,10 @@ namespace jasperengine::editor{
         // the Particle Systems under the previewed root follow the playhead (S21 R28)
         PreviewParticles particles;
         float particleTime = -1.0f;
+        // the audio cues of a playing preview (S40 R11): crossed as the playhead moves by playback,
+        // never by scrubbing; state_exit cues stop when the preview stops, loops or is sought
+        TimelineAudioPreview audioPreview;
+        void previewCues(float from, float delta, double dt);
         int documentListener = 0;
         ClipRecordHooks::Id beforeWriteListener = 0;
         ClipRecordHooks::Id afterWriteListener = 0;
