@@ -26,8 +26,10 @@
 #include "util/UIProbe.h"
 #include "util/Util.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <functional>
 
 using namespace jasperengine;
 using namespace jasperengine::editor;

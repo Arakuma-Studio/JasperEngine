@@ -18,6 +18,7 @@
 #include "soloud.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <condition_variable>
 #include <deque>

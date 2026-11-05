@@ -269,7 +269,10 @@ inline Json AnimationWindowClipTestAccess::state(AnimationWindowClip& self, Scen
         Json audio = Json::array();
         for (const ClipAudioCue& cue : data.audio){
             Json entry = {{"time", cue.time}, {"kind", anim::cueKindName(cue.kind)}, {"stop", anim::cueStopName(cue.stop)}, {"name", cue.name}};
-            if (cue.kind == ClipCueKind::Sound) entry["sound"] = cue.sound.path, entry["guid"] = cue.sound.guid.isNull() ? "" : cue.sound.guid.str();
+            if (cue.kind == ClipCueKind::Sound){
+                entry["sound"] = cue.sound.path;
+                entry["guid"] = cue.sound.guid.isNull() ? std::string() : cue.sound.guid.str();
+            }
             if (cue.kind != ClipCueKind::Snapshot) entry["path"] = cue.path;
             if (cue.kind == ClipCueKind::Snapshot) entry["snapshot"] = cue.snapshot;
             entry["length"] = self.cueLength(cue);
