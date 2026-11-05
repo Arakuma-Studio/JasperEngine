@@ -210,7 +210,7 @@ TEST_F(ModelCpuDataGpu, AReaderGetsTheBytesBackAndTheyStay){
     EXPECT_EQ(ModelCpuData::getReleasedBytes(), 0u);
     // picking and raycasts on another mesh of the file
     ASSERT_GE(meshes.size(), 2u);
-    picking::PickGeometryLayout layout;
+    PickGeometryLayout layout;
     EXPECT_TRUE(picking::resolveSources(*meshes[1], layout));
     for (unsigned int b = 0; b < meshes[1]->numExternalBuffers; b++)
         EXPECT_FALSE(meshes[1]->eBuffers[b].isDataReleased());
@@ -281,7 +281,7 @@ TEST_F(ModelCpuDataGpu, KeepCpuDataKeepsTheBytesForEachReader){
     // Mesh Collider and navigation bake
     EXPECT_GT(triangleIndices(*meshes[0]), 0u);
     // picking
-    picking::PickGeometryLayout layout;
+    PickGeometryLayout layout;
     EXPECT_TRUE(picking::resolveSources(*meshes[0], layout));
     // a particle mesh shape
     particles::ParticleMeshData shape;
