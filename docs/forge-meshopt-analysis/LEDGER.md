@@ -56,14 +56,23 @@ With the follow-ups program (`FOLLOWUPS-LEDGER.md`, specs S61-S73):
 With the pixel-art program (`PIXEL-ART-LEDGER.md`): there is no shared feature. Its S52 sorting and sprite
 parameters sit inside `sprite-batching`, not S55.
 
+## Landing
+
+All five specs landed on `origin/main` together. The owner chose to push without the final full suite (2026-11-05). What ran:
+each stream's named tests, red controls, WERROR linux, web and Android builds on its branch, and a WERROR linux build of
+the merged tree before its last three merges (S53's Read/Write fixes, S56's tier variants, S54's fade bindings), each built
+and tested on its branch. Not run on the merged tree: the full unit and MCP suites, the Vulkan and HTML UI suites, the
+fixture smokes, the live MCP eval (cases written), and the regeneration of `docs/mcp/TOOLS.md` and the other generated files.
+The MCP tests that need `fixture-unity` were never run (it isn't on this host).
+
 ## Status
 
 `impl` = being implemented, `merged` = on `origin/main`.
 
 | Spec | Status |
 |---|---|
-| S53 | merged into `mesh-lod-forge`: loader, importer, Read/Write release (R11), exported game from je-cooked (AC11), load bench 13.7 to 4.4 ms (R28), Medium golden (AC7) |
-| S54 | merged into `mesh-lod-forge` (WERROR linux, Vulkan, its tests pass; web and android before the S57 merge, rerun at the final gate) |
-| S55 | merged into `mesh-lod-forge`. R9: draws 7.0x (target 10x, not met: 200 unique meshes), shadow triangles -84 % with LOD (met) / -18.7 % from S55 alone, render CPU -8.3 % on llvmpipe (not met, not measurable here) |
-| S56 | merged into `mesh-lod-forge` (linux, web, android built; its tests and MCP files pass) |
-| S57 | merged into `mesh-lod-forge` (WERROR linux, web, android; its tests pass). GPU costs measured on llvmpipe only |
+| S53 | on `origin/main`: loader, importer, Read/Write release (R11), exported game from je-cooked (AC11), load bench 13.7 to 4.4 ms (R28), Medium golden (AC7) |
+| S54 | on `origin/main` (WERROR linux, Vulkan, its tests pass; web and android before the S57 merge, rerun at the final gate) |
+| S55 | on `origin/main`. R9: draws 7.0x (target 10x, not met: 200 unique meshes), shadow triangles -84 % with LOD (met) / -18.7 % from S55 alone, render CPU -8.3 % on llvmpipe (not met, not measurable here) |
+| S56 | on `origin/main` (linux, web, android built; its tests and MCP files pass) |
+| S57 | on `origin/main` (WERROR linux, web, android; its tests pass). GPU costs measured on llvmpipe only |
