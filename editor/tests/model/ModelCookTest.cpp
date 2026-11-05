@@ -364,8 +364,9 @@ TEST(ModelCook, WritesKhrMeshoptCompressionAsTheExtensionDefinesIt){
         ASSERT_EQ(size, out.size());
         EXPECT_EQ(std::memcmp(data, out.data(), size), 0) << "view " << v;
         EXPECT_EQ(view["byteLength"].get<size_t>(), count * stride);
-        if (view.contains("byteStride"))
+        if (view.contains("byteStride")){
             EXPECT_EQ(view["byteStride"].get<size_t>(), stride);
+        }
         compressed++;
     }
     EXPECT_GT(compressed, 4);
@@ -649,7 +650,8 @@ TEST(ModelCookBench, HundredThousandTrianglesUnderTwoSeconds){
         std::printf("[bench] cook of 100,352 triangles (%s, LODs) %.3f s (cook %.0f ms; budget 2 s); %.2f MB -> %.2f MB\n",
                     meshCompressionName(compression), seconds, cooked.record.cookMs, cooked.record.sourceBytes / 1048576.0,
                     cooked.record.diskBytes / 1048576.0);
-        if (perfSlack() > 0.0)
+        if (perfSlack() > 0.0){
             EXPECT_LE(cooked.record.cookMs / 1000.0, 2.0 * perfSlack());
+        }
     }
 }

@@ -316,15 +316,15 @@ MeshLodRecipe MeshLodRecipe::forReduction(MeshLodReduction reduction, unsigned i
     switch (reduction){
         case MeshLodReduction::PRESERVE_DETAIL:
             recipe.ratio = 0.6f;
-            recipe.targetError = 0.01f;
+            recipe.targetError = 0.05f;
             break;
         case MeshLodReduction::BALANCED:
             recipe.ratio = 0.5f;
-            recipe.targetError = 0.02f;
+            recipe.targetError = 0.15f;
             break;
         case MeshLodReduction::SMALLEST:
             recipe.ratio = 0.35f;
-            recipe.targetError = 0.05f;
+            recipe.targetError = 0.3f;
             recipe.permissive = true;
             break;
     }
@@ -472,8 +472,8 @@ std::shared_ptr<MeshLodData> MeshLodPool::buildLevels(const MeshLodSource& sourc
     // rather than deviate more
     const float scale = meshopt_simplifyScale(positions.data(), vertexCount, sizeof(float) * 3);
     const float targetError = std::max(recipe.targetError, 0.0f) * scale;
-    // (not SimplifyErrorClamped: selection reads the geometric error, so the budget is what keeps
-    // a flat mesh's texture coordinates and normals, whose position error is none)
+    // (not SimplifyErrorClamped: selection reads the geometric error, so the budget is all that
+    // bounds a flat mesh's texture coordinates and normals, whose position error is none)
     unsigned int options = meshopt_SimplifyErrorAbsolute | meshopt_SimplifyPrune;
     if (skinned)
         options |= meshopt_SimplifyRegularize;     // even triangles deform better

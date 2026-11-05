@@ -17,7 +17,9 @@ settings.
   built at load on a background job, with the same recipe the cook uses.
 - A level's **error** is how far its surface is from the full mesh, in the mesh's units, measured
   at its vertices, edge midpoints and triangle centres. Selection compares it, at the mesh's scale,
-  with the size of a pixel at the mesh's distance.
+  with the size of a pixel at the mesh's distance. A distant level may therefore deviate a lot: it
+  is only drawn while the mesh is small on screen. The build stops a chain only before a degenerate
+  collapse (15 % of the mesh's size at Balanced).
 - **Who gets levels:** 3D triangle meshes drawn with the built-in Mesh or Lit shader, skinned ones
   included (their bone weights guide the simplification). Terrains (they have their own),
   sprites, tilemaps and polygons (drawn pixel for pixel), and meshes drawn with a custom or library
