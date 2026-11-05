@@ -5514,7 +5514,9 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      every instance matrix read with its first column's w as 0.
     // v47: S55's automatic GPU instancing: mesh and depth programs take their object block from
     //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v47";
+    // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
+    //      skinned fade variant's uniform block slots differed from its base's.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v48";
 }
 
 void editor::App::pushTabNotificationStyle(){

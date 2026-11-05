@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// The LOD cross-fade variant (MESH bit 36 'Lfd', spec S54 R6, R10, AC6):
+// The LOD cross-fade variant (MESH bit 40 'Lfd', spec S54 R6, R10, AC6):
 // - it compiles for every backend an export targets (GLSL 300 es included) within the resource
 //   budget, with exactly its base variant's bindings, so a fading draw keeps the base's uniform
 //   and texture slots (lod-crossfade.md §7, the slot risk);
@@ -65,11 +65,16 @@ namespace {
         }
     };
 
-    // the MESH keys of a scene's export, with and without the fade bit
+    // the MESH keys of a scene's export, with and without the fade bit. A fading draw is never
+    // automatically instanced (S55), so the auto-instanced ('Aui') variants are counted apart:
+    // each plain variant a fading draw can use has its fade sibling
     struct MeshKeys {
         size_t plain = 0;
         size_t fade = 0;
         size_t instancedFade = 0;
+        size_t autoInstanced = 0;
+        size_t autoInstancedFade = 0;
+        std::string names;
     };
 
     MeshKeys collect(Scene& scene){
@@ -83,7 +88,11 @@ namespace {
             if (ShaderPool::getShaderTypeFromKey(key) != ShaderType::MESH)
                 continue;
             const uint64_t properties = ShaderPool::getPropertiesFromKey(key);
-            if (properties & ShaderPool::getLodFadeProperty()){
+            out.names += " " + ShaderPool::getShaderStr(ShaderType::MESH, properties, 0);
+            const bool fade = properties & ShaderPool::getLodFadeProperty();
+            if (properties & ShaderPool::getAutoInstancingProperty(ShaderType::MESH)){
+                (fade ? out.autoInstancedFade : out.autoInstanced)++;
+            }else if (fade){
                 out.fade++;
                 if (properties & shaderPropertyBit(18))
                     out.instancedFade++;
@@ -104,7 +113,8 @@ TEST_F(LodFadeVariantKeys, OnlyMeshesThatCanFadeShipTheFadeVariant){
 
     const MeshKeys on = collect(scene);
     EXPECT_GT(on.plain, 0u);
-    EXPECT_EQ(on.fade, on.plain) << "each variant the sphere draws with has its fade sibling";
+    EXPECT_EQ(on.fade, on.plain) << "each variant a fading draw can use has its fade sibling:" << on.names;
+    EXPECT_EQ(on.autoInstancedFade, 0u) << "a fading draw is never auto-instanced, so no 'Aui' fade variant ships:" << on.names;
 
     // red control of the rule: every switch off ships none, and the same plain variants
     scene.setMeshLodCrossFade(false);
