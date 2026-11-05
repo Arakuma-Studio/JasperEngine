@@ -126,11 +126,16 @@ async def centre(ed: Editor) -> str:
 
 
 async def wait_for_tint(ed: Editor, want: str, timeout: float = 10.0) -> str:
+    """The tint once it is `want`, else what shows and the file's import (to tell a missed reload
+    from a reload not drawn)"""
     deadline = time.monotonic() + timeout
     got = await centre(ed)
     while got != want and time.monotonic() < deadline:
         await ed.call("wait", seconds=0.02)
         got = await centre(ed)
+    if got != want:
+        info = await import_info(ed, TINT)
+        got += f" (import {info.get('import_state')}, key {(info.get('import') or {}).get('cache', {}).get('key', '')[:12]})"
     return got
 
 

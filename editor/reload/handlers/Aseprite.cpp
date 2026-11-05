@@ -19,9 +19,17 @@ namespace fs = std::filesystem;
 void reload::reloadAseprite(Context& ctx, const std::vector<fs::path>& files) {
     pixelart::aseprite::AsepriteImporter& importer = pixelart::aseprite::AsepriteImporter::get();
     if (importer.getProject() != &ctx.project) return;
-    for (const fs::path& path : files) {
+    for (const fs::path& changed : files) {
+        // a changed .aseprite.meta: its file's settings
+        const fs::path path = changed.extension() == ".meta" ? changed.parent_path() / changed.stem() : changed;
         std::optional<pixelart::aseprite::ImportRequest> request = importer.requestOf(path.string());
         if (!request) continue;
+        if (path != changed) {
+            // the asset database rewrites a meta for its own fields (GUIDs, a new file's first
+            // meta): only a change of the import settings imports again
+            std::shared_ptr<const pixelart::aseprite::ImportRecord> current = importer.record(request->assetPath);
+            if (current && current->sourceGuid == request->sourceGuid && current->settings == request->settings.toJson()) continue;
+        }
         ctx.service.startJob("aseprite", path, [request = *request]() -> HotReloadService::AdoptFn {
             std::shared_ptr<pixelart::aseprite::ImportRecord> record = pixelart::aseprite::AsepriteImporter::runImport(request);
             return [record](std::string&) {

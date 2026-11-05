@@ -82,6 +82,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         std::string summary;          // the inspector's line
         double ms = 0.0;
         bool cacheHit = false;
+        uint64_t sequence = 0;        // its request's (adopt drops an import older than the one shown)
 
         std::filesystem::path sheetFile() const { return dir / "sheet.json"; }
         std::filesystem::path pageFile(size_t page) const { return dir / ("page" + std::to_string(page) + ".png"); }
@@ -112,6 +113,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         int projectPixelsPerUnit = 1;
         std::filesystem::path cacheRoot;          // .jasperengine/cache/imported/v1
         std::map<std::string, Guid> namedGuids;   // the asset database's persisted sub-asset GUIDs
+        uint64_t sequence = 0;                    // the order requests were made in (the watcher's and the importer's own)
     };
 
     class AsepriteImporter {
@@ -181,6 +183,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         std::map<std::string, std::shared_ptr<const ImportRecord>> records;
         std::map<std::string, std::shared_ptr<const ImportRecord>> attempts;
         std::map<std::string, uint64_t> attemptCounts;
+        std::map<std::string, uint64_t> adoptedSequences;   // the newest import adopted per file
         std::map<std::string, jobs::Task<std::shared_ptr<ImportRecord>>> running;
         std::set<std::string> again;   // asked again while running
         std::vector<std::pair<std::string, std::function<void()>>> waiting;   // whenImported

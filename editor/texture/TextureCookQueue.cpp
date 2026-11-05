@@ -219,6 +219,13 @@ std::string TextureCookQueue::assetPathOf(const fs::path& absolute) const{
     return text;
 }
 
+bool TextureCookQueue::isEditorDerived(const std::string& assetPath) const{
+    if (!project)
+        return false;
+    const std::string relative = absoluteOf(assetPath).lexically_relative(project->getProjectInternalPath().lexically_normal()).generic_string();
+    return !relative.empty() && relative != "." && relative.rfind("..", 0) != 0;
+}
+
 void TextureCookQueue::setViewFamily(TextureFamily family){
     if ((int)family == viewFamily.load())
         return;
@@ -305,7 +312,7 @@ bool TextureCookQueue::settingsOf(const std::string& assetPath, TextureImportSet
 }
 
 bool TextureCookQueue::processingFor(const std::string& assetPath, TextureProcessing& out){
-    if (!project || !isCookableTexture(assetPath))
+    if (!project || !isCookableTexture(assetPath) || isEditorDerived(assetPath))
         return false;
     TextureImportSettings settings;
     if (!settingsOf(assetPath, settings))
@@ -320,7 +327,7 @@ bool TextureCookQueue::processingFor(const std::string& assetPath, TextureProces
 }
 
 bool TextureCookQueue::cookedEntry(const std::string& assetPath, CookedTextureEntry& out){
-    if (!isCookableTexture(assetPath))
+    if (!isCookableTexture(assetPath) || isEditorDerived(assetPath))
         return false;
     std::lock_guard<std::mutex> lock(mutex);
     auto it = entries.find({assetPath, viewFamily.load()});
@@ -349,7 +356,7 @@ bool TextureCookQueue::cookedEntry(const std::string& assetPath, CookedTextureEn
 // ---- requests
 
 void TextureCookQueue::request(const std::string& assetPath, TextureFamily family, int priority){
-    if (!project || !isCookableTexture(assetPath))
+    if (!project || !isCookableTexture(assetPath) || isEditorDerived(assetPath))
         return;
     // a reference to a file that is not there (a model's missing image) is the reference's
     // problem, reported where it resolves: nothing to cook

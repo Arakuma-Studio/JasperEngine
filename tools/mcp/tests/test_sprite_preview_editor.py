@@ -33,6 +33,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import pngdiff
 from harness import REPO, Editor
 
 EDITOR = {"create": True, "name": "Sprite Preview", "xvfb": "harness", "ui_probe": True}
@@ -243,8 +244,15 @@ async def test_sprite_preview_from_the_window_menu(ed: Editor):
     await ui.click(ui.items()["spritePreview.view.Imported"])
     await ui.item("spritePreview.frameImage", "the imported frame")
     await ui.click(ui.items()["spritePreview.view.Source"])
-    await ui.item("spritePreview.frameImage", "the source frame")
+    rect = await ui.item("spritePreview.frameImage", "the source frame")
     await shot(ed, "03-sprite-preview")
+    # the sprite's pixels are squares at the integer zoom: a handful of colours (the sprite's, the
+    # checkerboard's and the pixel grid's), where a linear sampler would blur them into gradients
+    w, h, px = pngdiff.decode(await ed.screenshot("editor", max_width=0))
+    x0, y0, x1, y1 = (int(v) for v in rect)
+    colours = {bytes(px[(y * w + x) * 4:(y * w + x) * 4 + 3]) for y in range(max(y0 + 2, 0), min(y1 - 2, h))
+               for x in range(max(x0 + 2, 0), min(x1 - 2, w))}
+    ed.check(0 < len(colours) <= 64, f"the frame drawn with Nearest sampling: {len(colours)} colours in {rect}")
 
 
 async def test_frame_stepping_and_onion_skin(ed: Editor):

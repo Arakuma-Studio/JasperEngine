@@ -141,7 +141,11 @@ def frame_mismatch(shot: bytes, frame: tuple) -> str | None:
     xs = [x for x, _ in opaque]
     ys = [y for _, y in opaque]
     fx0, fx1, fy0, fy1 = min(xs), max(xs) + 1, min(ys), max(ys) + 1
-    found = [(x, y) for y in range(sh) for x in range(sw) if tuple(s[(y * sw + x) * 4:(y * sw + x) * 4 + 3]) in colours]
+    # within a few levels: the view's colour pipeline (sRGB round trips) may move a channel by one or two
+    def near_colour(c, want, tolerance=6):
+        return all(abs(a - b) <= tolerance for a, b in zip(c, want))
+    found = [(x, y) for y in range(sh) for x in range(sw)
+             if any(near_colour(tuple(s[(y * sw + x) * 4:(y * sw + x) * 4 + 3]), c) for c in colours)]
     if not found:
         return f"no pixel of the {sw}x{sh} image has the frame's colours {sorted(colours)}"
     sx0, sx1 = min(x for x, _ in found), max(x for x, _ in found) + 1
@@ -153,7 +157,7 @@ def frame_mismatch(shot: bytes, frame: tuple) -> str | None:
     for (x, y), want in sorted(opaque.items()):
         px, py = int(sx0 + (x - fx0 + 0.5) * kx), int(sy0 + (y - fy0 + 0.5) * ky)
         got = tuple(s[(py * sw + px) * 4:(py * sw + px) * 4 + 3])
-        if got != want:
+        if not near_colour(got, want):
             bad.append(f"frame ({x}, {y}) {want} is {got} at ({px}, {py})")
     return f"{len(bad)} of {len(opaque)} opaque pixels differ: {bad[:5]}" if bad else None
 
@@ -410,7 +414,8 @@ if x0 then out.box = {x0 - p.x, y0 - p.y, x1 - p.x, y1 - p.y} end
 local sl = s:getSlice('hurt')
 if sl then
   out.visible = sl.visible
-  out.rect = {sl.rect.x, sl.rect.y, sl.rect.width, sl.rect.height}
+  -- a slice hidden on this frame has no rect
+  if sl.rect then out.rect = {sl.rect.x, sl.rect.y, sl.rect.width, sl.rect.height} end
 end
 return out
 """
@@ -623,6 +628,8 @@ async def export_scene(ed: Editor) -> dict:
     await ed.call("set_sprite_frames", scene=sid, create={"name": "Shown", "position": [160, 90, 0]}, sheet=IDLE,
                   frame=3, clips=False, pivot="center")
     await ed.call("set_transform", scene=sid, entity="Shown", scale=[4, 4, 1])
+    # hero_idle's sprite properties gave it a Light 2D (light2d.intensity): the frame unlit, as the CLI renders it
+    await ed.call("remove_component", scene=sid, entity="Shown", component="light2d")
     path = (await ed.call("save_scene", scene=sid, path="scenes/SpriteExport"))["scene"]["path"]
     for scene in (path, main):
         await ed.call("edit_build_scenes", action="add", scene=scene)

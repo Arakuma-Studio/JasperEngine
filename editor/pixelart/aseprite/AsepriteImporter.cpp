@@ -19,6 +19,8 @@
 #include "texture/Texture.h"
 #include "util/Sha256.h"
 
+#include <algorithm>
+#include <atomic>
 #include <charconv>
 #include <chrono>
 #include <fstream>
@@ -168,6 +170,7 @@ namespace jasperengine::editor::pixelart::aseprite {
             records.clear();
             attempts.clear();
             attemptCounts.clear();
+            adoptedSequences.clear();
             started = 0;
         }
         project = newProject;
@@ -205,6 +208,8 @@ namespace jasperengine::editor::pixelart::aseprite {
         const std::string assetPath = assetPathOf(path);
         if (!project || assetPath.empty()) return std::nullopt;
         ImportRequest request;
+        static std::atomic<uint64_t> requests{0};
+        request.sequence = ++requests;
         request.file = (project->getAssetsPath() / assetPath).lexically_normal();
         request.assetPath = assetPath;
         request.settings = settingsOf(assetPath);
@@ -234,6 +239,7 @@ namespace jasperengine::editor::pixelart::aseprite {
         auto record = std::make_shared<ImportRecord>();
         record->assetPath = request.assetPath;
         record->sourceGuid = request.sourceGuid;
+        record->sequence = request.sequence;
         record->settings = request.settings.toJson();
 
         std::ifstream in(request.file, std::ios::binary);
@@ -338,6 +344,7 @@ namespace jasperengine::editor::pixelart::aseprite {
                 auto failed = std::make_shared<ImportRecord>();
                 failed->assetPath = req.assetPath;
                 failed->sourceGuid = req.sourceGuid;
+                failed->sequence = req.sequence;
                 failed->error = {"import_failed", "", e.what(), "save the file again from Aseprite"};
                 return failed;
             }
@@ -364,6 +371,11 @@ namespace jasperengine::editor::pixelart::aseprite {
             std::lock_guard<std::mutex> lock(mutex);
             attempts[record->assetPath] = record;
             attemptCounts[record->assetPath]++;
+            // the watcher's reload and the importer's own job can import a file at once and finish
+            // in either order: an import requested before the one adopted is out of date
+            uint64_t& newest = adoptedSequences[record->assetPath];
+            if (record->sequence < newest) return;
+            newest = record->sequence;
         }
         // R36: what an import found reaches the next MCP call's external_changes.problems, as a
         // clip's load warnings do (the path project-relative, as the auto-sync names files)
@@ -381,6 +393,9 @@ namespace jasperengine::editor::pixelart::aseprite {
             if (!records.count(record->assetPath)) records[record->assetPath] = record;
             return;
         }
+        // nor does an earlier import still loading its pages take over once they load
+        swaps.erase(std::remove_if(swaps.begin(), swaps.end(), [&](const Swap& s) { return s.record->assetPath == record->assetPath; }),
+                    swaps.end());
         Swap swap;
         swap.record = std::move(record);
         // the pages load before anything shows them: the old version stays drawn until then

@@ -926,7 +926,9 @@ Recorded by the implementation (`feature/s44-aseprite-import`):
 - **Format numbers.** Scene 7 → 8 and prefab 8 → 9 (identity migrations, fixture
   `editor/tests/fixtures/migrations/scene-v7-sprites.scene`, `SpriteSheetMigrationTest`).
 - **Compression `project`.** Pages are added to the export's S14 texture cook keyed by their
-  `je-imported/` path (sprite type); `none` ships the PNG pages.
+  `je-imported/` path (sprite type); `none` ships the PNG pages. The editor draws the pages as
+  imported in both cases: its view cook (S14 R8) skips what the editor derives into `.jasperengine/`,
+  so a `none` sheet is never shown block-compressed.
 - **Real Aseprite goldens.** §9's corpus is authored with Aseprite 1.3.18
   (`tools/pixelart/make_golden_corpus.lua`/`.py`, `editor/tests/fixtures/aseprite/s44-corpus/`) and
   every fixture has Aseprite's `--data` JSON; `AsepriteParityTest` checks the frames (flattened and
@@ -952,3 +954,15 @@ Recorded by the implementation (`feature/s44-aseprite-import`):
   deflating 128 MB of cels at level 6 on one thread), import of a 64×64 24-frame file 2.4 ms (50);
   a 2,000-frame sheet parse 9.8 ms (5). The read, composition and full-write budgets are missed
   here; a quiet-machine benchmark run should confirm before tuning.
+- **`--data` names.** Aseprite's `--data` calls the four HSL modes `hsl_hue`, `hsl_saturation`,
+  `hsl_color` and `hsl_luminosity`; `describe` keeps §6.3's `hue` ... (the parity test maps them),
+  and omits a slice key's centre when the key has none (Aseprite's hidden keys).
+- **Late import problems (R36).** An import runs as a job, so its problems are not known when the
+  call that synced the file returns: they are reported by the next call's `external_changes`
+  (`problems`, with an empty `changed`). An edit of a `.aseprite.meta` on disk reimports its file.
+- **AC23's render.** The before/after comparison is `tools/mcp/tests/test_sprite_migration_render.py`
+  (the v7 scene drawn in the Scene view, saved at the new version, reopened and drawn again, pixel
+  for pixel), not a committed PNG golden: a golden would pin the GPU's rasterisation, not the
+  migration. The v8 prefab is checked on the YAML side (`SpriteSheetMigrationTest`).
+- **Load report.** R48's "the sheet is missing, the inline frames are used" is a new
+  `LoadIssueKind::Fallback` (`fallback`), a warning; the field keeps its value.

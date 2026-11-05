@@ -4,7 +4,8 @@
 // Sheet sprites on the headless device (docs/specs/S44-aseprite-import.md AC21, R48-R49): twelve
 // Sprites drawn from a trimmed, packed page and the same twelve from a page of the untrimmed
 // frames give the same picture, pixel for pixel, for every pivot and both flips. Both pages are
-// made here from one set of frames, so the test needs no golden image.
+// made here from one set of frames, so the test needs no golden image. A sheet reimported over and
+// over (R22: saves alternating between two versions) draws the newest page every time.
 
 #include "Engine.h"
 #include "Scene.h"
@@ -15,6 +16,7 @@
 #include "sprite/SpriteSheet.h"
 #include "sprite/SpriteSheetPool.h"
 #include "subsystem/RenderSystem.h"
+#include "texture/Texture.h"
 
 #include "GpuEnvironment.h"
 #include "ImageCompare.h"
@@ -185,4 +187,67 @@ TEST_F(SpriteSheetRenderGpu, TrimmedEqualsUntrimmed) {
     EXPECT_EQ(different, 0u) << "a trimmed page draws the frames where the untrimmed one does";
     SpriteSheetPool::invalidate(trimmedPath);
     SpriteSheetPool::invalidate(untrimmedPath);
+}
+
+// R22: the editor's importer swaps a new import in once its pages are loaded (a Texture of each
+// page, loaded and dropped), then invalidates the sheet; saves that alternate between two versions
+// go back to pages the GPU drew before and released
+TEST_F(SpriteSheetRenderGpu, ReimportsAlternatingBetweenTwoPagesDrawTheNewest) {
+    JASPER_REQUIRE_GPU();
+    TestTempDir dir("sheet-gpu-reimport");
+    const std::string path = "gpu-test://reimported";
+    std::array<std::shared_ptr<const SpriteSheetData>, 2> versions;
+    const std::array<std::array<uint8_t, 3>, 2> colours = {{{220, 40, 40}, {40, 60, 220}}};
+    for (int v = 0; v < 2; v++) {
+        const std::filesystem::path png = dir.path() / ("page" + std::to_string(v) + ".png");
+        std::vector<uint8_t> pixels(static_cast<size_t>(kFrameW) * kFrameH * 4, 255);
+        for (size_t p = 0; p < pixels.size(); p += 4) std::copy(colours[v].begin(), colours[v].end(), pixels.begin() + static_cast<std::ptrdiff_t>(p));
+        ASSERT_TRUE(writePng(png.string(), pixels, kFrameW, kFrameH));
+        SpriteSheetData sheet;
+        SpriteFrame frame;
+        frame.name = "f0";
+        frame.rect = Rect(0.0f, 0.0f, kFrameW, kFrameH);
+        frame.sourceSize = Vector2(kFrameW, kFrameH);
+        sheet.frames.push_back(frame);
+        sheet.pages.push_back({png.string(), kFrameW, kFrameH});
+        versions[v] = std::make_shared<const SpriteSheetData>(std::move(sheet));
+    }
+    // (pages read in the background, as the editor's are)
+    struct RestoreAsyncLoading {
+        bool was = Engine::isAsyncLoading();
+        ~RestoreAsyncLoading() { Engine::setAsyncLoading(was); }
+    } restoreAsyncLoading;
+    Engine::setAsyncLoading(true);
+    auto current = std::make_shared<std::shared_ptr<const SpriteSheetData>>(versions[0]);
+    SpriteSheetPool::registerSource([path](const std::string& p) { return p == path; }, [current](const std::string&) { return *current; });
+
+    Sprite sprite(&scene);
+    sprite.setSheet(path);
+    sprite.setSize(kFrameW * 4, kFrameH * 4);
+    sprite.setPivotPreset(PivotPreset::CENTER);
+    sprite.setPosition(static_cast<float>(GpuEnvironment::target().getWidth()) / 2.0f, static_cast<float>(GpuEnvironment::target().getHeight()) / 2.0f, 0.0f);
+    auto centre = [&]() {
+        const std::vector<uint8_t> rgba = capture();
+        const size_t w = GpuEnvironment::target().getWidth(), h = GpuEnvironment::target().getHeight();
+        const size_t at = ((h / 2) * w + w / 2) * 4;
+        return std::array<uint8_t, 3>{rgba[at], rgba[at + 1], rgba[at + 2]};
+    };
+    ASSERT_TRUE(render());
+    ASSERT_EQ(centre(), colours[0]);
+
+    for (int save = 1; save <= 8; save++) {
+        SCOPED_TRACE("save " + std::to_string(save));
+        const int v = save % 2;
+        {
+            // the importer's swap: the page loads before the sheet changes, its Texture then dropped
+            auto page = std::make_shared<Texture>(versions[v]->pages[0].texture);
+            ASSERT_TRUE(GpuEnvironment::runFrames([&]() { return page->load().state == ResourceLoadState::Finished; }));
+        }
+        *current = versions[v];
+        SpriteSheetPool::invalidate(path);
+        // the page reads in the background: drawn within a few frames, never the previous one for good
+        EXPECT_TRUE(GpuEnvironment::runFrames([&]() { return centre() == colours[v]; }, 120));
+        EXPECT_EQ(centre(), colours[v]);
+    }
+    SpriteSheetPool::invalidate(path);
 }

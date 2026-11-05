@@ -127,7 +127,7 @@ namespace jasperengine::editor {
 
         // ---- view options
         int zoom = 4;
-        bool fitRequested = true;
+        bool fitRequested = true;   // the zoom follows the canvas size until a zoom or a pan
         ImVec2 pan = ImVec2(0.0f, 0.0f);
         bool onionSkin = false;
         int onionPrevious = 1;

@@ -71,6 +71,16 @@ namespace {
         return ImGui::ColorConvertFloat4ToU32(ImVec4(c.x, c.y, c.z, c.w * alpha));
     }
 
+    // a sprite's pixels as squares at any zoom: the backend's nearest sampler for this image only
+    // (ImGui draws with a linear one; the texture's own sampler is the engine's, not ImGui's)
+    void spritePreviewImage(ImDrawList* draw, ImTextureID texture, ImVec2 a, ImVec2 b, ImVec2 uv0 = ImVec2(0, 0), ImVec2 uv1 = ImVec2(1, 1),
+                            ImU32 tint = IM_COL32_WHITE) {
+        const ImGuiPlatformIO& io = ImGui::GetPlatformIO();
+        if (io.DrawCallback_SetSamplerNearest) draw->AddCallback(io.DrawCallback_SetSamplerNearest, nullptr);
+        draw->AddImage(texture, a, b, uv0, uv1, tint);
+        if (io.DrawCallback_SetSamplerLinear) draw->AddCallback(io.DrawCallback_SetSamplerLinear, nullptr);
+    }
+
     bool spritePreviewUpload(Texture& texture, int& width, int& height, const pixelart::PixelImage& image) {
         if (image.empty()) return false;
         static uint64_t counter = 0;
@@ -1124,7 +1134,8 @@ void SpritePreviewWindow::drawCanvas(const ImVec2& size) {
         const int byHeight = static_cast<int>((canvasSize.y - ImGui::GetTextLineHeightWithSpacing()) / static_cast<float>(contentH));
         zoom = std::clamp(std::min(byWidth, byHeight), 1, 32);
         pan = ImVec2(0.0f, 0.0f);
-        fitRequested = false;
+        // Fit holds until a zoom or a pan: the canvas changes size after its first frames (the toolbar
+        // wraps, the dock settles) and when the window is resized
     }
     if (hovered) {
         const float wheel = ImGui::GetIO().MouseWheel;
@@ -1132,6 +1143,7 @@ void SpritePreviewWindow::drawCanvas(const ImVec2& size) {
         else if (wheel < 0.0f) zoomBy(-1);
     }
     if (dragging) {
+        fitRequested = false;
         pan.x += ImGui::GetIO().MouseDelta.x;
         pan.y += ImGui::GetIO().MouseDelta.y;
     }
@@ -1205,8 +1217,8 @@ void SpritePreviewWindow::drawCanvas(const ImVec2& size) {
     if (comparing) {
         const ImVec2 refOrigin(origin.x + static_cast<float>(w) * z + gap, origin.y);
         backgroundAt(refOrigin, compareGpu.width, compareGpu.height);
-        draw->AddImage(Backend::getImGuiTexture(compareGpu.texture.getRender()), refOrigin,
-                       ImVec2(refOrigin.x + static_cast<float>(compareGpu.width) * z, refOrigin.y + static_cast<float>(compareGpu.height) * z));
+        spritePreviewImage(draw, Backend::getImGuiTexture(compareGpu.texture.getRender()), refOrigin,
+                           ImVec2(refOrigin.x + static_cast<float>(compareGpu.width) * z, refOrigin.y + static_cast<float>(compareGpu.height) * z));
         UIProbe::rect("spritePreview.compareImage", refOrigin.x, refOrigin.y, refOrigin.x + static_cast<float>(compareGpu.width) * z,
                       refOrigin.y + static_cast<float>(compareGpu.height) * z);
         const float labelY = origin.y + static_cast<float>(contentH) * z + 2.0f;
@@ -1223,9 +1235,9 @@ bool SpritePreviewWindow::drawFrameImage(ImDrawList* draw, ImVec2 origin, int fi
     if (view == View::Source) {
         GpuImage* gpu = sourceFrameGpu(fileFrame);
         if (!gpu) return false;
-        draw->AddImage(Backend::getImGuiTexture(gpu->texture.getRender()), origin,
-                       ImVec2(origin.x + static_cast<float>(gpu->width) * z, origin.y + static_cast<float>(gpu->height) * z), ImVec2(0, 0),
-                       ImVec2(1, 1), tint);
+        spritePreviewImage(draw, Backend::getImGuiTexture(gpu->texture.getRender()), origin,
+                           ImVec2(origin.x + static_cast<float>(gpu->width) * z, origin.y + static_cast<float>(gpu->height) * z), ImVec2(0, 0),
+                           ImVec2(1, 1), tint);
         return true;
     }
     const SpriteFrame* f = sheetFrame(fileFrame);
@@ -1237,7 +1249,7 @@ bool SpritePreviewWindow::drawFrameImage(ImDrawList* draw, ImVec2 origin, int fi
     const ImVec2 uv1((f->rect.getX() + f->rect.getWidth()) / pw, (f->rect.getY() + f->rect.getHeight()) / ph);
     const ImVec2 a(origin.x + f->offset.x * z, origin.y + f->offset.y * z);
     const ImVec2 b(a.x + f->rect.getWidth() * z, a.y + f->rect.getHeight() * z);
-    draw->AddImage(Backend::getImGuiTexture(page->texture.getRender()), a, b, uv0, uv1, tint);
+    spritePreviewImage(draw, Backend::getImGuiTexture(page->texture.getRender()), a, b, uv0, uv1, tint);
     return true;
 }
 
