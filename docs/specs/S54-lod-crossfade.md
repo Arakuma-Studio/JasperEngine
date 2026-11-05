@@ -231,12 +231,18 @@ would expect, the safest default and the best UX").
   against the source's, through a uniform triangle grid (exact nearest distances). Errors never
   shrink with the level, since selection walks the levels until one exceeds the budget.
 - **Builder recipe (C2).** `MeshLodRecipe {levels, ratio, targetError, permissive}`, with
-  `MeshLodRecipe::forReduction`: Preserve Detail 0.6 a level within 1 % of the mesh's size,
-  Balanced 0.5 within 2 % (the runtime's), Smallest 0.35 within 5 % and permissive. Weights: normal
+  `MeshLodRecipe::forReduction`: Preserve Detail 0.6 a level within 5 % of the mesh's size,
+  Balanced 0.5 within 15 % (the runtime's), Smallest 0.35 within 30 % and permissive. The first
+  values, 1 %, 2 % and 5 %, were wrong: they stopped chains early (S55 measured the sphere going
+  from 4 levels to 2, a bench's shadow triangles from about 430k to 610k, and Shadow LOD Bias with
+  no coarser level to pick). Selection already draws a level of a large error only while the mesh
+  is small on screen, so the budget only has to stop degenerate collapses. Selection does not see
+  a flat mesh's attribute error (its position error is none), so the budget alone bounds that.
+  Weights: normal
   0.5, UV 1.0, bone weights 1.0, each only when present; no `SimplifyErrorClamped` (selection reads the
   geometric error, so the budget is what keeps a flat mesh's UVs and normals, whose position error is none); a
   level that stalls on seams retries with `SimplifyPermissive`, UV seams protected;
-  `SimplifyRegularize` for skinned meshes. `kMeshLodRecipe` is 2. `MeshLodSource` now names its
+  `SimplifyRegularize` for skinned meshes. `kMeshLodRecipe` is 3. `MeshLodSource` now names its
   attributes (`normals`, `uvs`, `skinWeights`) instead of one packed array, which is what caused
   bug 2: S53's cook fills those fields.
 - **Who gets levels.** 3D triangle meshes of the built-in Mesh or Lit shader and depth program.

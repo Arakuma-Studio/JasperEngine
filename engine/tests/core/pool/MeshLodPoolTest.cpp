@@ -212,6 +212,19 @@ TEST(MeshLodPool, TheRecipesErrorBudgetBoundsTheLevels){
         EXPECT_LE(b->levels[l].error, a->levels[l].error) << "level " << l;
 }
 
+// A smooth low-poly mesh reaches its distant levels: selection guards their quality, the budget
+// only stops degenerate collapses (red with the budgets of 2 %: the chain stopped at 2 levels and
+// Shadow LOD Bias had no coarser level to pick)
+TEST(MeshLodPool, ASmoothLowPolySphereReachesItsDistantLevels){
+    const MeshLodSource source = sphere(16, 7, false);
+    ASSERT_EQ(source.indices.size(), 192u * 3u);
+    const std::shared_ptr<MeshLodData> data = MeshLodPool::buildLevels(source, MeshLodRecipe::forReduction(MeshLodReduction::BALANCED, 3));
+    EXPECT_GE(data->numLevels, 3u);
+    const float size = 2.0f;    // the unit sphere's extent, what the budget is a share of
+    for (unsigned int l = 1; l < data->numLevels; l++)
+        EXPECT_LT(data->levels[l].error, 0.15f * size) << "level " << l;
+}
+
 // R2: a faceted mesh (no shared vertices) used to stall at LOD 0; the permissive retry reduces it
 TEST(MeshLodPool, AFacetedMeshStillGetsLevels){
     const std::shared_ptr<MeshLodData> data = MeshLodPool::buildLevels(sphere(24, 12, true), MeshLodRecipe::runtime());
@@ -246,7 +259,10 @@ TEST(MeshLodPool, TheRuntimeRecipeIsBalanced){
     const MeshLodRecipe recipe = MeshLodRecipe::runtime();
     EXPECT_EQ(recipe.levels, (unsigned int)MAX_MESH_LODS - 1);
     EXPECT_FLOAT_EQ(recipe.ratio, 0.5f);
+    EXPECT_FLOAT_EQ(recipe.targetError, 0.15f);
     EXPECT_FALSE(recipe.permissive);
+    EXPECT_FLOAT_EQ(MeshLodRecipe::forReduction(MeshLodReduction::PRESERVE_DETAIL, 3).targetError, 0.05f);
+    EXPECT_FLOAT_EQ(MeshLodRecipe::forReduction(MeshLodReduction::SMALLEST, 3).targetError, 0.3f);
     EXPECT_TRUE(MeshLodRecipe::forReduction(MeshLodReduction::SMALLEST, 2).permissive);
     EXPECT_EQ(MeshLodRecipe::forReduction(MeshLodReduction::SMALLEST, 2).levels, 2u);
 }
