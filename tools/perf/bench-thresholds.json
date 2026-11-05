@@ -107,5 +107,17 @@
   "async-shaders": {
     "max_main_ms": {"max": 4.0, "spec": "S32 R21: the render thread's creation work (GPU create scopes) in the worst frame of the lobe toggles"},
     "r22_worst_over_bound": {"max": 1.0, "spec": "S32 R22: the worst frame of the toggles (edit frames apart) over max(2x the idle median, the idle median + 4 ms), driver cache warm"}
+  },
+  "mesh-bench": {
+    "_comment": "S55 R8 (tools/perf/mesh_bench.py): what the scene measured, as regression limits. They are not R9's targets, which this scene does not reach: docs/specs/S55-draw-submission.md, Results.",
+    "main_draw_calls": {"max": 246, "spec": "S55 R9: 44 grid + 200 unique + 2 terrain"},
+    "shadow_draw_calls": {"max": 431, "spec": "S55 R1: the shadow passes batch"},
+    "main_triangles": {"max": 173000, "spec": "S55 R8: the colour pass's detail levels"},
+    "shadow_triangles": {"max": 435000, "spec": "S55 R5: per-cascade terrain culling and Shadow LOD Bias 0.5"},
+    "uniform_bytes": {"max": 122000, "spec": "S55 R3: frame and pass blocks applied when they change"},
+    "batched_instances": {"min": 5200, "spec": "S55 R1: what GPU Instancing replaces"},
+    "main_draw_call_ratio": {"min": 6.5, "spec": "S55 R9, measured (target 10x, not met): GPU Instancing off to on"},
+    "shadow_triangle_drop": {"min": 0.08, "spec": "S55 R5, measured: Shadow LOD Bias 1.0 to 0.5"},
+    "uniform_byte_drop": {"min": 0.97, "spec": "S55 R3, measured: GPU Instancing off to on"}
   }
 }
