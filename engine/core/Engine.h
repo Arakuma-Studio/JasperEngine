@@ -227,6 +227,7 @@ namespace jasperengine {
             uint32_t drawCalls = 0;
             uint32_t instances = 0;
             uint64_t triangles = 0;
+            uint64_t vertices = 0;
         };
 
         // How many GPU objects of each kind can be alive at once (sokol's resource pools, each
@@ -642,7 +643,8 @@ namespace jasperengine {
         static double getFrameCpuTime();
 
         static void beginFrameStats();
-        static void addDrawStats(uint32_t instances, uint64_t triangles);
+        // vertices: the vertex shader runs, indices or vertices drawn times the instances
+        static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
         static const FrameStats& getFrameStats();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
@@ -807,6 +809,8 @@ namespace jasperengine {
             int atmosphereQuality = -1;
             // casts and receives the scene's shadows (off: an inactive Scene view pane, S26 R20)
             bool shadows = true;
+            // the Scene view's Draw Mode (RenderSystem::ViewDrawMode; 0 Shaded)
+            uint8_t drawMode = 0;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its

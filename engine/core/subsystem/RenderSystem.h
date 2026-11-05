@@ -6,6 +6,7 @@
 
 #include "SubSystem.h"
 #include <functional>
+#include "render/ViewDrawMode.h"
 #include <string>
 #include <vector>
 #include "AtmosphereRenderer.h"
@@ -570,6 +571,7 @@ namespace jasperengine{
 
 	class FluidSystem;
 
+
 	class JASPERENGINE_API RenderSystem : public SubSystem {
 		// the scene's fluids, whose MATERIAL outputs the draws show (set by drawFramePasses;
 		// null until then or without one)
@@ -607,6 +609,13 @@ namespace jasperengine{
 			TrailRendererComponent* trail = nullptr;
 		};
 
+		// which of the LOD cross-fade's draws a pass makes (spec S54 R6-R8)
+		enum class LodFadePass : uint8_t{
+			ALL,    // all: single meshes as planned, an instance view's plain and dominant copies
+			PLAIN,  // no fading draw: the depth pre-pass, an instanced mesh's first queue entry
+			FADE    // only the fading draws: an instanced mesh's second queue entry (its fade copies)
+		};
+
 		// opaque mesh of a 3D pass, drawn front to back so early depth rejects covered fragments
 		struct OpaqueRenderData{
 			Entity entity;
@@ -620,6 +629,11 @@ namespace jasperengine{
 			int sortPriority;
 			// submission (transform) order: equal priority and distance draw in it
 			uint32_t order;
+			// cross-fading detail levels (spec S54 R6): drawn after the others, with the discard
+			// variant (the plan of the view's last frame: only the order depends on it)
+			bool fading = false;
+			// an instanced mesh with fade copies has two entries: its plain draws, its fading ones
+			LodFadePass lodPass = LodFadePass::ALL;
 		};
 
 		// One merged run of tilemap indices to draw, in elements relative to the
@@ -641,12 +655,16 @@ namespace jasperengine{
 			}
 		};
 
-		// draw order of the opaque queue of a 3D pass: the lowest sort priority, then the
-		// nearest, then the submission order
+		// draw order of the opaque queue of a 3D pass: the lowest sort priority, then the meshes
+		// that do not fade (the discard of fading ones turns off early depth and hidden surface
+		// removal for their draws only, so they come after: Apple, PowerVR and Arm's order), then
+		// the nearest, then the submission order
 		struct OpaqueRenderComparison{
 			bool operator()(const OpaqueRenderData& lhs, const OpaqueRenderData& rhs) const{
 				if (lhs.sortPriority != rhs.sortPriority)
 					return lhs.sortPriority < rhs.sortPriority;
+				if (lhs.fading != rhs.fading)
+					return !lhs.fading;
 				if (lhs.distanceToCamera != rhs.distanceToCamera)
 					return lhs.distanceToCamera < rhs.distanceToCamera;
 				return lhs.order < rhs.order;
@@ -657,6 +675,8 @@ namespace jasperengine{
 		// face), kept between passes so a pass allocates nothing once they have grown
 		std::vector<OpaqueRenderData> opaqueQueue;
 		std::vector<TransparentRenderData> transparentQueue;
+		// what the mesh draws of the pass being drawn make of the LOD cross-fade
+		LodFadePass passLodFade = LodFadePass::ALL;
 
 		struct SpotMaskAtlasEntry{
 			std::string sourceId;
@@ -835,13 +855,22 @@ namespace jasperengine{
 		};
 		bool instanceViewsDirty;
 
-		// error a view hides at a distance: threshold * (perUnit * distance + constant)
+		// error a view hides at a distance: threshold * (perUnit * distance + constant) / bias
 		struct LodView{
 			Vector3 origin;
 			float perUnit = 0;   // perspective: units per pixel at distance 1
 			float constant = 0;  // orthographic: units per pixel
 			float threshold = 1;
+			float bias = 1;      // the project's and device tier's LOD Bias (QualityResolver), times each mesh's
+			float viewHeight = 1; // pixels (Cull Below Screen Height)
 			bool enabled = false;
+			// a camera view whose plan fades (planMeshLod): the main camera of draw() or of an
+			// editor view; shadow, probe and other cameras select one level, statelessly
+			bool fades = false;
+			bool crossFade = false;  // the scene's Cross Fade
+			float fadeDuration = 0.5f;
+			float fadeDeltaTime = 0;  // the fade clock's seconds since the view's last frame
+			uint64_t frame = 0;       // the view's frame, from 1
 		};
 
 		// where a pass keeps a UI element's clip rect: the RectTransform's own in draw()
@@ -1095,6 +1124,15 @@ namespace jasperengine{
 		struct RenderView{
 			InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
 			LodView lodView;
+			// the detail levels this view drew: the frame being drawn, and the last one done
+			LodFrameStats lodStats;
+			LodFrameStats lodStatsDone;
+			// the fade clock's reading at the view's last frame (planMeshLod)
+			double lodClock = -1.0;
+#ifdef JASPERENGINE_EDITOR
+			// the fades of a secondary view (the main view's live in MeshComponent::lodFade)
+			std::unordered_map<Entity, MeshLodFade> lodFades;
+#endif
 
 			// lighting and shadow maps of the view camera
 			CameraShadows shadows;
@@ -1186,6 +1224,8 @@ namespace jasperengine{
 			bool disableFog = false;
 			// its camera passes cull no face (the Scene view's debug toggle)
 			bool disableFaceCulling = false;
+			// the Scene view's Draw Mode (ViewDesc::drawMode)
+			ViewDrawMode drawMode = ViewDrawMode::SHADED;
 			// the view's copy of its camera, sized for the view: the scene's camera
 			// component is never touched (it may be drawn by the frame or another view)
 			CameraComponent camera;
@@ -1318,7 +1358,10 @@ namespace jasperengine{
 			unsigned int instanceCount = 1;
 			unsigned int instanceFirst = 0;
 			unsigned int vatFirst = 0;     // the first instance's Vertex Animation state
+			// the level a pass drawing one level draws (the plan's dominant one)
 			unsigned int lod = 0;
+			// the view's plan (planMeshLod): a fading one draws both levels in the colour pass
+			LodDraw plan;
 		};
 		Entity activeReflectionProbe = NULL_ENTITY;
 		// the scene's sky: its first SkyboxComponent, as last loaded (another one leads the
@@ -2204,6 +2247,7 @@ namespace jasperengine{
 			LodAttribute index;
 			LodAttribute normal;
 			LodAttribute uv;
+			LodAttribute skinWeights;
 		};
 		void updateMeshLods(Entity entity, MeshComponent& mesh, bool rehash);
 		static LodAttribute findSubmeshAttribute(Submesh& submesh, std::map<std::string, Buffer*>& buffers, AttributeType type);
@@ -2248,7 +2292,35 @@ namespace jasperengine{
 		void updateMeshLodErrors(MeshComponent& mesh);
 		LodView computeLodView(const CameraComponent& camera, const Transform& cameraTransform) const;
 		void updateMainLodView(CameraComponent& camera, Transform& cameraTransform);
+		// a camera view's next frame: its frame number and fade clock (planMeshLod)
+		void advanceLodView(LodView& view, double& clock);
 		unsigned int selectMeshLod(const MeshComponent& mesh, const LodView* view, float distance, float worldScale) const;
+		// the projected height (pixels) of world bounds in a view, at that distance
+		static float lodScreenHeight(const LodView& view, const AABB& bounds, float distance);
+		// the mesh's plan in a view that fades (once per view frame, every pass of the frame
+		// draws it): its level, a time or distance cross-fade, culled for its size
+		const LodDraw& planMeshLod(Entity entity, MeshComponent& mesh, const LodView& view, float distance, float worldScale);
+		// the fade state of the mesh in the view being drawn
+		MeshLodFade& lodFadeState(Entity entity, MeshComponent& mesh);
+		// whether the mesh may cross-fade at all (the scene's and its settings, a built-in
+		// shader), and whether its fade pipelines are ready now
+		bool canLodFade(const MeshComponent& mesh) const;
+		// a submesh's fade variant (MESH 'Lfd') asked for and checked against its base
+		// variant's bindings (spec S54 §6); false while not ready, or never for this submesh
+		bool prepareSubmeshLodFade(Submesh& submesh, PipelineType pipType, bool mirrored);
+	public:
+		// a LOD fade variant's reflection binds what its base variant's does (checked at load)
+		static bool sameLodFadeBindings(const ShaderData& base, const ShaderData& fade);
+		// a loaded submesh's positions (mesh space) and the triangles of one of its detail levels
+		// over them (the level's indices, or the submesh's own for 0 or a level it lacks); false
+		// when the submesh has no CPU geometry the levels read (the editor's wireframe, captures)
+		static bool readSubmeshLevel(MeshComponent& mesh, unsigned int submeshIndex, unsigned int level,
+		                             std::vector<Vector3>& positions, std::vector<uint32_t>& indices);
+		// what the level builder reads of a loaded submesh (its positions, indices and the
+		// attributes that guide it, decoded to floats); false when it has none to build from
+		static bool readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source);
+	private:
+		void releaseSubmeshLodFade(Submesh& submesh);
 		LodView shadowLodView(const LightComponent& light, int lightIndex, int cameraIndex, int slot) const;
 		// projective atlas slots the shadow pass of the camera being drawn fills, into shadowSlots
 		const std::vector<ShadowSlot>& collectShadowSlots();
@@ -2285,7 +2357,13 @@ namespace jasperengine{
 		BufferRender* instanceVatBuffer(int instanceView);
 		// the Vertex Animator of every mesh: its variant, payload, u_vs_vat and bounds (once a frame)
 		void updateVertexAnimations();
-		void drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount);
+		// fade: the colour pass's fading draws (the plan's two levels, or an instance view's fade
+		// buckets), else the plan's dominant level and the instance view's plain and dominant copies
+		// beforeLevel (the editor's LOD Level Draw Mode) runs before each level's draw
+		void drawSubmeshGeometry(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView, unsigned int lod, unsigned int instanceCount,
+		                         const std::function<void(unsigned int)>* beforeLevel = nullptr);
+		void drawSubmeshFade(ObjectRender& render, Entity entity, MeshComponent& mesh, unsigned int submeshIndex, InstancedMeshComponent* instmesh, int instanceView,
+		                     const MeshDraw& draw, int slotVSParams, const Matrix4* objectBlock, const std::function<void(unsigned int)>* beforeLevel = nullptr);
 
 		// terrain
 		bool terrainNodeLODSelect(TerrainComponent& terrain, const Transform& transform, CameraComponent& camera, const Transform& cameraTransform, TerrainNode& terrainNode, int lodLevel, TerrainView& view);
@@ -2587,6 +2665,8 @@ namespace jasperengine{
 		// Editor-only viewport debug override (see member declaration). Free to toggle:
 		// meshes draw with no-culling variants of their pipelines, built once on first use.
 		void setDisableFaceCulling(bool disableFaceCulling);
+		// the Draw Mode of the frame's view (the Scene view in Edit mode; editor only)
+		void setDrawMode(ViewDrawMode drawMode);
 
 		// editor-only: the frame's own view draws as if the scene had no fog (the Scene view's
 		// Fog toggle; the fog variants stay, their fog is neutral), as a secondary view's
@@ -2881,6 +2961,9 @@ namespace jasperengine{
 		};
 		SceneInputDetails getSceneInputDetails();
 		bool hasPendingMeshLods() const;
+
+		// the detail levels the main view (draw()) drew in its last frame
+		LodFrameStats getLodStats() const;
 	
 #ifdef JASPERENGINE_EDITOR
 		// Editor gizmos and icons that live in the scene they annotate. Only the passes
@@ -2923,10 +3006,16 @@ namespace jasperengine{
 			float canvasHeight = 0.0f;
 			// off: no shadow maps are drawn for the view and its fragments read no shadow
 			bool shadows = true;
+			ViewDrawMode drawMode = ViewDrawMode::SHADED;
 		};
 		void drawView(uint32_t viewId, const ViewDesc& desc);
+		// the level a mesh drew in an editor view's last frame (its plan's dominant level;
+		// LOD_CULLED: culled for its size), 0 before it drew there
+		unsigned int getViewMeshLod(uint32_t viewId, Entity entity) const;
 		// frees what a view created
 		void releaseView(uint32_t viewId);
+		// the detail levels an editor view drew in its last frame (its Stats overlay)
+		LodFrameStats getViewLodStats(uint32_t viewId) const;
 #endif
 
 		void load() override;

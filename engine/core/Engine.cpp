@@ -933,10 +933,11 @@ void Engine::beginFrameStats(){
     currentFrameStats = FrameStats();
 }
 
-void Engine::addDrawStats(uint32_t instances, uint64_t triangles){
+void Engine::addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices){
     currentFrameStats.drawCalls++;
     currentFrameStats.instances += instances;
     currentFrameStats.triangles += triangles;
+    currentFrameStats.vertices += vertices;
 }
 
 uint32_t Engine::getPendingDrawCalls(){
@@ -2533,6 +2534,7 @@ void Engine::drawView(uint32_t viewId, Framebuffer* target, const std::vector<Vi
         desc.disableClouds = layer.disableClouds;
         desc.atmosphereQuality = layer.atmosphereQuality;
         desc.shadows = layer.shadows;
+        desc.drawMode = (ViewDrawMode)layer.drawMode;
         desc.canvasWidth = layer.canvasWidth;
         desc.canvasHeight = layer.canvasHeight;
         layer.scene->getSystem<RenderSystem>()->drawView(viewId, desc);

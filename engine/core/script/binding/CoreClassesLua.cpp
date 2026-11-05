@@ -1645,6 +1645,12 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .endNamespace();
 
     luabridge::getGlobalNamespace(L)
+        .beginNamespace("LodFadeMode")
+        .addVariable("NONE", LodFadeMode::NONE)
+        .addVariable("CROSS_FADE", LodFadeMode::CROSS_FADE)
+        .endNamespace();
+
+    luabridge::getGlobalNamespace(L)
         .beginNamespace("MaterialAlphaMode")
         .addVariable("AUTO", MaterialAlphaMode::AUTO)
         .addVariable("ALPHA_OPAQUE", MaterialAlphaMode::ALPHA_OPAQUE)
@@ -3266,6 +3272,8 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ssaoBias", &Scene::getSSAOBias, &Scene::setSSAOBias)
         .addProperty("meshLodEnabled", &Scene::isMeshLodEnabled, &Scene::setMeshLodEnabled)
         .addProperty("meshLodThreshold", &Scene::getMeshLodThreshold, &Scene::setMeshLodThreshold)
+        .addProperty("crossFade", &Scene::isMeshLodCrossFade, &Scene::setMeshLodCrossFade)
+        .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)
         .addProperty("sceneColorScale", &Scene::getSceneColorScale, &Scene::setSceneColorScale)
         // a copy (edit it and assign it back, which applies it)

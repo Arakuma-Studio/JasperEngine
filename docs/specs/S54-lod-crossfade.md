@@ -220,3 +220,90 @@ addition:
 - **Instanced fade:** S55's `lodFade` slot replaces the report's "matrix w" idea.
 - **Shading cost:** the discarded pixels of a fading object are still shaded, which is accepted
   for 0.5 s per change.
+
+## Decisions
+
+Made by the implementer under the owner's product authority (brief: "pick what a Unity user
+would expect, the safest default and the best UX").
+
+- **Level error (R2).** A level's `error` is a sampled symmetric deviation: every source vertex and
+  triangle centre against the level's surface, every level triangle's centre and edge midpoints
+  against the source's, through a uniform triangle grid (exact nearest distances). Errors never
+  shrink with the level, since selection walks the levels until one exceeds the budget.
+- **Builder recipe (C2).** `MeshLodRecipe {levels, ratio, targetError, permissive}`, with
+  `MeshLodRecipe::forReduction`: Preserve Detail 0.6 a level within 1 % of the mesh's size,
+  Balanced 0.5 within 2 % (the runtime's), Smallest 0.35 within 5 % and permissive. Weights: normal
+  0.5, UV 1.0, bone weights 1.0, each only when present; no `SimplifyErrorClamped` (selection reads the
+  geometric error, so the budget is what keeps a flat mesh's UVs and normals, whose position error is none); a
+  level that stalls on seams retries with `SimplifyPermissive`, UV seams protected;
+  `SimplifyRegularize` for skinned meshes. `kMeshLodRecipe` is 2. `MeshLodSource` now names its
+  attributes (`normals`, `uvs`, `skinWeights`) instead of one packed array, which is what caused
+  bug 2: S53's cook fills those fields.
+- **Who gets levels.** 3D triangle meshes of the built-in Mesh or Lit shader and depth program.
+  Sprites, tilemaps and polygons (pixel-exact 2D), terrains (CDLOD) and meshes drawn with a fork or
+  library shader keep LOD 0: a custom vertex stage can move the vertices (library water, wind,
+  outlines), so a geometric error says nothing there; with LOD on by default a flat water plane
+  would otherwise draw two triangles.
+- **Fade value and lanes (C3).** A draw's fade is `-k/64` for the level faded from and
+  `(64-k)/64` for the level faded to (negative fades out, positive fades in; the magnitude is the
+  share of pixels it keeps). It travels in lanes no other reader uses, so the fade variant has its
+  base's uniform blocks, textures and vertex inputs exactly (checked at load and by
+  `LodFadeVariants.CompileForEveryBackendWithTheBaseBindings`): `pbrParams.normalMatrix[0].w`
+  for a single draw (the same lane S55's batches carry it in, `i_objectNormal0.w`), and the first
+  column's w of the instance matrix for an Instanced Mesh's fade copies. No new uniform block,
+  stream or layout.
+- **Instanced meshes (R8).** The main view's instance list holds, after its plain buckets, the
+  copies of the instances inside a level's band (once per level), dominant copies first per
+  level. The opaque queue has two entries for such a mesh: its plain draws in place, its fade
+  buckets after the non-fading opaque draws. The depth passes draw plain and dominant copies; the
+  depth pre-pass the plain ones only.
+- **Cull Below Screen Height** is a share of the view's height (Unity's relative screen height),
+  measured from the world bounds' largest side. A culled mesh still casts its shadow.
+- **Fade clock.** `Engine::getUnscaledTime` while the scene runs (game time: holds while paused,
+  exact with a fixed frame delta), `HtmlUIClock` in Edit mode. A frame's step is at most 0.25 s.
+- **Snaps beyond the spec's list:** a forced level (`Mesh.forceLod`), and a change of the mesh's
+  level set (its levels arriving or being rebuilt), so a fade never runs between levels that are
+  no longer the ones it started with. The GPU test harness also waits for pending levels.
+- **Shadow LOD (R7).** The light's error budget is two shadow texels times `SHADOW_LOD_COARSER`
+  (2, about one level coarser than the camera's rule) over S56's `QualityResolver::shadowLodBias()`
+  (default 1, above 1 keeps detail as LOD Bias does);
+  point-light faces now select levels with a light-relative view like projective slots;
+  render-to-texture and mirror cameras select one level for their own view; probe captures keep
+  LOD 0 (one level, the best for a capture that is kept).
+- **Quality values (C4).** LOD selection multiplies `QualityResolver::lodBias()` (S56: the project's
+  `quality.lod_bias` times the device tier's) into each mesh's bias once, through `LodView::bias`;
+  shadows divide by `shadowLodBias()`.
+- **Draw Modes (R11).** Saved per scene with the workspace (`drawMode`, `showStats`), driven by MCP
+  through `set_scene_camera {display: {draw_mode, show_stats}}`. Colours LOD 0 green, 1 blue,
+  2 amber, 3 red (`lodLevelColor`, for S53's LOD bar too).
+- **Stats (R12).** `vertices` counts the indices (or vertices) the draws run, times their
+  instances; mesh memory is the GPU allocator's Meshes category.
+- **Editor views** keep their own fade state per entity, so the Scene and Game views never fight
+  over one mesh's fade.
+- **Old scenes (R19).** A scene saved without `meshLodEnabled` loads with LOD off; a cooked scene
+  of format 1.0 loads with the cross-fade defaults (format 1.1 adds the two settings at the end).
+
+## Deviations
+
+- **R1, Audit window fix:** the Audit window is S53's; the scene setting it would turn on is the
+  undoable `mesh_lod_enabled` scene setting (Inspector, `set_scene_settings`).
+- **R6, §4.2 shader:** the design's `u_fs_lodFade` block and per-instance matrix trick were replaced
+  by the lanes above (see Decisions), which keep every base binding and need no extra uniform
+  apply.
+- **R7, probes:** reflection probe captures draw LOD 0, not a selected level.
+- **R11, Wireframe:** the wires are the editor's line overlay, built on the CPU per visible
+  submesh and level (cached, released when the mode is left, at most 250,000 edges nearest
+  first) instead of a GPU line-list index buffer: sokol fixes the primitive type per pipeline, so
+  a GPU path needed a second object per submesh. Skinned, morphed and deformed meshes show their
+  rest pose's wires.
+- **R11, Overdraw:** each mesh layer adds a constant dark orange (additive, no depth test or cull);
+  the sky is left out, the clear colour stays.
+- **R13:** S53's inspector reads the same levels; S54 provides `lodSwitchHeight` and
+  `lodLevelColor` for it.
+- **R14:** a model path reads glTF and GLB; OBJ and FBX are captured through an entity.
+- **AC2 on Vulkan:** the mid-fade golden is compared per 8x8 tile, since the dither's phase is the
+  backend's pixel origin (§4.1).
+- **R2, `SimplifyErrorClamped`:** not used. It scales the attribute error down to the position
+  error, which is none on a flat surface; with selection on the geometric error, the clamped
+  budget would let a flat mesh lose its texture mapping at every distance. `SimplifyPermissive` is
+  used where it helps (a level stalled on seams, and the Smallest reduction).

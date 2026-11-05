@@ -4421,6 +4421,10 @@
 		4A534E47A530C85555A30E36 /* OrderIndependentTransparency.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4721AAE19EE90B1C42 /* OrderIndependentTransparency.h */; };
 		4A534E47AC87D417EB5B892B /* TiledLights.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4782EE85CF0BD52427 /* TiledLights.h */; };
 		4A534E47442CDF4CD8C64C97 /* RenderSystemLighting.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */; };
+		4A534E472F6DCAAEF95B0339 /* LodFade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478CF8D2F65A3997F5 /* LodFade.cpp */; };
+		4A534E47DC994DF6C2C26353 /* LodFade.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478CF8D2F65A3997F5 /* LodFade.cpp */; };
+		4A534E478F6171F27FFA9B9B /* LodFade.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47AB92482ADCC4F296 /* LodFade.h */; };
+		4A534E47077E8C74ABA80A71 /* ViewDrawMode.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E471C0A929FCC2A2ED4 /* ViewDrawMode.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8655,6 +8659,9 @@
 		4A534E4721AAE19EE90B1C42 /* OrderIndependentTransparency.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = OrderIndependentTransparency.h; sourceTree = "<group>"; };
 		4A534E4782EE85CF0BD52427 /* TiledLights.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TiledLights.h; sourceTree = "<group>"; };
 		4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = RenderSystemLighting.h; sourceTree = "<group>"; };
+		4A534E478CF8D2F65A3997F5 /* LodFade.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = LodFade.cpp; sourceTree = "<group>"; };
+		4A534E47AB92482ADCC4F296 /* LodFade.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LodFade.h; sourceTree = "<group>"; };
+		4A534E471C0A929FCC2A2ED4 /* ViewDrawMode.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ViewDrawMode.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10708,6 +10715,9 @@
 				4A534E471A17DCD3BC7767A2 /* LightingTiers.h */,
 				4A534E4721AAE19EE90B1C42 /* OrderIndependentTransparency.h */,
 				4A534E4782EE85CF0BD52427 /* TiledLights.h */,
+				4A534E478CF8D2F65A3997F5 /* LodFade.cpp */,
+				4A534E47AB92482ADCC4F296 /* LodFade.h */,
+				4A534E471C0A929FCC2A2ED4 /* ViewDrawMode.h */,
 			);
 			path = render;
 			sourceTree = "<group>";
@@ -15381,6 +15391,8 @@
 				4A534E47A530C85555A30E36 /* OrderIndependentTransparency.h in Headers */,
 				4A534E47AC87D417EB5B892B /* TiledLights.h in Headers */,
 				4A534E47442CDF4CD8C64C97 /* RenderSystemLighting.h in Headers */,
+				4A534E478F6171F27FFA9B9B /* LodFade.h in Headers */,
+				4A534E47077E8C74ABA80A71 /* ViewDrawMode.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17893,6 +17905,7 @@
 				4A534E473AAD991C8C489F8A /* OrderIndependentTransparency.cpp in Sources */,
 				4A534E47F9853A391A3298B9 /* TiledLights.cpp in Sources */,
 				4A534E470004217FC125351D /* RenderSystemLighting.cpp in Sources */,
+				4A534E472F6DCAAEF95B0339 /* LodFade.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18699,6 +18712,7 @@
 				4A534E47AABA6070B4D0596C /* OrderIndependentTransparency.cpp in Sources */,
 				4A534E4708043B28190F3FBB /* TiledLights.cpp in Sources */,
 				4A534E47E64DBFDEC335A60A /* RenderSystemLighting.cpp in Sources */,
+				4A534E47DC994DF6C2C26353 /* LodFade.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

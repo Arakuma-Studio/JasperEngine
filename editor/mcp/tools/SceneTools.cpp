@@ -820,6 +820,8 @@ const std::vector<SceneSetting>& sceneSettings() {
         {"physics_2d_sub_steps", SettingKind::Int, "Box2D sub-steps per fixed step, 1-16 (default 4; more = stiffer joints)"},
         {"mesh_lod_enabled", SettingKind::Bool, "build and use mesh detail levels"},
         {"mesh_lod_threshold", SettingKind::Float, "pixels of error a detail level may show"},
+        {"mesh_lod_cross_fade", SettingKind::Bool, "dithered cross-fade between detail levels (fading objects draw twice for the duration; off: no fade shaders built or shipped)"},
+        {"mesh_lod_cross_fade_duration", SettingKind::Float, "seconds of a detail level cross-fade, 0.05-2 (default 0.5)"},
         {"depth_prepass_enabled", SettingKind::Bool, "depth-only pass before opaque draws"},
         {"scene_color_scale", SettingKind::SceneColorScale,
          "resolution of the scene-colour copy shaders requiring scenecolor sample: full, half (default)"},

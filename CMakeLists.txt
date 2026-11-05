@@ -826,6 +826,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
     ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProfilerTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MeshLodTools.cpp
     ${EDITOR_DIR}/mcp/tools/DeviceTools.cpp
     ${EDITOR_DIR}/mcp/tools/SceneTools.cpp
     ${EDITOR_DIR}/mcp/McpDataSafety.cpp
@@ -1149,6 +1150,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/spline/SplineEditor.cpp
     ${EDITOR_DIR}/spline/SplinePresets.cpp
     ${EDITOR_DIR}/spline/SplineSceneRender.cpp
+    ${EDITOR_DIR}/render/SceneDrawModes.cpp
     ${EDITOR_DIR}/spline/SplineSceneTools.cpp
     ${EDITOR_DIR}/lattice/LatticeSceneTools.cpp
     ${EDITOR_DIR}/vat/VatAssetWriter.cpp

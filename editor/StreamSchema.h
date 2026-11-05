@@ -36,6 +36,10 @@
 #include "particles/LegacyParticleSystem.h"
 
 namespace jasperengine{
+    enum class LodFadeMode;
+}
+
+namespace jasperengine{
     enum class ActionState;
     enum class AnchorPreset;
     enum class BuoyancyColumns;
@@ -203,6 +207,7 @@ namespace jasperengine::editor {
         static const EnumTable<Collider2DType>& collider2DType();
         static const EnumTable<Collider3DType>& collider3DType();
         static const EnumTable<CullingMode>& cullingMode();
+        static const EnumTable<LodFadeMode>& lodFadeMode();
         static const EnumTable<EaseType>& easeType();
         static const EnumTable<FluidOutput>& fluidOutput();
         static const EnumTable<AtmosphereQuality>& atmosphereQuality();

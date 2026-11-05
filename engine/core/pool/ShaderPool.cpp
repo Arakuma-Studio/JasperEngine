@@ -645,6 +645,12 @@ uint64_t ShaderPool::getLightingProperty(ShaderPool::LightingFeature feature){
     return 0;
 }
 
+// MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
+// fading draws use
+uint64_t ShaderPool::getLodFadeProperty(){
+    return shaderPropertyBit(40);
+}
+
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
     return getVatProperty(shaderType, false) | getVatProperty(shaderType, true);
 }
@@ -664,7 +670,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 40;
+        case ShaderType::MESH:   return 41;
         case ShaderType::DEPTH:  return 18;
         case ShaderType::GBUFFER: return 16;
         case ShaderType::UI:     return 5;
@@ -759,6 +765,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 37: return shortName ? "Cap" : "Capsule Shadows";
             case 38: return shortName ? "Cts" : "Contact Shadows";
             case 39: return shortName ? "Oit" : "Order Independent Transparency";
+            // the LOD cross-fade's dither, for fading draws only (getLodFadeProperty)
+            case 40: return shortName ? "Lfd" : "Lod Fade";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
