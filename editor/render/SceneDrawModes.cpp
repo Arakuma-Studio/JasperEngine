@@ -4,7 +4,12 @@
 #include "SceneDrawModes.h"
 
 #include "Scene.h"
+#include "component/CameraComponent.h"
+#include "component/MeshComponent.h"
+#include "component/Transform.h"
 #include "object/LineRenderer.h"
+#include "render/LodFade.h"
+#include "subsystem/RenderSystem.h"
 #include "profiler/GpuMemory.h"
 #include "Theme.h"
 

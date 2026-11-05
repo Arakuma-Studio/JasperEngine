@@ -8,8 +8,9 @@
 // renderer (RenderSystem::ViewDrawMode); the wires of Wireframe and Shaded Wireframe are an
 // editor line overlay (SceneWireframe) over the visible meshes, built only in those modes.
 
-#include "subsystem/RenderSystem.h"
-#include "render/LodFade.h"
+#include "ecs/Entity.h"
+#include "math/Vector3.h"
+#include "render/ViewDrawMode.h"
 
 #include "imgui.h"
 
@@ -24,6 +25,9 @@
 namespace jasperengine{
     class Scene;
     class LineRenderer;
+    struct CameraComponent;
+    struct MeshComponent;
+    struct LodFrameStats;
 }
 
 namespace jasperengine::editor{

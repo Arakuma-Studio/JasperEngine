@@ -13,6 +13,8 @@ namespace jasperengine{
 
     struct InstanceData;
 
+    enum class LodFadeMode;
+
     class JASPERENGINE_API Mesh: public GameObject{
     public:
 

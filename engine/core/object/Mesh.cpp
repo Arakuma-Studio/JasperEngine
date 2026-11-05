@@ -6,6 +6,7 @@
 #include "util/Color.h"
 #include "Log.h"
 #include "component/MirrorComponent.h"
+#include "render/LodFade.h"
 #include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
