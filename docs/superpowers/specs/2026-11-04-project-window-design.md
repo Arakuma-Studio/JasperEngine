@@ -808,8 +808,8 @@ Recorded while implementing on `dc/project-window`; each keeps the spec's intent
 9. **The texture slot's MCP check** (`test_texture_slot_shows_the_file_name`) is a unit test only
    (`TextureLabelsTest`): `find_ui_item` sees items with an id, and the slot's name is plain text. Its red control is
    the helper run with the old id-based text.
-10. **`tools/build.sh`** forwards `JASPER_UPDATE_SHORTCUT_DOCS` into the container: the documented way to regenerate
-    `docs/editor/keyboard-shortcuts.md` (the new commands are in it) did nothing through `build.sh`.
+10. **The shortcuts doc** is regenerated as AGENTS.md says: the unit test with `JASPER_UPDATE_SHORTCUT_DOCS=1` run
+    inside the image (`tools/build.sh exec linux`), since `build.sh` does not forward the variable.
 11. **Linked folders (S68, `docs/specs/S68-linked-folders.md`)**: a linked folder is a folder of the project. In the
     Project window a copy, paste-copy or duplicate of one copies what it holds (a real copy, new GUIDs); a cut-paste,
     drag or rename moves the link entry itself, never its target; the into-itself guard compares both as named and
