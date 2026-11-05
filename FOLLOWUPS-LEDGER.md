@@ -78,7 +78,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 | Spec | What | Branch | Needs | Status |
 |---|---|---|---|---|
 | S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Ready at `2b87a7e4e`; waits for the second full suite; iOS run waits for the Mac |
-| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1 | In progress: M1-M7 committed, not gated; M8-M10 left |
+| S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | M1-M10 done at `c37fd4b95`; fixing how agents find the tools; R31 re-measured after S38 |
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | In progress: M1-M4 committed, M5-M6 left |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | M5 needs S36 M1; merges with S62 (same file) | In progress |
 | S39 | Music | `feat/s39-music` | S35, S36, S37 | Waiting |
@@ -111,6 +111,8 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-04: S72: other programs' branches may hit "incomplete type" when they merge it: add the include in that source. `Transform.h` has only 7 files of margin before the fan-out limit of 150; if it trips, the check asks for a decision, which can be a higher limit stated in the S72 spec with its reason.
 
 - 2026-11-05: S38: AC9 accepted: Linux +5,440 bytes and wasm +3.5 KB are within budget; 2.6-2.9 KB gzipped against a 2 KB estimate is fine, for a limiter every new project uses. AC8 accepted: file mode meets 300 ms on H (276-281 ms) and the Mac (226 ms); 618-627 ms on loaded A, a Haswell VM. It is an editor-side measurement, not a game cost. Android not meaningful on an x86_64 emulator. AC7 stays open until the Mac is back.
+
+- 2026-11-05: S36: R31 (3-minute OGG, 1.2 s) is judged on H or the Mac after S38 lands, not on A. The pinned-zip licence test cannot run, because kenney.nl no longer serves the zips; the licence files match byte for byte, accepted.
 
 ## Left over, not on the user's list
 
