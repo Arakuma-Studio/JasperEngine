@@ -239,6 +239,23 @@ TEST(PipelineRecord, RefusesWhatItCannotRead){
     EXPECT_FALSE(SokolPipelineRecord::fromJson(R"({"depth":{"write":"yes"}})", desc, &error));
 }
 
+TEST(ShaderWarmup, ReadShaderKeysLeavesTheLoadedList){
+    const std::string loaded = R"({"version":1,"family":"gl","shaders":[{"key":"0x20000001","custom":""}],"pipelines":[]})";
+    std::string error;
+    ASSERT_TRUE(ShaderWarmup::loadFromString(loaded, &error)) << error;
+
+    const std::string other = R"({"version":1,"family":"gl","shaders":[{"key":"0x20000002","custom":""},{"key":"0x20000004","custom":""}],"pipelines":[]})";
+    std::vector<ShaderKey> keys;
+    ASSERT_TRUE(ShaderWarmup::readShaderKeys(other, keys, &error)) << error;
+    EXPECT_EQ(keys.size(), 2u);
+    EXPECT_EQ(ShaderWarmup::getShaderCount(), 1u) << "the loaded list stays as it was";
+
+    keys.clear();
+    EXPECT_FALSE(ShaderWarmup::readShaderKeys("not json", keys, &error));
+    EXPECT_TRUE(keys.empty());
+    ShaderWarmup::clear();
+}
+
 TEST(ShaderWarmup, RoundTrip){
     const std::string record = SokolPipelineRecord::toJson(sampleDesc());
     const std::string list = std::string(R"({"version":1,"shaders":[{"key":"0x1000000ff","custom":""},{"key":"0x200000001","custom":"shaders/myMesh"}],)") +
@@ -475,6 +492,7 @@ TEST_F(AsyncCreateGpu, ClearWhileAVariantsMakeIsQueued){
         const uint16_t id = ShaderPool::registerCustomShader("tests/async_queued_clear.frag");
         ShaderPool::setShaderBuilder([data](ShaderKey){ return ShaderBuildResult(data, ResourceLoadState::Finished); });
         const uint32_t aliveBefore = sg_query_stats().total.shaders.alive;
+        const uint64_t createdBefore = SystemRender::getGpuCreationStats().createdShaders;
         std::shared_ptr<ShaderRender> kept;
         withAVariantsMakeQueued(0, id, [&](){
             kept = ShaderPool::get(ShaderType::POSTPROCESS, 0, id);
@@ -488,6 +506,7 @@ TEST_F(AsyncCreateGpu, ClearWhileAVariantsMakeIsQueued){
         ShaderPool::setShaderBuilder(nullptr);
         EXPECT_LE(sg_query_stats().total.shaders.alive, aliveBefore) << "a GPU shader was left over";
         EXPECT_TRUE(SystemRender::isGpuCreationIdle());
+        EXPECT_EQ(SystemRender::getGpuCreationStats().createdShaders, createdBefore) << "the make that found its handle gone is counted";
 
         // the pool works on: the same source from a new id, and the slot its handle had is not it
         ShaderData again;

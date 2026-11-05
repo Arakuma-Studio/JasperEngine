@@ -5,8 +5,10 @@
 #define JASPERENGINE_PROJECTFILEINDEX_H
 
 #include "FileWatcher.h"
+#include "LinkedFolders.h"
 
 #include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -27,6 +29,10 @@ namespace jasperengine {
 
         // Empties the index and sets its root (absolute)
         void reset(const std::filesystem::path& root);
+        // Walks go on through folders linked in from out of the root (LinkFollower): what they hold is
+        // indexed under the link's name. The file watch service's index does; a polling backend's
+        // does not, as a linked folder gets a backend of its own.
+        void setFollowLinks(bool follow) { followLinks = follow; }
         const std::filesystem::path& root() const { return rootPath; }
 
         // Walks the whole root (`cancel` stops it half-way)
@@ -50,6 +56,11 @@ namespace jasperengine {
         // Whether the index holds exactly what is on disk now (tests)
         bool matchesDisk() const;
 
+        // The links walks went through: key of the link -> real path of its folder. The version
+        // changes with the map.
+        const std::map<std::string, std::filesystem::path>& linkedFolders() const { return linkedRoots; }
+        uint64_t linkedFoldersVersion() const { return linkedVersion; }
+
         size_t size() const { return entries.size(); }
         size_t directoryCount() const;
 
@@ -65,9 +76,21 @@ namespace jasperengine {
     private:
         std::filesystem::path rootPath;
         std::map<std::string, Entry> entries;   // generic UTF-8 relative path -> entry ("" = never)
+        bool followLinks = false;
+        std::map<std::string, std::filesystem::path> linkedRoots;
+        uint64_t linkedVersion = 0;
+
+        // What one walk finds of the links (followLinks): each folder is entered once per walk
+        struct LinkWalk {
+            explicit LinkWalk(const std::filesystem::path& root) : follower(root) {}
+            watch::LinkFollower follower;
+            std::map<std::string, std::filesystem::path> found;
+        };
 
         // Every indexable entry under `key` (a folder, "" = the root) on disk now
-        void walk(const std::string& key, std::map<std::string, Entry>& out, const std::atomic<bool>* cancel, int depth) const;
+        void walk(const std::string& key, std::map<std::string, Entry>& out, const std::atomic<bool>* cancel, int depth, LinkWalk* links) const;
+        // `key` and what is under it no longer are links the index went through
+        void dropLinkedFolders(const std::string& key);
     };
 
 }

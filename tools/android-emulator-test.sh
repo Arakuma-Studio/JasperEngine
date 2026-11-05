@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Install an APK on a headless Android emulator, launch it, check its logcat and what it shows.
 #
-#   tools/android-emulator-test.sh <apk> [options]
+#   tools/android-emulator-test.sh <apk or aab> [options]
 #
+#   An .aab goes through bundletool (--bundletool): build-apks for the connected device, signed
+#   with the debug key, then install-apks, as Google Play would serve it.
+#   --bundletool JAR    the bundletool jar for an .aab
 #   --expect TEXT       a `logcat -v tag` line must contain TEXT, e.g. 'W/JasperEngine: [render] lag'
 #                       (priority letter V D I W E F, then the tag: the priority and tag are checked
 #                       with the text). Repeatable. {scene} stands for the run's --scene.
@@ -22,7 +25,8 @@
 #                       the activity in the same process (the manifest does not handle fontScale),
 #                       and the engine starts again in it. The run then needs a new view (the
 #                       engine's 'Graphics:' line), the process still running and no crash; the
-#                       font scale is restored after.
+#                       font scale is restored after. The screenshot is the one before it: the
+#                       relaunched scene is still loading after the new view.
 #   --scene NAME        launch the app once per --scene (repeatable), with the property
 #                       debug.jasperengine.scene set to NAME (a test project picks what it shows
 #                       by it: tools/test-projects/render-gate); every run is checked on its own
@@ -83,7 +87,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
-    sed -n '2,75p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '2,79p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit 2
 }
 
@@ -103,6 +107,7 @@ TWO_FINGER_TAP=0
 TAP_AFTER=10
 RELAUNCH=0
 OUT="build/android-emulator"
+BUNDLETOOL=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --expect) EXPECTS+=("$2"); shift 2 ;;
@@ -126,11 +131,15 @@ while [[ $# -gt 0 ]]; do
             SCENES+=("$2"); shift 2 ;;
         --golden) GOLDEN="$2"; shift 2 ;;
         --out) OUT="$2"; shift 2 ;;
+        --bundletool) BUNDLETOOL="$2"; shift 2 ;;
         *) usage ;;
     esac
 done
 
 [[ -f "$APK" ]] || { echo "android-emulator-test: no APK at $APK" >&2; exit 2; }
+if [[ "$APK" == *.aab ]]; then
+    [[ -f "$BUNDLETOOL" ]] || { echo "android-emulator-test: an .aab needs --bundletool <jar> (got '$BUNDLETOOL')" >&2; exit 2; }
+fi
 [[ -e /dev/kvm ]] || { echo "android-emulator-test: no /dev/kvm here: the emulator needs KVM (servers A and C have it)" >&2; exit 2; }
 [[ "$OUT" =~ ^build/[A-Za-z0-9_./-]+$ ]] || { echo "android-emulator-test: --out must be under build/ (got $OUT)" >&2; exit 2; }
 if [[ -n "$GOLDEN" ]]; then
@@ -144,8 +153,14 @@ fi
 APK_ABS="$(cd "$(dirname "$APK")" && pwd)/$(basename "$APK")"
 case "$APK_ABS" in
     "$ROOT"/*) APK_IN="/src/${APK_ABS#"$ROOT"/}" ;;
-    *) mkdir -p "$ROOT/$OUT"; cp "$APK_ABS" "$ROOT/$OUT/app.apk"; APK_IN="/src/$OUT/app.apk" ;;
+    *) mkdir -p "$ROOT/$OUT"; cp "$APK_ABS" "$ROOT/$OUT/app.${APK_ABS##*.}"; APK_IN="/src/$OUT/app.${APK_ABS##*.}" ;;
 esac
+BUNDLETOOL_IN=""
+if [[ -n "$BUNDLETOOL" ]]; then
+    mkdir -p "$ROOT/$OUT"
+    cp "$BUNDLETOOL" "$ROOT/$OUT/bundletool.jar"
+    BUNDLETOOL_IN="/src/$OUT/bundletool.jar"
+fi
 mkdir -p "$ROOT/$OUT" "$ROOT/build/.cache/home"
 rm -f "$ROOT/$OUT"/{logcat.txt,logcat-full.txt,screen.png,emulator.log,result.txt,stacks.txt}
 rm -f "$ROOT/$OUT"/screen.*.png
@@ -164,7 +179,7 @@ fi
 # after what the scenes log as they start; the presented line after it)
 (( READY )) && EXPECTS+=("I/JasperEngine: Engine ready:")
 [[ -n "$GOLDEN" ]] && EXPECTS+=("I/JasperEngine: Engine presented:")
-printf '%s\n' ${EXPECTS[@]+"${EXPECTS[@]}"} > "$ROOT/$OUT/expect.txt"
+printf '%s\n' ${EXPECTS[@]+"${EXPECTS[@]}"} > "$ROOT/$OUT/expect-all.txt"
 printf '%s\n' ${FORBIDS[@]+"${FORBIDS[@]}"} > "$ROOT/$OUT/forbid.txt"
 
 TTY_FLAGS=()
@@ -175,7 +190,7 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
     --user "$(id -u):$(id -g)" \
     -v "$ROOT:/src" -w /src \
     -e HOME=/src/build/.cache/home \
-    -e APK="$APK_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
+    -e APK="$APK_IN" -e BUNDLETOOL="$BUNDLETOOL_IN" -e OUT="/src/$OUT" -e ORDERED="$ORDERED" -e TIMEOUT="$TIMEOUT" -e SECONDS_TO_RUN="$SECONDS_TO_RUN" \
     -e TWO_FINGER_TAP="$TWO_FINGER_TAP" -e TAP_AFTER="$TAP_AFTER" -e RELAUNCH="$RELAUNCH" \
     -e EXPECT_NATIVE_CRASH="$EXPECT_NATIVE_CRASH" \
     -e SCENES="${SCENES[*]+"${SCENES[*]}"}" -e SCREENSHOT_ON_PRESENT="$([[ -n "$GOLDEN" ]] && echo 1 || echo 0)" \
@@ -224,10 +239,28 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
         adb shell settings put global transition_animation_scale 0 >/dev/null 2>&1 || true
 
         AAPT2="$(ls -d $ANDROID_HOME/build-tools/*/aapt2 | tail -1)"
-        PACKAGE="$("$AAPT2" dump packagename "$APK" | tr -d "\r")"
-        [[ -n "$PACKAGE" ]] || { log "no package name in $APK"; exit 2; }
-        log "installing $PACKAGE"
-        adb install -r -g "$APK" > "$OUT/install.log" 2>&1 || { log "install failed"; cat "$OUT/install.log"; exit 2; }
+        if [[ "$APK" == *.aab ]]; then
+            KS="$HOME/.android/debug.keystore"
+            if [[ ! -f "$KS" ]]; then
+                mkdir -p "$HOME/.android"
+                keytool -genkeypair -keystore "$KS" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 \
+                    -validity 10000 -dname "CN=Android Debug,O=Android,C=US" 2> /dev/null
+            fi
+            PACKAGE="$(java -jar "$BUNDLETOOL" dump manifest --bundle="$APK" --xpath=/manifest/@package | tr -d "\r")"
+            [[ -n "$PACKAGE" ]] || { log "no package name in $APK"; exit 2; }
+            log "bundletool build-apks for the device, then install-apks: $PACKAGE"
+            {
+                java -jar "$BUNDLETOOL" build-apks --bundle="$APK" --output="$OUT/app.apks" --overwrite --connected-device --adb="$(command -v adb)" \
+                    --ks="$KS" --ks-pass=pass:android --ks-key-alias=androiddebugkey --key-pass=pass:android &&
+                java -jar "$BUNDLETOOL" install-apks --apks="$OUT/app.apks" --adb="$(command -v adb)"
+            } > "$OUT/install.log" 2>&1 || { log "bundletool failed"; cat "$OUT/install.log"; exit 2; }
+            unzip -l "$OUT/app.apks" >> "$OUT/install.log"
+        else
+            PACKAGE="$("$AAPT2" dump packagename "$APK" | tr -d "\r")"
+            [[ -n "$PACKAGE" ]] || { log "no package name in $APK"; exit 2; }
+            log "installing $PACKAGE"
+            adb install -r -g "$APK" > "$OUT/install.log" 2>&1 || { log "install failed"; cat "$OUT/install.log"; exit 2; }
+        fi
         adb shell setprop debug.jasperengine.ready_signal 1
 
         # what the GLES path logs when it goes wrong (NativeEngine, sokol GL, ShaderPool, libEGL)
@@ -257,7 +290,8 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
         # one launch: SCENE (empty: no --scene) in DIR, its screenshot SHOT; 1 when it failed
         run() {
             mkdir -p "$DIR"
-            sed "s/{scene}/$SCENE/g" "$OUT/expect.txt" > "$DIR/expect.txt"
+            # (another file: without --scene DIR is OUT, and sed would empty what it reads)
+            sed "s/{scene}/$SCENE/g" "$OUT/expect-all.txt" > "$DIR/expect.txt"
             adb shell am force-stop "$PACKAGE" >/dev/null 2>&1 || true
             adb logcat -c
             adb shell setprop debug.jasperengine.scene "\"$SCENE\""
@@ -278,6 +312,8 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                 (( SECONDS - start > WAIT )) && break
                 sleep 2
             done
+            # what the screen shows now: with --golden, at least 30 frames after the ready line
+            adb exec-out screencap -p > "$DIR/$SHOT" 2>/dev/null || true
             # an activity relaunched in the same process: the engine starts again in it
             relaunched=""
             if [[ "$RELAUNCH" == 1 && -z "$crashes" ]]; then
@@ -309,8 +345,6 @@ docker run --rm ${TTY_FLAGS[@]+"${TTY_FLAGS[@]}"} \
                     relaunched="found        relaunched in process $pid: a new view, still running"
                 fi
             fi
-            # what the screen shows now: with --golden, at least 30 frames after the ready line
-            adb exec-out screencap -p > "$DIR/$SHOT" 2>/dev/null || true
             adb logcat -d -v tag > "$DIR/logcat.txt"
             adb logcat -d -v threadtime > "$DIR/logcat-full.txt"
 

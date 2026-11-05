@@ -180,7 +180,10 @@ namespace jasperengine{
         VOLUMETRIC_COMPOSITE, // volumetric fog and Screen clouds over the scene (Atmosphere/VolumetricComposite)
         PASS_PREVIEW,         // the Frame Debugger's pass output preview (S15, SokolPassPreview; editor only)
         PARTICLES,            // particle systems (docs/specs/S20-particles.md): instanced quads, meshes and trails
-        HTMLUI_PRIM           // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
+        HTMLUI_PRIM,          // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
+        // S57's fullscreen passes: the contact shadows' mask (contact_shadows.frag), 'Oir' the OIT
+        // resolve (oit_resolve.frag)
+        LIGHTING_PASS
     };
 
     enum class AttributeType{
@@ -244,7 +247,22 @@ namespace jasperengine{
         // width, role and fan parameter (a_lineParams)
         LINETANGENTIN,
         LINETANGENTOUT,
-        LINEPARAMS
+        LINEPARAMS,
+        // an automatically instanced batch's per-instance object block (spec S55,
+        // includes/object_params.glsl, object_depth_params.glsl): the model matrix's rows, the
+        // normal matrix's columns, the model-view-projection's columns, the depth layout's extra
+        // vector (i_objectModel0..2, i_objectNormal0..2, i_objectMvp0..3, i_objectExtra)
+        OBJECTMODEL0,
+        OBJECTMODEL1,
+        OBJECTMODEL2,
+        OBJECTNORMAL0,
+        OBJECTNORMAL1,
+        OBJECTNORMAL2,
+        OBJECTMVP0,
+        OBJECTMVP1,
+        OBJECTMVP2,
+        OBJECTMVP3,
+        OBJECTEXTRA
     };
 
     enum class AttributeDataType{

@@ -23,6 +23,7 @@
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 #include "window/ProjectWindow.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -507,7 +508,8 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         ImGui::OpenPopup("New Pose Animation from Template###PoseTemplateCreate");
     }
     ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("New Pose Animation from Template###PoseTemplateCreate", nullptr, flags)){
+    if (EditorModal::begin("New Pose Animation from Template###PoseTemplateCreate", nullptr, flags)){
+        EditorModal::message("New Pose Animation from the template " + templateCreateName + ": path is where to save it (project folder).");
         const TemplateEntry* entry = nullptr;
         for (const TemplateEntry& candidate : templateEntries){
             if (sameName(candidate.tmpl.info.name, templateCreateName)) entry = &candidate;
@@ -522,6 +524,7 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         ImGui::TextUnformatted("Save as (project folder)");
         ImGui::SetNextItemWidth(Theme::dpi(420.0f));
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        EditorModal::pathField("path", templateCreatePath, sizeof(templateCreatePath));
         const bool enter = ImGui::InputText("##PoseTemplatePath", templateCreatePath, sizeof(templateCreatePath),
                                             ImGuiInputTextFlags_EnterReturnsTrue);
         std::string target = trimmed(templateCreatePath);
@@ -529,6 +532,8 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         std::error_code ec;
         const fs::path absolute = editor::FileUtils::pathFromUtf8(target).is_absolute() ? editor::FileUtils::pathFromUtf8(target) : project->getProjectPath() / editor::FileUtils::pathFromUtf8(target);
         const bool taken = !target.empty() && fs::exists(absolute, ec);
+        EditorModal::error(!templateCreateError.empty() ? templateCreateError : taken ? target + " exists: pick another name" :
+                           target.empty() ? std::string("The path is empty.") : std::string());
         if (taken){
             ImGui::TextColored(Theme::Colors::WarningText, ICON_FA_TRIANGLE_EXCLAMATION " %s exists: pick another name", target.c_str());
         }else if (session.bound()){
@@ -540,10 +545,10 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         }
         ImGui::Separator();
         ImGui::BeginDisabled(target.empty() || taken);
-        const bool create = ImGui::Button("Create", ImVec2(Theme::dpi(120.0f), 0)) || (enter && !target.empty() && !taken);
+        const bool create = EditorModal::button("Create", "ok", ImVec2(Theme::dpi(120.0f), 0)) || (enter && !target.empty() && !taken);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        const bool cancel = ImGui::Button("Cancel", ImVec2(Theme::dpi(120.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+        const bool cancel = EditorModal::button("Cancel", "cancel", ImVec2(Theme::dpi(120.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
         if (create){
             std::string error;
             if (createFromTemplate(templateCreateName, target, &error)){
@@ -563,7 +568,9 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         ImGui::OpenPopup("Delete Template###PoseTemplateDelete");
     }
     ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Delete Template###PoseTemplateDelete", nullptr, flags)){
+    if (EditorModal::begin("Delete Template###PoseTemplateDelete", nullptr, flags)){
+        EditorModal::message("Delete the project template '" + templateDeleteName + "'? (Ctrl/Cmd+Z brings it back)");
+        EditorModal::error(templateDeleteError);
         std::string file;
         for (const TemplateEntry& candidate : templateEntries){
             if (sameName(candidate.tmpl.info.name, templateDeleteName)){
@@ -574,13 +581,13 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         if (!file.empty()) ImGui::TextColored(Theme::Colors::SubtleText, "%s (Ctrl/Cmd+Z brings it back)", file.c_str());
         if (!templateDeleteError.empty()) ImGui::TextColored(Theme::Colors::ErrorText, "%s", templateDeleteError.c_str());
         ImGui::Separator();
-        if (ImGui::Button("Delete", ImVec2(Theme::dpi(120.0f), 0))){
+        if (EditorModal::button("Delete", "yes", ImVec2(Theme::dpi(120.0f), 0))){
             std::string error;
             if (deleteTemplate(templateDeleteName, &error)) ImGui::CloseCurrentPopup();
             else templateDeleteError = error;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(Theme::dpi(120.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
+        if (EditorModal::button("Cancel", "cancel", ImVec2(Theme::dpi(120.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)){
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -592,7 +599,8 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         ImGui::OpenPopup("Save as Template###PoseTemplateSave");
     }
     ImGui::SetNextWindowPos(centre, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal("Save as Template###PoseTemplateSave", nullptr, flags)){
+    if (EditorModal::begin("Save as Template###PoseTemplateSave", nullptr, flags)){
+        EditorModal::message("Save this animation as a project template (pose-templates/, one undo step).");
         const float labelWidth = Theme::dpi(90.0f);
         const float fieldWidth = Theme::dpi(320.0f);
         ImGui::AlignTextToFramePadding();
@@ -600,18 +608,18 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         ImGui::SameLine(labelWidth);
         ImGui::SetNextItemWidth(fieldWidth);
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-        ImGui::InputText("##PoseTemplateName", templateSaveName, sizeof(templateSaveName));
+        EditorModal::inputText("##PoseTemplateName", "name", templateSaveName, sizeof(templateSaveName));
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Description");
         ImGui::SameLine(labelWidth);
         ImGui::SetNextItemWidth(fieldWidth);
-        ImGui::InputTextWithHint("##PoseTemplateDescription", "shown as the card's tooltip", templateSaveDescription,
-                                 sizeof(templateSaveDescription));
+        EditorModal::inputTextWithHint("##PoseTemplateDescription", "description", "shown as the card's tooltip", templateSaveDescription,
+                                       sizeof(templateSaveDescription));
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted("Category");
         ImGui::SameLine(labelWidth);
         ImGui::SetNextItemWidth(fieldWidth - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
-        ImGui::InputTextWithHint("##PoseTemplateCategory", "User", templateSaveCategory, sizeof(templateSaveCategory));
+        EditorModal::inputTextWithHint("##PoseTemplateCategory", "category", "User", templateSaveCategory, sizeof(templateSaveCategory));
         ImGui::SameLine();
         std::vector<PoseTemplateInfo> infos;
         for (const TemplateEntry& entry : templateEntries) infos.push_back(entry.tmpl.info);
@@ -631,6 +639,7 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
             note = entry.tmpl.info.user ? "Replaces the project template '" + entry.tmpl.info.name + "'"
                                         : "Shadows the built-in template '" + entry.tmpl.info.name + "' in this project";
         }
+        EditorModal::error(!templateSaveError.empty() ? templateSaveError : valid ? std::string() : nameError);
         if (!valid){
             ImGui::TextColored(Theme::Colors::WarningText, "%s", nameError.c_str());
         }else if (!note.empty()){
@@ -641,10 +650,10 @@ void editor::PoseAnimationWindow::drawTemplatePopups(){
         if (!templateSaveError.empty()) ImGui::TextColored(Theme::Colors::ErrorText, "%s", templateSaveError.c_str());
         ImGui::Separator();
         ImGui::BeginDisabled(!valid);
-        const bool save = ImGui::Button("Save", ImVec2(Theme::dpi(120.0f), 0));
+        const bool save = EditorModal::button("Save", "ok", ImVec2(Theme::dpi(120.0f), 0));
         ImGui::EndDisabled();
         ImGui::SameLine();
-        const bool cancel = ImGui::Button("Cancel", ImVec2(Theme::dpi(120.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+        const bool cancel = EditorModal::button("Cancel", "cancel", ImVec2(Theme::dpi(120.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false);
         if (save){
             std::string error;
             if (saveAsTemplate(templateSaveName, templateSaveDescription, templateSaveCategory, &error)) ImGui::CloseCurrentPopup();

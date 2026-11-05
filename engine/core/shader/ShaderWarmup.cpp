@@ -392,6 +392,18 @@ std::vector<ShaderKey> ShaderWarmup::getShaderKeys(){
     return keys;
 }
 
+bool ShaderWarmup::readShaderKeys(const std::string& text, std::vector<ShaderKey>& keys, std::string* error){
+    State list;
+    if (!readInto(list, text, error))
+        return false;
+    for (const WarmShader& entry : list.shaders){
+        ShaderKey key;
+        if (sessionKey(entry, key))
+            keys.push_back(key);
+    }
+    return true;
+}
+
 std::string ShaderWarmup::filteredString(const std::vector<ShaderKey>& keep){
     const State& s = state();
     std::set<ShaderKey> kept(keep.begin(), keep.end());

@@ -5,6 +5,7 @@
 #define LAYOUT_GROUP_H
 
 #include "RectTransform.h"
+#include "component/LayoutGroupComponent.h"
 
 namespace jasperengine{
     class JASPERENGINE_API LayoutGroup: public RectTransform{
