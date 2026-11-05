@@ -71,17 +71,11 @@ def entry(state: dict, name: str) -> list | None:
     return next((item["rect"] for item in state["project_window"]["entries"] if item["name"] == name), None)
 
 
-async def wait_item(ed: Editor, label: str, window_name: str | None = None, timeout: float = 60.0) -> list:
-    for _ in range(int(timeout / 0.25)):
-        args = {"label": label}
-        if window_name:
-            args["window"] = window_name
-        items = [i for i in (await ed.call("find_ui_item", **args))["items"] if i.get("visible", True)]
-        if items:
-            r = items[0]["rect"]
-            return [r["x"], r["y"], r["width"], r["height"]]
-        await ui_input.frames(ed, 2)
-    ed.fail(f"no drawn UI item {label!r}")
+async def wait_item(ed: Editor, label: str, window_name: str | None = None) -> dict:
+    """An item (a control, its ## id, or a table header: plain text is not an item), once drawn,
+    scrolled into view for the screenshot that follows."""
+    window(ed)
+    return await ui_input.for_editor(ed).reveal(label, window_name, frames=480)
 
 
 async def shot(ed: Editor, name: str) -> None:
@@ -116,14 +110,14 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
 
     # one model: its importer, preview, levels and before-and-after table
     await click(ed, entry(state, "grid.glb"))
-    await wait_item(ed, "Mesh Compression", "Inspector")
+    await wait_item(ed, "##meshCompression", "Inspector")
     await wait_item(ed, "Differs by at most", "Inspector")
     await ui_input.frames(ed, 20)
     await shot(ed, "1-model-importer")
 
     # a multi-selection: mixed values, totals, the largest
     await click(ed, entry(state, "panel.gltf"), modifier="ctrl")
-    await wait_item(ed, "Largest:", "Inspector")
+    await wait_item(ed, "##largest0", "Inspector")
     await ui_input.frames(ed, 6)
     await shot(ed, "2-model-importer-multi")
 
@@ -152,6 +146,6 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     ed.check(data["categories"]["models"] > 0, f"the models' bytes: {data['categories']}")
     ed.check(any(f.get("source") == "models/grid.glb" for f in data["largest"]), f"the grid's cook among the largest: {data['largest']}")
     await ed.call("run_command", command="window.buildReport")
-    await wait_item(ed, "Largest files")
+    await wait_item(ed, "Source Size")
     await ui_input.frames(ed, 10)
     await shot(ed, "5-build-report")

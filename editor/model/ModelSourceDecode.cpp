@@ -13,6 +13,7 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <optional>
 #include <set>
 
 namespace fs = std::filesystem;
@@ -242,27 +243,34 @@ bool ModelSourceDecode::transcodeImages(GltfDocument& doc, bool basisFallback, s
     for (Json& texture : root["textures"]){
         if (!texture.is_object() || !texture.contains("extensions") || !texture["extensions"].is_object())
             continue;
-        Json& extensions = texture["extensions"];
-        size_t image = 0;
-        if (extensions.contains(WEBP)){
-            if (!texture.contains("source") && GltfDocument::getIndex(extensions[WEBP], "source", image))
-                texture["source"] = image;
-            extensions.erase(WEBP);
+        // ordered_json keeps an object's members in a vector: the `source` added last, since adding
+        // a key moves them, and a reference to "extensions" with them
+        std::optional<size_t> source;
+        {
+            Json& extensions = texture["extensions"];
+            size_t image = 0;
+            if (extensions.contains(WEBP)){
+                if (!texture.contains("source") && GltfDocument::getIndex(extensions[WEBP], "source", image))
+                    source = image;
+                extensions.erase(WEBP);
+            }
+            if (basisFallback && !source && extensions.contains(BASISU) && !texture.contains("source") && GltfDocument::getIndex(extensions[BASISU], "source", image)){
+                // a native player reads `source`: the KTX2 image's pixels as a PNG image of its own
+                std::vector<uint8_t> bytes;
+                if (!doc.imageBytes(image, bytes, error))
+                    return false;
+                size_t view = 0;
+                if (!pngView(doc, bytes, "the KTX2 image " + std::to_string(image), view, error))
+                    return false;
+                root["images"].push_back(Json{{"bufferView", view}, {"mimeType", "image/png"}});
+                source = root["images"].size() - 1;
+                basisDone = true;
+            }
         }
-        if (basisFallback && extensions.contains(BASISU) && !texture.contains("source") && GltfDocument::getIndex(extensions[BASISU], "source", image)){
-            // a native player reads `source`: the KTX2 image's pixels as a PNG image of its own
-            std::vector<uint8_t> bytes;
-            if (!doc.imageBytes(image, bytes, error))
-                return false;
-            size_t view = 0;
-            if (!pngView(doc, bytes, "the KTX2 image " + std::to_string(image), view, error))
-                return false;
-            root["images"].push_back(Json{{"bufferView", view}, {"mimeType", "image/png"}});
-            texture["source"] = root["images"].size() - 1;
-            basisDone = true;
-        }
-        if (extensions.empty())
+        if (texture["extensions"].empty())
             texture.erase("extensions");
+        if (source)
+            texture["source"] = *source;
     }
     doc.pruneViews();
     if (!webp.empty()){

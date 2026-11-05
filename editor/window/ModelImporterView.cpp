@@ -544,7 +544,8 @@ void ModelImporterView::drawMultiple(){
     ImGui::TextDisabled("Largest:");
     for (size_t i = 0; i < largest.size() && i < 5; i++){
         const ModelAuditRow& row = *largest[i];
-        const std::string label = fs::path(row.assetPath).filename().string() + "  " + bytesText(row.memoryBytes()) + "  " + countText(row.triangles()) + " tris";
+        const std::string label = fs::path(row.assetPath).filename().string() + "  " + bytesText(row.memoryBytes()) + "  " + countText(row.triangles()) +
+                                  " tris##largest" + std::to_string(i);
         if (ImGui::Selectable(label.c_str()))
             project->setInspectedAssets({fs::path(row.projectPath)});
     }
