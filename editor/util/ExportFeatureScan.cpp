@@ -3,6 +3,8 @@
 
 #include "ExportFeatureScan.h"
 
+#include "io/watch/LinkedFolders.h"
+
 #include <algorithm>
 #include <fstream>
 #include <iterator>
@@ -57,8 +59,9 @@ std::string ExportFeatureScan::luaOfHtml(const std::string& html) {
 void ExportFeatureScan::collect(const fs::path& root, const fs::path& dir, std::vector<fs::path>& files) {
     std::error_code ec;
     if (!fs::is_directory(dir, ec)) return;
-    for (auto it = fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec);
-         !ec && it != fs::recursive_directory_iterator(); it.increment(ec)) {
+    // the files of a linked folder ship too, so what they use counts
+    for (watch::LinkedDirectoryIterator it(dir, fs::directory_options::skip_permission_denied, ec), end;
+         !ec && it != end; it.increment(ec)) {
         const std::string name = it->path().filename().string();
         if (it->is_directory(ec)) {
             if (!name.empty() && (name[0] == '.' || name == "build")) it.disable_recursion_pending();

@@ -5,6 +5,7 @@
 
 #include "search/HierarchyFilter.h"
 #include "util/EntityLabels.h"
+#include "graph/Graph.h"
 #include "window/dialog/ComponentAddDialog.h"
 #include "Catalog.h"
 

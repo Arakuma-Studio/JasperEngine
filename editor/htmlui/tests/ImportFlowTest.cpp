@@ -6,6 +6,7 @@
 // queue and the Lucide icons of the facade (phase-2 §3.13, §5.4).
 
 #include "ImporterTestCommon.h"
+#include "htmlui/compat/runtime/LucideIcons.h"
 
 #include "htmlui/HtmlUiImportCli.h"
 #include "htmlui/HtmlUiImportMaintenance.h"

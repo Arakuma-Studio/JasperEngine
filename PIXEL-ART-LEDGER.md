@@ -200,20 +200,35 @@ exist on this host, and the owner declined renting a box. Builds therefore run o
 - `build/fixture-unity` (the MCP fixture project) is not available. MCP tests that need it are
   skipped, and reports must say so.
 
-### Landing gate (from `AGENTS.md`, rewritten upstream on 2026-11-04)
+### Landing gate
 
-Before a spec is merged into `main` and pushed, the merged tree passes:
-- `WERROR=1 tools/build.sh linux` and `WERROR=1 tools/build.sh unit-tests`;
-- the MCP suite: `MCP_SUITE=all` where the fixture exists. `build/fixture-unity` (TappyPlane)
-  isn't on this host, so tests that need it skip and the report lists them;
+**Owner's order (2026-11-05): no full suites at all, not even at the end.** Verification uses the
+lighter, targeted runs below, for every spec and for the final check.
+
+Per spec, the merged tree passes:
+- `WERROR=1 tools/build.sh linux`, and the unit tests built with `RUN=0`;
+- `tools/check-changed`;
+- the spec's own unit tests and the suites it can affect, run with `UNIT_SUITE` and
+  `--gtest_filter`;
+- the spec's MCP test files, run as named files or with `-k`;
 - `web` and `android` builds when runtime code changed;
-- the area lints (raw writes, stream keys, shortcuts, notices), plus the regenerated `TOOLS.md`
-  and `tool_budget.py --check`.
+- the area lints, plus the regenerated `TOOLS.md` and `tool_budget.py --check`.
 
-There is no CI.
+`build/fixture-unity` (TappyPlane) isn't on this host, so tests that need it skip and the reports
+list them. There is no CI.
 
 ## Log
 
+- 2026-11-05: Owner: skip full suites entirely, even at the end. Work is verified with lighter
+  runs only: `check-changed`, filtered unit tests, named MCP files, and the `WERROR` builds.
+- 2026-11-05: The S41 implementer stopped on an API weekly rate limit, and the session
+  restarted. All background jobs died. `main` fast-forwarded to `origin/main` `547a6e964` (344
+  commits from other programs: S53–S73). The S41, S43 and S44 implementers were revived and told
+  to merge it. `dc/sprite-batching` is still in progress, so S52 keeps waiting. Branch heads at
+  revival: S41 `3323f4878`, S43 `6e5872eed`, S44 `d0f812e3c` (plus uncommitted review fixes).
+- 2026-11-04: Owner's order: no full suites until the very end. The S43 implementer's queued
+  unfiltered unit-test run was cancelled. The brief and the landing gate now use filtered runs
+  only, and all three implementers were told.
 - 2026-11-04: S44 implementation reported at `a06bf6491`, with `main` merged in.
   - Passing: `WERROR=1` linux, unit-tests, web and android builds; 5,733 unit tests; the MCP
     suite with `tools/fixtures/tween-curve` standing in for the missing fixture.

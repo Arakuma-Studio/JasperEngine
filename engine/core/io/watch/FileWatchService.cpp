@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <deque>
 #include <limits>
+#include <map>
 #include <set>
 
 #if defined(__APPLE__)
@@ -79,6 +80,26 @@ private:
     Shared& shared;
 };
 
+// A linked folder's backend: its events name the folder's real path; the rest of the editor
+// knows them by the link's
+class FileWatchService::LinkedSink : public watch::WatchSink {
+public:
+    LinkedSink(Shared& shared, fs::path real, fs::path logical) : shared(shared), real(std::move(real)), logical(std::move(logical)) {}
+    void onRawEvents(std::vector<watch::RawEvent>&& events) override;
+    void onBackendFailed(const std::string& reason) override;
+
+private:
+    fs::path mapped(const fs::path& path) const {
+        std::string rel;
+        if (path.empty() || !watch::relativeTo(real, path, rel)) return path;
+        return rel.empty() ? logical : (logical / watch::pathFromUtf8(rel)).lexically_normal();
+    }
+
+    Shared& shared;
+    fs::path real;
+    fs::path logical;
+};
+
 class FileWatchService::CoalescerEnvironment : public FileChangeCoalescer::Environment {
 public:
     explicit CoalescerEnvironment(ProjectFileIndex& index) : index(index) {}
@@ -99,6 +120,15 @@ struct FileWatchService::Shared {
     std::chrono::milliseconds pollInterval{1000};
     State state = State::Off;
     std::shared_ptr<FileWatcher> backend;
+    struct LinkedWatch {
+        std::string key;
+        fs::path real;
+        std::unique_ptr<LinkedSink> sink;
+        std::shared_ptr<FileWatcher> backend;
+    };
+    std::vector<LinkedWatch> linked;
+    uint64_t linkedVersion = 0;        // the index's version the backends above were made for
+    std::mutex linkedSyncMutex;        // one syncLinkedWatches at a time; taken before stateMutex
     ProjectFileIndex index;
     bool indexReady = false;
     CoalescerEnvironment environment{index};
@@ -164,6 +194,25 @@ void FileWatchService::Sink::onBackendFailed(const std::string& reason) {
         shared.fallbackReason = reason;
     }
     shared.rawCv.notify_all();
+}
+
+void FileWatchService::LinkedSink::onRawEvents(std::vector<watch::RawEvent>&& events) {
+    for (watch::RawEvent& event : events) {
+        event.path = mapped(event.path);
+        event.oldPath = mapped(event.oldPath);
+    }
+    shared.sink.onRawEvents(std::move(events));
+}
+
+void FileWatchService::LinkedSink::onBackendFailed(const std::string& reason) {
+    // the linked folder went away (a drive unplugged): what it held is gone, the watch of the
+    // project goes on. Anything else (out of watches) is the backend's failure like the project's.
+    watch::PathStat stat;
+    if (watch::statPath(real, stat, false)) {
+        shared.sink.onBackendFailed(reason);
+        return;
+    }
+    shared.sink.onRawEvents({watch::RawEvent{watch::RawEvent::Type::Rescan, logical, {}, true}});
 }
 
 void FileWatchService::Sink::onProbe() {
@@ -258,6 +307,7 @@ bool FileWatchService::start(const fs::path& rootIn, WatchBackendKind kind, std:
         shared->pollInterval = std::clamp(pollInterval, std::chrono::milliseconds(250), std::chrono::milliseconds(10000));
         shared->state = State::Off;
         shared->index.reset(root);
+        shared->index.setFollowLinks(true);
         shared->indexReady = false;
         shared->coalescer.clear();
         shared->warned.clear();
@@ -295,10 +345,22 @@ void FileWatchService::stop() {
         backend = std::move(shared->backend);
     }
     if (backend) backend->stop();
+    {
+        std::lock_guard<std::mutex> syncLock(shared->linkedSyncMutex);
+        std::vector<Shared::LinkedWatch> linked;
+        {
+            std::lock_guard<std::mutex> lock(shared->stateMutex);
+            linked.swap(shared->linked);
+        }
+        for (Shared::LinkedWatch& entry : linked) {
+            if (entry.backend) entry.backend->stop();
+        }
+    }
 
     {
         std::lock_guard<std::mutex> lock(shared->stateMutex);
         shared->attached = false;
+        shared->linkedVersion = 0;
         shared->root.clear();
         shared->index.reset({});
         shared->indexReady = false;
@@ -441,6 +503,7 @@ void FileWatchService::dispatcherLoop() {
     // and to the journal; the walk sees their result)
     ProjectFileIndex built;
     built.reset(root);
+    built.setFollowLinks(true);
     built.build(&s.cancelBuild);
     {
         std::lock_guard<std::mutex> lock(s.stateMutex);
@@ -448,6 +511,7 @@ void FileWatchService::dispatcherLoop() {
         s.index = std::move(built);
         s.indexReady = true;
     }
+    syncLinkedWatches();
     s.stateCv.notify_all();
 
     // 3. Auto's self-test: does a native event arrive at all (network drives, WSL, Docker
@@ -516,8 +580,58 @@ void FileWatchService::dispatcherLoop() {
             std::vector<FileChange> settled = s.coalescer.take(now);
             processLocked(settled);
         }
+        syncLinkedWatches();
         deliverWorkers();
         wakeMain();
+    }
+}
+
+void FileWatchService::syncLinkedWatches() {
+    Shared& s = *shared;
+    std::lock_guard<std::mutex> syncLock(s.linkedSyncMutex);
+    std::map<std::string, fs::path> wanted;
+    std::vector<Shared::LinkedWatch> retired;
+    bool native = false;
+    std::chrono::milliseconds interval{1000};
+    fs::path root;
+    {
+        std::lock_guard<std::mutex> lock(s.stateMutex);
+        if (s.linkedVersion == s.index.linkedFoldersVersion()) return;
+        s.linkedVersion = s.index.linkedFoldersVersion();
+        if (s.backend) wanted = s.index.linkedFolders();
+        native = s.backend && s.backend->isNative();
+        interval = s.pollInterval;
+        root = s.root;
+        for (auto it = s.linked.begin(); it != s.linked.end();) {
+            auto same = wanted.find(it->key);
+            if (same != wanted.end() && same->second == it->real && it->backend && it->backend->isNative() == native) {
+                wanted.erase(same);
+                ++it;
+            } else {
+                retired.push_back(std::move(*it));
+                it = s.linked.erase(it);
+            }
+        }
+    }
+    // off the state lock: a stop joins a thread that may be in the sink, a start walks a tree
+    for (Shared::LinkedWatch& entry : retired) {
+        if (entry.backend) entry.backend->stop();
+    }
+    for (const auto& [key, real] : wanted) {
+        Shared::LinkedWatch entry;
+        entry.key = key;
+        entry.real = real;
+        entry.sink = std::make_unique<LinkedSink>(s, real, (root / watch::pathFromUtf8(key)).lexically_normal());
+        entry.backend = native ? std::shared_ptr<FileWatcher>(FileWatcher::createNative())
+                               : std::shared_ptr<FileWatcher>(FileWatcher::createPolling(interval));
+        std::string error;
+        if (!entry.backend || !entry.backend->start(real, *entry.sink, error)) {
+            std::lock_guard<std::mutex> lock(s.stateMutex);
+            s.warnOnceLocked("linked:" + key, "File watcher: the linked folder " + key + " is not watched: " + error);
+            continue;
+        }
+        std::lock_guard<std::mutex> lock(s.stateMutex);
+        s.linked.push_back(std::move(entry));
     }
 }
 
@@ -544,6 +658,12 @@ void FileWatchService::switchToPolling(const std::string& reason) {
         s.state = ok ? State::Degraded : State::Off;
         s.coalescer.setDeleteHold(interval + POLL_HOLD_MARGIN);
     }
+    // the linked folders too (syncLinkedWatches compares each backend's kind)
+    {
+        std::lock_guard<std::mutex> lock(s.stateMutex);
+        s.linkedVersion = s.index.linkedFoldersVersion() - 1;
+    }
+    syncLinkedWatches();
     // what changed while no watcher ran
     std::lock_guard<std::mutex> lock(s.rawMutex);
     s.raw.push_back(watch::RawEvent{watch::RawEvent::Type::Rescan, root, {}, true});
@@ -859,6 +979,20 @@ bool FileWatchService::pump(double budgetMs) {
 }
 
 bool FileWatchService::flush(std::chrono::milliseconds timeout) {
+    return barrier(timeout, true);
+}
+
+bool FileWatchService::flushJournal(std::chrono::milliseconds timeout) {
+    return barrier(timeout, false);
+}
+
+bool FileWatchService::flushIsDrain() const {
+    if (!shared) return false;
+    std::lock_guard<std::mutex> lock(shared->stateMutex);
+    return shared->backend && shared->backend->flushIsDrain();
+}
+
+bool FileWatchService::barrier(std::chrono::milliseconds timeout, bool deliverToMainHere) {
     if (!shared) return false;
     Shared& s = *shared;
     const auto deadline = Clock::now() + timeout;
@@ -872,7 +1006,16 @@ bool FileWatchService::flush(std::chrono::milliseconds timeout) {
     }
     if (!backend) return false;
     const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
-    const bool ok = backend->flush(std::max(left, std::chrono::milliseconds(1)));
+    bool ok = backend->flush(std::max(left, std::chrono::milliseconds(1)));
+    std::vector<std::shared_ptr<FileWatcher>> linked;
+    {
+        std::lock_guard<std::mutex> lock(s.stateMutex);
+        for (const Shared::LinkedWatch& entry : s.linked) linked.push_back(entry.backend);
+    }
+    for (const std::shared_ptr<FileWatcher>& watcher : linked) {
+        const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - Clock::now());
+        ok = watcher->flush(std::max(remaining, std::chrono::milliseconds(1))) && ok;
+    }
     {
         std::lock_guard<std::mutex> stateLock(s.stateMutex);
         std::vector<watch::RawEvent> batch;
@@ -885,9 +1028,10 @@ bool FileWatchService::flush(std::chrono::milliseconds timeout) {
         std::vector<FileChange> settled = s.coalescer.take(now, true);
         processLocked(settled);
     }
+    syncLinkedWatches();
     s.rawCv.notify_all();   // the dispatcher's next deadline changed
     deliverWorkers();
-    if (onMainThread()) deliverMain(std::numeric_limits<double>::infinity());
+    if (deliverToMainHere && onMainThread()) deliverMain(std::numeric_limits<double>::infinity());
     else wakeMain();
     return ok;
 }
@@ -1107,7 +1251,7 @@ FileWatchService::Stats FileWatchService::stats() const {
         backend = s.backend;
         out.state = s.state;
         out.paused = s.paused;
-        out.roots = s.attached && backend ? 1 : 0;
+        out.roots = s.attached && backend ? 1 + s.linked.size() : 0;
         out.delivered = s.delivered;
         out.coalesced = s.coalescer.coalescedCount();
         out.echoesSuppressed = s.echoes;

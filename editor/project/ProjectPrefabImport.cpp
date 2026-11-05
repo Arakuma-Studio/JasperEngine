@@ -5,6 +5,7 @@
 // removed branches back, prefab order placement, and the Play-mode prefab factories.
 
 #include "Project.h"
+#include "component/PrefabComponent.h"
 #include "util/FileUtils.h"
 #include "util/WorldTransforms.h"
 #include "ProjectPrefabInternal.h"
@@ -2055,7 +2056,7 @@ std::map<std::filesystem::path, std::shared_ptr<editor::BakedPrefab>> editor::Pr
 }
 
 void editor::Project::promoteNestedAssetData(uint32_t sceneId, const std::filesystem::path& path, Entity instanceRoot,
-        std::vector<PrefabUnpackRecord::NestedState>& before, const std::unordered_set<Entity>& skip, bool includeBase) {
+        std::vector<PrefabNestedState>& before, const std::unordered_set<Entity>& skip, bool includeBase) {
     SceneProject* sceneProject = getScene(sceneId);
     Prefab* prefab = getPrefab(path);
     Prefab::Instance* holder = findInstanceAt(sceneProject, instanceRoot, path);
@@ -2066,7 +2067,7 @@ void editor::Project::promoteNestedAssetData(uint32_t sceneId, const std::filesy
     const Prefab::Instance holderCopy = *holder;
 
     auto saveState = [&](Entity root, const std::filesystem::path& levelPath) {
-        for (const PrefabUnpackRecord::NestedState& state : before) {
+        for (const PrefabNestedState& state : before) {
             if (state.root == root && state.path == levelPath) {
                 return;
             }

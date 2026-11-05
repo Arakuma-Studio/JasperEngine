@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ScriptCreateDialog.h"
+#include "window/EditorModal.h"
 #include "util/AtomicFileStream.h"
 #include "external/IconsFontAwesome6.h"
 #include "Scene.h"
@@ -12,6 +13,7 @@
 #include "util/ScriptTemplates.h"
 #include "util/UIUtils.h"
 #include "util/Util.h"
+#include "util/FileUtils.h"
 #include <algorithm>
 #include <fstream>
 #include <initializer_list>
@@ -185,8 +187,10 @@ void ScriptCreateDialog::selectExistingFile(bool selectHeader) {
         : currentPath.parent_path().string();
     const std::string selected = FileDialogs::openFileDialog(startDirectory, FILE_DIALOG_SCRIPT);
     if (selected.empty()) return;
+    acceptExistingFile(fs::path(selected).lexically_normal(), selectHeader);
+}
 
-    const fs::path selectedPath = fs::path(selected).lexically_normal();
+void ScriptCreateDialog::acceptExistingFile(const fs::path& selectedPath, bool selectHeader) {
     if (Util::isLuaFile(selectedPath.string())) {
         if (selectHeader) {
             m_attachError = "Select a C++ header (.h, .hh, .hpp, or .hxx).";
@@ -249,7 +253,7 @@ void ScriptCreateDialog::show() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    bool popupOpen = ImGui::BeginPopupModal(popupName, nullptr, flags);
+    bool popupOpen = EditorModal::begin(popupName, nullptr, flags);
     if (!popupOpen) {
         if (m_isOpen) {
             m_isOpen = false;
@@ -257,7 +261,16 @@ void ScriptCreateDialog::show() {
         }
         return;
     }
+    EditorModal::message("Add a new or existing script to the selected GameObject");
+    EditorModal::error(m_attachError);
 
+    {
+        int source = m_attachExisting ? 1 : 0;
+        if (EditorModal::enumField("source", source, {"New Script", "Existing Script"})) {
+            m_attachExisting = source == 1;
+            m_attachError.clear();
+        }
+    }
     if (ImGui::RadioButton("New Script", !m_attachExisting)) {
         m_attachExisting = false;
         m_attachError.clear();
@@ -271,6 +284,12 @@ void ScriptCreateDialog::show() {
     if (!m_attachExisting) {
         ImGui::Spacing();
         ImGui::TextUnformatted("Template");
+        {
+            std::string kind = m_creationKind == CreationKind::CPP_SUBCLASS ? "C++ Subclass" : m_creationKind == CreationKind::CPP_SCRIPT_CLASS ? "C++ Script Class" : "Lua Script";
+            if (EditorModal::enumField("template", kind, {"C++ Subclass", "C++ Script Class", "Lua Script"})) {
+                m_creationKind = kind == "C++ Subclass" ? CreationKind::CPP_SUBCLASS : kind == "C++ Script Class" ? CreationKind::CPP_SCRIPT_CLASS : CreationKind::LUA;
+            }
+        }
         ImGui::RadioButton("C++ Subclass", (int*)&m_creationKind, (int)CreationKind::CPP_SUBCLASS);
         ImGui::SetItemTooltip("C++ class deriving from the GameObject's engine class, with its methods at hand.");
         ImGui::RadioButton("C++ Script Class", (int*)&m_creationKind, (int)CreationKind::CPP_SCRIPT_CLASS);
@@ -293,6 +312,17 @@ void ScriptCreateDialog::show() {
         ImGui::TextWrapped("Choose an existing script to attach. Its files will not be changed.");
         ImGui::Spacing();
 
+        // the picker's answer, without the picker (relative: to the project)
+        {
+            std::string script = FileUtils::pathToUtf8(m_existingSourcePath);
+            if (EditorModal::pathField("script_file", script)) {
+                const fs::path given = FileUtils::pathFromUtf8(script);
+                acceptExistingFile(given.is_absolute() ? given : m_projectPath / given, false);
+                isLua = m_existingScriptType == ScriptType::LUA;
+                isCpp = !isLua;
+                rootPath = isLua ? m_luaPath : m_projectPath;
+            }
+        }
         ImGui::TextUnformatted("Script File");
         if (ImGui::Button(ICON_FA_FOLDER_OPEN " Browse Script...##existing_source")) {
             selectExistingFile(false);
@@ -390,8 +420,9 @@ void ScriptCreateDialog::show() {
         : (isLua ? "Module Name" : "Class Name"));
     ImGui::SetNextItemWidth(-1);
 
-    bool enterPressed = ImGui::InputText(
+    bool enterPressed = EditorModal::inputText(
         "##basename",
+        "name",
         m_baseNameBuffer,
         sizeof(m_baseNameBuffer),
         ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackCharFilter,
@@ -482,18 +513,18 @@ void ScriptCreateDialog::show() {
 
     if (m_attachExisting) {
         ImGui::BeginDisabled(!hasBase || !attachFilesValid);
-        if (ImGui::Button("Add", ImVec2(actionButtonWidth, 0)) ||
+        if (EditorModal::button("Add", "yes", ImVec2(actionButtonWidth, 0)) ||
                 (enterPressed && hasBase && attachFilesValid)) {
             if (finalizeAttachment(m_existingHeaderPath, m_existingSourcePath, name, m_existingScriptType))
                 ImGui::CloseCurrentPopup();
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
+        if (EditorModal::button("Cancel", "cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
             cancelDialog();
     } else {
         ImGui::BeginDisabled(!hasBase);
-        if (ImGui::Button("Create and Add", ImVec2(actionButtonWidth, 0)) || (enterPressed && hasBase)) {
+        if (EditorModal::button("Create and Add", "yes", ImVec2(actionButtonWidth, 0)) || (enterPressed && hasBase)) {
             if (anyCreateFileExists) {
                 m_attachError.clear();
                 ImGui::OpenPopup("Script Files Already Exist");
@@ -504,7 +535,7 @@ void ScriptCreateDialog::show() {
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
+        if (EditorModal::button("Cancel", "cancel", ImVec2(actionButtonWidth, 0)) || escapePressed)
             cancelDialog();
     }
 
@@ -513,11 +544,13 @@ void ScriptCreateDialog::show() {
     ImGuiWindowFlags alertFlags = ImGuiWindowFlags_AlwaysAutoResize |
                                   ImGuiWindowFlags_NoSavedSettings |
                                   ImGuiWindowFlags_Modal;
-    if (ImGui::BeginPopupModal("Script Files Already Exist", nullptr, alertFlags)) {
+    if (EditorModal::begin("Script Files Already Exist", nullptr, alertFlags)) {
         if (allCreateFilesExist) {
             ImGui::TextUnformatted("These script files already exist.\nAdd them unchanged or replace their contents?");
+            EditorModal::message("These script files already exist. Add them unchanged or replace their contents?");
         } else {
             ImGui::TextUnformatted("Only part of this script exists.\nReplace the existing files and create the missing files?");
+            EditorModal::message("Only part of this script exists. Replace the existing files and create the missing files?");
         }
         if (!m_attachError.empty()) {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, 0.5f, 0.f, 1.f));
@@ -533,7 +566,7 @@ void ScriptCreateDialog::show() {
         ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowContentRegionMax().x - alertButtonsWidth));
 
         if (allCreateFilesExist) {
-            if (ImGui::Button("Add Existing", ImVec2(alertButtonWidth, 0))) {
+            if (EditorModal::button("Add Existing", "yes", ImVec2(alertButtonWidth, 0))) {
                 const ScriptType type = m_creationKind == CreationKind::LUA
                     ? ScriptType::LUA
                     : ScriptType::CPP;
@@ -546,12 +579,12 @@ void ScriptCreateDialog::show() {
             ImGui::SameLine();
         }
 
-        if (ImGui::Button("Replace Files", ImVec2(alertButtonWidth, 0))) {
+        if (EditorModal::button("Replace Files", allCreateFilesExist ? "no" : "yes", ImVec2(alertButtonWidth, 0))) {
             finalizeCreation(headerPath, sourcePath, name);
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(alertButtonWidth, 0))) {
+        if (EditorModal::button("Cancel", "cancel", ImVec2(alertButtonWidth, 0))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

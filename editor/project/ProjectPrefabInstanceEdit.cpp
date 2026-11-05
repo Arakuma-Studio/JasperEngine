@@ -8,6 +8,7 @@
 // snapshot of the instances' bookkeeping.
 
 #include "Project.h"
+#include "component/Transform.h"
 #include "ProjectPrefabInternal.h"
 #include "Out.h"
 #include "Stream.h"

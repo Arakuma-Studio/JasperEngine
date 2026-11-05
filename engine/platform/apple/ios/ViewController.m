@@ -66,6 +66,10 @@
 
     [center addObserver:self selector:@selector(lowMemory) name:UIApplicationDidReceiveMemoryWarningNotification object:nil];
 
+    // Device.thermalState (spec S56): read now, then on every change
+    [center addObserver:self selector:@selector(thermalStateChanged) name:NSProcessInfoThermalStateDidChangeNotification object:nil];
+    [Renderer thermalStateChanged];
+
     // Screen.orientation / Screen.autorotateTo* changed
     [center addObserver:self selector:@selector(updateOrientationPolicy) name:JasperEngineOrientationPolicyNotification object:nil];
 }
@@ -96,6 +100,10 @@
 
 - (void)lowMemory {
     [Renderer lowMemory];
+}
+
+- (void)thermalStateChanged {
+    [Renderer thermalStateChanged];
 }
 
 // Screen.orientation: a fixed orientation alone, or the autorotateTo* set (Unity's

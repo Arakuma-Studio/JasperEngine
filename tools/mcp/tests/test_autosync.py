@@ -1,6 +1,5 @@
 """External file pick-up through real MCP calls, using independently owned project inputs."""
 
-import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -30,13 +29,8 @@ def with_property(text: str, name: str, default: int) -> str:
 
 
 def touch_write(path: Path, text: str) -> None:
-    previous = path.stat().st_mtime_ns if path.exists() else None
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-    stamp = path.stat()
-    # An external write must fall outside the preceding MCP write call's timestamp window.
-    # Move only the filesystem stamp, not the game clock or production synchronization.
-    os.utime(path, ns=(stamp.st_atime_ns, max(previous or 0, stamp.st_mtime_ns) + 2_000_000_000))
 
 
 def external(result) -> dict | None:

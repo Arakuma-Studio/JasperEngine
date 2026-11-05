@@ -10,6 +10,7 @@
 #include "reload/HotReloadService.h"
 #include "mcp/McpCall.h"
 #include "mcp/McpContext.h"
+#include "mcp/McpDialogs.h"
 #include "mcp/McpJobs.h"
 #include "mcp/McpRefs.h"
 #include "mcp/McpRegistry.h"
@@ -620,7 +621,7 @@ Json fileWatcherJson() {
     };
 }
 
-void editorStatusTool(const CallPtr& call) {
+void reportEditorStatus(const CallPtr& call) {
     McpContext& ctx = call->ctx();
     Project* project = ctx.project();
     App& app = ctx.app();
@@ -655,7 +656,7 @@ void editorStatusTool(const CallPtr& call) {
     Json dialog = nullptr;
     EditorDialogInfo info;
     if (app.getOpenDialog(info)) {
-        dialog = {{"kind", info.kind}, {"title", info.title}, {"message", info.message}, {"choices", info.choices}};
+        dialog = dialogJson(info);
     }
 
     // What the asset windows show (S04), with the Project window's clickable rects in window
@@ -761,34 +762,14 @@ void editorStatusTool(const CallPtr& call) {
     call->ok(text, data);
 }
 
-// ------------------------------------------------------------------ respond_dialog
-
-void respondDialogTool(const CallPtr& call) {
-    App& app = call->ctx().app();
-    EditorDialogInfo dialog;
-    if (!app.getOpenDialog(dialog)) {
-        call->ok("No dialog is open.");
+void editorStatusTool(const CallPtr& call) {
+    // a modal opened by the last frame is drawn by the next: a status sent right after it says so
+    if (EditorModal::settling()) {
+        call->ctx().app().requestRedraw();
+        call->afterFrames(1, [call]() { reportEditorStatus(call); });
         return;
     }
-    const std::string choice = call->args().value("choice", "");
-    std::string error;
-    if (!app.answerDialog(choice, error)) {
-        call->fail(error, Json{{"dialog", {{"kind", dialog.kind}, {"title", dialog.title},
-                                           {"message", dialog.message}, {"choices", dialog.choices}}}});
-        return;
-    }
-    // The answer is pressed on the next frame; report what the editor shows after it
-    call->afterFrames(2, [call, dialog, choice]() {
-        App& app = call->ctx().app();
-        EditorDialogInfo next;
-        Json data = {{"answered", {{"title", dialog.title}, {"choice", choice}}}};
-        std::string text = "Answered \"" + dialog.title + "\" with " + choice + ".";
-        if (app.getOpenDialog(next)) {
-            data["dialog"] = {{"kind", next.kind}, {"title", next.title}, {"message", next.message}, {"choices", next.choices}};
-            text += " Now open: \"" + next.title + "\": " + next.message;
-        }
-        call->ok(text, data);
-    });
+    reportEditorStatus(call);
 }
 
 // ------------------------------------------------------------------ tool_groups
@@ -1057,11 +1038,12 @@ void registerCoreTools(McpRegistry& registry) {
         tool.activity = ToolActivity::Control;  // busy policy (McpServer::busyRefusal)
         tool.title = "Respond to Dialog";
         tool.description =
-            "Click a button of the open editor dialog (editor_status; edit tools are refused meanwhile). The message "
-            "says what yes/no mean (e.g. yes = Save, no = Discard Changes); save dialogs take cancel.";
+            "Answer the open editor dialog or file picker (editor_status.dialog): values fill its fields, then choice "
+            "presses a button. A refusal is an error and the dialog stays open.";
         tool.inputSchema = object({
-            {"choice", stringEnum("", {"ok", "yes", "no", "cancel"})}
-        }, {"choice"});
+            {"choice", string("A word of dialog.choices.")},
+            {"values", anyObject("{field: value} of dialog.fields; a file picker takes path.")}
+        });
         tool.handler = respondDialogTool;
         registry.addTool(std::move(tool));
     }

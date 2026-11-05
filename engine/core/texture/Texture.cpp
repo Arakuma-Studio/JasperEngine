@@ -69,6 +69,7 @@ namespace {
     TextureRender* destroyedFramebufferFallback = nullptr;
     // getRender's stand-ins on this thread (getStandInCount)
     thread_local uint32_t standInCount = 0;
+    thread_local uint32_t loadingAnswerCount = 0;
 
     // a framebuffer owned by a std::shared_ptr is shared with the textures showing it
     std::shared_ptr<Framebuffer> ownerOf(Framebuffer* framebuffer){
@@ -596,6 +597,7 @@ TextureRender* Texture::getRender(TextureRender* fallBackTexture){
 
     TextureLoadResult texResult = load();
     if (texResult.state == ResourceLoadState::Loading){
+        loadingAnswerCount++;
         render = std::make_shared<TextureRender>();
         return render.get();
     }
@@ -638,6 +640,10 @@ bool Texture::isRenderOutdated() const{
 
 uint32_t Texture::getStandInCount(){
     return standInCount;
+}
+
+uint32_t Texture::getLoadingAnswerCount(){
+    return loadingAnswerCount;
 }
 
 std::string Texture::getPath(size_t index) const{
