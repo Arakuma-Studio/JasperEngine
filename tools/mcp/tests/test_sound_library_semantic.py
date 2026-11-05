@@ -317,7 +317,7 @@ def real_cache():
     from harness import skip
     cache = os.environ.get("JASPER_SOUND_CACHE")
     if not cache:
-        skip("set JASPER_SOUND_CACHE to the pipeline's cache (the Phase 1 zips and clap/<revision>/ from semantic-fetch)")
+        skip("kenney.nl no longer serves the pinned zips (S36 Deviations): set JASPER_SOUND_CACHE to a cache that holds them and clap/<revision>/")
     d = Path(cache) / "clap" / REAL_MODEL["revision"]
     if not d.is_dir():
         skip(f"{d} is absent: run build_library.py semantic-fetch into the cache first")

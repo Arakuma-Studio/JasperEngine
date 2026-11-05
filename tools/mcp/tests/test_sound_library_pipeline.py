@@ -746,7 +746,7 @@ async def test_p9_essentials_rebuild_in_place_unchanged():
     cache = os.environ.get("JASPER_SOUND_CACHE")
     if not cache or not all((Path(cache) / f"kenney_{p}.zip").is_file() for p in
                             ("interface-sounds", "ui-audio", "impact-sounds", "sci-fi-sounds", "digital-audio", "rpg-audio", "music-jingles")):
-        skip("set JASPER_SOUND_CACHE to a directory holding the Phase 1 Kenney zips to rebuild the essentials")
+        skip("kenney.nl no longer serves the pinned zips (S36 Deviations): set JASPER_SOUND_CACHE to a cache that holds them")
     d = Path(tempfile.mkdtemp(prefix="snd-p5-essentials-")) / "essentials"
     shutil.copytree(ESSENTIALS, d)
     code, out = await run(uv_python(TOOLS / "build_essentials.py", "all", "--cache", cache, "--out", d))
@@ -938,7 +938,7 @@ async def test_m11_curate_regressions_on_real_kenney_clips():
     ]
     used = sorted({c[0] for c in clips})
     if not cache or not all((Path(cache) / f"kenney_{p}.zip").is_file() for p in used):
-        harness.skip(f"set JASPER_SOUND_CACHE to the pipeline's cache holding the zips of {', '.join(used)}")
+        harness.skip("kenney.nl no longer serves the pinned zips (S36 Deviations): set JASPER_SOUND_CACHE to a cache that holds them")
     sources = []
     for pack, member, cid, typ, kind, events, event in clips:
         clip = {"id": cid, "type": typ, "kind": kind, "tags": ["test"], "description": "Curate's regression clip"}
@@ -1046,7 +1046,7 @@ async def test_c2_curate_m1_clips_handled_by_prepare():
              ("sci-fi-sounds", "Audio/computerNoise_001.ogg", "glitch/kenney_computer_noise_001", "glitch", "glitch")]
     used = sorted({c[0] for c in clips})
     if not cache or not all((Path(cache) / f"kenney_{p}.zip").is_file() for p in used):
-        harness.skip(f"set JASPER_SOUND_CACHE to the pipeline's cache holding the zips of {', '.join(used)}")
+        harness.skip("kenney.nl no longer serves the pinned zips (S36 Deviations): set JASPER_SOUND_CACHE to a cache that holds them")
     sources = [{"source": "kenney", "pack": p, "member": m,
                 "clips": [{"id": cid, "type": t, "kind": k, "tags": ["test"], "description": "Curate's M1 clip", "event": 1}]}
                for p, m, cid, t, k in clips]

@@ -597,17 +597,21 @@ compiles under WERROR (`it17.off.log`).
   `NEAR_DUPLICATE_DISTANCE`, and its example says "none under 0.020"). A4's is 0.075 here, from an event's distinct clips.
   At 0.075, seeds 1 to 8 called 15 of the 16 families near-duplicates (`test_audio_design`, red run `je-evidence/s36/it11.mcp.log`),
   whose advice is empty: a preset's seeds are close by design.
-- **The agent guide gains a Sound section**, in place of "sound (analyze_audio)" among its other areas. On the first eval, agents
-  with only core listed made no sound tool call in 10 of 10 samples, writing a WAV by script or giving up. The section took
-  the slice prompt from 0 of 2 to 2 of 4. The prompts that read as file work (placeholder, layered, fit, search, "too quiet")
-  stayed at 0 of 10 with the audio group hidden, even told in the guide to enable it, and reach 10 of 10 once it is listed.
-  So all six sound cases set `groups_enabled` and measure the tools' text. An agent finding the group by itself remains a known gap.
+- **A new game's AGENTS.md names the sound tools and their group.** `generate_sound` is in group `audio`, and with only core
+  listed agents wrote a WAV by script or gave up: `guard_placeholder_coin_finds_the_group` 0/2 without the line, 4/4 with it
+  (`je-evidence/eval/runs/s36-coin-without2`, `s36-coin-line2`, `s36-coin-line3`; one more sample only hit an account's limit). A
+  Sound section in the guide was tried first and cut: it left the placeholder, layered, fit, search and "too quiet" prompts at
+  0 of 10. The other six sound cases set `groups_enabled` and measure the tools' own text. A project written before this line
+  has none until its AGENTS.md is regenerated.
 - **`edit_sound_event`'s `slice` is an open object in the schema, its keys checked in the handler.** A closed one costs about
   300 characters, and S37 §6.1 reserves 150.
 - **`preview` reports `source.licensed`, not the licence's fields.** The event's reply says what is unknown in `problems`.
-- **`test_d3_licence_files_match_the_pinned_zips` and three pipeline tests that need the zips did not run.** kenney.nl now answers
-  the pinned URLs with its asset pages, which hold no zip link (`it17.zips.log`), so no pinned zip can be fetched. The committed
-  licence files are byte for byte the reference's (`diff -r`). The real-model semantic tests need a 776 MB model and stayed skipped too.
+- **`test_d3_licence_files_match_the_pinned_zips` and the tests that need the zips skip, accepted.** kenney.nl now answers the pinned
+  URLs with its asset pages, which hold no zip link (`it17.zips.log`), so no pinned zip can be fetched. The committed licence
+  files are byte for byte the reference's (`diff -r`). They skip by name with this reason. The real-model semantic tests also need
+  a 776 MB model.
+- **R31's 3-minute OGG is open until S38 lands.** A is not the reference. Measure again by CPU time on H or the Mac after S38; the
+  Mac's 0.95 s, before S38, is the number to beat.
 - **Importing mixed sources.** `import_files` refuses built-in references mixed with other sources: a call has one plan
   and one undo step.
 

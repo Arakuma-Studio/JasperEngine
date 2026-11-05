@@ -112,15 +112,8 @@ layouts. Read jasper://docs/html-ui first.
 2D (points, y up; Box2D 64 points per meter), cameras (useTarget ignores rotation), animation
 (edit_animation), post-processing (apply_post_processing_preset), atmosphere (Fog type height,
 apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_quality), profiling
-(get_frame_times), shipping (build_project), data safety (save after each
+(get_frame_times), sound (analyze_audio), shipping (build_project), data safety (save after each
 step; allow_data_loss): jasper://docs/<area>.
-
-## Sound
-The editor makes, finds and fixes sound files: no scripts, no audio bytes, no web (group audio). A sound to make:
-generate_sound (like: one fitting a clip). A real recording: search_sounds, then import_files. Too quiet or
-clicking: analyze_audio (you cannot hear), set_audio_import_settings. Varied plays (footsteps), or takes in one
-file: edit_sound_event.
-jasper://docs/sound.
 )JE";
 }
 
