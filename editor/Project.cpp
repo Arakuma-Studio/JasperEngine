@@ -6506,7 +6506,11 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
             copyEngineApiToProject();
         } else {
             Out::info("Project directory already exists: \"%s\"", projectPath.string().c_str());
-            loadProject(projectPath);
+            // the temporary project is one directory for all editors: another may hold its lock
+            if (!loadProject(projectPath)) {
+                editor::getEditorHost().updateResourcesPath();
+                return false;
+            }
         }
 
         editor::getEditorHost().updateResourcesPath();
@@ -9056,7 +9060,11 @@ void editor::Project::addSelectedEntity(uint32_t sceneId, Entity selectedEntity)
 }
 
 bool editor::Project::isSelectedEntity(uint32_t sceneId, Entity selectedEntity){
-    std::vector<Entity>& entities = getScene(sceneId)->selectedEntities;
+    const SceneProject* sceneProject = getScene(sceneId);
+    if (!sceneProject) {
+        return false;
+    }
+    const std::vector<Entity>& entities = sceneProject->selectedEntities;
 
     if (std::find(entities.begin(), entities.end(), selectedEntity) != entities.end()) {
         return true;
@@ -9101,12 +9109,15 @@ void editor::Project::clearAllSelections(uint32_t sceneId){
     }
 }
 
+// sceneId may name no scene: an editor whose project did not open has none, and still draws
 std::vector<Entity> editor::Project::getSelectedEntities(uint32_t sceneId) const{
-    return getScene(sceneId)->selectedEntities;
+    const SceneProject* sceneProject = getScene(sceneId);
+    return sceneProject ? sceneProject->selectedEntities : std::vector<Entity>();
 }
 
 bool editor::Project::hasSelectedEntities(uint32_t sceneId) const{
-    return (getScene(sceneId)->selectedEntities.size() > 0);
+    const SceneProject* sceneProject = getScene(sceneId);
+    return sceneProject && !sceneProject->selectedEntities.empty();
 }
 
 bool editor::Project::hasSelectedSceneUnsavedChanges() const{

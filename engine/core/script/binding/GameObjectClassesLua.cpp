@@ -519,6 +519,7 @@ int luaDestroyImmediate(lua_State* L){
 
 namespace {
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
     // a material argument: a .physicsmaterial path, a PhysicsMaterial or nil (none)
     bool luaMaterialArg(const luabridge::LuaRef& value, PhysicsMaterial& material, std::string& path){
         material = PhysicsMaterial();
@@ -536,6 +537,7 @@ namespace {
         }
         return false;
     }
+#endif
 
     std::optional<PhysicsMaterial> luaMaterialResult(const PhysicsMaterial& material){
         if (!material.valid()){
