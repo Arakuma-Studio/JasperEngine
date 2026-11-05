@@ -348,4 +348,24 @@ whose scripts never name a music function and whose content has no music needs n
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **R16 tempo autocorrelation (feat/s39-music-grid).** `A[τ]` is the autocorrelation of the onset
+  envelope *less its mean*: of the clamped envelope as P6 §2.4.8 writes it, white noise reads about
+  0.32 and would pass the 0.1 no-pulse floor. Measured: 12 s of white noise 0.05-0.06, 8 s of pink
+  noise 0.08-0.11 (close to the floor: the unit test uses 12 s of white noise).
+- **R16 the line through the beats.** A tracked beat more than 1/16 beat off the first line is left out
+  and the line refitted (twice): the tracker puts a spurious beat at the file's first frame, which
+  moved `bpm` by 0.08 and `first_beat_ms` by 6 ms. Beats are numbered by their gaps (a skipped beat
+  keeps the count). The attack envelope's rise is the 1 ms after a sample against the 1 ms before it,
+  the file zero-padded, so a beat on sample 0 is found.
+- **R16 downbeat accent.** The low band's value at a beat is its largest within ±1/8 beat of the line's
+  beat (the onset frame of an attack is not the beat's frame); `B = 3` wins only with a positive accent
+  20 % above four's.
+- **R17 `agrees`.** bpm within 0.1 (P6: 0.5, which drifts 66 ms over 8 bars at 120), the same beats per
+  bar, and beat 1 within 5 ms of a bar line of the detection (P6: 10 ms of its first beat; a block
+  whose beat 1 is a later bar is the same grid). `current` is null without a block (P6 showed zeros);
+  `agrees` is null for built-in items. `fix` is `{"music": {...}}`, passed as `settings` as the notes'
+  `fix` is. The text line reads "pulse 0.71, downbeat 0.62" (P6: "confidence").
+- **R18.** The second candidate's button reads "Use <bpm> BPM" (P6: "Use This Grid"), shown when not
+  confident; `SetAssetMetaCmd::setAction` names the step "Set Tempo from Detection (<file>)". The grid
+  over the waveform is the detection's; the typed tempo is not drawn.
+
