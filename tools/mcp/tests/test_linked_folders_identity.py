@@ -336,6 +336,7 @@ async def test_an_export_stops_when_a_root_is_swapped_during_it(ed: Editor):
             root.mkdir(exist_ok=True)
             (swap.project / "scripts").mkdir(exist_ok=True)
             await swap.call("set_project_settings", values={"editor.assets_dir": "assets", "scripting.lua_dir": "scripts"})
+            await swap.call("save_project", untitled_scene_dir=".")
             await pickup(swap)
             out = swap.scratch.root / "export-swapped"
             hold.write_text("hold\n")
