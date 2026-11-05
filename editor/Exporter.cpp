@@ -2920,7 +2920,7 @@ bool editor::Exporter::copyAssets() {
         // The exporter writes the clips' import settings there (S36)
         if (relPath == AudioImportTable::FILE_NAME) {
             setError("\"" + std::string(AudioImportTable::FILE_NAME) + "\" is reserved for the audio import settings. Rename " + entry.path().string());
-            return false;
+            return stop();
         }
 
         // The exporter writes the asset map there (S04)
