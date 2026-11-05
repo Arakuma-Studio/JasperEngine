@@ -285,6 +285,32 @@ async def test_file_links_and_hard_links_are_the_same_file(ed: Editor):
 # -- a link out of the project ----------------------------------------------------------------------
 
 
+async def test_a_root_swapped_for_a_link_is_not_scanned(ed: Editor):
+    """test_root_attacks' swap with the database's look at the disk forced: there a scan lands in the
+    window only on a loaded machine. The root is pinned, so the scan neither reads nor writes through it"""
+    require_links()
+    outside = Path(tempfile.mkdtemp(prefix="jasper-swapped-root-"))
+    root = ed.project / "assets"
+    aside = ed.project / "assets_swapped_aside"
+    try:
+        (outside / "keep.txt").write_text("x")
+        (outside / "tile.png").write_bytes(png_bytes())
+        os.rename(root, aside)
+        os.symlink(outside, root)
+        await pickup(ed)
+        ed.check_eq(sorted(os.listdir(outside)), ["keep.txt", "tile.png"], "nothing written through the swapped root")
+        ed.check_eq((await asset(ed, "assets/tile.png"))[0], None, "and nothing of it is an asset")
+    finally:
+        if root.is_symlink():
+            root.unlink()
+        if aside.exists():
+            os.rename(aside, root)
+        shutil.rmtree(outside, ignore_errors=True)
+    await pickup(ed)
+    r = await ed.call_raw("write_file", {"path": "assets/back.txt", "content": "ok\n"})
+    ed.check(not r.is_error, f"the root back: writes work again: {r.text[:300]}")
+
+
 async def test_a_link_beside_the_asset_roots_is_left_alone(ed: Editor):
     """`lib` at the project root leads out of it, and is under neither the assets nor the Lua root: what the
     editor scans and writes stops there, as a read of it still works"""
