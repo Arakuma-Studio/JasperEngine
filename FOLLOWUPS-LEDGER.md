@@ -161,3 +161,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: Five of six Claude accounts hit their weekly limit at about 23:30 UTC and every running agent stopped; this session moved to the last account (52% used; it resets 2026-11-07). Work is saved in the worktrees. Agents resume by priority: the two `main` bugs first, then what is close to landing, then sound.
 - 2026-11-05: Lock crash landed. Full unit run on `eb9f93aca`: 2885 core and 2946 editor tests, 0 failed, 1 load skip.
 - 2026-11-05: Module-off fix landed. The Mac is unreachable since at least 02:37 UTC.
+- 2026-11-05: S35, S36 and S37 resumed: the last account used 3% of its week in the three hours since the restart.
