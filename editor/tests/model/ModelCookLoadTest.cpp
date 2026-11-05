@@ -16,6 +16,7 @@
 #include "model/CookedModels.h"
 #include "model/GltfDocument.h"
 #include "model/ModelCooker.h"
+#include "pool/MeshLodPool.h"
 #include "Scene.h"
 #include "object/Model.h"
 #include "subsystem/GltfNormalize.h"
@@ -219,6 +220,19 @@ TEST(ModelCookLoad, MsftLodLevelsBecomeTheBaseMeshesBakedLevels){
         EXPECT_FLOAT_EQ(levels[l]["coverage"].get<float>(), expectedCoverage[l]);
         EXPECT_GT(levels[l]["error"].get<float>(), 0.0f);
     }
+    // the runtime's reader takes them (contract C1), of this builder's recipe
+    tinygltf::Model game;
+    GltfNormalizeResult normalized;
+    ASSERT_TRUE(loadAsGame(glb, source.parent_path(), game, normalized));
+    const tinygltf::Primitive& drawn = game.meshes[(size_t)game.nodes[0].mesh].primitives[0];
+    const tinygltf::Accessor& positionAccessor = game.accessors[(size_t)drawn.attributes.at("POSITION")];
+    const AttributeDataType indexType = game.accessors[(size_t)drawn.indices].componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT
+                                            ? AttributeDataType::UNSIGNED_INT : AttributeDataType::UNSIGNED_SHORT;
+    int recipe = 0;
+    const std::shared_ptr<MeshLodData> baked = MeshLodPool::readGltfLevels(game, drawn, indexType, positionAccessor.count, recipe);
+    ASSERT_TRUE(baked);
+    EXPECT_EQ(baked->numLevels, 3u);
+    EXPECT_EQ(recipe, kMeshLodRecipe);
     // Generate LODs Off: no levels
     ASSERT_TRUE(cookFile(source, settingsOf(OptimizeMesh::Everything, MeshCompression::Lossless, GenerateLods::Off), ModelFamily::Desktop,
                          glb, record, error)) << error;

@@ -55,6 +55,7 @@
 #include <utility>
 #include "tiny_obj_loader.h"
 #include "tiny_gltf.h"
+#include "pool/MeshLodPool.h"
 #include "stb_image_resize2.h"
 #include "meshoptimizer.h"
 #include "pool/ObjModelData.h"
@@ -5761,6 +5762,8 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
             mesh.submeshes[i].overrideFields = 0; // the slot may carry an edit from a past load
             mesh.submeshes[i].vertexCount = 0;
+            mesh.submeshes[i].bakedLods.reset();
+            mesh.submeshes[i].bakedLodRecipe = 0;
 
             const tinygltf::Primitive& primitive = gltfmesh.primitives[p];
 
@@ -5892,6 +5895,12 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
             loadGLTFBuffer(indexBufferView, mesh, model, indexStride, loadedBuffers, bufferCapacityReached);
             addSubmeshAttribute(mesh.submeshes[i], getBufferName(indexBufferView, model),
                 AttributeType::INDEX, 1, indexType, indexAccessor.count, indexByteOffset, false);
+            // the detail levels the model cook baked (JE_mesh_lods, spec S54 contract C1)
+            if (auto position = primitive.attributes.find("POSITION"); position != primitive.attributes.end() &&
+                    isValidGLTFIndex(position->second, model.gltfModel->accessors)) {
+                mesh.submeshes[i].bakedLods = MeshLodPool::readGltfLevels(*model.gltfModel, primitive, indexType,
+                    model.gltfModel->accessors[position->second].count, mesh.submeshes[i].bakedLodRecipe);
+            }
 
             for (auto& attrib : primitive.attributes) {
                 if (!isValidGLTFIndex(attrib.second, model.gltfModel->accessors)) {

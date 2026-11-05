@@ -61,6 +61,7 @@ const ToolModule TOOL_MODULES[] = {
     {registerDiagnosticsTools, "Crash and hang diagnostics", "diagnostics"},   // S28
     {registerAtmosphereTools, "Atmosphere: fog and clouds", "rendering_fx"},   // S12
     {registerProfilerTools, "Profiling and render diagnostics", "profiling"},   // S15
+    {registerMeshLodTools, "Meshes: import, cook and detail levels", "meshes"},   // S53, S54
     {registerDeviceTools, "Device tiers: GPU, thermal and memory state, simulation", "device"},   // S56
     {registerScriptingTools, "Scripting: hot reload, script status, editor menus, expressions", "scripting"},   // S23
     {registerGraphTools, "Graphs", "scripting"},   // S23

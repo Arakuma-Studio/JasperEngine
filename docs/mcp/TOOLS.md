@@ -42,6 +42,7 @@ Conventions shared by every tool (explained once in the server instructions, not
 - [Crash and hang diagnostics](#crash-and-hang-diagnostics) (5): `debug_crash`, `dismiss_crash_notice`, `get_crash_reports`, `get_editor_health`, `set_hang_watchdog`
 - [Atmosphere: fog and clouds](#atmosphere-fog-and-clouds) (3): `apply_atmosphere_preset`, `get_atmosphere_info`, `list_atmosphere_presets`
 - [Profiling and render diagnostics](#profiling-and-render-diagnostics) (7): `capture_pass_output`, `capture_profile`, `get_cpu_profile`, `get_frame_times`, `get_gpu_passes`, `get_render_stats`, `get_vram_report`
+- [Meshes: import, cook and detail levels](#meshes-import-cook-and-detail-levels) (1): `capture_model_lods`
 - [Device tiers: GPU, thermal and memory state, simulation](#device-tiers-gpu-thermal-and-memory-state-simulation) (2): `get_device_info`, `set_device_simulation`
 - [Scripting: hot reload, script status, editor menus, expressions](#scripting-hot-reload-script-status-editor-menus-expressions) (6): `eval_expression`, `get_script_status`, `list_editor_menus`, `reload_scripts`, `run_editor_menu`, `set_script_settings`
 - [Graphs](#graphs) (5): `edit_graph`, `get_graph`, `list_graph_kinds`, `list_graph_node_types`, `validate_graph`
@@ -1623,7 +1624,7 @@ Aim the editor's Scene view camera (not a game camera; no undo). 3D: position, t
 |---|---|---|---|
 | `camera_settings` | object |  | fov, near, far, speed, acceleration, easing, dynamic_clipping. |
 | `center` | array[2] of number |  | World point at the view centre. |
-| `display` | object |  | Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace. |
+| `display` | object |  | Overlay flags, e.g. {show_grid_3d: false, draw_mode: "lod_level"}; saved with the workspace. |
 | `distance` | number (0.2..2000) |  |  |
 | `frame_all` | boolean |  | As Alt+F. |
 | `max_width` | integer (0..8192) |  | Default: `768`. |
@@ -4109,7 +4110,7 @@ The ordered sokol passes of a view's frame: targets, actions, draws, triangles, 
 
 Group: `profiling` (listed once `tool_groups` enables it, callable either way). Hints: read-only, idempotent
 
-A view's last drawn frame: draws, instances, triangles, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,max_main_ms,warmup}. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.
+A view's last drawn frame: draws, instances, triangles, vertices, passes, pipelines/bindings, uniform and upload bytes, alive resources, pipeline cache, cpu_ms, fps, gpu{available,reason,frame_ms,semantics}, html_ui, shader_creation{mode,pending_*,max_main_ms,warmup}, lod{lod_histogram,fading,culled_by_size,fade_draws}. One frame is one sample. gpu.frame_ms is null until GPU timing ran (get_gpu_passes arms it). Also jasper://stats.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
@@ -4129,6 +4130,26 @@ GPU memory of every image and buffer: estimated bytes (padding not modelled), by
 | `filter` | string |  | Owner, label or category substring. |
 | `group_by` | `"category"` \| `"owner"` |  | Default: `"category"`. |
 | `top` | integer (0..1000) |  | Default: `30`. |
+
+
+## Meshes: import, cook and detail levels
+
+### `capture_model_lods`
+
+*Capture Model LODs*
+
+Group: `meshes` (listed once `tool_groups` enables it, callable either way). Hints: read-only
+
+Contact sheet of a mesh's detail levels (LOD 0 first) with each level's triangles, error, the screen height it switches below and PSNR against LOD 0. path: a glTF/GLB, levels built or baked, drawn on the CPU; entity: drawn by the renderer in the Scene view, one forced level per tile (frame_entity first).
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `entity` | integer or string |  |  |
+| `levels` | array of integer (0..3) |  | Default: all. |
+| `path` | string |  |  |
+| `save_path` | string |  | Also write the PNG here. |
+| `scene` | integer or string |  |  |
+| `size` | integer (64..512) |  | Tile width. Default: `256`. |
 
 
 ## Device tiers: GPU, thermal and memory state, simulation

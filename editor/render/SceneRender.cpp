@@ -194,6 +194,7 @@ editor::SceneRender::~SceneRender(){
     destroyLatticeCages();
     navigationOverlay.reset();
     destroySplineOverlay();
+    delete wireframeLines;
     for (auto& pair : particleShapeLines) {
         delete pair.second;
     }
@@ -756,6 +757,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     // camera covers the view as the Engine's native canvas would size it
     layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
+    layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
 
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
@@ -835,6 +837,7 @@ void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Frame
     base.postProcessing = flags.postProcessing;
     base.disableClouds = displaySettings.disableClouds;
     base.shadows = flags.shadows;
+    base.drawMode = (uint8_t)displaySettings.drawMode;
     layers.push_back(base);
     for (Scene* childScene : childSceneLayers){
         if (childScene && childScene != scene){
@@ -972,6 +975,8 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // the frame is the game, which keeps its culling, and the Scene view asks for it as a
     // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
+    // the Draw Mode the same way (spec S54 R11)
+    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableClouds(displaySettings.disableClouds && !isPlaying);
     // the Game view's Preview Atmosphere Quality is set on the frame while playing (App)
@@ -1322,6 +1327,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     updateLatticeCages(selEntities, entities, editedLattice);
     updateSplineOverlay(selEntities, editedSpline);
+    updateWireframeOverlay();
     updatePhysicsOverlay(physics, physicsSceneId);
     updateNavigationOverlay(selEntities);
 
@@ -4224,4 +4230,33 @@ void editor::SceneRender::updateNavigationOverlay(const std::vector<Entity>& sel
     if (!navigationOverlay) navigationOverlay = std::make_unique<NavigationOverlay>(scene);
     const std::set<Entity> selected(selEntities.begin(), selEntities.end());
     navigationOverlay->update(*sceneProject, camera, selected, displaySettings.navigation);
+}
+
+// The wires of Wireframe and Shaded Wireframe: the visible meshes' edges at the level the Scene
+// view draws each of them, rebuilt every update while the mode is on, released when it is not
+void editor::SceneRender::updateWireframeOverlay(){
+    if (!drawModeHasWires(displaySettings.drawMode) || !camera){
+        if (wireframeLines){
+            wireframeLines->clearLines();
+            wireframeLines->setVisible(false);
+        }
+        wireframe.release();
+        return;
+    }
+    if (!wireframeLines){
+        ScopedDefaultEntityPool scenePool(*scene, EntityPool::System);
+        wireframeLines = overlay(new LineRenderer(scene));
+    }
+    RenderSystem* render = scene->getSystem<RenderSystem>().get();
+    CameraComponent& cameraComponent = scene->getComponent<CameraComponent>(camera->getEntity());
+    const Vector3 eye = scene->getComponent<Transform>(camera->getEntity()).worldPosition;
+    // in Edit mode the Scene view is the frame's view, while playing a view of its own
+    const bool playing = isPlaying;
+    wireframe.update(scene, wireframeLines, cameraComponent, eye, [&](Entity entity) -> unsigned int{
+        if (playing)
+            return render->getViewMeshLod(SCENE_VIEW_ID, entity);
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        return mesh ? mesh->lodFade.plan.dominant() : 0u;
+    });
+    wireframeLines->setVisible(true);
 }

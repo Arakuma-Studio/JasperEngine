@@ -969,6 +969,7 @@ const std::map<std::string, bool SceneDisplaySettings::*>& displayFlags() {
         {"disable_fog", &SceneDisplaySettings::disableFog},
         {"disable_clouds", &SceneDisplaySettings::disableClouds},
         {"show_post_processing", &SceneDisplaySettings::showPostProcessing},
+        {"show_stats", &SceneDisplaySettings::showStats},
     };
     return flags;
 }
@@ -1017,6 +1018,18 @@ void setSceneCameraTool(const CallPtr& call) {
         }
         for (auto it = args["display"].begin(); it != args["display"].end(); ++it) {
             if (it.key() == "grid_spacing_2d" || it.key() == "grid_spacing_3d") continue;
+            if (it.key() == "draw_mode") {
+                ViewDrawMode mode;
+                if (!it.value().is_string() || !drawModeFromKey(it.value().get<std::string>(), mode)) {
+                    call->fail("display.draw_mode must be shaded, wireframe, shaded_wireframe, lod_level or overdraw.");
+                    return;
+                }
+                if (!is3D && mode != ViewDrawMode::SHADED) {
+                    call->fail("display.draw_mode is for 3D scenes; \"" + sp->name + "\" is " + McpRefs::sceneTypeName(sp->sceneType) + ".");
+                    return;
+                }
+                continue;
+            }
             if (!displayFlags().count(it.key()) || !it.value().is_boolean()) {
                 std::string valid;
                 for (const auto& [name, member] : displayFlags()) valid += " " + name;
@@ -1206,6 +1219,7 @@ void setSceneCameraTool(const CallPtr& call) {
             for (auto it = a["display"].begin(); it != a["display"].end(); ++it) {
                 if (it.key() == "grid_spacing_2d" && it.value().is_number()) s->displaySettings.gridSpacing2D = it.value().get<float>();
                 else if (it.key() == "grid_spacing_3d" && it.value().is_number()) s->displaySettings.gridSpacing3D = it.value().get<float>();
+                else if (it.key() == "draw_mode") drawModeFromKey(it.value().get<std::string>(), s->displaySettings.drawMode);
                 else if (displayFlags().count(it.key())) s->displaySettings.*(displayFlags().at(it.key())) = it.value().get<bool>();
             }
             changed.push_back("display");
@@ -1216,6 +1230,7 @@ void setSceneCameraTool(const CallPtr& call) {
         Json data = {{"scene", McpRefs::sceneJson(p, *s)}, {"camera", sceneCameraJson(s)}, {"changed", changed}};
         Json displayJson = Json::object();
         for (const auto& [name, member] : displayFlags()) displayJson[name] = s->displaySettings.*member;
+        displayJson["draw_mode"] = drawModeKey(s->displaySettings.drawMode);
         data["display"] = displayJson;
         std::string text = (changed.empty() ? "Scene view camera of \"" : "Moved the Scene view camera of \"") + s->name +
                            "\": " + data["camera"].dump() + ".";
@@ -1991,7 +2006,7 @@ void registerViewTools(McpRegistry& registry) {
             {"distance", number("", 0.2, 2000)},
             {"center", vec2("World point at the view centre.")},
             {"zoom", number("World units per pixel.", 0.01, 1000)},
-            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, show_post_processing: true}; saved with the workspace.")},
+            {"display", anyObject("Overlay flags, e.g. {show_grid_3d: false, draw_mode: \"lod_level\"}; saved with the workspace.")},
             {"projection", stringEnum("", {"perspective", "orthographic"})},
             {"ortho_size", number("Half height.", 0.001, 100000)},
             {"view", stringEnum("", {"top", "bottom", "front", "back", "left", "right"})},

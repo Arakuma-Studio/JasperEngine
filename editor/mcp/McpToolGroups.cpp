@@ -23,6 +23,7 @@ std::vector<ToolGroupInfo> buildGroups() {
         {"profiling", "GPU/CPU timings, VRAM, frame passes and render statistics."},
         {"device", "Device tiers: detected GPU tier and why, thermal and memory state, overrides in effect, Play simulation."},
         {"rendering_fx", "Shadow statistics and debug views, fog, clouds, post effects beyond the core set, material variants and light units."},
+        {"meshes", "Model import and cook settings, detail levels (LOD) and their captures, render budgets."},
         {"splines", "Roads, walls, rivers, placement, terrain on splines (jasper://docs/splines)."},
         {"terrain", "Terrain brushes (sculpt, paint, place objects), height/blend maps and sampling."},
         {"navigation", "Navigation meshes, agents, crowds and grid paths."},

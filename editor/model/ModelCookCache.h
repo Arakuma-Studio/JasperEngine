@@ -32,7 +32,7 @@ namespace jasperengine::editor {
 
     // bumped when the cook's output changes for the same inputs (a pass, the layout it writes,
     // the codec parameters): every model cooks again through the cache key
-    constexpr int kModelCookVersion = 3;
+    constexpr int kModelCookVersion = 4;
 
     // geometry as the GPU holds it
     struct ModelGeometryStats {
@@ -53,8 +53,8 @@ namespace jasperengine::editor {
         int level = 1;
         long long triangles = 0;
         double share = 0.0;         // of LOD 0's triangles, over the primitives with levels
-        double error = 0.0;         // the simplifier's largest error, in mesh units (what selection uses)
-        double deviation = 0.0;     // the largest sampled distance from the source surface, as a share of the model's size
+        double error = 0.0;         // the level's geometric deviation, in mesh units (what selection uses)
+        double deviation = 0.0;     // the same, as a share of the model's size
 
         Json toJson() const;
         static ModelLodLevelStats fromJson(const Json& json);

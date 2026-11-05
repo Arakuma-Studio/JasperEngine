@@ -72,6 +72,7 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kLightUnit;
     extern const EnumDesc kLightShading;
     extern const EnumDesc kLightType;
+    extern const EnumDesc kLodFadeMode;
     extern const EnumDesc kMaterialAlphaMode;
     extern const EnumDesc kMaterialBlendMode;
     extern const EnumDesc kMaterialCullMode;

@@ -29,6 +29,7 @@
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
+#include "render/LodFade.h"
 #include "render/shadow/ShadowTiers.h"
 #include "render/LightingTiers.h"
 #include "render/OrderIndependentTransparency.h"
@@ -125,6 +126,7 @@ namespace luabridge
     template<> struct Stack<PrimitiveType> : EnumWrapper<PrimitiveType>{};
     template<> struct Stack<CullingMode> : EnumWrapper<CullingMode>{};
     template<> struct Stack<WindingOrder> : EnumWrapper<WindingOrder>{};
+    template<> struct Stack<LodFadeMode> : EnumWrapper<LodFadeMode>{};
     template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
     template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};

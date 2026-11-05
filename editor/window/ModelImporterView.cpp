@@ -12,6 +12,7 @@
 #include "command/type/ScenePropertyCmd.h"
 #include "external/IconsFontAwesome6.h"
 #include "model/ModelSettingsEdit.h"
+#include "render/LodFade.h"
 #include "texture/TextureCookQueue.h"
 #include "util/FbxImporter.h"
 #include "util/FileUtils.h"
@@ -33,9 +34,6 @@ namespace {
     constexpr int kPreviewSize = 320;
     // the reference view the "about" screen heights assume (Unity's percentages have none)
     constexpr float kReferenceViewHeight = 1080.0f;
-
-    // a colour-blind-safe ramp (Okabe-Ito): LOD 0, 1, 2, 3
-    const ImU32 kLodColors[4] = {IM_COL32(0, 158, 115, 255), IM_COL32(86, 180, 233, 255), IM_COL32(230, 159, 0, 255), IM_COL32(204, 121, 167, 255)};
 
     std::string bytesText(uint64_t bytes){
         return ModelAudit::formatBytes(bytes);
@@ -371,7 +369,9 @@ void ModelImporterView::drawBeforeAfter(){
         for (size_t l = 0; l < switches.size(); l++){
             const float next = l + 1 < switches.size() ? switches[l + 1] : 0.0f;
             const float w = std::max(2.0f, (switches[l] - next) * width);
-            draw->AddRectFilled(ImVec2(x, at.y), ImVec2(std::min(x + w, at.x + width), at.y + height), kLodColors[std::min<size_t>(l, 3)]);
+            float rgb[3];
+            lodLevelColor((unsigned int)l, rgb);
+            draw->AddRectFilled(ImVec2(x, at.y), ImVec2(std::min(x + w, at.x + width), at.y + height), ImGui::ColorConvertFloat4ToU32(ImVec4(rgb[0], rgb[1], rgb[2], 1.0f)));
             char label[48];
             std::snprintf(label, sizeof(label), "LOD %zu  %.0f%%", l, switches[l] * 100.0f);
             // a level too narrow for its label: the table below has its numbers
@@ -594,6 +594,20 @@ bool ModelImporterView::draw(const std::vector<fs::path>& selection, const std::
             project->setInspectedAssets(keep);
         }
         return true;
+    }
+    // a model deleted from disk leaves the selection (looked at twice a second or so, not per frame)
+    if (ImGui::GetFrameCount() % 30 == 0){
+        std::vector<fs::path> kept;
+        for (const fs::path& path : selection){
+            std::error_code ec;
+            const fs::path absolute = path.is_absolute() ? path : project->getProjectPath() / path;
+            if (!isModelSource(path.filename().string()) || fs::exists(absolute, ec))
+                kept.push_back(path);
+        }
+        if (kept.size() != selection.size()){
+            project->setInspectedAssets(kept);
+            return true;
+        }
     }
     select(selection);
     if (assetPaths.empty())

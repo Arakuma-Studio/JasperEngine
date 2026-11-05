@@ -63,7 +63,7 @@ and acts on what it finds:
 | Read/Write | Automatic, On | Whether anything in a game needs the mesh data on the CPU after upload (below). |
 | Normals | Import, Calculate | Calculate: area-weighted normals, creased at the Smoothing Angle (0-180, default 60). |
 | Generate LODs | Automatic, On, Off | Automatic bakes the levels the runtime would build (the runtime's recipe); On bakes LOD Count (1-3) levels of the Reduction; Off bakes none. |
-| Reduction | Preserve Detail, Balanced, Smallest | Each level keeps 60% (with an error cap of 0.5% of the mesh's size), 50%, or 35% (crossing attribute seams) of the triangles of the one before. |
+| Reduction | Preserve Detail, Balanced, Smallest | Each level keeps 60%, 50% or 35% of the triangles of the one before, and may lie at most 1%, 2% or 5% of the mesh's size from the source (Smallest also crosses attribute seams). |
 | Ship Source File | on, off | Exports keep the source next to its cook (code that reads the file itself). |
 
 The platform tabs override any of them for one platform (Override for Mobile ...).
@@ -89,7 +89,7 @@ Baked levels go into the cooked file as `JE_mesh_lods` on each primitive:
 `{"recipe": <int>, "levels": [{"indices": <accessor>, "error": <float>}]}` (an authored level also
 has `"coverage"`, its `MSFT_screencoverage`), levels in order of
 coarseness after LOD 0 (the primitive itself), their indices over the primitive's vertices, `error`
-the simplifier's deviation in mesh units. The extension is listed as used, not required: a reader
+the level's geometric deviation in mesh units. The extension is listed as used, not required: a reader
 without it draws LOD 0. A scene draws levels with Mesh LOD on. The Inspector's table shows each
 level's triangles, its share of LOD 0, "Differs by at most" (the largest distance measured from the
 source surface, as a share of the model's size) and about where it switches (a 1080-pixel view).

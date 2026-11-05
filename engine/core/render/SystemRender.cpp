@@ -362,12 +362,14 @@ RenderStats SystemRender::getRenderStats(uint32_t viewTag){
         stats.drawCalls = frame.drawCalls;
         stats.instances = frame.instances;
         stats.triangles = frame.triangles;
+        stats.vertices = frame.vertices;
     }else{
         const PassList list = SokolSystem::getPassList(viewTag, false);
         for (const PassRecord& pass : list.passes){
             stats.drawCalls += pass.draws;
             stats.instances += pass.instances;
             stats.triangles += pass.triangles;
+            stats.vertices += pass.elements;
         }
     }
     return stats;

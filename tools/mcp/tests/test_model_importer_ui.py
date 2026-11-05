@@ -150,6 +150,13 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     # an export's Build Report (a model with a load error fails an export: it goes first)
     (ed.project / "assets" / "models" / "unread.gltf").unlink()
     await ed.call("sync_files", paths=["assets/models/unread.gltf"])
+    # a deleted model leaves the Inspector: no failure row of a file that is gone
+    for _ in range(240):
+        if not (await ed.call("find_ui_item", label="Show in Explorer", window="Inspector"))["items"]:
+            break
+        await ui_input.frames(ed, 2)
+    else:
+        ed.fail("the Inspector still shows the deleted model's failure row")
     out = ed.scratch.root / "export-source"
     built = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", timeout_seconds=600)
     report = out / "build-report.json"
@@ -161,6 +168,8 @@ async def test_model_importer_audit_and_build_report(ed: Editor):
     ed.check(cooks and all(f.get("source") for f in cooks), f"each model's source: {data['largest']}")
     ed.check(any(f["source"] == "models/grid.glb" and f["source_bytes"] > f["bytes"] for f in cooks), f"the grid's cook, smaller than its source: {cooks}")
     await ed.call("run_command", id="window.buildReport")
-    await wait_item(ed, "Source Size")
+    for name in ("Category", "Size", "Source Size"):
+        header = await wait_item(ed, name, "Build Report")
+        ed.check(header["rect"]["width"] >= 6 * len(name), f"{name}'s column fits it: {header['rect']}")
     await ui_input.frames(ed, 10)
     await shot(ed, "5-build-report")

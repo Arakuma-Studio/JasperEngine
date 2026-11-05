@@ -1678,6 +1678,7 @@ set(JASPERENGINE_SRCS
     core/render/CpuSkin.cpp
     core/render/FramebufferRender.cpp
     core/render/LineRibbonBuilder.cpp
+    core/render/LodFade.cpp
     core/render/ObjectRender.cpp
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp

@@ -394,14 +394,11 @@ TEST(ModelCook, BakedLevelsAreTheRuntimesLevelsOverTheCookedData){
     MeshLodSource lodSource;
     int components = 0;
     lodSource.positions = floats(cooked.doc, attribute(cooked.doc, 0, 0, "POSITION"), components);
-    const std::vector<float> normals = floats(cooked.doc, attribute(cooked.doc, 0, 0, "NORMAL"), components);
-    const std::vector<float> uvs = floats(cooked.doc, attribute(cooked.doc, 0, 0, "TEXCOORD_0"), components);
+    lodSource.normals = floats(cooked.doc, attribute(cooked.doc, 0, 0, "NORMAL"), components);
+    lodSource.uvs = floats(cooked.doc, attribute(cooked.doc, 0, 0, "TEXCOORD_0"), components);
     lodSource.indices = indicesOf(cooked.doc, 0, 0);
     lodSource.indexType = root["accessors"][primitive["indices"].get<size_t>()]["componentType"] == gltf::UNSIGNED_INT
                               ? AttributeDataType::UNSIGNED_INT : AttributeDataType::UNSIGNED_SHORT;
-    lodSource.attributeCount = 5;
-    for (size_t v = 0; v < lodSource.positions.size() / 3; v++)
-        lodSource.attributes.insert(lodSource.attributes.end(), {normals[v * 3], normals[v * 3 + 1], normals[v * 3 + 2], uvs[v * 2], uvs[v * 2 + 1]});
     const std::shared_ptr<MeshLodData> runtime = MeshLodPool::buildLevels(lodSource, MeshLodRecipe::runtime());
     ASSERT_EQ((size_t)runtime->numLevels, lods["levels"].size() + 1);
     size_t previous = lodSource.indices.size();

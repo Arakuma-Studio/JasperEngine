@@ -316,7 +316,7 @@ Out of scope:
 | AC7 | Lossy levels stay within their documented error (sampled deviation). Golden images at Medium. |
 | AC8 | Read/Write release test, plus the reader-keeps tests (R11). |
 | AC9 | Two listeners: a texture and a model Apply in one session both recook (`SetAssetMetaCmdTest`); red on `main`. |
-| AC10 | MCP: `test_meshes.py` covers each tool, dry run versus applied numbers, undo, the budget check failure exit code, and that the group is hidden until enabled. |
+| AC10 | MCP: `test_model_import.py` covers each tool, dry run versus applied numbers, undo, the budget check failure exit code, and that the group is hidden until enabled. |
 | AC11 | Export of a project with models writes `index.json` and cooked glbs, the player loads them (smoke test), and a cook error fails the export. |
 | AC12 | Editor screenshots of the inspector (single, multi), Audit window, Build Report and failure row, from an isolated editor. |
 | AC13 | The web build passes and the size gate shows the decoder within R28. |
@@ -355,10 +355,10 @@ Out of scope:
   value of its own, not only to new ones. An Apply that leaves nothing set removes the section.
 - **Generate LODs:** Automatic bakes the runtime's recipe (`MeshLodRecipe::runtime()`, LOD Count and
   Reduction are disabled in the Inspector and left out of the cache key); On bakes LOD Count levels
-  of the Reduction: Preserve Detail keeps 60% a level with an error cap of 0.5% of the mesh's size,
-  Balanced 50%, Smallest 35% with Permissive. Both bake only what `MeshLodPool::buildLevels`
-  produces from the cooked data, built the way `RenderSystem::readLodSource` builds the runtime's
-  (FLOAT positions, and the normal and first uv set when they stay FLOAT).
+  of the Reduction (`MeshLodRecipe::forReduction`, S54 owns the numbers). Both bake only what
+  `MeshLodPool::buildLevels` produces from the cooked data, built the way
+  `RenderSystem::readLodSource` builds the runtime's (FLOAT positions, and the normal, first uv set
+  and bone weights decoded to floats).
 - **`JE_mesh_lods` (contract C1):** `levels` are listed finest first after LOD 0 (LOD 1, LOD 2,
   LOD 3), each coarser than the one before; `recipe` is `kMeshLodRecipe` (1). The extension is in
   `extensionsUsed`, never required.
@@ -431,8 +431,8 @@ Out of scope:
   with one Cancel for both.
 - **External `.meta` changes** (a pull) reach both cook queues through the hot-reload funnel, which
   also closes S14's gap.
-- **LOD bar colours:** the Okabe-Ito colour-blind-safe ramp (green, sky blue, orange, purple) until
-  S54's Draw Mode colours exist; the switch points are "about" values for a 1080-pixel view.
+- **LOD bar colours:** S54's Draw Mode colours (`lodLevelColor`); the switch points are "about"
+  values for a 1080-pixel view at the default threshold.
 
 ## 11. Deviations (s41-importer)
 

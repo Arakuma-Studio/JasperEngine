@@ -4,7 +4,6 @@
 #include "ModelCooker.h"
 
 #include "model/GltfDocument.h"
-#include "model/MeshDeviation.h"
 #include "model/ModelSourceDecode.h"
 
 #include "pool/MeshLodPool.h"
@@ -1000,32 +999,46 @@ namespace {
             return;
         MeshLodRecipe recipe = MeshLodRecipe::runtime();
         if (settings.generateLods == GenerateLods::On){
-            recipe.levels = (unsigned int)std::clamp(settings.lodCount, 1, MAX_MESH_LODS - 1);
-            switch (settings.lodReduction){
-                case LodReduction::PreserveDetail: recipe.ratio = 0.6f; recipe.targetError = 0.005f; break;
-                case LodReduction::Smallest: recipe.ratio = 0.35f; recipe.permissive = true; break;
-                case LodReduction::Balanced: default: recipe.ratio = 0.5f; break;
-            }
+            const MeshLodReduction reduction = settings.lodReduction == LodReduction::PreserveDetail ? MeshLodReduction::PRESERVE_DETAIL
+                                               : settings.lodReduction == LodReduction::Smallest ? MeshLodReduction::SMALLEST
+                                                                                                 : MeshLodReduction::BALANCED;
+            recipe = MeshLodRecipe::forReduction(reduction, (unsigned int)settings.lodCount);
         }
         // the levels the runtime would build from this data (RenderSystem::readLodSource): FLOAT
-        // positions, and the FLOAT normal and first uv set when the cook keeps them FLOAT
+        // positions, and as floats the normal, first uv set and bone weights it decodes
         std::vector<float> positions;
         const Stream* normal = nullptr;
         const Stream* uv = nullptr;
+        const Stream* weights = nullptr;
         for (const Stream& stream : group.streams){
             if (stream.target >= 0)
                 continue;
             if (stream.semantic == "POSITION" && stream.layout.components == 3 && stream.layout.componentType == gltf::FLOAT && !stream.layout.normalized)
                 positions = positionsOf(group);
-            if (stream.semantic == "NORMAL" && stream.layout.componentType == gltf::FLOAT && stream.layout.components == 3)
+            if (stream.semantic == "NORMAL" && stream.layout.components == 3)
                 normal = &stream;
-            if (stream.semantic == "TEXCOORD_0" && stream.layout.componentType == gltf::FLOAT && stream.layout.components == 2)
+            if (stream.semantic == "TEXCOORD_0" && stream.layout.components == 2)
                 uv = &stream;
+            if (stream.semantic == "WEIGHTS_0" && stream.layout.components == 4)
+                weights = &stream;
         }
         if (positions.empty())
             return;
-        const std::vector<float> normals = normal ? floatsOf(normal->data, normal->layout) : std::vector<float>();
-        const std::vector<float> uvs = uv ? floatsOf(uv->data, uv->layout) : std::vector<float>();
+        // element by element: a filtered normal's elements are wider than its components
+        auto guide = [&](const Stream* stream){
+            std::vector<float> out;
+            if (!stream || stream->layout.count != group.vertexCount)
+                return out;
+            const size_t components = (size_t)stream->layout.components;
+            const size_t size = (size_t)gltf::componentSize(stream->layout.componentType);
+            out.resize(group.vertexCount * components);
+            for (size_t v = 0; v < group.vertexCount; v++)
+                for (size_t c = 0; c < components; c++)
+                    out[v * components + c] = componentValue(stream->data.data() + v * stream->layout.elementSize + c * size,
+                                                             stream->layout.componentType, stream->layout.normalized);
+            return out;
+        };
+        const std::vector<float> normals = guide(normal), uvs = guide(uv), skinWeights = guide(weights);
         for (size_t p : group.primitives){
             Primitive& primitive = primitives[p];
             if (!primitive.indexed || primitive.mode != 4 || primitive.list.size() % 3 != 0)
@@ -1033,7 +1046,7 @@ namespace {
             if (!primitive.authored.empty()){
                 // MSFT_lod's levels as the file has them; `error` measured, as the generated ones'
                 for (size_t l = 0; l < primitive.authored.size() && l + 1 < (size_t)MAX_MESH_LODS; l++){
-                    const double deviation = MeshDeviation::surfaceDeviation(positions, primitive.list, primitive.authored[l]);
+                    const double deviation = MeshLodPool::measureDeviation(positions, primitive.list, primitive.authored[l]);
                     primitive.lodDeviation.push_back(deviation);
                     primitive.lods.push_back({primitive.authored[l], (float)deviation});
                     primitive.lodCoverage.push_back(l < primitive.authoredCoverage.size() ? primitive.authoredCoverage[l] : -1.0f);
@@ -1048,18 +1061,15 @@ namespace {
                 const double last = std::max(1.0, (double)primitive.lodTargets.back());
                 levelRecipe.levels = (unsigned int)std::clamp((int)primitive.lodTargets.size(), 1, MAX_MESH_LODS - 1);
                 levelRecipe.ratio = (float)std::clamp(std::pow(last / tris, 1.0 / levelRecipe.levels), 0.05, 0.95);
-                levelRecipe.targetError = FLT_MAX;
+                levelRecipe.targetError = 1.0f;     // the count decides, not an error budget
             }
             MeshLodSource source;
             source.positions = positions;
             source.indices = primitive.list;
             source.indexType = primitive.indexType == gltf::UNSIGNED_INT ? AttributeDataType::UNSIGNED_INT : AttributeDataType::UNSIGNED_SHORT;
-            source.attributeCount = (normal ? 3 : 0) + (uv ? 2 : 0);
-            source.attributes.reserve(group.vertexCount * source.attributeCount);
-            for (size_t v = 0; v < group.vertexCount; v++){
-                if (normal) source.attributes.insert(source.attributes.end(), {normals[v * 3], normals[v * 3 + 1], normals[v * 3 + 2]});
-                if (uv) source.attributes.insert(source.attributes.end(), {uvs[v * 2], uvs[v * 2 + 1]});
-            }
+            source.normals = normals;
+            source.uvs = uvs;
+            source.skinWeights = skinWeights;
             const std::shared_ptr<MeshLodData> data = MeshLodPool::buildLevels(source, levelRecipe);
             if (!data || data->numLevels < 2)
                 continue;
@@ -1077,7 +1087,7 @@ namespace {
                         list[i] = value;
                     }
                 }
-                primitive.lodDeviation.push_back(MeshDeviation::surfaceDeviation(positions, primitive.list, list));
+                primitive.lodDeviation.push_back((double)level.error);
                 primitive.lods.push_back({std::move(list), level.error});
                 primitive.lodCoverage.push_back(-1.0f);
             }

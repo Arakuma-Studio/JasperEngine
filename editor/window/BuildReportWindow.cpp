@@ -89,20 +89,36 @@ void BuildReportWindow::show(){
     }
     ImGui::Separator();
     ImGui::TextDisabled("Largest files");
-    if (ImGui::BeginTable("build_report_files", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
-                                                       ImGuiTableFlags_SizingStretchProp)){
-        ImGui::TableSetupScrollFreeze(0, 1);
+    // the numbers keep the width of their whole header or a long value; File and Source share the
+    // rest, and have a floor below which the table scrolls sideways
+    const float sizeWidth = std::max(ImGui::CalcTextSize("1023.9 MB").x, ImGui::CalcTextSize("Source Size").x);
+    const float categoryWidth = ImGui::CalcTextSize("Category  ").x;
+    const float cellPadding = ImGui::GetStyle().CellPadding.x * 2.0f;
+    const float tableFloor = ImGui::GetFontSize() * 34.0f + categoryWidth + sizeWidth * 2.0f + cellPadding * 5.0f;
+    if (ImGui::BeginTable("build_report_files", 5, ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable |
+                                                       ImGuiTableFlags_SizingFixedFit, ImVec2(0.0f, 0.0f), std::max(ImGui::GetContentRegionAvail().x, tableFloor))){
+        ImGui::TableSetupScrollFreeze(1, 1);
         ImGui::TableSetupColumn("File", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-        ImGui::TableSetupColumn("Category");
-        ImGui::TableSetupColumn("Size");
+        ImGui::TableSetupColumn("Category", ImGuiTableColumnFlags_WidthFixed, categoryWidth);
+        ImGui::TableSetupColumn("Size", ImGuiTableColumnFlags_WidthFixed, sizeWidth);
         ImGui::TableSetupColumn("Source", ImGuiTableColumnFlags_WidthStretch, 2.0f);
-        ImGui::TableSetupColumn("Source Size");
+        ImGui::TableSetupColumn("Source Size", ImGuiTableColumnFlags_WidthFixed, sizeWidth);
         ImGui::TableHeadersRow();
         int row = 0;
         for (const BuildReportFile& entry : report.largest){
             ImGui::PushID(row++);
             ImGui::TableNextRow();
-            ImGui::TableSetColumnIndex(0); ImGui::TextUnformatted(entry.path.c_str());
+            ImGui::TableSetColumnIndex(0);
+            // the tail tells files apart: the head is the same long prefix on every row
+            std::string shown = entry.path;
+            const float room = ImGui::GetContentRegionAvail().x;
+            if (ImGui::CalcTextSize(shown.c_str()).x > room){
+                size_t cut = 0;
+                while (cut < shown.size() && ImGui::CalcTextSize(("..." + shown.substr(cut)).c_str()).x > room) cut++;
+                shown = "..." + shown.substr(cut);
+            }
+            ImGui::TextUnformatted(shown.c_str());
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", entry.path.c_str());
             ImGui::TableSetColumnIndex(1); ImGui::TextUnformatted(entry.category.c_str());
             ImGui::TableSetColumnIndex(2); ImGui::TextUnformatted(BuildReport::formatBytes(entry.bytes).c_str());
             ImGui::TableSetColumnIndex(3);

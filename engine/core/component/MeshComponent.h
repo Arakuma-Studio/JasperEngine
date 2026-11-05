@@ -20,6 +20,7 @@
 #include "buffer/IndexBuffer.h"
 #include "buffer/ExternalBuffer.h"
 #include "pool/MeshLodPool.h"
+#include "render/LodFade.h"
 #include "math/Rect.h"
 #include "lattice/LatticeTypes.h"
 #include <deque>
@@ -367,6 +368,21 @@ namespace jasperengine{
         std::shared_ptr<MeshLodData> lodData;
         ExternalBuffer lodIndices;
         uint64_t lodKey = 0;
+        // the levels a cooked model baked (glTF JE_mesh_lods, MeshLodPool::readGltfLevels) and the
+        // builder version they were made with: used instead of a runtime build when it is this one
+        std::shared_ptr<MeshLodData> bakedLods;
+        int bakedLodRecipe = 0;
+        // the LOD cross-fade variant of its colour shader (MESH 'Lfd'), asked for while the mesh
+        // may fade (RenderSystem::prepareSubmeshLodFade); refused (it failed, or its bindings are
+        // not its base's): the submesh never fades until it loads again
+        std::shared_ptr<ShaderRender> lodFadeShader;
+        uint64_t lodFadeShaderProperties = 0;
+        uint16_t lodFadeShaderId = 0;
+        bool lodFadeChecked = false;
+        bool lodFadeRefused = false;
+        // set at load: it draws with the built-in Mesh or Lit shader and depth program (only
+        // those get detail levels: another vertex stage may move the vertices)
+        bool lodBuiltinShader = true;
 
         // the material's extra pass as loaded (null: none, nothing allocated)
         std::shared_ptr<SubmeshExtraPass> extraPass;
@@ -549,6 +565,26 @@ namespace jasperengine{
         float lodBias = 1.0f;
         float lodError[MAX_MESH_LODS] = {}; // largest error of any submesh at each level
         unsigned int numLods = 1;
+        // how a level change shows (spec S54 R9, Unity's LOD Group): Fade Mode; Animate
+        // Cross-fading fades over the scene's Cross-fade Duration, else over the last Fade
+        // Transition Width of each level's band (an Instanced Mesh always fades so); Cull Below
+        // Screen Height: not drawn under that share of the view's height (0: never, Unity's Culled)
+        LodFadeMode lodFadeMode = LodFadeMode::CROSS_FADE;
+        bool lodAnimateCrossFading = true;
+        float lodFadeTransitionWidth = 0.1f;
+        float lodCullBelow = 0.0f;
+        // runtime: a level forced for every view (Mesh.forceLod, capture_model_lods; -1:
+        // automatic), and the fade of the main view (others: RenderSystem::RenderView::lodFades)
+        int lodForced = -1;
+        MeshLodFade lodFade;
+        // runtime, set at load: its submeshes draw with shaders that have a fade variant (the
+        // built-in Mesh and Lit, no fork); and in the colour pass: every fade variant it draws
+        // with is made (a fade starts only then)
+        bool lodFadeCapable = false;
+        bool lodFadeReady = false;
+        // runtime: bumped when its levels change (they arrive, go or are rebuilt): the next level
+        // change of every view snaps instead of fading from levels that are no longer the same
+        uint32_t lodRevision = 0;
 
         CullingMode cullingMode = CullingMode::BACK;
         WindingOrder windingOrder = WindingOrder::CCW;

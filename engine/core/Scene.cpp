@@ -353,6 +353,22 @@ float Scene::getMeshLodThreshold() const{
     return settings.meshLodThreshold;
 }
 
+void Scene::setMeshLodCrossFade(bool crossFade){
+    settings.meshLodCrossFade = crossFade;
+}
+
+bool Scene::isMeshLodCrossFade() const{
+    return settings.meshLodCrossFade;
+}
+
+void Scene::setMeshLodCrossFadeDuration(float seconds){
+    settings.meshLodCrossFadeDuration = std::isfinite(seconds) ? std::clamp(seconds, 0.05f, 2.0f) : settings.meshLodCrossFadeDuration;
+}
+
+float Scene::getMeshLodCrossFadeDuration() const{
+    return settings.meshLodCrossFadeDuration;
+}
+
 void Scene::setDepthPrepassEnabled(bool enabled){
     if (settings.depthPrepassEnabled != enabled){
         settings.depthPrepassEnabled = enabled;
