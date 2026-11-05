@@ -1326,6 +1326,7 @@ local path = Profiler.sample("Pathfind", function() return self:findPath() end) 
 Profiler.counter("Enemies alive", #self.enemies)   -- a monitor (the Monitors module, get_frame_times)
 Profiler.enabled = true                      -- start recording (read it to know whether it records)
 local s = Profiler.frameStats()              -- {drawCalls, instances, triangles, cpuMs, fps, gpuMs?}
+local r = scene:getRenderStats()             -- by pass: mainDrawCalls, shadowDrawCalls, mainTriangles, instancedDraws...
 ```
 
 - Samples nest. An `endSample` without its `beginSample` is ignored (logged once). An error in
@@ -1736,6 +1737,7 @@ sprites) sorted by their distance to the camera position, not by Z.
 | `setNormalTexture([submesh,] path)`, `setNormalTexture(id, TextureData)`, `getNormalTexture([submesh])` | methods: the normal map of submesh 0 or of a submesh (tangent-space, OpenGL convention, green up; on sprites, tilemaps and polygons it answers Light 2Ds whose `height` is above 0; same size and frame layout as the colour texture; a Tilemap's submesh `i` is the tileset of its colour texture `i`) |
 | `material` | rw `Material`; `getMaterial([submesh])`, `setMaterial([submesh,] mat)` |
 | `castShadows`, `receiveShadows`, `staticShadowCaster` (cached in the static shadow layer, `jasper://docs/shadows`), `receiveLights`, `transparent`, `faceCulling`, `cullingMode`, `customShader` | rw |
+| `allowGpuInstancing` (its draws may batch with those of the same mesh and material, `jasper://docs/meshes`) | rw |
 | `getAABB()`, `getWorldAABB()`, `getNumSubmeshes()` | methods |
 | `setShaderUniform(name, float/Vector2/3/4)`, `getShaderUniform(name)`, `removeShaderUniform(name)` | methods |
 | instancing: `createInstancedMesh()`, `addInstance(...)`, `updateInstance(i, ...)`, `removeInstance(i)`, `getNumInstances()`, `clearInstances()` | methods |

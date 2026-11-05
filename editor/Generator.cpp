@@ -2593,6 +2593,9 @@ void editor::Generator::configure(const std::vector<editor::SceneBuildInfo>& sce
                 tierNames[std::clamp(static_cast<int>(tier), 0, 3)] + ");\n";
         }
     }
+    // GPU Instancing (spec S55), written when off
+    if (!drawSubmission.gpuInstancing)
+        mainContent += "    Engine::setGpuInstancingEnabled(false);\n";
     if (lightMode != LightMode::AUTOMATIC)
         mainContent += std::string("    LightingTiers::setLightMode(") +
             (lightMode == LightMode::TILED ? "LightMode::TILED" : "LightMode::PER_OBJECT") + ");\n";

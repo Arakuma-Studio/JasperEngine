@@ -36,11 +36,8 @@
     #undef HAS_TEXTURERECT
 #endif
 
-uniform u_vs_depthParams {
-    mat4 modelMatrix;
-    mat4 lightVPMatrix;
-    mat4 mvpMatrix;
-} depthParams;
+// depthParams: per draw, or per instance in an automatically instanced batch
+#include "includes/object_depth_params.glsl"
 
 invariant gl_Position;
 

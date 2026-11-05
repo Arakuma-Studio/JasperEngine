@@ -190,6 +190,19 @@ Json renderStatsJson(uint32_t tag, const std::string& viewName){
         {"uniform_bytes", stats.uniformBytes},
         {"image_upload_bytes", stats.imageUploadBytes},
         {"buffer_upload_bytes", stats.bufferUploadBytes},
+        // by kind of pass (S55 R7): the cameras' colour passes, the shadow maps, the depth passes
+        {"main_triangles", stats.mainTriangles},
+        {"shadow_triangles", stats.shadowTriangles},
+        {"draw_calls_by_pass", {{"main", stats.mainDraws}, {"shadow", stats.shadowDraws}, {"depth", stats.depthDraws},
+                                {"other", stats.otherDraws}}},
+        // GPU Instancing: the instanced draws batches made and the draws they replaced, the
+        // uniform bytes not applied again (already in their slot)
+        {"instanced_draws", stats.instancedDraws},
+        {"batched_instances", stats.batchedInstances},
+        {"uniform_bytes_kept", stats.uniformBytesKept},
+        // the passes' visible lists: mesh draws kept and culled (the game frame)
+        {"visible", stats.visible},
+        {"culled", stats.culled},
         {"alive", {{"images", stats.aliveImages}, {"buffers", stats.aliveBuffers}, {"pipelines", stats.alivePipelines},
                    {"views", stats.aliveViews}, {"shaders", stats.aliveShaders}, {"samplers", stats.aliveSamplers}}},
         {"pipeline_cache", {{"misses", stats.pipelineCacheMisses}, {"applies", stats.pipelineCacheApplies},
@@ -265,7 +278,10 @@ void getRenderStatsTool(const CallPtr& call){
         if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>())
             data["lighting"] = lightingStatsJson(render->getLightingStats(), tag);
     }
-    std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws, " +
+    std::string text = "Render stats (" + name + "): " + std::to_string(data["draw_calls"].get<uint32_t>()) + " draws (" +
+        std::to_string(data["draw_calls_by_pass"]["main"].get<uint32_t>()) + " main, " +
+        std::to_string(data["draw_calls_by_pass"]["shadow"].get<uint32_t>()) + " shadow; " +
+        std::to_string(data["instanced_draws"].get<uint32_t>()) + " instanced), " +
         std::to_string(data["passes"].get<uint32_t>()) + " passes, CPU " + std::to_string(data["cpu_ms"].get<double>()).substr(0, 6) + " ms";
     if (!data["drawn"].get<bool>())
         text += " (this view has not drawn in a recorded frame)";

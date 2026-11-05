@@ -94,6 +94,7 @@
 #define MAX_MESH_LODS 4
 #endif
 
+
 #ifndef MAX_TILEMAP_TILESRECT
 #define MAX_TILEMAP_TILESRECT 200
 #endif
@@ -227,6 +228,9 @@ namespace jasperengine {
             uint32_t drawCalls = 0;
             uint32_t instances = 0;
             uint64_t triangles = 0;
+            // mesh draws the passes' visible lists kept and culled (spec S55 R4)
+            uint32_t visible = 0;
+            uint32_t culled = 0;
             uint64_t vertices = 0;
         };
 
@@ -367,6 +371,7 @@ namespace jasperengine {
         static float framerate;
         static double framePeriod;
         static double frameCpuTime;
+        static double frameDrawCpuTime;
         static FrameStats frameStats;
         static FrameStats currentFrameStats;
         
@@ -428,6 +433,7 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static bool gpuInstancingEnabled;
 
         static Semaphore drawSemaphore;
 
@@ -633,6 +639,12 @@ namespace jasperengine {
         // back to the platform default (the editor calls it when Play stops)
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
+
+        // GPU Instancing (Project Settings > Graphics, spec S55): MeshComponent draws of one mesh,
+        // material and pipeline become instanced draws, and constant state is applied once. On by
+        // default; off submits every draw as before S55
+        static void setGpuInstancingEnabled(bool enabled);
+        static bool isGpuInstancingEnabled();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
@@ -641,10 +653,13 @@ namespace jasperengine {
         // without the wait to present), seconds: dynamic resolution's frame law reads them
         static double getFramePeriod();
         static double getFrameCpuTime();
+        // of it, the scenes' draw and the commit: the render submission (benchmark renderCpuMs)
+        static double getFrameDrawCpuTime();
 
         static void beginFrameStats();
         // vertices: the vertex shader runs, indices or vertices drawn times the instances
         static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
+        static void addVisibilityStats(uint32_t visible, uint32_t culled);
         static const FrameStats& getFrameStats();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();

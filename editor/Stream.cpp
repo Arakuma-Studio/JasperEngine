@@ -2561,8 +2561,8 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         root["htmlUiSdfPrimitives"] = htmlUiRender.sdfPrimitives;
         root["htmlUiTransformAwareText"] = htmlUiRender.transformAwareText;
     }
-    // graphics.shadowTier.<platform>, only the platforms away from their default tier, and
-    // graphics.lightMode when not Automatic
+    // graphics.shadowTier.<platform>, only the platforms away from their default tier,
+    // graphics.lightMode when not Automatic, and GPU Instancing (S55) when off
     {
         YAML::Node graphics;
         YAML::Node tiers;
@@ -2573,6 +2573,9 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (tiers.size() > 0)
             graphics["shadowTier"] = tiers;
+        const DrawSubmissionSettings& drawSubmission = project->getDrawSubmissionSettings();
+        if (drawSubmission.gpuInstancing != DrawSubmissionSettings().gpuInstancing)
+            graphics["gpuInstancing"] = drawSubmission.gpuInstancing;
         if (project->getLightMode() != Project::defaultLightMode)
             graphics["lightMode"] = LightingTiers::getModeName(project->getLightMode());
         if (graphics.size() > 0)
@@ -3208,6 +3211,17 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
         if (node["htmlUiTransformAwareText"].IsDefined())
             htmlUiRender.transformAwareText = YamlNumbers::as<bool>(node["htmlUiTransformAwareText"]);
         project->setHtmlUiRenderSettings(htmlUiRender);
+    }
+
+    // graphics.gpuInstancing (S55): projects saved before it take the default
+    {
+        DrawSubmissionSettings drawSubmission;
+        const YAML::Node graphics = node["graphics"];
+        if (graphics && graphics.IsMap()){
+            if (graphics["gpuInstancing"].IsDefined())
+                drawSubmission.gpuInstancing = YamlNumbers::as<bool>(graphics["gpuInstancing"]);
+        }
+        project->setDrawSubmissionSettings(drawSubmission);
     }
 
     // graphics.shadowTier.<platform>: an absent platform takes its default tier

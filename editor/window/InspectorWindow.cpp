@@ -7501,6 +7501,11 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
         propertyRow(RowPropertyType::Float_0_1, cpType, "lodCullBelow", "Cull Below Screen Height", sceneProject, entities, cullBelowSettings);
     }
 
+    RowSettings instancingSettings;
+    instancingSettings.help = "Let this mesh draw in one instanced draw with the opaque meshes of the same mesh, material and shader "
+                              "while Project Settings > Graphics > GPU Instancing is on (the image stays the same). Turn off to draw it alone.";
+    propertyRow(RowPropertyType::Bool, cpType, "allowGpuInstancing", "Allow GPU Instancing", sceneProject, entities, instancingSettings);
+
     RowSettings reflectionProbeSettings;
     reflectionProbeSettings.help = "Draw this mesh into Reflection Probe captures. Turn off to keep a GameObject out of its own reflection.";
     propertyRow(RowPropertyType::Bool, cpType, "renderInReflectionProbes", "Render in Probes", sceneProject, entities, reflectionProbeSettings);

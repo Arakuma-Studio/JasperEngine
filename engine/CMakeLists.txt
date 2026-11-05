@@ -1683,6 +1683,7 @@ set(JASPERENGINE_SRCS
     core/render/ShaderRender.cpp
     core/render/SystemRender.cpp
     core/render/TextureRender.cpp
+    core/render/VisibleList.cpp
     core/render/shadow/CascadeFit.cpp
     core/render/shadow/ShadowCache.cpp
     core/render/shadow/ShadowCasterRegistry.cpp

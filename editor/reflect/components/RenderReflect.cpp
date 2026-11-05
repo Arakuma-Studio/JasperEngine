@@ -189,6 +189,7 @@ namespace {
         JE_FIELD(MeshComponent, staticShadowCaster),
         JE_FIELD(MeshComponent, lodEnabled, .updateFlags = kMeshReload, .label = "LOD"),
         JE_FIELD(MeshComponent, lodBias, .min = 0.0f, .label = "LOD Bias"),
+        JE_FIELD(MeshComponent, allowGpuInstancing, .updateFlags = kMeshReload, .label = "Allow GPU Instancing"),
         // a mesh that may fade loads its fade shaders with the mesh (spec S54 R10)
         JE_FIELD(MeshComponent, lodFadeMode, .enumDesc = &enums::kLodFadeMode, .updateFlags = kMeshReload, .label = "Fade Mode"),
         JE_FIELD(MeshComponent, lodAnimateCrossFading, .label = "Animate Cross-fading"),
@@ -503,7 +504,7 @@ namespace {
     constexpr const char* kPolygonExtraKeys[] = {"points"};
 
     // the keys its codec reads
-    constexpr const char* kMeshKnownKeys[] = {"mirroredWinding", "aabb", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode", "lodFadeTransitionWidth", "morphTargetCount", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
+    constexpr const char* kMeshKnownKeys[] = {"mirroredWinding", "aabb", "allowGpuInstancing", "autoTransparency", "bonesMatrix", "buffer", "castShadows", "cullingMode", "customDepthShader", "customShader", "eBuffers", "enabled", "indices", "lodAnimateCrossFading", "lodBias", "lodCullBelow", "lodEnabled", "lodFadeMode", "lodFadeTransitionWidth", "morphTargetCount", "morphWeights", "normAdjustJoint", "normAdjustWeight", "receiveIBL", "receiveLights", "receiveShadows", "renderInReflectionProbes", "shaderUniforms", "shadowsBillboard", "staticShadowCaster", "submeshes", "transparent", "verticesAABB", "windingOrder", "worldAABB"};
 
 }
 

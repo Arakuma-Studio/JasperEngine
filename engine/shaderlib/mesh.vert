@@ -25,11 +25,9 @@
 //       vec4 tint;
 //   } customParams;
 
-uniform u_vs_pbrParams {
-    mat4 modelMatrix;
-    mat4 normalMatrix;
-    mat4 mvpMatrix;
-} pbrParams;
+// the object's matrices: per draw (u_vs_pbrParams), or per instance in an automatically
+// instanced batch (HAS_AUTO_INSTANCING); a fork keeping its own block is never batched
+#include "includes/object_params.glsl"
 
 // same expression as depth.vert, so a depth prepass and this pass agree bit for bit
 invariant gl_Position;
@@ -186,7 +184,7 @@ void main() {
         #ifdef HAS_INSTANCING
             v_lodFade = i_matrix_col1.w;
         #else
-            v_lodFade = pbrParams.normalMatrix[0][3];
+            v_lodFade = objectLodFade();
         #endif
     #endif
     // the baked vertex animation first (HAS_VAT): it takes the place of morph targets and skinning

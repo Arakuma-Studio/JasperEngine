@@ -150,6 +150,39 @@ void ObjectRender::draw(unsigned int baseElement, unsigned int vertexCount, unsi
     Engine::addDrawStats(instanceCount, triangles * instances, (uint64_t)vertexCount * instances);
 }
 
+void ObjectRender::addBatchInstanceAttributes(const int* locations, int count, BatchLayout layout){
+    backend.addBatchInstanceAttributes(locations, count, layout);
+}
+
+bool ObjectRender::linkBatchVariant(const ObjectRender& source, const ShaderData& sourceShader, const ShaderData& variantShader,
+                                    const std::string& objectBlock){
+    return backend.linkBatchVariant(source.backend, sourceShader, variantShader, objectBlock);
+}
+
+bool ObjectRender::isBatchVariant() const{
+    return backend.isBatchVariant();
+}
+
+const char* ObjectRender::getBatchLinkFailure() const{
+    return backend.getBatchLinkFailure();
+}
+
+void ObjectRender::setNextDrawBatch(ObjectRender* variant, int objectSlot, float lodFade){
+    backend.setNextDrawBatch(variant ? &variant->backend : nullptr, objectSlot, lodFade);
+}
+
+bool ObjectRender::bindStreamVertexBuffer(BufferRender* original, const void* data, size_t bytes){
+    return backend.bindStreamVertexBuffer(original->backend.get().id, data, bytes);
+}
+
+uint32_t ObjectRender::getVertexBufferId() const{
+    return backend.getVertexBufferId();
+}
+
+uint32_t ObjectRender::getIndexBufferId() const{
+    return backend.getIndexBufferId();
+}
+
 void ObjectRender::destroy(){
     backend.destroy();
 

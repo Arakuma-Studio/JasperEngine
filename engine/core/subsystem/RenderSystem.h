@@ -31,6 +31,7 @@
 #include "component/SpriteComponent.h"
 #include "component/Transform.h"
 #include "render/ObjectRender.h"
+#include "render/VisibleList.h"
 #include "render/CameraRender.h"
 #include "render/BufferRender.h"
 #include "render/FramebufferRender.h"
@@ -569,6 +570,13 @@ namespace jasperengine{
 		PbrVariant pbr;
 	};
 
+	// The automatic GPU instancing variants of a submesh (spec S55 R1): its colour and depth
+	// variants with HAS_AUTO_INSTANCING ('Aui'), each 0 when the submesh draws alone in those passes
+	struct SubmeshBatchVariant {
+		uint64_t properties = 0;        // ShaderType::MESH
+		uint64_t depthProperties = 0;   // ShaderType::DEPTH
+	};
+
 	class FluidSystem;
 
 
@@ -634,6 +642,13 @@ namespace jasperengine{
 			bool fading = false;
 			// an instanced mesh with fade copies has two entries: its plain draws, its fading ones
 			LodFadePass lodPass = LodFadePass::ALL;
+			// with GPU Instancing (spec S55): the submeshes this entry draws (one each for a mesh
+			// that can batch; the rest of a mesh in one entry) and the batch key its draws group by
+			// (VisibleList::groupBatches; 0: it batches with nothing); all and 0 without
+			uint32_t submeshMask = 0xFFFFFFFFu;
+			uint64_t batchKey = 0;
+			// its bounds were culled by the visible list (drawMesh does not test them again)
+			bool preCulled = false;
 		};
 
 		// One merged run of tilemap indices to draw, in elements relative to the
@@ -677,6 +692,16 @@ namespace jasperengine{
 		std::vector<TransparentRenderData> transparentQueue;
 		// what the mesh draws of the pass being drawn make of the LOD cross-fade
 		LodFadePass passLodFade = LodFadePass::ALL;
+		// a pass's visible list (spec S55 R4): its candidates and their results, kept between
+		// passes like the queues
+		std::vector<VisibleCandidate> visibleCandidates;
+		std::vector<VisibleResult> visibleResults;
+		std::vector<OpaqueRenderData> visibleEntries;
+		std::vector<int> visiblePriorities;
+		std::vector<uint64_t> visibleKeys;
+		std::vector<uint32_t> visibleOrder;
+		// the depth passes' lists (renderOpaqueDepth, a shadow slot's casters)
+		std::vector<OpaqueRenderData> depthQueue;
 
 		struct SpotMaskAtlasEntry{
 			std::string sourceId;
@@ -852,6 +877,10 @@ namespace jasperengine{
 			ExternalBuffer vatBuffer;
 			size_t vatCapacity = 0;
 			bool needUpload = false;
+			// the GPU buffers hold data: false while an upload was refused (past the frame's stream
+			// budget, tried again next frame), when its instances are not drawn rather than drawn
+			// from what the buffer held before (spec S55 R6)
+			bool current = true;
 		};
 		bool instanceViewsDirty;
 
@@ -1863,6 +1892,14 @@ namespace jasperengine{
 		// queues leave them out while passOit)
 		enum class SubmeshQueue { ALL, OPAQUE, TRANSPARENT, OIT };
 		SubmeshQueue passSubmeshQueue = SubmeshQueue::ALL;
+		// the submeshes the draw being made draws (a visible list's entry: OpaqueRenderData::
+		// submeshMask), and whether that list culled it already (spec S55 R4: drawMesh and
+		// drawMeshDepth test the frustum again otherwise)
+		uint32_t passSubmeshMask = 0xFFFFFFFFu;
+		bool passPreCulled = false;
+		// the GPU Instancing setting the meshes were loaded with (a change reloads them: the
+		// batch variants are only loaded while it is on)
+		bool loadedGpuInstancing = true;
 		// the camera pass being drawn: its block and textures (null: the neutral fallbacks)
 		scene_inputs_t passSceneBlock;
 		TextureRender* passSceneDepth = nullptr;
@@ -2273,6 +2310,54 @@ namespace jasperengine{
 		                          const Matrix4* objectBlock, TilemapComponent* tilemap, uint32_t& builtLightBits);
 		// the vertex attributes of the submesh (its buffers, its own attributes, the instance
 		// buffer) bound to a render; the index count when indexed, else the mesh's vertex count
+		// The batch variants (spec S55 R1): their shaders asked for with the submesh's others
+		// (their builds start together; a load does not wait for them), then loaded on render's
+		// and depthRender's vertex layouts and linked to them; pending: a shader still building
+		// (the mesh reloads when it is ready, needVariantReload)
+		void requestSubmeshBatchShaders(MeshComponent& mesh, Submesh& submesh, const SubmeshShaderInputs& inputs,
+		                                const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
+		                                const std::string& depthShaderSrc);
+		void loadSubmeshBatchVariants(MeshComponent& mesh, Submesh& submesh, uint16_t pipelines, const RenderState& colorState,
+		                              uint16_t depthPipelines, const RenderState& depthState, bool allDepthAttributes, int msaaSamples,
+		                              BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride, bool& pending);
+		void releaseSubmeshBatchVariants(Submesh& submesh, bool keepShaders);
+		// the bounds of the vertices a submesh draws (Submesh::localBounds), from its float
+		// positions and indices; shared by the submeshes over the same buffers
+		void updateSubmeshBounds(MeshComponent& mesh);
+		// the submesh's shadow indices (Submesh::shadowIndices), made or found shared
+		std::shared_ptr<ShadowIndexBuffer> shadowIndexBuffer(MeshComponent& mesh, Submesh& submesh);
+		// the shadow indices the depth draw being made draws level 0 with (null: its own)
+		ShadowIndexBuffer* passShadowIndices = nullptr;
+		// The terrain nodes a shadow slot draws (spec S55 R5), as the records of TerrainView's
+		// buffers (position, size, range, resolution) and the eye they morph from
+		struct ShadowTerrainCut{
+			std::vector<float> nodes[2];
+			Vector3 eye;
+		};
+		ShadowTerrainCut shadowTerrainScratch;
+		// the cut of the terrain the shadow caster being drawn has (null: the camera's whole cut)
+		const ShadowTerrainCut* passShadowTerrain = nullptr;
+		// A dynamic terrain caster's cut is the camera's without the nodes outside the slot's
+		// frustum; a static caster's (MeshComponent::staticShadowCaster) is its own from the slot's
+		// light camera, which then depends on the slot alone: the S10 static layer keeps it while
+		// the camera moves
+		ShadowTerrainCut& shadowTerrainCut(Entity entity, TerrainComponent& terrain, Transform& transform, const MeshComponent& mesh,
+		                                   const LightCamera& shadowCamera);
+		// CDLOD selection (terrainNodeLODSelect) from eye inside the frustum, into cut, leaving the
+		// nodes' own state (the camera's selection) as it is
+		bool selectShadowTerrainNode(TerrainComponent& terrain, const Transform& transform, const Vector3& eye, float cameraFar,
+		                             const Plane frustumPlanes[6], TerrainNode& node, int lodLevel, ShadowTerrainCut& cut);
+		// the detail levels of a point light's cube face (as shadowLodView for its atlas)
+		LodView pointFaceLodView(const LightComponent& light, int lightIndex, int face) const;
+		bool usesShadowIndices(const MeshComponent& mesh, const Submesh& submesh, const InstancedMeshComponent* instmesh, const TerrainComponent* terrain) const;
+		// what the next draw of this object may join (ObjectRender::setNextDrawBatch), when the
+		// draw can batch: the plain pipeline of a batch-variant submesh
+		void offerDrawBatch(ObjectRender& render, ObjectRender& variant, int objectSlot, bool mirrored);
+		// The opaque queue of a pass with GPU Instancing (spec S55 R2, R4), in the order it has: the
+		// entries culled at once (on jobs) against the pass's frustum, mesh then submesh, those of
+		// a mesh that can batch split one per submesh, the draws of one batch key brought together
+		// within their priority (VisibleList::groupBatches); the culled ones counted
+		void buildVisibleQueue(std::vector<OpaqueRenderData>& queue, const VisibleFrustum& frustum, PipelineType pipType, bool depthPipelines);
 		unsigned int bindSubmeshAttributes(ObjectRender& render, ShaderData& shaderData, MeshComponent& mesh, Submesh& submesh,
 		                                   BufferMap& buffers, BufferRenderMap& bufferNameToRender, BufferStrideMap& bufferStride,
 		                                   InstancedMeshComponent* instmesh);
@@ -2290,7 +2375,7 @@ namespace jasperengine{
 		void releaseMeshLods(MeshComponent& mesh);
 		static bool isMeshLodPending(Submesh& submesh);
 		void updateMeshLodErrors(MeshComponent& mesh);
-		LodView computeLodView(const CameraComponent& camera, const Transform& cameraTransform) const;
+		LodView computeLodView(const CameraComponent& camera, const Transform& cameraTransform, float viewHeight = 0.0f, bool shadowBias = false) const;
 		void updateMainLodView(CameraComponent& camera, Transform& cameraTransform);
 		// a camera view's next frame: its frame number and fade clock (planMeshLod)
 		void advanceLodView(LodView& view, double& clock);
@@ -2394,6 +2479,8 @@ namespace jasperengine{
 		unsigned int lightCascades(const CameraShadows& shadows, int lightIndex, const LightComponent& light) const;
 		const InstanceViewRange& instanceRange(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const;
 		BufferRender* instanceBuffer(int instanceView);
+		// the view whose buffer instanceBuffer gives
+		const InstanceView& instanceViewOf(int instanceView);
 		Vector3 instanceFadeEye(Entity entity, const InstancedMeshComponent& instmesh, int instanceView) const;
 		bool isBatchVisible(Entity entity, const MeshComponent& mesh, const Transform& transform, const InstancedMeshComponent* instmesh, int instanceView, const float cameraFar, const Plane frustumPlanes[6]);
 		TerrainView& terrainViewData(Entity entity, TerrainComponent& terrain, int terrainView);
@@ -2747,6 +2834,18 @@ namespace jasperengine{
 		static SubmeshShaderInputs getSubmeshShaderInputs(const MeshComponent& mesh, const Submesh& submesh, const TerrainComponent* terrain, const InstancedMeshComponent* instmesh, bool mirror,
 		                                                  const std::string& sceneMeshShader = std::string());
 		static SubmeshShaderVariant getSubmeshShaderVariant(const MeshShaderEnvironment& environment, const SubmeshShaderInputs& inputs);
+		// Its automatic GPU instancing variants (spec S55 R1) while GPU Instancing is on and the
+		// mesh allows it: an opaque submesh of the built-in or a library shader without
+		// skinning, morph targets, a lattice, a Vertex Animation, an extra pass, a texture rect,
+		// a mirror, a terrain or an InstancedMesh, whose vertex inputs leave room for the
+		// instance's vectors (a fork, which keeps its own object block, never batches)
+		// the vertices a submesh's positions hold (its own attribute's, else the mesh buffer's)
+		static unsigned int submeshVertexCount(const MeshComponent& mesh, const Submesh& submesh);
+		// the most vertices of a mesh dynamic batching takes (sprite-batching), which is never instanced
+		static constexpr unsigned int DYNAMIC_BATCH_MAX_VERTICES = 64;
+		static SubmeshBatchVariant getSubmeshBatchVariant(const MeshComponent& mesh, const Submesh& submesh, const SubmeshShaderInputs& inputs,
+		                                                  const SubmeshShaderVariant& variant, const std::string& meshShaderSrc,
+		                                                  const std::string& depthShaderSrc);
 		// The lighting mode a submesh draws with: the material's when the shader lists it,
 		// else the shader's default (the first of its manifest's @lighting, NONE without one;
 		// the built-in Lit and forks without a manifest: PIXEL, listing PIXEL, VERTEX, MIXED,

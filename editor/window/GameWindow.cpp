@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameWindow.h"
+#include "render/SystemRender.h"
 #include "recorder/RecorderSession.h"
 #include "widget/ColorField.h"
 #include "Theme.h"
@@ -1285,7 +1286,7 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     const float fps = ImGui::GetIO().Framerate;
     const float ms = fps > 0.0f ? 1000.0f / fps : 0.0f;
 
-    char lines[12][112];
+    char lines[14][112];
     int lineCount = 5;
     // the view's vertices and detail levels (spec S54 R12): the frame while playing, else the Game view's own
     const bool playing = project && project->isPlaySessionActive();
@@ -1305,6 +1306,16 @@ void editor::GameWindow::drawStats(ImVec2 imageMin, ImVec2 imageMax, const Scene
     } else {
         snprintf(lines[4], sizeof(lines[4]), "Target: default  VSync: %d", Engine::getVSyncCount());
     }
+    // the main view's and the shadow maps' share (S55 R7), and what GPU Instancing and the visible
+    // lists saved (Unity's "Saved by batching")
+    const RenderStats renderStats = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME);
+    snprintf(lines[lineCount], sizeof(lines[lineCount]), "Main: %u draws, %llu tris  Shadows: %u draws, %llu tris", renderStats.mainDraws,
+             (unsigned long long)renderStats.mainTriangles, renderStats.shadowDraws, (unsigned long long)renderStats.shadowTriangles);
+    lineCount++;
+    snprintf(lines[lineCount], sizeof(lines[lineCount]), "Instanced: %u draws (saved %u)  Visible: %u  Culled: %u", renderStats.instancedDraws,
+             renderStats.batchedInstances > renderStats.instancedDraws ? renderStats.batchedInstances - renderStats.instancedDraws : 0u,
+             renderStats.visible, renderStats.culled);
+    lineCount++;
     // the frame's CPU time, and its GPU time while something times the passes (the Profiler)
     const FrameTimeSample frameTime = FrameTimes::latest();
     if (frameTime.frame > 0) {

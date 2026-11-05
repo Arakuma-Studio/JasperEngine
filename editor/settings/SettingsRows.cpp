@@ -21,6 +21,7 @@
 #include "command/type/ShaderGlobalsCmd.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/DebugSettingsCmd.h"
+#include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "DebugSettings.h"
 #include "Generator.h"
@@ -599,6 +600,23 @@ Setting debugSetting(const std::string& key, const std::string& type, const std:
         return true;
     };
     return s;
+}
+
+// GPU Instancing (spec S55): DrawSubmissionSettings changed, applied as one undoable step (undo
+// scope project)
+bool setDrawSubmission(SettingsContext& ctx, const std::function<void(DrawSubmissionSettings&)>& change, bool apply, std::string& error) {
+    Project* p = ctx.project();
+    DrawSubmissionSettings changed = p->getDrawSubmissionSettings();
+    change(changed);
+    if (apply && changed != p->getDrawSubmissionSettings()) {
+        auto* command = new DrawSubmissionSettingsCmd(p, changed);
+        command->setNoMerge();
+        if (!p->getProjectCommandHistory()->addCommand(command)) {
+            error = "the draw submission settings could not be applied";
+            return false;
+        }
+    }
+    return true;
 }
 
 // One key of the device settings (spec S56), applied as one undoable step (undo scope project):
@@ -1963,6 +1981,22 @@ std::vector<Setting> mcpSettingsTable() {
         }
         add(boolSetting("graphics.runtime_shaders", "Builds carry the runtime shader compiler for variants not shipped precompiled (scripted meshes/materials). Off makes builds smaller and faster to compile.",
                         [](Project& p) { return p.isRuntimeShadersEnabled(); }, [](Project& p, bool v) { p.setRuntimeShadersEnabled(v); }));
+        // GPU Instancing (S55): draws of one mesh, material and shader drawn as one
+        {
+            Setting s;
+            s.key = "graphics.gpu_instancing";
+            s.type = "bool";
+            s.description = "GPU Instancing: opaque Mesh draws of the same mesh, material and shader are drawn as one instanced draw "
+                            "(the image is the same), constant uniforms are applied once, and passes sort their draws by state. "
+                            "A Mesh opts out with Allow GPU Instancing. Off submits every draw alone, as before. Undoable (undo scope project).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getDrawSubmissionSettings().gpuInstancing); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                bool b;
+                if (!readBool(value, b, error)) return false;
+                return setDrawSubmission(ctx, [b](DrawSubmissionSettings& settings) { settings.gpuInstancing = b; }, apply, error);
+            };
+            add(s);
+        }
         add(boolSetting("quality.vsync", "VSync in the built player.",
                         [](Project& p) { return p.isVSyncEnabled(); }, [](Project& p, bool v) { p.setVSyncEnabled(v); }));
         // the tiers of volumetric fog and clouds per platform group
@@ -3041,6 +3075,7 @@ const Placement placements[] = {
     {"graphics.shadow_tier.android", "Graphics", "Shadows", "Android Shadow Tier", "shadow quality"},
     {"graphics.shadow_tier.ios", "Graphics", "Shadows", "iOS Shadow Tier", "shadow quality"},
     {"graphics.runtime_shaders", "Graphics", "", "Runtime Shader Compilation", "variants"},
+    {"graphics.gpu_instancing", "Graphics", "", "GPU Instancing", "batching instanced draw calls auto instancing"},
     {"quality.vsync", "Quality", "", "VSync", "vertical sync refresh"},
     {"quality.atmosphere_quality_desktop", "Quality", "", "Atmosphere Quality (Desktop)", "volumetric fog clouds"},
     {"quality.atmosphere_quality_mobile", "Quality", "", "Atmosphere Quality (Mobile)", "volumetric fog clouds"},

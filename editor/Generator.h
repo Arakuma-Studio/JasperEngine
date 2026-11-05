@@ -164,6 +164,17 @@ namespace jasperengine::editor {
         bool operator!=(const HtmlUiRenderSettings& other) const{ return !(*this == other); }
     };
 
+    // Project Settings > Graphics > GPU Instancing (spec S55): the automatic instancing of
+    // MeshComponent draws
+    struct DrawSubmissionSettings {
+        bool gpuInstancing = true;
+
+        bool operator==(const DrawSubmissionSettings& other) const{
+            return gpuInstancing == other.gpuInstancing;
+        }
+        bool operator!=(const DrawSubmissionSettings& other) const{ return !(*this == other); }
+    };
+
     // Project Settings > Audio (audio-mixer spec 9): the exported init configures the voices and
     // loads the mixer before the first scene
     struct AudioSettings {
@@ -234,6 +245,7 @@ namespace jasperengine::editor {
 
     class Generator {
         std::array<AtmosphereQuality, 3> atmosphereQuality = {AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW};
+        DrawSubmissionSettings drawSubmission;
         // Project Settings > Input: the actions asset (assets-relative, "" none) and the deadzone
         std::string inputActionsAsset;
         float inputDeadzone = 0.15f;
@@ -375,6 +387,7 @@ namespace jasperengine::editor {
         // the project's Atmosphere Quality per platform group (desktop, mobile, web) the game
         // starts with; set before configure()
         void setAtmosphereQuality(const std::array<AtmosphereQuality, 3>& quality) { atmosphereQuality = quality; }
+        void setDrawSubmission(const DrawSubmissionSettings& settings) { drawSubmission = settings; }
         // the project's LOD Bias and Shadow LOD Bias the game starts with; set before configure()
         // the Input Actions the game starts with (InputActions::loadDefault); set before configure()
         void setInputSettings(const std::string& actionsAsset, float deadzone) { inputActionsAsset = actionsAsset; inputDeadzone = deadzone; }

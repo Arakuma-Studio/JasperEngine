@@ -891,6 +891,7 @@ const FieldEntry kBody_MeshComponent_fields[] = {
     JE_RF(MeshComponent, staticShadowCaster, 0x72f14c54u, Bool),
     JE_RF(MeshComponent, lodEnabled, 0xe14c9cceu, Bool),
     JE_RF(MeshComponent, lodBias, 0xa7883134u, Float),
+    JE_RF(MeshComponent, allowGpuInstancing, 0x6e2e5003u, Bool),
     JE_RF(MeshComponent, lodFadeMode, 0xb8aa480cu, Enum),
     JE_RF(MeshComponent, lodAnimateCrossFading, 0x34cb1489u, Bool),
     JE_RF(MeshComponent, lodFadeTransitionWidth, 0x1f4ff698u, Float),

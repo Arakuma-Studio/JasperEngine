@@ -200,6 +200,16 @@ namespace jasperengine{
         std::deque<Entry> entries;
     };
 
+    // The indices of a submesh's triangles over the first vertex of each position
+    // (meshopt_generateShadowIndexBuffer): a depth program reading positions only draws the same
+    // triangles fetching and shading fewer vertices where the mesh splits its vertices for
+    // normals or UVs. Made when they reference more than 10% fewer vertices; count 0 otherwise.
+    struct JASPERENGINE_API ShadowIndexBuffer{
+        std::vector<unsigned char> bytes;
+        ExternalBuffer buffer;
+        unsigned int count = 0;
+    };
+
     struct JASPERENGINE_API Submesh{
         Material material;
         std::map<AttributeType, Attribute> attributes;
@@ -391,6 +401,26 @@ namespace jasperengine{
         std::shared_ptr<SubmeshOit> oit;
         // MeshComponent::smoothNormals entry its position attribute uses (-1: none)
         int smoothNormals = -1;
+
+        // Automatic GPU instancing (spec S55): the HAS_AUTO_INSTANCING variants of render and
+        // depthRender (RenderSystem::loadSubmeshBatchVariants), which draw batches of this
+        // submesh's draws with those of every submesh like it; loaded while GPU Instancing is on
+        // and the submesh can batch, linked to render and depthRender (else they draw nothing)
+        ObjectRender batchRender;
+        ObjectRender batchDepthRender;
+        std::shared_ptr<ShaderRender> batchShader;
+        std::shared_ptr<ShaderRender> batchDepthShader;
+        uint64_t batchShaderProperties = 0;
+        uint64_t batchDepthShaderProperties = 0;
+        uint16_t batchShaderId = 0;
+        uint16_t batchDepthShaderId = 0;
+        // the bounds of the vertices it draws in the mesh's space (null: not known, the mesh's
+        // are used): a pass culls a visible mesh's submeshes one by one (spec S55 R4)
+        AABB localBounds;
+        // position-only indices for the shadow passes (spec S55 R5), shared by the submeshes
+        // over the same buffers: null until a shadow pass first draws it, then kept (empty when
+        // they would not pay off)
+        std::shared_ptr<ShadowIndexBuffer> shadowIndices;
     };
 
     // The Vertex Animation variant a mesh draws with (vertex animation spec 3.5)
@@ -563,6 +593,10 @@ namespace jasperengine{
         // opt-out of the scene's detail levels (Scene::setMeshLodEnabled); bias above 1 keeps detail longer
         bool lodEnabled = true;
         float lodBias = 1.0f;
+        // Allow GPU Instancing (spec S55): its draws may batch with those of the same mesh,
+        // material and pipeline when the project's GPU Instancing is on (Unity's per-material
+        // switch, here per renderer); off draws it alone
+        bool allowGpuInstancing = true;
         float lodError[MAX_MESH_LODS] = {}; // largest error of any submesh at each level
         unsigned int numLods = 1;
         // how a level change shows (spec S54 R9, Unity's LOD Group): Fade Mode; Animate

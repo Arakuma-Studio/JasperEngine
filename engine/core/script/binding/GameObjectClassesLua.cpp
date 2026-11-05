@@ -1879,6 +1879,7 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("receiveShadows", &Mesh::isReceiveShadows, &Mesh::setReceiveShadows)
         .addProperty("lodEnabled", &Mesh::isLodEnabled, &Mesh::setLodEnabled)
         .addProperty("lodBias", &Mesh::getLodBias, &Mesh::setLodBias)
+        .addProperty("allowGpuInstancing", &Mesh::isAllowGpuInstancing, &Mesh::setAllowGpuInstancing)
         .addProperty("fadeMode", &Mesh::getLodFadeMode, &Mesh::setLodFadeMode)
         .addProperty("animateCrossFade", &Mesh::isLodAnimateCrossFading, &Mesh::setLodAnimateCrossFading)
         .addProperty("fadeTransitionWidth", &Mesh::getLodFadeTransitionWidth, &Mesh::setLodFadeTransitionWidth)

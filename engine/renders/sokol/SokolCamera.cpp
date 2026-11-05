@@ -3,6 +3,7 @@
 
 #include "render/RenderBackendTime.h"
 #include "SokolCamera.h"
+#include "SokolObject.h"
 
 #include "System.h"
 #include "SokolPassRecorder.h"
@@ -199,6 +200,7 @@ void SokolCamera::applyViewport(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
+    SokolDrawBatch::flush(); // (held draws were for the rect before)
     sg_apply_viewport(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
 }
 
@@ -212,6 +214,7 @@ void SokolCamera::applyScissor(Rect rect){
     // Add truncated fractional parts to width and height
     float adjustedWidth = rect.getWidth() + (x - flooredX);
     float adjustedHeight = rect.getHeight() + (y - flooredY);
+    SokolDrawBatch::flush(); // (held draws were for the rect before)
     sg_apply_scissor_rect(flooredX, flooredY, std::ceil(adjustedWidth), std::ceil(adjustedHeight), false);
 }
 
@@ -219,11 +222,13 @@ void SokolCamera::applyScissor(Rect rect){
 // (RenderSystem::isRenderingFlipped), so its bottom-left origin is the image's top there
 void SokolCamera::applyViewportTopLeft(int x, int y, int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    SokolDrawBatch::flush(); // (held draws were for the rect before)
     sg_apply_viewport(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 
 void SokolCamera::applyScissorTopLeft(int x, int y, int width, int height){
     RenderBackendTime::Scope backendTime;   // (tests: the backend's share of a frame)
+    SokolDrawBatch::flush(); // (held draws were for the rect before)
     sg_apply_scissor_rect(x, y, width, height, SystemRender::getFeatures().originTopLeft);
 }
 

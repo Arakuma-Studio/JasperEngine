@@ -662,7 +662,8 @@ namespace {
             const std::string& sceneMeshShader = scene->getDefaultCustomShader(ShaderType::MESH);
             SubmeshShaderInputs inputs = RenderSystem::getSubmeshShaderInputs(mesh, submesh, terrain, instmesh, mirror, sceneMeshShader);
 
-            const uint16_t depthShaderId = ShaderPool::registerCustomShader(RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader));
+            const std::string depthShaderSrc = RenderSystem::getSubmeshDepthShaderReference(mesh, submesh, sceneMeshShader);
+            const uint16_t depthShaderId = ShaderPool::registerCustomShader(depthShaderSrc);
             const bool hasPass = RenderSystem::hasExtraPass(submesh, terrain != nullptr);
             const uint16_t passShaderId = hasPass ? ShaderPool::registerCustomShader(RenderSystem::getSubmeshExtraPassReference(submesh)) : 0;
             // (a terrain is never deformed)
@@ -706,6 +707,14 @@ namespace {
                     }
                     if (variant.depth){
                         insertKeys(ShaderType::DEPTH, variant.depthProperties, depthShaderId);
+                    }
+                    // its GPU Instancing variants (with the project's setting, RenderSystem::loadMesh)
+                    const SubmeshBatchVariant batch = RenderSystem::getSubmeshBatchVariant(mesh, submesh, inputs, variant, meshShader, depthShaderSrc);
+                    if (batch.properties){
+                        insertKeys(ShaderType::MESH, batch.properties, meshShaderId);
+                    }
+                    if (batch.depthProperties){
+                        insertKeys(ShaderType::DEPTH, batch.depthProperties, depthShaderId);
                     }
                     if (variant.gbuffer){
                         keys.insert(ShaderPool::getShaderKey(ShaderType::GBUFFER, variant.gbufferProperties));

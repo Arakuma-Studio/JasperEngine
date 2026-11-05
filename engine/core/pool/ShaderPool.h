@@ -168,6 +168,9 @@ namespace jasperengine{
         // MESH's LOD cross-fade bit ('Lfd', spec S54): the dithered variant of fading draws
         static uint64_t getLodFadeProperty();
         static uint64_t getVatProperties(ShaderType shaderType);
+        // the variant bit of automatic GPU instancing (HAS_AUTO_INSTANCING: the object block per
+        // instance, spec S55) of MESH and DEPTH, 0 for another type
+        static uint64_t getAutoInstancingProperty(ShaderType shaderType);
         // S57's MESH bits: 'Til' (Light Mode Tiled), 'Cap' (capsule shadows), 'Cts' (contact
         // shadows) and 'Oit' (an alpha-blended submesh's OIT accumulation render)
         enum class LightingFeature { TILED_LIGHTS, CAPSULE_SHADOWS, CONTACT_SHADOWS, OIT };

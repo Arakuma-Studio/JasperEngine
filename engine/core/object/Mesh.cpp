@@ -442,6 +442,23 @@ float Mesh::getLodBias() const{
     return mesh.lodBias;
 }
 
+void Mesh::setAllowGpuInstancing(bool allow){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    // its batch variants are loaded with it
+    if (mesh.allowGpuInstancing != allow){
+        mesh.allowGpuInstancing = allow;
+
+        mesh.needReload = true;
+    }
+}
+
+bool Mesh::isAllowGpuInstancing() const{
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    return mesh.allowGpuInstancing;
+}
+
 void Mesh::setLodFadeMode(LodFadeMode mode){
     MeshComponent& mesh = getComponent<MeshComponent>();
 

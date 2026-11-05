@@ -247,7 +247,22 @@ namespace jasperengine{
         // width, role and fan parameter (a_lineParams)
         LINETANGENTIN,
         LINETANGENTOUT,
-        LINEPARAMS
+        LINEPARAMS,
+        // an automatically instanced batch's per-instance object block (spec S55,
+        // includes/object_params.glsl, object_depth_params.glsl): the model matrix's rows, the
+        // normal matrix's columns, the model-view-projection's columns, the depth layout's extra
+        // vector (i_objectModel0..2, i_objectNormal0..2, i_objectMvp0..3, i_objectExtra)
+        OBJECTMODEL0,
+        OBJECTMODEL1,
+        OBJECTMODEL2,
+        OBJECTNORMAL0,
+        OBJECTNORMAL1,
+        OBJECTNORMAL2,
+        OBJECTMVP0,
+        OBJECTMVP1,
+        OBJECTMVP2,
+        OBJECTMVP3,
+        OBJECTEXTRA
     };
 
     enum class AttributeDataType{

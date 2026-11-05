@@ -37,6 +37,7 @@
 #include <set>
 #include <stdexcept>
 #include "System.h"
+#include "render/SystemRender.h"
 #include "player/RunControl.h"
 #include "Screen.h"
 #include "util/CanvasScalerRef.h"
@@ -3272,6 +3273,29 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addProperty("ssaoBias", &Scene::getSSAOBias, &Scene::setSSAOBias)
         .addProperty("meshLodEnabled", &Scene::isMeshLodEnabled, &Scene::setMeshLodEnabled)
         .addProperty("meshLodThreshold", &Scene::getMeshLodThreshold, &Scene::setMeshLodThreshold)
+        // the last frame's render statistics (spec S55 R7), read-only: draws, triangles and
+        // instances of every pass and by kind of pass, the GPU Instancing batches, what the
+        // visible lists kept and culled, uniform and upload bytes
+        .addFunction("getRenderStats", +[](const Scene*, lua_State* L) -> luabridge::LuaRef {
+            const RenderStats stats = SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME);
+            luabridge::LuaRef table = luabridge::newTable(L);
+            table["drawCalls"] = stats.drawCalls;
+            table["instances"] = stats.instances;
+            table["triangles"] = (double)stats.triangles;
+            table["mainTriangles"] = (double)stats.mainTriangles;
+            table["shadowTriangles"] = (double)stats.shadowTriangles;
+            table["mainDrawCalls"] = stats.mainDraws;
+            table["shadowDrawCalls"] = stats.shadowDraws;
+            table["depthDrawCalls"] = stats.depthDraws;
+            table["otherDrawCalls"] = stats.otherDraws;
+            table["instancedDraws"] = stats.instancedDraws;
+            table["batchedInstances"] = stats.batchedInstances;
+            table["visible"] = stats.visible;
+            table["culled"] = stats.culled;
+            table["uniformBytes"] = stats.uniformBytes;
+            table["bufferUploadBytes"] = stats.bufferUploadBytes;
+            return table;
+        })
         .addProperty("crossFade", &Scene::isMeshLodCrossFade, &Scene::setMeshLodCrossFade)
         .addProperty("crossFadeDuration", &Scene::getMeshLodCrossFadeDuration, &Scene::setMeshLodCrossFadeDuration)
         .addProperty("depthPrepassEnabled", &Scene::isDepthPrepassEnabled, &Scene::setDepthPrepassEnabled)

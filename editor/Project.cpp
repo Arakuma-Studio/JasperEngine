@@ -1728,6 +1728,16 @@ const editor::HtmlUiRenderSettings& editor::Project::getHtmlUiRenderSettings() c
     return htmlUiRender;
 }
 
+void editor::Project::setDrawSubmissionSettings(const DrawSubmissionSettings& settings){
+    drawSubmission = settings;
+    // the editor's scenes draw with it at once (RenderSystem reads it every update)
+    Engine::setGpuInstancingEnabled(drawSubmission.gpuInstancing);
+}
+
+const editor::DrawSubmissionSettings& editor::Project::getDrawSubmissionSettings() const{
+    return drawSubmission;
+}
+
 void editor::Project::setDeviceSettings(const DeviceSettings& settings){
     deviceSettings = settings;
     Device::setProjectSettings(deviceSettings);
@@ -5714,6 +5724,7 @@ void editor::Project::resetConfigs() {
     stripEngineCode = true;
     setHtmlUiMsaaSamples(defaultHtmlUiMsaaSamples);
     setHtmlUiRenderSettings(HtmlUiRenderSettings());
+    setDrawSubmissionSettings(DrawSubmissionSettings());
     setDeviceSettings(DeviceSettings());
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
@@ -7488,6 +7499,7 @@ void editor::Project::configureGenerator() {
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());
@@ -9567,6 +9579,7 @@ editor::Project::PlayStartupPrepared editor::Project::preparePlayStartup(const s
     std::vector<SceneScriptSource> mergedCppScripts = collectAllSceneCppScripts();
     std::vector<PrefabSceneInfo> prefabBuildInfos = collectAllPrefabs();
     generator.setAtmosphereQuality(atmosphereQuality);
+    generator.setDrawSubmission(drawSubmission);
     generator.setInputSettings(getInputActionsEnginePath(), inputDeadzone);
     generator.setNavigationSettingsCode(generateNavigationSettingsCode(navigationSettings.settings, "    "));
     generator.setDeviceSettingsJson(deviceSettings.toJson());

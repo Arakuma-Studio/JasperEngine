@@ -1041,6 +1041,29 @@ CASES = [
         "max_turns": 12,
     },
     {
+        "id": "guard_draw_calls_by_pass",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Asked whether shadows or the main view cost the draw calls and whether GPU Instancing batches, an "
+                         "agent has only the frame's total without the by-pass counters, and guesses (S55 R7).",
+        "text_at_issue": "get_render_stats result: draw_calls_by_pass {main, shadow, depth, other}, main_triangles, "
+                         "shadow_triangles, instanced_draws, batched_instances (structuredContent and the summary line)",
+        "source": "S55 R7, R13 (docs/specs/S55-draw-submission.md); no failure on record",
+        "prompt": "The game is playing. How many draw calls does the main camera make compared with the shadow maps this "
+                  "frame, and is GPU Instancing batching anything? Measure, don't guess; numbers only, no changes.",
+        "mocks": [
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (game): 318 draws (41 main, 262 shadow; 37 instanced), 9 passes, CPU 6.12 ms.",
+                {"view": "game", "draw_calls": 318, "draw_calls_by_pass": {"main": 41, "shadow": 262, "depth": 9, "other": 6},
+                 "main_triangles": 412806, "shadow_triangles": 1288114, "instanced_draws": 37, "batched_instances": 2014,
+                 "visible": 2311, "culled": 455, "passes": 9, "drawn": True})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": ["get_render_stats"], "reply_must": [r"\b41\b", r"\b262\b", r"\b37\b|2,?014"],
+                   "must_not_call": ["capture_profile", "set_project_settings"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_ios_simulator_without_an_account",
         "kind": "bad",
         "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",

@@ -868,6 +868,8 @@ namespace jasperengine::editor{
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
+        // graphics.gpu_instancing, quality.shadow_lod_bias (spec S55)
+        DrawSubmissionSettings drawSubmission;
         // Project Settings > Quality > Device Tiers, LOD biases, Thermal Response and Graphics >
         // Upload Budget (spec S56): project.yaml's device block
         DeviceSettings deviceSettings;
@@ -1599,6 +1601,10 @@ namespace jasperengine::editor{
         void setDeviceSettings(const DeviceSettings& settings);
         const DeviceSettings& getDeviceSettings() const;
         static bool isValidHtmlUiGlyphAtlasMiB(int mib);
+
+        // GPU Instancing (spec S55): applied to the editor's scenes at once and written into exports
+        void setDrawSubmissionSettings(const DrawSubmissionSettings& settings);
+        const DrawSubmissionSettings& getDrawSubmissionSettings() const;
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the
         // editor's scenes at once and written into exports (docs/rendering/shadows.md)

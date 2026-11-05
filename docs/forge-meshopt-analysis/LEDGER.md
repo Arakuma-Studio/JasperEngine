@@ -64,6 +64,6 @@ parameters sit inside `sprite-batching`, not S55.
 |---|---|
 | S53 | loader and importer merged into `mesh-lod-forge`; Read/Write release, exported-game load, load-time bench and Medium golden in progress |
 | S54 | merged into `mesh-lod-forge` (WERROR linux, Vulkan, its tests pass; web and android before the S57 merge, rerun at the final gate) |
-| S55 | impl |
+| S55 | merged into `mesh-lod-forge`. R9: draws 7.0x (target 10x, not met: 200 unique meshes), shadow triangles -84 % with LOD (met) / -18.7 % from S55 alone, render CPU -8.3 % on llvmpipe (not met, not measurable here) |
 | S56 | merged into `mesh-lod-forge` (linux, web, android built; its tests and MCP files pass) |
 | S57 | merged into `mesh-lod-forge` (WERROR linux, web, android; its tests pass). GPU costs measured on llvmpipe only |

@@ -635,6 +635,14 @@ uint64_t ShaderPool::getVatProperty(ShaderType shaderType, bool bones){
     }
 }
 
+uint64_t ShaderPool::getAutoInstancingProperty(ShaderType shaderType){
+    switch (shaderType) {
+        case ShaderType::MESH:  return shaderPropertyBit(41);
+        case ShaderType::DEPTH: return shaderPropertyBit(18);
+        default:                return 0;
+    }
+}
+
 uint64_t ShaderPool::getLightingProperty(ShaderPool::LightingFeature feature){
     switch (feature){
         case LightingFeature::TILED_LIGHTS:    return shaderPropertyBit(36);
@@ -670,8 +678,8 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 41;
-        case ShaderType::DEPTH:  return 18;
+        case ShaderType::MESH:   return 42;
+        case ShaderType::DEPTH:  return 19;
         case ShaderType::GBUFFER: return 16;
         case ShaderType::UI:     return 5;
         case ShaderType::POINTS: return 5;
@@ -767,6 +775,9 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             case 39: return shortName ? "Oit" : "Order Independent Transparency";
             // the LOD cross-fade's dither, for fading draws only (getLodFadeProperty)
             case 40: return shortName ? "Lfd" : "Lod Fade";
+            // automatic GPU instancing (HAS_AUTO_INSTANCING, includes/object_params.glsl, S55):
+            // the object block per instance (getAutoInstancingProperty)
+            case 41: return shortName ? "Aui" : "Auto Instancing";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -793,6 +804,8 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // a Vertex Animator's baked animation (includes/vat.glsl), as MESH 33/34
             case 16: return shortName ? "Vat" : "Vertex Animation";
             case 17: return shortName ? "Vab" : "Vertex Animation Bones";
+            // automatic GPU instancing (includes/object_depth_params.glsl, S55)
+            case 18: return shortName ? "Aui" : "Auto Instancing";
         }
     } else if (shaderType == ShaderType::GBUFFER) {
         switch (bit) {

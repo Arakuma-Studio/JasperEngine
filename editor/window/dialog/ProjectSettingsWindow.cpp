@@ -37,6 +37,7 @@
 #include "command/CommandHistory.h"
 #include "command/type/InputActionsCmd.h"
 #include "command/type/HtmlUiRenderSettingsCmd.h"
+#include "command/type/DrawSubmissionSettingsCmd.h"
 #include "command/type/DeviceSettingsCmd.h"
 #include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
@@ -1089,6 +1090,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_threading = project->getThreadingSettings();
     m_shaderCreation = project->getShaderCreationSettings();
     m_htmlUiRender = project->getHtmlUiRenderSettings();
+    m_drawSubmission = project->getDrawSubmissionSettings();
     m_deviceSettings = project->getDeviceSettings();
     m_navigation = project->getNavigationSettings();
     m_audioSettings = project->getAudioSettings();
@@ -1869,6 +1871,19 @@ void ProjectSettingsWindow::drawGraphicsSettings() {
                 endSettingsRow("Rasterizes text at its on-screen size under scale transforms and odd pixel ratios, and draws it "
                                "from distance fields while that size animates. Off keeps text a bitmap at the document's scale.");
             }
+        }
+
+        // automatic GPU instancing (S55)
+        if (settingsui::beginRow("graphics.gpu_instancing")) {
+            const DrawSubmissionSettings defaults;
+            if (projectBeginSettingsRow("GPU Instancing", m_drawSubmission.gpuInstancing != defaults.gpuInstancing)) {
+                m_drawSubmission.gpuInstancing = defaults.gpuInstancing;
+            }
+            ImGui::Checkbox("##GpuInstancing", &m_drawSubmission.gpuInstancing);
+            endSettingsRow("Draws opaque Meshes of the same mesh, material and shader as one instanced draw (the image stays "
+                           "the same), applies constant uniforms once and sorts each pass's draws by state: fewer draw calls, "
+                           "the largest CPU cost on WebGL2 and mobile. A Mesh opts out with Allow GPU Instancing. Off draws "
+                           "every Mesh alone.");
         }
 
         if (settingsui::beginRow("graphics.mobile_pbr_tier")) {
@@ -4923,6 +4938,10 @@ bool ProjectSettingsWindow::applySettings() {
     // undoable: the editor's documents follow at once
     if (m_htmlUiRender != m_project->getHtmlUiRenderSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new HtmlUiRenderSettingsCmd(m_project, m_htmlUiRender));
+    }
+    // undoable: the editor's scenes draw with them at once
+    if (m_drawSubmission != m_project->getDrawSubmissionSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new DrawSubmissionSettingsCmd(m_project, m_drawSubmission));
     }
     // undoable: the Device Tier table and the rest (the Game view simulates a tier with it)
     if (m_deviceSettings != m_project->getDeviceSettings()) {

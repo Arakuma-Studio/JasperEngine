@@ -92,6 +92,28 @@ namespace jasperengine {
         // unless it is the one applied last in this pass; false while the shader is not ready
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
+
+        // Automatic GPU instancing (spec S55, SystemRender::beginDrawBatch). An object loaded on the
+        // HAS_AUTO_INSTANCING variant of another's shader, with the other's attributes, then the
+        // per-instance vectors of layout at these locations (after every other attribute):
+        void addBatchInstanceAttributes(const int* locations, int count, BatchLayout layout);
+        // after both loaded: true when this object can draw source's batches (objectBlock, the
+        // block it reads per instance instead; the shaders' other blocks, textures and vertex
+        // buffers the same)
+        bool linkBatchVariant(const ObjectRender& source, const ShaderData& sourceShader, const ShaderData& variantShader,
+                              const std::string& objectBlock);
+        bool isBatchVariant() const;
+        // what the last linkBatchVariant refused (null: linked or never tried; diagnostics)
+        const char* getBatchLinkFailure() const;
+        // the next draw() may join a batch of variant's (linked to this object), whose instances
+        // read the block in objectSlot, with this LOD fade (spec S54 C3: -1..1, 0 none)
+        void setNextDrawBatch(ObjectRender* variant, int objectSlot, float lodFade = 0.0f);
+        // the per-instance data of this draw from the frame's stream buffer instead of original
+        // (the same layout; spec S55: a shadow slot's terrain nodes): false when it does not fit
+        bool bindStreamVertexBuffer(BufferRender* original, const void* data, size_t bytes);
+        // the first vertex buffer and the index buffer bound now (sort keys)
+        uint32_t getVertexBufferId() const;
+        uint32_t getIndexBufferId() const;
         // baseElement skips that many elements of the bound index (or vertex) range,
         // used to draw a single sub-range of a submesh, like one tilemap chunk
         void draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);

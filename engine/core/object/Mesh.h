@@ -111,6 +111,9 @@ namespace jasperengine{
         void setLodBias(float lodBias);
         float getLodBias() const;
 
+        // Allow GPU Instancing (spec S55): its draws may batch with those of its like
+        void setAllowGpuInstancing(bool allow);
+        bool isAllowGpuInstancing() const;
         // spec S54 R9: Fade Mode, Animate Cross-fading, Fade Transition Width (0..1) and Cull
         // Below Screen Height (share of the view, 0..1; 0 never culls)
         void setLodFadeMode(LodFadeMode mode);

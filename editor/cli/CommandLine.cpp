@@ -348,6 +348,7 @@ static void printBenchmarkUsage(const std::string& commandName) {
         << "      --frames <n>       Measured frames after warmup. Default: 180.\n"
         << "      --warmup <n>       Warmup frames after resources load. Default: 90.\n"
         << "      --mesh-lod <on|off>      Override the scene's mesh LOD setting.\n"
+        << "      --gpu-instancing <on|off> Override the project's GPU Instancing for the run.\n"
         << "      --depth-prepass <on|off> Override the scene's depth prepass setting.\n"
         << "      --lit-quality <standard|high> Override the scene's Lit Quality.\n"
         << "      --play             Measure the scene playing (Play: scripts, animation, physics run)\n"

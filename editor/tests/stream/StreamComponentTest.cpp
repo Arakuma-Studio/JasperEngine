@@ -125,7 +125,7 @@ namespace {
 STABLE(Transform, Transform,
     component.position = Vector3(1, 2, 3); component.scale = Vector3(2, 2, 2);
     component.rotation = Quaternion(30.0f, Vector3::UNIT_Y); component.visible = false)
-STABLE(MeshComponent, MeshComponent, component.castShadows = false; component.receiveLights = false)
+STABLE(MeshComponent, MeshComponent, component.castShadows = false; component.receiveLights = false; component.allowGpuInstancing = false)
 STABLE(UIComponent, UIComponent, component.color = Vector4(0.5f, 0.25f, 1.0f, 0.75f))
 STABLE(ButtonComponent, ButtonComponent, component.colorHovered = Vector4(0.2f, 0.3f, 0.4f, 1.0f))
 STABLE(ScrollbarComponent, ScrollbarComponent, component.type = ScrollbarType::HORIZONTAL)

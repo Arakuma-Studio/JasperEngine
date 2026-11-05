@@ -10,6 +10,7 @@
 #include "render/BufferRender.h"
 #include "render/ShaderRender.h"
 #include "render/TextureRender.h"
+#include "shader/ShaderData.h"
 
 #include "sokol_gfx.h"
 
@@ -66,7 +67,81 @@ namespace jasperengine{
         std::vector<Variant> list;
     };
 
+    // What the per-instance data of an automatically instanced batch (spec S55) is made of: the
+    // per-draw object block its draws apply, read into the vectors of the instanced variant
+    // (includes/object_params.glsl, includes/object_depth_params.glsl)
+    enum class BatchLayout : uint8_t {
+        NONE = 0,
+        MESH,   // u_vs_pbrParams (model, normal, mvp): 10 vectors an instance
+        DEPTH   // u_vs_depthParams (model, view-projection, mvp): 8 vectors an instance
+    };
+
+    class SokolObject;
+
+    // Automatic GPU instancing and redundant state (spec S55), on while GPU Instancing is (Project
+    // Settings > Graphics; off, every draw applies its pipeline, uniforms and bindings as before).
+    // On, a pipeline already applied in the pass is not applied again, nor a uniform block whose
+    // bytes are the ones last applied to its slot since that pipeline (sokol keeps them; it asks for
+    // them again only after sg_apply_pipeline). Between begin() and end() (a pass's opaque queue)
+    // the draws of objects told setNextDrawBatch are held: consecutive ones that differ only in
+    // their object block (same pipeline, bindings, elements and every other uniform byte) become
+    // one instanced draw of their variant, the object blocks its instances (appended to one stream
+    // buffer a frame); a held draw that stays alone is drawn as it would have been. Render thread.
+    class SokolDrawBatch{
+    public:
+        struct FrameStats{
+            uint32_t instancedDraws = 0;    // instanced draws the batches made
+            uint32_t batchedInstances = 0;  // the draws they replaced
+            uint64_t uniformBytesKept = 0;  // uniform bytes not applied again (already in their slot)
+            uint32_t pipelinesKept = 0;     // pipelines not applied again
+            uint64_t instanceBytes = 0;     // instance data appended
+            // why held draws that could batch did not join the open batch (diagnostics: a scene
+            // whose copies stay single shows which state differs between them)
+            uint32_t offeredDraws = 0;      // held with a linked variant
+            uint32_t splitPipeline = 0;     // another pipeline, variant or object block slot
+            uint32_t splitElements = 0;     // other elements (a LOD level, another submesh range)
+            uint32_t splitBindings = 0;     // other buffers, textures or samplers
+            uint32_t splitUniforms = 0;     // another uniform block or its bytes
+            uint32_t splitUniformSlots = 0; // the slots whose bytes differed (bit 31: other blocks)
+            uint32_t splitBindingParts = 0; // 1 vertex buffers, 2 their offsets, 4 index buffer, 8 views, 16 samplers
+        };
+
+        static void setEnabled(bool enabled);
+        static bool isEnabled();
+        static void begin();
+        // draws what is held
+        static void end();
+        static bool isRecording();
+        // draws the batch being held now (before something else draws, outside SokolObject)
+        static void flush();
+        // a pipeline or uniforms applied outside SokolObject: nothing applied before is assumed
+        static void invalidate();
+        // the frame was committed (SokolSystem::commit): its counters become the last frame's, the
+        // instance stream buffer grows when the frame needed more
+        static void endFrame();
+        static const FrameStats& getLastFrameStats();
+        // bytes into this frame's instance stream buffer (sokol's, shared with the batches): their
+        // offset, -1 when they do not fit this frame (it grows for the next) or the stream budget
+        // refused them
+        static int appendStream(const void* data, size_t bytes);
+        static sg_buffer streamBuffer();
+        // releases the instance stream buffer (sokol's, made on the first batch of a frame and
+        // made again bigger when a frame needed more)
+        static void shutdown();
+
+        // (SokolObject) a uniform block applied directly: false when refused by the frame's
+        // uniform buffer
+        static bool applyUniforms(int slot, const void* data, unsigned int size);
+        static void applyPipeline(sg_pipeline pipeline);
+        // (SokolObject, while recording) the draw being set up from beginDraw to draw: true when
+        // held (its uniforms copied, its draw drawn with its batch)
+        static void beginHeld(SokolObject* object, sg_pipeline pipeline);
+        static bool holdUniforms(SokolObject* object, int slot, unsigned int size, const void* data);
+        static bool holdDraw(SokolObject* object, unsigned int base, unsigned int count, unsigned int instances);
+    };
+
     class SokolObject{
+        friend class SokolDrawBatch;
 
     private:
         void addAttribute(int slot, BufferRender* buffer, unsigned int elements, AttributeDataType dataType, unsigned int stride, size_t offset,
@@ -168,6 +243,25 @@ namespace jasperengine{
 
         std::map< BufferInfo, size_t > bufferToBindSlot;
 
+        // (spec S55) As the instanced variant of another object (linkBatchVariant): that object's
+        // uniform slots in this one's shader (-1: the per-instance object block), and the bind slot
+        // of the instance stream buffer, after that object's vertex buffers
+        int8_t batchUniformSlots[SG_MAX_UNIFORMBLOCK_BINDSLOTS];
+        int batchInstanceBindSlot = -1;
+        BatchLayout batchLayout = BatchLayout::NONE;
+        const char* batchLinkFailure = nullptr;
+        // the next draw's batch (setNextDrawBatch), taken by that draw
+        SokolObject* nextBatchVariant = nullptr;
+        int nextBatchObjectSlot = -1;
+        float nextBatchLodFade = 0.0f;
+        // the pipeline type of the last beginDraw (by bit index) and whether it drew the plain
+        // pipeline (not a mirrored or no-cull variant): the variant draws the same type
+        int lastPipelineIndex = -1;
+        bool lastPipelinePlain = false;
+        // the variant's pipeline of that type, ready to draw with these bindings (created, its
+        // GL warm draw done): false while it is not (its batch is drawn draw by draw)
+        bool batchPipeline(int pipelineIndex, const sg_bindings& bindings, sg_pipeline& pipeline);
+
 
         sg_vertex_format getVertexFormat(unsigned int elements, AttributeDataType dataType, bool normalized);
         sg_primitive_type getPrimitiveType(PrimitiveType primitiveType);
@@ -252,6 +346,29 @@ namespace jasperengine{
         // applied last in this pass
         bool beginDraw(const PipelineState& state);
         void applyUniformBlock(int slot, unsigned int count, void* data);
+
+        // (spec S55) The per-instance attributes of a batch variant (BatchLayout's vectors, at the
+        // locations given in order), in the instance stream buffer, after every other attribute
+        void addBatchInstanceAttributes(const int* locations, int count, BatchLayout layout);
+        // After both loaded: makes this object (its shader variantShader) the instanced variant of
+        // source (shader sourceShader), whose per-draw block objectBlock it reads per instance. False
+        // when it cannot draw source's batches: another uniform block, texture, sampler or storage
+        // buffer layout, other vertex buffers, or the object block still there (a shader ignoring
+        // HAS_AUTO_INSTANCING)
+        bool linkBatchVariant(const SokolObject& source, const ShaderData& sourceShader, const ShaderData& variantShader,
+                              const std::string& objectBlock);
+        bool isBatchVariant() const;
+        // what the last linkBatchVariant refused (null: linked, or never tried)
+        const char* getBatchLinkFailure() const;
+        // the next draw of this object may join a batch drawn by variant (linked to it), its object
+        // block in uniform slot objectSlot, with this LOD fade (spec S54: 0 none)
+        void setNextDrawBatch(SokolObject* variant, int objectSlot, float lodFade);
+        // per-instance data of this draw in the frame's stream buffer instead of the vertex buffer
+        // fromBufferId (the same layout): false when it does not fit this frame
+        bool bindStreamVertexBuffer(uint32_t fromBufferId, const void* data, size_t bytes);
+        // the bindings now (diagnostics and sort keys: the first vertex and the index buffer)
+        uint32_t getVertexBufferId() const;
+        uint32_t getIndexBufferId() const;
         // false: skipped, its uniforms did not fit the frame's uniform buffer (SokolSystem::reserveUniformBytes)
         // or its descriptor sets the descriptor buffer (SokolSystem::reserveDescriptorBytes)
         bool draw(unsigned int baseElement, unsigned int vertexCount, unsigned int instanceCount);

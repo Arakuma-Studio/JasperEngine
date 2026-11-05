@@ -119,6 +119,18 @@ namespace jasperengine{
         static bool hasTextureFormatSupportOverride();
         // the dynamic pipeline cache (ObjectRender::beginDraw(PipelineState)): pipelines
         // created and applied since start, and how many it holds now
+        // Automatic GPU instancing and redundant state (spec S55, SokolDrawBatch), on while
+        // Project Settings > GPU Instancing is: a pipeline or uniform block already applied is not
+        // applied again, and between beginDrawBatch and endDrawBatch (a pass's opaque queue)
+        // consecutive draws of one mesh, material and pipeline that differ only in their object
+        // block become one instanced draw (ObjectRender::setNextDrawBatch)
+        static void setDrawBatching(bool enabled);
+        static bool isDrawBatching();
+        static void beginDrawBatch();
+        static void endDrawBatch();
+        // the last committed frame's
+        static DrawBatchStats getDrawBatchStats();
+
         static uint64_t getPipelineCacheMisses();
         static uint64_t getPipelineApplies();
         static size_t getPipelineCacheSize();

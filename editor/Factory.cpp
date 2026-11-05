@@ -1208,6 +1208,8 @@ std::string editor::Factory::createMeshComponent(int indentSpaces, EntityRegistr
         code << ind << "mesh.staticShadowCaster = true;\n";
     code << ind << "mesh.lodEnabled = " << formatBool(mesh.lodEnabled) << ";\n";
     code << ind << "mesh.lodBias = " << formatFloat(mesh.lodBias) << ";\n";
+    if (!mesh.allowGpuInstancing)
+        code << ind << "mesh.allowGpuInstancing = false;\n";
     // the fade settings only away from their defaults (spec S54 R9)
     if (mesh.lodFadeMode != LodFadeMode::CROSS_FADE)
         code << ind << "mesh.lodFadeMode = LodFadeMode::NONE;\n";
