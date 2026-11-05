@@ -323,6 +323,7 @@ editor::Project::~Project(){
     playStartupTask.wait();
     playStopTask.wait();
     sceneSaveTask.wait();
+    shaderListWrite.wait();
     // the hooks point here: an editor or tool with a later Project installs its own
     if (UndoTimeline::getProjectHistory() == &projectHistory){
         UndoTimeline::setProjectHistory(nullptr);

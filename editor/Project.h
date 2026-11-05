@@ -1036,6 +1036,7 @@ namespace jasperengine::editor{
 
         ShaderListCache shaderListCache;
         std::filesystem::path shaderListCacheProject;  // whose file it holds
+        jobs::Task<bool> shaderListWrite;              // its file being written (ioWriteChannel)
         // A scene file that did not read as a scene, not read again until its stamp changes
         struct ShaderListFailure { std::int64_t writeTime = 0; std::uintmax_t size = 0; std::string error; };
         std::map<std::string, ShaderListFailure> shaderListFailures;
@@ -1468,6 +1469,8 @@ namespace jasperengine::editor{
         // files they and the collector read, the editor that computed them
         std::string shaderListContext() const;
         void loadShaderListCache();
+        // Off the main thread, one at a time: what changes meanwhile goes with the next list
+        void writeShaderListCache();
         std::filesystem::path shaderListCachePath() const;
         // What a closed scene needs, computed from its file: its keys (the file's, what its content
         // needs) and the prefabs it lists, which become sceneProject's. False with error when

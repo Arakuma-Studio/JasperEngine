@@ -5,11 +5,13 @@ scene that cannot be read is named (R4)."""
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 from harness import Editor, over_budget
@@ -19,6 +21,7 @@ CI = True
 TIMEOUT = 2400
 
 _stale: Path | None = None
+CACHE = ".jasperengine/shader-lists.yaml"
 KEYS = re.compile(r"^shaderKeys:\n(?:[ ]+.*\n|-.*\n)*", re.M)
 
 
@@ -82,6 +85,15 @@ async def stale_project() -> Path:
     (root / "project" / ".jasperengine" / "shader-lists.yaml").unlink(missing_ok=True)
     _stale = root / "project"
     return _stale
+
+
+async def cache_written(ed: Editor, deadline: float = 60.0) -> None:
+    """The write is off the main thread: until the file holds the closed scenes; the deadline only guards a hang."""
+    file = ed.project / CACHE
+    end = time.monotonic() + deadline
+    while not (file.exists() and "scenes/Flat.scene" in file.read_text()):
+        ed.check(time.monotonic() < end, f"{file} was not written")
+        await asyncio.sleep(0.05)
 
 
 async def test_stale_closed_scenes_match_an_export():
@@ -150,6 +162,7 @@ async def test_unchanged_project_answers_from_the_cache():
         ed.check(not over, f"over the budget: {over}")
 
         # the next session answers from the file the cache keeps
+        await cache_written(ed)
         kept = Path(tempfile.mkdtemp(prefix="jasper-shader-lists-kept-")) / "project"
         shutil.copytree(ed.project, kept, symlinks=True)
 
@@ -182,6 +195,22 @@ async def test_unchanged_project_answers_from_the_cache():
         ed.check_eq(info["shaders_complete"], True)
         ed.check_eq(info["shader_list_scenes_read"], 0, "the cache outlives the session")
         ed.check_eq(listed(info), names)
+
+
+async def test_the_reply_does_not_wait_for_the_cache_write():
+    """R3: writing the cache ends in an fsync, which a slow disk makes hundreds of milliseconds: the
+    reply comes first. The hold keeps the write pending, so this needs no timing."""
+    hold = Path(tempfile.mkdtemp(prefix="jasper-shader-lists-hold-")) / "hold"
+    hold.write_text("")
+    async with Editor(project=await stale_project(), label="hold",
+                      env={"JASPER_SHADER_LIST_WRITE_HOLD_FILE": str(hold)}) as ed:
+        info = await build_info(ed)
+        ed.check_eq(info["shaders_complete"], True)
+        ed.check(not (ed.project / CACHE).exists(), "the reply waited for the cache file")
+        again = await ed.call("get_build_info")
+        ed.check_eq(again["shaders_complete"], True, "and the next call answers while it is written")
+        hold.unlink()
+        await cache_written(ed)
 
 
 async def test_past_the_budget_is_a_job():

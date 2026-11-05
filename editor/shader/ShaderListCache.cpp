@@ -69,7 +69,12 @@ bool ShaderListCache::load(const std::filesystem::path& file) {
     }
 }
 
-bool ShaderListCache::save(const std::filesystem::path& file) {
+std::map<std::string, ShaderListCache::Entry> ShaderListCache::takeEntriesToWrite() {
+    dirty = false;
+    return entries;
+}
+
+bool ShaderListCache::write(const std::filesystem::path& file, const std::map<std::string, Entry>& entries) {
     YAML::Node root;
     root["version"] = CACHE_VERSION;
     YAML::Node scenes(YAML::NodeType::Map);
@@ -90,7 +95,5 @@ bool ShaderListCache::save(const std::filesystem::path& file) {
     std::error_code ec;
     FileUtils::createDirectories(file.parent_path(), ec);
     if (ec) return false;
-    if (!io::writeFileAtomic(file, DocumentFiles::text(root)).ok()) return false;
-    dirty = false;
-    return true;
+    return io::writeFileAtomic(file, DocumentFiles::text(root)).ok();
 }

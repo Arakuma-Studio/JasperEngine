@@ -62,6 +62,7 @@ waiting click and refused drop (`tools/mcp/tests/test_scene_view*.py`).
 then wait for the texture, never show its stand-in (`tools/mcp/tests/test_screenshot_waits.py`).
 `JASPER_SHADER_LIST_SYNC_MS=<ms>` is the time `get_build_info` may read closed scenes before it hands
 the rest to a job; 0 always hands them over (`tools/mcp/tests/test_shader_lists.py`).
+`JASPER_SHADER_LIST_WRITE_HOLD_FILE=<path>` holds the write of that cache while the file exists, up to 20 s (same test).
 `JASPER_TEST_RECORDER_FAIL=<list>` forces Recorder failures (`editor/recorder/RecorderSettings.h`): `audio@N`,
 `audio-header`, `video@N`, `encoder-kill@N`, `mux`, `png@N`, `publish` (they read as a full disk),
 `hold-limit=<ms>` (the wait for a frame's loads) and `free=<MB>` (the free space seen); read once per

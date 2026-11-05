@@ -39,8 +39,11 @@ namespace jasperengine::editor {
         bool isDirty() const { return dirty; }
         // false: no usable file (the cache is then empty)
         bool load(const std::filesystem::path& file);
-        // false: not written (the cache stays dirty)
-        bool save(const std::filesystem::path& file);
+        // A copy for a writer on another thread; clean from here on, until markDirty (a failed write)
+        std::map<std::string, Entry> takeEntriesToWrite();
+        void markDirty() { dirty = true; }
+        // Any thread: it ends in an fsync, which a reply must not wait for
+        static bool write(const std::filesystem::path& file, const std::map<std::string, Entry>& entries);
 
     private:
         std::map<std::string, Entry> entries;

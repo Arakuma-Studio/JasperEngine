@@ -51,3 +51,6 @@ which can be stale (63 listed instead of 71 in one test). A missing key means a 
   `bad_shader_list_incomplete` passed 4/4 with and without a `next` hint, so AGENTS.md "MCP text" says to cut it; what
   it fails without is `shaders_job_id`.
 - **The fixture half of AC2 is `test_shader_lists_fixture.py`**, outside the CI list: the fixture is not in git.
+- **The cache file is written on `ioWriteChannel`, not on the Background lane.** It ends in an fsync, and
+  `docs/jobs-memory.md` sends blocking long writes to that channel, not to a work-stealing worker. The reply never
+  waits for it; a lost write only costs reading the scenes again.

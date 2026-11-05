@@ -53,8 +53,10 @@ TEST(ShaderListCache, KeepsEntriesBetweenSessions) {
     entry.keys.insert(forked);
     cache.store("scenes/A.scene", entry);
     EXPECT_TRUE(cache.isDirty());
-    ASSERT_TRUE(cache.save(file));
+    ASSERT_TRUE(ShaderListCache::write(file, cache.takeEntriesToWrite()));
     EXPECT_FALSE(cache.isDirty());
+    cache.markDirty();
+    EXPECT_TRUE(cache.isDirty()) << "a failed write is tried again";
 
     ShaderListCache next;
     ASSERT_TRUE(next.load(file));
@@ -88,7 +90,7 @@ TEST(ShaderListCache, AnUnusableFileIsAnEmptyCache) {
     const fs::path file = scratchCacheFile("unusable");
     ShaderListCache cache;
     cache.store("scenes/A.scene", sampleEntry());
-    ASSERT_TRUE(cache.save(file));
+    ASSERT_TRUE(ShaderListCache::write(file, cache.takeEntriesToWrite()));
     const auto write = [&file](const std::string& text) {
         std::ofstream out(file, std::ios::binary | std::ios::trunc);
         out << text;

@@ -8,6 +8,7 @@
 #include "Project.h"
 
 #include "DocumentFile.h"
+#include "jobs/JobSystem.h"
 #include "LoadReport.h"
 #include "Out.h"
 #include "Factory.h"
@@ -21,10 +22,12 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <thread>
 
 using namespace jasperengine;
 namespace fs = std::filesystem;
@@ -95,9 +98,46 @@ void editor::Project::loadShaderListCache() {
     if (shaderListCacheProject == getProjectPath()) {
         return;
     }
+    shaderListWrite.wait();
+    shaderListWrite.reset();
     shaderListCacheProject = getProjectPath();
     shaderListFailures.clear();
     shaderListCache.load(shaderListCachePath());
+}
+
+void editor::Project::writeShaderListCache() {
+    if (shaderListWrite.isValid()) {
+        if (!shaderListWrite.isReady()) {
+            return;
+        }
+        // the next list tries a failed write again
+        if (!shaderListWrite.get()) {
+            shaderListCache.markDirty();
+        }
+        shaderListWrite.reset();
+    }
+    if (!shaderListCache.isDirty()) {
+        return;
+    }
+    jobs::SubmitOptions options;
+    options.name = "shader-list-cache";
+    shaderListWrite = jobs::system().ioWriteChannel().submit(
+        [file = shaderListCachePath(), entries = shaderListCache.takeEntriesToWrite()]() {
+            // JASPER_SHADER_LIST_WRITE_HOLD_FILE: while that file exists, for a test to see the
+            // reply come first (bounded: a test that died leaves it behind)
+            if (const char* hold = std::getenv("JASPER_SHADER_LIST_WRITE_HOLD_FILE"); hold && *hold) {
+                std::error_code ec;
+                const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
+                while (fs::exists(hold, ec) && std::chrono::steady_clock::now() < deadline) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                }
+            }
+            try {
+                return ShaderListCache::write(file, entries);
+            } catch (const std::exception&) {
+                return false;
+            }
+        }, options);
 }
 
 std::string editor::Project::shaderListContext() const {
@@ -376,8 +416,8 @@ editor::ShaderListStatus editor::Project::refreshClosedSceneShaderKeys(const Sha
                                            fs::exists(getProjectPath() / path, ec) ? "the file did not load when the project opened" : "the file is missing"});
     }
 
-    if (status.complete() && shaderListCache.isDirty()) {
-        shaderListCache.save(shaderListCachePath());
+    if (status.complete()) {
+        writeShaderListCache();
     }
     return status;
 }
