@@ -440,3 +440,5 @@ None new (R19: the effect table already exposes parameters).
     2,644-2,913 bytes gzipped: over the 2 KB estimate of 6.6.
 17. **AC7's device check is a human step and has not been done.** On a device: a new project's game respects
     the silent switch and mixes with Music app playback; an existing project's does not change.
+18. **AC7's `tools/ci/ios_packaging.sh` has not run:** the Mac was unreachable. Before that, the iOS player built
+    and packaged with this work, ahead of the hook's final iOS-only form.
