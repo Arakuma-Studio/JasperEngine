@@ -39,6 +39,8 @@ TOOLS = REPO / "tools/sound-library"
 BUILD = TOOLS / "build_library.py"
 ESSENTIALS = REPO / "editor/resources/sound-library/essentials"
 PINS = ["numpy==2.5.4", "scipy==1.18.1", "soundfile==0.14.0", "pyloudnorm==0.2.0"]
+# the pins need Python 3.12, which uv fetches when the build image's own (3.10) is older
+PIN_PYTHON = "3.12"
 TIMEOUT = 1800
 CI_EXCLUDED = "the maintainers' pipeline: its full runs need the pinned download cache (JASPER_SOUND_CACHE), not a commit gate"
 
@@ -110,7 +112,7 @@ def uv():
 
 
 def uv_python(*args):
-    cmd = [uv(), "run", "--quiet", "--no-project"]
+    cmd = [uv(), "run", "--quiet", "--no-project", "--python", PIN_PYTHON]
     for p in PINS:
         cmd += ["--with", p]
     return cmd + ["python", *map(str, args)]

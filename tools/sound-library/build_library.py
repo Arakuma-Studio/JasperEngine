@@ -56,7 +56,7 @@ tail the oracle calls truncated is cut later or given a release fade, else rejec
 
 Everything but verify needs the pinned packages:
 
-    uv run --no-project --with numpy==2.5.4 --with scipy==1.18.1 --with soundfile==0.14.0 \\
+    uv run --no-project --python 3.12 --with numpy==2.5.4 --with scipy==1.18.1 --with soundfile==0.14.0 \\
         --with pyloudnorm==0.2.0 tools/sound-library/build_library.py all --cache /tmp/snd-cache --work /tmp/snd-work \\
         --editor build/linux/editor-install/bin/jasperengine-editor
 
