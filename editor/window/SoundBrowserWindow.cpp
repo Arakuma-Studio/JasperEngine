@@ -264,7 +264,7 @@ void SoundBrowserWindow::stopPreview() {
 void SoundBrowserWindow::startPreview(const SoundSearch::Entry& entry, double gainDb) {
     stopPreview();
     // nothing of an audition may reach a capture of the game's sound
-    if (AudioSystem::isOfflineCapture()) return;
+    if (AudioSystem::isDeterministicHeld()) return;
     previewPath = entry.path;
     previewGainDb = gainDb;
     auto job = std::make_shared<PreviewJob>();
@@ -340,7 +340,7 @@ void SoundBrowserWindow::updatePreview() {
         previewPath.clear();
         previewSample.reset();
     }
-    if (previewHandle != 0 && AudioSystem::isOfflineCapture()) stopPreview();
+    if (previewHandle != 0 && AudioSystem::isDeterministicHeld()) stopPreview();
 }
 
 // ---------------------------------------------------------------- drawing

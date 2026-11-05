@@ -3098,9 +3098,8 @@ void editor::Project::preparePlayAudioCapture(){
     bool capture = playAudioCapture.capture;
     if (!playAudioCapture.armed) {
         // a device hears the game; a chosen NoSound or Null is a test's, left as it is
-        const AudioBackend backend = AudioSystem::getBackend();
-        capture = backend == AudioBackend::Deterministic ||
-                  (backend == AudioBackend::Auto && (!AudioSystem::init() || !AudioSystem::isOutputAvailable()));
+        const AudioBackend backend = AudioSystem::getSelectedBackend();
+        capture = backend == AudioBackend::Deterministic || (backend == AudioBackend::Auto && !AudioSystem::hasDevice());
     }
     if (!capture) return;
     playHoldsAudioDriver = true;

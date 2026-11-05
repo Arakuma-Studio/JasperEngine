@@ -301,6 +301,12 @@ namespace jasperengine{
 		// at a Play's start and stop and a Recorder's start and end. False when it did not open.
 		static bool beginDeterministic();
 		static void endDeterministic();
+		// a Play's capture or a movie holds the driver: its mix is theirs, no preview plays into it
+		static bool isDeterministicHeld();
+		// What was selected, and whether a device was open, beneath a hold: a Recorder movie makes
+		// neither of them "no device" for the Play's capture
+		static AudioBackend getSelectedBackend();
+		static bool hasDevice();
 
 		// ---- Sound Events (docs/specs/S37-sound-events.md)
 		// Forgets every event's bag, sequence, cooldown and instances, the one-per-Play warnings and

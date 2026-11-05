@@ -368,6 +368,7 @@ namespace {
     int deterministicHolds = 0;
     bool deterministicSwitched = false;
     AudioBackend backendBeforeDeterministic = AudioBackend::Auto;
+    bool deviceBeforeDeterministic = false;
     constexpr unsigned int deterministicRate = 48000;
     constexpr unsigned int deterministicChunk = 512;
     constexpr unsigned int deterministicChannels = 2;
@@ -660,12 +661,27 @@ bool AudioSystem::beginDeterministic(){
         deterministicSwitched = getOutputMode() != AudioOutputMode::Deterministic;
         if (deterministicSwitched) {
             backendBeforeDeterministic = backend;
+            deviceBeforeDeterministic = hasDevice();
             backend = AudioBackend::Deterministic;
             deInit();
             outputUnavailable = false;
         }
     }
     return init() && deterministicDriver;
+}
+
+bool AudioSystem::isDeterministicHeld(){
+    return deterministicHolds > 0;
+}
+
+AudioBackend AudioSystem::getSelectedBackend(){
+    readBackendEnvironment();
+    return deterministicHolds > 0 && deterministicSwitched ? backendBeforeDeterministic : backend;
+}
+
+bool AudioSystem::hasDevice(){
+    if (deterministicHolds > 0 && deterministicSwitched && backend == AudioBackend::Deterministic) return deviceBeforeDeterministic;
+    return init() && outputAvailable;
 }
 
 void AudioSystem::endDeterministic(){
