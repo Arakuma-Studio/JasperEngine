@@ -6251,7 +6251,7 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
 
         // released bytes (S53 R11): the GPU buffer a mesh still holds, else the file is read again
         if (buf.second->isDataReleased() && !MeshBufferPool::createRender(*buf.second)) {
-            ModelCpuData::ensure(mesh);
+            ModelCpuData::ensure(mesh, "a GPU upload");
         }
 
         if (!bufferRender->isCreated()) {
@@ -7337,7 +7337,7 @@ void RenderSystem::updateMeshLods(Entity entity, MeshComponent& mesh, bool rehas
             pollMeshLod(mesh, submesh);
             continue;
         }
-        ModelCpuData::ensure(mesh);
+        ModelCpuData::ensure(mesh, "detail levels");
 
         LodAttributes attributes;
         if (!findLodAttributes(submesh, buffers, attributes)){
@@ -7538,7 +7538,7 @@ bool RenderSystem::readSubmeshLevel(MeshComponent& mesh, unsigned int submeshInd
 }
 
 bool RenderSystem::readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source){
-    ModelCpuData::ensure(mesh);
+    ModelCpuData::ensure(mesh, "detail levels");
     if (submeshIndex >= mesh.numSubmeshes)
         return false;
     std::map<std::string, Buffer*> buffers;
@@ -7863,7 +7863,7 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
         return true;
 
     if (submesh.smoothNormals == -1){
-        ModelCpuData::ensure(mesh);
+        ModelCpuData::ensure(mesh, "smooth normals");
         const LodAttribute position = findSubmeshAttribute(submesh, buffers, AttributeType::POSITION);
         auto normalOf = [&](Submesh& owner, unsigned int count) -> LodAttribute {
             const LodAttribute normal = findSubmeshAttribute(owner, buffers, AttributeType::NORMAL);

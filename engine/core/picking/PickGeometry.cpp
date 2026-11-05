@@ -106,7 +106,7 @@ void PickGeometry::clear(){
 }
 
 bool picking::resolveSources(const MeshComponent& mesh, PickGeometryLayout& layout){
-    ModelCpuData::ensure(mesh);
+    ModelCpuData::ensure(mesh, "picking");
     layout.submeshes.clear();
     layout.complete = false;
 

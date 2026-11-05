@@ -47,6 +47,7 @@ namespace {
     }
 
     std::string heldBack;
+    std::string lastRead;
     std::atomic<size_t> pendingCount{0};
     std::atomic<size_t> releasedCount{0};
     std::atomic<uint64_t> releasedBytes{0};
@@ -127,7 +128,7 @@ void ModelCpuData::update(const std::vector<Scene*>& scenes, bool force){
 
     for (auto& [parse, entry] : pending){
         long holders = 1; // `pending` above
-        if (ModelPool::peekGLTF(entry->poolKey) == parse)
+        if (ModelPool::getGLTF(entry->poolKey) == parse)
             holders++;
         bool uploaded = false, waiting = false;
         std::vector<ExternalBuffer*> showing;
@@ -181,7 +182,7 @@ void ModelCpuData::update(const std::vector<Scene*>& scenes, bool force){
     }
 }
 
-bool ModelCpuData::ensure(const std::shared_ptr<tinygltf::Model>& parse){
+bool ModelCpuData::ensure(const std::shared_ptr<tinygltf::Model>& parse, const char* reader){
     if (releasedCount.load() == 0 || !parse)
         return true;
     std::lock_guard<std::recursive_mutex> bytesLock(bytesMutex());
@@ -202,11 +203,12 @@ bool ModelCpuData::ensure(const std::shared_ptr<tinygltf::Model>& parse){
     entry.released = false;     // bytes != 0 from here on: never released again
     releasedCount--;
     releasedBytes -= bytes;
-    Log::verbose("Read %s again: something at runtime reads its mesh data", filename.c_str());
+    lastRead = filename + " for " + reader;
+    Log::verbose("Read %s again for %s: it reads the mesh data at runtime", filename.c_str(), reader);
     return true;
 }
 
-bool ModelCpuData::ensure(const MeshComponent& mesh){
+bool ModelCpuData::ensure(const MeshComponent& mesh, const char* reader){
     bool any = false;
     for (unsigned int b = 0; b < mesh.numExternalBuffers; b++)
         any = any || mesh.eBuffers[b].isDataReleased();
@@ -220,7 +222,7 @@ bool ModelCpuData::ensure(const MeshComponent& mesh){
         if (!buffer.isDataReleased())
             continue;
         std::shared_ptr<tinygltf::Model> parse = std::static_pointer_cast<tinygltf::Model>(std::const_pointer_cast<void>(buffer.getShareOwner().lock()));
-        if (!parse || !ensure(parse)){
+        if (!parse || !ensure(parse, reader)){
             Log::error("Mesh buffer '%s' lost its model's data", buffer.getName().c_str());
             return false;
         }
@@ -238,6 +240,10 @@ std::string ModelCpuData::describeHeld(){
     return heldBack;
 }
 
+std::string ModelCpuData::describeLastRead(){
+    return lastRead;
+}
+
 uint64_t ModelCpuData::getReleasedBytes(){
     return releasedBytes.load();
 }
@@ -252,4 +258,6 @@ void ModelCpuData::clear(){
     pendingCount = 0;
     releasedCount = 0;
     releasedBytes = 0;
+    heldBack.clear();
+    lastRead.clear();
 }

@@ -26,10 +26,7 @@ namespace jasperengine{
         static std::map<std::string, uint32_t>& getGenerations();
 
     public:
-        // (a parse whose bytes were released gets them back: ModelCpuData)
         static std::shared_ptr<tinygltf::Model> getGLTF(const std::string& id);
-        // the entry as it is
-        static std::shared_ptr<tinygltf::Model> peekGLTF(const std::string& id);
         static std::shared_ptr<tinygltf::Model> addGLTF(const std::string& id, std::shared_ptr<tinygltf::Model> model);
         static std::shared_ptr<ObjModelData> getObj(const std::string& id);
         static std::shared_ptr<ObjModelData> addObj(const std::string& id, std::shared_ptr<ObjModelData> model);

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 #include "ModelPool.h"
-#include "model/ModelCpuData.h"
 #include "ObjModelData.h"
 
 #include "tiny_gltf.h"
@@ -55,12 +54,6 @@ uint32_t ModelPool::generation(const std::string& id){
 }
 
 std::shared_ptr<tinygltf::Model> ModelPool::getGLTF(const std::string& id){
-    std::shared_ptr<tinygltf::Model> model = peekGLTF(id);
-    ModelCpuData::ensure(model);
-    return model;
-}
-
-std::shared_ptr<tinygltf::Model> ModelPool::peekGLTF(const std::string& id){
     std::lock_guard<std::recursive_mutex> lock(getPoolMutex());
     auto it = getMap().find(id);
     return it == getMap().end() ? nullptr : it->second;

@@ -24,7 +24,7 @@ MeshTriangles::VertexRange MeshTriangles::vertexRange(const MeshSourceView& view
 std::vector<MeshTriangles::MeshSourceView> MeshTriangles::collectMeshSourceViews(MeshComponent* mesh){
     std::vector<MeshSourceView> views;
     if (!mesh) return views;
-    ModelCpuData::ensure(*mesh);
+    ModelCpuData::ensure(*mesh, "mesh triangles");
 
     std::map<std::string, Buffer*> buffers;
     if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;

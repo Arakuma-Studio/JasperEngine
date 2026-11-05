@@ -5350,6 +5350,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
     }
 
+    // (a parse whose bytes were released, S53 R11: this load reads them)
+    ModelCpuData::ensure(model.gltfModel, "a later load");
+
     // Every entity of the file shares the pooled model, and a load appends synthetic buffers to
     // it (once per key): loads of a pooled model take turns, a game's loading thread with the
     // main thread included

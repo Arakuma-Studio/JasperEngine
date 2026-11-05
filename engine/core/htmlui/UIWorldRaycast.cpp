@@ -27,7 +27,7 @@ namespace {
     // the buffers of a mesh by the names attributes use ("vertices", "indices", external names;
     // the names MeshSystem gives submesh attributes)
     Buffer* findBuffer(MeshComponent& mesh, const std::string& name){
-        ModelCpuData::ensure(mesh);
+        ModelCpuData::ensure(mesh, "a world UI raycast");
         if (name == "vertices")
             return &mesh.buffer;
         if (name == "indices")
@@ -41,7 +41,7 @@ namespace {
 
     // the component-level attribute: the interleaved buffer first, then every external buffer
     AttributeView findComponentAttribute(MeshComponent& mesh, AttributeType type){
-        ModelCpuData::ensure(mesh);
+        ModelCpuData::ensure(mesh, "a world UI raycast");
         AttributeView view;
         auto take = [&view, type](Buffer& buffer){
             if (view.valid() || buffer.getSize() == 0)

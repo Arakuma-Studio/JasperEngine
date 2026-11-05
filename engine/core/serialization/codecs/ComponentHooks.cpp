@@ -60,7 +60,7 @@ namespace {
 
         w.boolean(!runtimeGeometry);
         if (!runtimeGeometry) {
-            ModelCpuData::ensure(mesh);
+            ModelCpuData::ensure(mesh, "saving the component");
             write(w, mesh.buffer);
             write(w, mesh.indices);
             w.varint(mesh.numExternalBuffers);

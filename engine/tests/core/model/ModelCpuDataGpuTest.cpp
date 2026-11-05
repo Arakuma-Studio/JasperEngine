@@ -186,7 +186,7 @@ TEST_F(ModelCpuDataGpu, ReleasesTheFilesBytesAfterUploadAndKeepsDrawing){
         mesh->needReload = true;
     ASSERT_TRUE(settle());
     EXPECT_EQ(differingPixels(before, frame()), 0u);
-    EXPECT_EQ(fileBytes(*parse), 0u) << "a reload read the file again";
+    EXPECT_EQ(fileBytes(*parse), 0u) << "a reload read the file again: " << ModelCpuData::describeLastRead();
     EXPECT_TRUE(log.errors().empty()) << log.describeErrors();
 }
 

@@ -9,7 +9,7 @@
 //
 // A reader the export could not see stays correct: whoever reads a mesh's bytes calls ensure first,
 // which reads the file again and keeps the bytes from then on (a parse is released at most once, so
-// no buffer ever points at freed bytes). ModelPool::getGLTF does it for a later load of the file.
+// no buffer ever points at freed bytes), as does a later load of the file.
 // The editor never releases, and a project with no released model pays one flag per frame.
 
 #ifndef MODELCPUDATA_H
@@ -41,8 +41,9 @@ namespace jasperengine {
 
         // The mesh's bytes back in place, from the file when they were released. False when the
         // file cannot be read (logged). Cheap when nothing of it was released.
-        static bool ensure(const MeshComponent& mesh);
-        static bool ensure(const std::shared_ptr<tinygltf::Model>& parse);
+        // `reader` says who asked, for the log and describeLastRead.
+        static bool ensure(const MeshComponent& mesh, const char* reader);
+        static bool ensure(const std::shared_ptr<tinygltf::Model>& parse, const char* reader);
 
         // what update has freed and ensure has not brought back, in bytes
         static uint64_t getReleasedBytes();
@@ -51,6 +52,8 @@ namespace jasperengine {
 
         // why update last kept a parse's bytes (for a test or a debugger), empty when it did not
         static std::string describeHeld();
+        // who last had a file read again, empty when no one did
+        static std::string describeLastRead();
 
         // necessary for engine shutdown
         static void clear();
