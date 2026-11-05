@@ -303,6 +303,11 @@ async def test_a_root_swapped_for_a_link_is_not_scanned(ed: Editor):
         await pickup(ed)
         ed.check_eq(sorted(os.listdir(outside)), ["keep.txt", "tile.png"], "nothing written through the swapped root")
         ed.check_eq((await asset(ed, "assets/tile.png"))[0], None, "and nothing of it is an asset")
+        # a save does not pin the root again
+        await ed.call_raw("save_project", {})
+        r = await ed.call_raw("write_file", {"path": "assets/pwn.txt", "content": "pwned\n"})
+        ed.check(r.is_error, f"a write into the swapped root after a save: {r.text[:300]}")
+        ed.check_eq(sorted(os.listdir(outside)), ["keep.txt", "tile.png"], "still nothing written through it")
         out = ed.scratch.root / "export-swapped-root"
         r = await ed.call_raw("build_project", {"mode": "source", "output_dir": str(out), "platform": "linux", "backends": ["opengl"],
                                                 "overwrite": True, "timeout_seconds": 300})

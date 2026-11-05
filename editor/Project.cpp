@@ -6754,7 +6754,8 @@ bool editor::Project::saveProjectToPath(const std::filesystem::path& path) {
     std::filesystem::path oldPath = projectPath;
 
     projectPath = path;
-    refreshTrustedRoots();
+    // only for a new place: a save in place must not take a root swapped since for the pinned one
+    if (oldPath != path) refreshTrustedRoots();
     // PlayerPrefs are the project's (.jasperengine/user/rundata): read from the new one
     UserSettingsStore::instance().unload();
 
