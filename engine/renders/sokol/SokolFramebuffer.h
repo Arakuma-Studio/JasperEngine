@@ -16,7 +16,7 @@ namespace jasperengine{
     class SokolFramebuffer{
 
     public:
-        static const int MAX_COLOR_ATTACHMENTS = 4;
+        static constexpr int MAX_COLOR_ATTACHMENTS = 4;
 
     private:
         // [attachment][face]; only 2D framebuffers use MRT (single face), cube

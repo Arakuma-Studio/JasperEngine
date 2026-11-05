@@ -296,6 +296,8 @@ async def lighting_scene(ed: Editor, name: str) -> tuple[int, int, int]:
     camera = (await ed.call("create_entity", scene=sid, type="camera", name="Main Camera", position=[0.0, 7.0, 9.0],
                             select=False, values={"camera": {"useTarget": True, "target": [0.0, 0.0, 0.0]}}))["entity_id"]
     await ed.call("set_main_camera", scene=sid, entity=camera)
+    # from behind the camera, so what it sees is lit (the default sun lights the far faces only)
+    await ed.call("set_properties", scene=sid, entity=sun, values={"light": {"direction": [-0.3, -0.8, -0.6], "intensity": 1.5}})
     return sid, sun, camera
 
 
@@ -346,7 +348,7 @@ async def lighting_build(ed: Editor) -> None:
     await ed.call("save_scene", scene=sid)
 
     sid, sun, camera = await lighting_scene(ed, "hair")
-    await ed.call("set_transform", scene=sid, entity=camera, position=[0.0, 0.0, 2.2])
+    await ed.call("set_transform", scene=sid, entity=camera, position=[0.0, 0.0, 4.5])
     await lighting_entity(ed, sid, "sphere", "Hair", [0, 0, 0], scale=[2, 2, 2])
     await ed.call("save_scene", scene=sid)
 
