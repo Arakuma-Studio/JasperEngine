@@ -700,6 +700,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/cook/RuntimeFieldsEmitter.cpp
     ${EDITOR_DIR}/cook/SceneCooker.cpp
     ${EDITOR_DIR}/cook/JPakWriter.cpp
+    ${EDITOR_DIR}/cook/BuildReport.cpp
     ${EDITOR_DIR}/util/ZipArchive.cpp
     ${EDITOR_DIR}/players/ModuleUsage.cpp
     ${EDITOR_DIR}/players/PlayerRuntimes.cpp
@@ -844,6 +845,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/GraphTools.cpp
     ${EDITOR_DIR}/mcp/tools/ParticleTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetTools.cpp
+    ${EDITOR_DIR}/mcp/tools/MeshTools.cpp
     ${EDITOR_DIR}/mcp/tools/MaterialsLightingTools.cpp
     ${EDITOR_DIR}/mcp/tools/AssetIdentityTools.cpp
     ${EDITOR_DIR}/mcp/tools/DocsTools.cpp
@@ -1066,6 +1068,23 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/texture/TextureImportSettings.cpp
     ${EDITOR_DIR}/texture/TextureTypeInference.cpp
     ${EDITOR_DIR}/window/TextureImporterView.cpp
+    ${EDITOR_DIR}/window/ImporterFields.cpp
+    ${EDITOR_DIR}/window/ModelImporterView.cpp
+    ${EDITOR_DIR}/window/MeshAuditWindow.cpp
+    ${EDITOR_DIR}/window/BuildReportWindow.cpp
+    ${EDITOR_DIR}/model/GltfDocument.cpp
+    ${EDITOR_DIR}/model/ModelAudit.cpp
+    ${EDITOR_DIR}/model/ModelCookCache.cpp
+    ${EDITOR_DIR}/model/ModelCookQueue.cpp
+    ${EDITOR_DIR}/model/ModelCooker.cpp
+    ${EDITOR_DIR}/model/ModelExport.cpp
+    ${EDITOR_DIR}/model/ModelHeader.cpp
+    ${EDITOR_DIR}/model/ModelImportSettings.cpp
+    ${EDITOR_DIR}/model/ModelPreviewRaster.cpp
+    ${EDITOR_DIR}/model/ModelSettingsCmd.cpp
+    ${EDITOR_DIR}/model/ModelSettingsEdit.cpp
+    ${EDITOR_DIR}/model/ModelSourceDecode.cpp
+    ${EDITOR_DIR}/model/ModelUsage.cpp
 
     ${EDITOR_DIR}/material/MaterialPresets.cpp
     ${EDITOR_DIR}/PostProcessingPresets.cpp
@@ -1341,6 +1360,11 @@ list(FILTER JASPERENGINE_EDITOR_UNITY_SKIP INCLUDE REGEX "(^|/)editor/(htmlui|mc
 jasperengine_skip_unity_build(
     REASON "the HTML UI importers, the MCP tools, the reflection tables and the version control providers: per-file helper sets with the same names"
     SOURCES ${JASPERENGINE_EDITOR_UNITY_SKIP})
+set(JASPERENGINE_EDITOR_MODEL_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
+list(FILTER JASPERENGINE_EDITOR_MODEL_SOURCES INCLUDE REGEX "(^|/)editor/model/")
+jasperengine_skip_unity_build(
+    REASON "the model cook (S53): file helpers named as the texture cook's (readAll, fileTime, touch)"
+    SOURCES ${JASPERENGINE_EDITOR_MODEL_SOURCES})
 set(JASPERENGINE_EDITOR_SCENEVIEW_SOURCES ${JASPERENGINE_EDITOR_SOURCES})
 list(FILTER JASPERENGINE_EDITOR_SCENEVIEW_SOURCES INCLUDE REGEX "(^|/)editor/(picking|sceneview)/")
 jasperengine_skip_unity_build(
@@ -1446,6 +1470,7 @@ function(configure_jasperengine_editor_target target_name)
     target_include_directories(${target_name} SYSTEM PRIVATE
         ${IMGUI_DIR}
         ${IMGUI_DIR}/backends
+        engine/libs/meshoptimizer
         libs/tinyexpr
         libs/miniz
         ${OPENGL_INCLUDE_DIR}

@@ -37,6 +37,7 @@
 #include "render/LightingTiers.h"
 #include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
+#include "model/ModelImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
 #include "window/SpriteNormalsWindowSettings.h"
@@ -949,6 +950,7 @@ namespace jasperengine::editor{
         mutable bool debugSettingsInPlay = false;
         TerrainEditorSettings terrainEditorSettings;
         TextureProjectSettings textureSettings;
+        ModelProjectSettings modelSettings;
         std::vector<std::filesystem::path> inspectedAssets;
         PhysicsPlacementSettings physicsPlacementSettings;
         NavigationProjectSettings navigationSettings;
@@ -1920,6 +1922,11 @@ namespace jasperengine::editor{
         const TextureProjectSettings& getTextureSettings() const;
         // stores them; the cook queue re-keys what they change
         void setTextureSettings(const TextureProjectSettings& settings);
+        // Project Settings > Mesh (S53 R19) and Quality's render budgets (R25): per-platform
+        // model import defaults, the cook cache, scripts' mesh data
+        const ModelProjectSettings& getModelSettings() const;
+        // stores them; the model cook queue re-keys every model
+        void setModelSettings(const ModelProjectSettings& settings);
         // The Physics Placement panel's settings, per user (workspace.yaml)
         PhysicsPlacementSettings& getPhysicsPlacementSettings();
         const PhysicsPlacementSettings& getPhysicsPlacementSettings() const;

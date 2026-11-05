@@ -1782,6 +1782,7 @@ set(JASPERENGINE_SRCS
     core/subsystem/UIDocumentSystemReload.cpp
     core/subsystem/UIDocumentSystemCompat.cpp
     core/subsystem/UIDocumentSystemTexture.cpp
+    core/model/CookedModels.cpp
     core/texture/BasisTranscode.cpp
     core/texture/CookedTextures.cpp
     core/texture/Framebuffer.cpp

@@ -42,6 +42,8 @@
 #include "device/Device.h"
 #include "command/type/ThreadingSettingsCmd.h"
 #include "navigation/NavigationSettingsCmd.h"
+#include "model/ModelCookQueue.h"
+#include "model/ModelSettingsCmd.h"
 #include "command/type/ShaderGlobalsCmd.h"
 #include "util/Color.h"
 #include "imgui_internal.h"
@@ -196,6 +198,7 @@ enum class ProjectCategory {
     NativePlugins,
     Editor,
     Navigation,
+    Mesh,
     Count
 };
 
@@ -949,6 +952,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     for (int i = 0; i < 3; i++)
         m_atmosphereQuality[i] = (int)project->getAtmosphereQuality()[i];
     m_textureSettings = project->getTextureSettings();
+    m_modelSettings = project->getModelSettings();
     m_playerLogging = project->getPlayerLogging();
     m_playerCrash = project->getPlayerCrash();
     m_htmlUiMsaaIndex = findHtmlUiMsaaIndex(project->getHtmlUiMsaaSamples());
@@ -1211,6 +1215,7 @@ void ProjectSettingsWindow::drawSettings() {
         case ProjectCategory::NativePlugins: drawNativePluginsSettings(); break;
         case ProjectCategory::Editor: drawEditorSettings(); break;
         case ProjectCategory::Navigation: drawNavigationSettings(); break;
+        case ProjectCategory::Mesh: drawMeshSettings(); break;
         default: break;
     }
     settingsui::endPage();
@@ -2018,7 +2023,160 @@ void ProjectSettingsWindow::drawQualitySettings() {
             drawComboSetting(rows[i], ids[i], qualityNames, 4, m_atmosphereQuality[i], (int)Project::defaultAtmosphereQuality[i], tooltips[i]);
         }
 
+        // the render budgets check_render_budgets holds a scene to (S53 R25): 0 is no limit
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            RenderBudget& budget = m_modelSettings.renderBudgets[f];
+            const std::string family = modelFamilyLabel((ModelFamily)f);
+            const std::string key = std::string("quality.render_budgets.") + modelFamilyName((ModelFamily)f);
+            if (settingsui::beginRow((key + ".triangles").c_str())) {
+                if (projectBeginSettingsRow(("Triangle Budget (" + family + ")").c_str(), budget.triangles != 0)) budget.triangles = 0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputScalar(("##BudgetTriangles" + family).c_str(), ImGuiDataType_S64, &budget.triangles);
+                budget.triangles = std::max<long long>(0, budget.triangles);
+                endSettingsRow("Triangles a scene may draw at LOD 0 with every object in view; 0 is no limit (check_render_budgets).");
+            }
+            if (settingsui::beginRow((key + ".draw_calls").c_str())) {
+                if (projectBeginSettingsRow(("Draw Call Budget (" + family + ")").c_str(), budget.drawCalls != 0)) budget.drawCalls = 0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputScalar(("##BudgetDraws" + family).c_str(), ImGuiDataType_S64, &budget.drawCalls);
+                budget.drawCalls = std::max<long long>(0, budget.drawCalls);
+                endSettingsRow("Draw calls (one per submesh) a scene may make; 0 is no limit.");
+            }
+            if (settingsui::beginRow((key + ".mesh_memory_mb").c_str())) {
+                if (projectBeginSettingsRow(("Mesh Memory Budget MB (" + family + ")").c_str(), budget.meshMemoryMB != 0.0)) budget.meshMemoryMB = 0.0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble(("##BudgetMemory" + family).c_str(), &budget.meshMemoryMB, 1.0, 16.0, "%.1f");
+                budget.meshMemoryMB = std::max(0.0, budget.meshMemoryMB);
+                endSettingsRow("MB of vertex and index data the scene's cooked models hold on the GPU; 0 is no limit.");
+            }
+            if (settingsui::beginRow((key + ".download_mb").c_str())) {
+                if (projectBeginSettingsRow(("Download Budget MB (" + family + ")").c_str(), budget.downloadMB != 0.0)) budget.downloadMB = 0.0;
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                ImGui::InputDouble(("##BudgetDownload" + family).c_str(), &budget.downloadMB, 1.0, 16.0, "%.1f");
+                budget.downloadMB = std::max(0.0, budget.downloadMB);
+                endSettingsRow("MB of cooked model files the scene downloads; 0 is no limit.");
+            }
+        }
         drawDeviceTierSettings();
+    });
+}
+
+void ProjectSettingsWindow::drawMeshSettings() {
+    projectDrawSettingsPanel("##MeshSettingsPanel", [this]() {
+        ModelProjectSettings& m = m_modelSettings;
+        // each platform's defaults for every model that does not set a value of its own
+        for (size_t f = 0; f < kModelFamilyCount; f++) {
+            ModelSettingValues& d = m.defaults[f];
+            const ModelFamily family = (ModelFamily)f;
+            const std::string label = modelFamilyLabel(family);
+            const std::string key = std::string("mesh.defaults.") + modelFamilyName(family) + ".";
+            // a combo whose first item is the built-in default (no value stored)
+            auto optionCombo = [&](const char* row, const char* snake, const std::vector<std::string>& names, int current, const char* tooltip) {
+                if (!settingsui::beginRow((key + snake).c_str())) return current;
+                std::vector<const char*> labels;
+                for (const std::string& name : names) labels.push_back(name.c_str());
+                int index = current + 1;
+                const std::string rowLabel = std::string(row) + " (" + label + ")";
+                drawComboSetting(rowLabel.c_str(), ("##Mesh" + label + snake).c_str(), labels.data(), (int)labels.size(), index, 0, tooltip);
+                return index - 1;
+            };
+            {
+                std::vector<std::string> names = {"Built-in (Everything)"};
+                for (OptimizeMesh o : {OptimizeMesh::Everything, OptimizeMesh::PolygonOrder, OptimizeMesh::VertexOrder, OptimizeMesh::Nothing}) names.push_back(optimizeMeshLabel(o));
+                const int value = optionCombo("Optimize Mesh", "optimize_mesh", names, d.optimizeMesh ? (int)*d.optimizeMesh : -1,
+                                              "The vertex cache, overdraw and fetch orders and the welding of exact duplicates.");
+                d.optimizeMesh = value < 0 ? std::optional<OptimizeMesh>() : std::optional<OptimizeMesh>((OptimizeMesh)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Lossless)"};
+                for (MeshCompression c : {MeshCompression::Off, MeshCompression::Lossless, MeshCompression::Low, MeshCompression::Medium, MeshCompression::High})
+                    names.push_back(meshCompressionLabel(c));
+                const int value = optionCombo("Mesh Compression", "mesh_compression", names, d.meshCompression ? (int)*d.meshCompression : -1,
+                                              "Lossless stores the same values in less space; Low, Medium and High store fewer bits (smaller, a little error).");
+                d.meshCompression = value < 0 ? std::optional<MeshCompression>() : std::optional<MeshCompression>((MeshCompression)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (Automatic)", "Automatic", "On", "Off"};
+                const int value = optionCombo("Generate LODs", "generate_lods", names, d.generateLods ? (int)*d.generateLods : -1,
+                                              "Automatic bakes the levels the runtime would build; On bakes LOD Count levels of Reduction; Off bakes none.");
+                d.generateLods = value < 0 ? std::optional<GenerateLods>() : std::optional<GenerateLods>((GenerateLods)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (3)", "1", "2", "3"};
+                const int value = optionCombo("LOD Count", "lod_count", names, d.lodCount ? *d.lodCount - 1 : -1, "Levels after LOD 0 when Generate LODs is On.");
+                d.lodCount = value < 0 ? std::optional<int>() : std::optional<int>(value + 1);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Balanced)"};
+                for (LodReduction r : {LodReduction::PreserveDetail, LodReduction::Balanced, LodReduction::Smallest}) names.push_back(lodReductionLabel(r));
+                const int value = optionCombo("Reduction", "lod_reduction", names, d.lodReduction ? (int)*d.lodReduction : -1,
+                                              "How much each level keeps: Preserve Detail 60%, Balanced 50%, Smallest 35%.");
+                d.lodReduction = value < 0 ? std::optional<LodReduction>() : std::optional<LodReduction>((LodReduction)value);
+            }
+            {
+                std::vector<std::string> names = {"Built-in (Auto)"};
+                for (IndexFormat i : {IndexFormat::Auto, IndexFormat::Bits16, IndexFormat::Bits32}) names.push_back(indexFormatLabel(i));
+                const int value = optionCombo("Index Format", "index_format", names, d.indexFormat ? (int)*d.indexFormat : -1,
+                                              "Auto takes 16 bits when a mesh's vertices fit.");
+                d.indexFormat = value < 0 ? std::optional<IndexFormat>() : std::optional<IndexFormat>((IndexFormat)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (Automatic)", "Automatic", "On"};
+                const int value = optionCombo("Read/Write", "read_write", names, d.readWrite ? (int)*d.readWrite : -1,
+                                              "Automatic keeps the CPU copy only when something at runtime reads it (colliders, navigation, scripts...).");
+                d.readWrite = value < 0 ? std::optional<ModelReadWrite>() : std::optional<ModelReadWrite>((ModelReadWrite)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (On)", "Off", "On"};
+                const int value = optionCombo("Weld Vertices", "weld_vertices", names, d.weldVertices ? (*d.weldVertices ? 1 : 0) : -1,
+                                              "Merges exact duplicate vertices (Optimize Mesh Everything).");
+                d.weldVertices = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (Import)", "Import", "Calculate"};
+                const int value = optionCombo("Normals", "normals", names, d.normals ? (int)*d.normals : -1, "Calculate makes area-weighted normals, creased at the Smoothing Angle.");
+                d.normals = value < 0 ? std::optional<ModelNormals>() : std::optional<ModelNormals>((ModelNormals)value);
+            }
+            {
+                const std::vector<std::string> names = {"Built-in (Off)", "Off", "On"};
+                const int value = optionCombo("Ship Source Files", "ship_source", names, d.shipSource ? (*d.shipSource ? 1 : 0) : -1,
+                                              "Exports keep the source model next to its cook (code that reads the file itself).");
+                d.shipSource = value < 0 ? std::optional<bool>() : std::optional<bool>(value == 1);
+            }
+        }
+        if (settingsui::beginRow("mesh.keep_cpu_data_for_scripts")) {
+            static const char* const scriptLabels[] = {"Automatic", "Keep", "Release"};
+            int value = (int)m.scriptMeshData;
+            drawComboSetting("Keep CPU Data for Scripts", "##MeshScripts", scriptLabels, 3, value, 0,
+                             "Automatic: models keep their CPU mesh data when a script calls a mesh-reading API (createMeshCollider, "
+                             "createConvexHullCollider, a navigation bake). Keep: always. Release: scripts never count.");
+            m.scriptMeshData = (ScriptMeshData)value;
+        }
+        if (settingsui::beginRow("mesh.cache_size_mb")) {
+            const ModelProjectSettings defaults;
+            if (projectBeginSettingsRow("Cache Size", m.cacheSizeMB != defaults.cacheSizeMB)) m.cacheSizeMB = defaults.cacheSizeMB;
+            ImGui::SetNextItemWidth(-helpMarkerWidth());
+            ImGui::InputInt("##MeshCacheSize", &m.cacheSizeMB, 256, 1024);
+            m.cacheSizeMB = std::clamp(m.cacheSizeMB, 64, 1 << 20);
+            endSettingsRow("MB the cooked model cache keeps (least recently used files go first).");
+        }
+        if (!settingsui::beginRow("mesh.clear_cache")) return;
+        projectBeginSettingsRow("Mesh Cache");
+        ModelCookQueue& cooks = ModelCookQueue::get();
+        const bool attached = cooks.getProject() == m_project;
+        ImGui::BeginDisabled(!attached);
+        if (ImGui::Button("Clear Mesh Cache")) {
+            cooks.cancelAll();
+            cooks.getCache().clear();
+            cooks.invalidateAll();
+        }
+        ImGui::EndDisabled();
+        if (attached) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", TextureCookReport::formatBytes(cooks.getCache().totalBytes()).c_str());
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Open Mesh Optimization Audit")) editor::getEditorHost().openMeshAudit();
     });
 }
 
@@ -4792,6 +4950,9 @@ bool ProjectSettingsWindow::applySettings() {
         m_project->getProjectCommandHistory()->addCommand(command);
     }
     // undoable: every scene's crowds and grids read them at their next fixed tick
+    if (m_modelSettings != m_project->getModelSettings()) {
+        m_project->getProjectCommandHistory()->addCommand(new ModelSettingsCmd(m_project, m_modelSettings));
+    }
     if (m_navigation != m_project->getNavigationSettings()) {
         m_project->getProjectCommandHistory()->addCommand(new NavigationSettingsCmd(m_project, m_navigation));
     }

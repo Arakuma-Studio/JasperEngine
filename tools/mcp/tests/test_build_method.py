@@ -37,7 +37,7 @@ def runtime_archive(path: Path, version: str) -> Path:
     binary = Path("/bin/true").read_bytes()
     info = {
         "schemaVersion": 1, "id": RUNTIME, "platform": "linux", "arch": "x64", "backend": "glcore", "flavour": "release",
-        "engineVersion": version, "gitSha": "", "contentFormatVersion": "1.0",
+        "engineVersion": version, "gitSha": "", "contentFormatVersion": "1.0", "modelCookFormats": [1],
         "capacities": {}, "features": ["physics2d", "physics3d", "navigation", "runtimeshaders"], "notices": ["lua"],
         "executables": {"files/jasperengine-player": hashlib.sha256(binary).hexdigest()}, "executable": "jasperengine-player",
     }

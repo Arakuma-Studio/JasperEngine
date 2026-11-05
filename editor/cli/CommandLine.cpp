@@ -2565,7 +2565,7 @@ bool readModelAnimationNames(const fs::path& root, const fs::path& assets, const
     std::string extension = model.extension().string();
     std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return (char)std::tolower(c); });
     if (extension == ".fbx") {
-        // MeshSystem::getImportedModelPath: the project's import folder mirrors the assets folder
+        // MeshSystem::getFbxImportPath: the project's import folder mirrors the assets folder
         file = root / ".jasperengine" / "imported" / (model.lexically_relative(assets).generic_string() + ".glb");
         extension = ".glb";
     }
