@@ -240,6 +240,10 @@ namespace {
         long long dedupeBefore = 0;
         // folded and target levels by (mesh, primitive), until collect() makes the primitives
         std::map<std::pair<size_t, size_t>, std::vector<std::pair<std::vector<uint32_t>, float>>> foldedLevels;
+        // each folded base primitive's level meshes, in its levels' order: their primitives are
+        // not cooked, and end up drawing from the base's vertices and its level's indices
+        std::map<std::pair<size_t, size_t>, std::vector<size_t>> foldedFrom;
+        std::set<std::pair<size_t, size_t>> foldedPrimitives;
         std::map<std::pair<size_t, size_t>, std::vector<long long>> targetLevels;
 
         bool isCancelled() const { return cancelled && cancelled(); }
@@ -344,6 +348,9 @@ namespace {
                                 info.foreignExtension = it.key();
                         }
                     }
+                    // a folded level is its base's now
+                    if (foldedPrimitives.count({m, p}))
+                        continue;
                     const auto folded = foldedLevels.find({m, p});
                     if (folded != foldedLevels.end()){
                         for (auto& [list, coverage] : folded->second){
@@ -988,6 +995,10 @@ namespace {
                     }
                 }
                 foldedLevels[{base, p}] = std::move(levels);
+                for (const auto& [levelMesh, coverage] : matching){
+                    foldedFrom[{base, p}].push_back(levelMesh);
+                    foldedPrimitives.insert({levelMesh, p});
+                }
             }
         }
         doc.pruneViews();
@@ -1241,6 +1252,23 @@ namespace {
                     root["meshes"][primitives[p].mesh]["primitives"][primitives[p].index]["attributes"]["NORMAL"] = stream.accessor;
             }
         }
+        // the source accessors of folded MSFT_lod levels nothing else reads: no bytes (an accessor
+        // without a bufferView is valid glTF, and they keep their indices)
+        std::vector<bool> foldedAway(accessorCount, false);
+        if (!foldedPrimitives.empty()){
+            auto dropIfUnused = [&](size_t a){
+                if (a < sourceAccessors && !otherUse[a] && !indexUse[a] && vertexGroups[a].empty())
+                    foldedAway[a] = true;
+            };
+            for (const auto& [mesh, p] : foldedPrimitives){
+                const Json& primitive = root["meshes"][mesh]["primitives"][p];
+                for (auto it = primitive["attributes"].begin(); it != primitive["attributes"].end(); ++it)
+                    dropIfUnused(it->get<size_t>());
+                size_t indices = 0;
+                if (GltfDocument::getIndex(primitive, "indices", indices))
+                    dropIfUnused(indices);
+            }
+        }
         // the levels' accessors
         for (Primitive& primitive : primitives){
             Json& json = root["meshes"][primitive.mesh]["primitives"][primitive.index];
@@ -1261,6 +1289,15 @@ namespace {
             if (!json.contains("extensions") || !json["extensions"].is_object())
                 json["extensions"] = Json::object();
             json["extensions"]["JE_mesh_lods"] = Json{{"recipe", kMeshLodRecipe}, {"levels", levels}};
+            // MSFT_lod's own primitives show the same bytes
+            const auto folded = foldedFrom.find({primitive.mesh, primitive.index});
+            if (folded != foldedFrom.end()){
+                for (size_t l = 0; l < folded->second.size() && l < levels.size(); l++){
+                    Json& lower = root["meshes"][folded->second[l]]["primitives"][primitive.index];
+                    lower["attributes"] = json["attributes"];
+                    lower["indices"] = levels[l]["indices"];
+                }
+            }
         }
         const size_t total = root.contains("accessors") ? root["accessors"].size() : 0;
         layouts.resize(total);
@@ -1317,7 +1354,7 @@ namespace {
             }
         }
         for (size_t a = 0; a < total; a++){
-            if (fromCook[a])
+            if (fromCook[a] || (a < foldedAway.size() && foldedAway[a]))
                 continue;
             if (!doc.readAccessorRaw(a, data[a], layouts[a], error))
                 return false;
@@ -1435,6 +1472,14 @@ namespace {
         }
         // everything else: one view per accessor, the target it had
         for (size_t a = 0; a < total; a++){
+            if (a < foldedAway.size() && foldedAway[a]){
+                Json& accessor = root["accessors"][a];
+                accessor.erase("bufferView");
+                accessor.erase("byteOffset");
+                accessor.erase("sparse");
+                placed[a] = true;
+                continue;
+            }
             if (placed[a])
                 continue;
             View view;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "render/CpuSkin.h"
+#include "model/ModelCpuData.h"
 
 #include "Scene.h"
 #include "buffer/Buffer.h"
@@ -363,6 +364,7 @@ const CpuSkinSubmesh& CpuSkinSource::submeshOf(uint32_t vertex) const{
 }
 
 bool cpuskin::buildSource(const MeshComponent& mesh, CpuSkinSource& out, std::string* error){
+    ModelCpuData::ensure(mesh);
     out = CpuSkinSource();
     if (mesh.numSubmeshes == 0)
         return fail(error, "the mesh has no submeshes");

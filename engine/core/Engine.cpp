@@ -75,6 +75,7 @@
 #include "io/AssetIOService.h"
 #include "jobs/JobSystem.h"
 #include "memory/Arena.h"
+#include "model/ModelCpuData.h"
 #include "picking/PickCache.h"
 #include "profiler/FrameTimes.h"
 #include "profiler/Profile.h"
@@ -1353,6 +1354,7 @@ void Engine::clearPools(){
     ModelPool::clear();
     MeshLodPool::clear();
     MeshBufferPool::clear();
+    ModelCpuData::clear();
     AnimationClipPool::clear();
     AnimatorAssetPool::clear();
     ShakePresetPool::clear();
@@ -2494,6 +2496,9 @@ void Engine::runFrame(bool draw){
 
     // desktop UserSettings: written a second after a change, not on every set
     UserSettings::tick();
+
+    if (ModelCpuData::getPendingCount() > 0)
+        ModelCpuData::update(getScenesSnapshot());
 
     frameRunning = false;
 

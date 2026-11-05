@@ -60,7 +60,7 @@ namespace{
     }
 
     bool acquire(BufferRender& render, const GpuBufferShareKey& key, const std::weak_ptr<const void>& owner, const void* data){
-        if (!Engine::isViewLoaded() || !data || key.size == 0)
+        if (!Engine::isViewLoaded() || key.size == 0)
             return false;
 
         std::lock_guard<std::recursive_mutex> lock(getMutex());
@@ -79,6 +79,8 @@ namespace{
             return true;
 
         if (!entry){
+            if (!data)
+                return false; // (released bytes: only a buffer someone holds will do)
             entry = std::make_shared<SharedGpuBuffer>();
             entry->key = key;
             entry->owner = owner;
@@ -121,7 +123,7 @@ void MeshBufferPool::released(const SharedGpuBuffer* buffer){
 bool MeshBufferPool::isShareable(const Buffer& buffer){
     return buffer.getUsage() == BufferUsage::IMMUTABLE &&
            (buffer.getType() == BufferType::VERTEX_BUFFER || buffer.getType() == BufferType::INDEX_BUFFER) &&
-           buffer.getData() && buffer.getSize() > 0 && buffer.hasShareSource();
+           (buffer.getData() || buffer.isDataReleased()) && buffer.getSize() > 0 && buffer.hasShareSource();
 }
 
 bool MeshBufferPool::createRender(Buffer& buffer){
@@ -140,6 +142,8 @@ bool MeshBufferPool::createRender(Buffer& buffer){
     }
     if (render.isShared())
         render.destroyBuffer();
+    if (buffer.isDataReleased())
+        return false;
     return render.createBuffer((unsigned int)buffer.getSize(), buffer.getData(), buffer.getType(), buffer.getUsage());
 }
 

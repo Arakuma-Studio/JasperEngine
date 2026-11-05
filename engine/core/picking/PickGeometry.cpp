@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PickGeometry.h"
+#include "model/ModelCpuData.h"
 
 #include "component/MeshComponent.h"
 
@@ -105,6 +106,7 @@ void PickGeometry::clear(){
 }
 
 bool picking::resolveSources(const MeshComponent& mesh, PickGeometryLayout& layout){
+    ModelCpuData::ensure(mesh);
     layout.submeshes.clear();
     layout.complete = false;
 

@@ -8,6 +8,7 @@
 // checks every component of the reflection tables against its scene codec.
 
 #include "serialization/RuntimeFields.h"
+#include "model/ModelCpuData.h"
 #include "serialization/codecs/CookTypes.h"
 
 #include "util/Fnv.h"
@@ -59,6 +60,7 @@ namespace {
 
         w.boolean(!runtimeGeometry);
         if (!runtimeGeometry) {
+            ModelCpuData::ensure(mesh);
             write(w, mesh.buffer);
             write(w, mesh.indices);
             w.varint(mesh.numExternalBuffers);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BoneComponent.h"
@@ -6248,6 +6249,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             bufferRender->destroyBuffer();
         }
 
+        // released bytes (S53 R11): the GPU buffer a mesh still holds, else the file is read again
+        if (buf.second->isDataReleased() && !MeshBufferPool::createRender(*buf.second)) {
+            ModelCpuData::ensure(mesh);
+        }
+
         if (!bufferRender->isCreated()) {
             JE_GPU_ALLOC_SCOPE(Meshes, scene->getEntityName(entity));
             const uint64_t poolFullBefore = SystemRender::getResourcePoolExhaustions();
@@ -7323,10 +7329,15 @@ void RenderSystem::updateMeshLods(Entity entity, MeshComponent& mesh, bool rehas
             continue;
         }
 
-        if (!rehash && submesh.lodKey != 0 && (submesh.lodData || MeshLodPool::has(submesh.lodKey))){
+        // (released bytes never changed: the levels stand)
+        bool released = false;
+        for (int b = 0; b < mesh.numExternalBuffers; b++)
+            released = released || mesh.eBuffers[b].isDataReleased();
+        if ((!rehash || released) && submesh.lodKey != 0 && (submesh.lodData || MeshLodPool::has(submesh.lodKey))){
             pollMeshLod(mesh, submesh);
             continue;
         }
+        ModelCpuData::ensure(mesh);
 
         LodAttributes attributes;
         if (!findLodAttributes(submesh, buffers, attributes)){
@@ -7527,6 +7538,7 @@ bool RenderSystem::readSubmeshLevel(MeshComponent& mesh, unsigned int submeshInd
 }
 
 bool RenderSystem::readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source){
+    ModelCpuData::ensure(mesh);
     if (submeshIndex >= mesh.numSubmeshes)
         return false;
     std::map<std::string, Buffer*> buffers;
@@ -7851,6 +7863,7 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
         return true;
 
     if (submesh.smoothNormals == -1){
+        ModelCpuData::ensure(mesh);
         const LodAttribute position = findSubmeshAttribute(submesh, buffers, AttributeType::POSITION);
         auto normalOf = [&](Submesh& owner, unsigned int count) -> LodAttribute {
             const LodAttribute normal = findSubmeshAttribute(owner, buffers, AttributeType::NORMAL);

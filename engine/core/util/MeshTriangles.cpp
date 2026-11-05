@@ -3,6 +3,7 @@
 // Moved out of JoltShapeBuilder (physics-independent; docs/specs/S19-navigation.md R3).
 
 #include "MeshTriangles.h"
+#include "model/ModelCpuData.h"
 
 #include "Scene.h"
 #include "component/MeshComponent.h"
@@ -23,6 +24,7 @@ MeshTriangles::VertexRange MeshTriangles::vertexRange(const MeshSourceView& view
 std::vector<MeshTriangles::MeshSourceView> MeshTriangles::collectMeshSourceViews(MeshComponent* mesh){
     std::vector<MeshSourceView> views;
     if (!mesh) return views;
+    ModelCpuData::ensure(*mesh);
 
     std::map<std::string, Buffer*> buffers;
     if (mesh->buffer.getSize() > 0) buffers["vertices"] = &mesh->buffer;

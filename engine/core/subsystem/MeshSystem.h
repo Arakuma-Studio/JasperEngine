@@ -301,6 +301,10 @@ namespace jasperengine{
         // their images. A later invalidateModelFile still drops those images.
         static void invalidateModelParse(const std::string& filename);
 
+        // the name of the buffers a load appends to a pooled parse (converted, baked copies): not
+        // the file's, so they stay when the file's bytes are released (ModelCpuData)
+        static constexpr const char* kSyntheticBufferName = "JasperEngineSynthetic";
+
         // Loads of a pooled tinygltf::Model take turns under this mutex: loadGLTF appends
         // synthetic buffers to it, so a reader of the shared model (the sub-clip builder) holds it too
         static std::recursive_mutex& getPooledGLTFMutex();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "EntityCloner.h"
+#include "model/ModelCpuData.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/AnimationComponent.h"
@@ -223,6 +224,9 @@ void prepare<MeshComponent>(MeshComponent& mesh, Entity sourceEntity, CloneConte
     resetBuffer(mesh.buffer);
     resetBuffer(mesh.indices);
     const bool keepsModelData = ctx.modelMeshes.count(sourceEntity) != 0;
+    // (its bytes are copied below: a clone that shares the model takes the GPU buffers instead)
+    if (!keepsModelData)
+        ModelCpuData::ensure(mesh);
     for (unsigned int i = 0; i < mesh.numExternalBuffers && i < mesh.eBuffers.size(); i++) {
         resetBuffer(mesh.eBuffers[i]);
         // bytes in the file data of a model not copied along may go with the original
