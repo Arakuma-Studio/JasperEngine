@@ -78,13 +78,14 @@ namespace {
 
     double clipLength(const std::string& path) {
         if (path.empty()) return 0.0;
-        TimelineLength& cached = timelineLengths()[path];
+        // a missing clip is asked once per Play too (an auto-length frame asks every update)
         const uint32_t generation = SoundPool::generation(path);
-        if (cached.generation == generation && cached.seconds > 0.0) return cached.seconds;
+        auto found = timelineLengths().find(path);
+        if (found != timelineLengths().end() && found->second.generation == generation) return found->second.seconds;
         const SoundLoadResult loaded = SoundPool::loadClipNow(path, AudioLoadType::Auto);
-        if (loaded.state != ResourceLoadState::Finished || !loaded.data) return 0.0;
+        TimelineLength& cached = timelineLengths()[path];
         cached.generation = generation;
-        cached.seconds = SoundPool::getLength(loaded.data.get());
+        cached.seconds = loaded.state == ResourceLoadState::Finished && loaded.data ? SoundPool::getLength(loaded.data.get()) : 0.0;
         return cached.seconds;
     }
 
@@ -94,16 +95,17 @@ namespace {
 
 }
 
-uint32_t TimelineAudio::delayFrames(double fraction) {
+uint32_t TimelineAudio::delayFrames(double fraction, double span) {
     if (!std::isfinite(fraction)) return 0;
-    const double frame = std::max(0.0, (double)Engine::getUnscaledDeltatime());
+    double frame = std::max(0.0, (double)Engine::getUnscaledDeltatime());
+    if (frame <= 0.0 && span > 0.0 && Engine::getTimeScale() > 0.0f) frame = span / (double)Engine::getTimeScale();
     const double rate = AudioSystem::isInited() ? (double)AudioSystem::getSoloud().getBackendSamplerate() : 48000.0;
     const double frames = std::min(std::max(fraction, 0.0), 1.0) * frame * rate;
     return (uint32_t)std::llround(frames);
 }
 
 uint32_t TimelineAudio::delayFramesAt(double seconds, double span) {
-    return span > 0.0 ? delayFrames(seconds / span) : 0;
+    return span > 0.0 ? delayFrames(seconds / span, span) : 0;
 }
 
 TimelineVoice TimelineAudio::fireCue(Scene* scene, Entity root, const ClipAudioCue& cue, uint32_t delay, float stateSpeed,
