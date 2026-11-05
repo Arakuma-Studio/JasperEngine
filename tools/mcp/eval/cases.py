@@ -906,6 +906,24 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "guard_placeholder_coin_finds_the_group",
+        "kind": "guard",
+        "what_happened": "generate_sound is in group audio, unlisted until tool_groups enables it, and agents asked for a sound wrote a "
+                         "WAV by script or gave up without looking for a tool.",
+        "text_at_issue": "Generated AGENTS.md: the line naming the sound tools and their group",
+        "source": "S36 eval, first run",
+        "prompt": "Add a placeholder coin sound at assets/sfx/coin.wav.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset coin (type pickup, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/coin.wav: 0.25 s, -18.0 LUFS-M, TP -2.8 dBTP, tonal (pickup) [seed 3, gain +1.20 dB]",
+                {"files": [{"path": "assets/sfx/coin.wav", "preset": "coin", "seed": 3}], "type": "pickup", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "coin"}}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
         "id": "guard_sound_layered_family",
         "groups_enabled": ["audio"],
         "kind": "guard",

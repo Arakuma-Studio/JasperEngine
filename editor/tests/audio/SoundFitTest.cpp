@@ -51,13 +51,15 @@ TEST(SoundFit, MeasuresDoNotDependOnTheLevel) {
 }
 
 TEST(SoundFit, DistanceTermsAreOneAtTheirStep) {
-    // twice the length is 4 |log2 2| = 4, and nothing else moves much on a steady tone's bands
+    // on 1.25 x the reference's 0.5 s: 100 frames alike, then 25 where the reference reads the floor (-60 dB)
     const SoundFit::Measure shortTone = SoundFit::measure(tone(1000.0, 0.5, 0.5));
     const SoundFit::Measure longTone = SoundFit::measure(tone(1000.0, 1.0, 0.5));
     const SoundFit::Quality q = SoundFit::compare(shortTone, longTone);
     EXPECT_NEAR(q.lengthRatio, 2.0, 0.01);
-    EXPECT_NEAR(q.bandDb, 0.0, 0.1);
-    EXPECT_NEAR(q.distance, 4.0, 0.5);
+    EXPECT_NEAR(q.envelopeDb, std::sqrt(25.0 * 3600.0 / 125.0), 0.5);
+    // the abrupt ends' leakage, a smaller share of the longer tone
+    EXPECT_LT(q.bandDb, 3.0);
+    EXPECT_NEAR(q.distance, q.bandDb / 3.0 + q.envelopeDb / 6.0 + 4.0, 0.1);
     EXPECT_EQ(q.grade, "rough");
     EXPECT_EQ(SoundFit::gradeOf(1.0), "close");
     EXPECT_EQ(SoundFit::gradeOf(1.5), "similar");

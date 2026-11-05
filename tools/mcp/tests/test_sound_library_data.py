@@ -461,7 +461,7 @@ async def test_d3_licence_files_match_the_pinned_zips():
     cache = os.environ.get("JASPER_SOUND_CACHE")
     if not cache:
         import harness
-        harness.skip("set JASPER_SOUND_CACHE to the directory holding the pinned Kenney zips (kenney_<pack>.zip)")
+        harness.skip("kenney.nl no longer serves the pinned zips (S36 Deviations): set JASPER_SOUND_CACHE to a directory that holds them")
     sel_packs = {p["id"]: p for p in selection()["packs"]}
     found = []
     for p in m["packs"]:

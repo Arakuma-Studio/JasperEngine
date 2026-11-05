@@ -1713,7 +1713,9 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "call and reports problems under `external_changes`.\n";
     agentsContent += "- Lua API stubs: `" + api + "/lua/` (lua-language-server: `.luarc.json`); start a script with "
                      "`---@class <FileName> : ScriptInstance`. C++ API: the headers in `" + api + "/` (clangd: `.clangd`).\n";
-    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
+    agentsContent += "- Sound files: never script or download audio; the editor makes and finds them. `tool_groups` {\"enable\": [\"audio\"]}, then "
+                     "`generate_sound` (a placeholder), `search_sounds` (built-in clips) or `analyze_audio` (measure a clip).\n"
+                     "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
                      "errors); as an agent hook after every edit: `check --project <this directory> --hook`.\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
     agentsContent += "Game UI is standard HTML and CSS with Lua logic (no JavaScript), one UI Document per GameObject (MCP: "

@@ -528,20 +528,32 @@ None (R29).
 
 - The squashed library commit is 21.5 MiB of files (`du -sb editor/resources/sound-library/library`: 22,538,857 bytes): 927 clips, manifest v4, analysis v1, 11 licence files (R34).
 
-AC13's measurements, in CPU seconds (`time`, over the same binary's startup, on the same files; `je-evidence/s36/mac-bench-before.log`,
-`meter-h.log`, `meter-m.log`, `it10.prof.log`). The wall times 63 ms and 6.3 s came from a loaded H and say nothing either way:
+AC13, measured with `time` on the same files (`je-evidence/s36/mac-bench-before.log`, `it17.measure.log`, `it18.*.log`). The
+63 ms and 6.3 s that started this came from a loaded H and say nothing either way. Server F no longer exists: A is a quiet
+16-vCPU VPS (load 1), the Mac an idle M-series machine.
 
-| `analyze_audio`, uncached | Budget (R31) | Mac, idle (load 2 of 14 cores) | H, Ryzen 5900X (load 13 to 39 of 24 threads) |
-|---|---|---|---|
-| 1 s clip | 40 ms | 10 ms | at most 13 ms |
-| 3-minute stereo OGG | 1.2 s | 0.95 s | 3.3 s at load 13, 5.2 s at load 23 |
-| of which `AudioMeter` on `main` | | 0.51 s | 3.6 s at load 39 |
-| of which `AudioMeter` on S38's branch (70e471bf2) | | 0.24 s | 0.8 s at load 39 |
+| R31, R32 | Budget | Mac, CPU | A, CPU | A, wall |
+|---|---|---|---|---|
+| `analyze_audio` 1 s clip, uncached, over startup | 40 ms | 10 ms | 30 ms | 30 ms |
+| 3-minute stereo OGG, before | 1.2 s | 0.95 s | 7.0 s | 7.0 s |
+| the same, the meter beside the spectral stages | 1.2 s | | 7.1 s | 5.8 s (load 9) |
+| of which `AudioMeter` on `main` | | 0.51 s | 4.8 s | |
+| of which `AudioMeter` on S38's branch (70e471bf2) | | 0.24 s | 1.3 s | |
+| `AudioClipSource` over a `Wav` voice, the mix, Release, gain and trim | 3 % | | +0.2 % | |
+| the same, trim only | 3 % | | +0.6 % | |
+| Editor start, new project to the first MCP reply, 15 alternating pairs, against `main` | 2 % | | +1.8 % | +0.9 % |
 
-No S36 code changed for these: both are inside the budget on the quiet machine. H's gap on the long file is mostly the meter's
-44 biquads per sample, which S38's branch replaces (S38's decision 13); the rest of H's 5.2 s at load 23 is decode 0.33 s, spectral
-frames 0.85 s, stereo 0.2 s and defects 0.3 s. Inferred, not measured together: with S38 merged, the Mac's 3-minute file takes
-about 0.7 s.
+The 1 s clip is inside its budget. The 3-minute file is real on A: the meter's 44 biquads a sample were 4.8 s of its 7.0, and S38's
+branch replaces them. Inferred, not measured together: with S38 merged A takes about 2.1 s of wall time, decode 0.45 s then the
+longer of the meter and the spectral stages, and the Mac well under 1.2 s. So A stays over R31 until the decode and the meter
+get faster; both are below this spec.
+
+The clip voice was +7.5 % at the unit tests' default -O2, where GCC leaves the gain loop scalar. Players ship at -O3, which is
+what the bench now asks for.
+
+`soundlayer` on Linux: the Release engine sample is 159,776 bytes larger with the module than without (40,020,944 against
+39,861,168, with S37 M1-M7 in it), and `lib_size.py --modules` names 34,295 bytes of S36's own. A build with the option off
+compiles under WERROR (`it17.off.log`).
 
 ## Deviations
 
@@ -585,14 +597,21 @@ about 0.7 s.
   `NEAR_DUPLICATE_DISTANCE`, and its example says "none under 0.020"). A4's is 0.075 here, from an event's distinct clips.
   At 0.075, seeds 1 to 8 called 15 of the 16 families near-duplicates (`test_audio_design`, red run `je-evidence/s36/it11.mcp.log`),
   whose advice is empty: a preset's seeds are close by design.
-- **The agent guide gains a Sound section**, in place of "sound (analyze_audio)" among its other areas. On the first eval, agents
-  with only core listed made no sound tool call in 10 of 10 samples, writing a WAV by script or giving up. The section took
-  the slice prompt from 0 of 2 to 2 of 4. The prompts that read as file work (placeholder, layered, fit, search, "too quiet")
-  stayed at 0 of 10 with the audio group hidden, even told in the guide to enable it, and reach 10 of 10 once it is listed.
-  So all six sound cases set `groups_enabled` and measure the tools' text. An agent finding the group by itself remains a known gap.
+- **A new game's AGENTS.md names the sound tools and their group.** `generate_sound` is in group `audio`, and with only core
+  listed agents wrote a WAV by script or gave up: `guard_placeholder_coin_finds_the_group` 0/2 without the line, 4/4 with it
+  (`je-evidence/eval/runs/s36-coin-without2`, `s36-coin-line2`, `s36-coin-line3`; one more sample only hit an account's limit). A
+  Sound section in the guide was tried first and cut: it left the placeholder, layered, fit, search and "too quiet" prompts at
+  0 of 10. The other six sound cases set `groups_enabled` and measure the tools' own text. A project written before this line
+  has none until its AGENTS.md is regenerated.
 - **`edit_sound_event`'s `slice` is an open object in the schema, its keys checked in the handler.** A closed one costs about
   300 characters, and S37 §6.1 reserves 150.
 - **`preview` reports `source.licensed`, not the licence's fields.** The event's reply says what is unknown in `problems`.
+- **`test_d3_licence_files_match_the_pinned_zips` and the tests that need the zips skip, accepted.** kenney.nl now answers the pinned
+  URLs with its asset pages, which hold no zip link (`it17.zips.log`), so no pinned zip can be fetched. The committed licence
+  files are byte for byte the reference's (`diff -r`). They skip by name with this reason. The real-model semantic tests also need
+  a 776 MB model.
+- **R31's 3-minute OGG is open until S38 lands.** A is not the reference. Measure again by CPU time on H or the Mac after S38; the
+  Mac's 0.95 s, before S38, is the number to beat.
 - **Importing mixed sources.** `import_files` refuses built-in references mixed with other sources: a call has one plan
   and one undo step.
 
