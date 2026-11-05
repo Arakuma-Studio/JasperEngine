@@ -1085,7 +1085,7 @@ CASES = [
         "what_happened": "Asked for varied footsteps, an agent wrote a Lua table of clips with math.random and its own pitch "
                          "code. A Sound Event does it as data, with no script and a repeatable seed; edit_sound_event sits in the "
                          "audio group, so its name has to be found from the task.",
-        "text_at_issue": "SoundEventTools.cpp edit_sound_event: name and description; McpToolGroups.cpp audio: its line",
+        "text_at_issue": "lua-api.md 4.12 AudioSource: its first line; Generator.cpp AGENTS.md: Sound files; SoundEventTools.cpp edit_sound_event",
         "source": "docs/specs/S37-sound-events.md R20",
         "files": {f"assets/sounds/step_{n}.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000 for n in (1, 2, 3)},
         "prompt": "The project has assets/sounds/step_1.wav, step_2.wav and step_3.wav. Make the Player's footsteps vary: never the "

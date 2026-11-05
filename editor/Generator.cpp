@@ -1714,7 +1714,8 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
     agentsContent += "- Lua API stubs: `" + api + "/lua/` (lua-language-server: `.luarc.json`); start a script with "
                      "`---@class <FileName> : ScriptInstance`. C++ API: the headers in `" + api + "/` (clangd: `.clangd`).\n";
     agentsContent += "- Sound files: never script or download audio; the editor makes and finds them. `tool_groups` {\"enable\": [\"audio\"]}, then "
-                     "`generate_sound` (a placeholder), `search_sounds` (built-in clips) or `analyze_audio` (measure a clip).\n"
+                     "`generate_sound` (a placeholder), `search_sounds` (built-in clips), `analyze_audio` (measure a clip) or `edit_sound_event` "
+                     "(clips that vary: footsteps, hits).\n"
                      "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
                      "errors); as an agent hook after every edit: `check --project <this directory> --hook`.\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
