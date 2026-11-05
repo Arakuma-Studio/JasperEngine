@@ -41,7 +41,7 @@ uint32_t jasperengine::audioPlayOnFromName(const std::string& name) {
 
 bool SoundEventClip::operator==(const SoundEventClip& o) const {
     return clip.path == o.clip.path && clip.guid == o.clip.guid && weight == o.weight && volumeDb == o.volumeDb &&
-           pitchSemitones == o.pitchSemitones && delayMs == o.delayMs && unknownKeys == o.unknownKeys;
+           pitchSemitones == o.pitchSemitones && delayMs == o.delayMs && loops == o.loops && unknownKeys == o.unknownKeys;
 }
 
 bool SoundEventSpatial::operator==(const SoundEventSpatial& o) const {

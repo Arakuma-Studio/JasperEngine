@@ -108,7 +108,8 @@ json PlayerConfig::toJson() const {
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
                     {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
-                    {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed}};
+                    {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}, {"seed", audioSeed},
+                    {"musicGroup", audioMusicGroup}};
     return out;
 }
 
@@ -259,6 +260,7 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioSeed = audio->value("seed", config.audioSeed);
             config.audioOutputStage = audio->value("outputStage", config.audioOutputStage);
             config.audioIosSession = audio->value("iosSessionCategory", config.audioIosSession);
+            config.audioMusicGroup = audio->value("musicGroup", config.audioMusicGroup);
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
@@ -285,8 +287,9 @@ void jasperengine::player::applyAudio(const PlayerConfig& game) {
     const IosAudioSession session = AudioSystem::iosSessionFromName(game.audioIosSession);
     if (game.audioMaxRealVoices != defaults.maxRealVoices || game.audioMaxVoices != defaults.maxVoices ||
         game.audioSampleRate != defaults.sampleRate || stage != defaults.outputStage || session != defaults.iosSession ||
-        game.audioSeed != (int)defaults.seed) {
-        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate, stage, session, (uint32_t)game.audioSeed});
+        game.audioSeed != (int)defaults.seed || game.audioMusicGroup != defaults.musicGroup) {
+        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate, stage, session, (uint32_t)game.audioSeed,
+                                game.audioMusicGroup});
     }
     if (!game.audioMixer.empty()) {
         AudioMixer::load(game.audioMixer);

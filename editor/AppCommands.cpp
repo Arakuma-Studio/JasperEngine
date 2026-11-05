@@ -199,6 +199,8 @@ void editor::App::registerCommands(){
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
     bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
+    bind("soundEvent.playAsMusic", [this](const CommandArgs&) { inspectorWindow->requestSoundEventPlayAsMusic(); },
+         [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()) && !project.isAnyScenePlaying(); });
     enable("assets.migrateReferences", notBusy);
     enable("assets.scenesInBuild", notBusy);
     enable("assets.emptyTrash", notBusy);

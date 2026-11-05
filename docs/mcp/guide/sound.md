@@ -144,7 +144,7 @@ Make one with `edit_sound_event`, then point an AudioSource at it with `set_prop
 | Key | Default | Range and meaning |
 |---|---|---|
 | `mode` | `shuffle` when made here | `random`, `shuffle`, `sequence`, `layer` |
-| `clips` | | 1 to 64: a path, a GUID or `{clip, weight (0..1000, random), volume_db (-60..12), pitch_semitones (-24..24), delay_ms (0..2000)}` |
+| `clips` | | 1 to 64: a path, a GUID or `{clip, weight (0..1000, random), volume_db (-60..12), pitch_semitones (-24..24), delay_ms (0..2000), loops (music)}` |
 | `avoid_repeat` | true | random: the last clip is left out of the next pick |
 | `pitch_semitones`, `volume_db`, `delay_ms` | `[0, 0]` | `[min, max]`, one draw per play |
 | `output_group` | the playing source's | a mixer group by name (an `Audio.play` voice: its `group`, else Master) |
@@ -172,6 +172,31 @@ Make one with `edit_sound_event`, then point an AudioSource at it with `set_prop
 Recipes: **footsteps** are a `shuffle` with small pitch and volume ranges and a `cooldown_ms`;
 **UI clicks** a `random` event on a Button's AudioSource with `playOn: ["ui_click"]`; **impacts** an event on
 a Rigidbody's AudioSource with `playOn: ["collision_3d"]`, `minImpactSpeed` and `fullVolumeImpactSpeed`.
+
+## Music
+
+Never write a music manager: use the music system. It plays one track that survives scene loads, through
+`audio.music_group` (else the event's `output_group`, else Master), so ducking and snapshots apply to it.
+
+- **A track** is a clip (its loop region repeats until `Audio.advanceMusic()`) or a Sound Event used as a playlist:
+  its clips are sections, in `sequence` order or by `shuffle`/`random`, each playing its loop region `loops` times
+  (default 1, 0 = until `advanceMusic`) then its tail; the event's `loop` repeats the list. Not `layer`.
+- **Tempo:** a clip's `set_audio_import_settings` `settings.music: {bpm, beats_per_bar, first_beat_ms}`.
+  `analyze_audio` detects it; pass its `music.fix` only when `confident`, else choose from `candidates`.
+- **Switch:** `Audio.playMusic(x, {crossfade, sync, snapshot, group, volume})`: `sync` `now`, `beat`, `bar` or
+  `section_end` starts it on that boundary of the playing track, sample-exact; `snapshot` reaches that mixer
+  snapshot at the same moment. `Audio.stopMusic(fade, {sync})`.
+- **Stingers:** `Audio.playStinger(x, "beat"|"bar"|"now")` lands on the music's next beat or bar.
+- **Callbacks:** `Audio.onMusicBeat:add(tag, function(bar, beat) end)`, `Audio.onMusicSection`; per frame, not
+  sample-exact. `Audio.getMusic()`, `getMusicTime()`, `getMusicPosition()`.
+- **Check it** in a capture: `music` lines (`play`, `section`, `stinger` with `boundary_sample`) in `audio_session report`.
+
+Menu to gameplay, on the bar with the combat mix:
+
+```lua
+Audio.playMusic("music/menu.soundevent")
+Audio.playMusic("music/game.soundevent", { crossfade = 1, sync = "bar", snapshot = "Combat" })
+```
 
 ## Capture a Play
 

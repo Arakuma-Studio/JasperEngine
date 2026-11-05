@@ -351,6 +351,7 @@ through an implicit Master at 0 dB. See [mcp/guide/audio.md](mcp/guide/audio.md)
 | Unity term | JasperEngine name |
 |---|---|
 | Audio Random Container | Sound Event (`.soundevent`, Assets > Create > Sound Event); `AudioSource.event`, Lua `Audio.play` |
+| A music manager script (crossfades, playlists, beat sync, stingers) | The music system: Lua `Audio.playMusic`, `Audio.playStinger`, `Audio.onMusicBeat`; a Sound Event as a playlist; Project Settings > Audio > Music Group |
 | `AudioSource.PlayOneShot` of a Random Container | `AudioSource:playOneShot("x.soundevent")` |
 | `AudioMixer` (asset) | `.mixer` asset (Assets > Create > Audio Mixer); Lua `AudioMixer` (static: the project's mixer) |
 | `AudioMixerGroup`, `AudioSource.outputAudioMixerGroup` | mixer group; `AudioSource.outputGroup` (the group's name, "" = Master); Lua `AudioMixer.getGroup(name)` -> `AudioMixerGroup` |

@@ -31,6 +31,9 @@
 #include "audio/AudioMarkers.h"
 #include "subsystem/CameraControlSystem.h"
 #include "audio/AudioMixer.h"
+#if JASPERENGINE_SOUND_LAYER
+#include "audio/MusicPlayer.h"
+#endif
 #include "subsystem/PhysicsSystem.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UISystem.h"
@@ -2393,6 +2396,10 @@ void Engine::runFrame(bool draw){
         Input::endFrame();
     }
 
+#if JASPERENGINE_SOUND_LAYER
+    // the music's callbacks and segments for what this frame mixes (docs/specs/S39-music.md)
+    MusicPlayer::update(unscaledDeltatime);
+#endif
     // after the scenes, so a voice, what started it and the frame's mix are on the same sample
     AudioSystem::pumpDeterministic(unscaledDeltatime);
 

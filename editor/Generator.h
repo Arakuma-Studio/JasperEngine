@@ -173,6 +173,7 @@ namespace jasperengine::editor {
         int maxVoices = 256;
         int sampleRate = 0;             // 0 = the device's
         std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
+        std::string musicGroup;         // the group music plays through when nothing names one ("" = Master)
         int seed = 1;                   // the Sound Event generator's seed in a deterministic run
         // Play's audio captures (docs/specs/S35-agent-audio.md): editor only, not exported
         int captureMaxSeconds = 120;
@@ -189,7 +190,7 @@ namespace jasperengine::editor {
 
         bool operator==(const AudioSettings& other) const {
             return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
-                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup &&
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && musicGroup == other.musicGroup &&
                    loudnessTargetLufs == other.loudnessTargetLufs && loudnessToleranceLu == other.loudnessToleranceLu &&
                    truePeakCeilingDbtp == other.truePeakCeilingDbtp && outputStage == other.outputStage &&
                    iosSessionCategory == other.iosSessionCategory && seed == other.seed && creditsFile == other.creditsFile &&

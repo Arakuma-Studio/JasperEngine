@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <functional>
 #include <set>
 #include <string>
@@ -485,4 +486,20 @@ TEST(ModuleUsageSoundLayer, EveryPrebuiltVariantHasIt) {
     for (const PlayerVariant& variant : variants) {
         EXPECT_NE(std::find(variant.modules.begin(), variant.modules.end(), "soundlayer"), variant.modules.end()) << variant.name;
     }
+}
+
+// docs/specs/S39-music.md 6.6, AC10: the music is in the soundlayer module; a script naming it needs it
+TEST(ModuleUsageSoundLayer, AScriptPlayingMusicNeedsIt) {
+    for (const char* code : {"Audio.playMusic('music/menu.soundevent', {sync = 'bar'})", "Audio.playStinger('hit.wav')",
+                             "Audio.onMusicBeat:add('t', function(bar, beat) end)"}) {
+        ModuleScan scan;
+        scan.luaScripts.push_back({"scripts/music.lua", code});
+        const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
+        EXPECT_TRUE(usage.needs("soundlayer")) << code;
+        EXPECT_NE(usage.firstEvidence("soundlayer").find("scripts/music.lua"), std::string::npos) << usage.firstEvidence("soundlayer");
+        std::printf("evidence: %s\n", usage.firstEvidence("soundlayer").c_str());
+    }
+    ModuleScan plain;
+    plain.luaScripts.push_back({"scripts/music.lua", "local music = 'menu'; print(music)"});
+    EXPECT_FALSE(ModuleUsageDetector::analyze(plain).needs("soundlayer"));
 }

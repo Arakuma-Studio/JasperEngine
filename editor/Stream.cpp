@@ -2947,6 +2947,7 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         }
         if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
         if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
+        if (audio.musicGroup != defaults.musicGroup) audioNode["musicGroup"] = audio.musicGroup;
         if (audio.creditsFile != defaults.creditsFile) audioNode["creditsFile"] = audio.creditsFile;
         if (audio.loudnessTargetLufs != defaults.loudnessTargetLufs) audioNode["loudnessTargetLufs"] = audio.loudnessTargetLufs;
         if (audio.loudnessToleranceLu != defaults.loudnessToleranceLu) audioNode["loudnessToleranceLu"] = audio.loudnessToleranceLu;
@@ -3692,6 +3693,7 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             }
             if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
             if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
+            if (audioNode["musicGroup"]) audio.musicGroup = audioNode["musicGroup"].as<std::string>();
             if (audioNode["creditsFile"]) audio.creditsFile = audioNode["creditsFile"].as<bool>();
             if (audioNode["loudnessTargetLufs"]) audio.loudnessTargetLufs = YamlNumbers::as<float>(audioNode["loudnessTargetLufs"]);
             if (audioNode["loudnessToleranceLu"]) audio.loudnessToleranceLu = YamlNumbers::as<float>(audioNode["loudnessToleranceLu"]);

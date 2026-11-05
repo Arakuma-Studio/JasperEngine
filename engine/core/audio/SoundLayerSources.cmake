@@ -4,6 +4,8 @@
 set(JASPERENGINE_SOUND_LAYER_SRCS
     core/audio/AudioImport.cpp
     core/audio/ClipSource.cpp
+    core/audio/MusicPlayer.cpp
+    core/audio/MusicSequenceSource.cpp
     core/audio/SoundEvent.cpp
     core/audio/SoundEventIO.cpp
     core/audio/SoundEventLibrary.cpp

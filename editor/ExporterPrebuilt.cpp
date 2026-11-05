@@ -640,6 +640,7 @@ bool editor::Exporter::writeGameConfig() {
     game.audioMaxRealVoices = audio.maxRealVoices;
     game.audioMaxVoices = audio.maxVoices;
     game.audioSeed = audio.seed;
+    game.audioMusicGroup = audio.musicGroup;
     game.audioSampleRate = audio.sampleRate;
     game.audioOutputStage = audio.outputStage;
     game.audioIosSession = audio.iosSessionCategory;

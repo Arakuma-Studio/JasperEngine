@@ -348,4 +348,25 @@ whose scripts never name a music function and whose content has no music needs n
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **The scene-less system.** The music system is an `AudioSystem` built with no scene (a private tag
+  constructor, created on first use). It is never in a scene's system list: `MusicPlayer::update` runs once a
+  frame from `Engine::runFrame`, after the scenes and before the deterministic mix, so a beat callback, a
+  snapshot and a switch point land in the frame whose mix holds them. Its voices are registered with no
+  owner scene, so `stopSceneSounds` never reaches them and `AudioSystem.stopAll` does.
+- **Stingers and `Audio.stopAll`.** A stinger's voice lines say `owner: "music"` (as the track's); `Audio.stopAll`
+  (free voices, triggers, one-shots) leaves the music and its stingers alone, `AudioSystem.stopAll` stops them.
+- **`playStinger`'s sync** is `now`, `beat` or `bar` (`section_end` is refused like an unknown name).
+- **A switch replaced before its switch point.** When a second `playMusic` (or a `stopMusic`) comes while the
+  incoming track still waits for its boundary, that track was never heard: it stops at once and the playing one
+  stays the track the new switch starts from. (Once the switch point passed, R10's rule applies.)
+- **Sequence playlists start at their first clip** and keep their own order, whatever the event's shared
+  sequence position is from plays as sound effects; `shuffle` and `random` use S37's picker.
+- **`onMusicSection`** is `FunctionSubscribe<void(int, const std::string&)>`, the signature the Lua bindings
+  already register (`FunctionSubscribe_V_IS`).
+- **Positions.** P is the voice's stream position less its start delay (SoLoud counts the delay in it). Before
+  a section's first beat `getMusicPosition` gives bar 0 and beat 0. `getMusicTime` is the track's own seconds
+  (not scaled by the event's pitch). The `stop` line also carries `sync` and `boundary_sample`.
+- **The music problems** (sections differing in rate or channels, a section under 100 ms) are in the editor's
+  `SoundEventDocument::problems`, which can read the clips; `SoundEventIO::validate` checks `loops`' range.
+- **Play as Music** plays the inspected event through the runtime `MusicPlayer` in a preview mode (edit mode
+  holds the game's events, the preview is not held); Play start resets it like any edit-mode music.

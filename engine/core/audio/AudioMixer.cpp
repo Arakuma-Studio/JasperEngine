@@ -945,12 +945,12 @@ bool AudioMixer::isOverridden(const std::string& name){
 
 // ---------------------------------------------------------------- snapshots
 
-bool AudioMixer::transitionTo(const std::string& snapshot, float seconds, bool unscaled){
-    return transitionToSnapshots({snapshot}, {1.0f}, seconds, unscaled);
+bool AudioMixer::transitionTo(const std::string& snapshot, float seconds, bool unscaled, const char* cause){
+    return transitionToSnapshots({snapshot}, {1.0f}, seconds, unscaled, cause);
 }
 
 bool AudioMixer::transitionToSnapshots(const std::vector<std::string>& snapshots, const std::vector<float>& weights,
-                                       float seconds, bool unscaled){
+                                       float seconds, bool unscaled, const char* cause){
     ensureInitialized();
     State& s = state();
     std::vector<const AudioMixerSnapshotDef*> defs;
@@ -981,7 +981,10 @@ bool AudioMixer::transitionToSnapshots(const std::vector<std::string>& snapshots
         if (snapshots.size() == 1) line.text("snapshot", snapshots[0]);
         else line.texts("snapshots", snapshots).numbers("weights", weights, 6);
         line.number("seconds", seconds, 6).flag("unscaled", timeUnscaled);
+        if (cause) line.text("cause", cause);
     }
+#else
+    (void)cause;
 #endif
     return true;
 }
