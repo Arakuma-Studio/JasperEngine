@@ -13,6 +13,7 @@
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/ColorTweenComponent.h"
 #include "component/FogComponent.h"
 #include "component/ForceFieldComponent.h"
@@ -1254,6 +1255,7 @@ void copyComponents(EntityRegistry* source, Entity sourceEntity, Scene* target, 
     copyComponent<LightComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<Light2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ShadowCaster2DComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
+    copyComponent<CapsuleShadowCasterComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<ActionComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<TweenComponent>(source, sourceEntity, signature, target, targetEntity, ctx);
     copyComponent<PositionTweenComponent>(source, sourceEntity, signature, target, targetEntity, ctx);

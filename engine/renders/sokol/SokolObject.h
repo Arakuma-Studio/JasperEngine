@@ -130,12 +130,16 @@ namespace jasperengine{
         static constexpr uint8_t VARIANT_MIRRORED = 0;
         static constexpr uint8_t VARIANT_NO_CULL = 1;
         static constexpr uint8_t VARIANT_MIRRORED_NO_CULL = 2;
+        // the weighted blended OIT accumulation pipelines of an object loaded alike another
+        // (beginAccumulationDraw): unmirrored and mirrored, by the colour pipeline type they follow
+        static constexpr uint8_t VARIANT_ACCUMULATE = 3;
+        static constexpr uint8_t VARIANT_ACCUMULATE_MIRRORED = 4;
         // The LOD cross-fade's (spec S54 R6): the same description on the fade variant of the
-        // shader (MESH bit 36, its bindings the base's: RenderSystem checks them), and its
-        // mirrored and no-cull forms (+ the kinds above); made for fading draws only
-        static constexpr uint8_t VARIANT_LOD_FADE = 3;
+        // shader ('Lfd', its bindings the base's: RenderSystem checks them), and its mirrored and
+        // no-cull forms (+ the kinds above); made for fading draws only
+        static constexpr uint8_t VARIANT_LOD_FADE = 5;
         // the editor's Overdraw Draw Mode: additive, no depth test or write, no culling
-        static constexpr uint8_t VARIANT_OVERDRAW = 7;
+        static constexpr uint8_t VARIANT_OVERDRAW = 9;
         SokolVariantRefs variants;
         // the fade variant's shader the VARIANT_LOD_FADE kinds were made on, and their GL warm
         // draws (apart from the base pipelines', which the same object keeps drawing)
@@ -227,6 +231,15 @@ namespace jasperengine{
         bool endLoad(uint16_t pipelines, const RenderState& state, int msaaSamples = 1);
         // records shader, vertex layout and index type for beginDraw(PipelineState); creates no pipeline
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
+        // another variant of source's shader (the same vertex inputs and bindings) on source's
+        // vertex layout, bindings and render state; creates no pipeline (beginAccumulationDraw)
+        bool loadAlike(const SokolObject& source, ShaderRender* shader);
+        // source's bindings (buffers, textures) as they are now, for the next draws
+        void shareBindings(const SokolObject& source);
+        // the weighted blended OIT accumulation (RenderSystem, includes/oit.glsl): the pipeline of
+        // colorType (PIP_RTT or PIP_MSAA) with two colour targets, RGBA16F and R16F, both blended
+        // RGB ONE, ONE and alpha ZERO, ONE_MINUS_SRC_ALPHA, writing no depth. Made on first use
+        bool beginAccumulationDraw(PipelineType colorType, bool mirrored);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face
         // (editor-only debug views; ignored elsewhere); mirrored with one whose face winding is

@@ -126,7 +126,11 @@ void cook::writeSceneSettings(Writer& w, const Scene& scene) {
     for (ShaderType type : kDefaultShaderTypes) write(w, scene.getDefaultShaderRef(type));
     write(w, scene.getPostProcessPasses());
     write(w, scene.getPostProcessing());
-    // format 1.1
+    // format 1.1 (S57): appended, so a 1.0 player skips them inside the record
+    w.boolean(scene.isCapsuleShadowsEnabled());
+    w.f32(scene.getCapsuleShadowIntensity());
+    w.f32(scene.getCapsuleShadowSoftness());
+    // format 1.2 (S54)
     w.boolean(scene.isMeshLodCrossFade());
     w.f32(scene.getMeshLodCrossFadeDuration());
 }
@@ -204,9 +208,13 @@ void cook::readSceneSettings(Reader& r, Scene& scene) {
     PostProcessingSettings postProcessing;
     read(r, postProcessing);
     if (postProcessing != PostProcessingSettings()) scene.setPostProcessing(postProcessing);
-    // format 1.1 (a 1.0 scene keeps the defaults)
-    if (!r.atEnd()) {
-        scene.setMeshLodCrossFade(r.boolean());
-        scene.setMeshLodCrossFadeDuration(r.f32());
-    }
+    // a 1.0 record ends here: the capsule shadows keep their defaults
+    if (r.atEnd()) return;
+    scene.setCapsuleShadowsEnabled(r.boolean());
+    scene.setCapsuleShadowIntensity(r.f32());
+    scene.setCapsuleShadowSoftness(r.f32());
+    // a 1.1 record ends here: the LOD cross-fade keeps its defaults (format 1.2)
+    if (r.atEnd()) return;
+    scene.setMeshLodCrossFade(r.boolean());
+    scene.setMeshLodCrossFadeDuration(r.f32());
 }

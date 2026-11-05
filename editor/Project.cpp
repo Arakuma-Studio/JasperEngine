@@ -1750,6 +1750,16 @@ ShadowTier editor::Project::getShadowTier(int platform) const{
     return shadowTiers[platform];
 }
 
+void editor::Project::setLightMode(LightMode mode){
+    lightMode = mode;
+    // the editor's renderer reads it every frame (LightingTiers::usesTiledLights)
+    LightingTiers::setLightMode(mode);
+}
+
+LightMode editor::Project::getLightMode() const{
+    return lightMode;
+}
+
 const char* editor::Project::getShadowTierPlatformName(int platform){
     // Engine::Platform order
     static const char* const names[ShadowTiers::PLATFORM_COUNT] = {"macos", "ios", "web", "android", "linux", "windows"};
@@ -5692,6 +5702,7 @@ void editor::Project::resetConfigs() {
     for (int platform = 0; platform < ShadowTiers::PLATFORM_COUNT; platform++){
         setShadowTier(platform, ShadowTiers::defaultTier(platform));
     }
+    setLightMode(defaultLightMode);
     setThreadingSettings(ThreadingProjectSettings());
     setShaderCreationSettings(ShaderCreationProjectSettings());
     windowMode = defaultWindowMode;

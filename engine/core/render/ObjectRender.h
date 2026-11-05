@@ -63,6 +63,16 @@ namespace jasperengine {
         // Bindings may be swapped (replaceVertexBuffer, setIndexBuffer, addTexture) between
         // beginDraw and draw. Not mixed with endLoad on the same object
         bool endLoadDynamic(PrimitiveType primitiveType, IndexType indexType);
+        // Another variant of source's shader (the same vertex inputs, textures and blocks) drawn
+        // on source's vertex layout, bindings and render state: the OIT accumulation render of a
+        // submesh (RenderSystem). Creates no pipeline; beginAccumulationDraw makes its own
+        bool loadAlike(const ObjectRender& source, ShaderRender* shader);
+        // source's bindings as they are now (its material textures after a rebind)
+        void shareBindings(const ObjectRender& source);
+        // the weighted blended OIT accumulation draw: colorType's (PIP_RTT, PIP_MSAA) pipeline into
+        // RGBA16F and R16F targets, one blend state for both, no depth write (mirrored: the face
+        // winding reversed, as beginDraw's)
+        bool beginAccumulationDraw(PipelineType colorType, bool mirrored = false);
 
         // disableFaceCulling draws with a variant of the pipeline that culls no face, built on
         // first use and released by destroy() (the editor's Scene view debug toggle; ignored
@@ -71,7 +81,7 @@ namespace jasperengine {
         // screen) keeps culling its back faces and gl_FrontFacing true on its front
         // (RenderSystem::isMirroredDraw)
         // lodFadeShader draws with the pipeline's LOD cross-fade variant on that shader (the
-        // submesh's MESH bit 36 variant, whose bindings are its shader's; spec S54 R6), made on
+        // submesh's MESH 'Lfd' variant, whose bindings are its shader's; spec S54 R6), made on
         // first use and shared like the mirrored one; false while it is not ready
         bool beginDraw(PipelineType pipType, bool disableFaceCulling = false, bool mirrored = false, ShaderRender* lodFadeShader = nullptr);
         // that fade variant made (asked for on the first call) and warm: a fade may start

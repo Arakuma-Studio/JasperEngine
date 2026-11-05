@@ -13,6 +13,7 @@
 #include "object/Primitive.h"
 #include "pool/MeshLodPool.h"
 #include "pool/ShaderPool.h"
+#include "render/LightingTiers.h"
 #include "device/QualityResolver.h"
 #include "device/DeviceSettings.h"
 #include "subsystem/RenderSystem.h"
@@ -496,4 +497,53 @@ TEST_F(LodFadeGpu, TheDeviceTiersLodBiasReachesTheSelection){
     QualityResolver::setSettings(settings);
     GpuEnvironment::drawFrames(40);   // (past a fade)
     EXPECT_EQ(sphere.getCurrentLod(), 0) << "one multiplication of both biases, not two";
+}
+
+// S54 with S57: under Tiled lights a fading mesh draws with its fade variant, on the 'Til' variant
+// it steadily draws with, and keeps its lights: the sphere is as lit mid-fade as after it
+TEST_F(LodFadeGpu, AFadingMeshUnderTiledLightsKeepsItsLighting){
+    JASPER_REQUIRE_GPU();
+    struct Restore{ ~Restore(){ LightingTiers::setLightMode(LightMode::AUTOMATIC); } } restore;
+    LightingTiers::setLightMode(LightMode::TILED);
+    Light lamp(&scene);
+    lamp.setType(LightType::POINT);
+    lamp.setPosition(0.0f, 0.0f, 3.5f);
+    lamp.setRange(8.0f);
+    lamp.setIntensity(8.0f);
+    lamp.setShadows(false);
+    build(true);
+
+    MeshComponent& mesh = sphere.getComponent<MeshComponent>();
+    const uint64_t tiled = ShaderPool::getLightingProperty(ShaderPool::LightingFeature::TILED_LIGHTS);
+    ASSERT_NE(mesh.submeshes[0].shaderProperties & tiled, 0u) << "the sphere draws with screen-tile lights";
+    ASSERT_NE(mesh.submeshes[0].lodFadeShaderProperties & tiled, 0u);
+    EXPECT_NE(mesh.submeshes[0].lodFadeShaderProperties & ShaderPool::getLodFadeProperty(), 0u);
+    const uint32_t steady = appliedPipeline();
+
+    sphere.setLodBias(biasCoarse);
+    GpuEnvironment::drawFrames(15);
+    ASSERT_TRUE(mesh.lodFade.plan.fading());
+    EXPECT_NE(appliedPipeline(), steady) << "a fading draw uses the fade variant";
+    const std::vector<uint8_t> mid = readTarget();
+    GpuEnvironment::drawFrames(17);
+    ASSERT_FALSE(mesh.lodFade.plan.fading());
+    const std::vector<uint8_t> done = readTarget();
+
+    // the mean over the middle of the sphere, where the levels differ least: as bright mid-fade
+    const int width = (int)GpuEnvironment::target().getWidth(), height = (int)GpuEnvironment::target().getHeight();
+    auto brightness = [&](const std::vector<uint8_t>& image){
+        double sum = 0.0;
+        int count = 0;
+        for (int y = height / 2 - 16; y < height / 2 + 16; y++){
+            for (int x = width / 2 - 16; x < width / 2 + 16; x++){
+                const uint8_t* p = &image[((size_t)y * width + x) * 4];
+                sum += p[0] + p[1] + p[2];
+                count += 3;
+            }
+        }
+        return sum / count;
+    };
+    EXPECT_GT(brightness(done), 40.0) << "the lamp lights the sphere";
+    EXPECT_NEAR(brightness(mid), brightness(done), 6.0) << "the fade variant takes the tile lights";
+    EXPECT_NO_ENGINE_ERRORS();
 }

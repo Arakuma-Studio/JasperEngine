@@ -1539,6 +1539,29 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
             }
 
+            // Capsule Shadow Caster handles of a selected caster: the capsules' ends and radius
+            // (3D translate; the same side guard as the blocks above)
+            if (gizmoSelected == GizmoSelected::TRANSLATE && !sceneProject->sceneRender->hasEditLayer()) {
+                std::vector<Entity> selEntities = project->getSelectedEntities(sceneId);
+                if (selEntities.size() == 1 && !io.KeyShift && sceneProject->scene->findComponent<CapsuleShadowCasterComponent>(selEntities[0])) {
+                    Entity selEntity = selEntities[0];
+                    if (!sceneProject->sceneRender->isAnyGizmoSideSelected()) {
+                        int handleHit = sceneProject->sceneRender->hitTestCapsuleHandle(selEntity, x, y);
+                        if (handleHit >= 0) {
+                            sceneProject->sceneRender->selectCapsuleHandle(selEntity, handleHit);
+                            subSelectionClickConsumesRelease[sceneId] = true;
+                            // Re-update so the gizmo jumps to the handle
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        } else if (sceneProject->sceneRender->getSelectedCapsuleHandleIndex() >= 0) {
+                            sceneProject->sceneRender->clearCapsuleHandleSelection();
+                            project->updateSceneRender(sceneId);
+                            sceneProject->sceneRender->mouseHoverEvent(x, y);
+                        }
+                    }
+                }
+            }
+
             // TranslateTracks keyframe point sub-selection within a selected tracks entity
             // (2D gizmo or 3D translate; same side guards as the line block above)
             if (gizmoSelected == GizmoSelected::OBJECT2D || gizmoSelected == GizmoSelected::TRANSLATE) {
@@ -1758,6 +1781,8 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 Entity prevTrackPointEntity = sceneProject->sceneRender->getSelectedTrackPointEntity();
                 int prevJointAnchorIndex = sceneProject->sceneRender->getSelectedJointAnchorIndex();
                 Entity prevJointAnchorEntity = sceneProject->sceneRender->getSelectedJointAnchorEntity();
+                int prevCapsuleHandleIndex = sceneProject->sceneRender->getSelectedCapsuleHandleIndex();
+                Entity prevCapsuleHandleEntity = sceneProject->sceneRender->getSelectedCapsuleHandleEntity();
 
                 // a click on empty space while lattice points are selected clears the points
                 // and keeps the lattice (the next one deselects it as usual); the same for the
@@ -1808,6 +1833,9 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 }
                 if (prevJointAnchorIndex >= 0 && !(soleHost && selAfter[0] == prevJointAnchorEntity)){
                     sceneProject->sceneRender->clearJointAnchorSelection();
+                }
+                if (prevCapsuleHandleIndex >= 0 && !(soleHost && selAfter[0] == prevCapsuleHandleEntity)){
+                    sceneProject->sceneRender->clearCapsuleHandleSelection();
                 }
             }
             subSelectionClickConsumesRelease[sceneId] = false;
@@ -1863,6 +1891,7 @@ void editor::SceneWindow::sceneEventHandler(SceneProject* sceneProject) {
                 sceneProject->sceneRender->clearPolygonPointSelection();
                 sceneProject->sceneRender->clearTrackPointSelection();
                 sceneProject->sceneRender->clearJointAnchorSelection();
+                sceneProject->sceneRender->clearCapsuleHandleSelection();
                 project->selectObjectsByRect(sceneId, clickStartPos, clickEndPos);
                 project->clearInspectedAsset();
                 project->syncSceneRenderEditLayer(sceneId);

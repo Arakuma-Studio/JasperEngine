@@ -34,6 +34,7 @@
 #include "physics/PlacementSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
+#include "render/LightingTiers.h"
 #include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
 #include "vcs/VcsTypes.h"
@@ -871,6 +872,8 @@ namespace jasperengine::editor{
         DeviceSettings deviceSettings;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
+        // graphics.light_mode: how lit meshes find their pixel lights (S57 R1)
+        LightMode lightMode = defaultLightMode;
         WindowMode windowMode;
         unsigned int windowWidth;
         unsigned int windowHeight;
@@ -1493,6 +1496,7 @@ namespace jasperengine::editor{
         static constexpr bool defaultPhysics3DEnabled = true;
         static constexpr bool defaultRuntimeShadersEnabled = true;
         static constexpr PbrTier defaultMobilePbrTier = PbrTier::REDUCED;
+        static constexpr LightMode defaultLightMode = LightMode::AUTOMATIC;
         static constexpr int defaultCxxStandard = cxxStandards[0];
 
         Project();
@@ -1601,6 +1605,11 @@ namespace jasperengine::editor{
         // lower-case platform names of the setting: macos, ios, web, android, linux, windows
         static const char* getShadowTierPlatformName(int platform);
         static int findShadowTierPlatform(const std::string& name);
+
+        // Light Mode (Project Settings > Graphics): applied to the editor's rendering at once and
+        // written into exports when not Automatic
+        void setLightMode(LightMode mode);
+        LightMode getLightMode() const;
 
         void setWindowMode(WindowMode windowMode);
         WindowMode getWindowMode() const;

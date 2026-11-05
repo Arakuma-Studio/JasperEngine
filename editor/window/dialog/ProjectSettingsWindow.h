@@ -95,6 +95,7 @@ namespace jasperengine::editor {
         Physics3DWorldSettings m_physics3DWorld;
         bool m_runtimeShadersEnabled = true;
         int m_mobilePbrTierIndex = 1;
+        int m_lightModeIndex = 0;
         bool m_packNativeResources = false;
         // S30: Build Settings' method (auto, prebuilt, compile) and the content pack
         int m_buildMethodIndex = 0;

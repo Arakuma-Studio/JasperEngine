@@ -87,7 +87,7 @@ out vec4 g_finalColor;
 
 // the built-in Lit's extended lobes (includes/pbr_ext_slots.glsl): their values end this block
 #if defined(PBR_CLEARCOAT) || defined(PBR_SHEEN) || defined(PBR_ANISOTROPY) || defined(PBR_IRIDESCENCE) || \
-    defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING)
+    defined(PBR_TRANSMISSION) || defined(PBR_SPECULAR) || defined(PBR_HEX_TILING) || defined(PBR_HAIR)
     #define PBR_EXT
 #endif
 uniform u_fs_pbrParams {
@@ -136,6 +136,13 @@ uniform u_fs_pbrParams {
             // the UV set of each texture (includes/pbr.glsl u_fs_texCoordSets), as floats
             vec4 set0;
             vec4 set1;
+        #endif
+        #ifdef PBR_HAIR
+            // the Hair shading model (includes/hair.glsl, MaterialPbr::getHairUniformBlock), last
+            // (the upload writes them at their reflected offset, RenderSystem pbrHairOffset)
+            vec4 hair0;     // rgb primary highlight colour (linear), w its shift
+            vec4 hair1;     // rgb secondary highlight colour (linear), w its shift
+            vec4 hair2;     // x primary exponent, y secondary exponent, z cos(rotation), w sin(rotation)
         #endif
     #endif
 } pbrParams;

@@ -89,6 +89,8 @@ const EnumMap<Scaling> scalingModes[] = {
 const EnumMap<TextureStrategy> textureStrategies[] = {
     {"fit", TextureStrategy::FIT}, {"resize", TextureStrategy::RESIZE}, {"none", TextureStrategy::NONE}};
 const EnumMap<PbrTier> pbrTiers[] = {{"full", PbrTier::FULL}, {"reduced", PbrTier::REDUCED}};
+const EnumMap<LightMode> lightModes[] = {
+    {"automatic", LightMode::AUTOMATIC}, {"per_object", LightMode::PER_OBJECT}, {"tiled", LightMode::TILED}};
 const EnumMap<AtmosphereQuality> atmosphereQualities[] = {
     {"off", AtmosphereQuality::OFF}, {"low", AtmosphereQuality::LOW}, {"medium", AtmosphereQuality::MEDIUM}, {"high", AtmosphereQuality::HIGH}};
 const EnumMap<ShadowTier> shadowTiers[] = {
@@ -1599,6 +1601,23 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        {
+            Setting s;
+            s.key = "graphics.light_mode";
+            s.type = "enum";
+            s.values = enumNames(lightModes);
+            s.description = "How lit meshes find their point and spot lights. Tiled lights every point and spot light per pixel from "
+                            "screen tiles (Forward+, up to 32 a tile; a per-frame CPU job and one data texture); Per Object caps each "
+                            "object's lights at Max Lights Per Object; Automatic (default) is Tiled on Medium tiers and above.";
+            s.get = [](SettingsContext& ctx) { return Json(enumName(lightModes, ctx.project()->getLightMode())); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                LightMode v;
+                if (!parseEnum(lightModes, value, v, error)) return false;
+                if (apply) ctx.project()->setLightMode(v);
+                return true;
+            };
+            add(s);
+        }
         // ---- texture (Project Settings > Texture, S14 R24)
         {
             auto textureSetting = [&](const std::string& key, const std::string& type, const std::string& description,
@@ -2875,6 +2894,7 @@ const Placement placements[] = {
     {"graphics.ui_scale", "Graphics", "", "UI Scale", "canvas scaler ui scaling reference resolution match width height constant pixel physical size dpi"},
     {"graphics.texture_strategy", "Graphics", "", "Texture Strategy", "power of two"},
     {"graphics.mobile_pbr_tier", "Graphics", "", "Mobile PBR Tier", "clear coat iridescence anisotropy lit android ios web"},
+    {"graphics.light_mode", "Graphics", "", "Light Mode", "forward+ forward plus tiled clustered per object pixel lights max lights"},
     {"graphics.html_ui_msaa_samples", "Graphics", "", "HTML UI MSAA", "anti-aliasing antialiasing multisampling"},
     {"graphics.html_ui_glyph_atlas_mib", "Graphics", "", "HTML UI Glyph Atlas", "font text memory budget mib"},
     {"graphics.html_ui_sdf_primitives", "Graphics", "", "HTML UI SDF Primitives", "batching shapes borders box shadows"},

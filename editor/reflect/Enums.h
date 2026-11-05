@@ -93,6 +93,10 @@ namespace jasperengine::editor::reflect::enums {
     extern const EnumDesc kScrollbarType;
     extern const EnumDesc kShadowCaster2DShape;
     extern const EnumDesc kShadowUpdateMode;
+    extern const EnumDesc kTransparencyMode;
+    // the Capsule Shadow Caster's (S57, LightingReflect.cpp)
+    extern const EnumDesc kCapsuleCastShadows;
+    extern const EnumDesc kCapsuleDirection;
     extern const EnumDesc kTextureAlphaBorder;
     extern const EnumDesc kTextureFilter;
     extern const EnumDesc kTextureWrap;

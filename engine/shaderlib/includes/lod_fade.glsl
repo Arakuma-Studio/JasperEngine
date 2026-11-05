@@ -1,7 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
-// LOD cross-fade (USE_LOD_FADE, MESH bit 36 'Lfd'; spec S54 R6). The two detail levels of a
+// LOD cross-fade (USE_LOD_FADE, MESH 'Lfd'; spec S54 R6). The two detail levels of a
 // fading mesh draw with one screen-space 8x8 Bayer rank and complementary shares of one fade:
 // the level faded from (a negative fade, -k/64) keeps the pixels ranked below k, the level faded
 // to (positive, (64-k)/64) the others, so each pixel keeps exactly one level, opaque and depth

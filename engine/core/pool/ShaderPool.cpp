@@ -188,6 +188,10 @@ bool ShaderPool::parseShaderTypeToken(const std::string& typeToken, ShaderType& 
         shaderType = ShaderType::HTMLUI_PRIM;
         return true;
     }
+    if (typeToken == "lightingpass") {
+        shaderType = ShaderType::LIGHTING_PASS;
+        return true;
+    }
 
     return false;
 }
@@ -609,6 +613,7 @@ std::string ShaderPool::getShaderTypeName(ShaderType shaderType, bool lowerCase)
         case ShaderType::PASS_PREVIEW: return lowerCase ? "passpreview" : "Pass Preview";
         case ShaderType::PARTICLES: return lowerCase ? "particles" : "Particles";
         case ShaderType::HTMLUI_PRIM: return lowerCase ? "htmluiprim" : "HTML UI Primitives";
+        case ShaderType::LIGHTING_PASS: return lowerCase ? "lightingpass" : "Lighting Pass";
         default:                 return lowerCase ? "unknown": "Unknown";
     }
 }
@@ -630,10 +635,20 @@ uint64_t ShaderPool::getVatProperty(ShaderType shaderType, bool bones){
     }
 }
 
-// MESH bit 36 ('Lfd'): the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in
-// the variant fading draws use; S55 starts its own bits after it
+uint64_t ShaderPool::getLightingProperty(ShaderPool::LightingFeature feature){
+    switch (feature){
+        case LightingFeature::TILED_LIGHTS:    return shaderPropertyBit(36);
+        case LightingFeature::CAPSULE_SHADOWS: return shaderPropertyBit(37);
+        case LightingFeature::CONTACT_SHADOWS: return shaderPropertyBit(38);
+        case LightingFeature::OIT:             return shaderPropertyBit(39);
+    }
+    return 0;
+}
+
+// MESH's 'Lfd': the LOD cross-fade's dither (includes/lod_fade.glsl, spec S54 R6), only in the variant
+// fading draws use
 uint64_t ShaderPool::getLodFadeProperty(){
-    return shaderPropertyBit(36);
+    return shaderPropertyBit(40);
 }
 
 uint64_t ShaderPool::getVatProperties(ShaderType shaderType){
@@ -655,7 +670,7 @@ uint64_t ShaderPool::getPostColorProperty(ShaderType shaderType){
 // case in getShaderPropertyName, the count raised to cover it)
 int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
     switch (shaderType) {
-        case ShaderType::MESH:   return 37;
+        case ShaderType::MESH:   return 41;
         case ShaderType::DEPTH:  return 18;
         case ShaderType::GBUFFER: return 16;
         case ShaderType::UI:     return 5;
@@ -685,6 +700,8 @@ int ShaderPool::getShaderPropertyCount(ShaderType shaderType){
         // ShaderPool::getParticlesProperties
         case ShaderType::PARTICLES: return 11;
         case ShaderType::HTMLUI_PRIM: return 0;
+        // 'Oir': the OIT resolve, else the contact shadows' mask
+        case ShaderType::LIGHTING_PASS: return 1;
         default:                 return 0;
     }
 }
@@ -741,8 +758,15 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
             // and 34, after S10's 'Shq')
             case 34: return shortName ? "Vat" : "Vertex Animation";
             case 35: return shortName ? "Vab" : "Vertex Animation Bones";
+            // S57's lighting (getLightingProperty): the pixel lights from screen tiles
+            // (USE_TILED_LIGHTS), capsule and contact shadows of the shadowed lights
+            // (USE_CAPSULE_SHADOWS, USE_CONTACT_SHADOWS) and the OIT accumulation (USE_OIT)
+            case 36: return shortName ? "Til" : "Tiled Lights";
+            case 37: return shortName ? "Cap" : "Capsule Shadows";
+            case 38: return shortName ? "Cts" : "Contact Shadows";
+            case 39: return shortName ? "Oit" : "Order Independent Transparency";
             // the LOD cross-fade's dither, for fading draws only (getLodFadeProperty)
-            case 36: return shortName ? "Lfd" : "Lod Fade";
+            case 40: return shortName ? "Lfd" : "Lod Fade";
         }
     } else if (shaderType == ShaderType::DEPTH) {
         switch (bit) {
@@ -820,6 +844,10 @@ std::string ShaderPool::getShaderPropertyName(ShaderType shaderType, int bit, bo
     } else if (shaderType == ShaderType::SHADOW_CACHE) {
         switch (bit) {
             case 0: return shortName ? "Vis" : "Atlas View";
+        }
+    } else if (shaderType == ShaderType::LIGHTING_PASS) {
+        switch (bit) {
+            case 0: return shortName ? "Oir" : "OIT Resolve";
         }
     } else if (shaderType == ShaderType::PASS_PREVIEW) {
         switch (bit) {
