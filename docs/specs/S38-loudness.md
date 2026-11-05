@@ -417,10 +417,26 @@ None new (R19: the effect table already exposes parameters).
     (a stereo 1 kHz tone reads as loud in LUFS as its peak in dBFS, EBU Tech 3341).
 12. **`test_loudness_readouts` is in `test_project_audio_defaults.py`** with AC5, on one editor.
 13. **The bands come from a short-time FFT, not from filters, in both modes** (R1, R16). The filter bank
-    was the budget: 44 biquads per sample, 2-3 s of CPU for a 3-minute stereo file against R16's 300 ms,
-    and 1.2-1.9 % of a core in a stream against 1.5 %. `AudioSpectrumBands` reads the same Butterworth
-    magnitudes off a power spectrum (sine windows at half overlap, so that the windows hold the energy),
-    within 0.3 dB of the filters (`AudioMeter.TheBandsAgreeWithTheFilterBank`) at about a tenth of the CPU.
-    Bands read before a stream's `finish()` are the mean of the windows so far, about 170 ms behind.
-    `AudioOctaveBank` stays, sample by sample, for S35's `levels.jsonl`, whose bands follow time.
+    was the budget: 44 biquads per sample, 2-3 s of CPU for a 3-minute stereo file against R16's 300 ms.
+    `AudioSpectrumBands` reads the same Butterworth magnitudes off a power spectrum (windows overlapping by
+    an eighth, tapers whose powers add up to 1, so that they keep the energy), within 0.3 dB of the filters
+    (`AudioMeter.TheBandsAgreeWithTheFilterBank`). A stream's bands read before `finish()` are the mean of
+    the windows so far, up to about 300 ms behind. `AudioOctaveBank` stays, sample by sample, for S35's
+    `levels.jsonl`, whose bands follow time.
 14. **The guide's Loudness section starts `docs/mcp/guide/sound.md`**, which S36 fills with the rest.
+15. **R16 and R17's reference machines are gone** (server F; no arm64 Android device or emulator here). AC8
+    is measured in CPU time with `je-bench-audio`, the least of 5 runs:
+
+    | Machine | File, 3 min stereo (R16: 300 ms) | Stream (R16: 1.5 %) | Limiter, true peak (R17: 2.5 %) |
+    |---|---|---|---|
+    | Ryzen 9 5900X, server H | 276-281 ms | 0.16 % | 0.30 % |
+    | Haswell VM, server A, loaded | 618-627 ms | 0.36 % | 0.62 % |
+
+    R16's file budget holds on H and not on A's shared VM. Android is not measured: the emulators on A and H
+    run x86_64 images, which say nothing about arm64 cores, so R17's Android number stays open.
+16. **`AudioEffects.cpp` is built with `-Os`** (not MSVC), and the session hook exists only in iOS builds, for
+    AC9. The limiter's CPU on H barely moves: 0.30 % against 0.28 % at `-O3`. Its default path stays bit-identical (`LimiterFilter.LimiterDefaultsBitIdentical`). Against `main`, a
+    release player grows by 5,440 bytes on Linux (budget 6 KB) and 3,458-3,485 bytes in wasm (budget 4 KB),
+    2,644-2,913 bytes gzipped: over the 2 KB estimate of 6.6.
+17. **AC7's device check is a human step and has not been done.** On a device: a new project's game respects
+    the silent switch and mixes with Music app playback; an existing project's does not change.
