@@ -661,7 +661,7 @@ does not fix audio; checks report changed thresholds."
 | | ms a frame | budget |
 |---|---|---|
 | Null pump | 0.141 | |
-| deterministic pump | 0.135 (-4.0 %) | 0.6, and at most 5 % above Null |
+| deterministic pump | 0.135 (-4.0 %); other runs 0.131 (+6.0 %), 0.152 (+6.3 %): the same work, within this server's noise | 0.6, and at most 5 % above Null |
 | capture on top | 0.115 | 0.4 |
 
 Release player, before and after, `full` variant:
