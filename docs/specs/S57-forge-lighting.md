@@ -241,3 +241,27 @@ Out of scope:
   drag is one undo step, the same pattern as the Joint 2D anchors.
 - **Cooked scenes:** the scene settings record appends the three capsule-shadow values, which
   bumps the format to 1.1. A 1.0 record ends before them and loads with the defaults.
+- **AC6 screenshots:** the Inspector shots show Transparency Mode and Light Mode. They do not reach
+  the contact shadow rows, the Capsule Shadow Caster drawer or the hair rows, which lie below the
+  fold of the 1600x900 editor window. Those rows are covered by the MCP and round-trip tests only.
+
+## Results
+
+Measured with `tools/perf/gpu_campaign.py lighting --runs 3 --frames 24 --size 960 540` on the
+merged tree: the median of 3 runs at a 944x488 Game view, on **llvmpipe (a software rasteriser,
+OpenGL 3.3 core), not a GPU**. No GPU host was available, so these show relative cost on this
+machine only and do not verify R7's budgets on real hardware.
+
+| Feature | Off (ms) | On (ms) | Cost (ms) | Its own pass (ms) |
+|---|---|---|---|---|
+| Tiled lights, 64 point lights (vs Per Object) | 22.42 | 29.73 | +7.31 | - |
+| Capsule shadows, 4 casters x 8 capsules | 7.26 | 7.81 | +0.55 | - |
+| Contact shadows, 16 samples, full resolution | 5.12 | 191.72 | +186.60 | 9.69 |
+| Order Independent, 24 overlapping planes (vs Sorted) | 7.10 | 35.80 | +28.70 | 19.23 |
+| Hair, a sphere filling much of the view (vs Standard) | 6.12 | 5.83 | -0.29 | - |
+
+- **Contact shadows:** read the frame cost, not the pass timer. The colour pass rises from about 5
+  ms to about 180 ms, probably because llvmpipe rasterises deferred work when the colour pass
+  samples the mask (inferred, not measured separately). This case needs a real-GPU measurement
+  before Medium's and High's defaults are trusted.
+- **Hair:** the difference is within the runs' noise. It is not a measured saving.
