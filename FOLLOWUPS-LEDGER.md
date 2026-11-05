@@ -55,6 +55,7 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
+| Root attack | `.meta` written outside through a swapped root or a plain link, on `main` since S68 | `fix/root-attack-meta` | B, A | In progress |
 | Module-off builds | S72 broke engines compiled with modules off | `fix/module-off-build` | H | Done |
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
 | Death test | `TextureSynthesisWindowDeathTest` crash and cleanup race | `fix/texture-synth-death-test` | H | Done |
@@ -79,7 +80,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 |---|---|---|---|---|
 | S38 | Loudness, limiter, new-project defaults | `feat/s38-loudness` | | Done, except the iOS run, which waits for the Mac |
 | S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | Ready at `0ccbbf001`, after S37 and the full suite; R31 re-measured after S38 |
-| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | In progress: M1-M4 committed, M5-M6 left |
+| S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Ready except AC8 (needs S35); checking its merge of `main`; third full suite next, with S36 |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | M5 needs S36 M1; merges with S62 (same file) | In progress |
 | S39 | Music | `feat/s39-music` | S35, S36, S37 | Waiting |
 | S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | Waiting |
