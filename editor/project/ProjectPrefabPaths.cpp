@@ -48,6 +48,14 @@ std::string editor::Project::getPrefabGuid(const std::filesystem::path& filepath
     return assetDatabase.getGuid(normalizeToProjectRelative(filepath));
 }
 
+std::filesystem::path editor::Project::getPrefabAssetPath(const std::filesystem::path& filepath) const {
+    AssetDatabase::AssetInfo info;
+    if (assetDatabase.isOpen() && assetDatabase.getInfo(normalizeToProjectRelative(filepath), info)) {
+        return info.path;
+    }
+    return filepath;
+}
+
 std::filesystem::path editor::Project::resolvePrefabPath(const std::string& guid, const std::filesystem::path& pathHint) {
     const fs::path hint = normalizeToProjectRelative(pathHint);
     std::error_code ec;
@@ -82,7 +90,7 @@ std::filesystem::path editor::Project::resolvePrefabPath(const std::string& guid
         std::vector<AssetDatabase::Change> changes = assetDatabase.importAssets(hint);
         pendingAssetChanges.insert(pendingAssetChanges.end(), changes.begin(), changes.end());
     }
-    return assetDatabase.getGuid(hint).empty() ? fs::path() : hint;
+    return assetDatabase.getGuid(hint).empty() ? fs::path() : getPrefabAssetPath(hint);
 }
 
 bool editor::Project::resolvePrefabReference(PrefabComponent& component, bool* pathChanged) {

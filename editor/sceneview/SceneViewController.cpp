@@ -576,7 +576,7 @@ float SceneViewController::navigationDistance(const SceneProject& sceneProject) 
     return sceneProject.sceneRender->getCamera()->getDistanceFromTarget();
 }
 
-void SceneViewController::applyProjection(SceneProject& sceneProject, Runtime& rt, bool force){
+void SceneViewController::projectCamera(SceneProject& sceneProject, int width, int height, bool force){
     if (sceneProject.sceneType != SceneType::SCENE_3D || !sceneProject.sceneRender || !sceneProject.scene){
         return;
     }
@@ -585,16 +585,6 @@ void SceneViewController::applyProjection(SceneProject& sceneProject, Runtime& r
     if (!component){
         return;
     }
-    int width = sceneProject.sceneRender->getViewWidth();
-    int height = sceneProject.sceneRender->getViewHeight();
-    if (viewSize){
-        int w = 0, h = 0;
-        viewSize(sceneProject.id, w, h);
-        if (w > 0 && h > 0){
-            width = w;
-            height = h;
-        }
-    }
     if (width <= 0 || height <= 0){
         width = 16;
         height = 9;
@@ -602,7 +592,7 @@ void SceneViewController::applyProjection(SceneProject& sceneProject, Runtime& r
     const SceneCameraSettings& settings = sceneProject.viewState.camera;
     const float aspect = (float)width / (float)height;
     const float distance = camera->getDistanceFromTarget();
-    const bool ortho = isOrthographic(sceneProject);
+    const bool ortho = paneOrthographic(sceneProject.viewState, sceneProject.viewState.activePane);
     if (ortho){
         float& size = paneOrthoSize(sceneProject.viewState, sceneProject.viewState.activePane);
         size = std::clamp(size, MIN_ORTHO_SIZE, MAX_ORTHO_SIZE);
@@ -634,7 +624,33 @@ void SceneViewController::applyProjection(SceneProject& sceneProject, Runtime& r
             sceneProject.needUpdateRender = true;
         }
     }
-    rt.projectedOrtho = ortho;
+}
+
+void SceneViewController::applyProjection(SceneProject& sceneProject, Runtime& rt, bool force){
+    if (sceneProject.sceneType != SceneType::SCENE_3D || !sceneProject.sceneRender || !sceneProject.scene){
+        return;
+    }
+    Camera* camera = sceneProject.sceneRender->getCamera();
+    CameraComponent* component = sceneProject.scene->findComponent<CameraComponent>(camera->getEntity());
+    if (!component){
+        return;
+    }
+    int width = sceneProject.sceneRender->getViewWidth();
+    int height = sceneProject.sceneRender->getViewHeight();
+    if (viewSize){
+        int w = 0, h = 0;
+        viewSize(sceneProject.id, w, h);
+        if (w > 0 && h > 0){
+            width = w;
+            height = h;
+        }
+    }
+    if (width <= 0 || height <= 0){
+        width = 16;
+        height = 9;
+    }
+    projectCamera(sceneProject, width, height, force);
+    rt.projectedOrtho = isOrthographic(sceneProject);
     rt.projectedWidth = width;
     rt.projectedHeight = height;
 }

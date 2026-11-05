@@ -174,11 +174,19 @@ namespace jasperengine::editor {
         std::string defaultOutputGroup; // the group new Audio Sources get ("" = Master)
         int seed = 1;                   // the Sound Event generator's seed in a deterministic run
         bool creditsFile = true;        // exports write licenses/THIRD-PARTY-AUDIO.txt
+        // Measurement only: what the Mixer window, get_play_state and the checks read against
+        float loudnessTargetLufs = -18.0f;
+        float loudnessToleranceLu = 2.0f;
+        float truePeakCeilingDbtp = -1.0f;
+        std::string outputStage = "roundoff";        // roundoff | linear
+        std::string iosSessionCategory = "default";  // default (miniaudio's) | ambient | solo_ambient | playback
 
         bool operator==(const AudioSettings& other) const {
             return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
-                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && seed == other.seed &&
-                   creditsFile == other.creditsFile;
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup &&
+                   loudnessTargetLufs == other.loudnessTargetLufs && loudnessToleranceLu == other.loudnessToleranceLu &&
+                   truePeakCeilingDbtp == other.truePeakCeilingDbtp && outputStage == other.outputStage &&
+                   iosSessionCategory == other.iosSessionCategory && seed == other.seed && creditsFile == other.creditsFile;
         }
         bool operator!=(const AudioSettings& other) const { return !(*this == other); }
     };

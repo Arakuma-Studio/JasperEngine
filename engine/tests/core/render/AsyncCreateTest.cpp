@@ -237,6 +237,23 @@ TEST(PipelineRecord, RefusesWhatItCannotRead){
     EXPECT_FALSE(SokolPipelineRecord::fromJson(R"({"depth":{"write":"yes"}})", desc, &error));
 }
 
+TEST(ShaderWarmup, ReadShaderKeysLeavesTheLoadedList){
+    const std::string loaded = R"({"version":1,"family":"gl","shaders":[{"key":"0x20000001","custom":""}],"pipelines":[]})";
+    std::string error;
+    ASSERT_TRUE(ShaderWarmup::loadFromString(loaded, &error)) << error;
+
+    const std::string other = R"({"version":1,"family":"gl","shaders":[{"key":"0x20000002","custom":""},{"key":"0x20000004","custom":""}],"pipelines":[]})";
+    std::vector<ShaderKey> keys;
+    ASSERT_TRUE(ShaderWarmup::readShaderKeys(other, keys, &error)) << error;
+    EXPECT_EQ(keys.size(), 2u);
+    EXPECT_EQ(ShaderWarmup::getShaderCount(), 1u) << "the loaded list stays as it was";
+
+    keys.clear();
+    EXPECT_FALSE(ShaderWarmup::readShaderKeys("not json", keys, &error));
+    EXPECT_TRUE(keys.empty());
+    ShaderWarmup::clear();
+}
+
 TEST(ShaderWarmup, RoundTrip){
     const std::string record = SokolPipelineRecord::toJson(sampleDesc());
     const std::string list = std::string(R"({"version":1,"shaders":[{"key":"0x1000000ff","custom":""},{"key":"0x200000001","custom":"shaders/myMesh"}],)") +

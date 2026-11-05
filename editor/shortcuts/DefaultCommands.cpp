@@ -232,6 +232,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.soundBrowser", "Sound Browser", AppMenuCommand::ToggleSoundBrowser);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
+    b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
+        "Start the Audio Mixer's integrated loudness and true-peak hold over";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);

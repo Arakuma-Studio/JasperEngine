@@ -15,10 +15,12 @@
 #include "shortcuts/ShortcutDispatcher.h"
 
 
+#include "window/EditorModal.h"
 #include "hub/ProjectHubWindow.h"
 #include "recorder/RecorderWindow.h"
 
 #include <array>
+#include <map>
 #include <future>
 
 #include "window/dialog/ProjectSaveDialog.h"
@@ -94,15 +96,6 @@ namespace jasperengine::editor{
     class SearchPalette;
     class ShortcutsWindow;
     class BookmarksWindow;
-
-    // A dialog waiting for an answer, as MCP reports it to agents (App::getOpenDialog)
-    struct EditorDialogInfo {
-        std::string kind;                  // "alert", "save_dialog", "modal", or "progress" (the
-                                           // build progress, which closes by itself)
-        std::string title;
-        std::string message;
-        std::vector<std::string> choices;  // answers App::answerDialog takes; empty: a human must close it
-    };
 
     enum class AlertType {
         Info,
@@ -704,7 +697,7 @@ namespace jasperengine::editor{
         // MCP: the dialog a human would have to answer (alert, save dialog, other modal)
         bool getOpenDialog(EditorDialogInfo& out) const;
         // MCP: answers it like pressing the button (applied on the next frame)
-        bool answerDialog(const std::string& choice, std::string& error);
+        bool answerDialog(const std::string& choice, const std::map<std::string, EditorDialogValue>& values, std::string& error);
         uint64_t getAlertSerial() const { return alertSerial; }
         // MCP busy policy: an export started in the Build Settings window is running
         bool isExportRunning() const { return exportWindow.isExporting(); }

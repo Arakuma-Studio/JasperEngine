@@ -39,7 +39,7 @@ namespace {
         JE_FIELD(LightComponent, type, .enumDesc = &enums::kLightType, .flags = NoDefault,
                  .updateFlags = UpdateFlags_LightShadowMap | UpdateFlags_LightShadowCamera | UpdateFlags_Scene_Mesh_Variant),
         JE_FIELD(LightComponent, direction, .updateFlags = UpdateFlags_Transform, .drawer = "direction", .visibleIf = &lightNotPoint),
-        JE_FIELD(LightComponent, worldDirection, .flags = Derived | Hidden | NoCodegen),
+        JE_FIELD(LightComponent, worldDirection, .flags = Derived | Hidden | NoCodegen | NotWritten),
         JE_FIELD(LightComponent, color, .flags = ColorLinear),
         JE_FIELD(LightComponent, range, .updateFlags = kShadowCamera, .unit = Unit::Meters),
         JE_FIELD(LightComponent, intensity),

@@ -4,6 +4,7 @@
 // The Project window's sound commands (spec S36 R19, R27): Import Sound Essentials, Create >
 // Placeholder Sound..., and dropping a clip's cached measurements.
 #include "ProjectWindow.h"
+#include "EditorModal.h"
 
 #include "Backend.h"
 #include "Out.h"
@@ -122,7 +123,7 @@ void editor::ProjectWindow::drawPlaceholderSoundDialog() {
         ImGui::OpenPopup("Placeholder Sound");
         openPlaceholderSoundDialog = false;
     }
-    if (!ImGui::BeginPopupModal("Placeholder Sound", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (!EditorModal::begin("Placeholder Sound", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         return;
     }
     PlaceholderDialog& dialog = placeholderDialog();

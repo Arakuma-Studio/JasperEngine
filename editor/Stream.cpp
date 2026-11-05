@@ -1697,13 +1697,15 @@ void editor::Stream::decodeExternalBuffer(ExternalBuffer& buffer, const YAML::No
     buffer.setName(node["name"].as<std::string>()); // Set ExternalBuffer specific property
 }
 
-YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData) {
+YAML::Node editor::Stream::encodeSubmesh(const Submesh& submesh, bool embedTextureData, bool encodeVertexCount) {
     YAML::Node node;
 
     node["material"] = encodeMaterial(submesh.material, embedTextureData);
     node["textureRect"] = encodeRect(submesh.textureRect);
     node["primitiveType"] = primitiveTypeToString(submesh.primitiveType);
-    node["vertexCount"] = YamlNumbers::integerText(submesh.vertexCount);
+    if (encodeVertexCount) {
+        node["vertexCount"] = YamlNumbers::integerText(submesh.vertexCount);
+    }
     node["faceCulling"] = YamlNumbers::text(submesh.faceCulling);
     node["textureShadow"] = YamlNumbers::text(submesh.textureShadow);
 
@@ -2934,6 +2936,11 @@ YAML::Node editor::Stream::encodeProject(Project* project) {
         if (audio.sampleRate != defaults.sampleRate) audioNode["sampleRate"] = audio.sampleRate;
         if (audio.defaultOutputGroup != defaults.defaultOutputGroup) audioNode["defaultOutputGroup"] = audio.defaultOutputGroup;
         if (audio.creditsFile != defaults.creditsFile) audioNode["creditsFile"] = audio.creditsFile;
+        if (audio.loudnessTargetLufs != defaults.loudnessTargetLufs) audioNode["loudnessTargetLufs"] = audio.loudnessTargetLufs;
+        if (audio.loudnessToleranceLu != defaults.loudnessToleranceLu) audioNode["loudnessToleranceLu"] = audio.loudnessToleranceLu;
+        if (audio.truePeakCeilingDbtp != defaults.truePeakCeilingDbtp) audioNode["truePeakCeilingDbtp"] = audio.truePeakCeilingDbtp;
+        if (audio.outputStage != defaults.outputStage) audioNode["outputStage"] = audio.outputStage;
+        if (audio.iosSessionCategory != defaults.iosSessionCategory) audioNode["iosSessionCategory"] = audio.iosSessionCategory;
         if (audioNode.size()) root["audio"] = audioNode;
     }
 
@@ -3662,6 +3669,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             if (audioNode["sampleRate"]) audio.sampleRate = YamlNumbers::as<int>(audioNode["sampleRate"]);
             if (audioNode["defaultOutputGroup"]) audio.defaultOutputGroup = audioNode["defaultOutputGroup"].as<std::string>();
             if (audioNode["creditsFile"]) audio.creditsFile = audioNode["creditsFile"].as<bool>();
+            if (audioNode["loudnessTargetLufs"]) audio.loudnessTargetLufs = YamlNumbers::as<float>(audioNode["loudnessTargetLufs"]);
+            if (audioNode["loudnessToleranceLu"]) audio.loudnessToleranceLu = YamlNumbers::as<float>(audioNode["loudnessToleranceLu"]);
+            if (audioNode["truePeakCeilingDbtp"]) audio.truePeakCeilingDbtp = YamlNumbers::as<float>(audioNode["truePeakCeilingDbtp"]);
+            if (audioNode["outputStage"]) audio.outputStage = audioNode["outputStage"].as<std::string>();
+            if (audioNode["iosSessionCategory"]) audio.iosSessionCategory = audioNode["iosSessionCategory"].as<std::string>();
         }
         // also without a node: a project opened after another one does not keep its mixer
         project->setAudioSettings(audio);
@@ -3810,6 +3822,11 @@ void editor::Stream::decodeProject(Project* project, const YAML::Node& node, con
             project->setSelectedSceneId(savedSelection);
         }
     }
+}
+
+YAML::Node editor::Stream::encodePlaySnapshot(const Project* project, const SceneProject* sceneProject) {
+    reflect::PlaySnapshotEncodeScope snapshot;
+    return encodeSceneProject(project, sceneProject);
 }
 
 YAML::Node editor::Stream::encodeSceneProject(const Project* project, const SceneProject* sceneProject) {
@@ -5331,6 +5348,14 @@ bool editor::Stream::isGeneratedMesh(const EntityRegistry* registry, Signature s
            signature.test(registry->getComponentId<TerrainComponent>()) ||
            // the Spline Extrude's Mesh is its chunks' template: material and flags, no geometry
            signature.test(registry->getComponentId<SplineExtrudeComponent>());
+}
+
+unsigned int editor::Stream::savedSubmeshCount(const MeshComponent& mesh, const EntityRegistry* registry, Signature signature) {
+    // a Terrain has its two (full and half resolution) only once it first ran (MeshSystem::createTerrain)
+    if (signature.test(registry->getComponentId<TerrainComponent>())) {
+        return std::max(mesh.numSubmeshes, 2u);
+    }
+    return mesh.numSubmeshes;
 }
 
 bool editor::Stream::isGeneratedUI(const EntityRegistry* registry, Signature signature) {

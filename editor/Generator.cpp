@@ -2829,11 +2829,21 @@ std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
 std::string editor::Generator::audioInitSource(const AudioSettings& audioSettings) {
     std::string source;
     const AudioSettings defaults;
+    const bool outputChanged = audioSettings.outputStage != defaults.outputStage || audioSettings.iosSessionCategory != defaults.iosSessionCategory;
     if (audioSettings.maxRealVoices != defaults.maxRealVoices || audioSettings.maxVoices != defaults.maxVoices ||
-        audioSettings.sampleRate != defaults.sampleRate || audioSettings.seed != defaults.seed) {
+        audioSettings.sampleRate != defaults.sampleRate || outputChanged || audioSettings.seed != defaults.seed) {
         source += "    AudioSystem::configure({" + std::to_string(audioSettings.maxRealVoices) + ", " +
-                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate) +
-                  (audioSettings.seed != defaults.seed ? ", " + std::to_string(audioSettings.seed) + "u" : std::string()) + "});\n";
+                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate);
+        // positional: a changed seed names the two fields before it
+        const bool seedChanged = audioSettings.seed != defaults.seed;
+        if (outputChanged || seedChanged) {
+            source += std::string(", AudioOutputStage::") + (audioSettings.outputStage == "linear" ? "Linear" : "Roundoff");
+            const std::string& session = audioSettings.iosSessionCategory;
+            source += std::string(", IosAudioSession::") +
+                      (session == "ambient" ? "Ambient" : session == "solo_ambient" ? "SoloAmbient" : session == "playback" ? "Playback" : "Default");
+        }
+        if (seedChanged) source += ", " + std::to_string(audioSettings.seed) + "u";
+        source += "});\n";
     }
     if (!audioSettings.mixer.empty()) {
         source += "    AudioMixer::load(" + Factory::formatString(audioSettings.mixer) + ");\n";

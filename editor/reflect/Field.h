@@ -66,6 +66,7 @@ namespace jasperengine::editor::reflect {
         AssetForm assetForm = AssetForm::Deduced;
         void (*assetMoved)(void* owner) = nullptr;
         size_t (*assetCount)(const void* owner) = nullptr;
+        bool (*derivedIf)(const void* owner) = nullptr;
     };
 
     namespace detail {
@@ -114,6 +115,7 @@ namespace jasperengine::editor::reflect {
             desc.group = meta.group;
             desc.drawer = meta.drawer;
             desc.visibleIf = meta.visibleIf;
+            desc.derivedIf = meta.derivedIf;
             desc.enabledIf = meta.enabledIf;
             desc.aliases = meta.aliases;
             desc.uiOrder = meta.uiOrder;

@@ -119,7 +119,6 @@ namespace jasperengine::editor {
         bool showUncertainty = false;
         float zoom = 0.0f;                     // 0 = fit
         ImVec2 pan = ImVec2(0, 0);
-        bool showAdvanced = false;
         float footerHeight = 0.0f;
         std::string savedOutput;               // the output the shown result was saved to
         // inpaint brush

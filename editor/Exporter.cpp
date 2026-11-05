@@ -7,6 +7,7 @@
 #include "component/Rigidbody2DComponent.h"
 #include "component/RigidbodyComponent.h"
 #include "Exporter.h"
+#include "io/watch/LinkedFolders.h"
 
 #include "audio/SoundEventDocument.h"
 #include "util/ProjectChecks.h"
@@ -340,7 +341,7 @@ namespace {
         std::set<fs::path> seen;
         for (const fs::path& root : roots) {
             if (!fs::is_directory(root, ec)) continue;
-            fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+            watch::LinkedDirectoryIterator it(root, fs::directory_options::skip_permission_denied, ec), end;
             for (; !ec && it != end; it.increment(ec)) {
                 const fs::path& path = it->path();
                 const std::string name = path.filename().string();
@@ -1204,37 +1205,12 @@ void editor::Exporter::resolveShaderKeys() {
             keys.insert(ShaderPool::normalizeKey(key));
         }
     } else {
-        // each scene's saved keys and, where it is loaded, what its objects were loaded with
-        // and what its content needs now (a save writes no loaded state: Project::
-        // collectSavedShaderKeys), as the Export window and MCP's build list them
-        for (const auto& sceneProject : project->getScenes()) {
-            std::set<ShaderKey> sceneKeys = sceneProject.shaderKeys;
-            project->collectSceneShaderKeys(&sceneProject, sceneKeys);
-            project->collectRequiredShaderKeys(&sceneProject, sceneKeys);
-            for (ShaderKey key : sceneKeys) {
-                keys.insert(ShaderPool::normalizeKey(key));
-            }
-        }
+        // the list every consumer shares (Project::collectBuildShaderKeys): each scene's saved
+        // keys and, where it is loaded, what its objects were loaded with and what its content needs
+        // now (a save writes no loaded state: Project::collectSavedShaderKeys)
+        project->collectBuildShaderKeys(keys);
     }
-    // what every build ships (the FLATTEN Canvas Group composite), whatever the scenes hold
-    std::set<ShaderKey> required;
-    ShaderVariantCollector::addBuildRequiredKeys(required);
-    for (ShaderKey key : required) {
-        keys.insert(ShaderPool::normalizeKey(key));
-    }
-    for (ShaderKey key : config.shaderAdditions) {
-        keys.insert(ShaderPool::normalizeKey(key));
-    }
-    // the shader warm-up list's variants (spec S32 R11): what Play used ships, even when no scene
-    // records it (a material a script swaps in)
-    if (project->getShaderCreationSettings().includeInBuilds && loadShaderWarmup()) {
-        for (ShaderKey key : ShaderWarmup::getShaderKeys()) {
-            keys.insert(ShaderPool::normalizeKey(key));
-        }
-    }
-    for (ShaderKey key : config.shaderExclusions) {
-        keys.erase(ShaderPool::normalizeKey(key));
-    }
+    keys = project->finishBuildShaderKeys(keys, config.shaderAdditions, config.shaderExclusions);
 
     config.selectedShaderKeys = std::move(keys);
 }
@@ -2272,6 +2248,18 @@ bool editor::Exporter::loadAndSaveAllScenes() {
                 temporarilyLoaded.push_back(sceneProject.id);
             }
 
+            // A scene that did not load (or that the project only knows by name) is not in this
+            // build as it is now: what it needs comes from its last known list
+            for (const auto& sceneProject : scenes) {
+                if (!sceneProject.filepath.empty() && !sceneProject.scene) {
+                    Out::warning("Scene '%s' (%s) cannot be read: this build uses what it last knew of it, and its shaders may be incomplete.",
+                                 sceneProject.name.c_str(), sceneProject.filepath.generic_string().c_str());
+                }
+            }
+            for (const auto& [position, path] : project->getUnresolvedScenes()) {
+                Out::warning("Scene %s is in the project and cannot be read: it is not in this build.", path.generic_string().c_str());
+            }
+
             // Every FBX model needs its current import before the sources describe it
             imported = imported && project->prepareFbxModelsForExport(importError);
 
@@ -2819,6 +2807,71 @@ bool editor::Exporter::writeAudioCredits() {
     return true;
 }
 
+void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, std::error_code& ec) {
+    ec.clear();
+    // Nested links can multiply (a folder of ten links, each to a folder of ten links...), with no
+    // cycle to end them: the export stops following at this many
+    constexpr size_t MAX_LINKS_ENTERED = 4096;
+    // where each folder of the branch being walked is on disk, root first
+    std::vector<fs::path> branch = {safewrite::resolvedPath(root)};
+    if (branch.back().empty()) {
+        ec = std::make_error_code(std::errc::too_many_symbolic_link_levels);
+        return;
+    }
+    // a link can lead to the export's own folder, or to one that holds it: what is written there
+    // while it is walked would be shipped into itself without end
+    const fs::path realOutput = config.targetDir.empty() ? fs::path() : safewrite::resolvedPath(config.targetDir);
+    bool stopped = false;
+    std::function<void(const fs::path&, const fs::path&)> walk = [&](const fs::path& dir, const fs::path& relDir) {
+        std::error_code listError;
+        for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, listError), end;
+             !listError && it != end && !stopped; it.increment(listError)) {
+            const fs::directory_entry& entry = *it;
+            const fs::path name = entry.path().filename();
+            const fs::path relPath = relDir / name;
+            const bool link = watch::isLink(entry);
+            const fs::path real = link ? safewrite::resolvedPath(entry.path()) : branch.back() / name;
+            std::error_code typeError;
+            const bool isDirectory = entry.is_directory(typeError);
+            const TreeStep step = visit(entry, relPath, isDirectory, real);
+            if (step == TreeStep::Stop) {
+                stopped = true;
+                return;
+            }
+            if (step != TreeStep::Enter || !isDirectory || real.empty()) continue;
+            if (!realOutput.empty() && safewrite::isAtOrBelow(real, realOutput)) {
+                if (leftOutLinks.insert(branch.back() / name).second) {
+                    Out::warning("The folder \"%s\" is left out of the export: it is the export's own folder",
+                                 FileUtils::pathToGenericUtf8(relPath).c_str());
+                }
+                continue;
+            }
+            if (link) {
+                const bool holdsItself = std::any_of(branch.begin(), branch.end(), [&](const fs::path& folder) { return safewrite::isAtOrBelow(folder, real); });
+                if (holdsItself) {
+                    if (leftOutLinks.insert(branch.back() / name).second) {
+                        Out::warning("The linked folder \"%s\" is left out of the export: it leads to %s, which holds it, so it would hold itself",
+                                     FileUtils::pathToGenericUtf8(relPath).c_str(), FileUtils::pathToGenericUtf8(real).c_str());
+                    }
+                    continue;
+                }
+                if (++treeLinksEntered > MAX_LINKS_ENTERED) {
+                    if (leftOutLinks.insert(branch.back() / name).second) {
+                        Out::warning("The linked folder \"%s\" is left out of the export: the project's links lead to more than %zu folders",
+                                     FileUtils::pathToGenericUtf8(relPath).c_str(), MAX_LINKS_ENTERED);
+                    }
+                    continue;
+                }
+            }
+            branch.push_back(real);
+            walk(entry.path(), relPath);
+            branch.pop_back();
+        }
+        if (relDir.empty() && listError) ec = listError;
+    };
+    walk(root, fs::path());
+}
+
 bool editor::Exporter::copyAssets() {
     setProgress("Copying assets...", 0.35f);
 
@@ -2834,19 +2887,20 @@ bool editor::Exporter::copyAssets() {
     fs::create_directories(assetsDst, ec);
     const fs::path nativePluginsRoot = NativePlugins::root(project->getProjectPath()).lexically_normal();
 
-    // References are relative to this directory, so its contents become the export root
-    for (auto it = fs::recursive_directory_iterator(assetsSrc, fs::directory_options::skip_permission_denied, ec);
-         it != fs::recursive_directory_iterator(); ++it) {
-        auto& entry = *it;
-        fs::path relPath = fs::relative(entry.path(), assetsSrc, ec);
-        if (ec || relPath.empty()) continue;
+    // References are relative to this directory, so its contents become the export root, linked
+    // folders included, at the paths the editor reaches them by
+    bool failed = false;
+    auto stop = [&failed]() {
+        failed = true;
+        return TreeStep::Stop;
+    };
+    walkTree(assetsSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
+        std::error_code ec;
 
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
         if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) {
-            std::error_code entryEc;
-            if (entry.is_directory(entryEc)) it.disable_recursion_pending();
-            continue;
+            return TreeStep::Skip;
         }
 
         // The engine loads a "resources.pak" at the asset root, so the name is reserved.
@@ -2854,13 +2908,13 @@ bool editor::Exporter::copyAssets() {
         if (isReservedPackName(firstComponent)) {
             setError("\"" + firstComponent + "\" is reserved for the resource pack. "
                 "Rename " + entry.path().string());
-            return false;
+            return stop();
         }
 
         // The cooked textures' directory (S14)
         if (firstComponent == CookedTextures::kCookedDir) {
             setError("\"" + firstComponent + "\" is reserved for the cooked textures. Rename " + entry.path().string());
-            return false;
+            return stop();
         }
 
         // The exporter writes the clips' import settings there (S36)
@@ -2872,28 +2926,28 @@ bool editor::Exporter::copyAssets() {
         // The exporter writes the asset map there (S04)
         if (relPath == AssetMap::fileName) {
             setError("\"" + std::string(AssetMap::fileName) + "\" is reserved for the asset map. Rename " + entry.path().string());
-            return false;
+            return stop();
         }
 
         // Skip project support files that should not ship as assets, and the assets' metas
-        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
+        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) return TreeStep::Enter;
 
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
             fs::remove(assetsDst / relPath, ec);
-            continue;
+            return TreeStep::Enter;
         }
 
         // The native plugins' sources and SDKs go into the platform projects (copyNativePlugins)
         if (!NativePlugins::platformOf(project->getProjectPath(), entry.path()).empty() ||
                 entry.path().lexically_normal() == nativePluginsRoot) {
-            std::error_code entryEc;
-            if (entry.is_directory(entryEc)) it.disable_recursion_pending();
-            continue;
+            return TreeStep::Skip;
         }
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
-        if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
+        if (isDirectory) return TreeStep::Enter;
+        std::error_code typeError;
+        if (!entry.is_regular_file(typeError) || isCppSourceFile(entry.path())) return TreeStep::Skip;
 
         // An FBX ships as its import, which the engine loads in its place. Those the scenes
         // use were imported before the scenes were saved, others are imported here.
@@ -2904,7 +2958,7 @@ bool editor::Exporter::copyAssets() {
             if (fs::exists(assetsSrc / importRelPath, ec)) {
                 setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
                     relPath.generic_string() + ". Rename it.");
-                return false;
+                return stop();
             }
             const fs::path fbxPath = project->resolveAssetPath(relPath);
             const fs::path glbPath = project->getImportedModelPath(fbxPath);
@@ -2912,21 +2966,21 @@ bool editor::Exporter::copyAssets() {
             if (!project->importFbxModel(fbxPath) ||
                     FbxImporter::getState(fbxPath, glbPath, project->getAssetsPath()) != FbxImporter::State::UpToDate) {
                 setError("Cannot export: " + relPath.generic_string() + " could not be imported");
-                return false;
+                return stop();
             }
             const fs::path importPath = assetsDst / importRelPath;
             fs::create_directories(importPath.parent_path(), ec);
             fs::copy_file(glbPath, importPath, fs::copy_options::overwrite_existing, ec);
             if (ec) {
                 setError("Failed to copy the import of " + relPath.generic_string() + ": " + ec.message());
-                return false;
+                return stop();
             }
-            continue;
+            return TreeStep::Skip;
         }
 
         // Skip Lua sources already shipped in the lua tree, and editor scripts
-        if (isLuaSourceFile(entry.path()) && luaCopiedSources.count(entry.path().lexically_normal())) continue;
-        if (isLuaSourceFile(entry.path()) && EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) continue;
+        if (isLuaSourceFile(entry.path()) && luaCopiedSources.count(real)) return TreeStep::Skip;
+        if (isLuaSourceFile(entry.path()) && EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) return TreeStep::Skip;
 
         // A different file at a path the lua tree already has: Android merges both trees
         // into one assets root and fails on the duplicate, so only one of them can ship.
@@ -2935,12 +2989,12 @@ bool editor::Exporter::copyAssets() {
             if (isLuaSourceFile(relPath)) {
                 Out::warning("Asset \"%s\" is left out of the export: the Lua script at the same path takes it",
                              relPath.generic_string().c_str());
-                continue;
+                return TreeStep::Skip;
             }
             fs::remove(getExportProjectRoot() / "lua" / relPath, ec);
             if (ec) {
                 setError("Failed to remove " + relPath.generic_string() + " from the exported lua directory: " + ec.message());
-                return false;
+                return stop();
             }
             Out::warning("\"%s\" exists in both the Lua and assets directories; only the asset is exported",
                          relPath.generic_string().c_str());
@@ -2952,16 +3006,17 @@ bool editor::Exporter::copyAssets() {
         // A .cube colour LUT ships cooked (S13 R25): <name>.jlut, float16 with the 3D table at most
         // 33^3, which the game loads in place of the .cube. One that does not parse ships as it
         // is, so the game logs the same error the editor does
-        if (Util::isColorLutFile(entry.path().string()) && cookColorLut(entry.path(), destPath)) continue;
+        if (Util::isColorLutFile(entry.path().string()) && cookColorLut(entry.path(), destPath)) return TreeStep::Skip;
 
         // a PNG ships without the editor's own chunks (the sprite normals recipe and paint layer,
         // the texture synthesis recipe: jasper.* text chunks a game never reads); losslessly, the
         // file read once
-        if (copyPngWithoutEditorChunks(entry.path(), destPath)) continue;
+        if (copyPngWithoutEditorChunks(entry.path(), destPath)) return TreeStep::Skip;
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
-    }
+        return TreeStep::Skip;
+    }, ec);
 
-    return true;
+    return !failed;
 }
 
 bool editor::Exporter::cookColorLut(const fs::path& source, const fs::path& destination) {
@@ -3032,32 +3087,36 @@ bool editor::Exporter::copyCustomShaderSources() {
     const fs::path projectRoot = project->getProjectPath();
     const fs::path assetsDst = getExportProjectRoot() / "assets";
     std::error_code ec;
-    for (auto& entry : fs::recursive_directory_iterator(projectRoot, fs::directory_options::skip_permission_denied, ec)) {
-        if (!entry.is_regular_file()) continue;
-        fs::path relPath = fs::relative(entry.path(), projectRoot, ec);
-        if (ec || relPath.empty()) continue;
-
+    bool failed = false;
+    walkTree(projectRoot, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path&) {
         // Same skips as copyAssets: hidden directories (the project's own data) and builds
         const std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) continue;
+        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) return TreeStep::Skip;
+        if (isDirectory) return TreeStep::Enter;
+        std::error_code fileError;
+        if (!entry.is_regular_file(fileError)) return TreeStep::Skip;
 
         std::string ext = entry.path().extension().string();
         std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return std::tolower(c); });
-        if (ext != ".vert" && ext != ".frag" && ext != ".glsl") continue;
-        if (!runtimeShaders && ext == ".glsl") continue;
+        if (ext != ".vert" && ext != ".frag" && ext != ".glsl") return TreeStep::Skip;
+        if (!runtimeShaders && ext == ".glsl") return TreeStep::Skip;
 
         const fs::path destination = assetsDst / relPath;
-        fs::create_directories(destination.parent_path(), ec);
-        if (ec) {
-            setError("Failed to create " + destination.parent_path().string() + ": " + ec.message());
-            return false;
+        fs::create_directories(destination.parent_path(), fileError);
+        if (fileError) {
+            setError("Failed to create " + destination.parent_path().string() + ": " + fileError.message());
+            failed = true;
+            return TreeStep::Stop;
         }
-        fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, ec);
-        if (ec) {
-            setError("Failed to copy shader source " + relPath.generic_string() + ": " + ec.message());
-            return false;
+        fs::copy_file(entry.path(), destination, fs::copy_options::overwrite_existing, fileError);
+        if (fileError) {
+            setError("Failed to copy shader source " + relPath.generic_string() + ": " + fileError.message());
+            failed = true;
+            return TreeStep::Stop;
         }
-    }
+        return TreeStep::Skip;
+    }, ec);
+    if (failed) return false;
     if (ec) {
         setError("Failed to list the project's shader sources: " + ec.message());
         return false;
@@ -3072,6 +3131,9 @@ bool editor::Exporter::copyLua() {
     // Cleared before the early returns: with no lua tree, assets keeps the Lua files
     luaCopiedSources.clear();
     luaExportedPaths.clear();
+    // the first copy of an export
+    leftOutLinks.clear();
+    treeLinksEntered = 0;
 
     fs::path luaSrc = config.luaDir;
     if (luaSrc.empty()) {
@@ -3098,35 +3160,33 @@ bool editor::Exporter::copyLua() {
     // same path; Android merges both trees into one and fails the build on duplicates.
     const bool luaRootIsAssetsRoot = (luaSrc == getAssetsSourceDir());
 
-    for (auto it = fs::recursive_directory_iterator(luaSrc, fs::directory_options::skip_permission_denied, ec);
-         it != fs::recursive_directory_iterator(); ++it) {
-        auto& entry = *it;
-        fs::path relPath = fs::relative(entry.path(), luaSrc, ec);
-        if (ec || relPath.empty()) continue;
-
+    walkTree(luaSrc, [&](const fs::directory_entry& entry, const fs::path& relPath, bool isDirectory, const fs::path& real) {
         // Skip hidden directories (starting with '.') and build directories
         std::string firstComponent = relPath.begin()->string();
-        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) { it.disable_recursion_pending(); continue; }
+        if (!firstComponent.empty() && Project::isNonAssetTopLevelDir(firstComponent)) return TreeStep::Skip;
+        if (isDirectory) return TreeStep::Enter;
 
         // Skip project support files that should not ship in the Lua directory, and metas (S04)
-        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) continue;
+        if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) return TreeStep::Skip;
 
         // Skip C++ source/header files; registered scripts ship via copyCppScripts
-        if (!entry.is_regular_file() || isCppSourceFile(entry.path())) continue;
+        std::error_code ec;
+        if (!entry.is_regular_file(ec) || isCppSourceFile(entry.path())) return TreeStep::Skip;
 
-        if (luaRootIsAssetsRoot && !isLuaSourceFile(entry.path())) continue;
-        if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) continue;
+        if (luaRootIsAssetsRoot && !isLuaSourceFile(entry.path())) return TreeStep::Skip;
+        if (luaRootIsProjectRoot && !isLuaExportFile(entry.path())) return TreeStep::Skip;
         // editor scripts (Editor/ with ---@menu annotations) never ship
-        if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) continue;
+        if (EditorScripts::isEditorOnlyScript(entry.path(), project->getProjectPath())) return TreeStep::Skip;
 
         fs::path destPath = luaDst / relPath;
         fs::create_directories(destPath.parent_path(), ec);
         fs::copy_file(entry.path(), destPath, fs::copy_options::overwrite_existing, ec);
         if (!ec) {
-            luaCopiedSources.insert(entry.path().lexically_normal());
+            luaCopiedSources.insert(real);
             luaExportedPaths.insert(relPath.lexically_normal());
         }
-    }
+        return TreeStep::Skip;
+    }, ec);
 
     return true;
 }
@@ -4036,7 +4096,7 @@ std::string editor::Exporter::videoUrlScene() const {
     for (const SceneProject& sceneProject : project->getScenes())
         files.push_back(sceneProject.filepath);
     std::error_code ec;
-    for (fs::recursive_directory_iterator it(project->getAssetsPath(), ec), end; !ec && it != end; it.increment(ec)) {
+    for (watch::LinkedDirectoryIterator it(project->getAssetsPath(), fs::directory_options::none, ec), end; !ec && it != end; it.increment(ec)) {
         if (it->is_regular_file(ec) && Util::isPrefabFile(it->path().string()))
             files.push_back(it->path());
     }
@@ -6417,7 +6477,7 @@ std::string editor::Exporter::webTreePathRefusal(const std::vector<fs::path>& ro
         std::error_code ec;
         if (root.empty() || !fs::is_directory(root, ec)) continue;
         if (const std::string refusal = webPathRefusal({root}); !refusal.empty()) return refusal;
-        fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end;
+        watch::LinkedDirectoryIterator it(root, fs::directory_options::skip_permission_denied, ec), end;
         for (; !ec && it != end; it.increment(ec)) {
             if (++seen > maxEntries) {
                 return "Web builds on Windows check every file name for % and this project has more than " + std::to_string(maxEntries) +

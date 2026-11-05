@@ -202,7 +202,7 @@ namespace jasperengine::editor {
         static YAML::Node encodeExternalBuffer(const ExternalBuffer& buffer);
         static void decodeExternalBuffer(ExternalBuffer& buffer, const YAML::Node& node);
 
-        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true);
+        static YAML::Node encodeSubmesh(const Submesh& submesh, bool embedTextureData = true, bool encodeVertexCount = true);
         static Submesh decodeSubmesh(const YAML::Node& node, const Submesh* oldSubmesh = nullptr);
 
         static YAML::Node encodeSpriteFrameData(const SpriteFrameData& frameData);
@@ -416,6 +416,9 @@ namespace jasperengine::editor {
         // True when a mesh's geometry is rebuilt on load from its sprite, tilemap, mesh
         // polygon or terrain component, so its buffers and bones must not be serialized.
         static bool isGeneratedMesh(const EntityRegistry* registry, Signature signature);
+        // the submeshes a save writes and the code generates: what the mesh's generator leaves
+        // it with, whether or not it ran yet
+        static unsigned int savedSubmeshCount(const MeshComponent& mesh, const EntityRegistry* registry, Signature signature);
 
         // True when a UIComponent's geometry is rebuilt on load from its image, text or
         // polygon component, so its buffers must not be serialized.
@@ -469,6 +472,9 @@ namespace jasperengine::editor {
         // of the scene (SavedEntitiesCheck): a save, an autosave, a Play snapshot never lose one in
         // silence (docs/data-safety.md)
         static YAML::Node encodeSceneProject(const Project* project, const SceneProject* sceneProject);
+        // The document Stop restores: with what a frame computes that a file leaves out (the world
+        // bounds Stop puts back on the Meshes it keeps instead of decoding them, keepSameMeshes)
+        static YAML::Node encodePlaySnapshot(const Project* project, const SceneProject* sceneProject);
 
         // What encodeSceneProject and a prefab stage's encode throw for a GameObject they would
         // leave out (a save refused, S03: the document stays modified)
@@ -549,7 +555,10 @@ namespace jasperengine::editor {
         static YAML::Node encodeTransform(const Transform& transform);
         static Transform decodeTransform(const YAML::Node& node, const Transform* oldTransform = nullptr);
 
-        static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true);
+        // numSubmeshes: at least so many are written (savedSubmeshCount); encodeGeneratedValues: off for
+        // a mesh whose generator sets its vertex counts and bounds (isGeneratedMesh)
+        static YAML::Node encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers = true, bool embedTextureData = true, bool encodeBones = true,
+                                              unsigned int numSubmeshes = 0, bool encodeGeneratedValues = true);
         static MeshComponent decodeMeshComponent(const YAML::Node& node, const MeshComponent* oldMesh = nullptr);
 
         // textureIsAtlas: a Text's UI, whose texture is the font atlas the UISystem publishes once the

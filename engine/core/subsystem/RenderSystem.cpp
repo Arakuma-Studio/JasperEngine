@@ -5797,14 +5797,7 @@ bool RenderSystem::loadTerrainTextures(Entity entity, TerrainComponent& terrain,
     TextureRender* textureRender = NULL;
     std::pair<int, int> slotTex(-1, -1);
 
-    // The heightmap and the blend map span the whole 0..1 range, so their borders must read
-    // the border texels, not the REPEAT blend with the opposite edge (detail maps are tiled).
-    terrain.heightMap.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-    terrain.heightMap.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    for (Texture& blendMap : terrain.blendMaps){
-        blendMap.setWrapU(TextureWrap::CLAMP_TO_EDGE);
-        blendMap.setWrapV(TextureWrap::CLAMP_TO_EDGE);
-    }
+    MeshSystem::applyTerrainMapSettings(terrain);
 
     textureRender = terrain.heightMap.getRender(&emptyWhite);
     slotTex = shaderData.getTextureIndex(TextureShaderType::HEIGHTMAP);

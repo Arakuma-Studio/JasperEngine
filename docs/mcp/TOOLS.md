@@ -177,11 +177,12 @@ Redo what undo undid, like Ctrl+Y; same scopes, to_id (until applied) and expect
 
 Group: `core`
 
-Click a button of the open editor dialog (editor_status; edit tools are refused meanwhile). The message says what yes/no mean (e.g. yes = Save, no = Discard Changes); save dialogs take cancel.
+Answer the open editor dialog or file picker (editor_status.dialog): values fill its fields, then choice presses a button. A refusal is an error and the dialog stays open.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `choice` | `"ok"` \| `"yes"` \| `"no"` \| `"cancel"` | yes |  |
+| `choice` | string |  | A word of dialog.choices. |
+| `values` | object |  | {field: value} of dialog.fields; a file picker takes path. |
 
 
 ### `set_job_system_config`

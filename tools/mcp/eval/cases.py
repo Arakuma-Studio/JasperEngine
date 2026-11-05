@@ -59,6 +59,23 @@ def err(text):
     return {"text": text, "is_error": True}
 
 
+RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
+                 "fields": [{"name": "name", "type": "text", "value": "RenameMe.lua"}]}
+
+BOX_DIALOG = {"kind": "modal", "title": "File Already Exists", "message": "A file with this name already exists.", "choices": ["ok"]}
+
+RENAME_STATUS = {"text": "Project \"Space Dodge\". Open dialog: \"Rename File\".", "real": True,
+                 "structured": {"project": {"name": "Space Dodge"}, "playing": False, "dialog": RENAME_DIALOG}}
+
+DIALOG_ANSWERED = {"text": "Answered the dialog.", "real": True, "structured": {"answered": {"title": "Rename File", "choice": "ok"}}}
+
+FILE_PICKER_DIALOG = {"kind": "file_picker", "title": "Open Files", "choices": ["ok", "cancel"],
+                      "message": "The editor waits for the files to open. Several: values.paths.",
+                      "fields": [{"name": "path", "type": "path", "value": ""}]}
+
+FILE_PICKER_OPEN = {"text": "The editor is showing the dialog \"Open Files\".", "real": True, "structured": {"dialog": FILE_PICKER_DIALOG}}
+
+
 CASES = [
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
     {
@@ -167,6 +184,42 @@ CASES = [
                    "must_not_call": [{"tool": "open_scene", "args": {"close_previous": True}}],
                    "reply_must": [r"Gun"], "max_calls": {"open_scene": 1}},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_linked_folder_rules",
+        "kind": "guard",
+        "what_happened": "A folder linked in from out of the project is a folder of the project for the asset database and exports, "
+                         "with its metas beside its files, but the write tools stay refused there: an agent asked answers that from the "
+                         "asset guide, and neither promises a write nor tells the user to copy the folder in to ship it.",
+        "text_at_issue": "docs/mcp/guide/assets.md, 'Linked folders and files'",
+        "source": "docs/specs/S68-linked-folders.md R1, R7, Deviation D1",
+        "prompt": "I symlinked my shared art library into assets/shared; it lives outside the project. Going by the editor's asset "
+                  "guide: where do the .meta files of those assets go, do the files ship in an exported game, and can your write_file "
+                  "tool add a new file there? Answer in a few lines, change nothing.",
+        "checks": {"must_not_call": ["write_file", "create_folder", "move_asset"],
+                   "reply_must": [r"beside|next to|alongside|same folder", r"ship|included|exported", r"refus"],
+                   "reply_must_not": [r"(copy|move) (it|them|the (folder|files|library)) into the project (first|to ship|so (it|they) ship)",
+                                      r"(guide|docs?) (says nothing|doesn.?t)|isn.?t stated|doesn.?t say|inference|probably|haven.?t (tested|confirmed)"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_read_only_linked",
+        "kind": "guard",
+        "what_happened": "A folder linked in from a read-only drive: its assets work with GUIDs the editor keeps, nothing is missing. "
+                         "The result says so, and the agent reports it rather than taking it for a failure or changing permissions.",
+        "text_at_issue": "list_missing_assets result: read_only_linked and its line",
+        "source": "docs/specs/S68-linked-folders.md R7",
+        "prompt": "Run the editor's missing assets check and tell me what it says about this project. Change nothing.",
+        "groups_enabled": ["assets_pipeline"],
+        "mocks": [
+            {"tool": "list_missing_assets", "result": ok(
+                "0 missing asset(s), 0 resolved by path, 0 orphan meta(s).\n1 asset(s) in a read-only linked folder "
+                "(they work; their GUIDs are not saved beside them):\nassets/lib/locked/tile.png",
+                {"missing": [], "resolved_by_path": [], "orphan_metas": [], "read_only_linked": ["assets/lib/locked/tile.png"]})},
+        ],
+        "checks": {"calls": ["list_missing_assets"], "reply_must": [r"read-only", r"tile\.png"],
+                   "must_not_call": ["write_file", "delete_asset", "move_asset"], "shell_must_not": [r"chmod"]},
+        "max_turns": 8,
     },
     {
         "id": "guard_curve_keys_rebind",
@@ -822,6 +875,31 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "bad_shader_list_incomplete",
+        "kind": "bad",
+        "what_happened": "get_build_info hands the closed scenes it has no time for to a job and answers with the list so far "
+                         "(63 of 71 in the test that found the gap); reporting that count ships a build plan that misses shaders.",
+        "text_at_issue": "get_build_info result: shaders_complete, shaders_pending_scenes, shaders_job_id",
+        "source": "docs/specs/S64-shader-lists.md R3",
+        "prompt": "How many shader variants will a build of this project ship? I need the exact number.",
+        "mocks": [
+            {"tool": "get_build_info", "after": "get_job", "result": dict(ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 71 "
+                "shader(s).", {"shader_count": 71, "shaders_complete": True, "shaders_unreadable_scenes": []}), real=True)},
+            {"tool": "get_build_info", "result": dict(ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 63 "
+                "shader(s). The shader list is incomplete, 2 closed scene(s) left: get_job job-7 until it ends, then get_build_info again.",
+                {"shader_count": 63, "shaders_complete": False, "shaders_pending_scenes": ["Hud", "Level2"],
+                 "shaders_job_id": "job-7"}), real=True)},
+            {"tool": "get_job", "result": ok(
+                "Read the closed scenes' shaders: succeeded - The shader list is complete: get_build_info answers now.",
+                {"id": "job-7", "status": "succeeded", "result": {"unreadable_scenes": []}})},
+        ],
+        "checks": {"calls": [{"tool": "get_job", "args": {"job_id": "job-7"}}], "last_call": "get_build_info",
+                   "reply_must": [r"\b71\b"], "must_not_call": ["generate_shaders", "build_project"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_record_failed_write",
         "kind": "guard",
         "what_happened": "A record_game whose write failed leaves Play running and nothing at the output path: the agent stops "
@@ -870,6 +948,103 @@ CASES = [
                               {"calls": [{"tool": "set_properties", "args": {"changes": [{"property": "re:softShadows"}]}}]},
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
+        "max_turns": 12,
+    },
+    # -- dialogs (S69): results as the editor sends them; the model sees their structuredContent ---
+    {
+        "id": "dialog_fills_a_name_prompt",
+        "kind": "bad",
+        "what_happened": "A rename prompt could only be cancelled: respond_dialog pressed buttons and had no way to give the name.",
+        "text_at_issue": "respond_dialog: 'values fill its fields, then choice presses a button'; values: '{field: value} of dialog.fields'",
+        "source": "docs/specs/S69-editor-modal.md R3",
+        "prompt": "The editor is showing a Rename File prompt for RenameMe.lua. Answer it so the file becomes Hero.lua.",
+        "mocks": [
+            {"tool": "editor_status", "result": RENAME_STATUS},
+            {"tool": "respond_dialog", "result": DIALOG_ANSWERED},
+        ],
+        "checks": {"calls": [{"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}}],
+                   "must_not_call": [{"tool": "respond_dialog", "args": {"choice": "cancel"}}, {"tool": "move_asset"}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "dialog_answers_a_file_picker",
+        "kind": "bad",
+        "what_happened": "A file picker held a headless editor with no way to answer it: every call hung.",
+        "text_at_issue": "respond_dialog values: 'a file picker takes path'; dialog.fields with path",
+        "source": "docs/specs/S69-editor-modal.md R5",
+        "groups_enabled": ["editor_ux"],
+        "prompt": "Run the editor's Import New Asset command (assets.import) and import /tmp/art/hero.png with it.",
+        "mocks": [
+            {"tool": "run_command", "result": FILE_PICKER_OPEN},
+            {"tool": "editor_status", "result": FILE_PICKER_OPEN},
+            {"tool": "respond_dialog", "result": DIALOG_ANSWERED},
+        ],
+        "checks": {"calls": [{"tool": "run_command"}, {"tool": "respond_dialog", "args": {"values": {"path": "re:hero\\.png"}}}],
+                   "order": [["run_command", "respond_dialog"]],
+                   "must_not_call": [{"tool": "respond_dialog", "args": {"choice": "cancel"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "dialog_refusal_answers_the_box_first",
+        "kind": "bad",
+        "what_happened": "A taken name opens an error box on top of the prompt: the agent must answer that box, then the prompt again.",
+        "text_at_issue": "respond_dialog's refusal, in the error's text: 'Answer this box with choice ok, then answer ... again'",
+        "source": "docs/specs/S69-editor-modal.md R3, R4",
+        "prompt": "The editor is showing a Rename File prompt for RenameMe.lua. Answer it so the file becomes Taken.lua; "
+                  "if that name is in use, use Hero.lua instead.",
+        "mocks": [
+            # as the editor: once the name is refused the box is the top-most, until it is answered
+            {"tool": "editor_status", "after": "respond_dialog", "result": RENAME_STATUS},
+            {"tool": "editor_status", "after_error": "respond_dialog", "result": {
+                "text": "Open dialog: \"File Already Exists\".", "real": True,
+                "structured": {"project": {"name": "Space Dodge"}, "playing": False, "dialog": BOX_DIALOG}}},
+            {"tool": "editor_status", "result": RENAME_STATUS},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Taken"}}, "result": {
+                "text": "\"Rename File\" did not take it: File Already Exists: A file with this name already exists. "
+                        "Answer this box with choice ok, then answer \"Rename File\" again with other values.",
+                "is_error": True, "real": True, "structured": {
+                    "answered": {"title": "Rename File", "choice": "ok"}, "dialog": BOX_DIALOG}}},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "after": "respond_dialog", "result": DIALOG_ANSWERED},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "after_error": "respond_dialog", "result": {
+                "text": "\"File Already Exists\" has no field name. Answer it with choice: ok.", "is_error": True, "real": True,
+                "structured": {"dialog": BOX_DIALOG}}},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "result": DIALOG_ANSWERED},
+            {"tool": "respond_dialog", "args": {"choice": "ok"}, "result": {
+                "text": "Answered \"File Already Exists\" with ok.", "real": True, "structured": {
+                    "answered": {"title": "File Already Exists", "choice": "ok"},
+                    "dialog": RENAME_DIALOG}}},
+        ],
+        # the box answered and the other name given after it (before it the mock refuses, as the editor does)
+        "checks": {"min_calls": {"respond_dialog": 3},
+                   "calls": [{"tool": "respond_dialog", "args": {"choice": "ok"}},
+                             {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}}],
+                   "reply_must": ["Hero"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_true_peak_limiter",
+        "kind": "guard",
+        "what_happened": "The audio guide names the limiter's truePeak and lookahead; an agent asked for a dBTP ceiling must set "
+                         "them instead of a plain limiter, which lets inter-sample peaks through.",
+        "text_at_issue": "docs/mcp/guide/audio.md effects table: 'lookahead ... with truePeak 1 and at least 1.5 ms it holds "
+                         "threshold + 0.1 dB in true peak'",
+        "source": "S38 guide text; no failure on record",
+        "prompt": "This project is from an old version and its mixer has no limiter. Keep the game's Master output under -1 dBTP.",
+        # a new project (the eval's) has the limiter already: this one is an old project's
+        "files": {"audio/Main.mixer": '{\n  "format": "jasperengine.mixer",\n  "version": 1,\n  "updateMode": "scaled",\n'
+                                      '  "groups": [\n    {\n      "id": "00000001",\n      "name": "Master",\n      "parent": null,\n'
+                                      '      "volume": 0\n    }\n  ]\n}\n'},
+        "mocks": [
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [], "latency_ms": 0}]})},
+            {"tool": "audio_mixer", "args": {"action": "edit"}, "result": ok(
+                "Edited audio/Main.mixer (1 op, one undo step).", {"mixer": "audio/Main.mixer"})},
+        ],
+        "checks": {"any_of": [
+            {"calls": [{"tool": "audio_mixer", "args": {"action": "edit", "ops": [
+                {"op": "add_effect", "type": "limiter", "params": {"truePeak": 1, "lookahead": "*"}}]}}]},
+            {"file_must": {"audio/Main.mixer": [r'"truePeak"\s*:\s*1', r'"lookahead"\s*:\s*[1-5]']}}]},
         "max_turns": 12,
     },
     {

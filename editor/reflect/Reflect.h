@@ -172,9 +172,6 @@ namespace jasperengine::editor::reflect {
         bool assignExisting = false;
         // the variables of the GameObjects an Entity field may name (Factory::formatEntity)
         const std::unordered_map<Entity, std::string>* entityVarNames = nullptr;
-        // fields left out of the exported code: values the game derives itself (a Default
-        // Camera's canvas size)
-        std::span<const char* const> omit = {};
     };
 
     // How a field's values are stored, compared, written and read. Deduced from the member type
@@ -273,6 +270,9 @@ namespace jasperengine::editor::reflect {
         // the elements of an array that hold references, when the list lists them all (a mesh's
         // submesh slots past numSubmeshes hold no reference); null: elementCount
         size_t (*assetCount)(const void* owner) = nullptr;
+        // while true the engine recomputes this value: a document and the exported code leave it
+        // out, as NotWritten does for a value always computed
+        bool (*derivedIf)(const void* owner) = nullptr;
     };
 
     struct StructDesc {
@@ -437,6 +437,17 @@ namespace jasperengine::editor::reflect {
         DocumentEncodeScope& operator=(const DocumentEncodeScope&) = delete;
         static bool active();
     };
+    // While one lives on a thread, a document holds what a frame computes that a file leaves out:
+    // the Play snapshot Stop restores (Stream::encodePlaySnapshot)
+    class PlaySnapshotEncodeScope {
+    public:
+        PlaySnapshotEncodeScope();
+        ~PlaySnapshotEncodeScope();
+        PlaySnapshotEncodeScope(const PlaySnapshotEncodeScope&) = delete;
+        PlaySnapshotEncodeScope& operator=(const PlaySnapshotEncodeScope&) = delete;
+    };
+    // Whether the encode on this thread holds what a frame computes: all but a scene or prefab file
+    bool encodesComputedValues();
     YAML::Node encode(const StructDesc& desc, const void* owner, const EncodeContext& ctx);
     // Decodes over the base value already in `comp`: absent keys keep it (OmitIfDefault ones take
     // the default), aliases are read, a value that does not read keeps the base and adds a skip

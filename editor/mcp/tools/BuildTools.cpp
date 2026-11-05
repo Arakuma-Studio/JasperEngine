@@ -25,6 +25,7 @@
 
 #include "jobs/JobSystem.h"
 #include "App.h"
+#include "EditorHost.h"
 #include "AppSettings.h"
 #include "Exporter.h"
 #include "Factory.h"
@@ -52,6 +53,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <functional>
 #include <fstream>
 #include <map>
 #include <cstdint>
@@ -276,18 +278,6 @@ bool parseShaderKeys(const Json& value, std::vector<ShaderKey>& out) {
 std::string shaderName(ShaderKey key) {
     return Exporter::getShaderDisplayName(ShaderPool::getShaderTypeFromKey(key), ShaderPool::getPropertiesFromKey(key),
                                           ShaderPool::getCustomIdFromKey(key));
-}
-
-// The shaders the scenes need (ExportWindow::populateShaderList): stored keys plus a live collection
-std::set<ShaderKey> sceneShaderKeys(Project* project) {
-    std::set<ShaderKey> keys;
-    for (const SceneProject& scene : project->getScenes()) {
-        std::set<ShaderKey> sceneKeys = scene.shaderKeys;
-        project->collectSceneShaderKeys(&scene, sceneKeys);
-        project->collectRequiredShaderKeys(&scene, sceneKeys);
-        for (ShaderKey key : sceneKeys) keys.insert(ShaderPool::normalizeKey(key));
-    }
-    return keys;
 }
 
 std::string appName(Project* project) {
@@ -545,6 +535,7 @@ struct BuildRun {
     LogFile logFile;
     fs::path logPath;
     ExportResult result;                  // a player build's report (taken before the exporter goes)
+    Json unreadableScenes = Json::array();  // generate_shaders: the scenes its list could not read (R4)
 };
 
 // Never destroyed: a build still running at exit must not be joined from a static destructor
@@ -554,6 +545,7 @@ struct BuildManager {
     std::shared_ptr<BuildRun> active;
     Json lastBuild = nullptr;             // the last finished build's result
     fs::path lastExecutable;              // the last Desktop player built
+    JobPtr shaderList;                    // get_build_info's reading of closed scenes, while it runs
 };
 
 BuildManager& manager() {
@@ -669,6 +661,10 @@ void finishRun(const std::shared_ptr<BuildRun>& run, const ExportProgress& progr
             }
         } else if (r.shadersOnly) {
             message = "Shaders generated in " + FileUtils::pathToGenericUtf8(outputDir) + ".";
+            if (!r.unreadableScenes.empty()) {
+                result["unreadable_scenes"] = r.unreadableScenes;
+                message += " " + std::to_string(r.unreadableScenes.size()) + " scene(s) could not be read: see result.unreadable_scenes.";
+            }
         } else if (r.mode == ExportMode::Desktop) {
             // the file the exporter wrote (its name fixed when the export started), not one computed
             // from the project now: a rename meanwhile can't make another file the recorded player
@@ -1180,7 +1176,104 @@ void buildProjectTool(const CallPtr& call) {
     replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
 }
 
+// ------------------------------------------------------------------ the shader list (S64)
+
+// What the build tools may read of closed scenes before they answer: more than about a second
+// becomes a job (docs/mcp/conventions.md). A big file is one load past that by itself.
+ShaderListLimit answerLimit(const Project* project) {
+    ShaderListLimit limit;
+    limit.maxMillis = 800;
+    limit.maxFileBytes = 4 * 1024 * 1024;
+    // JASPER_SHADER_LIST_SYNC_MS: the tests' way to see the job on a scene of any size
+    if (const char* env = std::getenv("JASPER_SHADER_LIST_SYNC_MS"); env && *env) {
+        limit.maxMillis = std::atoll(env);
+    }
+    // Play draws, and an export's worker reads the project
+    if (project->isAnyScenePlaying() || project->isGeneratedExportRunning()) limit.maxScenes = 0;
+    return limit;
+}
+
+Json unreadableScenesJson(const ShaderListStatus& status) {
+    Json scenes = Json::array();
+    for (const UnreadableScene& scene : status.unreadableScenes) {
+        scenes.push_back({{"scene", scene.name}, {"path", scene.path}, {"error", scene.error}});
+    }
+    return scenes;
+}
+
+// Reads what is stale of the closed scenes on the main thread, a scene a frame, then calls `done`
+// there. A task posted again each time: the editor draws and answers calls in between.
+struct ShaderListPump {
+    Project* project = nullptr;
+    JobPtr job;
+    std::function<void(const ShaderListStatus&)> done;
+    std::function<void()> cancelled;   // the job ended from outside (cancel_job)
+
+    static void post(const std::shared_ptr<ShaderListPump>& pump) {
+        getEditorHost().enqueueMainThreadTask([pump]() { step(pump); });
+    }
+
+    static void step(const std::shared_ptr<ShaderListPump>& pump) {
+        if (pump->job->finished()) {
+            if (pump->cancelled) pump->cancelled();
+            return;
+        }
+        if (pump->project->isGeneratedExportRunning()) {
+            post(pump);
+            return;
+        }
+        try {
+            ShaderListLimit oneScene;
+            oneScene.maxScenes = 1;
+            const ShaderListStatus status = pump->project->refreshClosedSceneShaderKeys(oneScene);
+            if (status.complete()) {
+                pump->done(status);
+                return;
+            }
+            pump->job->setProgress(-1.0, "Reading closed scenes for their shaders, " + std::to_string(status.pendingScenes.size()) + " left");
+            post(pump);
+        } catch (const std::exception& e) {
+            pump->job->fail(std::string("Reading closed scenes for their shaders: ") + e.what());
+            if (pump->cancelled) pump->cancelled();
+        }
+    }
+};
+
+// get_build_info: the job that finishes the list, one at a time
+JobPtr shaderListJob(McpContext& ctx, Project* project) {
+    std::lock_guard<std::mutex> lock(manager().mutex);
+    if (manager().shaderList && !manager().shaderList->finished()) return manager().shaderList;
+    JobPtr job = ctx.jobs().create("shader_list", "Read the closed scenes' shaders");
+    manager().shaderList = job;
+    auto pump = std::make_shared<ShaderListPump>();
+    pump->project = project;
+    pump->job = job;
+    pump->done = [job](const ShaderListStatus& status) {
+        job->succeed("The shader list is complete: get_build_info answers now.", {{"unreadable_scenes", unreadableScenesJson(status)}});
+    };
+    ShaderListPump::post(pump);
+    return job;
+}
+
 // ------------------------------------------------------------------ generate_shaders
+
+// Starts the shader build of a run whose list is known
+void startShaderRun(const std::shared_ptr<BuildRun>& run, const std::set<ShaderKey>& keys) {
+    run->config.selectedShaderKeys = keys;
+    // Shader generation runs the exporter on the calling thread: a process-channel job, not the
+    // main thread. project is not used (no scene saving), so it never waits for the main thread.
+    Exporter* exporter = run->exporter.get();
+    jobs::SubmitOptions options;
+    options.name = "generate-shaders";
+    run->worker = jobs::system().processChannel().submit([exporter, config = run->config]() { exporter->generateShaders(config); }, options);
+    startRun(run);
+}
+
+void endShaderRunEarly(const std::shared_ptr<BuildRun>& run) {
+    if (run->logFile) run->logFile.close();
+    std::lock_guard<std::mutex> lock(manager().mutex);
+    if (manager().active == run) manager().active.reset();
+}
 
 void generateShadersTool(const CallPtr& call) {
     McpContext& ctx = call->ctx();
@@ -1214,6 +1307,13 @@ void generateShadersTool(const CallPtr& call) {
     }
 
     std::set<ShaderKey> keys;
+    ShaderListStatus list;
+    const auto projectKeys = [project]() {
+        const ShaderOverrides& overrides = project->getShaderOverrides();
+        std::set<ShaderKey> sceneKeys;
+        project->collectBuildShaderKeys(sceneKeys);
+        return project->finishBuildShaderKeys(sceneKeys, overrides.additions, overrides.exclusions);
+    };
     if (args.contains("shaders") && args["shaders"].is_array() && !args["shaders"].empty()) {
         for (const Json& item : args["shaders"]) {
             std::vector<ShaderKey> parsed;
@@ -1225,40 +1325,51 @@ void generateShadersTool(const CallPtr& call) {
             for (ShaderKey key : parsed) keys.insert(ShaderPool::normalizeKey(key));
         }
     } else {
-        keys = sceneShaderKeys(project);
-        const ShaderOverrides& overrides = project->getShaderOverrides();
-        for (ShaderKey key : overrides.additions) keys.insert(ShaderPool::normalizeKey(key));
-        for (ShaderKey key : overrides.exclusions) keys.erase(ShaderPool::normalizeKey(key));
+        list = project->refreshClosedSceneShaderKeys(answerLimit(project));
+        if (list.complete()) keys = projectKeys();
     }
-    if (keys.empty()) {
+    if (list.complete() && keys.empty()) {
         call->fail("No shaders to generate: the scenes need none yet (add GameObjects that render), or pass shaders.");
         return;
     }
-    config.selectedShaderKeys = keys;
     if (const std::string escape = buildFoldersEscape(project, {config.targetDir, config.destinationDir}); !escape.empty()) {
         call->fail(escape);
         return;
     }
 
     auto run = std::make_shared<BuildRun>();
-    run->job = ctx.jobs().create("shaders", "Generate " + std::to_string(keys.size()) + " shader(s)");
+    run->job = ctx.jobs().create("shaders", list.complete() ? "Generate " + std::to_string(keys.size()) + " shader(s)" : std::string("Generate the project's shaders"));
     run->shadersOnly = true;
     run->config = config;
     run->projectPath = project->getProjectPath();
     run->exporter = std::make_unique<Exporter>();
     run->logCursor = Out::lastLogId();
+    run->unreadableScenes = unreadableScenesJson(list);
     openRunLog(*run, project);
     {
         std::lock_guard<std::mutex> lock(manager().mutex);
         manager().active = run;
     }
-    // Shader generation runs the exporter on the calling thread: a process-channel job, not the
-    // main thread. project is not used (no scene saving), so it never waits for the main thread.
-    Exporter* exporter = run->exporter.get();
-    jobs::SubmitOptions options;
-    options.name = "generate-shaders";
-    run->worker = jobs::system().processChannel().submit([exporter, config]() { exporter->generateShaders(config); }, options);
-    startRun(run);
+    if (list.complete()) {
+        startShaderRun(run, keys);
+    } else {
+        // the rest of the list first, then the build it names
+        auto pump = std::make_shared<ShaderListPump>();
+        pump->project = project;
+        pump->job = run->job;
+        pump->cancelled = [run]() { endShaderRunEarly(run); };
+        pump->done = [run, projectKeys](const ShaderListStatus& status) {
+            const std::set<ShaderKey> finished = projectKeys();
+            if (finished.empty()) {
+                run->job->fail("No shaders to generate: the scenes need none yet (add GameObjects that render), or pass shaders.");
+                endShaderRunEarly(run);
+                return;
+            }
+            run->unreadableScenes = unreadableScenesJson(status);
+            startShaderRun(run, finished);
+        };
+        ShaderListPump::post(pump);
+    }
     replyWhenJobDone(call, run->job, args.value("wait", true), args.value("timeout_seconds", 120.0), buildResult);
 }
 
@@ -1359,8 +1470,24 @@ void getBuildInfoTool(const CallPtr& call) {
     }
     data["scenes"] = scenes;
 
-    const std::set<ShaderKey> fromScenes = sceneShaderKeys(project);
+    // the list as a build would ship it (S64); the time and the reads are what closed scenes add
+    const auto listStart = std::chrono::steady_clock::now();
+    const ShaderListStatus list = project->refreshClosedSceneShaderKeys(answerLimit(project));
+    data["shader_list_ms"] = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - listStart).count();
+    data["shader_list_scenes_read"] = list.scenesRead;
+    data["shaders_complete"] = list.complete();
+    data["shaders_unreadable_scenes"] = unreadableScenesJson(list);
+    if (!list.complete()) {
+        const JobPtr job = shaderListJob(ctx, project);
+        data["shaders_pending_scenes"] = list.pendingScenes;
+        data["shaders_job_id"] = job->id();
+    }
+
     const ShaderOverrides& overrides = project->getShaderOverrides();
+    // what the scenes need and every build ships, before the manual picks
+    std::set<ShaderKey> sceneKeys;
+    project->collectBuildShaderKeys(sceneKeys);
+    const std::set<ShaderKey> fromScenes = project->finishBuildShaderKeys(sceneKeys, {}, {});
     std::set<ShaderKey> all = fromScenes;
     for (ShaderKey key : overrides.additions) all.insert(ShaderPool::normalizeKey(key));
     for (ShaderKey key : overrides.exclusions) all.insert(ShaderPool::normalizeKey(key));
@@ -1391,6 +1518,11 @@ void getBuildInfoTool(const CallPtr& call) {
                        (missing.empty() ? "available" : "missing tools") + "; Web: " + (emsdk.found ? "available" : "no emsdk") +
                        "; source export: available. " + std::to_string(scenes.size()) + " scene(s) in the build, " +
                        std::to_string(included) + " shader(s).";
+    if (!list.complete()) {
+        text += " The shader list is incomplete, " + std::to_string(list.pendingScenes.size()) + " closed scene(s) left: get_job " +
+                data["shaders_job_id"].get<std::string>() + " until it ends, then get_build_info again.";
+    }
+    for (const UnreadableScene& scene : list.unreadableScenes) text += " Cannot read scene " + scene.path + ": " + scene.error + ".";
     call->ok(text, data);
 }
 
