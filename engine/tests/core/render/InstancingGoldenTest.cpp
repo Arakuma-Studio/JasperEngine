@@ -439,11 +439,12 @@ TEST_F(InstancingGoldenGpu, FadingMeshAmongBatchesMatchesUnbatched){
 TEST_F(InstancingGoldenGpu, ShadowLodCoarserIsOneLevel){
     JASPER_REQUIRE_GPU();
     scene.setMeshLodEnabled(true);
-    Model model(&scene);
-    ASSERT_TRUE(model.loadModel("gltf/instancing/sphere.gltf"));
-    const MeshComponent& mesh = scene.getComponent<MeshComponent>(model.getEntity());
+    // (a sphere of many triangles: S54's recipe stops a small mesh's chain early)
+    Primitive sphere(&scene);
+    sphere.createSphere(1.5f, 48, 24);
+    const MeshComponent& mesh = sphere.getComponent<MeshComponent>();
     const MeshComponent* loaded = &mesh;
-    ASSERT_TRUE(GpuEnvironment::runFrames([loaded](){ return loaded->numLods > 1; })) << "the sphere got no detail levels";
+    ASSERT_TRUE(GpuEnvironment::runFrames([loaded](){ return loaded->numLods > 2; })) << "the sphere got no chain of levels: " << mesh.numLods;
 
     std::printf("[instancing] sphere: %u levels, errors", mesh.numLods);
     for (unsigned int l = 0; l < mesh.numLods; l++)

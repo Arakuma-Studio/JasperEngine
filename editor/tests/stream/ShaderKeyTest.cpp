@@ -429,7 +429,7 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(18), "depth_Aui"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOit"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfd"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},
