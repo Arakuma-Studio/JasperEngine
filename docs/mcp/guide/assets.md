@@ -92,8 +92,8 @@ the way a real folder does. One file is one asset, with one GUID, whatever the p
   beside them (`lib` at the project root, with the assets in `assets/`) can be read, but is not
   scanned, gets no metas and ships only its shader sources.
 - **A project root swapped for a link** behind the editor's back (`assets` renamed and a link left at
-  its name) is not followed: nothing is read or written through it, with a warning, until it is put back
-  or the project is opened again.
+  its name) is not followed: the database neither scans nor writes through it, with a warning, and an
+  export fails with an error, until it is put back or the project is opened again.
 - **A folder moved and linked at its old name** is a move: GUIDs, bytes and references survive, the hints follow.
 - **A cycle** ends the walk. A link back to a folder already walked is another name of it; a link
   to a folder that holds the project (`assets/up` leading to the project root) is left out, with

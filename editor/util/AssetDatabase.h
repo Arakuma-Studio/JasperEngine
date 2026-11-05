@@ -156,6 +156,8 @@ namespace jasperengine::editor {
         // it: false through a root that leads elsewhere now, or out of the project by a link that is
         // not under the assets or Lua root
         bool allowsWritesAt(const std::filesystem::path& path) const;
+        // The pinned roots that no longer lead where they did (an export must not ship what they lead to now)
+        std::vector<std::filesystem::path> getMovedRoots() const;
         bool isReadOnly() const { return readOnly; }
         void close();
         // The temporary siblings of atomic writes the last open() walked past (the project's

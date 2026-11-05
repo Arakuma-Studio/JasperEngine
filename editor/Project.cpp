@@ -396,8 +396,11 @@ fs::path editor::Project::normalizeToProjectRelative(const fs::path& path) const
         if (!ec) {
             relativePath = relativePath.lexically_normal();
             // a link out of the project is a folder of the project: its files keep the path
-            // they are reached by, not "../.." (S68 R7)
+            // they are reached by, not "../.." (S68 R7). The spelling first: the database is
+            // closed while it opens, and the assets root it is given may be such a link.
             if (!relativePath.empty() && *relativePath.begin() == "..") {
+                const fs::path spelled = normalizedPath.lexically_relative(projectPath.lexically_normal());
+                if (!spelled.empty() && *spelled.begin() != "..") return spelled;
                 const fs::path known = assetDatabase.toRelative(normalizedPath);
                 if (!known.empty() && !known.is_absolute() && *known.begin() != "..") return known;
             }

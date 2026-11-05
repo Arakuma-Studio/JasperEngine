@@ -538,6 +538,16 @@ bool editor::AssetDatabase::crossesMovedRoot(const fs::path& full) const {
     return false;
 }
 
+std::vector<fs::path> editor::AssetDatabase::getMovedRoots() const {
+    std::vector<fs::path> moved;
+    if (const std::shared_ptr<const Pins> current = std::atomic_load(&pins)) {
+        for (const PinnedRoot& root : current->roots) {
+            if (safewrite::resolvedPath(root.spelled) != root.real) moved.push_back(root.spelled);
+        }
+    }
+    return moved;
+}
+
 bool editor::AssetDatabase::linksFollowedAt(const fs::path& full) const {
     if (assetsDir.empty() || assetsDir == ".") return true;
     auto holds = [&](const fs::path& root) {
