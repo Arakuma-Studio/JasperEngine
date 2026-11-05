@@ -891,6 +891,8 @@ CASES = [
         "checks": {"calls": [{"tool": "audio_mixer", "args": {"action": "edit", "ops": [
             {"op": "add_effect", "type": "limiter", "params": {"truePeak": 1, "lookahead": "*"}}]}}]},
         "max_turns": 12,
+    },
+    {
         "id": "bad_ios_simulator_without_an_account",
         "kind": "bad",
         "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",
