@@ -1234,10 +1234,11 @@ async def test_p11_editor_judges_the_played_region_and_agrees():
     judge = json.loads((work / "judge.json").read_text())
     assert any(r.startswith("analyzers disagree: edge_click present (Python)") or r.startswith("analyzers disagree: edge_click absent (editor)")
                for r in judge["clips"][victim]["reasons"]), judge["clips"][victim]
-    # the mid-signal bed is judged on the region it plays (--fade-in-ms 2): no edge_click, the region in `played` (S36 R3)
+    # the mid-signal bed is judged on the region it plays (--fade-in-ms 2): no edge_click, import from the options
     noise = judge["clips"]["ambience/fs_1004_noise"]
     assert noise["verdict"] == "accepted", noise
-    assert "edge_click" not in noise["notes"] and noise["item"]["played"]["fade_in_frames"] == 96, noise["item"]
+    imp = noise["item"]["import"]
+    assert "edge_click" not in noise["notes"] and imp["from"] == "options" and imp["fade_in_frames"] == 96, noise["item"]
     # the crackle bed: the editor hears the crackle too (information), and the dropout glitch is judged as a glitch
     bed = judge["clips"]["ambience/fs_1005_crackle"]
     assert bed["verdict"] == "accepted" and bed["item"]["defects"]["crackle"], bed

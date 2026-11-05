@@ -86,10 +86,17 @@ TEST(ClipSourceBudget, DISABLED_AddsAtMostThreePercentToAVoice){
     double plain = 1e9, wrapped = 1e9;
     const int blocks = 20000;
     clip.setSingleInstance(false);
-    for (int run = 0; run < 7; run++){
+    ClipImportSettings trimOnly;
+    trimOnly.trimHeadFrames = 480;
+    AudioClipSource noGain(wav, trimOnly);
+    noGain.setSingleInstance(false);
+    double withoutGain = 1e9;
+    for (int run = 0; run < 15; run++){
         plain = std::min(plain, secondsOf(*wav, blocks));
         wrapped = std::min(wrapped, secondsOf(clip, blocks));
+        withoutGain = std::min(withoutGain, secondsOf(noGain, blocks));
     }
+    std::printf("[budget] without gain %.3f ms: %+.1f %%\n", withoutGain * 1000.0, (withoutGain / plain - 1.0) * 100.0);
     std::printf("[budget] Wav %.3f ms, AudioClipSource %.3f ms over %d blocks: %+.1f %%\n", plain * 1000.0, wrapped * 1000.0, blocks, (wrapped / plain - 1.0) * 100.0);
     EXPECT_LE(wrapped, plain * 1.03);
 }
