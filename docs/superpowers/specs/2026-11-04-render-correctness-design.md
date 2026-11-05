@@ -793,3 +793,10 @@ Recorded during implementation (branch `dc/render-correctness`).
     the Scene view doc.
 11. **MCP test (T22).** No Points depth-write hint test: the Auto label is Inspector text with no MCP surface;
     `PointsDepthWriteGpu` covers the behaviour.
+12. **Merge with S54, S55, S57 (main, 2026-11-05).** S57's capsule and contact shadows wrapped
+    `lightShadow` in `LIGHT_OCCLUSION`; the merged `includes/lights.glsl` has `lightShadowMapD` (the shadow
+    map's term with given derivatives), `lightShadowD` (times the light's occlusion under `LIGHT_OCCLUSION`) and
+    `lightShadow` (derivatives taken, then `lightShadowD`), so the hoisted derivatives of `mesh.frag` keep the
+    occlusion. S54/S55's instance matrices carry the LOD fade in the first column's w; the instance fade reads
+    only `i_matrix_col4`, so they compose. The shader cache is v49 (main reached v48). GBUFFER bit 16 ('Ifd')
+    is also claimed by ssr-probes: whoever lands second renumbers it.
