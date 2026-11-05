@@ -99,14 +99,8 @@
 //   - USE_SHADOWS (pixel lights that receive shadows): nothing here; the fragment stage
 //     calls lightShadow, which computes the shadow coordinates from v_position.
 
-uniform u_vs_pbrParams {
-    mat4 modelMatrix;
-    mat4 normalMatrix;
-    mat4 mvpMatrix;
-    #ifdef PIXEL_SNAP
-        vec4 pixelSnapDraw; // x the draw's snap: 0 none, 1 every vertex, 2 the pivot
-    #endif
-} pbrParams;
+// pbrParams: per draw, or per instance in an automatically instanced batch
+#include "includes/object_params.glsl"
 
 // a pixel-perfect camera's sprites and tilemaps (S41, 'Pxs'): the final position snaps after
 // every hook (includes/pixel_snap.glsl), as surface_depth_vs.glsl's does
@@ -394,7 +388,7 @@ void main() {
     #endif
 
     #ifdef HAS_INSTANCING
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * vec4(position, 1.0);
         objectNormal = normalize(instanceNormal(mat3(instanceMatrix), objectNormal));
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT

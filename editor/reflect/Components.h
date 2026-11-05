@@ -89,6 +89,7 @@ namespace jasperengine::editor::reflect {
     extern const ComponentDesc kMirrorDesc;
     extern const ComponentDesc kLight2DDesc;
     extern const ComponentDesc kShadowCaster2DDesc;
+    extern const ComponentDesc kCapsuleShadowCasterDesc;
     extern const ComponentDesc kReflectionProbeDesc;
     extern const ComponentDesc kUIDocumentDesc;
     extern const ComponentDesc kLocalVolumetricFogDesc;

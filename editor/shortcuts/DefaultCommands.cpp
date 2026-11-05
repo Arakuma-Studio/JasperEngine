@@ -224,6 +224,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
         "Start or stop the Recorder (enters Play when needed)";
     b.menu("window.terrain", "Terrain", AppMenuCommand::ToggleTerrain);
     b.menu("window.audioMixer", "Audio Mixer", AppMenuCommand::ToggleAudioMixer);
+    b.menu("audioMixer.resetLoudness", "Reset Integrated Loudness", AppMenuCommand::ResetLoudness).description =
+        "Start the Audio Mixer's integrated loudness and true-peak hold over";
     b.menu("window.inputActions", "Input Actions", AppMenuCommand::ToggleInputActions);
     b.menu("window.navigation", "Navigation", AppMenuCommand::ToggleNavigation);
     b.menu("window.textureSynthesis", "Texture Synthesis", AppMenuCommand::ToggleTextureSynthesis);
@@ -235,6 +237,8 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.menu("window.frameDebugger", "Frame Debugger", AppMenuCommand::ToggleFrameDebugger);
     b.menu("window.systems", "Systems", AppMenuCommand::ToggleSystems);
     b.menu("window.jobsMemory", "Jobs & Memory", AppMenuCommand::ToggleJobsMemory);
+    b.menu("window.meshAudit", "Mesh Optimization Audit", AppMenuCommand::ToggleMeshAudit);
+    b.menu("window.buildReport", "Build Report", AppMenuCommand::ToggleBuildReport);
     b.menu("window.mcpActivity", "MCP Server", AppMenuCommand::ToggleMcpActivity);
     b.menu("window.vcs.commit", "Commit", AppMenuCommand::ToggleVcsCommit);
     b.menu("window.vcs.history", "History", AppMenuCommand::ToggleVcsHistory);

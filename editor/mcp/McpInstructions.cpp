@@ -113,6 +113,7 @@ layouts. Read jasper://docs/html-ui first.
 (edit_animation), post-processing (apply_post_processing_preset), atmosphere (Fog type height,
 apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_quality), profiling
 (get_frame_times), shipping (build_project), data safety (save after each step; allow_data_loss),
+meshes (inspect_models, check_render_budgets), device tiers (set_device_simulation, then play),
 pixel art (a camera's Pixel Perfect Camera component): jasper://docs/<area>.
 )JE";
 }

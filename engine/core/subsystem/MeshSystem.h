@@ -14,6 +14,7 @@
 #include "texture/MaterialPbr.h"
 #include "texture/Texture.h"
 #include "texture/TexturePack.h"
+#include "subsystem/GltfNormalize.h"
 
 #include "jobs/JobSystem.h"
 
@@ -107,8 +108,8 @@ namespace jasperengine{
         static bool fileExists(const std::string &abs_filename, void *);
         static bool readWholeFile(std::vector<unsigned char> *out, std::string *err, const std::string &filepath, void *);
         static bool getFileSizeInBytes(size_t *filesize_out, std::string *err, const std::string &filepath, void *userdata);
-        // An FBX is read from its imported .glb, with texture URIs still relative to the FBX
-        static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
+        // GltfNormalize::run on a parse; false with the error in `err` when the model cannot be used
+        static bool normalizeGLTF(tinygltf::Model& model, const std::string& filename, std::string* err);
         static std::string getAsyncModelLoadScenePrefix(const Scene* scene);
         static std::string getAsyncModelLoadKey(const Scene* scene, const std::string& filename);
         std::string getAsyncModelLoadKey(const std::string& filename) const;
@@ -158,8 +159,6 @@ namespace jasperengine{
             const char* name = "";
         };
         bool loadGLTFLobeMap(ModelComponent& model, const GltfLobeMap& lobeMap, Texture& map, int& texCoord);
-        // one warning per extension a model uses and the engine does not read (an error when required)
-        static void reportGLTFExtensions(const tinygltf::Model& gltf, const std::string& filename);
         std::string getBufferName(int bufferViewIndex, ModelComponent& model);
         Matrix4 getGLTFNodeMatrix(int nodeIndex, ModelComponent& model);
         Matrix4 getGLTFMeshGlobalMatrix(int nodeIndex, ModelComponent& model, std::map<int, int>& nodesParent);
@@ -197,6 +196,9 @@ namespace jasperengine{
 
         // Frames are authored in pixels, textureRect is in UV space
         static void setSpriteFrameRect(MeshComponent& mesh, SpriteComponent& sprite, Rect frameRect);
+        // What a Terrain needs of its height and blend maps, whatever a file said: a save and the
+        // generated code hold them too (the editor applies them on load and before a save)
+        static void applyTerrainMapSettings(TerrainComponent& terrain);
 
         // What each generator makes of its mesh before filling the geometry: the submesh
         // settings and the vertex attributes. The editor reads the shader variants of a
@@ -263,9 +265,20 @@ namespace jasperengine{
         // relative; from a project since moved, the longest tail of it that names a file in
         // assetsRoot. Any other id is returned unchanged.
         static std::string migrateModelTextureId(const std::string& id, const std::string& assetsRoot);
+        // The file a reader loads for a model (S53 R12, every parse site asks here): its cooked
+        // .glb when there is one (CookedModels: the export's index, the editor's cook cache),
+        // else an FBX's imported .glb, else the file itself. A cooked .glb keeps the source's
+        // image URIs: they resolve against the source's directory.
+        static std::string getImportedModelPath(const std::string& filename);
         // The .glb an FBX is imported into: in the editor's import cache (System::getImportPath),
         // next to the FBX in an exported game (<name>.fbx.glb)
-        static std::string getImportedModelPath(const std::string& filename);
+        static std::string getFbxImportPath(const std::string& filename);
+        // Parses a model file through getImportedModelPath (a cooked .glb or an FBX's import is
+        // read instead, with texture and buffer URIs still relative to the source): every glTF
+        // parse site goes through it
+        static bool readGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
+        // readGLTFFile, then normalizeGLTF: the model as core glTF
+        static bool loadGLTFFile(tinygltf::TinyGLTF& loader, tinygltf::Model* model, std::string* err, std::string* warn, const std::string& filename);
 
         // Submesh edits (Submesh::overrideFields) carried across a load, keyed by the ordinal of
         // the primitive that built each one. The loaders do this themselves; it is public for the
@@ -293,6 +306,10 @@ namespace jasperengine{
         // (animation clips spec 9.R13) while the entities that use it, not reloaded, keep showing
         // their images. A later invalidateModelFile still drops those images.
         static void invalidateModelParse(const std::string& filename);
+
+        // the name of the buffers a load appends to a pooled parse (converted, baked copies): not
+        // the file's, so they stay when the file's bytes are released (ModelCpuData)
+        static constexpr const char* kSyntheticBufferName = "JasperEngineSynthetic";
 
         // Loads of a pooled tinygltf::Model take turns under this mutex: loadGLTF appends
         // synthetic buffers to it, so a reader of the shared model (the sub-clip builder) holds it too
@@ -333,6 +350,8 @@ namespace jasperengine{
         static bool isMeshLoadHeld(const Scene* scene);
 
         void createInstancedMesh(Entity entity);
+        // an EXT_mesh_gpu_instancing node's copies as the entity's instances (S53 R3)
+        void applyGLTFInstances(Entity entity, const std::vector<GltfInstance>& instances);
         void removeInstancedMesh(Entity entity);
         bool hasInstancedMesh(Entity entity) const;
 

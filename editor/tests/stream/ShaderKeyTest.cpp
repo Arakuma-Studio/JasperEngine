@@ -57,13 +57,15 @@ namespace {
         ShaderType::POSTPROCESS, ShaderType::BLOOM, ShaderType::HTMLUI, ShaderType::HTMLUI_GRADIENT,
         ShaderType::HTMLUI_POST, ShaderType::UI_EFFECT, ShaderType::PROBE_FILTER, ShaderType::FLUID,
         ShaderType::SHADOW_CACHE, ShaderType::ATMOSPHERE_DEPTH, ShaderType::VOLUMETRIC_FOG, ShaderType::ATMOSPHERE_DENOISE,
-        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE};
+        ShaderType::VOLUMETRIC_CLOUDS, ShaderType::SKY_COMPOSITE, ShaderType::VOLUMETRIC_COMPOSITE, ShaderType::LIGHTING_PASS};
 
     // MESH has every one of its 32 bits (bit 5, the retired 'Pcf', is Stochastic Tiling since
     // October 2026, see StochasticTilingTest.cpp)
     // bits 0-31, bit 32, the lattice deformer ('Ltc'), bit 33, S10's high shadow filters ('Shq'),
-    // bits 34-35, the Vertex Animation ('Vat', 'Vab'), and bit 36, S41's Pixel Snap ('Pxs')
-    const uint64_t meshValidMask = 0x1FFFFFFFFFULL;
+    // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
+    // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), bit 41, S55's automatic
+    // instancing ('Aui'), and bit 42, S41's Pixel Snap ('Pxs')
+    const uint64_t meshValidMask = 0x7FFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
 
@@ -193,7 +195,7 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 36 (S41's Pixel Snap) goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 42 (S41's Pixel Snap) goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));
@@ -406,7 +408,12 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::MESH, (1u << 3) | (1u << 30), "mesh_PucL16"},
         {ShaderType::MESH, meshMaskWithoutBit5, "mesh_UltUv1Uv2PucShwNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16Pcl"},
         // bits past the count add nothing
-        {ShaderType::MESH, 0x41 | shaderPropertyBit(37) | shaderPropertyBit(63), "mesh_UltNor"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(43) | shaderPropertyBit(63), "mesh_UltNor"},
+        // bits 36-39, S57's lighting: Tiled lights, capsule and contact shadows, Order Independent
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(36), "mesh_UltNorTil"},
+        {ShaderType::MESH, 0x51 | shaderPropertyBit(37), "mesh_UltShwNorCap"},
+        {ShaderType::MESH, 0x51 | shaderPropertyBit(38), "mesh_UltShwNorCts"},
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(39), "mesh_UltNorOit"},
         // bit 33, S10's high shadow filters
         {ShaderType::MESH, 0x51 | shaderPropertyBit(33), "mesh_UltShwNorShq"},
         // bit 32, the first past the 32 older keys use, is the lattice deformer
@@ -418,9 +425,12 @@ TEST(ShaderKeyNames, ExistingVariantsKeepTheirNames) {
         {ShaderType::DEPTH, shaderPropertyBit(17), "depth_Vab"},
         {ShaderType::GBUFFER, shaderPropertyBit(14), "gbuffer_Vat"},
         {ShaderType::GBUFFER, shaderPropertyBit(15), "gbuffer_Vab"},
+        // S55's automatic GPU instancing: MESH bit 41 (40 is S54's), DEPTH bit 18
+        {ShaderType::MESH, 0x41 | shaderPropertyBit(41), "mesh_UltNorAui"},
+        {ShaderType::DEPTH, shaderPropertyBit(18), "depth_Aui"},
         // bit 5, a '?' while it was retired, is Stochastic Tiling
         {ShaderType::MESH, 0x41 | (1u << 5), "mesh_UltStoNor"},
-        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabPxs"},
+        {ShaderType::MESH, meshValidMask, "mesh_UltUv1Uv2PucShwStoNorNmpTanVc3Vc4TxrFogSkiMtaMnrMtgTerIstIblMirSaoL2dS2dAmsAopIfdTpbVtlLc4L16PclLtcShqVatVabTilCapCtsOitLfdAuiPxs"},
         {ShaderType::DEPTH, 0x3, "depth_TexSki"},
         {ShaderType::DEPTH, 0x3FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1Txr"},
         {ShaderType::DEPTH, 0x7FFF, "depth_TexSkiMtaMnrMtgTerIstAmsIfdNorVc3Vc4Uv1TxrSto"},

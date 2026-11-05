@@ -36,14 +36,8 @@
     #undef HAS_TEXTURERECT
 #endif
 
-uniform u_vs_depthParams {
-    mat4 modelMatrix;
-    mat4 lightVPMatrix;
-    mat4 mvpMatrix;
-    #ifdef PIXEL_SNAP
-        vec4 pixelSnapDraw; // as surface_vs.glsl's (0 in shadow maps)
-    #endif
-} depthParams;
+// depthParams: per draw, or per instance in an automatically instanced batch
+#include "includes/object_depth_params.glsl"
 
 #ifdef PIXEL_SNAP
     #define FRAME_VS
@@ -196,7 +190,7 @@ void main() {
     #endif
 
     #ifdef HAS_INSTANCING
-        mat4 instanceMatrix = mat4(i_matrix_col1, i_matrix_col2, i_matrix_col3, i_matrix_col4);
+        mat4 instanceMatrix = mat4(vec4(i_matrix_col1.xyz, 0.0), i_matrix_col2, i_matrix_col3, i_matrix_col4);
         vec4 pos = instanceMatrix * vec4(position, 1.0);
         objectNormal = normalize(instanceNormal(mat3(instanceMatrix), objectNormal));
         #ifdef SURFACE_SMOOTH_NORMAL_INPUT

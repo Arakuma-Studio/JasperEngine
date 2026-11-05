@@ -103,6 +103,8 @@ namespace jasperengine::editor {
         void cancelPrefabDrag();
         Vector3 getPrefabDropPosition(SceneProject* sceneProject, float x, float y, bool& keepZ, SceneSurfaceHit* surface = nullptr);
         bool handleViewportGizmoClick(SceneProject* sceneProject, float canvasX, float canvasY, int canvasWidth);
+        // the LOD Level legend and the Stats box over the Scene view (spec S54 R11, R12)
+        void drawDrawModeOverlays(SceneProject& sceneProject, ImVec2 imageMin, ImVec2 imageMax);
         // the Paint Dye brush's circle (splatRadius) over the image, under the pointer
         void drawFluidBrushCursor(SceneProject* sceneProject);
         // UI tests (UIProbe): the view's rectangle and the selected fluid's Sprite on it

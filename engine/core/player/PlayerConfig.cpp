@@ -98,9 +98,11 @@ json PlayerConfig::toJson() const {
     out["htmlUi"] = {{"msaa", htmlUiMsaa}, {"glyphAtlasMiB", glyphAtlasMiB}, {"sdfPrimitives", sdfPrimitives},
                      {"transformAwareText", transformAwareText}};
     out["mobilePbrTier"] = nameOf(kPbrTier, mobilePbrTier);
+    out["lightMode"] = LightingTiers::getModeName(lightMode);
     json tiers = json::array();
     for (ShadowTier tier : shadowTiers) tiers.push_back(nameOf(kShadowTier, tier));
     out["shadowTiers"] = tiers;
+    out["device"] = json::parse(device.toJson());
     out["tags"] = tags;
     out["layers"] = layerNames;
     out["collision3D"] = collision3D;
@@ -109,7 +111,7 @@ json PlayerConfig::toJson() const {
     out["crash"] = {{"handler", crashHandler}, {"logTail", crashLogTail}, {"dumpWithHeap", crashDumpWithHeap},
                     {"hangWatchdog", hangWatchdog}, {"hangMs", hangMs}, {"webOverlay", crashWebOverlay}};
     out["audio"] = {{"mixer", audioMixer}, {"maxRealVoices", audioMaxRealVoices}, {"maxVoices", audioMaxVoices},
-                    {"sampleRate", audioSampleRate}};
+                    {"sampleRate", audioSampleRate}, {"outputStage", audioOutputStage}, {"iosSessionCategory", audioIosSession}};
     return out;
 }
 
@@ -229,9 +231,19 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.transformAwareText = htmlUi->value("transformAwareText", config.transformAwareText);
         }
         valueOf(kPbrTier, in.value("mobilePbrTier", "reduced"), config.mobilePbrTier);
+        // absent (a config written before it) or unknown: Automatic
+        const std::string lightMode = in.value("lightMode", "automatic");
+        if (!LightingTiers::modeFromName(lightMode.c_str(), config.lightMode)) config.lightMode = LightMode::AUTOMATIC;
         if (const auto tiers = in.find("shadowTiers"); tiers != in.end() && tiers->is_array()) {
             for (size_t i = 0; i < config.shadowTiers.size() && i < tiers->size(); i++)
                 valueOf(kShadowTier, (*tiers)[i].get<std::string>(), config.shadowTiers[i]);
+        }
+        if (const auto device = in.find("device"); device != in.end()) {
+            std::string deviceError;
+            if (!DeviceSettings::fromJson(device->dump(), config.device, deviceError)) {
+                error = "game.json: device: " + deviceError;
+                return false;
+            }
         }
         config.tags = in.value("tags", std::vector<std::string>{});
         config.layerNames = in.value("layers", std::vector<std::string>{});
@@ -258,6 +270,8 @@ bool PlayerConfig::fromJson(const json& in, PlayerConfig& out, std::string& erro
             config.audioMaxRealVoices = audio->value("maxRealVoices", config.audioMaxRealVoices);
             config.audioMaxVoices = audio->value("maxVoices", config.audioMaxVoices);
             config.audioSampleRate = audio->value("sampleRate", config.audioSampleRate);
+            config.audioOutputStage = audio->value("outputStage", config.audioOutputStage);
+            config.audioIosSession = audio->value("iosSessionCategory", config.audioIosSession);
         }
         if (config.title.empty()) config.title = config.name;
         if (config.storageId.empty()) config.storageId = config.appId.empty() ? config.name : config.appId;
@@ -280,9 +294,11 @@ bool PlayerConfig::parse(const std::string& text, PlayerConfig& out, std::string
 
 void jasperengine::player::applyAudio(const PlayerConfig& game) {
     const AudioConfig defaults;
+    const AudioOutputStage stage = AudioSystem::outputStageFromName(game.audioOutputStage);
+    const IosAudioSession session = AudioSystem::iosSessionFromName(game.audioIosSession);
     if (game.audioMaxRealVoices != defaults.maxRealVoices || game.audioMaxVoices != defaults.maxVoices ||
-        game.audioSampleRate != defaults.sampleRate) {
-        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate});
+        game.audioSampleRate != defaults.sampleRate || stage != defaults.outputStage || session != defaults.iosSession) {
+        AudioSystem::configure({game.audioMaxRealVoices, game.audioMaxVoices, game.audioSampleRate, stage, session});
     }
     if (!game.audioMixer.empty()) {
         AudioMixer::load(game.audioMixer);

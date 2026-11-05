@@ -15,6 +15,7 @@
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
 #include "component/CanvasGroupComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
 #include "component/ColorTweenComponent.h"
@@ -206,6 +207,7 @@ EntityRegistry::EntityRegistry() {
     registerComponent<TextEffectComponent>(ComponentOrder::Hierarchy, "TextEffectComponent");
     registerComponent<VideoPlayerComponent>(ComponentOrder::Insertion, "VideoPlayerComponent");
     registerComponent<SafeAreaComponent>(ComponentOrder::Hierarchy, "SafeAreaComponent");
+    registerComponent<CapsuleShadowCasterComponent>(ComponentOrder::Insertion, "CapsuleShadowCasterComponent");
     // pixel art (S41)
     registerComponent<PixelPerfectCameraComponent>(ComponentOrder::Insertion, "PixelPerfectCameraComponent");
     // complete: markChangedComponent may look into it

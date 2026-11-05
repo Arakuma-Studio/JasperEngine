@@ -70,6 +70,7 @@ ComponentAddDialog::ComponentAddDialog() {
             {ComponentType::CameraFollowComponent, "Follows a target with damping, look-at, a 2D dead zone and bounds"},
             {ComponentType::PixelPerfectCameraComponent, "Pixel art on this camera: whole-number scaling, one pixel size, every sprite on the pixel grid"},
             {ComponentType::LightComponent, "Directional, point or spot light"},
+            {ComponentType::CapsuleShadowCasterComponent, "Soft capsule shadows of a character from its bones"},
             {ComponentType::SpriteComponent, "Draws a 2D sprite"},
             {ComponentType::TilemapComponent, "Grid of tiles from a texture atlas"},
             {ComponentType::LineRendererComponent, "Draws lines: a polyline with width, colour gradient, joints and caps, or debug segments"},

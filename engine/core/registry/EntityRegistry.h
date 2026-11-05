@@ -50,6 +50,7 @@
 #include "component/LayoutGroupComponent.h"
 #include "component/CanvasGroupComponent.h"
 #include "component/SafeAreaComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "component/PixelPerfectCameraComponent.h"
 #include "component/SpriteComponent.h"
 #include "component/SpriteAnimationComponent.h"

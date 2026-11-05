@@ -33,6 +33,7 @@
 #include "component/WaterVolumeComponent.h"
 #include "component/ScriptComponent.h"
 #include "component/LineRendererComponent.h"
+#include "subsystem/MeshSystem.h"
 #include "reflect/Reflect.h"
 #include "log/Logger.h"
 #include "StreamSchema.h"
@@ -55,7 +56,8 @@
 
 using namespace jasperengine;
 
-YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers, bool embedTextureData, bool encodeBones) {
+YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool encodeBuffers, bool embedTextureData, bool encodeBones,
+                                               unsigned int numSubmeshes, bool encodeGeneratedValues) {
     YAML::Node node;
     node["enabled"] = YamlNumbers::text(mesh.enabled);
 
@@ -73,8 +75,10 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
 
     // Encode submeshes
     YAML::Node submeshesNode;
-    for(unsigned int i = 0; i < mesh.numSubmeshes; i++) {
-        submeshesNode.push_back(encodeSubmesh(mesh.submeshes[i], embedTextureData));
+    // past the count, what the generator will start from (the first slot exists before it ran)
+    static const Submesh unbuilt{};
+    for(unsigned int i = 0; i < std::max(mesh.numSubmeshes, numSubmeshes); i++) {
+        submeshesNode.push_back(encodeSubmesh(i == 0 || i < mesh.numSubmeshes ? mesh.submeshes[i] : unbuilt, embedTextureData, encodeGeneratedValues));
     }
     node["submeshes"] = submeshesNode;
 
@@ -119,9 +123,14 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     }
 
     // Encode AABBs
-    node["aabb"] = encodeAABB(mesh.aabb);
-    node["verticesAABB"] = encodeAABB(mesh.verticesAABB);
-    node["worldAABB"] = encodeAABB(mesh.worldAABB);
+    if (encodeGeneratedValues) {
+        node["aabb"] = encodeAABB(mesh.aabb);
+        node["verticesAABB"] = encodeAABB(mesh.verticesAABB);
+    }
+    // computed from the other two and the transform when the scene runs
+    if (reflect::encodesComputedValues()) {
+        node["worldAABB"] = encodeAABB(mesh.worldAABB);
+    }
 
     node["receiveLights"] = YamlNumbers::text(mesh.receiveLights);
     node["receiveIBL"] = YamlNumbers::text(mesh.receiveIBL);
@@ -129,10 +138,23 @@ YAML::Node editor::Stream::encodeMeshComponent(const MeshComponent& mesh, bool e
     node["receiveShadows"] = YamlNumbers::text(mesh.receiveShadows);
     node["lodEnabled"] = YamlNumbers::text(mesh.lodEnabled);
     node["lodBias"] = YamlNumbers::text(mesh.lodBias);
+    // the fade settings (spec S54 R9) only away from their defaults (MeshComponent's), so a
+    // scene saved before them re-saves byte for byte
+    if (mesh.lodFadeMode != LodFadeMode::CROSS_FADE)
+        node["lodFadeMode"] = StreamSchema::lodFadeMode().toString(mesh.lodFadeMode);
+    if (!mesh.lodAnimateCrossFading)
+        node["lodAnimateCrossFading"] = YamlNumbers::text(mesh.lodAnimateCrossFading);
+    if (mesh.lodFadeTransitionWidth != 0.1f)
+        node["lodFadeTransitionWidth"] = YamlNumbers::text(mesh.lodFadeTransitionWidth);
+    if (mesh.lodCullBelow != 0.0f)
+        node["lodCullBelow"] = YamlNumbers::text(mesh.lodCullBelow);
     node["renderInReflectionProbes"] = YamlNumbers::text(mesh.renderInReflectionProbes);
     node["shadowsBillboard"] = YamlNumbers::text(mesh.shadowsBillboard);
     if (mesh.staticShadowCaster)
         node["staticShadowCaster"] = YamlNumbers::text(mesh.staticShadowCaster);
+    // (S55) written when off
+    if (!mesh.allowGpuInstancing)
+        node["allowGpuInstancing"] = YamlNumbers::text(mesh.allowGpuInstancing);
     node["transparent"] = YamlNumbers::text(mesh.transparent);
     node["autoTransparency"] = YamlNumbers::text(mesh.autoTransparency);
 
@@ -224,10 +246,17 @@ MeshComponent editor::Stream::decodeMeshComponent(const YAML::Node& node, const 
     if (node["receiveShadows"]) mesh.receiveShadows = YamlNumbers::as<bool>(node["receiveShadows"]);
     if (node["lodEnabled"]) mesh.lodEnabled = YamlNumbers::as<bool>(node["lodEnabled"]);
     mesh.lodBias = decodeFinite(node["lodBias"], mesh.lodBias);
+    // (omitted when at their defaults)
+    mesh.lodFadeMode = node["lodFadeMode"] ? decodeEnum(node, "lodFadeMode", StreamSchema::lodFadeMode()) : LodFadeMode::CROSS_FADE;
+    mesh.lodAnimateCrossFading = node["lodAnimateCrossFading"] ? YamlNumbers::as<bool>(node["lodAnimateCrossFading"]) : true;
+    mesh.lodFadeTransitionWidth = std::clamp(decodeFinite(node["lodFadeTransitionWidth"], 0.1f), 0.0f, 1.0f);
+    mesh.lodCullBelow = std::clamp(decodeFinite(node["lodCullBelow"], 0.0f), 0.0f, 1.0f);
     if (node["renderInReflectionProbes"]) mesh.renderInReflectionProbes = YamlNumbers::as<bool>(node["renderInReflectionProbes"]);
     if (node["shadowsBillboard"]) mesh.shadowsBillboard = YamlNumbers::as<bool>(node["shadowsBillboard"]);
     // omitted when false
     mesh.staticShadowCaster = node["staticShadowCaster"] ? YamlNumbers::as<bool>(node["staticShadowCaster"]) : false;
+    // omitted when true (scenes from before S55 allow it)
+    mesh.allowGpuInstancing = node["allowGpuInstancing"] ? YamlNumbers::as<bool>(node["allowGpuInstancing"]) : true;
     if (node["transparent"]) mesh.transparent = YamlNumbers::as<bool>(node["transparent"]);
     if (node["autoTransparency"]) mesh.autoTransparency = YamlNumbers::as<bool>(node["autoTransparency"]);
 
@@ -287,7 +316,10 @@ YAML::Node editor::Stream::encodeUIComponent(const UIComponent& ui, bool encodeB
     node["vertexCount"] = ui.vertexCount;
 
     node["aabb"] = encodeAABB(ui.aabb);
-    node["worldAABB"] = encodeAABB(ui.worldAABB);
+    // computed from the aabb and the transform when the scene runs
+    if (reflect::encodesComputedValues()) {
+        node["worldAABB"] = encodeAABB(ui.worldAABB);
+    }
 
     // A Text's texture is its font atlas, published by the UISystem once the glyphs are
     // rasterized, under a new id at each atlas change: the file does not depend on whether
@@ -635,7 +667,8 @@ YAML::Node editor::Stream::encodeTerrainComponent(const TerrainComponent& terrai
     node["rootGridSize"] = terrain.rootGridSize;
     node["levels"] = terrain.levels;
 
-    if (!terrain.ranges.empty()) {
+    // Auto Ranges: set from the camera's far clip when the terrain runs (MeshSystem::updateTerrainAutoRanges)
+    if (!terrain.ranges.empty() && (!terrain.autoSetRanges || reflect::encodesComputedValues())) {
         YAML::Node rangesNode;
         for (float range : terrain.ranges) {
             rangesNode.push_back(range);
@@ -755,6 +788,8 @@ TerrainComponent editor::Stream::decodeTerrainComponent(const YAML::Node& node, 
     terrain.numNodes = 0;
 
     if (node["enabled"]) terrain.enabled = YamlNumbers::as<bool>(node["enabled"]);
+
+    MeshSystem::applyTerrainMapSettings(terrain);
 
     return terrain;
 }

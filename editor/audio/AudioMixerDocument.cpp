@@ -5,9 +5,14 @@
 
 #include "Project.h"
 #include "audio/AudioMixer.h"
+#include "audio/LoudnessMonitor.h"
+#include "Generator.h"
 #include "command/type/WriteFilesCmd.h"
+#include "io/AtomicFile.h"
 #include "util/FileUtils.h"
 #include "util/ProjectFileWrites.h"
+
+#include "yaml-cpp/yaml.h"
 
 #include <algorithm>
 #include <cmath>
@@ -170,6 +175,58 @@ bool AudioMixerDocument::ensureProjectMixer(Project* project, fs::path& file, st
     if (fs::is_regular_file(file, ec)) return true;
     if (!commit(project, file, AudioMixerIO::createDefault(), "", error)) return false;
     if (created) *created = true;
+    return true;
+}
+
+AudioMixerDef AudioMixerDocument::newProjectMixer() {
+    AudioMixerDef def = AudioMixerIO::createDefault();
+    AudioMixerEffectDef limiter;
+    limiter.type = AudioEffectType::Limiter;
+    limiter.typeName = AudioEffects::typeName(limiter.type);
+    limiter.id = AudioMixerIO::newId(def);
+    limiter.params = {{"threshold", -1.0f}, {"release", 0.1f}, {"lookahead", 1.5f}, {"truePeak", 1.0f}};
+    def.groups.front().effects.push_back(limiter);
+    return def;
+}
+
+AudioSettings AudioMixerDocument::newProjectAudioSettings() {
+    AudioSettings settings;
+    settings.mixer = Project::defaultAudioMixerPath;
+    settings.outputStage = "linear";
+    settings.iosSessionCategory = "ambient";
+    return settings;
+}
+
+bool AudioMixerDocument::writeNewProjectMixer(const fs::path& assetsDir, std::string* error) {
+    const fs::path file = assetsDir / FileUtils::pathFromUtf8(Project::defaultAudioMixerPath);
+    std::error_code ec;
+    fs::create_directories(file.parent_path(), ec);
+    const io::WriteResult result = io::writeFileAtomic(file, AudioMixerIO::write(newProjectMixer()));
+    if (!result.ok()) return fail(error, result.message);
+    return true;
+}
+
+bool AudioMixerDocument::writeNewProjectAudio(const fs::path& projectDir, std::string* error) {
+    const fs::path yamlFile = projectDir / "project.yaml";
+    YAML::Node root;
+    try {
+        root = YAML::LoadFile(yamlFile.string());
+    } catch (const std::exception& e) {
+        return fail(error, "cannot read " + yamlFile.string() + ": " + e.what());
+    }
+    if (root["audio"]) return true;
+    const std::string assets = root["assetsDir"] ? root["assetsDir"].as<std::string>() : std::string(".");
+    if (!writeNewProjectMixer(projectDir / FileUtils::pathFromUtf8(assets), error)) return false;
+    const AudioSettings settings = newProjectAudioSettings();
+    YAML::Node audio;
+    audio["mixer"] = settings.mixer;
+    audio["outputStage"] = settings.outputStage;
+    audio["iosSessionCategory"] = settings.iosSessionCategory;
+    root["audio"] = audio;
+    YAML::Emitter out;
+    out << root;
+    const io::WriteResult result = io::writeFileAtomic(yamlFile, std::string(out.c_str()) + "\n");
+    if (!result.ok()) return fail(error, result.message);
     return true;
 }
 
@@ -640,7 +697,7 @@ bool AudioMixerDocument::applyOp(AudioMixerDef& def, const Json& op, std::string
 
 // ---------------------------------------------------------------- describe
 
-Json AudioMixerDocument::describe(const AudioMixerDef& def, bool live) {
+Json AudioMixerDocument::describe(const AudioMixerDef& def, bool live, float targetLufs) {
     Json out;
     out["update_mode"] = def.unscaled ? "unscaled" : "scaled";
     Json groups = Json::array();
@@ -673,6 +730,16 @@ Json AudioMixerDocument::describe(const AudioMixerDef& def, bool live) {
             effects.push_back(e);
         }
         node["effects"] = effects;
+        // the frames its limiters' lookahead delays this group, at the rate that plays
+        float latencyMs = 0.0f;
+        if (!group->bypassEffects) {
+            for (const AudioMixerEffectDef& effect : group->effects) {
+                if (effect.type != AudioEffectType::Limiter || effect.bypass) continue;
+                auto lookahead = effect.params.find("lookahead");
+                if (lookahead != effect.params.end()) latencyMs += lookahead->second;
+            }
+        }
+        node["latency_ms"] = latencyMs;
         if (live) {
             float now = 0.0f;
             if (AudioMixer::getTarget(AudioMixerIO::volumeTarget(group->id), now)) node["volume_now"] = now;
@@ -682,6 +749,21 @@ Json AudioMixerDocument::describe(const AudioMixerDef& def, bool live) {
         groups.push_back(node);
     }
     out["groups"] = groups;
+    if (live) {
+        // from the first read until Stop: a first read's values are null, the next ones measure
+        LoudnessMonitor& monitor = LoudnessMonitor::get();
+        monitor.requestByAgent();
+        const LoudnessMonitor::Reading reading = monitor.reading();
+        const auto lufs = [](const std::optional<double>& value) {
+            return value ? Json(std::round(*value * 100.0) / 100.0) : Json(nullptr);
+        };
+        out["loudness"] = {{"momentary_lufs", lufs(reading.momentary)},
+                           {"short_term_lufs", lufs(reading.shortTerm)},
+                           {"integrated_lufs", lufs(reading.integrated)},
+                           {"true_peak_dbtp", std::round(reading.truePeakDb * 100.0) / 100.0},
+                           {"gain_reduction_db", std::round(reading.gainReductionDb * 100.0f) / 100.0f},
+                           {"target_lufs", targetLufs}};
+    }
 
     Json exposed = Json::array();
     for (const AudioMixerExposedDef& entry : def.exposed) {
