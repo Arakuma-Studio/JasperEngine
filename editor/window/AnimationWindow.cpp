@@ -228,6 +228,7 @@ editor::AnimationWindow::AnimationWindow(Project* project){
     selectedSceneId = 0;
 
     clipMode = std::make_unique<AnimationWindowClip>(project);
+    actionAudio = std::make_unique<TimelineAudioPreview>();
     clipMode->entityCommands = [this](std::string_view id, bool run) { return runAudioActionCommand(id, run); };
     installClipHooks();
 }
@@ -252,6 +253,10 @@ namespace {
         Entity stepEntity;
     };
 
+}
+
+uint64_t editor::AnimationWindow::previewAudioStarts() const{
+    return actionAudio->startedCount();
 }
 
 bool editor::AnimationWindow::addAudioAction(SceneProject* sceneProject, Entity animEntity, EntityCreationType type, const std::string& content,
@@ -367,7 +372,7 @@ void editor::AnimationWindow::previewAudioActions(Scene* scene, Entity animEntit
     if (!anim) return;
     if (to < from){
         // the preview looped: what played in the last pass stops, the start of the next one plays
-        actionAudio.stopExit();
+        actionAudio->stopExit();
         from = 0.0f - 1e-6f;
     }
     if (!TimelineAudioPreview::blocker().empty() || to == from) return;
@@ -383,7 +388,7 @@ void editor::AnimationWindow::previewAudioActions(Scene* scene, Entity animEntit
         const float speed = audio->speed * (childAction && childAction->speed > 0.0f ? childAction->speed : 1.0f) * std::fabs(playbackSpeed);
         const float volumeDb = audio->volume > 0.0 ? (float)(20.0 * std::log10(audio->volume)) : -80.0f;
         const uint32_t delay = TimelineAudioPreview::delayFrames(frameData.startTime - std::max(from, 0.0f), to - std::max(from, 0.0f), frame);
-        actionAudio.play(project, sound, volumeDb, speed, delay, true);
+        actionAudio->play(project, sound, volumeDb, speed, delay, true);
     }
     (void)dt;
 }
@@ -1773,7 +1778,7 @@ void editor::AnimationWindow::triggerTransitionPreview(Scene* scene, SceneProjec
 
 void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProject, bool applyBindPose) {
     if (!isPreviewing) return;
-    actionAudio.stopExit();
+    actionAudio->stopExit();
 
     // AnimationComponent/key data are intentionally excluded from preview-state
     // restoration, so finalize authored timeline changes before restoring poses.
@@ -3403,7 +3408,7 @@ void editor::AnimationWindow::show() {
             sceneProject->needUpdateRender = true;
         } else {
             // paused, stopped or sought: the actions' preview voices stop
-            actionAudio.stopExit();
+            actionAudio->stopExit();
         }
 
         // Playback continues while any previewed clip is still running.

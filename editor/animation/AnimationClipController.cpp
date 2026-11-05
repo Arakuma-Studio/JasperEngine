@@ -11,6 +11,7 @@
 #include "Project.h"
 #include "Scene.h"
 #include "animation/AnimationClipAppHooks.h"
+#include "audio/TimelineAudioPreview.h"
 #include "animation/AnimationClipIO.h"
 #include "animation/ClipBinding.h"
 #include "animation/ClipConverters.h"
@@ -594,7 +595,7 @@ namespace{
 
 // ---- construction ----
 
-AnimationClipController::AnimationClipController(Project* project): project(project){
+AnimationClipController::AnimationClipController(Project* project): project(project), audioPreview(std::make_unique<TimelineAudioPreview>()){
     installTimeline(project);
     // scene commands, undo and redo writing a previewed channel: the command sees (and edits)
     // the rest, which becomes the snapshot (9.R6)
@@ -1054,7 +1055,7 @@ void AnimationClipController::endPreview(bool write){
     }
     particles.stop(sceneProject ? sceneProject->scene : nullptr);
     particleTime = -1.0f;
-    audioPreview.stopExit();
+    audioPreview->stopExit();
     session.reset();
     snapshot.reset();
     previewing = false;
@@ -1088,7 +1089,7 @@ void AnimationClipController::play(){
 
 void AnimationClipController::pause(){
     playing = false;
-    audioPreview.stopExit();
+    audioPreview->stopExit();
 }
 
 bool AnimationClipController::isPlaying() const{
@@ -1109,7 +1110,7 @@ void AnimationClipController::setTime(float value){
 }
 
 void AnimationClipController::seek(float value){
-    audioPreview.stopExit();
+    audioPreview->stopExit();
     setTime(value);
     if (!isPreviewing()){
         startPreview(nullptr);
@@ -1135,7 +1136,7 @@ void AnimationClipController::previewCues(float from, float delta, double dt){
     anim::collectCrossedCues(*built, ClipWrapMode::Loop, from, from + delta, false, crossed);
     const float length = getLength();
     const bool wraps = length > 0.0f && (from + delta > length || from + delta < 0.0f);
-    if (wraps) audioPreview.stopExit();
+    if (wraps) audioPreview->stopExit();
     if (crossed.empty() || !TimelineAudioPreview::blocker().empty()) return;
     SceneProject* sceneProject = sceneProjectOf(previewSceneId);
     for (const anim::CrossedEvent& cross : crossed){
@@ -1144,7 +1145,7 @@ void AnimationClipController::previewCues(float from, float delta, double dt){
         const float pitch = cue.followSpeed ? std::fabs(playbackSpeed) : 1.0f;
         const bool exitStop = cue.stop == ClipCueStop::StateExit;
         if (cue.kind == ClipCueKind::Sound){
-            audioPreview.play(project, cue.sound.path, cue.volumeDb, (float)(pitch * std::pow(2.0, cue.pitchSemitones / 12.0)), delay, exitStop);
+            audioPreview->play(project, cue.sound.path, cue.volumeDb, (float)(pitch * std::pow(2.0, cue.pitchSemitones / 12.0)), delay, exitStop);
         }else if (cue.kind == ClipCueKind::Source && sceneProject){
             // the source's own clip or event at its volume and speed (no 3D: preview voices are 2D)
             const Entity bound = anim::resolvePath(sceneProject->scene, previewRoot, cue.path);
@@ -1152,18 +1153,18 @@ void AnimationClipController::previewCues(float from, float delta, double dt){
             if (!audio) continue;
             const std::string sound = audio->event.empty() ? audio->filename.path : audio->event.path;
             const float volumeDb = audio->volume > 0.0 ? (float)(20.0 * std::log10(audio->volume)) : -80.0f;
-            audioPreview.play(project, sound, volumeDb, pitch * audio->speed, delay, exitStop);
+            audioPreview->play(project, sound, volumeDb, pitch * audio->speed, delay, exitStop);
         }
         // a snapshot cue previews nothing: preview voices are outside the mixer's groups
     }
 }
 
 int AnimationClipController::previewAudioVoices(){
-    return audioPreview.voiceCount();
+    return audioPreview->voiceCount();
 }
 
 uint64_t AnimationClipController::previewAudioStarts() const{
-    return audioPreview.startedCount();
+    return audioPreview->startedCount();
 }
 
 void AnimationClipController::update(double dt, int frame){

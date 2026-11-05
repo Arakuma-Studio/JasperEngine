@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "audio/TimelineAudioPreview.h"
 #include "command/CommandHistory.h"
 #include "Project.h"
 #include "imgui.h"
@@ -20,6 +19,7 @@ namespace jasperengine{
 namespace jasperengine::editor{
 
     class AnimationWindowClip;
+    class TimelineAudioPreview;
     enum class EntityCreationType;
 
     // editor/tests/AnimationWindowClipDriver.h: the editor tests' driver of the window (the
@@ -219,7 +219,7 @@ namespace jasperengine::editor{
 
         // ---- timeline audio of the entity mode (S40 R22, R23) ----
         // the playing preview's audio actions (preview voices outside the mixer)
-        TimelineAudioPreview actionAudio;
+        std::unique_ptr<TimelineAudioPreview> actionAudio;
         // a new audio, Sound Event or Mixer Snapshot action (type) with its frame at `time`, one
         // undo step; `content` is the sound (assets-relative) or the snapshot name ("" none)
         bool addAudioAction(SceneProject* sceneProject, Entity animEntity, EntityCreationType type, const std::string& content, float time,
@@ -264,7 +264,7 @@ namespace jasperengine::editor{
         void externalPause();
         void seekPreviewExternal(Scene* scene, SceneProject* sceneProject, float time);
         // the preview voices the playing entity preview started (tests)
-        uint64_t previewAudioStarts() const { return actionAudio.startedCount(); }
+        uint64_t previewAudioStarts() const;
 
         // Restores the entity-mode preview's snapshot before a save, play, scene switch or close
         // (animation clips spec 9.R6); App::stopTransientPreviews calls it.

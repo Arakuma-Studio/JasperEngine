@@ -27,7 +27,6 @@
 
 #pragma once
 
-#include "audio/TimelineAudioPreview.h"
 #include "animation/AnimationClip.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimationPlayerRuntime.h"
@@ -51,6 +50,8 @@ namespace jasperengine{
 }
 
 namespace jasperengine::editor{
+    class TimelineAudioPreview;
+
 
     class Project;
     struct SceneProject;
@@ -343,7 +344,7 @@ namespace jasperengine::editor{
         float particleTime = -1.0f;
         // the audio cues of a playing preview (S40 R11): crossed as the playhead moves by playback,
         // never by scrubbing; state_exit cues stop when the preview stops, loops or is sought
-        TimelineAudioPreview audioPreview;
+        std::unique_ptr<TimelineAudioPreview> audioPreview;
         void previewCues(float from, float delta, double dt);
         int documentListener = 0;
         ClipRecordHooks::Id beforeWriteListener = 0;
