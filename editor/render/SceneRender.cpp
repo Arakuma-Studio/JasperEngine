@@ -194,6 +194,7 @@ editor::SceneRender::~SceneRender(){
     destroyLatticeCages();
     navigationOverlay.reset();
     destroySplineOverlay();
+    delete wireframeLines;
     for (auto& pair : particleShapeLines) {
         delete pair.second;
     }
@@ -758,6 +759,7 @@ void editor::SceneRender::drawSceneView(int width, int height, const std::vector
     // camera covers the view as the Engine's native canvas would size it
     layers.push_back({scene, viewCamera, full, !previewing, false, displaySettings.disableFog, (float)width, (float)height,
                       displaySettings.disableFaceCulling, displaySettings.showPostProcessing || previewing, displaySettings.disableClouds});
+    layers.back().drawMode = previewing ? 0 : (uint8_t)displaySettings.drawMode;
 
     if (gameLayers){
         // The game's layer scenes (a HUD) cover its canvas, framed in this view at the
@@ -837,6 +839,7 @@ void editor::SceneRender::drawPaneView(uint32_t viewId, Entity paneCamera, Frame
     base.postProcessing = flags.postProcessing;
     base.disableClouds = displaySettings.disableClouds;
     base.shadows = flags.shadows;
+    base.drawMode = (uint8_t)displaySettings.drawMode;
     layers.push_back(base);
     for (Scene* childScene : childSceneLayers){
         if (childScene && childScene != scene){
@@ -930,6 +933,14 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             clearLinePointSelection();
         }
     }
+    // a capsule handle the same: its GameObject selected, its capsule there
+    if (selectedCapsuleHandleIndex >= 0){
+        const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(selectedCapsuleHandleEntity);
+        if (!caster || selectedCapsuleHandleIndex >= (int)caster->capsules.size() * CAPSULE_HANDLES ||
+                std::find(selEntities.begin(), selEntities.end(), selectedCapsuleHandleEntity) == selEntities.end()){
+            clearCapsuleHandleSelection();
+        }
+    }
 
     displaySettings = settings;
 
@@ -966,6 +977,8 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
     // the frame is the game, which keeps its culling, and the Scene view asks for it as a
     // view of its own (drawSceneView). Free to toggle: nothing reloads.
     scene->getSystem<RenderSystem>()->setDisableFaceCulling(displaySettings.disableFaceCulling && !isPlaying);
+    // the Draw Mode the same way (spec S54 R11)
+    scene->getSystem<RenderSystem>()->setDrawMode(isPlaying ? ViewDrawMode::SHADED : displaySettings.drawMode);
     scene->getSystem<RenderSystem>()->setDisableFog(displaySettings.disableFog && !isPlaying);
     scene->getSystem<RenderSystem>()->setDisableClouds(displaySettings.disableClouds && !isPlaying);
     // the Game view's Preview Atmosphere Quality is set on the frame while playing (App)
@@ -1226,6 +1239,19 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
             }
         }
 
+        // Override gizmo for the selected Capsule Shadow Caster handle (3D translate)
+        if (selectedCapsuleHandleIndex >= 0 && toolEntities.size() == 1 && toolEntities[0] == selectedCapsuleHandleEntity
+            && tools.getGizmoSelected() == GizmoSelected::TRANSLATE && !editLayer.active){
+            OBB pointOBB = getCapsuleHandleOBB(selectedCapsuleHandleEntity, selectedCapsuleHandleIndex);
+            if (!pointOBB.isNull()){
+                Vector3 pointCenter = pointOBB.getCenter();
+                tools.updateGizmo(camera, pointCenter, gizmoRotation, computeGizmoScale(pointCenter), pointOBB, mouseRay, mouseClicked, anchorData, anchorArea);
+            }else{
+                // its bone renamed or gone: drop the stale sub-selection
+                clearCapsuleHandleSelection();
+            }
+        }
+
         // Override gizmo for the selected lattice points (W/E/R, or the 2D gizmo's move)
         if (latticePointsSelected){
             Vector3 pivot;
@@ -1303,6 +1329,7 @@ void editor::SceneRender::update(std::vector<Entity> selEntities, std::vector<En
 
     updateLatticeCages(selEntities, entities, editedLattice);
     updateSplineOverlay(selEntities, editedSpline);
+    updateWireframeOverlay();
     updatePhysicsOverlay(physics, physicsSceneId);
     updateNavigationOverlay(selEntities);
 
@@ -1518,6 +1545,17 @@ void editor::SceneRender::mouseClickEvent(float x, float y, std::vector<Entity> 
                 gizmoStartPosition = pointOBB.getCenter();
                 cursorStartOffset = gizmoStartPosition - rretrun.point;
             }
+        }
+
+        // Override gizmo start position to the selected Capsule Shadow Caster handle
+        if (selectedCapsuleHandleIndex >= 0 && selEntities.size() == 1 && selEntities[0] == selectedCapsuleHandleEntity){
+            OBB pointOBB = getCapsuleHandleOBB(selectedCapsuleHandleEntity, selectedCapsuleHandleIndex);
+            if (!pointOBB.isNull()){
+                gizmoStartPosition = pointOBB.getCenter();
+                cursorStartOffset = gizmoStartPosition - rretrun.point;
+            }
+            const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(selectedCapsuleHandleEntity);
+            capsuleDragBase = caster ? caster->capsules : std::vector<CapsuleShadowShape>();
         }
 
         // Override gizmo start position to the selected track keyframe point
@@ -2033,6 +2071,14 @@ void editor::SceneRender::mouseDragEvent(float x, float y, float origX, float or
                                 const Vector2 value = joint2DAnchorFromWorld(target, *joint, selectedJointAnchorIndex == 1, newPos);
                                 dragCommand = new PropertyCmd<Vector2>(project, commandSceneId, entity, ComponentType::Joint2DComponent, anchorProp, value);
                             }
+                        }
+                    }else if (selectedCapsuleHandleIndex >= 0 && entity == selectedCapsuleHandleEntity){
+                        // move the selected capsule end or radius handle: the whole list is the
+                        // property, so the drag is one undo step whichever capsule fields it changes
+                        std::vector<CapsuleShadowShape> capsules;
+                        if (capsulesWithHandleAt(entity, selectedCapsuleHandleIndex, newPos, capsuleDragBase, capsules)){
+                            dragCommand = new PropertyCmd<std::vector<CapsuleShadowShape>>(project, commandSceneId, entity,
+                                ComponentType::CapsuleShadowCasterComponent, "capsules", capsules);
                         }
                     }else{
                         Matrix4 gizmoMatrix = Matrix4::translateMatrix(newPos) * gizmoRMatrix * Matrix4::scaleMatrix(Vector3(1,1,1));
@@ -2621,6 +2667,7 @@ bool editor::SceneRender::hasToolSubSelection(const std::vector<Entity>& selEnti
         || (selectedLinePointIndex >= 0 && entity == selectedLinePointEntity)
         || (selectedPolygonPointIndex >= 0 && entity == selectedPolygonPointEntity)
         || (selectedJointAnchorIndex >= 0 && entity == selectedJointAnchorEntity)
+        || (selectedCapsuleHandleIndex >= 0 && entity == selectedCapsuleHandleEntity)
         || (selectedTrackPointIndex >= 0 && entity == selectedTrackPointEntity)
         || (getPointEditLattice(selEntities) == entity && getLatticeSceneId() != NULL_PROJECT_SCENE &&
             !LatticeEditorOps::getSelectedPoints(getLatticeSceneId(), entity).empty())
@@ -3144,6 +3191,7 @@ void editor::SceneRender::setEditLayer(uint32_t sceneId, Scene* layerScene, cons
         clearLinePointSelection();
         clearPolygonPointSelection();
         clearJointAnchorSelection();
+        clearCapsuleHandleSelection();
         clearTrackPointSelection();
     }
     if (!wasActive || editLayer.sceneId != sceneId){
@@ -3625,6 +3673,146 @@ OBB editor::SceneRender::getJointAnchorOBB(Entity entity, int index){
     return aabb.getOBB();
 }
 
+void editor::SceneRender::selectCapsuleHandle(Entity entity, int index){
+    selectedCapsuleHandleEntity = entity;
+    selectedCapsuleHandleIndex = index;
+}
+
+void editor::SceneRender::clearCapsuleHandleSelection(){
+    selectedCapsuleHandleEntity = 0;
+    selectedCapsuleHandleIndex = -1;
+    capsuleDragBase.clear();
+}
+
+Entity editor::SceneRender::findCapsuleBone(Entity entity, const std::string& bone){
+    if (!scene->findComponent<Transform>(entity)) return NULL_ENTITY;
+    if (bone.empty()) return entity;
+    // the GameObject's branch is contiguous in the Transforms (hierarchy order)
+    auto transforms = scene->getComponentArray<Transform>();
+    const size_t first = transforms->getIndex(entity);
+    const size_t last = scene->findBranchLastIndex(entity);
+    for (size_t i = first + 1; i <= last && i < transforms->size(); i++){
+        const Entity candidate = transforms->getEntity(i);
+        if (scene->getEntityName(candidate) == bone) return candidate;
+    }
+    return NULL_ENTITY;
+}
+
+namespace {
+
+    // the radius handle's direction from the middle of a capsule: across its segment, level when
+    // the segment is not vertical
+    Vector3 capsuleRadiusDirection(const CapsuleShadows::World& capsule){
+        Vector3 axis = capsule.b - capsule.a;
+        if (axis.squaredLength() < 1e-12f) axis = Vector3(0.0f, 1.0f, 0.0f);
+        axis.normalize();
+        Vector3 across = axis.crossProduct(Vector3(0.0f, 1.0f, 0.0f));
+        if (across.squaredLength() < 1e-6f) across = axis.crossProduct(Vector3(1.0f, 0.0f, 0.0f));
+        return across.normalized();
+    }
+
+    // the world size of one unit of a shape's radius on a bone (the scale toWorld gives the radius)
+    float capsuleRadiusScale(const CapsuleShadowShape& shape, const Matrix4& boneModel){
+        CapsuleShadowShape unit = shape;
+        unit.radius = 1.0f;
+        return CapsuleShadows::toWorld(unit, boneModel).radius;
+    }
+
+}
+
+bool editor::SceneRender::getCapsuleWorld(Entity entity, size_t capsule, CapsuleShadows::World& world){
+    const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(entity);
+    if (!caster || capsule >= caster->capsules.size()) return false;
+    const Entity bone = findCapsuleBone(entity, caster->capsules[capsule].bone);
+    const Transform* boneTransform = bone != NULL_ENTITY ? scene->findComponent<Transform>(bone) : nullptr;
+    if (!boneTransform) return false;
+    world = CapsuleShadows::toWorld(caster->capsules[capsule], boneTransform->modelMatrix);
+    return true;
+}
+
+bool editor::SceneRender::getCapsuleHandleWorld(Entity entity, int index, Vector3& worldPoint){
+    if (index < 0) return false;
+    CapsuleShadows::World world;
+    if (!getCapsuleWorld(entity, (size_t)(index / CAPSULE_HANDLES), world)) return false;
+    const int handle = index % CAPSULE_HANDLES;
+    if (handle == 0){
+        worldPoint = world.a;
+    }else if (handle == 1){
+        worldPoint = world.b;
+    }else{
+        worldPoint = (world.a + world.b) * 0.5f + capsuleRadiusDirection(world) * world.radius;
+    }
+    return true;
+}
+
+// the capsule handle under the mouse (-1 when none)
+int editor::SceneRender::hitTestCapsuleHandle(Entity entity, float x, float y){
+    const CapsuleShadowCasterComponent* caster = scene->findComponent<CapsuleShadowCasterComponent>(entity);
+    if (!caster) return -1;
+    Ray ray = screenToRay(x, y);
+
+    int bestIndex = -1;
+    float bestDistance = FLT_MAX;
+    const int count = (int)caster->capsules.size() * CAPSULE_HANDLES;
+    for (int i = 0; i < count; i++){
+        Vector3 worldPoint;
+        if (!getCapsuleHandleWorld(entity, i, worldPoint)) continue;
+        float halfSize = getPointHandleHalfSize(worldPoint);
+        AABB handleAABB(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize));
+
+        RayReturn rr = ray.intersects(handleAABB);
+        if (rr && rr.distance < bestDistance){
+            bestDistance = rr.distance;
+            bestIndex = i;
+        }
+    }
+
+    return bestIndex;
+}
+
+OBB editor::SceneRender::getCapsuleHandleOBB(Entity entity, int index){
+    Vector3 worldPoint;
+    if (!getCapsuleHandleWorld(entity, index, worldPoint)) return OBB();
+
+    float halfSize = getPointHandleHalfSize(worldPoint);
+    AABB aabb(worldPoint - Vector3(halfSize), worldPoint + Vector3(halfSize));
+    return aabb.getOBB();
+}
+
+bool editor::SceneRender::capsulesWithHandleAt(Entity entity, int index, const Vector3& world, const std::vector<CapsuleShadowShape>& base,
+                                               std::vector<CapsuleShadowShape>& capsules){
+    if (index < 0) return false;
+    const size_t capsule = (size_t)(index / CAPSULE_HANDLES);
+    if (capsule >= base.size()) return false;
+    const CapsuleShadowShape& shape = base[capsule];
+    const Entity bone = findCapsuleBone(entity, shape.bone);
+    const Transform* boneTransform = bone != NULL_ENTITY ? scene->findComponent<Transform>(bone) : nullptr;
+    if (!boneTransform) return false;
+
+    const CapsuleShadows::World start = CapsuleShadows::toWorld(shape, boneTransform->modelMatrix);
+    capsules = base;
+    const int handle = index % CAPSULE_HANDLES;
+    if (handle == 2){
+        // the distance from the segment, in the bone's units
+        const Vector3 axis = start.b - start.a;
+        const float lengthSq = axis.squaredLength();
+        const float t = lengthSq > 0.0f ? std::clamp((world - start.a).dotProduct(axis) / lengthSq, 0.0f, 1.0f) : 0.0f;
+        const float worldRadius = (world - (start.a + axis * t)).length();
+        const float scale = capsuleRadiusScale(shape, boneTransform->modelMatrix);
+        capsules[capsule].radius = scale > 0.0f ? worldRadius / scale : worldRadius;
+        return true;
+    }
+
+    CapsuleShadows::Bone boneSpace;
+    boneSpace.position = boneTransform->worldPosition;
+    boneSpace.rotation = boneTransform->worldRotation;
+    boneSpace.scale = boneTransform->worldScale;
+    const Vector3 a = handle == 0 ? world : start.a;
+    const Vector3 b = handle == 1 ? world : start.b;
+    capsules[capsule] = CapsuleShadows::fromWorld(shape.bone, boneSpace, a, b, start.radius);
+    return true;
+}
+
 void editor::SceneRender::selectTrackPoint(Entity entity, int pointIndex){
     selectedTrackPointEntity = entity;
     selectedTrackPointIndex = pointIndex;
@@ -4044,4 +4232,33 @@ void editor::SceneRender::updateNavigationOverlay(const std::vector<Entity>& sel
     if (!navigationOverlay) navigationOverlay = std::make_unique<NavigationOverlay>(scene);
     const std::set<Entity> selected(selEntities.begin(), selEntities.end());
     navigationOverlay->update(*sceneProject, camera, selected, displaySettings.navigation);
+}
+
+// The wires of Wireframe and Shaded Wireframe: the visible meshes' edges at the level the Scene
+// view draws each of them, rebuilt every update while the mode is on, released when it is not
+void editor::SceneRender::updateWireframeOverlay(){
+    if (!drawModeHasWires(displaySettings.drawMode) || !camera){
+        if (wireframeLines){
+            wireframeLines->clearLines();
+            wireframeLines->setVisible(false);
+        }
+        wireframe.release();
+        return;
+    }
+    if (!wireframeLines){
+        ScopedDefaultEntityPool scenePool(*scene, EntityPool::System);
+        wireframeLines = overlay(new LineRenderer(scene));
+    }
+    RenderSystem* render = scene->getSystem<RenderSystem>().get();
+    CameraComponent& cameraComponent = scene->getComponent<CameraComponent>(camera->getEntity());
+    const Vector3 eye = scene->getComponent<Transform>(camera->getEntity()).worldPosition;
+    // in Edit mode the Scene view is the frame's view, while playing a view of its own
+    const bool playing = isPlaying;
+    wireframe.update(scene, wireframeLines, cameraComponent, eye, [&](Entity entity) -> unsigned int{
+        if (playing)
+            return render->getViewMeshLod(SCENE_VIEW_ID, entity);
+        const MeshComponent* mesh = scene->findComponent<MeshComponent>(entity);
+        return mesh ? mesh->lodFade.plan.dominant() : 0u;
+    });
+    wireframeLines->setVisible(true);
 }

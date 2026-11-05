@@ -35,6 +35,7 @@
 #include "Light.h"
 #include "Light2D.h"
 #include "ShadowCaster2D.h"
+#include "CapsuleShadowCaster.h"
 #include "Mesh.h"
 #include "Primitive.h"
 #include "Mirror.h"
@@ -519,6 +520,7 @@ int luaDestroyImmediate(lua_State* L){
 
 namespace {
 
+#if defined(JASPERENGINE_PHYSICS_2D) || defined(JASPERENGINE_PHYSICS_3D)
     // a material argument: a .physicsmaterial path, a PhysicsMaterial or nil (none)
     bool luaMaterialArg(const luabridge::LuaRef& value, PhysicsMaterial& material, std::string& path){
         material = PhysicsMaterial();
@@ -536,6 +538,7 @@ namespace {
         }
         return false;
     }
+#endif
 
     std::optional<PhysicsMaterial> luaMaterialResult(const PhysicsMaterial& material){
         if (!material.valid()){
@@ -1523,6 +1526,8 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addFunction("setFramebufferSize", &Camera::setFramebufferSize)
         .addFunction("setFramebufferFilter", &Camera::setFramebufferFilter)
         .addProperty("transparentSort", &Camera::isTransparentSort, &Camera::setTransparentSort)
+        .addProperty("transparencyMode", &Camera::getTransparencyMode, &Camera::setTransparencyMode)
+        .addProperty("oitWeightScale", &Camera::getOitWeightScale, &Camera::setOitWeightScale)
         .addProperty("depthTest", &Camera::isDepthTest, &Camera::setDepthTest)
         .addProperty("cullingMask", &getLuaCullingMask<Camera>, &setLuaCullingMask<Camera>)
         .addFunction("screenToRay", &Camera::screenToRay)
@@ -1588,6 +1593,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("shadowSourceRadius", &Light::getShadowSourceRadius, &Light::setShadowSourceRadius)
         .addProperty("shadowUpdateMode", &Light::getShadowUpdateMode, &Light::setShadowUpdateMode)
         .addFunction("requestShadowUpdate", &Light::requestShadowUpdate)
+        .addProperty("contactShadows", &Light::isContactShadows, &Light::setContactShadows)
+        .addProperty("contactShadowLength", &Light::getContactShadowLength, &Light::setContactShadowLength)
+        .addProperty("contactShadowThickness", &Light::getContactShadowThickness, &Light::setContactShadowThickness)
+        .addProperty("contactShadowSampleCount", &Light::getContactShadowSampleCount, &Light::setContactShadowSampleCount)
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -1616,6 +1625,29 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addVariable("AUTO_QUAD", ShadowCaster2DShape::AUTO_QUAD)
         .addVariable("POLYGON", ShadowCaster2DShape::POLYGON)
         .endNamespace();
+
+    // S57's capsule shadows
+    luabridge::getGlobalNamespace(L)
+        .deriveClass<CapsuleShadowCaster, GameObject>("CapsuleShadowCaster")
+        .addConstructor <void (*) (Scene*), void (*) (Scene*, Entity)> ()
+        .addProperty("enabled", &CapsuleShadowCaster::isEnabled, &CapsuleShadowCaster::setEnabled)
+        .addProperty("castShadows", &CapsuleShadowCaster::getCastShadows, &CapsuleShadowCaster::setCastShadows)
+        .addProperty("capsuleCount", &CapsuleShadowCaster::getCapsuleCount)
+        .addFunction("addCapsule", &CapsuleShadowCaster::addCapsule)
+        .addFunction("removeCapsule", &CapsuleShadowCaster::removeCapsule)
+        .addFunction("clearCapsules", &CapsuleShadowCaster::clearCapsules)
+        .addFunction("getCapsuleBone", &CapsuleShadowCaster::getCapsuleBone)
+        .addFunction("setCapsuleBone", &CapsuleShadowCaster::setCapsuleBone)
+        .addFunction("getCapsuleRadius", &CapsuleShadowCaster::getCapsuleRadius)
+        .addFunction("setCapsuleRadius", &CapsuleShadowCaster::setCapsuleRadius)
+        .addFunction("getCapsuleLength", &CapsuleShadowCaster::getCapsuleLength)
+        .addFunction("setCapsuleLength", &CapsuleShadowCaster::setCapsuleLength)
+        .addFunction("getCapsuleOffset", &CapsuleShadowCaster::getCapsuleOffset)
+        .addFunction("setCapsuleOffset", &CapsuleShadowCaster::setCapsuleOffset)
+        .addFunction("getCapsuleDirection", &CapsuleShadowCaster::getCapsuleDirection)
+        .addFunction("setCapsuleDirection", &CapsuleShadowCaster::setCapsuleDirection)
+        .addFunction("fitToSkeleton", &CapsuleShadowCaster::fitToSkeleton)
+        .endClass();
 
     luabridge::getGlobalNamespace(L)
         .deriveClass<ShadowCaster2D, GameObject>("ShadowCaster2D")
@@ -1849,6 +1881,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("receiveShadows", &Mesh::isReceiveShadows, &Mesh::setReceiveShadows)
         .addProperty("lodEnabled", &Mesh::isLodEnabled, &Mesh::setLodEnabled)
         .addProperty("lodBias", &Mesh::getLodBias, &Mesh::setLodBias)
+        .addProperty("allowGpuInstancing", &Mesh::isAllowGpuInstancing, &Mesh::setAllowGpuInstancing)
+        .addProperty("fadeMode", &Mesh::getLodFadeMode, &Mesh::setLodFadeMode)
+        .addProperty("animateCrossFade", &Mesh::isLodAnimateCrossFading, &Mesh::setLodAnimateCrossFading)
+        .addProperty("fadeTransitionWidth", &Mesh::getLodFadeTransitionWidth, &Mesh::setLodFadeTransitionWidth)
+        .addProperty("cullBelow", &Mesh::getLodCullBelow, &Mesh::setLodCullBelow)
+        .addFunction("forceLod", &Mesh::forceLod)
+        .addProperty("forcedLod", &Mesh::getForcedLod)
+        .addProperty("currentLod", &Mesh::getCurrentLod)
         .addProperty("renderInReflectionProbes", &Mesh::isRenderInReflectionProbes, &Mesh::setRenderInReflectionProbes)
         .addProperty("shadowsBillboard", &Mesh::isShadowsBillboard, &Mesh::setShadowsBillboard)
         .addProperty("transparent", &Mesh::isTransparent, &Mesh::setTransparent)

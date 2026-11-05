@@ -127,6 +127,34 @@ TEST(TruePeak, AnAbruptStartOvershoots) {
     EXPECT_GT(detector.process(samples.data(), samples.size()), 0.55f);
 }
 
+TEST(TruePeak, ARunEqualsItsSamples) {
+    std::vector<float> samples = rateSine(0.1973, 11.0, -3.0, 2000);
+    samples[700] = std::numeric_limits<float>::quiet_NaN();
+    TruePeak step(1);
+    float expected = 0.0f;
+    for (float x : samples) expected = std::max(expected, step.processSample(0, x));
+    TruePeak run(1);
+    float largest = run.processChannel(0, samples.data(), 300);
+    largest = std::max(largest, run.processChannel(0, samples.data() + 300, 1700));
+    EXPECT_EQ(largest, expected);
+    // and a step after a run continues it
+    EXPECT_EQ(run.processSample(0, 0.25f), step.processSample(0, 0.25f));
+}
+
+// a stretch that cannot reach the maximum may skip the filter; what can reach it never does
+TEST(TruePeak, ARunAboveAFloorStillFindsAnythingOverIt) {
+    std::vector<float> samples = rateSine(0.25, 45.0, -20.0, 4000);
+    const std::vector<float> loud = rateSine(0.25, 45.0, -6.0, 40);
+    std::copy(loud.begin(), loud.end(), samples.begin() + 2000);
+    TruePeak plain(1);
+    const float expected = plain.processChannel(0, samples.data(), samples.size());
+    TruePeak pruned(1);
+    EXPECT_EQ(pruned.processChannel(0, samples.data(), samples.size(), 0.3f), expected);
+    // under the floor nothing has to be exact, only under it
+    TruePeak quiet(1);
+    EXPECT_LE(quiet.processChannel(0, samples.data(), 1000, 0.9f), 0.9f);
+}
+
 TEST(TruePeak, ChannelsHaveTheirOwnFilters) {
     // left: the inter-sample signal, right: silence; sharing a history would change the left's value
     const std::vector<float> left = rateSine(0.25, 45.0, -6.0, 4800);

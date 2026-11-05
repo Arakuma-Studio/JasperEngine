@@ -220,6 +220,11 @@ list them. There is no CI.
 
 ## Log
 
+- 2026-11-05: The S41 implementer stopped on an API weekly rate limit, and the session
+  restarted. All background jobs died. `main` fast-forwarded to `origin/main` `547a6e964` (344
+  commits from other programs: S53–S73). The S41, S43 and S44 implementers were revived and told
+  to merge it. `dc/sprite-batching` is still in progress, so S52 keeps waiting. Branch heads at
+  revival: S41 `3323f4878`, S43 `6e5872eed`, S44 `d0f812e3c` (plus uncommitted review fixes).
 - 2026-11-04: Owner's order: no full suites until the very end. The S43 implementer's queued
   unfiltered unit-test run was cancelled. The brief and the landing gate now use filtered runs
   only, and all three implementers were told.

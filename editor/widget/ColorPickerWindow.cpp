@@ -24,6 +24,7 @@
 #include "window/PaletteWindow.h"
 
 #include "imgui_internal.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cmath>
@@ -605,10 +606,11 @@ void ColorPickerWindow::drawLibraryMenu() {
         renameLibraryPopup = false;
     }
     for (const char* popup : {"New Library", "Rename Library"}) {
-        if (!ImGui::BeginPopupModal(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) continue;
+        if (!EditorModal::begin(popup, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) continue;
+        EditorModal::message(std::strcmp(popup, "New Library") == 0 ? "The name of the new swatch library." : "The new name of this swatch library.");
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-        const bool entered = ImGui::InputText("Name", nameText.data(), nameText.size(), ImGuiInputTextFlags_EnterReturnsTrue);
-        if (entered || ImGui::Button("OK")) {
+        const bool entered = EditorModal::inputText("Name", "name", nameText.data(), nameText.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+        if (entered || EditorModal::button("OK", "ok")) {
             std::string error;
             bool ok;
             if (std::strcmp(popup, "New Library") == 0) {
@@ -628,7 +630,7 @@ void ColorPickerWindow::drawLibraryMenu() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 }
@@ -703,10 +705,11 @@ void ColorPickerWindow::drawSwatches() {
     if (renameSwatch >= 0) {
         ImGui::OpenPopup("Rename Swatch");
     }
-    if (ImGui::BeginPopupModal("Rename Swatch", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Rename Swatch", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message("The new name of this swatch.");
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-        const bool entered = ImGui::InputText("Name", nameText.data(), nameText.size(), ImGuiInputTextFlags_EnterReturnsTrue);
-        if (entered || ImGui::Button("OK")) {
+        const bool entered = EditorModal::inputText("Name", "name", nameText.data(), nameText.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+        if (entered || EditorModal::button("OK", "ok")) {
             std::string error;
             if (swatches::rename(library, (size_t)renameSwatch, nameText.data(), error)) saveActive();
             else warning = error;
@@ -714,7 +717,7 @@ void ColorPickerWindow::drawSwatches() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        if (EditorModal::button("Cancel", "cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
             renameSwatch = -1;
             ImGui::CloseCurrentPopup();
         }

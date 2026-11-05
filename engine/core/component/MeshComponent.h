@@ -20,6 +20,7 @@
 #include "buffer/IndexBuffer.h"
 #include "buffer/ExternalBuffer.h"
 #include "pool/MeshLodPool.h"
+#include "render/LodFade.h"
 #include "math/Rect.h"
 #include "lattice/LatticeTypes.h"
 #include <deque>
@@ -126,6 +127,20 @@ namespace jasperengine{
     // by RenderSystem::loadMesh and drawn by drawMesh before (Before passes, ahead of all the
     // mesh's submeshes) or after (After passes, after all of them) the mesh's main draws. A
     // submesh without an extra pass has none (Submesh::extraPass is null).
+    // The OIT accumulation render of an alpha-blended submesh (spec S57 R4): its colour variant
+    // with USE_OIT ('Oit'), drawn on the submesh's own vertex layout and bindings
+    // (ObjectRender::loadAlike) into the camera's accumulation targets
+    struct JASPERENGINE_API SubmeshOit{
+        ObjectRender render;
+        std::shared_ptr<ShaderRender> shader;
+        uint64_t shaderProperties = 0;
+        uint16_t customShaderId = 0;
+        int slotFSOit = -1;
+        bool loaded = false;
+        // its variant failed to build or does not match the colour variant's blocks: Sorted
+        bool failed = false;
+    };
+
     struct JASPERENGINE_API SubmeshExtraPass{
         ObjectRender render;
         std::shared_ptr<ShaderRender> shader;
@@ -185,6 +200,16 @@ namespace jasperengine{
         // a deque: adding an entry moves no other, whose data an async buffer creation may
         // still be about to read
         std::deque<Entry> entries;
+    };
+
+    // The indices of a submesh's triangles over the first vertex of each position
+    // (meshopt_generateShadowIndexBuffer): a depth program reading positions only draws the same
+    // triangles fetching and shading fewer vertices where the mesh splits its vertices for
+    // normals or UVs. Made when they reference more than 10% fewer vertices; count 0 otherwise.
+    struct JASPERENGINE_API ShadowIndexBuffer{
+        std::vector<unsigned char> bytes;
+        ExternalBuffer buffer;
+        unsigned int count = 0;
     };
 
     struct JASPERENGINE_API Submesh{
@@ -252,6 +277,14 @@ namespace jasperengine{
         uint16_t pbrParamsSize = 0;
         uint16_t pbrExtOffset = 0;
         int16_t pbrSetsOffset = -1;
+        // and the Hair shading model's three vec4 after them (spec S57 R5; -1: no hair)
+        int16_t pbrHairOffset = -1;
+        // u_fs_lightOcclusion (includes/light_occlusion.glsl: capsule and contact shadows),
+        // u_tiledLights and u_contactShadowTexture of the S57 variants ('Til', 'Cap', 'Cts')
+        int slotFSLightOcclusion = -1;
+        unsigned int sizeFSLightOcclusion = 0;
+        std::pair<int, int> slotTiledLights = {-1, -1};
+        std::pair<int, int> slotContactShadows = {-1, -1};
 
         int slotVSDepthParams = -1;
         unsigned int sizeVSDepthParams = 0; // reflected: an older fork declares the block without mvpMatrix
@@ -347,11 +380,49 @@ namespace jasperengine{
         std::shared_ptr<MeshLodData> lodData;
         ExternalBuffer lodIndices;
         uint64_t lodKey = 0;
+        // the levels a cooked model baked (glTF JE_mesh_lods, MeshLodPool::readGltfLevels) and the
+        // builder version they were made with: used instead of a runtime build when it is this one
+        std::shared_ptr<MeshLodData> bakedLods;
+        int bakedLodRecipe = 0;
+        // the LOD cross-fade variant of its colour shader (MESH 'Lfd'), asked for while the mesh
+        // may fade (RenderSystem::prepareSubmeshLodFade); refused (it failed, or its bindings are
+        // not its base's): the submesh never fades until it loads again
+        std::shared_ptr<ShaderRender> lodFadeShader;
+        uint64_t lodFadeShaderProperties = 0;
+        uint16_t lodFadeShaderId = 0;
+        bool lodFadeChecked = false;
+        bool lodFadeRefused = false;
+        // set at load: it draws with the built-in Mesh or Lit shader and depth program (only
+        // those get detail levels: another vertex stage may move the vertices)
+        bool lodBuiltinShader = true;
 
         // the material's extra pass as loaded (null: none, nothing allocated)
         std::shared_ptr<SubmeshExtraPass> extraPass;
+        // its weighted blended OIT render (an alpha-blended submesh while a camera of the scene
+        // draws Order Independent; null: none, nothing allocated)
+        std::shared_ptr<SubmeshOit> oit;
         // MeshComponent::smoothNormals entry its position attribute uses (-1: none)
         int smoothNormals = -1;
+
+        // Automatic GPU instancing (spec S55): the HAS_AUTO_INSTANCING variants of render and
+        // depthRender (RenderSystem::loadSubmeshBatchVariants), which draw batches of this
+        // submesh's draws with those of every submesh like it; loaded while GPU Instancing is on
+        // and the submesh can batch, linked to render and depthRender (else they draw nothing)
+        ObjectRender batchRender;
+        ObjectRender batchDepthRender;
+        std::shared_ptr<ShaderRender> batchShader;
+        std::shared_ptr<ShaderRender> batchDepthShader;
+        uint64_t batchShaderProperties = 0;
+        uint64_t batchDepthShaderProperties = 0;
+        uint16_t batchShaderId = 0;
+        uint16_t batchDepthShaderId = 0;
+        // the bounds of the vertices it draws in the mesh's space (null: not known, the mesh's
+        // are used): a pass culls a visible mesh's submeshes one by one (spec S55 R4)
+        AABB localBounds;
+        // position-only indices for the shadow passes (spec S55 R5), shared by the submeshes
+        // over the same buffers: null until a shadow pass first draws it, then kept (empty when
+        // they would not pay off)
+        std::shared_ptr<ShadowIndexBuffer> shadowIndices;
     };
 
     // The Vertex Animation variant a mesh draws with (vertex animation spec 3.5)
@@ -481,6 +552,11 @@ namespace jasperengine{
         bool castShadows = true;
         bool receiveShadows = true;
         bool shadowsBillboard = true;
+        // runtime: a Capsule Shadow Caster set to Capsules Only holds it (on its GameObject or
+        // an ancestor): its shadow is the capsules', it draws into no shadow map (spec S57 R2)
+        bool capsuleShadowsOnly = false;
+        // what the shadow passes and the shadow cache take it as
+        bool castsShadowMaps() const { return castShadows && !capsuleShadowsOnly; }
         // its shadows are cached in the static layer: redrawn only when it (or another static
         // caster of the slot) changes, while dynamic casters move over it (docs/rendering/shadows.md)
         bool staticShadowCaster = false;
@@ -519,8 +595,32 @@ namespace jasperengine{
         // opt-out of the scene's detail levels (Scene::setMeshLodEnabled); bias above 1 keeps detail longer
         bool lodEnabled = true;
         float lodBias = 1.0f;
+        // Allow GPU Instancing (spec S55): its draws may batch with those of the same mesh,
+        // material and pipeline when the project's GPU Instancing is on (Unity's per-material
+        // switch, here per renderer); off draws it alone
+        bool allowGpuInstancing = true;
         float lodError[MAX_MESH_LODS] = {}; // largest error of any submesh at each level
         unsigned int numLods = 1;
+        // how a level change shows (spec S54 R9, Unity's LOD Group): Fade Mode; Animate
+        // Cross-fading fades over the scene's Cross-fade Duration, else over the last Fade
+        // Transition Width of each level's band (an Instanced Mesh always fades so); Cull Below
+        // Screen Height: not drawn under that share of the view's height (0: never, Unity's Culled)
+        LodFadeMode lodFadeMode = LodFadeMode::CROSS_FADE;
+        bool lodAnimateCrossFading = true;
+        float lodFadeTransitionWidth = 0.1f;
+        float lodCullBelow = 0.0f;
+        // runtime: a level forced for every view (Mesh.forceLod, capture_model_lods; -1:
+        // automatic), and the fade of the main view (others: RenderSystem::RenderView::lodFades)
+        int lodForced = -1;
+        MeshLodFade lodFade;
+        // runtime, set at load: its submeshes draw with shaders that have a fade variant (the
+        // built-in Mesh and Lit, no fork); and in the colour pass: every fade variant it draws
+        // with is made (a fade starts only then)
+        bool lodFadeCapable = false;
+        bool lodFadeReady = false;
+        // runtime: bumped when its levels change (they arrive, go or are rebuilt): the next level
+        // change of every view snaps instead of fading from levels that are no longer the same
+        uint32_t lodRevision = 0;
 
         CullingMode cullingMode = CullingMode::BACK;
         WindingOrder windingOrder = WindingOrder::CCW;

@@ -137,6 +137,13 @@ struct GameViewSettings {
     bool showStats = false;
     // Preview Atmosphere Quality: -1 the project's, else an AtmosphereQuality (Off..High)
     int atmosphereQuality = -1;
+    // Device simulation in Play (spec S56 R5): the Device Tier (-1 Auto: none applies in the
+    // editor, else a DeviceTier), its platform family (-1 Auto: Mobile with a simulated phone,
+    // else Desktop; else a DevicePlatformGroup) and the thermal state (-1 the machine's, else a
+    // ThermalState; not saved: a session's test)
+    int deviceTier = -1;
+    int devicePlatform = -1;
+    int deviceThermal = -1;
     // device simulation (window/DeviceProfiles.h): a profile id ("" = none), how it is turned
     // (ScreenOrientation) and the simulated language (BCP 47, "" = the system's)
     std::string device;
@@ -158,6 +165,7 @@ struct GameViewSettings {
         return aspect == other.aspect && scale == other.scale
             && maximizeOnPlay == other.maximizeOnPlay && showStats == other.showStats
             && atmosphereQuality == other.atmosphereQuality
+            && deviceTier == other.deviceTier && devicePlatform == other.devicePlatform && deviceThermal == other.deviceThermal
             && device == other.device && orientation == other.orientation && language == other.language
             && resolution == other.resolution && resolutionWidth == other.resolutionWidth
             && resolutionHeight == other.resolutionHeight && resolutionDpi == other.resolutionDpi

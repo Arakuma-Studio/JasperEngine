@@ -1,0 +1,6 @@
+{
+  "description": "The game of tools/mcp/tests/test_linked_folders_export.py, exported by the editor and built by tools/web/linked_folder_game.sh: the canvas is the red texture of a folder linked out of the project, and tools/web/linked_folder_game.sh expects the line of the Lua module of a folder linked into the Lua directory (S68 AC2).",
+  "rgb": [255, 0, 0],
+  "tolerance": 24,
+  "isolated": true
+}

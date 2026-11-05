@@ -10,9 +10,9 @@
 
 file(GLOB_RECURSE EDITOR_TEST_SOURCES CONFIGURE_DEPENDS
     ${CMAKE_CURRENT_LIST_DIR}/*Test.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp
-    ${CMAKE_CURRENT_LIST_DIR}/reflect/legacy/*.cpp)
-# the reflection codec's benchmark against the legacy codecs (docs/specs/S08-reflection.md R17)
+    ${CMAKE_CURRENT_LIST_DIR}/support/*.cpp)
+# the reflection codec's benchmark against the frozen numbers of the codecs it replaced
+# (docs/specs/S08-reflection.md R17)
 list(APPEND EDITOR_TEST_SOURCES ${CMAKE_SOURCE_DIR}/tools/performance/reflect_codec.cpp)
 
 # the process LoggerCrashFlushTest crashes: the logger's queue, a file sink and the editor's
@@ -58,6 +58,7 @@ jasperengine_add_test_target(jasperengine-editor-tests
     SOURCES ${EDITOR_TEST_SOURCES}
     # (engine/physics: upstream's flat physics tests include "PhysicsTestScene.h" as they did)
     INCLUDES ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_SOURCE_DIR}/engine/tests/core ${CMAKE_CURRENT_LIST_DIR}/engine/physics
+        ${CMAKE_SOURCE_DIR}/engine/libs/meshoptimizer
     ASSET_DIR ${CMAKE_CURRENT_LIST_DIR}/fixtures
     # tinyexr: FloatImageTest writes EXRs with custom channel names through it
     LINK tinyexr

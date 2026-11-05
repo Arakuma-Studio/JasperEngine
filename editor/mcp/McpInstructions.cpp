@@ -113,7 +113,8 @@ layouts. Read jasper://docs/html-ui first.
 (edit_animation), post-processing (apply_post_processing_preset), atmosphere (Fog type height,
 apply_atmosphere_preset), shadows (a light's softShadows, the scene's shadows_quality), profiling
 (get_frame_times), shipping (build_project), palettes (edit_palette, apply_palette), data safety
-(save after each step; allow_data_loss): jasper://docs/<area>.
+(save after each step; allow_data_loss), meshes (inspect_models, check_render_budgets), device tiers
+(set_device_simulation, then play): jasper://docs/<area>.
 )JE";
 }
 

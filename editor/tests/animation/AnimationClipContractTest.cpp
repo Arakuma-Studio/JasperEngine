@@ -57,7 +57,8 @@ TEST(AnimationClipContract, CatalogKnowsTheAnimationPlayer){
     // Shaker, the Camera Follow, the Text Effect, the Video Player and the Safe Area
     EXPECT_GT(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::VertexAnimatorComponent));
     EXPECT_EQ(ComponentTypeCount, static_cast<int>(LastComponentType) + 1);
-    // the Text Effect (ui-scaling-text), then the Video Player and the Safe Area; later features append after them
+    // the Text Effect (ui-scaling-text), then the Video Player, the Safe Area and the Capsule Shadow Caster (S57);
+    // later features append after them
     EXPECT_GE(static_cast<int>(LastComponentType), static_cast<int>(ComponentType::SafeAreaComponent));
     EXPECT_EQ(Catalog::getComponentType("animationplayer"), ComponentType::AnimationPlayerComponent);
     EXPECT_EQ(Catalog::getComponentType("AnimationPlayerComponent"), ComponentType::AnimationPlayerComponent);

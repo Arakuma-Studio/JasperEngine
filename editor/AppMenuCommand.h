@@ -49,6 +49,8 @@ namespace jasperengine::editor {
         MigrateAssetReferences,
         ToggleAssetReferences,
         ToggleJobsMemory,
+        ToggleMeshAudit,
+        ToggleBuildReport,
         ToggleProfiler,
         ToggleFrameDebugger,
         ToggleUndoHistory,
@@ -129,6 +131,7 @@ namespace jasperengine::editor {
         ToggleRecording,
         // upstream (audio-mixer, native-bridge, camera-shake): after S27's
         ToggleAudioMixer,             // Window > Audio > Audio Mixer
+        ResetLoudness,                // Audio Mixer > Master strip
         AssetsCreateAudioMixer,
         AssetsCreateNativePlugin,
         AssetsCreateShakePreset,
