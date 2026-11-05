@@ -818,3 +818,8 @@ Recorded while implementing on `dc/project-window`; each keeps the spec's intent
     reached through a linked folder relocates by moving the topmost link on its path as one entry, so the target (a
     library shared with other projects, say) is never emptied, and every file reached through the link keeps its layout
     under the link's new place. Test: `AssetRootChangeTest.ALinkedFolderMovesAsTheLinkAndItsTargetStays`.
+12. **Modals (S69, landed after the spec)**: the Create name dialog, the delete refusal and Change Asset Directories go
+    through `EditorModal`, so agents see and answer them (`respond_dialog`, field `name`). The folder prompt's three
+    nested error boxes became the one name dialog with its error inline (`EditorModal::error`), so
+    `test_editor_modals.py` drives "New Folder" instead of "Create New Directory" and counts 68 modal sites instead of 71;
+    its error-box test uses the rename prompt's Invalid Name box instead.
