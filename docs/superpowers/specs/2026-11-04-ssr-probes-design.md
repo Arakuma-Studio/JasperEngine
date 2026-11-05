@@ -656,3 +656,6 @@ Recorded during implementation (branch `dc/ssr-probes`).
 6. **Agent guide** (lean MCP rules, lead decision on the guide): one entry in "Other areas", `reflections (SSR
    replaces probe reflections; check with ssr_debug_mode 7)`, instead of a line in the docs list; the eval case
    `guard_ssr_reflection_source` (`tools/mcp/eval/cases.py`) covers it and the new `ssr_debug_mode` help.
+7. **Bits and cache version after the merges**: GBUFFER keeps bits 16 (`Occ`) and 17 (`Uv2`), free on `main`
+   (S55 left GBUFFER at 16 bits); render-correctness also claims 16 ("Instance Fade"), and the second branch
+   to land renumbers. The shader cache is v49, after S54, S55 and S57's v45-v48.
