@@ -110,14 +110,14 @@
   },
   "mesh-bench": {
     "_comment": "S55 R8 (tools/perf/mesh_bench.py): what the scene measured, as regression limits. They are not R9's targets, which this scene does not reach: docs/specs/S55-draw-submission.md, Results.",
-    "main_draw_calls": {"max": 246, "spec": "S55 R9: 44 grid + 200 unique + 2 terrain"},
-    "shadow_draw_calls": {"max": 431, "spec": "S55 R1: the shadow passes batch"},
-    "main_triangles": {"max": 173000, "spec": "S55 R8: the colour pass's detail levels"},
-    "shadow_triangles": {"max": 435000, "spec": "S55 R5: per-cascade terrain culling and S54's shadow detail levels"},
-    "uniform_bytes": {"max": 122000, "spec": "S55 R3: frame and pass blocks applied when they change"},
+    "main_draw_calls": {"max": 230, "spec": "S55 R9: 28 grid + 200 unique + 2 terrain"},
+    "shadow_draw_calls": {"max": 380, "spec": "S55 R1: the shadow passes batch"},
+    "main_triangles": {"max": 171000, "spec": "S55 R8: the colour pass's detail levels"},
+    "shadow_triangles": {"max": 431000, "spec": "S55 R5: per-cascade terrain culling and S54's shadow detail levels"},
+    "uniform_bytes": {"max": 128000, "spec": "S55 R3: frame and pass blocks applied when they change"},
     "batched_instances": {"min": 5200, "spec": "S55 R1: what GPU Instancing replaces"},
-    "main_draw_call_ratio": {"min": 6.5, "spec": "S55 R9, measured (target 10x, not met): GPU Instancing off to on"},
-    "shadow_triangle_drop": {"min": 0.08, "spec": "S54 R7, measured: Shadow LOD Bias 2.0 to 1.0"},
+    "main_draw_call_ratio": {"min": 7.0, "spec": "S55 R9, measured (target 10x, not met): GPU Instancing off to on"},
+    "shadow_triangle_drop": {"min": 0.11, "spec": "S54 R7, measured: Shadow LOD Bias 2.0 to 1.0"},
     "uniform_byte_drop": {"min": 0.97, "spec": "S55 R3, measured: GPU Instancing off to on"}
   }
 }

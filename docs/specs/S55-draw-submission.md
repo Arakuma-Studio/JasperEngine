@@ -230,7 +230,7 @@ From `jasper-render.md`, with file and line citations there:
   light faces (which now select levels at all), reflection probe faces and render-to-texture cameras.
 - **New projects keep `quality.shadow_lod_bias` at 1.0.** The owner's decision was 0.5 in every template
   if that is one coarser level, else the value that is. Measured: doubling the allowed error is 1.04
-  levels on the fixture sphere's chain. S54 then landed `SHADOW_LOD_COARSER` (2), which already doubles
+  levels on the fixture sphere's chain (0.73 on a sphere under S54's recipe 3). S54 then landed `SHADOW_LOD_COARSER` (2), which already doubles
   it at 1.0, so 1.0 is the one coarser level and 0.5 would be about two. The templates set no key, and
   old and new projects read the same value (`NewProjectShadowLodBias`). Reversible by setting the key.
 - **Fading draws stay single draws.** S54's fade variant draws both levels alone, on `Lfd`'s pipeline;
@@ -261,59 +261,62 @@ From `jasper-render.md`, with file and line citations there:
 
 ## Results
 
-Measured on `tools/fixtures/mesh-bench` with `jasperengine-editor benchmark --play` in the linux build
-image, on llvmpipe (no GPU on the host), one still camera. Counters are the game frame's. The category
-rows come from copies of the bench's script with the other categories removed, and the shadow rows
-from copies with the sun at `EVERY_FRAME`, since a still scene without the terrain keeps its shadow
-cache and draws none. Those copies and the two temporary instruments below were not committed, and
-the bench itself was not changed to meet a target.
+Measured on `tools/fixtures/mesh-bench` with `tools/perf/mesh_bench.py` (`jasperengine-editor benchmark --play`)
+in the linux build image, on llvmpipe (the host has no GPU), with one still camera. The tree includes
+S54's recipe 3 (Balanced 15 %). Counters are the game frame's. The by-category rows come from copies
+of the bench script with the other categories removed, with the sun at `EVERY_FRAME`: a still scene
+without the terrain keeps its shadow cache and would draw no shadows. Those copies were not committed,
+and the bench was not changed to meet a target.
 
 | R9 target | Measured | Status |
 |---|---|---|
-| Main-pass draw calls drop at least 10x | 1,611 to 246, 6.5x | **Not met**: not reachable on this scene |
-| Shadow triangles drop at least 30% | S55's shadow geometry alone: 510,367 to 430,414, -15.7% | **Not met** by S55 alone |
-| | With mesh LOD, against LOD off: 2,437,258 to 389,436, -84.0% (computed, see below) | **Met** with LOD |
-| CPU render submit drops at least 40% (linux) | 58.9 to 54.4 ms, -7.6%, whole `renderCpuMs` on llvmpipe | **Not met** on llvmpipe; submission alone **not measured** |
+| Main-pass draw calls drop at least 10x | 1,611 to 230, 7.0x | **Not met**: this scene can't reach it |
+| Shadow triangles drop at least 30% | S55's shadow work alone: 524,845 to 426,842, -18.7% (computed, see below) | **Not met** by S55 alone |
+| | With mesh LOD, against LOD off: 2,437,224 to 383,434, -84.3% | **Met** with LOD |
+| CPU render submit drops at least 40% (linux) | `renderCpuMs` 61.3 to 56.2 ms, -8.3%, on llvmpipe | **Not met** on llvmpipe; the submission alone was **not measured** |
 
-Also measured: all passes' draws 5,780 to 675; uniform bytes 5,420,464 to 121,264 (-97.8%).
+Also measured: draws in all passes 5,780 to 610; uniform bytes 5,420,464 to 126,656 (-97.7%).
 
-**Draws.** The sums are exact: 246 = 44 grid + 200 unique + 2 terrain, and 1,611 = 1,409 + 200 + 2. The
-interleaved and shared-accessor copies and the skinned crowd are outside the camera's view, so they
-draw only in the shadow passes. 10x needs at most 161 main draws, below the 202 that do not batch.
-Each of the 200 unique meshes has its own elements, and merging those takes multi-draw or indirect
-draws, which the engineering values rule out. What can batch does: the grid goes from 1,409 to 44
-(32x), with 42 instanced draws, split only by elements (mesh and detail level; 43 splits, none by
-pipeline, bindings or uniforms). In the whole frame the splits are 487 elements, 6 pipeline, 2
-bindings, 0 uniforms. No gap was found to close.
+**Draws.** 230 = 28 grid + 200 unique + 2 terrain, and 1,611 = 1,409 + 200 + 2; both sums are exact. The
+interleaved and shared-accessor copies and the skinned crowd are outside the camera's view and draw
+only in shadow passes.
+- 10x needs at most 161 main draws, fewer than the 202 that can't batch. Each unique mesh has its own
+  elements, and merging those needs multi-draw or indirect draws, which the engineering values rule out.
+- What can batch does: the grid goes from 1,409 to 28 (50x). Its draws split only by elements (mesh
+  and detail level). In the whole frame: 426 element splits, 0 pipeline, 2 bindings, 0 uniforms.
+  No gap was found to close.
 
-**Shadow triangles.** Before S55's shadow work (bias 1.0, no per-cascade terrain culling): 510,367.
-Culling alone: 470,862 at bias 0.5, 469,919 at bias 1.0. Both: 430,414. Bias 0.25: 413,484.
+**Shadow triangles.** Full scene at the default Shadow LOD Bias: 426,842. At bias 2.0, which undoes S54's
+coarser rule: 484,397. At 0.5: 416,666.
+- Per-cascade terrain culling (R5) removes 40,448 terrain triangles: 106,496 to 66,048 with the terrain
+  alone, 8 to 6 draws. That was measured before S54. The terrain's triangles do not depend on the mesh
+  LOD builder: 55,808 at every bias, before and after.
+- Before S55 = bias 2.0 plus those 40,448 = 524,845. That gives the -18.7% (computed). The same tree
+  before S55 was not built.
+- By caster, at bias 2.0 / 1.0 / 0.5. The parts sum exactly to the full scene: 462,132 / 383,434 / 373,138.
 
-- Per-cascade terrain culling (R5) works: 106,496 to 66,048 (-38%) with terrain alone, 8 to 6 draws,
-  and the same 40,448 triangles in the full scene.
-- By caster, sun at `EVERY_FRAME`, the parts summing exactly to the full scene's 389,436:
-
-| Caster | Bias 1.0 | Bias 0.5 | Share at 0.5 |
+| Caster | Bias 2.0 | Bias 1.0 | Bias 0.5 |
 |---|---|---|---|
-| Grid | 345,606 | 315,878 | 81.1% |
-| Terrain | 55,808 | 55,808 | 14.3% |
-| Copies | 15,154 | 11,664 | 3.0% |
-| Unique | 7,772 | 5,262 | 1.4% |
-| Crowd | 824 | 824 | 0.2% |
+| Grid | 375,102 | 309,910 | 300,694 |
+| Terrain | 55,808 | 55,808 | 55,808 |
+| Copies | 21,672 | 10,224 | 9,144 |
+| Unique | 8,726 | 6,668 | 6,668 |
+| Crowd | 824 | 824 | 824 |
 
-- Bias 0.5 trims the grid by only 8.6%. Going to 0.25 saves little more, so most grid casters look
-  to be at the end of their chains already (inferred, levels per caster were not counted). LOD does
-  the large part: the grid with LOD off is 2,363,700, so LOD takes it down 85.4% at bias 1.0 and 86.6%
-  at 0.5. The -84.0% row adds the measured non-grid casters (73,558) to that LOD-off grid; a whole
-  scene with LOD off was not run.
-- **Shadow LOD Bias 0.5 holds:** 1.04 detail levels coarser on average on the fixture sphere's chain
-  (`InstancingGoldenGpu.ShadowLodBiasHalfIsOneCoarserLevel`, glcore and Vulkan).
+- S54's coarser rule (2.0 to 1.0) saves 17.0%; going further to 0.5 saves only 2.7% more.
+- Mesh LOD does most of the work: the grid with LOD off casts 2,363,700, so LOD removes 86.9% of it at
+  1.0. The -84.3% row adds the measured non-grid casters (73,524) to that.
+- With S54's recipe 2 (2 % target error) chains stopped at one or two levels: 678,864 shadow
+  triangles, and the bias had nothing coarser to pick. Recipe 3 fixed that. It was not a batching fault.
+- **Default Shadow LOD Bias 1.0:** S54's budget doubles the error a level may have. On a 48 x 24
+  sphere's chain that is 0.73 levels coarser on average (`InstancingGoldenGpu.ShadowLodCoarserIsOneLevel`,
+  glcore and Vulkan): about one level, so 1.0 is the "one coarser level" setting.
 
-**CPU.** Removing 5,105 draws saves 4.5 ms. Triangles, not draws, track the time here: the grid at the
-same 44 + 87 draws (30 + 87 with LOD off) takes 39.7 ms for 454,342 triangles and 143.1 ms for
-3,370,472. That fits llvmpipe running vertex work inside the draw call (inferred). The profile capture
-meant to split submission from driver work wrote no file, its cause not found, so that split is not
-measured. A real GPU driver has to confirm or refute the 40%.
+**CPU.** Removing 5,170 draws saves 5.1 ms. Triangles, not draws, track the time on this host. The grid
+at bias 1.0 takes 38.9 ms for 445,446 triangles (main and shadow); with LOD off, at a similar draw
+count, it takes 156.6 ms for 3,370,472. That fits llvmpipe running vertex work inside the draw call
+(inferred). The profile capture meant to split submission from driver work wrote no file, and the
+cause was not found, so that split is not measured. A real GPU driver has to confirm or refute the 40%.
 
 `tools/perf/bench-thresholds.json` "mesh-bench" holds these measurements as regression limits, not
 R9's targets.
