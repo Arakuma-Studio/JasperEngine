@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ActionSystem.h"
+#include "component/CanvasGroupComponent.h"
 
 #include "Scene.h"
 #include "Engine.h"

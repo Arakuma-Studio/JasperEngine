@@ -11,6 +11,7 @@
 // Exit 0: the expected failed status; 1: anything else (printed).
 
 #include "texsynth/TextureSynthesis.h"
+#include "object/ui/Image.h"
 
 #include <execinfo.h>
 #include <signal.h>

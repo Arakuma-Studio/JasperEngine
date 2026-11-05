@@ -12,6 +12,11 @@
 #include <memory>
 #include <unordered_set>
 
+namespace jasperengine{
+    struct ActionFrame;
+    struct AnimationComponent;
+}
+
 namespace jasperengine::editor{
 
     class AnimationWindowClip;

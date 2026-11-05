@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: MIT
 
 #include "GameObject.h"
+#include "object/environment/WaterVolume.h"
+#include "object/physics/Buoyancy.h"
+#include "object/physics/CharacterController.h"
+#include "object/physics/CharacterController2D.h"
+#include "object/spline/Spline.h"
+#include "object/spline/SplineAnimate.h"
+#include "object/spline/SplineExtrude.h"
+#include "object/spline/SplineInstantiate.h"
 
 #include "subsystem/RenderSystem.h"
 #include "subsystem/PhysicsSystem.h"

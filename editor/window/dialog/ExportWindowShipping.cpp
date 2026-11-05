@@ -19,6 +19,8 @@
 #include "platform/AndroidPackager.h"
 #include "platform/AndroidTools.h"
 #include "platform/ExternalTools.h"
+#include "platform/IosProject.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -106,13 +108,10 @@ void ExportWindow::refreshPlayerState() {
         m_androidLibrarySizes = platform::androidLibrarySizes(m_playerRuntime->dir / "android",
                                                               platform::selectedAndroidAbis(m_project->getAndroidProjectSettings()));
     if (config.platform == ShipPlatform::Android && m_methodChoice.method == BuildMethod::Prebuilt) {
-        const bool bundle = m_project->getAndroidProjectSettings().packageFormat == "aab";
-        m_androidMissing = platform::AndroidTools::discover(m_project->getAndroidProjectSettings().targetSdk, bundle, false).missing;
-        // the bundletool jar is downloaded by the build itself
-        m_androidMissing.erase(std::remove_if(m_androidMissing.begin(), m_androidMissing.end(),
-                                              [](const std::string& item) { return item.find("bundletool") != std::string::npos; }),
-                               m_androidMissing.end());
+        // (the bundletool jar is not among them: the build itself downloads it)
+        m_androidMissing = platform::AndroidTools::discover(m_project->getAndroidProjectSettings().targetSdk).missing;
     }
+    if (config.platform == ShipPlatform::IOS) m_iosXcodeMissing = platform::findXcode().missing;
 }
 
 bool ExportWindow::playerBuildBlocked(std::string& why) const {
@@ -290,14 +289,17 @@ void ExportWindow::drawPlayerRows() {
     } else if (target == ShipPlatform::IOS) {
         beginRow("Requires");
         ImGui::AlignTextToFramePadding();
-#ifdef __APPLE__
-        if (platform::ExternalTools::xcodebuild().found())
-            ImGui::TextColored(okColor, ICON_FA_CIRCLE_CHECK " Xcode found: the build is signed and exported (Project Settings > iOS)");
+        if (!m_iosXcodeMissing.empty())
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Requires %s: this makes the Xcode project", m_iosXcodeMissing.c_str());
+        else if (m_iosSimulator)
+            ImGui::TextColored(okColor, ICON_FA_CIRCLE_CHECK " Xcode found: an unsigned .app for the simulator");
+        else if (m_project->getIOSProjectSettings().teamId.empty())
+            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " No Team ID (Project Settings > iOS): compiled for a device, not signed");
         else
-            ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Requires a Mac with Xcode (xcodebuild not found)");
-#else
-        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Requires a Mac with Xcode: this makes the Xcode project");
-#endif
+            ImGui::TextColored(okColor, ICON_FA_CIRCLE_CHECK " Xcode found: the build is signed and exported (Project Settings > iOS)");
+        beginRow("Target");
+        ImGui::Checkbox("Simulator##ios", &m_iosSimulator);
+        ImGui::SetItemTooltip("An unsigned .app for the iOS Simulator (needs no Apple account); off: for a device.");
     } else if (target == ShipPlatform::MacOS) {
         beginRow("Signing");
         ImGui::AlignTextToFramePadding();
@@ -381,9 +383,15 @@ void ExportWindow::drawKeystorePasswordDialog() {
         m_askKeystorePasswords = false;
     }
     ImGui::SetNextWindowSizeConstraints(Theme::dpi(ImVec2(420.0f, 0.0f)), ImVec2(Theme::dpi(420.0f), FLT_MAX));
-    if (!ImGui::BeginPopupModal("Keystore Passwords##ExportKeystore", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
+    if (!EditorModal::begin("Keystore Passwords##ExportKeystore", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings))
         return;
     const AndroidProjectSettings& android = m_project->getAndroidProjectSettings();
+    // nothing reports them back: editor_status shows these two fields empty
+    EditorModal::message("Signing with " + android.keystorePath.string() + " (" + android.keystoreAlias +
+                         "). The passwords are used for this build only and never saved.");
+    std::string agentPassword, agentKeyPassword;
+    if (EditorModal::field("keystore_password", agentPassword)) std::snprintf(m_keystorePassword, sizeof(m_keystorePassword), "%s", agentPassword.c_str());
+    if (EditorModal::field("key_password", agentKeyPassword)) std::snprintf(m_keyPassword, sizeof(m_keyPassword), "%s", agentKeyPassword.c_str());
     ImGui::PushTextWrapPos(0.0f);
     ImGui::Text("Signing with %s (%s). The passwords are used for this build only and never saved.",
                 android.keystorePath.string().c_str(), android.keystoreAlias.c_str());
@@ -397,13 +405,13 @@ void ExportWindow::drawKeystorePasswordDialog() {
     const float width = Theme::dpi(120.0f);
     ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - width * 2.0f - ImGui::GetStyle().ItemSpacing.x);
     ImGui::BeginDisabled(m_keystorePassword[0] == '\0');
-    if (ImGui::Button("Build", ImVec2(width, 0))) {
+    if (EditorModal::button("Build", "ok", ImVec2(width, 0))) {
         ImGui::CloseCurrentPopup();
         startConfiguredExport(m_pendingOverwrite);
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(width, 0))) {
+    if (EditorModal::button("Cancel", "cancel", ImVec2(width, 0))) {
         std::fill(std::begin(m_keystorePassword), std::end(m_keystorePassword), '\0');
         std::fill(std::begin(m_keyPassword), std::end(m_keyPassword), '\0');
         ImGui::CloseCurrentPopup();
@@ -706,7 +714,9 @@ void ExportWindow::drawPublishActions() {
         ImGui::OpenPopup("Upload to Steam##PublishUpload");
         m_confirmUpload = false;
     }
-    if (ImGui::BeginPopupModal("Upload to Steam##PublishUpload", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (EditorModal::begin("Upload to Steam##PublishUpload", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        EditorModal::message("Upload release " + release + " to Steam app " + config.steam.appId + (branch.empty() ? std::string() : ", live on " + branch) +
+                             "? SteamCMD logs in with its own saved session (log in once in a terminal: steamcmd +login <account>).");
         ImGui::PushTextWrapPos(Theme::dpi(420.0f));
         ImGui::Text("Upload release %s to Steam app %s%s%s? SteamCMD logs in with its own saved session (log in once in a terminal: "
                     "steamcmd +login <account>).", release.c_str(), config.steam.appId.c_str(), branch.empty() ? "" : ", live on ",
@@ -716,10 +726,10 @@ void ExportWindow::drawPublishActions() {
             if (const char* user = std::getenv("STEAM_BUILD_USER")) std::snprintf(m_steamUser, sizeof(m_steamUser), "%s", user);
         }
         ImGui::SetNextItemWidth(-1);
-        ImGui::InputTextWithHint("##SteamUser", "Steam build account", m_steamUser, sizeof(m_steamUser));
+        EditorModal::inputTextWithHint("##SteamUser", "steam_user", "Steam build account", m_steamUser, sizeof(m_steamUser));
         const std::string user = m_steamUser;
         ImGui::BeginDisabled(user.empty());
-        if (ImGui::Button("Upload", ImVec2(Theme::dpi(120.0f), 0))) {
+        if (EditorModal::button("Upload", "ok", ImVec2(Theme::dpi(120.0f), 0))) {
             const fs::path steamcmd = platform::ExternalTools::steamcmd().path;
             startPublishJob("Upload " + release + " to Steam", [releaseDir, user, branch, steamcmd](const publish::PublishTools& tools, std::string& message) {
                 if (!publish::steamUpload(releaseDir, user, branch, steamcmd, tools, message)) return false;
@@ -730,7 +740,7 @@ void ExportWindow::drawPublishActions() {
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(Theme::dpi(120.0f), 0))) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel", ImVec2(Theme::dpi(120.0f), 0))) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 }

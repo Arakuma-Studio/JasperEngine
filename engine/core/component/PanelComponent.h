@@ -5,6 +5,7 @@
 #define PANEL_COMPONENT_H
 
 #include "util/FunctionSubscribe.h"
+#include "component/RectTransformComponent.h"
 
 namespace jasperengine{
 

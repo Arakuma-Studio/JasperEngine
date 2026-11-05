@@ -161,6 +161,7 @@ namespace jasperengine{
         uint32_t drawCalls = 0;
         uint32_t instances = 0;
         uint64_t triangles = 0;
+        uint64_t vertices = 0;      // indices or vertices the draws ran (the frame's: times their instances)
         // from the pass list: this view's frame
         uint32_t passes = 0;
         uint32_t draws = 0;
@@ -183,6 +184,40 @@ namespace jasperengine{
         size_t pipelineCacheSize = 0;
         double gpuFrameMs = 0.0;
         bool gpuFrameValid = false;
+        // by kind of pass, from the pass list (spec S55 R7): the colour passes of the view's
+        // cameras ("camera", "camera layer"), the shadow maps ("shadow", "point shadow" and their
+        // static layers), the depth passes ("depth pre-pass", "gbuffer") and every other one
+        uint32_t mainDraws = 0;
+        uint32_t shadowDraws = 0;
+        uint32_t depthDraws = 0;
+        uint32_t otherDraws = 0;
+        uint64_t mainTriangles = 0;
+        uint64_t shadowTriangles = 0;
+        // automatic GPU instancing (DrawBatchStats) of the last committed frame
+        uint32_t instancedDraws = 0;
+        uint32_t batchedInstances = 0;
+        uint64_t uniformBytesKept = 0;
+        // the frame's visible lists (RenderSystem): mesh draws kept and culled, every pass
+        uint32_t visible = 0;
+        uint32_t culled = 0;
+    };
+
+    // automatic GPU instancing and the state not applied again in a frame (spec S55)
+    struct DrawBatchStats {
+        uint32_t instancedDraws = 0;    // instanced draws made of batches
+        uint32_t batchedInstances = 0;  // the draws they replaced
+        uint64_t uniformBytesKept = 0;  // uniform bytes already in their slot, not applied again
+        uint32_t pipelinesKept = 0;     // pipelines already applied, not applied again
+        uint64_t instanceBytes = 0;     // the batches' instance data
+        // draws that could batch, and why one did not join the batch before it (another pipeline,
+        // elements, bindings or uniform bytes)
+        uint32_t offeredDraws = 0;
+        uint32_t splitPipeline = 0;
+        uint32_t splitElements = 0;
+        uint32_t splitBindings = 0;
+        uint32_t splitUniforms = 0;
+        uint32_t splitUniformSlots = 0;  // the uniform slots whose bytes differed (bit 31: other blocks)
+        uint32_t splitBindingParts = 0;  // 1 vertex buffers, 2 their offsets, 4 index buffer, 8 views, 16 samplers
     };
 
 }
