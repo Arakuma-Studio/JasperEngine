@@ -75,8 +75,9 @@ TEST(LodFade, TheTwoSidesOfAFadePartitionEveryPixel){
                 if (k > 1){
                     LodDraw before = draw;
                     before.k = (int8_t)(k - 1);
-                    if (lodFadeKeeps(before.fromFade(), rank))
+                    if (lodFadeKeeps(before.fromFade(), rank)){
                         EXPECT_TRUE(from) << "k " << k << ": a pixel went back to the other level";
+                    }
                 }
             }
         }
@@ -298,8 +299,10 @@ TEST(LodFadeBench, ThousandMeshesAFrame){
     std::sort(samples.begin(), samples.end());
     const double median = samples[samples.size() / 2];
     std::printf("[bench] LOD selection and fade of 1000 meshes: %.4f ms median (budget 0.05)\n", median);
-    if (testsupport::perfSlack() > 0.0)
+    if (testsupport::perfSlack() > 0.0){
         EXPECT_LE(median, 0.05 * testsupport::perfSlack());
-    if (testsupport::countsAllocations())
+    }
+    if (testsupport::countsAllocations()){
         EXPECT_EQ(allocations, 0u);
+    }
 }
