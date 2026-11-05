@@ -14,6 +14,7 @@
 #include "command/CommandHandle.h"
 #include "command/type/MultiPropertyCmd.h"
 #include "command/type/PropertyCmd.h"
+#include "component/PointsComponent.h"
 #include "external/IconsFontAwesome6.h"
 #include "material/MaterialChange.h"
 #include "material/MaterialPresets.h"
