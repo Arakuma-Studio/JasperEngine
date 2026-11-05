@@ -306,6 +306,9 @@ async def test_fork_keeps_buoyancy_queries_underwater(ed: Editor):
 async def test_fork_shader_from_library(ed: Editor):
     """fork_shader source=library:water target=material: the files with @role, the material on them,
     features kept, one undo step; check stays quiet."""
+    before = (await ed.call("get_entity", entity="Water", properties=["submeshes[0].material.*"]))["components"]["mesh"]
+    features = before.get(M + "shaderFeatures") or []
+    ed.check(features, f"the water has features to keep: {before!r}")
     made = await ed.call("fork_shader", source="library:water", target="material", entity="Water", name="ForkedWater")
     base = made["custom_shader"]
     ed.check_eq(made.get("submeshes"), [0], f"the water's submesh: {made!r}")
@@ -313,7 +316,7 @@ async def test_fork_shader_from_library(ed: Editor):
     ed.check("@role water" in frag.text, f"the fork keeps the role: {frag.text[:300]}")
     mesh = (await ed.call("get_entity", entity="Water", properties=["submeshes[0].material.*"]))["components"]["mesh"]
     ed.check_eq(mesh.get(M + "shader"), base, "the material draws with the fork")
-    ed.check("GERSTNER" in (mesh.get(M + "shaderFeatures") or []), "its features are kept")
+    ed.check_eq(mesh.get(M + "shaderFeatures") or [], features, "its features are kept")
     found = await ed.call("check_shader", timeout=300)
     role = [f for f in found.get("findings", []) if f.get("code") == "water-fork-without-role"]
     ed.check(not role, f"no role warning for the fork: {role!r}")
