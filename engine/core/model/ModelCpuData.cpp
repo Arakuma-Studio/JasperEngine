@@ -46,6 +46,7 @@ namespace {
         return MeshSystem::getPooledGLTFMutex();
     }
 
+    std::string heldBack;
     std::atomic<size_t> pendingCount{0};
     std::atomic<size_t> releasedCount{0};
     std::atomic<uint64_t> releasedBytes{0};
@@ -107,6 +108,7 @@ void ModelCpuData::update(const std::vector<Scene*>& scenes, bool force){
         return;
 
     std::lock_guard<std::recursive_mutex> bytesLock(bytesMutex());
+    heldBack.clear();
     std::vector<std::pair<std::shared_ptr<tinygltf::Model>, Entry*>> pending;
     {
         std::lock_guard<std::mutex> lock(stateMutex());
@@ -151,8 +153,11 @@ void ModelCpuData::update(const std::vector<Scene*>& scenes, bool force){
             }
         }
         // anything else holding the parse may hold pointers into it: its turn comes later
-        if (waiting || !uploaded || parse.use_count() != holders)
+        if (waiting || !uploaded || parse.use_count() != holders){
+            heldBack = entry->filename + ": " + (waiting ? "a mesh has not uploaded" : !uploaded ? "no mesh has uploaded" : "held by " +
+                       std::to_string(parse.use_count()) + " references, " + std::to_string(holders) + " known");
             continue;
+        }
 
         uint64_t freed = 0;
         for (ExternalBuffer* buffer : showing){
@@ -170,7 +175,9 @@ void ModelCpuData::update(const std::vector<Scene*>& scenes, bool force){
         pendingCount--;
         releasedCount++;
         releasedBytes += freed;
-        Log::print("Released the CPU copy of %s: %llu bytes", entry->filename.c_str(), (unsigned long long)freed);
+        CookedModelEntry cooked;
+        const bool found = CookedModels::find(entry->filename, cooked);
+        Log::print("Released the CPU copy of %s, loaded from %s: %llu bytes", entry->filename.c_str(), found ? cooked.file.c_str() : "?", (unsigned long long)freed);
     }
 }
 
@@ -225,6 +232,10 @@ bool ModelCpuData::ensure(const MeshComponent& mesh){
         buffer.restoreData(data.data() + buffer.getModelOffset());
     }
     return true;
+}
+
+std::string ModelCpuData::describeHeld(){
+    return heldBack;
 }
 
 uint64_t ModelCpuData::getReleasedBytes(){

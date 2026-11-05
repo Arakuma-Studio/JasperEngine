@@ -122,12 +122,12 @@ namespace {
         }
 
         // the mesh entities of the model's file, in their components
-        std::vector<MeshComponent*> meshesOf(const std::shared_ptr<tinygltf::Model>& parse){
+        std::vector<MeshComponent*> meshesOf(const tinygltf::Model* parse){
             std::vector<MeshComponent*> out;
             auto meshes = scene.getComponentArray<MeshComponent>();
             for (int i = 0; i < (int)meshes->size(); i++){
                 MeshComponent& mesh = meshes->getComponentFromIndex(i);
-                if (mesh.numExternalBuffers > 0 && mesh.eBuffers[0].getShareOwner().lock() == std::static_pointer_cast<const void>(parse))
+                if (mesh.numExternalBuffers > 0 && mesh.eBuffers[0].getShareOwner().lock().get() == static_cast<const void*>(parse))
                     out.push_back(&mesh);
             }
             return out;
@@ -161,14 +161,15 @@ TEST_F(ModelCpuDataGpu, ReleasesTheFilesBytesAfterUploadAndKeepsDrawing){
     ASSERT_TRUE(model.loadModel(kAsset));
     ASSERT_TRUE(settle());
     const std::vector<uint8_t> before = frame();
-    const std::shared_ptr<tinygltf::Model> parse = model.getComponent<ModelComponent>().gltfModel;
+    // (raw: a reference of the test's own would count as something still holding the parse)
+    const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
     ASSERT_TRUE(parse);
     const uint64_t held = fileBytes(*parse);
     EXPECT_GT(held, 12000u);
     EXPECT_EQ(ModelCpuData::getPendingCount(), 1u);
 
     ModelCpuData::update({&scene}, true);
-    EXPECT_EQ(ModelCpuData::getPendingCount(), 0u);
+    EXPECT_EQ(ModelCpuData::getPendingCount(), 0u) << ModelCpuData::describeHeld();
     EXPECT_EQ(fileBytes(*parse), 0u) << "the parse's vectors hold no memory";
     EXPECT_GE(ModelCpuData::getReleasedBytes(), held / 2);
     const std::vector<MeshComponent*> meshes = meshesOf(parse);
@@ -196,7 +197,8 @@ TEST_F(ModelCpuDataGpu, AReaderGetsTheBytesBackAndTheyStay){
     Model model(&scene);
     ASSERT_TRUE(model.loadModel(kAsset));
     ASSERT_TRUE(settle());
-    const std::shared_ptr<tinygltf::Model> parse = model.getComponent<ModelComponent>().gltfModel;
+    // (raw: a reference of the test's own would count as something still holding the parse)
+    const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
     const std::vector<MeshComponent*> meshes = meshesOf(parse);
     ASSERT_FALSE(meshes.empty());
     const size_t indices = triangleIndices(*meshes[0]);
@@ -228,7 +230,8 @@ TEST_F(ModelCpuDataGpu, ALaterLoadOfTheFileDraws){
     ASSERT_TRUE(model.loadModel(kAsset));
     ASSERT_TRUE(settle());
     const std::vector<uint8_t> before = frame();
-    const std::shared_ptr<tinygltf::Model> parse = model.getComponent<ModelComponent>().gltfModel;
+    // (raw: a reference of the test's own would count as something still holding the parse)
+    const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
     ModelCpuData::update({&scene}, true);
     ASSERT_EQ(fileBytes(*parse), 0u);
 
@@ -250,7 +253,8 @@ TEST_F(ModelCpuDataGpu, ALostGpuBufferReadsTheFileAgain){
     ASSERT_TRUE(model.loadModel(kAsset));
     ASSERT_TRUE(settle());
     const std::vector<uint8_t> before = frame();
-    const std::shared_ptr<tinygltf::Model> parse = model.getComponent<ModelComponent>().gltfModel;
+    // (raw: a reference of the test's own would count as something still holding the parse)
+    const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
     ModelCpuData::update({&scene}, true);
     ASSERT_EQ(fileBytes(*parse), 0u);
     for (MeshComponent* mesh : meshesOf(parse)){
@@ -271,7 +275,8 @@ TEST_F(ModelCpuDataGpu, KeepCpuDataKeepsTheBytesForEachReader){
     Model model(&scene);
     ASSERT_TRUE(model.loadModel(kAsset));
     ASSERT_TRUE(settle());
-    const std::shared_ptr<tinygltf::Model> parse = model.getComponent<ModelComponent>().gltfModel;
+    // (raw: a reference of the test's own would count as something still holding the parse)
+    const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
     const uint64_t held = fileBytes(*parse);
     EXPECT_EQ(ModelCpuData::getPendingCount(), 0u);
     ModelCpuData::update({&scene}, true);
@@ -300,7 +305,8 @@ TEST_F(ModelCpuDataGpu, AParticleMeshShapeReadsTheFileAfterARelease){
     Model model(&scene);
     ASSERT_TRUE(model.loadModel(kAsset));
     ASSERT_TRUE(settle());
-    const std::shared_ptr<tinygltf::Model> parse = model.getComponent<ModelComponent>().gltfModel;
+    // (raw: a reference of the test's own would count as something still holding the parse)
+    const tinygltf::Model* parse = model.getComponent<ModelComponent>().gltfModel.get();
     ModelCpuData::update({&scene}, true);
     ASSERT_EQ(fileBytes(*parse), 0u);
     particles::ParticleMeshData shape;

@@ -49,6 +49,9 @@ namespace jasperengine {
         // parses waiting for their meshes to upload
         static size_t getPendingCount();
 
+        // why update last kept a parse's bytes (for a test or a debugger), empty when it did not
+        static std::string describeHeld();
+
         // necessary for engine shutdown
         static void clear();
     };
