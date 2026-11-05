@@ -945,6 +945,18 @@ bool AudioMixer::isOverridden(const std::string& name){
 
 // ---------------------------------------------------------------- snapshots
 
+namespace {
+    const char* mixerCaptureCause = nullptr;
+}
+
+AudioMixer::CaptureCause::CaptureCause(const char* cause): previous(mixerCaptureCause){
+    mixerCaptureCause = cause;
+}
+
+AudioMixer::CaptureCause::~CaptureCause(){
+    mixerCaptureCause = previous;
+}
+
 bool AudioMixer::transitionTo(const std::string& snapshot, float seconds, bool unscaled){
     return transitionToSnapshots({snapshot}, {1.0f}, seconds, unscaled);
 }
@@ -981,6 +993,7 @@ bool AudioMixer::transitionToSnapshots(const std::vector<std::string>& snapshots
         if (snapshots.size() == 1) line.text("snapshot", snapshots[0]);
         else line.texts("snapshots", snapshots).numbers("weights", weights, 6);
         line.number("seconds", seconds, 6).flag("unscaled", timeUnscaled);
+        if (mixerCaptureCause) line.text("cause", mixerCaptureCause);
     }
 #endif
     return true;

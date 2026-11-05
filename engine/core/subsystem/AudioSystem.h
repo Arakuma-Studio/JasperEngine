@@ -77,9 +77,9 @@ namespace jasperengine{
 		uint64_t instance = 0;
 		// the instance that stole it
 		uint64_t byInstance = 0;
-		// main, one_shot, point, free
+		// main, one_shot, point, free, cue (S40: a clip's sound cue)
 		const char* owner = "main";
-		// play, event, trigger, lua, cpp
+		// play, event, trigger, lua, cpp, animation (S40: a timeline started it)
 		const char* cause = "play";
 		const char* trigger = "";
 		float impactSpeed = -1.0f;
@@ -221,6 +221,9 @@ namespace jasperengine{
 			// a free voice: its name in the lines, and its group when the play asked for one
 			const char* ownerName = nullptr;
 			const std::string* group = nullptr;
+			// a timeline's start (S40 R5): output frames before every voice, its speed scaled
+			uint32_t delayFrames = 0;
+			float speedScale = 1.0f;
 		};
 		struct StartedPlay {
 			uint64_t instance = 0;
@@ -338,6 +341,11 @@ namespace jasperengine{
 		// ---- free voices: Audio::play and SoundHandle
 		enum class FreeValue { Volume, Pitch, Pan };
 		static SoundHandle playFree(const std::string& eventOrClip, const PlayOptions& options, const char* cause);
+		// A clip's sound cue (S40 R6): a free voice owned "cue", cause "animation", starting
+		// delayFrames output frames into this frame's mix
+		static SoundHandle playFreeFromTimeline(const std::string& eventOrClip, const PlayOptions& options, uint32_t delayFrames);
+		// stops it with a fade of `seconds`, its lines saying `reason` (a cue's state_exit: "cue_exit")
+		static void freeStopFaded(uint32_t id, uint32_t generation, float seconds, const char* reason);
 		// the voices of Audio.play, triggers and one-shots: all, or those on `group` or below it
 		static int stopFreeAndOneShots(const std::string& group);
 		static bool freeIsValid(uint32_t id, uint32_t generation);

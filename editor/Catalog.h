@@ -221,12 +221,14 @@ namespace jasperengine::editor{
         // Unity's VideoPlayer
         VideoPlayerComponent,
         // drives a RectTransform to Screen.safeArea
-        SafeAreaComponent
+        SafeAreaComponent,
+        // a Mixer Snapshot action of the legacy action timeline (S40 R18)
+        AudioSnapshotComponent
     };
 
     // The last ComponentType: loops over every type (MCP lists, name lookups) run to it.
     // Move it with each new type appended above.
-    constexpr ComponentType LastComponentType = ComponentType::SafeAreaComponent;
+    constexpr ComponentType LastComponentType = ComponentType::AudioSnapshotComponent;
     constexpr int ComponentTypeCount = static_cast<int>(LastComponentType) + 1;
     // (S12's name for it)
     constexpr ComponentType LAST_COMPONENT_TYPE = LastComponentType;

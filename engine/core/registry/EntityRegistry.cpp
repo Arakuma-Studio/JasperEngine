@@ -205,6 +205,8 @@ EntityRegistry::EntityRegistry() {
     registerComponent<TextEffectComponent>(ComponentOrder::Hierarchy, "TextEffectComponent");
     registerComponent<VideoPlayerComponent>(ComponentOrder::Insertion, "VideoPlayerComponent");
     registerComponent<SafeAreaComponent>(ComponentOrder::Hierarchy, "SafeAreaComponent");
+    // S40 R18: after the last one, so no ComponentType moves
+    registerComponent<AudioSnapshotComponent>(ComponentOrder::Insertion, "AudioSnapshotComponent");
     // complete: markChangedComponent may look into it
     std::lock_guard<std::mutex> lock(liveRegistriesMutex());
     liveRegistries().push_back(this);

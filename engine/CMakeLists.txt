@@ -1416,6 +1416,7 @@ set(JASPERENGINE_SRCS
     core/camera/ShakePresets.cpp
     core/camera/ShakerRuntime.cpp
     core/animation/AnimationEvent.cpp
+    core/animation/ClipAudio.cpp
     core/animation/AnimationPlayerRuntime.cpp
     core/animation/AnimatorAssetIO.cpp
     core/animation/AnimatorIK.cpp
