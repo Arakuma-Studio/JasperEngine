@@ -617,7 +617,7 @@ does not fix audio; checks report changed thresholds."
   paused with its pan, so the first sample is at unity and one call and chunks of 512 are the same samples at both rates. A volume a game moves during
   a Play (`setVolume`, a fader) still ramps over one mix call: making that chunk-independent means a per-voice fixed-length ramp in SoLoud's mix loop,
   which is not simple and is left as is.
-- **`loudness` and `true_peak` read S38's keys when they exist**, else S38's defaults (-18 LUFS +- 2, -1 dBTP): S38's settings are not on `main` yet.
+- **A capture writes S38's `limiter` lines** with `levels.jsonl`'s 100 ms lines, only when a limiter takes something off; `latency_samples` adds the lookahead on the voice's way out (Master's in `session.json`).
 - **The `audio-qa` and `audio-markers` fixtures are not used:** each test makes its scenes over MCP, which keeps the seed next to its check.
 - **AC13 is a gtest (`AudioCaptureBenchTest`) with `perfSlack()`**, not `tools/perf/audio_capture_bench`: AGENTS.md's way of reporting wall-clock budgets. Server F no longer exists.
 - **AC5's unwritable root is a file where a folder goes**, not a read-only folder: the tests run as root in some images.

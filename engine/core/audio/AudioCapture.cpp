@@ -516,7 +516,7 @@ namespace {
             } else {
                 // the meter is ahead of the output by the buses left to go: this keeps sample k of a
                 // stem on sample k of master.wav
-                group->stemDelay = (uint32_t)AudioMixer::getGroupDepth(info.id);
+                group->stemDelay = (uint32_t)AudioMixer::getGroupDepth(info.id) + (info.parent.empty() ? 0u : AudioMixer::getOutputLatencyFrames(AudioMixer::findGroupId(info.parent)));
                 if (!group->stem->writeSilence((uint32_t)captureSession->capturedFrames + group->stemDelay)) {
                     failCapture("could not write the stem of group " + info.name);
                 }
@@ -562,6 +562,15 @@ namespace {
 
     void writeLevelsLine() {
         CaptureSession& s = *captureSession;
+        // S38's limiters: what they took off in these 100 ms, for true_peak's "mix too hot"
+        for (const std::unique_ptr<GroupCapture>& group : s.groups) {
+            const std::string limiter = AudioMixer::findEffectId(group->id, "limiter");
+            if (limiter.empty()) continue;
+            const float reduction = AudioMixer::getEffectGainReductionDb(limiter);
+            if (reduction <= 0.0f) continue;
+            AudioCapture::Line line("limiter");
+            line.text("group", group->name).number("gain_reduction_db", reduction, 2);
+        }
         std::string& out = s.pendingLevels;
         const uint64_t sample = s.capturedFrames;
         out += "{\"sample\":" + std::to_string(sample) + ",\"t\":";
@@ -870,7 +879,7 @@ namespace {
         field("max_seconds", std::to_string(s.options.maxSeconds));
         field("files", "{\"master\": \"master.wav\", \"events\": \"events.jsonl\", \"levels\": \"levels.jsonl\", \"stems\": " + list(stems) + "}");
         field("mixer", "{\"path\": " + quoted(s.mixerPath) + ", \"groups\": " + s.mixerMap + ", \"parents\": " + s.mixerParents + "}");
-        field("output_stage", "{\"clipper\": \"roundoff\", \"post_clip_scaler\": " + decimal(soloud.getPostClipScaler(), 6) + "}");
+        field("output_stage", std::string("{\"clipper\": ") + (AudioSystem::getConfig().outputStage == AudioOutputStage::Linear ? "\"linear\"" : "\"roundoff\"") + ", \"post_clip_scaler\": " + decimal(soloud.getPostClipScaler(), 6) + "}");
         field("counts", counts);
         field("events_dropped", std::to_string(s.eventsDropped));
         field("voices_peak", std::to_string(s.voicesPeak));

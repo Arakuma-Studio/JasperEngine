@@ -308,8 +308,8 @@ namespace jasperengine{
 		static void pumpDeterministic(double unscaledSeconds);
 		// The frames mixed since the audio opened, on any null driver
 		static uint64_t getMixedFrames();
-		// the frames between a voice's stamp and its first sample in the mix: one for the voice and
-		// one for each bus on its way out, so it depends on the group ("": Master)
+		// the frames between a voice's stamp and its first sample in the mix: one for the voice, one
+		// for each bus on its way out and the limiters' lookahead there, so it depends on the group ("": Master)
 		static unsigned int getDeterministicLatency(const std::string& groupId = "");
 		// A Play that captures and a Recorder movie hold the driver: the first hold opens it and the
 		// last one reopens what was selected before. Both re-initialise SoLoud, so voices stop: only

@@ -1140,6 +1140,16 @@ int AudioMixer::getGroupDepth(const std::string& id){
     return depth;
 }
 
+unsigned int AudioMixer::getOutputLatencyFrames(const std::string& id){
+    unsigned int frames = 0;
+    const GroupState* group = id.empty() ? masterState() : findState(id);
+    for (int depth = 0; group && depth < 64; depth++) {
+        frames += getGroupLatencyFrames(group->id);
+        group = group->parentId.empty() ? nullptr : findState(group->parentId);
+    }
+    return frames;
+}
+
 float AudioMixer::getEffectGainReductionDb(const std::string& effectId){
     ensureInitialized();
     GroupState* owner = nullptr;

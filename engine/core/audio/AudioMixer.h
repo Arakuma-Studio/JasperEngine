@@ -89,6 +89,8 @@ namespace jasperengine {
         static float getGroupFader(const std::string& id);
         // the buses from a group to the output: 1 for Master (and for no such group)
         static int getGroupDepth(const std::string& id);
+        // the lookahead frames of the limiters from a group to the output, its own among them ("": Master)
+        static unsigned int getOutputLatencyFrames(const std::string& id);
 
         // ---- the asset
 

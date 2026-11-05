@@ -283,6 +283,8 @@ async def test_mixer_passes_its_own_checks(ed: Editor):
         ed.check_eq(ducking["status"], "PASS", f"{ducking}")
         ed.check(ducking["measured"] >= 9.0, f"level 0.25 is 12 dB: {ducking}")
         ed.check_eq(of(result, "regression")["status"], "SKIP", "no baseline")
+        limiter = [line for line in read_jsonl(session / "events.jsonl")[1:] if line["kind"] == "limiter"]
+        ed.check(limiter and limiter[0]["group"] == "Master" and limiter[0]["gain_reduction_db"] > 0, f"the limiter's lines: {limiter[:2]}")
         ed.check_eq(of(result, "loudness")["status"], "SKIP", "under audio.qa.loudness_min_seconds of gated audio")
     finally:
         await ed.call("audio_mixer", action="edit", ops=[{"op": "remove_effect", "group": "Master", "type": "limiter"}, {"op": "remove_effect", "group": "Music", "type": "duck"}])

@@ -683,7 +683,7 @@ uint64_t AudioSystem::getMixedFrames(){
 }
 
 unsigned int AudioSystem::getDeterministicLatency(const std::string& groupId){
-    return 1u + (unsigned int)AudioMixer::getGroupDepth(groupId);
+    return 1u + (unsigned int)AudioMixer::getGroupDepth(groupId) + AudioMixer::getOutputLatencyFrames(groupId);
 }
 
 bool AudioSystem::beginDeterministic(){
