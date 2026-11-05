@@ -330,9 +330,13 @@ async def test_an_export_stops_when_a_root_is_swapped_during_it(ed: Editor):
     outside.mkdir()
     (outside / "keep.txt").write_text("secret\n")
     try:
-        async with Editor(project=EDITOR["project"], label="export-swap", env={"JASPER_TEST_EXPORT_HOLD": str(hold)}) as swap:
-            await pickup(swap)
+        # a new project: this fixture's HTML document, missing once its root moves, would fail the export for its own reason
+        async with Editor(create=True, name="Export Swap", label="export-swap", env={"JASPER_TEST_EXPORT_HOLD": str(hold)}) as swap:
             root, aside = swap.project / "assets", swap.project / "assets_export_aside"
+            root.mkdir(exist_ok=True)
+            (swap.project / "scripts").mkdir(exist_ok=True)
+            await swap.call("set_project_settings", values={"editor.assets_dir": "assets", "scripting.lua_dir": "scripts"})
+            await pickup(swap)
             out = swap.scratch.root / "export-swapped"
             hold.write_text("hold\n")
             job = await swap.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
