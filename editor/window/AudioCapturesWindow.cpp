@@ -329,6 +329,7 @@ void AudioCapturesWindow::drawChecks() {
     if (!check.is_object()) return;
     ImGui::Text("Last check: %s", check.value("verdict", std::string()).c_str());
     UIProbe::item("audioCaptures.verdict");
+    ImGui::BeginChild("checks", ImVec2(0.0f, Theme::dpi(120.0f)));
     for (const Json& item : check.value("checks", Json::array())) {
         const std::string status = item.value("status", "");
         const std::string limited = item["limited_by"].is_string() ? item["limited_by"].get<std::string>() : std::string();
@@ -337,6 +338,7 @@ void AudioCapturesWindow::drawChecks() {
         else if (status == "SKIP") ImGui::TextDisabled("%s", text.c_str());
         else ImGui::TextUnformatted(text.c_str());
     }
+    ImGui::EndChild();
 }
 
 void AudioCapturesWindow::drawListen() {
@@ -393,10 +395,10 @@ void AudioCapturesWindow::show() {
     }
     ImGui::BeginDisabled(capturing);
     drawSessions();
+    drawListen();
+    drawChecks();
     ImGui::Separator();
     if (!capturing) drawTimeline();
-    drawChecks();
-    drawListen();
     ImGui::EndDisabled();
     ImGui::End();
 }

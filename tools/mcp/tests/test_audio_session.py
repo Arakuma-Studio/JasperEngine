@@ -69,9 +69,11 @@ async def test_arm_false_then_no_session(ed: Editor):
 
 
 async def test_no_device_captures_and_stop_says_so(ed: Editor):
-    await ed.call("play", action="start", scene=STATE["scene"], fixed_fps=60)
+    started = await ed.call("play", action="start", scene=STATE["scene"], fixed_fps=60)
+    ed.check("audio_session" in started["audio_capture"]["next"], f"play start says where the numbers are: {started}")
     await ed.call("wait", frames=5)
     live = await ed.call("audio_session", action="status")
+    ed.check_eq(live["session"], started["audio_capture"]["session"], f"{live}")
     ed.check_eq((live["capturing"], live["output_mode"]), (True, "deterministic"), f"{live}")
     ed.check_eq(live["sessions"][0]["state"], "capturing", f"{live}")
     await ed.call("wait", frames=400)

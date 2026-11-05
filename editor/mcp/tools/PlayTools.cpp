@@ -43,6 +43,7 @@
 #include <filesystem>
 #include <memory>
 #include "audio/AudioAnalysis.h"
+#include "audio/AudioCapture.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioSessionReader.h"
 #include "jobs/JobSystem.h"
@@ -1523,6 +1524,10 @@ ToolResult playStartResult(McpContext& ctx, const McpJob& job, bool screenshotLa
     if (job.status() == JobStatus::Succeeded) {
         text = job.message() + " Started in " + std::to_string(data.value("startup_seconds", 0.0)).substr(0, 5) + " s.";
         if (data.contains("audio_capture_error")) text += " Audio capture failed: " + data["audio_capture_error"].get<std::string>() + ".";
+        if (AudioCapture::isActive()) {
+            data["audio_capture"] = {{"session", AudioCapture::sessionId()}, {"next", "play stop gives the numbers; audio_session report (group audio) reads them"}};
+            text += " Capturing audio: play stop gives its numbers, audio_session report (group audio) reads them.";
+        }
         if (!problems.empty()) {
             text += " Console problems since start:\n" + w3::formatConsoleText(problems, 4000);
         } else {
