@@ -176,8 +176,9 @@ TEST_F(ModelCpuDataGpu, ReleasesTheFilesBytesAfterUploadAndKeepsDrawing){
     ASSERT_FALSE(meshes.empty());
     for (MeshComponent* mesh : meshes)
         for (unsigned int b = 0; b < mesh->numExternalBuffers; b++)
-            if (parse->buffers[(size_t)mesh->eBuffers[b].getModelBuffer()].name != MeshSystem::kSyntheticBufferName)
+            if (parse->buffers[(size_t)mesh->eBuffers[b].getModelBuffer()].name != MeshSystem::kSyntheticBufferName){
                 EXPECT_TRUE(mesh->eBuffers[b].isDataReleased() && !mesh->eBuffers[b].getData());
+            }
 
     EXPECT_EQ(differingPixels(before, frame()), 0u);
 
