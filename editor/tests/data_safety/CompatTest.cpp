@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <initializer_list>
+#include <memory>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -125,6 +126,12 @@ namespace {
         return out;
     }
 
+    // a submesh as a save writes one its generator has not made yet
+    std::string unbuiltSubmesh() {
+        const auto mesh = std::make_unique<MeshComponent>();
+        return YAML::Dump(Stream::encodeMeshComponent(*mesh, false, true, false, 1, false)["submeshes"][0]);
+    }
+
     bool flagOr(const YAML::Node& map, const char* key, bool fallback) {
         const YAML::Node value = std::as_const(map)[key];
         return value && value.IsScalar() ? value.as<bool>() : fallback;
@@ -140,8 +147,8 @@ namespace {
     // authored camera's clips, a plain Mesh's vertex counts and bounds, a UI's bounds and vertex
     // count, ranges set by hand) is compared.
     void removeComputedValues(YAML::Node components) {
-        const CameraComponent cameraDefaults;
-        const TerrainComponent terrainDefaults;
+        const CameraComponent cameraDefaults{};
+        const TerrainComponent terrainDefaults{};
         YAML::Node camera = components["camera"];
         if (camera && camera.IsMap() && flagOr(camera, "autoResize", cameraDefaults.autoResize) &&
             !flagOr(camera, "renderToTexture", cameraDefaults.renderToTexture)) {
@@ -174,7 +181,7 @@ namespace {
         // a Terrain's two submeshes exist before it first ran: those no edit touched are as none,
         // and a submesh with an authored value is compared
         if (mesh && mesh.IsMap()) {
-            const std::string unbuilt = YAML::Dump(Stream::encodeSubmesh(Submesh{}, true, false));
+            const std::string unbuilt = unbuiltSubmesh();
             YAML::Node kept(YAML::NodeType::Sequence);
             YAML::Node submeshes = mesh["submeshes"];
             if (submeshes && submeshes.IsSequence()) {
@@ -253,7 +260,7 @@ TEST(Compat, TheFilterHidesOnlyWhatASaveLeavesOut) {
     // an authored submesh of a terrain's mesh is compared
     EXPECT_FALSE(same("      terrain: {}\n      mesh:\n        submeshes:\n          - material:\n              name: Rock\n",
                       "      terrain: {}\n      mesh:\n        submeshes: ~\n"));
-    const std::string unbuilt = YAML::Dump(Stream::encodeSubmesh(Submesh{}, true, false));
+    const std::string unbuilt = unbuiltSubmesh();
     YAML::Node builtRoot = YAML::Load(entity("      terrain: {}\n      mesh:\n        submeshes: ~\n"));
     builtRoot["entities"][0]["components"]["mesh"]["submeshes"].push_back(YAML::Load(unbuilt));
     EXPECT_EQ(withoutComputedValues(YAML::Dump(builtRoot)), withoutComputedValues(entity("      terrain: {}\n      mesh:\n        submeshes: ~\n")));
