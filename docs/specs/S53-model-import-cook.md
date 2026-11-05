@@ -394,8 +394,9 @@ Out of scope:
   base's accessors and its triangles become a `JE_mesh_lods` level (through every Optimize pass with
   LOD 0); `error` is the measured distance from LOD 0's surface, and the level carries `coverage`,
   its `MSFT_screencoverage` (an optional key added to contract C1). The lower levels' own meshes
-  stay in the file (structure invariant; the loader takes them off the scene), so their bytes ship
-  twice. A level that does not match gives the generated levels their count and the coarsest
+  stay in the file (structure invariant; the loader takes them off the scene) and draw from the base
+  primitive's accessors and the level's, so nothing ships twice; their old accessors keep their
+  index without a bufferView. A level that does not match gives the generated levels their count and the coarsest
   triangle count. Generate LODs Off folds nothing.
 - **Load findings (R5):** the Inspector rows, the Audit, the badge and `inspect_models`
   (`load_diagnostics`, issue codes `gltf-required-extension`, `gltf-load-error`,
@@ -404,6 +405,14 @@ Out of scope:
   Error the cook does not remove fails the cook (Status `failed`, no measured numbers), and so the
   export, naming the file; the editor keeps loading the source. "Cook anyway" (R18) recooks a Draco or WebP model not cooked yet; an unread extension
   offers Open Console and Show in Explorer.
+- **Read/Write release (R11):** `ModelCpuData` frees a pooled parse's file buffers once every mesh
+  showing them has uploaded and only the pool and the scenes' Models hold it; meshes keep their GPU
+  buffers (keyed by buffer and offset, so restored bytes find them) and draw, reload and clone from
+  those. Only mesh data: decoded images stay, as textures reload from them. Whoever reads a mesh's
+  bytes calls `ensure`, which reads the file again and keeps them: a parse is released at most once
+  and no buffer points at freed bytes, so a reader the analysis misses costs a re-read, never a
+  crash. A mesh never uploaded (disabled) holds its parse's bytes. Skinned models are always kept.
+  The guard is `System::isEditor`, besides the editor's provider answering keep.
 - **The index codec turns triangles:** `KHR_meshopt_compression`'s TRIANGLES mode may rotate a
   triangle's corners (winding kept). LOD 0's lists take one codec round trip before the levels are
   baked, so Automatic's levels are built from exactly what the runtime decodes.
@@ -436,15 +445,6 @@ Out of scope:
 
 ## 11. Deviations (s41-importer)
 
-- **R11 (runtime release of CPU copies):** the editor side is complete: the Automatic analysis and
-  its reasons, the Inspector's "Kept: ..." / "Nothing at runtime reads it" line, `inspect_models`'
-  `read_write`, and the export's per-model `keepCpuData` in `index.json`. The player does **not
-  yet** free the parsed buffers: the buffers a model's meshes draw from point into the shared
-  parse (`ModelPool`), meshes reload from those bytes on several runtime paths (a material or
-  instancing change re-runs `RenderSystem::loadMesh`, which compares the share source by address),
-  and Doriax `mesh-memory` is reshaping exactly this storage (§8 says the release lands on whatever
-  storage lands). The release and AC8's "frees the memory" half follow on top of `mesh-memory`; the
-  readers' half of AC8 (each reader keeps the data) is covered by the analysis tests.
 - **R16 preview:** drawn on the CPU (flat shading, wireframe, orbit by drag, Source/Cooked, Force
   LOD) instead of a GPU preview scene, so it works in a headless editor and costs nothing when the
   importer is closed.

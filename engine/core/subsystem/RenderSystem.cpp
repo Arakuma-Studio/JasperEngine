@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "RenderSystem.h"
+#include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"
 #include "component/UIDocumentComponent.h"
 #include "component/AudioSourceComponent.h"
@@ -6260,6 +6261,11 @@ bool RenderSystem::loadMesh(Entity entity, MeshComponent& mesh, uint16_t pipelin
             bufferRender->destroyBuffer();
         }
 
+        // released bytes (S53 R11): the GPU buffer a mesh still holds, else the file is read again
+        if (buf.second->isDataReleased() && !bufferRender->isCreated() && !MeshBufferPool::createRender(*buf.second)) {
+            ModelCpuData::ensure(mesh, "a GPU upload");
+        }
+
         if (!bufferRender->isCreated()) {
             JE_GPU_ALLOC_SCOPE(Meshes, scene->getEntityName(entity));
             const uint64_t poolFullBefore = SystemRender::getResourcePoolExhaustions();
@@ -7353,10 +7359,15 @@ void RenderSystem::updateMeshLods(Entity entity, MeshComponent& mesh, bool rehas
             continue;
         }
 
-        if (!rehash && submesh.lodKey != 0 && (submesh.lodData || MeshLodPool::has(submesh.lodKey))){
+        // (released bytes never changed: the levels stand)
+        bool released = false;
+        for (int b = 0; b < mesh.numExternalBuffers; b++)
+            released = released || mesh.eBuffers[b].isDataReleased();
+        if ((!rehash || released) && submesh.lodKey != 0 && (submesh.lodData || MeshLodPool::has(submesh.lodKey))){
             pollMeshLod(mesh, submesh);
             continue;
         }
+        ModelCpuData::ensure(mesh, "detail levels");
 
         LodAttributes attributes;
         if (!findLodAttributes(submesh, buffers, attributes)){
@@ -7557,6 +7568,7 @@ bool RenderSystem::readSubmeshLevel(MeshComponent& mesh, unsigned int submeshInd
 }
 
 bool RenderSystem::readSubmeshLodSource(MeshComponent& mesh, unsigned int submeshIndex, MeshLodSource& source){
+    ModelCpuData::ensure(mesh, "detail levels");
     if (submeshIndex >= mesh.numSubmeshes)
         return false;
     std::map<std::string, Buffer*> buffers;
@@ -7881,6 +7893,7 @@ bool RenderSystem::bindSmoothNormals(ObjectRender& render, ShaderData& shaderDat
         return true;
 
     if (submesh.smoothNormals == -1){
+        ModelCpuData::ensure(mesh, "smooth normals");
         const LodAttribute position = findSubmeshAttribute(submesh, buffers, AttributeType::POSITION);
         auto normalOf = [&](Submesh& owner, unsigned int count) -> LodAttribute {
             const LodAttribute normal = findSubmeshAttribute(owner, buffers, AttributeType::NORMAL);
@@ -12194,6 +12207,10 @@ void RenderSystem::destroyMesh(Entity entity, MeshComponent& mesh, bool clearAss
         if (!preserveAssets){
             mesh.eBuffers[i].clearAll();
         }
+        // a reload keeps the GPU buffer of bytes that are gone from the CPU (S53 R11): making it
+        // again would read the file back
+        if (preserveAssets && mesh.eBuffers[i].isDataReleased())
+            continue;
         mesh.eBuffers[i].getRender()->destroyBuffer();
     }
 

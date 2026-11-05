@@ -102,8 +102,10 @@ mesh shape, a skinned mesh (poses and retargeting), runtime LOD building (a scen
 and no baked levels), or scripts that call a mesh-reading API (`createMeshCollider`,
 `createConvexHullCollider`, a navigation bake: Project Settings > Mesh > Keep CPU Data for Scripts
 decides, automatic by default). The Inspector shows the reason; the export writes the decision into
-`index.json` (`keepCpuData`). Players do not free the copy yet: that follows the mesh storage work
-(spec S53, Deviations), so today this setting changes no memory.
+`index.json` (`keepCpuData`). A game frees the file's mesh bytes once every mesh showing them has uploaded;
+drawing, reloading a material and cloning go on from the GPU buffers. Something the analysis could
+not see (a later load of the file, a lost graphics context) reads the file again and keeps the bytes.
+The editor always keeps the data.
 
 ## Project Settings > Mesh and the render budgets
 

@@ -60,6 +60,7 @@
 #include "meshoptimizer.h"
 #include "pool/ObjModelData.h"
 #include "subsystem/GltfNormalize.h"
+#include "model/ModelCpuData.h"
 
 using namespace jasperengine;
 
@@ -2267,8 +2268,8 @@ bool MeshSystem::loadGLTFBuffer(int bufferViewIndex, MeshComponent& mesh, ModelC
 
         // the parse's bytes, never written after it (a load only appends converted copies): every
         // mesh showing them, of every Model of the file, draws from one GPU buffer (MeshBufferPool)
-        mesh.eBuffers[mesh.numExternalBuffers].setData(bufferData.data() + bufferView.byteOffset, bufferView.byteLength,
-                                                       std::static_pointer_cast<const void>(model.gltfModel));
+        mesh.eBuffers[mesh.numExternalBuffers].setModelData(bufferData.data() + bufferView.byteOffset, bufferView.byteLength,
+                                                            std::static_pointer_cast<const void>(model.gltfModel), bufferView.buffer, bufferView.byteOffset);
         mesh.eBuffers[mesh.numExternalBuffers].setStride(stride);
         mesh.eBuffers[mesh.numExternalBuffers].setName(name);
         mesh.eBuffers[mesh.numExternalBuffers].setRenderAttributes(false);
@@ -2311,6 +2312,7 @@ int MeshSystem::convertGLTFByteIndicesToShort(const tinygltf::Accessor& indexAcc
     for (size_t k = 0; k < count; k++) {
         dst[k] = static_cast<uint16_t>(srcData[srcOffset + k]);
     }
+    newBuffer.name = kSyntheticBufferName;
     model.gltfModel->buffers.push_back(std::move(newBuffer));
     const int newBufferIndex = static_cast<int>(model.gltfModel->buffers.size()) - 1;
 
@@ -2438,6 +2440,7 @@ int MeshSystem::materializeGLTFSparseAccessor(tinygltf::Accessor& accessor, Mode
                     values + i * elementSize, elementSize);
     }
 
+    denseBuffer.name = kSyntheticBufferName;
     model.gltfModel->buffers.push_back(std::move(denseBuffer));
     const int denseBufferIndex = static_cast<int>(model.gltfModel->buffers.size()) - 1;
 
@@ -2500,6 +2503,7 @@ int MeshSystem::bakeGLTFTransformedAttribute(const tinygltf::Accessor& accessor,
         dst[i * 3 + 1] = r.y;
         dst[i * 3 + 2] = r.z;
     }
+    newBuffer.name = kSyntheticBufferName;
     model.gltfModel->buffers.push_back(std::move(newBuffer));
     const int newBufferIndex = static_cast<int>(model.gltfModel->buffers.size()) - 1;
 
@@ -2557,6 +2561,7 @@ int MeshSystem::bakeGLTFTransformedTangent(const tinygltf::Accessor& accessor, c
         dst[i * 4 + 2] = tangent.z;
         dst[i * 4 + 3] = src[3] * handedness;
     }
+    newBuffer.name = kSyntheticBufferName;
     model.gltfModel->buffers.push_back(std::move(newBuffer));
     const int newBufferIndex = static_cast<int>(model.gltfModel->buffers.size()) - 1;
 
@@ -2614,6 +2619,7 @@ int MeshSystem::convertGLTFColorToVec4(const tinygltf::Accessor& accessor, Model
         memcpy(dst, srcData.data() + base + i * static_cast<size_t>(stride), colorSize);
         memset(dst + colorSize, 0xFF, componentSize); // all bits set is 1.0 once normalized
     }
+    newBuffer.name = kSyntheticBufferName;
     model.gltfModel->buffers.push_back(std::move(newBuffer));
     const int newBufferIndex = static_cast<int>(model.gltfModel->buffers.size()) - 1;
 
@@ -5358,6 +5364,9 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
         }
     }
 
+    // (a parse whose bytes were released, S53 R11: this load reads them)
+    ModelCpuData::ensure(model.gltfModel, "a later load");
+
     // Every entity of the file shares the pooled model, and a load appends synthetic buffers to
     // it (once per key): loads of a pooled model take turns, a game's loading thread with the
     // main thread included
@@ -6641,6 +6650,11 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     model.loadedFilename = getModelFilenameKey(filename);
     model.loadedMergeStaticMeshes = model.mergeStaticMeshes;
+
+    // Read/Write (S53 R11): nothing at runtime reads this cooked model's mesh data
+    CookedModelEntry cookedEntry;
+    if (CookedModels::find(filename, cookedEntry) && !cookedEntry.keepCpuData && ModelPool::getGLTF(poolKey) == model.gltfModel)
+        ModelCpuData::markReleasable(model.gltfModel, filename, poolKey);
 
     return true;
 }

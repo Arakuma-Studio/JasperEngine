@@ -315,7 +315,7 @@ void ModelImporterView::drawMeshes(const ResolvedModelSettings& r){
         if (decision.keep)
             ImGui::TextDisabled("Kept: %s", decision.reasons.empty() ? "" : decision.reasons.front().c_str());
         else
-            ImGui::TextDisabled("Nothing at runtime reads it");
+            ImGui::TextDisabled("Released after upload: nothing at runtime reads it");
         ImGui::PopTextWrapPos();
         if (decision.reasons.size() > 1 && ImGui::IsItemHovered()){
             ImGui::BeginTooltip();

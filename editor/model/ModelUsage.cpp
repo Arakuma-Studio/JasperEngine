@@ -22,7 +22,7 @@ namespace fs = std::filesystem;
 namespace {
 
     // the calls of the Lua and C++ script API that read a model's vertices at runtime
-    const char* const SCRIPT_READERS[] = {"createMeshCollider", "createConvexHullCollider", "bakeAsync", "NavMeshSurface::bake"};
+    const char* const SCRIPT_READERS[] = {"createMeshCollider", "createConvexHullCollider", "bakeAsync", "NavMeshSurface::bake", "MeshRaycast"};
 
     int64_t stampOf(const fs::path& path, uint64_t& size){
         std::error_code ec;
