@@ -3089,6 +3089,7 @@ bool editor::AnimationWindow::drawTracks(ImVec2 canvasPos, ImVec2 canvasSize, fl
     if (allowSelection && allowEditing) {
         ImRect dropRect(ImVec2(canvasPos.x + labelWidth, canvasPos.y + rulerHeight),
                         ImVec2(canvasPos.x + canvasSize.x, canvasPos.y + canvasSize.y));
+        UIProbe::rect("entity.tracks", dropRect.Min.x, dropRect.Min.y, dropRect.Max.x, dropRect.Max.y);
         if (ImGui::BeginDragDropTargetCustom(dropRect, ImGui::GetID("##anim_tracks_drop"))) {
             // a sound from the Project window or the Sound Browser: an audio action at the drop time (S40 R22)
             const ImGuiPayload* sounds = ImGui::GetDragDropPayload();

@@ -23,6 +23,7 @@
 #include "audio/TimelineAudioPreview.h"
 #include "component/AudioSourceComponent.h"
 #include "util/EntityPath.h"
+#include "util/UIProbe.h"
 #include "util/Util.h"
 
 #include <cmath>
@@ -386,6 +387,7 @@ void AnimationWindowClip::drawAudioLane(ImDrawList* drawList, ImVec2 origin, flo
     ImGui::SetCursorScreenPos(origin);
     ImGui::InvisibleButton("##clip_audio", ImVec2(width, height), ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight);
     const bool laneHovered = ImGui::IsItemHovered();
+    UIProbe::item("clip.audio.lane");
 
     int hovered = -1;
     drawList->PushClipRect(origin, ImVec2(origin.x + width, origin.y + height), true);
@@ -422,6 +424,8 @@ void AnimationWindowClip::drawAudioLane(ImDrawList* drawList, ImVec2 origin, flo
             TimelineSounds::drawBlock(drawList, project, shown, ImVec2(x, top), ImVec2(std::max(right, x + 4.0f * m.s), bottom),
                                       speed / (double)pixelsPerSecond, fill, isSelected, label);
         }
+        // the cue's block (UI tests: its edges, drawn whole inside the lane)
+        if (x >= origin.x && right <= origin.x + width) UIProbe::rect("clip.audio.cue." + std::to_string(i), x, top, right, bottom);
         if (laneHovered && io.MousePos.y >= top && io.MousePos.y <= bottom && io.MousePos.x >= x - 3.0f * m.s && io.MousePos.x <= right){
             hovered = (int)i;
         }
