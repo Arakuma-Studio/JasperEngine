@@ -4,6 +4,7 @@
 #include "AudioCapturesWindow.h"
 
 #include "Backend.h"
+#include "Log.h"
 #include "Project.h"
 #include "Theme.h"
 #include "audio/AudioCapture.h"
@@ -157,6 +158,7 @@ void AudioCapturesWindow::requestRender() {
     jobs::submit([job, capture, saved]() {
         AudioSessionData data;
         std::string error;
+        try {
         if (AudioSessionReader::load(capture, job->start, job->end, data, error)) {
             AudioTimelineImage::Options lanes;
             AudioSessionReader::report(data, 2000, lanes.markers, lanes.events);
@@ -173,6 +175,9 @@ void AudioCapturesWindow::requestRender() {
             }
             job->result = AudioTimelineImage::render(data, lanes, job->width);
         }
+        } catch (const std::exception& e) {
+            Log::warn("Audio Captures: %s", e.what());
+        }
         job->done.store(true, std::memory_order_release);
     }, options);
 }
@@ -186,8 +191,6 @@ void AudioCapturesWindow::pollJobs() {
             TextureData data(image.width, image.height, (unsigned int)image.rgba.size(), ColorFormat::RGBA, 4, image.rgba.data());
             Texture next;
             next.setData("editor:audio-captures:" + std::to_string(++textureGeneration), data);
-            next.setMinFilter(TextureFilter::LINEAR);
-            next.setMagFilter(TextureFilter::LINEAR);
             TextureRender* render = next.getRender();
             if (render && render->isCreated()) {
                 next.releaseData();
@@ -197,6 +200,7 @@ void AudioCapturesWindow::pollJobs() {
                 timelineHeight = image.height;
             } else {
                 next.destroy();
+                Log::warn("Audio Captures: the timeline's texture could not be created");
             }
         }
     }

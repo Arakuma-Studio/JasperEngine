@@ -2029,24 +2029,24 @@ Sets how clips play and where they came from, in their .meta: gain, trims, click
 
 Group: `audio` (listed once `tool_groups` enables it, callable either way)
 
-You can't hear: a Play's capture as numbers. status: sessions and what the next Play does. arm: the next Play captures (a device mutes), or not. report: loudness, peaks, groups, numbered events and markers, a timeline image. check: PASS/FAIL/WARN/SKIP verdicts, what limits each, how to fix it. Guide: jasper://docs/sound.
+You can't hear: a Play's capture as numbers. status: sessions and what the next Play does. arm: the next Play captures, or not. report: loudness, peaks, groups, numbered events and markers, a timeline image. check: PASS/FAIL/WARN/SKIP verdicts, what limits each, how to fix it. jasper://docs/sound.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `action` | `"status"` \| `"arm"` \| `"report"` \| `"check"` | yes |  |
-| `baseline` | string |  | check: a baseline name or a session. |
-| `capture` | boolean |  | arm. Default: `true`. |
+| `baseline` | string |  | A name or a session. |
+| `capture` | boolean |  | arm. Default true. |
 | `checks` | array of string |  | Default all. |
-| `end` | number (0..86400) |  | Range end, s. |
-| `events_limit` | integer (0..2000) |  | Default: `200`. |
-| `expect` | array of object {align, entity, offset_ms, on, sound, within_ms} |  | What must sound; rules in jasper://docs/sound. |
-| `fail_on` | `"fail"` \| `"warn"` |  | check: a verdict at or above it is an error. |
-| `image` | boolean |  | The timeline. Default: report yes, check no. |
+| `end` | number |  | s. |
+| `events_limit` | integer (0..2000) |  | Default 200. |
+| `expect` | array of object {align, entity, offset_ms, on, sound, within_ms} |  | What must sound. |
+| `fail_on` | `"fail"` \| `"warn"` |  | A verdict at it or worse is an error. |
+| `image` | boolean |  | Default report yes, check no. |
 | `max_seconds` | integer (1..3600) |  | arm. |
-| `max_width` | integer (256..2048) |  | Default: `1024`. |
-| `save_baseline` | string |  | check: writes baselines/audio/<name>.json. |
-| `session` | string |  | last, current, or a session id or directory. Default: `"last"`. |
-| `start` | number (0..86400) |  | Range start, s. |
+| `max_width` | integer (256..2048) |  |  |
+| `save_baseline` | string |  | A name. |
+| `session` | string |  | Default last; current, an id or a directory. |
+| `start` | number |  | s. |
 | `stems` | boolean |  | arm. |
 
 

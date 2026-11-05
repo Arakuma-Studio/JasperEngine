@@ -373,7 +373,8 @@ namespace {
                     dominant = b;
                 }
             }
-            level += start.value("gain_db", 0.0);
+            // the voice's gain, and the constant-power pan's half of its energy on each channel
+            level += start.value("gain_db", 0.0) - 3.01;
             const double t = stampSeconds(c, start);
             const std::set<std::string> related = relatedGroups(c, group);
             double loudest = -1e9;
@@ -474,8 +475,8 @@ namespace {
         std::string warned;
         double worstDrop = 1e9;
         for (const AudioQa::DuckEffect& duck : c.request.ducks) {
-            double duckedOn = 0.0, duckedOff = 0.0, sideOn = 0.0;
-            int on = 0, off = 0;
+            // medians: the lines the side chain starts or stops in hold some of both
+            std::vector<double> duckedOn, duckedOff, sideOn;
             for (const Json& line : c.data.levels) {
                 if (!c.data.inRange(line)) continue;
                 const Json groups = line.value("groups", Json::object());
@@ -483,26 +484,29 @@ namespace {
                 const double side = groups[duck.sidechain].value("rms_db", AudioMeter::SILENCE_DB);
                 const double level = groups[duck.group].value("rms_db", AudioMeter::SILENCE_DB);
                 if (side > FLOOR_DB) {
-                    duckedOn += std::pow(10.0, level / 10.0);
-                    sideOn += std::pow(10.0, side / 10.0);
-                    on++;
-                } else {
-                    duckedOff += std::pow(10.0, level / 10.0);
-                    off++;
+                    duckedOn.push_back(level);
+                    sideOn.push_back(side);
+                } else if (level > FLOOR_DB) {
+                    duckedOff.push_back(level);
                 }
             }
-            if (on == 0 || off == 0 || duckedOff <= 0.0) continue;
+            if (duckedOn.empty() || duckedOff.empty()) continue;
             any = true;
-            const double offDb = 10.0 * std::log10(duckedOff / off);
-            const double onDb = 10.0 * std::log10(std::max(duckedOn / on, 1e-12));
+            const auto median = [](std::vector<double>& values) {
+                std::nth_element(values.begin(), values.begin() + (std::ptrdiff_t)(values.size() / 2), values.end());
+                return values[values.size() / 2];
+            };
+            const double offDb = median(duckedOff);
+            const double onDb = median(duckedOn);
+            const double sideDb = median(sideOn);
             const double drop = offDb - onDb;
             const double required = std::max(0.0, -20.0 * std::log10(std::max(duck.level, 1e-6)) - 3.0);
             worstDrop = std::min(worstDrop, drop);
             check["threshold"] = round2(required);
             if (drop < required) {
                 limited = "Group " + duck.group + " drops only " + std::to_string(round2(drop)).substr(0, 5) + " dB while " + duck.sidechain + " plays.";
-            } else if (10.0 * std::log10(sideOn / on) - onDb < qa.voiceOverMusicDb) {
-                warned = "Group " + duck.sidechain + " stands only " + std::to_string(round2(10.0 * std::log10(sideOn / on) - onDb)).substr(0, 5) + " dB over " + duck.group + ".";
+            } else if (sideDb - onDb < qa.voiceOverMusicDb) {
+                warned = "Group " + duck.sidechain + " stands only " + std::to_string(round2(sideDb - onDb)).substr(0, 5) + " dB over " + duck.group + ".";
             }
         }
         if (!any) return check;

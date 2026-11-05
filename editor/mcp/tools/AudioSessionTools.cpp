@@ -99,6 +99,10 @@ void armAction(const CallPtr& call) {
     Project::AudioCaptureArm arm;
     arm.capture = args.value("capture", true);
     arm.maxSeconds = args.value("max_seconds", 0);
+    if (args.contains("max_seconds") && (arm.maxSeconds < 1 || arm.maxSeconds > 3600)) {
+        call->fail("max_seconds is from 1 to 3600.");
+        return;
+    }
     if (args.contains("stems")) arm.stems = args.value("stems", false) ? 1 : 0;
     call->ctx().project()->armAudioCapture(arm);
     call->ok(arm.capture ? "The next play start or restart captures its audio on the deterministic driver: the device is muted." : "The next Play does not capture.",
@@ -405,6 +409,18 @@ void audioSessionTool(const CallPtr& call) {
     work->eventsLimit = args.value("events_limit", DEFAULT_EVENTS);
     work->image = args.value("image", action == "report");
     work->width = args.value("max_width", DEFAULT_WIDTH);
+    if (work->start < 0.0) {
+        call->fail("start is 0 or more, in seconds.");
+        return;
+    }
+    if (work->eventsLimit < 0 || work->eventsLimit > MAX_EVENTS) {
+        call->fail("events_limit is from 0 to " + std::to_string(MAX_EVENTS) + ".");
+        return;
+    }
+    if (work->width < AudioImages::MIN_WIDTH || work->width > AudioImages::MAX_WIDTH) {
+        call->fail("max_width is from " + std::to_string(AudioImages::MIN_WIDTH) + " to " + std::to_string(AudioImages::MAX_WIDTH) + ".");
+        return;
+    }
     Project* project = call->ctx().project();
     std::string error;
     if (!AudioAnalysis::findCapture(AudioAnalysis::captureRoot(project->getProjectPath()), args.value("session", std::string("last")),
@@ -435,25 +451,24 @@ void registerAudioSessionTools(McpRegistry& registry) {
     tool.name = "audio_session";
     tool.title = "Audio Session";
     tool.description =
-        "You can't hear: a Play's capture as numbers. status: sessions and what the next Play does. arm: the next Play "
-        "captures, or not. report: loudness, peaks, groups, numbered events and markers, a timeline image. check: "
-        "PASS/FAIL/WARN/SKIP verdicts, what limits each, how to fix it. jasper://docs/sound.";
+        "You can't hear: a Play's capture as numbers. status; arm: whether the next Play captures; report: loudness, "
+        "peaks, groups, numbered events and markers, an image; check: verdicts, what limits each, the fix. jasper://docs/sound.";
     tool.inputSchema = object({
         {"action", stringEnum("", {"status", "arm", "report", "check"})},
         {"session", string("Default last; current, an id or a directory.")},
         {"start", number("s.")},
         {"end", number("s.")},
-        {"events_limit", integer("Default 200.", 0, MAX_EVENTS)},
+        {"events_limit", integer("Default 200.")},
         {"image", boolean("Default report yes, check no.")},
-        {"max_width", integer("", AudioImages::MIN_WIDTH, AudioImages::MAX_WIDTH)},
-        {"capture", boolean("arm. Default true.")},
-        {"max_seconds", integer("arm.", 1, 3600)},
+        {"max_width", integer("")},
+        {"capture", boolean("arm.")},
+        {"max_seconds", integer("arm.")},
         {"stems", boolean("arm.")},
         {"checks", array(string(""), "Default all.")},
         {"expect", expect},
         {"baseline", string("A name or a session.")},
         {"save_baseline", string("A name.")},
-        {"fail_on", stringEnum("A verdict at it or worse is an error.", {"fail", "warn"})}
+        {"fail_on", stringEnum("Error at this verdict or worse.", {"fail", "warn"})}
     }, {"action"});
     tool.writesFiles = [](const Json& args) { return args.contains("save_baseline"); };
     tool.activity = ToolActivity::Read;
