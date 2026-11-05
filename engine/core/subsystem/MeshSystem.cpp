@@ -6639,7 +6639,7 @@ bool MeshSystem::loadGLTF(Entity entity, const std::string filename, bool asyncL
 
     // Read/Write (S53 R11): nothing at runtime reads this cooked model's mesh data
     CookedModelEntry cookedEntry;
-    if (CookedModels::find(filename, cookedEntry) && !cookedEntry.keepCpuData && ModelPool::peekGLTF(poolKey) == model.gltfModel)
+    if (CookedModels::find(filename, cookedEntry) && !cookedEntry.keepCpuData && ModelPool::getGLTF(poolKey) == model.gltfModel)
         ModelCpuData::markReleasable(model.gltfModel, filename, poolKey);
 
     return true;
