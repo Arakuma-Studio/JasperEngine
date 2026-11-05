@@ -131,6 +131,7 @@ namespace jasperengine::editor {
         ToggleAudioMixer,             // Window > Audio > Audio Mixer
         ToggleSoundBrowser,           // Window > Audio > Sound Browser
         ToggleAudioCaptures,          // Window > Audio > Captures
+        ResetLoudness,                // Audio Mixer > Master strip
         AssetsCreateAudioMixer,
         AssetsCreateSoundEvent,
         AssetsCreateSoundEventFromClips,

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "ExportWindow.h"
+#include "window/EditorModal.h"
 #include "player/PlayerModules.h"
 #include "texture/TextureCookReport.h"
 #include "util/FileDialogs.h"
@@ -20,6 +21,7 @@
 
 #include <algorithm>
 #include "util/CommandRunner.h"
+#include "util/FileUtils.h"
 
 #include <cstdlib>
 #include <iterator>
@@ -127,15 +129,19 @@ const char* ExportWindow::localExportMode() const {
 }
 
 void ExportWindow::refreshShaderSelection() {
-    // Stored keys are refreshed on scene save; include live components added since then.
+    // The list a build ships before this window's picks (Project::refreshClosedSceneShaderKeys):
+    // closed scenes as their files are now; what takes longer than a blink goes on in
+    // drawShaderSection, a scene a frame
     std::set<ShaderKey> sceneKeys;
     if (m_project) {
-        for (const auto& scene : m_project->getScenes()) {
-            std::set<ShaderKey> keys = scene.shaderKeys;
-            m_project->collectSceneShaderKeys(&scene, keys);
-            m_project->collectRequiredShaderKeys(&scene, keys);
-            for (ShaderKey key : keys) sceneKeys.insert(ShaderPool::normalizeKey(key));
+        if (!m_project->isGeneratedExportRunning()) {
+            ShaderListLimit limit;
+            limit.maxMillis = 100;
+            m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(limit);
         }
+        std::set<ShaderKey> collected;
+        m_project->collectBuildShaderKeys(collected);
+        sceneKeys = m_project->finishBuildShaderKeys(collected, {}, {});
     }
 
     std::set<ShaderKey> keys = sceneKeys;
@@ -380,7 +386,7 @@ void ExportWindow::show() {
         flags |= ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
     }
 
-    bool popupOpen = ImGui::BeginPopupModal("Build Settings##ExportModal", &m_isOpen, flags);
+    bool popupOpen = EditorModal::begin("Build Settings##ExportModal", &m_isOpen, flags);
 
     if (popupOpen) {
         if (!m_isOpen) {
@@ -586,6 +592,14 @@ void ExportWindow::drawScenesInBuild(float height) {
 void ExportWindow::drawPlatformList() {
     const float rowHeight = Theme::dpi(34.0f);
     const float baseSize = ImGui::GetStyle().FontSizeBase;
+    {
+        std::vector<std::string> names;
+        for (int i = 0; i < static_cast<int>(BuildPlatform::Count); i++) names.push_back(platformName(static_cast<BuildPlatform>(i)));
+        int chosen = static_cast<int>(m_platform);
+        if (EditorModal::enumField("platform", chosen, names) && chosen != static_cast<int>(m_platform)) {
+            selectPlatform(static_cast<BuildPlatform>(chosen), platformCanBuildPlayer(static_cast<BuildPlatform>(chosen)));
+        }
+    }
     for (int i = 0; i < static_cast<int>(BuildPlatform::Count); i++) {
         const BuildPlatform platform = static_cast<BuildPlatform>(i);
         if (platform == BuildPlatform::Custom) {
@@ -634,6 +648,7 @@ void ExportWindow::drawBuildTypeRow() {
                             : m_platform == BuildPlatform::Android ? "APK / App Bundle" : "Executable Game";
     const char* labels[] = {playerLabel, "C++ Source Project"};
     int index = m_buildPlayer ? 0 : 1;
+    if (EditorModal::enumField("build_type", index, {labels[0], labels[1]})) selectPlatform(m_platform, index == 0);
     ImGui::SetNextItemWidth(-1);
     if (ImGui::Combo("##BuildType", &index, labels, 2)) {
         selectPlatform(m_platform, index == 0);
@@ -644,7 +659,7 @@ void ExportWindow::drawBuildTypeRow() {
 void ExportWindow::drawDevelopmentBuildRow() {
     exportBeginSettingsRow("Development Build");
     bool development = m_project->isDevelopmentBuild();
-    if (ImGui::Checkbox("##DevelopmentBuild", &development)) {
+    if (EditorModal::checkbox("##DevelopmentBuild", "development_build", &development)) {
         m_project->setDevelopmentBuild(development);
         m_projectSettingsDirty = true;
     }
@@ -711,6 +726,12 @@ void ExportWindow::drawOutputDirRow(const char* label) {
         float inputWidth = ImGui::GetContentRegionAvail().x - browseWidth - ImGui::GetStyle().ItemSpacing.x;
 
         Vector2 pathSize = Vector2(inputWidth, ImGui::GetFontSize() + ImGui::GetStyle().FramePadding.y * 2);
+        std::string agentTarget = FileUtils::pathToUtf8(m_targetDir);
+        if (EditorModal::pathField("output_directory", agentTarget)) {
+            m_targetDir = FileUtils::pathFromUtf8(agentTarget);
+            m_targetDirFromDefault = false;
+            saveCurrentSettingsToProject();
+        }
         Widgets::pathDisplay("##TargetPath", m_targetDir, pathSize);
 
         ImGui::SameLine();
@@ -789,7 +810,7 @@ void ExportWindow::drawDesktopKitRows() {
     exportBeginSettingsRow("Build Jobs");
     ImGui::SetNextItemWidth(-1);
     const int previousJobs = m_desktopBuildJobs;
-    if (ImGui::InputInt("##DesktopBuildJobs", &m_desktopBuildJobs, 1, 8)) {
+    if (EditorModal::inputInt("##DesktopBuildJobs", "build_jobs", &m_desktopBuildJobs, 1, 8)) {
         m_desktopBuildJobs = std::clamp(m_desktopBuildJobs, 1, static_cast<int>(Generator::MAX_SUPPORTED_PARALLEL_BUILD_JOBS));
         if (m_desktopBuildJobs != previousJobs) {
             saveCurrentSettingsToProject();
@@ -831,6 +852,10 @@ void ExportWindow::drawShaderSection() {
     ImGui::EndDisabled();
 
     ImGui::Spacing();
+
+    if (!m_shaderListStatus.complete()) {
+        ImGui::TextDisabled("Reading %d closed scene(s) for this list...", (int)m_shaderListStatus.pendingScenes.size());
+    }
 
     ImGui::BeginChild("ShaderList", ImVec2(0, Theme::dpi(160.0f)), true);
     {
@@ -1026,6 +1051,16 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
         drawBackendSection();
     }
 
+    // a scene a frame, unfolded or not: a scene it cannot read is shown below, outside the section
+    if (m_project && !m_shaderListStatus.complete() && !m_project->isGeneratedExportRunning()) {
+        ShaderListLimit oneScene;
+        oneScene.maxScenes = 1;
+        m_shaderListStatus = m_project->refreshClosedSceneShaderKeys(oneScene);
+        if (m_shaderListStatus.complete()) {
+            refreshShaderSelection();
+        }
+    }
+
     if (Theme::foldoutHeader("Shaders")) {
         drawShaderSection();
         ImGui::Spacing();
@@ -1038,6 +1073,12 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
 
     // --- Validation warnings ---
     bool canExport = !m_targetDir.empty();
+    // what the warnings below say, for agents: Build is greyed out for the first of them
+    std::string problem = m_targetDir.empty() ? "Choose an output directory" : "";
+    auto refuse = [&](const std::string& why) {
+        if (problem.empty()) problem = why;
+        canExport = false;
+    };
     std::error_code ec;
     bool targetExists = !m_targetDir.empty() && fs::exists(m_targetDir, ec);
     targetNotEmpty = targetExists && !fs::is_empty(m_targetDir, ec);
@@ -1050,6 +1091,10 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
     if (targetNotEmpty) {
         ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " The output directory is not empty: existing files will be overwritten");
     }
+    for (const UnreadableScene& scene : m_shaderListStatus.unreadableScenes) {
+        ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Cannot read scene %s: its shaders may be missing from the build", scene.path.c_str());
+        ImGui::SetItemTooltip("%s\nThe shader list holds what it last knew of this scene.", scene.error.c_str());
+    }
 
     bool hasSavedScenes = false;
     for (const auto& scene : m_project->getScenes()) {
@@ -1061,7 +1106,7 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
 
     if (!hasSavedScenes) {
         ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " No saved scenes in the build");
-        canExport = false;
+        refuse("No saved scenes in the build");
     } else if (std::none_of(m_shaderEntries.begin(), m_shaderEntries.end(), [this](const ShaderEntry& entry) {
         return m_shaderExclusions.count(entry.key) == 0;
     })) {
@@ -1076,34 +1121,35 @@ bool ExportWindow::drawPlatformSettings(bool& targetNotEmpty) {
             }
             if (!hasSelectedBackends) {
                 ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " No graphics APIs selected");
-                canExport = false;
+                refuse("No graphics APIs selected");
             }
         }
     } else if (m_mode == ExportMode::Player) {
         std::string why;
         if (playerBuildBlocked(why)) {
             ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " %s", why.c_str());
-            canExport = false;
+            refuse(why);
         }
     } else if (m_mode == ExportMode::Desktop) {
         if (!m_missingBuildTools.empty()) {
             ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Missing build tools:\n%s", m_missingBuildTools.c_str());
-            canExport = false;
+            refuse("Missing build tools: " + m_missingBuildTools);
         }
     } else if (m_mode == ExportMode::Web) {
         if (!m_emsdkInfo.found) {
             ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " Emscripten SDK not found. Set it in Preferences > External Tools.");
-            canExport = false;
+            refuse("Emscripten SDK not found. Set it in Preferences > External Tools.");
         }
         // emcc.bat runs through cmd.exe on Windows: no '%' in the project, build tree or output path
         const std::string pathRefusal = Exporter::webBuildRefusal(
             {m_project->getProjectPath(), Exporter::buildCacheDirFor(m_project, ExportMode::Web), m_targetDir});
         if (!pathRefusal.empty()) {
             ImGui::TextColored(warningColor, ICON_FA_TRIANGLE_EXCLAMATION " %s.", pathRefusal.c_str());
-            canExport = false;
+            refuse(pathRefusal);
         }
     }
     ImGui::PopTextWrapPos();
+    EditorModal::error(problem);
 
     return canExport;
 }
@@ -1233,7 +1279,7 @@ void ExportWindow::drawBuildTab() {
     ImGui::SetItemTooltip("Open Project Settings > Player");
     // S04: a build referencing missing assets fails unless exported anyway
     ImGui::SameLine();
-    ImGui::Checkbox("Export Anyway", &m_allowMissingAssets);
+    EditorModal::checkbox("Export Anyway", "export_anyway", &m_allowMissingAssets);
     ImGui::SetItemTooltip("Build even when the build's scenes reference missing assets (Window > Assets > Missing Assets lists them)");
 
     const float actionWidth = Theme::dpi(120.0f);
@@ -1252,10 +1298,11 @@ void ExportWindow::drawBuildTab() {
 
     const bool runnable = m_mode == ExportMode::Desktop || (m_mode == ExportMode::Player && m_platform == hostPlatform());
     ImGui::BeginDisabled(!canExport || (m_download && m_download->running.load()));
-    if (ImGui::Button("Build", ImVec2(actionWidth, 0))) startBuild(false);
+    EditorModal::message("Build the project: the Build tab's fields, then ok (Build) or build_and_run. A target that is not empty asks first.");
+    if (EditorModal::button("Build", "ok", ImVec2(actionWidth, 0))) startBuild(false);
     ImGui::SameLine();
     ImGui::BeginDisabled(!runnable);
-    if (ImGui::Button("Build And Run", ImVec2(actionWidth, 0))) startBuild(true);
+    if (EditorModal::button("Build And Run", "build_and_run", ImVec2(actionWidth, 0))) startBuild(true);
     ImGui::EndDisabled();
     ImGui::EndDisabled();
     if (!runnable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -1276,7 +1323,8 @@ void ExportWindow::drawOverwriteConfirmDialog() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    if (!ImGui::BeginPopupModal("Directory Not Empty##ExportOverwrite", nullptr, flags)) return;
+    if (!EditorModal::begin("Directory Not Empty##ExportOverwrite", nullptr, flags)) return;
+    EditorModal::message("This directory already contains files: " + m_targetDir.generic_string() + ". Files with the same name will be overwritten.");
 
     ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.0f, 1.0f), ICON_FA_TRIANGLE_EXCLAMATION " This directory already contains files:");
     ImGui::Spacing();
@@ -1304,12 +1352,12 @@ void ExportWindow::drawOverwriteConfirmDialog() {
     float buttonsWidth = actionWidth * 2.0f + ImGui::GetStyle().ItemSpacing.x;
     ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
 
-    if (ImGui::Button("Overwrite", ImVec2(actionWidth, 0))) {
+    if (EditorModal::button("Overwrite", "yes", ImVec2(actionWidth, 0))) {
         ImGui::CloseCurrentPopup();
         startConfiguredExport(true);
     }
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(actionWidth, 0)) ||
+    if (EditorModal::button("Cancel", "cancel", ImVec2(actionWidth, 0)) ||
         (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
         ImGui::CloseCurrentPopup();
     }
@@ -1429,7 +1477,7 @@ void ExportWindow::drawAddShaderDialog() {
                              ImGuiWindowFlags_NoSavedSettings |
                              ImGuiWindowFlags_Modal;
 
-    if (ImGui::BeginPopupModal("Add Shader##AddShaderModal", &m_addShaderOpen, flags)) {
+    if (EditorModal::begin("Add Shader##AddShaderModal", &m_addShaderOpen, flags)) {
         // Shader type combo. Keep in sync with the ShaderType enum
         // (engine/core/render/Render.h); names come from ShaderPool so the
         // labels never drift.
@@ -1457,7 +1505,9 @@ void ExportWindow::drawAddShaderDialog() {
         ImGui::Text("Type");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
-        if (ImGui::Combo("##shader_type", &m_addShaderTypeIndex, typeNames.data(), typeCount)) {
+        const int shownType = m_addShaderTypeIndex;
+        EditorModal::enumField("type", m_addShaderTypeIndex, std::vector<std::string>(typeNames.begin(), typeNames.begin() + typeCount));
+        if (ImGui::Combo("##shader_type", &m_addShaderTypeIndex, typeNames.data(), typeCount) || m_addShaderTypeIndex != shownType) {
             // Reset properties when type changes
             memset(m_addShaderProps, 0, sizeof(m_addShaderProps));
             m_addShaderEffectIndex = 0;
@@ -1482,6 +1532,7 @@ void ExportWindow::drawAddShaderDialog() {
             ImGui::Text("Effect");
             ImGui::SameLine();
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+            EditorModal::enumField("effect", m_addShaderEffectIndex, effectLabels);
             ImGui::Combo("##shader_effect", &m_addShaderEffectIndex, effectNames.data(), (int)effectNames.size());
             if (!effects.empty()) effect = effects[m_addShaderEffectIndex];
             // a filter effect has the filter form only
@@ -1507,7 +1558,7 @@ void ExportWindow::drawAddShaderDialog() {
                     std::string abbrev = ShaderPool::getShaderPropertyName(selectedType, i, true);
                     std::string fullName = ShaderPool::getShaderPropertyName(selectedType, i, false);
                     std::string label = fullName + " (" + abbrev + ")##prop_" + std::to_string(i);
-                    ImGui::Checkbox(label.c_str(), &m_addShaderProps[i]);
+                    EditorModal::checkbox(label.c_str(), label.c_str(), &m_addShaderProps[i]);
                 }
                 ImGui::EndTable();
             }
@@ -1546,7 +1597,7 @@ void ExportWindow::drawAddShaderDialog() {
         ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - buttonsWidth);
 
         ImGui::BeginDisabled(isDuplicate || (selectedType == ShaderType::UI_EFFECT && !effect));
-        if (ImGui::Button("Add", ImVec2(actionWidth, 0))) {
+        if (EditorModal::button("Add", "yes", ImVec2(actionWidth, 0))) {
             includeShader(newKey);
             m_addShaderOpen = false;
             ImGui::CloseCurrentPopup();
@@ -1554,7 +1605,7 @@ void ExportWindow::drawAddShaderDialog() {
         ImGui::EndDisabled();
         ImGui::SameLine();
 
-        if (ImGui::Button("Cancel", ImVec2(actionWidth, 0)) ||
+        if (EditorModal::button("Cancel", "cancel", ImVec2(actionWidth, 0)) ||
             (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape, false))) {
             m_addShaderOpen = false;
             ImGui::CloseCurrentPopup();
@@ -1583,6 +1634,8 @@ void ExportWindow::drawProgress() {
 
     ImGui::Spacing();
     ImGui::Text("%s", progress.currentStep.c_str());
+    EditorModal::message(std::string(m_mode == ExportMode::SourceCode ? "Exporting project: " : "Building player: ") +
+                         (progress.failed ? "failed: " + progress.errorMessage : progress.finished ? "done" : progress.currentStep));
 
     // Last build-output line, clipped to a single line so the modal keeps its size.
     ImGui::BeginChild("##BuildDetail", ImVec2(0, ImGui::GetTextLineHeight() + Theme::dpi(2.0f)), false, ImGuiWindowFlags_NoScrollbar);
@@ -1601,7 +1654,7 @@ void ExportWindow::drawProgress() {
 
         float closeWidth = Theme::dpi(120.0f);
         ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - closeWidth);
-        if (ImGui::Button("Close", ImVec2(closeWidth, 0))) {
+        if (EditorModal::button("Close", "ok", ImVec2(closeWidth, 0))) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
@@ -1642,7 +1695,7 @@ void ExportWindow::drawProgress() {
 
         float closeWidth = Theme::dpi(120.0f);
         ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - closeWidth);
-        if (ImGui::Button("Close", ImVec2(closeWidth, 0))) {
+        if (EditorModal::button("Close", "ok", ImVec2(closeWidth, 0))) {
             m_isOpen = false;
             ImGui::CloseCurrentPopup();
         }
@@ -1650,7 +1703,7 @@ void ExportWindow::drawProgress() {
         // Still running: cancelling also terminates the compiler subprocess.
         float cancelWidth = Theme::dpi(120.0f);
         ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - cancelWidth);
-        if (ImGui::Button("Cancel", ImVec2(cancelWidth, 0))) {
+        if (EditorModal::button("Cancel", "cancel", ImVec2(cancelWidth, 0))) {
             m_exporter.cancelExport();
         }
     }

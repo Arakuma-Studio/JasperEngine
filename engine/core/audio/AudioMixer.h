@@ -174,6 +174,17 @@ namespace jasperengine {
         // of the last ~90 ms in dB, -80 when silent or unknown. Real levels without an audio device
         // (the nosound / null backends mix all the same).
         static float getMeterDb(const std::string& group);
+        // A limiter's largest gain reduction of the last 100 ms (dB, 0 or more; 0 when it is not
+        // running). The frames its lookahead delays a group's bus (0 when bypassed): a mixer's
+        // latency per group, which a capture adds for Master (S38 R6).
+        static float getEffectGainReductionDb(const std::string& effectId);
+        static unsigned int getGroupLatencyFrames(const std::string& group);
+        // The Master group's meter also passes its blocks on, up to 2 s of them, for a live loudness
+        // measurement (the editor's; off by default, a game never turns it on). The drain gives
+        // them post-fader, as getMeterDb reads, interleaved; 0 frames when there are none.
+        static void setLoudnessTap(bool on);
+        static bool isLoudnessTapOn();
+        static size_t drainLoudnessTap(float* interleaved, size_t maxFrames, unsigned int& channels, unsigned int& sampleRate);
 
         // ---- remembered parameters (exposed with remember: UserSettings "audio.mixer.<name>")
 

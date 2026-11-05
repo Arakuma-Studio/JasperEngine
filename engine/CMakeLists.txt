@@ -1551,6 +1551,7 @@ set(JASPERENGINE_SRCS
     core/io/watch/FileIdentity.cpp
     core/io/watch/FileWatchService.cpp
     core/io/watch/FileWatcher.cpp
+    core/io/watch/LinkedFolders.cpp
     core/io/watch/ProjectFileIndex.cpp
     core/io/watch/SharedFileReader.cpp
     core/io/watch/backends/FsEventsBackend.cpp
@@ -2212,6 +2213,11 @@ jasperengine_skip_unity_build(
 if(NOT MSVC)
     set_source_files_properties(core/texture/MipChain.cpp core/texture/TexturePrepare.cpp
         PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+endif()
+# Every player links the limiter (S38 6.6), and most run it on one bus, with room to spare in its budget
+# (R17): it is built for size. Its result does not depend on it: no fast-math, no contraction here.
+if(NOT MSVC)
+    set_source_files_properties(core/audio/AudioEffects.cpp PROPERTIES COMPILE_OPTIONS "-Os")
 endif()
 # the cooked-texture runtime the web downloads, optimised for size there like the Basis
 # transcoder (spec S14 R21): its hot loops are the transcoder's and Zstandard's

@@ -746,6 +746,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/project/ProjectPrefabOverrideModel.cpp
     ${EDITOR_DIR}/project/ProjectPrefabPaths.cpp
     ${EDITOR_DIR}/project/ProjectAssets.cpp
+    ${EDITOR_DIR}/project/ProjectShaderLists.cpp
     ${EDITOR_DIR}/project/ProjectDataSafety.cpp
     ${EDITOR_DIR}/project/ProjectPrefabVariant.cpp
     ${EDITOR_DIR}/project/ProjectPrefabRefs.cpp
@@ -815,6 +816,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/profiler/ProfilerWindow.cpp
     ${EDITOR_DIR}/mcp/McpAutoSync.cpp
     ${EDITOR_DIR}/mcp/McpCall.cpp
+    ${EDITOR_DIR}/mcp/McpDialogs.cpp
     ${EDITOR_DIR}/mcp/McpContext.cpp
     ${EDITOR_DIR}/mcp/McpInstructions.cpp
     ${EDITOR_DIR}/mcp/McpJobs.cpp
@@ -1060,6 +1062,7 @@ set(JASPERENGINE_EDITOR_SOURCES
 
     ${EDITOR_DIR}/shader/ShaderBuilder.cpp
     ${EDITOR_DIR}/shader/ShaderVariantCollector.cpp
+    ${EDITOR_DIR}/shader/ShaderListCache.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryMatrix.cpp
     ${EDITOR_DIR}/shader/ShaderLibraryDoc.cpp
     ${EDITOR_DIR}/texture/AstcEncoder.cpp
@@ -1209,6 +1212,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/AudioMixerWindow.cpp
     ${EDITOR_DIR}/window/dialog/PrefabsWindow.cpp
     ${EDITOR_DIR}/window/dialog/AboutWindow.cpp
+    ${EDITOR_DIR}/window/EditorFilePicker.cpp
+    ${EDITOR_DIR}/window/EditorModal.cpp
     ${EDITOR_DIR}/window/dialog/ScenesWindow.cpp
     ${EDITOR_DIR}/window/widget/CustomTextEditor.cpp
     ${EDITOR_DIR}/window/widget/GraphCanvas.cpp
@@ -1311,6 +1316,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/AudioImportRegistry.cpp
     ${EDITOR_DIR}/audio/AudioImportSettings.cpp
     ${EDITOR_DIR}/audio/AudioProvenance.cpp
+    ${EDITOR_DIR}/audio/LoudnessMonitor.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
     ${EDITOR_DIR}/command/type/DebugSettingsCmd.cpp

@@ -1713,7 +1713,10 @@ void editor::Generator::writeAgentsFile(const fs::path& projectPath, const fs::p
                      "call and reports problems under `external_changes`.\n";
     agentsContent += "- Lua API stubs: `" + api + "/lua/` (lua-language-server: `.luarc.json`); start a script with "
                      "`---@class <FileName> : ScriptInstance`. C++ API: the headers in `" + api + "/` (clangd: `.clangd`).\n";
-    agentsContent += "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
+    agentsContent += "- Sound files: never script or download audio; the editor makes and finds them. `tool_groups` {\"enable\": [\"audio\"]}, then "
+                     "`generate_sound` (a placeholder), `search_sounds` (built-in clips), `analyze_audio` (measure a clip) or `edit_sound_event` "
+                     "(clips that vary: footsteps, hits).\n"
+                     "- Checks without the editor: `jasperengine-editor check --project . [--files <paths...>] [--cpp] [--ui]` (exit 1 on "
                      "errors); as an agent hook after every edit: `check --project <this directory> --hook`.\n\n";
     agentsContent += "## HTML/CSS UI\n\n";
     agentsContent += "Game UI is standard HTML and CSS with Lua logic (no JavaScript), one UI Document per GameObject (MCP: "
@@ -2826,11 +2829,21 @@ std::string editor::Generator::debugInitSource(const DebugSettings& debug) {
 std::string editor::Generator::audioInitSource(const AudioSettings& audioSettings) {
     std::string source;
     const AudioSettings defaults;
+    const bool outputChanged = audioSettings.outputStage != defaults.outputStage || audioSettings.iosSessionCategory != defaults.iosSessionCategory;
     if (audioSettings.maxRealVoices != defaults.maxRealVoices || audioSettings.maxVoices != defaults.maxVoices ||
-        audioSettings.sampleRate != defaults.sampleRate || audioSettings.seed != defaults.seed) {
+        audioSettings.sampleRate != defaults.sampleRate || outputChanged || audioSettings.seed != defaults.seed) {
         source += "    AudioSystem::configure({" + std::to_string(audioSettings.maxRealVoices) + ", " +
-                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate) +
-                  (audioSettings.seed != defaults.seed ? ", " + std::to_string(audioSettings.seed) + "u" : std::string()) + "});\n";
+                  std::to_string(audioSettings.maxVoices) + ", " + std::to_string(audioSettings.sampleRate);
+        // positional: a changed seed names the two fields before it
+        const bool seedChanged = audioSettings.seed != defaults.seed;
+        if (outputChanged || seedChanged) {
+            source += std::string(", AudioOutputStage::") + (audioSettings.outputStage == "linear" ? "Linear" : "Roundoff");
+            const std::string& session = audioSettings.iosSessionCategory;
+            source += std::string(", IosAudioSession::") +
+                      (session == "ambient" ? "Ambient" : session == "solo_ambient" ? "SoloAmbient" : session == "playback" ? "Playback" : "Default");
+        }
+        if (seedChanged) source += ", " + std::to_string(audioSettings.seed) + "u";
+        source += "});\n";
     }
     if (!audioSettings.mixer.empty()) {
         source += "    AudioMixer::load(" + Factory::formatString(audioSettings.mixer) + ");\n";

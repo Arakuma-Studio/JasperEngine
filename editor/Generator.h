@@ -180,12 +180,20 @@ namespace jasperengine::editor {
         bool captureStems = false;
         AudioQaSettings qa;
         bool creditsFile = true;        // exports write licenses/THIRD-PARTY-AUDIO.txt
+        // Measurement only: what the Mixer window, get_play_state and the checks read against
+        float loudnessTargetLufs = -18.0f;
+        float loudnessToleranceLu = 2.0f;
+        float truePeakCeilingDbtp = -1.0f;
+        std::string outputStage = "roundoff";        // roundoff | linear
+        std::string iosSessionCategory = "default";  // default (miniaudio's) | ambient | solo_ambient | playback
 
         bool operator==(const AudioSettings& other) const {
             return mixer == other.mixer && maxRealVoices == other.maxRealVoices && maxVoices == other.maxVoices &&
-                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup && seed == other.seed &&
-                   captureMaxSeconds == other.captureMaxSeconds && captureKeep == other.captureKeep && captureStems == other.captureStems && qa == other.qa &&
-                   creditsFile == other.creditsFile;
+                   sampleRate == other.sampleRate && defaultOutputGroup == other.defaultOutputGroup &&
+                   loudnessTargetLufs == other.loudnessTargetLufs && loudnessToleranceLu == other.loudnessToleranceLu &&
+                   truePeakCeilingDbtp == other.truePeakCeilingDbtp && outputStage == other.outputStage &&
+                   iosSessionCategory == other.iosSessionCategory && seed == other.seed && creditsFile == other.creditsFile &&
+                   captureMaxSeconds == other.captureMaxSeconds && captureKeep == other.captureKeep && captureStems == other.captureStems && qa == other.qa;
         }
         bool operator!=(const AudioSettings& other) const { return !(*this == other); }
     };

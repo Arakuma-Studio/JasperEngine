@@ -265,13 +265,23 @@ void analyzeInput(const Input& input, const AnalyzeOptions& options, bool keepSi
     const uint64_t frames = fileFormat.value("frames", (uint64_t)0);
     const unsigned int rate = fileFormat.value("sample_rate", 0u);
     ClipImportSettings clip;
+    // what the pipeline's judge records of the region it had measured
+    Json applied = nullptr;
     if (input.essential || input.libraryClip) {
         const AudioAnalysis::Region region = (input.essential ? *input.essential : *input.libraryClip).importRegion(rate);
         clip.fadeInFrames = region.fadeInFrames;
         clip.fadeOutFrames = region.fadeOutFrames;
-    } else if (!settings.resolve(frames, rate, 0.0, 0.0, clip, error)) {
-        out.error = error;
-        return;
+        if (!clip.playsAsFile()) applied = {{"fade_in_frames", clip.fadeInFrames}, {"fade_out_frames", clip.fadeOutFrames}, {"from", "manifest"}};
+    } else {
+        Json resolved;
+        if (!settings.resolve(frames, rate, 0.0, 0.0, clip, error, &resolved)) {
+            out.error = error;
+            return;
+        }
+        if (!clip.playsAsFile()) {
+            applied = std::move(resolved);
+            applied["from"] = "options";
+        }
     }
     Json item = cached;
     if (!clip.playsAsFile() && !AudioAnalysis::analyzePlayed(fs::path(), fs::path(), cached, clip, item, error, &signal)) {
@@ -279,6 +289,7 @@ void analyzeInput(const Input& input, const AnalyzeOptions& options, bool keepSi
         return;
     }
     out.item = AudioAnalysis::fileItem(item, 0, input.path, labels, options.full, SoundTypes::HEAD_SILENCE_MAX_MS);
+    if (!applied.is_null()) out.item["import"] = std::move(applied);
     if (keepSignal) out.signal = std::move(signal);
     out.ok = true;
 }

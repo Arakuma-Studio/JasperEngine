@@ -31,7 +31,8 @@ unit and MCP tests that can see it; the full suite is for pushes to origin main 
    files, the tests of a changed MCP tool (by its tool names), of a changed fixture, Lua, shader or
    asset (by path; a shader also test_shader_library.py and the CI suite), the files that run a
    prebuilt game when the engine changes, and those that compile a game when what the compile
-   path reads changes (COMPILE_PATHS). Fallbacks: no map, a
+   path reads changes (COMPILE_PATHS), and the guard of what a save writes when serialization or
+   code generation changes (SAVED_OUTPUT_PATHS, spec S63). Fallbacks: no map, a
    map older than MAP_MAX_AGE_DAYS or MAP_MAX_COMMITS, or a changed source the map does not know
    (new) or file no test names add the CI suite; a harness change runs the whole suite.
 5. A pass is cached (build/.cache/check-changed.json) by a hash of the base, the diff, the
@@ -114,6 +115,11 @@ GAME_BUILD_FILES = ("test_html_ui_export.py", "test_html_ui_video_export.py", "t
 COMPILE_FILES = ("test_build.py", "test_compile_without_modules.py", "test_html_ui_effects_export.py", "test_hub.py", "test_busy.py")
 COMPILE_PATHS = ("engine/CMakeLists.txt", "engine/project/*", "engine/player/*", "engine/platform/*", "engine/core/player/*",
                  "engine/core/diag/*", "editor/Exporter*", "editor/Generator*", "editor/players/*", "tools/players/*")
+# what a save writes (the scene files, the generated code): the guard that it does not depend on
+# what was drawn or loaded (spec S63); it runs the code the map sees through every other test file
+SAVED_OUTPUT_FILES = ("test_saved_output_determinism.py",)
+SAVED_OUTPUT_PATHS = ("editor/Factory*", "editor/Generator*", "editor/Stream*", "editor/stream/*", "editor/reflect/*",
+                      "engine/core/serialization/*")
 TEST_DEF = re.compile(r"^\s*(TEST|TEST_F|TEST_P|TYPED_TEST|TYPED_TEST_P)\s*\(\s*(\w+)\s*,", re.M)
 TOOL_NAME = re.compile(r"\b\w+\.name\s*=\s*\"([a-z][a-z0-9_]*)\"")
 
@@ -590,6 +596,10 @@ def plan_mcp(changes: Changes, plan: Plan, cmap: dict | None, sources: dict[str,
     for t in COMPILE_FILES if compile_path else ():
         if t in sources:
             plan.add_mcp(t, f"compiles a game ({compile_path[0]} changed)")
+    saved_output = [f for f in files if match(f, SAVED_OUTPUT_PATHS)]
+    for t in SAVED_OUTPUT_FILES if saved_output else ():
+        if t in sources:
+            plan.add_mcp(t, f"guards what a save writes ({saved_output[0]} changed)")
     # the engine's and the editor's C++: the coverage map
     # (the unit tests' own sources are no editor code: nothing an MCP test could run)
     code = [f for f in files if f.startswith(("engine/", "editor/", "libs/")) and f.endswith(CXX)

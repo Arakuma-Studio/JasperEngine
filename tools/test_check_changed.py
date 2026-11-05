@@ -230,6 +230,7 @@ SRC = {
     "test_fixture.py": "EDITOR = {'project': REPO / 'tools' / 'fixtures' / 'water'}\n",
     "test_build.py": "x\n",
     "test_call_cli.py": "x\n",
+    "test_saved_output_determinism.py": "x\n",
     "test_other.py": "y\n",
 }
 def mapfile(sources, tests=("test_render.py", "test_other.py"), editor_tests=None, seconds=None):
@@ -274,6 +275,13 @@ class Mcp(unittest.TestCase):
         self.assertEqual(self.plan(["editor/Other.h"]).mcp_files, ["test_other.py"])
         cmap = mapfile({"engine/core/Inline.h": ("b", [(1, 2, [0])])})
         self.assertEqual(self.plan(["engine/core/Inline.h"], cmap=cmap).mcp_files[0], "test_render.py")
+
+    def test_a_change_of_what_a_save_writes_runs_its_guard(self):
+        guard = "test_saved_output_determinism.py"
+        for f in ("editor/Factory.cpp", "editor/StreamComponents.cpp", "editor/stream/UpstreamParticles.cpp", "editor/reflect/Properties.cpp",
+                  "editor/Generator.cpp", "engine/core/serialization/RuntimeFields.gen.inc"):
+            self.assertIn(guard, self.plan([f]).mcp_files, f)
+        self.assertNotIn(guard, self.plan(["editor/App.cpp"]).mcp_files)
 
     def test_functions_from_hunks(self):
         cmap = mapfile({"editor/A.cpp": ("", [(10, 20, [0]), (30, 40, [1]), (50, 60, [])])})

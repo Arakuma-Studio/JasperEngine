@@ -18,7 +18,9 @@
 #include "Project.h"
 #include "Scene.h"
 #include "Stream.h"
+#include "audio/AudioMeter.h"
 #include "audio/AudioMixer.h"
+#include "audio/AudioMixerDocument.h"
 #include "audio/AudioMixerIO.h"
 #include "component/CameraComponent.h"
 #include "io/UserSettings.h"
@@ -30,6 +32,8 @@
 
 #include "LuaBridge.h"
 #include "json.hpp"
+#include "soloud_bus.h"
+#include "yaml-cpp/yaml.h"
 #include "soloud.h"
 #include "audio/AudioTap.h"
 #include "soloud_wav.h"
@@ -1583,4 +1587,236 @@ TEST_F(AudioMixerRuntimeTest, APrebuiltPlayerConfiguresTheAudioAsTheGeneratedIni
     EXPECT_EQ(read.audioMaxRealVoices, AudioConfig().maxRealVoices);
     EXPECT_EQ(read.audioMaxVoices, AudioConfig().maxVoices);
     EXPECT_EQ(read.audioSampleRate, AudioConfig().sampleRate);
+}
+
+// ================================================================== S38: the limiter's format, the output stage, new projects
+
+TEST(AudioMixerIOTest, OnlyALimiterWithADelayOrATruePeakDetectorIsVersionTwo) {
+    AudioMixerDef def = AudioMixerIO::createDefault();
+    AudioMixerEffectDef limiter;
+    limiter.type = AudioEffectType::Limiter;
+    limiter.typeName = "limiter";
+    limiter.id = "0000000a";
+    limiter.params = {{"threshold", -3.0f}, {"release", 0.2f}};
+    def.groups.front().effects.push_back(limiter);
+
+    // an old file's bytes: no new key, version 1
+    const std::string old = AudioMixerIO::write(def);
+    EXPECT_NE(old.find("\"version\": 1"), std::string::npos) << old;
+    EXPECT_EQ(old.find("lookahead"), std::string::npos) << old;
+    AudioMixerDef readOld;
+    std::string error;
+    ASSERT_TRUE(AudioMixerIO::parse(old, readOld, &error)) << error;
+    EXPECT_EQ(AudioMixerIO::write(readOld), old);
+
+    def.groups.front().effects[0].params["truePeak"] = 1.0f;
+    const std::string next = AudioMixerIO::write(def);
+    EXPECT_NE(next.find("\"version\": 2"), std::string::npos) << next;
+    AudioMixerDef readNext;
+    ASSERT_TRUE(AudioMixerIO::parse(next, readNext, &error)) << error;
+    EXPECT_EQ(readNext.groups.front().effects[0].params["truePeak"], 1.0f);
+    EXPECT_EQ(AudioMixerIO::write(readNext), next);
+
+    def.groups.front().effects[0].params.erase("truePeak");
+    def.groups.front().effects[0].params["lookahead"] = 1.5f;
+    EXPECT_NE(AudioMixerIO::write(def).find("\"version\": 2"), std::string::npos);
+}
+
+TEST(AudioMixerIOTest, AVersionNewerThanThisEngineReadsIsRefusedByItsVersion) {
+    // An engine from before S38 reads up to 1 and refuses a version 2 file with this sentence, with
+    // its own numbers: "version: 2 is newer than this engine reads (1)". The check is the same.
+    AudioMixerDef def;
+    std::string error;
+    EXPECT_FALSE(AudioMixerIO::parse("{\"format\": \"jasperengine.mixer\", \"version\": 3, \"groups\": []}", def, &error));
+    EXPECT_EQ(error, "version: 3 is newer than this engine reads (2)");
+}
+
+namespace {
+
+    class AudioOutputStageTest : public AudioFixture {
+    protected:
+        // from the Master bus (the tap) to what leaves SoLoud, on a small constant signal
+        double outputGainDb(AudioOutputStage stage) {
+            AudioSystem::close();
+            AudioConfig config;
+            config.outputStage = stage;
+            AudioSystem::configure(config);
+            writeLevel(root / "assets" / "small.wav", 1.0, 0.01);
+            AudioSource sound = source("small.wav");
+            sound.setLooping(true);
+            sound.play();
+            run(0.1);
+            AudioMixer::setLoudnessTap(true);
+            std::vector<float> out(2048 * 2);
+            soloud().mix(out.data(), 2048);
+            std::vector<float> tap(2048 * 2);
+            unsigned int channels = 0;
+            unsigned int rate = 0;
+            const size_t frames = AudioMixer::drainLoudnessTap(tap.data(), 2048, channels, rate);
+            AudioMixer::setLoudnessTap(false);
+            sound.stop();
+            EXPECT_GT(frames, 512u);
+            EXPECT_GT(tap[(frames - 1) * 2], 0.0f);
+            return 20.0 * std::log10(out[(frames - 1) * 2] / tap[(frames - 1) * 2]);
+        }
+    };
+
+}
+
+TEST_F(AudioOutputStageTest, RoundoffIsTodaysGainAndLinearPassesTheSamples) {
+    EXPECT_NEAR(outputGainDb(AudioOutputStage::Roundoff), -1.66, 0.01);
+    EXPECT_NEAR(outputGainDb(AudioOutputStage::Linear), 0.0, 0.001);
+}
+
+TEST_F(AudioMixerRuntimeTest, ABypassedLimiterWithADelayKeepsItsSlotAndAnotherLeavesIt) {
+    AudioMixerDef def = AudioMixerDocument::newProjectMixer();
+    AudioMixer::apply(def);
+    AudioSource sound = source("tone.wav");
+    sound.setLooping(true);
+    sound.play();
+    run(0.1);
+    const std::string id = def.groups.front().effects[0].id;
+    SoLoud::Bus* master = AudioMixer::getBus("Master");
+    ASSERT_NE(master, nullptr);
+    const unsigned int rate = soloud().getBackendSamplerate();
+    EXPECT_EQ(AudioMixer::getGroupLatencyFrames("Master"), (unsigned int)std::lround(0.0015 * rate));
+
+    AudioMixer::setEffectBypass(id, true);
+    EXPECT_NE(master->mFilter[0], nullptr) << "so that the switch crossfades";
+    EXPECT_EQ(AudioMixer::getGroupLatencyFrames("Master"), 0u);
+    AudioMixer::setEffectBypass(id, false);
+
+    // no lookahead, no detector: as a limiter always was, an empty slot
+    def.groups.front().effects[0].params.erase("lookahead");
+    def.groups.front().effects[0].params.erase("truePeak");
+    AudioMixer::apply(def);
+    AudioMixer::setEffectBypass(id, true);
+    EXPECT_EQ(AudioMixer::getBus("Master")->mFilter[0], nullptr);
+    sound.stop();
+}
+
+// A hot signal through what a new project has: the output holds -1 dBTP, and what the Mixer window
+// and agents read at the Master is what leaves the device (the linear stage).
+TEST_F(AudioMixerRuntimeTest, ANewProjectHoldsItsCeilingAtTheOutput) {
+    AudioSystem::close();
+    AudioConfig config;
+    config.outputStage = AudioOutputStage::Linear;
+    AudioSystem::configure(config);
+    AudioMixerDef def = AudioMixerDocument::newProjectMixer();
+    AudioMixerGroupDef hot;
+    hot.id = "00000002";
+    hot.name = "Hot";
+    hot.parentId = def.groups.front().id;
+    hot.volumeDb = 12.0f;
+    def.groups.push_back(hot);
+    AudioMixer::apply(def);
+
+    AudioSource sound = source("tone.wav", "Hot");
+    sound.setLooping(true);
+    sound.play();
+    run(0.1);
+    AudioMixer::setLoudnessTap(true);
+    const unsigned int rate = soloud().getBackendSamplerate();
+    AudioMeter atOutput(rate, 2);
+    AudioMeter atMaster(rate, 2);
+    std::vector<float> out(1024 * 2);
+    std::vector<float> tap(1024 * 2);
+    for (int block = 0; block < 300; block++) {
+        soloud().mix(out.data(), 1024);
+        atOutput.process(out.data(), 1024);
+        unsigned int channels = 0;
+        unsigned int tapRate = 0;
+        const size_t frames = AudioMixer::drainLoudnessTap(tap.data(), 1024, channels, tapRate);
+        atMaster.process(tap.data(), frames);
+    }
+    AudioMixer::setLoudnessTap(false);
+    sound.stop();
+
+    const LoudnessResult output = atOutput.result();
+    const LoudnessResult master = atMaster.result();
+    EXPECT_LE(output.truePeakDb, -0.9);
+    EXPECT_GT(output.truePeakDb, -3.0) << "the limiter holds it at its ceiling, not under";
+    ASSERT_TRUE(output.integrated && master.integrated);
+    EXPECT_NEAR(*output.integrated, *master.integrated, 0.1);
+}
+
+TEST(GeneratorAudioTest, TheOutputStageAndTheIosSessionReachTheExportedInit) {
+    AudioSettings settings;
+    settings.outputStage = "linear";
+    settings.iosSessionCategory = "ambient";
+    EXPECT_NE(Generator::audioInitSource(settings).find(
+                  "AudioSystem::configure({32, 256, 0, AudioOutputStage::Linear, IosAudioSession::Ambient});"), std::string::npos)
+        << Generator::audioInitSource(settings);
+    settings.outputStage = "roundoff";
+    settings.iosSessionCategory = "solo_ambient";
+    EXPECT_NE(Generator::audioInitSource(settings).find("AudioOutputStage::Roundoff, IosAudioSession::SoloAmbient"), std::string::npos);
+    settings.iosSessionCategory = "playback";
+    EXPECT_NE(Generator::audioInitSource(settings).find("IosAudioSession::Playback"), std::string::npos);
+    // the settings that only measure change no code
+    AudioSettings measuring;
+    measuring.loudnessTargetLufs = -14.0f;
+    EXPECT_EQ(Generator::audioInitSource(measuring), "");
+}
+
+TEST(PlayerConfigAudioTest, TheOutputStageAndTheIosSessionTravelInGameJson) {
+    player::PlayerConfig game;
+    game.audioOutputStage = "linear";
+    game.audioIosSession = "ambient";
+    player::PlayerConfig back;
+    std::string error;
+    ASSERT_TRUE(player::PlayerConfig::fromJson(game.toJson(), back, error)) << error;
+    EXPECT_EQ(back.audioOutputStage, "linear");
+    EXPECT_EQ(back.audioIosSession, "ambient");
+
+    // a game.json of an older export has neither
+    EXPECT_EQ(player::PlayerConfig().audioOutputStage, "roundoff");
+    EXPECT_EQ(player::PlayerConfig().audioIosSession, "default");
+    EXPECT_EQ(AudioSystem::outputStageFromName("roundoff"), AudioOutputStage::Roundoff);
+    EXPECT_EQ(AudioSystem::outputStageFromName("linear"), AudioOutputStage::Linear);
+    EXPECT_EQ(AudioSystem::iosSessionFromName("default"), IosAudioSession::Default);
+    EXPECT_EQ(AudioSystem::iosSessionFromName("ambient"), IosAudioSession::Ambient);
+    EXPECT_EQ(AudioSystem::iosSessionFromName("solo_ambient"), IosAudioSession::SoloAmbient);
+    EXPECT_EQ(AudioSystem::iosSessionFromName("playback"), IosAudioSession::Playback);
+}
+
+TEST(NewProjectAudioTest, TheMixerIsTheSpecsAndATemplatesAudioNodeIsLeftAlone) {
+    const AudioMixerDef mixer = AudioMixerDocument::newProjectMixer();
+    const nlohmann::json json = nlohmann::json::parse(AudioMixerIO::write(mixer));
+    EXPECT_EQ(json["format"], "jasperengine.mixer");
+    EXPECT_EQ(json["version"], 2);
+    EXPECT_EQ(json["updateMode"], "scaled");
+    ASSERT_EQ(json["groups"].size(), 1u);
+    const nlohmann::json& master = json["groups"][0];
+    EXPECT_EQ(master["name"], "Master");
+    EXPECT_TRUE(master["parent"].is_null());
+    EXPECT_EQ(master["volume"], 0);
+    ASSERT_EQ(master["effects"].size(), 1u);
+    EXPECT_EQ(master["effects"][0]["type"], "limiter");
+    EXPECT_EQ(master["effects"][0]["params"], nlohmann::json::parse(
+        R"({"threshold": -1, "release": 0.1, "lookahead": 1.5, "truePeak": 1})"));
+
+    const fs::path dir = fs::temp_directory_path() / ("jasper-new-audio-" + std::to_string(::getpid()));
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    {
+        std::ofstream(dir / "project.yaml") << "name: T\nassetsDir: assets\n";
+    }
+    std::string error;
+    ASSERT_TRUE(AudioMixerDocument::writeNewProjectAudio(dir, &error)) << error;
+    EXPECT_TRUE(fs::is_regular_file(dir / "assets" / "audio" / "Main.mixer"));
+    YAML::Node written = YAML::LoadFile((dir / "project.yaml").string());
+    EXPECT_EQ(written["audio"]["mixer"].as<std::string>(), "audio/Main.mixer");
+    EXPECT_EQ(written["audio"]["outputStage"].as<std::string>(), "linear");
+    EXPECT_EQ(written["audio"]["iosSessionCategory"].as<std::string>(), "ambient");
+    EXPECT_EQ(written["name"].as<std::string>(), "T");
+
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    {
+        std::ofstream(dir / "project.yaml") << "name: T\nassetsDir: assets\naudio:\n  maxVoices: 12\n";
+    }
+    ASSERT_TRUE(AudioMixerDocument::writeNewProjectAudio(dir, &error)) << error;
+    EXPECT_FALSE(fs::exists(dir / "assets" / "audio"));
+    EXPECT_EQ(YAML::LoadFile((dir / "project.yaml").string())["audio"]["maxVoices"].as<int>(), 12);
+    fs::remove_all(dir);
 }

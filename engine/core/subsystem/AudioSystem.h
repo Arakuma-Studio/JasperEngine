@@ -29,6 +29,13 @@ namespace jasperengine{
 	struct PlayOptions;
 	struct SoundEventAsset;
 	struct SoundEventSpatial;
+	// What the output does to the mix. Roundoff: SoLoud's soft clipper and post-clip scaler (a small
+	// signal comes out 1.66 dB lower). Linear: samples pass unchanged, hard-clipped at +/-1 only as a
+	// last guard, so that a Master limiter's ceiling and the measured loudness hold at the output.
+	enum class AudioOutputStage { Roundoff, Linear };
+	// The iOS audio session. Default leaves miniaudio's own choice (it ignores the silent switch and
+	// interrupts the player's music); ignored on the other platforms.
+	enum class IosAudioSession { Default, Ambient, SoloAmbient, Playback };
 
 	// Project Settings > Audio (audio-mixer spec A11): the exported init calls configure() before
 	// the first sound
@@ -40,6 +47,9 @@ namespace jasperengine{
 		int maxVoices = 256;
 		// 0 = the device's default
 		int sampleRate = 0;
+		// this one applies at once; the iOS session at the next audio init, like the sample rate
+		AudioOutputStage outputStage = AudioOutputStage::Roundoff;
+		IosAudioSession iosSession = IosAudioSession::Default;
 		// the Sound Event generator's seed in a deterministic run (Project Settings audio.seed);
 		// other runs draw one at each start
 		uint32_t seed = 1;
@@ -132,6 +142,8 @@ namespace jasperengine{
 		static bool outputUnavailable;
 
 		static void deInit();
+		// after a successful init or a change: the output stage's flag and post-clip scaler, and the log line
+		static void applyOutputStage();
 
 		static float globalVolume;
 
@@ -277,6 +289,9 @@ namespace jasperengine{
 		static bool isInited();
 
 		static void configure(const AudioConfig& config);
+		// "linear" / "ambient", "solo_ambient", "playback" (project.yaml, game.json); anything else the default
+		static AudioOutputStage outputStageFromName(const std::string& name);
+		static IosAudioSession iosSessionFromName(const std::string& name);
 		static const AudioConfig& getConfig();
 		// before the audio opens (the next init after a deinit)
 		static void setBackend(AudioBackend backend);

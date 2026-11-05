@@ -538,11 +538,7 @@ Bound in `AudioClassesLua.cpp` and `GameObjectClassesLua.cpp` under `#if JASPERE
   the event's own `delay_ms` stays exact to the sample (R7).
 - **`AudioStealPolicy` and the source cap:** a play's voices never steal from each other through `maxVoices`. A voice
   with no one-shot to steal is rejected with reason `max_voices` (a reason R14 did not list).
-- **`AudioSource.event` and S73.** `main` still has the hand-written `AssetRefSchema` table, so `event` has a hand row and a
-  `CoversAllFields` entry. S73 generates that table and deletes `LegacyCodecs.cpp`. Whichever lands second: take S73's
-  files; add `SoundEvent` to S73's `AssetKind`, `rowExpectedType` (`AssetType::SoundEvent`) and `assetKindName`; add
-  `component	AudioSourceComponent	event	asset	sound_event	assets	scene_component` to `asset_ref_rows_frozen.txt`;
-  and regenerate S73's frozen parity data, so the six new AudioSource fields are in it.
+- **`AudioSource.event` and S73.** S73 landed first: `event` is `AssetKind::SoundEvent` in the generated table, with one added row in `asset_ref_rows_frozen.txt` and the six new AudioSource fields in `parity_golden`.
 - **`SoundSearch::eventProblems`** is added as S36 left it (the analysis cache, near-duplicates, inaudible layers). Match Levels
   lives in `SoundEventRender::matchLevels`, not `SoundSearch`: it measures clips as they play, with their import settings.
 - **The Browser's detail pane is the Inspector** for project sounds: selecting a card inspects the asset, which is S36's clip view

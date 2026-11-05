@@ -101,6 +101,15 @@ runtime from pieces (`obj["get" .. "Rigidbody"]`) is the one use the build canno
 **Project Settings > Player > Strip Engine Code** off for such a project (every module its
 settings allow ships).
 
+## The shaders a build ships
+
+Build Settings lists the shader variants a build compiles: what each scene needs, what every build
+ships, the warm-up list and your additions, without what you excluded. Closed scenes count: each is
+read from its file as it is now (no GPU work) and remembered by the file's hash, so an unchanged
+project reads none of them. The list shows "Reading N closed scene(s)..." while that takes a moment,
+and names a scene whose file cannot be read: the list then holds what it last knew of it. Play's
+startup and every export use the same list.
+
 ## Platforms
 
 - **Android** needs the Android SDK's build-tools (35 or newer: aapt2, zipalign, apksigner), the

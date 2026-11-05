@@ -2115,6 +2115,58 @@ std::vector<Setting> mcpSettingsTable() {
             add(s);
         }
 
+        auto audioNumber = [&add](const char* key, const char* description, float minimum, float maximum, float AudioSettings::*field) {
+            Setting s;
+            s.key = key;
+            s.type = "number";
+            s.description = description;
+            s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().*field); };
+            s.set = [field, minimum, maximum](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_number() || value.get<double>() < minimum || value.get<double>() > maximum) {
+                    char text[64];
+                    snprintf(text, sizeof(text), "must be a number from %g to %g", minimum, maximum);
+                    error = text;
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.*field = value.get<float>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        };
+        audioNumber("audio.loudness_target_lufs", "Loudness target in LUFS (default -18). Measurement only: it changes no sound.", -40.0f, -6.0f, &AudioSettings::loudnessTargetLufs);
+        audioNumber("audio.loudness_tolerance_lu", "How far from the target still passes, in LU (default 2). Measurement only.", 0.5f, 10.0f, &AudioSettings::loudnessToleranceLu);
+        audioNumber("audio.true_peak_ceiling_dbtp", "True-peak ceiling the checks read against, in dBTP (default -1). Measurement only: a Master limiter's threshold is what holds it.", -12.0f, 0.0f, &AudioSettings::truePeakCeilingDbtp);
+        auto audioEnum = [&add](const char* key, const char* description, std::vector<std::string> names, std::string AudioSettings::*field) {
+            Setting s;
+            s.key = key;
+            s.type = "enum";
+            s.description = description;
+            s.values = names;
+            s.get = [field](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().*field); };
+            s.set = [field, names](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || std::find(names.begin(), names.end(), value.get<std::string>()) == names.end()) {
+                    error = "must be one of:";
+                    for (const std::string& name : names) error += " " + name;
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.*field = value.get<std::string>();
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        };
+        audioEnum("audio.output_stage", "What the output does to the mix: roundoff (a soft clipper, -1.66 dB) or linear (unchanged, hard clip at 0 dBFS).",
+                  {"roundoff", "linear"}, &AudioSettings::outputStage);
+        audioEnum("audio.ios_session_category", "The iOS audio session: default (miniaudio's: ignores the silent switch, stops the player's music), ambient, solo_ambient, playback.",
+                  {"default", "ambient", "solo_ambient", "playback"}, &AudioSettings::iosSessionCategory);
+
         // ---- scripting
         {
             Setting s;
@@ -2893,6 +2945,11 @@ const Placement placements[] = {
     {"audio.qa.repeat_window_s", "Audio", "Capture and QA", "Repeat Window (s)", "check repetition"},
     {"audio.qa.regression_timing_ms", "Audio", "Capture and QA", "Regression Timing (ms)", "check baseline"},
     {"audio.qa.regression_band_db", "Audio", "Capture and QA", "Regression Band (dB)", "check baseline"},
+    {"audio.loudness_target_lufs", "Audio", "Loudness and Output", "Loudness Target", "lufs loudness level r128 target"},
+    {"audio.loudness_tolerance_lu", "Audio", "Loudness and Output", "Loudness Tolerance", "lu lufs loudness tolerance"},
+    {"audio.true_peak_ceiling_dbtp", "Audio", "Loudness and Output", "True Peak Ceiling", "dbtp true peak ceiling limiter"},
+    {"audio.output_stage", "Audio", "Loudness and Output", "Output Stage", "roundoff linear clip clipper output limiter"},
+    {"audio.ios_session_category", "Audio", "Loudness and Output", "iOS Audio Session", "ios ambient silent switch session category music"},
     {"scripting.lua_dir", "Scripting", "", "Lua Directory", "lua"},
     {"scripting.script_dirs", "Scripting", "", "Script Directories", "c++ cpp"},
     {"scripting.cxx_standard", "Scripting", "", "C++ Standard", "cpp c++17 c++20 c++23"},

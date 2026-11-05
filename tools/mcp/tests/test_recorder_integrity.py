@@ -304,6 +304,11 @@ async def test_free_space_warning_does_not_refuse():
 async def test_normal_recording():
     need_ffmpeg()
     async with Editor(create=True, name="Normal") as ed:
+        # The reference is a recording's sound with no effect in the way, so this is a project as older
+        # editors made them (S38 R9): a new project's Master limiter and linear output stage change the
+        # samples on purpose. This also pins that such a project sounds exactly as it did.
+        await ed.call("set_project_settings", values={"audio.mixer": "", "audio.output_stage": "roundoff",
+                                                      "audio.ios_session_category": "default"})
         await small_scene(ed, audio=True)
         out = ed.scratch.root / "movies"
         movie = out / "take.mov"

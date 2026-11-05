@@ -25,6 +25,7 @@
 #include "external/IconsFontAwesome6.h"
 #include "net/Http.h"
 #include "subsystem/UIDocumentSystem.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -835,16 +836,17 @@ void editor::GameWindow::drawCustomResolutionPopup() {
         std::snprintf(customName, sizeof(customName), "Custom %zu", project->getCustomResolutions().size() + 1);
         ImGui::OpenPopup("Add Game View Resolution");
     }
-    if (!ImGui::BeginPopupModal("Add Game View Resolution", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (!EditorModal::begin("Add Game View Resolution", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    EditorModal::message("A custom resolution for the Game view.");
 
     ImGui::SetNextItemWidth(Theme::dpi(200.0f));
-    ImGui::InputText("Name", customName, sizeof(customName));
+    EditorModal::inputText("Name", "name", customName, sizeof(customName));
     ImGui::SetNextItemWidth(Theme::dpi(200.0f));
-    ImGui::InputInt("Width", &customWidth);
+    EditorModal::inputInt("Width", "width", &customWidth);
     ImGui::SetNextItemWidth(Theme::dpi(200.0f));
-    ImGui::InputInt("Height", &customHeight);
+    EditorModal::inputInt("Height", "height", &customHeight);
     ImGui::SetNextItemWidth(Theme::dpi(200.0f));
-    ImGui::InputFloat("DPI", &customDpi, 1.0f, 10.0f, "%.0f");
+    EditorModal::inputFloat("DPI", "dpi", &customDpi, 1.0f, 10.0f, "%.0f");
     ImGui::SetItemTooltip("Screen.dpi while this resolution is chosen (0: the computer's); Constant Physical Size uses it");
     customWidth = std::clamp(customWidth, 16, 16384);
     customHeight = std::clamp(customHeight, 16, 16384);
@@ -857,7 +859,7 @@ void editor::GameWindow::drawCustomResolutionPopup() {
     resolution.dpi = customDpi;
     std::string error;
     ImGui::BeginDisabled(resolution.name.empty());
-    if (ImGui::Button("Add")) {
+    if (EditorModal::button("Add", "ok")) {
         if (addCustomResolution(resolution, &error)) {
             setResolution(resolution.name);
             ImGui::CloseCurrentPopup();
@@ -865,7 +867,8 @@ void editor::GameWindow::drawCustomResolutionPopup() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+    if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
+    EditorModal::error(error);
     if (!error.empty()) ImGui::TextColored(Theme::Colors::WarningText, "%s", error.c_str());
     ImGui::EndPopup();
 }

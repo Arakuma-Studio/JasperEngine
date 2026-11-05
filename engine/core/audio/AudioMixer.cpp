@@ -98,6 +98,9 @@ namespace {
         std::map<std::string, ParamState> params;
         std::string currentSnapshot;
         bool built = false;
+        // made once, on the first setLoudnessTap, and kept: the audio thread may still be in it
+        std::unique_ptr<LoudnessTapRing> loudnessTap;
+        bool loudnessTapOn = false;
         // the game's (AudioSystem.pauseAll) and the platform's (an app in the background): the
         // Master bus holds while either does, and neither lifts the other's
         bool masterPaused = false;
@@ -314,6 +317,10 @@ namespace {
                 auto filter = std::make_unique<LimiterFilter>();
                 filter->threshold = param("threshold");
                 filter->release = param("release");
+                filter->lookahead = param("lookahead");
+                filter->truePeak = param("truePeak") >= 0.5f;
+                filter->sampleRate = state().sampleRate;
+                filter->bypass = effect.bypass;
                 return filter;
             }
             case AudioEffectType::Unknown:
@@ -349,6 +356,7 @@ namespace {
             attrs[param.attribute] = value;
         }
         attrs[0] = std::clamp(wet, 0.0f, 1.0f);
+        if (def.type == AudioEffectType::Limiter) attrs.resize(LimiterFilter::ATTRIBUTE_COUNT, 0.0f);
         if (def.type == AudioEffectType::Reverb) {
             // freeze is a switch
             attrs[1] = attrs[1] >= 0.5f ? 1.0f : 0.0f;
@@ -362,6 +370,16 @@ namespace {
         return group ? &group->effects[index] : nullptr;
     }
 
+    // A limiter with a delay stays in its slot while bypassed: an empty slot would drop the delay's
+    // audio at the switch. It then only passes the signal and keeps its last frames.
+    bool limiterKeepsItsSlot(const EffectState& effect) {
+        if (effect.type != AudioEffectType::Limiter) return false;
+        const AudioMixerEffectDef* def = effectDef(effect.id);
+        if (!def) return false;
+        const std::vector<float> attrs = effectAttributes(*def);
+        return attrs[LimiterFilter::LOOKAHEAD] > 0.0f || attrs[LimiterFilter::TRUE_PEAK] >= 0.5f;
+    }
+
     // the slots of a bus as its effects say (a bypassed or inactive effect leaves its slot empty)
     void writeSlots(GroupState& group) {
         if (!group.bus) return;
@@ -369,7 +387,7 @@ namespace {
             SoLoud::Filter* desired = nullptr;
             if (slot < group.effects.size()) {
                 EffectState& effect = group.effects[slot];
-                if (!effect.bypass && !group.bypassEffects) desired = effect.filter.get();
+                if ((!effect.bypass && !group.bypassEffects) || limiterKeepsItsSlot(effect)) desired = effect.filter.get();
             }
             if (group.slots[slot] != desired) {
                 group.bus->setFilter(slot, desired);
@@ -410,6 +428,11 @@ namespace {
             const AudioMixerEffectDef* def = effectDef(effect.id);
             if (!def || !effect.filter) continue;
             std::vector<float> attrs = effectAttributes(*def);
+            if (def->type == AudioEffectType::Limiter) {
+                attrs[LimiterFilter::BYPASS] = (effect.bypass || group.bypassEffects) ? 1.0f : 0.0f;
+                // a parameter can take a limiter into or out of keeping its slot
+                writeSlots(group);
+            }
             // (not while a timed change moves it: once, where it ends; meanwhile SoLoud keeps the delay
             // within the buffer it has)
             if (def->type == AudioEffectType::Echo && attrs.size() > 1 && attrs[1] > effect.echoDelay + 1e-4f &&
@@ -1115,6 +1138,70 @@ int AudioMixer::getGroupDepth(const std::string& id){
         depth++;
     }
     return depth;
+}
+
+float AudioMixer::getEffectGainReductionDb(const std::string& effectId){
+    ensureInitialized();
+    GroupState* owner = nullptr;
+    EffectState* effect = findEffectState(effectId, &owner);
+    if (!effect || effect->type != AudioEffectType::Limiter || !effect->filter || !owner->handle ||
+        !state().built || !AudioSystem::isInited()) {
+        return 0.0f;
+    }
+    size_t index = 0;
+    while (index < owner->effects.size() && &owner->effects[index] != effect) index++;
+    if (index >= EFFECT_SLOTS || owner->slots[index] != effect->filter.get()) return 0.0f;
+    return static_cast<LimiterFilter*>(effect->filter.get())->getGainReductionDb();
+}
+
+unsigned int AudioMixer::getGroupLatencyFrames(const std::string& group){
+    ensureInitialized();
+    GroupState* found = group.empty() ? masterState() : findState(group);
+    if (!found || found->bypassEffects) return 0;
+    unsigned int frames = 0;
+    for (const EffectState& effect : found->effects) {
+        if (effect.type != AudioEffectType::Limiter || effect.bypass) continue;
+        const AudioMixerEffectDef* def = effectDef(effect.id);
+        if (!def) continue;
+        frames += LimiterFilter::lookaheadFrames(effectAttributes(*def)[LimiterFilter::LOOKAHEAD], state().sampleRate);
+    }
+    return frames;
+}
+
+void AudioMixer::setLoudnessTap(bool on){
+    ensureInitialized();
+    State& s = state();
+    if (on && !s.loudnessTap) {
+        s.loudnessTap = std::make_unique<LoudnessTapRing>((size_t)(2.0f * std::max(s.sampleRate, 192000.0f)));
+    }
+    if (on && !s.loudnessTapOn) s.loudnessTap->clear();
+    s.loudnessTapOn = on;
+    GroupState* master = masterState();
+    if (master && master->meter) master->meter->tap.store(on ? s.loudnessTap.get() : nullptr, std::memory_order_release);
+}
+
+bool AudioMixer::isLoudnessTapOn(){
+    return state().loudnessTapOn;
+}
+
+size_t AudioMixer::drainLoudnessTap(float* interleaved, size_t maxFrames, unsigned int& channels, unsigned int& sampleRate){
+    State& s = state();
+    channels = LoudnessTapRing::CHANNELS;
+    sampleRate = (unsigned int)s.sampleRate;
+    if (!s.loudnessTapOn || !s.loudnessTap) return 0;
+    // a mixer rebuilt under the tap (a new .mixer, a new bus) has a new meter
+    GroupState* master = masterState();
+    if (master && master->meter && master->meter->tap.load(std::memory_order_relaxed) != s.loudnessTap.get()) {
+        master->meter->tap.store(s.loudnessTap.get(), std::memory_order_release);
+    }
+    const size_t frames = s.loudnessTap->pop(interleaved, maxFrames);
+    if (frames > 0 && master && master->handle && AudioSystem::isInited()) {
+        const float volume = AudioSystem::getSoloud().getVolume(master->handle);
+        if (volume != 1.0f) {
+            for (size_t i = 0; i < frames * channels; i++) interleaved[i] *= volume;
+        }
+    }
+    return frames;
 }
 
 float AudioMixer::getMeterDb(const std::string& group){
