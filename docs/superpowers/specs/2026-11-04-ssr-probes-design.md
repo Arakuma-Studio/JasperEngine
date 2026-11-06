@@ -659,3 +659,8 @@ Recorded during implementation (branch `dc/ssr-probes`).
 7. **Bits and cache version after the merges**: GBUFFER keeps bits 16 (`Occ`) and 17 (`Uv2`), free on `main`
    (S55 left GBUFFER at 16 bits); render-correctness also claims 16 ("Instance Fade"), and the second branch
    to land renumbers. The shader cache is v49, after S54, S55 and S57's v45-v48.
+8. **Residual found by the probe test**: the G-buffer's 8-bit octahedral normal turns the rebuilt reflection by a
+   fraction of a degree, enough to cross a sharp edge of a probe's capture (measured: the box-projected direction
+   0.2 degrees above the reflected box's top edge). Added to 7.4's residuals and the user doc; the GPU test's
+   capture is one colour, so it checks the swap and not that edge. A higher-precision normal is the follow-up
+   (with the shading-normal one of section 2).

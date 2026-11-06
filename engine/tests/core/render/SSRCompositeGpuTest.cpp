@@ -36,6 +36,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -48,6 +49,8 @@ namespace {
     // the SSR debug views (Scene::setSSRDebugMode)
     constexpr int VIEW_OFF = 0;
     constexpr int VIEW_REFLECTION = 1;
+    constexpr int VIEW_NORMAL = 2;
+    constexpr int VIEW_ROUGHNESS = 3;
     constexpr int VIEW_ALBEDO = 5;
     constexpr int VIEW_ENVIRONMENT = 6;
     constexpr int VIEW_SOURCE = 7;
@@ -152,10 +155,13 @@ namespace {
         }
 
         void setBoxColor(float value){
-            Material white = box->getMaterial();
-            white.lighting = MaterialLighting::NONE;
-            white.baseColorFactor = Vector4(value, value, value, 1.0f);
-            box->setMaterial(white);
+            setBoxColor(Vector4(value, value, value, 1.0f));
+        }
+        void setBoxColor(const Vector4& color){
+            Material material = box->getMaterial();
+            material.lighting = MaterialLighting::NONE;
+            material.baseColorFactor = color;
+            box->setMaterial(material);
         }
 
         void setFloorMaterial(const std::function<void(Material&)>& change){
@@ -180,12 +186,14 @@ namespace {
             return readTarget();
         }
 
-        // the floor pixels where SSR reflects the white box at full confidence
-        std::vector<size_t> hit(){
+        // the floor pixels where SSR reflects the (white, or red) box at full confidence
+        std::vector<size_t> hit(bool redBox = false){
             const std::vector<uint8_t> reflection = shot(VIEW_REFLECTION);
             std::vector<size_t> pixels;
             for (size_t p = 0; p < reflection.size() / 4; p++){
-                if (reflection[p * 4] >= 245 && reflection[p * 4 + 1] >= 245 && reflection[p * 4 + 2] >= 245)
+                const bool full = reflection[p * 4] >= 245 &&
+                    (redBox || (reflection[p * 4 + 1] >= 245 && reflection[p * 4 + 2] >= 245));
+                if (full)
                     pixels.push_back(p);
             }
             return pixels;
@@ -218,22 +226,36 @@ namespace {
 TEST_F(SSRCompositeGpu, LocalProbeIsReplacedNotAdded){
     JASPER_REQUIRE_GPU();
     build();
-    // the probe captures a red room: what it adds to the floor is red
+    // the probe captures a room of one colour, red (the background and the box SSR reflects): the
+    // G-buffer's 8-bit normal turns the rebuilt reflection a little, which must not move it across
+    // an edge in the capture, here the box's
     scene.setBackgroundColor(1.0f, 0.0f, 0.0f, 1.0f);
+    setBoxColor(Vector4(1.0f, 0.0f, 0.0f, 1.0f));
     auto probe = std::make_unique<ReflectionProbe>(&scene);
     probe->setPosition(0.0f, 1.5f, 0.0f);
     probe->setBoxSize(30.0f, 10.0f, 30.0f);
     ASSERT_TRUE(render(40));
 
-    const std::vector<size_t> pixels = hit();
-    ASSERT_GE(pixels.size(), MIN_HIT_PIXELS);
+    const std::vector<size_t> hitWithProbe = hit(true);
     const std::vector<uint8_t> withProbe = shot(VIEW_OFF);
     // what the composite swaps there (for the message): Reflection Source and Environment Specular
     const std::vector<uint8_t> source = shot(VIEW_SOURCE);
     const std::vector<uint8_t> environment = shot(VIEW_ENVIRONMENT);
+    const std::vector<uint8_t> roughness = shot(VIEW_ROUGHNESS);
+    const std::vector<uint8_t> normal = shot(VIEW_NORMAL);
+    // the colour pass alone (no reflection swapped), with the probe's term
+    const std::vector<uint8_t> plainWithProbe = shot(VIEW_OFF, 0.0f);
 
     probe.reset();
-    const std::vector<uint8_t> withoutProbe = shot(VIEW_OFF, 1.0f, 5);
+    const std::vector<uint8_t> plainWithoutProbe = shot(VIEW_OFF, 0.0f, 5);
+    const std::vector<uint8_t> withoutProbe = shot(VIEW_OFF, 1.0f);
+    // where SSR reflects the box at full confidence in both frames (the floor's variant changes with the
+    // probe, so the two frames' SSR is compared only where both found the box)
+    const std::vector<size_t> hitWithoutProbe = hit(true);
+    std::vector<size_t> pixels;
+    std::set_intersection(hitWithProbe.begin(), hitWithProbe.end(), hitWithoutProbe.begin(), hitWithoutProbe.end(),
+                          std::back_inserter(pixels));
+    ASSERT_GE(pixels.size(), MIN_HIT_PIXELS);
     // where SSR is confident it is the reflection: the probe's term is swapped out, not kept
     size_t worst = pixels[0];
     for (size_t p : pixels){
@@ -246,7 +268,8 @@ TEST_F(SSRCompositeGpu, LocalProbeIsReplacedNotAdded){
     EXPECT_LE(channelDiff(withProbe, withoutProbe, worst), 6)
         << "pixel " << worst << " of " << pixels.size() << ": with the probe " << rgb(withProbe, worst) << ", without "
         << rgb(withoutProbe, worst) << "; Reflection Source " << rgb(source, worst) << ", Environment Specular "
-        << rgb(environment, worst);
+        << rgb(environment, worst) << ", Roughness " << rgb(roughness, worst) << ", Normal " << rgb(normal, worst)
+        << "; colour pass alone with the probe " << rgb(plainWithProbe, worst) << ", without " << rgb(plainWithoutProbe, worst);
     // the floor is in the probe's slot 0 at full weight
     EXPECT_GT(source[worst * 4], 240);
     EXPECT_LT(source[worst * 4 + 1], 15);

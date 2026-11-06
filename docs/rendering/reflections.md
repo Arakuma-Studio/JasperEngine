@@ -97,6 +97,9 @@ leave a small difference where SSR is confident:
 - hex tiling of the occlusion map, Lit Quality's specular anti-aliasing, and the extended lobes
   (anisotropy bends the reflection; specular and IOR change its strength); clearcoat keeps its own
   environment reflection, which is right;
+- the G-buffer keeps the normal in 8 bits per component, so the rebuilt reflection can turn a fraction of a
+  degree: where the probe's capture has a sharp edge in that direction (a bright object against a dark wall),
+  a thin line of the difference shows under a confident SSR hit;
 - the probe blend weight is stored in 62 steps;
 - the volumetric fog's marched part is approximated by the analytic height fog over the whole ray;
 - with post-processing's exposure or tone curve on, the frame is already display-encoded when SSR

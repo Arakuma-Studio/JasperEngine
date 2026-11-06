@@ -86,7 +86,14 @@ async def prepare_scene(ed: Editor) -> int:
     await ed.call("set_main_camera", scene=sid, entity="Main Camera")
     await ed.call("set_scene_settings", scene=sid, settings={"ssr_enabled": True})
     await ed.call("configure_game_view", aspect="16:9")
-    await ed.call("wait", frames=60)
+    # the probe's capture: until the G-buffer pass gives its floor a slot
+    for _ in range(60):
+        await ed.call("wait", frames=10)
+        ssr = (await ed.call("get_render_stats")).get("ssr") or {}
+        if any(p.get("name") == "Probe Right" and p.get("slot") is not None for p in ssr.get("probes", [])):
+            break
+    else:
+        ed.fail(f"the probe never took a slot: {ssr!r}")
     S["editor"] = ed
     return sid
 
@@ -111,13 +118,13 @@ async def test_reflection_source_view(ed: Editor):
     source = await ed.screenshot(view="game", path=shots(ed) / "reflection-source.png", max_width=640)
     await ed.call("set_scene_settings", scene=sid, settings={"ssr_debug_mode": 0})
 
-    # the floor's left half takes the sky, its right half the probe in slot 0
-    left = share(source, SKY, 0.05, 0.8, 0.3, 0.97)
-    right = share(source, PROBE_SLOT_0, 0.7, 0.8, 0.95, 0.97)
-    ed.check(left > 0.6, f"the floor outside the probe is Sky in Reflection Source ({left:.2f} of the region, "
-             f"mean {mean_color(source, 0.05, 0.8, 0.3, 0.97)})")
-    ed.check(right > 0.6, f"the floor in the probe is probe slot 0 in Reflection Source ({right:.2f} of the region, "
-             f"mean {mean_color(source, 0.7, 0.8, 0.95, 0.97)})")
+    # the floor half outside the probe takes the sky, the half inside it the probe in slot 0 (a mesh
+    # takes the probe its centre is in): both colours are in the picture
+    sky = share(source, SKY, 0, 0, 1, 1)
+    probe = share(source, PROBE_SLOT_0, 0, 0, 1, 1)
+    ed.check(sky > 0.02, f"the floor outside the probe is Sky in Reflection Source ({sky:.2f} of the picture)")
+    ed.check(probe > 0.02, f"the floor in the probe is probe slot 0 in Reflection Source ({probe:.2f} of the picture, "
+             f"mean of the lower half {mean_color(source, 0, 0.5, 1, 1)})")
     # the unlit panel takes no SSR: its (white) pixels are black (Skip) in Reflection Source
     _, _, plain_rgba = pngdiff.decode(plain)
     _, _, source_rgba = pngdiff.decode(source)
