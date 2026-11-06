@@ -189,9 +189,12 @@ TEST_F(TerrainFoliageGpu, MinDrawDistanceAndTheScaleSetTheChunksFades){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// 50 m: 32 m chunks; 25 m: 16 m chunks; a ring of 5 a side for both, the span 4 chunks a side
+// 50 m: 32 m chunks; 25 m: 16 m chunks; a ring of 5 a side for both, the span 4 chunks a side.
+// At x = 20 the span is chunks -1..2 for both: the slot of chunk -2, past it, keeps that 32 m chunk
 TEST_F(TerrainFoliageGpu, ChangingTheScaleRefillsEverySlot){
     JASPER_REQUIRE_GPU();
+    settle();
+    camera.setPosition(20.0f, 2.0f, 0.0f);
     settle();
     expectChunksFor(50.0f, "at the start");
     Engine::setFoliageDistanceScale(0.5f);
