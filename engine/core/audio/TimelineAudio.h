@@ -54,8 +54,8 @@ namespace jasperengine {
     public:
         // R5: the output frames a start waits inside the frame when crossed at `fraction` of it
         // (clamped to [0, 1]): round(fraction x the frame's unscaled seconds x the output rate).
-        // `span`: the update's scaled seconds, for an update stepped outside an engine frame
-        // (the frame's unscaled seconds are then span / the time scale)
+        // `span`: the update's scaled seconds; while the time scale is above 0 the frame's unscaled
+        // seconds are span / the time scale (also for an update stepped outside an engine frame)
         static uint32_t delayFrames(double fraction, double span = 0.0);
         // the same for a crossing `seconds` into an update of `span` seconds
         static uint32_t delayFramesAt(double seconds, double span);

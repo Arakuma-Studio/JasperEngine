@@ -97,8 +97,10 @@ namespace {
 
 uint32_t TimelineAudio::delayFrames(double fraction, double span) {
     if (!std::isfinite(fraction)) return 0;
+    // the frame's unscaled seconds as ActionSystem::unscaledDeltatime has them: the update's own
+    // span before the time scale when it has one (an update stepped outside an engine frame too)
     double frame = std::max(0.0, (double)Engine::getUnscaledDeltatime());
-    if (frame <= 0.0 && span > 0.0 && Engine::getTimeScale() > 0.0f) frame = span / (double)Engine::getTimeScale();
+    if (span > 0.0 && Engine::getTimeScale() > 0.0f) frame = span / (double)Engine::getTimeScale();
     const double rate = AudioSystem::isInited() ? (double)AudioSystem::getSoloud().getBackendSamplerate() : 48000.0;
     const double frames = std::min(std::max(fraction, 0.0), 1.0) * frame * rate;
     return (uint32_t)std::llround(frames);
