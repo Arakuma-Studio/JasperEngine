@@ -55,6 +55,7 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
+| Main's editor tests | The editor unit binary segfaults on `main` after the Forge landing (in `LodFadeVariantKeys`), so 0 editor tests run; `PbrVariant.ALobesMapAsksForTheMeshsUVs` fails | `fix/main-editor-tests` | A, B | In progress |
 | Root attack | `.meta` written outside through a swapped root or a plain link, on `main` since S68 | `fix/root-attack-meta` | B, A | Done |
 | Module-off builds | S72 broke engines compiled with modules off | `fix/module-off-build` | H | Done |
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
@@ -193,3 +194,4 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: Origin: the Forge/meshoptimizer program (S53-S57) landed, 141 commits, without its final full suite. `main` fast-forwarded. The third suite's tree (S35, S36, S37) predates it and conflicts with it in `TOOLS.md`, `Exporter.cpp`, `Generator.cpp`, `McpInstructions.cpp`, `GameWindow.cpp` and `cases.py`: the trio merges it after the suite, then a build and the affected tests.
 - 2026-11-06: Third full suite on `fcd2613ad` (`main`, S35, S36, S37): units 2942 core and 3079 editor, 0 failed. MCP 1803 passed, 11 failed, 7 skipped. Five failures are the trio's (missing codegen goldens for the new fixture, a new modal not in S69's table, a warning on every headless Play); S35 fixes them and merges the Forge program, then it lands. The core tool listing is at 98,900 of 99,000 bytes after S40's tools: whoever adds tool text next will need to cut some.
 - 2026-11-06: S39 ready. Its bisect found `CameraShakeEditor` leaving the game's events paused for every later suite; fixed.
+- 2026-11-06: Found by S35 checking `main` alone: since the Forge/meshoptimizer landing, the editor unit test binary segfaults in `LodFadeVariantKeys.OnlyMeshesThatCanFadeShipTheFadeVariant`, so no editor test runs on `main`; core fails `PbrVariant.ALobesMapAsksForTheMeshsUVs`. Fixing on `fix/main-editor-tests`. The other programs should know their gates on `main` are not running the editor tests.
