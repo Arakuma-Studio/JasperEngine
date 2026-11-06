@@ -2855,6 +2855,8 @@ bool previewPlayer(const CallPtr& call, SceneProject* scene, Entity entity) {
         Json data = {{"animation", sp ? McpRefs::entityJson(sp, root) : Json(nullptr)}, {"action", action}, {"state", c.getStateName()},
                      {"clip", c.getClipPath()}, {"previewing", c.isPreviewing()}, {"playing", c.isPlaying()},
                      {"time", r6(c.getTime())}, {"length", r6(c.getLength())}};
+        // the clip's audio cues heard in the preview (S40 R11): preview voices, outside the mixer
+        if (c.previewAudioStarts() > 0) data["audio_preview"] = {{"voices", c.previewAudioVoices()}, {"started", c.previewAudioStarts()}};
         if (c.getStateLayer() > 0) {
             data["layer"] = c.getLayerName(c.getStateLayer());
             data["over"] = c.getPreviewOver();

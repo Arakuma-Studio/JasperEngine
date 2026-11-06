@@ -19,6 +19,8 @@ namespace jasperengine{
 namespace jasperengine::editor{
 
     class AnimationWindowClip;
+    class TimelineAudioPreview;
+    enum class EntityCreationType;
 
     // editor/tests/AnimationWindowClipDriver.h: the editor tests' driver of the window (the
     // selection, entity Animation, clip, drop and entity preview actions, the explicit lane move)
@@ -215,6 +217,23 @@ namespace jasperengine::editor{
         void acceptClipDrop(SceneProject* sceneProject);
         void installClipHooks();
 
+        // ---- timeline audio of the entity mode (S40 R22, R23) ----
+        // the playing preview's audio actions (preview voices outside the mixer)
+        std::unique_ptr<TimelineAudioPreview> actionAudio;
+        // a new audio, Sound Event or Mixer Snapshot action (type) with its frame at `time`, one
+        // undo step; `content` is the sound (assets-relative) or the snapshot name ("" none)
+        bool addAudioAction(SceneProject* sceneProject, Entity animEntity, EntityCreationType type, const std::string& content, float time,
+                            uint32_t track, std::string* error);
+        // the commands the entity mode shares with clip mode (Align, Add ... action): run, or
+        // whether they can run
+        bool runAudioActionCommand(std::string_view id, bool run);
+        // where the selected audio action's frame starts after `align` ("" when it can; else why)
+        std::string alignActionProblem(int align, float* time) const;
+        // the audio actions the playhead crossed between two times of the playing preview
+        void previewAudioActions(Scene* scene, Entity animEntity, float from, float to, float dt);
+        // the Add Property menu's Sound submenu (true: an action was added)
+        bool drawSoundMenu(SceneProject* sceneProject, AnimationComponent& anim, uint32_t track);
+
     public:
         static constexpr const char* WINDOW_NAME = "Animation";
 
@@ -244,6 +263,8 @@ namespace jasperengine::editor{
         void externalStop();
         void externalPause();
         void seekPreviewExternal(Scene* scene, SceneProject* sceneProject, float time);
+        // the preview voices the playing entity preview started (tests)
+        uint64_t previewAudioStarts() const;
 
         // Restores the entity-mode preview's snapshot before a save, play, scene switch or close
         // (animation clips spec 9.R6); App::stopTransientPreviews calls it.

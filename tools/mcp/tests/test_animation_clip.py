@@ -1176,3 +1176,4 @@ async def test_export_emits_the_component(ed: Editor):
     ed.check(S["bob_guid"] not in code, "no GUID in the generated code")
     ed.check('resources.clips.push_back("anim/bob.anim");' in code, "the scene resources preload the clip")
     ed.check((out / "project" / "assets" / "anim" / "bob.anim").is_file(), "the .anim is exported")
+
