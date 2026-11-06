@@ -25,6 +25,7 @@
 
 #include "imgui.h"
 #include "yaml-cpp/yaml.h"
+#include "animation/ActionPreviewSnapshot.h"
 #include "ecs/Signature.h"
 #include "subsystem/PhysicsSystem.h"
 #include "soloud.h"
@@ -334,12 +335,9 @@ namespace jasperengine::editor{
         bool actionPreviewing = false;
         Entity actionPreviewEntity = 0;
         uint32_t actionPreviewSceneId = 0;
-        struct ActionPreviewState {
-            Entity entity = 0;
-            Entity parent = 0;
-            YAML::Node components;
-        };
-        std::vector<ActionPreviewState> actionPreviewStates;
+        // the authored state of what the action preview writes; values commands write meanwhile
+        // are kept (runtime-core spec 6.6)
+        ActionPreviewSnapshot actionPreviewSnapshot;
 
         // PreviewOwner tokens of the action preview's roots (animation clips 9.R7): acquiring them
         // stops the Animation window or Pose window preview of the same model first

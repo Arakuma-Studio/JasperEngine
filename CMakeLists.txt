@@ -1019,6 +1019,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/animation/PreviewParticles.cpp
     ${EDITOR_DIR}/animation/ClipConverters.cpp
     ${EDITOR_DIR}/animation/ClipRecordHooks.cpp
+    ${EDITOR_DIR}/animation/ActionPreviewSnapshot.cpp
     ${EDITOR_DIR}/animation/ClipValidation.cpp
     ${EDITOR_DIR}/animation/ClipPropertyNames.cpp
     ${EDITOR_DIR}/animation/ClipTangents.cpp

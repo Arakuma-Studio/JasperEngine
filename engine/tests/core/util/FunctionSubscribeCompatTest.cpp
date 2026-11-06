@@ -3,13 +3,17 @@
 
 #include "Engine.h"
 #include "util/FunctionSubscribe.h"
+#include "util/CrashGuard.h"
 #include "util/CrashHook.h"
 #include "support/AllocationCounter.h"
+#include "Log.h"
+#include "log/Logger.h"
 
 #include <gtest/gtest.h>
 
 #include <csignal>
 
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -203,6 +207,80 @@ TEST(FunctionSubscribeCompatTest, ZeroAllocCall) {
     EXPECT_EQ(sum, 2002);
 }
 
+// ---- C++ exceptions (runtime-core spec 6.1): a failure like a crash or a Lua error ----
+
+namespace {
+    std::vector<std::string> errorsSince(uint64_t lastId) {
+        Logger::flush();
+        std::vector<std::string> lines;
+        for (const LogEntry& entry : Log::getEntries(0, logLevelBit(LogLevel::Error), lastId)) lines.push_back(entry.message);
+        return lines;
+    }
+}
+
+TEST(FunctionSubscribeCompatTest, ThrowingSubscriberIsRemovedAndReported) {
+    std::vector<std::string> reported;
+    CrashHook::set([&reported](const std::string& tag, const std::string& error) { reported.push_back(tag + ": " + error); });
+    FunctionSubscribe<void()> event;
+    int before = 0;
+    int after = 0;
+    event.add("before", [&]() { before++; });
+    event.add("thrower", []() { throw std::runtime_error("boom"); });
+    event.add("after", [&]() { after++; });
+    event.call();
+    event.call();
+    CrashHook::set(nullptr);
+    EXPECT_EQ(before, 2);
+    EXPECT_EQ(after, 2) << "later subscribers still run";
+    ASSERT_EQ(reported.size(), 1u);
+    EXPECT_EQ(reported[0], "thrower: C++ exception std::runtime_error: boom");
+    EXPECT_EQ(event.size(), 2u) << "the throwing subscriber is removed";
+}
+
+TEST(FunctionSubscribeCompatTest, ThrowingSubscriberIsLoggedWithoutAHook) {
+    CrashHook::set(nullptr);
+    const uint64_t lastId = Log::getLastId();
+    FunctionSubscribe<void(int)> event;
+    int after = 0;
+    event.add("logged-thrower", [](int) { throw std::out_of_range("index 3"); });
+    event.add("after", [&](int value) { after += value; });
+    event.call(1);
+    event.call(1);
+    EXPECT_EQ(after, 2) << "later subscribers still run";
+    EXPECT_EQ(event.size(), 2u) << "without a hook the subscriber stays (Unity: Update runs again)";
+    const std::vector<std::string> errors = errorsSince(lastId);
+    ASSERT_EQ(errors.size(), 1u) << "once a second per tag";
+    EXPECT_EQ(errors[0], "logged-thrower failed: C++ exception std::out_of_range: index 3");
+
+    // a thrown value that is no std::exception
+    FunctionSubscribe<void()> other;
+    other.add("int-thrower", []() { throw 7; });
+    other.call();
+    const std::vector<std::string> more = errorsSince(lastId);
+    ASSERT_EQ(more.size(), 2u);
+    EXPECT_EQ(more[1], "int-thrower failed: C++ exception of unknown type");
+}
+
+TEST(FunctionSubscribeCompatTest, CallRetAsksTheNextAfterAThrow) {
+    FunctionSubscribe<int()> ret;
+    ret.add("thrower", []() -> int { throw std::runtime_error("no answer"); });
+    ret.add("answer", []() { return 42; });
+    EXPECT_EQ(ret.callRet(7), 42) << "without a hook";
+    EXPECT_EQ(ret.size(), 2u);
+
+    CrashHook::set([](const std::string&, const std::string&) {});
+    EXPECT_EQ(ret.callRet(7), 42) << "with a hook";
+    CrashHook::set(nullptr);
+    EXPECT_EQ(ret.size(), 1u) << "with a hook the thrower is removed";
+}
+
+TEST(FunctionSubscribeCompatTest, RunGuardedReportsAnException) {
+    std::string errorInfo;
+    const bool ok = CrashHook::runGuarded([](void*) { throw std::logic_error("guarded"); }, nullptr, errorInfo);
+    EXPECT_FALSE(ok);
+    EXPECT_EQ(errorInfo, "C++ exception std::logic_error: guarded");
+}
+
 #if !defined(__EMSCRIPTEN__) && !defined(JASPERENGINE_SANITIZE_THREAD)
 namespace {
     // The subscribers' deliberate crash: a null store, which the crash guard's SIGSEGV handler
@@ -248,6 +326,42 @@ TEST(FunctionSubscribeCompatTest, CrashingSubscriberIsRemovedAndReported) {
     EXPECT_EQ(ret.callRet(7), 42);
     CrashHook::set(nullptr);
 }
+
+#if !defined(_WIN32)
+// a throw out of a guard (a direct caller's fn) leaves the thread's guard state as it was
+TEST(CrashGuardTest, ThrowThroughTheGuardRestoresItsState) {
+    struct sigaction before{};
+    sigaction(SIGSEGV, nullptr, &before);
+    CrashInfo info{};
+    bool caught = false;
+    try {
+        callWithCrashGuard([]() { throw std::runtime_error("through"); }, &info);
+    } catch (const std::runtime_error&) {
+        caught = true;
+    }
+    EXPECT_TRUE(caught);
+    EXPECT_FALSE(detail::g_tls.active) << "the guard is no longer armed";
+    struct sigaction after{};
+    sigaction(SIGSEGV, nullptr, &after);
+    EXPECT_EQ(after.sa_sigaction, before.sa_sigaction) << "the SIGSEGV handler is the one before the guard";
+}
+
+// a guard inside a guard (a guarded callback starting an Action, whose onStart is guarded too):
+// when the inner one returns, the outer one still catches a fault
+TEST(CrashGuardTest, NestedGuardsKeepTheOuterOne) {
+    CrashInfo outer{};
+    bool innerOk = false;
+    const bool ok = callWithCrashGuard([&innerOk]() {
+        CrashInfo inner{};
+        innerOk = callWithCrashGuard([]() {}, &inner);
+        crashHere();
+    }, &outer);
+    EXPECT_TRUE(innerOk);
+    EXPECT_FALSE(ok) << "the outer guard caught the fault after the inner one returned";
+    EXPECT_EQ(outer.code, SIGSEGV);
+    EXPECT_FALSE(detail::g_tls.active);
+}
+#endif
 #endif
 
 // Engine::onCharInput passes one whole character (char32_t); a handler declared with wchar_t

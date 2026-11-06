@@ -343,6 +343,12 @@ namespace jasperengine::editor{
         void dropParticleShapeLines(const std::set<Entity>& current);
         std::map<Entity, LineRenderer*> particleShapeLines;
 
+        // Hides the icons and lines of one GameObject inactive in hierarchy (Unity draws no
+        // gizmos for those; the icon picker refuses them too); called after its update
+        virtual void hideEntityGizmos(Entity entity);
+        // the GameObject is active in hierarchy (cheap when the scene has no inactive ones)
+        bool gizmoActive(Entity entity) const;
+
         // Marks an editor gizmo or icon created in the scene it annotates: only the
         // Scene view draws it, never the game or a camera image
         void setEditorOverlay(Entity entity);

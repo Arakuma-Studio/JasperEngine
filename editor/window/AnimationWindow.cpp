@@ -472,7 +472,7 @@ void editor::AnimationWindow::setOpen(bool open){
         if (previewSceneProject && previewSceneProject->scene) {
             stopPreview(previewSceneProject->scene, previewSceneProject);
         } else {
-            previewState.clear();
+            previewSnapshot.clear();
             isPreviewing = false;
         }
     }
@@ -576,7 +576,7 @@ void editor::AnimationWindow::selectEntity(Entity entity, uint32_t sceneId) {
             if (previousSceneProject && previousSceneProject->scene) {
                 stopPreview(previousSceneProject->scene, previousSceneProject);
             } else {
-                previewState.clear();
+                previewSnapshot.clear();
                 isPreviewing = false;
             }
         }
@@ -650,64 +650,30 @@ void editor::AnimationWindow::collectPreviewEntitiesRecursive(Scene* scene, Enti
     }
 }
 
-editor::AnimationWindow::PreviewEntityState editor::AnimationWindow::buildPreviewEntityState(Scene* scene, Entity entity) const {
-    PreviewEntityState state;
-    state.entity = entity;
-
-    if (Transform* transform = scene->findComponent<Transform>(entity)) {
-        state.parent = transform->parent;
-    }
-
-    YAML::Node components = Stream::encodeComponents(entity, scene, scene->getSignature(entity));
-    components.remove(Catalog::getComponentName(ComponentType::AnimationComponent, true));
-
-    // Preview playback reads authored key data but does not mutate it. Keeping
-    // these components in the restore snapshot would overwrite keys authored
-    // while a scrub preview is paused (Snapshot or right-click keying).
-    components.remove(Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::TranslateTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::RotateTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::ScaleTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::MorphTracksComponent, true));
-    components.remove(Catalog::getComponentName(ComponentType::LatticeTracksComponent, true));
-    state.components = components;
-
-    return state;
+void editor::AnimationWindow::snapshotPreviewEntity(Scene* scene, Entity entity) {
+    previewSnapshot.add(selectedSceneId, scene, entity);
 }
 
 void editor::AnimationWindow::restorePreviewState(Scene* scene) const {
-    for (const PreviewEntityState& state : previewState) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-            continue;
-        }
-
-        Stream::decodeComponents(state.entity, state.parent, scene, state.components);
-        ProjectUtils::clearPreviewParticles(scene, state.entity);
-
-        // tracks are left out of the snapshot: a relative one takes its base again from the
-        // restored pose when the preview starts it
-        if (KeyframeTracksComponent* keyframe = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
-            keyframe->hasBase = false;
-        }
-    }
+    previewSnapshot.restore(scene);
 }
 
 void editor::AnimationWindow::applyPreviewModelBindPose(Scene* scene) const {
     std::unordered_set<Entity> modelEntities;
 
-    for (const PreviewEntityState& state : previewState) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity)) {
+    for (Entity previewed : previewSnapshot.entities()) {
+        if (previewed == NULL_ENTITY || !scene->isEntityCreated(previewed)) {
             continue;
         }
 
-        if (BoneComponent* bone = scene->findComponent<BoneComponent>(state.entity)) {
+        if (BoneComponent* bone = scene->findComponent<BoneComponent>(previewed)) {
             if (bone->model != NULL_ENTITY) {
                 modelEntities.insert(bone->model);
             }
         }
 
-        if (scene->findComponent<ModelComponent>(state.entity)) {
-            modelEntities.insert(state.entity);
+        if (scene->findComponent<ModelComponent>(previewed)) {
+            modelEntities.insert(previewed);
         }
     }
 
@@ -1498,12 +1464,12 @@ void editor::AnimationWindow::keyTargetChannels(Scene* scene, SceneProject* scen
     CommandHandle::get(sceneProject->id)->addCommand(batch);
 
     // New track entities did not exist when this preview began. Save only their
-    // runtime state now; buildPreviewEntityState deliberately excludes key data.
+    // runtime state now; snapshotPreviewEntity leaves the key data out.
     if (isPreviewing){
         for (CreateTrackKeyCmd* cmd : createdCmds){
             Entity trackEntity = cmd->getEntity();
             if (trackEntity != NULL_ENTITY && scene->isEntityCreated(trackEntity)){
-                previewState.push_back(buildPreviewEntityState(scene, trackEntity));
+                snapshotPreviewEntity(scene, trackEntity);
             }
         }
     }
@@ -1659,15 +1625,8 @@ void editor::AnimationWindow::addAnimationToPreview(Scene* scene, Entity animEnt
     std::unordered_set<Entity> collectedEntities;
     collectPreviewEntitiesRecursive(scene, animEntity, previewEntities, visitedAnimations, collectedEntities);
 
-    std::unordered_set<Entity> alreadySnapshotted;
-    for (const PreviewEntityState& state : previewState) {
-        alreadySnapshotted.insert(state.entity);
-    }
-
     for (Entity entity : previewEntities) {
-        if (alreadySnapshotted.insert(entity).second) {
-            previewState.push_back(buildPreviewEntityState(scene, entity));
-        }
+        snapshotPreviewEntity(scene, entity);
     }
 
     // Reset this animation's child action entities to Stopped so animationUpdate calls
@@ -1696,7 +1655,7 @@ void editor::AnimationWindow::startPreview(Scene* scene) {
     // preview writes restore first (spec 9.R7)
     ownPreviewRoots(scene, {selectedEntity});
 
-    previewState.clear();
+    previewSnapshot.clear();
     previewAnimations.clear();
 
     addAnimationToPreview(scene, selectedEntity);
@@ -1801,7 +1760,7 @@ void editor::AnimationWindow::stopPreview(Scene* scene, SceneProject* sceneProje
         }
     }
 
-    previewState.clear();
+    previewSnapshot.clear();
     previewAnimations.clear();
     previewPrimary = NULL_ENTITY;
     isPreviewing = false;
@@ -1833,7 +1792,7 @@ void editor::AnimationWindow::clearSceneState(uint32_t sceneId) {
     releasePreviewOwners();
 
     // The scene is already deleted, drop the snapshots instead of restoring them
-    previewState.clear();
+    previewSnapshot.clear();
     previewAnimations.clear();
     previewPrimary = NULL_ENTITY;
     transitionTarget = NULL_ENTITY;
@@ -3284,7 +3243,7 @@ void editor::AnimationWindow::show() {
         if (previewSceneProject && previewSceneProject->scene) {
             stopPreview(previewSceneProject->scene, previewSceneProject);
         } else {
-            previewState.clear();
+            previewSnapshot.clear();
             isPreviewing = false;
         }
 
@@ -3418,6 +3377,12 @@ void editor::AnimationWindow::show() {
         } else {
             // paused, stopped or sought: the actions' preview voices stop
             actionAudio->stopExit();
+        }
+
+        // a command wrote something the preview holds (an Inspector field, set_properties, an
+        // undo): it is authored now, and a paused preview shows its playhead over it again
+        if (previewSnapshot.takeChanged() && !isPlaying) {
+            seekPreview(scene, sceneProject, currentTime);
         }
 
         // Playback continues while any previewed clip is still running.
@@ -3773,7 +3738,7 @@ void editor::AnimationWindow::stopTransientPreviews(){
     if (previewSceneProject && previewSceneProject->scene) {
         stopPreview(previewSceneProject->scene, previewSceneProject);
     } else {
-        previewState.clear();
+        previewSnapshot.clear();
         previewAnimations.clear();
         previewPrimary = NULL_ENTITY;
         isPreviewing = false;
@@ -3798,7 +3763,7 @@ void editor::AnimationWindow::ownPreviewRoots(Scene* scene, const std::vector<En
             previewOwnerTokens.push_back(token);
             // what it writes: the entities its snapshot holds
             PreviewOwner::setWrites(token, [this](Entity entity) {
-                return std::any_of(previewState.begin(), previewState.end(), [entity](const PreviewEntityState& state) { return state.entity == entity; });
+                return previewSnapshot.contains(entity);
             });
         }
     }

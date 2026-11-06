@@ -385,6 +385,10 @@ tools/check-changed --no-mcp                  # builds and unit tests only, said
 tools/build.sh exec linux tools/check-changed # inside the Linux image (no web or Android build there)
 ```
 
+- Lints with triggers: a changed MCP test file runs `tools/ci/check-mcp-ci-suite.py`; a changed
+  component header, `PhysicsSystem.h` or `Engine.h`/`.cpp` runs `tools/check_event_clears.py` (every
+  `FunctionSubscribe` event is in its holder's `forEachEvent` and every holder in `ComponentEvents.h`,
+  so the clears at Stop reach it; `tools/build.sh linux` runs it too).
 - The change: committed since the base, staged, unstaged and untracked files. A checkout without
   the stream's history reads its diff from `build/.rb-changes.json` (with every file's sha256: a
   diff that does not match the files is refused).

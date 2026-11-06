@@ -213,7 +213,8 @@ void prepare<Transform>(Transform& transform, Entity sourceEntity, CloneContext&
     // the copy of the root starts at the top of the hierarchy
     transform.parent = sourceEntity == ctx.sourceRoot ? NULL_ENTITY : ctx.remap(transform.parent);
     transform.needUpdate = true;
-    transform.needUpdateChildVisibility = true;
+    // needUpdateChildVisibility keeps the source's value: copying is no visibility change, so
+    // each copied child keeps its own visible flag (only a cascade pending on the source goes on)
 }
 
 template<>

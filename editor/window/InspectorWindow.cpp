@@ -810,7 +810,7 @@ void editor::InspectorWindow::clearSceneState(uint32_t sceneId) {
 
     if (actionPreviewing && actionPreviewSceneId == sceneId) {
         // The scene is already deleted, drop the snapshots instead of restoring them
-        actionPreviewStates.clear();
+        actionPreviewSnapshot.clear();
         releaseActionPreviewOwners();
         actionPreviewing = false;
         actionPreviewPlaying = false;
@@ -12367,7 +12367,7 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
         return;
     }
 
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewEntity = entity;
     actionPreviewSceneId = sceneProject->id;
 
@@ -12378,13 +12378,7 @@ void editor::InspectorWindow::startActionPreview(Entity entity, Scene* scene, Sc
         if (e == NULL_ENTITY || !scene->isEntityCreated(e) || !collected.insert(e).second) return;
 
         // Save this entity's state
-        ActionPreviewState state;
-        state.entity = e;
-        if (Transform* transform = scene->findComponent<Transform>(e)) {
-            state.parent = transform->parent;
-        }
-        state.components = Stream::encodeComponents(e, scene, scene->getSignature(e));
-        actionPreviewStates.push_back(state);
+        actionPreviewSnapshot.add(sceneProject->id, scene, e);
 
         // If entity has an ActionComponent with a target, save the target too
         if (ActionComponent* ac = scene->findComponent<ActionComponent>(e)) {
@@ -12435,7 +12429,7 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
         return;
     }
 
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewing = false;
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;
@@ -12446,47 +12440,10 @@ void editor::InspectorWindow::stopActionPreviewIfActive() {
 void editor::InspectorWindow::stopActionPreview(Scene* scene, SceneProject* sceneProject) {
     if (!actionPreviewing) return;
 
-    // Update snapshots with current user-editable config values before restoring
-    for (ActionPreviewState& state : actionPreviewStates) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-            continue;
-        }
-        for (ComponentType type : {ComponentType::TweenComponent, ComponentType::PositionTweenComponent, ComponentType::RotationTweenComponent,
-                                   ComponentType::ScaleTweenComponent, ComponentType::ColorTweenComponent, ComponentType::AlphaTweenComponent}) {
-            const reflect::ComponentDesc* desc = reflect::find(type);
-            if (void* comp = desc->find(scene, state.entity)) {
-                state.components[desc->key] = reflect::encode(*desc, comp, reflect::EncodeContext{});
-            }
-        }
-        if (auto* comp = scene->findComponent<ParticleSystemComponent>(state.entity)) {
-            state.components[Catalog::getComponentName(ComponentType::ParticleSystemComponent, true)] = reflect::encodeValue(ComponentType::ParticleSystemComponent, comp);
-        }
-        if (auto* comp = scene->findComponent<KeyframeTracksComponent>(state.entity)) {
-            // the keys and their settings (loop, relative) edited during the preview are kept,
-            // the playhead the preview moved (index, interpolation) goes back
-            const std::string componentName = Catalog::getComponentName(ComponentType::KeyframeTracksComponent, true);
-            YAML::Node encoded = reflect::encodeValue(ComponentType::KeyframeTracksComponent, comp);
-            const YAML::Node originalNode = state.components[componentName];
-            if (originalNode && !originalNode.IsNull()) {
-                for (const char* key : {"index", "interpolation"}) {
-                    if (originalNode[key]) {
-                        encoded[key] = originalNode[key];
-                    }
-                }
-            }
-            state.components[componentName] = encoded;
-        }
-    }
+    // the authored state back, with what commands wrote during the preview
+    actionPreviewSnapshot.restore(scene);
 
-    for (const ActionPreviewState& state : actionPreviewStates) {
-        if (state.entity == NULL_ENTITY || !scene->isEntityCreated(state.entity) || !state.components || state.components.IsNull()) {
-            continue;
-        }
-        Stream::decodeComponents(state.entity, state.parent, scene, state.components);
-        ProjectUtils::clearPreviewParticles(scene, state.entity);
-    }
-
-    actionPreviewStates.clear();
+    actionPreviewSnapshot.clear();
     actionPreviewing = false;
     actionPreviewPlaying = false;
     actionPreviewEntity = NULL_ENTITY;

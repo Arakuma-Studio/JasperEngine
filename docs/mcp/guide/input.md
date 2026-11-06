@@ -80,7 +80,9 @@ local held = fingerId and Input.getTouchById(fingerId)   -- never index Input.to
 `Engine.mouseMode = MouseMode.CAPTURED` locks the pointer for mouse-look. Desktop players lock
 at once (`POINTER_LOCKED`). A browser locks only after a click or key press: the state is
 `POINTER_PENDING` until then (and again after Esc, until the next click). In the editor the
-pointer is locked while the Game view has the focus. Losing the window focus (or an app pause)
+pointer is locked while the Game view has the focus. Esc in the focused Game view during Play is
+the game's key (`Input.getKeyDown(Input.KEY_ESCAPE)`, a pause menu) and the view keeps the focus, as
+in Unity. Losing the window focus (or an app pause)
 releases every held key, button and gamepad button (their `getKeyUp` fires), cancels the fingers
 and makes a lock `POINTER_PENDING`.
 

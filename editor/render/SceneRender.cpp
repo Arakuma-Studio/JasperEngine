@@ -605,6 +605,15 @@ OBB editor::SceneRender::getFamilyVisualOBB(Scene* target, Entity entity, float 
     return result;
 }
 
+void editor::SceneRender::hideEntityGizmos(Entity entity){
+    auto shape = particleShapeLines.find(entity);
+    if (shape != particleShapeLines.end()) shape->second->setVisible(false);
+}
+
+bool editor::SceneRender::gizmoActive(Entity entity) const{
+    return !scene->hasInactiveEntities() || scene->isEntityActiveInHierarchy(entity);
+}
+
 void editor::SceneRender::hideAllGizmos(){
     // (also the subclasses' gizmos: they hide theirs after calling this)
     dropGoneGizmos();

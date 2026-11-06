@@ -1116,6 +1116,31 @@ CASES = [
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
     },
+    {
+        "id": "guard_random_start_for_copies",
+        "kind": "guard",
+        "what_happened": "Copies of a looping entity Animation moved in lockstep; edit_animation's random_start (an "
+                         "Action's Random Start) desyncs them without a script.",
+        "text_at_issue": "edit_animation schema: random_start (a bare parameter)",
+        "source": "runtime-core spec 6.7 (Doriax 45966b13a: action start offset / random start)",
+        "prompt": "The 40 coins are copies of the Coin prefab and its CoinSpin animation makes them all spin in sync. "
+                  "Make each coin start its spin at a different point so they look natural.",
+        "mocks": [
+            {"tool": "get_animation", "result": ok(
+                "Animation \"CoinSpin\" [21]: loop true, duration -1, 1 action(s): 0 rotation tween on Coin (1 s, spin).",
+                {"animation": {"id": 21, "name": "CoinSpin"}, "loop": True, "duration": -1, "speed": 1, "start_offset": 0,
+                 "random_start": False, "actions": [{"index": 0, "kind": "rotation_tween"}]})},
+            {"tool": "find_entities", "result": ok("1 GameObject(s) match:\nCoinSpin [21] action animation",
+                                                  {"entities": [{"id": 21, "path": "Coin/CoinSpin"}]})},
+            {"tool": "edit_animation", "result": ok(
+                "Updated animation \"CoinSpin\": 1 action(s); 0 track(s) created, 0 rewritten, 0 tween(s) added (one undo step).",
+                {"animation": {"id": 21, "name": "CoinSpin"}, "random_start": True})},
+        ],
+        "checks": {"any_of": [{"calls": [{"tool": "edit_animation", "args": {"random_start": True}}]},
+                              {"calls": [{"tool": "set_properties", "args": {"values": {"action": {"randomStart": True}}}}]}],
+                   "must_not_call": ["create_script", "write_file"]},
+        "max_turns": 12,
+    },
     # -- dialogs (S69): results as the editor sends them; the model sees their structuredContent ---
     {
         "id": "dialog_fills_a_name_prompt",

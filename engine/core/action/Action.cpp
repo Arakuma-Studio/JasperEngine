@@ -4,6 +4,10 @@
 #include "Action.h"
 #include "component/ActionComponent.h"
 
+#include "Log.h"
+
+#include <cmath>
+
 using namespace jasperengine;
 
 Action::Action(Scene* scene): EntityHandle(scene){
@@ -112,6 +116,34 @@ float Action::getWeight() const{
     ActionComponent& action = getComponent<ActionComponent>();
 
     return action.weight;
+}
+
+void Action::setStartOffset(float startOffset){
+    ActionComponent& action = getComponent<ActionComponent>();
+
+    if (!std::isfinite(startOffset) || startOffset < 0){
+        Log::warn("Action.startOffset: %g is not a time into the action, 0 is used", (double)startOffset);
+        startOffset = 0;
+    }
+    action.startOffset = startOffset;
+}
+
+float Action::getStartOffset() const{
+    ActionComponent& action = getComponent<ActionComponent>();
+
+    return action.startOffset;
+}
+
+void Action::setRandomStart(bool randomStart){
+    ActionComponent& action = getComponent<ActionComponent>();
+
+    action.randomStart = randomStart;
+}
+
+bool Action::isRandomStart() const{
+    ActionComponent& action = getComponent<ActionComponent>();
+
+    return action.randomStart;
 }
 
 bool Action::isRunning() const{
