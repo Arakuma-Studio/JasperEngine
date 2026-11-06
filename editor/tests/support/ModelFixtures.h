@@ -11,7 +11,6 @@
 #include "json.hpp"
 
 #include <cstdint>
-#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -28,7 +27,6 @@ namespace jasperengine::editor::test {
         size_t addFloats(const std::vector<float>& values, int components, int target, bool bounds = false);
         size_t addIndices(const std::vector<uint32_t>& indices, int componentType = 5125);
         std::vector<uint8_t> glb() const;
-        void write(const std::filesystem::path& file) const;
     };
 
     struct GridOptions {

@@ -20,7 +20,7 @@
 #include "ecs/Entity.h"
 #include "ecs/ComponentFwd.h"
 #include "Engine.h"
-#include "util/HybridArray.h"
+#include "util/GrowArray.h"
 #include "math/AABB.h"
 #include "math/Matrix4.h"
 #include "math/Quaternion.h"
@@ -36,7 +36,6 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include "util/HybridArray.h"
 
 namespace jasperengine{
     class Scene;
@@ -203,7 +202,7 @@ namespace jasperengine::editor{
         // bounds the render system derives from the bones (the scene file stores them too)
         struct SavedMesh{
             Entity entity = NULL_ENTITY;
-            HybridArray<Matrix4, MAX_BONES> bonesMatrix;
+            GrowArray<Matrix4> bonesMatrix;
             AABB skinnedAABB;
             AABB worldAABB;
             bool needUpdateAABB = false;

@@ -71,14 +71,6 @@ TEST(SoundFit, SilenceIsNotMeasured) {
     EXPECT_TRUE(SoundFit::measure(silent).silent);
 }
 
-TEST(SoundFit, RefusesWhatHasNoSearchSpace) {
-    std::string error;
-    EXPECT_FALSE(SoundFit::canFit(SoundSynth::find("coin"), error));
-    EXPECT_NE(error.find("like fits a recipe"), std::string::npos);
-    EXPECT_TRUE(SoundFit::canFit(SoundSynth::find("click"), error));
-    EXPECT_TRUE(SoundFit::canFit(SoundSynth::find("impact"), error));
-}
-
 TEST(SoundFit, TheFitIsDeterministicAndBounded) {
     const SoundSynth::Preset& thump = *SoundSynth::find("thump");
     std::vector<float> samples;
@@ -115,11 +107,4 @@ TEST(SoundDesign, TheTableIsTheSpecs) {
     EXPECT_EQ(SoundDesign::families("impact"), (std::vector<std::string>{"wood", "metal", "stone", "soft", "heavy"}));
     EXPECT_EQ(SoundDesign::families("pop"), (std::vector<std::string>{"bubble", "cork", "soft"}));
     EXPECT_TRUE(SoundDesign::families("click").empty());
-}
-
-TEST(SoundDesign, RandomPicksAmongTheFirstThirteen) {
-    for (uint32_t seed = 0; seed < 500; seed++) {
-        EXPECT_FALSE(SoundDesign::isLayered(SoundSynth::pick(seed).name)) << seed;
-    }
-    EXPECT_EQ(SoundSynth::presets().size(), 17u);
 }

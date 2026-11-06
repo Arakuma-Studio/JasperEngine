@@ -33,7 +33,7 @@ async def batch_results(ed: Editor, calls: list[tuple[str, dict]]) -> list[dict]
     return (await ed.batch(calls, stop_on_error=False))["results"]
 
 
-async def test_build_two_scene_project(ed: Editor):
+async def test_edits_refused_while_play_starts(ed: Editor):
     child = (await ed.call("create_scene", name="StartupChild", type="3D"))["scene"]["id"]
     made = await ed.call("create_entity", scene=child, name="ChildProbe", type="cube", position=[0, 1, 0],
                          components=["Rigidbody"])
@@ -50,8 +50,6 @@ async def test_build_two_scene_project(ed: Editor):
     await ed.call("save_scene", scene=main, path="StartupMain.scene")
     S.update(main=main, child=child)
 
-
-async def test_edits_refused_while_play_starts(ed: Editor):
     main, child = S["main"], S["child"]
     results = await batch_results(ed, [
         ("play", {"action": "start", "scene": main, "wait": False}),

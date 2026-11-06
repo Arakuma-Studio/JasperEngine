@@ -142,6 +142,7 @@ Run the generator and commit its output:
 - Lints check-changed does not run; run the one for each area you changed, with `python3`:
   - `tools/check_raw_writes.py`, `tools/check_stream_keys.py`: file writes, decoders.
   - `tools/check_event_clears.py`: engine events (`FunctionSubscribe` members) cleared at Stop; `tools/build.sh linux` runs it too.
+  - `tools/check_text_encoding.py`: code-page conversions, Win32 `-A` calls, Apple string encodings, vswhere.
   - `tools/ci/check-hardcoded-shortcuts.py`: editor keys.
 - After renaming a path or build target these docs name: `python3 tools/check_agent_docs.py`.
 - Unit tests: `tools/build.sh unit-tests`.

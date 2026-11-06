@@ -42,6 +42,7 @@
 #include "util/CxxStandards.h"
 #include "util/FileUtils.h"
 #include "util/NativePlugins.h"
+#include "util/SystemFonts.h"
 #include "window/ConsoleWindow.h"
 #include "vcs/VcsService.h"
 
@@ -196,6 +197,8 @@ bool readProjectFile(SettingsContext& ctx, const Json& value, fs::path& out, std
         out.clear();
         return true;
     }
+    // a backslash is a separator on every platform (Stream::portablePath)
+    text = FileUtils::portablePath(text);
     fs::path absolute;
     if (!mcp::McpRefs::resolveProjectPath(ctx.project(), text, absolute, error, true)) return false;
     out = FileUtils::pathFromUtf8(text).lexically_normal();
@@ -3051,6 +3054,28 @@ std::vector<Setting> mcpSettingsTable() {
             };
             add(s);
         }
+        {
+            Setting s;
+            s.key = "preferences.cjk_font_language";
+            s.type = "enum";
+            s.values = {"auto", "japanese", "korean", "simplified_chinese", "traditional_chinese"};
+            s.preference = true;
+            s.description = "General: which language's glyph forms the editor uses for Chinese characters, from the "
+                            "system's fonts (auto: the system language). Applies at the next start.";
+            s.get = [](SettingsContext&) { return Json(AppSettings::getCjkFontLanguage()); };
+            s.set = [](SettingsContext&, const Json& value, bool apply, std::string& error) {
+                if (!value.is_string() || !SystemFonts::isLanguageSetting(value.get<std::string>())) {
+                    error = "must be auto, japanese, korean, simplified_chinese or traditional_chinese";
+                    return false;
+                }
+                if (apply) {
+                    AppSettings::setCjkFontLanguage(value.get<std::string>());
+                    AppSettings::saveSettings();
+                }
+                return true;
+            };
+            add(s);
+        }
         // S30: the platform tools of builds and releases (editor/platform/ExternalTools.h)
         auto toolPreference = [&stringPreference](const std::string& key, const std::string& tool, const std::string& description) {
             stringPreference(key, description, [tool] { return AppSettings::getExternalToolPath(tool); },
@@ -3354,6 +3379,7 @@ const Placement placements[] = {
     {"preferences.sound_browser_autoplay", "General", "Sound Browser", "Auto-play", "sound browser audition select play"},
     {"preferences.sound_browser_match_loudness", "General", "Sound Browser", "Match Loudness", "sound browser audition loudness lufs"},
     {"preferences.project_hub_at_startup", "General", "", "Show Project Hub at Startup", "project hub startup launcher templates"},
+    {"preferences.cjk_font_language", "General", "Editor Font", "CJK Font Language", "cjk chinese japanese korean kanji hanja han font language glyphs"},
     {"preferences.cmake_path", "External Tools", "Desktop Build", "CMake", "cmake executable"},
     {"preferences.build_c_compiler", "External Tools", "Desktop Build", "Compiler", "compiler kit c"},
     {"preferences.build_cxx_compiler", "External Tools", "Desktop Build", "C++ Compiler", "compiler kit cpp"},

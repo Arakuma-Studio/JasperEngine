@@ -199,3 +199,7 @@ int ObjectRender::getLivePipelineCount(){
 int ObjectRender::getUnfedVertexInputLoads(){
     return SokolObject::getUnfedVertexInputLoads();
 }
+
+int ObjectRender::getLoadingDescCount(){
+    return SokolObject::getLoadingDescCount();
+}

@@ -16,6 +16,7 @@ agent drives and checks it with `send_input`, `get_input_state` (group `gameplay
 | `Input.getGamepadButtonDown(id, b)`, `getGamepadButtonUp(id, b)` | per pad, `id` -1 any; `b` a code or a name (`"gamepad_a"`, `"a"`, `"dpad_up"`) (`isGamepadButtonPressed` is the level) |
 | `Input.anyKeyDown` (also `Input.anyKeyDown()`), `Input.anyKey` | a key, mouse button or gamepad button pressed this frame / held now |
 | `Input.inputString` | UTF-8 text typed this frame (backspace `"\b"`, return `"\n"`) |
+| `Engine.onCharInput(char)` | one call per typed character, a one-character UTF-8 string (`char32_t` in C++): a character beyond U+FFFF (an emoji) is one call on every platform, although Windows and Android deliver it as two UTF-16 halves |
 | `Input.getPressedControl()` | the first control pressed this frame by name (`"space"`, `"mouse_left"`, `"gamepad_a"`, `"left_x+"`, `"right_trigger"`), nil when none: "press a key" screens |
 | `Input.getMouseDelta()` (`Input.mouseDelta`) | canvas pixels the pointer moved this frame (raw motion while the pointer is locked; moves outside the canvas count) |
 | `Input.getMouseScrollDelta()` (`Input.mouseScrollDelta`) | the wheel offsets of this frame (y positive up) |
@@ -99,6 +100,10 @@ and makes a lock `POINTER_PENDING`.
   with `frames_after: 0`: the last frame that ran is then the one the input landed in (with
   the default `frames_after: 1` one more frame runs, and its window is empty).
 - To count edges from a script, keep counters in a Lua script and read them with `eval_lua`.
+- `send_input {type:"text", text:"a😀b"}` delivers the string at once (a paste or an IME commit);
+  with `per_unit: true` each UTF-16 unit is its own character event, as Windows (`WM_CHAR`) and
+  Android's keys deliver typing: the way to check on Linux that a field, `onCharInput` or
+  `Input.inputString` gets an emoji whole.
 
 ## Input Actions
 

@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "Engine.h"
 #include "util/FunctionSubscribe.h"
 #include "util/CrashGuard.h"
 #include "util/CrashHook.h"
@@ -28,6 +29,21 @@ namespace {
 
     int freeCalls = 0;
     void freeFunction() { freeCalls++; }
+
+    // A C++ script written when Engine::onCharInput took wchar_t, and one written now
+    struct WideCharScript {
+        std::vector<uint32_t> got;
+        void onCharInput(wchar_t c) { got.push_back(static_cast<uint32_t>(c)); }
+        void subscribe() { REGISTER_ENGINE_EVENT(onCharInput); }
+        void unsubscribe() { UNREGISTER_ENGINE_EVENT(onCharInput); }
+    };
+
+    struct CharScript {
+        std::vector<char32_t> got;
+        void onCharInput(char32_t c) { got.push_back(c); }
+        void subscribe() { REGISTER_ENGINE_EVENT(onCharInput); }
+        void unsubscribe() { UNREGISTER_ENGINE_EVENT(onCharInput); }
+    };
 
 }
 
@@ -347,3 +363,29 @@ TEST(CrashGuardTest, NestedGuardsKeepTheOuterOne) {
 }
 #endif
 #endif
+
+// Engine::onCharInput passes one whole character (char32_t); a handler declared with wchar_t
+// still compiles and subscribes
+TEST(FunctionSubscribeCompatTest, CharInputHandlersOfEitherTypeRegister) {
+    WideCharScript wide;
+    CharScript current;
+    wide.subscribe();
+    current.subscribe();
+    Engine::onCharInput.call(U'a');
+    Engine::onCharInput.call(U'\U0001F600');
+    wide.unsubscribe();
+    current.unsubscribe();
+    EXPECT_EQ(current.got, (std::vector<char32_t>{U'a', U'\U0001F600'}));
+    ASSERT_EQ(wide.got.size(), 2u);
+    EXPECT_EQ(wide.got[0], static_cast<uint32_t>('a'));
+    // the deprecated wchar_t form gets the character converted to wchar_t: whole where wchar_t is
+    // 32 bits, its low 16 bits on Windows (docs/mcp/guide/cpp-scripting.md)
+    EXPECT_EQ(wide.got[1], static_cast<uint32_t>(static_cast<wchar_t>(U'\U0001F600')));
+    if constexpr (sizeof(wchar_t) == 4) {
+        EXPECT_EQ(wide.got[1], 0x1F600u);
+    } else {
+        EXPECT_EQ(wide.got[1], 0xF600u);
+    }
+    Engine::onCharInput.call(U'b');
+    EXPECT_EQ(current.got.size(), 2u) << "unsubscribed";
+}
