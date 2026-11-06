@@ -28,6 +28,15 @@ JIT = HEADER + """#0 libjasperengine.so+0xb294cd [je_crash_posix::capture(void**
 job system:
   je-worker-0 (worker): idle
 """
+# the same JIT in Mesa 23 (the Ubuntu 22.04 build image), where gallium is inside swrast_dri.so
+JIT_MESA23 = HEADER + """#3 libLLVM-15.so.1+0x120b2d1 [llvm::LiveIntervalCalc::calculate(llvm::LiveInterval&, bool)+0x4a1]
+#13 libLLVM-15.so.1+0x2952ba0 [LLVMGetPointerToGlobal+0x10]
+#14 swrast_dri.so+0x6c3c97
+#21 libjasperengine.so+0xc3188e [jasperengine::SokolDrawBatch::holdDraw(jasperengine::SokolObject*, unsigned int, unsigned int, unsigned int)+0x1fe]
+#22 libjasperengine.so+0xc31e94 [jasperengine::SokolObject::draw(unsigned int, unsigned int, unsigned int)+0x74]
+job system:
+  je-worker-0 (worker): idle
+"""
 # the same draw on a real driver: not the software JIT
 NVIDIA = HEADER + """#3 libnvidia-gpucomp.so.595.99.02+0x2cb9c16
 #14 libnvidia-glcore.so.595.99.02+0x105513c
@@ -74,6 +83,9 @@ class SmokeJitHangsTest(unittest.TestCase):
 
     def test_every_report_in_the_jit_passes(self):
         self.assertTrue(smoke_jit_hangs.only_software_jit([self.log(JIT, JIT)]))
+
+    def test_the_jit_of_mesa_23_passes(self):
+        self.assertTrue(smoke_jit_hangs.only_software_jit([self.log(JIT_MESA23, JIT_MESA23)]))
 
     def test_a_real_driver_fails(self):
         self.assertFalse(smoke_jit_hangs.only_software_jit([self.log(NVIDIA)]))

@@ -72,6 +72,12 @@ namespace jasperengine::editor::mcp {
         // The handler completes the call later from elsewhere (a job, a worker posting back).
         void detach() { isDetached = true; }
         bool detached() const { return isDetached; }
+        // The main thread has begun running it (a queued call has not)
+        void markStarted() { hasStarted = true; }
+        bool started() const { return hasStarted.load(); }
+        // Instead of its frames, if a file picker opens and holds the main thread meanwhile
+        void setOnFilePicker(std::function<void()> fn) { onFilePicker = std::move(fn); }
+        std::function<void()> takeOnFilePicker() { auto fn = std::move(onFilePicker); onFilePicker = nullptr; return fn; }
 
         // notifications/progress to the client, when it sent a progressToken. Best effort,
         // thread-safe; `total` <= 0 means unknown.
@@ -130,6 +136,8 @@ namespace jasperengine::editor::mcp {
         std::mutex progressMutex;
         std::atomic<bool> isCompleted{false};
         std::atomic<bool> isCancelled{false};
+        std::atomic<bool> hasStarted{false};
+        std::function<void()> onFilePicker;     // main thread only
         bool isDetached = false;
         bool gatedChanges = false;
         std::weak_ptr<McpCall> parentCall;

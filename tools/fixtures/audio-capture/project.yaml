@@ -1,0 +1,22 @@
+formatVersion: 1
+name: Audio Capture
+canvasWidth: 1280
+canvasHeight: 720
+scalingMode: fitwidth
+textureStrategy: none
+vsync: true
+htmlUiMsaaSamples: 4
+htmlUiGlyphAtlasMiB: 0
+htmlUiSdfPrimitives: true
+htmlUiTransformAwareText: true
+windowMode: windowed
+windowWidth: 1280
+windowHeight: 720
+windowResizable: true
+luaDir: .
+versionControl:
+  lfs: true
+startSceneId: 2579869450
+scenes:
+  - filepath: scenes/Main.scene
+    filepathGuid: eae9b3490159503b38ae9e91d480a3e1

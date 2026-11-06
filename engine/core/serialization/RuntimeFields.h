@@ -14,6 +14,8 @@
 
 #include "Export.h"
 #include "JasperEngine.h"
+#include "component/PrefabComponent.h"
+#include "component/RagdollComponent.h"
 #include "serialization/CookCodecs.h"
 #include "serialization/codecs/CustomCodecs.h"
 #include "registry/EntityRegistry.h"

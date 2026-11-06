@@ -37,7 +37,9 @@ namespace jasperengine {
         AvatarMask = 21,            // a .mask avatar mask (S21)
         AnimationMontage = 22,      // a .montage animation montage (S21)
         VertexAnimation = 23,       // a .vat Vertex Animation (Vertex Animator's animation; its GUID in its JSON)
-        TitleArt = 24               // a .titleart Title Art document (S80; its GUID in its JSON)
+        // 24 to 27 are the pixel art program's (docs/specs/S41-S52)
+        SoundEvent = 28,            // a .soundevent Sound Event (S37; its GUID in its .meta)
+        TitleArt = 29               // a .titleart Title Art document (S80; its GUID in its JSON)
     };
     // the last value (assetTypeFromName's bound; AssetTypeTest iterates to it)
     constexpr AssetType LAST_ASSET_TYPE = AssetType::TitleArt;
@@ -68,6 +70,7 @@ namespace jasperengine {
             case AssetType::AvatarMask: return "avatar_mask";
             case AssetType::AnimationMontage: return "animation_montage";
             case AssetType::VertexAnimation: return "vertex_animation";
+            case AssetType::SoundEvent: return "sound_event";
             case AssetType::TitleArt: return "title_art";
             case AssetType::Unknown: break;
         }

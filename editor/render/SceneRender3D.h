@@ -6,7 +6,6 @@
 #include "physics/PhysicsDebugLines.h"
 #include "SceneRender.h"
 
-#include "JasperEngine.h"
 #include "gizmo/ViewportGizmo.h"
 
 #include <cstddef>
@@ -14,6 +13,23 @@
 #include <functional>
 #include <unordered_set>
 #include <vector>
+#include "ecs/ComponentFwd.h"
+#include "io/watch/FileIdentity.h"
+
+namespace jasperengine{
+    class Sprite;
+    enum class LightType;
+    struct BuoyancyComponent;
+    struct CharacterControllerComponent;
+    struct ForceFieldComponent;
+    struct LightComponent;
+    struct LocalVolumetricFogComponent;
+    struct ParticleSystemComponent;
+    struct PolygonPoint;
+    struct ReflectionProbeComponent;
+    struct TranslateTracksComponent;
+    struct WaterVolumeComponent;
+}
 
 namespace jasperengine::editor{
 
@@ -62,6 +78,8 @@ namespace jasperengine::editor{
         // Field's shape (S20 R28: the Particle Effect panel's gizmo toggles)
         std::map<Entity, LineRenderer*> particleLines;
         std::map<Entity, LineRenderer*> forceFieldLines;
+        // a highlighted Capsule Shadow Caster's capsules, with the selected one's handles
+        std::map<Entity, LineRenderer*> capsuleShadowLines;
 
         ViewportGizmo viewgizmo;
 
@@ -93,6 +111,7 @@ namespace jasperengine::editor{
         void createOrUpdateWaterVolumeLines(Entity entity, const Transform& transform, const WaterVolumeComponent& volume, bool visible, bool highlighted);
         void createOrUpdateBuoyancyLines(Entity entity, const Transform& transform, const BuoyancyComponent& buoyancy, bool visible, bool highlighted);
         void createOrUpdateControllerLines(Entity entity, const Transform& transform, const CharacterControllerComponent& controller, bool visible, bool highlighted);
+        void createOrUpdateCapsuleShadowLines(Entity entity, const Transform& transform, const CapsuleShadowCasterComponent& caster, bool visible, bool selected);
         void createOrUpdateParticleLines(Entity entity, const Transform& transform, const ParticleSystemComponent& particles, bool visible);
         void createOrUpdateForceFieldLines(Entity entity, const Transform& transform, const ForceFieldComponent& field, bool visible);
         void createCameraFrustum(Entity entity, const Transform& transform, const CameraComponent& cameraComponent, bool fixedSizeFrustum, bool isMainCamera);

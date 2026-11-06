@@ -5,6 +5,7 @@
 #define RECTTRANSFORM_H
 
 #include "GameObject.h"
+#include "component/RectTransformComponent.h"
 
 namespace jasperengine{
     class JASPERENGINE_API RectTransform: public GameObject{

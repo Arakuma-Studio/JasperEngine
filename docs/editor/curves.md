@@ -18,7 +18,7 @@ same values are in scene files, `.particles` files, MCP and Lua.
 
 - **Keys**: double-click on the curve adds a key there (or **Add Key** in the right-click menu);
   drag keys to move them; Shift- or Ctrl-click adds to the selection and a box drag selects
-  several; **Delete** removes them. Ctrl+C / Ctrl+V copy and paste keys.
+  several; **Delete** (or Backspace) removes them. Ctrl+C / Ctrl+V copy and paste keys.
 - **Tangents**: a selected key shows its tangent handles. The key menu sets **Clamped Auto**
   (the default for new keys: smooth, never overshooting), **Auto**, **Free Smooth**, **Flat**,
   **Broken** (the two sides move separately) and, per side, **Free**, **Linear** and **Constant**
@@ -31,6 +31,10 @@ same values are in scene files, `.particles` files, MCP and Lua.
   `<project>/EditorSettings/Curves/`).
 - Undo: every gesture (a drag, a menu action, a typed number, a preset) is one step. Esc during a
   drag cancels it.
+- Keys: while the window has focus, F, Delete, Ctrl+C and Ctrl+V act on the curve and only on it,
+  and so do **Edit > Frame Selected**, **Delete**, **Copy** and **Paste** (with nothing selected,
+  Delete does nothing; it never reaches the scene). Rebind them in **Edit > Shortcuts...**, group
+  Curve (`curve.frame`, `curve.delete`, `curve.copy`, `curve.paste`).
 
 ## Gradients
 

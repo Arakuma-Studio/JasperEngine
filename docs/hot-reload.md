@@ -81,7 +81,9 @@ it saves. That call's result carries `external_changes`:
      problems: [{path, line, message}], ...}
 
 `source` says whether the change came from the watcher's journal or from the stat scan used when
-the watcher is off or degraded. The call waits up to 10 s for the reloads it started; what still
+the watcher is off or degraded. A file written once a call's result has arrived is reported by the
+next call, however soon and whatever its timestamp; a file another program writes while a tool call
+runs, stamped during that call, is taken for the tool's own. The call waits up to 10 s for the reloads it started; what still
 reloads is in `pending`. A reload that failed is a problem (the previous version is kept). A
 change the watcher already reloaded before the call is reported once and reloaded once, with
 the problems that reload found; the HTML UI documents it reloaded are in `ui_reloaded` when the
@@ -120,3 +122,10 @@ Inside `engine/core/io/watch/`: `FileWatcher` (one backend thread per root), the
 main-thread pump within 1 ms a frame, the `flush()` barrier) and `SharedFileReader` (reads that
 let another program replace the file on Windows). In games nothing is watched: Android, iOS and
 the web have no backend, and players never start the service.
+
+## Linked folders
+
+A folder linked in from out of the project is watched like one of its folders (S68): each such
+folder gets a backend of its own on its real path, whose changes are reported by the path under the
+link. A folder two links lead to is watched once. A link inside the project adds nothing to watch: its
+target is watched by its own name. A link made or removed while watching starts or stops the watch.

@@ -25,6 +25,7 @@
 #include "window/BookmarksWindow.h"
 
 #include "imgui_internal.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cctype>
@@ -337,7 +338,7 @@ void editor::ProjectWindow::handleTypeAhead() {
     if (!windowFocused || io.WantTextInput || io.KeyCtrl || io.KeyAlt || io.KeySuper || io.KeyShift || isRenaming) return;
     char typed = 0;
     for (int k = ImGuiKey_0; k <= ImGuiKey_Z; k++) {
-        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k), false)) continue;
+        if (!ImGui::IsKeyPressed(static_cast<ImGuiKey>(k), false)) continue;   // shortcut-lint: allow type-ahead in the focused listing: bare letters and digits, never a binding of the window's commands
         typed = k <= ImGuiKey_9 ? static_cast<char>('0' + (k - ImGuiKey_0)) : static_cast<char>('a' + (k - ImGuiKey_A));
         break;
     }
@@ -522,19 +523,20 @@ void editor::ProjectWindow::renderSearchPopups() {
     const float buttonWidth = ImGui::GetFontSize() * 6.0f;
 
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal(savePopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (EditorModal::begin(savePopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::Text("Save the search \"%s\" as:", searchText.c_str());
+        EditorModal::message("Save the search \"" + searchText + "\" as:");
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 18.0f);
-        const bool enter = ImGui::InputText("##SearchName", searchNameBuffer, sizeof(searchNameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
-        ImGui::Checkbox("Share with Project", &saveSearchShared);
+        const bool enter = EditorModal::inputText("##SearchName", "name", searchNameBuffer, sizeof(searchNameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        EditorModal::checkbox("Share with Project", "share_with_project", &saveSearchShared);
         ImGui::SetItemTooltip("Kept in project.yaml for everyone, instead of only for you");
         const bool valid = searchNameBuffer[0] != '\0';
         ImGui::BeginDisabled(!valid);
-        const bool save = ImGui::Button("Save", ImVec2(buttonWidth, 0.0f)) || (enter && valid);
+        const bool save = EditorModal::button("Save", "ok", ImVec2(buttonWidth, 0.0f)) || (enter && valid);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         if (save) {
             std::vector<SavedSearch> user = organisation.userSearches();
             std::vector<SavedSearch> shared = organisation.projectSearches();
@@ -555,16 +557,17 @@ void editor::ProjectWindow::renderSearchPopups() {
     }
 
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal(renamePopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (EditorModal::begin(renamePopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        EditorModal::message("Rename the saved search \"" + editSearchName + "\".");
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 18.0f);
-        const bool enter = ImGui::InputText("##SearchRename", searchNameBuffer, sizeof(searchNameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool enter = EditorModal::inputText("##SearchRename", "name", searchNameBuffer, sizeof(searchNameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
         const bool valid = searchNameBuffer[0] != '\0';
         ImGui::BeginDisabled(!valid);
-        const bool rename = ImGui::Button("Rename", ImVec2(buttonWidth, 0.0f)) || (enter && valid);
+        const bool rename = EditorModal::button("Rename", "ok", ImVec2(buttonWidth, 0.0f)) || (enter && valid);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         if (rename) {
             std::vector<SavedSearch> user = organisation.userSearches();
             std::vector<SavedSearch> shared = organisation.projectSearches();
@@ -580,18 +583,20 @@ void editor::ProjectWindow::renderSearchPopups() {
     }
 
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal(editPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (EditorModal::begin(editPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        EditorModal::message("Edit the saved search \"" + editSearchName + "\".");
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 18.0f);
-        ImGui::InputText("Name", searchNameBuffer, sizeof(searchNameBuffer));
+        EditorModal::inputText("Name", "name", searchNameBuffer, sizeof(searchNameBuffer));
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 18.0f);
-        ImGui::InputTextWithHint("Folder", "the whole project", searchFolderBuffer, sizeof(searchFolderBuffer));
+        EditorModal::inputTextWithHint("Folder", "folder", "the whole project", searchFolderBuffer, sizeof(searchFolderBuffer));
         ImGui::Separator();
         if (editSearchRaw) {
             ImGui::TextDisabled("This search uses terms the rows cannot show: edit its text.");
             ImGui::SetNextItemWidth(ImGui::GetFontSize() * 24.0f);
-            ImGui::InputText("Query", searchQueryBuffer, sizeof(searchQueryBuffer));
+            EditorModal::inputText("Query", "query", searchQueryBuffer, sizeof(searchQueryBuffer));
         } else {
             int mode = editSearchRows.any ? 1 : 0;
+            EditorModal::enumField("match", mode, {"All of", "Any of"});
             ImGui::RadioButton("All of", &mode, 0);
             ImGui::SameLine();
             ImGui::RadioButton("Any of", &mode, 1);
@@ -621,14 +626,20 @@ void editor::ProjectWindow::renderSearchPopups() {
             if (removeRow >= 0) editSearchRows.rows.erase(editSearchRows.rows.begin() + removeRow);
             if (ImGui::SmallButton(ICON_FA_PLUS " Add Row")) editSearchRows.rows.push_back({SavedSearchRows::Field::Name, ""});
             ImGui::TextDisabled("%s", editSearchRows.toQuery().c_str());
+            // the rows edit a query an agent writes whole
+            std::string query = editSearchRows.toQuery();
+            if (EditorModal::field("query", query)) {
+                std::snprintf(searchQueryBuffer, sizeof(searchQueryBuffer), "%s", query.c_str());
+                editSearchRaw = true;
+            }
         }
         ImGui::Separator();
         const bool valid = searchNameBuffer[0] != '\0';
         ImGui::BeginDisabled(!valid);
-        const bool save = ImGui::Button("Save", ImVec2(buttonWidth, 0.0f));
+        const bool save = EditorModal::button("Save", "ok", ImVec2(buttonWidth, 0.0f));
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         if (save) {
             std::vector<SavedSearch> user = organisation.userSearches();
             std::vector<SavedSearch> shared = organisation.projectSearches();
@@ -648,19 +659,21 @@ void editor::ProjectWindow::renderSearchPopups() {
     }
 
     ImGui::SetNextWindowPos(center, ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-    if (ImGui::BeginPopupModal(labelPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+    if (EditorModal::begin(labelPopup, nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::TextUnformatted("A label for the selected assets:");
+        EditorModal::message("A label for the selected assets:");
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
         ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
-        const bool enter = ImGui::InputText("##NewLabel", newLabelBuffer, sizeof(newLabelBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool enter = EditorModal::inputText("##NewLabel", "label", newLabelBuffer, sizeof(newLabelBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
         std::string label, why;
         const bool valid = AssetLabels::normalizeLabel(newLabelBuffer, label, &why);
         if (!valid && newLabelBuffer[0]) ImGui::TextDisabled("%s", why.c_str());
+        EditorModal::error(valid ? std::string() : newLabelBuffer[0] ? why : std::string("The label is empty."));
         ImGui::BeginDisabled(!valid);
-        const bool add = ImGui::Button("Add", ImVec2(buttonWidth, 0.0f)) || (enter && valid);
+        const bool add = EditorModal::button("Add", "ok", ImVec2(buttonWidth, 0.0f)) || (enter && valid);
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel", ImVec2(buttonWidth, 0.0f)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
         if (add) {
             setLabelOnSelection(project->getAssetLabels().canonical(label), true);
             ImGui::CloseCurrentPopup();

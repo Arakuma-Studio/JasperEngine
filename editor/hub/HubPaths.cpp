@@ -186,11 +186,4 @@ std::string targetProblem(const fs::path& dir) {
     return std::string();
 }
 
-fs::path stagingFolder(const fs::path& parent, const std::string& name) {
-    std::error_code ec;
-    fs::path staging = parent / (name + ".importing");
-    for (int n = 2; fs::exists(staging, ec); n++) staging = parent / (name + ".importing" + std::to_string(n));
-    return staging;
-}
-
 }

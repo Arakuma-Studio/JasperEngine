@@ -31,7 +31,7 @@
 
 namespace jasperengine::editor {
 
-    enum class SearchKind : uint8_t { Command, Panel, Setting, Component, GameObject, Asset };
+    enum class SearchKind : uint8_t { Command, Panel, Setting, Component, GameObject, Asset, Sound };
 
     const char* searchKindName(SearchKind kind);                     // "command", "panel", ...
     const char* searchKindTitle(SearchKind kind);                    // "Command", "Panel", ...

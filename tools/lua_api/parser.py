@@ -2469,9 +2469,58 @@ OVERRIDES.update({
                 'the game ends. `loadType` as AudioSource.loadType (default Auto). False when the file does not load.'],
         'overloads': [([('path', 'string'), ('loadType?', 'AudioLoadType')], 'boolean')]},
     ('AudioSource', 'playOneShot'): {
-        'doc': ["Unity's PlayOneShot: the clip as an extra voice over what plays (volume x volumeScale, the",
-                "source's group, pitch, pan and position). Up to maxVoices voices; the oldest one-shot is stolen."],
+        'doc': ["Unity's PlayOneShot: the clip, or a Sound Event's pick (its .soundevent path or GUID), as an extra",
+                "voice over what plays (volume x volumeScale, the source's group, pitch, pan and position). Up to",
+                'maxVoices voices; the oldest one-shot is stolen.'],
         'overloads': [([('path', 'string'), ('volumeScale?', 'number')], '')]},
+    ('Audio', 'play'): {
+        'doc': ['A Sound Event (GUID or .soundevent path) or a clip path as a free voice. Without target or position it is 2D.',
+                'An unknown name gives an invalid handle and one warning per name per Play. Inside a physics callback it',
+                'starts at the frame\'s audio update.'],
+        'overloads': [([('eventOrClip', 'string'), ('opts?', 'AudioPlayOptions')], 'SoundHandle')]},
+    ('Audio', 'stopAll'): {
+        'doc': ['Stops the voices started by Audio.play, triggers and one-shots: all, or those routed to `group` or a group',
+                'below it. The count stopped (0 inside a physics callback, where it runs at the audio update).',
+                'AudioSystem.stopAll also stops the sources\' main voices.'],
+        'overloads': [([('group?', 'string')], 'integer')]},
+    ('Audio', 'mark'): {
+        'doc': ['Writes a marker line at this sample in the audio capture of the Play or player run; does nothing without one.',
+                'At most 200 bytes of label.'],
+        'overloads': [([('label', 'string')], '')]},
+    ('Audio', 'isCapturing'): {
+        'doc': ['True while this Play or player run writes an audio capture.'],
+        'overloads': [([], 'boolean')]},
+    ('Audio', 'playMusic'): {
+        'doc': ['Starts or switches the music: a clip (its loop region repeats until advanceMusic) or a Sound Event played as',
+                'a playlist of sections. Survives scene loads. The playing track again does nothing. False, warned once,',
+                'for a layer event or sections that differ in rate or channels.'],
+        'overloads': [([('eventOrClip', 'string'), ('opts?', 'MusicOptions')], 'boolean')]},
+    ('Audio', 'stopMusic'): {
+        'doc': ['A linear fade to silence over `fade` seconds (default at once), then the music stops; opts.sync: when the fade starts.'],
+        'overloads': [([('fade?', 'number'), ('opts?', 'MusicStopOptions')], '')]},
+    ('Audio', 'advanceMusic'): {
+        'doc': ['The current section ends its loop at its next loop end, then its tail plays and the next section follows.',
+                'False without music.'],
+        'overloads': [([], 'boolean')]},
+    ('Audio', 'playStinger'): {
+        'doc': ['A clip or Sound Event on the music\'s next "beat" (default), "bar" or "now", sample-exact; owned by the music,',
+                'so a scene load does not cut it. Without music or tempo it plays now, warned once.'],
+        'overloads': [([('eventOrClip', 'string'), ('sync?', 'string')], 'SoundHandle')]},
+    ('Audio', 'getMusic'): {
+        'doc': ['The track playing (the incoming one during a crossfade), "" without music.'],
+        'overloads': [([], 'string')]},
+    ('Audio', 'getMusicTime'): {
+        'doc': ['Seconds of the track played so far, all sections.'],
+        'overloads': [([], 'number')]},
+    ('Audio', 'getMusicPosition'): {
+        'doc': ['Where the music is on its beat grid (bar and beat 1-based, 0 before the first beat); nil without music or tempo.'],
+        'overloads': [([], 'MusicPosition?')]},
+    ('SoundHandle', 'fadeOut'): {
+        'doc': ['To silence over `seconds`, then stops (opts.pause: pauses); the volume is put back.'],
+        'overloads': [([('seconds', 'number'), ('opts?', 'AudioFadeOutOptions')], '')]},
+    ('SoundHandle', 'fadeTo'): {
+        'doc': ['The volume moves to `volume` over `seconds`.'],
+        'overloads': [([('volume', 'number'), ('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
     ('AudioSource', 'fadeIn'): {
         'doc': ['Plays from silence to the current volume over `seconds` (starting it when it is not playing).'],
         'overloads': [([('seconds', 'number'), ('opts?', 'AudioTimeOptions')], '')]},
@@ -3127,6 +3176,9 @@ ENGINE_EVENT_ARGS = {
 # Handler arguments of other classes' event fields, by (class, field)
 EVENT_FIELD_ARGS = {
     ('Log', 'onMessageReceived'): ['message', 'stackTrace', 'level'],
+    ('Audio', 'onMusicBeat'): ['bar', 'beat'],
+    ('Audio', 'onMusicSection'): ['section', 'clip'],
+    ('Device', 'onThermalStateChanged'): ['state'],
 }
 
 _LUA_KEYWORDS = {'and', 'break', 'do', 'else', 'elseif', 'end', 'false', 'for', 'function', 'goto', 'if',

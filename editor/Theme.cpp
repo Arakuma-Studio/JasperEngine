@@ -102,6 +102,8 @@ ImVec4 jasperengine::editor::Theme::Colors::RowBackgroundAlt;
 ImVec4 jasperengine::editor::Theme::Colors::PlayModeTint;
 ImVec4 jasperengine::editor::Theme::Colors::PhysicsAccent;
 ImVec4 jasperengine::editor::Theme::Colors::PhysicsAccentHovered;
+ImVec4 jasperengine::editor::Theme::Colors::AnimationAudio;
+ImVec4 jasperengine::editor::Theme::Colors::AnimationSnapshot;
 
 void jasperengine::editor::Theme::apply() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -193,6 +195,9 @@ void jasperengine::editor::Theme::apply() {
     Colors::PlayModeTint = ImVec4(0.78f, 0.80f, 0.87f, 1.00f);
     Colors::PhysicsAccent = hex(0xC8701E);
     Colors::PhysicsAccentHovered = hex(0xD98232);
+    // Unity's Timeline audio track green, and a mixer purple
+    Colors::AnimationAudio = hex(0x3E9E5B);
+    Colors::AnimationSnapshot = hex(0x8A63C9);
 
     Colors::ButtonActivated = hex(0x46607C);
     Colors::IconButtonHovered = ImVec4(1.0f, 1.0f, 1.0f, 0.08f);

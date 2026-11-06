@@ -6,6 +6,8 @@
 
 #include "GameObject.h"
 #include "buffer/ExternalBuffer.h"
+#include "component/PointsComponent.h"
+#include "texture/Material.h"
 
 namespace jasperengine{
 

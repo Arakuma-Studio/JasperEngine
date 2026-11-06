@@ -127,6 +127,20 @@ namespace {
         JE_FIELD(PBR::Hex, contrast, .min = 0.0f, .max = 1.0f),
     };
 
+    // the Hair shading model (S57 R5): enabled is Shading Model Hair in the Inspector
+    constexpr FieldDesc kHairFields[] = {
+        JE_FIELD(PBR::Hair, enabled, .updateFlags = kTexture, .label = "Hair"),
+        JE_FIELD(PBR::Hair, primaryColor, .flags = ColorLinear, .min = 0.0f, .max = kInf),
+        JE_FIELD(PBR::Hair, primaryShift, .min = -1.0f, .max = 1.0f),
+        JE_FIELD(PBR::Hair, primaryWidth, .min = 0.01f, .max = 1.0f),
+        JE_FIELD(PBR::Hair, secondaryColor, .flags = ColorLinear, .min = 0.0f, .max = kInf),
+        JE_FIELD(PBR::Hair, secondaryShift, .min = -1.0f, .max = 1.0f),
+        JE_FIELD(PBR::Hair, secondaryWidth, .min = 0.01f, .max = 1.0f),
+        JE_FIELD(PBR::Hair, rotation, .unit = Unit::Radians, .label = "Strand Rotation"),
+        JE_FIELD(PBR::Hair, flowMap, .updateFlags = kTexture),
+        JE_FIELD(PBR::Hair, flowMapTexCoord, .updateFlags = kTexture, .min = 0.0f, .max = 1.0f, .label = "Flow Map UV Set"),
+    };
+
     const StructDesc kClearcoatStruct = JE_STRUCT_DESC(PBR::Clearcoat, "Clearcoat", kClearcoatFields);
     const StructDesc kSheenStruct = JE_STRUCT_DESC(PBR::Sheen, "Sheen", kSheenFields);
     const StructDesc kAnisotropyStruct = JE_STRUCT_DESC(PBR::Anisotropy, "Anisotropy", kAnisotropyFields);
@@ -135,6 +149,7 @@ namespace {
     const StructDesc kVolumeStruct = JE_STRUCT_DESC(PBR::Volume, "Volume", kVolumeFields);
     const StructDesc kSpecularStruct = JE_STRUCT_DESC(PBR::Specular, "Specular", kSpecularFields);
     const StructDesc kHexStruct = JE_STRUCT_DESC(PBR::Hex, "Hex", kHexFields);
+    const StructDesc kHairStruct = JE_STRUCT_DESC(PBR::Hair, "Hair", kHairFields);
 
     constexpr FieldDesc kPbrFields[] = {
         JE_FIELD(PBR, clearcoat, .ops = &ops::Value<PBR::Clearcoat>, .structDesc = &kClearcoatStruct, .label = "Clear Coat"),
@@ -145,6 +160,7 @@ namespace {
         JE_FIELD(PBR, volume, .ops = &ops::Value<PBR::Volume>, .structDesc = &kVolumeStruct),
         JE_FIELD(PBR, specular, .ops = &ops::Value<PBR::Specular>, .structDesc = &kSpecularStruct, .label = "Specular & IOR"),
         JE_FIELD(PBR, hex, .ops = &ops::Value<PBR::Hex>, .structDesc = &kHexStruct, .label = "Hex Tiling"),
+        JE_FIELD(PBR, hair, .ops = &ops::Value<PBR::Hair>, .structDesc = &kHairStruct),
     };
 
 }
@@ -161,6 +177,15 @@ namespace {
     // so are the extended lobes (OutOfLineValue::edit)
     void* pbrRef(void* material) {
         return &static_cast<Material*>(material)->pbr.edit();
+    }
+
+    // read, an unset one is its defaults and nothing is made
+    const void* extraPassPeek(const void* material) {
+        return &static_cast<const Material*>(material)->extraPass.get();
+    }
+
+    const void* pbrPeek(const void* material) {
+        return &static_cast<const Material*>(material)->pbr.get();
     }
 
     constexpr FieldDesc kMaterialFields[] = {
@@ -205,10 +230,10 @@ namespace {
         JE_FIELD(Material, stencil, .structDesc = &kMaterialStencilStruct, .flags = ListWhole, .updateFlags = kMeshReload),
         JE_FIELD(Material, colorWrite, .ops = &ops::ColorWrite, .updateFlags = kMeshReload, .min = -1.0f, .max = 15.0f),
         detail::makeField<MaterialPass>("extraPass", &extraPassRef,
-                                        FieldMeta{.flags = ListWhole, .updateFlags = kMeshReload | kTexture | UpdateFlags_Shader_Uniforms}),
+                                        FieldMeta{.flags = ListWhole, .updateFlags = kMeshReload | kTexture | UpdateFlags_Shader_Uniforms, .peek = &extraPassPeek}),
         JE_FIELD(Material, emissiveStrength),
         detail::makeField<MaterialPbrExtensions>("pbr", &pbrRef,
-                                                 FieldMeta{.ops = &ops::Value<MaterialPbrExtensions>, .structDesc = &kMaterialPbrStruct}),
+                                                 FieldMeta{.ops = &ops::Value<MaterialPbrExtensions>, .structDesc = &kMaterialPbrStruct, .peek = &pbrPeek}),
     };
 
 }
