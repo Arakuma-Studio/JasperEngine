@@ -8,7 +8,7 @@ A runtime is a directory named by its id (<platform>-<arch>-<backend>-<flavour>[
 release variant of engine/player/variants.json, docs/specs/S34-player-size.md R4; the full player
 has the plain id):
 
-    player-info.json          schema 1: id, engineVersion, gitSha, contentFormatVersion, modelCookFormats, capacities,
+    player-info.json          schema 1: id, engineVersion, gitSha, contentFormatVersion, modelCookFormats,
                               features (the variant's modules), variant, notices,
                               executables {path: sha256}, executable
     files/                    what a build stages as it is (the executable; the web's two players
@@ -48,8 +48,6 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 WEB_TEMPLATE = REPO / "engine/platform/emscripten/web"
 ANDROID_TEMPLATE = REPO / "engine/platform/android/player"
-CAPACITIES = ("MAX_SUBMESHES", "MAX_TILEMAP_TILESRECT", "MAX_TILEMAP_TILES", "MAX_SPRITE_FRAMES", "MAX_EXTERNAL_BUFFERS",
-              "MAX_BONES")
 VARIANTS = REPO / "engine/player/variants.json"
 
 
@@ -68,17 +66,6 @@ def sha256(path: Path) -> str:
         for block in iter(lambda: stream.read(1 << 20), b""):
             digest.update(block)
     return digest.hexdigest()
-
-
-def capacities() -> dict[str, int]:
-    text = (REPO / "engine/core/Engine.h").read_text(encoding="utf-8")
-    found = {}
-    for name in CAPACITIES:
-        match = re.search(rf"^#define {name} (\d+)", text, re.MULTILINE)
-        if not match:
-            raise SystemExit(f"engine/core/Engine.h has no #define {name}")
-        found[name] = int(match.group(1))
-    return found
 
 
 def content_format_version() -> str:
@@ -248,7 +235,6 @@ def package(args: argparse.Namespace) -> Path:
             "gitSha": git_sha(),
             "contentFormatVersion": content_format_version(),
             "modelCookFormats": model_cook_formats(),
-            "capacities": capacities(),
             "features": features,
             "variant": variant["name"],
             "notices": libraries,

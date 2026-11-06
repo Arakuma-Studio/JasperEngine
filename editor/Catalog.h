@@ -332,8 +332,10 @@ namespace jasperengine::editor{
 
         static PropertyData getProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
 
-        // The same lookup without the not-found log, for callers a miss is expected on
-        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName);
+        // The same lookup without the not-found log, for callers a miss is expected on. `append`:
+        // the caller writes the value, so one past the last element of a component array that
+        // grows by index ("tiles[N]") appends one (reflect::resolve); a read never grows it
+        static PropertyData findProperty(EntityRegistry* registry, Entity entity, ComponentType component, std::string propertyName, bool append = false);
 
         // Submesh::overrideFields of a "submeshes[N].<field>" property, null for anything else,
         // with propertyFields set to the bits that property occupies. A command ORs them in after
