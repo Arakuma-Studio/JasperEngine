@@ -601,6 +601,8 @@ namespace jasperengine::editor{
         void attachScriptFile(SceneProject* sceneProject, const std::vector<Entity>& entities, const std::filesystem::path& file);
         // the Scripts header's Add Script picker: the project's scripts, New Script..., Browse...
         void drawAddScriptPopup(SceneProject* sceneProject, const std::vector<Entity>& entities);
+        // every one of the entities runs the candidate's file already
+        bool scriptOnAll(SceneProject* sceneProject, const std::vector<Entity>& entities, const ScriptCandidate& candidate) const;
         // Add Tag... / Add Layer... asked for Project Settings > Tags and Layers
         bool tagsAndLayersRequested = false;
         // a parameter row's link popup asked for Project Settings > Graphics (Shader Globals)

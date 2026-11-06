@@ -2313,7 +2313,13 @@ void editor::InspectorWindow::drawAddComponentButton(SceneProject* sceneProject,
             ImGui::GetItemRectMax()
         );
         if (!project->isAnyScenePlaying()) {
-            componentAddDialog.setScripts(ScriptAttach::findProjectScripts(project), [this, sceneProject, entities](const ScriptCandidate& script) {
+            // the scripts the selection can take and does not all have already
+            std::vector<ScriptCandidate> scripts;
+            for (ScriptCandidate& candidate : ScriptAttach::findProjectScripts(project)) {
+                const bool fits = entities.empty() || ScriptAttach::fitsEntity(candidate, sceneProject, entities[0]);
+                if (fits && !scriptOnAll(sceneProject, entities, candidate)) scripts.push_back(std::move(candidate));
+            }
+            componentAddDialog.setScripts(std::move(scripts), [this, sceneProject, entities](const ScriptCandidate& script) {
                 attachScriptFile(sceneProject, entities, script.file);
             });
         }
@@ -2394,6 +2400,19 @@ void editor::InspectorWindow::attachScriptFile(SceneProject* sceneProject, const
     ScriptAttach::attachFile(project, sceneProject, entities, file, project->getSelectedSceneId());
 }
 
+bool editor::InspectorWindow::scriptOnAll(SceneProject* sceneProject, const std::vector<Entity>& entities, const ScriptCandidate& candidate) const{
+    const fs::path file = candidate.type == ScriptType::LUA ? candidate.file : candidate.source;
+    for (Entity entity : entities) {
+        const ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
+        if (!component) return false;
+        const bool has = std::any_of(component->scripts.begin(), component->scripts.end(), [&](const ScriptEntry& entry) {
+            return entry.type == candidate.type && project->scriptSourceFile(entry) == file;
+        });
+        if (!has) return false;
+    }
+    return !entities.empty();
+}
+
 void editor::InspectorWindow::drawAddScriptPopup(SceneProject* sceneProject, const std::vector<Entity>& entities){
     if (!ImGui::BeginPopup("script_add_menu")) return;
 
@@ -2407,20 +2426,6 @@ void editor::InspectorWindow::drawAddScriptPopup(SceneProject* sceneProject, con
     UIProbe::item("inspector.addScript.search");
     const std::string query = search::normalize(addScriptSearch);
 
-    // the files the selected GameObjects already run
-    auto attachedToAll = [&](const ScriptCandidate& candidate) {
-        for (Entity entity : entities) {
-            const ScriptComponent* component = sceneProject->scene->findComponent<ScriptComponent>(entity);
-            if (!component) return false;
-            const fs::path file = candidate.type == ScriptType::LUA ? candidate.file : candidate.source;
-            const bool has = std::any_of(component->scripts.begin(), component->scripts.end(), [&](const ScriptEntry& entry) {
-                return entry.type == candidate.type && project->scriptSourceFile(entry) == file;
-            });
-            if (!has) return false;
-        }
-        return true;
-    };
-
     // rows and the message line, inside the child's padding
     const float listHeight = ImGui::GetTextLineHeightWithSpacing() * (addScriptCandidates.size() + 1.0f) + ImGui::GetStyle().WindowPadding.y * 2.0f;
     ImGui::BeginChild("##script_list", ImVec2(Theme::dpi(320.0f), std::min(Theme::dpi(260.0f), listHeight)), false);
@@ -2428,7 +2433,7 @@ void editor::InspectorWindow::drawAddScriptPopup(SceneProject* sceneProject, con
     for (const ScriptCandidate& candidate : addScriptCandidates) {
         if (!query.empty() && search::normalize(candidate.name).find(query) == std::string::npos) continue;
         shown++;
-        const bool attached = attachedToAll(candidate);
+        const bool attached = scriptOnAll(sceneProject, entities, candidate);
         const bool fits = entities.empty() || ScriptAttach::fitsEntity(candidate, sceneProject, entities[0]);
         const std::string label = std::string(ICON_FA_FILE_CODE " ") + candidate.name + (candidate.type == ScriptType::LUA ? "  [Lua]" : "  [C++]") +
                                   "##" + candidate.file.string();
@@ -7334,9 +7339,14 @@ void editor::InspectorWindow::drawMeshComponent(ComponentType cpType, SceneProje
     }
     endTable();
 
+    const ImVec2 fieldsTop = ImGui::GetCursorScreenPos();
     ImGui::BeginDisabled();
     drawMeshComponentFields(cpType, sceneProject, entities);
     ImGui::EndDisabled();
+    const ImVec2 fieldsBottom(ImGui::GetWindowPos().x + ImGui::GetWindowWidth(), ImGui::GetCursorScreenPos().y);
+    if (ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenDisabled) && ImGui::IsMouseHoveringRect(fieldsTop, fieldsBottom)) {
+        ImGui::SetTooltip("Edit the parts");
+    }
 }
 
 void editor::InspectorWindow::drawMeshComponentFields(ComponentType cpType, SceneProject* sceneProject, std::vector<Entity> entities){
