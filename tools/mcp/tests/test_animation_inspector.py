@@ -8,7 +8,8 @@ driven like a human with xdotool in the harness's Xvfb on a scratch copy of tool
 - the live states while playing;
 - the .anim asset section after a Project window click: the Length Auto checkbox writes the file (project undo);
   a programmatic selection change and a click on a GameObject in the Scene view show the selection again (R30);
-- a model's clips as an asset; the AnimationComponent's Convert to Clip button.
+- a model's clips as an asset (the Animation tab of its Import Settings, S53 R16); the AnimationComponent's
+  Convert to Clip button.
 
 Widgets are found through the UI probe (Editor(ui_probe=True), editor/util/UIProbe.h). The Project window's
 tree and listing are clicked at the rects editor_status reports (ui.project_window).
@@ -312,6 +313,17 @@ async def test_scene_click_shows_the_selection(ed: Editor):
 async def test_model_asset(ed: Editor):
     ui = Ui(ed)
     await inspect_asset(ed, ui, "assets/models", "hero_animated.gltf")
+    # a model shows its Import Settings: the clips are its Animation tab
+    tabs = []
+    for _ in range(40):
+        tabs = [i for i in (await ed.call("find_ui_item", label="Animation", window="Inspector")).get("items", []) if i.get("visible")]
+        if tabs:
+            break
+        await ui.frames()
+    ed.check(tabs, f"the model's Import Settings have an Animation tab: {sorted(ed.ui_items())}")
+    tab = tabs[0]["rect"]
+    await ui.click(tab["x"] + tab["width"] / 2.0, tab["y"] + tab["height"] / 2.0)
+    await ui.frames()
     await shot(ed, "08-model-asset")
     ed.check("asset.header" in ed.ui_items(), f"model asset section drawn: {sorted(ed.ui_items())}")
 
