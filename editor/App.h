@@ -16,6 +16,7 @@
 #include "shortcuts/ShortcutDispatcher.h"
 #include "util/SystemFonts.h"
 
+#include "util/FrameLimiter.h"
 
 #include "window/EditorModal.h"
 #include "hub/ProjectHubWindow.h"
@@ -372,6 +373,10 @@ namespace jasperengine::editor{
         uint32_t lastActivatedScene;
         // lastActivatedScene was activated for the running game (Game view target), not its Scene view
         bool lastActivatedGame = false;
+        // the editor window can be seen (EditorFrame / BackendMac, every loop iteration)
+        bool windowVisible = true;
+        // the running game's update-only frames while it is hidden (Engine::getHiddenUpdateFps)
+        FrameLimiter hiddenGameClock;
         uint32_t pendingResizeScene = NULL_PROJECT_SCENE;
 
         enum class LastFocusedWindow {
@@ -482,6 +487,11 @@ namespace jasperengine::editor{
         void renderGameViewPass(SceneProject& sceneProject);
         void renderGameViewSecondary(SceneProject& sceneProject);
         void renderRunningScene(SceneProject& sceneProject);
+        // The Engine's scene stack made the running game's (its framebuffer, layers, a scene a load
+        // put in place of the played one); true when it was not already: the view changed
+        bool activateRunningGame(SceneProject& sceneProject);
+        // the play session's scene while it runs (PLAYING, the simulation not held), else nullptr
+        const SceneProject* runningGameScene() const;
         void pollExternalChanges();
         // main-thread time for the file watcher's batches per loop iteration (S05 R22)
         static constexpr double PUMP_BUDGET_MS = 1.0;
@@ -612,6 +622,19 @@ namespace jasperengine::editor{
         void enqueueMainThreadTask(std::function<void()> task) override;
 
         bool didRenderScene() const { return renderedSceneThisFrame; }
+        // The editor window can (not) be seen: minimized, unmapped or hidden by the window manager,
+        // fully covered on macOS
+        void setWindowVisible(bool visible) { windowVisible = visible; }
+        bool isWindowVisible() const { return windowVisible; }
+        // The running game while nothing of it can be seen (the window hidden, or send_input app
+        // hide): one update without drawing when its hidden clock is due, as an exported game
+        // runs minimized. False when there was no game to update or no update due
+        bool runHiddenGameFrame();
+        // a running game updates without drawing now (the window hidden or the game hidden by
+        // send_input)
+        bool isHiddenGameRunning() const;
+        // seconds until the hidden game's next update (0: due)
+        double hiddenGameSecondsUntilDue() const { return hiddenGameClock.secondsUntilDue(); }
         bool hasPendingMainThreadTasks();
         // How long the idle backend loop may sleep: until the editor scheduler's next timer,
         // at most maxSeconds

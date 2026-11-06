@@ -129,6 +129,10 @@ bool EditorFrame::run(EditorFrameState& state){
 
     // the window's focus reaches the game as Engine::onFocus (Unity's OnApplicationFocus)
     Platform::forwardHostFocus(state.focused, playSessionActive);
+    // and whether it can be seen as Engine::onVisibilityChanged: a hidden window's game updates
+    // without drawing (runHiddenGameFrame below)
+    app->setWindowVisible(!state.minimized);
+    Platform::forwardHostVisibility(!state.minimized, playSessionActive);
 
     // Unfocused always drops synchronization, so a blocked present can never
     // stall the event loop that serves clipboard requests. While playing, the game's
@@ -190,6 +194,9 @@ bool EditorFrame::run(EditorFrameState& state){
         // engineRender() is what normally drains main-thread tasks. Keep draining
         // them so AI work, logging and async load callbacks still complete.
         app->processMainThreadTasks();
+        // a playing game keeps running while the window can't be seen, as an exported one
+        if (state.minimized)
+            app->runHiddenGameFrame();
     }
 
     {
@@ -247,7 +254,14 @@ bool EditorFrame::run(EditorFrameState& state){
     // Unfocused and minimized frames have no vsync to pace them. A benchmark measures
     // the frames as fast as they go, focused or not (a headless X server gives no window the
     // focus), unless the game limits them (Engine.targetFrameRate)
-    if (!playLimited && (!state.focused || state.minimized) && !app->isBenchmarkMode()){
+    if (state.minimized && !app->isBenchmarkMode() && app->isHiddenGameRunning()){
+        // a hidden game's updates come at their own rate (at most 60 Hz): wake for the next one
+        const double wait = app->hiddenGameSecondsUntilDue();
+        if (wait > 0.0){
+            sleepSeconds(wait);
+        }
+        frameDeadline = frameMonotonicSeconds();
+    }else if (!playLimited && (!state.focused || state.minimized) && !app->isBenchmarkMode()){
         // Paced by deadline, so a late wake-up is made up on the next frame
         const double now = frameMonotonicSeconds();
         frameDeadline += state.framePeriod;

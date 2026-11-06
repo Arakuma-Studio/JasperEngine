@@ -728,10 +728,13 @@ android)
         PROJECT_ENV="$PROJECT_ENV JASPERENGINE_ANDROID_ABIS=$ANDROID_ABIS"
     fi
     mkdir -p "$ROOT/$APK_DIR"
+    # Gradle's output also goes to gradle.log: a deprecation in our Gradle files fails the build
+    # (tools/ci/check_gradle_warnings.py; the template sets --warning-mode all)
     run bash -euo pipefail -c "
         cd engine/workspaces/androidstudio
-        env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug
+        env $PROJECT_ENV CMAKE_CXX_COMPILER_LAUNCHER=ccache ./gradlew --no-daemon assembleDebug 2>&1 | tee /src/$APK_DIR/gradle.log
         cp app/build/outputs/apk/debug/*.apk /src/$APK_DIR/
+        python3 /src/tools/ci/check_gradle_warnings.py /src/$APK_DIR/gradle.log
     "
     ls -l "$ROOT/$APK_DIR"/*.apk
     ;;

@@ -178,6 +178,7 @@ New: the engine had none of these. Unity's members became `System`, `Screen`, `E
 | `OnApplicationFocus(bool)` | the `onApplicationFocus(focused)` script method, or `RegisterEngineEvent(self, "onFocus")` |
 | `OnApplicationPause(true / false)` | the `onApplicationPause(paused)` script method, or `onPause` / `onResume` engine events |
 | `Application.isFocused` | `Engine.isFocused` |
+| `Application.runInBackground` | always on for desktops: an unfocused game keeps running, a minimized or hidden one updates without drawing (`Engine.isVisible`, `Engine.onVisibilityChanged`) |
 | `Application.lowMemory` | `Engine.onLowMemory` |
 | `Application.version`, `Application.identifier`, `Application.productName` | `System.getAppVersion()`, `getAppIdentifier()`, `getAppName()` |
 | Android `versionCode`, iOS `CFBundleVersion` | `System.getAppBuild()` (an integer) |

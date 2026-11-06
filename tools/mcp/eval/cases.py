@@ -603,6 +603,29 @@ CASES = [
         "max_turns": 10,
     },
     {
+        "id": "bad_app_hide",
+        "playing": True,
+        "kind": "bad",
+        "what_happened": "A minimized window was untestable from MCP: agents asked for a real minimize (xdotool) or paused the "
+                         "game, which stops its updates, where a minimized desktop game keeps updating without drawing.",
+        "text_at_issue": "send_input description: 'app: action pause|resume|focus_lost|focus_gained|low_memory|hide|show|orientation'",
+        "source": "platform-lifecycle spec (2026-11-04), D7",
+        "prompt": "The game is playing. Check how it behaves while its window is minimized: minimize it for two seconds, "
+                  "then restore it. Do not pause the game.",
+        "mocks": [
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}, "result": ok(
+                "Sent 3 events over 121 frames; playing.", {"frames": 121, "state": "playing"})},
+            {"tool": "send_input", "args": {"events": [{"type": "app", "action": "show"}]}, "result": ok(
+                "Sent 1 event over 1 frame; playing.", {"frames": 1, "state": "playing"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\"). Session: 9 s, 0 error(s) logged.",
+                                                     {"state": "playing", "platform": {"visible": True, "focused": True,
+                                                                                        "paused": False}})},
+        ],
+        "checks": {"calls": [{"tool": "send_input", "args": {"events": [{"type": "app", "action": "hide"}]}}],
+                   "must_not_call": ["play"], "shell_must_not": [r"xdotool"]},
+        "max_turns": 10,
+    },
+    {
         "id": "bad_batch_args_key",
         "kind": "bad",
         "what_happened": "batch items used `args` instead of `arguments`; the key was dropped silently, the item ran with no "

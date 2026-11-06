@@ -4003,6 +4003,12 @@ void editor::App::engineRender(){
         // The running game renders into the Game view's framebuffer, shown or not, and
         // the Scene view is a second, draw-only view of the same frame
         if (gameWindow->hostsScene(sceneProject.id)) {
+            // send_input app hide: the game updates without drawing, its Game view keeps the
+            // last frame
+            if (Platform::isGameHiddenSimulated() && runningGameScene() == &sceneProject) {
+                runHiddenGameFrame();
+                continue;
+            }
             if (sceneNeedsRender(sceneProject, isSelected)) {
                 renderRunningScene(sceneProject);
             }
@@ -4210,30 +4216,7 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // stop ends it: Engine::resetApplicationState)
     Device::setSimulation(gameWindow->getDeviceSimulation());
 
-    bool viewChanged = false;
-    if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
-        // Collected before activateGame(): it drops every engine layer, and a dropped
-        // layer no longer counts as running, so this would come back empty.
-        std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
-        sceneRender->activateGame(gameTarget);
-
-        if (project.isPlayedSceneReplaced(sceneProject.id)) {
-            // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
-            // stack that load made, its main scene first
-            Engine::removeScene(sceneProject.scene);
-            Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
-            if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
-                Engine::setScene(loadedMain);
-            }
-        }
-        for (Scene* runtimeLayer : runtimeLayers) {
-            Engine::addSceneLayer(runtimeLayer);
-        }
-
-        lastActivatedScene = sceneProject.id;
-        lastActivatedGame = true;
-        viewChanged = true;
-    }
+    bool viewChanged = activateRunningGame(sceneProject);
 
     if (pendingResizeScene == sceneProject.id) {
         viewChanged = true;
@@ -4287,6 +4270,72 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
 
     renderedSceneThisFrame = true;
     sceneProject.needUpdateRender = false;
+}
+
+bool editor::App::activateRunningGame(SceneProject& sceneProject) {
+    if (lastActivatedScene == sceneProject.id && lastActivatedGame)
+        return false;
+
+    // Collected before activateGame(): it drops every engine layer, and a dropped
+    // layer no longer counts as running, so this would come back empty.
+    std::vector<Scene*> runtimeLayers = project.getRunningRuntimeLayers(sceneProject.id);
+    sceneProject.sceneRender->activateGame(gameWindow->getFramebuffer());
+
+    if (project.isPlayedSceneReplaced(sceneProject.id)) {
+        // a scene load replaced the played scene (or rebuilt it, Restart): the game is the
+        // stack that load made, its main scene first
+        Engine::removeScene(sceneProject.scene);
+        Scene* loadedMain = SceneManager::getScenePtr(SceneManager::getCurrentSceneId());
+        if (loadedMain && std::find(runtimeLayers.begin(), runtimeLayers.end(), loadedMain) != runtimeLayers.end()) {
+            Engine::setScene(loadedMain);
+        }
+    }
+    for (Scene* runtimeLayer : runtimeLayers) {
+        Engine::addSceneLayer(runtimeLayer);
+    }
+
+    lastActivatedScene = sceneProject.id;
+    lastActivatedGame = true;
+    return true;
+}
+
+const editor::SceneProject* editor::App::runningGameScene() const {
+    if (projectLoading || Engine::isSimulationHeld())
+        return nullptr;
+    const SceneProject* sceneProject = project.getScene(project.getPlaySessionSceneId());
+    if (!sceneProject || sceneProject->playState != ScenePlayState::PLAYING || !sceneProject->scene || !sceneProject->sceneRender)
+        return nullptr;
+    return sceneProject;
+}
+
+bool editor::App::isHiddenGameRunning() const {
+    return (!windowVisible || Platform::isGameHiddenSimulated()) && runningGameScene();
+}
+
+// An exported game minimized keeps running without drawing (Engine::getHiddenUpdateFps), and so
+// does Play while the editor window can't be seen or the game is hidden by send_input. Only the
+// game's own frame: no Scene view, no Step, no Recorder capture, no view size change.
+bool editor::App::runHiddenGameFrame() {
+    const SceneProject* running = runningGameScene();
+    if (!running) {
+        hiddenGameClock.reset();
+        return false;
+    }
+    SceneProject* sceneProject = project.getScene(running->id);
+    // a wake-up a millisecond early counts (the loop sleeps until this deadline)
+    if (!hiddenGameClock.isDue(Engine::getHiddenUpdateFps(), 0.001))
+        return false;
+
+    // scripts saved meanwhile swap in at the frame boundary, as in engineRender
+    ScriptStatus::get().update();
+    ScriptReloadService::get().update();
+    if (activateRunningGame(*sceneProject)) {
+        // the view of the stack activated here is set when the game draws again
+        pendingResizeScene = sceneProject->id;
+    }
+    // waits for the GPU on Metal first
+    Engine::systemUpdate();
+    return true;
 }
 
 // A stopped scene's Scene view while another scene plays: its systems update here (the
@@ -4884,7 +4933,11 @@ bool editor::App::hasPendingMainThreadTasks() {
 
 double editor::App::idleWaitSeconds(double maxSeconds) const {
     const double next = scheduler().nextDueRealTime();
-    return next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
+    double wait = next < 0.0 ? maxSeconds : std::min(maxSeconds, next);
+    // a hidden game's next update (runHiddenGameFrame); a paused or held one keeps the idle sleep
+    if (isHiddenGameRunning())
+        wait = std::min(wait, hiddenGameClock.secondsUntilDue());
+    return wait;
 }
 
 // Counts as activity, so the loop also keeps drawing for the idle delay past the
