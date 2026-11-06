@@ -276,7 +276,7 @@ async def test_create_html_document_is_one_undo_step(ed: Editor):
     ed.check(not html.exists() and not css.exists(), "one undo removes both")
 
 
-async def test_root_folder_cannot_be_cut(ed: Editor):
+async def test_root_folder_cannot_be_cut_or_dragged(ed: Editor):
     st = await show_folder(ed, "assets")
     ui = ui_input.for_editor(ed)
     # the project root's listing: "assets" is the assets directory
@@ -293,6 +293,12 @@ async def test_root_folder_cannot_be_cut(ed: Editor):
     ed.check(dialog is not None and "assets directory" in dialog["message"], f"the refusal names the setting: {dialog}")
     st = await state(ed)
     ed.check("assets" not in st["clipboard"]["files"], f"the assets directory was not cut: {st['clipboard']}")
+    # nor dragged: a drop of it onto a folder is not accepted, nothing moves
+    st = await wait_for(ed, lambda s: entry(s, "assets") and entry(s, "materials"), "assets and materials listed")
+    await ui.drag(ui.centre(entry(st, "assets")), ui.centre(entry(st, "materials")), steps=16)
+    await ui.frames(6)
+    ed.check((ed.project / "assets").is_dir() and not (ed.project / "materials/assets").exists(),
+             "the assets directory stayed where it is")
 
 
 async def test_unnamed_object_reads_gameobject_and_id(ed: Editor):
@@ -311,11 +317,15 @@ async def test_unnamed_object_reads_gameobject_and_id(ed: Editor):
 
 
 async def test_f11_toggles_maximize_on_play(ed: Editor):
+    """F11 toggles Maximize On Play, at once during Play, but never takes the key from the running game"""
     ui = ui_input.for_editor(ed)
     before = (await ed.call("configure_game_view"))["maximize_on_play"]
     await ed.call("play", action="start")
     try:
         ui.focus()
+        # an editor panel has the keyboard: F11 is the editor's
+        await ed.call("focus_window", window="hierarchy")
+        await ui.frames(4)
         await ui.key("F11")
         view = await ed.call("configure_game_view")
         ed.check_eq(view["maximize_on_play"], not before, "F11 toggled the setting")
@@ -323,8 +333,13 @@ async def test_f11_toggles_maximize_on_play(ed: Editor):
         view = await ed.call("configure_game_view")
         ed.check_eq(view["maximized"], not before, "the Game view follows at once during Play")
         await shot(ed, "maximized")
+        await ed.call("configure_game_view", maximize_on_play=before)
+        # the game has the keyboard: F11 is the game's
+        await ed.call("focus_window", window="game")
+        await ui.frames(4)
         await ui.key("F11")
         view = await ed.call("configure_game_view")
-        ed.check_eq(view["maximize_on_play"], before, "F11 again: back")
+        ed.check_eq(view["maximize_on_play"], before, "F11 went to the game, the setting stayed")
     finally:
+        await ed.call("configure_game_view", maximize_on_play=before)
         await ed.call("play", action="stop", keep_changes="none")

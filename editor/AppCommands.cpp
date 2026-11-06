@@ -188,8 +188,10 @@ void editor::App::registerCommands(){
          [this]() { return mainToolbar->canPause() && !mainToolbar->isPaused(); });
     bind("playmode.stop", [this](const CommandArgs&) { mainToolbar->stopSession(); },
          [this]() { return mainToolbar->canStopSession(); });
-    // F11 in the Game view too (Global): the key toggles the saved setting, at once during Play
-    bind("playmode.maximizeOnPlay", [this](const CommandArgs&) { gameWindow->toggleMaximizeOnPlay(); });
+    // the key toggles the saved setting, at once during Play, but never takes a key from the game:
+    // while the running game has the keyboard, F11 is the game's (the menu item still works)
+    bind("playmode.maximizeOnPlay", [this](const CommandArgs&) { gameWindow->toggleMaximizeOnPlay(); }, nullptr,
+         [this]() { return !(project.isAnyScenePlaying() && gameWindow->hasKeyboardFocus()); });
 
     // ---- Assets
     enable("assets.open", [this]() { return projectWindow->hasSingleAssetSelection(); });

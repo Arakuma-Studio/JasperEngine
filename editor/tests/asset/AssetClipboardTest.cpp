@@ -59,3 +59,12 @@ TEST(AssetClipboard, GoneItemsAreSkippedAndCounted) {
     EXPECT_EQ(left[0], (dir.path() / "a.png").lexically_normal());
     EXPECT_EQ(gone, 1u);
 }
+
+// During a search the listing is no folder: empty space and Ctrl+V paste into the folder the search
+// started from (ProjectWindow::listingFolder gives it), a result's menu into that result's folder
+TEST(AssetClipboard, PasteTargetDuringASearchIsTheStartFolder) {
+    const fs::path start = "/p/assets/levels";
+    EXPECT_EQ(AssetClipboard::pasteTarget(start, nullptr, false), start);
+    const fs::path result = "/p/assets/sprites/deep/hero.png";
+    EXPECT_EQ(AssetClipboard::pasteTarget(start, &result, false), fs::path("/p/assets/sprites/deep"));
+}

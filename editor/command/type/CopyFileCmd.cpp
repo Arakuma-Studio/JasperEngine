@@ -108,6 +108,19 @@ namespace {
     // Unity's duplicate naming: "hero.png" -> "hero 1.png", "hero 2.png", ... A Vertex
     // Animation's file is named with its pair: "walk.vat" and "walk.vat.glb" -> "walk 1.vat" and
     // "walk 1.vat.glb", both free, so the copies are a pair again (vertex animation spec 2.1)
+    // Unity numbers on: the copy of "hero 1" is "hero 2", not "hero 1 1" (the base, and the first
+    // number to try)
+    std::pair<std::string, int> numberedBase(const std::string& stem) {
+        const size_t space = stem.find_last_of(' ');
+        if (space == std::string::npos || space == 0 || space + 1 >= stem.size() || stem.size() - space - 1 > 9) {
+            return {stem, 1};
+        }
+        for (size_t i = space + 1; i < stem.size(); i++) {
+            if (stem[i] < '0' || stem[i] > '9') return {stem, 1};
+        }
+        return {stem.substr(0, space), std::stoi(stem.substr(space + 1)) + 1};
+    }
+
     fs::path freeCopyName(const fs::path& target) {
         std::error_code ec;
         const fs::path pair = editor::vat::pairPathOf(target);
@@ -117,8 +130,8 @@ namespace {
             if (!fs::exists(vatFile, ec) && !fs::exists(editor::vat::pairPathOf(vatFile), ec)) {
                 return target;
             }
-            const std::string stem = vatFile.stem().string();
-            for (int counter = 1;; counter++) {
+            const auto [stem, first] = numberedBase(vatFile.stem().string());
+            for (int counter = first;; counter++) {
                 const fs::path candidate = vatFile.parent_path() / (stem + " " + std::to_string(counter) + vatFile.extension().string());
                 const fs::path candidateMesh = editor::vat::pairPathOf(candidate);
                 if (!fs::exists(candidate, ec) && !fs::exists(candidateMesh, ec)) {
@@ -131,9 +144,9 @@ namespace {
         }
         // a folder's name is all name: "my.folder" -> "my.folder 1"
         const bool directory = fs::is_directory(target, ec);
-        const std::string stem = directory ? target.filename().string() : target.stem().string();
+        const auto [stem, first] = numberedBase(directory ? target.filename().string() : target.stem().string());
         const std::string extension = directory ? std::string() : target.extension().string();
-        for (int counter = 1;; counter++) {
+        for (int counter = first;; counter++) {
             const fs::path candidate = target.parent_path() / (stem + " " + std::to_string(counter) + extension);
             if (!fs::exists(candidate, ec)) {
                 return candidate;

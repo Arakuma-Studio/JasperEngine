@@ -80,14 +80,14 @@ TEST_F(AssetRootChangeTest, UnwritableSceneRefusesBeforeAnyMove) {
     const std::string before = text("Main.scene");
     project->setAssetRootWriteProbe([scene](const fs::path& file) { return file.lexically_normal() != scene.lexically_normal(); });
     const AssetRootChange change = project->changeAssetRoots(".", project->getLuaDir(), true);
-    EXPECT_EQ(change.blocker, "Main.scene cannot be written");
+    EXPECT_EQ(change.blocker, "Main.scene cannot be written: make it writable (or close what holds it), then change the directory again");
     EXPECT_FALSE(change.changed);
     EXPECT_EQ(project->getAssetsDir(), fs::path("assets"));
     EXPECT_EQ(text("Main.scene"), before) << "nothing was rewritten";
     // and with files to move, none moves
     project->setAssetRootWriteProbe([](const fs::path& file) { return file.filename() != "project.yaml"; });
     const AssetRootChange moving = project->changeAssetRoots("content", project->getLuaDir(), true);
-    EXPECT_EQ(moving.blocker, "project.yaml cannot be written");
+    EXPECT_EQ(moving.blocker, "project.yaml cannot be written: make it writable (or close what holds it), then change the directory again");
     EXPECT_FALSE(exists("content"));
     EXPECT_TRUE(exists("assets/textures/ao.png"));
 }
@@ -177,7 +177,7 @@ TEST_F(AssetRootChangeTest, LinkedDestinationRefuses) {
 TEST_F(AssetRootChangeTest, NewRootUnderAFileRefuses) {
     dir.write("afile", "x");
     const AssetRootChange change = project->changeAssetRoots("afile/content", project->getLuaDir(), true);
-    EXPECT_EQ(change.blocker, "a new directory is a file or lies under one");
+    EXPECT_EQ(change.blocker, "a new directory is a file or lies under one: pick a folder path no file blocks");
     EXPECT_EQ(project->getAssetsDir(), fs::path("assets"));
 }
 
@@ -194,4 +194,24 @@ TEST_F(AssetRootChangeTest, ALinkedFolderMovesAsTheLinkAndItsTargetStays) {
     EXPECT_FALSE(fs::exists(fs::symlink_status(abs("assets/lib"))));
     EXPECT_EQ(shared.read("x.png"), "shared texture") << "the target is untouched";
     EXPECT_NE(text("materials/Lib.material").find("lib/x.png"), std::string::npos) << "the reference still names it";
+}
+
+// A sidecar that can't follow its file undoes the whole change: a model moved without its
+// .humanoid (or a file without its .meta, which keeps its GUID) would break references
+TEST_F(AssetRootChangeTest, ASidecarThatCannotMoveUndoesTheWholeChange) {
+    // the preflight passes; then the .humanoid's destination is taken by a folder
+    const fs::path obstacle = abs("content/mixed/hero.gltf.humanoid");
+    project->setAssetRootWriteProbe([obstacle](const fs::path&) {
+        fs::create_directories(obstacle / "in-the-way");
+        return true;
+    });
+    const AssetRootChange change = project->changeAssetRoots("content", project->getLuaDir(), true);
+    EXPECT_FALSE(change.ok());
+    EXPECT_FALSE(change.error.empty());
+    EXPECT_FALSE(change.changed);
+    EXPECT_EQ(project->getAssetsDir(), fs::path("assets"));
+    EXPECT_TRUE(exists("assets/mixed/hero.gltf")) << "the model came back";
+    EXPECT_TRUE(exists("assets/mixed/hero.gltf.humanoid"));
+    EXPECT_TRUE(exists("assets/textures/ao.png")) << "every file is back where it was";
+    EXPECT_FALSE(exists("content/textures/ao.png"));
 }

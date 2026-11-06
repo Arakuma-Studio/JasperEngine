@@ -1015,6 +1015,8 @@ void setProjectSettingsTool(const CallPtr& call) {
         return change.first->key != "editor.assets_dir" && change.first->key != "scripting.lua_dir";
     });
 
+    // the plans the validation reported give way to what the change did
+    report = Json::object();
     Json applied = Json::object();
     bool projectChanged = false;
     for (const auto& [setting, value] : changes) {
@@ -1034,8 +1036,9 @@ void setProjectSettingsTool(const CallPtr& call) {
                 std::to_string(relocation["rewritten"].size()) + " file(s), removed " + std::to_string(relocation["removed_folders"].size()) +
                 " emptied folder(s).";
         if (!relocation["failed_saves"].empty()) {
-            text += " Not saved (they keep the old paths on disk; fix the cause, then save them again with save_scene): " +
-                    relocation["failed_saves"].dump() + ".";
+            text += " Not saved, they keep the old paths on disk: " + relocation["failed_saves"].dump() +
+                    ". Fix what blocked them (permissions, a full disk), then save_project saves the scenes among them; a prefab "
+                    "or material there still finds its textures by GUID.";
         }
     }
     if (projectChanged) {

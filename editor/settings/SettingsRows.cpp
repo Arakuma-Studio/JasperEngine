@@ -2656,7 +2656,20 @@ std::vector<Setting> mcpSettingsTable() {
                 const AssetRootChange change = apply ? p->changeAssetRoots(newAssets, newLua, true)
                                                      : p->planAssetRootChange(newAssets, newLua, true);
                 if (ctx.report && (change.changed || !change.moves.empty() || !change.ok())) {
-                    (*ctx.report)["relocation"] = assetRootChangeJson(p, change);
+                    // one call moving both roots reports both relocations, in one
+                    Json relocation = assetRootChangeJson(p, change);
+                    Json& reported = (*ctx.report)["relocation"];
+                    if (reported.is_object()) {
+                        for (auto it = relocation.begin(); it != relocation.end(); ++it) {
+                            if (it.value().is_array() && reported.contains(it.key()) && reported[it.key()].is_array()) {
+                                for (const Json& item : it.value()) reported[it.key()].push_back(item);
+                            } else if (!reported.contains(it.key())) {
+                                reported[it.key()] = it.value();
+                            }
+                        }
+                    } else {
+                        reported = std::move(relocation);
+                    }
                 }
                 if (!change.ok()) {
                     error = "asset directories not changed: " + change.refusal();

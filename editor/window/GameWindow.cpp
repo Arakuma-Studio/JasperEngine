@@ -597,9 +597,10 @@ void editor::GameWindow::show() {
             // how to get the editor back, fading out over the last second of 3
             const double left = maximizeHintUntil - ImGui::GetTime();
             if (left > 0.0) {
+                // the key is the game's while it has the keyboard: the menu item always answers
                 const std::string keys = CommandCatalog::editor().menuShortcutText("playmode.maximizeOnPlay");
-                const std::string hint = keys.empty() ? std::string("Maximize On Play: the Game view toolbar shows the editor")
-                                                      : "Maximize On Play: " + keys + " shows the editor";
+                const std::string hint = "Maximize On Play: Edit > Maximize On Play shows the editor" +
+                                         (keys.empty() ? std::string() : " (" + keys + " outside the game)");
                 const float alpha = static_cast<float>(std::min(1.0, left));
                 const ImVec2 size = ImGui::CalcTextSize(hint.c_str());
                 const ImVec2 pad(Theme::dpi(8.0f), Theme::dpi(5.0f));

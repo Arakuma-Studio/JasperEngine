@@ -69,7 +69,7 @@ TEST_F(CopyFileCmdTest, CopyOfAFolderIntoItselfIsRefusedAndChangesNothing) {
     auto* cmd = new CopyFileCmd(project.get(), paths({"assets/Sprites"}), abs("assets/Sprites/sub").string(), true);
     cmd->reportTo(report);
     EXPECT_FALSE(history().addCommand(cmd));
-    EXPECT_EQ(report->error, "Can't copy 'Sprites' into itself.");
+    EXPECT_EQ(report->error, "Can't copy 'Sprites' into itself: pick a folder outside it.");
     EXPECT_FALSE(exists("assets/Sprites/sub/Sprites"));
     EXPECT_EQ(history().top(), nullptr);
 
@@ -77,7 +77,7 @@ TEST_F(CopyFileCmdTest, CopyOfAFolderIntoItselfIsRefusedAndChangesNothing) {
     auto* move = new CopyFileCmd(project.get(), paths({"assets/Sprites"}), abs("assets/Sprites").string(), false);
     move->reportTo(moved);
     EXPECT_FALSE(history().addCommand(move));
-    EXPECT_EQ(moved->error, "Can't move 'Sprites' into itself.");
+    EXPECT_EQ(moved->error, "Can't move 'Sprites' into itself: pick a folder outside it.");
     EXPECT_TRUE(exists("assets/Sprites/ship.png"));
 }
 
@@ -166,9 +166,9 @@ TEST(AssetOpsRefusal, CopyAndMoveRefuseIntoThemselvesAfterResolvingLinks) {
     dir.write("Other/b.png", "b");
     // a link inside Other leading back into Sprites: a copy through it is still into itself
     fs::create_directory_symlink(dir.path() / "Sprites", dir.path() / "Other" / "back");
-    EXPECT_EQ(AssetOps::copyRefusal(dir.path() / "Sprites", dir.path() / "Sprites" / "Sprites"), "Can't copy 'Sprites' into itself.");
-    EXPECT_EQ(AssetOps::copyRefusal(dir.path() / "Sprites", dir.path() / "Other" / "back" / "Sprites"), "Can't copy 'Sprites' into itself.");
-    EXPECT_EQ(AssetOps::moveRefusal(dir.path() / "Sprites", dir.path() / "Other" / "back" / "Sprites"), "Can't move 'Sprites' into itself.");
+    EXPECT_EQ(AssetOps::copyRefusal(dir.path() / "Sprites", dir.path() / "Sprites" / "Sprites"), "Can't copy 'Sprites' into itself: pick a folder outside it.");
+    EXPECT_EQ(AssetOps::copyRefusal(dir.path() / "Sprites", dir.path() / "Other" / "back" / "Sprites"), "Can't copy 'Sprites' into itself: pick a folder outside it.");
+    EXPECT_EQ(AssetOps::moveRefusal(dir.path() / "Sprites", dir.path() / "Other" / "back" / "Sprites"), "Can't move 'Sprites' into itself: pick a folder outside it.");
     EXPECT_EQ(AssetOps::copyRefusal(dir.path() / "Sprites", dir.path() / "Other" / "Sprites"), "");
     // a file is never "into itself"
     EXPECT_EQ(AssetOps::copyRefusal(dir.path() / "Sprites" / "a.png", dir.path() / "Sprites" / "a 1.png"), "");
@@ -180,4 +180,50 @@ TEST(AssetOpsRefusal, CopyRefusesAFolderHoldingAProjectFile) {
     const std::string why = AssetOps::copyRefusal(dir.path() / "Game", dir.path() / "Copy");
     EXPECT_NE(why.find("project.yaml"), std::string::npos) << why;
     EXPECT_EQ(AssetOps::moveRefusal(dir.path() / "Game", dir.path() / "Moved"), "") << "a move makes no second project";
+}
+
+// Unity numbers on: duplicating "hero 1.png" gives "hero 2.png", not "hero 1 1.png"
+TEST_F(CopyFileCmdTest, DuplicateOfANumberedCopyTakesTheNextNumber) {
+    for (const char* relative : {"assets/a/hero.png", "assets/a/hero 1.png"}) {
+        if (!exists(relative)) dir.write(relative, "hero");
+        FileCopyData entry;
+        entry.filename = abs(relative).filename();
+        entry.sourceDirectory = abs(relative).parent_path();
+        entry.targetDirectory = entry.sourceDirectory;
+        auto* cmd = new CopyFileCmd(project.get(), std::vector<FileCopyData>{entry}, true);
+        cmd->setDuplicate(true);
+        ASSERT_TRUE(history().addCommand(cmd));
+    }
+    EXPECT_TRUE(exists("assets/a/hero 1.png"));
+    EXPECT_TRUE(exists("assets/a/hero 2.png"));
+    EXPECT_FALSE(exists("assets/a/hero 1 1.png"));
+}
+
+TEST_F(CopyFileCmdTest, UndoAndRedoKeepTheNumberedDestination) {
+    auto* cmd = new CopyFileCmd(project.get(), paths({"assets/a/hero.png"}), abs("assets/b").string(), true);
+    ASSERT_TRUE(history().addCommand(cmd));
+    EXPECT_EQ(text("assets/b/hero 1.png"), "first hero");
+    ASSERT_TRUE(history().undo());
+    EXPECT_FALSE(exists("assets/b/hero 1.png"));
+    // a file taking that name meanwhile is no reason for the redo to pick another
+    ASSERT_TRUE(history().redo());
+    EXPECT_EQ(text("assets/b/hero 1.png"), "first hero");
+    EXPECT_FALSE(exists("assets/b/hero 2.png"));
+}
+
+// A Vertex Animation's .vat and .vat.glb move as a pair, under one free name
+TEST_F(CopyFileCmdTest, VertexAnimationPairMovesUnderPairedFreeNames) {
+    dir.write("assets/a/walk.vat", "{}");
+    dir.write("assets/a/walk.vat.glb", "glb");
+    dir.write("assets/b/walk.vat", "{}");
+    dir.write("assets/b/walk.vat.glb", "glb");
+    auto report = std::make_shared<CopyFileCmd::Report>();
+    auto* cmd = new CopyFileCmd(project.get(), paths({"assets/a/walk.vat"}), abs("assets/b").string(), false);
+    cmd->reportTo(report);
+    ASSERT_TRUE(history().addCommand(cmd)) << report->error;
+    EXPECT_TRUE(exists("assets/b/walk 1.vat"));
+    EXPECT_TRUE(exists("assets/b/walk 1.vat.glb")) << "the mesh took the pair's free name";
+    EXPECT_FALSE(exists("assets/a/walk.vat"));
+    EXPECT_FALSE(exists("assets/a/walk.vat.glb"));
+    EXPECT_EQ(text("assets/b/walk.vat.glb"), "glb") << "nothing overwritten";
 }

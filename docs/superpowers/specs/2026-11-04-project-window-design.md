@@ -823,3 +823,15 @@ Recorded while implementing on `dc/project-window`; each keeps the spec's intent
     nested error boxes became the one name dialog with its error inline (`EditorModal::error`), so
     `test_editor_modals.py` drives "New Folder" instead of "Create New Directory" and counts three modal sites fewer (71 with the sound layer's and the importer's);
     its error-box test uses the rename prompt's Invalid Name box instead.
+13. **Maximize On Play's key** never takes a key from a running game: F11 fires only while the game does not have the
+    keyboard (`GameWindow::hasKeyboardFocus` during Play); Edit > Maximize On Play always does, and the maximized
+    hint names that menu item. F11 stays the default elsewhere. On macOS F11 is the system's Show Desktop by default:
+    the key reaches the editor with fn held or once rebound (Edit > Shortcuts).
+14. **Review fixes**: Save Project As drops the project undo history (its steps name the old folder's files) and
+    re-keys the Code Editor's tabs to the copy (`CodeEditor::retargetProject`); a failed Save As keeps the old folder's
+    lock; the copy leaves `.trash` behind; relocation treats junctions as links (`watch::isLink`, S68 D6); a `.meta` or
+    `.humanoid` that cannot follow its file, even by copy across volumes, undoes the whole change, and one in the way
+    is a preflight blocker; Unity numbering continues (`hero 1` duplicates to `hero 2`); one `set_project_settings`
+    call moving both roots reports both relocations; refusals name their fix. Test of the tabs' re-keying: none (no
+    unit test builds a Code Editor; inferred from the code: relative keys follow the project path, absolute ones are
+    re-keyed).

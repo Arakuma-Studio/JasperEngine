@@ -120,14 +120,14 @@ namespace {
 
 std::string AssetOps::moveRefusal(const fs::path& from, const fs::path& to) {
     if (intoItself(from, to)) {
-        return "Can't move " + movedName(from) + " into itself.";
+        return "Can't move " + movedName(from) + " into itself: pick a folder outside it.";
     }
     return std::string();
 }
 
 std::string AssetOps::copyRefusal(const fs::path& from, const fs::path& to) {
     if (intoItself(from, to)) {
-        return "Can't copy " + movedName(from) + " into itself.";
+        return "Can't copy " + movedName(from) + " into itself: pick a folder outside it.";
     }
     std::error_code ec;
     if (fs::is_directory(from, ec)) {

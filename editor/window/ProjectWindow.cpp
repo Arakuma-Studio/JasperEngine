@@ -3202,12 +3202,10 @@ bool editor::ProjectWindow::pasteFiles(const fs::path& targetDirectory) {
         Out::info("%zu of %zu copied files are gone: pasting the others", gone, gone + sources.size());
     }
     const bool cut = clipboard.isCut();
+    // the assets or Lua directory moves only through Project Settings (D10); a folder into itself
+    // and the like the command refuses below, and a refused or failed paste keeps a cut
     for (const fs::path& source : sources) {
-        const fs::path target = targetDirectory / source.filename();
-        std::string refused = cut ? rootRefusal(source) : std::string();
-        if (refused.empty()) refused = cut ? AssetOps::moveRefusal(source, target) : AssetOps::copyRefusal(source, target);
-        if (!refused.empty()) {
-            // a cut stays on the clipboard for another target
+        if (const std::string refused = cut ? rootRefusal(source) : std::string(); !refused.empty()) {
             Backend::getApp().registerAlert("Paste", refused);
             return false;
         }

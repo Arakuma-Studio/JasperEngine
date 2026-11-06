@@ -55,3 +55,14 @@ async def test_the_change_reports_moves_and_removes_emptied_folders(ed: Editor):
     ed.check_eq(relocation["failed_saves"], [])
     ed.check((ed.project / "assets/textures/gradient.png").exists(), "unreferenced files stay")
     ed.check_in("solo/one.png", (ed.project / "materials/Solo.material").read_text())
+
+
+async def test_both_roots_in_one_call_report_both_relocations(ed: Editor):
+    # a Lua script referenced by the scene, so the Lua directory's change has a file to move
+    made = await ed.call("create_entity", type="empty", name="Mover")
+    await ed.call("create_script", kind="lua", name="Mover", entity=made["entity"]["id"])
+    plan = await ed.call("set_project_settings", values={"editor.assets_dir": "content9", "scripting.lua_dir": "lua9"}, dry_run=True)
+    moved = {(m["from"], m["to"]) for m in plan["relocation"]["moved"]}
+    ed.check(any(to.startswith("lua9/") for _, to in moved), f"the Lua directory's move: {moved}")
+    ed.check(any(to.startswith("content9/") for _, to in moved), f"the assets directory's move: {moved}")
+

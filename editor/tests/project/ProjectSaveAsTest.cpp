@@ -9,7 +9,11 @@
 
 #include <gtest/gtest.h>
 
+#include "command/type/CopyFileCmd.h"
+#include "io/ScopedFileLock.h"
+
 #include <sys/stat.h>
+#include <cstdlib>
 
 #include <filesystem>
 #include <set>
@@ -26,6 +30,7 @@ namespace {
     protected:
         void prepare() override {
             dir.write("assets/hero.png", "hero");
+            dir.write(".trash/old.png", "deleted before");
         }
     };
 
@@ -42,6 +47,29 @@ TEST_F(ProjectSaveAsTest, SaveAsOfASavedProjectCopiesIt) {
     EXPECT_TRUE(fs::exists(target / "project.yaml"));
     EXPECT_TRUE(exists("assets/hero.png")) << "the original stays as it was saved";
     EXPECT_FALSE(fs::exists(target / ".jasperengine/build")) << "no build tree is copied";
+}
+
+// The undo steps name the old folder's files: after Save As an undo would write into the original
+TEST_F(ProjectSaveAsTest, SaveAsDropsTheOldProjectsUndoSteps) {
+    FileCopyData entry;
+    entry.filename = "hero.png";
+    entry.sourceDirectory = abs("assets");
+    entry.targetDirectory = entry.sourceDirectory;
+    auto* cmd = new CopyFileCmd(project.get(), std::vector<FileCopyData>{entry}, true);
+    cmd->setDuplicate(true);
+    ASSERT_TRUE(history().addCommand(cmd));
+    ASSERT_TRUE(history().canUndo());
+    jasperengine::test::TempDir other;
+    ASSERT_TRUE(project->saveProjectToPath(other.path() / "Copy"));
+    EXPECT_FALSE(history().canUndo()) << "no step of the original's files is left to undo";
+    EXPECT_TRUE(exists("assets/hero 1.png")) << "the original keeps what was done";
+}
+
+TEST_F(ProjectSaveAsTest, SaveAsLeavesTheTrashBehind) {
+    jasperengine::test::TempDir other;
+    ASSERT_TRUE(project->saveProjectToPath(other.path() / "Copy"));
+    EXPECT_FALSE(fs::exists(other.path() / "Copy" / ".trash")) << "deleted files stay with the original";
+    EXPECT_TRUE(exists(".trash/old.png"));
 }
 
 TEST_F(ProjectSaveAsTest, FailedSaveAsKeepsTheProjectWhereItWas) {
@@ -70,6 +98,28 @@ TEST_F(ProjectSaveAsTest, SaveAsIntoANonEmptyFolderIsRefused) {
     EXPECT_FALSE(project->saveProjectToPath(other.path()));
     EXPECT_EQ(project->getProjectPath(), dir.path());
     EXPECT_FALSE(fs::exists(other.path() / "project.yaml"));
+}
+
+// A failed Save As keeps the temporary project's lock: no other editor takes that folder
+TEST(ProjectSaveAsTemp, FailedSaveAsFromTheTemporaryProjectKeepsItsLock) {
+    jasperengine::test::TempDir temp;
+    const char* previous = std::getenv("TMPDIR");
+    const std::string saved = previous ? previous : "";
+    setenv("TMPDIR", temp.str().c_str(), 1);
+    {
+        Project project;
+        ASSERT_TRUE(project.createTempProject("PwTempLock"));
+        ASSERT_TRUE(project.holdsProjectLock());
+        ASSERT_EQ(::mkfifo((project.getProjectPath() / "pipe").c_str(), 0644), 0);
+        jasperengine::test::TempDir other;
+        EXPECT_FALSE(project.saveProjectToPath(other.path() / "Copy"));
+        EXPECT_TRUE(project.holdsProjectLock());
+        io::ScopedFileLock probe(project.getProjectLockPath(), io::ScopedFileLock::Mode::Exclusive, false);
+        EXPECT_EQ(probe.getStatus(), io::ScopedFileLock::Status::Busy) << "another editor can't take the folder";
+        closeProject(project);
+    }
+    if (previous) setenv("TMPDIR", saved.c_str(), 1);
+    else unsetenv("TMPDIR");
 }
 
 TEST(ProjectTempDir, SkipsBusyFolders) {
