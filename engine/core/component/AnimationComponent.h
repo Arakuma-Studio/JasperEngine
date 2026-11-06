@@ -14,6 +14,9 @@ namespace jasperengine{
         Entity action = NULL_ENTITY;
         uint32_t track = 0; // Used for editor timeline organization
         bool started = false; // runtime: the action already started in this run of the animation
+        // runtime (S40 R20): the animation's pass an audio or snapshot action last started in;
+        // such an action starts once per pass, never again to hold a last value
+        uint32_t audioPass = 0;
     };
 
     struct JASPERENGINE_API AnimationComponent{
@@ -35,6 +38,9 @@ namespace jasperengine{
         float fadeTarget = 1.0f;
         float fadeSpeed = 0.0f;      // 0 = no fade in progress (instant)
         bool stopOnFadeOut = false;  // stop() the animation once a fade reaches 0
+        // runtime (S40 R20): bumped at each start and loop wrap; audio and snapshot frames start
+        // once per pass (ActionFrame::audioPass)
+        uint32_t pass = 0;
     };
 
     

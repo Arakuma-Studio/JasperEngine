@@ -1,5 +1,5 @@
 # Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
-digest d8351c546a144711
+digest f66d3a4693d30941
 --- 0
 enabled: false
 type: camera_ui
@@ -19,6 +19,8 @@ autoResize: false
 framebufferWidth: 4050
 framebufferHeight: 86
 framebufferFilter: linear
+transparencyMode: order_independent
+oitWeightScale: -.inf
 --- 1
 enabled: true
 type: camera_ortho
@@ -37,6 +39,7 @@ autoResize: false
 framebufferWidth: 1257
 framebufferHeight: 4535
 framebufferFilter: nearest_mipmap_nearest
+oitWeightScale: 92
 --- 2
 enabled: false
 type: camera_ortho
@@ -58,6 +61,7 @@ autoResize: true
 framebufferWidth: 3607
 framebufferHeight: 2790
 framebufferFilter: nearest_mipmap_linear
+oitWeightScale: 5993.646
 --- 3
 enabled: false
 type: camera_perspective
@@ -79,6 +83,7 @@ autoResize: true
 framebufferWidth: 3244
 framebufferHeight: 1359
 framebufferFilter: linear_mipmap_linear
+oitWeightScale: 474.25433
 --- 4
 enabled: false
 type: camera_ortho
@@ -99,6 +104,8 @@ autoResize: true
 framebufferWidth: 3701
 framebufferHeight: 1197
 framebufferFilter: linear
+transparencyMode: order_independent
+oitWeightScale: 29
 --- 5
 enabled: false
 type: camera_perspective
@@ -119,6 +126,7 @@ autoResize: true
 framebufferWidth: 3000
 framebufferHeight: 3619
 framebufferFilter: nearest
+oitWeightScale: 104.42857
 --- 6
 enabled: false
 type: camera_ortho
@@ -140,6 +148,7 @@ autoResize: true
 framebufferWidth: 4713
 framebufferHeight: 3899
 framebufferFilter: linear_mipmap_linear
+oitWeightScale: -0.1532561
 --- 7
 enabled: false
 type: camera_ui
@@ -158,3 +167,4 @@ autoResize: true
 framebufferWidth: 2075
 framebufferHeight: 3783
 framebufferFilter: nearest_mipmap_linear
+oitWeightScale: -.inf

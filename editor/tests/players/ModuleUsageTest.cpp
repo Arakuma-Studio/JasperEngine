@@ -12,6 +12,8 @@
 #include "player/PlayerModules.h"
 
 #include "Scene.h"
+#include "component/ActionComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "component/CharacterController2DComponent.h"
@@ -477,6 +479,33 @@ TEST(ModuleUsageSoundLayer, LuaNamesFromTheBindingsNeedIt) {
     ModuleScan plain;
     plain.luaScripts.push_back({"scripts/a.lua", "local s = AudioSource(self.scene, self.entity); s:play()"});
     EXPECT_FALSE(ModuleUsageDetector::analyze(plain).needs("soundlayer"));
+}
+
+// docs/specs/S40-timeline-audio.md 6.6: clips with audio cues and the legacy timeline's audio and snapshot actions
+TEST(ModuleUsageSoundLayer, TimelineAudioNeedsIt) {
+    ModuleScan clips;
+    clips.cueClips.push_back("assets/anim/walk.anim");
+    const ModuleUsage fromClip = ModuleUsageDetector::analyze(clips);
+    EXPECT_TRUE(fromClip.needs("soundlayer"));
+    EXPECT_NE(fromClip.firstEvidence("soundlayer").find("audio cues"), std::string::npos) << fromClip.firstEvidence("soundlayer");
+
+    Scene scene;
+    const Entity audioAction = scene.createEntity();
+    scene.addComponent<ActionComponent>(audioAction, ActionComponent());
+    scene.addComponent<AudioSourceComponent>(audioAction, AudioSourceComponent());
+    ModuleScan actions;
+    actions.contents.push_back({"scene Main", &scene, {audioAction}});
+    const ModuleUsage fromAction = ModuleUsageDetector::analyze(actions);
+    EXPECT_TRUE(fromAction.needs("soundlayer"));
+    EXPECT_NE(fromAction.firstEvidence("soundlayer").find("audio action"), std::string::npos) << fromAction.firstEvidence("soundlayer");
+
+    Scene snapshots;
+    const Entity snapshotAction = snapshots.createEntity();
+    snapshots.addComponent<ActionComponent>(snapshotAction, ActionComponent());
+    snapshots.addComponent<AudioSnapshotComponent>(snapshotAction, AudioSnapshotComponent());
+    ModuleScan snapshotScan;
+    snapshotScan.contents.push_back({"scene Main", &snapshots, {snapshotAction}});
+    EXPECT_TRUE(ModuleUsageDetector::analyze(snapshotScan).needs("soundlayer"));
 }
 
 TEST(ModuleUsageSoundLayer, EveryPrebuiltVariantHasIt) {

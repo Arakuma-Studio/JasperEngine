@@ -113,7 +113,12 @@ namespace jasperengine::editor{
         // not a GameObject: the Hierarchy's "3D Object > Ragdoll..." opens the wizard on the selection
         RAGDOLL_WIZARD,
         // a full-stretch RectTransform the Safe Area component drives (GameObject > UI > Safe Area)
-        SAFE_AREA
+        SAFE_AREA,
+        // the legacy action timeline's sound (S40 R17, R18): an action with an AudioSource that plays
+        // a clip or a Sound Event, and a Mixer Snapshot action
+        AUDIO_ACTION,
+        SOUND_EVENT_ACTION,
+        MIXER_SNAPSHOT_ACTION
     };
 
     class CreateEntityCmd: public Command{

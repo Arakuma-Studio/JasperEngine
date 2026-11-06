@@ -63,8 +63,8 @@ namespace {
     // October 2026, see StochasticTilingTest.cpp)
     // bits 0-31, bit 32, the lattice deformer ('Ltc'), bit 33, S10's high shadow filters ('Shq'),
     // bits 34-35, the Vertex Animation ('Vat', 'Vab'), bits 36-39, S57's lighting ('Til',
-    // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), and bit 41,
-    // S55's automatic GPU instancing ('Aui')
+    // 'Cap', 'Cts', 'Oit'), bit 40, S54's LOD cross-fade ('Lfd'), and bit 41, S55's automatic GPU
+    // instancing ('Aui')
     const uint64_t meshValidMask = 0x3FFFFFFFFFFULL;
     // every MESH bit but 5: the valid mask before Stochastic Tiling
     const uint64_t meshMaskWithoutBit5 = 0xFFFFFFDFULL;
@@ -195,7 +195,7 @@ TEST(ShaderKey, SpecsTakeSixtyFourBitMasks) {
 // ---- (b) normalization
 
 TEST(ShaderKeyNormalize, StripsUnnamedBitsKeepsTheRest) {
-    // MESH: every bit past 41 goes; bit 5 (Stochastic Tiling) stays: a stale
+    // MESH: every bit past 41 (S55's 'Aui') goes; bit 5 (Stochastic Tiling) stays: a stale
     // 'Pcf' of an old file is cleared where files are read (Stream), not here
     EXPECT_EQ(ShaderPool::normalizeKey(ShaderPool::getShaderKey(ShaderType::MESH, ~0ULL)),
               ShaderPool::getShaderKey(ShaderType::MESH, meshValidMask));

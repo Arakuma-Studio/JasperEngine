@@ -2490,6 +2490,31 @@ OVERRIDES.update({
     ('Audio', 'isCapturing'): {
         'doc': ['True while this Play or player run writes an audio capture.'],
         'overloads': [([], 'boolean')]},
+    ('Audio', 'playMusic'): {
+        'doc': ['Starts or switches the music: a clip (its loop region repeats until advanceMusic) or a Sound Event played as',
+                'a playlist of sections. Survives scene loads. The playing track again does nothing. False, warned once,',
+                'for a layer event or sections that differ in rate or channels.'],
+        'overloads': [([('eventOrClip', 'string'), ('opts?', 'MusicOptions')], 'boolean')]},
+    ('Audio', 'stopMusic'): {
+        'doc': ['A linear fade to silence over `fade` seconds (default at once), then the music stops; opts.sync: when the fade starts.'],
+        'overloads': [([('fade?', 'number'), ('opts?', 'MusicStopOptions')], '')]},
+    ('Audio', 'advanceMusic'): {
+        'doc': ['The current section ends its loop at its next loop end, then its tail plays and the next section follows.',
+                'False without music.'],
+        'overloads': [([], 'boolean')]},
+    ('Audio', 'playStinger'): {
+        'doc': ['A clip or Sound Event on the music\'s next "beat" (default), "bar" or "now", sample-exact; owned by the music,',
+                'so a scene load does not cut it. Without music or tempo it plays now, warned once.'],
+        'overloads': [([('eventOrClip', 'string'), ('sync?', 'string')], 'SoundHandle')]},
+    ('Audio', 'getMusic'): {
+        'doc': ['The track playing (the incoming one during a crossfade), "" without music.'],
+        'overloads': [([], 'string')]},
+    ('Audio', 'getMusicTime'): {
+        'doc': ['Seconds of the track played so far, all sections.'],
+        'overloads': [([], 'number')]},
+    ('Audio', 'getMusicPosition'): {
+        'doc': ['Where the music is on its beat grid (bar and beat 1-based, 0 before the first beat); nil without music or tempo.'],
+        'overloads': [([], 'MusicPosition?')]},
     ('SoundHandle', 'fadeOut'): {
         'doc': ['To silence over `seconds`, then stops (opts.pause: pauses); the volume is put back.'],
         'overloads': [([('seconds', 'number'), ('opts?', 'AudioFadeOutOptions')], '')]},
@@ -3151,6 +3176,8 @@ ENGINE_EVENT_ARGS = {
 # Handler arguments of other classes' event fields, by (class, field)
 EVENT_FIELD_ARGS = {
     ('Log', 'onMessageReceived'): ['message', 'stackTrace', 'level'],
+    ('Audio', 'onMusicBeat'): ['bar', 'beat'],
+    ('Audio', 'onMusicSection'): ['section', 'clip'],
     ('Device', 'onThermalStateChanged'): ['state'],
 }
 

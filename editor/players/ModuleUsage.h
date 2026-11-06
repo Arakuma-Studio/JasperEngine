@@ -79,6 +79,7 @@ namespace jasperengine::editor {
         std::vector<ModuleSource> luaScripts;
         std::vector<ModuleSource> documents;    // .html .htm .rml .xhtml
         std::vector<std::string> cppScripts;    // C++ script sources (project-relative)
+        std::vector<std::string> cueClips;      // .anim files with audio cues (project-relative; S40 §6.6)
         bool debugOverlayInBuilds = false;      // Project Settings > Debug: the overlay is an HTML UI document
         bool navigationInBuilds = true;         // Project Settings > Navigation > Include in Builds
         bool audioImportTable = false;          // the export writes je-audio-imports.json (a clip with import settings)

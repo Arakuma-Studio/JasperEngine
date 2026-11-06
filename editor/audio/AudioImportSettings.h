@@ -3,8 +3,9 @@
 
 // A clip's import settings (spec S36 R7): the `import.audioImporter` section of its S04 meta
 // sidecar, Unity's AudioImporter in our names. What the bytes cannot say about how a clip plays:
-// its type, gain, trims, click-safe fades and loop region. Keys are written only when they differ
-// from their default, in this order; unknown keys survive a round trip after them.
+// its type, gain, trims, click-safe fades, loop region and music tempo (S39 R3). Keys are written
+// only when they differ from their default, in this order; unknown keys survive a round trip after
+// them.
 //
 //   import:
 //     audioImporter:
@@ -14,6 +15,10 @@
 //       trim_head_ms: auto
 //       fade_out_ms: 20
 //       loop_start_ms: 1250.5
+//       music:
+//         bpm: 120
+//         beats_per_bar: 4
+//         first_beat_ms: 12.4
 
 #pragma once
 
@@ -51,6 +56,26 @@ namespace jasperengine::editor {
             bool operator==(const Trim& other) const { return automatic == other.automatic && ms == other.ms; }
         };
 
+        static constexpr double BPM_MIN = 20.0;
+        static constexpr double BPM_MAX = 400.0;
+        static constexpr int BEATS_PER_BAR_MAX = 16;
+
+        // A music clip's beat grid: beat 1 at firstBeatMs from the file's start (before trims), a
+        // beat every 60 / bpm s, a bar every beatsPerBar beats. bpm 0: no tempo, the block unwritten.
+        // It never changes the samples.
+        struct Music {
+            double bpm = 0.0;
+            int beatsPerBar = 4;
+            double firstBeatMs = 0.0;
+
+            bool isDefault() const { return bpm == 0.0; }
+            bool operator==(const Music& other) const {
+                return bpm == other.bpm && beatsPerBar == other.beatsPerBar && firstBeatMs == other.firstBeatMs;
+            }
+            // {bpm, beats_per_bar, first_beat_ms}
+            nlohmann::json toJson() const;
+        };
+
         std::string type;           // SoundTypes.h vocabulary; empty: none
         double gainDb = 0.0;
         Trim trimHead;
@@ -59,13 +84,14 @@ namespace jasperengine::editor {
         double fadeOutMs = 0.0;
         double loopStartMs = -1.0;  // -1: the trimmed start
         double loopEndMs = -1.0;    // -1: the trimmed end
-        // the keys this version does not read (S39's music, a later version's), in file order
+        Music music;
+        // the keys this version does not read (a later version's), in file order
         YAML::Node unknown;
 
         // no key but `version` would be written
         bool isDefault() const;
         bool operator==(const AudioImportSettings& other) const;
-        // the section differs in how the clip plays (not its type, not an unknown key)
+        // the section differs in how the clip sounds (not its type, its tempo or an unknown key)
         bool sameSound(const AudioImportSettings& other) const;
 
         // The one validation of the values (Inspector, MCP, export); false with the reason
@@ -90,7 +116,8 @@ namespace jasperengine::editor {
         // tail silence (AudioAnalysis::silence, in ms), the loop points checked against the trimmed
         // region. False with the reason when they do not fit the file. resolved, when given, gets
         // {gain_db, trim_head_frames, trim_tail_frames, fade_in_frames, fade_out_frames,
-        // loop_start_frame, loop_end_frame, sample_rate, frames}.
+        // loop_start_frame, loop_end_frame, sample_rate, frames}, and {bpm, beats_per_bar,
+        // first_beat_frame} with a tempo.
         bool resolve(uint64_t fileFrames, unsigned int sampleRate, double headSilenceMs, double tailSilenceMs, ClipImportSettings& out,
                      std::string& error, Json* resolved = nullptr) const;
         // A number as the section writes it: at most 4 decimals, no trailing zeros, no locale

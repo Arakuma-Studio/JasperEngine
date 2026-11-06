@@ -94,6 +94,7 @@
 #include "audio/AudioCapture.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
+#include "audio/MusicPlayer.h"
 #include "audio/SoundEventLibrary.h"
 #include "audio/AudioImportRegistry.h"
 #include "subsystem/VideoPlayerSystem.h"
@@ -313,6 +314,17 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
     return infos;
 }
 
+// The project ShaderManifests reads fork files through: its reader captures it, so the project
+// takes the reader back when it goes (a later read would call into a freed Project)
+static const editor::Project* shaderForkReaderProject = nullptr;
+
+static void installShaderForkReader(const editor::Project* project){
+    shaderForkReaderProject = project;
+    ShaderManifests::setForkReader([project](const std::string& relativePath, std::string& content) {
+        return project->readShaderFile(relativePath, content);
+    });
+}
+
 bool editor::Project::recordSelectionInUndo = true;
 
 editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()){
@@ -331,6 +343,10 @@ editor::Project::~Project(){
     playStopTask.wait();
     sceneSaveTask.wait();
     shaderListWrite.wait();
+    if (shaderForkReaderProject == this){
+        shaderForkReaderProject = nullptr;
+        ShaderManifests::setForkReader(nullptr);
+    }
     // the hooks point here: an editor or tool with a later Project installs its own
     if (UndoTimeline::getProjectHistory() == &projectHistory){
         UndoTimeline::setProjectHistory(nullptr);
@@ -3070,7 +3086,8 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.seed = std::max(audioSettings.seed, 0);
     AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
                             AudioSystem::outputStageFromName(audioSettings.outputStage),
-                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed});
+                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed,
+                            audioSettings.musicGroup});
     AudioMixerDocument::setDefaultOutputGroup(audioSettings.defaultOutputGroup);
     if (mixerChanged || AudioMixer::getPath() != audioSettings.mixer) {
         applyAudioMixer();
@@ -3224,6 +3241,7 @@ void editor::Project::resetPlayAudio(bool starting) const{
     AudioMixer::resetRuntime(starting);
     if (starting) AudioMixer::loadRemembered();
     AudioSystem::resetSoundEventRuntime();
+    MusicPlayer::reset();
     if (starting) AudioImportRegistry::registerProject(*this);
     else AudioImportTable::clear();
 }
@@ -6475,7 +6493,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
     }
 
-    // every played scene's sounds stopped, so their voice_stop lines are written
+    // every played scene's sounds and the music stopped, so their voice_stop lines are written
+    MusicPlayer::reset();
     endPlayAudioCapture();
 
     editor::getEditorHost().enqueueMainThreadTask([this]() {
@@ -6579,9 +6598,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
             // Fresh projects resolve fork manifests through the same project-relative
             // reader as opened projects, including after the assets directory changes.
-            ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
-                return readShaderFile(relativePath, content);
-            });
+            installShaderForkReader(this);
 
             modelLoaded = true;
             // a project this version creates keeps its binaries in Git LFS (R21)
@@ -7031,9 +7048,7 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         // shader manifests of forks are read from this project's files
         // (the project root, else the assets directory: findShaderFile, read when asked, so
         // the assets directory loaded with the project and any later change apply)
-        ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
-            return readShaderFile(relativePath, content);
-        });
+        installShaderForkReader(this);
 
         // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot
         // upgrade of files written before them) and references resolve through it
@@ -10443,8 +10458,9 @@ void editor::Project::start(uint32_t sceneId) {
     PlayChangeReview::get().discard(sceneId);
     // and from clean input (Project Settings > Input, no runtime rebinding)
     resetPlayInput();
-    // and audio: the driver this Play mixes on, the mixer's start snapshot and remembered values,
-    // the listener unpaused
+    // and audio: no music of edit mode (eval_lua) in it, the driver this Play mixes on, the mixer's
+    // start snapshot and remembered values, the listener unpaused
+    MusicPlayer::reset();
     preparePlayAudioCapture();
     resetPlayAudio(true);
     // and from the declared global shader values (Project Settings > Graphics > Shader Globals)

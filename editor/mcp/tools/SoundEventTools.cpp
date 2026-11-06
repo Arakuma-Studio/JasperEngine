@@ -420,7 +420,7 @@ void registerSoundEventTools(McpRegistry& registry) {
     tool.inputSchema = object({
         {"path", assetPath("A .soundevent in the assets folder.")},
         {"create", withDefault(boolean("Make the file; refused when it exists."), false)},
-        {"values", anyObject("mode, clips (paths, GUIDs or {clip, weight, volume_db, pitch_semitones, delay_ms}; the whole list), "
+        {"values", anyObject("mode, clips (paths, GUIDs or {clip, weight, volume_db, pitch_semitones, delay_ms, loops}; the whole list), "
                              "avoid_repeat, pitch_semitones, volume_db, delay_ms ([min, max]), output_group (a name), max_instances, "
                              "steal, cooldown_ms, priority, loop, spatial, type. null resets a key.")},
         {"match_levels", withDefault(boolean("After values: every clip's volume_db so all play equally loud, none past -1 dBTP. Not for layer."), false)},

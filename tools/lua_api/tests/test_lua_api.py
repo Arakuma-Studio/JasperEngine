@@ -120,6 +120,12 @@ class LuaApiJson(unittest.TestCase):
         self.assertEqual(classes['Audio']['modules'], ['soundlayer'])
         self.assertEqual(classes['SoundHandle']['modules'], ['soundlayer'])
         self.assertEqual(enums['AudioPlayOn']['modules'], ['soundlayer'])
+        # the music (S39 R19): every name on the soundlayer class
+        audio = {m['name'] for m in classes['Audio']['methods'] + classes['Audio']['properties']}
+        for name in ('playMusic', 'stopMusic', 'advanceMusic', 'playStinger', 'getMusic', 'getMusicTime', 'getMusicPosition',
+                     'onMusicBeat', 'onMusicSection'):
+            self.assertIn(name, audio)
+            self.assertTrue(set(member('Audio', name)['modules']) <= {'soundlayer'}, name)
         for c in classes.values():
             for key in ('modules',):
                 self.assertIsInstance(c[key], list)

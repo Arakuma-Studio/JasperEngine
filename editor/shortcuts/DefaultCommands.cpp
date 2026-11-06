@@ -365,6 +365,19 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.add("animation.frameSelected", "Frame Selected Keys", C::Animation, "F");
     b.add("animation.frameAll", "Frame All Keys", C::Animation, "A");
     b.add("animation.record", "Record", C::Animation, "R").description = "Record mode on or off";
+    // timeline audio (S40 R10, R22): the selected cue or audio action, in either mode
+    b.add("animation.alignCueStart", "Align Start to Playhead", C::Animation).description = "The selected audio cue starts at the playhead";
+    b.add("animation.alignCuePeak", "Align Peak to Playhead", C::Animation, "Shift+A").description =
+        "The selected audio cue's loudest moment lands on the playhead";
+    b.add("animation.alignCueEnd", "Align End to Playhead", C::Animation).description = "The selected audio cue ends at the playhead";
+    b.add("animation.addAudioCue", "Add Audio Cue", C::Animation).description = "A clip or Sound Event at the playhead (clip mode)";
+    b.add("animation.addSourceCue", "Add Source Cue", C::Animation).description = "Starts an Audio Source of the hierarchy (clip mode)";
+    b.add("animation.addSnapshotCue", "Add Snapshot Cue", C::Animation).description = "A mixer snapshot transition (clip mode)";
+    b.add("animation.addAudioAction", "Add Audio Clip Action", C::Animation).description = "An audio action at the playhead (Animation sequence)";
+    b.add("animation.addSoundEventAction", "Add Sound Event Action", C::Animation).description =
+        "A Sound Event action at the playhead (Animation sequence)";
+    b.add("animation.addSnapshotAction", "Add Mixer Snapshot Action", C::Animation).description =
+        "A Mixer Snapshot action at the playhead (Animation sequence)";
 
     // The Pose Animation window (docs/pose-animation.md): while it has focus, or in a Scene view
     // posing its character
@@ -415,6 +428,11 @@ std::vector<CommandDef> jasperengine::editor::defaultCommands() {
     b.group = "Sound Event";
     b.add("soundEvent.audition", "Audition x8", C::Editor).description = "The selected Sound Event's next 8 plays, rendered offline";
     b.add("soundEvent.matchLevels", "Match Clip Levels", C::Editor).description = "The selected Sound Event's clips at their average loudness";
+    b.add("soundEvent.playAsMusic", "Play as Music", C::Editor).description = "The selected Sound Event as a music playlist, through the music system";
+
+    b.group = "Audio Clip";
+    b.add("audioClip.detectTempo", "Detect Tempo", C::Editor).description =
+        "The selected audio file's tempo, beats per bar and first beat, drawn in its Inspector; Use writes them";
 
     b.group = "Console";
     b.add("console.copy", "Copy Message", C::Console, "Ctrl+C");

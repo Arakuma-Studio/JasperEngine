@@ -49,16 +49,24 @@
 #include "component/ScriptComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "subsystem/RenderSystem.h"
+#include "subsystem/AudioSystem.h"
+#include "audio/WavWriter.h"
+#include "audio/TimelineAudioPreview.h"
 
 #include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -67,6 +75,26 @@ namespace {
 
     // the App's part: what Project calls on the editor host reaches the clip hooks
     struct WindowHost : public EditorHost {
+        std::mutex postedMutex;
+        std::condition_variable taskPosted;
+        uint64_t postedGeneration = 0;
+
+        void enqueueMainThreadTask(std::function<void()> task) override {
+            EditorHost::enqueueMainThreadTask(std::move(task));
+            {
+                std::lock_guard<std::mutex> lock(postedMutex);
+                postedGeneration++;
+            }
+            taskPosted.notify_all();
+        }
+        uint64_t taskGeneration() {
+            std::lock_guard<std::mutex> lock(postedMutex);
+            return postedGeneration;
+        }
+        void waitForTaskAfter(uint64_t generation) {
+            std::unique_lock<std::mutex> lock(postedMutex);
+            taskPosted.wait(lock, [&]() { return postedGeneration != generation; });
+        }
         void stopTransientPreviews() override {
             if (animationClipAppHooks().stopTransientPreviews) animationClipAppHooks().stopTransientPreviews();
         }
@@ -77,6 +105,12 @@ namespace {
             if (animationClipAppHooks().projectClosed) animationClipAppHooks().projectClosed();
         }
     };
+
+    // A worker's post may finish after TearDown restores the default host.
+    WindowHost& animationWindowClipHost() {
+        static WindowHost* host = new WindowHost();
+        return *host;
+    }
 
     fs::path repoPath(const fs::path& relative) {
         return (fs::path(JASPER_TEST_REPO_DIR) / relative).lexically_normal();
@@ -217,7 +251,7 @@ namespace {
     // ImGui context drawing it, and an Inspector of the project (the record sources' rows)
     class AnimationWindowClipTest : public ::testing::Test {
     protected:
-        WindowHost host;
+        WindowHost& host = animationWindowClipHost();
         ImGuiContext* previousContext = nullptr;
         ImGuiContext* context = nullptr;
         std::unique_ptr<AnimationWindow> window;
@@ -773,6 +807,89 @@ TEST_F(AnimationWindowClipTest, EventsLaneWithAScript) {
     EXPECT_FALSE(modified()) << "events are clip edits";
 }
 
+// ---------------------------------------------------------------------------- the Audio lane (S40 R9-R11)
+
+TEST_F(AnimationWindowClipTest, AudioLaneDropAlignAndPreview) {
+    heroClip();
+    // a 0.5 s tick, loudest at 0.2 s (48 kHz mono)
+    std::vector<float> samples(24000, 0.0f);
+    for (int i = 0; i < 480; i++) samples[9600 + i] = (i % 2 ? -0.9f : 0.9f) * (1.0f - (float)i / 480.0f);
+    const fs::path tickFile = headless().dir / "assets" / "sounds" / "tick.wav";
+    fs::create_directories(tickFile.parent_path());
+    writeAll(tickFile, WavWriter::pcm16(samples, 1, 48000));
+    const std::string tick = project()->normalizeToAssetsRelative(tickFile).generic_string();
+    Json st = act({{"state", "hero_clip"}});
+    EXPECT_EQ(st["audio_rows"], Json::array()) << "no lane without cues";
+
+    // a sound dropped on the lane: one cue at the drop time, one undo step
+    st = act({{"drop_sounds", {{"paths", {tick}}, {"time", 0.3}}}});
+    ASSERT_EQ(st["audio"].size(), 1u) << st["audio"].dump();
+    EXPECT_EQ(st["audio"][0]["kind"], "sound");
+    EXPECT_EQ(st["audio"][0]["sound"], tick);
+    EXPECT_NEAR(st["audio"][0]["time"].get<float>(), 0.3f, 1e-4f);
+    EXPECT_EQ(st["audio_rows"], Json::array({"sound"}));
+    EXPECT_EQ(st["selected_cue"], 0) << "the dropped cue is selected";
+    ASSERT_TRUE(undoProject());
+    EXPECT_EQ(state()["audio"].size(), 0u) << "the drop is one undo step";
+    ASSERT_TRUE(redoProject());
+
+    // S36's analysis gives the block its length and peak (on the worker)
+    for (;;) {
+        const uint64_t generation = host.taskGeneration();
+        if (!(state()["audio"][0]["length"].get<double>() <= 0.0)) break;
+        if (!TimelineSounds::get(project(), tick).pending) break;
+        host.waitForTaskAfter(generation);
+        frames(1);
+    }
+    st = state();
+    ASSERT_NEAR(st["audio"][0]["length"].get<double>(), 0.5, 0.002) << "the tick's length";
+
+    // R10: Align Peak puts the analysed peak on the playhead; Start and End as their names say
+    st = act({{"time", 1.0}, {"preview", false}, {"select_cue", 0}, {"align_cue", "peak"}});
+    EXPECT_NEAR(st["audio"][0]["time"].get<float>(), 0.8f, 0.002f) << "peak at 0.2 s of the tick on 1.0 s";
+    std::shared_ptr<AnimationClipDocument> doc = AnimationClipDocument::open(project(), CLIP, nullptr);
+    ASSERT_TRUE(doc);
+    ASSERT_EQ(doc->data().audio.size(), 1u);
+    EXPECT_NEAR(doc->data().audio[0].time, 0.8f, 0.002f) << "saved with the clip";
+    st = act({{"align_cue", "end"}});
+    EXPECT_NEAR(st["audio"][0]["time"].get<float>(), 0.5f, 0.002f);
+    st = act({{"command", "animation.alignCueStart"}});
+    EXPECT_NEAR(st["audio"][0]["time"].get<float>(), 1.0f, 0.002f) << "the catalog command acts on the selected cue";
+    ASSERT_TRUE(undoProject());
+    EXPECT_NEAR(state()["audio"][0]["time"].get<float>(), 0.5f, 0.002f) << "each alignment is one undo step";
+    EXPECT_EQ(state()["selected_cue"], -1) << "the selection is the cue itself (at 1.0 s): the undo left none";
+    act({{"time", 0.1}, {"preview", false}, {"select_cue", 0}});
+    EXPECT_NE(refused({{"align_cue", "peak"}}).find("before 0"), std::string::npos) << "a peak before the clip's start is refused";
+
+    // drag snapped to the frames, one undo step; a snapshot cue gets its own row
+    st = act({{"drag_cue", 0.21}});
+    EXPECT_NEAR(st["audio"][0]["time"].get<float>(), 0.7f, 1e-4f);
+    ASSERT_TRUE(undoProject());
+    EXPECT_NEAR(state()["audio"][0]["time"].get<float>(), 0.5f, 0.002f);
+    st = act({{"add_cue", {{"kind", "snapshot"}, {"snapshot", "Build"}, {"time", 1.0}}}});
+    EXPECT_EQ(st["audio_rows"], Json::array({"sound", "snapshot"}));
+    EXPECT_EQ(st["audio"][1]["kind"], "snapshot");
+    st = act({{"delete_cue", true}});
+    EXPECT_EQ(st["audio"].size(), 1u) << "Delete removes the selected cue";
+    EXPECT_NE(refused({{"add_cue", {{"kind", "sound"}}}}).find("needs a sound"), std::string::npos);
+
+    // R11: the playing preview starts a preview voice per crossed cue; none while Play captures
+    st = act({{"select_cue", 0}, {"align_cue", "start"}});
+    act({{"time", 0.0}, {"play", true}});
+    for (int i = 0; i < 50; i++) frame(true, 1.0 / 60.0);
+    st = act({{"play", false}});
+    EXPECT_GE(st["preview_audio_starts"].get<int>(), 1) << "the cue at 0.1 s played in the preview";
+    const int before = st["preview_audio_starts"].get<int>();
+    ASSERT_TRUE(AudioSystem::beginDeterministic());
+    act({{"time", 0.0}, {"play", true}});
+    for (int i = 0; i < 50; i++) frame(true, 1.0 / 60.0);
+    st = act({{"play", false}});
+    AudioSystem::endDeterministic();
+    EXPECT_EQ(st["preview_audio_starts"].get<int>(), before) << "no preview voice while the driver is held (a capture)";
+    act({{"preview", false}});
+    EXPECT_FALSE(modified()) << "cues are clip edits";
+}
+
 TEST_F(AnimationWindowClipTest, SamplesAndSnap) {
     heroClip();
     const Json clip = {{"format", "jasperengine.anim"}, {"version", 1}, {"frame_rate", 24}, {"wrap", "once"},
@@ -1300,6 +1417,54 @@ TEST_F(AnimationWindowClipTest, EntityModeEntriesAndFrameMove) {
     EXPECT_EQ(st["mode"], "entity");
     EXPECT_EQ(st["entity_animation"], "SpineTweens");
     EXPECT_EQ(st["entity_mode_entries"], Json::array({"hero_clip (clip)", "Create New Clip..."}));
+}
+
+// The entity mode's timeline audio (S40 R22, R23): Add Property > Sound and a drop on the tracks add
+// an audio action and its frame in one undo step, the block says what it plays, Align Peak moves the
+// frame, and the playing preview plays it as a preview voice
+TEST_F(AnimationWindowClipTest, EntityModeAudioActions) {
+    std::vector<float> samples(24000, 0.0f);
+    for (int i = 0; i < 480; i++) samples[9600 + i] = (i % 2 ? -0.9f : 0.9f) * (1.0f - (float)i / 480.0f);
+    const fs::path tickFile = headless().dir / "assets" / "sounds" / "tick.wav";
+    fs::create_directories(tickFile.parent_path());
+    writeAll(tickFile, WavWriter::pcm16(samples, 1, 48000));
+    const std::string tick = project()->normalizeToAssetsRelative(tickFile).generic_string();
+    addEntityAnimation(scene(), entity("Robot"), "RobotSounds", 1);
+    frames(2);
+    Json st = act({{"entity", "Robot"}});
+    ASSERT_EQ(st["mode"], "entity") << st.dump();
+    const size_t frameCount = st["entity_frames"].size();
+    st = act({{"entity_audio_action", {{"type", "audio"}, {"content", tick}, {"time", 0.5}}}});
+    ASSERT_EQ(st["entity_frames"].size(), frameCount + 1) << st["entity_frames"].dump();
+    const Json added = st["entity_frames"].back();
+    EXPECT_EQ(added["label"], "Audio: tick");
+    EXPECT_NEAR(added["start"].get<float>(), 0.5f, 1e-4f);
+    EXPECT_EQ(st["entity_selected_frame"], (int)frameCount);
+    ASSERT_TRUE(undoScene());
+    EXPECT_EQ(state()["entity_frames"].size(), frameCount) << "the action and its frame are one undo step";
+    ASSERT_TRUE(redoScene());
+    st = act({{"entity_audio_action", {{"type", "snapshot"}, {"content", "Build"}, {"time", 1.0}}}});
+    EXPECT_EQ(st["entity_frames"].back()["label"], "Mixer Snapshot: Build");
+
+    // Align Peak on the selected audio block, once the analysis has the peak
+    for (;;) {
+        const uint64_t generation = host.taskGeneration();
+        float time = 0.0f;
+        act({{"entity_select_frame", (int)frameCount}, {"entity_time", 1.0}});
+        if (AnimationWindowTestAccess::alignProblem(*window, 1, &time).empty()) break;
+        if (!TimelineSounds::get(project(), tick).pending) break;
+        host.waitForTaskAfter(generation);
+    }
+    st = act({{"entity_select_frame", (int)frameCount}, {"entity_time", 1.0}, {"entity_command", "animation.alignCuePeak"}});
+    EXPECT_NEAR(st["entity_frames"][frameCount]["start"].get<float>(), 0.8f, 0.002f) << "the tick's peak (0.2 s) on 1.0 s";
+    ASSERT_TRUE(undoScene());
+    EXPECT_NEAR(state()["entity_frames"][frameCount]["start"].get<float>(), 0.5f, 1e-4f) << "one undo step";
+
+    // the playing preview plays the action as a preview voice
+    st = act({{"entity_time", 0.0}, {"entity_play", true}});
+    for (int i = 0; i < 60; i++) frame(true, 1.0 / 60.0);
+    st = act({{"entity_play", false}});
+    EXPECT_GE(st["entity_audio_starts"].get<int>(), 1) << "the audio action at 0.5 s played in the preview";
 }
 
 // Keys copied from one property paste onto the selected key's property only when it is of their

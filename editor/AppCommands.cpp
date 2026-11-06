@@ -199,6 +199,10 @@ void editor::App::registerCommands(){
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
     bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
          [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
+    bind("soundEvent.playAsMusic", [this](const CommandArgs&) { inspectorWindow->requestSoundEventPlayAsMusic(); },
+         [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()) && !project.isAnyScenePlaying(); });
+    bind("audioClip.detectTempo", [this](const CommandArgs&) { inspectorWindow->requestAudioClipDetectTempo(); },
+         [this]() { return Util::isAudioFile(project.getInspectedAsset().string()); });
     enable("assets.migrateReferences", notBusy);
     enable("assets.scenesInBuild", notBusy);
     enable("assets.emptyTrash", notBusy);
@@ -504,7 +508,10 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (sceneWindow->isFocused() || sceneWindow->isHovered()) state.panels.push_back(ShortcutContext::SceneView);
     if (projectWindow->isFocused()) state.panels.push_back(ShortcutContext::Project);
     if (consoleWindow->isListFocused()) state.panels.push_back(ShortcutContext::Console);
-    if (clipWindowTakesKeys()) state.panels.push_back(ShortcutContext::Animation);
+    // the entity mode has the Animation context's keys too while it has focus (S40 R22: Align on an
+    // audio block); the edit verbs (Delete, Copy...) stay its own
+    const AnimationWindowClip* animationClip = animationWindow ? animationWindow->getClipMode() : nullptr;
+    if (clipWindowTakesKeys() || (animationClip && animationClip->entityKeys)) state.panels.push_back(ShortcutContext::Animation);
     if (poseKeysActive()) state.panels.push_back(ShortcutContext::PoseAnimation);
     if (ui::CurveWindow::get().isFocused()) state.panels.push_back(ShortcutContext::Curve);
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);

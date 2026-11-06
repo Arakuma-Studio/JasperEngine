@@ -22,12 +22,16 @@
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
 #include "audio/AudioMixerIO.h"
+#include "component/ActionComponent.h"
+#include "component/AnimationComponent.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/CameraComponent.h"
 #include "io/UserSettings.h"
 #include "object/sound/AudioSource.h"
 #include "player/PlayerConfig.h"
 #include "pool/SoundPool.h"
 #include "reflect/Reflect.h"
+#include "subsystem/ActionSystem.h"
 #include "subsystem/AudioSystem.h"
 
 #include "LuaBridge.h"
@@ -1819,4 +1823,55 @@ TEST(NewProjectAudioTest, TheMixerIsTheSpecsAndATemplatesAudioNodeIsLeftAlone) {
     EXPECT_FALSE(fs::exists(dir / "assets" / "audio"));
     EXPECT_EQ(YAML::LoadFile((dir / "project.yaml").string())["audio"]["maxVoices"].as<int>(), 12);
     fs::remove_all(dir);
+}
+
+// S40 + S39: a timeline's Mixer Snapshot action and a music switch asking for other snapshots in one
+// frame. The animation update runs first and the music's switch after it (MusicPlayer, in the audio
+// update), so the music's snapshot holds; at the action's end its revert leaves it, since the mixer no
+// longer shows the action's own snapshot (S40 R18, Deviations "Snapshots with music")
+TEST_F(AudioMixerMathRuntimeTest, MusicSwitchInTheFrameOfASnapshotActionHolds) {
+    loadMixer(R"({"format": "jasperengine.mixer", "groups": [{"id": "00000001", "name": "Master"}],
+      "snapshots": [{"name": "Calm", "values": {}}, {"name": "Duck", "values": {}}, {"name": "Combat", "values": {}}],
+      "startSnapshot": "Calm"})");
+    ASSERT_EQ(AudioMixer::getCurrentSnapshot(), "Calm");
+
+    auto timeline = [this](){
+        const Entity snapshot = scene->createEntity();
+        scene->addComponent<ActionComponent>(snapshot, {});
+        AudioSnapshotComponent duck;
+        duck.snapshot = "Duck";
+        scene->addComponent<AudioSnapshotComponent>(snapshot, duck);
+        const Entity animation = scene->createEntity();
+        scene->addComponent<ActionComponent>(animation, {});
+        AnimationComponent frames;
+        ActionFrame frame;
+        frame.startTime = 0.0f;
+        frame.duration = 0.1f;
+        frame.action = snapshot;
+        frames.actions.push_back(frame);
+        scene->addComponent<AnimationComponent>(animation, frames);
+        scene->getComponent<ActionComponent>(animation).startTrigger = true;
+        return snapshot;
+    };
+    ActionSystem* actions = scene->getSystem<ActionSystem>().get();
+
+    // the control: alone, the action reverts to what was there at its end
+    const Entity alone = timeline();
+    actions->update(1.0 / 60.0);
+    EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Duck") << "the action transitions at its start";
+    for (int i = 0; i < 12; i++) actions->update(1.0 / 60.0);
+    EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Calm") << "and reverts at its end, the mixer still showing its snapshot";
+    EXPECT_FALSE(scene->getComponent<AudioSnapshotComponent>(alone).applied);
+    scene->destroyEntity(alone);
+
+    // with a music switch in the action's first frame
+    const Entity withMusic = timeline();
+    actions->update(1.0 / 60.0);
+    ASSERT_EQ(AudioMixer::getCurrentSnapshot(), "Duck");
+    // the music player's switch in the same frame, after the animation update (MusicPlayer.cpp's call)
+    ASSERT_TRUE(AudioMixer::transitionTo("Combat", 0.0f, false, "music"));
+    EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Combat") << "the last asked holds";
+    for (int i = 0; i < 12; i++) actions->update(1.0 / 60.0);
+    EXPECT_FALSE(scene->getComponent<AudioSnapshotComponent>(withMusic).applied) << "the action ended";
+    EXPECT_EQ(AudioMixer::getCurrentSnapshot(), "Combat") << "its revert leaves the music's snapshot";
 }
