@@ -119,8 +119,8 @@ namespace {
     SceneProject* newScene(const std::string& name, std::vector<Entity>& entities, size_t count) {
         Project* p = project();
         if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
-        const uint32_t id = p->createNewScene(name, SceneType::SCENE_3D);
-        SceneProject* sceneProject = p->getScene(id);
+        p->createNewScene(name, SceneType::SCENE_3D);
+        SceneProject* sceneProject = p->getScene(p->getSelectedSceneId());
         for (size_t i = 0; i < count; i++) {
             const Entity entity = sceneProject->scene->createUserEntity();
             sceneProject->scene->setEntityName(entity, name + std::to_string(i));
@@ -331,7 +331,8 @@ TEST_F(ScriptingEditor, PartMeshSettingsSurviveRebuild) {
 
     Project* p = project();
     if (SceneProject* current = p->getSelectedScene()) current->isModified = false;
-    const uint32_t id = p->createNewScene("Parts", SceneType::SCENE_3D);
+    p->createNewScene("Parts", SceneType::SCENE_3D);
+    const uint32_t id = p->getSelectedSceneId();
     SceneProject* sceneProject = p->getScene(id);
     Scene* scene = sceneProject->scene;
     const Entity model = scene->createUserEntity();
