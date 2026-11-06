@@ -771,3 +771,11 @@ Recorded during the implementation (branch `dc/mesh-memory`).
     editor's resident size after Play (AC10) were not taken. `HeapTrim.ReturnsFreedPagesOnGlibc` checks the trim
     itself; no per-frame code path gained work beyond a predictable branch (6.1) and the full MCP suite showed no
     timing regression of its own.
+15. **After main's S55 and S71.** S55 (automatic GPU instancing) gives every Submesh two more render objects,
+    `batchRender` and `batchDepthRender`, inline: a Submesh is 8,528 B and a sprite's mesh with its arrays 10,280 B
+    (about 20x less than 204,928). They are loaded only while GPU Instancing is on; allocating them on demand, as
+    this spec does for the warm tables, would save 1.6 KB per submesh when it is off (a follow-up for S55's
+    owner). S71 counted a submesh's Custom properties as changed on every decode because the editor's array
+    always held 16 slots; arrays that grow by index now add their elements' always-flags whatever they hold, so
+    a decode over a mesh of no submeshes yet still reloads it. S53's model cooker keeps its 30-buffer
+    interleaving rule (fewer buffers bind faster); only its comment no longer names a player capacity.
