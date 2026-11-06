@@ -395,8 +395,8 @@ void editor::AnimationWindow::previewAudioActions(Scene* scene, Entity animEntit
 
 bool editor::AnimationWindow::drawSoundMenu(SceneProject* sceneProject, AnimationComponent& anim, uint32_t track){
     (void)anim;
+    (void)sceneProject;
     bool added = false;
-    std::string error;
     const float time = snapTime(currentTime);
     if (!ImGui::BeginMenu(ICON_FA_VOLUME_HIGH "  Sound")) return false;
     const std::vector<std::string> sounds = TimelineSounds::projectSounds(project, "");
@@ -406,14 +406,14 @@ bool editor::AnimationWindow::drawSoundMenu(SceneProject* sceneProject, Animatio
             if (Util::isSoundEventFile(path)) continue;
             any = true;
             if (ImGui::MenuItem(path.c_str())){
-                if (!addAudioAction(sceneProject, selectedEntity, EntityCreationType::AUDIO_ACTION, path, time, track, &error)) keyNotice = error;
+                pendingSoundAction = {true, EntityCreationType::AUDIO_ACTION, path, time, track};
                 added = true;
             }
         }
         if (!any) ImGui::TextDisabled("No audio clip in the project");
         ImGui::Separator();
         if (ImGui::MenuItem("Empty Audio Action")){
-            if (!addAudioAction(sceneProject, selectedEntity, EntityCreationType::AUDIO_ACTION, "", time, track, &error)) keyNotice = error;
+            pendingSoundAction = {true, EntityCreationType::AUDIO_ACTION, "", time, track};
             added = true;
         }
         ImGui::EndMenu();
@@ -424,7 +424,7 @@ bool editor::AnimationWindow::drawSoundMenu(SceneProject* sceneProject, Animatio
             if (!Util::isSoundEventFile(path)) continue;
             any = true;
             if (ImGui::MenuItem(path.c_str())){
-                if (!addAudioAction(sceneProject, selectedEntity, EntityCreationType::SOUND_EVENT_ACTION, path, time, track, &error)) keyNotice = error;
+                pendingSoundAction = {true, EntityCreationType::SOUND_EVENT_ACTION, path, time, track};
                 added = true;
             }
         }
@@ -436,14 +436,13 @@ bool editor::AnimationWindow::drawSoundMenu(SceneProject* sceneProject, Animatio
         if (snapshots.empty()) ImGui::TextDisabled("The project's mixer has no snapshot");
         for (const std::string& name : snapshots){
             if (ImGui::MenuItem(name.c_str())){
-                if (!addAudioAction(sceneProject, selectedEntity, EntityCreationType::MIXER_SNAPSHOT_ACTION, name, time, track, &error)) keyNotice = error;
+                pendingSoundAction = {true, EntityCreationType::MIXER_SNAPSHOT_ACTION, name, time, track};
                 added = true;
             }
         }
         ImGui::EndMenu();
     }
     ImGui::EndMenu();
-    if (!error.empty()) keyNoticeAt = ImGui::GetTime();
     return added;
 }
 
@@ -2299,6 +2298,16 @@ void editor::AnimationWindow::drawToolbar(float width, AnimationComponent& anim,
     ImGui::EndDisabled();
 
     // Done last: an Animation action adds an AnimationComponent, which can move anim
+    if (pendingSoundAction.active) {
+        const PendingSoundAction pending = pendingSoundAction;
+        pendingSoundAction = PendingSoundAction();
+        std::string error;
+        if (!addAudioAction(sceneProject, selectedEntity, pending.type, pending.content, pending.time, pending.track, &error)) {
+            keyNotice = error;
+            keyNoticeAt = ImGui::GetTime();
+        }
+        return;
+    }
     if (selected) {
         // If a frame is selected, add to the same track, otherwise track 0
         uint32_t targetTrack = 0;

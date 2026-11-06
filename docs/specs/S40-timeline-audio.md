@@ -469,6 +469,11 @@ every prebuilt variant (S37 Q1, resolved). A clip with cues in a build without t
   explicit duration (it cuts the sound); an auto-length frame's sound plays to its end, because a Sound
   Event's random pitch below 0 plays longer than its length at speed 1 (the clip cue path plays it out
   too, so both timelines stay sample-equal, AC10). Every audio frame still stops before a loop wrap.
+- **Relinking (R3)** follows S04's move rule: a cue holds its sound's GUID (edit_animation, drops and
+  the popover stamp it), so a move relinks it at once (`get_animation`, Play and exports resolve the
+  GUID through the asset map) without rewriting the `.anim`; the path hint is refreshed when an open
+  clip document follows the move, or at the clip's next save. A cue written by hand without a GUID
+  follows only its path.
 - **3D audio actions:** an action entity has no Transform; it plays 3D at the animation's `target` only
   when its AudioSource has an attenuation model set (Audio Source 3D's settings), else 2D.
 - **`follow_speed`** applies to `sound` and `source` cues (a source cue's voice speed scales too); it is

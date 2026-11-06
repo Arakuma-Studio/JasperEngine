@@ -233,6 +233,16 @@ namespace jasperengine::editor{
         void previewAudioActions(Scene* scene, Entity animEntity, float from, float to, float dt);
         // the Add Property menu's Sound submenu (true: an action was added)
         bool drawSoundMenu(SceneProject* sceneProject, AnimationComponent& anim, uint32_t track);
+        // the Sound submenu's choice, added after the popup: adding the action's components moves
+        // the AnimationComponent the popup's caller holds (as Add Property's other actions do)
+        struct PendingSoundAction {
+            bool active = false;
+            EntityCreationType type = EntityCreationType::AUDIO_ACTION;
+            std::string content;
+            float time = 0.0f;
+            uint32_t track = 0;
+        };
+        PendingSoundAction pendingSoundAction;
 
     public:
         static constexpr const char* WINDOW_NAME = "Animation";

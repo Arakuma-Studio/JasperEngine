@@ -171,3 +171,58 @@ async def test_the_playing_preview_starts_preview_voices_but_not_in_a_capture(ed
         await ed.call("play", action="stop")
     played = await ed.call("preview_animation", scene=STATE["scene"], animation="Walker", action="stop")
     ed.check(played.get("audio_preview", {"started": started})["started"] == started, f"no preview voice since: {played}")
+
+
+async def test_entity_mode_add_property_sound_adds_an_audio_action_in_one_undo_step(ed: Editor):
+    ui = Ui(ed)
+    await ed.call("select_entities", scene=STATE["scene"], entities=["Sequencer"])
+    await ed.call("focus_window", window="animation")
+    ui.focus()
+    before = len(await frames_of(ed, "Sequencer"))
+    await ui.click_item("Add Property", "Animation")
+    await ui.frames(4)
+    await ui.click_item("Sound")
+    await ui.frames(4)
+    await ui.click_item("Audio Clip")
+    await ui.frames(4)
+    await ui.click_item(TICK)
+    await ui.frames(10)
+    actions = await frames_of(ed, "Sequencer")
+    ed.check_eq(len(actions), before + 1, f"an audio action's frame: {actions}")
+    await keep_shot(ed, "entity-audio-action")
+    await ed.call("undo", scene=STATE["scene"])
+    ed.check_eq(len(await frames_of(ed, "Sequencer")), before, "the action and its frame are one undo step")
+    await ed.call("redo", scene=STATE["scene"])
+
+
+async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
+    ui = Ui(ed)
+    ui.focus()
+    await ui.key("Escape")   # no menu left open over the tracks
+    await ui.frames(4)
+    before = await frames_of(ed, "Sequencer")
+    start = middle(ui, await rect_of(ed, "soundBrowser.card.tick"))
+    tracks = await rect_of(ed, "entity.tracks")
+    target = (int(tracks[0] + (tracks[2] - tracks[0]) * 0.4), int(tracks[1] + 12))
+    await ui.press(start)
+    for i in range(1, 13):
+        await ui.move((start[0] + (target[0] - start[0]) * i // 12, start[1] + (target[1] - start[1]) * i // 12), frames=2)
+    await ui.release()
+    await ui.frames(10)
+    after = await frames_of(ed, "Sequencer")
+    ed.check_eq(len(after), len(before) + 1, f"the drop added an audio action: {after}")
+    ed.check(after[-1]["startTime"] > 0.0, f"at the drop time: {after[-1]}")
+    await keep_shot(ed, "entity-audio-dropped")
+    # the first audio block, the playhead at 1.0 s, Shift+A
+    await ed.call("preview_animation", scene=STATE["scene"], animation="Sequencer", action="seek", time=1.0)
+    await ed.call("preview_animation", scene=STATE["scene"], animation="Sequencer", action="stop")
+    await ed.call("focus_window", window="animation")
+    ui.focus()
+    index = len(before) - 1 if before else 0
+    await ui.click(middle(ui, await rect_of(ed, f"entity.frame.{index}")))
+    await ui.frames(4)
+    await ui.key("shift+a")
+    await ui.frames(10)
+    aligned = await frames_of(ed, "Sequencer")
+    ed.check(abs(aligned[index]["startTime"] - 0.8) < 0.003, f"the tick's peak on 1.0 s: {aligned[index]}")
+    await keep_shot(ed, "entity-audio-aligned")
