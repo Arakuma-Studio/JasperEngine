@@ -214,7 +214,8 @@ bool specFromArgs(Project* project, SceneProject* sp, SceneWindow* sceneWindow, 
             spec.targetRotation = Quaternion::IDENTITY;
             std::string why;
             if (!McpValues::parseQuaternion(target["rotation"], spec.targetRotation, &why)) {
-                error = "target.rotation: " + why + " (got " + target["rotation"].dump() + ").";
+                error = "target.rotation must be {\"euler\":[x,y,z]} degrees or a unit [x,y,z,w]: " + why + " (got " +
+                        target["rotation"].dump() + ").";
                 return false;
             }
             spec.hasTargetRotation = true;

@@ -13,6 +13,7 @@ CI = True
 async def keys(ed: Editor) -> list[str]:
     sid = (await ed.call("create_scene", name="Shaded", type="3d"))["scene"]["id"]
     await ed.call("create_entity", scene=sid, name="Box", type="box")
+    await ed.call("save_project", untitled_scene_dir="scenes")
     info = await ed.call("get_build_info", include_shaders=True)
     found = [s["key"] for s in info["shaders"]]
     ed.check(len(found) >= 1, f"the scene needs shaders: {info['shaders']}")
@@ -35,8 +36,7 @@ async def test_edit_without_building(ed: Editor):
     out = await ed.call("edit_build_shaders", exclude=[key])
     ed.check_eq([s["key"] for s in out["excluded"]], [key], "excluded")
     ed.check("undo" in out, f"one undo step: {out}")
-    jobs = await ed.call("list_jobs")
-    ed.check(not any(j.get("kind") == "build" for j in jobs.get("jobs", [])), f"no build started: {jobs}")
+    ed.check((await ed.call("get_build_info"))["running_job"] is None, "no build started")
     info = await ed.call("get_build_info", include_shaders=True)
     ed.check(any(s["key"] == key and s.get("excluded") for s in info["shaders"]), "get_build_info shows it excluded")
     ed.check_in("shaderExclusions", (ed.project / "project.yaml").read_text(), "saved to project.yaml")

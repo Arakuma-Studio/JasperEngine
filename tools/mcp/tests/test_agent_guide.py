@@ -38,7 +38,7 @@ async def test_guide_survives_the_client_cut(ed: Editor):
     for needle in ("read_file jasper://guide", "## Addressing", "## The loop", "## Building scenes", "## Tool groups",
                    "tool_groups"):
         ed.check_in(needle, kept, "inside the first 4096 characters")
-    ed.check("## Other areas" in guide and "## Other areas" not in kept,
+    ed.check("\n## Other areas" in guide and "\n## Other areas" not in kept,
              "the pointer names the last section, which a cut client does not see")
 
 
@@ -55,7 +55,7 @@ async def test_read_file_reads_resources(ed: Editor):
     window = await ed.call("read_file", path="jasper://docs/authoring", start_line=3, max_lines=2)
     ed.check(window["start_line"] == 3 and window["lines"] == 2, f"a line window: {window}")
     err = await ed.call("read_file", path="jasper://docs/nope", expect_error=True)
-    ed.check_in("jasper://docs", err, "an unknown document points to the list")
+    ed.check_in("Documents:", err, "an unknown document lists the documents")
 
 
 async def test_prompt_builds_scenes_in_the_editor(ed: Editor):

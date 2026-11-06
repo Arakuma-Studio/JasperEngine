@@ -5825,7 +5825,7 @@ void registerWorldTools(McpRegistry& registry) {
             {"blendmap", {{"type", {"string", "object"}}, {"properties", {
                 {"path", string("")},
                 {"color", vec3("Weights 0-1.")},
-                {"index", withDefault(integer("", 0, MAX_TERRAIN_BLENDMAPS - 1), 0)},
+                {"index", integer("")},
                 {"resolution", integer("", 2, 4096)}}}, {"additionalProperties", false}}},
             {"layers", array(object({
                 {"index", integer("", 0, MAX_TERRAIN_LAYERS - 1)},
@@ -5839,8 +5839,8 @@ void registerWorldTools(McpRegistry& registry) {
                 {"contrast", withDefault(number("", 0, 1), 0.45)},
                 {"rotation", withDefault(number("Of +-180 deg.", 0, 1), 0)},
                 {"uv_scale", vec2("")}, {"uv_offset", vec2("")}, {"tint", color("")},
-                {"normal_strength", number("", 0, 2)}, {"roughness_factor", number("", 0, 1)},
-                {"metallic_factor", number("", 0, 1)}, {"occlusion_strength", number("", 0, 1)}
+                {"normal_strength", number("")}, {"roughness_factor", number("")},
+                {"metallic_factor", number("")}, {"occlusion_strength", number("")}
             }, {"index"}), "")}
         }),
         setTerrainMapsTool, false, false);

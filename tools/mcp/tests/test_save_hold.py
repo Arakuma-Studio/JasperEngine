@@ -9,18 +9,21 @@ JASPER_TEST_SCENE_SAVE_DELAY_MS holds every background scene save open (a large 
 JASPER_TEST_SAVE_HOLD_MS shortens the wait for the timeout test."""
 
 import time
+from pathlib import Path
 
 from harness import Editor
 
+# a saved project (a new one is a temporary project, whose Save asks where to save it)
+FIXTURE = Path(__file__).resolve().parents[3] / "tools" / "fixtures" / "stochastic-tiling"
 CI = True
-EDITOR = {"create": True, "name": "Save Hold", "env": {"JASPER_TEST_SCENE_SAVE_DELAY_MS": "2500"}}
+EDITOR = {"project": str(FIXTURE), "env": {"JASPER_TEST_SCENE_SAVE_DELAY_MS": "2500"}}
 
 
 async def saved_scene(ed: Editor, name: str) -> int:
-    sid = (await ed.call("create_scene", name=name, type="3d", path=f"scenes/{name}"))["scene"]["id"]
+    """The fixture's scene, selected and changed, so Ctrl+S saves it in the background"""
+    sid = (await ed.call("list_scenes"))["scenes"][0]["id"]
     await ed.call("select_scene", scene=sid)
-    await ed.call("save_scene", scene=sid)
-    await ed.call("create_entity", scene=sid, name="Dirty", type="box")
+    await ed.call("create_entity", scene=sid, name=name, type="box")
     return sid
 
 
@@ -44,7 +47,7 @@ async def test_edits_wait_for_a_save(ed: Editor):
 
 
 async def test_the_hold_times_out(ed: Editor):
-    async with Editor(create=True, name="Save Hold Timeout",
+    async with Editor(str(FIXTURE), name="Save Hold Timeout",
                       env={"JASPER_TEST_SCENE_SAVE_DELAY_MS": "6000", "JASPER_TEST_SAVE_HOLD_MS": "1500"}) as short:
         sid = await saved_scene(short, "Slow")
         await short.call("run_command", id="file.save")
