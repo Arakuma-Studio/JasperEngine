@@ -516,7 +516,8 @@ TEST_F(UIComponentsTest, NonInteractableAndCanvasGroup) {
     start();
     ui().setSelected(a);
     key(D_KEY_RIGHT);
-    EXPECT_EQ(ui().getSelected(), a) << "B is not interactable: nothing that way";
+    EXPECT_EQ(ui().getSelected(), d) << "B is not interactable: the nearest beyond it that way (Unity's scoring)";
+    ui().setSelected(a);
     btn(a).disabled = true;
     btn(a).needUpdateButton = true;
     frame();

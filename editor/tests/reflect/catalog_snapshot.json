@@ -25748,7 +25748,57 @@
   },
   {
    "display_name": "Button",
-   "enum_options": {},
+   "enum_options": {
+    "navigationMode": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "horizontal",
+      "Horizontal"
+     ],
+     [
+      2,
+      "vertical",
+      "Vertical"
+     ],
+     [
+      3,
+      "automatic",
+      "Automatic"
+     ],
+     [
+      4,
+      "explicit",
+      "Explicit"
+     ]
+    ],
+    "transition": [
+     [
+      0,
+      "none",
+      "None"
+     ],
+     [
+      1,
+      "color_tint",
+      "Color Tint"
+     ],
+     [
+      2,
+      "sprite_swap",
+      "Sprite Swap"
+     ],
+     [
+      3,
+      "color_tint_and_sprite_swap",
+      "Color Tint + Sprite Swap"
+     ]
+    ]
+   },
    "has_enabled": false,
    "icon": "ef858a",
    "key": "button",
@@ -25757,115 +25807,269 @@
     "colorHovered",
     "colorNormal",
     "colorPressed",
+    "colorSelected",
     "disabled",
+    "fadeDuration",
     "label",
+    "navigationMode",
+    "scaleHovered",
+    "scalePressed",
+    "scaleSelected",
+    "selectOnDown",
+    "selectOnEnable",
+    "selectOnLeft",
+    "selectOnRight",
+    "selectOnUp",
     "textureDisabled",
     "textureHovered",
     "textureNormal",
-    "texturePressed"
+    "texturePressed",
+    "textureSelected",
+    "transition",
+    "wrapAround"
    ],
    "name": "ButtonComponent",
    "properties_of_default": {
     "colorDisabled": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorHovered": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorNormal": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorPressed": [
      6,
-     0,
+     72057594037927936,
+     true
+    ],
+    "colorSelected": [
+     6,
+     72057594037927936,
      true
     ],
     "disabled": [
      0,
-     0,
+     72057594037927936,
+     true
+    ],
+    "fadeDuration": [
+     2,
+     72057594037927936,
      true
     ],
     "label": [
      16,
+     72057594037927936,
+     true
+    ],
+    "navigationMode": [
+     13,
+     72057594037927936,
+     true
+    ],
+    "scaleHovered": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "scalePressed": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "scaleSelected": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "selectOnDown": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnEnable": [
      0,
+     72057594037927936,
+     true
+    ],
+    "selectOnLeft": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnRight": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnUp": [
+     16,
+     72057594037927936,
      true
     ],
     "textureDisabled": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "textureHovered": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "textureNormal": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "texturePressed": [
      11,
+     72057594037927936,
+     true
+    ],
+    "textureSelected": [
+     11,
+     72057594037927936,
+     true
+    ],
+    "transition": [
+     13,
+     72057594037927936,
+     true
+    ],
+    "wrapAround": [
      0,
+     72057594037927936,
      true
     ]
    },
    "properties_without_component": {
     "colorDisabled": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorHovered": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorNormal": [
      6,
-     0,
+     72057594037927936,
      true
     ],
     "colorPressed": [
      6,
-     0,
+     72057594037927936,
+     true
+    ],
+    "colorSelected": [
+     6,
+     72057594037927936,
      true
     ],
     "disabled": [
      0,
-     0,
+     72057594037927936,
+     true
+    ],
+    "fadeDuration": [
+     2,
+     72057594037927936,
      true
     ],
     "label": [
      16,
+     72057594037927936,
+     true
+    ],
+    "navigationMode": [
+     13,
+     72057594037927936,
+     true
+    ],
+    "scaleHovered": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "scalePressed": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "scaleSelected": [
+     2,
+     72057594037927936,
+     true
+    ],
+    "selectOnDown": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnEnable": [
      0,
+     72057594037927936,
+     true
+    ],
+    "selectOnLeft": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnRight": [
+     16,
+     72057594037927936,
+     true
+    ],
+    "selectOnUp": [
+     16,
+     72057594037927936,
      true
     ],
     "textureDisabled": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "textureHovered": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "textureNormal": [
      11,
-     0,
+     72057594037927936,
      true
     ],
     "texturePressed": [
      11,
+     72057594037927936,
+     true
+    ],
+    "textureSelected": [
+     11,
+     72057594037927936,
+     true
+    ],
+    "transition": [
+     13,
+     72057594037927936,
+     true
+    ],
+    "wrapAround": [
      0,
+     72057594037927936,
      true
     ]
    },
@@ -41563,52 +41767,122 @@
   "ButtonComponent": {
    "colorDisabled": [
     6,
-    0,
+    72057594037927936,
     true
    ],
    "colorHovered": [
     6,
-    0,
+    72057594037927936,
     true
    ],
    "colorNormal": [
     6,
-    0,
+    72057594037927936,
     true
    ],
    "colorPressed": [
     6,
-    0,
+    72057594037927936,
+    true
+   ],
+   "colorSelected": [
+    6,
+    72057594037927936,
     true
    ],
    "disabled": [
     0,
-    0,
+    72057594037927936,
+    true
+   ],
+   "fadeDuration": [
+    2,
+    72057594037927936,
     true
    ],
    "label": [
     16,
+    72057594037927936,
+    true
+   ],
+   "navigationMode": [
+    13,
+    72057594037927936,
+    true
+   ],
+   "scaleHovered": [
+    2,
+    72057594037927936,
+    true
+   ],
+   "scalePressed": [
+    2,
+    72057594037927936,
+    true
+   ],
+   "scaleSelected": [
+    2,
+    72057594037927936,
+    true
+   ],
+   "selectOnDown": [
+    16,
+    72057594037927936,
+    true
+   ],
+   "selectOnEnable": [
     0,
+    72057594037927936,
+    true
+   ],
+   "selectOnLeft": [
+    16,
+    72057594037927936,
+    true
+   ],
+   "selectOnRight": [
+    16,
+    72057594037927936,
+    true
+   ],
+   "selectOnUp": [
+    16,
+    72057594037927936,
     true
    ],
    "textureDisabled": [
     11,
-    0,
+    72057594037927936,
     true
    ],
    "textureHovered": [
     11,
-    0,
+    72057594037927936,
     true
    ],
    "textureNormal": [
     11,
-    0,
+    72057594037927936,
     true
    ],
    "texturePressed": [
     11,
+    72057594037927936,
+    true
+   ],
+   "textureSelected": [
+    11,
+    72057594037927936,
+    true
+   ],
+   "transition": [
+    13,
+    72057594037927936,
+    true
+   ],
+   "wrapAround": [
     0,
+    72057594037927936,
     true
    ]
   },
