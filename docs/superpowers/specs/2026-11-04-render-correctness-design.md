@@ -800,3 +800,11 @@ Recorded during implementation (branch `dc/render-correctness`).
     occlusion. S54/S55's instance matrices carry the LOD fade in the first column's w; the instance fade reads
     only `i_matrix_col4`, so they compose. The shader cache is v49 (main reached v48). GBUFFER bit 16 ('Ifd')
     is also claimed by ssr-probes: whoever lands second renumbers it.
+13. **Texture-edit swap (6.4, T9).** The swap reloads the mesh as every variant change does: the reload's
+    load lands a frame or more later (its queued `changeLoaded`, its textures), so T9's "no frame without the
+    mesh" is not asserted; the tests assert the settled variants. A terrain keeps its own checks (its layers'
+    surface and hex tiling above, and its base material's normal map): its layer images reached the re-resolve,
+    whose reload bound the pool's old pixels (`TextureRebindGpu.ATerrainsLayerImageBindsANewImage`).
+14. **Zero-cost list.** `zero_cost_mesh_variants.txt` is rewritten: the normal-less setup's variants lose
+    'Nor' (6.2), the 'Ifd' vertex stages include the near fade, the 'Shw' fragment stages take the shadow
+    derivatives before the light loop; no other variant's preprocessed source changed.
