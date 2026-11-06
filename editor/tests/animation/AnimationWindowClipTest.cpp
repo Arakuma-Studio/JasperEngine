@@ -823,7 +823,8 @@ TEST_F(AnimationWindowClipTest, AudioLaneDropAlignAndPreview) {
     EXPECT_NEAR(st["audio"][0]["time"].get<float>(), 1.0f, 0.002f) << "the catalog command acts on the selected cue";
     ASSERT_TRUE(undoProject());
     EXPECT_NEAR(state()["audio"][0]["time"].get<float>(), 0.5f, 0.002f) << "each alignment is one undo step";
-    act({{"time", 0.1}, {"preview", false}});
+    EXPECT_EQ(state()["selected_cue"], -1) << "the selection is the cue itself (at 1.0 s): the undo left none";
+    act({{"time", 0.1}, {"preview", false}, {"select_cue", 0}});
     EXPECT_NE(refused({{"align_cue", "peak"}}).find("before 0"), std::string::npos) << "a peak before the clip's start is refused";
 
     // drag snapped to the frames, one undo step; a snapshot cue gets its own row

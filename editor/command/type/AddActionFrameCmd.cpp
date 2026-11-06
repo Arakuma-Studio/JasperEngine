@@ -16,6 +16,11 @@ editor::AddActionFrameCmd::AddActionFrameCmd(Project* project, uint32_t sceneId,
     : project(project), sceneId(sceneId), animEntity(animEntity), track(track){
     if (creationType != EntityCreationType::EMPTY){
         createCmd = std::make_unique<CreateEntityCmd>(project, sceneId, name, creationType, target);
+        // a timeline sound keeps the Animation selected: the window stays on its tracks (S40 R22)
+        if (creationType == EntityCreationType::AUDIO_ACTION || creationType == EntityCreationType::SOUND_EVENT_ACTION ||
+            creationType == EntityCreationType::MIXER_SNAPSHOT_ACTION){
+            createCmd->setQuiet(true);
+        }
     }
 }
 
