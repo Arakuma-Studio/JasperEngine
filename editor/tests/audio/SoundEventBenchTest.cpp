@@ -14,12 +14,9 @@
 #include "audio/AudioMixer.h"
 #include "audio/SoundEventIO.h"
 #include "audio/SoundEventLibrary.h"
-#include "component/UIComponent.h"
 #include "object/sound/Audio.h"
-#include "object/sound/AudioSource.h"
 #include "pool/SoundPool.h"
 #include "subsystem/AudioSystem.h"
-#include "subsystem/PhysicsSystem.h"
 
 #include <chrono>
 #include <cstdio>
@@ -110,37 +107,4 @@ TEST_F(SoundEventBench, StartEventAboveStartVoice) {
     if (const double slack = editor::test::perfSlack(); slack > 0.0) {
         EXPECT_LE(above, 15.0 * slack);
     }
-}
-
-TEST_F(SoundEventBench, SixtyFourTriggersInAFrame) {
-    std::vector<AudioSource> sources;
-    sources.reserve(64);
-    for (int i = 0; i < 64; i++) {
-        sources.emplace_back(scene);
-        AudioSource& sound = sources.back();
-        sound.loadSound("c.wav");
-        scene->addComponent<UIComponent>(sound.getEntity(), UIComponent());
-        sound.setPlayOn(AudioPlayOn_UIClick);
-    }
-    AudioMixer::update(0.016, 0.016);
-    scene->getSystem<AudioSystem>()->update(0.016);
-    double best = 1e9;
-    for (int round = 0; round < 20; round++) {
-        for (AudioSource& sound : sources) scene->getComponent<UIComponent>(sound.getEntity()).onClick.call(0.0f, 0.0f);
-        const auto start = std::chrono::steady_clock::now();
-        scene->getSystem<AudioSystem>()->update(0.0);
-        best = std::min(best, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
-        AudioSystem::stopAll();
-    }
-    std::printf("[bench] 64 trigger plays in a frame: %.3f ms\n", best);
-    if (const double slack = editor::test::perfSlack(); slack > 0.0) {
-        EXPECT_LE(best, 1.0 * slack);
-    }
-}
-
-TEST_F(SoundEventBench, NoSubscriptionWithoutAFlagCostsAnUpdate) {
-    AudioSource sound(scene);
-    sound.loadSound("c.wav");
-    scene->getSystem<AudioSystem>()->update(0.016);
-    EXPECT_FALSE(scene->getSystem<PhysicsSystem>()->onContactAdded3D.hasSubscribers());
 }

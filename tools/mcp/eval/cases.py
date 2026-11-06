@@ -7,8 +7,6 @@ result dump_surface.py recorded from a built editor; hand-written ones copy the 
 
 import json
 
-KINDS = ("bad", "guard", "control")
-
 PLAYER_LUA = """---@class player : ScriptInstance
 local player = {
     properties = {

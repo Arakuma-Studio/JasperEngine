@@ -221,12 +221,18 @@ async def test_past_the_budget_is_a_job():
         names = listed(await build_info(ed))
 
     async with Editor(project=project, label="job", env={"JASPER_SHADER_LIST_SYNC_MS": "0"}) as ed:
-        info = await ed.call("get_build_info", include_shaders=True)
+        replies = (await ed.batch([
+            ("get_build_info", {"include_shaders": True}),
+            ("get_build_info", {}),
+            ("get_build_info", {}),
+        ]))["results"]
+        ed.check(all(reply["ok"] for reply in replies), f"{replies}")
+        info = replies[0]["structured"]
         ed.check_eq(info["shaders_complete"], False, "no time for the closed scenes")
         ed.check(sorted(info["shaders_pending_scenes"]), f"names them: {info}")
-        said = (await ed.call_raw("get_build_info")).text
+        said = replies[1]["text"]
         ed.check(f"get_job {info['shaders_job_id']}" in said, f"how to finish: {said}")
-        again = await ed.call("get_build_info")
+        again = replies[2]["structured"]
         ed.check_eq(again["shaders_job_id"], info["shaders_job_id"], "one job at a time")
         job = await finish_job(ed, info["shaders_job_id"])
         ed.check_eq(job["status"], "succeeded", f"{job}")

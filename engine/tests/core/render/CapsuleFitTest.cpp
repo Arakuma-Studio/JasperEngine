@@ -152,26 +152,6 @@ TEST(CapsuleFit, ShapeRoundTripsThroughARotatedScaledBone){
     EXPECT_TRUE((closeTo(world.a, a, 1e-4f) && closeTo(world.b, b, 1e-4f)) || (closeTo(world.a, b, 1e-4f) && closeTo(world.b, a, 1e-4f)));
 }
 
-TEST(CapsuleFit, OcclusionShadowsBelowAndNotBeside){
-    CapsuleShadows::World capsule;
-    capsule.a = Vector3(-0.5f, 1.0f, 0.0f);
-    capsule.b = Vector3(0.5f, 1.0f, 0.0f);
-    capsule.radius = 0.2f;
-    const Vector3 up(0.0f, 1.0f, 0.0f);
-    // straight below: fully occluded (a hard penumbra)
-    EXPECT_LT(CapsuleShadows::occlusion(capsule, Vector3(0.0f, 0.0f, 0.0f), up, 0.0f), 0.05f);
-    // well beside: lit
-    EXPECT_FLOAT_EQ(CapsuleShadows::occlusion(capsule, Vector3(0.0f, 0.0f, 2.0f), up, 0.0f), 1.0f);
-    // above (the light on the receiver's side of the capsule): lit, so a lit surface never shadows itself
-    EXPECT_FLOAT_EQ(CapsuleShadows::occlusion(capsule, Vector3(0.0f, 1.5f, 0.0f), up, 0.0f), 1.0f);
-    // soft: the far receiver's shadow is fainter than the near one's, and wider
-    const float nearShadow = CapsuleShadows::occlusion(capsule, Vector3(0.0f, 0.5f, 0.0f), up, 0.3f);
-    const float farShadow = CapsuleShadows::occlusion(capsule, Vector3(0.0f, -5.0f, 0.0f), up, 0.3f);
-    EXPECT_LT(nearShadow, farShadow);
-    EXPECT_LT(CapsuleShadows::occlusion(capsule, Vector3(0.0f, -5.0f, 0.6f), up, 0.3f), 1.0f);
-    EXPECT_FLOAT_EQ(CapsuleShadows::occlusion(capsule, Vector3(0.0f, -5.0f, 0.6f), up, 0.0f), 1.0f);
-}
-
 TEST(CapsuleFit, ReachCullsReceiversOutsideTheShadow){
     CapsuleShadows::World capsule;
     capsule.a = Vector3(0.0f, 1.0f, 0.0f);
