@@ -705,6 +705,7 @@ Recorded during implementation (branch `dc/water-reflections`):
     orthographic water reflected nothing). It now takes the corner from the inverse projection and the projection's
     own w row (Lengyel's general form); perspective results are unchanged. Mirrors share the helper, so orthographic
     mirrors are fixed too.
-11. **The core tool listing's budget rises from 99000 to 99201 characters** (`tools/mcp/budget.json`, measured by
-    `tool_budget.py`): `fork_shader`'s `source` and `material` target are core text (F10); trimmed to the shortest
-    wording the eval case `bad_water_fork_role` still needs.
+11. **`fork_shader`'s text is shorter** so the core listing stays within its 99000 characters (`tools/mcp/budget.json`,
+    pinned by `test_tool_budget.py`): the description names the library `source` and no longer explains `material`
+    (a mesh source defaults to it; the result lists the submeshes), and some of the existing targets' wording is
+    tighter. `source` and `submesh` carry no description.

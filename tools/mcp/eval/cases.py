@@ -1429,8 +1429,8 @@ CASES = [
         "kind": "bad",
         "what_happened": "Forking library:water by copying its files left out the engine's water wiring (nothing floated, "
                          "Water.getHeight answered nil); fork_shader now copies a library shader with its manifest and @role.",
-        "text_at_issue": "fork_shader: 'Copy a built-in or library (source) shader ... material (submeshes drawing "
-                         "source)'; source: 'keeps its manifest and @role'",
+        "text_at_issue": "fork_shader: 'Copy a built-in or library (source) shader to the project'; the target enum's "
+                         "material",
         "source": "water-reflections spec F10 (Doriax d62f09407)",
         "prompt": "I want to customise the Lake's water shader (it uses library:water) to give the foam a pink tint. "
                   "The boats must keep floating on it. Set up an editable copy of the shader for me.",

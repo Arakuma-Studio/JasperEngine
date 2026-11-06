@@ -4169,15 +4169,14 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "fork_shader";
         tool.title = "Fork Shader";
         tool.description =
-            "Copy a built-in or library (source) shader into the project (<directory>/<name>.vert/.frag) and "
-            "point a target at it: component (a renderable's customShader), depth (a mesh's shadow/depth pass; needed "
-            "when a mesh fork displaces or discards), material (submeshes drawing source), scene_default "
-            "(shader_type, for components without their own), post_process (pass_index, or omit to add a pass). "
-            "Parameters: set_shader_uniform.";
+            "Copy a built-in or library (source) shader to the project (<directory>/<name>.vert/.frag) and point a "
+            "target at it: component (customShader), depth (a mesh's shadow pass; needed when a fork displaces or "
+            "discards), scene_default (shader_type), post_process (pass_index; none adds one). Parameters: "
+            "set_shader_uniform.";
         tool.inputSchema = object({
-            {"target", stringEnum("Default: component when entity is given (material with a mesh source).",
+            {"target", stringEnum("Default: component when entity is given.",
                                   {"component", "depth", "material", "scene_default", "post_process"})},
-            {"source", string("Library shader, e.g. \"library:water\"; keeps its manifest and @role.")},
+            {"source", string("")},
             {"submesh", integer("")},
             {"scene", sceneRef()},
             {"entity", entityRef()},
