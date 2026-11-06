@@ -193,7 +193,9 @@ TEST(MusicSequence, PlaysPassesAndTailsOfEachSectionGaplessly){
         }
     }
 
-    if (testsupport::countsAllocations()) EXPECT_EQ(allocations, 0u) << "the mix allocated";
+    if (testsupport::countsAllocations()) {
+        EXPECT_EQ(allocations, 0u) << "the mix allocated";
+    }
     ASSERT_EQ(reports.size(), 3u);
     EXPECT_EQ(reports[0].startFrame, 0u);
     EXPECT_EQ(reports[1].startFrame, 16000u);
