@@ -81,11 +81,14 @@ namespace {
             return pointsCenterPixel();
         }
 
-        // a 4x4 PNG of one texel value, as a project's image is (its alpha is read at load)
-        void registerPointsImage(const std::string& name, std::array<uint8_t, 4> texel){
-            std::vector<uint8_t> pixels(4 * 4 * 4);
-            for (int i = 0; i < 16; i++)
-                std::copy(texel.begin(), texel.end(), pixels.begin() + i * 4);
+        // a 4x4 PNG, opaque white with its centre 2x2 of the given alpha (an image of one alpha
+        // throughout is classified by its content, not as transparent)
+        void registerPointsImage(const std::string& name, uint8_t centreAlpha){
+            std::vector<uint8_t> pixels(4 * 4 * 4, 255);
+            for (int y = 1; y < 3; y++){
+                for (int x = 1; x < 3; x++)
+                    pixels[(y * 4 + x) * 4 + 3] = centreAlpha;
+            }
             ASSERT_TRUE(stbi_write_png(dir.file(name + ".png").string().c_str(), 4, 4, 4, pixels.data(), 4 * 4));
         }
 
@@ -103,8 +106,8 @@ namespace {
 
 TEST_F(PointsDepthWriteGpu, TransparentPointsDoNotHideWhatIsDrawnAfter){
     JASPER_REQUIRE_GPU();
-    // its texels are all transparent: it draws nothing, so B shows
-    registerPointsImage("rc-points-clear", {255, 255, 255, 0});
+    // its centre is transparent: there B shows
+    registerPointsImage("rc-points-clear", 0);
     useTexture("rc-points-clear");
     const std::array<int, 3> center = settledCenter();
     ASSERT_TRUE(frontComponent().isTransparent()) << "Auto Transparency did not find the texture's alpha";
@@ -114,7 +117,7 @@ TEST_F(PointsDepthWriteGpu, TransparentPointsDoNotHideWhatIsDrawnAfter){
 
 TEST_F(PointsDepthWriteGpu, DepthWriteOnKeepsWriting){
     JASPER_REQUIRE_GPU();
-    registerPointsImage("rc-points-clear-on", {255, 255, 255, 0});
+    registerPointsImage("rc-points-clear-on", 0);
     useTexture("rc-points-clear-on");
     frontComponent().depthWrite = MaterialDepthWrite::ENABLED;
     const std::array<int, 3> center = settledCenter();
@@ -124,8 +127,8 @@ TEST_F(PointsDepthWriteGpu, DepthWriteOnKeepsWriting){
 
 TEST_F(PointsDepthWriteGpu, ATextureGainingAlphaMovesThePointsToTheTransparentQueue){
     JASPER_REQUIRE_GPU();
-    registerPointsImage("rc-points-opaque", {255, 255, 255, 255});
-    registerPointsImage("rc-points-clear-later", {255, 255, 255, 0});
+    registerPointsImage("rc-points-opaque", 255);
+    registerPointsImage("rc-points-clear-later", 0);
     useTexture("rc-points-opaque");
     settledCenter();
     ASSERT_FALSE(frontComponent().isTransparent());
