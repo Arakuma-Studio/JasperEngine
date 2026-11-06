@@ -72,8 +72,11 @@ namespace {
         std::vector<std::pair<uint32_t, Matrix4>> posed;
         if (bones) {
             const Matrix4 identity;
-            for (size_t b = 0; b < mesh.bonesMatrix.size(); b++)
-                if (!(mesh.bonesMatrix[b] == identity)) posed.emplace_back(static_cast<uint32_t>(b), mesh.bonesMatrix[b]);
+            const size_t count = mesh.bonesMatrix.stored();
+            // the last one always, identity or not: the palette's length (the joints the skinned
+            // vertices may name) is its index plus one
+            for (size_t b = 0; b < count; b++)
+                if (!(mesh.bonesMatrix[b] == identity) || b + 1 == count) posed.emplace_back(static_cast<uint32_t>(b), mesh.bonesMatrix[b]);
         }
         write(w, posed);
     }
