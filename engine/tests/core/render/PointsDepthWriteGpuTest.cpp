@@ -13,6 +13,7 @@
 #include "component/PointsComponent.h"
 #include "object/Camera.h"
 #include "object/Points.h"
+#include "pool/TextureDataPool.h"
 #include "subsystem/RenderSystem.h"
 
 #include "GpuEnvironment.h"
@@ -74,15 +75,20 @@ namespace {
 
         std::array<int, 3> settledCenter(){
             Scene* current = &scene;
+            // the image loads off the main thread: the points draw a white stand-in until then
+            EXPECT_TRUE(GpuEnvironment::runFrames([current](){
+                return current->getSystem<RenderSystem>()->isAllLoaded() && TextureDataPool::getLoadingCount() == 0;
+            }, 600)) << "the scene never finished loading";
+            // the image's alpha reloads the points' pipelines on the next update
+            GpuEnvironment::drawFrames(3);
             EXPECT_TRUE(GpuEnvironment::runFrames([current](){
                 return current->getSystem<RenderSystem>()->isAllLoaded();
-            })) << "the scene never finished loading";
-            GpuEnvironment::drawFrames(3);
+            })) << "the points never finished their reload";
+            GpuEnvironment::drawFrames(2);
             return pointsCenterPixel();
         }
 
-        // a 4x4 PNG, opaque white with its centre 2x2 of the given alpha (an image of one alpha
-        // throughout is classified by its content, not as transparent)
+        // a 4x4 PNG, opaque white with its centre 2x2 of the given alpha
         void registerPointsImage(const std::string& name, uint8_t centreAlpha){
             std::vector<uint8_t> pixels(4 * 4 * 4, 255);
             for (int y = 1; y < 3; y++){
