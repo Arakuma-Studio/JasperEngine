@@ -220,6 +220,23 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Rename Asset | F2 | Project |
 | Resize Items | Ctrl+Mouse Wheel | Project |
 
+## Sound Browser
+
+| Command | Shortcut | Context |
+|---|---|---|
+| Play Moment | Enter | Audio Captures |
+| Stop | Escape | Audio Captures |
+| Next Moment | Down | Audio Captures |
+| Previous Moment | Up | Audio Captures |
+| Search Sounds | Ctrl+F | Sound Browser |
+| Next Sound | Down / Right | Sound Browser |
+| Previous Sound | Up / Left | Sound Browser |
+| Play or Stop Sound | Space | Sound Browser |
+| Play Sound Loudness-Matched | Shift+Space | Sound Browser |
+| Use Sound | Enter | Sound Browser |
+| Select All Sounds | Ctrl+A | Sound Browser |
+| Stop Sound or Clear Search | Escape | Sound Browser |
+
 ## Console
 
 | Command | Shortcut | Context |

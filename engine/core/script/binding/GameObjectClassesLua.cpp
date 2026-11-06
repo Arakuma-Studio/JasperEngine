@@ -4252,6 +4252,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("maxVoices", &AudioSource::getMaxVoices, &AudioSource::setMaxVoices)
         .addProperty("ignoreListenerPause", &AudioSource::isIgnoreListenerPause, &AudioSource::setIgnoreListenerPause)
         .addProperty("pitch", &AudioSource::getPitch, &AudioSource::setPitch)
+#if JASPERENGINE_SOUND_LAYER
+        .addProperty("event", &AudioSource::getEvent, &AudioSource::setEvent)
+        .addProperty("playOn", &AudioSource::getPlayOn, &AudioSource::setPlayOn)
+        .addProperty("minImpactSpeed", &AudioSource::getMinImpactSpeed, &AudioSource::setMinImpactSpeed)
+        .addProperty("fullVolumeImpactSpeed", &AudioSource::getFullVolumeImpactSpeed, &AudioSource::setFullVolumeImpactSpeed)
+        .addProperty("pitchRandomSemitones", &AudioSource::getPitchRandomSemitones, &AudioSource::setPitchRandomSemitones)
+        .addProperty("volumeRandomDb", &AudioSource::getVolumeRandomDb, &AudioSource::setVolumeRandomDb)
+#endif
         .addFunction("playOneShot", &luaAudioPlayOneShot)
         .addFunction("fadeIn", &luaAudioFadeIn)
         .addFunction("fadeOut", &luaAudioFadeOut)
@@ -5040,6 +5048,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .beginClass<Contact3D>("Contact3D")
         .addFunction("getBaseOffset", &Contact3D::getBaseOffset)
         .addFunction("getWorldSpaceNormal", &Contact3D::getWorldSpaceNormal)
+#if JASPERENGINE_SOUND_LAYER
+        .addFunction("getApproachSpeed", &Contact3D::getApproachSpeed)
+#endif
         .addFunction("getPenetrationDepth", &Contact3D::getPenetrationDepth)
         .addFunction("getColliderIndex1", &Contact3D::getColliderIndex1)
         .addFunction("getColliderIndex2", &Contact3D::getColliderIndex2)

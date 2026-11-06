@@ -7,6 +7,8 @@
 // menu items as commands (S23 R42).
 
 #include "App.h"
+#include "window/AudioCapturesWindow.h"
+#include "window/SoundBrowserWindow.h"
 #include "window/HierarchyWindow.h"
 #include "window/InspectorWindow.h"
 #include "window/MainToolbar.h"
@@ -21,6 +23,7 @@
 #include "AppMenuCommand.h"
 #include "Backend.h"
 #include "Out.h"
+#include "util/Util.h"
 #include "animation/AnimationClipAppHooks.h"
 #include "lattice/LatticeSceneTools.h"
 #include "pose/PoseViewportLogic.h"
@@ -191,6 +194,11 @@ void editor::App::registerCommands(){
     enable("assets.rename", [this]() { return projectWindow->hasSingleAssetSelection(); });
     enable("assets.delete", [this]() { return projectWindow->hasAssetSelection(); });
     enable("assets.createAnimationClip", []() { return static_cast<bool>(animationClipAppHooks().createClipAsset); });
+    enable("assets.createSoundEventFromClips", [this]() { return projectWindow->hasAudioSelection(); });
+    bind("soundEvent.audition", [this](const CommandArgs&) { inspectorWindow->requestSoundEventAudition(); },
+         [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
+    bind("soundEvent.matchLevels", [this](const CommandArgs&) { inspectorWindow->requestSoundEventMatchLevels(); },
+         [this]() { return Util::isSoundEventFile(project.getInspectedAsset().string()); });
     enable("assets.migrateReferences", notBusy);
     enable("assets.scenesInBuild", notBusy);
     enable("assets.emptyTrash", notBusy);
@@ -348,6 +356,29 @@ void editor::App::registerCommands(){
     AnimationWindowClip::bindCommands(catalog, [this]() { return animationWindow->getClipMode(); });
     poseAnimationWindow->bindCommands(catalog, [this]() { return poseKeysActive(); }, [this]() { return poseKeysFromSceneView(); });
 
+    // ---- The Sound Browser, while it has focus: keys typed into its search stay text
+    auto browser = [&bind, this](const char* id, std::function<void()> run, bool whileTyping = false) {
+        bind(id, [run](const CommandArgs&) { run(); }, [this]() { return soundBrowserWindow->isOpen(); },
+             [whileTyping]() { return whileTyping || !ImGui::GetIO().WantTextInput; });
+    };
+    browser("soundBrowser.focusSearch", [this]() { soundBrowserWindow->focusSearch(); }, true);
+    browser("soundBrowser.next", [this]() { soundBrowserWindow->selectNext(1); });
+    browser("soundBrowser.previous", [this]() { soundBrowserWindow->selectNext(-1); });
+    browser("soundBrowser.play", [this]() { soundBrowserWindow->playOrStop(false); });
+    browser("soundBrowser.playMatched", [this]() { soundBrowserWindow->playOrStop(true); });
+    browser("soundBrowser.use", [this]() { soundBrowserWindow->useSelected(); });
+    browser("soundBrowser.selectAll", [this]() { soundBrowserWindow->selectAll(); });
+    browser("soundBrowser.stop", [this]() { soundBrowserWindow->stopOrClear(); }, true);
+
+    // ---- Window > Audio > Captures, while it has focus
+    auto captures = [&bind, this](const char* id, std::function<void()> run) {
+        bind(id, [run](const CommandArgs&) { run(); }, [this]() { return audioCapturesWindow->isOpen(); }, []() { return !ImGui::GetIO().WantTextInput; });
+    };
+    captures("audioCaptures.playMoment", [this]() { audioCapturesWindow->playMoment(); });
+    captures("audioCaptures.stop", [this]() { audioCapturesWindow->stopMoment(); });
+    captures("audioCaptures.nextMoment", [this]() { audioCapturesWindow->selectMoment(1); });
+    captures("audioCaptures.previousMoment", [this]() { audioCapturesWindow->selectMoment(-1); });
+
     // ---- The Curve window and the Color window, while they have focus
     using CurveCommand = ui::CurveEditor::Command;
     auto curve = [&bind](const char* id, CurveCommand command) {
@@ -477,6 +508,8 @@ editor::ShortcutState editor::App::shortcutState() const{
     if (poseKeysActive()) state.panels.push_back(ShortcutContext::PoseAnimation);
     if (ui::CurveWindow::get().isFocused()) state.panels.push_back(ShortcutContext::Curve);
     if (ui::ColorPickerWindow::get().isFocused()) state.panels.push_back(ShortcutContext::ColorPicker);
+    if (soundBrowserWindow->isFocused()) state.panels.push_back(ShortcutContext::SoundBrowser);
+    if (audioCapturesWindow->isFocused()) state.panels.push_back(ShortcutContext::AudioCaptures);
     if (state.nativeMenuOwnsKeys) state.nativeMenuChords = PanelClaims::editor().nativeMenuChords();
     return state;
 }

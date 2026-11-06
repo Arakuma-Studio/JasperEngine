@@ -3,6 +3,7 @@
 
 #include "Backend.h"
 #include "Out.h"
+#include "audio/SoundLibraryCli.h"
 #include "cli/CallCommand.h"
 #include "cli/CommandLine.h"
 #include "cli/ShippingCommands.h"
@@ -66,6 +67,13 @@ int runEditor(int argc, char* argv[]) {
     }
     if (argc >= 2 && std::strcmp(argv[1], "cook-textures") == 0) {
         return editor::CommandLine::runCookTexturesCommand(argc - 1, argv + 1, argv[0]);
+    }
+    // The sound tools (see editor/audio/SoundLibraryCli.h): windowless, no project
+    if (argc >= 2 && std::strcmp(argv[1], "audio-analyze") == 0) {
+        return editor::SoundLibraryCli::runAudioAnalyze(argc - 1, argv + 1, argv[0]);
+    }
+    if (argc >= 2 && std::strcmp(argv[1], "sound-library") == 0) {
+        return editor::SoundLibraryCli::runSoundLibrary(argc - 1, argv + 1, argv[0]);
     }
     if (argc >= 2 && std::strcmp(argv[1], "check") == 0) {
         return editor::CommandLine::runCheckCommand(argc - 1, argv + 1, argv[0]);
