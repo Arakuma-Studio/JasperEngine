@@ -77,13 +77,13 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | review |
+| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | impl |
 | 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
-| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | specced |
+| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
 | 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
@@ -168,3 +168,7 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   The brief gained "Build boxes and time efficiency": one KEEP_GOING build per round, targets only, all red
   controls in one build, rerun only what a fix touches, generated docs last. Every agent moved to its box; the
   local slots only finish the jobs already running.
+- 2026-11-06 21:xx: **unicode-text merged** (`052c14c4b`). Landing check on the merged tree (box C): WERROR editor,
+  filtered unit suites, HTML UI input, its MCP files with protocol/stubs/docs, generated docs and tool budget, lints:
+  all green. rbox fixed: `build/.cache` on the boxes was a link the containers could not follow (uv and MCP steps
+  failed); now only `build/.cache/ccache` is a link.
