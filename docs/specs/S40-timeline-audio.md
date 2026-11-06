@@ -449,4 +449,29 @@ every prebuilt variant (S37 Q1, resolved). A clip with cues in a build without t
 
 ## Deviations
 
-None yet (spec-first stream; implementers append here).
+- **The shared start path is `TimelineAudio`** (`engine/core/audio/TimelineAudio.{h,cpp}`, in the
+  `soundlayer` module), not an `AudioSystem::playFromTimeline` member: `AudioSystem.cpp` is shared with
+  S39, so it only gains `playFreeFromTimeline` (a free voice owned `cue`, cause `animation`, placed by
+  `delayFrames`), `freeStopFaded`, a faded-stop scope (the `cue_exit` fade) and the runtime fields
+  `timelineStart`/`timelineDelayFrames`/`timelineSpeedScale`/`timelineStopFade`/`timelineTarget` of
+  `AudioSourceComponent` that the source's next start or stop reads. Clip cues (`fireCue`) and the
+  legacy timeline's actions (`startSource`, `transition`, `logStart`) go through it; one placement rule
+  (`delayFrames`), one gain composition, the same capture lines.
+- **Capture lines:** a clip's `cue` line has `kind` `sound`, `source` or `snapshot`; an audio action's
+  has `kind` `source` (it starts its AudioSource), a Mixer Snapshot action's `snapshot`, with
+  `timeline: "actions"`, `clip` the Animation's GameObject name and `cue` the frame index. A `cue_exit`
+  stop line is written when the 10 ms fade starts. An unknown snapshot of a snapshot cue warns once per
+  Play like the other unresolved cues.
+- **Loop-end tolerance:** R20's 1e-5 s applies to every frame's end test and the duration test, so a
+  legacy Animation whose frames end exactly at the loop length wraps on that frame, one frame earlier
+  than before when the float sum is exact (the cycle is now its length, not length + a frame).
+- **3D audio actions:** an action entity has no Transform; it plays 3D at the animation's `target` only
+  when its AudioSource has an attenuation model set (Audio Source 3D's settings), else 2D.
+- **`follow_speed`** applies to `sound` and `source` cues (a source cue's voice speed scales too); it is
+  dropped from snapshot cues, as `stop` is.
+- **Firing outside the frame:** the Animator places a cue by where in its update's step it was crossed;
+  for an Animator in Animate Physics mode that is a fraction of the fixed step, not of the frame.
+- **A standalone Mixer Snapshot action** runs until stopped (its duration only sizes an auto-length
+  frame); a standalone audio action stops itself when its sound ends (R21).
+- **Edit-mode previews** of the legacy timeline (`updateAnimationPreview`) start no game sound: the
+  editor's `TimelineAudioPreview` plays it (R23).
