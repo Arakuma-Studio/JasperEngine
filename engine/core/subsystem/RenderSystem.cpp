@@ -17298,6 +17298,9 @@ void RenderSystem::renderCameraPass(const CameraPass& pass){
     }
     bool useSSR = false;
     FramebufferRender* ssrDestination = nullptr;
+    // the view's SSR stats are this frame's: none until its G-buffer pass runs (get_render_stats)
+    if (isMainCamera)
+        rv().ssr.stats.valid = false;
     if (isMainCamera && scene->isSSREnabled() && (target || pass.renderToTexture || useFixedRes || useUber || swapchainRedirect)){
         loadSSR();
         unsigned int sw = (unsigned int)viewRect.getWidth();

@@ -69,6 +69,9 @@ uniform u_fs_compositeParams {
 #define HAS_HEIGHT_FOG
 #include "includes/fog.glsl"
 
+// the encoded scene colour (0..1) from which the swap fades out towards a clipped channel
+const float SSR_CLIP_FADE_START = 0.94;
+
 vec3 rotateEnv(vec3 dir, float angle){
     float c = cos(angle);
     float s = sin(angle);
@@ -275,8 +278,12 @@ void main(){
     // the swap: the reflection by its confidence (intensity a strength multiplier), never more
     // of the environment taken out than there is, weighed by occlusion and fog
     float T = fogTransmittance(d, depth01, P);
+    // The scene colour is clipped at 1: a pixel there lost what its colour pass added beyond it, so
+    // taking the rebuilt term out would leave a dark hole (a bright probe or the sun on chrome). The
+    // swap fades out as the pixel reaches white; a clipped pixel stays as drawn.
+    float clipFade = 1.0 - smoothstep(SSR_CLIP_FADE_START, 1.0, max(scene.r, max(scene.g, scene.b)));
     vec3 sceneLin = sRGBToLinear(scene);
-    vec3 outLin = sceneLin + T * ao * (w * ssrSpec - min(w, 1.0) * envSpec);
+    vec3 outLin = sceneLin + clipFade * T * ao * (w * ssrSpec - min(w, 1.0) * envSpec);
 
     frag_color = vec4(linearTosRGB(max(outLin, vec3(0.0))), 1.0);
 }

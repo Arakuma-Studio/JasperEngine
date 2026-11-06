@@ -32,20 +32,51 @@ float jasperengine::screenCoverage(const AABB& box, const Matrix4& viewProjectio
     if (!box.isFinite())
         return box.isInfinite() ? 1.0f : 0.0f;
 
+    // the box clipped to the space in front of the eye (clip w above a small epsilon): its corners
+    // there, and where its edges cross that plane, so a mesh reaching behind the camera covers what
+    // its front part covers instead of the whole screen
+    constexpr float NEAR_W = 1e-4f;
     const Vector3* corners = box.getCorners();
-    float minX = 1.0f, minY = 1.0f, maxX = -1.0f, maxY = -1.0f;
-    for (int i = 0; i < 8; i++){
-        const Vector4 clip = viewProjection * Vector4(corners[i], 1.0f);
-        // the box reaches the eye: count it as the whole screen
-        if (clip.w <= 1e-6f)
-            return 1.0f;
-        const float x = clip.x / clip.w;
-        const float y = clip.y / clip.w;
+    Vector4 clip[8];
+    for (int i = 0; i < 8; i++)
+        clip[i] = viewProjection * Vector4(corners[i], 1.0f);
+
+    float minX = 1e30f, minY = 1e30f, maxX = -1e30f, maxY = -1e30f;
+    bool any = false;
+    const auto include = [&](const Vector4& c){
+        const float x = c.x / c.w;
+        const float y = c.y / c.w;
         minX = std::min(minX, x);
         minY = std::min(minY, y);
         maxX = std::max(maxX, x);
         maxY = std::max(maxY, y);
+        any = true;
+    };
+    for (int i = 0; i < 8; i++){
+        if (clip[i].w > NEAR_W)
+            include(clip[i]);
     }
+    // the 12 edges of a box: corners differing in one coordinate (AABB::getCorners' order is not
+    // assumed, the pairs are found by their positions)
+    for (int a = 0; a < 8; a++){
+        for (int b = a + 1; b < 8; b++){
+            int same = 0;
+            same += corners[a].x == corners[b].x ? 1 : 0;
+            same += corners[a].y == corners[b].y ? 1 : 0;
+            same += corners[a].z == corners[b].z ? 1 : 0;
+            if (same != 2)
+                continue;
+            const bool inA = clip[a].w > NEAR_W;
+            const bool inB = clip[b].w > NEAR_W;
+            if (inA == inB)
+                continue;
+            const float t = (NEAR_W - clip[a].w) / (clip[b].w - clip[a].w);
+            include(clip[a] + (clip[b] - clip[a]) * t);
+        }
+    }
+    if (!any)
+        return 0.0f;
+
     // the part of the projected rectangle on screen (ndc -1..1 on both axes, area 4)
     const float width = std::max(0.0f, std::min(maxX, 1.0f) - std::max(minX, -1.0f));
     const float height = std::max(0.0f, std::min(maxY, 1.0f) - std::max(minY, -1.0f));

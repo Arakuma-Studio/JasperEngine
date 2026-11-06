@@ -28,12 +28,16 @@
 #include "HeadlessContext.h"
 #include "LogCapture.h"
 #include "Readback.h"
+#include "TempDir.h"
+
+#include "stb_image_write.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <functional>
 #include <iterator>
@@ -56,14 +60,14 @@ namespace {
     constexpr int VIEW_SOURCE = 7;
     constexpr int VIEW_OCCLUSION = 8;
 
-    std::vector<uint8_t> readTarget(){
+    std::vector<uint8_t> ssrReadTarget(){
         Framebuffer& target = GpuEnvironment::target();
         std::vector<uint8_t> rgba;
         readTexture(target.getRender().getColorTexture(), (int)target.getWidth(), (int)target.getHeight(), rgba);
         return rgba;
     }
 
-    int channelDiff(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, size_t pixel){
+    int ssrChannelDiff(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, size_t pixel){
         int largest = 0;
         for (int c = 0; c < 3; c++)
             largest = std::max(largest, std::abs((int)a[pixel * 4 + c] - (int)b[pixel * 4 + c]));
@@ -71,22 +75,28 @@ namespace {
     }
 
     // the largest channel difference over some pixels (all of them when the list is empty)
-    int maxDiff(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, const std::vector<size_t>& pixels = {}){
+    int ssrMaxDiff(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b, const std::vector<size_t>& pixels = {}){
         if (a.size() != b.size() || a.empty())
             return 255;
         int largest = 0;
         if (pixels.empty()){
             for (size_t p = 0; p < a.size() / 4; p++)
-                largest = std::max(largest, channelDiff(a, b, p));
+                largest = std::max(largest, ssrChannelDiff(a, b, p));
         }else{
             for (size_t p : pixels)
-                largest = std::max(largest, channelDiff(a, b, p));
+                largest = std::max(largest, ssrChannelDiff(a, b, p));
         }
         return largest;
     }
 
+    // a measured residual, printed so the tolerances can be checked against what a run gives
+    int ssrMeasured(const char* what, int value){
+        std::printf("[measured] %s: %d/255\n", what, value);
+        return value;
+    }
+
     // an image of vertical bands of the colours (RGBA, left to right), its pixels kept alive by the caller
-    TextureData solidImage(std::vector<uint8_t>& pixels, int width, int height, const std::vector<uint32_t>& colors){
+    TextureData ssrImage(std::vector<uint8_t>& pixels, int width, int height, const std::vector<uint32_t>& colors){
         pixels.assign((size_t)width * height * 4, 255);
         for (int y = 0; y < height; y++){
             for (int x = 0; x < width; x++){
@@ -99,6 +109,37 @@ namespace {
             }
         }
         return TextureData(width, height, (unsigned int)pixels.size(), ColorFormat::RGBA, 4, pixels.data());
+    }
+
+    // A cube face of a smooth colour field of the elevation (a function of the direction's y squared,
+    // so it is continuous across the faces whatever their image orientation): the small turn of the
+    // G-buffer's 8-bit normal changes a sample by a hair, while a wrong box projection, capture
+    // position, mip or slot does not. `order` picks which channel rises with the elevation.
+    void ssrWriteGradientFace(const std::string& path, int face, const int order[3]){
+        constexpr int SIZE = 32;
+        std::vector<uint8_t> pixels((size_t)SIZE * SIZE * 4, 255);
+        for (int y = 0; y < SIZE; y++){
+            for (int x = 0; x < SIZE; x++){
+                const float sc = 2.0f * ((float)x + 0.5f) / SIZE - 1.0f;
+                const float tc = 2.0f * ((float)y + 0.5f) / SIZE - 1.0f;
+                Vector3 d;
+                switch (face){
+                    case 0:  d = Vector3(1.0f, -tc, -sc); break;  // +X
+                    case 1:  d = Vector3(-1.0f, -tc, sc); break;  // -X
+                    case 2:  d = Vector3(sc, 1.0f, tc); break;    // +Y
+                    case 3:  d = Vector3(sc, -1.0f, -tc); break;  // -Y
+                    case 4:  d = Vector3(sc, -tc, 1.0f); break;   // +Z
+                    default: d = Vector3(-sc, -tc, -1.0f); break; // -Z
+                }
+                d.normalize();
+                const float up = d.y * d.y;
+                const float c[3] = {up, 0.3f + 0.4f * up, 1.0f - up};
+                uint8_t* p = &pixels[((size_t)y * SIZE + x) * 4];
+                for (int k = 0; k < 3; k++)
+                    p[k] = (uint8_t)std::lround(c[order[k]] * 255.0f);
+            }
+        }
+        ASSERT_TRUE(stbi_write_png(path.c_str(), SIZE, SIZE, 4, pixels.data(), SIZE * 4)) << path;
     }
 
     class SSRCompositeGpu : public ::testing::Test {
@@ -183,7 +224,7 @@ namespace {
             scene.setSSRDebugMode(view);
             scene.setSSRIntensity(intensity);
             EXPECT_TRUE(render(extraFrames));
-            return readTarget();
+            return ssrReadTarget();
         }
 
         // the floor pixels where SSR reflects the (white, or red) box at full confidence
@@ -203,7 +244,7 @@ namespace {
         void addSky(std::unique_ptr<Skybox>& sky, uint32_t rgba){
             static std::vector<uint8_t> faces[6];
             sky = std::make_unique<Skybox>(&scene);
-            auto face = [&](int f){ return solidImage(faces[f], 8, 8, {rgba}); };
+            auto face = [&](int f){ return ssrImage(faces[f], 8, 8, {rgba}); };
             sky->setTextures("ssr-composite-sky-" + std::to_string(rgba), face(0), face(1), face(2), face(3), face(4), face(5));
         }
 
@@ -259,13 +300,13 @@ TEST_F(SSRCompositeGpu, LocalProbeIsReplacedNotAdded){
     // where SSR is confident it is the reflection: the probe's term is swapped out, not kept
     size_t worst = pixels[0];
     for (size_t p : pixels){
-        if (channelDiff(withProbe, withoutProbe, p) > channelDiff(withProbe, withoutProbe, worst))
+        if (ssrChannelDiff(withProbe, withoutProbe, p) > ssrChannelDiff(withProbe, withoutProbe, worst))
             worst = p;
     }
     auto rgb = [](const std::vector<uint8_t>& image, size_t p){
         return std::to_string(image[p * 4]) + "," + std::to_string(image[p * 4 + 1]) + "," + std::to_string(image[p * 4 + 2]);
     };
-    EXPECT_LE(channelDiff(withProbe, withoutProbe, worst), 6)
+    EXPECT_LE(ssrMeasured("probe swap", ssrChannelDiff(withProbe, withoutProbe, worst)), 3)
         << "pixel " << worst << " of " << pixels.size() << ": with the probe " << rgb(withProbe, worst) << ", without "
         << rgb(withoutProbe, worst) << "; Reflection Source " << rgb(source, worst) << ", Environment Specular "
         << rgb(environment, worst) << ", Roughness " << rgb(roughness, worst) << ", Normal " << rgb(normal, worst)
@@ -283,21 +324,21 @@ TEST_F(SSRCompositeGpu, MaterialOcclusionOccludesTheSwap){
     build();
     static std::vector<uint8_t> black, white;
     setFloorMaterial([](Material& m){
-        m.occlusionTexture = Texture("ssr-composite-ao-black", solidImage(black, 4, 4, {0x000000FFu}));
+        m.occlusionTexture = Texture("ssr-composite-ao-black", ssrImage(black, 4, 4, {0x000000FFu}));
     });
     ASSERT_TRUE(render());
 
     const std::vector<size_t> pixels = hit();
     ASSERT_GE(pixels.size(), MIN_HIT_PIXELS);
     // fully occluded: the colour pass added no environment, nothing to swap or reflect
-    EXPECT_LE(maxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels), 2);
+    EXPECT_LE(ssrMeasured("material occlusion", ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels)), 2);
 
     // unoccluded, the same floor does take the reflection (SSR is on here)
     setFloorMaterial([](Material& m){
-        m.occlusionTexture = Texture("ssr-composite-ao-white", solidImage(white, 4, 4, {0xFFFFFFFFu}));
+        m.occlusionTexture = Texture("ssr-composite-ao-white", ssrImage(white, 4, 4, {0xFFFFFFFFu}));
     });
     ASSERT_TRUE(render());
-    EXPECT_GE(maxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels), 30);
+    EXPECT_GE(ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels), 30);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -326,7 +367,7 @@ TEST_F(SSRCompositeGpu, ScreenOcclusionWeighsTheSwap){
     }
     ASSERT_GE(surface.size(), MIN_HIT_PIXELS);
     EXPECT_TRUE(occluded) << "SSAO darkens the floor at the box's foot";
-    EXPECT_LE(maxDiff(occlusion, ssao, surface), 2);
+    EXPECT_LE(ssrMeasured("screen occlusion", ssrMaxDiff(occlusion, ssao, surface)), 2);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -342,7 +383,7 @@ TEST_F(SSRCompositeGpu, FogAttenuatesTheSwap){
     fog.setType(FogType::EXPONENTIAL);
     fog.setColor(0.7f, 0.72f, 0.78f);
     fog.setDensity(0.8f);
-    EXPECT_LE(maxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels), 3);
+    EXPECT_LE(ssrMeasured("distance fog", ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels)), 2);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -361,7 +402,7 @@ TEST_F(SSRCompositeGpu, HeightFogAttenuatesTheSwap){
     fog.setMaximumHeight(40.0f);
     fog.setStartDistance(0.0f);
     fog.setMaxOpacity(1.0f);
-    EXPECT_LE(maxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels), 3);
+    EXPECT_LE(ssrMeasured("height fog", ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels)), 2);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -374,7 +415,7 @@ TEST_F(SSRCompositeGpu, UnlitSurfacesReceiveNoSSR){
 
     // an unlit mirror-like floor: no specular, nothing for SSR to swap or add to
     setFloorMaterial([](Material& m){ m.lighting = MaterialLighting::NONE; });
-    EXPECT_EQ(maxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f)), 0);
+    EXPECT_EQ(ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f)), 0);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -389,7 +430,7 @@ TEST_F(SSRCompositeGpu, AmbientSpecularIsReplaced){
     const std::vector<uint8_t> dark = shot(VIEW_OFF);
     scene.setGlobalIllumination(0.6f, Vector3(1.0f, 1.0f, 1.0f));
     const std::vector<uint8_t> lit = shot(VIEW_OFF);
-    EXPECT_LE(maxDiff(dark, lit, pixels), 4);
+    EXPECT_LE(ssrMeasured("ambient swap", ssrMaxDiff(dark, lit, pixels)), 3);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -400,7 +441,7 @@ TEST_F(SSRCompositeGpu, PixelsWithoutReflectionAreUntouched){
     // too rough for SSR: no pixel reflects
     build(0.9f);
     ASSERT_TRUE(render());
-    EXPECT_EQ(maxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f)), 0);
+    EXPECT_EQ(ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f)), 0);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -440,9 +481,9 @@ TEST_F(SSRCompositeGpu, GBufferReadsTheMaterialsUVSets){
     Material material = ground.getMaterial();
     material.metallicFactor = 1.0f;
     material.roughnessFactor = 0.05f;
-    material.baseColorTexture = Texture("ssr-composite-uv2-color", solidImage(colors, 16, 4, {0xFF0000FFu, 0x00FF00FFu}));
+    material.baseColorTexture = Texture("ssr-composite-uv2-color", ssrImage(colors, 16, 4, {0xFF0000FFu, 0x00FF00FFu}));
     material.baseColorTexCoord = 1;
-    material.occlusionTexture = Texture("ssr-composite-uv2-ao", solidImage(occlusion, 16, 4, {0x000000FFu, 0xFFFFFFFFu}));
+    material.occlusionTexture = Texture("ssr-composite-uv2-ao", ssrImage(occlusion, 16, 4, {0x000000FFu, 0xFFFFFFFFu}));
     material.occlusionTexCoord = 1;
     ground.setMaterial(material);
     ground.setReceiveIBL(true);
@@ -482,5 +523,127 @@ TEST_F(SSRCompositeGpu, IntensityAboveOneNeverRemovesMoreThanTheEnvironment){
             darker = std::max(darker, (int)once[p * 4 + c] - (int)twice[p * 4 + c]);
     }
     EXPECT_LE(darker, 1);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SSRCompositeGpu, AuthoredProbesInTwoSlotsAreReplaced){
+    JASPER_REQUIRE_GPU();
+    build();
+    // two floor halves, each in a probe of its own authored cubemap (slots 0 and 1)
+    floor.reset();
+    std::unique_ptr<Primitive> halves[2];
+    for (int h = 0; h < 2; h++){
+        halves[h] = std::make_unique<Primitive>(&scene);
+        halves[h]->createPlane(15.0f, 30.0f);
+        halves[h]->setPosition(h == 0 ? -7.5f : 7.5f, 0.0f, 0.0f);
+        Material ground = halves[h]->getMaterial();
+        ground.baseColorFactor = Vector4(0.5f, 0.5f, 0.5f, 1.0f);
+        ground.metallicFactor = 1.0f;
+        ground.roughnessFactor = 0.05f;
+        halves[h]->setMaterial(ground);
+        halves[h]->setReceiveIBL(true);
+    }
+    TempDir dir;
+    const int orders[2][3] = {{0, 1, 2}, {2, 0, 1}};
+    std::unique_ptr<ReflectionProbe> probes[2];
+    for (int h = 0; h < 2; h++){
+        std::string faces[6];
+        for (int f = 0; f < 6; f++){
+            faces[f] = dir.file("probe" + std::to_string(h) + "_" + std::to_string(f) + ".png").generic_string();
+            ssrWriteGradientFace(faces[f], f, orders[h]);
+        }
+        probes[h] = std::make_unique<ReflectionProbe>(&scene);
+        probes[h]->setMode(ReflectionProbeMode::STATIC);
+        // the capture position off the box centre, so a box projection taking the wrong one shows
+        probes[h]->setPosition(h == 0 ? -5.0f : 5.0f, 2.0f, 1.0f);
+        probes[h]->setBoxOffset(h == 0 ? -2.5f : 2.5f, -0.5f, -1.0f);
+        probes[h]->setBoxSize(15.0f, 10.0f, 30.0f);
+        probes[h]->setTextures(faces[0], faces[1], faces[2], faces[3], faces[4], faces[5]);
+    }
+    ASSERT_TRUE(render(30));
+
+    const std::vector<size_t> hitWithProbes = hit();
+    const std::vector<uint8_t> withProbes = shot(VIEW_OFF);
+    const std::vector<uint8_t> source = shot(VIEW_SOURCE);
+    for (auto& probe : probes)
+        probe.reset();
+    const std::vector<uint8_t> withoutProbes = shot(VIEW_OFF, 1.0f, 5);
+    const std::vector<size_t> hitWithoutProbes = hit();
+    std::vector<size_t> pixels;
+    std::set_intersection(hitWithProbes.begin(), hitWithProbes.end(), hitWithoutProbes.begin(), hitWithoutProbes.end(),
+                          std::back_inserter(pixels));
+    ASSERT_GE(pixels.size(), MIN_HIT_PIXELS);
+
+    // the reflection in both halves comes from its own slot (red slot 0, green slot 1)
+    size_t slot0 = 0, slot1 = 0;
+    for (size_t p : pixels){
+        if (source[p * 4] > 200 && source[p * 4 + 1] < 30)
+            slot0++;
+        if (source[p * 4 + 1] > 200 && source[p * 4] < 30)
+            slot1++;
+    }
+    EXPECT_GE(slot0, 20u);
+    EXPECT_GE(slot1, 20u);
+    // where SSR is confident, both probes' terms are swapped out
+    size_t worst = pixels[0];
+    for (size_t p : pixels){
+        if (ssrChannelDiff(withProbes, withoutProbes, p) > ssrChannelDiff(withProbes, withoutProbes, worst))
+            worst = p;
+    }
+    EXPECT_LE(ssrMeasured("two authored probes", ssrChannelDiff(withProbes, withoutProbes, worst)), 6)
+        << "pixel " << worst << ": with the probes " << (int)withProbes[worst * 4] << "," << (int)withProbes[worst * 4 + 1]
+        << "," << (int)withProbes[worst * 4 + 2] << ", without " << (int)withoutProbes[worst * 4] << ","
+        << (int)withoutProbes[worst * 4 + 1] << "," << (int)withoutProbes[worst * 4 + 2] << "; source "
+        << (int)source[worst * 4] << "," << (int)source[worst * 4 + 1] << "," << (int)source[worst * 4 + 2];
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SSRCompositeGpu, StochasticTilingOcclusionOccludesTheSwap){
+    JASPER_REQUIRE_GPU();
+    std::unique_ptr<Skybox> sky;
+    addSky(sky, 0x1A1A4DFFu);
+    build();
+    static std::vector<uint8_t> black;
+    setFloorMaterial([](Material& m){
+        m.stochasticTiling = true;
+        m.occlusionTexture = Texture("ssr-composite-ao-black-stochastic", ssrImage(black, 4, 4, {0x000000FFu}));
+    });
+    ASSERT_TRUE(render());
+
+    const std::vector<size_t> pixels = hit();
+    ASSERT_GE(pixels.size(), MIN_HIT_PIXELS);
+    // the occlusion read through Stochastic Tiling's taps, as the colour pass reads it: nothing swapped
+    EXPECT_LE(ssrMeasured("stochastic occlusion", ssrMaxDiff(shot(VIEW_OFF), shot(VIEW_OFF, 0.0f), pixels)), 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SSRCompositeGpu, SaturatedPixelsKeepTheirColour){
+    JASPER_REQUIRE_GPU();
+    std::unique_ptr<Skybox> sky;
+    addSky(sky, 0xFFFFFFFFu);
+    build();
+    ASSERT_TRUE(render());
+    const std::vector<size_t> hits = hit();
+    ASSERT_GE(hits.size(), MIN_HIT_PIXELS);
+
+    // white chrome under a white sky and the sun: the colour pass clips; a dark box to reflect
+    setFloorMaterial([](Material& m){ m.baseColorFactor = Vector4(1.0f, 1.0f, 1.0f, 1.0f); });
+    setBoxColor(0.05f);
+    sun.setIntensity(4.0f);
+    const std::vector<uint8_t> drawn = shot(VIEW_OFF, 0.0f);
+    const std::vector<uint8_t> swapped = shot(VIEW_OFF, 1.0f);
+    std::vector<size_t> clipped;
+    for (size_t p : hits){
+        if (std::max(drawn[p * 4], std::max(drawn[p * 4 + 1], drawn[p * 4 + 2])) >= 254)
+            clipped.push_back(p);
+    }
+    ASSERT_GE(clipped.size(), 50u) << "the scene has saturated pixels under the reflection";
+    // a clipped pixel lost what its colour pass added beyond white: no swap there (no dark hole)
+    int darker = 0;
+    for (size_t p : clipped){
+        for (int c = 0; c < 3; c++)
+            darker = std::max(darker, (int)drawn[p * 4 + c] - (int)swapped[p * 4 + c]);
+    }
+    EXPECT_LE(ssrMeasured("saturated pixels", darker), 2);
     EXPECT_NO_ENGINE_ERRORS();
 }

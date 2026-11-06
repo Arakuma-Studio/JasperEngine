@@ -100,6 +100,9 @@ leave a small difference where SSR is confident:
 - the G-buffer keeps the normal in 8 bits per component, so the rebuilt reflection can turn a fraction of a
   degree: where the probe's capture has a sharp edge in that direction (a bright object against a dark wall),
   a thin line of the difference shows under a confident SSR hit;
+- the frame SSR composites is 8 bits a channel, clipped at white: where the surface is already clipped
+  (a bright probe or the sun on chrome) SSR leaves it as drawn, and it fades in from just below white;
+- lights beyond a mesh's light cap, which Lit folds into its ambient, stay under SSR as direct light does;
 - the probe blend weight is stored in 62 steps;
 - the volumetric fog's marched part is approximated by the analytic height fog over the whole ray;
 - with post-processing's exposure or tone curve on, the frame is already display-encoded when SSR

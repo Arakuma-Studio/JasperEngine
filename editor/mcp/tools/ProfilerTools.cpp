@@ -22,7 +22,6 @@
 #include "render/RenderUtil.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/UIDocumentSystem.h"
-#include "subsystem/RenderSystem.h"
 #include "render/LightingTiers.h"
 #include "render/SystemRender.h"
 #include "profiler/FrameTimes.h"
@@ -280,9 +279,10 @@ void getRenderStatsTool(const CallPtr& call){
             data["lighting"] = lightingStatsJson(render->getLightingStats(), tag);
     }
     // the SSR G-buffer pass's reflection probes and the composite's slots for them (the frame's
-    // view): a probe without a slot keeps its probe reflection without SSR
+    // view, when its last frame ran the pass): a probe without a slot keeps its probe reflection
+    // without SSR
     std::string ssrText;
-    if (sceneProject && sceneProject->scene && sceneProject->scene->isSSREnabled()){
+    if (sceneProject && sceneProject->scene){
         if (std::shared_ptr<RenderSystem> render = sceneProject->scene->getSystem<RenderSystem>()){
             const SSRViewStats& stats = render->getSSRStats();
             if (stats.valid){

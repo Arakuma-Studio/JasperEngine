@@ -48,8 +48,8 @@ namespace jasperengine{
     static_assert(SSRCode::PROBE_BASE + SSR_PROBE_SLOTS * SSR_PROBE_WEIGHT_STEPS <= 256,
                   "the SSR reflection codes must fit one byte");
 
-    // the fraction (0..1) of the screen a world box's projection covers; 1 when a corner is at or
-    // behind the eye (the box reaches the camera)
+    // the fraction (0..1) of the screen a world box's projection covers, the box clipped to the
+    // space in front of the eye (a box around the eye covers all of it)
     JASPERENGINE_API float screenCoverage(const AABB& box, const Matrix4& viewProjection);
 
     struct SSRProbeCandidate{

@@ -157,3 +157,19 @@ async def test_render_stats_report_probe_slots(ed: Editor):
     console = await ed.console_since(None)
     ed.check(any("reflection probes in view" in e.get("message", "") for e in console),
              "the overflow is logged")
+
+
+async def test_ssr_off_costs_no_pass(ed: Editor):
+    """SSR off: no G-buffer, march or composite pass, and no ssr stats left from the frames before"""
+    sid = await prepare_scene(ed)
+    await ed.call("wait", frames=5)
+    on = await ed.call("get_render_stats")
+    ed.check("ssr" in on, f"SSR on reports its pass: {sorted(on)}")
+    await ed.call("set_scene_settings", scene=sid, settings={"ssr_enabled": False})
+    await ed.call("wait", frames=10)
+    off = await ed.call("get_render_stats")
+    ed.check("ssr" not in off, f"SSR off reports no ssr stats: {off.get('ssr')!r}")
+    # the G-buffer, the march and the composite (no glossy blur here): three passes fewer
+    ed.check(off["passes"] <= on["passes"] - 3, f"SSR off drops its passes: {on['passes']} on, {off['passes']} off")
+    await ed.call("set_scene_settings", scene=sid, settings={"ssr_enabled": True})
+    await ed.call("wait", frames=10)

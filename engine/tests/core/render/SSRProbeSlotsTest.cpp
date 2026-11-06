@@ -17,14 +17,14 @@ using namespace jasperengine;
 
 namespace{
 
-    std::vector<SSRProbeCandidate> candidates(std::initializer_list<std::pair<Entity, float>> list){
+    std::vector<SSRProbeCandidate> ssrCandidates(std::initializer_list<std::pair<Entity, float>> list){
         std::vector<SSRProbeCandidate> out;
         for (const auto& [probe, coverage] : list)
             out.push_back({probe, coverage});
         return out;
     }
 
-    Matrix4 viewProjection(){
+    Matrix4 ssrViewProjection(){
         // looking down -Z from the origin, 90 degrees vertical, square
         return Matrix4::perspectiveMatrix(Angle::degToRad(90.0f), 1.0f, 0.1f, 100.0f) *
                Matrix4::lookAtMatrix(Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, -1.0f), Vector3(0.0f, 1.0f, 0.0f));
@@ -73,7 +73,7 @@ TEST(SSRProbeSlots, WeightTakesAtLeastOneStep){
 TEST(SSRProbeSlots, LargestCoverageGetsTheSlots){
     SSRProbeAssignment none;
     SSRProbeAssignment out;
-    assignSSRProbeSlots(candidates({{10, 0.05f}, {11, 0.40f}, {12, 0.01f}, {13, 0.20f}, {14, 0.10f}, {15, 0.30f}}), none, out);
+    assignSSRProbeSlots(ssrCandidates({{10, 0.05f}, {11, 0.40f}, {12, 0.01f}, {13, 0.20f}, {14, 0.10f}, {15, 0.30f}}), none, out);
     EXPECT_EQ(out.count(), 4);
     EXPECT_GE(out.slotOf(11), 0);
     EXPECT_GE(out.slotOf(15), 0);
@@ -89,7 +89,7 @@ TEST(SSRProbeSlots, LargestCoverageGetsTheSlots){
 
     // the same frame again: every holder keeps its index
     SSRProbeAssignment again;
-    assignSSRProbeSlots(candidates({{14, 0.10f}, {13, 0.20f}, {12, 0.01f}, {11, 0.40f}, {10, 0.05f}, {15, 0.30f}}), out, again);
+    assignSSRProbeSlots(ssrCandidates({{14, 0.10f}, {13, 0.20f}, {12, 0.01f}, {11, 0.40f}, {10, 0.05f}, {15, 0.30f}}), out, again);
     for (int s = 0; s < SSR_PROBE_SLOTS; s++)
         EXPECT_EQ(again.slots[s], out.slots[s]);
 }
@@ -98,7 +98,7 @@ TEST(SSRProbeSlots, ProbesSharingACubemapTakeTwoSlots){
     // two probes of one authored cubemap (Doriax 1ed266ea3): the slot is the probe, not its texture
     SSRProbeAssignment none;
     SSRProbeAssignment out;
-    assignSSRProbeSlots(candidates({{21, 0.2f}, {22, 0.2f}}), none, out);
+    assignSSRProbeSlots(ssrCandidates({{21, 0.2f}, {22, 0.2f}}), none, out);
     EXPECT_EQ(out.count(), 2);
     EXPECT_NE(out.slotOf(21), out.slotOf(22));
 }
@@ -111,11 +111,11 @@ TEST(SSRProbeSlots, HysteresisKeepsLastFramesHolder){
     previous.slots[3] = 4; // the holder at 0.30
 
     SSRProbeAssignment out;
-    assignSSRProbeSlots(candidates({{1, 0.9f}, {2, 0.8f}, {3, 0.7f}, {4, 0.30f}, {5, 0.36f}}), previous, out);
+    assignSSRProbeSlots(ssrCandidates({{1, 0.9f}, {2, 0.8f}, {3, 0.7f}, {4, 0.30f}, {5, 0.36f}}), previous, out);
     EXPECT_EQ(out.slotOf(4), 3);
     EXPECT_EQ(out.slotOf(5), -1);
 
-    assignSSRProbeSlots(candidates({{1, 0.9f}, {2, 0.8f}, {3, 0.7f}, {4, 0.30f}, {5, 0.40f}}), previous, out);
+    assignSSRProbeSlots(ssrCandidates({{1, 0.9f}, {2, 0.8f}, {3, 0.7f}, {4, 0.30f}, {5, 0.40f}}), previous, out);
     EXPECT_EQ(out.slotOf(4), -1);
     // the newcomer takes the slot that was freed
     EXPECT_EQ(out.slotOf(5), 3);
@@ -125,7 +125,7 @@ TEST(SSRProbeSlots, HysteresisKeepsLastFramesHolder){
 TEST(SSRProbeSlots, TiesBreakByEntity){
     SSRProbeAssignment none;
     SSRProbeAssignment out;
-    assignSSRProbeSlots(candidates({{9, 0.1f}, {7, 0.1f}, {8, 0.1f}, {5, 0.1f}, {6, 0.1f}}), none, out);
+    assignSSRProbeSlots(ssrCandidates({{9, 0.1f}, {7, 0.1f}, {8, 0.1f}, {5, 0.1f}, {6, 0.1f}}), none, out);
     EXPECT_EQ(out.slots[0], 5u);
     EXPECT_EQ(out.slots[1], 6u);
     EXPECT_EQ(out.slots[2], 7u);
@@ -133,15 +133,28 @@ TEST(SSRProbeSlots, TiesBreakByEntity){
     EXPECT_EQ(out.slotOf(9), -1);
 }
 
-TEST(SSRProbeSlots, ScreenCoverageClampsAndCountsBehindAsFull){
-    const Matrix4 vp = viewProjection();
+TEST(SSRProbeSlots, ScreenCoverageClampsAndCountsTheEyeInsideAsFull){
+    const Matrix4 vp = ssrViewProjection();
 
     // at distance 10 a 90-degree view spans -10..10: a box from x 0..10, y -10..10 is half of it
     EXPECT_NEAR(screenCoverage(AABB(Vector3(0.0f, -10.0f, -10.0f), Vector3(10.0f, 10.0f, -10.0f)), vp), 0.5f, 0.01f);
     // beside the frustum
     EXPECT_NEAR(screenCoverage(AABB(Vector3(30.0f, -1.0f, -11.0f), Vector3(32.0f, 1.0f, -9.0f)), vp), 0.0f, 1e-6f);
     // around the eye
-    EXPECT_EQ(screenCoverage(AABB(Vector3(-1.0f, -1.0f, -1.0f), Vector3(1.0f, 1.0f, 1.0f)), vp), 1.0f);
+    EXPECT_NEAR(screenCoverage(AABB(Vector3(-1.0f, -1.0f, -1.0f), Vector3(1.0f, 1.0f, 1.0f)), vp), 1.0f, 1e-6f);
     // larger than the screen: clamped to all of it
     EXPECT_NEAR(screenCoverage(AABB(Vector3(-100.0f, -100.0f, -10.0f), Vector3(100.0f, 100.0f, -10.0f)), vp), 1.0f, 1e-6f);
+}
+
+TEST(SSRProbeSlots, ScreenCoverageClipsBoxesReachingBehindTheEye){
+    const Matrix4 vp = ssrViewProjection();
+
+    // beside the camera and reaching behind it: off screen to the right, not the whole screen
+    EXPECT_LT(screenCoverage(AABB(Vector3(2.0f, -1.0f, -2.0f), Vector3(4.0f, 1.0f, 2.0f)), vp), 0.05f);
+    // a floor under the camera running behind it: the lower part of the screen only
+    const float floor = screenCoverage(AABB(Vector3(-5.0f, -2.0f, -10.0f), Vector3(5.0f, -1.0f, 5.0f)), vp);
+    EXPECT_GT(floor, 0.1f);
+    EXPECT_LT(floor, 0.9f);
+    // wholly behind the eye: nothing
+    EXPECT_EQ(screenCoverage(AABB(Vector3(-1.0f, -1.0f, 1.0f), Vector3(1.0f, 1.0f, 3.0f)), vp), 0.0f);
 }
