@@ -16,10 +16,17 @@
 #include "object/Camera.h"
 #include "object/Light.h"
 #include "object/Light2D.h"
+#include "object/Model.h"
 #include "object/Primitive.h"
 #include "object/Sprite.h"
+#include "object/environment/Fog.h"
+#include "object/ui/CanvasGroup.h"
 #include "object/ui/Image.h"
+#include "object/ui/Text.h"
 #include "pool/MeshBufferPool.h"
+#include "render/LightingTiers.h"
+#include "render/RenderStats.h"
+#include "shader/ShaderManifest.h"
 #include "render/SystemRender.h"
 #include "subsystem/RenderSystem.h"
 #include "texture/Material.h"
@@ -34,6 +41,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -62,6 +70,23 @@ namespace {
                 p[1] = dark ? g / 2 : g;
                 p[2] = dark ? b / 2 : b;
                 p[3] = (cutout && x < 4 && y < 4) ? 0 : 255;
+            }
+        }
+        TextureData data(8, 8, (unsigned int)pixels->size(), ColorFormat::RGBA, 4, pixels->data());
+        batchTexturePixels().push_back(std::move(pixels));
+        return data;
+    }
+
+    // an 8x8 normal map of bumps leaning left and right
+    TextureData batchBumps(){
+        auto pixels = std::make_unique<std::vector<uint8_t>>(8 * 8 * 4);
+        for (int y = 0; y < 8; y++){
+            for (int x = 0; x < 8; x++){
+                uint8_t* p = pixels->data() + (y * 8 + x) * 4;
+                p[0] = (x / 2) % 2 ? 200 : 56;
+                p[1] = (y / 2) % 2 ? 170 : 86;
+                p[2] = 220;
+                p[3] = 255;
             }
         }
         TextureData data(8, 8, (unsigned int)pixels->size(), ColorFormat::RGBA, 4, pixels->data());
@@ -119,7 +144,12 @@ namespace {
             sprites.clear();
             Engine::removeScene(&scene);
             Engine::setDynamicBatching(true);
+            LightingTiers::setLightMode(LightMode::AUTOMATIC);
+            SystemRender::setDrawListEnabled(false);
         }
+
+        // the counters of expectSameImage's batched frame
+        BatchStats onStats;
 
         // a 2D camera: one world unit a pixel, origin at the bottom left, no depth test
         void camera2D(){
@@ -164,6 +194,17 @@ namespace {
             return batchReadTarget();
         }
 
+        // the draws of the last frame's passes whose label holds `label`
+        uint32_t passDraws(const char* label){
+            const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+            uint32_t draws = 0;
+            for (const PassRecord& pass : list.passes){
+                if (std::strstr(pass.label, label))
+                    draws += pass.draws;
+            }
+            return draws;
+        }
+
         const BatchStats& stats(){
             static BatchStats none;
             const RenderSystem::BatchFrame* batchFrame = scene.getSystem<RenderSystem>()->getBatchFrame(SystemRender::FRAME_STATS_FRAME);
@@ -197,10 +238,11 @@ namespace {
         // pixels more: edges of rotated quads), the on frame with `expectedDraws` draws or fewer
         void expectSameImage(size_t tolerated, uint32_t expectedOnDraws, uint32_t* offDrawsOut = nullptr){
             uint32_t onDraws = 0, offDraws = 0;
-            const std::vector<uint8_t> on = frame(true, &onDraws);
+            const std::vector<uint8_t> batchedImage = frame(true, &onDraws);
+            onStats = stats();
             const std::string batched = describe();
             const std::vector<uint8_t> off = frame(false, &offDraws);
-            const BatchDifference d = batchCompare(off, on);
+            const BatchDifference d = batchCompare(off, batchedImage);
             EXPECT_GT(d.lit, 200u) << "the scene should draw something";
             EXPECT_LE(d.over1, tolerated) << "max channel difference " << d.maxDiff;
             EXPECT_LE(onDraws, expectedOnDraws) << batched;
@@ -369,9 +411,26 @@ TEST_F(SpriteBatchGpu, ShadowCastersDrawInGroups){
     sun.setDirection(-0.4f, -1.0f, -0.3f);
     sun.setIntensity(2.0f);
     sun.setShadows(true);
+    // (a still scene's cached shadow slots would draw nothing)
+    sun.setShadowUpdateMode(ShadowUpdateMode::EVERY_FRAME);
     ASSERT_TRUE(render());
     uint32_t offDraws = 0;
     expectSameImage(24, 200, &offDraws);
+
+    // the shadow passes: the ground alone draws once a cascade; with the cards, one group more
+    for (const std::unique_ptr<Sprite>& s : sprites)
+        s->setVisible(false);
+    frame(true);
+    const uint32_t groundAlone = passDraws("shadow");
+    for (const std::unique_ptr<Sprite>& s : sprites)
+        s->setVisible(true);
+    frame(true);
+    const uint32_t grouped = passDraws("shadow");
+    frame(false);
+    const uint32_t alone = passDraws("shadow");
+    ASSERT_GT(groundAlone, 0u);
+    EXPECT_LE(grouped, 2u * groundAlone) << "casters of one depth state draw as one, each cascade";
+    EXPECT_GT(alone, 2u * groundAlone);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -407,32 +466,42 @@ TEST_F(SpriteBatchGpu, SettledSpritesShowDirectWrites){
     Transform& moved = sprites[6]->getComponent<Transform>();
     moved.position = Vector3(150.0f, 180.0f, 0.0f);
     moved.needUpdate = true;
-    expectSameImage(0, 1);
+    MeshComponent& masked = sprites[1]->getComponent<MeshComponent>();
+    masked.submeshes[0].material.alphaMode = MaterialAlphaMode::MASK;
+    masked.submeshes[0].material.alphaCutoff = 0.9f;
+    // its vertices moved in place, the flag set (a script's buffer write)
+    MeshComponent& written = sprites[8]->getComponent<MeshComponent>();
+    const Attribute* position = written.buffer.getAttribute(AttributeType::POSITION);
+    ASSERT_NE(position, nullptr);
+    for (unsigned int v = 0; v < written.buffer.getCount(); v++){
+        float* x = reinterpret_cast<float*>(written.buffer.getData() + (size_t)v * written.buffer.getStride() + position->getOffset());
+        *x += 6.0f;
+    }
+    written.needUpdateBuffer = true;
+    expectSameImage(0, 3);
 }
 
-TEST_F(SpriteBatchGpu, TheMVPABatchedSpriteWentWithoutIsMadeBeforeItDrawsAlone){
+TEST_F(SpriteBatchGpu, LazyMVPWhenTurningIneligible){
     JASPER_REQUIRE_GPU();
     camera2D();
     const TextureData coin = batchChecker(240, 180, 60);
     for (int i = 0; i < 10; i++)
         sprite("sprite-batch-mvp", coin, (float)i * 24.0f + 4.0f, 100.0f, 20, 20);
     ASSERT_TRUE(render());
-    const std::vector<uint8_t> reference = frame(false);
+    frame(true);
 
-    // scroll with batching on (their MVPs wait), come back, turn it off: each draws alone with
-    // its own MVP, which must be made for the camera it is drawn with
-    Engine::setDynamicBatching(true);
-    for (int step = 1; step <= 5; step++){
-        camera.setPosition((float)(step * 7), 0.0f, 10.0f);
-        camera.setTarget((float)(step * 7), 0.0f, 0.0f);
+    // scrolled with batching on: the batched sprites' MVPs wait (update leaves them)
+    for (int step = 1; step <= 10; step++){
+        camera.setPosition((float)(step * 4), 0.0f, 10.0f);
+        camera.setTarget((float)(step * 4), 0.0f, 0.0f);
         GpuEnvironment::drawFrames(1);
     }
-    camera.setPosition(0.0f, 0.0f, 10.0f);
-    camera.setTarget(0.0f, 0.0f, 0.0f);
-    GpuEnvironment::drawFrames(2);
-    const std::vector<uint8_t> after = frame(false);
-    const BatchDifference d = batchCompare(reference, after);
-    EXPECT_EQ(d.over1, 0u) << "max channel difference " << d.maxDiff;
+    // the camera still from here: one sprite turns ineligible and draws alone, with the MVP its
+    // draw makes (nothing else would: neither it nor the camera moves again)
+    sprites[4]->setCustomShader(ShaderReference::BUILTIN_LIT);
+    ASSERT_TRUE(render());
+    expectSameImage(0, 3);
+    EXPECT_GE(onStats.aloneDraws, 1u);
 }
 
 TEST_F(SpriteBatchGpu, SpritesOfOneShapeShareTheirBuffers){
@@ -535,6 +604,307 @@ TEST_F(SpriteBatchGpu, ClippedUIChildrenBatchUnderTheirParentsScissor){
         parent.addChild(&child);
     }
     ASSERT_TRUE(render());
+    expectSameImage(0, 2);
+    images.clear();
+}
+
+TEST_F(SpriteBatchGpu, MatchesUnbatchedShadow2D){
+    JASPER_REQUIRE_GPU();
+    camera2D();
+    const TextureData sheet = batchChecker(220, 220, 220);
+    for (int i = 0; i < 30; i++)
+        sprite("sprite-batch-shadow2d", sheet, (float)(i % 6) * 40.0f + 12.0f, (float)(i / 6) * 48.0f + 12.0f, 32, 32);
+    // two of them cast 2D shadows over the others
+    sprites[13]->getShadowCaster2D();
+    sprites[16]->getShadowCaster2D();
+    Light2D light(&scene);
+    light.setColor(1.0f, 0.9f, 0.7f);
+    light.setIntensity(2.0f);
+    light.setRange(200.0f);
+    light.setShadows(true);
+    light.setPosition(100.0f, 140.0f, 0.0f);
+    ASSERT_TRUE(render());
+    expectSameImage(8, 4);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, MatchesUnbatchedVertexLights){
+    JASPER_REQUIRE_GPU();
+    camera3D();
+    const TextureData card = batchChecker(200, 180, 160);
+    for (int i = 0; i < 12; i++){
+        Sprite& s = sprite("sprite-batch-vertex-lit", card, -5.5f + (float)i, 0.0f, 1, 1);
+        s.setRotation(0.0f, (float)(i * 15), 0.0f);
+        s.getComponent<MeshComponent>().submeshes[0].material.lighting = MaterialLighting::VERTEX;
+    }
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.3f, -1.0f, -0.5f);
+    sun.setIntensity(1.5f);
+    ASSERT_TRUE(render());
+    expectSameImage(8, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, MatchesUnbatchedNormalMap){
+    JASPER_REQUIRE_GPU();
+    camera3D();
+    const TextureData card = batchChecker(200, 190, 180);
+    const TextureData bumps = batchBumps();
+    for (int i = 0; i < 12; i++){
+        Sprite& s = sprite("sprite-batch-normal-map", card, -5.5f + (float)i, 0.0f, 1, 1);
+        // turned and mirrored: the tangent frames the batch bakes
+        s.setRotation(0.0f, (float)(i * 15), (i % 3 == 1) ? 40.0f : 0.0f);
+        if (i % 4 == 2)
+            s.setScale(Vector3(-1.0f, 1.0f, 1.0f));
+        s.getComponent<MeshComponent>().submeshes[0].material.normalTexture = Texture("sprite-batch-bumps", bumps);
+    }
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.6f, -0.4f, -0.7f);
+    sun.setIntensity(2.0f);
+    ASSERT_TRUE(render());
+    expectSameImage(8, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, MatchesUnbatchedAlphaModes){
+    JASPER_REQUIRE_GPU();
+    camera2D();
+    const TextureData sheet = batchChecker(80, 220, 120, true);
+    // ten cut out (Alpha Mask), ten drawn opaque whatever their alpha (Alpha Opaque)
+    for (int i = 0; i < 20; i++){
+        Sprite& s = sprite("sprite-batch-alpha", sheet, (float)(i % 10) * 24.0f + 4.0f, i < 10 ? 60.0f : 150.0f, 20, 20);
+        s.getComponent<MeshComponent>().submeshes[0].material.alphaMode = i < 10 ? MaterialAlphaMode::MASK : MaterialAlphaMode::ALPHA_OPAQUE;
+    }
+    ASSERT_TRUE(render());
+    expectSameImage(0, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, MatchesUnbatchedFog){
+    JASPER_REQUIRE_GPU();
+    camera3D();
+    const TextureData card = batchChecker(230, 210, 120);
+    for (int i = 0; i < 12; i++){
+        Sprite& s = sprite("sprite-batch-fog", card, -5.5f + (float)i, 0.0f, 1, 1);
+        s.setPosition(-5.5f + (float)i, 0.0f, -2.0f * (float)i);
+    }
+    Fog fog(&scene);
+    fog.setType(FogType::LINEAR);
+    fog.setColor(0.5f, 0.55f, 0.6f);
+    fog.setLinearStartEnd(8.0f, 30.0f);
+    ASSERT_TRUE(render());
+    expectSameImage(8, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, MatchesUnbatchedPostColor){
+    JASPER_REQUIRE_GPU();
+    camera2D();
+    // a vignette without the uber pass: the shaders' own post colour
+    PostProcessingSettings post = scene.getPostProcessing();
+    post.vignetteEnabled = true;
+    post.vignetteIntensity = 0.6f;
+    scene.setPostProcessing(post);
+    const TextureData coin = batchChecker(250, 200, 40);
+    for (int i = 0; i < 40; i++)
+        sprite("sprite-batch-post", coin, (float)(i % 8) * 30.0f + 8.0f, (float)(i / 8) * 48.0f + 8.0f, 24, 24);
+    ASSERT_TRUE(render());
+    expectSameImage(0, 1);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, LitRunsSplitByObjectLights){
+    JASPER_REQUIRE_GPU();
+    // each object's own light list (Tiled lights have none per object)
+    LightingTiers::setLightMode(LightMode::PER_OBJECT);
+    camera3D();
+    const TextureData card = batchChecker(210, 210, 210);
+    // a near group by a red light, a far one by a blue light
+    for (int i = 0; i < 5; i++){
+        Sprite& s = sprite("sprite-batch-object-lights", card, 0.0f, 0.0f, 1, 1);
+        s.setPosition(-4.5f + (float)i * 0.6f, 0.0f, 2.0f);
+    }
+    for (int i = 0; i < 5; i++){
+        Sprite& s = sprite("sprite-batch-object-lights", card, 0.0f, 0.0f, 1, 1);
+        s.setPosition(2.0f + (float)i * 0.6f, 0.0f, -6.0f);
+    }
+    Light red(&scene);
+    red.setType(LightType::POINT);
+    red.setColor(1.0f, 0.3f, 0.3f);
+    red.setIntensity(3.0f);
+    red.setRange(4.0f);
+    red.setPosition(-3.5f, 1.0f, 3.0f);
+    Light blue(&scene);
+    blue.setType(LightType::POINT);
+    blue.setColor(0.3f, 0.4f, 1.0f);
+    blue.setIntensity(3.0f);
+    blue.setRange(4.0f);
+    blue.setPosition(3.0f, 1.0f, -5.0f);
+    ASSERT_TRUE(render());
+    expectSameImage(8, 2);
+    EXPECT_GE(onStats.breaks[(size_t)BatchBreak::OBJECT_LIGHTS], 1u) << describe();
+    EXPECT_EQ(onStats.batches, 2u);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, UIElementsInACanvasGroupBatch){
+    JASPER_REQUIRE_GPU();
+    camera2D();
+    const TextureData panel = batchChecker(90, 160, 230);
+    std::vector<std::unique_ptr<Image>> images;
+    images.push_back(std::make_unique<Image>(&scene));
+    Image& holder = *images.back();
+    holder.setTexture("sprite-batch-group", panel);
+    holder.setSize(240, 170);
+    holder.setPosition(8.0f, 8.0f, 0.0f);
+    CanvasGroup group(&scene, holder.getEntity());
+    group.setAlpha(0.5f);
+    for (int i = 0; i < 20; i++){
+        images.push_back(std::make_unique<Image>(&scene));
+        Image& child = *images.back();
+        child.setTexture("sprite-batch-group", panel);
+        child.setSize(40, 30);
+        child.setPosition((float)(i % 5) * 46.0f + 4.0f, (float)(i / 5) * 40.0f + 4.0f, 0.0f);
+        holder.addChild(&child);
+    }
+    // a Text pair of one colour, then of two
+    Text first(&scene);
+    first.setText("Batch");
+    first.setColor(1.0f, 1.0f, 0.6f, 1.0f);
+    first.setPosition(10.0f, 190.0f, 0.0f);
+    Text second(&scene);
+    second.setText("Twice");
+    second.setColor(1.0f, 1.0f, 0.6f, 1.0f);
+    second.setPosition(130.0f, 190.0f, 0.0f);
+    ASSERT_TRUE(render());
+    expectSameImage(0, 2);
+    EXPECT_EQ(onStats.breaks[(size_t)BatchBreak::UI_COLOR], 0u) << describe();
+
+    second.setColor(0.6f, 1.0f, 1.0f, 1.0f);
+    ASSERT_TRUE(render());
+    expectSameImage(0, 3);
+    EXPECT_GE(onStats.breaks[(size_t)BatchBreak::UI_COLOR], 1u) << describe();
+    images.clear();
+}
+
+TEST_F(SpriteBatchGpu, GeometryAnotherPassUploadedIsBakedAgain){
+    JASPER_REQUIRE_GPU();
+    camera3D();
+    // the SSR G-buffer pass draws the sprites alone before the colour pass, and uploads a write first
+    scene.setSSREnabled(true);
+    const TextureData card = batchChecker(200, 180, 160);
+    for (int i = 0; i < 12; i++)
+        sprite("sprite-batch-gbuffer", card, -5.5f + (float)i, 0.0f, 1, 1);
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.3f, -1.0f, -0.5f);
+    sun.setIntensity(1.5f);
+    ASSERT_TRUE(render());
+    frame(true);
+    // a same-length write of its vertices (MeshSystem, needUpdateBuffer)
+    sprites[5]->setSize(2, 2);
+    expectSameImage(8, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, TextAFlattenedCanvasGroupUploadedIsBakedAgain){
+    JASPER_REQUIRE_GPU();
+    camera2D();
+    const TextureData panel = batchChecker(60, 90, 140);
+    Image holder(&scene);
+    holder.setTexture("sprite-batch-flatten", panel);
+    holder.setSize(200, 100);
+    holder.setPosition(20.0f, 60.0f, 0.0f);
+    CanvasGroup group(&scene, holder.getEntity());
+    group.setRenderMode(CanvasGroupRenderMode::FLATTEN);
+    Text label(&scene);
+    label.setText("AB");
+    label.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+    label.setPosition(30.0f, 20.0f, 0.0f);
+    holder.addChild(&label);
+    ASSERT_TRUE(render());
+    frame(true);
+
+    // a fade: the group drawn in a layer, which uploads the text's same-length change
+    group.setAlpha(0.5f);
+    GpuEnvironment::drawFrames(2);
+    label.setText("XY");
+    GpuEnvironment::drawFrames(2);
+    group.setAlpha(1.0f);
+    expectSameImage(0, 2);
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, ABatchDrawCarriesItsOwnAnnotation){
+    JASPER_REQUIRE_GPU();
+    camera3D();
+    // GPU Instancing holds boxes drawn before the cards (priority 0) and after them (2): the
+    // cards' run draws while an instanced draw is held, which draws first
+    std::vector<std::unique_ptr<Model>> boxes;
+    for (int i = 0; i < 8; i++){
+        boxes.push_back(std::make_unique<Model>(&scene));
+        Model& box = *boxes.back();
+        ASSERT_TRUE(box.loadModel("gltf/instancing/box.gltf"));
+        box.setColor(0.2f, 0.6f, 0.9f);
+        box.setPosition(-3.0f + (float)(i % 4) * 2.0f, i < 4 ? 2.5f : -2.0f, -3.0f);
+        scene.getComponent<MeshComponent>(box.getEntity()).opaqueSortPriority = i < 4 ? 0 : 2;
+    }
+    const TextureData card = batchChecker(200, 180, 160);
+    for (int i = 0; i < 6; i++){
+        Sprite& s = sprite("sprite-batch-annotated", card, -3.0f + (float)i, 0.0f, 1, 1);
+        s.getComponent<MeshComponent>().opaqueSortPriority = 1;
+    }
+    Light sun(&scene);
+    sun.setType(LightType::DIRECTIONAL);
+    sun.setDirection(-0.3f, -1.0f, -0.5f);
+    sun.setIntensity(1.5f);
+    ASSERT_TRUE(render());
+    SystemRender::setDrawListEnabled(true);
+    frame(true);
+    const PassList list = SystemRender::getPassList(SystemRender::FRAME_STATS_FRAME, false);
+    SystemRender::setDrawListEnabled(false);
+    EXPECT_GT(SystemRender::getDrawBatchStats().instancedDraws, 0u) << "the boxes are instanced";
+    bool cards = false;
+    for (const DrawRecord& draw : list.draws){
+        if (draw.batchItems == 0)
+            continue;
+        // a batch's draw: its own quads, one instance (not an instanced draw it was given)
+        EXPECT_EQ(draw.elements, (uint32_t)draw.batchItems * 6u) << "instances " << draw.instances;
+        EXPECT_EQ(draw.instances, 1u);
+        cards = cards || draw.batchItems == 6;
+    }
+    EXPECT_TRUE(cards) << "the cards' draw is annotated with its 6 items";
+    EXPECT_NO_ENGINE_ERRORS();
+}
+
+TEST_F(SpriteBatchGpu, UnclippedElementsAfterAScissorResetJoinTheirRun){
+    JASPER_REQUIRE_GPU();
+    camera2D();
+    // unclipped images, a clipping panel's child, unclipped images again: the pass resets the
+    // scissor to the whole view after the child, which is no scissor at all
+    const TextureData panel = batchChecker(200, 120, 220);
+    std::vector<std::unique_ptr<Image>> images;
+    auto image = [&](float x, float y){
+        images.push_back(std::make_unique<Image>(&scene));
+        Image& made = *images.back();
+        made.setTexture("sprite-batch-reset", panel);
+        made.setSize(30, 30);
+        made.setPosition(x, y, 0.0f);
+        return &made;
+    };
+    for (int i = 0; i < 5; i++)
+        image((float)i * 40.0f + 8.0f, 8.0f);
+    // (an Image clips its children to its rect)
+    Image* clip = image(70.0f, 90.0f);
+    clip->setSize(80, 60);
+    Image* child = image(10.0f, 10.0f);
+    clip->addChild(child);
+    for (int i = 0; i < 5; i++)
+        image((float)i * 40.0f + 8.0f, 210.0f);
+    ASSERT_TRUE(render());
+    // the first images, the clip and the last images one run; the child another
     expectSameImage(0, 2);
     images.clear();
 }
