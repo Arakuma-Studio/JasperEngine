@@ -167,7 +167,7 @@ never build or run them.
 
 | ID | Name | Wave | Depends on | Branch | State |
 |---|---|---|---|---|---|
-| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | implementing |
+| S41 | Pixel Perfect Camera | 5A | none | feature/s41-pixel-perfect-camera | in review |
 | S42 | Pixel Art Project Mode & Validator | 5B | S41, S43, S44 | feature/s42-pixel-art-mode | spec done |
 | S43 | Palettes | 5A | none (S44's codec for Aseprite palettes, same wave) | feature/s43-palettes | in review |
 | S44 | Aseprite Import | 5A | none (S41's PPU, same wave) | feature/s44-aseprite-import | in review |
@@ -219,6 +219,13 @@ list them. There is no CI.
 
 ## Log
 
+- 2026-11-06: S41 implementation reported at `47fdcec4d`, with main `fa493bae4` merged.
+  - Passing: `WERROR` linux; 3,172 unit tests through `check-changed`; 8 `PixelPerfectGpu` tests
+    on glcore; the web gate at device pixel ratio 2; android; 62 named MCP tests; lints.
+  - Shader bits taken: `Pxs` = MESH 42 and DEPTH 19, UI 5, PARTICLES 11, BLIT `Psb` 18.
+  - Pixel-snapped draws are not auto-instanced, and batchers must keep `pixelSnapDraw` and use
+    `pixelSnapApply`. The Doriax lead was told, for `dc/sprite-batching`.
+  - An independent review is running.
 - 2026-11-06: S43 implementation reported at `b481a0454`, with main `fa493bae4` merged.
   - Passing: `WERROR` linux; filtered unit tests (core 248, editor 377); 12 MCP files; web and
     android builds; lints and generators; the smoke test.
