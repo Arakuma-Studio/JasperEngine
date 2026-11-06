@@ -19,7 +19,7 @@ Covered here, where the App's key routing, focus and real mouse input matter:
 - R6 / R7: a save during the entity preview writes the unpreviewed scene and stops it; a clip preview
   of a hierarchy the entity preview writes (also through a nested Animation, I9) stops it;
 - runtime-core 6.6 / 6.7: edits made during the entity preview are kept (and undo to the authored value);
-  edit_animation's start_offset / random_start.
+  edit_animation's random_start, an Action's startOffset through set_properties.
 """
 
 from __future__ import annotations
@@ -472,22 +472,24 @@ async def test_edits_during_the_entity_preview_are_kept(ed: Editor):
 
 
 async def test_start_offset_through_edit_animation(ed: Editor):
-    """runtime-core 6.7: edit_animation start_offset / random_start set the Animation's Action; get_animation
-    reports them; one undo step; set_properties reaches a standalone action's fields; bad values refused."""
+    """runtime-core 6.7: edit_animation random_start and set_properties' action startOffset set the
+    Animation's Action; get_animation reports them; each is one undo step; a nested action's own Start
+    Offset is reported; a clip refuses random_start."""
     await ed.call("edit_animation", target="Robot", name="RobotOffsets", tweens=[{"type": "scale", "to": [1.2, 1.2, 1.2], "duration": 1.0}])
-    r = await ed.call("edit_animation", animation="RobotOffsets", start_offset=0.5, random_start=True)
-    ed.check_eq((harness.find_key(r, "start_offset"), harness.find_key(r, "random_start")), (0.5, True), f"reported: {r}")
+    r = await ed.call("edit_animation", animation="RobotOffsets", random_start=True)
+    ed.check_eq(harness.find_key(r, "random_start"), True, f"reported: {r}")
+    await ed.call("set_properties", entity="RobotOffsets", values={"action": {"startOffset": 0.5}})
     got = await ed.call("get_animation", entity="RobotOffsets")
     ed.check_eq((harness.find_key(got, "start_offset"), harness.find_key(got, "random_start")), (0.5, True), f"get_animation: {got}")
     await ed.call("undo", scope="scene")
+    await ed.call("undo", scope="scene")
     got = await ed.call("get_animation", entity="RobotOffsets")
-    ed.check_eq((harness.find_key(got, "start_offset"), harness.find_key(got, "random_start")), (0.0, False), "one undo step")
+    ed.check_eq((harness.find_key(got, "start_offset"), harness.find_key(got, "random_start")), (0.0, False), "one undo step each")
 
-    await ed.call("edit_animation", animation="RobotOffsets", start_offset=-1, expect_error=True)
     tween = harness.find_key(got, "actions")[0]["action"]
     tween_ref = tween["id"] if isinstance(tween, dict) else tween
     await ed.call("set_properties", entity=tween_ref, values={"action": {"startOffset": 0.25}})
     ed.check_eq(float(await field(ed, tween_ref, "action", "startOffset")), 0.25, "a nested action's Start Offset")
     got = await ed.call("get_animation", entity="RobotOffsets")
     ed.check_eq(harness.find_key(got, "actions")[0].get("start_offset"), 0.25, f"reported on the nested action: {got}")
-    await ed.call("edit_animation", clip=ROBOT_CLIP, start_offset=1, expect_error=True)
+    await ed.call("edit_animation", clip=ROBOT_CLIP, random_start=True, expect_error=True)

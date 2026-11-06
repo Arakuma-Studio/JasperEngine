@@ -767,3 +767,8 @@ Recorded during implementation (branch `dc/runtime-core`).
     PhysicsSystem and Engine (`Log::onMessageReceived`) are outside its scope, as its docstring says.
 11. **`CrashHook::logFailure(tag)` (6.1)** describes the exception being handled itself, after its
     once-a-second check (a callback throwing every frame is not rethrown and demangled each time).
+12. **edit_animation keeps only `random_start` (6.7).** The default (core) listing is pinned at 99,000
+    characters (`test_tool_budget.py`), and after main's merges it measured 98,995: both parameters
+    put it at 99,028. A fixed Start Offset goes through `set_properties {action: {startOffset}}` on the
+    Animation or a nested action; `get_animation` still reports `start_offset` and `random_start`.
+    `edit_animation` stays within its old 3,606 limit.

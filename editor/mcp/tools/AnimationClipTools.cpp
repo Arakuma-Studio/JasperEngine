@@ -862,7 +862,6 @@ const std::vector<Rejection>& fileModeRejections() {
         {"animation", "animation names an entity Animation: pass clip or animation, not both"},
         {"autoplay", "autoplay: an Animation Player's playAutomatically (set_properties) starts a clip"},
         {"speed", "speed: an Animation Player's speed (set_properties) or the state's speed in Lua"},
-        {"start_offset", "start_offset: a clip state's start is its time when played (AnimationPlayer:play, then the state's time in Lua)"},
         {"random_start", "random_start belongs to entity Animations (an Action's Random Start)"},
         {"name", "name: a clip's state name is set on the Animation Player entry (clips[i].name)"}};
     return table;

@@ -540,9 +540,10 @@ its last key; a `relative` track there offsets from the target's pose when it st
 anchored UI element moves by its layout offset). `add_actions` nests existing actions (`duration`
 0: the action's own); `set_frames` (`duration` 0: automatic) / `remove_actions` use the indices
 before the call; `loop`, `duration` (-1: until
-the actions end), `autoplay`, `speed`, `start_offset` (seconds into the Animation each new run starts
-at, in Play) and `random_start` (a random point of one cycle instead: copies out of step) set the
-Animation; get_animation reports them (and a nested action's own when set). `audio: [{time, sound | snapshot, path,
+the actions end), `autoplay`, `speed` and `random_start` (each new run in Play starts at a random point
+of one cycle: copies out of step) set the Animation; a fixed start is `set_properties {action:
+{startOffset}}` (seconds) on it or on a nested action; get_animation reports `start_offset` and
+`random_start` (a nested action's when set). `audio: [{time, sound | snapshot, path,
 duration, lane, volume_db, pitch_semitones, group, spatial, seconds, name}]` creates audio actions
 (an action GameObject with an AudioSource playing the clip or `.soundevent`) and Mixer Snapshot
 actions at frame start `time`; `path` names the action's target (where a `spatial` one plays);

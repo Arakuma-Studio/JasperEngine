@@ -3935,11 +3935,6 @@ void editAnimationTool(const CallPtr& call) {
                              boolOr(args, "autoplay", false) ? ActionState::Running : ActionState::Stopped);
     }
     if (has(args, "speed")) addProp<float>(*edits, target, animation, ComponentType::ActionComponent, "speed", numberOr(args, "speed", 1.0f));
-    if (has(args, "start_offset")) {
-        const float offset = numberOr(args, "start_offset", 0.0f);
-        if (!std::isfinite(offset) || offset < 0.0f) { failWith("start_offset: seconds into the animation, 0 or more."); return; }
-        addProp<float>(*edits, target, animation, ComponentType::ActionComponent, "startOffset", offset);
-    }
     if (has(args, "random_start")) {
         addProp<bool>(*edits, target, animation, ComponentType::ActionComponent, "randomStart", boolOr(args, "random_start", false));
     }
@@ -5850,7 +5845,6 @@ void registerWorldTools(McpRegistry& registry) {
             {"loop", boolean("")},
             {"duration", number("")},
             {"speed", number("")},
-            {"start_offset", number("")},
             {"random_start", boolean("")},
             {"autoplay", boolean("")},
             {"max_keys", withDefault(integer("Per track."), 20)}

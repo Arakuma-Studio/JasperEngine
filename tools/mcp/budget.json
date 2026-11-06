@@ -74,8 +74,8 @@
             "reason": "upstream (Texture Synthesis), predates its merge into oe-port: 3519 with S31's schema conventions until upstream round 3 moved its per-argument texts to jasper://docs/texture-synthesis (2341 measured, nested objects still say additionalProperties)"
         },
         "edit_animation": {
-            "limit": 3639,
-            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions); 3639 with runtime-core's start_offset and random_start (an entity Animation's Start Offset / Random Start, bare: their meaning is in jasper://docs/animation)"
+            "limit": 3606,
+            "reason": "grandfathered by S31: 2699 chars when the limits were set, +5%; 3340 measured on the round-1 upstream sync, 3494 on round 2 (upstream's .anim clip mode on the same tool: clip, create, tracks by path, keys, events, cheaper than a second tool); 3578 with refs typed integer|string again (the CLI tells ids from names by it), 3606 with its free-form key items saying so (S31 conventions)"
         },
         "sculpt_terrain": {
             "limit": 2699,
