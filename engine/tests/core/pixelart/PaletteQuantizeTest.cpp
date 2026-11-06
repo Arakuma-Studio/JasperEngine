@@ -77,8 +77,8 @@ TEST(PaletteQuantize, EveryOutputIsAPaletteColour) {
 TEST(PaletteQuantize, DitherShowsTheRatioPerBlock) {
     const Palette palette = blackAndWhite();
     const QuantizeLut lut = bakeQuantizeLut(palette, ColorMetric::OkLab, 4, 1.0f, 32);
-    // OKLab's mid grey: about half the cells of a 4 x 4 block white
-    const Rgba8 grey = fromOklab(Lab{0.5f, 0.0f, 0.0f});
+    // linear light's mid grey (sRGB 188): about half the cells of a 4 x 4 block white
+    const Rgba8 grey{188, 188, 188, 255};
     int white = 0;
     for (int y = 0; y < 4; y++) {
         for (int x = 0; x < 4; x++) {

@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <cstdio>
 #include <limits>
 
@@ -89,6 +90,29 @@ namespace {
         return Lab{(float)(0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s),
                    (float)(1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s),
                    (float)(0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s)};
+    }
+
+    // A dither mix's cube root (ditherPair measures a few per LUT cell): float Newton steps from
+    // the exponent's third, the same basic operations everywhere (no libm), within 1e-7 of
+    // cbrtFixed over [0, 1]
+    float cbrtMix(float x) {
+        if (!(x > 0.0f)) return 0.0f;
+        uint32_t bits;
+        std::memcpy(&bits, &x, sizeof(bits));
+        bits = bits / 3u + 709921077u;
+        float y;
+        std::memcpy(&y, &bits, sizeof(y));
+        for (int i = 0; i < 4; i++) y = (2.0f * y + x / (y * y)) / 3.0f;
+        return y;
+    }
+
+    Lab oklabOfMix(float r, float g, float b) {
+        const float l = cbrtMix(0.4122214708f * r + 0.5363325363f * g + 0.0514459929f * b);
+        const float m = cbrtMix(0.2119034982f * r + 0.6806995451f * g + 0.1073969566f * b);
+        const float s = cbrtMix(0.0883024619f * r + 0.2817188376f * g + 0.6299787005f * b);
+        return Lab{0.2104542553f * l + 0.7936177850f * m - 0.0040720468f * s,
+                   1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s,
+                   0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s};
     }
 
     void linearOfOklab(const Lab& lab, double out[3]) {
@@ -337,14 +361,23 @@ Lab pixelart::fromOklch(const LCh& lch) {
     return Lab{lch.l, (float)(lch.c * std::cos(h)), (float)(lch.c * std::sin(h))};
 }
 
+namespace jasperengine::pixelart {
+namespace {
+
+    Lab cielabOfLinear(double r, double g, double b) {
+        const double x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047;
+        const double y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
+        const double z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883;
+        const double fx = labF(x), fy = labF(y), fz = labF(z);
+        return Lab{(float)(116.0 * fy - 16.0), (float)(500.0 * (fx - fy)), (float)(200.0 * (fy - fz))};
+    }
+
+}
+}
+
 Lab pixelart::toCielab(Rgba8 color) {
     const SrgbTables& tables = srgbTables();
-    const double r = tables.toLinear[color.r], g = tables.toLinear[color.g], b = tables.toLinear[color.b];
-    const double x = (0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047;
-    const double y = 0.2126729 * r + 0.7151522 * g + 0.0721750 * b;
-    const double z = (0.0193339 * r + 0.1191920 * g + 0.9503041 * b) / 1.08883;
-    const double fx = labF(x), fy = labF(y), fz = labF(z);
-    return Lab{(float)(116.0 * fy - 16.0), (float)(500.0 * (fx - fy)), (float)(200.0 * (fy - fz))};
+    return cielabOfLinear(tables.toLinear[color.r], tables.toLinear[color.g], tables.toLinear[color.b]);
 }
 
 float pixelart::ciede2000(const Lab& first, const Lab& second) {
@@ -467,7 +500,12 @@ float pixelart::distance(Rgba8 x, Rgba8 y, ColorMetric metric) {
 PaletteMatcher::PaletteMatcher(std::span<const Rgba8> colors, ColorMetric metric, std::span<const uint16_t> only)
     : palette(colors.begin(), colors.end()), colorMetric(metric) {
     labs.reserve(palette.size());
-    for (const Rgba8& color : palette) labs.push_back(space(color));
+    linears.reserve(palette.size());
+    const SrgbTables& tables = srgbTables();
+    for (const Rgba8& color : palette) {
+        labs.push_back(space(color));
+        linears.push_back({tables.toLinear[color.r], tables.toLinear[color.g], tables.toLinear[color.b]});
+    }
     if (!only.empty()) {
         for (uint16_t index : only) {
             if (index < palette.size() && std::find(candidateIndices.begin(), candidateIndices.end(), index) == candidateIndices.end()) {
@@ -492,6 +530,15 @@ Lab PaletteMatcher::space(Rgba8 color) const {
         case ColorMetric::Rgb: return Lab{color.r / 255.0f, color.g / 255.0f, color.b / 255.0f};
     }
     return toOklab(color);
+}
+
+Lab PaletteMatcher::spaceOfLinear(const float rgb[3]) const {
+    switch (colorMetric) {
+        case ColorMetric::OkLab: return oklabOfMix(rgb[0], rgb[1], rgb[2]);
+        case ColorMetric::Ciede2000: return cielabOfLinear(rgb[0], rgb[1], rgb[2]);
+        case ColorMetric::Rgb: return Lab{linearToSrgbf(rgb[0]), linearToSrgbf(rgb[1]), linearToSrgbf(rgb[2])};
+    }
+    return oklabOfMix(rgb[0], rgb[1], rgb[2]);
 }
 
 // what the search compares: squared for the Euclidean metrics (the root is taken at the end)
@@ -569,38 +616,60 @@ PaletteMatcher::Mix PaletteMatcher::ditherPair(Rgba8 color, float strength, int 
     }
 
     mix.a = mix.b = nearestList[0].second;
-    float bestCost = squaredDistance(lab, labs[mix.a]);
+    float bestCost = metricDistance(lab, labs[mix.a]);
     if (bestCost == 0.0f) return mix;   // a palette colour stays itself
     steps = std::clamp(steps, 1, 64);
     const float stepCount = (float)steps;
     const int maxSteps = (int)std::floor(std::clamp(std::isfinite(strength) ? strength : 0.0f, 0.0f, 1.0f) * stepCount + 1e-4f);
     if (maxSteps <= 0) return mix;
 
-    // cost(r) = |e + r d|^2 + 0.1 r (1 - r) |d|^2 with e = A - c and d = B - A: a convex
-    // quadratic in r, so the best step is one of the two around its minimum
+    // A dither shows (1 - r) A + r B as the eye averages it: in linear light. Each ordered pair of
+    // the nearest gets its best r in linear RGB (the target's projection on the segment); the
+    // three pairs that come closest there are measured in the chosen metric at the steps around
+    // their r, with Yliluoma's penalty against mixing far colours, 0.01 r (1 - r) |A - B| (his
+    // 0.1 outweighs a near-white grey's whole error in OKLab: it would never be dithered).
+    const SrgbTables& tables = srgbTables();
+    const float target[3] = {tables.toLinear[color.r], tables.toLinear[color.g], tables.toLinear[color.b]};
+    struct PairFit { float residual; int i; int j; float r; };
+    constexpr int kKept = 3;
+    PairFit kept[kKept];
+    int keptCount = 0;
     for (int i = 0; i < found; i++) {
         for (int j = 0; j < found; j++) {
             if (i == j) continue;
-            const Lab& a = labs[nearestList[i].second];
-            const Lab& b = labs[nearestList[j].second];
-            const float el = a.l - lab.l, ea = a.a - lab.a, eb = a.b - lab.b;
-            const float dl = b.l - a.l, da = b.a - a.a, db = b.b - a.b;
-            const float dd = dl * dl + da * da + db * db;
+            const std::array<float, 3>& a = linears[nearestList[i].second];
+            const std::array<float, 3>& b = linears[nearestList[j].second];
+            const float d[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+            const float e[3] = {target[0] - a[0], target[1] - a[1], target[2] - a[2]};
+            const float dd = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
             if (dd <= 0.0f) continue;
-            const float ed = el * dl + ea * da + eb * db;
-            const float ee = el * el + ea * ea + eb * eb;
-            const float minimum = -(2.0f * ed + 0.1f * dd) / (1.8f * dd);
-            const int lower = (int)std::floor(minimum * stepCount);
-            for (int step : {lower, lower + 1}) {
-                if (step < 1 || step > maxSteps) continue;
-                const float r = step / stepCount;
-                const float cost = ee + r * (2.0f * ed + 0.1f * dd) + r * r * (0.9f * dd);
-                if (cost < bestCost) {
-                    bestCost = cost;
-                    mix.a = nearestList[i].second;
-                    mix.b = nearestList[j].second;
-                    mix.ratio16 = (uint8_t)step;
-                }
+            const float r = std::clamp((e[0] * d[0] + e[1] * d[1] + e[2] * d[2]) / dd, 0.0f, 1.0f);
+            const float off[3] = {e[0] - r * d[0], e[1] - r * d[1], e[2] - r * d[2]};
+            const PairFit fit{off[0] * off[0] + off[1] * off[1] + off[2] * off[2], i, j, r};
+            int at = keptCount;
+            while (at > 0 && fit.residual < kept[at - 1].residual) at--;
+            if (at >= kKept) continue;
+            for (int k = std::min(keptCount, kKept - 1); k > at; k--) kept[k] = kept[k - 1];
+            kept[at] = fit;
+            if (keptCount < kKept) keptCount++;
+        }
+    }
+    for (int k = 0; k < keptCount; k++) {
+        const uint16_t ia = nearestList[kept[k].i].second, ib = nearestList[kept[k].j].second;
+        const std::array<float, 3>& a = linears[ia];
+        const std::array<float, 3>& b = linears[ib];
+        const float spread = metricDistance(labs[ia], labs[ib]);
+        const int centre = (int)std::lround(kept[k].r * stepCount);
+        for (int step = centre - 1; step <= centre + 1; step++) {
+            if (step < 1 || step > maxSteps) continue;
+            const float r = step / stepCount;
+            const float mixed[3] = {a[0] + r * (b[0] - a[0]), a[1] + r * (b[1] - a[1]), a[2] + r * (b[2] - a[2])};
+            const float cost = metricDistance(lab, spaceOfLinear(mixed)) + 0.01f * r * (1.0f - r) * spread;
+            if (cost < bestCost) {
+                bestCost = cost;
+                mix.a = ia;
+                mix.b = ib;
+                mix.ratio16 = (uint8_t)step;
             }
         }
     }

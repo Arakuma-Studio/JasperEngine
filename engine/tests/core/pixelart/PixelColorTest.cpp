@@ -321,12 +321,11 @@ TEST(PaletteMatcher, DitherPair) {
     PaletteMatcher::Mix mix = matcher.ditherPair(Rgba8{255, 0, 0}, 1.0f);
     EXPECT_EQ(mix.a, 2);
     EXPECT_EQ(mix.ratio16, 0);
-    // OKLab grey halfway between black and white mixes the two about half and half
-    const Rgba8 grey = fromOklab(Lab{0.5f, 0.0f, 0.0f});
+    // a dither averages in linear light: a grey of linear 0.5 (sRGB 188) is half black, half white
+    const Rgba8 grey{188, 188, 188};
     mix = matcher.ditherPair(grey, 1.0f);
-    EXPECT_TRUE((mix.a == 0 && mix.b == 1) || (mix.a == 1 && mix.b == 0));
-    EXPECT_GE(mix.ratio16, 6);
-    EXPECT_LE(mix.ratio16, 10);
+    ASSERT_TRUE((mix.a == 0 && mix.b == 1) || (mix.a == 1 && mix.b == 0));
+    EXPECT_EQ(mix.a == 0 ? mix.ratio16 : 16 - mix.ratio16, 8);
     // no strength: the nearest alone
     mix = matcher.ditherPair(grey, 0.0f);
     EXPECT_EQ(mix.ratio16, 0);
@@ -335,6 +334,26 @@ TEST(PaletteMatcher, DitherPair) {
     for (int r = 0; r < 256; r += 5) {
         mix = matcher.ditherPair(Rgba8{(uint8_t)r, (uint8_t)r, (uint8_t)r}, 0.25f);
         EXPECT_LE(mix.ratio16, 4);
+    }
+}
+
+// the mix a dither shows is the average of its two colours' light: for every grey, the ratio of
+// white over black is the grey's linear value (within a step), in every metric (sRGB 128 is
+// linear 0.216: 3 or 4 white cells of 16, not the 8 or more a mix in OKLab or sRGB would give)
+TEST(PaletteMatcher, DitherMixesInLinearLight) {
+    const std::vector<Rgba8> palette = {{0, 0, 0}, {255, 255, 255}};
+    for (ColorMetric metric : {ColorMetric::OkLab, ColorMetric::Ciede2000, ColorMetric::Rgb}) {
+        PaletteMatcher matcher(palette, metric);
+        for (int value = 16; value < 256; value += 16) {
+            const PaletteMatcher::Mix mix = matcher.ditherPair(Rgba8{(uint8_t)value, (uint8_t)value, (uint8_t)value}, 1.0f, 16);
+            const int white = mix.ratio16 == 0 ? (mix.a == 1 ? 16 : 0) : (mix.b == 1 ? mix.ratio16 : 16 - mix.ratio16);
+            const float wanted = srgbToLinearf(value / 255.0f) * 16.0f;
+            EXPECT_LE(std::abs(white - wanted), 1.0f) << colorMetricName(metric) << " grey " << value << ": " << white << " white of 16";
+        }
+        const PaletteMatcher::Mix mid = matcher.ditherPair(Rgba8{128, 128, 128}, 1.0f, 16);
+        const int white = mid.b == 1 ? mid.ratio16 : 16 - mid.ratio16;
+        EXPECT_GE(white, 3) << colorMetricName(metric);
+        EXPECT_LE(white, 4) << colorMetricName(metric);
     }
 }
 

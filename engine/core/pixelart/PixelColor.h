@@ -22,6 +22,7 @@
 #include "math/Vector4.h"
 #include "pixelart/Rgba8.h"
 
+#include <array>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -124,10 +125,13 @@ namespace jasperengine::pixelart {
         struct Slot { uint32_t key = 0; uint16_t index = 0; float distance = 0.0f; };   // key: rgb + 1, 0 is empty
 
         Lab space(Rgba8 color) const;
+        // the metric's space of a linear colour (a dither's mix: what the eye averages)
+        Lab spaceOfLinear(const float rgb[3]) const;
         float metricDistance(const Lab& x, const Lab& y) const;
 
         std::vector<Rgba8> palette;
         std::vector<Lab> labs;
+        std::vector<std::array<float, 3>> linears;
         std::vector<uint16_t> candidateIndices;
         ColorMetric colorMetric = ColorMetric::OkLab;
         std::vector<Slot> cache;

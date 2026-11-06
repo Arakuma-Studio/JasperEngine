@@ -239,15 +239,17 @@ namespace applypalette_test {
     TEST(ApplyPalette, BayerOnHalfGreyShowsHalfTheCellsWhite) {
         const std::vector<Rgba8> palette = {kBlack, kWhite};
         const px::PaletteMatcher matcher(palette, px::ColorMetric::OkLab);
-        const px::PaletteMatcher::Mix mix = matcher.ditherPair(kGrey99, 1.0f);
-        ASSERT_EQ(mix.ratio16, 8);    // OKLab L 0.4997: the pair mix's half
+        // the grey of linear 0.5 (sRGB 188): a dither mixes in linear light, so half the cells white
+        const Rgba8 half{188, 188, 188, 255};
+        const px::PaletteMatcher::Mix mix = matcher.ditherPair(half, 1.0f);
+        ASSERT_EQ(mix.ratio16, 8);
 
-        const RgbaImage image(16, 16, kGrey99);
+        const RgbaImage image(16, 16, half);
         const struct { Dither dither; int size; } cases[] = {{Dither::Bayer2, 2}, {Dither::Bayer4, 4}, {Dither::Bayer8, 8}};
         for (const auto& c : cases) {
             SCOPED_TRACE(ditherName(c.dither));
             // the ratio in steps of the matrix's cells: half of them at every size
-            const px::PaletteMatcher::Mix sized = matcher.ditherPair(kGrey99, 1.0f, c.size * c.size);
+            const px::PaletteMatcher::Mix sized = matcher.ditherPair(half, 1.0f, c.size * c.size);
             ASSERT_EQ(sized.ratio16, c.size * c.size / 2);
             const ApplyResult result = applyWith(image, palette, c.dither);
             for (int by = 0; by < 16; by += c.size) {
@@ -273,7 +275,7 @@ namespace applypalette_test {
         request.dither = Dither::Bayer4;
         request.ditherStrength = 0.0f;
         const ApplyResult flat = applyPalette(image, request);
-        const Rgba8 nearest = palette[(size_t)matcher.nearestUncached(kGrey99).first];
+        const Rgba8 nearest = palette[(size_t)matcher.nearestUncached(half).first];
         for (const Rgba8& pixel : flat.image.pixels) EXPECT_EQ(pixel, nearest);
     }
 
