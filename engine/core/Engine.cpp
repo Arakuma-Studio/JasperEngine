@@ -3792,7 +3792,9 @@ void Engine::systemKeyDown(int key, bool repeat, int mods){
             if (typingDocument && typingDocument->getSystem<UIDocumentSystem>()->eventOnKeyDown(key, repeat, mods))
                 consumed = true;
         }
-        if (!consumed){
+        // while a field is typed in, the other documents get only what typing leaves (Escape, F1-F25)
+        const bool typingKey = key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25);
+        if (!consumed && !(typingDocument && typingKey)){
             const UIDocumentSystem* asked = typingDocument ? typingDocument->getSystem<UIDocumentSystem>().get() : nullptr;
             consumed = dispatchToDocuments(scenes, [&](UIDocumentSystem* documents){
                 return documents != asked && documents->eventOnKeyDown(key, repeat, mods);
@@ -3960,6 +3962,10 @@ void Engine::systemGamepadDisconnect(int gamepad){
     gamepadUI.stick.erase(gamepad);
     for (auto it = gamepadUI.gameAxes.begin(); it != gamepadUI.gameAxes.end();){
         if (it->first.first == gamepad) it = gamepadUI.gameAxes.erase(it); else ++it;
+    }
+    // nothing of a pad that went is handed back to the game later
+    for (auto it = gamepadUI.takenAxes.begin(); it != gamepadUI.takenAxes.end();){
+        if (it->first == gamepad) it = gamepadUI.takenAxes.erase(it); else ++it;
     }
 
     Input::removeGamepad(gamepad);
