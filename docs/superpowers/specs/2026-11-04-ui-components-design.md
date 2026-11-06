@@ -1053,3 +1053,16 @@ lean MCP rules, the sound layer).
 10. **`get_entity` / `get_runtime_entity`** return `selectable {navigable, navigation {up, down, left, right, next}}`
     (+ `state`, `selected` in Play) with `{id, path}` targets; `get_play_state.input.ui_selected` is
     `[{scene, entity {id, path}}]`.
+11. **The four Selectable enums are int-sized** (6.1 said `uint8_t`): the reflection and the cooked format read
+    an enum field as an int.
+12. **Navigation measures in the hit test's space** (y down) whatever the scene's current camera: in the
+    editor a UI scene's view camera is not a UI camera, and pointer input already assumes a UI camera.
+13. **Typing guard for documents, key releases too:** while a document's text field is typed in, the other
+    documents get neither a typing key's press nor its release (a focused HTML button clicks on Space's
+    release); Escape and F1-F25 still reach them. A disconnected pad's held axes are dropped (found by
+    `InputGamepadTest.ButtonsAndTriggersAsKeys`).
+14. **A transition that stops writing a property** gives Normal back only while a state's value still shows,
+    so an edit made together with the change stays.
+15. **MCP text within the core budget:** `create_ui`'s description names `select_on_enable` only (the rest is
+    in jasper://docs/ui); `get_play_state`'s description is unchanged (its `input.ui_selected` is documented
+    in jasper://docs/ui).
