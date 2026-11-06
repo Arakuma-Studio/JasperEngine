@@ -183,7 +183,8 @@ namespace jasperengine{
         HTMLUI_PRIM,          // HTML UI instanced primitives (S16): quads, SDF boxes, borders and box shadows
         // S57's fullscreen passes: the contact shadows' mask (contact_shadows.frag), 'Oir' the OIT
         // resolve (oit_resolve.frag)
-        LIGHTING_PASS
+        LIGHTING_PASS,
+        TITLE_ART             // Title Art's passes (S80): the program is the low property bits (titleart/render/TitlePasses.h)
     };
 
     enum class AttributeType{
