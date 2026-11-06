@@ -189,7 +189,7 @@ TEST(CompatDiagnostics, LogLinesCarryThePrefix){
     logDiagnostics("ui/menu.html", list, false);
     EXPECT_EQ(system.countLogs(D_LOG_ERROR, "[HTML UI] ui/menu.html:3:5: error: stylesheet 'x.css' not found [HTMLUI-GEN-0001]"), 1u);
     EXPECT_EQ(system.countLogs(D_LOG_WARN, "[HTML UI] ui/menu.css:12:5: warning: 'border-style: dashed' is drawn solid [HTMLUI-CSS-0006]"), 1u);
-    EXPECT_EQ(system.countLogs(D_LOG_VERBOSE, "[HTMLUI-CSS-0009]"), 0u);
+    EXPECT_EQ(system.countLogs(0, "[HTMLUI-CSS-0009]"), 0u);
     EXPECT_EQ(system.countLogs(0, "[HTML UI] ui/menu.html: 1 error, 1 warning, 2 notes"), 1u);
 
     system.clearLogs();

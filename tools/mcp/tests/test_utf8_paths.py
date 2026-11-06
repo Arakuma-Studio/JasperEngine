@@ -115,3 +115,29 @@ async def test_material_and_texture_paths(ed: Editor):
     ed.check_in(material, str(linked), "link_material names the material file")
     got = await ed.call("get_entity", scene=sid, entity=box, components="Mesh")
     ed.check_in(material, str(got), "the linked material file comes back as sent")
+
+
+async def test_names_outside_every_ansi_code_page(ed: Editor):
+    """Chinese and emoji names (outside every Windows ANSI code page): created, saved, listed,
+    moved, and walked when the assets root moves (the walks that threw on Windows before the
+    UTF-8 code page)."""
+    ed.require_tools("create_folder", "write_file", "create_scene", "save_scene", "list_assets", "move_asset",
+                     "set_project_settings", "get_project_settings")
+    folder = "关卡 😀"
+    await ed.call("create_folder", path=folder)
+    await ed.call("write_file", path=folder + "/说明.txt", content="第一关\n")
+    made = await ed.call("create_scene", name="第一关", type="3D")
+    sid = made["scene"]["id"]
+    saved = await ed.call("save_scene", scene=sid, path=folder + "/第一关")
+    ed.check_eq(saved["scene"]["path"], folder + "/第一关.scene")
+    listed = await ed.call("list_assets", directory=folder)
+    ed.check_in(folder + "/说明.txt", [e["path"] for e in listed["entries"]], "list_assets under a CJK + emoji folder")
+    await ed.call("move_asset", path=folder + "/说明.txt", to=folder + "/ゲーム.txt")
+    ed.check((ed.project / folder / "ゲーム.txt").is_file(), "moved to a Japanese name")
+
+    # the assets root moves under a Korean name: the change walks the whole project, these names
+    # included (it moves the referenced files and rewrites the references)
+    await ed.call("set_project_settings", values={"editor.assets_dir": "자산"})
+    got = await ed.call("get_project_settings", keys=["editor.assets_dir"])
+    ed.check_eq(got.get("settings", got)["editor.assets_dir"], "자산", "the assets root moved")
+    await ed.call("set_project_settings", values={"editor.assets_dir": "."})

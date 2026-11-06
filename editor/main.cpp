@@ -12,6 +12,7 @@
 #include "reload/HotReloadService.h"
 #include "util/EditorDiagnostics.h"
 #include "util/ShellEnv.h"
+#include "util/TextEncoding.h"
 #include "vcs/scene/SceneCli.h"
 
 #include <cstdio>
@@ -262,6 +263,13 @@ bool takeHubFlags(std::vector<char*>& args) {
 }
 
 int main(int argc, char* argv[]) {
+    // Windows before 10 1903 ignores the UTF-8 code page of the manifest: every narrow path would
+    // be in the ANSI code page there, so the editor does not start (games still run)
+    if (!editor::TextEncoding::checkWindowsCodePage()) {
+        return 1;
+    }
+    // what the editor prints is UTF-8: a console shows it so while the editor runs
+    editor::TextEncoding::useUtf8Console();
     // before anything logs: the in-memory store and the terminal until a Console window exists
     editor::Out::startLogging();
     std::vector<char*> args(argv, argv + argc);

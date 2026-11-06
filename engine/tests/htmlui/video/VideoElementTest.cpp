@@ -23,15 +23,14 @@
 #include "media/UIVideoElement.h"
 #include "media/VideoDecoder.h"
 #include "media/VideoStream.h"
+#include "media/VideoSourceFactory.h"
 
 #include <RmlUi/Core.h>
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
-#include <thread>
 
 using namespace jasperengine;
 using namespace jasperengine::test;
@@ -84,8 +83,24 @@ namespace {
             UIVideoElement::setAudioConsumerForTesting(false);
             VideoStream::setDecodeDelayForTesting(0);
             runner.reset();
+            VideoSourceFactory::setSourceOverrideForTesting(nullptr);
             HtmlUIClock::reset();
         }
+
+        void useInlineDecoder(){
+            VideoSourceFactory::setSourceOverrideForTesting([this](const std::string& path, const VideoSourceFactory::Options& options){
+                auto source = std::make_unique<VideoStream>(path, false, options.audio);
+                inlineDecoder = source.get();
+                return source;
+            });
+        }
+
+        void fillAudio(const std::shared_ptr<VideoAudioRing>& ring){
+            ASSERT_NE(inlineDecoder, nullptr);
+            while (ring->getBufferedFrames() < 480 && inlineDecoder->pump(1)){}
+        }
+
+        VideoStream* inlineDecoder = nullptr;
 
         // a page of fixtures/video/pages; listeners on every media event of `ids`
         void load(const std::string& page, std::initializer_list<const char*> ids = {"v"}){
@@ -436,6 +451,7 @@ TEST_F(VideoElementTest, SrcChangeLoadsAgain){
 // second 1 sits at its media position. With a consumer 3 % fast the controller keeps it within the
 // dead band plus a block
 TEST_F(VideoElementTest, AudioFollowsThePicture){
+    useInlineDecoder();
     const int64_t latency = 1024;
     UIVideoElement::setAudioConsumerForTesting(true, latency);
     load("autoplay.html");
@@ -451,8 +467,7 @@ TEST_F(VideoElementTest, AudioFollowsThePicture){
         // the mixer has played the frame's interval by the time the engine updates
         owed += 800.0;
         while (owed >= 480.0){
-            for (int wait = 0; wait < 500 && ring->getBufferedFrames() < 480; wait++)
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            ASSERT_NO_FATAL_FAILURE(fillAudio(ring));
             const int64_t start = ring->getReadPosition();
             ring->read(block.data(), 480);
             for (int i = 0; i < 480 && burstAt < 0; i++){
@@ -480,6 +495,7 @@ TEST_F(VideoElementTest, AudioFollowsThePicture){
 // band (15 ms), the 3 % accumulated over the controller's eight-update mean (4 ms) and one block
 // (10 ms): 29 ms (no resync)
 TEST_F(VideoElementTest, AudioCorrectsAFastMixer){
+    useInlineDecoder();
     UIVideoElement::setAudioConsumerForTesting(true, 0);
     load("loop.html");
     UIVideoElement* v = video();
@@ -496,8 +512,7 @@ TEST_F(VideoElementTest, AudioCorrectsAFastMixer){
     for (int step = 1; step <= 600; step++){
         owed += 800.0 * 1.03;
         while (owed >= 480.0){
-            for (int wait = 0; wait < 500 && ring->getBufferedFrames() < 480; wait++)
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            ASSERT_NO_FATAL_FAILURE(fillAudio(ring));
             ring->read(block.data(), 480);
             owed -= 480.0;
         }
@@ -529,29 +544,39 @@ TEST_F(VideoElementTest, ClockPinnedOrHeldFreezesIt){
 }
 
 TEST_F(VideoElementTest, RealTimeModeNeverBlocks){
+    bool waitRequested = false;
+    class DelayedSource : public VideoStream {
+    public:
+        DelayedSource(const std::string& path, bool audio, bool& waitRequested):
+            VideoStream(path, false, audio), waitRequested(waitRequested){}
+        FrameResult acquireFrame(int iteration, double seconds, bool wait, int64_t shown, VideoFrame& frame) override{
+            waitRequested = waitRequested || wait;
+            if (frameIndexFor(seconds) >= 3) return FrameResult::NOT_READY;
+            return VideoStream::acquireFrame(iteration, seconds, wait, shown, frame);
+        }
+    private:
+        bool& waitRequested;
+    };
+    struct RestoreSource {
+        std::unique_ptr<FixtureRunner>& runner;
+        ~RestoreSource(){ runner.reset(); VideoSourceFactory::setSourceOverrideForTesting(nullptr); }
+    } restore{runner};
+    VideoSourceFactory::setSourceOverrideForTesting([&](const std::string& path, const VideoSourceFactory::Options& options){
+        return std::make_unique<DelayedSource>(path, options.audio, waitRequested);
+    });
     load("loop.html");
-    UIVideoElement* v = video();
     runner->frameAt(0.0);
     runner->frameAt(0.0);
-    // release the clock: real time, a decoder far slower than the clock (400 ms a frame against
-    // 33 ms: over the 40 updates of 1/60 s the clock asks for 20 frames, the decoder has at most
-    // its queue and two more, whatever the machine's load: the shown frame falls more than the
-    // 0.25 s stall limit behind)
     HtmlUIClock::setFixedTime(std::nullopt);
-    VideoStream::setDecodeDelayForTesting(400);
-    Rml::Context* context = runner->context();
-    double slowest = 0.0;
+    waitRequested = false;
     for (int i = 0; i < 40; i++){
         HtmlUIClock::advance(1.0 / 60.0);
-        const auto before = std::chrono::steady_clock::now();
-        context->Update();
-        slowest = std::max(slowest, std::chrono::duration<double>(std::chrono::steady_clock::now() - before).count());
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        runner->context()->Update();
     }
+    UIVideoElement* v = video();
     EXPECT_FALSE(v->isFrameExact());
-    EXPECT_LT(slowest, 0.03) << "an update waited for the decoder";
-    // the clock waited for the decoder (a browser buffering): `waiting`, and the time stopped short
-    // of the 40 updates' 0.667 s
+    EXPECT_FALSE(waitRequested) << "real-time playback must request frames without waiting";
+    EXPECT_EQ(v->getShownFrameIndex(), 2);
     EXPECT_GE(logs["v"].count("waiting"), 1u);
     EXPECT_LT(v->getCurrentTime(), 40.0 / 60.0 - 0.1);
 }

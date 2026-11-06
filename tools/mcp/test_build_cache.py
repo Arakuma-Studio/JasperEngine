@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -43,13 +44,16 @@ FAKE_BUILD = textwrap.dedent("""\
     echo "build $backend-$flavour $$" >> "$FAKE_BUILD_COUNT"
     [[ -n "${FAKE_BUILD_FAIL:-}" ]] && { echo "failing on purpose"; exit 3; }
     mkdir -p "$tree" "$out/linux-x64-$backend-$flavour"
-    sleep "${FAKE_BUILD_SECONDS:-2}"
+    if [[ -n "${FAKE_BUILD_GATE:-}" ]]; then
+        echo ready > "$FAKE_BUILD_GATE.started"
+        read -r release < "$FAKE_BUILD_GATE.release"
+    fi
     head -c "${FAKE_BUILD_BYTES:-1048576}" /dev/urandom > "$out/linux-x64-$backend-$flavour/jasperengine-player"
     echo '{"id": "linux-x64-'$backend-$flavour'"}' > "$out/linux-x64-$backend-$flavour/player-info.json"
 """)
 
 DRIVER = textwrap.dedent("""\
-    import sys, time
+    import sys
     sys.path.insert(0, sys.argv[1])
     import build_cache
     from pathlib import Path
@@ -59,12 +63,14 @@ DRIVER = textwrap.dedent("""\
         print("RUNTIME", build_cache.ensure_player(sys.argv[4], sys.argv[5]), flush=True)
     except build_cache.BuildCacheError as e:
         print("ERROR", str(e).splitlines()[0], flush=True)
-    time.sleep(float(sys.argv[6]))   # a run that keeps using the runtime
+    if sys.argv[6] == "hold":
+        sys.stdin.read(1)   # a run that keeps using the runtime until released
 """)
 
 
 def main() -> int:
     root = Path(tempfile.mkdtemp(prefix="jasper-build-cache-test-"))
+    children = []
     try:
         repo = root / "repo"
         for d in ("engine", "tools/players", "tools/performance", "tools/ci", "tools/mcp", "docker"):
@@ -88,28 +94,49 @@ def main() -> int:
                    JASPER_MCP_SESSION="run1")
         env.pop("CCACHE_DIR", None)
 
-        def start(backend="glcore", flavour="release", hold=0.0, **extra):
-            return subprocess.Popen([sys.executable, "-I", str(driver), str(HERE), str(repo), str(script), backend,
-                                     flavour, str(hold)], env={**env, **extra}, stdout=subprocess.PIPE,
-                                    stderr=subprocess.STDOUT, text=True)
+        def start(backend="glcore", flavour="release", hold="", **extra):
+            proc = subprocess.Popen([sys.executable, "-I", str(driver), str(HERE), str(repo), str(script), backend,
+                                     flavour, hold], env={**env, **extra}, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, start_new_session=True)
+            children.append(proc)
+            return proc
+
+        def until(proc, event):
+            lines = []
+            for line in proc.stdout:
+                lines.append(line)
+                if event in line:
+                    return "".join(lines)
+            raise AssertionError(f"worker exited before {event}: {''.join(lines)}")
 
         def builds() -> int:
             return len(count.read_text().splitlines()) if count.exists() else 0
 
         def runtime_of(out: str) -> str:
             lines = [l for l in out.splitlines() if l.startswith(("RUNTIME", "ERROR"))]
-            return lines[-1] if lines else out[-500:]
+            line = lines[-1] if lines else out[-500:]
+            if line.startswith("RUNTIME "):
+                runtime = Path(line[8:])
+                if not all((runtime / name).is_file() for name in ("jasperengine-player", "player-info.json")):
+                    return f"ERROR incomplete runtime: {runtime}"
+            return line
 
         # two runs (two worktrees) at once: one build, both get it
-        a = start(FAKE_BUILD_SECONDS="3")
-        time.sleep(0.5)
+        gate = root / "build-gate"
+        for event in ("started", "release"):
+            os.mkfifo(str(gate) + "." + event)
+        a = start(FAKE_BUILD_GATE=str(gate))
+        with open(str(gate) + ".started") as started:
+            started.read()
         b = start(JASPER_MCP_BUILD_CACHE=str(root / "wt2-cache"), JASPER_MCP_SESSION="run2")
-        # while the build runs: nothing in the entry's place, only a staging directory
-        time.sleep(1.0)
+        waiting = until(b, "waiting for the build another run")
+        # The first build is held and the second is waiting for it: only staging is visible.
         group = shared / "v1" / "linux-x64-glcore-release"
         ok(not [p for p in group.iterdir() if p.is_dir() and not p.name.startswith(".")],
            "no entry is visible while its build runs (published whole)")
-        out_a, out_b = a.communicate(timeout=60)[0], b.communicate(timeout=60)[0]
+        with open(str(gate) + ".release", "w") as release:
+            release.write("release\n")
+        out_a, out_b = a.communicate()[0], waiting + b.communicate()[0]
         ok(runtime_of(out_a).startswith("RUNTIME") and runtime_of(out_b).startswith("RUNTIME"),
            f"both runs get the runtime: {runtime_of(out_a)} | {runtime_of(out_b)}")
         ok(builds() == 1, f"two runs needing one key at once build it once (builds: {builds()})")
@@ -124,39 +151,38 @@ def main() -> int:
 
         # a later run: reused, no build
         c = start(JASPER_MCP_BUILD_CACHE=str(root / "wt3-cache"), JASPER_MCP_SESSION="run3")
-        out_c = c.communicate(timeout=60)[0]
+        out_c = c.communicate()[0]
         ok(runtime_of(out_c).startswith("RUNTIME") and builds() == 1 and "reused from the shared cache" in out_c,
            "a later run reuses the entry without a build")
 
         # a failed build: the run's later requests fail at once, the next run tries again
         d = start(flavour="development", FAKE_BUILD_FAIL="1")
-        out_d = d.communicate(timeout=60)[0]
+        out_d = d.communicate()[0]
         n = builds()
         e = start(flavour="development", FAKE_BUILD_FAIL="1")
-        out_e = e.communicate(timeout=60)[0]
+        out_e = e.communicate()[0]
         ok(runtime_of(out_d).startswith("ERROR") and "failed earlier in this run" in runtime_of(out_e) and builds() == n,
            "a failed build fails the run's later requests without a rebuild")
         f = start(flavour="development", JASPER_MCP_SESSION="run9")
-        out_f = f.communicate(timeout=60)[0]
+        out_f = f.communicate()[0]
         ok(runtime_of(out_f).startswith("RUNTIME") and builds() == n + 1, "the next run builds it again (and it works)")
 
         # another key: another entry; the size limit evicts the least recently used entry nobody
         # holds, never the one a live run holds
-        holder = start(hold=30.0, JASPER_MCP_SESSION="run4")   # holds glcore-release
-        time.sleep(2.0)
+        holder = start(hold="hold", JASPER_MCP_SESSION="run4")   # holds glcore-release
+        until(holder, "RUNTIME")
         held = [p for p in group.iterdir() if p.is_dir() and not p.name.startswith(".")][0]
         os.utime(held, (time.time() - 3600, time.time() - 3600))   # ... and makes it the least recently used
         g = start(CFLAGS="-DOTHER", FAKE_BUILD_BYTES=str(3 << 20), JASPER_MCP_BUILD_CACHE_MAX_GB=str(4.5 / 1024),
                   JASPER_MCP_SESSION="run5")
-        out_g = g.communicate(timeout=60)[0]
+        out_g = g.communicate()[0]
         names = sorted(p.parent.name + "/" + p.name[:8] for p in shared.glob("v1/*/*") if p.is_dir()
                        and not p.name.startswith("."))
         ok(len([p for p in group.iterdir() if p.is_dir() and not p.name.startswith(".")]) == 2 and held.is_dir(),
            f"another key is another entry, and the held (least recently used) entry stays ({names})")
         ok("evicted linux-x64-glcore-development" in out_g,
            f"the size limit evicted the least recently used entry nobody holds: {out_g[-600:]}")
-        holder.kill()
-        holder.wait()
+        holder.communicate("release")
 
         # a build that died: its staging directory goes at the next eviction
         stale = group / ".new-0123456789abcdef-host-1"
@@ -172,15 +198,19 @@ def main() -> int:
                      "JASPER_MCP_SESSION": "run6"}
         n = builds()
         h = start(**local_env)
-        out_h = h.communicate(timeout=60)[0]
+        out_h = h.communicate()[0]
         i = start(**local_env)
-        out_i = i.communicate(timeout=60)[0]
+        out_i = i.communicate()[0]
         local_players = root / "local" / "linux-x64-glcore-release" / "players"
         ok(runtime_of(out_h).startswith("RUNTIME") and runtime_of(out_i).startswith("RUNTIME") and builds() == n + 1
            and local_players.is_dir() and not local_players.is_symlink(), "the local cache builds once and reuses")
         print(f"build cache selftest: {checks} checks passed")
         return 0
     finally:
+        for proc in children:
+            if proc.poll() is None:
+                os.killpg(proc.pid, signal.SIGTERM)
+            proc.wait()
         shutil.rmtree(root, ignore_errors=True)
 
 

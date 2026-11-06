@@ -44,7 +44,7 @@ async def lines_since(ed: Editor) -> list[dict]:
     return voice_lines(await ed.console_since(limit=500))
 
 
-async def test_setup(ed: Editor):
+async def test_play_with_each_option(ed: Editor):
     write_tone(ed.project / "sounds/a.wav", seconds=0.2)
     write_tone(ed.project / "sounds/long.wav", seconds=3.0)
     await ed.call("sync_files")
@@ -57,9 +57,6 @@ async def test_setup(ed: Editor):
     await ed.call("create_entity", scene=scene, name="Source", type="audio_source")
     await ed.call("create_entity", scene=scene, name="Carrier", type="cube", position=[4, 5, 6])
     await ed.call("save_scene", scene=scene)
-
-
-async def test_play_with_each_option(ed: Editor):
     await ed.call("play", action="start", scene=STATE["scene"], fixed_fps=60, auto_pause=True)
     try:
         await ed.call("wait", frames=2)

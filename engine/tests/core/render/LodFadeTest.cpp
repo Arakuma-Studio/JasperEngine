@@ -19,6 +19,20 @@
 using namespace jasperengine;
 
 namespace {
+    namespace lodFadeOracle {
+        // the rank 0..63 of a pixel in the 8x8 Bayer matrix (includes/lod_fade.glsl lodFadeRank)
+        inline int lodFadeRank(int x, int y){
+            const int px = x & 7, py = y & 7;
+            const int v = px ^ py;
+            return ((v & 1) << 5) | ((py & 1) << 4) | ((v & 2) << 2) | ((py & 2) << 1) | ((v & 4) >> 1) | ((py & 4) >> 2);
+        }
+        // whether a draw of that fade keeps a pixel of that rank (includes/lod_fade.glsl lodFadeKeeps)
+        inline bool lodFadeKeeps(float fade, int rank){
+            const int k = (int)((fade < 0.0f ? -fade : fade) * LOD_FADE_STEPS + 0.5f);
+            return (fade < 0.0f) ? (rank < k) : (rank >= LOD_FADE_STEPS - k);
+        }
+    }
+
 
     // levels of errors 1, 2 and 4 world units: level l fits a budget of at least its error
     const float ERRORS[4] = {0.0f, 1.0f, 2.0f, 4.0f};
@@ -42,7 +56,7 @@ namespace {
         int count = 0;
         for (int y = 0; y < 8; y++)
             for (int x = 0; x < 8; x++)
-                count += lodFadeKeeps(fade, lodFadeRank(x, y)) ? 1 : 0;
+                count += lodFadeOracle::lodFadeKeeps(fade, lodFadeOracle::lodFadeRank(x, y)) ? 1 : 0;
         return count;
     }
 }
@@ -53,12 +67,12 @@ TEST(LodFade, TheTwoSidesOfAFadePartitionEveryPixel){
     bool seen[64] = {};
     for (int y = 0; y < 8; y++){
         for (int x = 0; x < 8; x++){
-            const int rank = lodFadeRank(x, y);
+            const int rank = lodFadeOracle::lodFadeRank(x, y);
             ASSERT_GE(rank, 0);
             ASSERT_LT(rank, 64);
             EXPECT_FALSE(seen[rank]) << "rank " << rank << " twice";
             seen[rank] = true;
-            EXPECT_EQ(rank, lodFadeRank(x + 8, y + 16)) << "the pattern repeats every 8 pixels";
+            EXPECT_EQ(rank, lodFadeOracle::lodFadeRank(x + 8, y + 16)) << "the pattern repeats every 8 pixels";
         }
     }
     for (int k = 1; k < LOD_FADE_STEPS; k++){
@@ -68,14 +82,14 @@ TEST(LodFade, TheTwoSidesOfAFadePartitionEveryPixel){
         draw.k = (int8_t)k;
         for (int y = 0; y < 8; y++){
             for (int x = 0; x < 8; x++){
-                const int rank = lodFadeRank(x, y);
-                const bool from = lodFadeKeeps(draw.fromFade(), rank);
-                const bool to = lodFadeKeeps(draw.toFade(), rank);
+                const int rank = lodFadeOracle::lodFadeRank(x, y);
+                const bool from = lodFadeOracle::lodFadeKeeps(draw.fromFade(), rank);
+                const bool to = lodFadeOracle::lodFadeKeeps(draw.toFade(), rank);
                 EXPECT_NE(from, to) << "k " << k << " pixel " << x << "," << y << " drawn by " << (from ? "both" : "neither");
                 if (k > 1){
                     LodDraw before = draw;
                     before.k = (int8_t)(k - 1);
-                    if (lodFadeKeeps(before.fromFade(), rank)){
+                    if (lodFadeOracle::lodFadeKeeps(before.fromFade(), rank)){
                         EXPECT_TRUE(from) << "k " << k << ": a pixel went back to the other level";
                     }
                 }

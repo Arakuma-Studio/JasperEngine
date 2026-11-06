@@ -379,8 +379,8 @@ bool WinInputRouter::handleMessage(HWND window, UINT message, WPARAM wParam,
 
         case WM_CHAR:
         case WM_SYSCHAR: {
-            // One UTF-16 unit. Both halves of a surrogate pair pass (>= 32)
-            // and are combined by the engine.
+            // One UTF-16 unit. Both halves of a surrogate pair pass (>= 32);
+            // Engine::systemCharInput combines them into one character.
             const wchar_t codepoint = static_cast<wchar_t>(wParam);
             // Other control characters would show up as boxes
             if ((codepoint >= 32 && codepoint != 0x7f) || codepoint == '\t' ||

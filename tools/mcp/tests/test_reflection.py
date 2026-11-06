@@ -190,20 +190,15 @@ def code_golden_as_now(golden: str) -> str:
     return "".join(line for i, line in enumerate(lines) if i not in dropped)
 
 
-# what one Scene view icon (a Sprite: one submesh, a Mesh's MAX_BONES bone matrices) gives
-ICON_MAX_VALUES = {"maxSubmeshes": "1", "maxBones": "128"}
+MAX_VALUES_BLOCK = re.compile(r"(?m)^maxValues:\n(?:  .*\n)*")
 
 
 def max_values_as_now(golden: str, actual: str) -> str:
-    """A golden scene's maxValues as this editor counts them: the editor that captured the goldens
-    counted the Scene view's icons (a light's, a camera's: Sprites made when the view draws), this
-    one only the scene's own GameObjects, so a golden icon's value is an actual 0"""
-    for key, icon in ICON_MAX_VALUES.items():
-        line = re.compile(r"(?m)^(  " + key + r": )(\d+)$")
-        now, was = line.search(actual), line.search(golden)
-        if now and was and now.group(2) == "0" and was.group(2) == icon:
-            golden = line.sub(lambda m: m.group(1) + "0", golden, count=1)
-    return golden
+    """A golden scene's maxValues as this editor writes them: the goldens' editor computed the fixed
+    array capacities there; this one has none, and writes back the block a scene was read with
+    (none for a scene saved without it): the actual block, or none, stands for the golden's"""
+    now = MAX_VALUES_BLOCK.search(actual)
+    return MAX_VALUES_BLOCK.sub(lambda m: now.group(0) if now else "", golden, count=1)
 
 
 def normalized_scene(text: str) -> str:
