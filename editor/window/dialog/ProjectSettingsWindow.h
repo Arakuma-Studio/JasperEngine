@@ -81,6 +81,7 @@ namespace jasperengine::editor {
         AudioSettings m_audioSettings;
         char m_audioMixerBuffer[512] = {0};
         char m_audioDefaultGroupBuffer[128] = {0};
+        char m_audioMusicGroupBuffer[128] = {0};
         DebugSettings m_debugSettings;
         fs::path m_assetsDir;
         fs::path m_luaDir;

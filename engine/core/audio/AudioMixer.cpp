@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "AudioMixer.h"
+#include "AudioCapture.h"
 #include "AudioFilters.h"
 
 #include "Log.h"
@@ -490,10 +491,13 @@ namespace {
         for (EffectState& effect : group.effects) effect.applied.clear();
 
         GroupState* parent = group.parentId.empty() ? nullptr : findState(group.parentId);
+        // started paused: the pan below is its pan from its first sample. Set on a running voice it would
+        // ramp from the centre's 0.707 over the next mix call, so a game's first sounds would depend on
+        // how long that call is (a setVolume while paused takes the channel volumes at once).
         if (parent && parent->bus && parent->handle) {
-            group.handle = parent->bus->play(*group.bus, 1.0f, 0.0f, false);
+            group.handle = parent->bus->play(*group.bus, 1.0f, 0.0f, true);
         } else {
-            group.handle = soloud.play(*group.bus, 1.0f, 0.0f, false);
+            group.handle = soloud.play(*group.bus, 1.0f, 0.0f, true);
         }
         if (group.handle) {
             // SoLoud learns a bus's own handle only when something plays through it; a bus stopped
@@ -504,6 +508,8 @@ namespace {
             // a bus passes its stereo through at unity: SoLoud's centre pan (constant power, 0.707
             // per side) would take 3 dB off at every level of the tree
             soloud.setPanAbsolute(group.handle, 1.0f, 1.0f);
+            soloud.setVolume(group.handle, 1.0f);
+            soloud.setPause(group.handle, false);
         }
     }
 
@@ -879,6 +885,12 @@ bool AudioMixer::setFloat(const std::string& name, float value, float seconds, b
     }
     if (!setTarget(exposed->target, value, seconds, unscaled)) return false;
     if (exposed->remember) state().rememberDirty.insert(name);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioCapture::isActive()) {
+        AudioCapture::Line line("mixer");
+        line.text("action", "set_float").text("name", name).number("value", value, 6).number("seconds", seconds, 6);
+    }
+#endif
     return true;
 }
 
@@ -904,6 +916,12 @@ bool AudioMixer::clearFloat(const std::string& name){
         UserSettings::removeKey(key.c_str());
         state().rememberDirty.erase(name);
     }
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioCapture::isActive()) {
+        AudioCapture::Line line("mixer");
+        line.text("action", "clear_float").text("name", name);
+    }
+#endif
     return clearTarget(exposed->target);
 }
 
@@ -927,12 +945,12 @@ bool AudioMixer::isOverridden(const std::string& name){
 
 // ---------------------------------------------------------------- snapshots
 
-bool AudioMixer::transitionTo(const std::string& snapshot, float seconds, bool unscaled){
-    return transitionToSnapshots({snapshot}, {1.0f}, seconds, unscaled);
+bool AudioMixer::transitionTo(const std::string& snapshot, float seconds, bool unscaled, const char* cause){
+    return transitionToSnapshots({snapshot}, {1.0f}, seconds, unscaled, cause);
 }
 
 bool AudioMixer::transitionToSnapshots(const std::vector<std::string>& snapshots, const std::vector<float>& weights,
-                                       float seconds, bool unscaled){
+                                       float seconds, bool unscaled, const char* cause){
     ensureInitialized();
     State& s = state();
     std::vector<const AudioMixerSnapshotDef*> defs;
@@ -956,6 +974,18 @@ bool AudioMixer::transitionToSnapshots(const std::vector<std::string>& snapshots
     }
     s.currentSnapshot = defs.size() == 1 ? defs[0]->name : "";
     if (!(seconds > 0.0f)) applyAll(0.0);
+#if JASPERENGINE_AUDIO_CAPTURE
+    if (AudioCapture::isActive()) {
+        AudioCapture::Line line("mixer");
+        line.text("action", "transition");
+        if (snapshots.size() == 1) line.text("snapshot", snapshots[0]);
+        else line.texts("snapshots", snapshots).numbers("weights", weights, 6);
+        line.number("seconds", seconds, 6).flag("unscaled", timeUnscaled);
+        if (cause) line.text("cause", cause);
+    }
+#else
+    (void)cause;
+#endif
     return true;
 }
 
@@ -1086,6 +1116,41 @@ bool AudioMixer::setEffectBypass(const std::string& effectId, bool bypass){
     writeSlots(*owner);
     applyAll(0.0);
     return true;
+}
+
+std::vector<AudioMixer::GroupMeter> AudioMixer::getGroupMeters(){
+    ensureInitialized();
+    std::vector<GroupMeter> out;
+    for (const auto& group : state().groups) {
+        if (!group->meter || !group->bus || !group->handle) continue;
+        const GroupState* parent = group->parentId.empty() ? nullptr : findState(group->parentId);
+        out.push_back({group->id, group->name, parent ? parent->name : std::string(), group->meter.get()});
+    }
+    return out;
+}
+
+float AudioMixer::getGroupFader(const std::string& id){
+    GroupState* group = findState(id);
+    return group && group->appliedVolume >= 0.0f ? group->appliedVolume : 1.0f;
+}
+
+int AudioMixer::getGroupDepth(const std::string& id){
+    int depth = 1;
+    for (const GroupState* group = id.empty() ? nullptr : findState(id); group && !group->parentId.empty() && depth < 64;
+         group = findState(group->parentId)) {
+        depth++;
+    }
+    return depth;
+}
+
+unsigned int AudioMixer::getOutputLatencyFrames(const std::string& id){
+    unsigned int frames = 0;
+    const GroupState* group = id.empty() ? masterState() : findState(id);
+    for (int depth = 0; group && depth < 64; depth++) {
+        frames += getGroupLatencyFrames(group->id);
+        group = group->parentId.empty() ? nullptr : findState(group->parentId);
+    }
+    return frames;
 }
 
 float AudioMixer::getEffectGainReductionDb(const std::string& effectId){

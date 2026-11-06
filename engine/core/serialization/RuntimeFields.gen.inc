@@ -1136,6 +1136,12 @@ const FieldEntry kBody_AudioSourceComponent_fields[] = {
     JE_RF(AudioSourceComponent, priority, 0xd8e5ece2u, Int),
     JE_RF(AudioSourceComponent, maxVoices, 0x4ff0bbabu, Int),
     JE_RF(AudioSourceComponent, ignoreListenerPause, 0x6bb3160au, Bool),
+    JE_RF(AudioSourceComponent, event, 0xa0dbf9aau, AssetPath),
+    JE_RF(AudioSourceComponent, playOn, 0x917e5359u, UInt),
+    JE_RF(AudioSourceComponent, minImpactSpeed, 0x2b7c314bu, Float),
+    JE_RF(AudioSourceComponent, fullVolumeImpactSpeed, 0xd50acf0eu, Float),
+    JE_RF(AudioSourceComponent, pitchRandomSemitones, 0xa6b06beeu, Float),
+    JE_RF(AudioSourceComponent, volumeRandomDb, 0x7255c581u, Float),
 };
 const StructTable kBody_AudioSourceComponent{"audiosource", kBody_AudioSourceComponent_fields, std::size(kBody_AudioSourceComponent_fields)};
 
@@ -2356,6 +2362,15 @@ const FieldEntry kBody_CapsuleShadowCasterComponent_fields[] = {
 };
 const StructTable kBody_CapsuleShadowCasterComponent{"capsuleshadowcaster", kBody_CapsuleShadowCasterComponent_fields, std::size(kBody_CapsuleShadowCasterComponent_fields)};
 
+const FieldEntry kBody_AudioSnapshotComponent_fields[] = {
+    JE_RF(AudioSnapshotComponent, snapshot, 0x57c2b1cdu, String),
+    JE_RF(AudioSnapshotComponent, seconds, 0x4830312au, Float),
+    JE_RF(AudioSnapshotComponent, unscaled, 0x7ff40b5cu, Bool),
+    JE_RF(AudioSnapshotComponent, revert, 0xedc2bdc3u, Bool),
+    JE_RF(AudioSnapshotComponent, revertSeconds, 0x29739228u, Float),
+};
+const StructTable kBody_AudioSnapshotComponent{"audiosnapshot", kBody_AudioSnapshotComponent_fields, std::size(kBody_AudioSnapshotComponent_fields)};
+
 const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(Transform, "transform", 0xe1ad931bu),
     JE_RF_COMPONENT(ScriptComponent, "script", 0x203e6faau),
@@ -2462,6 +2477,7 @@ const ComponentTable kComponentTables[] = {
     JE_RF_COMPONENT(VideoPlayerComponent, "videoplayer", 0x8938ef21u),
     JE_RF_COMPONENT(SafeAreaComponent, "safearea", 0x17cac771u),
     JE_RF_COMPONENT(CapsuleShadowCasterComponent, "capsuleshadowcaster", 0xcab0c6acu),
+    JE_RF_COMPONENT(AudioSnapshotComponent, "audiosnapshot", 0x57737429u),
     JE_RF_COMPONENTS_END
 };
 

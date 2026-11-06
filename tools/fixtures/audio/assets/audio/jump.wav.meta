@@ -1,0 +1,17 @@
+metaVersion: 1
+guid: 8f4f0c2e6b7a4f7e9d3a1c5b2e6f7a10
+import:
+  audioImporter:
+    version: 1
+    type: jump
+provenance:
+  version: 1
+  licence: generated
+  source: generate_sound
+  generator:
+    loudness_lufs: -18
+    params: {}
+    preset: jump
+    seed: 7
+    version: 1
+labels: [generated]

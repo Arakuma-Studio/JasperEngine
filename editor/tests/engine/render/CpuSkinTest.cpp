@@ -1513,13 +1513,15 @@ TEST_F(CpuSkin_, UnsupportedLayoutsFailWithTheReason) {
     std::string error;
     CpuSkinSource source;
 
-    // a normalized byte VEC3 normal (mesh quantization): no vertex format binds it
+    // a normalized byte VEC3 normal of a file (mesh quantization) loads as the BYTE4N the renderer
+    // binds (S53 R1), so it skins with its normals; a layout no vertex format binds is refused below
     writeLayout("models/gen/bad_normal.gltf", layoutData(MorphMode::PositionOnly), true);
     const uint32_t sceneId = newScene();
     Scene* scene = sceneOf(sceneId);
-    const Entity bad = loadModel(sceneId, "models/gen/bad_normal.gltf");
-    EXPECT_FALSE(buildSource(scene, bad, source, &error));
-    EXPECT_NE(error.find("NORMAL is 3 x BYTE (normalized)"), std::string::npos) << error;
+    const Entity quantized = loadModel(sceneId, "models/gen/bad_normal.gltf");
+    ASSERT_TRUE(buildSource(scene, quantized, source, &error)) << error;
+    ASSERT_FALSE(source.normals.empty());
+    EXPECT_NEAR(source.normals[0].z, 1.0f, 1e-6f);
 
     // a model root whose geometry is on its mesh node
     const Entity hero = loadModel(sceneId, "models/hero.gltf");
@@ -1598,6 +1600,14 @@ TEST_F(CpuSkin_, UnsupportedLayoutsFailWithTheReason) {
         mesh.submeshes[0].attributes[AttributeType::TEXCOORD1] = Attribute(AttributeDataType::UNSIGNED_BYTE, "positions", 2, 0, 3, true, false);
         EXPECT_FALSE(buildSource(mesh, source, &error));
         EXPECT_NE(error.find("TEXCOORD1 is 2 x UNSIGNED_BYTE (normalized)"), std::string::npos) << error;
+    }
+    {
+        MeshComponent mesh;
+        external(mesh, 12);
+        mesh.submeshes[0].attributes[AttributeType::POSITION] = Attribute(AttributeDataType::FLOAT, "positions", 3, 0, 3, false, false);
+        mesh.submeshes[0].attributes[AttributeType::NORMAL] = Attribute(AttributeDataType::BYTE, "positions", 3, 0, 3, true, false);
+        EXPECT_FALSE(buildSource(mesh, source, &error));
+        EXPECT_NE(error.find("NORMAL is 3 x BYTE (normalized)"), std::string::npos) << error;
     }
 
     // a lattice record cut short
