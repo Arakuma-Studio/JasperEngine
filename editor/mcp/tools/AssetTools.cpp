@@ -4211,7 +4211,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "fork_shader";
         tool.title = "Fork Shader";
         tool.description =
-            "Copy a built-in shader into the project (<directory>/<name>.vert/.frag) and point a target at it: "
+            "Copy a built-in shader to <directory>/<name>.vert/.frag and point a target at it: "
             "component (a renderable's customShader), depth (a mesh's shadow/depth pass; needed when a mesh fork "
             "displaces or discards), scene_default (shader_type, for components without their own), post_process "
             "(pass_index, or omit to add a pass). Parameters: set_shader_uniform.";
@@ -4236,13 +4236,13 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "get_shader_uniforms";
         tool.title = "Get Shader Uniforms";
         tool.description =
-            "A custom or library shader's parameters, each with the value it renders with and that value's source. "
-            "Of entity (+ component, + submesh), pass_index, or shader_type (the scene's default shader). Known once compiled.";
+            "A custom or library shader's parameters with each one's effective value and source, of entity (+ component, "
+            "+ submesh), pass_index or shader_type (the scene's default shader). Known once compiled.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
-            {"submesh", integer("Submesh (default 0 if its material has a shader).")},
+            {"submesh", integer("Default 0 if its material has a shader.")},
             {"pass_index", integer("A post-process pass instead.")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})}
         });
@@ -4257,13 +4257,13 @@ void registerAssetTools(McpRegistry& registry) {
         tool.name = "set_shader_uniform";
         tool.title = "Set Shader Uniform";
         tool.description =
-            "Set or remove one parameter of a custom or library shader of entity (+ component, + submesh for a material), "
+            "Set or remove one parameter of a custom or library shader of entity (+ component, + submesh), "
             "pass_index or shader_type (the scene's default shader). Undeclared names are stored but unused.";
         tool.inputSchema = object({
             {"scene", sceneRef()},
             {"entity", entityRef()},
             {"component", componentName("Default: auto-detect.")},
-            {"submesh", integer("Submesh (default 0 if its material has a shader).")},
+            {"submesh", integer("Default 0 if its material has a shader.")},
             {"pass_index", integer("A post-process pass instead.")},
             {"shader_type", stringEnum("", {"mesh", "ui", "sky", "points", "lines"})},
             {"name", string("")},
