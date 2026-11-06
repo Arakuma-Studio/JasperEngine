@@ -426,7 +426,7 @@ namespace jasperengine{
         int ssrMaxSteps = 48;          // linear march sample count
         float ssrIntensity = 1.0f;     // reflection strength multiplier
         float ssrBlur = 0.0f;          // glossy blur amount [0..1] (0 = sharp/mirror)
-        int ssrDebugMode = 0;          // 0=off,1=reflection,2=normal,3=roughness,4=metallic,5=albedo,6=IBL specular
+        int ssrDebugMode = 0;          // 0=off,1=reflection,2=normal,3=roughness,4=metallic,5=albedo,6=environment specular,7=reflection source,8=occlusion
 
         // Initial physics gravity. The live value is owned by PhysicsSystem (it must be pushed
         // to the Box2D/Jolt worlds on change); this is the default it initializes from.

@@ -47,6 +47,7 @@
 #include "util/PostColorLut.h"
 #include "lattice/LatticeRender.h"
 #include "render/DynamicResolutionController.h"
+#include "render/SSRProbeSlots.h"
 #include "Engine.h"
 #include <map>
 #include <array>
@@ -261,9 +262,10 @@ namespace jasperengine{
 	} vs_gbuffer_t;
 
 	typedef struct fs_gbuffer_material_t {
-		Vector4 params;             // x = roughness, y = metallic, z = IBL source, w = alpha cutout
+		Vector4 params;             // x = roughness, y = metallic, z = reflection source code / 255, w = alpha cutout
 		Vector4 baseColorFactor;
-		Vector4 stochastic;         // Stochastic Tiling ('Sto' variants only): cell size, blend sharpness, contrast, rotation
+		Vector4 stochastic;         // Stochastic Tiling ('Sto' variants; padding in 'Uv2' ones): cell size, blend sharpness, contrast, rotation
+		Vector4 texCoordSets;       // 'Uv2' variants only: the UV set (0, 1) of x base colour, y metallic-roughness, z occlusion
 	} fs_gbuffer_material_t;
 
 	typedef struct fs_ssao_t {
@@ -289,12 +291,32 @@ namespace jasperengine{
 		Vector4 params; // xy=1/textureSize, z=max radius(pixels), w=flip G-buffer Y
 	} fs_ssr_blur_t;
 
+	// mirrored by u_fs_compositeParams of composite.frag
 	typedef struct fs_composite_t {
 		Matrix4 invProjection;
 		Matrix4 invView;
-		Vector4 params;   // x=intensity, y=flip G-buffer Y, z=debug, w=unused
-		Vector4 envColor; // rgb = env color (linear), w = env rotation (radians)
+		Vector4 params;   // x=intensity, y=flip G-buffer Y, z=debug, w=flip destination Y
+		Vector4 envColor; // rgb = sky colour (linear), w = sky rotation (radians): environmentInfo()
+		Vector4 ambient;  // rgb = the scene ambient Lit adds, w = fog: 0 none, 1 distance, 2 height
+		Vector4 projectionW; // the projection's 4th row: the clip w of a view position
+		Vector4 probePosition[SSR_PROBE_SLOTS]; // xyz = capture position
+		Vector4 probeBoxMin[SSR_PROBE_SLOTS];   // xyz = influence AABB min, w = intensity
+		Vector4 probeBoxMax[SSR_PROBE_SLOTS];   // xyz = influence AABB max, w = max mip LOD (0 = unfiltered)
 	} fs_composite_t;
+
+	// What the SSR G-buffer pass of a view last drew (RenderSystem::getSSRStats): the reflection
+	// probes of its drawn meshes and the slots the composite rebuilds them in
+	struct SSRViewStats {
+		struct Probe {
+			Entity entity = NULL_ENTITY;
+			int slot = -1;          // -1: no slot, its surfaces keep the probe reflection without SSR
+			float coverage = 0.0f;  // the screen fraction of the meshes it lights (summed)
+		};
+		bool valid = false;         // the G-buffer pass ran in the last frame of the view
+		unsigned int meshesDrawn = 0;
+		std::vector<Probe> probes;  // by coverage, largest first
+		unsigned int probesWithoutSlot() const;
+	};
 
 	// the uber pass's parameters (shaderlib/uber.vert, uber.frag)
 	typedef struct vs_uber_t {
@@ -511,6 +533,11 @@ namespace jasperengine{
 		bool normalTexture = false;
 		bool occlusionTexture = false;
 		bool emissiveTexture = false;
+		// the UV set (0 = UV1, 1 = UV2) each map is read on (Material::*TexCoord), which the
+		// G-buffer reads them on too
+		int baseColorTexCoord = 0;
+		int metallicRoughnessTexCoord = 0;
+		int occlusionTexCoord = 0;
 		MaterialAlphaMode alphaMode = MaterialAlphaMode::AUTO;
 		// as the material asks; the variant resolves it against the shader (resolveLighting)
 		MaterialLighting lighting = MaterialLighting::AUTO;
@@ -569,6 +596,8 @@ namespace jasperengine{
 		uint64_t depthProperties = 0;   // ShaderType::DEPTH
 		bool gbuffer = false;           // drawn into the SSR G-buffer
 		uint64_t gbufferProperties = 0; // ShaderType::GBUFFER
+		// the environment specular its colour pass adds, which the SSR composite swaps
+		SSRSource ssrSource = SSRSource::SKIP;
 		// The built-in Lit's defines beyond the property bits, sorted: the material's lobes,
 		// maps and hex tiling (pbr), TERRAIN_HEX_TILING and USE_LIT_QUALITY. They travel in the
 		// "builtin:lit#..." reference (a fork's "<fork>#..."), getSubmeshShaderReference; none:
@@ -1193,6 +1222,45 @@ namespace jasperengine{
 			WaterReflectionPass& operator=(const WaterReflectionPass&) = delete;
 		};
 
+		// what one pass draws of a mesh
+		struct MeshDraw{
+			unsigned int instanceCount = 1;
+			unsigned int instanceFirst = 0;
+			unsigned int vatFirst = 0;     // the first instance's Vertex Animation state
+			// the level a pass drawing one level draws (the plan's dominant one)
+			unsigned int lod = 0;
+			// the view's plan (planMeshLod): a fading one draws both levels in the colour pass
+			LodDraw plan;
+		};
+
+		// a mesh the SSR G-buffer pass draws (renderGBufferPass collects them first, so only
+		// drawn meshes take a probe slot)
+		struct GBufferDraw{
+			Entity entity = NULL_ENTITY;
+			MeshComponent* mesh = nullptr;
+			Transform* transform = nullptr;
+			InstancedMeshComponent* instmesh = nullptr;
+			TerrainComponent* terrain = nullptr;
+			TilemapComponent* tilemap = nullptr;
+			MeshDraw draw;
+			Matrix4 normalMatrix;
+			Entity probe = NULL_ENTITY;   // the reflection probe it is under (its ENVIRONMENT submeshes)
+			float probeWeight = 0.0f;
+			TextureRender* probeTexture = nullptr;
+			fs_reflection_probe_t probeParams;
+		};
+
+		// the SSR state of a view: the G-buffer pass's draws and probe slots, read by its composite
+		struct SSRView{
+			std::vector<GBufferDraw> draws;
+			std::vector<SSRProbeCandidate> candidates;
+			SSRProbeAssignment slots;
+			SSRProbeAssignment previousSlots;
+			TextureRender* slotTextures[SSR_PROBE_SLOTS] = {nullptr, nullptr, nullptr, nullptr};
+			fs_reflection_probe_t slotParams[SSR_PROBE_SLOTS];
+			SSRViewStats stats;
+		};
+
 		struct RenderView{
 			InstanceView instanceViews[1 + MAX_SHADOW_ATLAS_SLOTS];
 			LodView lodView;
@@ -1218,7 +1286,9 @@ namespace jasperengine{
 
 			unsigned int ssrWidth = 0;
 			unsigned int ssrHeight = 0;
-			Framebuffer gbufferFramebuffer;    // MRT: color[0] packed depth, color[1] view-space normal/roughness/metallic
+			Framebuffer gbufferFramebuffer;    // MRT: color[0] packed depth, color[1] view-space normal/roughness/metallic,
+			                                   // color[2] albedo + reflection source, color[3] occlusion
+			SSRView ssr;
 			// the contact shadows' mask and the OIT targets of its main camera (null: none drawn)
 			std::unique_ptr<LightingViewTargets> lightingTargets;
 			Framebuffer sceneColorFramebuffer; // offscreen opaque scene color (top-left)
@@ -1434,16 +1504,6 @@ namespace jasperengine{
 		// collectShadowSlots' list, kept so collecting allocates nothing once warm
 		std::vector<ShadowSlot> shadowSlots;
 
-		// what one pass draws of a mesh
-		struct MeshDraw{
-			unsigned int instanceCount = 1;
-			unsigned int instanceFirst = 0;
-			unsigned int vatFirst = 0;     // the first instance's Vertex Animation state
-			// the level a pass drawing one level draws (the plan's dominant one)
-			unsigned int lod = 0;
-			// the view's plan (planMeshLod): a fading one draws both levels in the colour pass
-			LodDraw plan;
-		};
 		Entity activeReflectionProbe = NULL_ENTITY;
 		// the scene's sky: its first SkyboxComponent, as last loaded (another one leads the
 		// array after a removal or a reorder, see update)
@@ -1748,6 +1808,13 @@ namespace jasperengine{
 		int ssrSlotParams;
 		int ssrBlurSlotParams;
 		int compositeSlotParams;
+		int compositeSlotFog;              // u_fs_fog (the distance fog the swap is attenuated by)
+		int compositeSlotHeightFog;        // u_fs_heightFog
+		std::pair<int, int> compositeProbeSlots[SSR_PROBE_SLOTS]; // u_probeTexture0..3
+		std::pair<int, int> compositeOcclusionSlot;               // u_occlusionGBufferTexture
+		std::pair<int, int> compositeSSAOSlot;                    // u_ssaoTexture
+		std::pair<int, int> ssrAlbedoSlot;                        // ssr.frag's u_albedoTexture
+		bool ssrProbeOverflowWarned = false; // the overflow warning, once until the next scene load
 		bool swapchainRedirect;            // exported builds: the last pass targets the swapchain
 		// exported builds, a scene with a scene-colour reader (phase 3): the scene camera may draw
 		// offscreen (allowed: its pipelines exist), does this frame (a reader in view, or seen
@@ -2139,7 +2206,10 @@ namespace jasperengine{
 		void filterReflectionProbes();
 		void releaseReflectionProbeMaps(ReflectionProbeRuntime& runtime);
 		void destroyReflectionProbe(Entity entity, ReflectionProbeComponent& probe);
-		bool selectReflectionProbe(const Vector3& worldPosition, fs_reflection_probe_t& params, TextureRender*& texture);
+		bool selectReflectionProbe(const Vector3& worldPosition, fs_reflection_probe_t& params, TextureRender*& texture, Entity* selectedProbe = nullptr);
+		// the sky environment Lit's IBL reads: its colour and rotation (environmentInfo) and the
+		// prefiltered map the colour pass binds (emptyCubeBlack without one)
+		Vector4 skyEnvironment(TextureRender*& prefiltered);
 		// the quality tier of this update and its settings
 		void updateShadowTier();
 		const ShadowTierSettings& shadowTierSettings() const;
@@ -2699,7 +2769,9 @@ namespace jasperengine{
 		// G-buffer geometry pass for SSR: MRT packed depth + view-space normal/roughness/metallic
 		bool ensureGBufferFramebuffer(unsigned int width, unsigned int height);
 		void renderGBufferPass(CameraComponent& camera);
-		bool drawMeshGBuffer(Entity entity, MeshComponent& mesh, Transform& transform, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams, bool hasLocalProbe, InstancedMeshComponent* instmesh, TerrainComponent* terrain, TilemapComponent* tilemap, int instanceView = -1, const LodView* lodView = nullptr);
+		// the SSR G-buffer: a mesh's draw record, when it draws (visible, loaded, a submesh to draw)
+		bool collectGBufferDraw(Entity entity, MeshComponent& mesh, Transform& transform, CameraComponent& camera, GBufferDraw& record);
+		void drawMeshGBuffer(GBufferDraw& record, const float cameraFar, const Plane frustumPlanes[6], vs_gbuffer_t vsGBufferParams);
 		// destination == nullptr renders the composite to the swapchain (backbuffer)
 		void renderSSR(CameraComponent& camera, FramebufferRender* destination);
 
@@ -3144,6 +3216,9 @@ namespace jasperengine{
 		void needReloadUIs();
 		void needReloadSky();
 		void prepareMeshForDataReload(Entity entity, MeshComponent& mesh);
+
+		// the SSR G-buffer pass's reflection probes and slots in the frame's view (get_render_stats)
+		const SSRViewStats& getSSRStats() const;
 
 		bool isAllLoaded() const;
 		void getLoadCount(size_t& loaded, size_t& total) const;

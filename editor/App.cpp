@@ -5567,10 +5567,13 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
     // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
     //      skinned fade variant's uniform block slots differed from its base's.
-    // v49: water-reflections: library:water on the scene clock (sceneTime), GERSTNER,
-    //      PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow lookup with the smooth
-    //      normal and shadowed caustics; @role in water.frag and underwater.frag.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v49";
+    // v49: SSR reflection sources (doriax-catchup ssr-probes): GBUFFER 'Occ'/'Uv2', the G-buffer's
+    //      fourth attachment (occlusion) and its reflection source code; the composite rebuilds
+    //      probes and the ambient, reads SSAO and the fog; ssr.frag reads the source.
+    // v51: water-reflections (v50 is render-correctness's): library:water on the scene clock
+    //      (sceneTime), GERSTNER, PLANAR_REFLECTION (includes/planar_reflection.glsl), its shadow
+    //      lookup with the smooth normal and shadowed caustics; @role in water.frag and underwater.frag.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v51";
 }
 
 void editor::App::pushTabNotificationStyle(){
