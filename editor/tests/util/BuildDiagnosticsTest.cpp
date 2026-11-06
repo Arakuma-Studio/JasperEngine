@@ -81,3 +81,13 @@ TEST(BuildDiagnostics, LastLineWhenNothingMatches) {
     EXPECT_EQ(log.errorCount(), 0u);
     EXPECT_EQ(log.failureDetail(), "; the last output was: Killed");
 }
+
+TEST(BuildDiagnostics, RepeatsPastTheKeptOnesCountOnce) {
+    BuildErrorLog log;
+    for (int pass = 0; pass < 2; pass++) {
+        // MSBuild's summary repeats all 25 errors
+        for (int i = 0; i < 25; i++) log.add("C:\\g\\a.cpp(" + std::to_string(i + 1) + ",1): error C2065: e [C:\\b\\g.vcxproj]");
+    }
+    EXPECT_EQ(log.errorCount(), 25u);
+    EXPECT_EQ(log.errors().size(), BuildErrorLog::kMaxKept);
+}

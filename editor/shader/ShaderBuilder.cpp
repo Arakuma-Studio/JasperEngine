@@ -542,7 +542,7 @@ bool editor::ShaderBuilder::compileHlslBytecode(ShaderData& shaderData) {
 #ifdef _WIN32
     // loaded once; a Windows without it (none since 8.1) keeps shipping the source
     static const pD3DCompile d3dCompile = []() -> pD3DCompile {
-        HMODULE dll = LoadLibraryA("d3dcompiler_47.dll");
+        HMODULE dll = LoadLibraryW(L"d3dcompiler_47.dll");
         return dll ? reinterpret_cast<pD3DCompile>(GetProcAddress(dll, "D3DCompile")) : nullptr;
     }();
     if (!d3dCompile) {

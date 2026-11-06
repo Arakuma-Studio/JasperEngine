@@ -105,7 +105,7 @@ async def test_prepare(ed: Editor):
 async def test_failed_copy_fails_the_export(ed: Editor):
     """A destination that exists as a folder where a file goes: the copy fails, and so does the
     export, naming the file (before: success, the file missing from the game)"""
-    for rel in ("project/assets/ui/level.bin", "project/lua/Game.lua", "project/main.cpp"):
+    for rel in ("project/assets/ui/level.bin", "project/lua/Game.lua", "project/scripts/inc/Util.h", "project/main.cpp"):
         out = ed.scratch.root / ("blocked-" + rel.replace("/", "_"))
         (out / rel).mkdir(parents=True)
         (out / rel / "keep").write_text("a folder where the file goes")
@@ -123,11 +123,20 @@ async def test_earlier_export_inside_project_is_left_out(ed: Editor):
     (old / "assets" / "stale.txt").write_text("stale")
     (old / "shaders").mkdir()
     (old / "shaders" / "stale.vert").write_text("void main() {}\n")
+    # what the cooks take from the asset list, not from the export's walk: a texture and a model
+    (old / "assets" / "stale.png").write_bytes(tiny_png())
+    (old / "assets" / "stale.gltf").write_text(tiny_gltf())
+    # and an engine source, which would make a player build compile
+    (old / "core" / "EngineThing.cpp").write_text("int engineThing() { return 0; }\n")
+    await ed.call("sync_files")
     out = ed.scratch.root / "export-skip"
     job = await source_export(ed, out)
     ed.check_eq(job["status"], "succeeded", f"{job.get('message')}")
     shipped = [p.relative_to(out / "project").as_posix() for p in (out / "project").rglob("*") if "OldBuild" in p.as_posix()]
-    ed.check_eq(shipped, [], "nothing of the earlier export ships")
+    ed.check_eq(shipped, [], "nothing of the earlier export ships, cooked textures and models included")
+    info = await ed.call("get_build_info")
+    reasons = [r for platform in info.get("platforms", {}).values() for r in platform.get("compile_reasons", [])]
+    ed.check(not any("OldBuild" in r or "EngineThing" in r for r in reasons), f"no build compiles the earlier export: {reasons}")
     ed.check_in("W-EXPORT-FOLDER-SKIPPED", warning_codes(job))
     ed.check(any("OldBuild" in w.get("message", "") for w in job["result"]["warnings"] if isinstance(w, dict)),
              f"the warning names the folder: {job['result']['warnings']}")
@@ -205,10 +214,12 @@ async def test_play_created_objects_record_variants(ed: Editor):
         await ed.call("editor_status")
         await asyncio.sleep(0.1)
 
-    ed.check(len(saved_keys(main_file)) > main_before,
-             f"the played scene gained the clearcoat sphere's variant: {main_before} -> {len(saved_keys(main_file))}")
-    ed.check(len(saved_keys(second_file)) > second_before,
-             f"the loaded scene gained the sheen sphere's variant: {second_before} -> {len(saved_keys(second_file))}")
+    def features(path: Path) -> list[str]:
+        return [str(k.get("customShader", "")) for k in saved_keys(path)]
+    ed.check(any("PBR_CLEARCOAT" in f for f in features(main_file)),
+             f"the played scene has the clearcoat sphere's variant ({main_before} keys before): {features(main_file)}")
+    ed.check(any("PBR_SHEEN" in f for f in features(second_file)),
+             f"the loaded scene has the sheen sphere's variant ({second_before} keys before): {features(second_file)}")
 
 
 async def test_never_saved_scene_ships(ed: Editor):
@@ -220,6 +231,10 @@ async def test_never_saved_scene_ships(ed: Editor):
     ed.check_in("W-SCENE-NOT-SAVED", warning_codes(job))
     sources = [p.name for p in (out / "project").glob(f"scene_*_{draft_id}.cpp")]
     ed.check_eq(len(sources), 1, f"the never-saved scene's source: {sorted(p.name for p in (out / 'project').glob('scene_*.cpp'))}")
+    ed.check_in('"Draft"', (out / "project" / "main.cpp").read_text(), "main.cpp loads the never-saved scene")
+    # the Xcode workspace compiles its source too (test_build.py's check, over the scenes in the build)
+    pbx = (out / "workspaces" / "xcode" / "JasperEngine.xcodeproj" / "project.pbxproj").read_text(errors="replace")
+    ed.check_in(sources[0], pbx, "the Xcode project compiles the never-saved scene's source")
     await ed.call("close_scene", scene=draft_id, unsaved="discard")
 
 
@@ -229,6 +244,22 @@ def tiny_png() -> bytes:
         return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
     header = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
     return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(b"\x00\xff\x80\x00\xff")) + chunk(b"IEND", b"")
+
+
+def tiny_gltf() -> str:
+    """A one-triangle glTF, its buffer inline."""
+    import base64
+    import json
+    positions = struct.pack("<9f", 0, 0, 0, 1, 0, 0, 0, 1, 0)
+    indices = struct.pack("<3H", 0, 1, 2) + b"\x00\x00"
+    data = positions + indices
+    return json.dumps({
+        "asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
+        "meshes": [{"primitives": [{"attributes": {"POSITION": 0}, "indices": 1}]}],
+        "buffers": [{"byteLength": len(data), "uri": "data:application/octet-stream;base64," + base64.b64encode(data).decode()}],
+        "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}, {"buffer": 0, "byteOffset": 36, "byteLength": 6}],
+        "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 0], "max": [1, 1, 0]},
+                      {"bufferView": 1, "componentType": 5123, "count": 3, "type": "SCALAR"}]})
 
 
 def logo_bytes() -> bytes:

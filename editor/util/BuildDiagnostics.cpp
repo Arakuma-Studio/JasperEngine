@@ -153,16 +153,15 @@ void BuildErrorLog::add(const std::string& line) {
     if (clean.find_first_not_of(" \t\r\n") != std::string::npos) last = clean;
     BuildDiagnostic diagnostic;
     if (!BuildDiagnostics::parse(line, diagnostic) || diagnostic.severity != "error") return;
-    const bool repeat = std::any_of(kept.begin(), kept.end(), [&diagnostic](const BuildDiagnostic& other) {
-        return other.text == diagnostic.text;
-    });
-    if (repeat) return;
+    // MSBuild repeats every error at its end, past the kept ones too
+    if (!seen.insert(diagnostic.text).second) return;
     count++;
     if (kept.size() < kMaxKept) kept.push_back(std::move(diagnostic));
 }
 
 void BuildErrorLog::clear() {
     kept.clear();
+    seen.clear();
     count = 0;
     last.clear();
 }

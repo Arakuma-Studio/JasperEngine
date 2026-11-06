@@ -798,4 +798,23 @@ Recorded during implementation (branch `dc/export-pipeline`).
     - T9 (capacities) is dropped with deviation 1.
     - The CLI red control and the special-path red control run against `main`'s export code and
       engine CMake files, applied as one patch on the build box.
+13. **Review round (2026-11-07).**
+    - The texture and model cooks list the project's assets from the asset database, so they
+      skip earlier exports through `exportfiles::ExportFolderFinder`.
+    - Every export walk and copy uses the long-path form (`exportfiles::longPath`, `\\?\` on
+      Windows). Windows was not built here; the code was checked by reading only.
+    - S68's walker fails on a folder it cannot list, naming it. Only permission errors become
+      `W-UNREADABLE-FOLDER`.
+    - A compiler error counts once in the Console. The repeat at the log's end and the failure
+      line are info.
+    - Play-time CMake configure errors are collected too.
+    - The removal of a stale bridging header, entitlements file and Podfile is checked.
+    - A `;` in an export or build path is refused.
+    - Android player folders are recognised as exports (`<app>.aab`, `<app>[-<abi>].apk`).
+    - Tests added: T11 (the Windows half runs only on Windows), T12, T14 (slow lane), and the
+      checks the review listed for T1, T3, T6 (as a unit test of `finishBuildShaderKeys`), T7
+      and T8.
+    - Untested here: the Apple removals and the Play-time configure collection have no test (the
+      Xcode paths and a failing CMake configure in Play are not reachable in the suites); the
+      Windows long paths cannot run on Linux.
 

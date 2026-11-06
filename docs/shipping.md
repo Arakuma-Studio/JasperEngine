@@ -48,10 +48,10 @@ something missing.
 - **The output folder is never inside the project** (or its assets or Lua folder): the editor would
   import the exported files as project assets. Build Settings marks such a folder in red and
   disables Build; the command line and MCP refuse it with the same text. Below a hidden folder
-  (`.jasperengine/builds`, MCP's default) or the project's top-level `build/` is fine.
+  (`.jasperengine/builds`, MCP's default) or the project's top-level `build/` is fine. A path with a `;` is refused too (CMake reads it as a list separator): rename the folder.
 - **An earlier export left inside the project is left out** of the next one (`W-EXPORT-FOLDER-SKIPPED`
-  names it): a folder with `jasperengine.py`, `content-manifest.json`, the web player or the game's
-  executable. Move it out of the project.
+  names it): a folder with `jasperengine.py`, `content-manifest.json`, the web player, the game's
+  executable or its Android package. Its textures and models are not cooked either. Move it out of the project.
 - **The engine workspaces' IDE output never ships** (`.gradle`, `.idea`, `local.properties`,
   `build/`, `xcuserdata`, `DerivedData`, `*.iml`), and a re-export leaves the IDE state of an
   exported workspace alone: Android Studio keeps its `local.properties` and caches.

@@ -9,6 +9,7 @@
 
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -33,6 +34,10 @@ namespace jasperengine::editor::exportfiles {
     // permission_denied: the folder is skipped and reported; any other error stops the walk
     bool isSkippableOpenError(const std::error_code& ec);
 
+    // The form of `path` the file system calls of an export use: on Windows the extended-length
+    // form (\\?\), so a build tree deeper than MAX_PATH copies; elsewhere the path itself
+    fs::path longPath(const fs::path& path);
+
     // Every regular file below `root` (and every directory, which `filter` decides on before it is
     // entered), depth first: a folder's files, then its folders, each in name order. A link to a file is visited as that file; a link to a folder is not
     // entered (the project's linked folders are walked by Exporter::walkTree, S68). `rel` is
@@ -52,8 +57,24 @@ namespace jasperengine::editor::exportfiles {
 
     // The file that makes `dir` an export's folder ("" when none): jasperengine.py (a source
     // export), content-manifest.json (every player build), <app>.wasm or the prebuilt web player,
-    // <app> or <app>.exe (a regular file), <app>.app (a macOS bundle)
+    // <app> or <app>.exe (a regular file), <app>.app (a macOS bundle), <app>.aab, <app>.apk or
+    // <app>-<abi>.apk (an Android player)
     std::string exportFolderMarker(const fs::path& dir, const std::string& appName);
+
+    // Whether a file below `root` is in a folder an earlier export made (exportFolderMarker), for
+    // what lists the project's assets rather than walking them (the texture and model cooks); each
+    // folder is looked at once
+    class ExportFolderFinder {
+    public:
+        ExportFolderFinder(fs::path root, std::string appName);
+        // `file`: below root, absolute or relative to it
+        bool contains(const fs::path& file);
+
+    private:
+        fs::path root;
+        std::string appName;
+        std::map<fs::path, bool> folders;
+    };
 
     // Mirrors `src` into `dst`: unchanged files keep their time (an incremental build over the
     // tree recompiles nothing), what `src` no longer has is removed. With keepIdeOutput, IDE

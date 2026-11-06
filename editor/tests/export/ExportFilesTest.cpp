@@ -161,3 +161,46 @@ TEST(ExportFiles, IdeOutputNames) {
         EXPECT_FALSE(exportfiles::isIdeOutput(fs::path("w") / name)) << name;
     }
 }
+
+// A folder listed in part would ship without the rest: a subfolder that can't be listed (here a
+// file put in its place after its parent was listed: ENOTDIR) stops the walk, naming it
+TEST(ExportFiles, WalkFailsOnASubfolderItCannotList) {
+    TestTempDir dir("export-walk-error");
+    TestTempDir::write(dir / "root/a/one.txt", "1");
+    const exportfiles::WalkResult walked = exportfiles::walk(dir / "root",
+        [&dir](const fs::directory_entry&, const fs::path& rel) {
+            if (rel == "a") {
+                fs::remove_all(dir / "root/a");
+                TestTempDir::write(dir / "root/a", "now a file");
+            }
+            return exportfiles::DirAction::Descend;
+        },
+        [](const fs::directory_entry&, const fs::path&) { return true; });
+    EXPECT_FALSE(walked.ok);
+    EXPECT_NE(walked.error.find("root/a"), std::string::npos) << walked.error;
+    EXPECT_TRUE(walked.unreadable.empty());
+}
+
+TEST(ExportFiles, AndroidPlayerFolderIsAnExport) {
+    TestTempDir dir("export-markers-android");
+    TestTempDir::write(dir / "bundle/MyGame.aab", "PK");
+    EXPECT_EQ(exportfiles::exportFolderMarker(dir / "bundle", "MyGame"), "MyGame.aab");
+    TestTempDir::write(dir / "apks/MyGame-arm64-v8a.apk", "PK");
+    EXPECT_EQ(exportfiles::exportFolderMarker(dir / "apks", "MyGame"), "MyGame-arm64-v8a.apk");
+    TestTempDir::write(dir / "universal/MyGame.apk", "PK");
+    EXPECT_EQ(exportfiles::exportFolderMarker(dir / "universal", "MyGame"), "MyGame.apk");
+}
+
+// The cooks list the project's textures and models from the asset database, not by walking: a
+// file inside an earlier export is found by the folders above it
+TEST(ExportFiles, ExportFolderFinderFindsFilesOfEarlierExports) {
+    TestTempDir dir("export-finder");
+    TestTempDir::write(dir / "Builds/Web/MyGame.wasm", "");
+    TestTempDir::write(dir / "Builds/Web/assets/tree.png", "png");
+    TestTempDir::write(dir / "art/tree.png", "png");
+    exportfiles::ExportFolderFinder finder(dir.path(), "MyGame");
+    EXPECT_TRUE(finder.contains(dir / "Builds/Web/assets/tree.png"));
+    EXPECT_TRUE(finder.contains(fs::path("Builds/Web/assets/tree.png")));
+    EXPECT_FALSE(finder.contains(dir / "art/tree.png"));
+    EXPECT_FALSE(finder.contains(dir.path().parent_path() / "elsewhere.png"));
+}

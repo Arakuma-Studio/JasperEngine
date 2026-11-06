@@ -397,7 +397,12 @@ bool editor::Generator::configureCMake(const fs::path& projectPath, const fs::pa
         Out::error("%s", msvcError.c_str());
         return false;
     }
-    bool result = commandRunner.run(cmakeArgv, projectPath, {}, msvcEnv.empty() ? nullptr : &msvcEnv);
+    // its errors (CMake Error at ...) repeated at the end of a failed Play build, as the compile's are
+    buildErrors.clear();
+    bool result = commandRunner.run(cmakeArgv, projectPath, [this](const std::string& line) {
+        Out::build("%s", line.c_str());
+        buildErrors.add(line);
+    }, msvcEnv.empty() ? nullptr : &msvcEnv);
 
     // Record which kit was used so we can detect changes next time.
     if (result) {
@@ -3359,6 +3364,10 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             if (commandRunner.isCancelRequested()) {
                 Out::warning("Build configuration cancelled.");
             } else {
+                if (!buildErrors.errors().empty()) {
+                    Out::info("CMake configuration failed with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::info("%s", error.text.c_str());
+                }
                 Out::error("CMake configuration failed");
             }
             lastBuildSucceeded.store(false, std::memory_order_relaxed);
@@ -3371,8 +3380,9 @@ void editor::Generator::runBuild(const fs::path& projectPath, const fs::path& bu
             } else {
                 // the errors again at the end of the output, where a long build leaves the reader
                 if (!buildErrors.errors().empty()) {
-                    Out::error("C++ scripts failed to build with %zu error(s):", buildErrors.errorCount());
-                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::error("%s", error.text.c_str());
+                    // not errors again: the compiler's lines count once each in the Console
+                    Out::info("C++ scripts failed to build with %zu error(s):", buildErrors.errorCount());
+                    for (const BuildDiagnostic& error : buildErrors.errors()) Out::info("%s", error.text.c_str());
                 }
                 Out::error("Build failed");
             }

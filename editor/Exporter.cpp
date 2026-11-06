@@ -926,11 +926,13 @@ void editor::Exporter::setDetail(const std::string& line) {
     progress.detailLine = line;
 }
 
-void editor::Exporter::setError(const std::string& message) {
+void editor::Exporter::setError(const std::string& message, bool reported) {
     std::lock_guard<std::mutex> lock(progressMutex);
     progress.failed = true;
     progress.errorMessage = message;
-    Out::error("Build failed: %s", message.c_str());
+    // a failure the compiler's own error lines already reported is not one more error
+    if (reported) Out::info("Build failed: %s", message.c_str());
+    else Out::error("Build failed: %s", message.c_str());
 }
 
 bool editor::Exporter::copyOrFail(const fs::path& from, const fs::path& to) {
@@ -1024,21 +1026,28 @@ void editor::Exporter::resetResult() {
 void editor::Exporter::failBuild(const std::string& what) {
     const std::vector<BuildDiagnostic>& errors = buildErrors.errors();
     if (!errors.empty()) {
-        // at the end of the log, where a long build's output leaves the reader
-        Out::error("Build errors (%zu):", buildErrors.errorCount());
-        for (const BuildDiagnostic& error : errors) Out::error("%s", error.text.c_str());
-        if (buildErrors.errorCount() > errors.size()) Out::error("(and %zu more)", buildErrors.errorCount() - errors.size());
+        // at the end of the log, where a long build's output leaves the reader; not errors again
+        // (the compiler's lines above count once each in the Console)
+        Out::info("Build errors (%zu):", buildErrors.errorCount());
+        for (const BuildDiagnostic& error : errors) Out::info("%s", error.text.c_str());
+        if (buildErrors.errorCount() > errors.size()) Out::info("(and %zu more)", buildErrors.errorCount() - errors.size());
     }
     {
         std::lock_guard<std::mutex> lock(progressMutex);
         progress.errors = errors;
         progress.errorCount = buildErrors.errorCount();
     }
-    setError(what + buildErrors.failureDetail());
+    setError(what + buildErrors.failureDetail(), !errors.empty());
 }
 
 std::string editor::Exporter::outputFolderRefusal(const Project* project, const fs::path& dir) {
-    if (!project || dir.empty()) return std::string();
+    if (dir.empty()) return std::string();
+    // CMake reads ';' as a list separator: the exported build would take the path apart
+    if (FileUtils::pathToUtf8(dir).find(';') != std::string::npos) {
+        return "The output folder " + FileUtils::pathToGenericUtf8(dir) + " has a ';' in its path, which CMake reads as a list "
+               "separator: choose a folder whose path has none, or rename the folder.";
+    }
+    if (!project) return std::string();
     std::error_code ec;
     const fs::path where = fs::weakly_canonical(fs::absolute(dir, ec), ec).lexically_normal();
     const fs::path projectRoot = fs::weakly_canonical(project->getProjectPath(), ec).lexically_normal();
@@ -1599,6 +1608,12 @@ bool editor::Exporter::prepareCacheTarget() {
         } else if (lock->getStatus() == io::ScopedFileLock::Status::Busy) {
             Out::info("Another build uses the shared compile tree; building in the project's own");
         }
+    }
+    // the compile tree is the project's own when the shared one is busy: CMake splits a path at ';'
+    if (FileUtils::pathToUtf8(config.targetDir).find(';') != std::string::npos) {
+        setError("The build folder " + FileUtils::pathToGenericUtf8(config.targetDir) + " has a ';' in its path, which CMake reads as "
+                 "a list separator: move or rename the project folder so its path has none.");
+        return false;
     }
     ec.clear();
     fs::create_directories(config.targetDir, ec);
@@ -3101,15 +3116,22 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
     // while it is walked would be shipped into itself without end
     const fs::path realOutput = config.targetDir.empty() ? fs::path() : safewrite::resolvedPath(config.targetDir);
     bool stopped = false;
+    treeListFailure.clear();
     std::function<void(const fs::path&, const fs::path&)> walk = [&](const fs::path& dir, const fs::path& relDir) {
         std::error_code listError;
-        for (fs::directory_iterator it(dir, fs::directory_options::skip_permission_denied, listError), end;
-             !listError && it != end && !stopped; it.increment(listError)) {
+        // listed in the long form (past MAX_PATH on Windows); `dir` stays the plain path
+        fs::directory_iterator it(exportfiles::longPath(dir), listError);
+        if (listError && exportfiles::isSkippableOpenError(listError) && !relDir.empty()) {
+            // a folder this user may not read (export-pipeline Deviation 9): left out, said so
+            warn("W-UNREADABLE-FOLDER", FileUtils::pathToGenericUtf8(relDir) + " could not be read and was left out of the build");
+            return;
+        }
+        for (fs::directory_iterator end; !listError && it != end && !stopped; it.increment(listError)) {
             const fs::directory_entry& entry = *it;
             const fs::path name = entry.path().filename();
             const fs::path relPath = relDir / name;
             const bool link = watch::isLink(entry);
-            const fs::path real = link ? safewrite::resolvedPath(entry.path()) : branch.back() / name;
+            const fs::path real = link ? safewrite::resolvedPath(dir / name) : branch.back() / name;
             std::error_code typeError;
             const bool isDirectory = entry.is_directory(typeError);
             // an earlier export left in the project ships nothing (W-EXPORT-FOLDER-SKIPPED)
@@ -3145,10 +3167,15 @@ void editor::Exporter::walkTree(const fs::path& root, const TreeVisitor& visit, 
                 }
             }
             branch.push_back(real);
-            walk(entry.path(), relPath);
+            walk(dir / name, relPath);
             branch.pop_back();
         }
-        if (relDir.empty() && listError) ec = listError;
+        // a folder listed only in part would ship without what was left: the export fails
+        if (listError && !stopped) {
+            ec = listError;
+            treeListFailure = dir;
+            stopped = true;
+        }
     };
     walk(root, fs::path());
 }
@@ -3311,7 +3338,7 @@ bool editor::Exporter::copyAssets() {
     }, ec);
     if (failed) return false;
     if (ec) {
-        setError("Failed to list the assets: " + ec.message());
+        setError("Failed to list the assets: cannot read the folder " + FileUtils::pathToGenericUtf8(treeListFailure) + ": " + ec.message());
         return false;
     }
     return true;
@@ -3407,7 +3434,7 @@ bool editor::Exporter::copyCustomShaderSources() {
     }, ec);
     if (failed) return false;
     if (ec) {
-        setError("Failed to list the project's shader sources: " + ec.message());
+        setError("Failed to list the project's shader sources: cannot read the folder " + FileUtils::pathToGenericUtf8(treeListFailure) + ": " + ec.message());
         return false;
     }
 
@@ -3479,7 +3506,7 @@ bool editor::Exporter::copyLua() {
     }, ec);
     if (failed) return false;
     if (ec) {
-        setError("Failed to list the Lua scripts: " + ec.message());
+        setError("Failed to list the Lua scripts: cannot read the folder " + FileUtils::pathToGenericUtf8(treeListFailure) + ": " + ec.message());
         return false;
     }
     return true;
@@ -3528,10 +3555,11 @@ bool editor::Exporter::copyCppScripts() {
             return Project::isNonAssetTopLevelDir(FileUtils::pathToUtf8(*relPath.begin())) ? exportfiles::DirAction::Skip
                                                                                             : exportfiles::DirAction::Descend;
         },
-        [&](const fs::directory_entry& entry, const fs::path&) {
-            if (!isCppHeaderFile(entry.path())) return true;
-            const fs::path relPath = projectRelativePath(entry.path());
-            if (relPath.empty() || !copiedPaths.insert(entry.path().string()).second) return true;
+        [&](const fs::directory_entry& entry, const fs::path& relPath) {
+            // (entry's path is the walk's long form on Windows: names are compared by the plain one)
+            const fs::path path = normalizedProjectRoot / relPath;
+            if (!isCppHeaderFile(path)) return true;
+            if (!copiedPaths.insert(path.string()).second) return true;
             return copyOrFail(entry.path(), scriptsDst / relPath);
         });
     if (!headersCopied) return false;
@@ -3561,12 +3589,13 @@ bool editor::Exporter::copyCppScripts() {
                 }
                 return exportfiles::DirAction::Descend;
             },
-            [&](const fs::directory_entry& entry, const fs::path&) {
-                if (!isCppSourceFile(entry.path())) return true;
+            [&](const fs::directory_entry& entry, const fs::path& rel) {
+                const fs::path path = rootPath / rel;
+                if (!isCppSourceFile(path)) return true;
                 // the C++ editor scripts are the editor's, never a game's
-                if (EditorScripts::isEditorOnlyScript(entry.path(), projectRoot)) return true;
-                const fs::path relPath = projectRelativePath(entry.path());
-                if (relPath.empty() || !copiedPaths.insert(entry.path().string()).second) return true;
+                if (EditorScripts::isEditorOnlyScript(path, projectRoot)) return true;
+                const fs::path relPath = (relDir / rel).lexically_normal();
+                if (!copiedPaths.insert(path.string()).second) return true;
                 if (!copyOrFail(entry.path(), scriptsDst / relPath)) return false;
                 cppExportedPaths.insert(fs::path("scripts") / relPath);
                 return true;
@@ -5747,8 +5776,8 @@ bool editor::Exporter::addNativePluginsToXcode(std::string& xcodeProject) {
                 }
             }
             if (!writeOrFail(bridgingPath, header)) return false;
-        } else if (fs::exists(bridgingPath, ec)) {
-            fs::remove(bridgingPath, ec);
+        } else if (fs::exists(bridgingPath, ec) && !removeStale(bridgingPath)) {
+            return false;
         }
     }
     return true;
@@ -5774,8 +5803,8 @@ bool editor::Exporter::writeNativeAppleFiles() {
                            "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
                            "<plist version=\"1.0\">\n<dict>\n" + body + "</dict>\n</plist>\n";
         if (!writeOrFail(entitlementsPath, text)) return false;
-    } else if (fs::exists(entitlementsPath, ec)) {
-        fs::remove(entitlementsPath, ec);
+    } else if (fs::exists(entitlementsPath, ec) && !removeStale(entitlementsPath)) {
+        return false;
     }
 
     // CocoaPods
@@ -5786,9 +5815,8 @@ bool editor::Exporter::writeNativeAppleFiles() {
         if (!pod.name.empty()) pods.push_back(pod);
     }
     if (pods.empty()) {
-        fs::remove(podfilePath, ec);
-        fs::remove(readmePath, ec);
-        return true;
+        // an earlier export's: a Podfile left there would make the next pod install add the old pods
+        return removeStale(podfilePath) && removeStale(readmePath);
     }
     auto rubyString = [](const std::string& value) {
         std::string out = "'";

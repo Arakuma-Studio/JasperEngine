@@ -16,20 +16,6 @@ namespace jasperengine::editor::exportfiles {
 
 namespace {
 
-    // Win32 filesystem calls need the extended prefix beyond MAX_PATH
-    fs::path longPath(const fs::path& path) {
-#ifdef _WIN32
-        std::error_code ec;
-        const fs::path absolutePath = fs::absolute(path, ec);
-        if (ec) return path;
-        const fs::path::string_type nativePath = absolutePath.native();
-        if (nativePath.rfind(L"\\\\?\\", 0) == 0) return absolutePath;
-        if (nativePath.rfind(L"\\\\", 0) == 0) return fs::path(L"\\\\?\\UNC\\" + nativePath.substr(2));
-        return fs::path(L"\\\\?\\" + nativePath);
-#else
-        return path;
-#endif
-    }
 
     std::string text(const fs::path& path) {
         return FileUtils::pathToGenericUtf8(path);
@@ -68,6 +54,20 @@ namespace {
 
 }
 
+fs::path longPath(const fs::path& path) {
+#ifdef _WIN32
+    std::error_code ec;
+    const fs::path absolutePath = fs::absolute(path, ec);
+    if (ec) return path;
+    const fs::path::string_type nativePath = absolutePath.native();
+    if (nativePath.rfind(L"\\\\?\\", 0) == 0) return absolutePath;
+    if (nativePath.rfind(L"\\\\", 0) == 0) return fs::path(L"\\\\?\\UNC\\" + nativePath.substr(2));
+    return fs::path(L"\\\\?\\" + nativePath);
+#else
+    return path;
+#endif
+}
+
 bool isSkippableOpenError(const std::error_code& ec) {
     return ec == std::errc::permission_denied || ec == std::errc::operation_not_permitted;
 }
@@ -82,7 +82,9 @@ WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& vi
         return result;
     }
 
-    std::vector<fs::path> pending{root};
+    // the long form: entries' paths come out in it, so every copy of them works past MAX_PATH
+    const fs::path base = longPath(root);
+    std::vector<fs::path> pending{base};
     while (!pending.empty()) {
         const fs::path dir = pending.back();
         pending.pop_back();
@@ -114,7 +116,7 @@ WalkResult walk(const fs::path& root, const DirFilter& filter, const Visitor& vi
 
         std::vector<fs::path> subdirs;
         for (const fs::directory_entry& entry : entries) {
-            const fs::path rel = entry.path().lexically_relative(root);
+            const fs::path rel = entry.path().lexically_relative(base);
             if (rel.empty()) continue;
             std::error_code statusError;
             const fs::file_status linkStatus = entry.symlink_status(statusError);
@@ -175,11 +177,30 @@ std::string exportFolderMarker(const fs::path& dir, const std::string& appName) 
         if (fs::is_regular_file(dir / name, ec)) return name;
     }
     if (appName.empty()) return std::string();
-    for (const std::string& name : {appName + ".wasm", appName, appName + ".exe"}) {
+    for (const std::string& name : {appName + ".wasm", appName, appName + ".exe", appName + ".aab", appName + ".apk",
+                                    appName + "-arm64-v8a.apk", appName + "-armeabi-v7a.apk", appName + "-x86_64.apk",
+                                    appName + "-x86.apk"}) {
         if (fs::is_regular_file(dir / FileUtils::pathFromUtf8(name), ec)) return name;
     }
     if (fs::is_directory(dir / FileUtils::pathFromUtf8(appName + ".app"), ec)) return appName + ".app";
     return std::string();
+}
+
+ExportFolderFinder::ExportFolderFinder(fs::path root, std::string appName)
+    : root(root.lexically_normal()), appName(std::move(appName)) {}
+
+bool ExportFolderFinder::contains(const fs::path& file) {
+    const fs::path rel = (file.is_absolute() ? file.lexically_normal().lexically_relative(root) : file.lexically_normal());
+    if (rel.empty() || *rel.begin() == "..") return false;
+    // each folder from the root down to the file's own
+    fs::path folder = root;
+    for (auto part = rel.begin(); part != rel.end() && std::next(part) != rel.end(); ++part) {
+        folder /= *part;
+        auto known = folders.find(folder);
+        if (known == folders.end()) known = folders.emplace(folder, !exportFolderMarker(folder, appName).empty()).first;
+        if (known->second) return true;
+    }
+    return false;
 }
 
 bool mirrorTree(const fs::path& src, const fs::path& dst, bool keepIdeOutput, std::string& error) {

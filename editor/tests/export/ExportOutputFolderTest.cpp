@@ -76,3 +76,12 @@ TEST(ExportOutputFolder, SymlinkIntoProjectRefused) {
     EXPECT_NE(Exporter::outputFolderRefusal(&s.project, s.dir.path() / "link" / "Builds"), "");
 }
 #endif
+
+// CMake reads ';' as a list separator: an export path with one is refused up front, saying what to do
+TEST(ExportOutputFolder, SemicolonRefused) {
+    ScratchProject s;
+    const std::string refusal = Exporter::outputFolderRefusal(&s.project, s.dir.path() / "Game;v2-build");
+    EXPECT_NE(refusal.find("';'"), std::string::npos) << refusal;
+    EXPECT_NE(refusal.find("rename"), std::string::npos) << refusal;
+    EXPECT_EQ(Exporter::outputFolderRefusal(nullptr, s.dir.path() / "a;b").empty(), false) << "with no project too (generate_shaders)";
+}

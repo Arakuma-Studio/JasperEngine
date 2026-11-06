@@ -163,7 +163,11 @@ namespace jasperengine::editor {
         std::string description;             // where it was found, for the UI
     };
 
+    struct ExporterTestAccess;
+
     class Exporter {
+        friend struct ExporterTestAccess;
+
     private:
         Project* project = nullptr;
         ExportConfig config;
@@ -280,7 +284,9 @@ namespace jasperengine::editor {
         void setProgress(const std::string& step, float value);
         void setProgressRaw(const std::string& step, float value);
         void setDetail(const std::string& line);
-        void setError(const std::string& message);
+        // the build fails with `message`; `reported`: error lines of its own (a compiler's) are in
+        // the log already, so this line is not one more error in the Console
+        void setError(const std::string& message, bool reported = false);
         void runExport();
         // ExportMode::Player: the method, then the prebuilt steps or the Compile build (D1)
         void runPlayerBuild();
@@ -382,7 +388,10 @@ namespace jasperengine::editor {
         // as a folder under its own name, so relPath (never canonicalized) is the path a scene or
         // script reads the file by; real is where the entry is on disk. A link to a folder that holds
         // it (it would hold itself) is left out with a warning. ec: the root could not be listed.
+        // A folder that cannot be read for permission is left out with W-UNREADABLE-FOLDER; any other
+        // listing error stops the walk, ec set and the folder in treeListFailure.
         void walkTree(const fs::path& root, const TreeVisitor& visit, std::error_code& ec);
+        fs::path treeListFailure;
         // False, with the error set, when a trusted root of the project leads elsewhere than when it
         // was pinned: the game would ship whatever is there now
         bool checkRootsPinned();

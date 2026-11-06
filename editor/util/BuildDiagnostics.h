@@ -9,6 +9,7 @@
 
 #include "log/LogCategory.h"
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -54,6 +55,7 @@ namespace jasperengine::editor {
 
     private:
         std::vector<BuildDiagnostic> kept;
+        std::set<std::string> seen;
         size_t count = 0;
         std::string last;
     };
