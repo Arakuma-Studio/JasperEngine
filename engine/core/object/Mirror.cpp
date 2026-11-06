@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Mirror.h"
+#include "component/MirrorComponent.h"
 
 using namespace jasperengine;
 

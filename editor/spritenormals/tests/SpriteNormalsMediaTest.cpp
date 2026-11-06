@@ -6,6 +6,7 @@
 // timing and limit case is exact; the upstream fixtures check the atlases of real files.
 
 #include "spritenormals/SpriteMedia.h"
+#include "object/ui/Image.h"
 
 #include "json.hpp"
 #include "stb_image_write.h"

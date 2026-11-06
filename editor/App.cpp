@@ -2,6 +2,36 @@
 // SPDX-License-Identifier: MIT
 
 #include "App.h"
+#include "component/CameraShakerComponent.h"
+#include "pool/ShaderPool.h"
+#include "render/SceneRender.h"
+#include "spritenormals/SpriteNormalsWatcher.h"
+#include "window/AnimationWindow.h"
+#include "window/AnimatorWindow.h"
+#include "window/AssetPanels.h"
+#include "window/AudioMixerWindow.h"
+#include "window/AudioCapturesWindow.h"
+#include "window/SoundBrowserWindow.h"
+#include "window/AvatarWindow.h"
+#include "window/CodeEditor.h"
+#include "window/GameWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ImageViewerWindow.h"
+#include "window/InspectorWindow.h"
+#include "window/LoadingWindow.h"
+#include "window/MainToolbar.h"
+#include "window/PhysicsPlacementWindow.h"
+#include "window/PlayInput.h"
+#include "window/PoseAnimationWindow.h"
+#include "window/ProjectWindow.h"
+#include "window/SceneWindow.h"
+#include "window/SpriteNormalsWindow.h"
+#include "window/StatusBar.h"
+#include "window/SystemsWindow.h"
+#include "window/TerrainEditWindow.h"
+#include "window/TextureSynthesisWindow.h"
+#include "window/VertexAnimationBakerWindow.h"
+#include "component/TilemapComponent.h"
 #include "spline/SplineSceneTools.h"
 #include "spline/SplineEditor.h"
 #include "particles/ParticleEffectLibrary.h"
@@ -23,10 +53,13 @@
 #include "Backend.h"
 #include "manager/SceneManager.h"
 #include "Engine.h"
+#include "device/Device.h"
 #include "cli/CommandLine.h"
 #include "render/SystemRender.h"
 
 #include "external/IconsFontAwesome6.h"
+#include "audio/AudioMixerDocument.h"
+#include "audio/LoudnessMonitor.h"
 #include "command/CommandHandle.h"
 #include "command/UndoTimeline.h"
 #include "command/type/AddComponentCmd.h"
@@ -38,6 +71,9 @@
 #include "util/EntityClipboard.h"
 #include "mcp/McpActivityWindow.h"
 #include "window/JobsMemoryWindow.h"
+#include "window/MeshAuditWindow.h"
+#include "window/BuildReportWindow.h"
+#include "window/ImporterFields.h"
 #include "window/profiler/FrameDebuggerWindow.h"
 #include "window/profiler/ProfilerWindow.h"
 #include "profiler/FrameTimes.h"
@@ -59,6 +95,8 @@
 #include "widget/GradientField.h"
 #include "widget/FieldEdit.h"
 #include "mcp/McpServer.h"
+#include "window/EditorFilePicker.h"
+#include "window/EditorModal.h"
 #include "mcp/McpAutoSync.h"
 #include "mcp/tools/McpTools.h"
 #include "reload/HotReloadService.h"
@@ -68,6 +106,7 @@
 #include "shortcuts/ShortcutsWindow.h"
 #include "window/BookmarksWindow.h"
 #include "texture/TextureCookQueue.h"
+#include "model/ModelCookQueue.h"
 
 #include "util/CrashHandler.h"
 #include "util/EditorDiagnostics.h"
@@ -198,6 +237,8 @@ editor::App::App(){
     terrainEditWindow = new TerrainEditWindow(&project);
     textureSynthesisWindow = new TextureSynthesisWindow(&project);
     audioMixerWindow = new AudioMixerWindow(&project);
+    soundBrowserWindow = new SoundBrowserWindow(&project);
+    audioCapturesWindow = new AudioCapturesWindow(&project);
     vertexAnimationBakerWindow = new VertexAnimationBakerWindow(&project);
     physicsPlacementWindow = new PhysicsPlacementWindow(&project);
     spriteNormalsWindow = new SpriteNormalsWindow(&project);
@@ -208,6 +249,8 @@ editor::App::App(){
     missingAssetsWindow = new MissingAssetsWindow(&project);
     assetReferencesWindow = new AssetReferencesWindow(&project);
     jobsMemoryWindow = new JobsMemoryWindow();
+    meshAuditWindow = new MeshAuditWindow(&project);
+    buildReportWindow = new BuildReportWindow(&project);
     profilerWindow = new ProfilerWindow(this);
     frameDebuggerWindow = new FrameDebuggerWindow(this);
     undoHistoryWindow = new UndoHistoryWindow(&project);
@@ -604,6 +647,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.createHtmlDocument", "HTML Document"),
         menuSeparator(),
         catalogItem("assets.createAudioMixer", "Audio Mixer"),
+        catalogItem("assets.createPlaceholderSound", "Placeholder Sound..."),
         menuSeparator(),
         catalogItem("assets.createPoseAnimation", "Pose Animation"),
         menuSeparator(),
@@ -630,6 +674,7 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
         catalogItem("assets.import"),
         catalogItem("assets.refresh"),
         catalogItem("assets.reimportTextures"),
+        catalogItem("assets.importSoundEssentials"),
         menuSubmenu("Version Control", {
             catalogItem("assets.vcs.commit"),
             catalogItem("assets.vcs.revert"),
@@ -692,7 +737,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.vertexAnimationBaker", windowMenuLabel(VertexAnimationBakerWindow::WINDOW_NAME))
         }),
         menuSubmenu("Audio", {
-            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME))
+            catalogItem("window.audioMixer", windowMenuLabel(AudioMixerWindow::WINDOW_NAME)),
+            catalogItem("window.audioCaptures", windowMenuLabel(AudioCapturesWindow::WINDOW_NAME)),
+            catalogItem("window.soundBrowser", windowMenuLabel(SoundBrowserWindow::WINDOW_NAME))
         }),
         catalogItem("window.terrain", windowMenuLabel(TerrainEditWindow::WINDOW_NAME)),
         catalogItem("window.inputActions", windowMenuLabel(InputActionsWindow::WINDOW_NAME)),
@@ -707,7 +754,9 @@ editor::PlatformMenuModel editor::App::buildMenuModel(){
             catalogItem("window.profiler", windowMenuLabel(ProfilerWindow::WINDOW_NAME)),
             catalogItem("window.frameDebugger", windowMenuLabel(FrameDebuggerWindow::WINDOW_NAME)),
             catalogItem("window.systems", windowMenuLabel(SystemsWindow::WINDOW_NAME)),
-            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME))
+            catalogItem("window.jobsMemory", windowMenuLabel(JobsMemoryWindow::WINDOW_NAME)),
+            catalogItem("window.meshAudit", windowMenuLabel(MeshAuditWindow::WINDOW_NAME)),
+            catalogItem("window.buildReport", windowMenuLabel(BuildReportWindow::WINDOW_NAME))
         }),
         catalogItem("window.textureSynthesis", windowMenuLabel(TextureSynthesisWindow::WINDOW_NAME)),
         catalogItem("window.spriteNormals", windowMenuLabel(SpriteNormalsWindow::WINDOW_NAME)),
@@ -959,6 +1008,12 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::ToggleJobsMemory:
             showEditorWindow(jobsMemoryWindow);
             break;
+        case AppMenuCommand::ToggleMeshAudit:
+            showEditorWindow(meshAuditWindow);
+            break;
+        case AppMenuCommand::ToggleBuildReport:
+            showEditorWindow(buildReportWindow);
+            break;
         case AppMenuCommand::ToggleUndoHistory:
             showEditorWindow(undoHistoryWindow);
             break;
@@ -973,6 +1028,15 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
             break;
         case AppMenuCommand::ToggleTextureSynthesis:
             textureSynthesisWindow->open();
+            break;
+        case AppMenuCommand::ToggleSoundBrowser:
+            soundBrowserWindow->open();
+            break;
+        case AppMenuCommand::ToggleAudioCaptures:
+            audioCapturesWindow->open();
+            break;
+        case AppMenuCommand::ResetLoudness:
+            LoudnessMonitor::get().reset();
             break;
         case AppMenuCommand::ToggleAudioMixer:
             audioMixerWindow->open();
@@ -1132,8 +1196,23 @@ void editor::App::executeMenuCommand(const PlatformMenuCommand& command){
         case AppMenuCommand::AssetsCreateHtmlDocument:
             projectWindow->assetsCreateHtmlDocument();
             break;
+        case AppMenuCommand::AssetsImportSoundEssentials:
+            projectWindow->assetsImportSoundEssentials();
+            break;
+        case AppMenuCommand::AssetsCreatePlaceholderSound:
+            projectWindow->assetsCreatePlaceholderSound();
+            break;
+        case AppMenuCommand::AssetsReanalyzeAudio:
+            projectWindow->assetsReanalyzeAudio(projectWindow->getSelectedFiles());
+            break;
         case AppMenuCommand::AssetsCreateAudioMixer:
             projectWindow->assetsCreateAudioMixer();
+            break;
+        case AppMenuCommand::AssetsCreateSoundEvent:
+            projectWindow->assetsCreateSoundEvent();
+            break;
+        case AppMenuCommand::AssetsCreateSoundEventFromClips:
+            projectWindow->assetsCreateSoundEventFromClips();
             break;
         case AppMenuCommand::AssetsCreatePoseAnimation:
             projectWindow->assetsCreatePoseAnimation();
@@ -1801,7 +1880,7 @@ void editor::App::showAlert(){
         alertPendingChoice.clear();
         const std::string popupName = alert.title + "##AlertModal";
         alert.needShow = false;
-        if (ImGui::IsPopupOpen(popupName.c_str()) && ImGui::BeginPopupModal(popupName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (ImGui::IsPopupOpen(popupName.c_str()) && EditorModal::begin(popupName.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
             ImGui::CloseCurrentPopup();
             ImGui::EndPopup();
         }
@@ -1823,7 +1902,7 @@ void editor::App::showAlert(){
                                 ImGuiWindowFlags_NoSavedSettings |
                                 ImGuiWindowFlags_Modal;
 
-        if (ImGui::BeginPopupModal((alert.title + "##AlertModal").c_str(), nullptr, flags)) {
+        if (EditorModal::begin((alert.title + "##AlertModal").c_str(), nullptr, flags)) {
             ImGui::Text("%s", alert.message.c_str());
             if (!alert.note.empty()) {
                 ImGui::Spacing();
@@ -2684,7 +2763,7 @@ void editor::App::show(){
         if (hubCreation) {
             ImGui::OpenPopup("Creating Project##hub");
         }
-        if (ImGui::BeginPopupModal("Creating Project##hub", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove)) {
+        if (EditorModal::begin("Creating Project##hub", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove, EditorModal::Role::Progress)) {
             if (!hubCreation) ImGui::CloseCurrentPopup();
             else ImGui::Text("Creating %s from %s...", hubCreation->name.c_str(), hubCreation->info.name.c_str());
             ImGui::EndPopup();
@@ -2789,6 +2868,8 @@ void editor::App::show(){
     showAlert();
 
     sceneSaveDialog.show();
+    // the importers' edits not applied, asked about before a selection change, Play or the close
+    ImporterPrompt::draw();
     projectSaveDialog.show();
     dataSafetyDialogs.show(project);
     exportWindow.show();
@@ -2826,6 +2907,8 @@ void editor::App::show(){
     terrainEditWindow->show();
     textureSynthesisWindow->show();
     audioMixerWindow->show();
+    soundBrowserWindow->show();
+    audioCapturesWindow->show();
     // also the tick of its Shift-click generations (with the window closed)
     spriteNormalsWindow->show();
     // also the tick of a running bake (a Shift-click bake runs with the window closed)
@@ -2838,6 +2921,8 @@ void editor::App::show(){
     missingAssetsWindow->show();
     assetReferencesWindow->show();
     jobsMemoryWindow->show();
+    meshAuditWindow->show();
+    buildReportWindow->show();
     profilerWindow->show();
     frameDebuggerWindow->show();
     undoHistoryWindow->show();
@@ -2890,6 +2975,8 @@ void editor::App::show(){
     shortcutsWindow->show();
     layouts.drawDialogs();
     layouts.endFrame();
+
+    LoudnessMonitor::get().update(project.isAnyScenePlaying());
 
     // MCP calls waiting on a condition or on frames (waitUntil / afterFrames)
     mcp::McpServer::get().tick();
@@ -2972,6 +3059,10 @@ void editor::App::parseBenchmarkArgs(int argc, char** argv) {
         } else if (arg == "--mesh-lod") {
             if (const char* value = requireValue(i, "--mesh-lod"))
                 benchmarkMeshLod = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
+        } else if (arg == "--gpu-instancing") {
+            // the project's GPU Instancing for this run (not saved): S55's before and after
+            if (const char* value = requireValue(i, "--gpu-instancing"))
+                benchmarkGpuInstancing = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
         } else if (arg == "--depth-prepass") {
             if (const char* value = requireValue(i, "--depth-prepass"))
                 benchmarkDepthPrepass = (std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0) ? 1 : 0;
@@ -3222,11 +3313,16 @@ void editor::App::loadStartupProject() {
                 std::fprintf(stderr, "[mcp] project_locked: closing the editor\n");
                 startupExitCode = 3;
                 // the main loop exits after the next frame (consumeBenchmarkExit): closing
-                // before the first frame leaves the render queue waiting on shutdown, and that
-                // frame wants a project (the empty temporary one, as when a load fails)
+                // before the first frame leaves the render queue waiting on shutdown. That frame
+                // is the loading window (projectLoading stays set, as for a failed benchmark): a
+                // refused editor opens nothing, and the temporary project is one directory
+                // shared by every editor, so other refused editors may hold its lock
                 benchmarkExit = true;
+                return;
             }
-            project.createTempProject("MyJasperEngineProject");
+            if (!project.createTempProject("MyJasperEngineProject")) {
+                std::fprintf(stderr, "[mcp] the temporary project could not be opened either: no project is open\n");
+            }
         }
         projectLoading = false;
         requestRedraw();
@@ -3305,6 +3401,10 @@ void editor::App::setupRecorder() {
     };
     host.stopPlay = [this]() { mainToolbar->stopSession(); };
     host.gameFramebuffer = [this]() { return gameWindow->getFramebuffer(); };
+    host.gameScene = [playScene]() -> Scene* {
+        const SceneProject* scene = playScene();
+        return scene ? scene->scene : nullptr;
+    };
     host.setGameRenderSize = [this](int w, int h) { gameWindow->setRenderSizeOverride(w, h); };
     host.gameViewSize = [this](int& w, int& h) {
         w = gameWindow->getWidth();
@@ -3407,6 +3507,8 @@ void editor::App::hubCreateProject(const hub::ProjectTemplate& info, const std::
     creation->copy = std::async(std::launch::async, [copyOf, target]() {
         std::string error;
         if (!hub::templates::materialize(copyOf, target, error)) return error.empty() ? std::string("the copy failed") : error;
+        // a template with no audio node of its own starts like any new project
+        if (!AudioMixerDocument::writeNewProjectAudio(target, &error)) return error;
         return std::string();
     });
     hubCreation = std::move(creation);
@@ -3485,11 +3587,12 @@ void editor::App::drawSaveProjectAsTemplate() {
         ImGui::OpenPopup("Save Project as Template##saveTemplate");
         saveTemplatePopup = false;
     }
-    if (!ImGui::BeginPopupModal("Save Project as Template##saveTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    if (!EditorModal::begin("Save Project as Template##saveTemplate", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
     ImGui::TextUnformatted("Name");
     ImGui::SetNextItemWidth(Theme::dpi(320.0f));
-    ImGui::InputText("##templateName", saveTemplateName.data(), saveTemplateName.size());
+    EditorModal::inputText("##templateName", "name", saveTemplateName.data(), saveTemplateName.size());
     ImGui::TextUnformatted("Description");
+    EditorModal::field("description", saveTemplateDescription.data(), saveTemplateDescription.size());
     ImGui::InputTextMultiline("##templateDescription", saveTemplateDescription.data(), saveTemplateDescription.size(),
                               ImVec2(Theme::dpi(320.0f), Theme::dpi(70.0f)));
     const std::string id = hub::slugify(saveTemplateName.data());
@@ -3497,11 +3600,13 @@ void editor::App::drawSaveProjectAsTemplate() {
     std::error_code ec;
     std::string problem = !hub::isValidCatalogId(id) ? "The name needs letters or digits." : std::string();
     if (problem.empty() && std::filesystem::exists(userDir / id, ec)) problem = "A template \"" + id + "\" exists.";
+    EditorModal::message("Save this project as a template of the Project Hub.");
+    EditorModal::error(!saveTemplateMessage.empty() ? saveTemplateMessage : problem);
     if (!problem.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", problem.c_str());
     else ImGui::TextDisabled("%s", (userDir / id).string().c_str());
     if (!saveTemplateMessage.empty()) ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "%s", saveTemplateMessage.c_str());
     ImGui::BeginDisabled(!problem.empty());
-    if (ImGui::Button("Save", ImVec2(Theme::dpi(100.0f), 0))) {
+    if (EditorModal::button("Save", "ok", ImVec2(Theme::dpi(100.0f), 0))) {
         // the thumbnail is the Scene view (480 wide)
         std::vector<uint8_t> png;
         if (SceneProject* scene = project.getSelectedScene(); scene && scene->sceneRender) {
@@ -3520,7 +3625,7 @@ void editor::App::drawSaveProjectAsTemplate() {
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(Theme::dpi(100.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
+    if (EditorModal::button("Cancel", "cancel", ImVec2(Theme::dpi(100.0f), 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape, false)) ImGui::CloseCurrentPopup();
     ImGui::EndPopup();
 }
 
@@ -3574,6 +3679,8 @@ void editor::App::quitWithoutPrompts(const std::string& reason) {
 
 bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
     out = EditorDialogInfo();
+    // it holds the main thread, so nothing below can change while it is open
+    if (EditorFilePicker::info(out)) return true;
     if (alert.needShow) {
         out.kind = "alert";
         out.title = alert.title;
@@ -3593,50 +3700,50 @@ bool editor::App::getOpenDialog(EditorDialogInfo& out) const {
         }
         return true;
     }
-    if (sceneSaveDialog.isOpen() || projectSaveDialog.isOpen()) {
-        out.kind = "save_dialog";
-        out.title = sceneSaveDialog.isOpen() ? "Save Scene" : "Save Project";
-        out.message = "asks a human where to save; cancel it and save with an explicit path instead";
+    // Every other modal, as the last frame drew it (MCP calls run before this frame's windows)
+    const bool modal = EditorModal::topModal(out);
+    if (!sceneSaveDialog.isOpen() && !projectSaveDialog.isOpen()) return modal;
+    const std::string saveTitle = sceneSaveDialog.isOpen() ? "Save Scene" : "Save Project";
+    // something it opened, on top of it
+    if (modal && out.title != saveTitle) return true;
+    out.kind = "save_dialog";
+    out.title = saveTitle;
+    // a save dialog no frame has drawn yet has only its cancel, which needs no frame
+    if (!modal) {
+        out.message = "asks where to save; cancel it and save with an explicit path instead";
         out.choices = {"cancel"};
-        return true;
     }
-    if (ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal()) {
-        std::string name = modal->Name ? modal->Name : "";
-        const size_t idPos = name.find("##");
-        if (idPos != std::string::npos) name.resize(idPos);
-        // LoadingWindow's progress of the shader, texture and model builds: no answer, it
-        // closes when they are done
-        out.kind = name == "Loading" && ResourceProgress::hasActiveBuilds() ? "progress" : "modal";
-        out.title = name;
-        return true;
-    }
-    return false;
+    return true;
 }
 
-bool editor::App::answerDialog(const std::string& choice, std::string& error) {
+bool editor::App::answerDialog(const std::string& choice, const std::map<std::string, EditorDialogValue>& values, std::string& error) {
     EditorDialogInfo dialog;
     if (!getOpenDialog(dialog)) {
         error = "No dialog is open.";
         return false;
     }
-    if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
-        if (dialog.kind == "progress") {
-            error = "The editor is building shaders, textures or models (\"" + dialog.title + "\"): it closes by itself when they are done.";
-        } else if (dialog.choices.empty()) {
-            error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
-        } else {
+    if (dialog.kind == "alert") {
+        if (!values.empty()) {
+            error = "The alert \"" + dialog.title + "\" has no fields to fill.";
+            return false;
+        }
+        if (std::find(dialog.choices.begin(), dialog.choices.end(), choice) == dialog.choices.end()) {
             error = "Choice must be one of:";
             for (const std::string& valid : dialog.choices) error += " " + valid;
             error += ".";
+            return false;
         }
-        return false;
-    }
-    if (dialog.kind == "alert") {
         // Pressed in showAlert on the next frame, through the button's own code path
         alertPendingChoice = choice;
-    } else if (dialog.kind == "save_dialog") {
+    } else if (dialog.kind == "save_dialog" && choice == "cancel") {
         sceneSaveDialog.requestCancel();
         projectSaveDialog.requestCancel();
+    } else if (dialog.choices.empty() && dialog.disabledChoices.empty() && dialog.fields.empty()) {
+        error = "The dialog \"" + dialog.title + "\" can only be closed by a human in the editor window.";
+        return false;
+    } else if (!EditorModal::answer(choice, values, error)) {
+        // pressed when the modal is next drawn, through the button's own code path
+        return false;
     }
     requestRedraw();
     return true;
@@ -3706,6 +3813,10 @@ void editor::App::pollExternalChanges(){
         TextureCookQueue& cooks = TextureCookQueue::get();
         if (cooks.getProject() != &project) cooks.attach(&project);
         wake = cooks.update() || wake;
+        // and model cooks (S53 R13): cooked on the Background lane, the models showing them reloaded here
+        ModelCookQueue& models = ModelCookQueue::get();
+        if (models.getProject() != &project) models.attach(&project);
+        wake = models.update() || wake;
     }
 
     const auto now = std::chrono::steady_clock::now();
@@ -4078,6 +4189,9 @@ void editor::App::renderRunningScene(SceneProject& sceneProject) {
     // the frame is the game: it runs at the Game view's Preview Atmosphere Quality
     if (sceneProject.scene)
         sceneProject.scene->getSystem<RenderSystem>()->setPreviewAtmosphereQuality(gameWindow->getSettings().atmosphereQuality);
+    // and with the Game view's simulated Device Tier, platform family and thermal state (Play
+    // stop ends it: Engine::resetApplicationState)
+    Device::setSimulation(gameWindow->getDeviceSimulation());
 
     bool viewChanged = false;
     if (lastActivatedScene != sceneProject.id || !lastActivatedGame){
@@ -4397,6 +4511,8 @@ void editor::App::tickBenchmark() {
         }
         if (benchmarkMeshLod >= 0)
             selected->scene->setMeshLodEnabled(benchmarkMeshLod != 0);
+        if (benchmarkGpuInstancing >= 0)
+            Engine::setGpuInstancingEnabled(benchmarkGpuInstancing != 0);
         if (benchmarkDepthPrepass >= 0)
             selected->scene->setDepthPrepassEnabled(benchmarkDepthPrepass != 0);
         if (benchmarkLitQuality >= 0)
@@ -4446,6 +4562,8 @@ void editor::App::tickBenchmark() {
             benchmarkPhaseFrames = 0;
             benchmarkFps.clear();
             benchmarkDraws.clear();
+            benchmarkRenderStats.clear();
+            benchmarkRenderCpuMs.clear();
             benchmarkInstances.clear();
             benchmarkTris.clear();
             benchmarkUiTotals.clear();
@@ -4475,6 +4593,8 @@ void editor::App::tickBenchmark() {
         benchmarkDraws.push_back(stats.drawCalls);
         benchmarkInstances.push_back(stats.instances);
         benchmarkTris.push_back(stats.triangles);
+        benchmarkRenderStats.push_back(SystemRender::getRenderStats(SystemRender::FRAME_STATS_FRAME));
+        benchmarkRenderCpuMs.push_back(Engine::getFrameDrawCpuTime() * 1000.0);
         if (benchmarkUiStats) {
             // the scene's documents (screen and texture-mode contexts), this frame
             std::shared_ptr<UIDocumentSystem> documents = selected->scene->getSystem<UIDocumentSystem>();
@@ -4629,6 +4749,51 @@ void editor::App::finishBenchmark() {
     json.precision(3);
     json << "  \"cpuMs\": {\"median\": " << stat(benchmarkCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkCpuMs, 0.95)
          << ", \"mean\": " << mean(benchmarkCpuMs) << "}";
+    // the scenes' draw and the commit of each measured frame (the render submission, S55 R9)
+    json << ",\n  \"renderCpuMs\": {\"median\": " << stat(benchmarkRenderCpuMs, 0.5) << ", \"p95\": " << stat(benchmarkRenderCpuMs, 0.95)
+         << ", \"mean\": " << mean(benchmarkRenderCpuMs) << "}";
+    {
+        // the game frame's render counters averaged over the measured frames (S55 R7; with --play
+        // the frame the Game view shows): deterministic for a still scene
+        const struct { const char* name; double (*value)(const RenderStats&); } counters[] = {
+            {"mainDrawCalls", [](const RenderStats& r) { return (double)r.mainDraws; }},
+            {"shadowDrawCalls", [](const RenderStats& r) { return (double)r.shadowDraws; }},
+            {"depthDrawCalls", [](const RenderStats& r) { return (double)r.depthDraws; }},
+            {"otherDrawCalls", [](const RenderStats& r) { return (double)r.otherDraws; }},
+            {"mainTriangles", [](const RenderStats& r) { return (double)r.mainTriangles; }},
+            {"shadowTriangles", [](const RenderStats& r) { return (double)r.shadowTriangles; }},
+            {"instancedDraws", [](const RenderStats& r) { return (double)r.instancedDraws; }},
+            {"batchedInstances", [](const RenderStats& r) { return (double)r.batchedInstances; }},
+            {"visible", [](const RenderStats& r) { return (double)r.visible; }},
+            {"culled", [](const RenderStats& r) { return (double)r.culled; }},
+            {"uniformBytes", [](const RenderStats& r) { return (double)r.uniformBytes; }},
+            {"uniformBytesKept", [](const RenderStats& r) { return (double)r.uniformBytesKept; }},
+            {"bufferUploadBytes", [](const RenderStats& r) { return (double)r.bufferUploadBytes; }},
+            {"pipelinesApplied", [](const RenderStats& r) { return (double)r.pipelinesApplied; }},
+            {"bindingsApplied", [](const RenderStats& r) { return (double)r.bindingsApplied; }},
+            {"aliveBuffers", [](const RenderStats& r) { return (double)r.aliveBuffers; }},
+            {"aliveImages", [](const RenderStats& r) { return (double)r.aliveImages; }},
+            {"alivePipelines", [](const RenderStats& r) { return (double)r.alivePipelines; }},
+        };
+        json << ",\n  \"render\": {";
+        bool first = true;
+        for (const auto& counter : counters) {
+            double sum = 0.0;
+            for (const RenderStats& frameStats : benchmarkRenderStats)
+                sum += counter.value(frameStats);
+            json << (first ? "" : ", ") << "\"" << counter.name << "\": "
+                 << (benchmarkRenderStats.empty() ? 0.0 : sum / static_cast<double>(benchmarkRenderStats.size()));
+            first = false;
+        }
+        json << "}";
+        // GPU Instancing in the last measured frame: the draws that could batch, and why one did
+        // not join the batch before it (S55 R7)
+        const DrawBatchStats batch = SystemRender::getDrawBatchStats();
+        json << ",\n  \"drawBatch\": {\"offered\": " << batch.offeredDraws << ", \"instancedDraws\": " << batch.instancedDraws
+             << ", \"batchedInstances\": " << batch.batchedInstances << ", \"splitPipeline\": " << batch.splitPipeline
+             << ", \"splitElements\": " << batch.splitElements << ", \"splitBindings\": " << batch.splitBindings
+             << ", \"splitUniforms\": " << batch.splitUniforms << "}";
+    }
     if (benchmarkUiStats) {
         // HtmlUIRenderStats averaged over the measured frames
         json << ",\n  \"htmlUi\": {";
@@ -4888,6 +5053,8 @@ void editor::App::prepareForProjectSwitch() {
     // a synthesis started in this project is cancelled and never written into the next one
     textureSynthesisWindow->resetForProjectSwitch();
     audioMixerWindow->resetForProjectSwitch();
+    soundBrowserWindow->resetForProjectSwitch();
+    audioCapturesWindow->resetForProjectSwitch();
     // a live preview or a Shift-click generation is cancelled, its sources and results forgotten
     spriteNormalsWindow->resetForProjectSwitch();
     spriteNormalsWatcher->reset();
@@ -5371,7 +5538,15 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      LIGHT2D_SURFACE_NORMALS), @require normalmap (library/sprite.frag) and stochastic.glsl.
     // v44: upstream's sprite normal maps and shader globals (u_vs_globals / u_fs_globals, its v40)
     //      with oe-port's v43: either side's v40-v43 cache holds other variants.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v44";
+    // v45: S57's lighting (MESH 'Til', 'Cap', 'Cts', 'Oit' at bits 36-39, the Hair lobe's
+    //      PBR_HAIR in u_fs_pbrParams, includes/lights.glsl's tiled and occlusion forms).
+    // v46: S54's LOD cross-fade: MESH 'Lfd' (includes/lod_fade.glsl in mesh.vert and mesh.frag), and
+    //      every instance matrix read with its first column's w as 0.
+    // v47: S55's automatic GPU instancing: mesh and depth programs take their object block from
+    //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
+    // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
+    //      skinned fade variant's uniform block slots differed from its base's.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v48";
 }
 
 void editor::App::pushTabNotificationStyle(){
@@ -5504,6 +5679,18 @@ void editor::App::openSpriteNormalsForEntity(uint32_t sceneId, Entity entity, un
 
 editor::MainToolbar* editor::App::getMainToolbar() const{
     return mainToolbar;
+}
+
+void editor::App::openBuildReport(const std::filesystem::path& report){
+    buildReportWindow->open(report);
+}
+
+void editor::App::openMeshAudit(){
+    showEditorWindow(meshAuditWindow);
+}
+
+void editor::App::openConsole(){
+    showEditorWindow(consoleWindow);
 }
 
 void editor::App::openAudioMixerWindow(const std::filesystem::path& mixer){
@@ -5857,6 +6044,7 @@ void editor::App::applyPanelVisibilitySettings() {
     terrainEditWindow->setOpen(visibility.terrain);
     textureSynthesisWindow->setOpen(visibility.textureSynthesis);
     audioMixerWindow->setOpen(visibility.audioMixer);
+    soundBrowserWindow->setOpen(visibility.soundBrowser);
     spriteNormalsWindow->setOpen(visibility.spriteNormals);
     vertexAnimationBakerWindow->setOpen(visibility.vertexAnimationBaker);
     physicsPlacementWindow->setOpen(visibility.physicsPlacement);
@@ -5877,6 +6065,7 @@ void editor::App::persistPanelVisibilitySettings() {
     visibility.terrain = terrainEditWindow->isOpen();
     visibility.textureSynthesis = textureSynthesisWindow->isOpen();
     visibility.audioMixer = audioMixerWindow->isOpen();
+    visibility.soundBrowser = soundBrowserWindow->isOpen();
     visibility.spriteNormals = spriteNormalsWindow->isOpen();
     visibility.vertexAnimationBaker = vertexAnimationBakerWindow->isOpen();
     visibility.physicsPlacement = physicsPlacementWindow->isOpen();
@@ -5919,6 +6108,8 @@ void editor::App::exit() {
         Backend::closeWindow();
         return;
     }
+    // import settings edited and not applied (S53 R17): asked first, the close follows Apply or Revert
+    if (ImporterPrompt::guard([this]() { exit(); })) return;
 
     // Check if any modal popup is currently open (including ComponentAddDialog, ScriptCreateDialog, etc.)
     ImGuiWindow* modal = ImGui::GetTopMostAndVisiblePopupModal();

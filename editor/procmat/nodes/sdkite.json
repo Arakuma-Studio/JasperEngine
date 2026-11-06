@@ -1,0 +1,63 @@
+{
+ "code": [],
+ "description": "A kite as a signed distance function",
+ "format": 1,
+ "functions": [
+  "sdKite"
+ ],
+ "id": "sdkite",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "sdKite",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The kite as a signed distance function",
+   "expr": "sdKite($uv-0.5, $width, min($apex,0.0), max($base,0.0))",
+   "label": "Output",
+   "type": "sdf2d"
+  }
+ ],
+ "parameters": [
+  {
+   "default": -0.3,
+   "description": "Position of the top vertex along the Y axis",
+   "label": "Apex",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "apex",
+   "short_description": "Apex",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.4,
+   "description": "Position of the bottom vertex along the Y axis",
+   "label": "Base",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "base",
+   "short_description": "Base",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 0.225,
+   "description": "Width of the kite",
+   "label": "Width",
+   "max": 1.0,
+   "min": 0.0,
+   "name": "width",
+   "short_description": "Width",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "sdKite",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/sdkite.mmg"
+ },
+ "type_version": 1
+}

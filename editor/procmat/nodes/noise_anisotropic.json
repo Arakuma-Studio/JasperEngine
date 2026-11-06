@@ -1,0 +1,74 @@
+{
+ "code": [],
+ "description": "Generates x-axis interpolated value noise",
+ "format": 1,
+ "functions": [
+  "anisotropic"
+ ],
+ "id": "noise_anisotropic",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Anisotropic Noise",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a grayscale value noise",
+   "expr": "anisotropic($(uv), vec2($(scale_x), $(scale_y)), $(seed), $(smoothness), $(interpolation))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 4,
+   "description": "The scale along the X axis",
+   "label": "Scale X",
+   "max": 32,
+   "min": 1,
+   "name": "scale_x",
+   "short_description": "Scale.x",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 256,
+   "description": "The scale along the Y axis",
+   "label": "Scale Y",
+   "max": 1024,
+   "min": 1,
+   "name": "scale_y",
+   "short_description": "Scale.y",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "Controls how much the noise is blurred along the x-axis",
+   "label": "Smoothness",
+   "max": 1,
+   "min": 0,
+   "name": "smoothness",
+   "short_description": "Smoothness",
+   "step": 0.01,
+   "type": "float"
+  },
+  {
+   "default": 1,
+   "description": "Controls the type of interpolation used for the smoothing. 0 is linear interpolation, 1 is smooth interpolation",
+   "label": "Interpolation",
+   "max": 1,
+   "min": 0,
+   "name": "interpolation",
+   "short_description": "Interpolation",
+   "step": 0.01,
+   "type": "float"
+  }
+ ],
+ "short_description": "Anisotropic Noise",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/noise_anisotropic.mmg"
+ },
+ "type_version": 1
+}

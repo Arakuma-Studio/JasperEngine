@@ -6,6 +6,14 @@
 // Copyright (c) 2026 Gamecrafters Guild Limited and contributors, MIT License (NOTICE.md).
 
 #include "SearchPalette.h"
+#include "window/InspectorWindow.h"
+#include "window/HierarchyWindow.h"
+#include "window/ProjectWindow.h"
+
+#include "audio/BuiltinSoundImport.h"
+#include "audio/SoundEssentials.h"
+#include "audio/SoundLibrary.h"
+#include "util/ProjectFileWrites.h"
 
 #include "App.h"
 #include "AppMenuCommand.h"
@@ -59,6 +67,7 @@ namespace {
             case SearchKind::Component: return ICON_FA_PUZZLE_PIECE;
             case SearchKind::GameObject: return ICON_FA_CUBE;
             case SearchKind::Asset: return ICON_FA_FILE;
+            case SearchKind::Sound: return ICON_FA_VOLUME_HIGH;
         }
         return ICON_FA_TERMINAL;
     }
@@ -260,6 +269,37 @@ std::shared_ptr<SearchSnapshot> SearchPalette::buildSnapshot(const std::vector<S
         for (size_t i = 0; i < records->size(); i++) out->entries.push_back(SearchEntries::asset((*records)[i], i));
     }
 
+    if (want(SearchKind::Sound)) {
+        // the project's clips by name and labels, and the built-in clips, which Enter imports
+        if (const std::shared_ptr<const AssetIndexView>& assets = out->assets) {
+            for (size_t i = 0; i < assets->size(); i++) {
+                const AssetRecord& record = assets->at(i);
+                if (record.type != "audio") continue;
+                SearchEntry entry;
+                entry.kind = SearchKind::Sound;
+                entry.key = "sound:" + record.path;
+                entry.label = record.name;
+                entry.detail = record.path;
+                for (const std::string& label : record.labels) entry.searchText += label + " ";
+                entry.payload = record.path;
+                out->entries.push_back(std::move(entry));
+            }
+        }
+        auto addBuiltin = [&out](const SoundManifestClip& clip, const std::string& reference, const char* set) {
+            SearchEntry entry;
+            entry.kind = SearchKind::Sound;
+            entry.key = "sound:" + reference;
+            entry.label = clip.id;
+            entry.detail = clip.type + " \xC2\xB7 " + set + " \xC2\xB7 " + clip.licence;
+            entry.searchText = clip.type + " " + clip.description;
+            for (const std::string& tag : clip.tags) entry.searchText += " " + tag;
+            entry.payload = reference;
+            out->entries.push_back(std::move(entry));
+        };
+        for (const SoundManifestClip& clip : SoundEssentials::all()) addBuiltin(clip, SoundEssentials::PREFIX + clip.id, "Essentials");
+        for (const SoundManifestClip& clip : SoundLibrary::get().all()) addBuiltin(clip, SoundLibrary::PREFIX + clip.id, "Starter Library");
+    }
+
     out->recents = project->getOrganisation().recents();
     out->prepare();
     return out;
@@ -320,6 +360,30 @@ bool SearchPalette::run(const SearchEntry& entry, bool alternate, CommandSource 
             if (!app->getInspectorWindow()->addComponentToSelection(type, &why)) return fail(why);
             break;
         }
+        case SearchKind::Sound: {
+            if (BuiltinSoundImport::isReference(entry.payload)) {
+                std::vector<BuiltinSoundImport::Clip> clips;
+                std::string why;
+                if (!BuiltinSoundImport::resolve({entry.payload}, clips, why)) return fail(why);
+                const fs::path folder = project->getAssetsPath() / "sounds" / (clips[0].library ? "library" : "essentials");
+                BuiltinSoundImport::Plan plan;
+                if (!BuiltinSoundImport::plan(clips, folder, BuiltinSoundImport::Existing::RefuseDifferent, plan, why)) return fail(why);
+                std::vector<WriteFilesCmd::Item> items;
+                for (BuiltinSoundImport::File& file : plan.writes) items.push_back({file.path, std::move(file.content)});
+                if (!items.empty() && !ProjectFileWrites::writeUndoable(project, std::move(items), why)) return fail(why);
+                const fs::path written = folder / fs::path(clips[0].entry->id + ".ogg");
+                app->getProjectWindow()->revealAsset(written);
+                app->getProjectWindow()->pingAsset(project->normalizeToProjectRelative(written).generic_string());
+            } else {
+                const fs::path absolute = project->getProjectPath() / entry.payload;
+                std::error_code ec;
+                if (!fs::exists(absolute, ec)) return fail(entry.payload + " is gone.");
+                app->getProjectWindow()->revealAsset(absolute);
+                app->getProjectWindow()->pingAsset(entry.payload);
+                project->setInspectedAsset(absolute.lexically_normal());
+            }
+            break;
+        }
         case SearchKind::Asset: {
             const fs::path absolute = project->getProjectPath() / entry.payload;
             std::error_code ec;
@@ -342,9 +406,10 @@ bool SearchPalette::runKey(const std::string& key, bool alternate, std::string* 
     else if (kindName == "gameobject") kinds = {SearchKind::GameObject};
     else if (kindName == "component") kinds = {SearchKind::Component};
     else if (kindName == "asset") kinds = {SearchKind::Asset};
+    else if (kindName == "sound") kinds = {SearchKind::Sound, SearchKind::Asset};
     else if (kindName == "command") kinds = {SearchKind::Command};
     else {
-        if (error) *error = "A key starts with command:, panel:, setting:, gameobject:, component: or asset:.";
+        if (error) *error = "A key starts with command:, panel:, setting:, gameobject:, component:, asset: or sound:.";
         return false;
     }
     std::shared_ptr<SearchSnapshot> fresh = buildSnapshot(kinds);

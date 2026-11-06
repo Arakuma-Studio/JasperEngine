@@ -1,0 +1,43 @@
+{
+ "code": [],
+ "description": "Sets alpha channel for the input Image. When no alpha is provided, the alpha from the input image is used.",
+ "format": 1,
+ "functions": [],
+ "id": "set_alpha",
+ "inputs": [
+  {
+   "default": "vec4(0.0)",
+   "description": "Input image",
+   "label": "Input",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  },
+  {
+   "default": "$in(uv).a",
+   "label": "Alpha",
+   "name": "a",
+   "short_description": "Alpha",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Set Alpha",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Output image with alpha applied",
+   "expr": "vec4($in($uv).rgb, $a($uv))",
+   "label": "Output",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Set Alpha",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/set_alpha.mmg"
+ },
+ "type_version": 1
+}

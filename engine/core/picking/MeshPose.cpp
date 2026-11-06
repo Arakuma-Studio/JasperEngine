@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "MeshPose.h"
+#include "model/ModelCpuData.h"
 
 #include "component/MeshComponent.h"
 #include "jobs/JobSystem.h"
@@ -64,6 +65,7 @@ namespace {
     // the buffer and attribute a submesh draws `type` from: its own attribute, else the
     // render-attribute buffers' (the last in name order), as RenderSystem binds them
     AttributeSource findAttribute(const MeshComponent& mesh, const Submesh& submesh, AttributeType type){
+        ModelCpuData::ensure(mesh, "picking");
         AttributeSource found;
         auto byName = [&](const std::string& name) -> const Buffer* {
             if (name == "vertices") return mesh.buffer.getSize() > 0 ? &mesh.buffer : nullptr;

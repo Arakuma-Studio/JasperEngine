@@ -14,28 +14,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "component/RectTransformComponent.h"
-#include "component/LayoutGroupComponent.h"
-#include "component/SafeAreaComponent.h"
-#include "component/TextComponent.h"
-#include "component/TextEffectComponent.h"
-#include "component/ImageComponent.h"
-#include "component/UIComponent.h"
+#include "ecs/ComponentFwd.h"
 #include "util/STBText.h"
-#include "component/ButtonComponent.h"
-#include "component/PanelComponent.h"
-#include "component/ScrollbarComponent.h"
-#include "component/ProgressbarComponent.h"
-#include "component/PolygonComponent.h"
-#include "component/InputFieldComponent.h"
-#include "component/Transform.h"
-#include "component/CameraComponent.h"
-#include "component/OnScreenControlComponents.h"
 #include "PointerEventData.h"
 #include "Input.h"
 
-#include "component/CanvasGroupComponent.h"
-#include "component/PointsComponent.h"
 
 namespace jasperengine{
 

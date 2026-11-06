@@ -1,0 +1,36 @@
+{
+ "code": [],
+ "description": "A node that encodes Fill information from RGBA",
+ "format": 1,
+ "functions": [],
+ "id": "rgba_to_fill",
+ "inputs": [
+  {
+   "default": "vec4(0.0)",
+   "description": "The input fill data, to be connected to the output of a Fill node",
+   "label": "",
+   "name": "in",
+   "short_description": "Input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Fill from RGBA",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "The generated output image",
+   "expr": "$in($uv)",
+   "label": "Output",
+   "type": "fill"
+  }
+ ],
+ "parameters": [],
+ "short_description": "Fill from RGBA",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/rgba_to_fill.mmg"
+ },
+ "type_version": 1
+}

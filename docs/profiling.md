@@ -102,6 +102,21 @@ p95Ms, meanMs}]}`: each pass label's time summed per frame (a label used by seve
 four cascades of a shadow map, counts them together; `perFrame` says how many). Run it on an idle
 machine and compare medians.
 
+Every run also writes `renderCpuMs {median, p95, mean}` (the scenes' draw and the commit: the
+render submission) and `render {mainDrawCalls, shadowDrawCalls, depthDrawCalls, otherDrawCalls,
+mainTriangles, shadowTriangles, instancedDraws, batchedInstances, visible, culled, uniformBytes,
+uniformBytesKept, bufferUploadBytes, pipelinesApplied, bindingsApplied, aliveBuffers, aliveImages,
+alivePipelines}`, the game frame's counters averaged over the measured frames (with `--play`, the
+frame the Game view shows). `drawBatch {offered, instancedDraws, batchedInstances, splitPipeline, splitElements, splitBindings,
+splitUniforms}` is GPU Instancing in the last measured frame: the draws that could batch, and why one
+did not join the batch before it. `--gpu-instancing on|off` overrides the project's GPU Instancing for
+the run. The mesh benchmark gate (spec S55) runs both:
+
+```sh
+python3 tools/fixtures/mesh-bench/generate.py /tmp/mesh-bench
+python3 tools/perf/mesh_bench.py --editor <jasperengine-editor> --project /tmp/mesh-bench --json mesh-bench.json --check
+```
+
 ## GPU timing per backend
 
 | Backend | Queries | Semantics |

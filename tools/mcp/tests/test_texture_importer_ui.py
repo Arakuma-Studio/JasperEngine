@@ -120,6 +120,8 @@ async def test_importer_from_the_project_window(ed: Editor):
         skip("needs xdotool and the harness Xvfb")
     await ed.call("tool_groups", enable=["assets_pipeline", "editor_ux"])
     await ed.call("focus_window", window="project")
+    # A drawn tree may still be covered by the startup texture/shader progress modal.
+    await shot(ed, "0-project-ready")
     state = await wait_ui(ed, lambda s: s["project_window"]["drawn"] and tree_node(s, "assets"), "the tree shows assets")
     if not tree_node(state, "assets/textures"):
         x, y = tree_node(state, "assets")["arrow"]

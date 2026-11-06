@@ -4,6 +4,8 @@
 #ifndef ALPHATWEEN_COMPONENT_H
 #define ALPHATWEEN_COMPONENT_H
 
+#include "Export.h"
+
 namespace jasperengine{
 
     // What an AlphaTween writes on its target (ui canvas group spec decision 9)

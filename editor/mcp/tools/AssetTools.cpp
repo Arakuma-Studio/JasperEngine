@@ -3,6 +3,7 @@
 
 // W4: assets, import, materials, shaders, text files, placeholder art
 #include "asset/AssetOps.h"
+#include "io/watch/LinkedFolders.h"
 #include "asset/AssetTypes.h"
 #include "camera/ShakePreset.h"
 #include "camera/ShakeInstance.h"
@@ -13,7 +14,9 @@
 #include "DocumentFile.h"
 #include "util/ShaderGlobalsJson.h"
 #include "shader/ShaderGlobals.h"
+#include "SoundShared.h"
 #include "W4Shared.h"
+#include "audio/BuiltinSoundImport.h"
 #include "AnimationClipTools.h"
 #include "AnimatorTools.h"
 
@@ -62,6 +65,7 @@
 #include "util/Base64.h"
 #include "util/AssetDatabase.h"
 #include "util/FbxImporter.h"
+#include "model/ModelAudit.h"
 #include "util/FileUtils.h"
 #include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
@@ -494,36 +498,6 @@ Json modelInfo(const fs::path& file, std::string& error) {
     return nullptr;
 }
 
-Json wavInfo(const fs::path& file) {
-    std::ifstream in(file, std::ios::binary);
-    char header[12];
-    if (!in.read(header, 12) || std::strncmp(header, "RIFF", 4) != 0 || std::strncmp(header + 8, "WAVE", 4) != 0) return nullptr;
-    uint16_t channels = 0;
-    uint32_t sampleRate = 0, byteRate = 0, dataSize = 0;
-    char chunk[8];
-    while (in.read(chunk, 8)) {
-        uint32_t size = 0;
-        std::memcpy(&size, chunk + 4, 4);
-        if (std::strncmp(chunk, "fmt ", 4) == 0) {
-            std::vector<char> fmt(size);
-            in.read(fmt.data(), size);
-            if (size >= 12) {
-                std::memcpy(&channels, fmt.data() + 2, 2);
-                std::memcpy(&sampleRate, fmt.data() + 4, 4);
-                std::memcpy(&byteRate, fmt.data() + 8, 4);
-            }
-        } else if (std::strncmp(chunk, "data", 4) == 0) {
-            dataSize = size;
-            break;
-        } else {
-            in.seekg(size + (size & 1), std::ios::cur);
-        }
-    }
-    Json info = {{"channels", channels}, {"sample_rate", sampleRate}};
-    if (byteRate > 0) info["duration_seconds"] = std::round(static_cast<double>(dataSize) / byteRate * 1000.0) / 1000.0;
-    return info;
-}
-
 // ------------------------------------------------------------------ materials
 
 const std::vector<std::pair<const char*, Texture Material::*>>& materialTextures() {
@@ -808,7 +782,7 @@ void listAssetsTool(const CallPtr& call) {
         entries.push_back(item);
     };
     if (recursive) {
-        for (fs::recursive_directory_iterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec; it.increment(ec)) {
+        for (watch::LinkedDirectoryIterator it(root, fs::directory_options::skip_permission_denied, ec), end; it != end && !ec; it.increment(ec)) {
             if (it->is_directory(ec) && ProjectChecks::isSkippedDir(it->path())) {
                 it.disable_recursion_pending();
                 continue;
@@ -878,6 +852,13 @@ void getAssetInfoTool(const CallPtr& call) {
             data["sub_assets"] = subAssets;
         }
     }
+    if (Util::isSoundEventFile(rel)) {
+        data["sound_event"] = soundEventInfo(project, file);
+        const Json& problems = data["sound_event"]["problems"];
+        call->ok(text + ": " + data["sound_event"]["mode"].get<std::string>() + ", " + std::to_string(data["sound_event"]["clips"].size()) +
+                 " clip(s), " + std::to_string(problems.size()) + " problem(s).", data);
+        return;
+    }
     if (kind != "script" && kind != "shader" && kind != "material" && kind != "scene" && kind != "prefab" && kind != "other") {
         data["inside_assets_dir"] = project->isInsideAssetsPath(file);
         if (!project->isInsideAssetsPath(file)) {
@@ -936,6 +917,9 @@ void getAssetInfoTool(const CallPtr& call) {
         } else {
             info = modelInfo(file, error);
         }
+        // the model cook (S53 R23): required extensions, cooked sizes and status per platform
+        if (project->isInsideAssetsPath(file) && isModelSource(project->normalizeToAssetsRelative(file).generic_string()))
+            data["cook"] = ModelAudit::cookSummaryJson(*project, project->normalizeToAssetsRelative(file).generic_string());
         if (info.is_null()) data["error"] = error;
         else {
             data["model"] = info;
@@ -957,13 +941,30 @@ void getAssetInfoTool(const CallPtr& call) {
             }
         }
     } else if (kind == "audio") {
-        if (extensionOf(file) == ".wav") {
-            Json info = wavInfo(file);
-            if (!info.is_null()) {
-                data["audio"] = info;
-                if (info.contains("duration_seconds")) text += ", " + std::to_string(info["duration_seconds"].get<double>()) + " s";
+        // any audio format: its format and an analysis summary, measured off the main thread
+        assetInfoAudio(call, file, rel, [call, file, text, data](const Json& audio, const std::string& error) mutable {
+            if (audio.is_null()) {
+                data["audio_error"] = error;
+                text += " (" + error + ")";
+            } else {
+                data["audio"] = audio;
+                char line[160];
+                std::snprintf(line, sizeof(line), ", %s %s, %d ch, %d Hz, %.3f s", audio["codec"].get<std::string>().c_str(),
+                              audio["encoding"].get<std::string>().c_str(), audio["channels"].get<int>(), audio["sample_rate"].get<int>(),
+                              audio["duration_seconds"].get<double>());
+                text += line;
+                const Json& momentary = audio["analysis"]["momentary_max"];
+                if (momentary.is_number()) {
+                    std::snprintf(line, sizeof(line), ", %.1f LUFS-M", momentary.get<double>());
+                    text += line;
+                }
             }
-        }
+            if (CodeEditor* editor = call->ctx().codeEditor()) {
+                if (editor->isFileOpen(file.string())) data["open_in_code_editor"] = {{"unsaved", editor->isFileModified(file.string())}};
+            }
+            call->ok(text + ".", data);
+        });
+        return;
     } else if (kind == "video") {
         // the probe (header boxes only) and where it plays (video-mp4 spec 6.10)
         const VideoProbe probe = VideoFormats::probeFile(file.string());
@@ -1989,7 +1990,7 @@ bool importLocalFiles(const CallPtr& call, const std::vector<std::string>& local
     };
     for (const fs::path& path : changed) {
         if (fs::is_directory(path, ec)) {
-            for (fs::recursive_directory_iterator it(path, fs::directory_options::skip_permission_denied, ec), end;
+            for (watch::LinkedDirectoryIterator it(path, fs::directory_options::skip_permission_denied, ec), end;
                  !ec && it != end; it.increment(ec)) {
                 if (it->is_regular_file(ec)) importFbx(it->path());
             }
@@ -2182,6 +2183,29 @@ void importFilesTool(const CallPtr& call) {
     const bool fromDocument = args.contains("from_document") && !args["from_document"].is_null();
     if (sources.empty() && fonts.empty() && icons.empty() && !fromDocument) {
         call->fail("pass sources, fonts, icons or from_document.");
+        return;
+    }
+    // built-in sounds (essentials:<id>, library:<id>): their own plan, one undo step
+    std::vector<std::string> builtin;
+    for (const std::string& source : sources) {
+        if (BuiltinSoundImport::isReference(source)) builtin.push_back(source);
+    }
+    if (!builtin.empty()) {
+        if (builtin.size() != sources.size() || !fonts.empty() || !icons.empty() || fromDocument) {
+            call->fail("import built-in sounds (essentials:, library:) in a call of their own.");
+            return;
+        }
+        fs::path target;
+        if (!args.contains("to_dir") || args["to_dir"].is_null()) {
+            call->fail("to_dir is required with built-in sounds (a project folder, e.g. \"assets/sounds\").");
+            return;
+        }
+        if (!resolveExisting(call, "to_dir", target, false, PathFor::Write)) return;
+        if (!project->isInsideAssetsPath(target.lexically_normal())) {
+            call->fail("to_dir must be inside the assets folder: only an asset has a .meta.");
+            return;
+        }
+        importBuiltinSounds(call, builtin, target.lexically_normal(), args.value("overwrite", false));
         return;
     }
     std::vector<std::string> local, urls;
@@ -3796,7 +3820,7 @@ void registerAssetTools(McpRegistry& registry) {
         tool.description =
             "One project file's details by type: image size/channels (synthesized PNG: its recipe, changed sources, "
             "regenerate arguments); model meshes, materials, animations, nodes (an FBX: of its glTF conversion, fbx_import.state); "
-            "WAV format/duration; .material fields, "
+            "audio format/duration; .material fields, "
             ".anim clip settings, tracks, events, users; .vat clips, staleness, users; "
             "linked submeshes; shader includes, forks using it; Lua syntax; scene status; unsaved code editor edits.";
         tool.inputSchema = object({{"path", assetPath("")}}, {"path"});

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "Tween.h"
+#include "component/ActionComponent.h"
+#include "component/TweenComponent.h"
 
 using namespace jasperengine;
 
