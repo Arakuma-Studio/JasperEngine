@@ -32,14 +32,17 @@ bool editor::PlayInput::forward(uint32_t sceneId, ImVec2 canvasMin, ImVec2 scale
     const int mods = currentMods();
     const ImVec2 mouseDelta = io.MouseDelta;
 
+    // ImGui's keyboard navigation takes Escape as "leave the child window" before the Game view
+    // draws: the frame of that press the view has just lost the focus it had the frame before
+    const bool hadFocus = focused || gameViewFocusFrame == ImGui::GetFrameCount() - 1;
     gameViewFocusFrame = focused ? ImGui::GetFrameCount() : gameViewFocusFrame;
     // A game holding the cursor gives it back on Escape (Unity), the key still reaching the
-    // game below; a click on the game image takes it again
+    // game; a click on the game image takes it again
     const MouseMode mouseMode = Engine::getMouseMode();
     const bool holdsCursor = mouseMode == MouseMode::CAPTURED || mouseMode == MouseMode::CONFINED;
     if (!holdsCursor) {
         cursorReleased = false;
-    } else if (focused && !cursorReleased && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+    } else if (hadFocus && !cursorReleased && ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
         releaseCursor();
     } else if (cursorReleased && hovered && focused && ImGui::IsAnyMouseDown()) {
         cursorReleased = false;

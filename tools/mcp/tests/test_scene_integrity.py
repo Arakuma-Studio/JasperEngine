@@ -41,29 +41,35 @@ async def scenes_by_name(ed: Editor) -> dict:
 
 
 async def test_copied_scene_gets_its_own_id_and_name(ed: Editor):
-    level = (await ed.call("create_scene", name="Level", type="3D", path="scenes/Level"))["scene"]["id"]
-    original = (ed.project / "scenes" / "Level.scene").read_text()
+    """A copied .scene kept its original's scene id and name: the loader renumbered one of them at
+    random on every load. Agents copy scene files inside a copied folder (a .scene itself is the
+    scene tools' to write)."""
+    level = (await ed.call("create_scene", name="Level", type="3D", path="pack/Level"))["scene"]["id"]
+    await ed.call("create_scene", name="Hud", type="UI", path="pack/Hud")
+    original = (ed.project / "pack" / "Level.scene").read_text()
 
-    copied = await ed.call("move_asset", path="scenes/Level.scene", to="scenes/Level Copy.scene", copy=True)
-    copy_file = ed.project / "scenes" / "Level Copy.scene"
-    text = copy_file.read_text()
+    copied = await ed.call("move_asset", path="pack", to="pack2", copy=True)
+    text = (ed.project / "pack2" / "Level.scene").read_text()
     copy_id = int(root_value(text, "id"))
     ed.check(copy_id != level, f"the copy has its own scene id: {copy_id} vs {level}")
-    ed.check_eq(root_value(text, "name"), "Level Copy", "the name followed the file")
-    ed.check_eq(copied["copied_scenes"], [{"path": "scenes/Level Copy.scene", "scene_id": copy_id, "name": "Level Copy"}])
+    ed.check_eq(root_value(text, "name"), "Level 1", "a unique name, after its file's")
     ed.check_eq(root_value(original, "id"), str(level), "the original keeps its id")
+    reported = {c["path"]: c for c in copied.get("copied_scenes", [])}
+    ed.check_eq(reported.get("pack2/Level.scene", {}).get("scene_id"), copy_id, f"reported: {copied}")
+    hud_ids = {root_value((ed.project / p / "Hud.scene").read_text(), "id") for p in ("pack", "pack2")}
+    ed.check_eq(len(hud_ids), 2, f"each copied scene gets its own id: {hud_ids}")
+
+    # undo removes the copy, redo makes it again with the same identity
+    await ed.call("undo", scope="project")
+    ed.check(not (ed.project / "pack2").exists(), "undone")
+    await ed.call("redo", scope="project")
+    ed.check_eq(int(root_value((ed.project / "pack2" / "Level.scene").read_text(), "id")), copy_id, "redo: the same id")
 
     # the copy opens as a scene of its own, beside the original
-    opened = await ed.call("open_scene", scene="scenes/Level Copy.scene")
+    opened = await ed.call("open_scene", scene="pack2/Level.scene")
     ed.check_eq(opened["scene"]["id"], copy_id)
     listed = await scenes_by_name(ed)
-    ed.check(listed["Level"]["id"] != listed["Level Copy"]["id"], f"two ids: {listed}")
-
-    # a copy of a folder: each scene in it gets a new id
-    await ed.call("create_scene", name="Hud", type="UI", path="pack/Hud")
-    await ed.call("move_asset", path="pack", to="pack2", copy=True)
-    hud_ids = {root_value((ed.project / p / "Hud.scene").read_text(), "id") for p in ("pack", "pack2")}
-    ed.check_eq(len(hud_ids), 2, f"the folder copy's scene has its own id: {hud_ids}")
+    ed.check(listed["Level"]["id"] != listed["Level 1"]["id"], f"two ids: {listed}")
 
 
 async def test_child_scenes_are_edited_on_open_scenes(ed: Editor):
@@ -96,13 +102,11 @@ async def test_move_entity_next_to_a_skybox_is_refused(ed: Editor):
     sky = (await ed.call("create_entity", scene=scene, type="skybox", name="Sky"))["entity_id"]
     await ed.call("create_entity", scene=scene, type="cube", name="First")
     cube = (await ed.call("create_entity", scene=scene, type="cube", name="Box"))["entity_id"]
-    await ed.call("save_scene", scene=scene)
-    before = (ed.project / "scenes" / "Sky.scene").read_text()
+    before = await ed.call("get_scene_tree", scene=scene)
 
     await ed.check_error("move_entity", scene=scene, entity=cube, after=sky, contains="parent")
     await ed.check_error("move_entity", scene=scene, entity=cube, before=sky, contains="Transform")
-    await ed.call("save_scene", scene=scene)
-    ed.check_eq((ed.project / "scenes" / "Sky.scene").read_text(), before, "nothing moved")
+    ed.check_eq(await ed.call("get_scene_tree", scene=scene), before, "nothing moved")
 
     # among the GameObjects with a Transform, by index
     await ed.call("move_entity", scene=scene, entity=cube, parent=None, index=0)
@@ -182,8 +186,8 @@ async def test_scene_view_follows_the_scene_the_game_loads(ed: Editor):
         await ed.call("wait", frames=2)
         got = await ed.call("pick_at", scene=menu, u=0.5, v=0.5)
         hit = got.get("would_select") or {}
-        ed.check_eq(hit.get("scene"), shown, f"picked in the loaded scene: {got}")
-        names = [h.get("name") for h in got.get("hits", [])]
+        ed.check_eq(hit.get("scene_id"), shown, f"picked in the loaded scene: {got}")
+        names = [h.get("path") for h in got.get("hits", [])]
         ed.check("Pillar" in names, f"the pillar is under the view's centre: {got}")
     finally:
         await ed.call("play", action="stop")

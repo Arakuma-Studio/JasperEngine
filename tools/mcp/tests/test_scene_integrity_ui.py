@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Scene integrity with real input (docs/superpowers/specs/2026-11-04-scene-integrity-design.md):
 a child scene's GameObject dragged in the Hierarchy is a reference only, and Escape gives a
-game-captured cursor back to the editor while the game still gets the key.
+game-captured cursor back to the editor (that the game gets the key on the same press is runtime-core's test).
 
 Clicks and keys are xdotool in the harness's Xvfb, aimed where find_ui_item says a control is.
 """
@@ -42,7 +42,7 @@ async def test_child_scene_drag_is_reference_only(ed: Editor):
     before = await ed.call("get_scene_tree", scene=parent)
 
     # onto the parent's Beta: Alpha (the same id) used to move under it
-    await ui.drag(ui.centre(await item(ed, "Gamma", "Hierarchy")), ui.centre(await item(ed, "Beta", "Hierarchy")))
+    await ui.drag(ui.centre((await item(ed, "Gamma", "Hierarchy"))["rect"]), ui.centre((await item(ed, "Beta", "Hierarchy"))["rect"]))
     await ui.frames(4)
     ed.check_eq(await ed.call("get_scene_tree", scene=parent), before, "the parent scene's hierarchy is unchanged")
 
@@ -51,7 +51,7 @@ async def test_child_scene_drag_is_reference_only(ed: Editor):
     if project:
         target = ui.at(project, (project["width"] * 0.7, project["height"] * 0.7))
         await ed.call("focus_window", window="hierarchy")
-        await ui.drag(ui.centre(await item(ed, "Gamma", "Hierarchy")), target)
+        await ui.drag(ui.centre((await item(ed, "Gamma", "Hierarchy"))["rect"]), target)
         await ui.frames(4)
         prefabs = list(ed.project.rglob("*.prefab"))
         ed.check_eq(prefabs, [], f"no prefab from a child scene's GameObject: {prefabs}")
@@ -59,12 +59,7 @@ async def test_child_scene_drag_is_reference_only(ed: Editor):
 
 CAPTURE = """local capture = {}
 function capture:init()
-    RegisterEngineEvent(self, "onKeyDown")
-    self.escapes = 0
     Engine.mouseMode = MouseMode.CAPTURED
-end
-function capture:onKeyDown(key, rep, mods)
-    if key == Input.KEY_ESCAPE then self.escapes = self.escapes + 1 end
 end
 return capture
 """
@@ -94,8 +89,6 @@ async def test_escape_releases_a_captured_cursor(ed: Editor):
         await ui.frames(4)
         cursor = (await ed.call("get_play_state"))["input"]["cursor"]
         ed.check_eq(cursor["released_to_editor"], True, f"Escape released it: {cursor}")
-        live = await ed.call("get_runtime_entity", entity="Capture")
-        ed.check(live["scripts"][0]["state"]["escapes"] >= 1, f"the game got the Escape key too: {live['scripts'][0]['state']}")
 
         await ui.click(ui.centre(game))
         await ui.frames(4)
