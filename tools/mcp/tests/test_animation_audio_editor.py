@@ -236,6 +236,9 @@ async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
         if aligned[index]["start_time"] != after[index]["start_time"]:
             break
     await keep_shot(ed, "entity-audio-aligned")
+    if aligned[index]["start_time"] == after[index]["start_time"]:
+        command = await ed.call_raw("run_command", {"id": "animation.alignCuePeak"})
+        ed.fail(f"Shift+A moved nothing; the command itself: {command.text[:600]}")
     # (the ruler click snaps to the frame grid: within a frame of 1.0 s)
     ed.check(abs(aligned[index]["start_time"] - 0.8) < 0.035,
              f"the tick's peak on the playhead at 1.0 s: {aligned[index]}; all: {[(a['index'], a['start_time']) for a in aligned]}; "
