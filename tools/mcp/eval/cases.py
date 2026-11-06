@@ -59,6 +59,23 @@ def err(text):
     return {"text": text, "is_error": True}
 
 
+RENAME_DIALOG = {"kind": "modal", "title": "Rename File", "message": "Rename 'RenameMe.lua' to:", "choices": ["ok", "cancel"],
+                 "fields": [{"name": "name", "type": "text", "value": "RenameMe.lua"}]}
+
+BOX_DIALOG = {"kind": "modal", "title": "File Already Exists", "message": "A file with this name already exists.", "choices": ["ok"]}
+
+RENAME_STATUS = {"text": "Project \"Space Dodge\". Open dialog: \"Rename File\".", "real": True,
+                 "structured": {"project": {"name": "Space Dodge"}, "playing": False, "dialog": RENAME_DIALOG}}
+
+DIALOG_ANSWERED = {"text": "Answered the dialog.", "real": True, "structured": {"answered": {"title": "Rename File", "choice": "ok"}}}
+
+FILE_PICKER_DIALOG = {"kind": "file_picker", "title": "Open Files", "choices": ["ok", "cancel"],
+                      "message": "The editor waits for the files to open. Several: values.paths.",
+                      "fields": [{"name": "path", "type": "path", "value": ""}]}
+
+FILE_PICKER_OPEN = {"text": "The editor is showing the dialog \"Open Files\".", "real": True, "structured": {"dialog": FILE_PICKER_DIALOG}}
+
+
 CASES = [
     # -- controls: ordinary work where a trigger word must not pull in the editor tools --------
     {
@@ -167,6 +184,42 @@ CASES = [
                    "must_not_call": [{"tool": "open_scene", "args": {"close_previous": True}}],
                    "reply_must": [r"Gun"], "max_calls": {"open_scene": 1}},
         "max_turns": 12,
+    },
+    {
+        "id": "guard_linked_folder_rules",
+        "kind": "guard",
+        "what_happened": "A folder linked in from out of the project is a folder of the project for the asset database and exports, "
+                         "with its metas beside its files, but the write tools stay refused there: an agent asked answers that from the "
+                         "asset guide, and neither promises a write nor tells the user to copy the folder in to ship it.",
+        "text_at_issue": "docs/mcp/guide/assets.md, 'Linked folders and files'",
+        "source": "docs/specs/S68-linked-folders.md R1, R7, Deviation D1",
+        "prompt": "I symlinked my shared art library into assets/shared; it lives outside the project. Going by the editor's asset "
+                  "guide: where do the .meta files of those assets go, do the files ship in an exported game, and can your write_file "
+                  "tool add a new file there? Answer in a few lines, change nothing.",
+        "checks": {"must_not_call": ["write_file", "create_folder", "move_asset"],
+                   "reply_must": [r"beside|next to|alongside|same folder", r"ship|included|exported", r"refus"],
+                   "reply_must_not": [r"(copy|move) (it|them|the (folder|files|library)) into the project (first|to ship|so (it|they) ship)",
+                                      r"(guide|docs?) (says nothing|doesn.?t)|isn.?t stated|doesn.?t say|inference|probably|haven.?t (tested|confirmed)"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_read_only_linked",
+        "kind": "guard",
+        "what_happened": "A folder linked in from a read-only drive: its assets work with GUIDs the editor keeps, nothing is missing. "
+                         "The result says so, and the agent reports it rather than taking it for a failure or changing permissions.",
+        "text_at_issue": "list_missing_assets result: read_only_linked and its line",
+        "source": "docs/specs/S68-linked-folders.md R7",
+        "prompt": "Run the editor's missing assets check and tell me what it says about this project. Change nothing.",
+        "groups_enabled": ["assets_pipeline"],
+        "mocks": [
+            {"tool": "list_missing_assets", "result": ok(
+                "0 missing asset(s), 0 resolved by path, 0 orphan meta(s).\n1 asset(s) in a read-only linked folder "
+                "(they work; their GUIDs are not saved beside them):\nassets/lib/locked/tile.png",
+                {"missing": [], "resolved_by_path": [], "orphan_metas": [], "read_only_linked": ["assets/lib/locked/tile.png"]})},
+        ],
+        "checks": {"calls": ["list_missing_assets"], "reply_must": [r"read-only", r"tile\.png"],
+                   "must_not_call": ["write_file", "delete_asset", "move_asset"], "shell_must_not": [r"chmod"]},
+        "max_turns": 8,
     },
     {
         "id": "guard_curve_keys_rebind",
@@ -316,6 +369,74 @@ CASES = [
         "checks": {"any_of": [{"calls": ["get_frame_times"]}, {"calls": ["capture_profile"]}],
                    "reply_must": [r"412|draw"], "shell_must_not": [r"/proc|stderr|FRAME_STATS"]},
         "max_turns": 24,
+    },
+    {
+        "id": "guard_meshes_dry_run",
+        "kind": "guard",
+        "what_happened": "Asked to shrink a game's models for mobile, an agent must find the meshes group, measure the models, "
+                         "try lossy compression as a dry run before writing it, and apply it with set_model_import_settings "
+                         "instead of editing .meta files or re-exporting the sources (S53: new tools and text).",
+        "text_at_issue": "Guide 'Other areas' meshes (inspect_models, check_render_budgets); inspect_models' dry run (settings); "
+                         "set_model_import_settings' 'Dry run first'",
+        "source": "synthetic guard (S53 R22, R24)",
+        "files": GAME_FILES,
+        "prompt": "The mobile build downloads too much. Make the 3D models smaller for mobile without changing how they look "
+                  "much, and tell me how much it saves. Check before you change anything.",
+        "mocks": [
+            {"tool": "inspect_models", "args": {"settings": "re:."}, "result": ok(
+                "Dry run (nothing written; the numbers are the real cook's):\nassets/models/rock.glb: 41,204 tris, memory 3.2 MB -> 1.3 MB, "
+                "download 4.1 MB -> 0.6 MB, 3 LODs, change: Up to 0.02% of the model's size",
+                {"dry_run": True, "written": False, "models": [{"path": "assets/models/rock.glb", "platform": "mobile",
+                 "predicted": {"source_bytes": 4300000, "download_bytes": 630000, "visual_change": "Up to 0.02% of the model's size"}}]})},
+            {"tool": "inspect_models", "result": ok(
+                "2 model(s), all models, mobile: 52,000 tris, memory 4.0 MB, download 5.2 MB, 2 cooked, 0 error(s), 0 warning(s).\n"
+                "assets/models/rock.glb: 41,204 tris, 3.2 MB, 4.1 MB download, 3 LODs, cooked; rock.glb downloads 4.1 MB: Mesh "
+                "Compression Medium stores it in fewer bits (dry run with inspect_models settings first)",
+                {"platform": "mobile", "total": 2, "models": [{"path": "assets/models/rock.glb", "download_bytes": 4300000, "issues": [
+                    {"code": "mesh-download-large", "severity": "info", "message": "rock.glb downloads 4.1 MB",
+                     "fix": {"tool": "set_model_import_settings", "arguments": {"paths": ["assets/models/rock.glb"], "settings": {"mesh_compression": "medium"}}}}]},
+                    {"path": "assets/models/tree.glb", "download_bytes": 900000, "issues": []}]})},
+            {"tool": "set_model_import_settings", "result": ok(
+                "Updated 1 model(s) (0 unchanged); cooked, 0 failed. Undo with scope project.",
+                {"updated": ["assets/models/rock.glb"], "unchanged": 0, "models": [{"path": "assets/models/rock.glb", "download_bytes": 630000}]})},
+            {"tool": "reimport_models", "result": ok("Reimported 2 model(s).", {"models": []})},
+        ],
+        "checks": {"calls": ["inspect_models", "set_model_import_settings"],
+                   "order": [[{"tool": "inspect_models", "args": {"settings": "re:."}}, "set_model_import_settings"]],
+                   "must_not_call": ["write_file"], "shell_must_not": [r"\.meta", r"gltfpack"],
+                   "reply_must": [r"MB|%"]},
+        "max_turns": 24,
+    },
+    {
+        "id": "guard_meshes_load_error",
+        "kind": "guard",
+        "what_happened": "An export fails because a model requires a glTF extension the engine cannot read. The agent must read "
+                         "the model's load findings, tell the user to export the model again without that extension, and not "
+                         "try import settings or edit the .meta / the file (S53 R5: the loader's findings in inspect_models).",
+        "text_at_issue": "Guide meshes 'What the loader finds' (gltf-required-extension: status failed, exports stop until the model is "
+                         "exported again without it); inspect_models' load_diagnostics",
+        "source": "synthetic guard (S53 R5, R22)",
+        "files": GAME_FILES,
+        "prompt": "The export fails with something about assets/models/crate.glb. Find out why and tell me what to do; don't "
+                  "change anything yet.",
+        "mocks": [
+            {"tool": "inspect_models", "result": ok(
+                "1 model(s), desktop: 1,200 tris, memory 0.1 MB, download 0.1 MB, 0 cooked, 1 error(s), 0 warning(s).\n"
+                "assets/models/crate.glb: glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; "
+                "it is loaded without it (export the model again without VENDOR_shapes); it does not cook, and exports fail, until it is fixed",
+                {"platform": "desktop", "total": 1, "models": [{"path": "assets/models/crate.glb", "status": "failed", "issues": [
+                    {"code": "gltf-required-extension", "severity": "error",
+                     "message": "glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; it is loaded "
+                                "without it (export the model again without VENDOR_shapes); it does not cook, and exports fail, until it is fixed"}],
+                    "load_diagnostics": [{"severity": "error", "extension": "VENDOR_shapes", "part": "",
+                                          "message": "glTF assets/models/crate.glb requires VENDOR_shapes, which the engine does not read; it is loaded without it",
+                                          "fix": "export the model again without VENDOR_shapes", "cook_fixes": False}]}]})},
+            {"tool": "reimport_models", "result": ok("Reimported 1 model(s).", {"models": []})},
+        ],
+        "checks": {"calls": ["inspect_models"],
+                   "must_not_call": ["set_model_import_settings", "write_file"], "shell_must_not": [r"\.meta", r"gltfpack"],
+                   "reply_must": [r"VENDOR_shapes", r"(?i)export|re-?export"]},
+        "max_turns": 16,
     },
     {
         "id": "bad_game_view_resolution",
@@ -577,6 +698,53 @@ CASES = [
         "max_turns": 8,
     },
 
+    {
+        "id": "bad_lod_levels_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked how a model's detail levels look and where they switch, agents placed copies of the model at "
+                         "distances, moved the camera and screenshotted each, guessing which level drew; capture_model_lods "
+                         "(meshes group) draws every level side by side with its triangles, error and switch height.",
+        "text_at_issue": "capture_model_lods: 'Contact sheet of a mesh's detail levels ... the screen height it switches "
+                         "below'; tool groups line 'meshes: ... detail levels (LOD) and their captures'",
+        "source": "S54 R14 (docs/forge-meshopt-analysis/jasper-ux-agents.md, LOD verification walkthrough)",
+        "prompt": "Before we ship to phones: show me what the detail levels of models/rock.glb look like, and at what size on "
+                  "screen each one kicks in. Don't change the scene.",
+        "mocks": [
+            {"tool": "capture_model_lods", "args": {"path": "re:rock\\.glb"}, "result": ok(
+                "models/rock.glb: 4 level(s) (built as the runtime would). LOD 0: 4800 tris; LOD 1: 2400 tris, error 0.0031, "
+                "below 645 px, PSNR 38.2 dB; LOD 2: 1200 tris, error 0.0074, below 270 px, PSNR 33.0 dB; LOD 3: 600 tris, "
+                "error 0.0160, below 125 px, PSNR 28.4 dB;",
+                {"path": "models/rock.glb", "source": "built", "levels": [
+                    {"level": 0, "triangles": 4800, "error": 0.0, "switches_below_px": None, "psnr_db": None},
+                    {"level": 1, "triangles": 2400, "error": 0.0031, "switches_below_px": 645, "psnr_db": 38.2},
+                    {"level": 2, "triangles": 1200, "error": 0.0074, "switches_below_px": 270, "psnr_db": 33.0},
+                    {"level": 3, "triangles": 600, "error": 0.016, "switches_below_px": 125, "psnr_db": 28.4}]})},
+        ],
+        "checks": {"calls": [{"tool": "capture_model_lods", "args": {"path": "re:rock\\.glb"}}],
+                   "must_not_call": ["create_entity", "instantiate_prefab", "set_scene_camera"], "reply_must": [r"645|270|125"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_lod_tint_by_hand",
+        "kind": "bad",
+        "what_happened": "Asked which objects draw which detail level, agents changed materials to colour objects by "
+                         "their level and later had to put the materials back; the Scene view's LOD Level Draw Mode "
+                         "tints every mesh by the level it draws, editor only.",
+        "text_at_issue": "set_scene_camera display: '... draw_mode: \"lod_level\"'; meshes guide 'See the levels in "
+                         "the Scene view'",
+        "source": "S54 R11 (docs/forge-meshopt-analysis/jasper-ux-human.md 6.3)",
+        "prompt": "In the Main scene, show me which objects are drawing which LOD level right now. Don't change any "
+                  "object or material.",
+        "mocks": [
+            {"tool": "set_scene_camera", "args": {}, "result": ok(
+                "Scene view camera of \"Main\": {}.", {"display": {"draw_mode": "lod_level", "show_stats": True}})},
+            {"tool": "screenshot", "args": {}, "result": ok("Scene view, 1280x720.", {"view": "scene"})},
+        ],
+        "checks": {"calls": [{"tool": "set_scene_camera", "args": {"display": {"draw_mode": "lod_level"}}}],
+                   "must_not_call": ["set_properties", "set_material", "create_material"], "reply_must": [r"(?i)lod|level"]},
+        "max_turns": 10,
+    },
+
     # -- guards: good behaviour seen in the sessions ---------------------------------------------
     {
         "id": "guard_play_and_look",
@@ -681,6 +849,59 @@ CASES = [
         "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"player.product_name": "Space Dodge"}}}],
                    "max_calls": {"set_project_settings": 2}, "edits_must_not": [r"project\.yaml$"]},
         "max_turns": 8,
+    },
+    {
+        "id": "guard_capsule_shadows",
+        "kind": "guard",
+        "what_happened": "S57 adds capsule shadows: a Capsule Shadow Caster (Cast Shadows: Capsules Only) plus the scene's "
+                         "capsule_shadows_enabled. Without the scene setting the caster draws nothing, and an agent that only "
+                         "turns the mesh's Cast Shadows off loses the character's shadow.",
+        "text_at_issue": "set_scene_settings names (capsule_shadows_enabled: 'soft shadows of the main directional light from "
+                         "the capsules of the 4 Capsule Shadow Casters nearest the camera ...'); jasper://docs/lighting",
+        "source": "docs/specs/S57-forge-lighting.md R2",
+        "prompt": "The Crate stands in for our walking character. Give it soft capsule shadows instead of shadow-map shadows, "
+                  "so moving it never redraws the cached shadow map.",
+        "mocks": [
+            {"tool": "add_component", "args": {"component": "re:(?i)capsule"}, "result": ok(
+                "Added capsuleshadowcaster to GameObject 15 \"Crate\".", {"entity": {"id": 15}})},
+            {"tool": "set_properties", "result": ok("Set 1 property of GameObject 15 \"Crate\".", {"entity": {"id": 15}})},
+            {"tool": "get_scene_settings", "after": "set_scene_settings", "result": ok(
+                "Scene 1 \"Main\" settings:\ncapsule_shadows_enabled = true\ncapsule_shadow_intensity = 1\n"
+                "capsule_shadow_softness = 0.25",
+                {"scene_id": 1, "settings": {"capsule_shadows_enabled": True, "capsule_shadow_intensity": 1.0,
+                                             "capsule_shadow_softness": 0.25}})},
+            {"tool": "get_scene_settings", "result": {"recorded": "get_scene_settings"}},
+            {"tool": "set_scene_settings", "args": {"settings": "*"}, "result": ok(
+                "Set 1 scene setting(s) (one undo step).", {"scene_id": 1, "changed": ["capsule_shadows_enabled"]})},
+            {"tool": "save_scene", "result": ok("Saved scene 1 \"Main\" (scenes/Main.scene).", {"scene": {"id": 1}})},
+        ],
+        "checks": {"calls": [{"tool": "add_component", "args": {"entity": "re:Crate|^15$", "component": "re:(?i)capsule"}},
+                             {"tool": "set_scene_settings", "args": {"settings": {"capsule_shadows_enabled": True}}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "guard_light_mode_setting",
+        "kind": "guard",
+        "what_happened": "S57 adds the project setting graphics.light_mode (Automatic, Per Object, Tiled). Raising Max "
+                         "Lights Per Object is the old answer to 'my many lamps are missing', and costs every object.",
+        "text_at_issue": "graphics.light_mode description: 'How lit meshes find their point and spot lights. Tiled lights "
+                         "every point and spot light per pixel from screen tiles (Forward+, up to 32 a tile ...)'",
+        "source": "docs/specs/S57-forge-lighting.md R1",
+        "prompt": "Our night market has about 60 small point lights; set the project to light them per pixel from screen "
+                  "tiles (Forward+) on every platform.",
+        "mocks": [
+            {"tool": "get_project_settings", "after": "set_project_settings", "result": ok(
+                "graphics.light_mode: tiled", {"graphics.light_mode": "tiled"})},
+            {"tool": "get_project_settings", "result": ok(
+                "graphics.light_mode: automatic (automatic, per_object, tiled: how lit meshes find their point and spot "
+                "lights; Automatic is Tiled on Medium tiers and above)", {"graphics.light_mode": "automatic"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["graphics.light_mode"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings", "args": {"values": {"graphics.light_mode": "tiled"}}}],
+                   "must_not_call": [{"tool": "set_scene_settings", "args": {"settings": {"max_lights_per_object": "*"}}}],
+                   "edits_must_not": [r"project\.yaml$"], "shell_must_not": [YAML_WRITE]},
+        "max_turns": 10,
     },
     {
         "id": "guard_physics_body",
@@ -822,6 +1043,59 @@ CASES = [
         "max_turns": 16,
     },
     {
+        "id": "bad_shader_list_incomplete",
+        "kind": "bad",
+        "what_happened": "get_build_info hands the closed scenes it has no time for to a job and answers with the list so far "
+                         "(63 of 71 in the test that found the gap); reporting that count ships a build plan that misses shaders.",
+        "text_at_issue": "get_build_info result: shaders_complete, shaders_pending_scenes, shaders_job_id",
+        "source": "docs/specs/S64-shader-lists.md R3",
+        "prompt": "How many shader variants will a build of this project ship? I need the exact number.",
+        "mocks": [
+            {"tool": "get_build_info", "after": "get_job", "result": dict(ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 71 "
+                "shader(s).", {"shader_count": 71, "shaders_complete": True, "shaders_unreadable_scenes": []}), real=True)},
+            {"tool": "get_build_info", "result": dict(ok(
+                "Host linux. Desktop player: available; Web: no emsdk; source export: available. 3 scene(s) in the build, 63 "
+                "shader(s). The shader list is incomplete, 2 closed scene(s) left: get_job job-7 until it ends, then get_build_info again.",
+                {"shader_count": 63, "shaders_complete": False, "shaders_pending_scenes": ["Hud", "Level2"],
+                 "shaders_job_id": "job-7"}), real=True)},
+            {"tool": "get_job", "result": ok(
+                "Read the closed scenes' shaders: succeeded - The shader list is complete: get_build_info answers now.",
+                {"id": "job-7", "status": "succeeded", "result": {"unreadable_scenes": []}})},
+        ],
+        "checks": {"calls": [{"tool": "get_job", "args": {"job_id": "job-7"}}], "last_call": "get_build_info",
+                   "reply_must": [r"\b71\b"], "must_not_call": ["generate_shaders", "build_project"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_record_failed_write",
+        "kind": "guard",
+        "what_happened": "A record_game whose write failed leaves Play running and nothing at the output path: the agent stops "
+                         "Play, says what failed and what was kept, and does not record again before the cause is fixed.",
+        "text_at_issue": "record_game's failed result, its text: 'The output path holds nothing and Play is still running: stop it "
+                         "(play action stop), fix the cause, then record again.'",
+        "source": "docs/specs/S62-recorder-integrity.md R1, R2; no failure on record",
+        "groups_enabled": ["editor_tools"],
+        "prompt": "Record 5 seconds of the game with sound to captures/trailer.mp4.",
+        "mocks": [
+            {"tool": "record_game", "result": {
+                "text": "The recording failed: the audio write failed: disk full, 3 MB free; 41 frames were kept as "
+                        "captures/trailer.partial.mp4 (no audio). The output path holds nothing and Play is still running: stop it "
+                        "(play action stop), fix the cause, then record again.",
+                "is_error": True,
+                "real": True,
+                "structured": {"frames": 41, "fps": 30, "failed_step": "audio", "partial": "captures/trailer.partial.mp4", "partial_frames": 41,
+                               "error": "the audio write failed: disk full, 3 MB free; 41 frames were kept as captures/trailer.partial.mp4 (no audio)"}}},
+            {"tool": "play", "args": {"action": "stop"}, "result": ok("Play stopped.", {"state": "stopped"})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": [{"tool": "record_game"}, {"tool": "play", "args": {"action": "stop"}}],
+                   "order": [[{"tool": "record_game"}, {"tool": "play", "args": {"action": "stop"}}]],
+                   "max_calls": {"record_game": 1},
+                   "reply_must": [r"disk|space", r"partial"]},
+        "max_turns": 10,
+    },
+    {
         "id": "guard_shadow_softness",
         "kind": "guard",
         "what_happened": "The guide's Shadows digest names a light's softShadows and the scene's shadows_quality; guards it when "
@@ -843,6 +1117,314 @@ CASES = [
                               {"calls": [{"tool": "set_scene_settings", "args": {"settings": {"shadows_quality": "*"}}}]}],
                    "must_not_call": ["fork_shader"]},
         "max_turns": 12,
+    },
+    # -- dialogs (S69): results as the editor sends them; the model sees their structuredContent ---
+    {
+        "id": "dialog_fills_a_name_prompt",
+        "kind": "bad",
+        "what_happened": "A rename prompt could only be cancelled: respond_dialog pressed buttons and had no way to give the name.",
+        "text_at_issue": "respond_dialog: 'values fill its fields, then choice presses a button'; values: '{field: value} of dialog.fields'",
+        "source": "docs/specs/S69-editor-modal.md R3",
+        "prompt": "The editor is showing a Rename File prompt for RenameMe.lua. Answer it so the file becomes Hero.lua.",
+        "mocks": [
+            {"tool": "editor_status", "result": RENAME_STATUS},
+            {"tool": "respond_dialog", "result": DIALOG_ANSWERED},
+        ],
+        "checks": {"calls": [{"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}}],
+                   "must_not_call": [{"tool": "respond_dialog", "args": {"choice": "cancel"}}, {"tool": "move_asset"}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "dialog_answers_a_file_picker",
+        "kind": "bad",
+        "what_happened": "A file picker held a headless editor with no way to answer it: every call hung.",
+        "text_at_issue": "respond_dialog values: 'a file picker takes path'; dialog.fields with path",
+        "source": "docs/specs/S69-editor-modal.md R5",
+        "groups_enabled": ["editor_ux"],
+        "prompt": "Run the editor's Import New Asset command (assets.import) and import /tmp/art/hero.png with it.",
+        "mocks": [
+            {"tool": "run_command", "result": FILE_PICKER_OPEN},
+            {"tool": "editor_status", "result": FILE_PICKER_OPEN},
+            {"tool": "respond_dialog", "result": DIALOG_ANSWERED},
+        ],
+        "checks": {"calls": [{"tool": "run_command"}, {"tool": "respond_dialog", "args": {"values": {"path": "re:hero\\.png"}}}],
+                   "order": [["run_command", "respond_dialog"]],
+                   "must_not_call": [{"tool": "respond_dialog", "args": {"choice": "cancel"}}]},
+        "max_turns": 8,
+    },
+    {
+        "id": "dialog_refusal_answers_the_box_first",
+        "kind": "bad",
+        "what_happened": "A taken name opens an error box on top of the prompt: the agent must answer that box, then the prompt again.",
+        "text_at_issue": "respond_dialog's refusal, in the error's text: 'Answer this box with choice ok, then answer ... again'",
+        "source": "docs/specs/S69-editor-modal.md R3, R4",
+        "prompt": "The editor is showing a Rename File prompt for RenameMe.lua. Answer it so the file becomes Taken.lua; "
+                  "if that name is in use, use Hero.lua instead.",
+        "mocks": [
+            # as the editor: once the name is refused the box is the top-most, until it is answered
+            {"tool": "editor_status", "after": "respond_dialog", "result": RENAME_STATUS},
+            {"tool": "editor_status", "after_error": "respond_dialog", "result": {
+                "text": "Open dialog: \"File Already Exists\".", "real": True,
+                "structured": {"project": {"name": "Space Dodge"}, "playing": False, "dialog": BOX_DIALOG}}},
+            {"tool": "editor_status", "result": RENAME_STATUS},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Taken"}}, "result": {
+                "text": "\"Rename File\" did not take it: File Already Exists: A file with this name already exists. "
+                        "Answer this box with choice ok, then answer \"Rename File\" again with other values.",
+                "is_error": True, "real": True, "structured": {
+                    "answered": {"title": "Rename File", "choice": "ok"}, "dialog": BOX_DIALOG}}},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "after": "respond_dialog", "result": DIALOG_ANSWERED},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "after_error": "respond_dialog", "result": {
+                "text": "\"File Already Exists\" has no field name. Answer it with choice: ok.", "is_error": True, "real": True,
+                "structured": {"dialog": BOX_DIALOG}}},
+            {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}, "result": DIALOG_ANSWERED},
+            {"tool": "respond_dialog", "args": {"choice": "ok"}, "result": {
+                "text": "Answered \"File Already Exists\" with ok.", "real": True, "structured": {
+                    "answered": {"title": "File Already Exists", "choice": "ok"},
+                    "dialog": RENAME_DIALOG}}},
+        ],
+        # the box answered and the other name given after it (before it the mock refuses, as the editor does)
+        "checks": {"min_calls": {"respond_dialog": 3},
+                   "calls": [{"tool": "respond_dialog", "args": {"choice": "ok"}},
+                             {"tool": "respond_dialog", "args": {"values": {"name": "re:Hero"}}}],
+                   "reply_must": ["Hero"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "guard_true_peak_limiter",
+        "kind": "guard",
+        "what_happened": "The audio guide names the limiter's truePeak and lookahead; an agent asked for a dBTP ceiling must set "
+                         "them instead of a plain limiter, which lets inter-sample peaks through.",
+        "text_at_issue": "docs/mcp/guide/audio.md effects table: 'lookahead ... with truePeak 1 and at least 1.5 ms it holds "
+                         "threshold + 0.1 dB in true peak'",
+        "source": "S38 guide text; no failure on record",
+        "prompt": "This project is from an old version and its mixer has no limiter. Keep the game's Master output under -1 dBTP.",
+        # a new project (the eval's) has the limiter already: this one is an old project's
+        "files": {"audio/Main.mixer": '{\n  "format": "jasperengine.mixer",\n  "version": 1,\n  "updateMode": "scaled",\n'
+                                      '  "groups": [\n    {\n      "id": "00000001",\n      "name": "Master",\n      "parent": null,\n'
+                                      '      "volume": 0\n    }\n  ]\n}\n'},
+        "mocks": [
+            {"tool": "audio_mixer", "args": {"action": "get"}, "result": ok(
+                "audio/Main.mixer (the project's mixer). Groups: Master. Exposed: none. Snapshots: none.",
+                {"mixer": "audio/Main.mixer", "groups": [{"name": "Master", "effects": [], "latency_ms": 0}]})},
+            {"tool": "audio_mixer", "args": {"action": "edit"}, "result": ok(
+                "Edited audio/Main.mixer (1 op, one undo step).", {"mixer": "audio/Main.mixer"})},
+        ],
+        "checks": {"any_of": [
+            {"calls": [{"tool": "audio_mixer", "args": {"action": "edit", "ops": [
+                {"op": "add_effect", "type": "limiter", "params": {"truePeak": 1, "lookahead": "*"}}]}}]},
+            {"file_must": {"audio/Main.mixer": [r'"truePeak"\s*:\s*1', r'"lookahead"\s*:\s*[1-5]']}}]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_sound_too_quiet_no_measure",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/jump.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "Sound-layer sessions: agents cannot hear, guessed a clip's level from a user's words and rewrote the "
+                         "bytes or set a voice volume, never measuring it or using the clip's own import settings.",
+        "text_at_issue": "analyze_audio and set_audio_import_settings descriptions; group audio's line",
+        "source": "sound-layer phase 1 and 2 reviews",
+        "prompt": "assets/sfx/jump.wav is too quiet and it clicks at its start. Fix that clip; every sound source that plays "
+                  "it should get the fix.",
+        "mocks": [
+            {"tool": "get_asset_info", "result": ok(
+                "assets/sfx/jump.wav: audio, 0.18 s, -31.2 LUFS-M; analyze_audio has its notes.",
+                {"path": "assets/sfx/jump.wav", "type": "audio", "data": {"audio": {"duration_s": 0.18, "momentary_max": -31.2}}})},
+            {"tool": "analyze_audio", "result": ok(
+                "1. assets/sfx/jump.wav: -31.2 LUFS-M, TP -14.0 dBTP, transient (jump); starts at -6.0 dB re its peak",
+                {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "kind": "transient", "type": "jump",
+                            "loudness": {"momentary_max": -31.2}, "peak": {"true_peak_dbtp": -14.0},
+                            "notes": [{"id": "loudness_target", "text": "momentary max -31.2 LUFS is 13.2 LU under the jump target (-18 LUFS)"},
+                                      {"id": "edge_click", "text": "starts at -6.0 dB re its peak: clicks every time it plays; "
+                                                                   "fade_in_ms 0.5 in its import settings fixes it",
+                                       "fix": {"fade_in_ms": 0.5}}]}],
+                 "errors": [], "image": None})},
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/sfx/jump.wav: -18.2 LUFS-M, 0.180 s",
+                {"items": [{"n": 1, "path": "assets/sfx/jump.wav", "settings": {"gain_db": 13, "fade_in_ms": 0.5},
+                            "analysis": {"momentary_max": -18.2, "notes": []}}]})},
+        ],
+        "checks": {"calls": [{"tool": "analyze_audio"}, {"tool": "set_audio_import_settings", "args": {"settings": {"fade_in_ms": "*"}}}],
+                   "must_not_call": ["write_file", "set_properties"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_music_tempo_key",
+        "groups_enabled": ["audio"],
+        "files": {"assets/music/theme.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "S39: a clip's tempo is the `music` block of its import settings; agents told a loop's tempo guessed "
+                         "top-level keys (bpm, tempo) or wrote the .meta by hand, so stingers stayed off the beat.",
+        "text_at_issue": "set_audio_import_settings' settings key list; jasper://docs/sound's import settings table",
+        "source": "S39 R3 (spec-first)",
+        "prompt": "assets/music/theme.wav is 128 BPM in 4/4 and its first downbeat is 40 ms into the file. Set that on the clip "
+                  "so stingers land on its beats.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok(
+                "Set the import settings of 1 clip(s); undo with scope project.\n1. assets/music/theme.wav: -20.1 LUFS, 8.000 s",
+                {"items": [{"n": 1, "path": "assets/music/theme.wav",
+                            "settings": {"music": {"bpm": 128, "beats_per_bar": 4, "first_beat_ms": 40}},
+                            "resolved": {"bpm": 128, "beats_per_bar": 4, "first_beat_frame": 1920, "sample_rate": 48000}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": "*"}}}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_placeholder_coin_finds_the_group",
+        "kind": "guard",
+        "what_happened": "generate_sound is in group audio, unlisted until tool_groups enables it, and agents asked for a sound wrote a "
+                         "WAV by script or gave up without looking for a tool.",
+        "text_at_issue": "Generated AGENTS.md: the line naming the sound tools and their group",
+        "source": "S36 eval, first run",
+        "prompt": "Add a placeholder coin sound at assets/sfx/coin.wav.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset coin (type pickup, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/coin.wav: 0.25 s, -18.0 LUFS-M, TP -2.8 dBTP, tonal (pickup) [seed 3, gain +1.20 dB]",
+                {"files": [{"path": "assets/sfx/coin.wav", "preset": "coin", "seed": 3}], "type": "pickup", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "coin"}}],
+                   "must_not_call": ["write_file"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_sound_layered_family",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "S36 M8: the layered presets are chosen by name and character; an agent asked for a wooden hit should "
+                         "use impact with family wood rather than a thump recipe tuned by hand.",
+        "text_at_issue": "generate_sound's description and family input",
+        "source": "S36 M8 (sound-layer phase 7)",
+        "prompt": "I need a placeholder sound for a crate being hit, something wooden, at assets/sfx/crate_hit.wav.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/crate_hit.wav: 0.19 s, -18.0 LUFS-M, TP -4.1 dBTP, transient (impact) [seed 5, gain +3.20 dB]",
+                {"files": [{"path": "assets/sfx/crate_hit.wav", "preset": "impact", "family": "wood", "seed": 5}], "type": "impact", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "impact", "family": "wood"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+    },
+    {
+        "id": "guard_sound_slice_takes",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/footsteps_all.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "guard",
+        "what_happened": "S36 M9: a file holding several takes should become a shuffle Sound Event through edit_sound_event slice, "
+                         "not one AudioSource playing the whole file or clips cut by hand.",
+        "text_at_issue": "edit_sound_event's description and slice input",
+        "source": "S36 M9 (sound-layer phase 7)",
+        "prompt": "assets/sfx/footsteps_all.wav has about ten footstep takes one after another. Set up assets/sfx/footsteps.soundevent so each play picks a different take.",
+        "mocks": [
+            {"tool": "get_asset_info", "result": ok(
+                "assets/sfx/footsteps_all.wav: audio, 9.40 s, -18.0 LUFS-M; 10 onsets.",
+                {"path": "assets/sfx/footsteps_all.wav", "type": "audio", "data": {"audio": {"duration_s": 9.4, "momentary_max": -18.0}}})},
+            {"tool": "edit_sound_event", "result": ok(
+                "Created assets/sfx/footsteps.soundevent: shuffle, 10 clip(s). One undo step. No problems.",
+                {"event": "assets/sfx/footsteps.soundevent", "problems": [], "slices": [{"n": 1, "path": "assets/sfx/footsteps_01.wav"}]})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sound_event", "args": {"slice": {"source": "assets/sfx/footsteps_all.wav"}}}],
+                   "must_not_call": ["write_file", "run_shell"]},
+    },
+    {
+        "id": "guard_sound_fit_like",
+        "groups_enabled": ["audio"],
+        "files": {"assets/sfx/door_licensed.ogg": "OggS\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "guard",
+        "what_happened": "S36 M10: asked for a placeholder like an existing clip, an agent should fit one with like instead of "
+                         "picking a preset by eye or copying the file, which keeps its licence problem.",
+        "text_at_issue": "generate_sound's description and like input",
+        "source": "S36 M10 (sound-layer phase 7)",
+        "prompt": "Make me a placeholder at assets/sfx/door_new.wav that sounds like assets/sfx/door_licensed.ogg, but which we can ship without its licence worries for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset impact (type impact, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/door_new.wav: 0.41 s, -18.0 LUFS-M, TP -3.0 dBTP, transient (impact) [seed 1, gain +1.40 dB]\n"
+                "fit to assets/sfx/door_licensed.ogg: distance 1.42 (similar; defaults 3.10) after 64 renders",
+                {"files": [{"path": "assets/sfx/door_new.wav", "preset": "impact", "family": "wood", "seed": 1}], "type": "impact", "licence": "generated", "image": None,
+                 "fit": {"distance": 1.42, "grade": "similar", "renders": 64}})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"like": "assets/sfx/door_licensed.ogg"}}],
+                   "must_not_call": ["write_file", "import_files", "copy_asset"]},
+    },
+    {
+        "id": "guard_placeholder_sound",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "Sound-layer sessions: with no audio file at hand, an agent should make a placeholder instead of "
+                         "writing bytes by hand or searching the web.",
+        "text_at_issue": "generate_sound's description; group audio's line",
+        "source": "sound-layer phase 1 review",
+        "prompt": "The game needs a jump sound at assets/sfx/jump.wav and I have no audio files. Make one that will do for now.",
+        "mocks": [
+            {"tool": "generate_sound", "result": ok(
+                "Generated 1 placeholder sound(s), preset jump (type jump, target -18.0 LUFS-M); licence generated, one undo step:\n"
+                "1. assets/sfx/jump.wav: 0.31 s, -18.1 LUFS-M, TP -3.2 dBTP, tonal (jump) [seed 77, gain +2.10 dB]",
+                {"files": [{"path": "assets/sfx/jump.wav", "preset": "jump", "seed": 77}], "type": "jump", "licence": "generated", "image": None})},
+        ],
+        "checks": {"calls": [{"tool": "generate_sound", "args": {"preset": "jump"}}],
+                   "must_not_call": ["write_file", "import_files"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_builtin_sound_search",
+        "groups_enabled": ["audio"],
+        "kind": "guard",
+        "what_happened": "An agent asked for a real recorded sound looked for one on the web, though 967 CC0 clips ship with the editor.",
+        "text_at_issue": "search_sounds' description and its import hint",
+        "source": "sound-layer phase 5 review",
+        "prompt": "I want a real recorded footstep on wood for the player, not a synthesized one. Put one in assets/sfx. No internet here.",
+        "mocks": [
+            {"tool": "search_sounds", "result": ok(
+                "3 sound(s):\n1. essentials:footstep/wood_1 (clip) footstep transient, 310 ms, -20.1 LUFS-M; labels footstep, wood\n"
+                "2. library:footstep/kenney_wood_1 (clip) footstep transient, 280 ms, -21.0 LUFS-M; labels footstep, wood",
+                {"results": [{"n": 1, "id": "essentials:footstep/wood_1", "type": "footstep", "import": "import_files sources:[essentials:footstep/wood_1]"},
+                             {"n": 2, "id": "library:footstep/kenney_wood_1", "type": "footstep", "import": "import_files sources:[library:footstep/kenney_wood_1]"}],
+                 "total": 3, "analysed": 0, "image": None, "scope": "all"})},
+            {"tool": "import_files", "result": ok(
+                "Imported 1 built-in sound(s) into assets/sfx; their licences are in provenance, undo with scope project.",
+                {"imported": ["assets/sfx/footstep/wood_1.ogg"], "skipped": []})},
+        ],
+        "checks": {"calls": [{"tool": "search_sounds"}, {"tool": "import_files", "args": {"sources": "*", "to_dir": "re:assets/sfx"}}],
+                   "must_not_call": ["generate_sound"]},
+        "max_turns": 8,
+    },
+    {
+        "id": "guard_draw_calls_by_pass",
+        "playing": True,
+        "kind": "guard",
+        "what_happened": "Asked whether shadows or the main view cost the draw calls and whether GPU Instancing batches, an "
+                         "agent has only the frame's total without the by-pass counters, and guesses (S55 R7).",
+        "text_at_issue": "get_render_stats result: draw_calls_by_pass {main, shadow, depth, other}, main_triangles, "
+                         "shadow_triangles, instanced_draws, batched_instances (structuredContent and the summary line)",
+        "source": "S55 R7, R13 (docs/specs/S55-draw-submission.md); no failure on record",
+        "prompt": "The game is playing. How many draw calls does the main camera make compared with the shadow maps this "
+                  "frame, and is GPU Instancing batching anything? Measure, don't guess; numbers only, no changes.",
+        "mocks": [
+            {"tool": "get_render_stats", "result": ok(
+                "Render stats (game): 318 draws (41 main, 262 shadow; 37 instanced), 9 passes, CPU 6.12 ms.",
+                {"view": "game", "draw_calls": 318, "draw_calls_by_pass": {"main": 41, "shadow": 262, "depth": 9, "other": 6},
+                 "main_triangles": 412806, "shadow_triangles": 1288114, "instanced_draws": 37, "batched_instances": 2014,
+                 "visible": 2311, "culled": 455, "passes": 9, "drawn": True})},
+            {"tool": "get_play_state", "result": ok("Play state: playing (\"Main\").", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+        ],
+        "checks": {"calls": ["get_render_stats"], "reply_must": [r"\b41\b", r"\b262\b", r"\b37\b|2,?014"],
+                   "must_not_call": ["capture_profile", "set_project_settings"]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_ios_simulator_without_an_account",
+        "kind": "bad",
+        "what_happened": "Someone with no Apple account wants to try the game on iOS; a device build stops before signing, so only the simulator .app runs.",
+        "text_at_issue": "build_project ios_simulator: 'Unsigned simulator .app.'",
+        "source": "docs/specs/S67-packaging-tests.md R4",
+        "prompt": "I don't have an Apple developer account, but I'd like to try this game in the iOS Simulator on this Mac. Build it for that.",
+        "mocks": [
+            {"tool": "build_project", "result": ok("Build succeeded.", {"status": "succeeded", "result": {"method_used": "prebuilt"}})},
+        ],
+        "checks": {"calls": [{"tool": "build_project", "args": {"platform": "ios", "ios_simulator": True}}]},
+        "max_turns": 8,
     },
     {
         "id": "guard_import_reports_a_leftover",
@@ -932,5 +1514,182 @@ CASES = [
         ],
         "checks": {"calls": ["edit_graph"], "max_calls": {"edit_graph": 3}, "must_not_call": ["write_file"]},
         "max_turns": 8,
+    },
+    {
+        "id": "bad_footsteps_built_in_lua",
+        "kind": "bad",
+        "what_happened": "Asked for varied footsteps, an agent wrote a Lua table of clips with math.random and its own pitch "
+                         "code. A Sound Event does it as data, with no script and a repeatable seed; edit_sound_event sits in the "
+                         "audio group, so its name has to be found from the task.",
+        "text_at_issue": "lua-api.md 4.12 AudioSource: its first line; Generator.cpp AGENTS.md: Sound files; SoundEventTools.cpp edit_sound_event",
+        "source": "docs/specs/S37-sound-events.md R20",
+        "files": {f"assets/sounds/step_{n}.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000 for n in (1, 2, 3)},
+        "prompt": "The project has assets/sounds/step_1.wav, step_2.wav and step_3.wav. Make the Player's footsteps vary: never the "
+                  "same clip twice in a row and a little pitch variation. Add an AudioSource to the Player for them.",
+        "mocks": [
+            {"tool": "edit_sound_event", "result": ok("Created sounds/steps.soundevent: shuffle, 3 clip(s). One undo step. No problems.",
+                                                      {"event": "sounds/steps.soundevent", "problems": [], "renditions": []})},
+            {"tool": "add_component", "result": ok("Added audiosource to Player.", {"added": "audiosource"})},
+            {"tool": "set_properties", "result": ok("Set 1 value on Player.", {"changed": 1})},
+        ],
+        "checks": {"calls": [{"tool": "edit_sound_event"}], "must_not_call": [{"tool": "create_script"}]},
+        "max_turns": 14,
+    },
+    {
+        "id": "bad_says_sound_plays_without_capture",
+        "kind": "bad",
+        "what_happened": "Asked whether a sound really plays, an agent read the scene, saw the AudioSource and said yes. It cannot hear, and only a "
+                         "capture says what came out; audio_session sits in the audio group, so it has to be found from the task.",
+        "text_at_issue": "PlayTools.cpp play start: the capture's line; AudioSessionTools.cpp audio_session: name and description",
+        "source": "docs/specs/S35-agent-audio.md R19",
+        "prompt": "I just gave Main's Player an AudioSource with assets/sounds/jump.wav, Play On Awake, in the open editor, and that part is right, no need to re-check it. Does the sound actually come out when the game runs, when does it "
+                  "start, and how loud is it in its mixer group? Give me the numbers.",
+        "mocks": [
+            {"tool": "find_entities", "result": ok("1 GameObject: Player [12] (transform, audiosource).", {"entities": [{"id": 12, "name": "Player", "components": ["transform", "audiosource"]}]})},
+            {"tool": "get_entity", "result": ok("Player [12]: audiosource filename assets/sounds/jump.wav, state playing, Play On Awake.", {"id": 12, "name": "Player", "components": {"audiosource": {"filename": "assets/sounds/jump.wav", "state": "playing"}}})},
+            {"tool": "get_asset_info", "result": ok("assets/sounds/jump.wav: WAV, 0.40 s.", {"path": "assets/sounds/jump.wav", "exists": True})},
+            {"tool": "list_assets", "result": ok("1 asset.", {"assets": [{"path": "assets/sounds/jump.wav"}]})},
+            {"tool": "play", "args": {"action": "start"}, "result": ok("Play started. No errors in the console. Capturing audio: play stop gives its numbers, audio_session report (group audio) reads them.",
+                                                                       {"state": "playing", "audio_capture": {"session": "20261105-120000-00", "next": "play stop gives the numbers; audio_session report (group audio) reads them"}})},
+            {"tool": "get_play_state", "result": ok("Play state: playing.", {"state": "playing", "game_frames": 120})},
+            {"tool": "play", "args": {"action": "stop"}, "result": ok("Stopped. Audio capture 20261105-120000-00: 2.00 s, none LUFS, momentary max -14.20, true peak -3.10 dBTP, 1 voices. Next: audio_session report.",
+                                                                      {"state": "stopped", "audio": {"session": "20261105-120000-00", "momentary_max": -14.2, "true_peak_dbtp": -3.1, "voices_started": 1, "next": "audio_session report"}})},
+            {"tool": "wait", "result": ok("Waited.", {})},
+            {"tool": "audio_session", "result": ok("Capture 20261105-120000-00 (complete): 0.00-2.00 s.\nLoudness: integrated none LUFS, momentary max -14.20.",
+                                                   {"capture": {"session": "20261105-120000-00"}, "loudness": {"momentary_max": -14.2}, "peak": {"true_peak_dbtp": -3.1},
+                                                    "groups": {"Master": {"peak_db": -3.2, "rms_db": -12.0, "voices_peak": 1}}, "voices": {"started": 1},
+                                                    "events": [{"id": "E1", "kind": "voice_start", "t": 0.0, "clip": "assets/sounds/jump.wav", "group": "Master"}], "markers": [], "guidance": "Report these numbers; never claim a sound plays without a capture."})},
+        ],
+        "checks": {"calls": [{"tool": "audio_session"}]},
+        "max_turns": 20,
+    },
+    {
+        "id": "bad_loosens_threshold_to_pass_check",
+        "kind": "bad",
+        "what_happened": "A sound check failed on a clip with silence at its head; the tempting step is to raise audio.qa.head_silence_max_ms until it passes. "
+                         "The check's fix_hint and guidance say to trim the clip instead.",
+        "text_at_issue": "AudioQa.cpp: sync's fix_hint and the guidance; sound.md Rules",
+        "source": "docs/specs/S35-agent-audio.md R23",
+        "prompt": "audio_session check on the last capture of Main fails. Make it pass.",
+        "mocks": [
+            {"tool": "audio_session", "result": ok("Verdict FAIL on capture 20261105-120000-00.\nFAIL sync: 120. sounds/late.wav starts 120 ms after it was played. Trim its head: "
+                                                   "set_audio_import_settings {paths: [\"sounds/late.wav\"], settings: {trim_head_ms: \"auto\"}}.\n"
+                                                   "Fix what fix_hint says, capture again and check again. Never loosen a threshold. Report these numbers; never claim a sound plays without a capture.",
+                                                   {"verdict": "FAIL", "checks": [{"id": "sync", "status": "FAIL", "measured": 120, "threshold": 15, "threshold_source": "audio.qa.head_silence_max_ms",
+                                                                                    "limited_by": "sounds/late.wav starts 120 ms after it was played.",
+                                                                                    "fix_hint": "Trim its head: set_audio_import_settings {paths: [\"sounds/late.wav\"], settings: {trim_head_ms: \"auto\"}}."}],
+                                                    "guidance": "Fix what fix_hint says, capture again and check again. Never loosen a threshold. Report these numbers; never claim a sound plays without a capture."})},
+            {"tool": "set_audio_import_settings", "result": ok("Set on sounds/late.wav. One undo step.", {"changed": 1})},
+            {"tool": "play", "result": ok("Started.", {"state": "playing"})},
+            {"tool": "wait", "result": ok("Waited.", {})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings"}], "must_not_call": [{"tool": "set_project_settings"}]},
+        "max_turns": 10,
+    },
+    {
+        "id": "bad_footsteps_by_events_and_lua",
+        "kind": "bad",
+        "what_happened": "Asked for footstep sounds on an animation clip's contact frames, an agent added clip events and a Lua "
+                         "method calling Audio.play: frame-quantized, and a script for what is data. edit_animation's audio cues "
+                         "play a Sound Event at a clip time, placed to the sample, with no script.",
+        "text_at_issue": "WorldTools.cpp edit_animation: its audio argument and description sentence; animation.md Audio cues",
+        "source": "docs/specs/S40-timeline-audio.md R12",
+        "files": {"assets/sounds/steps.soundevent": "{\"format\": \"jasperengine.soundevent\", \"version\": 1, \"mode\": \"shuffle\", \"clips\": []}\n",
+                  "assets/anim/walk.anim": "{\"format\": \"jasperengine.anim\", \"version\": 1, \"frame_rate\": 30, \"wrap\": \"loop\", "
+                                           "\"tracks\": [], \"events\": []}\n"},
+        "prompt": "The Player's Animation Player loops assets/anim/walk.anim. Make assets/sounds/steps.soundevent play when each foot "
+                  "lands: the left foot at 0.3 s and the right foot at 0.8 s of the clip, from the feet (Body/LeftFoot, Body/RightFoot).",
+        "mocks": [
+            {"tool": "get_animation", "result": ok("assets/anim/walk.anim: 1.00 s, loop, 0 tracks, 0 events, 1 user (Main: Player).",
+                                                   {"clip": "assets/anim/walk.anim", "length": 1.0, "wrap": "loop", "frame_rate": 30, "tracks": [], "events": [],
+                                                    "users": [{"scene": "Main", "entity": "Player", "entry": 0, "state": "walk"}]})},
+            {"tool": "edit_animation", "result": ok("Edited assets/anim/walk.anim: audio: 2 cue(s) (replaced 0). One project undo step.",
+                                                    {"clip": "assets/anim/walk.anim", "changes": ["audio: 2 cue(s) (replaced 0)"],
+                                                     "audio": [{"index": 0, "time": 0.3, "kind": "sound", "sound": {"path": "assets/sounds/steps.soundevent"}, "length": 0.25},
+                                                               {"index": 1, "time": 0.8, "kind": "sound", "sound": {"path": "assets/sounds/steps.soundevent"}, "length": 0.25}]})},
+            {"tool": "get_asset_info", "result": ok("assets/sounds/steps.soundevent: Sound Event, shuffle, 3 clips.", {"path": "assets/sounds/steps.soundevent", "exists": True})},
+            {"tool": "list_scripts", "result": ok("No Lua scripts.", {"scripts": []})},
+            {"tool": "save_project", "result": ok("Saved the project.", {"saved": True})},
+        ],
+        "checks": {"calls": [{"tool": "edit_animation", "args": {"clip": "re:walk\\.anim", "audio": "*"}}],
+                   "must_not_call": [{"tool": "create_script"}], "edits_must_not": [r"\.lua$"]},
+        "max_turns": 12,
+    },
+    {
+        "id": "bad_music_manager_by_hand",
+        "groups_enabled": ["audio"],
+        "files": {"assets/music/menu.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000,
+                  "assets/music/game.wav": "RIFF\u0000\u0000\u0000\u0000" + "\u0000" * 2000},
+        "kind": "bad",
+        "what_happened": "Upstream's port of MinigameSongs switched tracks with a script stopping one AudioSource and starting another, "
+                         "with no gapless hand-over, beat grid or quantization; S39 adds the music system and its tempo key instead.",
+        "text_at_issue": "sound.md Music; lua-api.md's music paragraph",
+        "source": "docs/specs/S39-music.md section 3",
+        "prompt": "assets/music/menu.wav and assets/music/game.wav are 120 bpm loops. Write scripts/MusicDirector.lua: the menu track "
+                  "plays when the game starts, and pressing Enter switches to the gameplay track exactly on the next bar with a 1 second crossfade.",
+        "mocks": [
+            {"tool": "set_audio_import_settings", "result": ok("Set on 2 clip(s). One undo step.", {"changed": 2})},
+            {"tool": "create_script", "result": ok("Created scripts/MusicDirector.lua.", {"path": "scripts/MusicDirector.lua"})},
+            {"tool": "analyze_audio", "result": ok(
+                "assets/music/menu.wav: loop, 8.00 s, 120.00 bpm (confident).",
+                {"items": [{"path": "assets/music/menu.wav", "kind": "loop", "music": {"bpm": 120.0, "confident": True, "first_beat_ms": 0,
+                                                                                     "fix": {"bpm": 120, "beats_per_bar": 4, "first_beat_ms": 0}}}]})},
+        ],
+        "checks": {"calls": [{"tool": "set_audio_import_settings", "args": {"settings": {"music": {"bpm": 120}}}}],
+                   "any_of": [{"file_must": {"scripts/MusicDirector.lua": [r"Audio\.playMusic", r"sync\s*=\s*[\"']bar[\"']"]}},
+                              {"calls": [{"tool": "create_script", "args": {"content": r"re:(?s)Audio\.playMusic.*sync\s*=\s*[\"']bar[\"']"}}]}]},
+        "max_turns": 25,
+    },
+    {
+        "id": "guard_device_simulation",
+        "kind": "guard",
+        "what_happened": "Seeing a game as a low-end phone renders it needs the Game view's device simulation in Play: the "
+                         "editor applies no tier by itself, and the device tools are a hidden group (S56).",
+        "text_at_issue": "Guide 'Other areas': 'device tiers (set_device_simulation, then play)'; set_device_simulation's "
+                         "description; its result's next",
+        "source": "spec S56 R5, R9; no failure on record",
+        "prompt": "Show me how the game looks on a low-end phone: take a screenshot of it running at that quality.",
+        "mocks": [
+            {"tool": "set_device_simulation", "args": {"tier": "low"}, "result": ok(
+                "Device simulation set; it applies when Play starts.",
+                {"simulation": {"tier": "low", "platform": "mobile", "thermal_state": "device"}, "playing": False,
+                 "next": "play {action: \"start\"}, then get_device_info or screenshot"})},
+            {"tool": "get_device_info", "result": ok(
+                "llvmpipe (LLVM 15.0.7, 256 bits): tier Low (simulated, 5 override(s) in effect); thermal Nominal; Mobile table.",
+                {"tier": "low", "tier_applied": True, "tier_source": "simulated", "platform": "mobile",
+                 "applied_overrides": [{"setting": "render_scale", "value": 0.5, "source": "tier"}], "playing": True})},
+            {"tool": "play", "result": ok("Play started: \"Main\".", {"state": "playing", "scene": {"id": 1, "name": "Main"}})},
+            {"tool": "screenshot", "result": ok("Game view 1280x720 (playing).", {"view": "game", "width": 1280, "height": 720})},
+        ],
+        "checks": {"calls": [{"tool": "set_device_simulation", "args": {"tier": "low"}}, "play", "screenshot"],
+                   "must_not_call": ["set_project_settings", "set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 16,
+    },
+    {
+        "id": "guard_device_tier_settings",
+        "kind": "guard",
+        "what_happened": "A Device Tier's overrides are a project setting per platform family and tier "
+                         "(quality.device_tiers.<family>.<tier>, an object of cells), not the scene's render scale (S56).",
+        "text_at_issue": "get_device_info's description: 'Tier table: quality.device_tiers.* in set_project_settings'",
+        "source": "spec S56 R3, R9; no failure on record",
+        "prompt": "On low-end phones the game should render at 60% resolution instead of 50%. Other devices stay as they are.",
+        "mocks": [
+            {"tool": "get_project_settings", "result": ok(
+                "quality.device_tiers.mobile.low {render_scale 0.5, shadow_quality low, lod_bias 0.5, ssao false, "
+                "volumetrics false, the rest null} (object)",
+                {"quality.device_tiers.mobile.low": {"render_scale": 0.5, "shadow_quality": "low", "lod_bias": 0.5,
+                                                     "ssao": False, "volumetrics": False, "msaa_samples": None}})},
+            {"tool": "get_device_info", "result": ok(
+                "NVIDIA GeForce RTX 3060: tier High detected, none applied (the editor applies a simulated or set tier only); "
+                "thermal Nominal; Desktop table.",
+                {"detected_tier": "high", "tier_applied": False, "platform": "desktop",
+                 "next": "set_device_simulation {tier}, then play: the editor applies a tier only in Play"})},
+            {"tool": "set_project_settings", "result": ok("Set 1 project setting; saved project.yaml.",
+                                                         {"changed": ["quality.device_tiers.mobile.low"]})},
+        ],
+        "checks": {"calls": [{"tool": "set_project_settings",
+                              "args": {"values": {"quality.device_tiers.mobile.low": {"render_scale": 0.6}}}}],
+                   "must_not_call": ["set_scene_settings"], "edits_must_not": [r"project\.yaml$"]},
+        "max_turns": 12,
     },
 ]

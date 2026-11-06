@@ -1,0 +1,60 @@
+{
+ "code": [],
+ "description": "Generates a truchet pattern",
+ "format": 1,
+ "functions": [
+  "truchet1",
+  "truchet2"
+ ],
+ "id": "truchet",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Truchet",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a grayscale image of the truchet pattern.",
+   "expr": "truchet$shape($uv*$size, vec2(float($seed)))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "description": "The base shape of each tile of the truchet pattern",
+   "label": "Shape",
+   "name": "shape",
+   "short_description": "Shape",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Line",
+     "value": "1"
+    },
+    {
+     "name": "Circle",
+     "value": "2"
+    }
+   ]
+  },
+  {
+   "default": 4,
+   "description": "The number of rows and columns of the truchet pattern",
+   "label": "Size",
+   "max": 64,
+   "min": 2,
+   "name": "size",
+   "short_description": "Size",
+   "step": 1,
+   "type": "float"
+  }
+ ],
+ "short_description": "Truchet pattern",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/truchet.mmg"
+ },
+ "type_version": 1
+}

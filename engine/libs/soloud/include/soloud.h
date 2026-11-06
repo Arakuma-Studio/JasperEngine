@@ -535,6 +535,9 @@ namespace SoLoud
 		unsigned int mBufferSize;
 		// Flags; see Soloud::FLAGS
 		unsigned int mFlags;
+		// JasperEngine patch: the iOS audio session the miniaudio backend asks for: 0 miniaudio's own
+		// default, 1 ambient, 2 solo ambient, 3 playback (set before init; only iOS builds set it)
+		unsigned int mIosSessionCategory = 0;
 		// Global volume. Applied before clipping.
 		float mGlobalVolume;
 		// Post-clip scaler. Applied after clipping.

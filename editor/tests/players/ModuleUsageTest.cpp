@@ -12,6 +12,9 @@
 #include "player/PlayerModules.h"
 
 #include "Scene.h"
+#include "component/ActionComponent.h"
+#include "component/AudioSnapshotComponent.h"
+#include "component/AudioSourceComponent.h"
 #include "component/BuoyancyComponent.h"
 #include "component/CharacterController2DComponent.h"
 #include "component/CharacterControllerComponent.h"
@@ -29,6 +32,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <functional>
 #include <set>
 #include <string>
@@ -83,6 +87,15 @@ TEST(ModuleUsage, AnEmptyProjectNeedsNothing) {
     EXPECT_EQ(modules(plain.usage()), "");
     // a Lua script of math, input and logs
     EXPECT_EQ(modules(withLua("local v = Vector3(1, 2, 3)\nif Input.isKeyPressed(1) then Log.info(tostring(v:length())) end")), "");
+}
+
+TEST(ModuleUsage, TheSoundLayerFollowsTheImportTable) {
+    ModuleScan scan = empty();
+    EXPECT_EQ(modules(ModuleUsageDetector::analyze(scan)), "");
+    scan.audioImportTable = true;
+    const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
+    EXPECT_EQ(modules(usage), "soundlayer");
+    EXPECT_NE(usage.firstEvidence("soundlayer").find("import settings"), std::string::npos);
 }
 
 TEST(ModuleUsage, NavigationFollowsItsProjectSetting) {
@@ -425,4 +438,97 @@ TEST(PlayerVariants, TheSmallestVariantHoldingTheModules) {
     EXPECT_EQ(PlayerRuntimes::smallestWith({lite}, {"htmlui"}), nullptr);
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false, "lite3d"), "linux-x64-glcore-release-lite3d");
     EXPECT_EQ(PlayerRuntimes::runtimeId("linux", "x64", "glcore", false), "linux-x64-glcore-release");
+}
+
+// docs/specs/S37-sound-events.md 6.6: what needs the soundlayer module, and every variant has it
+TEST(ModuleUsageSoundLayer, ASceneWithoutItsFeaturesDoesNotNeedIt) {
+    Scene scene;
+    const Entity plain = scene.createEntity();
+    scene.addComponent<AudioSourceComponent>(plain, AudioSourceComponent());
+    ModuleScan scan;
+    scan.contents.push_back({"scene Plain", &scene, {plain}});
+    EXPECT_FALSE(ModuleUsageDetector::analyze(scan).needs("soundlayer"));
+}
+
+TEST(ModuleUsageSoundLayer, EachFeatureOfASourceNeedsIt) {
+    const std::vector<std::pair<std::function<void(AudioSourceComponent&)>, std::string>> rows = {
+        {[](AudioSourceComponent& a) { a.event = "e.soundevent"; }, "plays a Sound Event"},
+        {[](AudioSourceComponent& a) { a.playOn = AudioPlayOn_UIClick; }, "Play On triggers"},
+        {[](AudioSourceComponent& a) { a.pitchRandomSemitones = 1.0f; }, "random ranges"},
+        {[](AudioSourceComponent& a) { a.volumeRandomDb = 1.0f; }, "random ranges"},
+    };
+    for (const auto& [set, evidence] : rows) {
+        Scene scene;
+        const Entity entity = scene.createEntity();
+        AudioSourceComponent audio;
+        set(audio);
+        scene.addComponent<AudioSourceComponent>(entity, audio);
+        ModuleScan scan;
+        scan.contents.push_back({"scene Main", &scene, {entity}});
+        const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
+        EXPECT_TRUE(usage.needs("soundlayer")) << evidence;
+        EXPECT_NE(usage.firstEvidence("soundlayer").find(evidence), std::string::npos) << usage.firstEvidence("soundlayer");
+    }
+}
+
+TEST(ModuleUsageSoundLayer, LuaNamesFromTheBindingsNeedIt) {
+    for (const char* code : {"Audio.play('x')", "Audio.stopAll()", "local h = SoundHandle()", "local f = AudioPlayOn.UIClick"}) {
+        ModuleScan scan;
+        scan.luaScripts.push_back({"scripts/a.lua", code});
+        EXPECT_TRUE(ModuleUsageDetector::analyze(scan).needs("soundlayer")) << code;
+    }
+    ModuleScan plain;
+    plain.luaScripts.push_back({"scripts/a.lua", "local s = AudioSource(self.scene, self.entity); s:play()"});
+    EXPECT_FALSE(ModuleUsageDetector::analyze(plain).needs("soundlayer"));
+}
+
+// docs/specs/S40-timeline-audio.md 6.6: clips with audio cues and the legacy timeline's audio and snapshot actions
+TEST(ModuleUsageSoundLayer, TimelineAudioNeedsIt) {
+    ModuleScan clips;
+    clips.cueClips.push_back("assets/anim/walk.anim");
+    const ModuleUsage fromClip = ModuleUsageDetector::analyze(clips);
+    EXPECT_TRUE(fromClip.needs("soundlayer"));
+    EXPECT_NE(fromClip.firstEvidence("soundlayer").find("audio cues"), std::string::npos) << fromClip.firstEvidence("soundlayer");
+
+    Scene scene;
+    const Entity audioAction = scene.createEntity();
+    scene.addComponent<ActionComponent>(audioAction, ActionComponent());
+    scene.addComponent<AudioSourceComponent>(audioAction, AudioSourceComponent());
+    ModuleScan actions;
+    actions.contents.push_back({"scene Main", &scene, {audioAction}});
+    const ModuleUsage fromAction = ModuleUsageDetector::analyze(actions);
+    EXPECT_TRUE(fromAction.needs("soundlayer"));
+    EXPECT_NE(fromAction.firstEvidence("soundlayer").find("audio action"), std::string::npos) << fromAction.firstEvidence("soundlayer");
+
+    Scene snapshots;
+    const Entity snapshotAction = snapshots.createEntity();
+    snapshots.addComponent<ActionComponent>(snapshotAction, ActionComponent());
+    snapshots.addComponent<AudioSnapshotComponent>(snapshotAction, AudioSnapshotComponent());
+    ModuleScan snapshotScan;
+    snapshotScan.contents.push_back({"scene Main", &snapshots, {snapshotAction}});
+    EXPECT_TRUE(ModuleUsageDetector::analyze(snapshotScan).needs("soundlayer"));
+}
+
+TEST(ModuleUsageSoundLayer, EveryPrebuiltVariantHasIt) {
+    const std::vector<PlayerVariant>& variants = PlayerRuntimes::variants();
+    ASSERT_FALSE(variants.empty());
+    for (const PlayerVariant& variant : variants) {
+        EXPECT_NE(std::find(variant.modules.begin(), variant.modules.end(), "soundlayer"), variant.modules.end()) << variant.name;
+    }
+}
+
+// docs/specs/S39-music.md 6.6, AC10: the music is in the soundlayer module; a script naming it needs it
+TEST(ModuleUsageSoundLayer, AScriptPlayingMusicNeedsIt) {
+    for (const char* code : {"Audio.playMusic('music/menu.soundevent', {sync = 'bar'})", "Audio.playStinger('hit.wav')",
+                             "Audio.onMusicBeat:add('t', function(bar, beat) end)"}) {
+        ModuleScan scan;
+        scan.luaScripts.push_back({"scripts/music.lua", code});
+        const ModuleUsage usage = ModuleUsageDetector::analyze(scan);
+        EXPECT_TRUE(usage.needs("soundlayer")) << code;
+        EXPECT_NE(usage.firstEvidence("soundlayer").find("scripts/music.lua"), std::string::npos) << usage.firstEvidence("soundlayer");
+        std::printf("evidence: %s\n", usage.firstEvidence("soundlayer").c_str());
+    }
+    ModuleScan plain;
+    plain.luaScripts.push_back({"scripts/music.lua", "local music = 'menu'; print(music)"});
+    EXPECT_FALSE(ModuleUsageDetector::analyze(plain).needs("soundlayer"));
 }

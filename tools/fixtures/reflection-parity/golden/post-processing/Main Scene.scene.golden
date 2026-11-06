@@ -57,6 +57,12 @@ shaderKeys:
   - type: blit
     properties: 64
   - type: blit
+    properties: 128
+  - type: blit
+    properties: 256
+  - type: blit
+    properties: 512
+  - type: blit
     properties: 1024
   - type: blit
     properties: 2048

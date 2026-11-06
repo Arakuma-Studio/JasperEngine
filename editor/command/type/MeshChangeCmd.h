@@ -11,6 +11,10 @@
 #include "util/PrimitiveParameters.h"
 #include "yaml-cpp/yaml.h"
 
+namespace jasperengine{
+    struct MeshComponent;
+}
+
 namespace jasperengine::editor{
 
     class MeshChangeCmd: public Command{

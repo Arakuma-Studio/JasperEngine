@@ -1,0 +1,17 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 0714e9fc4ccdb6de
+--- 0
+position: [1, 2, 3]
+rotation: [1, 0, 0, 0]
+scale: [1, 1, 1]
+worldPosition: [4, 5, 6]
+worldRotation: [1, 0, 0, 0]
+worldScale: [1, 1, 1]
+localMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+modelMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+normalMatrix: [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]
+visible: true
+billboardRotation: [1, 0, 0, 0]
+billboard: false
+fakeBillboard: false
+cylindricalBillboard: false

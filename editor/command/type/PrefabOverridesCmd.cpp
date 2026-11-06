@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabOverridesCmd.h"
+#include "component/PrefabComponent.h"
 #include "pose/PoseEditSession.h"
 
 #include "command/type/AddEntityToPrefabCmd.h"

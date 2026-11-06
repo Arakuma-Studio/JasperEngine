@@ -8,6 +8,7 @@
 #include "Scene.h"
 #include "EcsTestUtil.h"
 #include "jobs/JobSystem.h"
+#include "support/AllocationCounter.h"
 
 #include <gtest/gtest.h>
 
@@ -385,6 +386,69 @@ TEST(SchedulerTest, OverheadOfTwentyEmptySystems){
 #else
     EXPECT_LE(us, 40.0); // R27: at most 2 us per system
 #endif
+}
+
+TEST(SchedulerTest, SingletonWaveAllocationsDoNotGrowWithSystemCount){
+    auto allocationsFor = [](int count, bool exclusive){
+        Scene scene;
+        disableSubSystems(scene);
+        for (int i = 0; i < count; i++){
+            scene.addSystemFunction(descriptor("Empty" + std::to_string(i), {}, {7},
+                exclusive ? static_cast<uint32_t>(SystemResource::Exclusive) : 0u), nothing);
+        }
+        auto frame = [&]{
+            scene.getScheduler().runPhase(scene, SystemPhase::Update, 0.016);
+            scene.getScheduler().runPhase(scene, SystemPhase::Draw, 0.0);
+        };
+        // Warm both alternating trace buffers and the cached phase plans.
+        for (int i = 0; i < 4; i++) frame();
+        testsupport::ThreadAllocationCount allocations;
+        frame();
+        return allocations.count();
+    };
+    for (bool exclusive : {false, true}){
+        const uint64_t one = allocationsFor(1, exclusive);
+        const uint64_t twenty = allocationsFor(20, exclusive);
+        if (testsupport::countsAllocations()){
+            EXPECT_EQ(twenty, one) << "exclusive=" << exclusive;
+        }
+    }
+}
+
+TEST(SchedulerTest, SingletonWaveTracesCommandsAndExceptions){
+    Scene scene;
+    disableSubSystems(scene);
+    std::vector<int> events;
+    bool fail = true;
+    SystemDescriptor first = descriptor("First", {}, {}, SystemResource::Exclusive);
+    first.dependsOn = {"Second"};
+    scene.addSystemFunction(first, [&](SystemContext& ctx){
+        events.push_back(1);
+        ctx.cmd.defer([&](Scene&){ events.push_back(10); });
+    });
+    scene.addSystemFunction(descriptor("Second", {}, {}, SystemResource::Exclusive), [&](SystemContext& ctx){
+        events.push_back(2);
+        ctx.cmd.defer([&](Scene&){ events.push_back(20); });
+    });
+    scene.addSystemFunction(descriptor("Throw", {}, {}, SystemResource::Exclusive), [&](SystemContext&){
+        if (fail) throw std::runtime_error("expected");
+        events.push_back(3);
+    });
+    auto& scheduler = scene.getScheduler();
+    EXPECT_THROW(scheduler.runPhase(scene, SystemPhase::Update, 0.016), std::runtime_error);
+    EXPECT_EQ(events, (std::vector<int>{2, 20, 1, 10}));
+    scheduler.runPhase(scene, SystemPhase::Draw, 0.0);
+    ASSERT_EQ(scheduler.getLastTrace().size(), 2u);
+    EXPECT_EQ(*scheduler.getLastTrace()[0].system, "Second");
+    EXPECT_EQ(*scheduler.getLastTrace()[1].system, "First");
+
+    fail = false;
+    events.clear();
+    scheduler.runPhase(scene, SystemPhase::Update, 0.016);
+    scheduler.runPhase(scene, SystemPhase::Draw, 0.0);
+    EXPECT_EQ(events, (std::vector<int>{2, 20, 1, 10, 3}));
+    ASSERT_EQ(scheduler.getLastTrace().size(), 3u);
+    EXPECT_EQ(*scheduler.getLastTrace().back().system, "Throw");
 }
 
 TEST(SchedulerTest, DebugOptionsAndReset){

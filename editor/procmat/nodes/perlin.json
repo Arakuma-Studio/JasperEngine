@@ -1,0 +1,74 @@
+{
+ "code": [],
+ "description": "Generates several octaves of grayscale value noise",
+ "format": 1,
+ "functions": [
+  "perlin"
+ ],
+ "id": "perlin",
+ "inputs": [],
+ "instance": [],
+ "kind": "shader",
+ "name": "Value Noise",
+ "notices": [],
+ "outputs": [
+  {
+   "description": "Shows a grayscale value noise",
+   "expr": "perlin($(uv), vec2($(scale_x), $(scale_y)), int($(iterations)), $(persistence), $(seed))",
+   "label": "Output",
+   "type": "f"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 4,
+   "description": "The scale along the X axis",
+   "label": "Scale X",
+   "max": 32,
+   "min": 1,
+   "name": "scale_x",
+   "short_description": "Scale.x",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 4,
+   "description": "The scale along the Y axis",
+   "label": "Scale Y",
+   "max": 32,
+   "min": 1,
+   "name": "scale_y",
+   "short_description": "Scale.y",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 3,
+   "description": "The number of octaves (higher values might affect performance)",
+   "label": "Iterations",
+   "max": 10,
+   "min": 1,
+   "name": "iterations",
+   "short_description": "Octaves",
+   "step": 1,
+   "type": "float"
+  },
+  {
+   "default": 0.5,
+   "description": "The persistence between two consecutive octaves",
+   "label": "Persistence",
+   "max": 1,
+   "min": 0,
+   "name": "persistence",
+   "short_description": "Persistence",
+   "step": 0.05,
+   "type": "float"
+  }
+ ],
+ "short_description": "Value Noise",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/perlin.mmg"
+ },
+ "type_version": 1
+}

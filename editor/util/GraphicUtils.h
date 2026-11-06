@@ -10,6 +10,10 @@
 #include <functional>
 #include <vector>
 
+namespace jasperengine{
+    struct RectTransformComponent;
+}
+
 namespace fs = std::filesystem;
 
 namespace jasperengine::editor {

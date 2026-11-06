@@ -31,7 +31,7 @@ and updates this page and the gates together.
 - Tool names: snake_case `verb_noun`, globally unique (`create_entity`, `list_shaders`,
   `edit_colliders`). The names registered before this rule keep their names
   (`PREDATING_NAMES` in `test_tool_conventions.py`), and so do upstream's absorbed tools
-  (`UPSTREAM_NAMES`: `audio_mixer`, `native_plugins`, `user_settings`); every new name starts with a verb of its
+  (`UPSTREAM_NAMES`: `audio_mixer` and its sibling `audio_session`, `native_plugins`, `user_settings`); every new name starts with a verb of its
   `VERBS` list. Add a verb there only when none of the listed ones fits.
 - Parameter keys: snake_case at every level (`job_id`, `undo_group`, `max_width`,
   `min_frame_ms`, `capture_id`). No camelCase, ever, including keys of nested objects.
@@ -77,7 +77,9 @@ Put state-dependent choices in the description or in the handler's error message
   400 characters (review rule, not gated). Shared conventions (addressing, value shapes, undo,
   `parent` and `max_width` defaults) go in the server instructions (`McpInstructions.cpp`) or
   in `docs/mcp/guide/*.md`, never repeated per tool.
-- A result has a text summary (`ToolResult::text`) and `structuredContent` with the data.
+- A result has a text summary (`ToolResult::text`) and `structuredContent` with the data. A hint the agent must
+  see goes in `next` in `structuredContent` on a success and in the text on an error: a client like Claude Code shows the
+  model only that part of each.
 - Work that can take longer than about 1 s runs as an `McpJobs` job: the call returns
   `job_id` and `status` (`running|succeeded|failed|cancelled`), polled with `get_job`.
 - Images are `ToolResult` images (base64 in MCP, files in the CLI), never base64 in text.
@@ -99,7 +101,9 @@ misses `notifications/tools/list_changed` can still call a group tool by name.
 | `diagnostics` | S06 (`get_job_system_stats`, `set_job_system_config`, `get_memory_stats`), S07, S09 (`get_log_config`, `set_log_level`, `wait_for_log`, `list_timers`), S28 (`get_editor_health`, the one tool answered off the main thread: `ToolDef::offMainThread`; `get_crash_reports`, `dismiss_crash_notice`, `set_hang_watchdog`, `debug_crash`) |
 | `editor_ux` | S24 (`get_undo_history`, `get_play_changes`, `apply_play_changes`, `discard_play_changes`), S08 (`get_inspector_layout`), S25 (`search_editor`, `run_command`, `list_shortcuts`, `set_shortcut`, `edit_layout_presets`, `edit_asset_labels`, `edit_saved_searches`, `edit_bookmarks`), S26, `find_ui_item` (UI tests), upstream's ui-scaling-text / safe-area `configure_game_view` (out of core to fit the budget) |
 | `profiling` | S15 |
+| `device` | S56 (`get_device_info`, `set_device_simulation`; the tier table through `set_project_settings`) |
 | `rendering_fx` | S11 (`get_material_variant`, `set_light_unit`), S12, S13 |
+| `meshes` | S53 (model import and cook, render budgets), S54 (`capture_model_lods`) |
 | `splines` | S18 |
 | `terrain` | S31: `sculpt_terrain`, `set_terrain_maps`, `sample_terrain` (out of core to fit the budget) |
 | `navigation` | S19 |

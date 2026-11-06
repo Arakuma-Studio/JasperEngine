@@ -18,6 +18,10 @@
 
 #include "yaml-cpp/yaml.h"
 
+namespace jasperengine{
+    struct PrefabComponent;
+}
+
 namespace jasperengine::editor {
 
 // What one prefab instance changes on one of its prefab's GameObjects (Unity's

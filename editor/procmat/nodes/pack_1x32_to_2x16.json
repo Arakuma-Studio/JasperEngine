@@ -1,0 +1,36 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "pack_1x32_to_2x16"
+ ],
+ "id": "pack_1x32_to_2x16",
+ "inputs": [
+  {
+   "default": "1.0",
+   "function": true,
+   "label": "",
+   "name": "source",
+   "type": "f"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "pack 1x32 to 2x16",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "vec3(pack_1x32_to_2x16($source($uv)), 0.0)",
+   "label": "source_big",
+   "type": "rgb"
+  }
+ ],
+ "parameters": [],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/pack_1x32_to_2x16.mmg"
+ },
+ "type_version": 1
+}

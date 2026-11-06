@@ -1,0 +1,76 @@
+{
+ "code": [],
+ "description": "",
+ "format": 1,
+ "functions": [
+  "from_rgb_to_hsv",
+  "from_rgb_to_rgb",
+  "from_rgb_to_yuv",
+  "to_rgb_from_hsv",
+  "to_rgb_from_rgb",
+  "to_rgb_from_yuv"
+ ],
+ "id": "convert_colorspace",
+ "inputs": [
+  {
+   "default": "vec4(1.0, 1.0, 1.0, 1.0)",
+   "label": "",
+   "name": "input",
+   "type": "rgba"
+  }
+ ],
+ "instance": [],
+ "kind": "shader",
+ "name": "Convert Colorspace",
+ "notices": [],
+ "outputs": [
+  {
+   "expr": "vec4($(direction)_$(colorspace)($input($uv).rgb), $input($uv).a)",
+   "type": "rgba"
+  }
+ ],
+ "parameters": [
+  {
+   "default": 0,
+   "label": "",
+   "name": "direction",
+   "type": "enum",
+   "values": [
+    {
+     "name": "Convert from RGB to",
+     "value": "from_rgb_to"
+    },
+    {
+     "name": "Convert to RGB from",
+     "value": "to_rgb_from"
+    }
+   ]
+  },
+  {
+   "default": 0,
+   "label": "",
+   "name": "colorspace",
+   "type": "enum",
+   "values": [
+    {
+     "name": "RGB (no-op)",
+     "value": "rgb"
+    },
+    {
+     "name": "HSV",
+     "value": "hsv"
+    },
+    {
+     "name": "YUV",
+     "value": "yuv"
+    }
+   ]
+  }
+ ],
+ "short_description": "",
+ "source": {
+  "commit": "7d6daae",
+  "file": "addons/material_maker/nodes/convert_colorspace.mmg"
+ },
+ "type_version": 1
+}

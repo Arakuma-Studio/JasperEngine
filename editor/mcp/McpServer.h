@@ -24,6 +24,7 @@
 
 namespace jasperengine::editor {
     class App;
+    struct EditorDialogInfo;
 }
 
 namespace jasperengine::editor::mcp {
@@ -286,6 +287,25 @@ namespace jasperengine::editor::mcp {
         void updateLogSinkLevel();
 
         std::vector<Deferred> deferred;   // main thread only
+        std::vector<CallPtr> runningHandlers;   // main thread only: the tools on the stack (a batch's steps nest)
+
+        // The result of a call that may write files waits for its settle (McpAutoSync::afterCall):
+        // whatever the client writes once it has the result is then newer than that settle, so it
+        // is never taken as the tool's own. Queued by the completion (any thread), run on the main
+        // thread where no handler is on the stack. While a file picker holds that thread the answer
+        // goes first (its client may have to answer the picker) and the settle once the thread is back.
+        struct Settle {
+            std::string tool;
+            std::chrono::system_clock::time_point start;
+            std::function<void()> respond;
+        };
+        std::mutex settleMutex;
+        std::vector<Settle> settles;
+        bool settlesClosed = false;       // stop() ran: what completes later answers at once
+        int handlersOnStack = 0;          // main thread only: tool handlers and deferred callbacks running
+        void queueSettle(Settle settle);
+        void runSettles();
+        void answerSettlesNow();
 
         std::atomic<bool> httpChangesAllowed{true};
 
@@ -302,6 +322,10 @@ namespace jasperengine::editor::mcp {
         // The agent guide, saying so when the session is read-only
         std::string instructionsFor(const McpSession& session) const;
         void runOnMainThread(std::function<void()> task);
+        // A file picker holds the main thread (EditorFilePicker): what the transports do meanwhile,
+        // and, when it opens, what happens to the calls that wait for that thread
+        void answerDuringFilePicker(const CallPtr& call, const EditorDialogInfo& picker);
+        void onFilePickerOpened();
         // Gates + handler. complete() is already wired into the call.
         void execute(const CallPtr& call, const ToolDef& def);
         uint64_t beginActivity(const std::string& client, const std::string& tool, const Json& args);

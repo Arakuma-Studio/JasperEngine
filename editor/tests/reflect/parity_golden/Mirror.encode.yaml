@@ -1,0 +1,18 @@
+# Frozen by ReflectParity (editor/tests/reflect/ReflectParityTest.cpp); JASPER_TEST_UPDATE_GOLDEN=1 rewrites it.
+digest 21416c0ec30e71fe
+--- 0
+normal: [-0, -90.42857, 2358.911]
+--- 1
+normal: [-0, -0.102156, 3688.3425]
+--- 2
+normal: [-0.26394793, 0, -41]
+--- 3
+normal: [-0, -1, 3e+38]
+--- 4
+normal: [0.25437057, 9, 95.85714]
+--- 5
+normal: [1149.3516, 0.65517855, 3e+38]
+--- 6
+normal: [2243.1626, 0.64227873, 3637.1086]
+--- 7
+normal: [21, 0.8019934, 24]
