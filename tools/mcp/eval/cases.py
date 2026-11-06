@@ -1671,7 +1671,7 @@ CASES = [
         "what_happened": "Component UI Buttons got keyboard, gamepad and TV navigation only for a selected Button "
                          "(ui-components): a native menu needs one Button with select_on_enable, which create_ui's "
                          "description names.",
-        "text_at_issue": "create_ui's description: 'button (text = label; keyboard/gamepad menus: select_on_enable, navigation, ...'",
+        "text_at_issue": "create_ui's description: 'button (text = label, select_on_enable)'",
         "source": "spec docs/superpowers/specs/2026-11-04-ui-components-design.md decision 1; no failure on record",
         "prompt": "The Hud scene uses the native UI (create_ui). Add a pause menu there: Resume, Options and Quit buttons "
                   "stacked vertically in the middle of the screen. Players use a gamepad or a TV remote, so the menu must "

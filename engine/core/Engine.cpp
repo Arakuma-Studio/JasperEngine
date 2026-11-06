@@ -3820,10 +3820,17 @@ void Engine::systemKeyUp(int key, bool repeat, int mods){
     Input::releaseKeyPressed(key);
     Input::setModifiers(mods); // Now it can be 0
 
-    // every document hears the release; the one that took the press consumes it
+    // every document hears the release; the one that took the press consumes it. While a text
+    // field is typed in, the other documents do not hear a typing key's release either (a focused
+    // button clicks on Space's release)
+    const std::vector<Scene*> scenes = getInputScenes(false);
+    const bool typingKey = key != D_KEY_ESCAPE && !(key >= D_KEY_F1 && key <= D_KEY_F25);
+    const bool docTyping = typingKey && documentTyping(scenes);
     bool consumed = false;
-    for (Scene* scene : getInputScenes(false)){
-        if (scene->getSystem<UIDocumentSystem>()->eventOnKeyUp(key, mods))
+    for (Scene* scene : scenes){
+        UIDocumentSystem* documents = scene->getSystem<UIDocumentSystem>().get();
+        const bool hears = !docTyping || (canSendDocumentEvents(scene) && documents->hasFocusedTextInput());
+        if (hears && documents->eventOnKeyUp(key, mods))
             consumed = true;
         // the release of a Submit key that holds a Button pressed
         if ((key == D_KEY_ENTER || key == D_KEY_KP_ENTER || key == D_KEY_SPACE) &&

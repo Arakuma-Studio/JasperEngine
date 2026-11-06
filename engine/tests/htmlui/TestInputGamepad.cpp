@@ -681,8 +681,6 @@ TEST_F(InputGamepadTest, StickHeldWhenMenuLetsGoGoesBackToTheGame){
 // button does not take it (the typing guard)
 TEST_F(InputGamepadTest, TypingFieldKeepsEnterFromAnUpperDocument){
     load(kGridCss, kGridBody);
-    ClickCounter clicks;
-    element("b1")->AddEventListener(Rml::EventId::Click, &clicks);
     focus("b1");
 
     // the lower scene: a text field (the fixture made last is the main scene, under the other)
@@ -698,11 +696,14 @@ TEST_F(InputGamepadTest, TypingFieldKeepsEnterFromAnUpperDocument){
     ASSERT_TRUE(input->Focus());
     ASSERT_TRUE(Engine::isTextInputFocused());
 
+    ClickCounter clicks;
+    element("b1")->AddEventListener(Rml::EventId::Click, &clicks);
     Engine::systemKeyDown(D_KEY_ENTER, false, 0);
     Engine::systemKeyUp(D_KEY_ENTER, false, 0);
     Engine::systemKeyDown(D_KEY_SPACE, false, 0);
     Engine::systemKeyUp(D_KEY_SPACE, false, 0);
-    EXPECT_EQ(clicks.clicks, 0) << "the upper document's button does not take the typing keys";
+    element("b1")->RemoveEventListener(Rml::EventId::Click, &clicks);
+    EXPECT_EQ(clicks.clicks, 0) << "the upper document's button does not take the typing keys (Space clicks on its release)";
 
     Engine::removeScene(&fixture->getScene());
     lower.reset();
