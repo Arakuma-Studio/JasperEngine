@@ -664,7 +664,8 @@ TEST_F(SpriteBatchGpu, MatchesUnbatchedNormalMap){
     sun.setDirection(-0.6f, -0.4f, -0.7f);
     sun.setIntensity(2.0f);
     ASSERT_TRUE(render());
-    expectSameImage(8, 2);
+    // a mirrored card draws with the other winding (a run of its own), the cards in distance order
+    expectSameImage(8, 6);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -779,12 +780,13 @@ TEST_F(SpriteBatchGpu, UIElementsInACanvasGroupBatch){
     second.setColor(1.0f, 1.0f, 0.6f, 1.0f);
     second.setPosition(130.0f, 190.0f, 0.0f);
     ASSERT_TRUE(render());
-    expectSameImage(0, 2);
+    // the group's image, its children (under its scissor), the texts
+    expectSameImage(0, 3);
     EXPECT_EQ(onStats.breaks[(size_t)BatchBreak::UI_COLOR], 0u) << describe();
 
     second.setColor(0.6f, 1.0f, 1.0f, 1.0f);
     ASSERT_TRUE(render());
-    expectSameImage(0, 3);
+    expectSameImage(0, 4);
     EXPECT_GE(onStats.breaks[(size_t)BatchBreak::UI_COLOR], 1u) << describe();
     images.clear();
 }
@@ -805,7 +807,8 @@ TEST_F(SpriteBatchGpu, GeometryAnotherPassUploadedIsBakedAgain){
     frame(true);
     // a same-length write of its vertices (MeshSystem, needUpdateBuffer)
     sprites[5]->setSize(2, 2);
-    expectSameImage(8, 2);
+    // the G-buffer pass's 12 draws alone, the colour pass's run
+    expectSameImage(8, 14);
     EXPECT_NO_ENGINE_ERRORS();
 }
 
@@ -824,6 +827,12 @@ TEST_F(SpriteBatchGpu, TextAFlattenedCanvasGroupUploadedIsBakedAgain){
     label.setColor(1.0f, 1.0f, 1.0f, 1.0f);
     label.setPosition(30.0f, 20.0f, 0.0f);
     holder.addChild(&label);
+    // (its like beside it: the texts are a run)
+    Text other(&scene);
+    other.setText("CD");
+    other.setColor(1.0f, 1.0f, 1.0f, 1.0f);
+    other.setPosition(110.0f, 20.0f, 0.0f);
+    holder.addChild(&other);
     ASSERT_TRUE(render());
     frame(true);
 
@@ -840,8 +849,8 @@ TEST_F(SpriteBatchGpu, TextAFlattenedCanvasGroupUploadedIsBakedAgain){
 TEST_F(SpriteBatchGpu, ABatchDrawCarriesItsOwnAnnotation){
     JASPER_REQUIRE_GPU();
     camera3D();
-    // GPU Instancing holds boxes drawn before the cards (priority 0) and after them (2): the
-    // cards' run draws while an instanced draw is held, which draws first
+    // the batch draws' Frame Debugger annotation in a pass GPU Instancing also batches: boxes before
+    // the cards (priority 0) and after them (2)
     std::vector<std::unique_ptr<Model>> boxes;
     for (int i = 0; i < 8; i++){
         boxes.push_back(std::make_unique<Model>(&scene));
