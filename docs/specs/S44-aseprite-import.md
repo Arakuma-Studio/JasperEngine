@@ -937,6 +937,9 @@ Recorded by the implementation (`feature/s44-aseprite-import`):
   and has no Lua API for slice keys after frame 0: the script patches both and Aseprite re-saves.
   Aseprite's `--sheet` clears an indexed background's transparent index while `--save-as` keeps it
   opaque; the importer follows `--save-as` (a background layer is opaque by definition).
+  `aseprite_compat.py` against Aseprite 1.3.18.6 on all 64 fixture files: 637 of 640 checks pass,
+  none fails, 3 are skipped where Aseprite's own `--sheet` and `--save-as` disagree (the editor's
+  side recorded in its build image, as the host has no display libraries).
 - **Cache key.** It holds the file's asset path and GUID besides §6.5's content, settings and
   versions: the outputs name the file (frame names, the sheet's source, the clips' `source.path`),
   so a copy or a rename is its own import (one reimport after a rename).
