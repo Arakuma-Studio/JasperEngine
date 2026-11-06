@@ -172,7 +172,7 @@ async def test_no_project_open_keeps_drawing():
                 # each answer is after frames with the Inspector and the other windows drawn
                 for _ in range(5):
                     await ed.call("editor_status")
-                    await asyncio.sleep(0.2)
+                    await ed.call("wait", frames=2)
                 summary = await ed.call("get_project_summary")
                 check(not summary.get("scenes"), f"no scene is open: {summary}")
                 stderr = ed.stderr_text()

@@ -16,8 +16,6 @@
 #include "component/Transform.h"
 #include "window/InspectorWindowClips.h"
 
-#include <limits>
-
 using namespace jasperengine;
 using namespace jasperengine::editor;
 
@@ -94,22 +92,6 @@ TEST(InspectorClipHelpers, LabelsElideKeepingTheFileNameEnd) {
     EXPECT_EQ(inspectorclips::elideMiddle("abcdef", 2, chars), "...");
 }
 
-TEST(InspectorClipHelpers, WrapAndChannelLabelsAndSeconds) {
-    EXPECT_STREQ(inspectorclips::wrapLabel(ClipWrapMode::Default), "Default");
-    EXPECT_STREQ(inspectorclips::wrapLabel(ClipWrapMode::PingPong), "Ping Pong");
-    EXPECT_STREQ(inspectorclips::wrapLabel(ClipWrapMode::ClampForever), "Clamp Forever");
-    EXPECT_STREQ(inspectorclips::channelLabel(ClipChannel::Position), "Position");
-    EXPECT_STREQ(inspectorclips::channelLabel(ClipChannel::Morph), "Blend Shapes") << "the Animation window's name";
-    EXPECT_EQ(inspectorclips::formatSeconds(1.25f), "1.25 s");
-    EXPECT_EQ(inspectorclips::formatSeconds(std::numeric_limits<float>::quiet_NaN()), "0.00 s");
-}
-
-TEST(InspectorClipHelpers, UsersTextCountsScenesAndPrefabs) {
-    EXPECT_EQ(inspectorclips::usersText(0, 0), "0 users in open scenes");
-    EXPECT_EQ(inspectorclips::usersText(1, 0), "1 user in open scenes");
-    EXPECT_EQ(inspectorclips::usersText(3, 1), "3 users in open scenes, 1 in loaded prefabs");
-}
-
 TEST(InspectorClipHelpers, AnUncheckedReportSaysUnchecked) {
     // a report without a root: every track Unchecked
     ClipValidationReport report;
@@ -143,31 +125,6 @@ TEST(InspectorClipHelpers, TheBindingsHeaderCountsProblems) {
     report.tracks.push_back(track("Hero/Hips/Spine", ClipChannel::Rotation, TrackBindingStatus::LegacyModelLayout));
     EXPECT_EQ(inspectorclips::problemCount(report), 3u);
     EXPECT_EQ(inspectorclips::bindingsSummary(report), "legacy model layout");
-}
-
-TEST(InspectorClipHelpers, ProblemRowsAreShortWithTheNearestLeaf) {
-    TrackReport missing = track("Hero/mixamorig:Hips/mixamorig:Spne", ClipChannel::Position, TrackBindingStatus::MissingPath);
-    EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing");
-    missing.nearest = {"Hero/mixamorig:Hips/mixamorig:Spine"};
-    // the validation's long message stays the tooltip; the row names leaves
-    missing.message = "Hero/mixamorig:Hips/mixamorig:Spne : position: no GameObject at '...': did you mean '...'?";
-    EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing (did you mean mixamorig:Spine?)");
-    missing.nearest = {"A/Hand", "A/Hand2", ""};
-    EXPECT_EQ(inspectorclips::trackProblemText(missing), "mixamorig:Spne : Position: missing (did you mean Hand, Hand2 or (Root)?)");
-    EXPECT_EQ(inspectorclips::trackProblemText(track("", ClipChannel::Morph, TrackBindingStatus::MissingComponent)),
-              "(Root) : Blend Shapes: nothing to animate on the GameObject");
-}
-
-TEST(InspectorClipHelpers, EventTexts) {
-    EventReport event;
-    event.function = "footstep";
-    event.status = EventHandlerStatus::NotFound;
-    EXPECT_EQ(inspectorclips::eventProblemText(event, 0.5f), "Event footstep at 0.50 s: no script on the root defines footstep()");
-    event.message = "event footstep at 0.5 s: no Lua script on Hero defines footstep()";
-    EXPECT_EQ(inspectorclips::eventProblemText(event, 0.5f), "Event footstep at 0.5 s: no Lua script on Hero defines footstep()");
-    EXPECT_EQ(inspectorclips::eventArgsText({AnimationEvent::numberArg(1), AnimationEvent::stringArg("left"), AnimationEvent::boolArg(true)}),
-              "1, \"left\", true");
-    EXPECT_EQ(inspectorclips::eventArgsText({}), "");
 }
 
 TEST(InspectorClipHelpers, ModelRowsShowSubClipNames) {

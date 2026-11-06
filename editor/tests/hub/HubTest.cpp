@@ -891,6 +891,7 @@ TEST(StagingFolders, TheSweepOnlyLooksAtTheGivenFoldersChildren) {
     fs::create_directory_symlink(dir.path() / "Other", parent / "Link.importing");
     std::ofstream(parent / "Link.importing.lock") << "{\"kind\": \"jasperengine-staging\"}\n";
     EXPECT_TRUE(staging::sweep({{parent}, {}}).leftovers.empty());
+    EXPECT_TRUE(fs::is_symlink(parent / "Link.importing"));
     EXPECT_TRUE(fs::exists(other / "data.txt"));
 #endif
 }

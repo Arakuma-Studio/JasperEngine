@@ -51,17 +51,22 @@
 #include "subsystem/RenderSystem.h"
 #include "subsystem/AudioSystem.h"
 #include "audio/WavWriter.h"
-#include <thread>
+#include "audio/TimelineAudioPreview.h"
 
 #include <unistd.h>
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -70,6 +75,26 @@ namespace {
 
     // the App's part: what Project calls on the editor host reaches the clip hooks
     struct WindowHost : public EditorHost {
+        std::mutex postedMutex;
+        std::condition_variable taskPosted;
+        uint64_t postedGeneration = 0;
+
+        void enqueueMainThreadTask(std::function<void()> task) override {
+            EditorHost::enqueueMainThreadTask(std::move(task));
+            {
+                std::lock_guard<std::mutex> lock(postedMutex);
+                postedGeneration++;
+            }
+            taskPosted.notify_all();
+        }
+        uint64_t taskGeneration() {
+            std::lock_guard<std::mutex> lock(postedMutex);
+            return postedGeneration;
+        }
+        void waitForTaskAfter(uint64_t generation) {
+            std::unique_lock<std::mutex> lock(postedMutex);
+            taskPosted.wait(lock, [&]() { return postedGeneration != generation; });
+        }
         void stopTransientPreviews() override {
             if (animationClipAppHooks().stopTransientPreviews) animationClipAppHooks().stopTransientPreviews();
         }
@@ -80,6 +105,12 @@ namespace {
             if (animationClipAppHooks().projectClosed) animationClipAppHooks().projectClosed();
         }
     };
+
+    // A worker's post may finish after TearDown restores the default host.
+    WindowHost& animationWindowClipHost() {
+        static WindowHost* host = new WindowHost();
+        return *host;
+    }
 
     fs::path repoPath(const fs::path& relative) {
         return (fs::path(JASPER_TEST_REPO_DIR) / relative).lexically_normal();
@@ -220,7 +251,7 @@ namespace {
     // ImGui context drawing it, and an Inspector of the project (the record sources' rows)
     class AnimationWindowClipTest : public ::testing::Test {
     protected:
-        WindowHost host;
+        WindowHost& host = animationWindowClipHost();
         ImGuiContext* previousContext = nullptr;
         ImGuiContext* context = nullptr;
         std::unique_ptr<AnimationWindow> window;
@@ -803,8 +834,11 @@ TEST_F(AnimationWindowClipTest, AudioLaneDropAlignAndPreview) {
     ASSERT_TRUE(redoProject());
 
     // S36's analysis gives the block its length and peak (on the worker)
-    for (int i = 0; i < 400 && state()["audio"][0]["length"].get<double>() <= 0.0; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    for (;;) {
+        const uint64_t generation = host.taskGeneration();
+        if (!(state()["audio"][0]["length"].get<double>() <= 0.0)) break;
+        if (!TimelineSounds::get(project(), tick).pending) break;
+        host.waitForTaskAfter(generation);
         frames(1);
     }
     st = state();
@@ -1413,11 +1447,13 @@ TEST_F(AnimationWindowClipTest, EntityModeAudioActions) {
     EXPECT_EQ(st["entity_frames"].back()["label"], "Mixer Snapshot: Build");
 
     // Align Peak on the selected audio block, once the analysis has the peak
-    for (int i = 0; i < 400; i++) {
+    for (;;) {
+        const uint64_t generation = host.taskGeneration();
         float time = 0.0f;
         act({{"entity_select_frame", (int)frameCount}, {"entity_time", 1.0}});
         if (AnimationWindowTestAccess::alignProblem(*window, 1, &time).empty()) break;
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        if (!TimelineSounds::get(project(), tick).pending) break;
+        host.waitForTaskAfter(generation);
     }
     st = act({{"entity_select_frame", (int)frameCount}, {"entity_time", 1.0}, {"entity_command", "animation.alignCuePeak"}});
     EXPECT_NEAR(st["entity_frames"][frameCount]["start"].get<float>(), 0.8f, 0.002f) << "the tick's peak (0.2 s) on 1.0 s";

@@ -39,10 +39,6 @@ namespace {
         return parent.children[index].element.front();
     }
 
-    bool has(const std::vector<std::string>& list, const std::string& value){
-        return std::find(list.begin(), list.end(), value) != list.end();
-    }
-
 }
 
 TEST(TreeReconcile, ReadsCompiledRml){

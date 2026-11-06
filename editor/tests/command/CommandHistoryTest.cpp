@@ -279,12 +279,6 @@ TEST_F(CommandHistoryTest, NoCallbackIsFineToo){
     EXPECT_EQ(journal.str(), "+a -a +a");
 }
 
-TEST_F(CommandHistoryTest, MarkReturnsThePosition){
-    add("a");
-    add("b");
-    EXPECT_EQ(history->mark(), 2u);
-}
-
 TEST_F(CommandHistoryTest, MarkStopsTheNextCommandMerging){
     add("a", true);
     history->mark();

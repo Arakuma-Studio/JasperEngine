@@ -2985,6 +2985,16 @@ bool editor::Exporter::writeAudioCredits() {
     return true;
 }
 
+bool editor::Exporter::checkFbxImportPathFree(const fs::path& relPath) {
+    fs::path importRelPath = relPath;
+    importRelPath += ".glb";
+    std::error_code ec;
+    if (!fs::exists(getAssetsSourceDir() / importRelPath, ec)) return true;
+    setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
+        relPath.generic_string() + ". Rename it.");
+    return false;
+}
+
 bool editor::Exporter::cookModels() {
     setProgress("Cooking models...", 0.34f);
     cookedModelSources.clear();
@@ -3008,6 +3018,11 @@ bool editor::Exporter::cookModels() {
     if (!gatheredFuture.get()) {
         setError("Model cook failed: " + gatherError);
         return false;
+    }
+    // before the cook, which would read such an asset as a model and fail on it instead
+    for (const ModelBatchItem& item : inputs.items) {
+        const fs::path relPath = FileUtils::pathFromUtf8(item.assetPath);
+        if (FbxImporter::isFbxFile(relPath) && !checkFbxImportPathFree(relPath)) return false;
     }
     const fs::path assetsOut = getExportProjectRoot() / "assets";
     if (inputs.items.empty()) {
@@ -3248,11 +3263,7 @@ bool editor::Exporter::copyAssets() {
             fs::path importRelPath = relPath;
             importRelPath += ".glb";
             // The engine loads the import from that path, so no asset can have it
-            if (fs::exists(assetsSrc / importRelPath, ec)) {
-                setError("Cannot export: " + importRelPath.generic_string() + " would replace the import of " +
-                    relPath.generic_string() + ". Rename it.");
-                return stop();
-            }
+            if (!checkFbxImportPathFree(relPath)) return stop();
             const fs::path fbxPath = project->resolveAssetPath(relPath);
             const fs::path glbPath = project->getImportedModelPath(fbxPath);
             // Scripts may load any of them, so none can be left out or outdated
