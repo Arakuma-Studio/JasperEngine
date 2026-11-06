@@ -20,6 +20,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -80,6 +81,12 @@ namespace {
             if (std::chrono::steady_clock::now() - start > std::chrono::seconds(120)) return false;
         }
         return true;
+    }
+
+    // Graph::findNode looks nodes up in id order, as load() and the edit ops keep them
+    void sortById(graph::Graph& file) {
+        std::sort(file.nodes.begin(), file.nodes.end(), [](const graph::Node& a, const graph::Node& b) { return graph::idLess(a.id, b.id); });
+        std::sort(file.edges.begin(), file.edges.end(), [](const graph::Edge& a, const graph::Edge& b) { return graph::idLess(a.id, b.id); });
     }
 
     graph::Graph singleNodeGraph(const char* type, const char* port = "out") {
@@ -287,6 +294,7 @@ TEST(ProceduralEvaluatorGpu, ARebuildKeepsThePassesThatDidNotChange) {
     output.id = "o";
     output.type = MATERIAL_OUTPUT_NODE;
     file.nodes = {noise, buffer, blend, output};
+    sortById(file);
     graph::Edge one, two, three;
     one.id = "e1";
     one.from = {"n", "output"};

@@ -1214,7 +1214,8 @@ class Importer:
             return {}
         kind = target.get("type")
         if kind == "buffer":
-            return {"type": "size", "first": 4, "last": 13}
+            # a Buffer's size, or one of its flags ("32 Bits"): a flag is no size
+            return {"type": "size", "first": 4, "last": 13} if links[0]["param"] == "size" else {"type": "boolean"}
         if kind == "iterate_buffer":
             if links[0]["param"] == "size":
                 return {"type": "size", "first": 4, "last": 13}

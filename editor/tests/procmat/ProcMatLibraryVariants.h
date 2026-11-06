@@ -72,7 +72,9 @@ namespace jasperengine::editor::procmat::test {
                     if (i != fallback) variants.push_back({name + "=" + std::to_string(i), Json{{name, i}}, 1, hasInputs});
                 }
             } else if (kind == "boolean") {
-                const bool fallback = parameter.value("default", false);
+                // as Python's truth of whatever the descriptor holds (a flag can be 0 or 1)
+                const Json& stored = parameter.contains("default") ? parameter["default"] : Json();
+                const bool fallback = stored.is_boolean() ? stored.get<bool>() : (stored.is_number() ? stored.get<double>() != 0.0 : false);
                 variants.push_back({name + "=" + (fallback ? "false" : "true"), Json{{name, !fallback}}, 1, hasInputs});
             }
         }

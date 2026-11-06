@@ -334,6 +334,8 @@ directional_blur2.wired.o0.out 8bb9180726d19f18 2cf1537ec731132b
 directional_blur2.wired.o0.p2in 9dbf3b94594a5ae3 cbf29ce484222325
 directional_blur2.param3=1.o0.out 58a5b44186fdcede 2cf1537ec731132b
 directional_blur2.param3=1.o0.p2in 9dbf3b94594a5ae3 cbf29ce484222325
+directional_blur2.param4=true.o0.out 8bb9180726d19f18 2cf1537ec731132b
+directional_blur2.param4=true.o0.p2in 9dbf3b94594a5ae3 cbf29ce484222325
 directional_noise.default.o0.out af762b682816bfc5 4d25b17f9dce7836
 directional_noise.default.o0.p34in 09e754002a4afda4 f2433410ae902c45
 directional_noise.param0=1.o0.out a9ac542a2c8c7901 4d25b17f9dce7836
@@ -363,6 +365,8 @@ edge_detect_3.wired.o0.out 2d6483ba27561ff8 4d25767f9dce13f5
 emboss2.default.o0.out 7950e11dc7eb6838 cf8838accf563ffe
 emboss2.wired.o0.out 5df2aeda2cd5ece0 cf8838accf563ffe
 emboss2.wired.o0.p2in 77c265bea2d7adf6 cbf29ce484222325
+emboss2.param4=true.o0.out 5df2aeda2cd5ece0 cf8838accf563ffe
+emboss2.param4=true.o0.p2in 77c265bea2d7adf6 cbf29ce484222325
 ensure_greyscale.default.o0.out c429a991f0f7fd42 4d25767f9dce13f5
 ensure_greyscale.wired.o0.out 7d4860a2fe75313d 4d25767f9dce13f5
 fast_blur.default.o0.out f96d146d6fe106e1 4d25b17f9dce7836
@@ -487,6 +491,10 @@ gaussian_blur.param2=1.o0.p5in 9dbf3b94594a5ae3 cbf29ce484222325
 gaussian_blur.param2=2.o0.out 156d0f6dacac8d0e 4d25b17f9dce7836
 gaussian_blur.param2=2.o0.p7in a3b357684d0dd365 2ce70b1813812de7
 gaussian_blur.param2=2.o0.p6in 9dbf3b94594a5ae3 cbf29ce484222325
+gaussian_blur.param3=true.o0.out 156d0f6dacac8d0e 4d25b17f9dce7836
+gaussian_blur.param3=true.o0.p7in a3b357684d0dd365 2ce70b1813812de7
+gaussian_blur.param3=true.o0.p6in 93b9fcd2d8399599 07cb9a68e7b6d878
+gaussian_blur.param3=true.o0.p5in 9dbf3b94594a5ae3 cbf29ce484222325
 gaussian_blur_hq.default.o0.out 1e7e5046b8b07ed2 4d25b17f9dce7836
 gaussian_blur_hq.default.o0.p4in 15cac1c691fb8e3f 2afc510a596b3413
 gaussian_blur_hq.default.o0.p5in 611154257341803d 2afc500a596b3260
@@ -500,6 +508,10 @@ gaussian_blur_hq.param2=1.o0.p3in 9dbf3b94594a5ae3 cbf29ce484222325
 gaussian_blur_hq.param2=2.o0.out 1e7e5046b8b07ed2 4d25b17f9dce7836
 gaussian_blur_hq.param2=2.o0.p4in 5f4a21728aed2084 2afc510a596b3413
 gaussian_blur_hq.param2=2.o0.p5in 9dbf3b94594a5ae3 cbf29ce484222325
+gaussian_blur_hq.param3=true.o0.out 1e7e5046b8b07ed2 4d25b17f9dce7836
+gaussian_blur_hq.param3=true.o0.p4in 5f4a21728aed2084 2afc510a596b3413
+gaussian_blur_hq.param3=true.o0.p5in 9b311f82094556ba 2afc500a596b3260
+gaussian_blur_hq.param3=true.o0.p3in 9dbf3b94594a5ae3 cbf29ce484222325
 gaussian_blur_x.default.o0.out 637d66f08fc17e05 a8c7e932281a2048
 gaussian_blur_x.wired.o0.out c22f196852e7308f a8c7e932281a2048
 gaussian_blur_x_hq.default.o0.out 56c822d4c2fc40c3 96e6735cc60a7066
@@ -739,6 +751,10 @@ morphology3.operation=1.o0.out abadd6b06b0cbdd4 0d2d74d6bf710cab
 morphology3.operation=1.o0.p1in b799012fecb66721 cbf29ce484222325
 morphology3.operation=1.o0.p10in f02c18f7e85d594c 9d536401dc354c0b
 morphology3.operation=1.o0.p6in 4206d396fd295360 9d536401dc354c0b
+morphology3.f32=true.o0.out abadd6b06b0cbdd4 0d2d74d6bf710cab
+morphology3.f32=true.o0.p1in b799012fecb66721 cbf29ce484222325
+morphology3.f32=true.o0.p10in 90d79cdca120b977 7f21af771a9ef31b
+morphology3.f32=true.o0.p6in 9986b5d573155bf5 7f21af771a9ef31b
 multi_warp2.default.o0.out f96d146d6fe106e1 4b72b27f9c5ce569
 multi_warp2.default.o0.p3in d7a742c639658f6c c7ae66791ac9b914
 multi_warp2.wired.o0.out f96d146d6fe106e1 4b72b27f9c5ce569
@@ -750,6 +766,9 @@ multi_warp2.param3=1.o0.p2in 9dbf3b94594a5ae3 cbf29ce484222325
 multi_warp2.param3=2.o0.out f96d146d6fe106e1 4b72b27f9c5ce569
 multi_warp2.param3=2.o0.p3in b3bb4834b207abdd c7ae66791ac9b914
 multi_warp2.param3=2.o0.p2in 9dbf3b94594a5ae3 cbf29ce484222325
+multi_warp2.param4=true.o0.out f96d146d6fe106e1 4b72b27f9c5ce569
+multi_warp2.param4=true.o0.p3in 6740cf201f674107 c7ae66791ac9b914
+multi_warp2.param4=true.o0.p2in 9dbf3b94594a5ae3 cbf29ce484222325
 mwf_create_map.default.o0.out 8053769aaf4c0afb e15a7ad3be4c4548
 mwf_create_map.wired.o0.out 081b43334326bc54 e15a7ad3be4c4548
 mwf_map.default.o0.out 901b10d987355033 4d25767f9dce13f5
@@ -1049,6 +1068,9 @@ slope_blur2.default.o0.p3in 79ebf85f7b7241b9 1355b30ce862dbb4
 slope_blur2.wired.o0.out f96d146d6fe106e1 4d25b27f9dce79e9
 slope_blur2.wired.o0.p3in e580b24d80e66efc 1355b30ce862dbb4
 slope_blur2.wired.o0.p2in 9dbf3b94594a5ae3 cbf29ce484222325
+slope_blur2.param2=true.o0.out f96d146d6fe106e1 4d25b27f9dce79e9
+slope_blur2.param2=true.o0.p3in e580b24d80e66efc 1355b30ce862dbb4
+slope_blur2.param2=true.o0.p2in 9dbf3b94594a5ae3 cbf29ce484222325
 smooth_curvature.default.o0.out 769271fdfa86a7e3 25359e6c160f6299
 smooth_curvature.default.o0.p33in 08de0643e28390c4 2313ad07ca79fc99
 smooth_curvature.default.o0.p32in 330a1839b6e95750 54e4441edbd760ad
@@ -1360,6 +1382,10 @@ warp_dilation3.wired.o0.p7in a83bf9e11c95ca36 e4075bc5b3cde815
 warp_dilation3.wired.o0.p6in 77c265bea2d7adf6 cbf29ce484222325
 warp_dilation3.wired.o0.p5in 77c265bea2d7adf6 cbf29ce484222325
 warp_dilation3.param0=false.o0.out acd0b393cb1e136b 0e2b8d62e538cfb5
+warp_dilation3.param1=true.o0.out 26dea9a419d89097 4b72b27f9c5ce569
+warp_dilation3.param1=true.o0.p7in a83bf9e11c95ca36 e4075bc5b3cde815
+warp_dilation3.param1=true.o0.p6in 77c265bea2d7adf6 cbf29ce484222325
+warp_dilation3.param1=true.o0.p5in 77c265bea2d7adf6 cbf29ce484222325
 wavelet_noise2.default.o0.out 9a25a67a46711e37 06c13d28a0d6a605
 wavelet_noise2.type=0.o0.out 83703d58f6bb5ecc 06c13d28a0d6a605
 wavelet_noise2.type=1.o0.out 0c0d57bf0be3be69 06c13d28a0d6a605

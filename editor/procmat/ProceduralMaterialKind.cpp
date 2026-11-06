@@ -66,7 +66,9 @@ namespace {
             return isFiniteNumber(value) ? std::string() : "is not a number";
         }
         if (kind == "boolean") {
-            return value.is_boolean() ? std::string() : "is not true or false";
+            // the library's own data writes some flags as 0 and 1
+            const bool flag = value.is_boolean() || (value.is_number() && (value.get<double>() == 0.0 || value.get<double>() == 1.0));
+            return flag ? std::string() : "is not true or false";
         }
         if (kind == "enum") {
             const std::vector<std::string> ids = enumValueIds(definition);
@@ -373,7 +375,6 @@ graph::GraphKindDesc jasperengine::editor::procmat::makeProceduralMaterialKind(c
     kind.fileExtension = PROCEDURAL_MATERIAL_EXTENSION;
     kind.kindVersion = 1;
     kind.acyclic = true;
-    // R28's strictParams is set here, once BF23 gives the kind that field
     for (const auto& [name, type] : library->portTypes()) {
         graph::PortTypeDesc port;
         port.id = name;

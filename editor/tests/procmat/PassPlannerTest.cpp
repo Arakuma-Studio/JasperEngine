@@ -56,6 +56,12 @@ namespace {
         return library;
     }
 
+    // Graph::findNode looks nodes up in id order, as load() and the edit ops keep them
+    void sortById(graph::Graph& file) {
+        std::sort(file.nodes.begin(), file.nodes.end(), [](const graph::Node& a, const graph::Node& b) { return graph::idLess(a.id, b.id); });
+        std::sort(file.edges.begin(), file.edges.end(), [](const graph::Edge& a, const graph::Edge& b) { return graph::idLess(a.id, b.id); });
+    }
+
     graph::Graph graphOf(std::vector<std::pair<std::string, std::string>> nodes, std::vector<std::array<std::string, 4>> edges) {
         graph::Graph file;
         file.kind = PROCEDURAL_MATERIAL_KIND;
@@ -75,6 +81,7 @@ namespace {
             item.to.port = edge[3];
             file.edges.push_back(std::move(item));
         }
+        sortById(file);
         return file;
     }
 
@@ -259,7 +266,7 @@ TEST(PassPlanner, AnIterateBufferIsOneStepPerIteration) {
     PlanOptions options;
     options.size = 64;
     options.maxBufferSize = 64;
-    ASSERT_TRUE(planGraph(file, library, {{"out", "s", "output"}}, options, plan, error)) << error;
+    ASSERT_TRUE(planGraph(file, library, {{"out", "s", "out"}}, options, plan, error)) << error;
     expectDependenciesFirst(plan);
     int onLoopBuffer = 0;
     for (const PlannedStep& step : plan.steps) {
@@ -279,7 +286,7 @@ TEST(PassPlanner, AShrinkingIterateChangesSizeAsItGoes) {
     std::string error;
     PlanOptions options;
     options.size = 64;
-    ASSERT_TRUE(planGraph(file, library, {{"out", "a", "output"}}, options, plan, error)) << error;
+    ASSERT_TRUE(planGraph(file, library, {{"out", "a", "out"}}, options, plan, error)) << error;
     std::set<int> sizes;
     for (const PlannedStep& step : plan.steps) sizes.insert(step.size);
     EXPECT_TRUE(sizes.count(2048) != 0) << "auto_tones's Buffer";
@@ -292,7 +299,7 @@ TEST(PassPlanner, ACycleIsAnError) {
     const graph::Graph file = graphOf({{"a", "blend2"}, {"b", "blend2"}}, {{"a", "output", "b", "b"}, {"b", "output", "a", "b"}});
     PassPlan plan;
     std::string error;
-    EXPECT_FALSE(planGraph(file, library, {{"out", "a", "output"}}, PlanOptions(), plan, error));
+    EXPECT_FALSE(planGraph(file, library, {{"out", "a", "out"}}, PlanOptions(), plan, error));
     EXPECT_NE(error.find("cycle"), std::string::npos) << error;
 }
 

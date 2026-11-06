@@ -507,6 +507,7 @@ Lane files run on one display per chunk, two at a time; a file holding one test 
 | `editor/<area>/X.cpp` | `editor/tests/<area>/XTest.cpp` | `jasperengine-editor-tests` |
 | the HTML UI | `engine/tests/htmlui/` | `jasperengine-htmlui-tests` |
 | `engine/core/<area>/X.cpp` that a test drives through editor scenes (the editor's static `App`, physics worlds, model loads) | `editor/tests/engine/<area>/XTest.cpp` | `jasperengine-editor-tests` |
+| editor code that needs a GPU device (S90's evaluator, `editor/procmat/`) | `engine/tests/core/procmat/*GpuTest.cpp`, the editor sources listed in `engine/tests/core/CMakeLists.txt` | `jasperengine-core-tests` (only that tree has a headless device) |
 | an MCP tool or agent-facing behaviour | `tools/mcp/tests/test_<area>.py`, with `CI = True` | MCP suite |
 
 Both unit-test targets glob `*Test.cpp` under their directory, so a new file needs no CMake

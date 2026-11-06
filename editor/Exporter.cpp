@@ -3044,7 +3044,7 @@ bool editor::Exporter::copyAssets() {
         if (shouldSkipExportSupportFile(relPath) || AssetTypes::isMetaFile(relPath)) return TreeStep::Enter;
 
         // A Procedural Material ships as what it baked: PNGs and a .material (S90 R4)
-        if (Util::isProceduralMaterialFile(entry.path().string())) continue;
+        if (Util::isProceduralMaterialFile(entry.path().string())) return TreeStep::Enter;
 
         // A texture source the cooks replace ships as assets/je-cooked/<family>/ only
         if (cookedTextureSources.count(relPath.generic_string())) {
