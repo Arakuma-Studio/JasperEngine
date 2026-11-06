@@ -5561,7 +5561,11 @@ std::filesystem::path editor::App::getUserShaderCacheDir(){
     //      includes/object_params.glsl / object_depth_params.glsl, 'Aui' (MESH 41, DEPTH 18).
     // v48: the fade variant reads its LOD fade in main (objectLodFade() a macro): under v47 a
     //      skinned fade variant's uniform block slots differed from its base's.
-    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v48";
+    // v49: S41's pixel snap: the frame block (includes/frame.glsl) gains pixelSnap and
+    //      pixelSnapOffset before the fragment stage's postColor, so a v48 USE_POST_COLOR program
+    //      would read its colour parameters 32 bytes off; MESH 'Pxs' bit 42, DEPTH 19, UI 5,
+    //      PARTICLES 11, BLIT 'Psb' 18.
+    return App::getUserCacheBaseDir() / "jasperengine" / "shaders" / "v49";
 }
 
 void editor::App::pushTabNotificationStyle(){
