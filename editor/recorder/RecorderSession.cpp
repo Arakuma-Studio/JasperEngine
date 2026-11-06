@@ -3,13 +3,14 @@
 //
 // The bounded frame queue (the main thread waits rather than drop a frame) and the bounded audio
 // buffer follow OpenEngine's Apps/Editor/Source/GameViewMovieCapture.cpp, Copyright (c) 2026
-// Gamecrafters Guild Limited and contributors, MIT License. See NOTICE.md. The audio here is
-// mixed offline in step with the fixed timestep instead of tapped from the device.
+// Gamecrafters Guild Limited and contributors, MIT License. See NOTICE.md. The audio here comes
+// from the deterministic driver's tap, mixed in step with the fixed timestep, not from the device.
 
 #include "recorder/RecorderSession.h"
 
 #include "Engine.h"
 #include "Out.h"
+#include "audio/AudioTap.h"
 #include "htmlui/VideoImporter.h"
 #include "io/AtomicFile.h"
 #include "jobs/JobSystem.h"
@@ -184,6 +185,8 @@ struct RecorderSession::Sink {
     std::ofstream wav;
     uint64_t audioBytes = 0;
     int64_t audioChunks = 0;
+    // what the tap delivered since the last game frame
+    std::vector<float> tapped;
     std::vector<float> mix;
     std::vector<int16_t> pcm;
 
@@ -397,14 +400,17 @@ struct RecorderSession::Sink {
         }
     }
 
-    // the audio of game frame k (written only for recorded frames; mixed for every frame so the
-    // sounds advance with the game)
+    // The audio of game frame k (written only for recorded frames). The pump mixed it before this
+    // frame ended: exactly this count, the same accumulator. A paused Play mixes nothing while the
+    // frames go on, so silence keeps the two in step; frames that ran unrecorded give their audio up.
     void mixAudio(int64_t frame, bool write) {
-        if (!AudioSystem::isOfflineCapture()) return;
+        if (!audio) return;
         const uint32_t count = audioFramesOf(frame, settings.frameRate);
         mix.assign((size_t)count * kAudioChannels, 0.0f);
-        AudioSystem::mixOffline(mix.data(), count);
-        if (!write || !audio || failed()) return;
+        const size_t taken = std::min(mix.size(), tapped.size());
+        std::copy(tapped.end() - (std::ptrdiff_t)taken, tapped.end(), mix.begin());
+        tapped.clear();
+        if (!write || failed()) return;
         pcm.resize(mix.size());
         for (size_t i = 0; i < mix.size(); i++) pcm[i] = (int16_t)std::lround(std::clamp(mix[i], -1.0f, 1.0f) * 32767.0f);
         const size_t bytes = pcm.size() * sizeof(int16_t);
@@ -753,24 +759,32 @@ bool RecorderSession::arm(const Settings& settings, bool fromPlayStart, std::str
         sink->ffmpeg = ffmpegInfo.path;
         sink->encoder = current.format == Format::Mov ? std::string("prores_ks") : ffmpegInfo.h264;
     }
-    // audio is offline, from the scene's start: only a recording that starts with Play has it
+    // audio is the deterministic driver's, from the scene's start: only a recording that starts with Play has it
     const bool playing = host.isPlaying() || (host.isPlayStarting && host.isPlayStarting());
     audio = current.kind == Kind::Movie && current.captureAudio;
     if (audio && playing && !fromPlayStart) {
         working.warnings.push_back("Capture Audio needs the recording to start with Play: this one has no audio");
         audio = false;
     }
-    if (audio && !AudioSystem::beginOfflineCapture((unsigned)kAudioRate, (unsigned)kAudioChannels)) {
-        working.warnings.push_back("the offline audio mixer did not start: no audio");
+    if (audio && !AudioSystem::beginDeterministic()) {
+        AudioSystem::endDeterministic();
+        working.warnings.push_back("the deterministic audio driver did not start: no audio");
         audio = false;
     }
     sink->audio = audio;
     std::string sinkError;
     if (!sink->begin(sinkError)) {
-        if (audio) AudioSystem::endOfflineCapture();
+        if (audio) AudioSystem::endDeterministic();
+        audio = false;
         error = sinkError;
         sink.reset();
         return false;
+    }
+    if (audio) {
+        Sink* tapSink = sink.get();
+        audioTap = AudioTap::subscribe("recorder", [tapSink](const float* interleaved, uint32_t frames, uint64_t) {
+            tapSink->tapped.insert(tapSink->tapped.end(), interleaved, interleaved + (size_t)frames * kAudioChannels);
+        });
     }
     warnAboutFreeSpace();
     // the game at the output size and the fixed timestep; the recorder wins over MCP's fixed_fps
@@ -1035,7 +1049,8 @@ void RecorderSession::restoreEngine() {
     Engine::setFixedDeltatime(previousFixedDelta);
     if (host.setGameRenderSize) host.setGameRenderSize(0, 0);
     if (audio) {
-        AudioSystem::endOfflineCapture();
+        AudioTap::unsubscribe(audioTap);
+        AudioSystem::endDeterministic();
         audio = false;
     }
 }

@@ -18,6 +18,7 @@
 #include "StreamPreserved.h"
 #include "animation/AnimationClipDocument.h"
 #include "animation/AnimatorAssetDocument.h"
+#include "audio/SoundEventDocument.h"
 #include "animation/ModelSubClips.h"
 #include "vat/VatAssetFiles.h"
 #include "vat/VatDocument.h"
@@ -45,6 +46,14 @@ std::string editor::Project::getPrefabGuid(const std::filesystem::path& filepath
         return {};
     }
     return assetDatabase.getGuid(normalizeToProjectRelative(filepath));
+}
+
+std::filesystem::path editor::Project::getPrefabAssetPath(const std::filesystem::path& filepath) const {
+    AssetDatabase::AssetInfo info;
+    if (assetDatabase.isOpen() && assetDatabase.getInfo(normalizeToProjectRelative(filepath), info)) {
+        return info.path;
+    }
+    return filepath;
 }
 
 std::filesystem::path editor::Project::resolvePrefabPath(const std::string& guid, const std::filesystem::path& pathHint) {
@@ -81,7 +90,7 @@ std::filesystem::path editor::Project::resolvePrefabPath(const std::string& guid
         std::vector<AssetDatabase::Change> changes = assetDatabase.importAssets(hint);
         pendingAssetChanges.insert(pendingAssetChanges.end(), changes.begin(), changes.end());
     }
-    return assetDatabase.getGuid(hint).empty() ? fs::path() : hint;
+    return assetDatabase.getGuid(hint).empty() ? fs::path() : getPrefabAssetPath(hint);
 }
 
 bool editor::Project::resolvePrefabReference(PrefabComponent& component, bool* pathChanged) {
@@ -260,6 +269,16 @@ void editor::Project::importPrefabFiles(const std::filesystem::path& path, bool 
 }
 
 void editor::Project::applyAssetChanges(const std::vector<AssetDatabase::Change>& allChanges) {
+    // the audio clips back at a path: the Sound Events naming them by GUID follow
+    std::map<std::string, fs::path> movedAudio;
+    for (const AssetDatabase::Change& change : allChanges) {
+        const bool arrived = change.type == AssetDatabase::Change::Type::Moved || change.type == AssetDatabase::Change::Type::Added;
+        if (arrived && !change.guid.empty() && Util::isAudioFile(change.path.string())) {
+            movedAudio[change.guid] = (projectPath / change.path).lexically_normal();
+        }
+    }
+    SoundEventDocument::relinkGuids(this, movedAudio);
+
     // the database tracks every asset type: the .anim clips' and .vat Vertex Animations'
     // references follow in applyClipAssetChanges, the prefab files' here
     std::vector<AssetDatabase::Change> changes;

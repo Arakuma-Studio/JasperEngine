@@ -29,7 +29,13 @@
 #include "component/LocalVolumetricFogComponent.h"
 #include "component/VolumetricCloudsComponent.h"
 #include "render/shadow/ShadowTypes.h"
+#include "render/LodFade.h"
 #include "render/shadow/ShadowTiers.h"
+#include "render/LightingTiers.h"
+#include "render/OrderIndependentTransparency.h"
+#include "component/CapsuleShadowCasterComponent.h"
+#include "texture/MaterialPbr.h"
+#include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
 #include "Log.h"
 #include "component/LineRendererComponent.h"
@@ -120,6 +126,7 @@ namespace luabridge
     template<> struct Stack<PrimitiveType> : EnumWrapper<PrimitiveType>{};
     template<> struct Stack<CullingMode> : EnumWrapper<CullingMode>{};
     template<> struct Stack<WindingOrder> : EnumWrapper<WindingOrder>{};
+    template<> struct Stack<LodFadeMode> : EnumWrapper<LodFadeMode>{};
     template<> struct Stack<MaterialAlphaMode> : EnumWrapper<MaterialAlphaMode>{};
     template<> struct Stack<MaterialLighting> : EnumWrapper<MaterialLighting>{};
     template<> struct Stack<TextureFilter> : EnumWrapper<TextureFilter>{};
@@ -157,6 +164,8 @@ namespace luabridge
     template<> struct Stack<ScreenOrientation> : EnumWrapper<ScreenOrientation>{};
     template<> struct Stack<DeviceOrientation> : EnumWrapper<DeviceOrientation>{};
     template<> struct Stack<DeviceType> : EnumWrapper<DeviceType>{};
+    template<> struct Stack<DeviceTier> : EnumWrapper<DeviceTier>{};
+    template<> struct Stack<ThermalState> : EnumWrapper<ThermalState>{};
     template<> struct Stack<NetworkReachability> : EnumWrapper<NetworkReachability>{};
     template<> struct Stack<HapticFeedback> : EnumWrapper<HapticFeedback>{};
     template<> struct Stack<SleepTimeout> : EnumWrapper<SleepTimeout>{};
@@ -186,6 +195,12 @@ namespace luabridge
     // 3D shadows (S10)
     template<> struct Stack<ShadowType> : EnumWrapper<ShadowType>{};
     template<> struct Stack<ShadowUpdateMode> : EnumWrapper<ShadowUpdateMode>{};
+    // S57's lighting
+    template<> struct Stack<TransparencyMode> : EnumWrapper<TransparencyMode>{};
+    template<> struct Stack<ShadingModel> : EnumWrapper<ShadingModel>{};
+    template<> struct Stack<CapsuleCastShadows> : EnumWrapper<CapsuleCastShadows>{};
+    template<> struct Stack<CapsuleDirection> : EnumWrapper<CapsuleDirection>{};
+    template<> struct Stack<LightMode> : EnumWrapper<LightMode>{};
     template<> struct Stack<CascadeSplitMode> : EnumWrapper<CascadeSplitMode>{};
     template<> struct Stack<ShadowTier> : EnumWrapper<ShadowTier>{};
     template<> struct Stack<SceneColorScale> : EnumWrapper<SceneColorScale>{};
@@ -199,6 +214,7 @@ namespace luabridge
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
     template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};
+    template<> struct Stack<AudioPlayOn> : EnumWrapper<AudioPlayOn>{};
 
     template<> struct Stack<EaseType> : EnumWrapper<EaseType>{};
     template<> struct Stack<ActionState> : EnumWrapper<ActionState>{};

@@ -7,14 +7,17 @@
 #include "Theme.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
+#include "audio/LoudnessMonitor.h"
 #include "external/IconsFontAwesome6.h"
 #include "util/FileUtils.h"
 
 #include "imgui.h"
+#include "window/EditorModal.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <optional>
 #include <cstring>
 #include <fstream>
 
@@ -553,6 +556,44 @@ void AudioMixerWindow::drawMeter(const std::string& groupId, float height) {
     if (ImGui::IsItemHovered()) ImGui::SetTooltip(live ? "%.1f dB (peak %.1f)" : "Meters show the project mixer while it plays", db, hold.db);
 }
 
+void AudioMixerWindow::drawLoudness(const AudioMixerGroupDef& master) {
+    const bool playing = project && project->isAnyScenePlaying();
+    if (playing) LoudnessMonitor::get().markVisible();
+    const LoudnessMonitor::Reading reading = playing ? LoudnessMonitor::get().reading() : LoudnessMonitor::Reading();
+    const float target = project ? project->getAudioSettings().loudnessTargetLufs : -18.0f;
+    const auto row = [](const char* label, const std::optional<double>& value) {
+        if (value) ImGui::Text("%s %.1f", label, *value);
+        else ImGui::Text("%s -", label);
+    };
+    ImGui::BeginGroup();
+    row("LUFS-M", reading.momentary);
+    row("LUFS-S", reading.shortTerm);
+    row("LUFS-I", reading.integrated);
+    ImGui::Text("Target %.1f", target);
+    if (reading.truePeakDb > AudioMeter::SILENCE_DB) ImGui::Text("TP %.1f dBTP", reading.truePeakDb);
+    else ImGui::TextUnformatted("TP -");
+    ImGui::EndGroup();
+    if (ImGui::BeginPopupContextItem("##loudness")) {
+        if (ImGui::MenuItem("Reset Integrated Loudness")) LoudnessMonitor::get().reset();
+        ImGui::EndPopup();
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("Master's loudness since Play started. Right-click: Reset Integrated Loudness.");
+
+    bool hasLimiter = false;
+    for (const AudioMixerEffectDef& effect : master.effects) {
+        hasLimiter = hasLimiter || (effect.type == AudioEffectType::Limiter && !effect.bypass);
+    }
+    if (hasLimiter && playing) {
+        char text[32];
+        snprintf(text, sizeof(text), "GR %.1f dB", reading.gainReductionDb);
+        ImGui::ProgressBar(std::min(reading.gainReductionDb / 24.0f, 1.0f), ImVec2(-1.0f, 0), text);
+    }
+    if (!hasLimiter && playing && project && project->getAudioSettings().outputStage == "linear" &&
+        AudioMixer::getMeterDb(master.id) >= 0.0f) {
+        ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.2f, 1.0f), "%s", "Master clips: no limiter with the linear output stage");
+    }
+}
+
 void AudioMixerWindow::drawEffect(const AudioMixerGroupDef& group, size_t index, float width) {
     const AudioMixerEffectDef& effect = group.effects[index];
     ImGui::PushID(effect.id.c_str());
@@ -628,6 +669,16 @@ void AudioMixerWindow::drawEffect(const AudioMixerGroupDef& group, size_t index,
         char format[48];
         snprintf(format, sizeof(format), "%s%s %%.%df%s%s", exposed.empty() ? "" : "* ", param.label,
                  param.maxValue >= 1000.0f ? 0 : 2, param.unit[0] ? " " : "", param.unit);
+        if (param.curve == AudioParamCurve::Switch) {
+            bool on = value >= 0.5f;
+            if (ImGui::Checkbox((std::string(param.label) + "##" + param.name).c_str(), &on)) {
+                AudioMixerDef next = def;
+                AudioMixerIO::setAuthoredValue(next, target, on ? 1.0f : 0.0f);
+                commit(next);
+            }
+            exposeMenu(target, param.name);
+            continue;
+        }
         ImGui::SetNextItemWidth(width);
         const ImGuiSliderFlags flags = param.curve == AudioParamCurve::Frequency ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None;
         if (ImGui::SliderFloat(("##" + std::string(param.name)).c_str(), &value, param.minValue, param.maxValue, format, flags)) {
@@ -646,6 +697,13 @@ void AudioMixerWindow::drawEffect(const AudioMixerGroupDef& group, size_t index,
                 ImGui::SetTooltip("Exposed as '%s'. Right-click to unexpose.", exposed.c_str());
             }
         }
+    }
+    if (effect.type == AudioEffectType::Limiter) {
+        const float reduction = live ? AudioMixer::getEffectGainReductionDb(effect.id) : 0.0f;
+        char text[32];
+        snprintf(text, sizeof(text), "GR %.1f dB", reduction);
+        ImGui::ProgressBar(std::min(reduction / 24.0f, 1.0f), ImVec2(width, 0), text);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("The largest gain reduction of the last 100 ms (Play)");
     }
     if (effect.type == AudioEffectType::Duck) {
         ImGui::SetNextItemWidth(width);
@@ -723,6 +781,7 @@ void AudioMixerWindow::drawStrip(const AudioMixerGroupDef& group) {
            [](AudioMixerGroupDef& g, bool v) { g.solo = v; });
     toggle("B", group.bypassEffects, ImVec4(0.2f, 0.45f, 0.8f, 1.0f), "Bypass the effects", [](AudioMixerGroupDef& g, bool v) { g.bypassEffects = v; });
     ImGui::EndGroup();
+    if (group.parentId.empty() && isProjectMixer()) drawLoudness(group);
 
     // the dB field
     ImGui::SetNextItemWidth(inner);
@@ -786,16 +845,18 @@ void AudioMixerWindow::drawPopups() {
         ImGui::OpenPopup("Expose Parameter##AudioMixer");
         openExposePopup = false;
     }
-    if (ImGui::BeginPopupModal("Expose Parameter##AudioMixer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Expose Parameter##AudioMixer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        EditorModal::message("Expose " + AudioMixerIO::describeTarget(def, exposeTarget) + " to scripts as:");
         ImGui::Text("Expose %s to scripts as:", AudioMixerIO::describeTarget(def, exposeTarget).c_str());
         if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
-        const bool enter = ImGui::InputText("##exposeName", exposeName, sizeof(exposeName), ImGuiInputTextFlags_EnterReturnsTrue);
+        const bool enter = EditorModal::inputText("##exposeName", "name", exposeName, sizeof(exposeName), ImGuiInputTextFlags_EnterReturnsTrue);
         const std::string name = exposeName;
         const bool taken = def.findExposed(name) != nullptr;
         if (taken) ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.4f, 1.0f), "'%s' is exposed already", name.c_str());
+        EditorModal::error(taken ? "'" + name + "' is exposed already" : name.empty() ? "The name is empty." : std::string());
         ImGui::TextDisabled("Lua: AudioMixer.setFloat(\"%s\", value)", name.c_str());
         ImGui::BeginDisabled(name.empty() || taken);
-        if (ImGui::Button("Expose") || (enter && !name.empty() && !taken)) {
+        if (EditorModal::button("Expose", "ok") || (enter && !name.empty() && !taken)) {
             AudioMixerDef next = def;
             next.exposed.push_back({name, exposeTarget, false});
             commit(next);
@@ -803,7 +864,7 @@ void AudioMixerWindow::drawPopups() {
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+        if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
         ImGui::EndPopup();
     }
 
@@ -811,7 +872,7 @@ void AudioMixerWindow::drawPopups() {
         ImGui::OpenPopup("Delete Group##AudioMixer");
         openDeletePopup = false;
     }
-    if (ImGui::BeginPopupModal("Delete Group##AudioMixer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+    if (EditorModal::begin("Delete Group##AudioMixer", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         const AudioMixerGroupDef* group = def.findGroupById(pendingDeleteGroup);
         if (!group) {
             ImGui::CloseCurrentPopup();
@@ -819,14 +880,16 @@ void AudioMixerWindow::drawPopups() {
             const size_t count = AudioMixerDocument::subtree(def, group->id).size();
             ImGui::Text("Delete '%s'%s?", group->name.c_str(), count > 1 ? (" and its " + std::to_string(count - 1) + " subgroup(s)").c_str() : "");
             ImGui::TextDisabled("Its Audio Sources play through Master until a group of that name exists again.");
-            if (ImGui::Button("Delete")) {
+            EditorModal::message("Delete '" + group->name + "'" + (count > 1 ? " and its " + std::to_string(count - 1) + " subgroup(s)" : std::string()) +
+                                 "? Its Audio Sources play through Master until a group of that name exists again.");
+            if (EditorModal::button("Delete", "yes")) {
                 AudioMixerDef next = def;
                 AudioMixerDocument::removeGroup(next, group->id);
                 if (commit(next) && selectedGroup == pendingDeleteGroup) selectedGroup.clear();
                 ImGui::CloseCurrentPopup();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Cancel")) ImGui::CloseCurrentPopup();
+            if (EditorModal::button("Cancel", "cancel")) ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 #include "HierarchyWindow.h"
+#include "audio/SoundDrop.h"
+#include "util/UIProbe.h"
 #include "component/ActionComponent.h"
 #include "component/AlphaTweenComponent.h"
 #include "component/BoneComponent.h"
@@ -89,6 +91,7 @@
 #include "command/type/ModelLoadCmd.h"
 #include "vat/VatSceneActions.h"
 #include "component/InstancedMeshComponent.h"
+#include "component/CapsuleShadowCasterComponent.h"
 #include "subsystem/MeshSystem.h"
 #include "command/type/ImportPrefabCmd.h"
 #include "command/type/RemoveEntityFromPrefabCmd.h"
@@ -1200,6 +1203,8 @@ std::string editor::HierarchyWindow::getObjectIcon(Signature signature, Scene* s
         return ICON_FA_LIGHTBULB;
     }else if (signature.test(scene->getComponentId<ShadowCaster2DComponent>())){
         return ICON_FA_CIRCLE_HALF_STROKE;
+    }else if (signature.test(scene->getComponentId<CapsuleShadowCasterComponent>())){
+        return ICON_FA_CAPSULES;
     }else if (signature.test(scene->getComponentId<CameraComponent>())){
         return ICON_FA_VIDEO;
     }else if (signature.test(scene->getComponentId<Joint2DComponent>()) || signature.test(scene->getComponentId<Joint3DComponent>())){
@@ -1704,6 +1709,7 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
     bool nodeOpen = renamingNode
         ? ImGui::TreeNodeEx("##node", flags, "%s", node.icon.c_str())
         : ImGui::TreeNodeEx("##node", flags, "%s  %s", node.icon.c_str(), nodeLabel.c_str());
+    if (!node.isScene) UIProbe::item("hierarchy.node." + nodeLabel);
     if (dimInactive) {
         ImGui::PopStyleVar();
     }
@@ -2002,6 +2008,22 @@ void editor::HierarchyWindow::showTreeNode(editor::TreeNode& node) {
                         }
                     }
                     offset += path.size() + 1;
+                }
+            }
+        }
+
+        // a sound from the Sound Browser or the Project window: onto a Button it plays on clicks
+        if (!node.isPlayCreated && !node.isScene && SoundDrop::accepts(ImGui::GetDragDropPayload())) {
+            const ImGuiPayload* payload = ImGui::GetDragDropPayload();
+            SceneProject* dropScene = project->getScene(getNodeSceneId(node));
+            if (dropScene && dropScene->scene && dropScene->scene->findComponent<ButtonComponent>(static_cast<Entity>(node.id))) {
+                if (const ImGuiPayload* dropped = ImGui::AcceptDragDropPayload(payload->DataType)) {
+                    std::vector<std::string> sounds;
+                    std::string error;
+                    if (SoundDrop::resolve(project, dropped, sounds, error) && !sounds.empty()) {
+                        SoundDrop::assignToButton(project, dropScene->id, static_cast<Entity>(node.id), sounds.front(), error);
+                    }
+                    if (!error.empty()) Out::warning("Sound drop: %s", error.c_str());
                 }
             }
         }
@@ -3299,6 +3321,18 @@ void editor::HierarchyWindow::show(){
                         }
                     }
                 }
+            }
+        }
+
+        // a sound onto the empty Hierarchy: a new GameObject with an AudioSource
+        if (const ImGuiPayload* soundPayload = ImGui::GetDragDropPayload(); SoundDrop::accepts(soundPayload)) {
+            if (const ImGuiPayload* dropped = ImGui::AcceptDragDropPayload(soundPayload->DataType)) {
+                std::vector<std::string> sounds;
+                std::string error;
+                if (SoundDrop::resolve(project, dropped, sounds, error)) {
+                    for (const std::string& sound : sounds) SoundDrop::createSource(project, project->getSelectedSceneId(), sound, false, Vector3(0, 0, 0), error);
+                }
+                if (!error.empty()) Out::warning("Sound drop: %s", error.c_str());
             }
         }
 

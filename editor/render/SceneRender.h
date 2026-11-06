@@ -3,12 +3,14 @@
 
 #pragma once
 
+#include "render/CapsuleShadows.h"
 
 #include "SceneDisplaySettings.h"
 #include "spline/SplineTypes.h"
 #include "ToolsLayer.h"
 #include "UILayer.h"
 #include "RenderUtil.h"
+#include "SceneDrawModes.h"
 #include "navigation/NavigationOverlay.h"
 #include "command/Command.h"
 #include "command/CommandHistory.h"
@@ -131,6 +133,13 @@ namespace jasperengine::editor{
         // Joint 2D anchor handle sub-selection: 0 anchor A, 1 anchor B (or a mouse joint's target)
         Entity selectedJointAnchorEntity = 0;  // NULL_ENTITY
         int selectedJointAnchorIndex = -1;
+
+        // Capsule Shadow Caster handle sub-selection (index = capsule * CAPSULE_HANDLES + handle)
+        Entity selectedCapsuleHandleEntity = 0;  // NULL_ENTITY
+        int selectedCapsuleHandleIndex = -1;
+        // the caster's capsules when the handle drag began: each drag frame edits from them, so
+        // an end that fromWorld snaps to a bone axis does not drift the other end
+        std::vector<CapsuleShadowShape> capsuleDragBase;
 
         // world position of vertex pointIndex of the selected entity's Polygon/MeshPolygon
         // points (nullptr list / bad index -> false)
@@ -281,6 +290,13 @@ namespace jasperengine::editor{
 
         // --- splines: the edited spline's knots, handles and radius band, the Draw Spline
         // tool's stroke, the knot gizmo's drag (editor/spline/SplineSceneRender.cpp) ---
+        // the Wireframe and Shaded Wireframe Draw Modes' wires (depth tested in 3D views)
+        LineRenderer* wireframeLines = nullptr;
+        SceneWireframe wireframe;
+        void updateWireframeOverlay();
+    public:
+        bool isWireframeTruncated() const { return wireframe.isTruncated(); }
+    private:
         LineRenderer* splineOverlayLines = nullptr; // tools scene: over the geometry
         LineRenderer* splineDepthLines = nullptr;   // this scene: depth tested (3D views)
         struct SplineDrag{
@@ -685,6 +701,26 @@ namespace jasperengine::editor{
         // matrix mapping TranslateTracks values[] to world space: the action
         // target's parent modelMatrix (identity when there is no target/parent)
         Matrix4 getTrackPointsWorldMatrix(Entity entity);
+
+        // Capsule Shadow Caster handles (the Move tool drags them): each capsule's two ends
+        // (0 end A, 1 end B) and a point on its surface (2 radius), by capsule * CAPSULE_HANDLES + handle
+        static constexpr int CAPSULE_HANDLES = 3;
+        int getSelectedCapsuleHandleIndex() const { return selectedCapsuleHandleIndex; }
+        Entity getSelectedCapsuleHandleEntity() const { return selectedCapsuleHandleEntity; }
+        void selectCapsuleHandle(Entity entity, int index);
+        void clearCapsuleHandleSelection();
+        int hitTestCapsuleHandle(Entity entity, float x, float y);
+        OBB getCapsuleHandleOBB(Entity entity, int index);
+        // the bone a capsule lies on: the GameObject's descendant of that name (the first in
+        // hierarchy order, as RenderSystem resolves it), the GameObject itself for ""
+        Entity findCapsuleBone(Entity entity, const std::string& bone);
+        // capsule `capsule` of a caster in world space, false when its bone is not found
+        bool getCapsuleWorld(Entity entity, size_t capsule, CapsuleShadows::World& world);
+        bool getCapsuleHandleWorld(Entity entity, int index, Vector3& worldPoint);
+        // base (a caster's capsules) with handle `index` dragged to `world`: an end moves (the
+        // other stays), the radius handle sets the radius to its distance from the segment
+        bool capsulesWithHandleAt(Entity entity, int index, const Vector3& world, const std::vector<CapsuleShadowShape>& base,
+                                  std::vector<CapsuleShadowShape>& capsules);
     };
 
 }

@@ -62,11 +62,19 @@ shaderKeys:
     properties: 33555457
   - type: mesh
     properties: 33555459
+  - type: mesh
+    properties: 2199023256579
+  - type: mesh
+    properties: 2199056811011
   - type: sky
   - type: depth
   - type: depth
     properties: 6144
+  - type: depth
+    properties: 268288
   - type: blit
+  - type: blit
+    properties: 4096
   - type: mesh
     properties: 1091
     customShader: library:depth_fade#BLEND_ADDITIVE,EDGE_FADE,FADE_BLEND_ADDITIVE,MASK,SOFT
@@ -111,6 +119,9 @@ shaderKeys:
   - type: depth
     properties: 6144
     customShader: library:unlit
+  - type: depth
+    properties: 268288
+    customShader: library:unlit
   - type: mesh
     properties: 1027
     customShader: library:unlit#BLEND_ADDITIVE
@@ -122,6 +133,12 @@ shaderKeys:
     customShader: library:unlit#BLEND_NONE
   - type: mesh
     properties: 33555459
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 2199023256579
+    customShader: library:unlit#BLEND_NONE
+  - type: mesh
+    properties: 2199056811011
     customShader: library:unlit#BLEND_NONE
   - type: depth
     customShader: library:unlit#SOFT

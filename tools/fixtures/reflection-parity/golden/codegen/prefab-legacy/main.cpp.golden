@@ -106,6 +106,7 @@ JASPERENGINE_INIT void init() {
     Engine::setTextureStrategy(TextureStrategy::NONE);
     Engine::setAtmosphereQualityDefaults(AtmosphereQuality::HIGH, AtmosphereQuality::LOW, AtmosphereQuality::LOW);
     Engine::setTextureDefaults({0, 0, false}, {0, 512, false}, {0, 384, true});
+    Device::configure(R"JEDEVICE({})JEDEVICE");
     UIDocumentSystem::setPreferredSampleCount(4);
     UIDocumentSystem::setHtmlUiRenderOptions(0, true, true);
     Http::setInsecureHttpAllowed(false);

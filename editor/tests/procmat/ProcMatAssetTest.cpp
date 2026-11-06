@@ -28,7 +28,7 @@ namespace {
 }
 
 TEST(ProcMatAsset, ItsTypeIsTheNextFreeValueAndHasAName) {
-    EXPECT_EQ(static_cast<int>(AssetType::ProceduralMaterial), 28) << "24-27 are the pixel-art program's; the value is a file format";
+    EXPECT_EQ(static_cast<int>(AssetType::ProceduralMaterial), 29) << "24-27 are the pixel-art program's, 28 SoundEvent; the value is a file format";
     EXPECT_STREQ(assetTypeName(AssetType::ProceduralMaterial), "procedural_material");
     EXPECT_EQ(assetTypeFromName("procedural_material"), AssetType::ProceduralMaterial);
     EXPECT_EQ(assetTypeFromName("vertex_animation"), AssetType::VertexAnimation);

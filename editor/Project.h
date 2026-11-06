@@ -34,12 +34,16 @@
 #include "physics/PlacementSettings.h"
 #include "navigation/NavigationProjectSettings.h"
 #include "render/shadow/ShadowTiers.h"
+#include "render/LightingTiers.h"
+#include "device/DeviceSettings.h"
 #include "texture/TextureImportSettings.h"
+#include "model/ModelImportSettings.h"
 #include "vcs/VcsTypes.h"
 #include "util/PlatformRules.h"
 #include "window/SpriteNormalsWindowSettings.h"
 #include "input/InputActions.h"
 #include "shader/ShaderGlobals.h"
+#include "shader/ShaderListCache.h"
 
 #include "yaml-cpp/yaml.h"
 
@@ -49,6 +53,7 @@
 #include <future>
 #include "jobs/JobSystem.h"
 #include <map>
+#include <cstdint>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -577,6 +582,27 @@ namespace jasperengine::editor{
         std::set<ShaderKey> exclusions;
     };
 
+    // A scene of the project whose file cannot be read: the shader list holds what it last knew of it
+    struct UnreadableScene {
+        std::string name;
+        std::string path;   // project-relative
+        std::string error;
+    };
+
+    // How much Project::refreshClosedSceneShaderKeys may read before it stops and says what is left
+    struct ShaderListLimit {
+        size_t maxScenes = SIZE_MAX;
+        std::int64_t maxMillis = -1;  // -1: no limit
+        std::uintmax_t maxFileBytes = UINTMAX_MAX;
+    };
+
+    struct ShaderListStatus {
+        std::vector<std::string> pendingScenes;   // not read yet (their names): their keys are the last known
+        std::vector<UnreadableScene> unreadableScenes;
+        size_t scenesRead = 0;
+        bool complete() const { return pendingScenes.empty(); }
+    };
+
     struct SourceCodeExportSettings {
         std::set<ShaderBackend> graphicBackends;
         bool graphicBackendsConfigured = false;
@@ -865,8 +891,15 @@ namespace jasperengine::editor{
         PlayerCrashSettings playerCrash;
         int htmlUiMsaaSamples;
         HtmlUiRenderSettings htmlUiRender;
+        // graphics.gpu_instancing, quality.shadow_lod_bias (spec S55)
+        DrawSubmissionSettings drawSubmission;
+        // Project Settings > Quality > Device Tiers, LOD biases, Thermal Response and Graphics >
+        // Upload Budget (spec S56): project.yaml's device block
+        DeviceSettings deviceSettings;
         // graphics.shadowTier.<platform>: the shadow quality tier a scene of Quality Auto uses
         ShadowTier shadowTiers[ShadowTiers::PLATFORM_COUNT];
+        // graphics.light_mode: how lit meshes find their pixel lights (S57 R1)
+        LightMode lightMode = defaultLightMode;
         WindowMode windowMode;
         unsigned int windowWidth;
         unsigned int windowHeight;
@@ -940,6 +973,7 @@ namespace jasperengine::editor{
         mutable bool debugSettingsInPlay = false;
         TerrainEditorSettings terrainEditorSettings;
         TextureProjectSettings textureSettings;
+        ModelProjectSettings modelSettings;
         std::vector<std::filesystem::path> inspectedAssets;
         PhysicsPlacementSettings physicsPlacementSettings;
         NavigationProjectSettings navigationSettings;
@@ -1008,8 +1042,15 @@ namespace jasperengine::editor{
         std::atomic<bool> generatedSourcesDirty{false};
         // An export and updateGeneratedSources never write .jasperengine/generated at once: the
         // exports running (beginGeneratedExport), and the lock the regeneration writes under
-        std::mutex generatedMutex;
+        mutable std::mutex generatedMutex;
         int generatedExports = 0;
+
+        ShaderListCache shaderListCache;
+        std::filesystem::path shaderListCacheProject;  // whose file it holds
+        jobs::Task<bool> shaderListWrite;              // its file being written (ioWriteChannel)
+        // A scene file that did not read as a scene, not read again until its stamp changes
+        struct ShaderListFailure { std::int64_t writeTime = 0; std::uintmax_t size = 0; std::string error; };
+        std::map<std::string, ShaderListFailure> shaderListFailures;
 
         std::vector<SceneProject> scenes;
 
@@ -1394,7 +1435,8 @@ namespace jasperengine::editor{
         bool saveSceneShaderKeys(SceneProject* sceneProject);
         bool writeSceneToPath(uint32_t sceneId, const std::filesystem::path& path, bool stopTransientPreviews = true,
                 DegradedSavePolicy policy = DegradedSavePolicy::Refuse, SaveResult* outcome = nullptr);
-        void writeSceneSource(const SceneProject* sceneProject);
+        void applyFirstDrawSettings(SceneProject* sceneProject) const;
+        void writeSceneSource(SceneProject* sceneProject);
         bool hasMissingSceneSources() const;
         void writeMissingSceneSources();
         void configureGenerator();
@@ -1431,10 +1473,26 @@ namespace jasperengine::editor{
         void openSceneInternal(fs::path filepath, uint32_t sceneToClose);
 
         // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
-        // and cannot compile, so a variant the editor never draws with is missing there. The
-        // keys are read from the scenes (main thread), the build runs anywhere.
-        std::set<ShaderKey> collectStandaloneShaderKeys();
+        // and cannot compile: it runs anywhere, over the keys collectStandaloneShaderKeys read.
         void buildStandaloneShaderCache(const std::set<ShaderKey>& shaderKeys);
+
+        // ---- S64: the cache of closed scenes' keys
+        // What a closed scene's keys read besides its file: the prefabs every scene lists, the
+        // files they and the collector read, the editor that computed them
+        std::string shaderListContext() const;
+        void loadShaderListCache();
+        // Off the main thread, one at a time: what changes meanwhile goes with the next list
+        void writeShaderListCache();
+        std::filesystem::path shaderListCachePath() const;
+        // What a closed scene needs, computed from its file: its keys (the file's, what its content
+        // needs) and the prefabs it lists, which become sceneProject's. False with error when
+        // the file cannot be read as a scene.
+        bool readClosedSceneShaderKeys(SceneProject& sceneProject, ShaderListCache::Entry& entry, bool& prefabsChanged, std::string& error);
+        // After a save: the file holds these keys, so closing it reads nothing
+        void rememberSavedShaderKeys(const SceneProject& sceneProject, const std::string& sha1);
+        // Forgets the prefab assets a read brought in, which no scene has an instance of
+        void forgetPrefabsLoadedSince(const std::set<std::filesystem::path>& loadedBefore);
+        void setClosedScenePrefabs(SceneProject& sceneProject, const std::vector<std::string>& prefabs) const;
 
     private:
         // see getInspectedAsset()
@@ -1489,12 +1547,38 @@ namespace jasperengine::editor{
         static constexpr bool defaultPhysics3DEnabled = true;
         static constexpr bool defaultRuntimeShadersEnabled = true;
         static constexpr PbrTier defaultMobilePbrTier = PbrTier::REDUCED;
+        static constexpr LightMode defaultLightMode = LightMode::AUTOMATIC;
         static constexpr int defaultCxxStandard = cxxStandards[0];
 
         Project();
         ~Project();
         Project(const Project&) = delete;
         Project& operator=(const Project&) = delete;
+
+        // ---- The project's shader list (docs/specs/S64-shader-lists.md). One source for an export,
+        // generate_shaders, get_build_info, Play's startup and the Build Settings window:
+        // refreshClosedSceneShaderKeys (not needed right after an export's saves), then
+        // collectBuildShaderKeys, then finishBuildShaderKeys.
+        //
+        // Makes each closed scene's shaderKeys what an export would find: its file's keys and what
+        // its content needs, computed from its file as an export's load and save do, without
+        // drawing or any GPU work. Cached by the file's hash (ShaderListCache): an unchanged
+        // project reads no scene. Main thread; a scene read is a load's stall, so what can take long
+        // goes through `limit` and comes again for what is pending. Unreadable scenes are named.
+        ShaderListStatus refreshClosedSceneShaderKeys(const ShaderListLimit& limit = {});
+        // What the scenes need, normalized: each one's keys, and what an open one has loaded and
+        // needs now. Any thread an export runs on.
+        void collectBuildShaderKeys(std::set<ShaderKey>& keys) const;
+        // The list of a build from what the scenes need: what every build ships, the additions and
+        // the warm-up list in, the exclusions out
+        std::set<ShaderKey> finishBuildShaderKeys(const std::set<ShaderKey>& sceneKeys, const std::set<ShaderKey>& additions,
+                                                  const std::set<ShaderKey>& exclusions) const;
+
+        // The standalone build reads shaders from the editor cache (JASPERENGINE_SHADER_PATH)
+        // and cannot compile, so a variant the editor never draws with is missing there. The
+        // keys are read from the scenes (main thread), the build runs anywhere. The same list as
+        // an export's, whichever scenes are open (S64).
+        std::set<ShaderKey> collectStandaloneShaderKeys();
 
         // Live-derive the shader keys a scene needs from its current components
         // (used at scene save and by the Export window's pre-populated list).
@@ -1583,7 +1667,16 @@ namespace jasperengine::editor{
         // editor's documents at once and written into exports
         void setHtmlUiRenderSettings(const HtmlUiRenderSettings& settings);
         const HtmlUiRenderSettings& getHtmlUiRenderSettings() const;
+        // the Device Tier table and the rest of the device settings (docs/device-tiers.md): the
+        // editor's QualityResolver takes them at once (its Game view simulates a tier in Play),
+        // exports bake them in (main.cpp's Device::configure, game.json's device)
+        void setDeviceSettings(const DeviceSettings& settings);
+        const DeviceSettings& getDeviceSettings() const;
         static bool isValidHtmlUiGlyphAtlasMiB(int mib);
+
+        // GPU Instancing (spec S55): applied to the editor's scenes at once and written into exports
+        void setDrawSubmissionSettings(const DrawSubmissionSettings& settings);
+        const DrawSubmissionSettings& getDrawSubmissionSettings() const;
 
         // the shadow quality tier of a platform (Engine::Platform as an int), applied to the
         // editor's scenes at once and written into exports (docs/rendering/shadows.md)
@@ -1592,6 +1685,11 @@ namespace jasperengine::editor{
         // lower-case platform names of the setting: macos, ios, web, android, linux, windows
         static const char* getShadowTierPlatformName(int platform);
         static int findShadowTierPlatform(const std::string& name);
+
+        // Light Mode (Project Settings > Graphics): applied to the editor's rendering at once and
+        // written into exports when not Automatic
+        void setLightMode(LightMode mode);
+        LightMode getLightMode() const;
 
         void setWindowMode(WindowMode windowMode);
         WindowMode getWindowMode() const;
@@ -1863,6 +1961,22 @@ namespace jasperengine::editor{
         // Project Settings > Audio (audio-mixer spec 9): the mixer asset, the voices, the sample
         // rate, the group new Audio Sources get. Setting them loads the mixer into the engine.
         const AudioSettings& getAudioSettings() const;
+
+        // what the next Play does about its audio capture (audio_session arm); it is used once
+        struct AudioCaptureArm {
+            bool armed = false;
+            bool capture = true;
+            // 0: audio.capture_max_seconds
+            int maxSeconds = 0;
+            // -1: audio.capture_stems
+            int stems = -1;
+        };
+        void armAudioCapture(const AudioCaptureArm& arm);
+        const AudioCaptureArm& getAudioCaptureArm() const;
+        // why this Play is not captured though it should be; "" when it is or need not be
+        const std::string& getAudioCaptureError() const;
+        // the session of the Play that just stopped, once ("" when it did not capture)
+        std::string takeAudioCaptureSession();
         void setAudioSettings(const AudioSettings& settings);
         // the project mixer's file (absolute; empty when none is set)
         std::filesystem::path getAudioMixerFile() const;
@@ -1878,6 +1992,18 @@ namespace jasperengine::editor{
         // Play starts from the start snapshot and the remembered values; Play stops back to the
         // asset's values (no script overrides, the listener unpaused, the global volume at 1)
         void resetPlayAudio(bool starting) const;
+        // Play's audio capture (docs/specs/S35-agent-audio.md R4, R10): whether this Play captures and
+        // the driver it needs, before anything of it loads; the session, around its game frames
+        AudioCaptureArm audioCaptureArm;
+        AudioCaptureArm playAudioCapture;
+        bool playAudioCaptureWanted = false;
+        bool playHoldsAudioDriver = false;
+        std::string audioCaptureError;
+        std::string playAudioCaptureSession;
+        void preparePlayAudioCapture();
+        void beginPlayAudioCapture(const SceneProject* mainSceneProject);
+        void endPlayAudioCapture();
+        void releasePlayAudioDriver();
 
         // Project Settings > Debug (project.yaml `debug:`). Changed through DebugSettingsCmd
         // (undoable), read by Generator and Play start; a running Play takes a change at once
@@ -1896,6 +2022,11 @@ namespace jasperengine::editor{
         const TextureProjectSettings& getTextureSettings() const;
         // stores them; the cook queue re-keys what they change
         void setTextureSettings(const TextureProjectSettings& settings);
+        // Project Settings > Mesh (S53 R19) and Quality's render budgets (R25): per-platform
+        // model import defaults, the cook cache, scripts' mesh data
+        const ModelProjectSettings& getModelSettings() const;
+        // stores them; the model cook queue re-keys every model
+        void setModelSettings(const ModelProjectSettings& settings);
         // The Physics Placement panel's settings, per user (workspace.yaml)
         PhysicsPlacementSettings& getPhysicsPlacementSettings();
         const PhysicsPlacementSettings& getPhysicsPlacementSettings() const;
@@ -2021,6 +2152,9 @@ namespace jasperengine::editor{
         // the export has finished, keeping the dirty flag, so what changed meanwhile is regenerated
         // after it. Waits for a regeneration in progress.
         void beginGeneratedExport();
+        // An export is running: its worker reads the project, so what changes it (reading a closed
+        // scene's prefabs) waits
+        bool isGeneratedExportRunning() const;
         void endGeneratedExport();
 
         //=== Linked Material part ===
@@ -2500,6 +2634,9 @@ namespace jasperengine::editor{
         std::vector<Entity> importPrefab(SceneProject* sceneProject, std::vector<Entity>* entities, const std::filesystem::path& filepath, Entity rootEntity, bool needSaveScene = true, const PrefabInstanceData* instanceData = nullptr, std::unordered_map<Entity, Entity>* entityRemap = nullptr, const PrefabMemberIds* preferredIds = nullptr, const std::vector<PrefabInstanceData*>& assetLayers = {});
         // The prefab asset, read from its file when not loaded yet (nullptr when it cannot be)
         Prefab* loadPrefabAsset(const std::filesystem::path& filepath);
+        // The path of the prefab asset a path names: one file has one asset, whichever link or hard
+        // link it is reached by (the path as it is when no asset is known at it)
+        std::filesystem::path getPrefabAssetPath(const std::filesystem::path& filepath) const;
         // reconcileTracked false leaves dropping the destroyed entities from the scene's
         // tracked list to the caller (one pass after unimporting many instances); keepRoot
         // leaves the root entity in the scene (a Missing Prefab conversion)
