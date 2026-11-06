@@ -73,7 +73,7 @@ const std::map<std::string, uint32_t>& ShaderNeutralApi::neutralClasses() {
         {"WaterSample", 0x13bb9f0cu},
         {"MeshRaycast", 0x5dfe6f84u},
         {"MeshRaycastHit", 0x79d628f8u},
-        {"Audio", 0x1400d148u},
+        {"Audio", 0xff36e463u},
         {"SoundHandle", 0x3606cf71u},
         {"AudioSource", 0xd25afbe8u},
         {"AudioSystem", 0xe61632ceu},

@@ -31,6 +31,7 @@ namespace {
     constexpr int PRIORITY_MAX = 256;
     constexpr float ROLLOFF_MAX = 100.0f;
     constexpr float DOPPLER_MAX = 10.0f;
+    constexpr int LOOPS_MAX = 1000;
 
     // the sound library's vocabulary (S36's editor/audio/SoundTypes.h: the engine cannot see the editor's table)
     constexpr const char* SOUND_TYPES[] = {
@@ -147,7 +148,7 @@ bool SoundEventIO::parse(const std::string& json, SoundEventDef& out, std::strin
     }
     if (!root.contains("clips") || !root["clips"].is_array()) return fail(error, "clips: expected an array");
 
-    static constexpr const char* CLIP_KEYS[] = {"clip", "weight", "volume_db", "pitch_semitones", "delay_ms"};
+    static constexpr const char* CLIP_KEYS[] = {"clip", "weight", "volume_db", "pitch_semitones", "delay_ms", "loops"};
     size_t index = 0;
     for (const OJson& node : root["clips"]) {
         const std::string path = "clips[" + std::to_string(index++) + "]";
@@ -171,6 +172,11 @@ bool SoundEventIO::parse(const std::string& json, SoundEventDef& out, std::strin
             !readFloatKey(node, "pitch_semitones", prefix, clip.pitchSemitones, error) ||
             !readFloatKey(node, "delay_ms", prefix, clip.delayMs, error)) {
             return false;
+        }
+        if (node.contains("loops")) {
+            if (!node["loops"].is_number_integer()) return fail(error, prefix + "loops: expected a whole number");
+            const int64_t loops = node["loops"].get<int64_t>();
+            clip.loops = (int)std::clamp<int64_t>(loops, -1, LOOPS_MAX + 1);
         }
         clip.unknownKeys = unknownKeysOf(node, CLIP_KEYS);
         def.clips.push_back(std::move(clip));
@@ -262,6 +268,7 @@ std::string SoundEventIO::write(const SoundEventDef& def) {
         if (clip.volumeDb != 0.0f) node["volume_db"] = number(clip.volumeDb);
         if (clip.pitchSemitones != 0.0f) node["pitch_semitones"] = number(clip.pitchSemitones);
         if (clip.delayMs != 0.0f) node["delay_ms"] = number(clip.delayMs);
+        if (clip.loops != 1) node["loops"] = clip.loops;
         writeUnknownKeys(node, clip.unknownKeys);
         clips.push_back(std::move(node));
     }
@@ -312,6 +319,7 @@ std::vector<std::string> SoundEventIO::validate(const SoundEventDef& def) {
         checkValue(problems, path + "volume_db", clip.volumeDb, VOLUME_MIN_DB, VOLUME_MAX_DB, " dB");
         checkValue(problems, path + "pitch_semitones", clip.pitchSemitones, -PITCH_LIMIT_SEMITONES, PITCH_LIMIT_SEMITONES, " semitones");
         checkValue(problems, path + "delay_ms", clip.delayMs, 0.0f, DELAY_MAX_MS, " ms");
+        if (clip.loops < 0 || clip.loops > LOOPS_MAX) problems.push_back(path + "loops: must lie in 0..1000 (0 = until Audio.advanceMusic)");
         anyWeight = anyWeight || clip.weight > 0.0f;
     }
     if (def.mode == SoundEventMode::Random && !def.clips.empty() && !anyWeight) {

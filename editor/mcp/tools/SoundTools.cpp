@@ -24,6 +24,7 @@
 #include "audio/AudioSessionReader.h"
 #include "audio/AudioImages.h"
 #include "audio/AudioImportSettings.h"
+#include "audio/AudioMusicGrid.h"
 #include "audio/AudioProvenance.h"
 #include "audio/BuiltinSoundImport.h"
 #include "audio/SoundEssentials.h"
@@ -45,6 +46,7 @@
 #include <cmath>
 #include <cstdio>
 #include <fstream>
+#include <map>
 #include <memory>
 #include <optional>
 #include <random>
@@ -148,6 +150,8 @@ struct AnalyzeWork {
     Json errors = Json::array();
     Json imageInfo = nullptr;
     std::string png;
+    // the tempo line of each item with `music`, by item index
+    std::map<size_t, std::string> musicLines;
 
     void addError(const std::string& path, const std::string& error) { errors.push_back({{"path", path}, {"error", error}}); }
 };
@@ -185,6 +189,34 @@ void renderImage(AnalyzeWork& work, const std::vector<AudioAnalysis::Signal>& si
     }
 }
 
+// The tempo and beat grid of a loop or a music clip (S39 R17): `music` on its item
+void addMusic(AnalyzeWork& work, const AnalyzeWork::Input& input, const Json& cached, Json& item) {
+    if (item.value("kind", std::string()) != SoundTypes::LOOP && item.value("type", std::string()) != "music") return;
+    AudioMusicGrid::Grid grid;
+    std::string error;
+    bool found = false;
+    AudioImportSettings settings;
+    const AudioImportSettings* current = nullptr;
+    if (input.builtin) {
+        std::string bytes;
+        found = input.builtin->read(bytes, error) && AudioMusicGrid::getBytes(bytes, work.cacheDirectory, grid, error);
+    } else {
+        found = AudioMusicGrid::get(input.file, work.cacheDirectory, grid, error);
+        std::string unread;
+        if (AudioImportSettings::load(input.file, settings, unread)) current = &settings;
+    }
+    if (!found) {
+        item["music"] = {{"error", error}};
+        return;
+    }
+    // the raw file's silence, for `auto` trims
+    const Json& source = cached.contains("source") ? cached["source"] : cached;
+    const double headMs = numberOr(source.value("silence", Json::object()).value("head_ms", Json(0.0)), 0.0);
+    const double tailMs = numberOr(source.value("silence", Json::object()).value("tail_ms", Json(0.0)), 0.0);
+    item["music"] = AudioMusicGrid::item(grid, current, headMs, tailMs);
+    work.musicLines[work.items.size()] = AudioMusicGrid::line(grid);
+}
+
 void runFiles(AnalyzeWork& work, const JobPtr& job) {
     const bool wantImage = work.image != "none";
     std::vector<AudioAnalysis::Signal> signals;
@@ -207,8 +239,10 @@ void runFiles(AnalyzeWork& work, const JobPtr& job) {
         }
         const int n = (int)work.items.size() + 1;
         // an image is drawn from the curves: full detail until it has been, then trimmed below
-        work.items.push_back(AudioAnalysis::fileItem(cached, n, input.path, input.builtin ? input.builtin->labels() : AudioAnalysis::labelsOf(input.file),
-                                                     work.full || wantImage, SoundTypes::HEAD_SILENCE_MAX_MS));
+        Json item = AudioAnalysis::fileItem(cached, n, input.path, input.builtin ? input.builtin->labels() : AudioAnalysis::labelsOf(input.file),
+                                            work.full || wantImage, SoundTypes::HEAD_SILENCE_MAX_MS);
+        addMusic(work, input, cached, item);
+        work.items.push_back(std::move(item));
         if (wantImage) signals.push_back(std::move(signal));
     }
     if (job->cancelRequested()) return;
@@ -267,8 +301,10 @@ ToolResult analyzeResult(const AnalyzeWork& work, const McpJob& job) {
         text = "Items " + std::to_string(work.offset + 1) + "-" + std::to_string(next) + " of " + std::to_string(work.total) +
                (next < work.total ? " (the next page: offset " + std::to_string(next) + ")" : std::string(" (the last page)")) + "; n counts within this page:";
     }
-    for (const Json& item : work.items) {
+    for (size_t i = 0; i < work.items.size(); i++) {
+        const Json& item = work.items[i];
         text += (text.empty() ? "" : "\n") + itemLine(item);
+        if (const auto music = work.musicLines.find(i); music != work.musicLines.end()) text += "\n   " + music->second;
         if (item.contains("differences_vs_1")) text += "\n   vs 1: " + item["differences_vs_1"]["text"].get<std::string>();
     }
     for (const Json& error : work.errors) {
@@ -1417,7 +1453,7 @@ void registerSoundTools(McpRegistry& registry) {
         clips["maxItems"] = 64;
         set.inputSchema = object({
             {"paths", clips},
-            {"settings", anyObject("Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms.")},
+            {"settings", anyObject("Import settings keys: type, gain_db, trim_head_ms, trim_tail_ms, fade_in_ms, fade_out_ms, loop_start_ms, loop_end_ms, music.")},
             {"provenance", anyObject("Provenance keys: licence, licence_url, author, attribution, source, url.")},
             {"labels", array(Json{{"type", "string"}}, "S25 labels to set: replaces the clips' labels.")}
         }, {"paths"});

@@ -94,6 +94,7 @@
 #include "audio/AudioCapture.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
+#include "audio/MusicPlayer.h"
 #include "audio/SoundEventLibrary.h"
 #include "audio/AudioImportRegistry.h"
 #include "subsystem/VideoPlayerSystem.h"
@@ -3070,7 +3071,8 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.seed = std::max(audioSettings.seed, 0);
     AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
                             AudioSystem::outputStageFromName(audioSettings.outputStage),
-                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed});
+                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed,
+                            audioSettings.musicGroup});
     AudioMixerDocument::setDefaultOutputGroup(audioSettings.defaultOutputGroup);
     if (mixerChanged || AudioMixer::getPath() != audioSettings.mixer) {
         applyAudioMixer();
@@ -3224,6 +3226,7 @@ void editor::Project::resetPlayAudio(bool starting) const{
     AudioMixer::resetRuntime(starting);
     if (starting) AudioMixer::loadRemembered();
     AudioSystem::resetSoundEventRuntime();
+    MusicPlayer::reset();
     if (starting) AudioImportRegistry::registerProject(*this);
     else AudioImportTable::clear();
 }
@@ -6475,7 +6478,8 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
     }
 
-    // every played scene's sounds stopped, so their voice_stop lines are written
+    // every played scene's sounds and the music stopped, so their voice_stop lines are written
+    MusicPlayer::reset();
     endPlayAudioCapture();
 
     editor::getEditorHost().enqueueMainThreadTask([this]() {
@@ -10443,8 +10447,9 @@ void editor::Project::start(uint32_t sceneId) {
     PlayChangeReview::get().discard(sceneId);
     // and from clean input (Project Settings > Input, no runtime rebinding)
     resetPlayInput();
-    // and audio: the driver this Play mixes on, the mixer's start snapshot and remembered values,
-    // the listener unpaused
+    // and audio: no music of edit mode (eval_lua) in it, the driver this Play mixes on, the mixer's
+    // start snapshot and remembered values, the listener unpaused
+    MusicPlayer::reset();
     preparePlayAudioCapture();
     resetPlayAudio(true);
     // and from the declared global shader values (Project Settings > Graphics > Shader Globals)

@@ -987,6 +987,10 @@ namespace jasperengine::editor{
         // the commands soundEvent.audition and soundEvent.matchLevels, on the inspected .soundevent
         void requestSoundEventAudition();
         void requestSoundEventMatchLevels();
+        // soundEvent.playAsMusic: the inspected event through the music system (S39 R18), or stops it
+        void requestSoundEventPlayAsMusic();
+        // the command audioClip.detectTempo, on the inspected audio file (InspectorAudioClip.cpp)
+        void requestAudioClipDetectTempo();
 
         static constexpr const char* WINDOW_NAME = "Inspector";
 

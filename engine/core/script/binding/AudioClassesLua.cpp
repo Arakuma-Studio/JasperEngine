@@ -87,6 +87,79 @@ namespace {
         return 1;
     }
 
+    // a field that is there but not a number is refused as Audio's checks refuse a bad number
+    void audioOptTime(lua_State* L, int index, const char* field, float& out) {
+        lua_getfield(L, index, field);
+        if (lua_isnumber(L, -1)) out = (float)lua_tonumber(L, -1);
+        else if (!lua_isnil(L, -1)) out = -1.0f;
+        lua_pop(L, 1);
+    }
+
+    std::string audioOptString(lua_State* L, int index, const char* field, const std::string& fallback) {
+        if (!lua_istable(L, index)) return fallback;
+        lua_getfield(L, index, field);
+        const std::string value = lua_isstring(L, -1) ? lua_tostring(L, -1) : fallback;
+        lua_pop(L, 1);
+        return value;
+    }
+
+    // Audio.playMusic(eventOrClip [, opts]) -> boolean
+    int luaAudioPlayMusic(lua_State* L) {
+        const std::string name = luaL_checkstring(L, 1);
+        MusicOptions options;
+        if (lua_istable(L, 2)) {
+            audioOptTime(L, 2, "crossfade", options.crossfade);
+            options.sync = audioOptString(L, 2, "sync", options.sync);
+            options.snapshot = audioOptString(L, 2, "snapshot", "");
+            audioOptTime(L, 2, "snapshotSeconds", options.snapshotSeconds);
+            options.group = audioOptString(L, 2, "group", "");
+            audioOptTime(L, 2, "volume", options.volume);
+            options.ignoreListenerPause = audioOptBool(L, 2, "ignoreListenerPause");
+        }
+        lua_pushboolean(L, Audio::playMusic(name, options));
+        return 1;
+    }
+
+    // Audio.stopMusic([fade [, opts]])
+    int luaAudioStopMusic(lua_State* L) {
+        float fade = 0.0f;
+        if (lua_isnumber(L, 1)) fade = (float)lua_tonumber(L, 1);
+        else if (!lua_isnoneornil(L, 1)) fade = -1.0f;
+        Audio::stopMusic(fade, audioOptString(L, 2, "sync", "now"));
+        return 0;
+    }
+
+    // Audio.playStinger(eventOrClip [, sync]) -> SoundHandle
+    int luaAudioPlayStinger(lua_State* L) {
+        const std::string name = luaL_checkstring(L, 1);
+        const std::string sync = lua_isstring(L, 2) ? lua_tostring(L, 2) : "beat";
+        if (!luabridge::push(L, Audio::playStinger(name, sync))) lua_pushnil(L);
+        return 1;
+    }
+
+    // Audio.getMusicPosition() -> {section, bar, beat, beatFraction, bpm, beatsPerBar} | nil
+    int luaAudioGetMusicPosition(lua_State* L) {
+        const std::optional<MusicPosition> position = Audio::getMusicPosition();
+        if (!position) {
+            lua_pushnil(L);
+            return 1;
+        }
+        lua_createtable(L, 0, 6);
+        lua_pushinteger(L, position->section);
+        lua_setfield(L, -2, "section");
+        lua_pushinteger(L, position->bar);
+        lua_setfield(L, -2, "bar");
+        lua_pushinteger(L, position->beat);
+        lua_setfield(L, -2, "beat");
+        lua_pushnumber(L, position->beatFraction);
+        lua_setfield(L, -2, "beatFraction");
+        lua_pushnumber(L, position->bpm);
+        lua_setfield(L, -2, "bpm");
+        lua_pushinteger(L, position->beatsPerBar);
+        lua_setfield(L, -2, "beatsPerBar");
+        return 1;
+    }
+
     SoundHandle* luaHandleSelf(lua_State* L) {
         SoundHandle* self = luabridge::detail::Userdata::get<SoundHandle>(L, 1, false);
         if (!self) luaL_error(L, "SoundHandle: call with ':' on a SoundHandle");
@@ -150,6 +223,15 @@ void LuaBinding::registerAudioClasses(lua_State* L) {
         .addStaticFunction("stopAll", &luaAudioTableStopAll)
         .addStaticFunction("mark", +[](const std::string& label) { AudioCapture::mark(label, true); })
         .addStaticFunction("isCapturing", +[]() { return AudioCapture::isActive(); })
+        .addStaticFunction("playMusic", &luaAudioPlayMusic)
+        .addStaticFunction("stopMusic", &luaAudioStopMusic)
+        .addStaticFunction("advanceMusic", &Audio::advanceMusic)
+        .addStaticFunction("playStinger", &luaAudioPlayStinger)
+        .addStaticFunction("getMusic", &Audio::getMusic)
+        .addStaticFunction("getMusicTime", &Audio::getMusicTime)
+        .addStaticFunction("getMusicPosition", &luaAudioGetMusicPosition)
+        .addStaticProperty("onMusicBeat", [] () { return &Audio::onMusicBeat; }, [] (lua_State* L) { Audio::onMusicBeat = L; })
+        .addStaticProperty("onMusicSection", [] () { return &Audio::onMusicSection; }, [] (lua_State* L) { Audio::onMusicSection = L; })
         .endClass();
 #else
     (void)L;

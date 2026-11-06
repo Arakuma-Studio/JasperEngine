@@ -12,6 +12,7 @@
 #include "audio/AudioClock.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioTap.h"
+#include "audio/MusicPlayer.h"
 #include "audio/SoundEvent.h"
 #if JASPERENGINE_SOUND_LAYER
 #include "audio/SoundEventIO.h"
@@ -91,9 +92,6 @@ namespace {
         bool waiting = false;
         std::string name;
         const char* cause = "cpp";
-        // "free", or "cue" for a clip's sound cue (S40), which starts this many output frames into the frame
-        const char* ownerName = "free";
-        uint32_t delayFrames = 0;
         double delayLeft = 0.0;
         bool delayUnscaled = false;
         std::string group;
@@ -111,7 +109,16 @@ namespace {
         AudioFade fade;
         Vector3 lastHeard = Vector3(0, 0, 0);
         bool heardTracked = false;
+        // its owner in the voice lines: "free", "music" for a stinger, "cue" for a clip's sound cue (S40)
+        const char* ownerName = "free";
+        // output frames before it starts (a stinger's boundary, set by resolve when it starts, with its
+        // group; a sound cue's place in the frame)
+        uint32_t delayFrames = 0;
+        std::function<uint32_t(std::string& group)> resolve;
     };
+
+    // the music system's instance (AudioSystem::musicSystem)
+    AudioSystem* musicSystemInstance = nullptr;
 
     std::vector<FreePlay>& freePlays() {
         static auto* plays = new std::vector<FreePlay>();
@@ -517,6 +524,13 @@ AudioSystem::AudioSystem(Scene* scene): SubSystem(scene){
     triggerSink->system = this;
 }
 
+AudioSystem::AudioSystem(MusicSystemTag): SubSystem(nullptr){
+    declareNoHookTypes();
+    cameraLastPosition = Vector3(0, 0, 0);
+    triggerSink = std::make_shared<TriggerSink>();
+    triggerSink->system = this;
+}
+
 AudioSystem::~AudioSystem(){
     triggerSink->system = nullptr;
     forgetFreeVoices();
@@ -784,6 +798,7 @@ void AudioSystem::deInit(){
         getSoloud().deinit();
         voices().clear();
 #if JASPERENGINE_SOUND_LAYER
+        MusicPlayer::forget();
         eventInstances().clear();
         {
             std::lock_guard<std::recursive_mutex> lock(freeMutex());
@@ -2770,6 +2785,11 @@ bool AudioSystem::startFree(uint32_t slot){
         return false;
     }
 
+    if (play.resolve) {
+        play.delayFrames = play.resolve(play.group);
+        play.resolve = nullptr;
+    }
+
     // the voices' values, as a one-shot of a source that is nowhere else
     AudioSourceComponent defaults;
     defaults.volume = play.volume;
@@ -2799,7 +2819,7 @@ bool AudioSystem::startFree(uint32_t slot){
         position = transform->worldPosition;
         play.position = position;
     }
-    play.is3D = play.wants3D && cameraPose(*scene).valid;
+    play.is3D = play.wants3D && scene && cameraPose(*scene).valid;
 
     if (SoundEventLibrary::isEventName(play.name)) {
         const SoundEventAsset* event = SoundEventLibrary::find(play.name);
@@ -2845,8 +2865,8 @@ bool AudioSystem::startFree(uint32_t slot){
         VoiceExtras extras;
         extras.owner = play.ownerName;
         extras.cause = play.cause;
-        extras.delayFrames = play.delayFrames;
         extras.clip = play.name.c_str();
+        extras.delayFrames = play.delayFrames;
         const unsigned int handle = startVoice(defaults, *loaded.data, play.volume, play.is3D, position, false, extras);
         if (handle != 0) {
             FreeVoice free;
@@ -3162,6 +3182,115 @@ int AudioSystem::freeGetVoiceCount(uint32_t id, uint32_t generation){
         if (soloud.isValidVoiceHandle(voice.handle)) count++;
     }
     return count;
+}
+
+// ---------------------------------------------------------------- the music system
+
+AudioSystem& AudioSystem::musicSystem(){
+    // created on first use, never updated by a scene, never destroyed (its free plays live in the
+    // process-wide table like every scene's)
+    if (!musicSystemInstance) musicSystemInstance = new AudioSystem(MusicSystemTag());
+    return *musicSystemInstance;
+}
+
+unsigned int AudioSystem::startMusicVoice(SoLoud::AudioSource& source, const MusicVoiceRequest& request){
+    if (!init()) return 0;
+    AudioSourceComponent defaults;
+    defaults.volume = request.volume;
+    defaults.speed = request.speed > 0.0f ? request.speed : 0.0001f;
+    defaults.priority = 0;
+    defaults.protectVoice = true;
+    defaults.ignoreListenerPause = request.ignoreListenerPause;
+    defaults.resolvedGroup = request.groupId;
+    VoiceExtras extras;
+    extras.owner = "music";
+    extras.cause = "music";
+    extras.delayFrames = request.delayFrames;
+    extras.clip = request.clip.c_str();
+    extras.event = request.event.c_str();
+    extras.eventPath = request.eventPath.c_str();
+    AudioSystem& system = musicSystem();
+    system.paused = isMusicHeld();
+    return system.startVoice(defaults, source, request.volume, false, Vector3(0, 0, 0), false, extras);
+}
+
+SoundHandle AudioSystem::playMusicStinger(const std::string& eventOrClip, std::function<uint32_t(std::string& group)> resolve){
+    AudioSystem* system = &musicSystem();
+    std::lock_guard<std::recursive_mutex> lock(freeMutex());
+    std::vector<FreePlay>& plays = freePlays();
+    uint32_t slot = (uint32_t)plays.size();
+    for (uint32_t i = 0; i < plays.size(); i++) {
+        if (!plays[i].used) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot == plays.size()) plays.emplace_back();
+    FreePlay& play = plays[slot];
+    play.used = true;
+    play.owner = system;
+    play.waiting = true;
+    play.name = eventOrClip;
+    play.cause = "music";
+    play.ownerName = "music";
+    play.resolve = std::move(resolve);
+    const SoundHandle handle(slot + 1, play.generation);
+    const uint32_t generation = play.generation;
+    if (isDeferringCalls()) {
+        deferCall([slot, generation, system]() {
+            if (FreePlay* waiting = freePlayOf(slot + 1, generation)) {
+                if (waiting->owner == system) system->startFree(slot);
+            }
+        });
+        return handle;
+    }
+    return system->startFree(slot) ? handle : SoundHandle();
+}
+
+bool AudioSystem::isVoicePlaying(unsigned int handle){
+    return handle != 0 && inited && voices().count(handle) && getSoloud().isValidVoiceHandle(handle);
+}
+
+void AudioSystem::stopMusicVoice(unsigned int handle, const char* reason){
+    stopVoiceBecause(handle, reason, 0);
+}
+
+void AudioSystem::setMusicVoicePaused(unsigned int handle, bool pausedNow){
+    if (!isVoicePlaying(handle)) return;
+    getSoloud().setPause(handle, pausedNow);
+    pauseVoiceLine(handle, pausedNow);
+}
+
+bool AudioSystem::isMusicHeld(){
+    return Engine::areGameEventsPaused() && !MusicPlayer::isPreview();
+}
+
+void AudioSystem::updateMusicSystem(double unscaledSeconds){
+    AudioSystem& system = musicSystem();
+    system.paused = isMusicHeld();
+    bool any3D = false;
+    system.updateFreeVoices(unscaledSeconds, unscaledSeconds, false, [](const Vector3& position) { return position; }, false, any3D);
+}
+
+void AudioSystem::stopMusicSystem(const char* reason){
+    if (!inited) return;
+    const StopReason because(reason);
+    std::vector<unsigned int> owned;
+    for (const auto& [handle, record] : voices()) {
+        if (record.owner == nullptr) owned.push_back(handle);
+    }
+    for (unsigned int handle : owned) stopVoice(handle);
+    musicSystem().forgetFreeVoices();
+}
+
+uint32_t AudioSystem::getFrameMixFrames(double unscaledSeconds){
+    if (deterministicDriver) return deterministicClock.peek(unscaledSeconds);
+    if (!inited || !(unscaledSeconds > 0.0)) return 0;
+    return (uint32_t)std::llround(unscaledSeconds * getSoloud().getBackendSamplerate());
+}
+
+void AudioSystem::deferToAudioUpdate(std::function<void()> call){
+    deferCall(std::move(call));
 }
 
 #else // the module is out: no subscriptions, no free voices

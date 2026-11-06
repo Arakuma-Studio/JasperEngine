@@ -477,6 +477,11 @@ every prebuilt variant (S37 Q1, resolved). A clip with cues in a build without t
 - **No instructions line:** §6.1's "Clip property tracks" line is not in the server instructions on
   this tree, so nothing was appended there; agents reach cues through `edit_animation`'s `audio`
   parameter and `jasper://docs/sound`'s Timeline audio section (the eval case shows they do).
+- **Snapshots with music (S39):** cues and actions move the mixer through `AudioMixer::transitionTo`
+  with S39's `cause` parameter (`"animation"`; S39's switches say `"music"`), the one path both use.
+  In one frame cues fire in the animation update and a music switch at its boundary in the audio
+  update after it, so the music's snapshot is the last asked and holds; a Mixer Snapshot action's
+  revert then leaves it, since the mixer no longer shows the action's own snapshot (R18).
 - **3D audio actions:** an action entity has no Transform; it plays 3D at the animation's `target` only
   when its AudioSource has an attenuation model set (Audio Source 3D's settings), else 2D.
 - **`follow_speed`** applies to `sound` and `source` cues (a source cue's voice speed scales too); it is

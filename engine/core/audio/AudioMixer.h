@@ -132,21 +132,11 @@ namespace jasperengine {
 
         // ---- snapshots (Unity AudioMixerSnapshot.TransitionTo, AudioMixer.TransitionToSnapshots)
 
-        static bool transitionTo(const std::string& snapshot, float seconds, bool unscaled = false);
-        // While one lives, a capture's `mixer` lines say what caused them (S40: "animation" for a
-        // timeline's snapshot cue or action)
-        class JASPERENGINE_API CaptureCause {
-        public:
-            explicit CaptureCause(const char* cause);
-            ~CaptureCause();
-            CaptureCause(const CaptureCause&) = delete;
-            CaptureCause& operator=(const CaptureCause&) = delete;
-        private:
-            const char* previous;
-        };
+        // cause: what asked for it, in the capture's line ("music": a music switch); null none
+        static bool transitionTo(const std::string& snapshot, float seconds, bool unscaled = false, const char* cause = nullptr);
         // the weighted blend of snapshots (weights >= 0, normalized)
         static bool transitionToSnapshots(const std::vector<std::string>& snapshots, const std::vector<float>& weights,
-                                          float seconds, bool unscaled = false);
+                                          float seconds, bool unscaled = false, const char* cause = nullptr);
         static std::vector<std::string> getSnapshotNames();
         // the last snapshot transitioned to (the start snapshot at first), "" for none or a blend
         static std::string getCurrentSnapshot();

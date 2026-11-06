@@ -45,6 +45,7 @@
 #include "audio/AudioAnalysis.h"
 #include "audio/AudioCapture.h"
 #include "audio/AudioMixer.h"
+#include "audio/MusicPlayer.h"
 #include "audio/AudioSessionReader.h"
 #include "jobs/JobSystem.h"
 #include "audio/LoudnessMonitor.h"
@@ -642,6 +643,12 @@ Json playAudioJson() {
     Json out = {{"voices", AudioSystem::getVoiceCount()}, {"mixer_meters", meters}};
     if (!AudioSystem::isOutputAvailable()) out["output"] = "none (mixing without a device)";
     if (AudioSystem::isListenerPaused()) out["listener_paused"] = true;
+    // the music system (S39 R20)
+    const MusicPlayer::Status music = MusicPlayer::status();
+    if (music.playing) {
+        out["music"] = {{"track", music.track}, {"section", music.section}, {"time_s", std::round(music.timeSeconds * 1000.0) / 1000.0},
+                        {"bar", music.bar}, {"beat", music.beat}, {"bpm", music.bpm}};
+    }
     // from the first read until Stop: a first read's value is null, the next ones measure
     LoudnessMonitor::get().requestByAgent();
     const LoudnessMonitor::Reading reading = LoudnessMonitor::get().reading();

@@ -20,6 +20,9 @@ paths; over 48 items page with `offset`. `get_asset_info` gives a smaller summar
 - `defects`: `edges`, `clicks`, `tail`, `gaps`, `resonance`, `aliasing` with `cuts` of its trims.
 - `notes[]`: `{id, text, fix?}`, in plain language. `fix` holds the `set_audio_import_settings` keys that fix it.
   `differences_vs_1` says in words how each later item differs from the first.
+- `music` (a `loop` kind or `music` type): the detected `bpm`, `first_beat_ms`, `beats_per_bar_guess`.
+  When `confident`, pass `fix` as `settings`; otherwise pick from `candidates` (half or double tempo).
+  `agrees`: the clip's `music` already lays this grid.
 
 A clip with import settings is measured **as the engine plays it**, gain, trims and fades applied and
 the seam at its loop region's wrap. `played` gives that region, `source` the raw file's numbers, and the
@@ -42,6 +45,7 @@ fresh analysis. A null key resets it; a default key is not written.
 | `fade_in_ms`, `fade_out_ms` | 0 to 1000, raised cosine | 0 |
 | `loop_start_ms` | >= 0, or -1: the trimmed start | -1 |
 | `loop_end_ms` | after the start, or -1: the trimmed end | -1 |
+| `music` | `{bpm: 20-400, beats_per_bar: 1-16, first_beat_ms: >= 0}`, beat 1 from the file's start | none |
 
 The engine plays these in Play and in every export: a looping voice wraps at the loop region, and fades
 never shape a wrap. Settings that do not fit the file are refused, naming the frames. A clip without
@@ -144,7 +148,7 @@ Make one with `edit_sound_event`, then point an AudioSource at it with `set_prop
 | Key | Default | Range and meaning |
 |---|---|---|
 | `mode` | `shuffle` when made here | `random`, `shuffle`, `sequence`, `layer` |
-| `clips` | | 1 to 64: a path, a GUID or `{clip, weight (0..1000, random), volume_db (-60..12), pitch_semitones (-24..24), delay_ms (0..2000)}` |
+| `clips` | | 1 to 64: a path, a GUID or `{clip, weight (0..1000, random), volume_db (-60..12), pitch_semitones (-24..24), delay_ms (0..2000), loops (music)}` |
 | `avoid_repeat` | true | random: the last clip is left out of the next pick |
 | `pitch_semitones`, `volume_db`, `delay_ms` | `[0, 0]` | `[min, max]`, one draw per play |
 | `output_group` | the playing source's | a mixer group by name (an `Audio.play` voice: its `group`, else Master) |
@@ -187,9 +191,34 @@ Animator and montages; an entity Animation takes the same items as audio and Mix
   `component: "audiosource"`, `property: "volume"` / `"speed"` on the same path shape it while the state plays.
 - **Build-up:** a `snapshot` cue (`{"time": 2.0, "snapshot": "Build", "seconds": 0.5}`) moves the mixer; a later cue
   moves it back. Snapshots are the project mixer's.
-- **Check:** capture the Play (below): each fired cue is a `cue` line (`clip`, `cue`, `kind`, `player`, `state`,
+- **Check:** capture the Play (below): each fired cue is a `cue` line (`clip`, `cue`, `cue_kind`, `player`, `state`,
   `position`, `delay_samples`, `timeline`) followed by its `voice_start` (owner `cue` or `main`, cause `animation`) on
   the same sample plus `delay_samples`; a snapshot cue writes a `mixer` line with `cause: "animation"`.
+
+## Music
+
+Never write a music manager: use the music system. It plays one track that survives scene loads, through
+`audio.music_group` (else the event's `output_group`, else Master), so ducking and snapshots apply to it.
+
+- **A track** is a clip (its loop region repeats until `Audio.advanceMusic()`) or a Sound Event used as a playlist:
+  its clips are sections, in `sequence` order or by `shuffle`/`random`, each playing its loop region `loops` times
+  (default 1, 0 = until `advanceMusic`) then its tail; the event's `loop` repeats the list. Not `layer`.
+- **Tempo:** a clip's `set_audio_import_settings` `settings.music: {bpm, beats_per_bar, first_beat_ms}`.
+  `analyze_audio` detects it; pass its `music.fix` only when `confident`, else choose from `candidates`.
+- **Switch:** `Audio.playMusic(x, {crossfade, sync, snapshot, group, volume})`: `sync` `now`, `beat`, `bar` or
+  `section_end` starts it on that boundary of the playing track, sample-exact; `snapshot` reaches that mixer
+  snapshot at the same moment. `Audio.stopMusic(fade, {sync})`.
+- **Stingers:** `Audio.playStinger(x, "beat"|"bar"|"now")` lands on the music's next beat or bar.
+- **Callbacks:** `Audio.onMusicBeat:add(tag, function(bar, beat) end)`, `Audio.onMusicSection`; per frame, not
+  sample-exact. `Audio.getMusic()`, `getMusicTime()`, `getMusicPosition()`.
+- **Check it** in a capture: `music` lines (`play`, `section`, `stinger` with `boundary_sample`) in `audio_session report`.
+
+Menu to gameplay, on the bar with the combat mix:
+
+```lua
+Audio.playMusic("music/menu.soundevent")
+Audio.playMusic("music/game.soundevent", { crossfade = 1, sync = "bar", snapshot = "Combat" })
+```
 
 ## Capture a Play
 

@@ -13,6 +13,7 @@
 #include "Scene.h"
 #include "Theme.h"
 #include "audio/AudioMixer.h"
+#include "audio/MusicPlayer.h"
 #include "audio/SoundEventDocument.h"
 #include "audio/SoundEventRender.h"
 #include "audio/SoundSearch.h"
@@ -70,6 +71,7 @@ namespace {
         std::string analyzedText;
         bool wantAudition = false;
         bool wantMatch = false;
+        bool wantMusic = false;
         // one undo step per drag of one value
         unsigned int dragSerial = 0;
     };
@@ -116,9 +118,14 @@ void editor::InspectorWindow::requestSoundEventMatchLevels() {
     soundEventView().wantMatch = true;
 }
 
+void editor::InspectorWindow::requestSoundEventPlayAsMusic() {
+    soundEventView().wantMusic = true;
+}
+
 void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
     SoundEventView& view = soundEventView();
     if (view.asset != asset) {
+        if (MusicPlayer::isPreview()) MusicPlayer::reset();
         stopAuditionVoice(view);
         view.samples.clear();
         view.audition.reset();
@@ -334,7 +341,9 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::TextUnformatted(clip.clip.path.c_str());
-        const float width = ImGui::GetContentRegionAvail().x / 4.0f - ImGui::GetStyle().ItemSpacing.x;
+        // a music event's sections repeat their loop region `loops` times (S39 R3)
+        const bool music = def.type == "music";
+        const float width = ImGui::GetContentRegionAvail().x / (music ? 5.0f : 4.0f) - ImGui::GetStyle().ItemSpacing.x;
         auto value = [&](const char* id, const char* format, float SoundEventClip::*member, float low, float high, const char* undo, bool same) {
             if (same) ImGui::SameLine();
             ImGui::SetNextItemWidth(width);
@@ -352,6 +361,18 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
         value("##db", "%.1f dB", &SoundEventClip::volumeDb, -60.0f, 12.0f, "Set Sound Event Clip Volume", true);
         value("##st", "%.2f st", &SoundEventClip::pitchSemitones, -24.0f, 24.0f, "Set Sound Event Clip Pitch", true);
         value("##ms", "%.0f ms", &SoundEventClip::delayMs, 0.0f, 2000.0f, "Set Sound Event Clip Delay", true);
+        if (music) {
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(width);
+            int loops = clip.loops;
+            if (ImGui::DragInt("##loops", &loops, 0.1f, 0, 1000, loops == 0 ? "loops until advanced" : "loops %d", ImGuiSliderFlags_AlwaysClamp)) {
+                SoundEventDef changed = def;
+                changed.clips[i].loops = loops;
+                save(changed, "Set Sound Event Clip Loops", ("##loops" + std::to_string(i)).c_str());
+            }
+            UIProbe::item(("soundEvent.loops." + std::to_string(i)).c_str());
+            dragged();
+        }
         ImGui::PopID();
     }
     if (remove >= 0) {
@@ -416,6 +437,24 @@ void editor::InspectorWindow::drawSoundEventAsset(const fs::path& asset) {
     if (view.playing >= 0) {
         ImGui::SameLine();
         if (ImGui::Button(ICON_FA_STOP "##audition_stop")) stopAuditionVoice(view);
+    }
+    // the playlist as the game plays it: through the music system, its sections handed over gaplessly
+    const std::string eventPath = project->normalizeToAssetsRelative(asset).generic_string();
+    const bool previewing = MusicPlayer::isPreview() && MusicPlayer::current() == eventPath;
+    ImGui::SameLine();
+    ImGui::BeginDisabled(layer || def.clips.empty() || project->isAnyScenePlaying());
+    if (ImGui::Button(previewing ? ICON_FA_STOP " Stop Music" : "Play as Music")) view.wantMusic = true;
+    UIProbe::item("soundEvent.playAsMusic");
+    ImGui::EndDisabled();
+    if (view.wantMusic) {
+        view.wantMusic = false;
+        if (previewing) {
+            MusicPlayer::reset();
+        } else if (!layer && !def.clips.empty() && !project->isAnyScenePlaying()) {
+            MusicPlayer::reset();
+            MusicPlayer::setPreview(true);
+            if (!MusicPlayer::play(eventPath, MusicOptions())) MusicPlayer::setPreview(false);
+        }
     }
 
     if (view.wantMatch) {

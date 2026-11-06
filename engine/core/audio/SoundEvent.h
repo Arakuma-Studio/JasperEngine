@@ -49,6 +49,9 @@ namespace jasperengine {
         float volumeDb = 0.0f;
         float pitchSemitones = 0.0f;
         float delayMs = 0.0f;
+        // music only (S39): passes of its loop region a section plays, counting the first; 0 = until
+        // Audio.advanceMusic
+        int loops = 1;
         SoundEventUnknownKeys unknownKeys;
 
         bool operator==(const SoundEventClip& o) const;

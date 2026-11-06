@@ -235,8 +235,7 @@ bool TimelineAudio::transition(const std::string& snapshot, float seconds, std::
         warnCue(info, "the mixer has no snapshot '" + snapshot + "'");
         return false;
     }
-    const AudioMixer::CaptureCause cause("animation");
-    return AudioMixer::transitionTo(snapshot, std::max(0.0f, std::isfinite(seconds) ? seconds : 0.0f), unscaled.value_or(false));
+    return AudioMixer::transitionTo(snapshot, std::max(0.0f, std::isfinite(seconds) ? seconds : 0.0f), unscaled.value_or(false), "animation");
 }
 
 double TimelineAudio::soundLength(const std::string& eventOrClip) {

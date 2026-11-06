@@ -1099,6 +1099,7 @@ void ProjectSettingsWindow::open(Project* project, const char* category) {
     m_audioSettings = project->getAudioSettings();
     snprintf(m_audioMixerBuffer, sizeof(m_audioMixerBuffer), "%s", m_audioSettings.mixer.c_str());
     snprintf(m_audioDefaultGroupBuffer, sizeof(m_audioDefaultGroupBuffer), "%s", m_audioSettings.defaultOutputGroup.c_str());
+    snprintf(m_audioMusicGroupBuffer, sizeof(m_audioMusicGroupBuffer), "%s", m_audioSettings.musicGroup.c_str());
     m_debugSettings = project->getDebugSettings();
 
     m_packNativeResources = project->shouldPackNativeResources();
@@ -2614,6 +2615,24 @@ void ProjectSettingsWindow::drawAudioSettings() {
                     ImGui::EndCombo();
                 }
                 endSettingsRow("The mixer group new Audio Sources play through.");
+            }
+
+            if (settingsui::beginRow("audio.music_group")) {
+                if (projectBeginSettingsRow("Music Group", m_audioMusicGroupBuffer[0] != '\0')) {
+                    m_audioMusicGroupBuffer[0] = '\0';
+                }
+                ImGui::SetNextItemWidth(-helpMarkerWidth());
+                const std::vector<std::string> groups = AudioMixer::getGroupNames();
+                if (ImGui::BeginCombo("##AudioMusicGroup", m_audioMusicGroupBuffer[0] ? m_audioMusicGroupBuffer : (groups.empty() ? "Master" : groups[0].c_str()))) {
+                    for (size_t i = 0; i < groups.size(); i++) {
+                        const char* value = i == 0 ? "" : groups[i].c_str();
+                        if (ImGui::Selectable(groups[i].c_str(), strcmp(value, m_audioMusicGroupBuffer) == 0)) {
+                            snprintf(m_audioMusicGroupBuffer, sizeof(m_audioMusicGroupBuffer), "%s", value);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                endSettingsRow("The mixer group music plays through when neither Audio.playMusic nor its Sound Event names one.");
             }
 
             if (settingsui::beginRow("audio.credits_file")) {
@@ -5119,6 +5138,7 @@ bool ProjectSettingsWindow::applySettings() {
             audio.mixer = audio.mixer.substr(7);
         }
         audio.defaultOutputGroup = m_audioDefaultGroupBuffer;
+        audio.musicGroup = m_audioMusicGroupBuffer;
         if (audio != m_project->getAudioSettings()) {
             auto* command = new AudioSettingsCmd(m_project, m_project->getAudioSettings(), audio);
             command->setNoMerge();
