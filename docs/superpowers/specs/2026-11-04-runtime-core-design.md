@@ -254,9 +254,9 @@ sees the key, and the game never gets Escape. A game's pause menu cannot be test
 static bool runCatching(void (*function)(void*), void* context, std::string& errorInfo);
 // "C++ exception <type>: <what>" of the exception being handled (call inside a catch)
 static std::string describeCurrentException();
-// A callback that failed with no hook set: Log::error("<tag> failed: <errorInfo>"), at most once
-// a second per tag (a static map, main thread)
-static void logFailure(const std::string& tag, const std::string& errorInfo);
+// A callback that threw with no hook set (call it in a catch): Log::error("<tag> failed: <the
+// exception>"), at most once a second per tag, checked before the exception is described
+static void logFailure(const std::string& tag);
 ```
 
 - `runGuarded` = `callWithCrashGuard` around `runCatching`: the catch is inside the guard, so a
@@ -266,7 +266,7 @@ static void logFailure(const std::string& tag, const std::string& errorInfo);
   ComponentManager.cpp:36-44; MSVC names are readable) and `what()`; anything else "C++ exception of
   unknown type".
 - `FunctionSubscribe::runSlot` (FunctionSubscribe.h:136-156), unguarded branch:
-  `try { call(slot.function); } catch (...) { CrashHook::logFailure(slot.tag, CrashHook::describeCurrentException()); return false; }`
+  `try { call(slot.function); } catch (...) { CrashHook::logFailure(slot.tag); return false; }`
   (the slot stays). Guarded branch unchanged (runGuarded now covers exceptions). `callRet` already
   asks the next subscriber when `runSlot` returns false.
 - `ScriptScheduler` C++ timers, unguarded path (ScriptScheduler.cpp:1063): the same try/catch with
@@ -736,8 +736,10 @@ Recorded during implementation (branch `dc/runtime-core`).
 4. **ActionPreviewSnapshot API (6.6).** `add(sceneId, scene, entity, excluded = readOnlyTypes())`
    instead of one `capture(entities, excluded)`: the Animation window adds entities while a preview
    runs (new track entities, nested Animations). Both previews leave out the same read-only types
-   (the Animation and the key data); the Inspector used to restore the keyframe components with
-   their current keys, which is the same result. A path write keeps the value through its `TypeOps`
+   (the Animation and the key data), so keys authored during a preview stay; the one part of the
+   key data a preview writes, a keyframe track's playhead (`index`, `interpolation`, saved fields),
+   is taken and put back on its own (the Inspector's old refresh restored those two keys too). A
+   path write keeps the value through its `TypeOps`
    (copy); a whole-component write, or a path the reflection cannot copy, keeps the component's
    authored YAML (encoded after the component was put back to its authored state, so it holds no
    previewed value), instead of the spec's "first segment" fallback. Before a path write only that
@@ -754,3 +756,14 @@ Recorded during implementation (branch `dc/runtime-core`).
    `docs/mcp/guide/<area>.md`). The edit_animation parameters got the eval case
    `guard_random_start_for_copies` (`tools/mcp/eval/cases.py`); the live eval needs Orquester-managed
    accounts and was not run here (`test_grade.py` passes).
+9. **Command audit (6.6).** Besides PropertyCmd, ObjectTransformCmd, ComponentValuesCmd,
+   LatticePointsCmd and MorphWeightsCmd, `ReflectedValueCmd` (the Inspector's array rows: insert,
+   remove, move; Revert to prefab of a field) calls `ClipRecordHooks::before/afterComponentWrite` on
+   execute and undo.
+10. **Lint wiring (6.5).** There is no CI any more: `tools/check_event_clears.py` runs in
+    `tools/build.sh linux` and through `tools/check-changed` when a component header,
+    `PhysicsSystem.h` or `Engine.h`/`.cpp` changes (docs/testing.md, check-changed; AGENTS.md's lint
+    list). It reads several names and initialisers in one declaration; events outside components,
+    PhysicsSystem and Engine (`Log::onMessageReceived`) are outside its scope, as its docstring says.
+11. **`CrashHook::logFailure(tag)` (6.1)** describes the exception being handled itself, after its
+    once-a-second check (a callback throwing every frame is not rethrown and demangled each time).

@@ -15,6 +15,11 @@ PhysicsSystem::clearSubscriptions), and a hot reload removes them by tag
     python3 tools/check_event_clears.py [--root DIR] [--self-test]
 
 Prints `file: struct.member: <what>` for each miss and exits 1 when there is one.
+
+A declaration may name several events (`FunctionSubscribe<void()> onA, onB;`) and give them
+initialisers (`= ...`, `{...}`); each one counts. Events elsewhere (`Log::onMessageReceived`, a
+subsystem other than PhysicsSystem, an event in a .cpp) are outside what this checks: they are not
+script-owned engine events the clears at Stop walk.
 """
 
 import argparse
@@ -24,8 +29,35 @@ import re
 import sys
 import tempfile
 
-MEMBER = re.compile(r"^\s*FunctionSubscribe<.*>\s+(\w+)\s*;")
-STATIC_MEMBER = re.compile(r"^\s*static\s+FunctionSubscribe<.*>\s+(\w+)\s*;")
+DECLARATION = re.compile(r"^\s*(static\s+)?FunctionSubscribe<")
+
+
+def event_names(code: str) -> tuple[list[str], bool]:
+    """The names a FunctionSubscribe member declaration on this line declares, and whether it is
+    static: `FunctionSubscribe<void(A<B>, C)> onX, onY = ..., onZ{...};` gives onX, onY, onZ."""
+    match = DECLARATION.match(code)
+    if not match:
+        return [], False
+    i = code.index("FunctionSubscribe<") + len("FunctionSubscribe<")
+    depth = 1
+    while i < len(code) and depth:
+        depth += {"<": 1, ">": -1}.get(code[i], 0)
+        i += 1
+    rest = code[i:].split(";")[0]
+    names, part, nesting = [], "", 0
+    for ch in rest + ",":
+        if ch in "({<[":
+            nesting += 1
+        elif ch in ")}>]":
+            nesting -= 1
+        if ch == "," and nesting == 0:
+            name = re.match(r"\s*(\w+)", part)
+            if name:
+                names.append(name.group(1))
+            part = ""
+        else:
+            part += ch
+    return names, bool(match.group(1))
 OPEN = re.compile(r"^\s*(?:struct|class)\s+(?:JASPERENGINE_API\s+)?(\w+)\b[^;]*$")
 VISITOR = "forEachEvent(F&& f)"
 
@@ -54,9 +86,9 @@ def structs_of(text: str) -> dict[str, dict]:
             visitor_text = []
         if visitor_owner is not None:
             visitor_text.append(code)
-        member = MEMBER.match(code)
-        if member and stack and not STATIC_MEMBER.match(code):
-            found.setdefault(stack[-1][0], {"members": [], "visitor": None})["members"].append(member.group(1))
+        names, static = event_names(code)
+        if names and stack and not static:
+            found.setdefault(stack[-1][0], {"members": [], "visitor": None})["members"].extend(names)
         for ch in code:
             if ch == "{":
                 depth += 1
@@ -121,7 +153,11 @@ def check(root: str) -> list[str]:
     engine_h = os.path.join(root, "engine/core/Engine.h")
     engine_cpp = os.path.join(root, "engine/core/Engine.cpp")
     if os.path.exists(engine_h) and os.path.exists(engine_cpp):
-        statics = [m.group(1) for line in read(engine_h).split("\n") if (m := STATIC_MEMBER.match(strip_comment(line)))]
+        statics = []
+        for line in read(engine_h).split("\n"):
+            names, static = event_names(strip_comment(line))
+            if static:
+                statics.extend(names)
         source = read(engine_cpp)
         for function in ("Engine::clearAllSubscriptions", "Engine::removeSubscriptionsByTag"):
             body = function_body(source, "void " + function + "(")
@@ -155,8 +191,8 @@ def self_test() -> int:
         # a member left out of its visitor, a component left out of the list, a physics event and an
         # Engine event left out of a clear
         with open(os.path.join(root, "engine/core/component/Bad.h"), "w") as f:
-            f.write("struct BadComponent{\n    FunctionSubscribe<void()> onX;\n    FunctionSubscribe<void()> onY;\n"
-                    "    template<typename F> void forEachEvent(F&& f) { f(onX); }\n};\n")
+            f.write("struct BadComponent{\n    FunctionSubscribe<void()> onX;\n    FunctionSubscribe<void(std::map<int, int>)> onY, onZ = {};\n"
+                    "    template<typename F> void forEachEvent(F&& f) { f(onX); f(onZ); }\n};\n")
         with open(os.path.join(root, "engine/core/subsystem/PhysicsSystem.h"), "a") as f:
             f.write("struct Extra{\n    FunctionSubscribe<void()> onLost;\n};\n")
         with open(os.path.join(root, "engine/core/Engine.h"), "a") as f:

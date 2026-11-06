@@ -474,19 +474,20 @@ async def test_edits_during_the_entity_preview_are_kept(ed: Editor):
 async def test_start_offset_through_edit_animation(ed: Editor):
     """runtime-core 6.7: edit_animation start_offset / random_start set the Animation's Action; get_animation
     reports them; one undo step; set_properties reaches a standalone action's fields; bad values refused."""
-    r = await ed.call("edit_animation", animation="RobotEdits", start_offset=0.5, random_start=True)
+    await ed.call("edit_animation", target="Robot", name="RobotOffsets", tweens=[{"type": "scale", "to": [1.2, 1.2, 1.2], "duration": 1.0}])
+    r = await ed.call("edit_animation", animation="RobotOffsets", start_offset=0.5, random_start=True)
     ed.check_eq((harness.find_key(r, "start_offset"), harness.find_key(r, "random_start")), (0.5, True), f"reported: {r}")
-    got = await ed.call("get_animation", entity="RobotEdits")
+    got = await ed.call("get_animation", entity="RobotOffsets")
     ed.check_eq((harness.find_key(got, "start_offset"), harness.find_key(got, "random_start")), (0.5, True), f"get_animation: {got}")
     await ed.call("undo", scope="scene")
-    got = await ed.call("get_animation", entity="RobotEdits")
+    got = await ed.call("get_animation", entity="RobotOffsets")
     ed.check_eq((harness.find_key(got, "start_offset"), harness.find_key(got, "random_start")), (0.0, False), "one undo step")
 
-    await ed.call("edit_animation", animation="RobotEdits", start_offset=-1, expect_error=True)
+    await ed.call("edit_animation", animation="RobotOffsets", start_offset=-1, expect_error=True)
     tween = harness.find_key(got, "actions")[0]["action"]
     tween_ref = tween["id"] if isinstance(tween, dict) else tween
     await ed.call("set_properties", entity=tween_ref, values={"action": {"startOffset": 0.25}})
     ed.check_eq(float(await field(ed, tween_ref, "action", "startOffset")), 0.25, "a nested action's Start Offset")
-    got = await ed.call("get_animation", entity="RobotEdits")
+    got = await ed.call("get_animation", entity="RobotOffsets")
     ed.check_eq(harness.find_key(got, "actions")[0].get("start_offset"), 0.25, f"reported on the nested action: {got}")
     await ed.call("edit_animation", clip=ROBOT_CLIP, start_offset=1, expect_error=True)
