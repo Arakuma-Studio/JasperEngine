@@ -1922,7 +1922,7 @@ Create or change a .soundevent (Unity's Audio Random Container): clips played by
 | `match_levels` | boolean |  | After values: every clip's volume_db so all play equally loud, none past -1 dBTP. Not for layer. |
 | `path` | string | yes | A .soundevent in the assets folder. |
 | `slice` | object |  | With create: {source, gate_db, min_gap_ms, pre_ms, max_ms, pick, variation, preview}. |
-| `values` | object |  | mode, clips (paths, GUIDs or {clip, weight, volume_db, pitch_semitones, delay_ms}; the whole list), avoid_repeat, pitch_semitones, volume_db, delay_ms ([min, max]), output_group (a name), max_instances, steal, cooldown_ms, priority, loop, spatial, type. null resets a key. |
+| `values` | object |  | mode, clips (paths, GUIDs or {clip, weight, volume_db, pitch_semitones, delay_ms, loops}; the whole list), avoid_repeat, pitch_semitones, volume_db, delay_ms ([min, max]), output_group (a name), max_instances, steal, cooldown_ms, priority, loop, spatial, type. null resets a key. |
 
 
 ## Audio Mixer
