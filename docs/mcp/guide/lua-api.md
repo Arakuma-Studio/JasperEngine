@@ -1149,6 +1149,66 @@ bus holds, as in the app pause but apart from it; a source a script paused stays
 `isOutputAvailable()` (false without an audio device: sounds still mix, meters still read),
 `getVoiceCount()`.
 
+`Audio` (static, free voices with no AudioSource): `Audio.play(eventOrClip [, opts])` -> `SoundHandle`
+(a Sound Event by GUID or `.soundevent` path, or a clip path; `opts = {target = GameObject (3D, follows
+it, stops when it is destroyed), position = Vector3 (3D, fixed), scene = Scene (the owner: it holds
+and stops with it; default the target's, else the main scene), volume = 1, pitch = 1, group = "SFX"
+(default the event's, else Master), delay = 0 (s), unscaled = false (the delay's time)}`; an unknown
+name gives an invalid handle and one warning per name per Play), `Audio.stopAll([group])` -> integer
+(the voices of `Audio.play`, triggers and one-shots, all or those on `group` or below it;
+`AudioSystem.stopAll()` also stops the sources' main voices). Inside a physics callback they run at
+the frame's audio update: the handle is valid at once, `stopAll` answers 0.
+`Audio.mark(label)` writes a marker line (at most 200 bytes) at this sample of an audio capture and does
+nothing without one; `Audio.isCapturing()` -> boolean. Both exist in every build (a release player: no-op
+and false), so a script behaves the same everywhere.
+
+```lua run
+Audio.mark("doc test")
+assert(type(Audio.isCapturing()) == "boolean")
+```
+
+The music (one track that survives scene loads; `jasper://docs/sound` Music): `Audio.playMusic(eventOrClip [, opts])`
+-> bool (a clip, or a Sound Event played as a playlist; `opts = {crossfade = 0 (s, equal power), sync = "now" | "beat"
+| "bar" | "section_end" (the playing track's next one), snapshot = "Combat" (reached at the switch), snapshotSeconds
+(default the crossfade), group (default the event's output, else `audio.music_group`), volume = 1,
+ignoreListenerPause = false}`; the playing track again does nothing; false for a `layer` event),
+`Audio.stopMusic([fade [, {sync}]])`, `Audio.advanceMusic()` -> bool (the section ends at its next loop end),
+`Audio.playStinger(eventOrClip [, sync = "beat"])` -> `SoundHandle` (on the next beat or bar, owned by the music),
+`Audio.getMusic()` -> string, `Audio.getMusicTime()` -> seconds, `Audio.getMusicPosition()` -> `{section, bar, beat,
+beatFraction, bpm, beatsPerBar}` or nil (no music or no tempo). `Audio.onMusicBeat` (bar, beat) and
+`Audio.onMusicSection` (section, clip) are called in the frame whose mix holds them: frame-accurate; a stinger or a
+synced switch is the sample-exact way. A time that is negative or not a number, or an unknown `sync`, is refused
+with one warning.
+
+```lua run
+assert(Audio.getMusic() == "")
+assert(Audio.getMusicPosition() == nil)
+assert(Audio.advanceMusic() == false)
+Audio.onMusicBeat:add("doc", function(bar, beat) end)
+Audio.onMusicBeat:remove("doc")
+```
+
+`SoundHandle` (a value naming one play): `isValid()`, `isPlaying()`, `stop()`, `pause()`, `resume()`,
+`fadeOut(seconds [, opts])` (`opts.pause`, `opts.unscaled`, as `AudioSource:fadeOut`),
+`fadeTo(volume, seconds [, opts])`; properties `volume`, `pitch`, `pan`, `position` (rw; setting it
+stops following), `time`, `voiceCount` (ro). Getters of an invalid handle give 0 or the zero vector,
+setters do nothing; a value that is not a number is refused with a warning.
+
+`AudioPlayOn` (flags, add them): `UIClick` 1, `UIPress` 2, `UIHover` 4, `Collision2D` 8, `Collision3D`
+16, `Sensor2D` 32, `Sensor3D` 64: what plays an AudioSource by itself (`AudioSource.playOn`).
+
+```lua
+-- a footstep that follows this object, a fade of one play, and a Button that clicks by itself
+local step = Audio.play("events/footstep.soundevent", {target = self, volume = 0.8, group = "SFX"})
+if step:isValid() then
+    step:fadeOut(0.2)
+end
+local sound = AudioSource(self.scene, self.entity)
+sound.event = "events/click.soundevent"
+sound.playOn = AudioPlayOn.UIClick + AudioPlayOn.UIHover
+Audio.stopAll("SFX")
+```
+
 `AudioListener` (static, Unity's): `pause` (rw: every source but the `ignoreListenerPause` ones
 holds; a pause menu), `volume` (rw, 0..1, everything).
 
@@ -1902,6 +1962,8 @@ missing; `GameObject:getAnimationPlayer()` returns `nil` without one. Players ru
 and in games (edit mode previews clips in the Animation window). Calls made before the clips load
 are kept. Clip tracks bind by path below the player's GameObject; renames and reparents rebind
 on the next frame. User guide: `docs/animation-clips.md`; agents: `jasper://docs/animation`.
+A clip's audio cues play by themselves (no Lua API; author them with `edit_animation {clip, audio}`):
+to play a sound from code use `Audio.play`, and react to clip events as below.
 
 | Member | Notes |
 |---|---|
@@ -2354,6 +2416,8 @@ end
 
 ### 4.12 AudioSource (EntityHandle)
 
+Clips that vary (footsteps, hits: no repeats, random pitch and volume) need no script: a Sound Event does it as data (`edit_sound_event`, group audio; then `event` on the AudioSource, `jasper://docs/sound`).
+
 Methods: `play()`, `pause()`, `stop()`, `seek(t)`, `loadSound(path)`, `destroySound()`,
 `isPlaying()`, `isPaused()`, `isStopped()`, `getLength()`, `getPlayingTime()`,
 `getGameObject()`, `setMinMaxDistance(min, max)`, `setInaudibleBehavior(mustTick, kill)`,
@@ -2364,7 +2428,14 @@ rw: `enabled`, `volume`, `speed` (`pitch` is the same), `pan`, `looping`, `loopi
 mixer group by name, "" = Master), `loadType` (`AudioLoadType.*`, Auto streams files of 1 MiB and
 more), `priority` (0 most important .. 256, default 128), `maxVoices` (1..64, default 8),
 `ignoreListenerPause`.
-Mixer and voices: `playOneShot(path [, volumeScale])` (an extra voice over what plays, Unity's
+Sound Events and triggers: `event` (rw: its path; assigning a path or GUID resolves it, `""` clears it;
+set, the source plays the event and its clip is ignored), `playOn` (rw, `AudioPlayOn` flags),
+`minImpactSpeed`, `fullVolumeImpactSpeed` (contact triggers: below the first nothing plays; below the
+second the volume scales with the speed, 0 = no scaling), `pitchRandomSemitones` (0..24),
+`volumeRandomDb` (0..60): clip mode's variation of each start.
+
+Mixer and voices: `playOneShot(path [, volumeScale])` (an extra voice over what plays, a clip or a
+Sound Event's pick by its `.soundevent` path or GUID, Unity's
 PlayOneShot; the oldest one-shot is stolen past `maxVoices`), `fadeIn(seconds [, opts])`,
 `fadeOut(seconds [, opts])` (`opts.pause` pauses instead of stopping; the volume comes back for
 the next play), `fadeTo(volume, seconds [, opts])`, `isFading()`, `getVoiceCount()`,
@@ -2523,7 +2594,8 @@ or `CharacterController2D(scene, entity)`. Points and points per second, as Rigi
 | `setAllowedDOFsAll()`, `setAllowedDOFs2DPlane()`, `setAllowedDOFs(...)`, `setOverrideMassAndInertia(...)` | methods | |
 | `getPointVelocity(p)`, `getAccumulatedForce()`, `getCenterOfMassPosition()` | methods | |
 
-`Contact3D` (global events): `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
+`Contact3D` (global events): `getApproachSpeed()` (how fast the bodies came together along the
+normal before the solver), `getWorldSpaceNormal()`, `getPenetrationDepth()`, `getBaseOffset()`,
 `getColliderIndex1()`, `getColliderIndex2()`, `getRelativeContactPointsOnA(i)` / `OnB(i)`,
 `numContactPoints`, `snapshot` (true after the step: setters apply from the next step), rw `combinedFriction`,
 `combinedRestitution`, `sensor`.
@@ -2627,6 +2699,12 @@ tw:setAction(Vector3(0, 0, 0), Vector3(200, 0, 0), 1.0, false)
 tw:setFunctionType(EaseType.QUAD_OUT)
 tw:start()
 ```
+
+Audio actions (an action GameObject with an `AudioSourceComponent`) and Mixer Snapshot actions start
+and stop with the Action API above (their sound follows; a standalone audio action stops itself when its
+sound ends, so `onStop` fires). `GameObject:getAudioSnapshotComponent()` (nil without one) gives the
+`AudioSnapshotComponent`: rw `snapshot` (a mixer snapshot name), `seconds`, `unscaled`, `revert` (back to
+the previous snapshot on stop, while the mixer still shows this one), `revertSeconds` (-1: `seconds`).
 
 Animation (Action): rw `loop`, `ownedActions`, `blendWeight`, `defaultFadeTime`;
 `fadeIn(t)`, `fadeOut(t)`, `addActionFrame(...)`, `getActionFrameSize()`,

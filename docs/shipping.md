@@ -237,6 +237,7 @@ Every player takes the same options (the web from its URL query, `?quit-after=30
 | `--fail-on-error` | exit 3 when an error is logged |
 | `--ready-timeout S` | exit 6 when not ready after S seconds |
 | `--resolution WxH`, `--scene <name\|id>`, `--content <dir>`, `--verify-content`, `--silent-audio`, `--log-level` | |
+| `--audio-capture <dir>` | A desktop development player writes one audio capture session into `<dir>/<id>/`, on the deterministic driver; any other player exits 2. |
 | `-- <args>` | the game's own arguments (Lua `System.args`) |
 
 Exit codes: 0 done, 2 bad arguments, 3 an error was logged, 4 the screenshot failed, 5 the content

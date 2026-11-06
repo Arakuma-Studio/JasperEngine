@@ -205,7 +205,6 @@ namespace {
             // the editor's Platform as System::instance() for this suite's tests (the binary's engine
             // is TestMain's: a second Engine::systemInit would restart its jobs and logger)
             headlesssystem::use(out.platform.get());
-            Engine::pauseGameEvents(true);
             Engine::setAsyncLoading(false);
             out.ready = out.project->loadProject(out.dir, false);
             Engine::setAsyncLoading(false);
@@ -367,7 +366,21 @@ TEST(CameraShakeComponents, CloningResetsTheRuntimeAndRemapsTheTarget){
     EXPECT_EQ(scene.getComponent<CameraFollowComponent>(second).target, outside) << "a target outside it stays";
 }
 
-TEST(CameraShakeEditor, ShakeAssetEditIsOneProjectUndoStep){
+// the editor in edit mode: the game's events paused for each test, and given back as they were after
+// it (left paused, they held the music of MusicPlayerTest, which runs later in this binary)
+class CameraShakeEditor : public ::testing::Test {
+protected:
+    bool wasPaused = false;
+    void SetUp() override {
+        wasPaused = Engine::areGameEventsPaused();
+        Engine::pauseGameEvents(true);
+    }
+    void TearDown() override {
+        Engine::pauseGameEvents(wasPaused);
+    }
+};
+
+TEST_F(CameraShakeEditor, ShakeAssetEditIsOneProjectUndoStep){
     ASSERT_TRUE(headless().ready);
     Project* project = headless().project.get();
     const fs::path file = headless().dir / "shakes" / "boom.shake";
@@ -398,7 +411,7 @@ TEST(CameraShakeEditor, ShakeAssetEditIsOneProjectUndoStep){
     EXPECT_EQ(camera::parseShakePreset(readAll(file)).file->preset, edited.preset);
 }
 
-TEST(CameraShakeEditor, EditModePreviewLeavesTheSceneUnmodified){
+TEST_F(CameraShakeEditor, EditModePreviewLeavesTheSceneUnmodified){
     ASSERT_TRUE(headless().ready);
     Project* project = headless().project.get();
     project->createNewScene("ShakePreview", SceneType::SCENE_3D);

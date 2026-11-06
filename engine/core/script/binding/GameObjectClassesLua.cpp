@@ -6,6 +6,7 @@
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/PanelComponent.h"
@@ -1265,6 +1266,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("normalMatrix", &GameObject::getNormalMatrix)
         .addFunction("updateTransform", &GameObject::updateTransform)
 #ifdef JASPERENGINE_PHYSICS_2D
+        // the Mixer Snapshot action's component (S40 R24), nil without one
+        .addFunction("getAudioSnapshotComponent", [] (GameObject* self) -> AudioSnapshotComponent* {
+            return self->getScene()->findComponent<AudioSnapshotComponent>(self->getEntity());
+        })
         .addFunction("getRigidbody2D", &GameObject::getRigidbody2D)
         .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
         .addFunction("getCharacterController2D", &GameObject::getCharacterController2D)
@@ -4252,6 +4257,14 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("maxVoices", &AudioSource::getMaxVoices, &AudioSource::setMaxVoices)
         .addProperty("ignoreListenerPause", &AudioSource::isIgnoreListenerPause, &AudioSource::setIgnoreListenerPause)
         .addProperty("pitch", &AudioSource::getPitch, &AudioSource::setPitch)
+#if JASPERENGINE_SOUND_LAYER
+        .addProperty("event", &AudioSource::getEvent, &AudioSource::setEvent)
+        .addProperty("playOn", &AudioSource::getPlayOn, &AudioSource::setPlayOn)
+        .addProperty("minImpactSpeed", &AudioSource::getMinImpactSpeed, &AudioSource::setMinImpactSpeed)
+        .addProperty("fullVolumeImpactSpeed", &AudioSource::getFullVolumeImpactSpeed, &AudioSource::setFullVolumeImpactSpeed)
+        .addProperty("pitchRandomSemitones", &AudioSource::getPitchRandomSemitones, &AudioSource::setPitchRandomSemitones)
+        .addProperty("volumeRandomDb", &AudioSource::getVolumeRandomDb, &AudioSource::setVolumeRandomDb)
+#endif
         .addFunction("playOneShot", &luaAudioPlayOneShot)
         .addFunction("fadeIn", &luaAudioFadeIn)
         .addFunction("fadeOut", &luaAudioFadeOut)
@@ -5040,6 +5053,9 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .beginClass<Contact3D>("Contact3D")
         .addFunction("getBaseOffset", &Contact3D::getBaseOffset)
         .addFunction("getWorldSpaceNormal", &Contact3D::getWorldSpaceNormal)
+#if JASPERENGINE_SOUND_LAYER
+        .addFunction("getApproachSpeed", &Contact3D::getApproachSpeed)
+#endif
         .addFunction("getPenetrationDepth", &Contact3D::getPenetrationDepth)
         .addFunction("getColliderIndex1", &Contact3D::getColliderIndex1)
         .addFunction("getColliderIndex2", &Contact3D::getColliderIndex2)

@@ -213,6 +213,7 @@ namespace luabridge
     template<> struct Stack<AudioSourceState> : EnumWrapper<AudioSourceState>{};
     template<> struct Stack<AudioSourceAttenuation> : EnumWrapper<AudioSourceAttenuation>{};
     template<> struct Stack<AudioLoadType> : EnumWrapper<AudioLoadType>{};
+    template<> struct Stack<AudioPlayOn> : EnumWrapper<AudioPlayOn>{};
 
     template<> struct Stack<EaseType> : EnumWrapper<EaseType>{};
     template<> struct Stack<ActionState> : EnumWrapper<ActionState>{};
