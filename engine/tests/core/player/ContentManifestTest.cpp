@@ -97,7 +97,7 @@ TEST(ContentManifest, RefusesContentNeedingAModuleThePlayerLacks) {
     ContentManifest m = sample();
     present() = {"scenes/3.jscn", "scenes/4.jscn", "prefabs/2.jpfb", "assets/shaders/MESH_x_glsl410.sdat", "content.jpak"};
     const ContentAccess access{&exists, &noSha};
-    const std::vector<std::string> lite = {"physics3d", "physics2d", "navigation"};
+    const std::vector<std::string> lite = {"physics3d", "physics2d", "navigation", "soundlayer"};
     std::vector<std::string> problems;
     EXPECT_TRUE(checkContent(m, "linux-x64-glcore-release", access, false, problems, &lite)) << problems.front();
 

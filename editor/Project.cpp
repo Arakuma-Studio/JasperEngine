@@ -91,8 +91,12 @@
 #include "subsystem/PoseAnimatorSystem.h"
 #include "subsystem/VertexAnimatorSystem.h"
 #include "pool/SoundPool.h"
+#include "audio/AudioCapture.h"
 #include "audio/AudioMixer.h"
 #include "audio/AudioMixerDocument.h"
+#include "audio/MusicPlayer.h"
+#include "audio/SoundEventLibrary.h"
+#include "audio/AudioImportRegistry.h"
 #include "subsystem/VideoPlayerSystem.h"
 #include "subsystem/TrailSystem.h"
 #include "subsystem/CameraControlSystem.h"
@@ -310,6 +314,17 @@ static std::vector<editor::ScriptPropertyInfo> toScriptPropertyInfos(const std::
     return infos;
 }
 
+// The project ShaderManifests reads fork files through: its reader captures it, so the project
+// takes the reader back when it goes (a later read would call into a freed Project)
+static const editor::Project* shaderForkReaderProject = nullptr;
+
+static void installShaderForkReader(const editor::Project* project){
+    shaderForkReaderProject = project;
+    ShaderManifests::setForkReader([project](const std::string& relativePath, std::string& content) {
+        return project->readShaderFile(relativePath, content);
+    });
+}
+
 bool editor::Project::recordSelectionInUndo = true;
 
 editor::Project::Project(): vcsService(std::make_unique<vcs::VcsService>()), sceneDiffs(std::make_unique<vcs::SceneDiffTracker>()){
@@ -328,6 +343,10 @@ editor::Project::~Project(){
     playStopTask.wait();
     sceneSaveTask.wait();
     shaderListWrite.wait();
+    if (shaderForkReaderProject == this){
+        shaderForkReaderProject = nullptr;
+        ShaderManifests::setForkReader(nullptr);
+    }
     // the hooks point here: an editor or tool with a later Project installs its own
     if (UndoTimeline::getProjectHistory() == &projectHistory){
         UndoTimeline::setProjectHistory(nullptr);
@@ -3064,9 +3083,11 @@ void editor::Project::setAudioSettings(const AudioSettings& settings){
     audioSettings.maxRealVoices = std::clamp(audioSettings.maxRealVoices, 1, 255);
     audioSettings.maxVoices = std::clamp(audioSettings.maxVoices, 1, 1000);
     if (audioSettings.sampleRate < 0) audioSettings.sampleRate = 0;
+    audioSettings.seed = std::max(audioSettings.seed, 0);
     AudioSystem::configure({audioSettings.maxRealVoices, audioSettings.maxVoices, audioSettings.sampleRate,
                             AudioSystem::outputStageFromName(audioSettings.outputStage),
-                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory)});
+                            AudioSystem::iosSessionFromName(audioSettings.iosSessionCategory), (uint32_t)audioSettings.seed,
+                            audioSettings.musicGroup});
     AudioMixerDocument::setDefaultOutputGroup(audioSettings.defaultOutputGroup);
     if (mixerChanged || AudioMixer::getPath() != audioSettings.mixer) {
         applyAudioMixer();
@@ -3118,6 +3139,13 @@ bool editor::Project::applyAudioMixer(std::string* error){
 }
 
 void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>& changed){
+    // the next play of a changed Sound Event uses its file; voices that play keep playing
+    for (const fs::path& path : changed) {
+        if (Util::isSoundEventFile(path.string())) {
+            SoundEventLibrary::reload(normalizeToAssetsRelative(path).generic_string());
+        }
+    }
+    if (isAnyScenePlaying()) AudioImportRegistry::filesChanged(*this, changed);
     const fs::path mixer = getAudioMixerFile();
     if (mixer.empty()) return;
     for (const fs::path& path : changed) {
@@ -3129,6 +3157,81 @@ void editor::Project::audioFilesChanged(const std::vector<std::filesystem::path>
     }
 }
 
+void editor::Project::armAudioCapture(const AudioCaptureArm& arm){
+    audioCaptureArm = arm;
+    audioCaptureArm.armed = true;
+}
+
+const editor::Project::AudioCaptureArm& editor::Project::getAudioCaptureArm() const{
+    return audioCaptureArm;
+}
+
+const std::string& editor::Project::getAudioCaptureError() const{
+    return audioCaptureError;
+}
+
+std::string editor::Project::takeAudioCaptureSession(){
+    std::string session;
+    session.swap(playAudioCaptureSession);
+    return session;
+}
+
+void editor::Project::preparePlayAudioCapture(){
+    playAudioCaptureSession.clear();
+    playAudioCapture = audioCaptureArm;
+    audioCaptureArm = AudioCaptureArm();
+    audioCaptureError.clear();
+    playAudioCaptureWanted = false;
+    bool capture = playAudioCapture.capture;
+    if (!playAudioCapture.armed) {
+        // a device hears the game; a chosen NoSound or Null is a test's, left as it is
+        const AudioBackend backend = AudioSystem::getSelectedBackend();
+        capture = backend == AudioBackend::Deterministic || (backend == AudioBackend::Auto && !AudioSystem::hasDevice());
+    }
+    if (!capture) return;
+    playHoldsAudioDriver = true;
+    if (!AudioSystem::beginDeterministic()) {
+        audioCaptureError = "the deterministic audio driver did not open";
+        Out::error("Audio capture: %s", audioCaptureError.c_str());
+        return;
+    }
+    playAudioCaptureWanted = true;
+}
+
+void editor::Project::beginPlayAudioCapture(const SceneProject* mainSceneProject){
+    if (!playAudioCaptureWanted) return;
+    AudioCaptureOptions options;
+    options.root = getProjectInternalPath() / "audio" / "captures";
+    options.project = getName();
+    options.scene = mainSceneProject ? mainSceneProject->name : std::string();
+    options.sceneName = [this](const Scene* scene) {
+        const SceneProject* owner = findSceneProjectByScene(const_cast<Scene*>(scene));
+        return owner ? owner->name : std::string();
+    };
+    options.maxSeconds = playAudioCapture.maxSeconds > 0 ? playAudioCapture.maxSeconds : audioSettings.captureMaxSeconds;
+    options.keep = audioSettings.captureKeep;
+    options.stems = playAudioCapture.stems >= 0 ? playAudioCapture.stems != 0 : audioSettings.captureStems;
+    options.seed = (uint32_t)audioSettings.seed;
+    std::string error;
+    if (!AudioCapture::begin(options, &error)) {
+        audioCaptureError = "this Play is not captured: " + error;
+        Out::error("Audio capture: %s", audioCaptureError.c_str());
+        return;
+    }
+    playAudioCaptureSession = AudioCapture::sessionId();
+}
+
+void editor::Project::endPlayAudioCapture(){
+    AudioCapture::end();
+    playAudioCaptureWanted = false;
+}
+
+void editor::Project::releasePlayAudioDriver(){
+    if (!playHoldsAudioDriver) return;
+    playHoldsAudioDriver = false;
+    AudioSystem::endDeterministic();
+}
+
 void editor::Project::resetPlayAudio(bool starting) const{
     AudioSystem::setListenerPaused(false);
     // AudioListener.volume / AudioSystem.globalVolume: SoLoud's global volume, which the editor's
@@ -3137,6 +3240,10 @@ void editor::Project::resetPlayAudio(bool starting) const{
     AudioMixer::setMasterPaused(false);
     AudioMixer::resetRuntime(starting);
     if (starting) AudioMixer::loadRemembered();
+    AudioSystem::resetSoundEventRuntime();
+    MusicPlayer::reset();
+    if (starting) AudioImportRegistry::registerProject(*this);
+    else AudioImportTable::clear();
 }
 
 const editor::LoadingSettings& editor::Project::getLoadingSettings() const{
@@ -5828,6 +5935,7 @@ void editor::Project::resetConfigs() {
     inspectedAssets.clear();
     customResolutions.clear();
     projectPath.clear();
+    SoundEventLibrary::clear();
     AssetMap::setResolver(nullptr);
     waitForAssetScan();
     assetSearchIndex.detach();
@@ -6388,6 +6496,10 @@ void editor::Project::finalizeStop(SceneProject* mainSceneProject, std::vector<P
         }
     }
 
+    // every played scene's sounds and the music stopped, so their voice_stop lines are written
+    MusicPlayer::reset();
+    endPlayAudioCapture();
+
     editor::getEditorHost().enqueueMainThreadTask([this]() {
         SceneManager::clearAll();
         PrefabManager::clearAll();
@@ -6489,9 +6601,7 @@ bool editor::Project::createProjectInDirectory(const std::filesystem::path& path
 
             // Fresh projects resolve fork manifests through the same project-relative
             // reader as opened projects, including after the assets directory changes.
-            ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
-                return readShaderFile(relativePath, content);
-            });
+            installShaderForkReader(this);
 
             modelLoaded = true;
             // a project this version creates keeps its binaries in Git LFS (R21)
@@ -6941,9 +7051,7 @@ bool editor::Project::loadProject(const std::filesystem::path requestedPath, boo
         // shader manifests of forks are read from this project's files
         // (the project root, else the assets directory: findShaderFile, read when asked, so
         // the assets directory loaded with the project and any later change apply)
-        ShaderManifests::setForkReader([this](const std::string& relativePath, std::string& content) {
-            return readShaderFile(relativePath, content);
-        });
+        installShaderForkReader(this);
 
         // Before any scene or prefab loads: every prefab file gets its GUID (the one-shot
         // upgrade of files written before them) and references resolve through it
@@ -9921,6 +10029,9 @@ void editor::Project::runPlayStartup(const std::shared_ptr<PlaySession>& session
                 // By index, and guarded: a script here can call addChildScene(), which
                 // initializes another entry and appends to runtimeScenes. Initializing from
                 // the snapshot above would then run a scene's scripts a second time.
+                // sample 0: no game frame has run, and what the scripts' init starts is in the capture
+                beginPlayAudioCapture(sceneProject);
+
                 // Each scene's start ends at a safe point for DontDestroyOnLoad (before its
                 // documents start), as in the exported game's first load.
                 SceneManager::beginStartingScenes();
@@ -10368,7 +10479,10 @@ void editor::Project::start(uint32_t sceneId) {
     PlayChangeReview::get().discard(sceneId);
     // and from clean input (Project Settings > Input, no runtime rebinding)
     resetPlayInput();
-    // and audio: the mixer's start snapshot and remembered values, the listener unpaused
+    // and audio: no music of edit mode (eval_lua) in it, the driver this Play mixes on, the mixer's
+    // start snapshot and remembered values, the listener unpaused
+    MusicPlayer::reset();
+    preparePlayAudioCapture();
     resetPlayAudio(true);
     // and from the declared global shader values (Project Settings > Graphics > Shader Globals)
     resetPlayShaderGlobals();
@@ -10639,7 +10753,9 @@ void editor::Project::stop(uint32_t sceneId) {
             applyLayerCollisionMatrices();
             // so do held input, rebinding overrides and simulated input sources
             resetPlayInput();
-            // and the mixer values scripts set (the remembered ones stay in UserSettings)
+            // and the driver of its capture, and the mixer values scripts set (the remembered ones
+            // stay in UserSettings)
+            releasePlayAudioDriver();
             resetPlayAudio(false);
             // and the global shader values scripts set (Shader.setGlobal*)
             resetPlayShaderGlobals();

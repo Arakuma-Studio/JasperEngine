@@ -8,8 +8,10 @@
 #include "asset/AssetRefSchema.h"
 #include "asset/ModelSubAssets.h"
 #include "asset/TextReferences.h"
+#include "animation/AnimationClipIO.h"
 #include "animation/AnimatorAssetIO.h"
 #include "animation/ModelSubClips.h"
+#include "audio/SoundEventIO.h"
 #include "util/Util.h"
 
 #include "json.hpp"
@@ -163,6 +165,9 @@ bool AssetIndex::isReferrerType(AssetType type, const std::string& relativePath)
         case AssetType::UIDocument: case AssetType::Stylesheet: case AssetType::Shader: case AssetType::Model:
         case AssetType::ParticleEffect:
         case AssetType::AnimatorController: case AssetType::AnimationMontage:
+        case AssetType::SoundEvent:
+        // its audio cues' sounds (S40 R3)
+        case AssetType::AnimationClip:
             return true;
         case AssetType::Script:
             return indexExtension(relativePath) == ".lua";
@@ -332,6 +337,53 @@ std::vector<DepEdge> AssetIndex::extractFile(const AssetDatabase& database, cons
                                     (Util::isAvatarMaskFile(ref.path) ? AssetType::AvatarMask : AssetType::AnimationClip);
                     edge.target = isSubClip ? Guid() : Guid::parse(ref.guid);
                     edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, isSubClip ? subClip.model : ref.path);
+                    if (edge.target.isNull()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                }
+                break;
+            }
+            case AssetType::SoundEvent: {
+                // one edge per clip (assets-relative {guid, path})
+                std::string text;
+                if (!assetio::readFile(full, text)) break;
+                SoundEventDef event;
+                if (!SoundEventIO::parse(text, event)) break;
+                for (size_t i = 0; i < event.clips.size(); i++) {
+                    const AssetRef& clip = event.clips[i].clip;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = "clips[" + std::to_string(i) + "].clip";
+                    edge.expected = AssetType::Audio;
+                    edge.target = clip.guid;
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, clip.path);
+                    if (edge.target.isNull()) {
+                        const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
+                        if (resolution.found()) edge.target = resolution.guid;
+                    }
+                    if (isValidDepEdge(edge)) edges.push_back(std::move(edge));
+                }
+                break;
+            }
+            case AssetType::AnimationClip: {
+                // one edge per audio cue's sound (S40 R3): an audio clip or a Sound Event
+                std::string text;
+                if (!assetio::readFile(full, text) || text.find("\"audio\"") == std::string::npos) break;
+                anim::ClipParseResult parsed = anim::parseClip(text);
+                if (!parsed.ok()) break;
+                const std::vector<ClipAudioCue>& cues = parsed.data->audio;
+                for (size_t i = 0; i < cues.size(); i++) {
+                    if (cues[i].kind != ClipCueKind::Sound || !cues[i].sound.isSet()) continue;
+                    DepEdge edge;
+                    edge.referrer = referrer;
+                    edge.kind = DepEdgeKind::Other;
+                    edge.field = "audio[" + std::to_string(i) + "].sound";
+                    edge.expected = Util::isSoundEventFile(cues[i].sound.path) ? AssetType::SoundEvent : AssetType::Audio;
+                    edge.target = cues[i].sound.guid;
+                    edge.targetPath = toProjectRelative(roots, AssetPathBase::Assets, cues[i].sound.path);
                     if (edge.target.isNull()) {
                         const AssetDatabase::Resolution resolution = database.resolve(Guid(), edge.targetPath, edge.expected, false);
                         if (resolution.found()) edge.target = resolution.guid;

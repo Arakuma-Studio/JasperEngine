@@ -404,6 +404,21 @@ configure_file("${GENERATED_DIR}/mcp_docs.h.in" "${GENERATED_DIR}/mcp_docs.h" CO
 # editor (editor/pose/PoseTemplatesBuiltin.cpp, the only includer)
 file(GLOB POSE_TEMPLATE_FILES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${EDITOR_DIR}/resources/pose-templates/*.poseanim")
 list(SORT POSE_TEMPLATE_FILES)
+# The sound essentials (40 CC0 clips and their manifest, editor/resources/sound-library/essentials)
+# embedded in the editor (editor/audio/SoundEssentials.cpp). The generator fails the build when a
+# clip's size or SHA-256 disagrees with the manifest.
+set(SOUND_ESSENTIALS_DIR "${CMAKE_SOURCE_DIR}/editor/resources/sound-library/essentials")
+set(SOUND_ESSENTIALS_HEADER "${GENERATED_DIR}/sound_essentials.h")
+set(EMBED_ESSENTIALS_SCRIPT "${CMAKE_SOURCE_DIR}/tools/sound-library/embed_essentials.py")
+file(GLOB_RECURSE SOUND_ESSENTIALS_CLIPS CONFIGURE_DEPENDS "${SOUND_ESSENTIALS_DIR}/*.ogg")
+add_custom_command(
+    OUTPUT ${SOUND_ESSENTIALS_HEADER}
+    COMMAND ${Python3_EXECUTABLE} ${EMBED_ESSENTIALS_SCRIPT} ${SOUND_ESSENTIALS_DIR} ${SOUND_ESSENTIALS_HEADER}
+    DEPENDS ${EMBED_ESSENTIALS_SCRIPT} ${SOUND_ESSENTIALS_DIR}/manifest.json ${SOUND_ESSENTIALS_CLIPS}
+    COMMENT "Embedding the sound essentials (sound_essentials.h)"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
 set(pose_templates_header "// Generated from editor/resources/pose-templates by CMakeLists.txt. Do not edit.\n#pragma once\n\n")
 set(pose_templates_entries "")
 set(pose_template_index 0)
@@ -647,6 +662,7 @@ set_property(
 include_directories (${EDITOR_DIR})
 
 add_custom_target(generate_api_suggestions DEPENDS ${API_SUGGESTIONS_HEADER} ${LUA_STUBS_HEADER} ${LUA_API_DATA_HEADER})
+add_custom_target(generate_sound_essentials DEPENDS ${SOUND_ESSENTIALS_HEADER})
 
 # The texture synthesis core (editor/texsynth: Embark's texture-synthesis ported, NOTICE.md),
 # tested by jasperengine-editor-tests (editor/tests/texsynth); its CLI is SynthesisCli.cpp
@@ -825,6 +841,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/EngineApiContext.cpp
     ${EDITOR_DIR}/mcp/TerrainMaps.cpp
     ${EDITOR_DIR}/mcp/tools/McpTools.cpp
+    ${EDITOR_DIR}/mcp/tools/SoundTools.cpp
     ${EDITOR_DIR}/mcp/tools/CoreTools.cpp
     ${EDITOR_DIR}/mcp/tools/ProjectTools.cpp
     ${EDITOR_DIR}/mcp/tools/ShadowTools.cpp
@@ -841,6 +858,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/mcp/tools/AtmosphereTools.cpp
     ${EDITOR_DIR}/mcp/tools/ConsoleTools.cpp
     ${EDITOR_DIR}/mcp/tools/DataTools.cpp
+    ${EDITOR_DIR}/mcp/tools/AudioSessionTools.cpp
     ${EDITOR_DIR}/mcp/tools/AudioTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptTools.cpp
     ${EDITOR_DIR}/mcp/tools/ScriptingTools.cpp
@@ -1117,6 +1135,8 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/InspectorAnimator.cpp
     ${EDITOR_DIR}/window/InspectorLinesTrails.cpp
     ${EDITOR_DIR}/window/InspectorWindowCamera.cpp
+    ${EDITOR_DIR}/window/InspectorAudioClip.cpp
+    ${EDITOR_DIR}/window/ProjectWindowSound.cpp
     ${EDITOR_DIR}/window/InspectorVideo.cpp
     ${EDITOR_DIR}/window/InspectorPrefabBar.cpp
     ${EDITOR_DIR}/window/InspectorVcs.cpp
@@ -1157,6 +1177,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HumanoidConvertDialog.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipSheet.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipEvents.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipAudio.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipRecord.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipMode.cpp
@@ -1291,6 +1312,40 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/command/type/SetAssetMetaCmd.cpp
     ${EDITOR_DIR}/command/type/AudioSettingsCmd.cpp
     ${EDITOR_DIR}/audio/AudioMixerDocument.cpp
+    ${EDITOR_DIR}/audio/SoundEventDocument.cpp
+    ${EDITOR_DIR}/audio/SoundEventRender.cpp
+    ${EDITOR_DIR}/window/InspectorSoundEvent.cpp
+    ${EDITOR_DIR}/window/AudioCapturesWindow.cpp
+    ${EDITOR_DIR}/window/SoundBrowserWindow.cpp
+    ${EDITOR_DIR}/audio/SoundDrop.cpp
+    ${EDITOR_DIR}/mcp/tools/SoundEventTools.cpp
+    ${EDITOR_DIR}/audio/AudioAnalysis.cpp
+    ${EDITOR_DIR}/audio/AudioCompare.cpp
+    ${EDITOR_DIR}/audio/AudioCredits.cpp
+    ${EDITOR_DIR}/audio/AudioWaveform.cpp
+    ${EDITOR_DIR}/audio/TimelineAudioPreview.cpp
+    ${EDITOR_DIR}/audio/BuiltinSoundImport.cpp
+    ${EDITOR_DIR}/audio/ClipDefects.cpp
+    ${EDITOR_DIR}/audio/SoundEssentials.cpp
+    ${EDITOR_DIR}/audio/SoundLibrary.cpp
+    ${EDITOR_DIR}/audio/SoundLibraryCli.cpp
+    ${EDITOR_DIR}/audio/SoundManifest.cpp
+    ${EDITOR_DIR}/audio/SoundDesign.cpp
+    ${EDITOR_DIR}/audio/SoundFit.cpp
+    ${EDITOR_DIR}/audio/SoundSearch.cpp
+    ${EDITOR_DIR}/audio/AudioBaseline.cpp
+    ${EDITOR_DIR}/audio/AudioQa.cpp
+    ${EDITOR_DIR}/audio/AudioQaSettings.cpp
+    ${EDITOR_DIR}/audio/AudioSessionReader.cpp
+    ${EDITOR_DIR}/audio/AudioTimelineImage.cpp
+    ${EDITOR_DIR}/audio/SoundSlicer.cpp
+    ${EDITOR_DIR}/audio/SoundSynth.cpp
+    ${JASPERENGINE_ROOT}/libs/soloud/src/audiosource/sfxr/soloud_sfxr.cpp
+    ${EDITOR_DIR}/audio/AudioImages.cpp
+    ${EDITOR_DIR}/audio/AudioImportRegistry.cpp
+    ${EDITOR_DIR}/audio/AudioImportSettings.cpp
+    ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
+    ${EDITOR_DIR}/audio/AudioProvenance.cpp
     ${EDITOR_DIR}/audio/LoudnessMonitor.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp
     ${EDITOR_DIR}/command/type/InputActionsCmd.cpp
@@ -1471,7 +1526,7 @@ jasperengine_skip_unity_build(
         ${EDITOR_DIR}/window/widget/HtmlCssLexer.cpp)
 
 function(configure_jasperengine_editor_target target_name)
-    add_dependencies(${target_name} generate_api_suggestions)
+    add_dependencies(${target_name} generate_api_suggestions generate_sound_essentials)
 
     target_include_directories(${target_name} SYSTEM PRIVATE
         ${IMGUI_DIR}
@@ -1690,6 +1745,30 @@ add_custom_target(copy_jasperengine_editor_engine
 
 add_dependencies(jasperengine-editor copy_jasperengine_editor_engine)
 
+# Stage the starter library next to the editor target (a build tree runs from there), removing the
+# destination first so a clip dropped from the library never lingers. It is editor data: no player
+# input names it.
+set(JASPERENGINE_SOUND_LIBRARY_SOURCE ${CMAKE_SOURCE_DIR}/editor/resources/sound-library/library)
+if(APPLE)
+    set(JASPERENGINE_EDITOR_SOUND_LIBRARY_DIR $<TARGET_BUNDLE_CONTENT_DIR:jasperengine-editor>/Resources/sound-library)
+else()
+    set(JASPERENGINE_EDITOR_SOUND_LIBRARY_DIR $<TARGET_FILE_DIR:jasperengine-editor>/sound-library)
+endif()
+set(JASPERENGINE_SOUND_LIBRARY_STAMP ${CMAKE_CURRENT_BINARY_DIR}/sound-library-$<CONFIG>.stamp)
+add_custom_command(
+    OUTPUT ${JASPERENGINE_SOUND_LIBRARY_STAMP}
+    COMMAND ${CMAKE_COMMAND}
+        -DSOUND_LIBRARY_SOURCE:PATH=${JASPERENGINE_SOUND_LIBRARY_SOURCE}
+        -DSOUND_LIBRARY_DEST:PATH=${JASPERENGINE_EDITOR_SOUND_LIBRARY_DIR}
+        -DSOUND_LIBRARY_STAMP:PATH=${JASPERENGINE_SOUND_LIBRARY_STAMP}
+        -P ${CMAKE_SOURCE_DIR}/CopySoundLibrary.cmake
+    DEPENDS ${CMAKE_SOURCE_DIR}/CopySoundLibrary.cmake ${JASPERENGINE_SOUND_LIBRARY_SOURCE}/manifest.json ${JASPERENGINE_SOUND_LIBRARY_SOURCE}/analysis.json
+    COMMENT "Copying the starter library next to the editor"
+    VERBATIM
+)
+add_custom_target(copy_jasperengine_editor_sound_library DEPENDS ${JASPERENGINE_SOUND_LIBRARY_STAMP})
+add_dependencies(jasperengine-editor copy_jasperengine_editor_sound_library)
+
 set(JASPERENGINE_EDITOR_INSTALL_TARGETS jasperengine-editor)
 
 # jasperengine-htmlui-editor-tests: the HTML UI importers (editor/htmlui) against a local HTTP
@@ -1831,6 +1910,26 @@ foreach(entry IN LISTS JASPERENGINE_LICENSE_MANIFEST)
         )
     endif()
 endforeach()
+
+# The starter library beside the editor: the editor reads it in place (FileUtils::getSoundLibraryDir),
+# no player ever does. The install's folder is replaced, not merged, so a clip dropped from the
+# library does not linger (sound-library verify would report it).
+if(APPLE)
+    set(JASPERENGINE_SOUND_LIBRARY_INSTALL_DIR bin/${JASPERENGINE_BUNDLE_NAME}.app/Contents/Resources/sound-library)
+else()
+    set(JASPERENGINE_SOUND_LIBRARY_INSTALL_DIR bin/sound-library)
+endif()
+install(CODE "
+    if(CMAKE_INSTALL_CONFIG_NAME MATCHES \"^([Rr][Ee][Ll][Ee][Aa][Ss][Ee]|[Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$\")
+        file(REMOVE_RECURSE \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${JASPERENGINE_SOUND_LIBRARY_INSTALL_DIR}\")
+    endif()
+")
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/editor/resources/sound-library/library/
+        DESTINATION ${JASPERENGINE_SOUND_LIBRARY_INSTALL_DIR}
+        CONFIGURATIONS Release MinSizeRel
+        OPTIONAL
+        PATTERN ".gitattributes" EXCLUDE
+)
 
 # Desktop integration: a launcher entry plus the themed icons the launcher,
 # taskbar and alt-tab switcher look up by the "jasperengine-editor" icon name.
