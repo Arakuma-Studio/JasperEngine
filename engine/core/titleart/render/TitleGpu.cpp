@@ -18,7 +18,6 @@ const char* titleart::titleRenderProgramName(uint32_t program) {
     switch ((TitleRenderProgram)program) {
         case TitleRenderProgram::Copy: return "COPY";
         case TitleRenderProgram::Blend: return "BLEND";
-        case TitleRenderProgram::Adjust: return "ADJUST";
         case TitleRenderProgram::AdjustMix: return "ADJUST_MIX";
         case TitleRenderProgram::MaskValue: return "MASK_VALUE";
         case TitleRenderProgram::MaskGradient: return "MASK_GRADIENT";

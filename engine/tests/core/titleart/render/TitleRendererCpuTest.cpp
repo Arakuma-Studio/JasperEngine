@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: MIT
 
 // The renderer's CPU parts (docs/specs/S80-title-art-core.md R16, R27, R43, §6.4, §6.7): the
-// adjustments' identity rule and tone LUTs (Photoshop's curves, levels and modern
+// adjustments' identity rule and tone LUTs (TitleAdjust.h, shared with the Adjust effect) (Photoshop's curves, levels and modern
 // brightness/contrast with a fixed pivot), gradient and curve baking, the flood step lists
 // bounded by the reach, the blur pyramid plan, and the uv maps between targets.
 
-#include "titleart/render/Adjustments.h"
+#include "titleart/effects/TitleAdjust.h"
 #include "titleart/render/TitleFields.h"
 #include "titleart/render/TitlePlanner.h"
 #include "titleart/render/TitleRenderServices.h"
@@ -14,45 +14,46 @@
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <vector>
 
 using namespace jasperengine;
 using namespace jasperengine::titleart;
 
 TEST(TitleArtAdjustmentsTest, IdentityRule) {
-    EXPECT_TRUE(adjustmentIsIdentity(Json{{"type", "brightness_contrast"}, {"brightness", 0}, {"contrast", 0}}));
-    EXPECT_FALSE(adjustmentIsIdentity(Json{{"type", "brightness_contrast"}, {"brightness", 10}, {"contrast", 0}}));
-    EXPECT_TRUE(adjustmentIsIdentity(Json{{"type", "hue_saturation"}, {"hue", 360}, {"saturation", 0}, {"lightness", 0}, {"colorize", false}}));
-    EXPECT_FALSE(adjustmentIsIdentity(Json{{"type", "hue_saturation"}, {"hue", 0}, {"saturation", 0}, {"lightness", 0}, {"colorize", true}}));
-    EXPECT_TRUE(adjustmentIsIdentity(Json{{"type", "effects_only"}}));
-    EXPECT_TRUE(adjustmentIsIdentity(Json{{"type", "photo_filter"}, {"density", 0}}));
-    EXPECT_FALSE(adjustmentIsIdentity(Json{{"type", "invert"}}));
-    EXPECT_FALSE(adjustmentIsIdentity(Json{{"type", "threshold"}, {"level", 128}}));
+    EXPECT_TRUE(titleAdjustmentIsIdentity(Json{{"type", "brightness_contrast"}, {"brightness", 0}, {"contrast", 0}}));
+    EXPECT_FALSE(titleAdjustmentIsIdentity(Json{{"type", "brightness_contrast"}, {"brightness", 10}, {"contrast", 0}}));
+    EXPECT_TRUE(titleAdjustmentIsIdentity(Json{{"type", "hue_saturation"}, {"hue", 360}, {"saturation", 0}, {"lightness", 0}, {"colorize", false}}));
+    EXPECT_FALSE(titleAdjustmentIsIdentity(Json{{"type", "hue_saturation"}, {"hue", 0}, {"saturation", 0}, {"lightness", 0}, {"colorize", true}}));
+    EXPECT_TRUE(titleAdjustmentIsIdentity(Json{{"type", "effects_only"}}));
+    EXPECT_TRUE(titleAdjustmentIsIdentity(Json{{"type", "photo_filter"}, {"density", 0}}));
+    EXPECT_FALSE(titleAdjustmentIsIdentity(Json{{"type", "invert"}}));
+    EXPECT_FALSE(titleAdjustmentIsIdentity(Json{{"type", "threshold"}, {"level", 128}}));
     // a curve on the diagonal is the identity
     const Json diagonal{{"points", Json::array({{{"x", 0}, {"y", 0}}, {{"x", 0.5}, {"y", 0.5}}, {{"x", 1}, {"y", 1}}})}};
-    EXPECT_TRUE(adjustmentIsIdentity(Json{{"type", "curves"}, {"channels", {{"rgb", diagonal}, {"r", diagonal}, {"g", diagonal}, {"b", diagonal}}}}));
+    EXPECT_TRUE(titleAdjustmentIsIdentity(Json{{"type", "curves"}, {"channels", {{"rgb", diagonal}, {"r", diagonal}, {"g", diagonal}, {"b", diagonal}}}}));
 }
 
 TEST(TitleArtAdjustmentsTest, ToneLuts) {
-    float lut[256 * 4];
+    std::vector<float> lut;
     // levels: input black 64 maps 64 to 0 and keeps white
     const Json level{{"in_black", 64}, {"in_white", 255}, {"gamma", 1}, {"out_black", 0}, {"out_white", 255}};
     const Json identity{{"in_black", 0}, {"in_white", 255}, {"gamma", 1}, {"out_black", 0}, {"out_white", 255}};
-    bakeToneLut(Json{{"type", "levels"}, {"channels", {{"rgb", level}, {"r", identity}, {"g", identity}, {"b", identity}}}}, lut);
-    EXPECT_NEAR(lut[64 * 4], 0.0f, 1e-6f);
-    EXPECT_NEAR(lut[255 * 4], 1.0f, 1e-6f);
-    EXPECT_NEAR(lut[(64 + 191 / 2) * 4], 95.0f / 191.0f, 1e-3f);
+    ASSERT_TRUE(bakeTitleToneCurve(Json{{"type", "levels"}, {"channels", {{"rgb", level}, {"r", identity}, {"g", identity}, {"b", identity}}}}, lut));
+    EXPECT_NEAR(lut[64 * 3], 0.0f, 1e-6f);
+    EXPECT_NEAR(lut[255 * 3], 1.0f, 1e-6f);
+    EXPECT_NEAR(lut[(64 + 191 / 2) * 3], 95.0f / 191.0f, 1e-3f);
     // brightness/contrast pivots at 50 %: contrast leaves mid grey and both ends
-    bakeToneLut(Json{{"type", "brightness_contrast"}, {"brightness", 0}, {"contrast", 60}}, lut);
+    ASSERT_TRUE(bakeTitleToneCurve(Json{{"type", "brightness_contrast"}, {"brightness", 0}, {"contrast", 60}}, lut));
     EXPECT_NEAR(lut[0], 0.0f, 1e-6f);
-    EXPECT_NEAR(lut[255 * 4 + 1], 1.0f, 1e-6f);
-    EXPECT_NEAR(lut[128 * 4 + 2], 0.5f, 0.02f);
-    EXPECT_LT(lut[64 * 4], 64.0f / 255.0f);
+    EXPECT_NEAR(lut[255 * 3 + 1], 1.0f, 1e-6f);
+    EXPECT_NEAR(lut[128 * 3 + 2], 0.5f, 0.02f);
+    EXPECT_LT(lut[64 * 3], 64.0f / 255.0f);
     // curves: each channel's curve, then the composite's
     const Json up{{"points", Json::array({{{"x", 0}, {"y", 0}}, {{"x", 0.5}, {"y", 0.75}}, {{"x", 1}, {"y", 1}}})}};
     const Json line{{"points", Json::array({{{"x", 0}, {"y", 0}}, {{"x", 1}, {"y", 1}}})}};
-    bakeToneLut(Json{{"type", "curves"}, {"channels", {{"rgb", line}, {"r", up}, {"g", line}, {"b", line}}}}, lut);
-    EXPECT_NEAR(lut[128 * 4 + 0], 0.75f, 0.01f);
-    EXPECT_NEAR(lut[128 * 4 + 1], 128.0f / 255.0f, 1e-3f);
+    ASSERT_TRUE(bakeTitleToneCurve(Json{{"type", "curves"}, {"channels", {{"rgb", line}, {"r", up}, {"g", line}, {"b", line}}}}, lut));
+    EXPECT_NEAR(lut[128 * 3 + 0], 0.75f, 0.01f);
+    EXPECT_NEAR(lut[128 * 3 + 1], 128.0f / 255.0f, 1e-3f);
 }
 
 TEST(TitleLutsTest, GradientMidpointsAndVivid) {

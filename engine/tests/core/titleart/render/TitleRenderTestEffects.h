@@ -10,7 +10,7 @@
 #pragma once
 
 #include "titleart/TitleEffectRegistry.h"
-#include "titleart/render/Adjustments.h"
+#include "titleart/effects/TitleAdjust.h"
 #include "titleart/render/TitleEffectContext.h"
 #include "titleart/render/TitleFields.h"
 #include "titleart/render/TitleGpu.h"
@@ -109,14 +109,10 @@ namespace jasperengine::titleart::test {
         return ok;
     }
 
-    // the renderer's layer adjustment (Adjustments.h) as an effect
+    // the shared adjustment (TitleAdjust.h, the Adjust effect's and adjustment layers') as an effect
     inline bool adjust(EffectContext& ctx, const TargetRef& src, const Json& adjustment, TargetRef& out) {
-        TitleGpuPass p;
-        std::shared_ptr<TitleCacheEntry> lut;
-        if (!setupAdjustment(adjustment, static_cast<TitleJobRunner&>(ctx.runner).renderServices(), p, lut)) return resample(ctx, src, out);
-        p.tex[0] = textureOf(src);
-        p.params.set(6, 1.0f / (float)out.key().width, 1.0f / (float)out.key().height, 0.0f, 0.0f);
-        return runRender(ctx, p, out);
+        if (titleAdjustmentIsIdentity(adjustment)) return resample(ctx, src, out);
+        return applyTitleAdjustment(ctx, src, adjustment, out);
     }
 
     // the silhouette blurred and recoloured (a gradient map of one colour keeps the alpha)

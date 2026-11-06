@@ -45,17 +45,6 @@ void main() {
 }
 #endif
 
-#if TA_PROGRAM == TA_PROGRAM_ADJUST
-// the operation of p[2..5] (adjust.glsl) on TA_TEX0 (through p[6]); TA_TEX1 its LUT
-void main() {
-    vec4 s = texture(TA_TEX0, taMapUv(ta.p[6]));
-    if (s.a <= 0.0) { frag_color = vec4(0.0); return; }
-    vec3 c = taToSrgb(clamp(s.rgb / s.a, 0.0, 1.0));
-    c = clamp(taAdjust(c), 0.0, 1.0);
-    frag_color = vec4(taToLinear(c) * s.a, s.a);
-}
-#endif
-
 #if TA_PROGRAM == TA_PROGRAM_ADJUST_MIX
 // an adjustment layer: mix(below TA_TEX0, blend(below, adjusted TA_TEX1), k) on sRGB-encoded
 // straight colour, k = opacity p[2].x x the clip group's content alpha (TA_TEX2 through p[4],

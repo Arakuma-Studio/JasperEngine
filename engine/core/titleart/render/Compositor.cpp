@@ -9,7 +9,7 @@
 #include "TitlePlanner.h"
 
 #include "titleart/TitleArtIO.h"
-#include "titleart/render/Adjustments.h"
+#include "titleart/effects/TitleAdjust.h"
 
 #include <algorithm>
 #include <cmath>
@@ -878,30 +878,47 @@ TitlePx TitlePlanner::adjustOnto(TitlePx acc, const DrawNode& node, const TitleP
     const Json& layer = *node.layer;
     const Json& adj = layer.value("adjustment", Json::object());
     TitlePx adjusted;
-    if (adjustmentIsIdentity(adj)) {
+    if (titleAdjustmentIsIdentity(adj)) {
         // an identity adjustment only runs its effects on what is below it (none: zero passes)
         Effects post = applyEffects(node.layerId, effectsOf(layer), acc, true, {}, false, &layer);
         if (post.px.slot == acc.slot) return acc;
         adjusted = post.px;
     } else {
+        // the operation is the `adjust` effect's (TitleAdjust.h): one implementation for both
         adjusted = {newSlot(TitleBuffer::Accumulator, acc.rect.width, acc.rect.height), acc.rect};
-        const int from = acc.slot;
-        const std::array<float, 4> map = uvMap(acc.rect, acc.rect);
-        TitleRenderServices* services = &svc;
+        const int from = acc.slot, to = adjusted.slot;
+        const TitleRectI rect = acc.rect;
         const Json adjustment = adj;
-        pass(std::string("adjust ") + adj.value("type", std::string()), node.layerId, adjusted.slot,
-             {0, 0, acc.rect.width, acc.rect.height}, TitleRenderProgram::Adjust,
-             [from, map, services, adjustment](TitleJobState& s, TitleGpuPass& p, std::string& error) {
-                 std::shared_ptr<TitleCacheEntry> lut;
-                 if (!setupAdjustment(adjustment, *services, p, lut)) {
-                     error = "the adjustment could not be set up";
-                     return false;
-                 }
-                 if (lut) s.held.push_back(lut);
-                 p.tex[0] = s.texture(from);
-                 setMap(p, 6, map);
-                 return true;
-             });
+        const PassPlace place = passPlace(rect, &layer);
+        const uint32_t seed = (uint32_t)document->root.value("seed", (int64_t)1);
+        const float pxScale = (float)scale;
+        const std::string layerId = node.layerId;
+        kernel(std::string("adjust ") + adj.value("type", std::string()), layerId, rect, 1, 1.0f,
+               [from, to, rect, adjustment, place, seed, pxScale, layerId](TitleJobState& state, TitleJobRunner& runner, std::string& error) {
+                   std::string why;
+                   if (!state.target(to, why) || !state.target(from, why)) {
+                       error = why;
+                       return false;
+                   }
+                   auto refOf = [&state](int slot) -> const TargetRef& {
+                       TitleJobState::Slot& sl = state.slots[(size_t)slot];
+                       return sl.entry ? sl.entry->target : sl.ref;
+                   };
+                   EffectContext ctx(runner);
+                   ctx.width = rect.width;
+                   ctx.height = rect.height;
+                   ctx.pxScale = pxScale;
+                   ctx.frame = place.frame;
+                   ctx.documentToTarget = place.documentToTarget;
+                   ctx.layerOrigin = place.layerOrigin;
+                   ctx.seed = seed;
+                   ctx.layerId = layerId;
+                   if (!applyTitleAdjustment(ctx, refOf(from), adjustment, state.slots[(size_t)to].ref)) {
+                       error = "adjust: " + (runner.error().empty() ? std::string("the operation could not run") : runner.error());
+                       return false;
+                   }
+                   return true;
+               });
         adjusted = applyEffects(node.layerId, effectsOf(layer), adjusted, false, {}, false, &layer).px;
     }
     const float opacity = opacityOf(layer);

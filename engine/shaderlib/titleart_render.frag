@@ -24,7 +24,7 @@ precision highp int;
 
 #include "titleart/render/programs.glsl"
 
-#if TA_PROGRAM == TA_PROGRAM_COPY || TA_PROGRAM == TA_PROGRAM_ADJUST || TA_PROGRAM == TA_PROGRAM_MASK_VALUE || TA_PROGRAM == TA_PROGRAM_MASK_KEEP
+#if TA_PROGRAM == TA_PROGRAM_COPY || TA_PROGRAM == TA_PROGRAM_MASK_VALUE || TA_PROGRAM == TA_PROGRAM_MASK_KEEP
     #define TA_USE_TEX0
     #define TA_USE_TEX1
 #elif TA_PROGRAM == TA_PROGRAM_BLEND
@@ -73,9 +73,6 @@ precision highp int;
 #include "titleart/render/common.glsl"
 #include "titleart/render/blend.glsl"
 
-#if TA_PROGRAM == TA_PROGRAM_ADJUST
-    #include "titleart/render/adjust.glsl"
-#endif
 #if TA_PROGRAM == TA_PROGRAM_ERODE || TA_PROGRAM == TA_PROGRAM_ELEMENT
     #include "titleart/render/noise.glsl"
 #endif

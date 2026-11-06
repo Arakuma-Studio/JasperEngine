@@ -22,33 +22,32 @@ namespace jasperengine::titleart {
     enum class TitleRenderProgram : uint32_t {
         Copy = 18,
         Blend = 19,
-        Adjust = 20,
-        AdjustMix = 21,
-        MaskValue = 22,
-        MaskGradient = 23,
-        Blur = 24,
-        BlurRaw = 25,
-        Output = 26,
-        Seed = 27,
-        Flood = 28,
-        Resolve = 29,
-        Height = 30,
-        CoverInit = 31,
-        CoverFlood = 32,
-        CoverRadius = 33,
-        ReduceMax = 34,
-        Span = 35,
-        Element = 36,
-        Place = 37,
-        Erode = 38,
-        MaskKeep = 39,
-        Grow = 40,
-        SeedAlpha = 41,
-        ResolveAlpha = 42
+        AdjustMix = 20,
+        MaskValue = 21,
+        MaskGradient = 22,
+        Blur = 23,
+        BlurRaw = 24,
+        Output = 25,
+        Seed = 26,
+        Flood = 27,
+        Resolve = 28,
+        Height = 29,
+        CoverInit = 30,
+        CoverFlood = 31,
+        CoverRadius = 32,
+        ReduceMax = 33,
+        Span = 34,
+        Element = 35,
+        Place = 36,
+        Erode = 37,
+        MaskKeep = 38,
+        Grow = 39,
+        SeedAlpha = 40,
+        ResolveAlpha = 41
     };
 
     constexpr uint32_t TITLE_RENDER_PROGRAM_FIRST = 18;
-    constexpr uint32_t TITLE_RENDER_PROGRAM_COUNT = 25;
+    constexpr uint32_t TITLE_RENDER_PROGRAM_COUNT = 24;
     constexpr uint32_t TITLE_RENDER_PROGRAM_LAST = 63;
 
     // the program's name in titleart/render/programs.glsl without its TA_PROGRAM_ prefix ("COPY")
