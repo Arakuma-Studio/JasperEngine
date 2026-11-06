@@ -1313,12 +1313,14 @@ void ActionSystem::updatePlayers(double dt){
 
 void ActionSystem::firePlayerCues(Entity entity, AnimationPlayerComponent& player, float dt){
     anim::AnimationPlayerRuntime& runtime = *player.runtime;
-    std::vector<anim::PendingPlayerCue> pending;
-    pending.swap(runtime.pendingCues);
+    // (kept, not swapped: a crowd crossing cues every frame allocates nothing; firing adds no cue)
+    std::vector<anim::PendingPlayerCue>& pending = runtime.pendingCues;
 #if JASPERENGINE_SOUND_LAYER
-    std::stable_sort(pending.begin(), pending.end(), [](const anim::PendingPlayerCue& a, const anim::PendingPlayerCue& b){
-        return a.when < b.when;
-    });
+    if (pending.size() > 1){
+        std::stable_sort(pending.begin(), pending.end(), [](const anim::PendingPlayerCue& a, const anim::PendingPlayerCue& b){
+            return a.when < b.when;
+        });
+    }
     for (const anim::PendingPlayerCue& crossed : pending){
         if (crossed.state >= runtime.states.size()) continue;
         const anim::PlayerStateRuntime& state = runtime.states[crossed.state];
@@ -1336,6 +1338,7 @@ void ActionSystem::firePlayerCues(Entity entity, AnimationPlayerComponent& playe
         const TimelineVoice voice = TimelineAudio::fireCue(scene, entity, cue, TimelineAudio::delayFramesAt(crossed.when, dt), speed, info);
         if (!voice.empty()) runtime.cueVoices.push_back({state.name, voice.id, voice.generation, voice.source});
     }
+    pending.clear();
 
     // state_exit (R7): its state stopped (stop(), its end), was left or faded out
     for (size_t i = 0; i < runtime.cueVoices.size();){
@@ -1363,6 +1366,7 @@ void ActionSystem::firePlayerCues(Entity entity, AnimationPlayerComponent& playe
         warnedNoSoundLayer = true;
         Log::error("Animation Player: clip audio cues need the soundlayer module, which this build leaves out");
     }
+    pending.clear();
     runtime.cueVoices.clear();
 #endif
 }

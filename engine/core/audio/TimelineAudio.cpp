@@ -54,17 +54,36 @@ namespace {
         if (timelineWarnings().insert(what + "|" + problem).second) Log::warn("Audio: %s: %s", what.c_str(), problem.c_str());
     }
 
-    void cueLine(const TimelineCueInfo& info, const char* kind, const std::string& name, uint32_t delay) {
 #if JASPERENGINE_AUDIO_CAPTURE
-        if (!AudioCapture::isActive()) return;
+    void cueLineActive(const TimelineCueInfo& info, const char* kind, const std::string& name, uint32_t delay) {
         AudioCapture::Line line("cue");
         line.text("timeline", info.timeline).text("clip", info.clip).integer("cue", info.cue).text("name", name).text("kind", kind);
         line.scene(info.scene).entity(info.scene, (uint32_t)info.player, "player", "player_id");
         line.text("state", info.state).integer("layer", info.layer).number("position", info.position, 6);
         line.integer("delay_samples", delay);
+    }
+#endif
+
+    void cueLine(const TimelineCueInfo& info, const char* kind, const std::string& name, uint32_t delay) {
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (!AudioCapture::isActive()) return;
+        cueLineActive(info, kind, name, delay);
 #else
         (void)info;
-            (void)name;
+        (void)kind;
+        (void)name;
+        (void)delay;
+#endif
+    }
+
+    // a clip cue's line: its label only made while a capture runs (a crowd fires many a frame)
+    void cueLine(const TimelineCueInfo& info, const char* kind, const ClipAudioCue& cue, uint32_t delay) {
+#if JASPERENGINE_AUDIO_CAPTURE
+        if (AudioCapture::isActive()) cueLineActive(info, kind, anim::cueLabel(cue), delay);
+#else
+        (void)info;
+        (void)kind;
+        (void)cue;
         (void)delay;
 #endif
     }
@@ -113,9 +132,8 @@ uint32_t TimelineAudio::delayFramesAt(double seconds, double span) {
 TimelineVoice TimelineAudio::fireCue(Scene* scene, Entity root, const ClipAudioCue& cue, uint32_t delay, float stateSpeed,
                                      const TimelineCueInfo& info) {
     TimelineVoice voice;
-    const std::string label = anim::cueLabel(cue);
     if (cue.kind == ClipCueKind::Snapshot) {
-        cueLine(info, "snapshot", label, 0);
+        cueLine(info, "snapshot", cue, 0);
         transition(cue.snapshot, cue.seconds, cue.unscaled, info);
         return voice;
     }
@@ -136,7 +154,7 @@ TimelineVoice TimelineAudio::fireCue(Scene* scene, Entity root, const ClipAudioC
             warnCue(info, (cue.path.empty() ? std::string("the root") : cue.path) + " has no AudioSource");
             return voice;
         }
-        cueLine(info, "source", label, delay);
+        cueLine(info, "source", cue, delay);
         startSource(scene, bound, delay, speed, NULL_ENTITY, info);
         if (cue.stop == ClipCueStop::StateExit) voice.source = bound;
         return voice;
@@ -157,7 +175,7 @@ TimelineVoice TimelineAudio::fireCue(Scene* scene, Entity root, const ClipAudioC
     options.volume = (float)std::pow(10.0, (double)cue.volumeDb / 20.0);
     options.pitch = (float)(std::pow(2.0, (double)cue.pitchSemitones / 12.0) * (double)speed);
     options.group = cue.group;
-    cueLine(info, "sound", label, delay);
+    cueLine(info, "sound", cue, delay);
     const SoundHandle handle = AudioSystem::playFreeFromTimeline(path, options, delay);
     if (cue.stop == ClipCueStop::StateExit && handle.isValid()) {
         voice.id = handle.getId();
