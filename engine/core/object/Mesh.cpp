@@ -53,7 +53,7 @@ namespace {
 
     // what a getter of a submesh that does not exist answers
     const Submesh& defaultSubmesh(){
-        static const Submesh submesh;
+        static const Submesh submesh{};
         return submesh;
     }
 
