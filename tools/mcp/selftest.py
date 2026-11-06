@@ -230,8 +230,7 @@ async def test_parallel():
         if "scratch kept:" in line:
             import shutil
             shutil.rmtree(line.split("scratch kept:")[1].strip(), ignore_errors=True)
-    # nothing else checks this now that no CI runs --suite ci on every push, and one undeclared file
-    # stops the suite check-changed runs
+    # no CI runs --suite ci on every push, and one undeclared file stops the suite check-changed runs
     r = subprocess.run(runner + ["--suite", "ci", "--list"], capture_output=True, text=True)
     ok(r.returncode == 0, f"runner: every real test file declares its place in the CI suite: {r.stderr[-400:]}")
 
