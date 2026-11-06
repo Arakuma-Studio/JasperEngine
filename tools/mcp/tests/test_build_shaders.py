@@ -4,6 +4,8 @@
 removes and clears shader overrides in one project undo step, build_project shaders goes through
 the same command (undoable now), and get_build_info reports Play's own C++ toolchain check."""
 
+import asyncio
+
 from harness import Editor
 
 EDITOR = {"create": True, "name": "Build Shaders"}
@@ -56,14 +58,13 @@ async def test_build_project_shaders_is_undoable(ed: Editor):
     key = (await keys(ed))[0]
     out_dir = ed.scratch.root / "build-out"
     # a source export (no compiler): the overrides apply before it starts
-    await ed.call("build_project", mode="source", output_dir=str(out_dir), overwrite=True, shaders={"exclude": [key]},
-                  wait=False)
+    started = await ed.call("build_project", mode="source", output_dir=str(out_dir), overwrite=True, shaders={"exclude": [key]},
+                            wait=False)
+    # edits wait for the export (the busy policy): the job ends first
+    job_id = started.get("job_id") or (await ed.call("get_build_info"))["running_job"]
+    while job_id and (await ed.call("get_job", job_id=job_id))["status"] == "running":
+        await asyncio.sleep(0.5)
     ed.check_eq([s["key"] for s in (await ed.call("edit_build_shaders"))["excluded"]], [key], "build_project applied it")
-    for _ in range(600):
-        status = await ed.call("get_build_info")
-        if status.get("running_job") is None:
-            break
-        await ed.call("wait", seconds=0.5)
     await ed.call("undo", scope="project")
     ed.check_eq((await ed.call("edit_build_shaders"))["excluded"], [], "one project undo step")
 

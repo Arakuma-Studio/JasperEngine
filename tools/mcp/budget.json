@@ -30,7 +30,13 @@
         "sections": {},
         "client_cut": {
             "chars": 4096,
-            "sections": ["(intro)", "Addressing", "The loop", "Building scenes", "Tool groups"],
+            "sections": [
+                "(intro)",
+                "Addressing",
+                "The loop",
+                "Building scenes",
+                "Tool groups"
+            ],
             "pointer": "read_file jasper://guide",
             "reason": "Claude Code keeps the first 4096 characters of server instructions (CLAUDE_CODE_MAX_MCP_DESCRIPTION_LENGTH default, agent-authoring)"
         }
@@ -117,8 +123,8 @@
             "reason": "grandfathered by S31: 1799 chars when the limits were set, +5%"
         },
         "set_terrain_maps": {
-            "limit": 2369,
-            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them"
+            "limit": 2719,
+            "reason": "grandfathered by S31: 1793 chars when the limits were set, +5%; 2280 measured on the upstream sync (upstream's Stochastic Tiling layers); 2369 with S11's hex_tiling and hex_rotation beside them; 2719 with agent-authoring's blend map slots (index, path) and Terrain Layer factors (uv_scale, uv_offset, tint, four factors)"
         },
         "inspect_ui": {
             "limit": 1792,

@@ -2448,7 +2448,7 @@ void registerBuildTools(McpRegistry& registry) {
         tool.title = "Get Build Info";
         tool.description =
             "Build Settings state: toolchains (cmake/compiler, emsdk; missing ones listed), cpp_scripts (can Play build "
-            "C++ scripts here), graphics APIs and last output dir per mode, jobs, scenes in build, shader count "
+            "C++ here), graphics APIs and last output dir per mode, jobs, scenes in build, shader count "
             "(include_shaders: keys for edit_build_shaders), running job, last result. Call before build_project.";
         tool.inputSchema = object({
             {"include_shaders", withDefault(boolean(""), false)}

@@ -13,10 +13,12 @@ from pathlib import Path
 
 from harness import Editor
 
-# a saved project (a new one is a temporary project, whose Save asks where to save it)
 FIXTURE = Path(__file__).resolve().parents[3] / "tools" / "fixtures" / "stochastic-tiling"
 CI = True
-EDITOR = {"project": str(FIXTURE), "env": {"JASPER_TEST_SCENE_SAVE_DELAY_MS": "2500"}}
+# A project under the temp directory is a temporary project, whose Ctrl+S asks where to save it:
+# the scratch copy is under /tmp, so the editor's temp directory is elsewhere
+NOT_TEMP = {"TMPDIR": "/var/tmp"}
+EDITOR = {"project": str(FIXTURE), "env": {"JASPER_TEST_SCENE_SAVE_DELAY_MS": "2500", **NOT_TEMP}}
 
 
 async def saved_scene(ed: Editor, name: str) -> int:
@@ -48,7 +50,7 @@ async def test_edits_wait_for_a_save(ed: Editor):
 
 async def test_the_hold_times_out(ed: Editor):
     async with Editor(str(FIXTURE), name="Save Hold Timeout",
-                      env={"JASPER_TEST_SCENE_SAVE_DELAY_MS": "6000", "JASPER_TEST_SAVE_HOLD_MS": "1500"}) as short:
+                      env={"JASPER_TEST_SCENE_SAVE_DELAY_MS": "6000", "JASPER_TEST_SAVE_HOLD_MS": "1500", **NOT_TEMP}) as short:
         sid = await saved_scene(short, "Slow")
         await short.call("run_command", id="file.save")
         err = await short.call("create_entity", scene=sid, name="TooLate", type="box", expect_error=True)
