@@ -66,7 +66,7 @@ def cues(ed: Editor) -> list:
 
 async def frames_of(ed: Editor, entity: str) -> list:
     got = await ed.call("get_entity", scene=STATE["scene"], entity=entity, components=["animation"])
-    return got["components"]["animation"]["actions"]
+    return got["components"]["animation"].get("actions", [])
 
 
 async def test_setup(ed: Editor):
@@ -181,7 +181,7 @@ async def test_entity_mode_add_property_sound_adds_an_audio_action_in_one_undo_s
     before = len(await frames_of(ed, "Sequencer"))
     await ui.click_item("Add Property", "Animation")
     await ui.frames(4)
-    await ui.click_item(" Sound", "##add_action_popup")
+    await ui.click_item("Sound")
     await ui.frames(4)
     await ui.click_item("Audio Clip")
     await ui.frames(4)
@@ -198,6 +198,8 @@ async def test_entity_mode_add_property_sound_adds_an_audio_action_in_one_undo_s
 async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
     ui = Ui(ed)
     ui.focus()
+    await ui.key("Escape")   # no menu left open over the tracks
+    await ui.frames(4)
     before = await frames_of(ed, "Sequencer")
     start = middle(ui, await rect_of(ed, "soundBrowser.card.tick"))
     tracks = await rect_of(ed, "entity.tracks")
