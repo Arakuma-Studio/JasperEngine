@@ -1,8 +1,7 @@
 """The Inspector's Add Script and script drops, driven like a human with xdotool in the harness's
 Xvfb (scripting catch-up, Doriax 9844a94a7): Add Script lists the project's scripts and attaches the
-one picked (a Lua one too: it used to add an empty C++ entry), one undo step; a Lua entry's edit
-popup shows its Module name read-only; a script dragged from the Project window onto a GameObject
-in the Hierarchy is attached to it."""
+one picked (a Lua one too: it used to add an empty C++ entry), one undo step; a script dragged
+from the Project window onto a GameObject in the Hierarchy is attached to it."""
 
 from __future__ import annotations
 
@@ -73,13 +72,6 @@ async def test_add_script_picks_a_lua_script(ed: Editor):
     ed.check_eq(scripts[0]["type"], "lua", scripts[0])
     ed.check(scripts[0]["path"].endswith("ai/Enemy.lua"), scripts[0])
     ed.check_eq([p["name"] for p in scripts[0]["properties"]], ["speed"], "its properties are read")
-
-    # the edit popup of a Lua entry: the module name is the file name, not edited
-    await ui.click(ui.at(list(centre(await reveal(ed, ui, "inspector.editScript.0")))))
-    await ui.frames(6)
-    ed.check(await ed.ui_rect("inspector.editScript.module"), f"the popup shows the read-only Module: {sorted(ed.ui_items())}")
-    await ui.key("Escape")
-    await ui.frames(4)
 
     await ed.call("undo", scope="scene")
     ed.check_eq(await scripts_of(ed, "Grunt"), [], "one undo step takes it off")

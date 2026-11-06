@@ -666,3 +666,8 @@ Recorded while implementing on `dc/scripting` (2026-11-04).
    no header beside a `.cpp`, already attached), shared by the Inspector and the Hierarchy.
 9. **The root Mesh section of a parts model** draws the note and Select Parts, then the usual fields disabled
    (`drawMeshComponentFields` inside `BeginDisabled`).
+10. **The Module row is not UI-tested.** `test_inspector_add_script.py` clicks Add Script, picks a Lua script and
+    drops one on the Hierarchy; the edit popup's read-only Module row (5.2) did not open under xdotool in the
+    harness (the pen button's click registered no popup), so that row is verified by reading only.
+11. **Main's mesh LOD and GPU-instancing settings** (merged after the spec) follow the 5.8 rule: they write
+    every part of a model made of parts and survive a ModelLoadCmd rebuild with the other part settings.

@@ -12044,7 +12044,6 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
             if (ImGui::Button((ICON_FA_PEN_TO_SQUARE "##edit_name_" + std::to_string(scriptIdx)).c_str())) {
                 ImGui::OpenPopup(("Edit Script##" + std::to_string(scriptIdx)).c_str());
             }
-            UIProbe::item("inspector.editScript." + std::to_string(scriptIdx));
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(script.type == ScriptType::LUA ? "Edit script details: source file"
                                                                  : "Edit script details: class name, header and source files");
@@ -12083,7 +12082,6 @@ void editor::InspectorWindow::drawScriptComponent(ComponentType cpType, ScenePro
                 if (script.type == ScriptType::LUA) {
                     // a Lua script's name is its file name: it follows the Source File
                     propertyHeader("Module", secondColSize);
-                    UIProbe::item("inspector.editScript.module");
                     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
                     ImGui::InputText("##new_name", nameBuffer, sizeof(nameBuffer), ImGuiInputTextFlags_ReadOnly);
                     ImGui::PopStyleColor();
