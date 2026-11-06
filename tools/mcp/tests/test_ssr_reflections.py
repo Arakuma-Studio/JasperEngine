@@ -32,6 +32,19 @@ def shots(ed: Editor) -> Path:
     return (ed.scratch.root if ed.scratch else Path("/tmp/ssr-reflections")) / "shots"
 
 
+def mean_color(png: bytes, x0: float, y0: float, x1: float, y1: float) -> tuple:
+    """the mean RGB of a region given in fractions of the picture"""
+    width, height, rgba = pngdiff.decode(png)
+    total, count = [0, 0, 0], 0
+    for y in range(int(height * y0), int(height * y1)):
+        row = y * width * 4
+        for x in range(int(width * x0), int(width * x1)):
+            for c in range(3):
+                total[c] += rgba[row + x * 4 + c]
+            count += 1
+    return tuple(round(t / max(count, 1)) for t in total)
+
+
 def share(png: bytes, color: tuple, x0: float, y0: float, x1: float, y1: float, tolerance: int = 12) -> float:
     """the share of a region's pixels (fractions of the picture) within `tolerance` of `color`"""
     width, height, rgba = pngdiff.decode(png)
@@ -101,8 +114,10 @@ async def test_reflection_source_view(ed: Editor):
     # the floor's left half takes the sky, its right half the probe in slot 0
     left = share(source, SKY, 0.05, 0.8, 0.3, 0.97)
     right = share(source, PROBE_SLOT_0, 0.7, 0.8, 0.95, 0.97)
-    ed.check(left > 0.6, f"the floor outside the probe is Sky in Reflection Source ({left:.2f} of the region)")
-    ed.check(right > 0.6, f"the floor in the probe is probe slot 0 in Reflection Source ({right:.2f} of the region)")
+    ed.check(left > 0.6, f"the floor outside the probe is Sky in Reflection Source ({left:.2f} of the region, "
+             f"mean {mean_color(source, 0.05, 0.8, 0.3, 0.97)})")
+    ed.check(right > 0.6, f"the floor in the probe is probe slot 0 in Reflection Source ({right:.2f} of the region, "
+             f"mean {mean_color(source, 0.7, 0.8, 0.95, 0.97)})")
     # the unlit panel takes no SSR: its (white) pixels are black (Skip) in Reflection Source
     _, _, plain_rgba = pngdiff.decode(plain)
     _, _, source_rgba = pngdiff.decode(source)

@@ -49,6 +49,8 @@ namespace {
     constexpr int VIEW_OFF = 0;
     constexpr int VIEW_REFLECTION = 1;
     constexpr int VIEW_ALBEDO = 5;
+    constexpr int VIEW_ENVIRONMENT = 6;
+    constexpr int VIEW_SOURCE = 7;
     constexpr int VIEW_OCCLUSION = 8;
 
     std::vector<uint8_t> readTarget(){
@@ -226,11 +228,28 @@ TEST_F(SSRCompositeGpu, LocalProbeIsReplacedNotAdded){
     const std::vector<size_t> pixels = hit();
     ASSERT_GE(pixels.size(), MIN_HIT_PIXELS);
     const std::vector<uint8_t> withProbe = shot(VIEW_OFF);
+    // what the composite swaps there (for the message): Reflection Source and Environment Specular
+    const std::vector<uint8_t> source = shot(VIEW_SOURCE);
+    const std::vector<uint8_t> environment = shot(VIEW_ENVIRONMENT);
 
     probe.reset();
     const std::vector<uint8_t> withoutProbe = shot(VIEW_OFF, 1.0f, 5);
     // where SSR is confident it is the reflection: the probe's term is swapped out, not kept
-    EXPECT_LE(maxDiff(withProbe, withoutProbe, pixels), 6);
+    size_t worst = pixels[0];
+    for (size_t p : pixels){
+        if (channelDiff(withProbe, withoutProbe, p) > channelDiff(withProbe, withoutProbe, worst))
+            worst = p;
+    }
+    auto rgb = [](const std::vector<uint8_t>& image, size_t p){
+        return std::to_string(image[p * 4]) + "," + std::to_string(image[p * 4 + 1]) + "," + std::to_string(image[p * 4 + 2]);
+    };
+    EXPECT_LE(channelDiff(withProbe, withoutProbe, worst), 6)
+        << "pixel " << worst << " of " << pixels.size() << ": with the probe " << rgb(withProbe, worst) << ", without "
+        << rgb(withoutProbe, worst) << "; Reflection Source " << rgb(source, worst) << ", Environment Specular "
+        << rgb(environment, worst);
+    // the floor is in the probe's slot 0 at full weight
+    EXPECT_GT(source[worst * 4], 240);
+    EXPECT_LT(source[worst * 4 + 1], 15);
     EXPECT_NO_ENGINE_ERRORS();
 }
 

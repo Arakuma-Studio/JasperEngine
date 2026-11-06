@@ -22,6 +22,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <string>
 #include <vector>
 
 using namespace jasperengine;
@@ -99,12 +100,15 @@ TEST_F(SSRProbeSlotsGpu, ProbesBeyondTheSlotsKeepTheirReflection){
     std::vector<Entity> near;
     for (int i = 0; i < 4; i++)
         near.push_back(addTile(Vector3(-7.5f + 5.0f * (float)i, 0.0f, 0.0f), 4.0f).getEntity());
-    // far and small: the least screen
-    const Entity far = addTile(Vector3(0.0f, 0.0f, -80.0f), 2.0f).getEntity();
+    // farther and small: the least screen, well inside the view
+    const Entity far = addTile(Vector3(0.0f, 0.0f, -30.0f), 1.0f).getEntity();
 
     const SSRViewStats& stats = renderUntil(5);
     ASSERT_TRUE(stats.valid);
-    ASSERT_EQ(stats.probes.size(), 5u);
+    std::string listed;
+    for (const SSRViewStats::Probe& probe : stats.probes)
+        listed += " " + std::to_string(probe.entity) + "(slot " + std::to_string(probe.slot) + ", " + std::to_string(probe.coverage) + ")";
+    ASSERT_EQ(stats.probes.size(), 5u) << "far " << far << ", listed:" << listed;
     EXPECT_EQ(stats.probesWithoutSlot(), 1u);
     // largest first: the far probe is the last, without a slot
     EXPECT_EQ(stats.probes.back().entity, far);
