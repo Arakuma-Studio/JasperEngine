@@ -73,7 +73,7 @@ namespace {
         {"Scene", "window.scene"}, {"Game", "window.game"}, {"Inspector", "window.inspector"}, {"Hierarchy", "window.hierarchy"},
         {"Project", "window.project"}, {"Console", "window.console"}, {"Animation", "window.animation"},
         {"Pose Animation", "window.poseAnimation"}, {"Animator", "window.animator"}, {"Vertex Animation Baker", "window.vertexAnimationBaker"},
-        {"Audio Mixer", "window.audioMixer"}, {"Color Picker", "window.colorPicker"}, {"Recorder", "window.recorder"},
+        {"Audio Mixer", "window.audioMixer"}, {"Color Picker", "window.colorPicker"},
         {"Terrain", "window.terrain"}, {"Input Actions", "window.inputActions"}, {"Navigation", "window.navigation"},
         {"Texture Synthesis", "window.textureSynthesis"}, {"Sprite Normal Map", "window.spriteNormals"}, {"Physics Placement", "window.physicsPlacement"},
         {"MCP Server", "window.mcpActivity"}, {"Bookmarks", "window.bookmarks"},

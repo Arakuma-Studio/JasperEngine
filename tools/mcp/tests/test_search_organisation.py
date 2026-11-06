@@ -148,6 +148,8 @@ async def test_palette_search(ed: Editor):
 PALETTE_WINDOW_EXCLUSIONS = {
     # toggles a preference, opens no window
     "window.detachableWindows",
+    # a toggle: a row that "opens and focuses" would close an open Recorder (in the palette's commands)
+    "window.recorder",
     # actions on layouts, in the palette's commands
     "window.layouts.apply", "window.layouts.save", "window.layouts.rename", "window.layouts.delete",
     "window.layouts.saveToFile", "window.layouts.loadFromFile", "window.layouts.reset",
@@ -167,6 +169,7 @@ async def test_palette_lists_every_window(ed: Editor):
     keys = {r["key"] for r in listed["results"]}
     missing = sorted(i for i, item in commands.items() if i not in PALETTE_WINDOW_EXCLUSIONS and "panel:" + item["name"] not in keys)
     ed.check_eq(missing, [], f"window.* commands the palette lacks (it lists {sorted(keys)})")
+    ed.check("panel:Recorder" not in keys, "the Recorder's command is a toggle, not a row that opens and focuses")
 
 
 async def test_layout_presets_record_the_audio_mixer(ed: Editor):
