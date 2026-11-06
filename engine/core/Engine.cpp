@@ -1443,6 +1443,7 @@ void Engine::removeSubscriptionsByTag(const std::string& substring) {
     onShutdown.removeByTagSubstring(substring);
     onFocus.removeByTagSubstring(substring);
     onOrientationChanged.removeByTagSubstring(substring);
+    onVisibilityChanged.removeByTagSubstring(substring);
     onLowMemory.removeByTagSubstring(substring);
     onSafeAreaChanged.removeByTagSubstring(substring);
     onSceneLoaded.removeByTagSubstring(substring);
@@ -1511,6 +1512,7 @@ void Engine::clearAllSubscriptions(bool includeLifecycle) {
         onShutdown.clear();
         onFocus.clear();
         onOrientationChanged.clear();
+        onVisibilityChanged.clear();
         onLowMemory.clear();
         onSafeAreaChanged.clear();
     }
