@@ -789,4 +789,13 @@ Recorded during implementation (branch `dc/export-pipeline`).
 11. **T17 (prebuilt web favicon in the slow lane)** was not added: the MCP suite has no prebuilt web
     build. The prebuilt `finalizeWeb` and the Compile path share `Exporter::writeWebFavicon`, which
     T16 covers through the source export.
+12. **Test adjustments.**
+    - T1 uses a binary data file (`ui/level.bin`). A texture would ship cooked, so its source copy
+      never runs.
+    - T2's walk order is "a folder's files, then its folders, each in name order"
+      (`ExportFiles.h`).
+    - T10 sets a loading timeout of 0, because unit frames do not draw.
+    - T9 (capacities) is dropped with deviation 1.
+    - The CLI red control and the special-path red control run against `main`'s export code and
+      engine CMake files, applied as one patch on the build box.
 
