@@ -709,13 +709,16 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
    `EngineViewLayoutTest`, `SpritePpuTest`, `PixelSnapShaderTest`. The CPU compositor of AC4 is in
    the GPU test itself: the GPU suites run in the engine's test tree, the editor tests have no
    device.
-7. **AC3, the bias.** The disagreement of the unbiased rule is measured on the CPU only (the test
-   prints it): forcing the shader's bias to 0 would need a runtime switch in every snapped vertex.
+7. **AC3, the bias.** The rule's bias reaches the vertex stage as `frame.pixelSnapOffset.w` (2^-7,
+   the CPU twin's constant): `PixelPerfectGpu.SnapParity` sets it to 0 for its red control, and a
+   third of its quads lie just under the half pixel, where only the bias rounds them up.
 8. **AC4 reference.** The compositor draws ring sprites (one texel of border, so any flip or
    quarter turn draws the same texels): a CENTER-pivoted 15 x 16 sprite at a half pixel, a
-   quarter-turned and a flipped 15 x 7 sprite and a floor of ten 16-pixel tiles. The nine-slice
-   panel and the text are left out: a CPU reference of their texels would need the UI's own
-   nine-slice and glyph rasterisation. They draw with the same rule (the UI `Pxs` variant).
+   quarter-turned and a flipped 15 x 7 sprite and a floor of ten 16-pixel tiles, against layouts
+   written by hand (k = 1, 3, 3 with bars, 4, and Integer (Expand) at 1366 x 768). UI is checked by
+   `PixelPerfectGpu.UiImageParity` (1-pixel Images at k = 1 and 3 against the CPU twin). The
+   nine-slice panel and the text are left out of the compositor: a CPU reference of their texels
+   would need the UI's own nine-slice and glyph rasterisation; they draw with the same rule.
 9. **AC6 sweep.** 74 camera positions (64 even ones plus the neighbourhoods of the rounding ties)
    instead of 10,000: each needs a frame and a readback. The red control draws without the rule at
    positions where the unsnapped edges straddle pixel centres.
@@ -728,22 +731,25 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     tilemaps and UI elements (the camera's policy); a sprite's `CAMERA` follows the camera.
 13. **Scene view.** The Pixel Zoom, Pixel Grid, Snap Preview and Pixel Move Snap flags default to
     on and take effect only in a 2D scene whose main camera has an applicable Pixel Perfect
-    Camera. Snap Preview's grid is the view's pixels over the zoom's scale at any zoom. The camera
-    frames of R22 are drawn as an overlay of the Scene view (a 2D scene's UI camera has no frustum
-    gizmo).
+    Camera. The toolbar has the Pixel Zoom toggle and a menu beside it with Pixel Grid, Snap
+    Preview and Pixel Move Snap (and MCP's `display_settings`). Snap Preview's grid is the view's
+    pixels over the zoom's scale at any zoom. The camera frames of R22 are drawn as an overlay of
+    the Scene view (a 2D scene's UI camera has no frustum gizmo).
 14. **Lua.** The handle has no `getGameObject()` (Camera already is one).
 15. **AC6 floor size.** The floor is 40 x 23 tiles of 8 pixels (a 320 x 184 floor over the 320 x 180
     base) instead of 64 x 36 tiles of 5: a tilemap holds at most `MAX_TILEMAP_TILES` (2,048) tiles.
-16. **R17, the vertex snap's instruction count.** `PixelSnapShaderTest.VertexCost` counts 18 SPIR-V
-    arithmetic instructions on the per-vertex path (`pixelSnapClip` with its helpers), not 14:
-    glslang runs without an optimizer, and the bias is two additions so that the GPU's float32
-    sequence is the CPU's (`p + 0.5`, then `+ 2^-7`), which AC3's bit-for-bit agreement needs. The
-    whole `mesh.vert` sprite variant goes from 6 to 23 counted instructions. The test pins 18.
-17. **R17, R18, measured.** On this host only (llvmpipe, no reference device):
+16. **R17, the vertex snap's instruction count.** `PixelSnapShaderTest.VertexCost` counts 11 SPIR-V
+    arithmetic instructions on the per-vertex path (`pixelSnapClip` with its helpers; glslang
+    without an optimizer, each helper counted): the vertex stage gets half the target and where NDC
+    0 lands (`pixelart::snapTerms`, computed once on the CPU), so a pixel is `ndc * half + centre`,
+    and both axes round in one `vec2` step with the bias's two additions. The whole `mesh.vert`
+    sprite variant goes from 6 to 19 counted instructions. The test pins at most 14.
+17. **R17, R18, measured.** On this host only (llvmpipe, no reference device), so the GPU timings of
+    R17 stay a tracked follow-up:
     | Measure | Budget | Measured |
     | --- | --- | --- |
-    | `pixel_perfect_bench` frame CPU, snapping on vs off (`PixelPerfectBenchGpu.SnappingFrameCost`) | ≤ 102 % | 40.600 ms vs 39.815 ms, 102.0 % |
-    | `mesh.vert` per-vertex snap path, SPIR-V | ≤ 14 | 18 (item 16) |
+    | `pixel_perfect_bench` frame CPU, snapping on vs off (`PixelPerfectBenchGpu.SnappingFrameCost`) | ≤ 102 % | 102.0 % and 104.2 % in two runs on a shared, loaded host (the test applies `perfSlack()`) |
+    | `mesh.vert` per-vertex snap path, SPIR-V | ≤ 14 | 11 (item 16) |
     | GPU time, blit times on the reference devices | R17 | not measured: no reference GPU here |
 18. **AC13 coverage.** The GPU suites run on glcore (llvmpipe) here; GLES3, Vulkan, D3D11 and Metal
     have no device on this host. The web half is the gate `GATE=pixel-perfect` (test project
@@ -765,3 +771,12 @@ Recorded by the implementation (branch `feature/s41-pixel-perfect-camera`).
     `pixelSnapDraw` is part of the per-draw object blocks (`includes/object_params.glsl`,
     `object_depth_params.glsl`), so a pixel-snapped drawable never joins an automatic GPU
     instancing batch (`getSubmeshBatchVariant`).
+23. **The frame block's members (R14).** `pixelSnap` and `pixelSnapOffset` come last in `frame_t`,
+    after the fragment stage's `postColor`, and only a `Pxs` vertex stage declares them (with the
+    post-colour vectors before them, unread): every other program's frame block, and the bytes
+    uploaded to it, are what they were. `pixelSnap` holds half the target (`xy`), `flipY` and k;
+    `pixelSnapOffset` where NDC 0 lands (`xy`), the on-grid view flag and the bias. The editor's
+    shader cache moves to `v49`.
+24. **Shadow maps and uploads.** A depth draw into a shadow map never snaps (its frame block holds
+    the camera's grid; `RenderSystem::depthSnapMode`). A block the engine extends with
+    `pixelSnapDraw` is uploaded at most at the shader's reflected size (a fork without the member).

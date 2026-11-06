@@ -78,8 +78,9 @@ shader of its own includes `includes/pixel_snap.glsl` and applies it last, after
   **Game** (Alt+2, the Game view's k) jump there; panning keeps the pixel grid on whole screen
   pixels. From 6x the **Pixel Grid** draws the art pixels' edges. **Snap Preview** draws the
   sprites snapped as the game draws them. **Pixel Move Snap** makes the Move and Rect tools move
-  and size on whole pixels; hold Ctrl to drag freely. The camera's frame shows the reference
-  resolution, and in Integer (Expand) the frame the Game view's size shows (dashed).
+  and size on whole pixels; hold Ctrl to drag freely. The three are on by default and switch in
+  the menu beside the Pixel Zoom button. The camera's frame shows the reference resolution, and in
+  Integer (Expand) the frame the Game view's size shows (dashed).
 
 ## Scripting
 
