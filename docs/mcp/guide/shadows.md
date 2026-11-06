@@ -33,6 +33,9 @@ interface, migration) is `docs/rendering/shadows.md`.
 | `shadow_distance` | metres, 0: the tier's (40 / 60 / 100 / 150 m) |
 | `shadow_fade_fraction` | 0..1 of the distance over which shadows fade out (0.1) |
 | `shadow_cascade_blend` | true / false |
+| `capsule_shadows_enabled` | true / false (false): the main directional light's soft shadows from the capsules of the 4 nearest Capsule Shadow Casters, up to 32 capsule tests per lit pixel |
+| `capsule_shadow_intensity` | 0..1 (1) |
+| `capsule_shadow_softness` | 0..2, the penumbra's widening per metre along the light (0.25) |
 | `shadows_debug_view` | none, cascades, shadow_factor, texel_density, cache, atlas (editor only, never saved, no undo step) |
 
 `set_project_settings` `graphics.shadow_tier.<platform>` (windows, linux, macos, web, android,

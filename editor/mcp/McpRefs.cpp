@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "McpRefs.h"
+#include "component/Transform.h"
 
 #include "util/SafeWrite.h"
 
@@ -434,7 +435,9 @@ bool McpRefs::resolveProjectPath(Project* project, const std::string& requested,
         std::string container, key;
         relative = splitSubAssetPath(found.path, container, key) ? container : found.path;
     }
-    // Agents send UTF-8; a std::string path is the ANSI code page on Windows
+    // Agents send UTF-8; a backslash is a separator on every platform, as in project files
+    // (Stream::portablePath): textures\wood.png names the same file on Linux as on Windows
+    relative = FileUtils::portablePath(relative);
     const fs::path rel = FileUtils::pathFromUtf8(relative).lexically_normal();
     if (relative.empty() || rel.is_absolute() || rel.has_root_name() || rel.has_root_directory()) {
         error = "\"" + relative + "\" must be a project-relative path (not absolute).";

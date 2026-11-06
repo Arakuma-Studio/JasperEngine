@@ -11,7 +11,7 @@ as a job. `mode: desktop` is this computer's platform and `mode: web` the web (t
 
 - **method** `auto` (default: the project's Build Settings choice): a **prebuilt player** (no
   compiler, seconds) unless the project needs native code: C++ scripts, `ProjectBuild.cmake`,
-  capacities above the player's (`MAX_BONES`...), AdMob, or `method: compile`. Then it compiles
+  AdMob, or `method: compile` (content size never is: components have no fixed capacities). Then it compiles
   from source (minutes; this computer's platform and the web only). The result says which:
   `method_used`, `compile_reasons[]`.
 - `prebuilt` fails with the reasons when the project needs native code; `compile` always compiles.
@@ -40,7 +40,9 @@ runtimes (`tools/build.sh players`, then `JASPER_PLAYERS_DIR`). Without the runt
 compiles when this computer can.
 
 `get_build_info platforms.<name>.tools_missing[]` names what a platform's build lacks (Android:
-build-tools, platform, JDK; the bundletool jar is downloaded for `aab`).
+build-tools, platform, JDK; the bundletool jar is downloaded by the first `aab` build, its SHA-256
+pinned; iOS: a Mac with a full Xcode). An iOS device build without a team stops before signing with
+`W-IOS-NO-TEAM`; a wrong Android keystore password or alias fails before any packaging and says which.
 
 Before exporting: the scenes saved, the Console clean in play, the start scene right
 (`edit_build_scenes`).

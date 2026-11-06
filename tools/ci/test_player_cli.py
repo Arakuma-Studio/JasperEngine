@@ -4,7 +4,7 @@ image of docker/runtime.Dockerfile:
 
     tools/build.sh linux                      # the editor install (build/linux/editor-install)
     tools/build.sh players                    # Linux runtimes; PLAYER_PLATFORM=web for the web ones
-    tools/build.sh exec runtime python3 tools/ci/test_player_cli.py [--only linux,components,variants,web,model-capacity,fallback]
+    tools/build.sh exec runtime python3 tools/ci/test_player_cli.py [--only linux,audio,components,variants,web,model-capacity,fallback]
 
 - linux (AC1): `jasperengine-editor build --platform linux` of tools/fixtures/unified-lighting
   with each Linux backend whose runtime is installed (--backends), timed (R28: <= 20 s with a warm
@@ -35,7 +35,7 @@ image of docker/runtime.Dockerfile:
   more materials than a mesh held, once as it is and once under Engine.startAsyncThread (all a Lua
   script has of a loading thread): every node and material in the Linux players, each frame as the
   other's (pngdiff --tolerance 24 --max-fraction 0.01), and in the web players (pthreads and
-  single-thread), by the browser gate. The OBJ needs dc/mesh-memory, which S65 lands after.
+  single-thread), by the browser gate.
 - fallback (AC3): tools/fixtures/prefab-runtime (C++ scripts) reports `method: compile` and
   `compile_reason: C++ scripts (...)`, and here fails with `needs a C++ toolchain`; with
   --method prebuilt it fails listing the reasons.
@@ -191,6 +191,45 @@ def check_linux(args, players: Path, out: Path) -> None:
         if other.returncode != 5:
             raise Failure(f"content of another player exited {other.returncode}, not 5\n{other.stderr[-2000:]}")
         print("ok: exit codes 2 (bad option) and 5 (content of another player)")
+
+
+def check_audio(args, players: Path, out: Path) -> None:
+    """S35 AC3: a development player's --headless capture is the same bytes on every run, its sources play
+    (Lua's log says so at frame 60), and a release player refuses --audio-capture with exit 2."""
+    installed = {p.name for p in players.iterdir()} if players.is_dir() else set()
+    if "linux-x64-glcore-development" not in installed or "linux-x64-glcore-release" not in installed:
+        raise Failure(f"no glcore development and release players in {players}: run tools/build.sh players")
+    project = fresh_copy(FIXTURES / "audio-capture", out / "audio-project")
+    with Xvfb():
+        built = build(args.editor, players, project, out / "audio-dev", "linux", "--backend", "glcore", "--development")
+        exe = Path(lines(built, "executable")[0])
+        digests, logs = [], []
+        for take in ("one", "two"):
+            root = out / f"audio-sessions-{take}"
+            shutil.rmtree(root, ignore_errors=True)
+            game = run([exe, "--headless", "--fixed-fps", "60", "--quit-after", "300", "--audio-capture", root], cwd=exe.parent, timeout=600, check=False)
+            if game.returncode != 0:
+                raise Failure(f"the capture run exited {game.returncode}\n{game.stdout[-3000:]}\n{game.stderr[-3000:]}")
+            sessions = sorted(p for p in root.iterdir() if p.is_dir())
+            if len(sessions) != 1:
+                raise Failure(f"one session, not {sessions}")
+            session = json.loads((sessions[0] / "session.json").read_text())
+            if session["state"] != "complete" or not session["deterministic"]:
+                raise Failure(f"session.json: {session}")
+            digests.append({name: hashlib.sha1((sessions[0] / name).read_bytes()).hexdigest() for name in ("master.wav", "events.jsonl", "levels.jsonl")})
+            logs.append(game.stdout + game.stderr)
+        if digests[0] != digests[1]:
+            raise Failure(f"two runs differ: {digests}")
+        if "capture probe frame 60 playing true" not in logs[0]:
+            raise Failure(f"the source does not play at frame 60 under --headless:\n{logs[0][-3000:]}")
+        print(f"ok: two --headless captures are the same bytes: {digests[0]}")
+
+        built = build(args.editor, players, project, out / "audio-release", "linux", "--backend", "glcore")
+        exe = Path(lines(built, "executable")[0])
+        refused = run([exe, "--headless", "--quit-after", "5", "--audio-capture", out / "audio-refused"], cwd=exe.parent, timeout=120, check=False)
+        if refused.returncode != 2 or "--audio-capture needs a development player" not in refused.stderr:
+            raise Failure(f"a release player exited {refused.returncode}: {refused.stderr[-1000:]}")
+        print("ok: a release player refuses --audio-capture with exit 2")
 
 
 def check_components(args, players: Path, out: Path) -> None:
@@ -542,14 +581,14 @@ def main() -> int:
     parser.add_argument("--players", type=Path, default=REPO / "build/players")
     parser.add_argument("--out", type=Path, default=REPO / "build/player-cli")
     parser.add_argument("--backends", default="glcore,gles3,vulkan")
-    parser.add_argument("--only", default="linux,components,variants,web,model-capacity,fallback")
+    parser.add_argument("--only", default="linux,audio,components,variants,web,model-capacity,fallback")
     parser.add_argument("--write-goldens", action="store_true")
     args = parser.parse_args()
     if not args.editor.is_file():
         print(f"no editor at {args.editor}: run tools/build.sh linux", file=sys.stderr)
         return 1
     args.out.mkdir(parents=True, exist_ok=True)
-    checks = {"linux": check_linux, "components": check_components, "variants": check_variants, "web": check_web,
+    checks = {"linux": check_linux, "audio": check_audio, "components": check_components, "variants": check_variants, "web": check_web,
               "model-capacity": check_model_capacity, "fallback": check_fallback}
     try:
         for name in args.only.split(","):

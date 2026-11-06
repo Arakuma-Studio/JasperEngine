@@ -176,9 +176,9 @@ TEST(Atmosphere, LegacyFogKeysUnchanged){
 
     // the atmosphere's depth pre-pass asks every mesh for a depth program
     MeshShaderEnvironment depth = environment;
-    EXPECT_FALSE(RenderSystem::getSubmeshShaderVariant(depth, inputs).depthPass && !inputs.castShadows);
-    depth.atmosphereDepth = true;
     inputs.castShadows = false;
+    EXPECT_FALSE(RenderSystem::getSubmeshShaderVariant(depth, inputs).depthPass);
+    depth.atmosphereDepth = true;
     EXPECT_TRUE(RenderSystem::getSubmeshShaderVariant(depth, inputs).depthPass);
 }
 

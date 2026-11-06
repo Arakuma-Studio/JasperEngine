@@ -42,7 +42,9 @@ def png(width: int = 32, height: int = 32) -> bytes:
 
 
 def outside_listing() -> list[str]:
-    return sorted(str(p.relative_to(outside_dir())) for p in outside_dir().rglob("*"))
+    # the metas are the asset database's, beside the files of a linked folder (S68 R7): what this
+    # file checks is what the tools write, and each tool's write through a link stays refused
+    return sorted(str(p.relative_to(outside_dir())) for p in outside_dir().rglob("*") if p.suffix != ".meta")
 
 
 async def refused(ed: Editor, tool: str, args: dict, what: str) -> str:

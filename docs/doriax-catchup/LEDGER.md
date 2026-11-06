@@ -77,17 +77,17 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
 
 | # | Feature (branch `dc/<name>`) | Covers | Status |
 |---|---|---|---|
-| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | impl |
+| 1 | `unicode-text` | UTF-8 code page on Windows, console/log encoding, saved-path slashes, Apple UTF-8 paths, emoji input, CJK editor fonts | merged |
 | 2 | `mobile-shipping` | retire AdMob, iOS/macOS privacy manifest, prebuilt exports keep native plugins, Apple build fixes | impl |
 | 3 | `export-pipeline` | failed copies, exports inside exports, shader keys, never-saved scenes, capacities, loading scene, D3D11 bytecode, visible build errors, web index/favicon | impl |
 | 4 | `build-toolchain` | CLI recent projects, ; and # in titles, exec bits, generated .gitignore, Box2D/Jolt for C++ scripts, /MP, lib-dir defines | impl |
 | 5 | `scene-integrity` | save over another scene, scene ids, scenes inside the project, child-scene references, model import order, Play scene view, Save All | impl |
 | 6 | `project-window` | Paste target, drag selection, Duplicate, Create scripts, numbered names, texture slot names, asset-folder relocation | impl |
-| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | specced |
+| 7 | `ui-components` | button textures, layout boxes, 9-patch labels, canvas size, Selectable navigation and transitions | impl |
 | 8 | `runtime-core` | subscriber exceptions, dead spawn roots, clip speed, hidden children, controller-hit cleanup, preview edits, start offsets | impl |
 | 9 | `scripting` | Add Script for Lua, getCorners, property refresh, vector moveTowards/lerp, Model API on parts, subsystem bindings | impl |
 | 10 | `render-correctness` | bounds, normals, Points depth, G-buffer variants, UV sets, foliage ring and margins, shader loops, gizmo | impl |
-| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | impl |
+| 11 | `mesh-memory` | MeshComponent memory cut by an order of magnitude without lower capacities | merged |
 | 12 | `draw-perf` | redundant GPU state, sort by state, moved-object math, no scans for features that are off | specced |
 | 13 | `sprite-batching` | automatic (dynamic) batching of sprites, small meshes and UI quads, 2D reordering, settled objects, content-shared buffers, no 8k-sprite ceiling, batch stats | impl |
 | 14 | `ssr-probes` | SSR under local probes and AO, early-out | impl |
@@ -128,3 +128,51 @@ Status: `spec` (being written) / `specced` / `impl` (being implemented) / `revie
   render-correctness, water-reflections, scripting, agent-authoring, build-toolchain and mobile-shipping have
   committed work and are in red/green runs; the others have code written and wait for their first build. Nothing
   merged yet.
+- 2026-11-04 14:xx: the host disk filled (0 B free): every worktree's full gate leaves about 40 GB of build trees.
+  Freed 58 GB (a 29 GB scratch copy, Docker's build cache, an unused 24 GB swap file, the main checkout's baseline
+  build); disk rules added to the brief; the lead deletes a feature's build trees once it merges. `slot` reworked
+  twice for fairness: slot 1 serves the critical path (mesh-memory, unicode-text, water-reflections), the other
+  slot the longest-waiting job; queued jobs resubmitted with their original queue time (`DC_SINCE`). Merged 65
+  upstream commits (follow-ups S61, S66, S71, S38 M1) into `main`. Closest to landing: mesh-memory (final gate),
+  unicode-text (linux WERROR clean, unit 5676 run / 0 failed), runtime-core (linux WERROR clean).
+- 2026-11-04 16:1x: gate corrected (owner's question). The brief had required every branch to run the full unit
+  suite and the full slow MCP suite, which AGENTS.md reserves for pushes to `origin/main`: the most expensive work
+  ran once per branch on a two-slot host. Per-branch gate is now `tools/check-changed` plus the spec's own tests,
+  red controls and lints; the lead runs the full suite once at landing, on a local `main` holding one or several
+  ready features. All 16 agents told to trim queued jobs (keeping their queue place). mesh-memory finishes the full
+  run it is already hours into; it counts toward its landing.
+- 2026-11-04 21:xx: **unicode-text** finished its gate (`check-changed`: Linux, web, Android builds; editor 2898,
+  core 2879 with one load flake that passed on rerun; HTML UI 28/28; MCP files; red controls all red). Independent
+  review: no blockers or compile errors found by reading the Windows/Apple code; 3 should-fix defects (logger
+  re-entry overwriting a repaired record, ANSI re-decode on the UTF-8 code page, crash-report paths on Windows
+  before 1903) and 4 minor items, being fixed. Integration branch `dc/integration` created; a trial merge into
+  current `main` conflicts only in `tools/mcp/eval/cases.py`. Disk: a janitor now deletes idle worktrees' Android and
+  web outputs when free space falls under 25 GB (Android builds leave 25 GB each).
+- 2026-11-05: the session's account hit its weekly limit, which stopped every agent mid-run (about a day lost). Found
+  the disk full (0 B) and 14 orphaned queued jobs: cancelled them, deleted every worktree's build trees (they are stale
+  after 304 upstream commits), raised the shared ccache to 40 GB. Merged `origin/main` (the Forge/meshoptimizer
+  program landed S53-S57, including S55's automatic GPU instancing; follow-ups landed S63, S64, S68, S69, S70, S73
+  and more). Owner's rule: no full suites anywhere; the brief's gate is now the WERROR editor build, the feature's
+  own tests and red controls, filtered affected suites, compile-only web/Android when relevant, and lints. Agents
+  revived in batches, closest to landing first.
+- 2026-11-06: a second stop (the session account's login was revoked, about 17 hours lost). The slot queue kept
+  running the agents' detached jobs meanwhile. Merged 187 more upstream commits (the sound layer S35-S40) into
+  `main` and pushed; all 16 agents revived to read their job results, merge `main` once more, finish and report.
+- 2026-11-06 18:3x: owner's top priority: mesh-memory, sprite-batching, unicode-text, platform-lifecycle (in that
+  order), and permission to rent Hetzner VMs. `slot` now runs only priority order while a priority-1 job waits.
+  Rented two Hetzner cpx51 boxes (16 vCPU, 30 GB, 48 h limit, about $0.44/h each): box A (mesh-memory) and box B
+  (sprite-batching). `rbox <A|B> '<cmd>'` syncs a worktree's current files to the box and runs the command there
+  (one job per box, JOBS=14). unicode-text and platform-lifecycle finish their running local jobs.
+- 2026-11-06 18:4x: owner: time efficiency is the priority. Six more Hetzner cpx51 boxes (eight in total, about
+  $3.55/h, 48 h limit), assigned per feature in [BOXES.md](BOXES.md), each with one shared ccache per box.
+  The brief gained "Build boxes and time efficiency": one KEEP_GOING build per round, targets only, all red
+  controls in one build, rerun only what a fix touches, generated docs last. Every agent moved to its box; the
+  local slots only finish the jobs already running.
+- 2026-11-06 21:xx: **unicode-text merged** (`052c14c4b`). Landing check on the merged tree (box C): WERROR editor,
+  filtered unit suites, HTML UI input, its MCP files with protocol/stubs/docs, generated docs and tool budget, lints:
+  all green. rbox fixed: `build/.cache` on the boxes was a link the containers could not follow (uv and MCP steps
+  failed); now only `build/.cache/ccache` is a link.
+- 2026-11-06 21:xx: **mesh-memory merged** (`3618eab04`) after an independent review (7 findings fixed: bounded Lua
+  submesh indices, trimmed palettes of old files, reads that never grow arrays, skin height vs device limit, S55
+  batch variants reset on clone, sanitizer-safe heap-trim test, MSVC Debug size ceilings). Branch gate on the
+  merged tree (box A): WERROR editor, core 30 / editor 166 filtered, MCP 59 + test_world 9, compile smoke, fanout.

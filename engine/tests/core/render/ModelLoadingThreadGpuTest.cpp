@@ -329,8 +329,8 @@ TEST(ModelLoadingThreadGpu, InARunningSceneCommitsOnTheMainThread){
     EXPECT_NO_ENGINE_ERRORS();
 }
 
-// R1: an OBJ of more materials than a mesh held (24, the car of the mesh-memory design), on both
-// threads. Red until dc/mesh-memory lands, which removes the capacity: this spec lands after it (R3).
+// R1: an OBJ of more materials than a mesh held (24, the car of the mesh-memory design; MAX_SUBMESHES
+// was 16), on both threads.
 TEST(ModelLoadingThreadGpu, AnObjOfManyMaterialsLoadsWhole){
     JASPER_REQUIRE_GPU();
     TempDir dir;

@@ -85,34 +85,14 @@
 #define MAX_POINT_SHADOW_LIGHTS (MAX_POINT_SHADOW_ATLAS_SLOTS / SHADOW_CUBE_FACES)
 #endif
 
-#ifndef MAX_SUBMESHES
-#define MAX_SUBMESHES 16
-#endif
-
 // detail levels per submesh, level 0 being the source geometry
 #ifndef MAX_MESH_LODS
 #define MAX_MESH_LODS 4
 #endif
 
-#ifndef MAX_TILEMAP_TILESRECT
-#define MAX_TILEMAP_TILESRECT 200
-#endif
-
-#ifndef MAX_TILEMAP_TILES
-#define MAX_TILEMAP_TILES 2048
-#endif
-
-#ifndef MAX_SPRITE_FRAMES
-#define MAX_SPRITE_FRAMES 128
-#endif
-
 // main font of a text plus its fallbacks
 #ifndef MAX_TEXT_FONTS
 #define MAX_TEXT_FONTS 4
-#endif
-
-#ifndef MAX_BONES
-#define MAX_BONES 128
 #endif
 
 #ifndef MAX_MORPHTARGETS
@@ -123,10 +103,6 @@
 // SSAO_KERNEL_SIZE define injected for the ssao.frag shader (ShaderBuilder)
 #ifndef SSAO_KERNEL_SIZE
 #define SSAO_KERNEL_SIZE 32
-#endif
-
-#ifndef MAX_EXTERNAL_BUFFERS
-#define MAX_EXTERNAL_BUFFERS 30
 #endif
 
 #ifndef MAX_BROADPHASELAYER_3D
@@ -227,6 +203,10 @@ namespace jasperengine {
             uint32_t drawCalls = 0;
             uint32_t instances = 0;
             uint64_t triangles = 0;
+            // mesh draws the passes' visible lists kept and culled (spec S55 R4)
+            uint32_t visible = 0;
+            uint32_t culled = 0;
+            uint64_t vertices = 0;
         };
 
         // How many GPU objects of each kind can be alive at once (sokol's resource pools, each
@@ -366,6 +346,7 @@ namespace jasperengine {
         static float framerate;
         static double framePeriod;
         static double frameCpuTime;
+        static double frameDrawCpuTime;
         static FrameStats frameStats;
         static FrameStats currentFrameStats;
         
@@ -405,6 +386,10 @@ namespace jasperengine {
         static int targetFrameRate;
         static int vSyncCount;
         static FramePacing framePacing;
+        // Engine.setTextureQuality's value (the pool drops QualityResolver's resolution of it)
+        static int textureQuality;
+        // the QualityResolver revision the frame pacing, texture quality and upload budget follow
+        static uint32_t qualityRevision;
         // last orientation systemOrientationChanged saw (0: none yet), and since when (system
         // time) a quarter turn waits for its view size (0: none waits)
         static int lastOrientation;
@@ -423,6 +408,7 @@ namespace jasperengine {
         static AtmosphereQuality atmosphereQualityDefaults[3];
         static bool atmosphereQualityOverridden;
         static AtmosphereQuality atmosphereQualityOverride;
+        static bool gpuInstancingEnabled;
 
         static Semaphore drawSemaphore;
 
@@ -447,8 +433,11 @@ namespace jasperengine {
         // pointerOrButton is the mouse button), or every pointer (pause, focus loss)
         static void cancelUIPointer(int pointerOrButton, bool touch);
         static void cancelAllUIPointers();
-        // systemDraw: a high surrogate that never got its low one reaches documents as U+FFFD
+        // systemDraw: a high surrogate that never got its low one is typed as U+FFFD
         static void flushCharInput();
+        // whole typed code points to Input.inputString, the documents, onCharInput and the
+        // component UI (systemCharInput, flushCharInput)
+        static void deliverCodepoints(const std::vector<uint32_t>& codepoints);
         // systemDraw: the held gamepad directions a document took repeat (UI clock)
         static void updateGamepadNavigation();
         static void calculateCanvas();
@@ -468,6 +457,9 @@ namespace jasperengine {
         static void runFrame(bool draw);
         // recomputes the frame pacing and hands it to the System
         static void applyFramePacing();
+        // a new device tier, thermal step or memory drop: the pacing, texture quality and upload
+        // budget again (once a frame, one compare when nothing changed)
+        static void applyQualityChanges();
         // desktop builds: JASPERENGINE_SIMULATE_SAFE_AREA as the platform's insets
         static void applySimulatedSafeArea();
         
@@ -625,6 +617,12 @@ namespace jasperengine {
         // back to the platform default (the editor calls it when Play stops)
         static void resetAtmosphereQuality();
         static bool isAtmosphereQualityOverridden();
+
+        // GPU Instancing (Project Settings > Graphics, spec S55): MeshComponent draws of one mesh,
+        // material and pipeline become instanced draws, and constant state is applied once. On by
+        // default; off submits every draw as before S55
+        static void setGpuInstancingEnabled(bool enabled);
+        static bool isGpuInstancingEnabled();
         static bool isOpenGL();
         static float getFramerate();
         static float getDeltatime();
@@ -633,9 +631,13 @@ namespace jasperengine {
         // without the wait to present), seconds: dynamic resolution's frame law reads them
         static double getFramePeriod();
         static double getFrameCpuTime();
+        // of it, the scenes' draw and the commit: the render submission (benchmark renderCpuMs)
+        static double getFrameDrawCpuTime();
 
         static void beginFrameStats();
-        static void addDrawStats(uint32_t instances, uint64_t triangles);
+        // vertices: the vertex shader runs, indices or vertices drawn times the instances
+        static void addDrawStats(uint32_t instances, uint64_t triangles, uint64_t vertices = 0);
+        static void addVisibilityStats(uint32_t visible, uint32_t culled);
         static const FrameStats& getFrameStats();
         // the draws submitted so far in the frame being drawn (a pass's own count: before and after)
         static uint32_t getPendingDrawCalls();
@@ -800,6 +802,8 @@ namespace jasperengine {
             int atmosphereQuality = -1;
             // casts and receives the scene's shadows (off: an inactive Scene view pane, S26 R20)
             bool shadows = true;
+            // the Scene view's Draw Mode (RenderSystem::ViewDrawMode; 0 Shaded)
+            uint8_t drawMode = 0;
         };
 
         // Draws a secondary view: the editor's Scene view while the game plays, or its
@@ -899,9 +903,10 @@ namespace jasperengine {
         static void systemKeyDown(int key, bool repeat, int mods);
         static void systemKeyUp(int key, bool repeat, int mods);
 
-        // One UTF-16 unit where wchar_t is 16 bits (Windows): surrogate pairs are combined
-        // before HTML UI documents see them, the game and component UI get each unit
-        static void systemCharInput(wchar_t codepoint);
+        // One UTF-16 unit (Windows WM_CHAR, Android's keyboard) or one whole code point:
+        // surrogate pairs are combined here, so documents, Input.inputString, onCharInput and the
+        // component UI all get whole code points (a lone surrogate is U+FFFD)
+        static void systemCharInput(char32_t unit);
         // Committed text: an IME commit, a paste, a platform string. Documents get the whole
         // string; unless a document consumed it, each code point then goes to onCharInput and
         // the component UI.
@@ -974,7 +979,9 @@ namespace jasperengine {
         static FunctionSubscribe<void()> onMouseLeave;
         static FunctionSubscribe<void(int,bool,int)> onKeyDown;
         static FunctionSubscribe<void(int,bool,int)> onKeyUp;
-        static FunctionSubscribe<void(wchar_t)> onCharInput;
+        // one whole character per call, on every platform (a one-character string in Lua). A C++
+        // handler declared with wchar_t still compiles but is deprecated: 16 bits on Windows.
+        static FunctionSubscribe<void(char32_t)> onCharInput;
         static FunctionSubscribe<void(int)> onGamepadConnect;
         static FunctionSubscribe<void(int)> onGamepadDisconnect;
         static FunctionSubscribe<void(int,int)> onGamepadButtonDown;

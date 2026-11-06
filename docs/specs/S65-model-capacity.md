@@ -33,11 +33,12 @@ too many materials is cut off with an error. Users expect the model they importe
   code on it (the same entities, no commit step). For a scene the frames do run, it only parses the file into `ModelPool`
   and the main thread makes the tree in a coming frame (`MeshSystem::prepareLoadOnMainThread`, `MainThreadQueue`): `loadModel`
   returns true before those entities exist. Only a thumbnail (off the main thread with `setImageDecodeMaxDimension`) still
-  bakes the nodes into one mesh, because a picture needs no entities; what it leaves out past the capacities goes with
-  `dc/mesh-memory`.
+  bakes the nodes into one mesh, because a picture needs no entities; with `dc/mesh-memory`'s growing arrays it leaves
+  nothing out (`ModelCapacityGpu.APreviewOffTheMainThreadKeepsEveryPrimitive`, which loads as a preview for this reason).
 - D2. R1's OBJ test (`ModelLoadingThreadGpu.AnObjOfManyMaterialsLoadsWhole`, the OBJ line of `test_player_cli.py --only
-  model-capacity`) stays red until `dc/mesh-memory` lands: this spec lands after it. Its files use no capacity macro, so they do not
-  conflict with its removal; `ModelCapacityGpuTest.cpp`, which it reworks, is left as it is on main.
+  model-capacity`) was red while `MAX_SUBMESHES` (16) held a mesh, and is green on the merge of `dc/mesh-memory`, which removed
+  the capacities. The merge dropped this spec's capacity report (the "bakes into one mesh ... left out" warning and its error
+  in `MeshSystem::loadGLTF`): with no capacity there is nothing to report. `ModelCapacityGpuTest.cpp` is mesh-memory's.
 - D3. R4's real limits here are a primitive's blend shapes (vertex inputs) and a file's vertex and index buffers (the GPU buffer
   pool). `MAX_BONES` is not one: the shader reads a palette of any size, and mesh-memory removes it. The editor shows them in the
   Console when the asset database first sees or re-reads a model or an FBX is converted. No modal dialog and no new MCP text: agents

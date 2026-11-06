@@ -34,6 +34,10 @@ namespace jasperengine{
         // Feeds one sample of one channel, for a caller that needs it step by step; the largest
         // absolute value of this step.
         float processSample(unsigned int channel, float sample);
+        // The same for a run of one channel's samples, at a fraction of the cost: the largest absolute
+        // value of them over `above`, else 0. For a caller that keeps a maximum: stretches that cannot
+        // reach it skip the filter (a phase's gain is at most about 2).
+        float processChannel(unsigned int channel, const float* samples, size_t count, float above = 0.0f);
         void reset();
 
     private:

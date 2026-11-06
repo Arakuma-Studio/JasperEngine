@@ -148,11 +148,22 @@ Vector4 TextEffects::evaluateGradient(const std::vector<TextEffectGradientStop>&
         return Vector4(1.0f, 1.0f, 1.0f, 1.0f);
 
     t = clamp01(t);
-    // the stops in position order (they are few)
-    std::vector<TextEffectGradientStop> stops = gradient;
-    std::stable_sort(stops.begin(), stops.end(), [](const TextEffectGradientStop& a, const TextEffectGradientStop& b){
-        return a.position < b.position;
-    });
+    // Ordered gradients are sampled for every glyph; only unordered input needs a copy.
+    std::vector<TextEffectGradientStop> sorted;
+    bool ordered = true;
+    for (size_t i = 1; i < gradient.size(); i++){
+        if (!(gradient[i - 1].position <= gradient[i].position)){
+            ordered = false;
+            break;
+        }
+    }
+    if (!ordered){
+        sorted = gradient;
+        std::stable_sort(sorted.begin(), sorted.end(), [](const TextEffectGradientStop& a, const TextEffectGradientStop& b){
+            return a.position < b.position;
+        });
+    }
+    const std::vector<TextEffectGradientStop>& stops = ordered ? gradient : sorted;
 
     if (t <= stops.front().position)
         return stops.front().color;

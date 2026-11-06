@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "render/CpuSkin.h"
+#include "model/ModelCpuData.h"
 
 #include "Scene.h"
 #include "buffer/Buffer.h"
@@ -363,6 +364,7 @@ const CpuSkinSubmesh& CpuSkinSource::submeshOf(uint32_t vertex) const{
 }
 
 bool cpuskin::buildSource(const MeshComponent& mesh, CpuSkinSource& out, std::string* error){
+    ModelCpuData::ensure(mesh, "CPU skinning");
     out = CpuSkinSource();
     if (mesh.numSubmeshes == 0)
         return fail(error, "the mesh has no submeshes");
@@ -655,7 +657,7 @@ bool cpuskin::computeSkinMatrices(Scene* scene, Entity meshEntity, std::vector<M
     if (!mesh || !meshTransform)
         return fail(error, "'" + scene->getEntityName(meshEntity) + "' has no mesh and transform");
 
-    out.resize(mesh->bonesMatrix.size());
+    out.resize(mesh->bonesMatrix.stored());
     for (size_t b = 0; b < out.size(); b++)
         out[b] = mesh->bonesMatrix[b];
 

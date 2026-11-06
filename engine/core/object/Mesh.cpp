@@ -6,6 +6,7 @@
 #include "util/Color.h"
 #include "Log.h"
 #include "component/MirrorComponent.h"
+#include "render/LodFade.h"
 #include "component/ReflectionProbeComponent.h"
 #include "subsystem/RenderSystem.h"
 #include "subsystem/MeshSystem.h"
@@ -13,6 +14,7 @@
 #include "animation/VertexAnimatorRuntime.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace jasperengine;
 
@@ -69,11 +71,13 @@ void Mesh::setTexture(Framebuffer* framebuffer){
 }
 
 namespace {
-    // a submesh the mesh has: submesh 0 always (the slot exists before a generator builds it)
-    bool validNormalSubmesh(const MeshComponent& mesh, unsigned int submesh){
+    // a submesh the mesh has: submesh 0 always (the slot exists before a generator builds it).
+    // Checked before every indexed access: a write past the submeshes would grow the array to
+    // that index
+    bool validSubmesh(const MeshComponent& mesh, unsigned int submesh, const char* what){
         const unsigned int count = std::max(mesh.numSubmeshes, 1u);
         if (submesh >= count){
-            Log::error("Cannot set the normal map of submesh %u: the mesh has %u submesh%s", submesh, mesh.numSubmeshes,
+            Log::error("Cannot %s of submesh %u: the mesh has %u submesh%s", what, submesh, mesh.numSubmeshes,
                        mesh.numSubmeshes == 1 ? "" : "es");
             return false;
         }
@@ -95,7 +99,7 @@ void Mesh::setNormalTexture(const std::string& path){
 
 void Mesh::setNormalTexture(unsigned int submesh, const std::string& path){
     MeshComponent& mesh = getComponent<MeshComponent>();
-    if (!validNormalSubmesh(mesh, submesh))
+    if (!validSubmesh(mesh, submesh, "set the normal map"))
         return;
 
     Texture& texture = mesh.submeshes[submesh].material.normalTexture;
@@ -133,8 +137,8 @@ std::string Mesh::getNormalTexture() const{
 }
 
 std::string Mesh::getNormalTexture(unsigned int submesh) const{
-    MeshComponent& mesh = getComponent<MeshComponent>();
-    if (submesh >= std::max(mesh.numSubmeshes, 1u))
+    const MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "get the normal map"))
         return "";
 
     const Texture& texture = mesh.submeshes[submesh].material.normalTexture;
@@ -183,6 +187,8 @@ Material Mesh::getMaterial() const{
 
 void Mesh::setMaterial(unsigned int submesh, const Material& material){
     MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "set the material"))
+        return;
 
     if (mesh.submeshes[submesh].material != material){
         const Material& current = mesh.submeshes[submesh].material;
@@ -227,7 +233,9 @@ void Mesh::setMaterial(unsigned int submesh, const Material& material){
 }
 
 Material Mesh::getMaterial(unsigned int submesh) const{
-    MeshComponent& mesh = getComponent<MeshComponent>();
+    const MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "get the material"))
+        return Material();
 
     return mesh.submeshes[submesh].material;
 }
@@ -242,6 +250,8 @@ PrimitiveType Mesh::getPrimitiveType() const{
 
 void Mesh::setPrimitiveType(unsigned int submesh, PrimitiveType primitiveType){
     MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "set the primitive type"))
+        return;
 
     if (mesh.submeshes[submesh].primitiveType != primitiveType){
         mesh.submeshes[submesh].primitiveType = primitiveType;
@@ -251,7 +261,9 @@ void Mesh::setPrimitiveType(unsigned int submesh, PrimitiveType primitiveType){
 }
 
 PrimitiveType Mesh::getPrimitiveType(unsigned int submesh) const{
-    MeshComponent& mesh = getComponent<MeshComponent>();
+    const MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "get the primitive type"))
+        return StableArray<Submesh>::defaultElement().primitiveType;
 
     return mesh.submeshes[submesh].primitiveType;
 }
@@ -266,6 +278,8 @@ bool Mesh::isFaceCulling() const{
 
 void Mesh::setFaceCulling(unsigned int submesh, bool faceCulling){
     MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "set face culling"))
+        return;
 
     if (mesh.submeshes[submesh].faceCulling != faceCulling){
         mesh.submeshes[submesh].faceCulling = faceCulling;
@@ -275,7 +289,9 @@ void Mesh::setFaceCulling(unsigned int submesh, bool faceCulling){
 }
 
 bool Mesh::isFaceCulling(unsigned int submesh) const{
-    MeshComponent& mesh = getComponent<MeshComponent>();
+    const MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "get face culling"))
+        return StableArray<Submesh>::defaultElement().faceCulling;
 
     return mesh.submeshes[submesh].faceCulling;
 }
@@ -291,6 +307,8 @@ bool Mesh::isCastShadowsWithTexture() const{
 
 void Mesh::setCastShadowsWithTexture(unsigned int submesh, bool castShadowsWithTexture){
     MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "set cast shadows with texture"))
+        return;
 
     mesh.submeshes[submesh].textureShadow = castShadowsWithTexture;
 
@@ -298,7 +316,9 @@ void Mesh::setCastShadowsWithTexture(unsigned int submesh, bool castShadowsWithT
 }
 
 bool Mesh::isCastShadowsWithTexture(unsigned int submesh) const{
-    MeshComponent& mesh = getComponent<MeshComponent>();
+    const MeshComponent& mesh = getComponent<MeshComponent>();
+    if (!validSubmesh(mesh, submesh, "get cast shadows with texture"))
+        return StableArray<Submesh>::defaultElement().textureShadow;
 
     return mesh.submeshes[submesh].textureShadow;
 }
@@ -438,6 +458,75 @@ float Mesh::getLodBias() const{
     MeshComponent& mesh = getComponent<MeshComponent>();
 
     return mesh.lodBias;
+}
+
+void Mesh::setAllowGpuInstancing(bool allow){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    // its batch variants are loaded with it
+    if (mesh.allowGpuInstancing != allow){
+        mesh.allowGpuInstancing = allow;
+
+        mesh.needReload = true;
+    }
+}
+
+bool Mesh::isAllowGpuInstancing() const{
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    return mesh.allowGpuInstancing;
+}
+
+void Mesh::setLodFadeMode(LodFadeMode mode){
+    MeshComponent& mesh = getComponent<MeshComponent>();
+
+    if (mesh.lodFadeMode != mode){
+        mesh.lodFadeMode = mode;
+        // a mesh that may fade loads its fade shaders (RenderSystem::prepareLodFade)
+        mesh.needReload = true;
+    }
+}
+
+LodFadeMode Mesh::getLodFadeMode() const{
+    return getComponent<MeshComponent>().lodFadeMode;
+}
+
+void Mesh::setLodAnimateCrossFading(bool animate){
+    getComponent<MeshComponent>().lodAnimateCrossFading = animate;
+}
+
+bool Mesh::isLodAnimateCrossFading() const{
+    return getComponent<MeshComponent>().lodAnimateCrossFading;
+}
+
+void Mesh::setLodFadeTransitionWidth(float width){
+    if (std::isfinite(width))
+        getComponent<MeshComponent>().lodFadeTransitionWidth = std::clamp(width, 0.0f, 1.0f);
+}
+
+float Mesh::getLodFadeTransitionWidth() const{
+    return getComponent<MeshComponent>().lodFadeTransitionWidth;
+}
+
+void Mesh::setLodCullBelow(float share){
+    if (std::isfinite(share))
+        getComponent<MeshComponent>().lodCullBelow = std::clamp(share, 0.0f, 1.0f);
+}
+
+float Mesh::getLodCullBelow() const{
+    return getComponent<MeshComponent>().lodCullBelow;
+}
+
+void Mesh::forceLod(int level){
+    getComponent<MeshComponent>().lodForced = std::clamp(level, -1, MAX_MESH_LODS - 1);
+}
+
+int Mesh::getForcedLod() const{
+    return getComponent<MeshComponent>().lodForced;
+}
+
+int Mesh::getCurrentLod() const{
+    return getComponent<MeshComponent>().lodFade.plan.dominant();
 }
 
 void Mesh::setReceiveShadows(bool receiveShadows){

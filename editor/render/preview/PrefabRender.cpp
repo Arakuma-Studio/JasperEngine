@@ -2,6 +2,16 @@
 // SPDX-License-Identifier: MIT
 
 #include "PrefabRender.h"
+#include "component/MeshComponent.h"
+#include "component/MeshPolygonComponent.h"
+#include "component/ModelComponent.h"
+#include "component/RectTransformComponent.h"
+#include "component/SpriteComponent.h"
+#include "component/TerrainComponent.h"
+#include "component/TilemapComponent.h"
+#include "component/Transform.h"
+#include "component/UIComponent.h"
+#include "component/LightComponent.h"
 
 #include "Configs.h"
 #include "Project.h"

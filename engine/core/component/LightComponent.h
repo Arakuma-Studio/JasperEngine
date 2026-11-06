@@ -4,15 +4,16 @@
 #ifndef LIGHT_COMPONENT_H
 #define LIGHT_COMPONENT_H
 
+#include "registry/TagManager.h"
 #include "math/Vector3.h"
-#include "component/CameraComponent.h"
-#include "component/Transform.h"
 #include "render/FramebufferRender.h"
 #include "texture/Texture.h"
 #include "render/shadow/CascadeFit.h"
 #include "render/shadow/ShadowTypes.h"
 #include "Engine.h"
 #include <cmath>
+#include "math/Plane.h"
+#include "render/CameraRender.h"
 
 namespace jasperengine{
 
@@ -144,6 +145,14 @@ namespace jasperengine{
         float shadowAngularDiameter = 0.53f;    // directional: degrees of the light's disc (soft radius, PCSS)
         float shadowSourceRadius = 0.05f;       // spot and point: metres (soft radius, PCSS)
         ShadowUpdateMode shadowUpdateMode = ShadowUpdateMode::AUTO;
+        // Contact shadows (spec S57 R3): a march towards the light through the camera's depth
+        // pre-pass, for the small shadows the maps miss (a directional or spot light with
+        // Shadows on; one light's a frame, the main directional light first). Off on the Low
+        // tier, at half resolution on Medium
+        bool contactShadows = false;
+        float contactShadowLength = 0.15f;     // metres the march reaches towards the light
+        float contactShadowThickness = 0.05f;  // metres a surface is taken to be thick
+        int contactShadowSampleCount = 12;     // 8..16
 
         ShadowType getShadowType() const{
             return !shadows ? ShadowType::NONE : (softShadows ? ShadowType::SOFT : ShadowType::HARD);

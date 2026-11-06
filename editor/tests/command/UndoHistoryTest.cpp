@@ -5,6 +5,7 @@
 // interactive edits, selection steps and the off-thread release, on a recording fake command.
 
 #include "UndoFakeCommand.h"
+#include "util/BackgroundRelease.h"
 
 #include "command/CommandGroup.h"
 #include "command/CommandNames.h"

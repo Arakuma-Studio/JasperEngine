@@ -7,6 +7,10 @@
 // buffers, and a scene written before S18 (format 3 or 4) loads with nothing reported or changed.
 
 #include "Stream.h"
+#include "component/SplineAnimateComponent.h"
+#include "component/SplineComponent.h"
+#include "component/SplineExtrudeComponent.h"
+#include "component/SplineInstantiateComponent.h"
 #include "StreamMigrations.h"
 #include "reflect/Reflect.h"
 #include "support/EditorTestSupport.h"
