@@ -75,13 +75,21 @@ TEST_F(AssetRootChangeTest, IdenticalDestinationIsUsedAndReported) {
 }
 
 TEST_F(AssetRootChangeTest, UnwritableSceneRefusesBeforeAnyMove) {
+    // the project folder as the root rewrites Main.scene's references; it can't be written
     const fs::path scene = abs("Main.scene");
+    const std::string before = text("Main.scene");
     project->setAssetRootWriteProbe([scene](const fs::path& file) { return file.lexically_normal() != scene.lexically_normal(); });
-    const AssetRootChange change = project->changeAssetRoots("content", project->getLuaDir(), true);
+    const AssetRootChange change = project->changeAssetRoots(".", project->getLuaDir(), true);
     EXPECT_EQ(change.blocker, "Main.scene cannot be written");
+    EXPECT_FALSE(change.changed);
+    EXPECT_EQ(project->getAssetsDir(), fs::path("assets"));
+    EXPECT_EQ(text("Main.scene"), before) << "nothing was rewritten";
+    // and with files to move, none moves
+    project->setAssetRootWriteProbe([](const fs::path& file) { return file.filename() != "project.yaml"; });
+    const AssetRootChange moving = project->changeAssetRoots("content", project->getLuaDir(), true);
+    EXPECT_EQ(moving.blocker, "project.yaml cannot be written");
     EXPECT_FALSE(exists("content"));
     EXPECT_TRUE(exists("assets/textures/ao.png"));
-    EXPECT_EQ(project->getAssetsDir(), fs::path("assets"));
 }
 
 TEST_F(AssetRootChangeTest, FailedSaveKeepsTheSceneLoadedAndListsIt) {
