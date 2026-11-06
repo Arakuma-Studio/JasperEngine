@@ -55,6 +55,7 @@ S65, S70 and S35-S40. Moved off this list: S72, which changes includes, not beha
 | Mac | Final `main` on macOS | `fix/mac-final-main` | M | Done; runs again after each group |
 | CI list | Classify 46 test files so `--suite ci` runs (check-changed uses it) | `fix/ci-suite-classify` | B | Done |
 | S61 | Curve window Delete and F; 5 rebindable keys | `feat/s61-window-commands` | H | Done |
+| Main's editor tests | The editor unit binary segfaults on `main` after the Forge landing (in `LodFadeVariantKeys`), so 0 editor tests run; `PbrVariant.ALobesMapAsksForTheMeshsUVs` fails | `fix/main-editor-tests` | A, B | In progress |
 | Root attack | `.meta` written outside through a swapped root or a plain link, on `main` since S68 | `fix/root-attack-meta` | B, A | Done |
 | Module-off builds | S72 broke engines compiled with modules off | `fix/module-off-build` | H | Done |
 | Lock crash | Second editor on a locked project crashes (61 of 64 under load, `main` too) | `fix/locked-project-crash` | B, A | Done |
@@ -82,7 +83,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 | S36 | Analysis, generator, library, import settings, credits, search | `feat/s36-sound-library` | S38 M1; lands after S37 | In the third full suite; R31 re-measured on H or the Mac |
 | S37 | Sound Events, triggers, Lua `Audio`, Sound Browser | `feat/s37-sound-events` | M6 needs S36 | Ready at `87b9bea22`; in the third full suite with S35 and S36 |
 | S35 | Audio driver, capture, `audio_session`, QA | `feat/s35-agent-audio` | S36, S37 | Ready at `35c704a4c` with S37's AC8; in the third full suite |
-| S39 | Music | `feat/s39-music` | S35, S36, S37 | In progress, from the third suite's tree |
+| S39 | Music | `feat/s39-music` | S35, S36, S37 | Ready at `f650e3e1f`; merges `main` after the trio lands, then the fourth full suite with S40 |
 | S40 | Timeline audio | `feat/s40-timeline-audio` | S35, S36, S37 | In progress, from the third suite's tree |
 
 ## Decisions
@@ -115,6 +116,8 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 
 - 2026-11-05: S36: R31 (3-minute OGG, 1.2 s) is judged on H or the Mac after S38 lands, not on A. The pinned-zip licence test cannot run, because kenney.nl no longer serves the zips; the licence files match byte for byte, accepted.
 
+- 2026-11-06: S39 R10 deviation accepted: a second switch before the first switch point drops the incoming track nobody heard yet, rather than queueing behind it.
+
 ## Left over, not on the user's list
 
 - Android Vulkan backend (found by S67).
@@ -123,6 +126,7 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - `test_playhead_shortcuts_while_focused` failed once in S70's CI suite; its whole file passes, and with `-k` alone it fails 3 of 3. Cause not established.
 - S38 AC7: the iOS `ambient` session needs a check on a real device, by a person; `ios_packaging.sh` still has to run with the limiter when the Mac is back.
 - S36's line telling agents about `generate_sound` reaches only projects whose generated AGENTS.md was regenerated after it.
+- S39's music-voice mix-cost benchmark is opt-in and ran only on a loaded server, not in a Release build on a quiet one.
 - A relaunch on Android logs `Entity does not exist to get signature` (found by S67).
 - `list_missing_assets` is not found by agents while its `assets_pipeline` group is hidden (found by S68).
 - `editor_status.playing` also reads true while a scene is saving, which can mislead agents (found by S69; already like this before).
@@ -189,3 +193,5 @@ Order comes from the specs' dependencies. S38 M1 lands first, because S35 and S3
 - 2026-11-05: Third full suite started on `fcd2613ad` (`main` and S35, which holds S36 and S37). S39 and S40 started from that tree.
 - 2026-11-05: Origin: the Forge/meshoptimizer program (S53-S57) landed, 141 commits, without its final full suite. `main` fast-forwarded. The third suite's tree (S35, S36, S37) predates it and conflicts with it in `TOOLS.md`, `Exporter.cpp`, `Generator.cpp`, `McpInstructions.cpp`, `GameWindow.cpp` and `cases.py`: the trio merges it after the suite, then a build and the affected tests.
 - 2026-11-06: Third full suite on `fcd2613ad` (`main`, S35, S36, S37): units 2942 core and 3079 editor, 0 failed. MCP 1803 passed, 11 failed, 7 skipped. Five failures are the trio's (missing codegen goldens for the new fixture, a new modal not in S69's table, a warning on every headless Play); S35 fixes them and merges the Forge program, then it lands. The core tool listing is at 98,900 of 99,000 bytes after S40's tools: whoever adds tool text next will need to cut some.
+- 2026-11-06: S39 ready. Its bisect found `CameraShakeEditor` leaving the game's events paused for every later suite; fixed.
+- 2026-11-06: Found by S35 checking `main` alone: since the Forge/meshoptimizer landing, the editor unit test binary segfaults in `LodFadeVariantKeys.OnlyMeshesThatCanFadeShipTheFadeVariant`, so no editor test runs on `main`; core fails `PbrVariant.ALobesMapAsksForTheMeshsUVs`. Fixing on `fix/main-editor-tests`. The other programs should know their gates on `main` are not running the editor tests.
