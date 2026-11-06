@@ -26,6 +26,7 @@
 #include "util/FileUtils.h"
 #include "util/ImageDiff.h"
 #include "util/PngWriter.h"
+#include "util/SafeWrite.h"
 #include "util/ProjectChecks.h"
 #include "util/Util.h"
 
@@ -260,16 +261,18 @@ void keepRevisionRender(Project* project, const std::string& guid, uint64_t rev,
     if (!project || guid.empty()) return;
     static std::set<std::string> cleared;
     const fs::path folder = revisionRenderPath(project, guid, rev).parent_path();
+    // the editor's own cache in its hidden folder, which an MCP call's write scope keeps tools out of
+    safewrite::EditorInternal internal(folder);
     std::error_code ec;
     const std::string sessionKey = project->getProjectPath().generic_string() + "\n" + guid;
-    if (cleared.insert(sessionKey).second) fs::remove_all(folder, ec);
+    if (cleared.insert(sessionKey).second) FileUtils::removeAll(folder, ec);
     FileUtils::createDirectories(folder, ec);
     std::vector<uint8_t> png;
     if (!texsynth::encodePng(image, png)) return;
     FileUtils::writeFileReplacing(revisionRenderPath(project, guid, rev), std::string(png.begin(), png.end()));
     // the 16 newest
     std::vector<uint64_t> kept = keptRevisions(project, guid);
-    for (size_t i = 16; i < kept.size(); i++) fs::remove(revisionRenderPath(project, guid, kept[i]), ec);
+    for (size_t i = 16; i < kept.size(); i++) FileUtils::removePath(revisionRenderPath(project, guid, kept[i]), ec);
 }
 
 std::vector<uint64_t> keptRevisions(Project* project, const std::string& guid) {
