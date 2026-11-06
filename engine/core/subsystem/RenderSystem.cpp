@@ -16330,6 +16330,13 @@ void RenderSystem::update(double dt){
                                 mesh.needReload = true;
                             }
                         }
+                    }else if (terrain){
+                        // a terrain's variant follows its layers (the checks above); of its base
+                        // material only the normal map picks one
+                        const bool shaderNormalMap = (mesh.submeshes[s].shaderProperties & (1 << 7)) != 0; // 'Nmp'
+                        if (shaderNormalMap != !mesh.submeshes[s].material.normalTexture.empty()){
+                            mesh.needReload = true;
+                        }
                     }else if (mesh.loaded && !mesh.needReload){
                         // the whole variant the material asks for now, in every pass (colour with
                         // its UV sets, maps, lobes and Stochastic Tiling; the depth pass's alpha

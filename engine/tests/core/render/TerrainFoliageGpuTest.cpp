@@ -50,15 +50,19 @@ namespace {
     std::string writeFoliageBlade(TempDir& dir){
         const std::array<float, 9> positions = {0, 0, 0, 0.5f, 0, 0, 0, 1, 0};
         const std::array<float, 9> normals = {0, 0, 1, 0, 0, 1, 0, 0, 1};
+        const std::array<uint16_t, 4> indices = {0, 1, 2, 0}; // (padded to 4 bytes)
         std::string bin(reinterpret_cast<const char*>(positions.data()), sizeof(positions));
         bin.append(reinterpret_cast<const char*>(normals.data()), sizeof(normals));
+        bin.append(reinterpret_cast<const char*>(indices.data()), sizeof(indices));
         std::ofstream(dir.file("blade.bin"), std::ios::binary) << bin;
         std::ofstream(dir.file("blade.gltf")) << R"({"asset": {"version": "2.0"}, "scene": 0, "scenes": [{"nodes": [0]}], "nodes": [{"mesh": 0}],
-"meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}}]}],
-"buffers": [{"uri": "blade.bin", "byteLength": 72}],
-"bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}, {"buffer": 0, "byteOffset": 36, "byteLength": 36}],
+"meshes": [{"primitives": [{"attributes": {"POSITION": 0, "NORMAL": 1}, "indices": 2}]}],
+"buffers": [{"uri": "blade.bin", "byteLength": 80}],
+"bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 36}, {"buffer": 0, "byteOffset": 36, "byteLength": 36},
+                {"buffer": 0, "byteOffset": 72, "byteLength": 6}],
 "accessors": [{"bufferView": 0, "componentType": 5126, "count": 3, "type": "VEC3", "min": [0, 0, 0], "max": [0.5, 1, 0]},
-              {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"}]})";
+              {"bufferView": 1, "componentType": 5126, "count": 3, "type": "VEC3"},
+              {"bufferView": 2, "componentType": 5123, "count": 3, "type": "SCALAR"}]})";
         return dir.file("blade.gltf").generic_string();
     }
 

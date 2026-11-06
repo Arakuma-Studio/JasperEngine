@@ -68,8 +68,8 @@ async def test_foliage_min_draw_distance(ed: Editor):
     layers = (await ed.call("get_entity", scene=scene, entity=terrain, properties=["foliageLayers"]))["components"]["terrain"]["foliageLayers"]
     ed.check_eq((layers[0]["drawDistance"], layers[0]["minDrawDistance"]), (300, 40), f"the layer's draw range: {layers}")
     await ed.call("undo", scene=scene)
-    layers = (await ed.call("get_entity", scene=scene, entity=terrain, properties=["foliageLayers"]))["components"]["terrain"]["foliageLayers"]
-    ed.check_eq(layers, [], "one undo removes the layer")
+    layers = (await ed.call("get_entity", scene=scene, entity=terrain, properties=["foliageLayers"]))["components"]["terrain"].get("foliageLayers")
+    ed.check_eq(layers or [], [], "one undo removes the layer")
 
 
 async def test_render_stats_robustness_field(ed: Editor):

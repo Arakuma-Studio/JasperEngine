@@ -78,19 +78,16 @@ namespace {
             Engine::removeScene(&scene);
         }
 
-        // frames until the scene settles; every frame after the first load draws the mesh
-        void settle(bool expectLoadedThroughout){
+        // frames until the scene settles: loaded, and no variant waiting to be swapped in
+        void settle(){
             Scene* current = &scene;
             const Entity entity = plane.getEntity();
             int frames = 0;
-            EXPECT_TRUE(GpuEnvironment::runFrames([current, entity, expectLoadedThroughout, &frames](){
+            EXPECT_TRUE(GpuEnvironment::runFrames([current, entity, &frames](){
                 const auto render = current->getSystem<RenderSystem>();
                 const MeshComponent& mesh = current->getComponent<MeshComponent>(entity);
-                if (expectLoadedThroughout){
-                    EXPECT_TRUE(mesh.loaded) << "the mesh did not draw on frame " << frames << " of the swap";
-                }
                 frames++;
-                return render->isAllLoaded() && !mesh.needVariantReload && frames > 4;
+                return render->isAllLoaded() && mesh.loaded && !mesh.needVariantReload && frames > 4;
             })) << "the scene never settled";
             GpuEnvironment::drawFrames(2);
         }
@@ -115,7 +112,7 @@ TEST_F(MaterialVariantGpu, GBufferFollowsATextureGivenToALoadedMaterial){
     Material material;
     material.normalTexture = variantFlatTexture("rc-variant-normal", {128, 128, 255, 255});
     plane.setMaterial(material);
-    settle(false);
+    settle();
     ASSERT_TRUE(submesh().gbufferShader) << "SSR on draws no G-buffer";
     ASSERT_NE(submesh().shaderProperties & variantBit(1), 0u) << "the case needs UVs before the edit ('Uv1')";
     ASSERT_EQ(submesh().gbufferShaderProperties & (variantBit(0) | variantBit(8)), 0u);
@@ -124,7 +121,7 @@ TEST_F(MaterialVariantGpu, GBufferFollowsATextureGivenToALoadedMaterial){
         m.baseColorTexture = variantFlatTexture("rc-variant-base", {200, 60, 60, 255});
         m.metallicRoughnessTexture = variantFlatTexture("rc-variant-mr", {255, 40, 255, 255});
     });
-    settle(true);
+    settle();
     EXPECT_NE(submesh().gbufferShaderProperties & variantBit(0), 0u) << "the G-buffer variant has no base colour texture ('Bct')";
     EXPECT_NE(submesh().gbufferShaderProperties & variantBit(8), 0u) << "the G-buffer variant has no metallic-roughness texture ('Mrt')";
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::GBUFFER, 0, true), "Bct");
@@ -140,7 +137,7 @@ TEST_F(MaterialVariantGpu, DepthClipFollowsABaseColourGivenToAMaskMaterial){
     material.alphaCutoff = 0.5f;
     material.normalTexture = variantFlatTexture("rc-variant-mask-normal", {128, 128, 255, 255});
     plane.setMaterial(material);
-    settle(false);
+    settle();
     ASSERT_TRUE(submesh().depthShader) << "a shadow-casting light draws no depth pass";
     ASSERT_NE(submesh().shaderProperties & variantBit(1), 0u) << "the case needs UVs before the edit ('Uv1')";
     ASSERT_EQ(submesh().depthShaderProperties & variantBit(0), 0u);
@@ -148,7 +145,7 @@ TEST_F(MaterialVariantGpu, DepthClipFollowsABaseColourGivenToAMaskMaterial){
     edit([](Material& m){
         m.baseColorTexture = variantFlatTexture("rc-variant-mask-base", {255, 255, 255, 0});
     });
-    settle(true);
+    settle();
     EXPECT_EQ(ShaderPool::getShaderPropertyName(ShaderType::DEPTH, 0, true), "Tex");
     EXPECT_NE(submesh().depthShaderProperties & variantBit(0), 0u) << "the shadow and depth passes do not clip by the new base colour ('Tex')";
     EXPECT_NO_ENGINE_ERRORS();

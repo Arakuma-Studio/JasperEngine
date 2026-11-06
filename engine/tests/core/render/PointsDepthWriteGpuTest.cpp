@@ -13,18 +13,18 @@
 #include "component/PointsComponent.h"
 #include "object/Camera.h"
 #include "object/Points.h"
-#include "pool/TextureDataPool.h"
 #include "subsystem/RenderSystem.h"
-#include "texture/TextureData.h"
 
 #include "GpuEnvironment.h"
 #include "LogCapture.h"
+#include "TempDir.h"
+
+#include "stb_image_write.h"
 #include "Readback.h"
 
 #include <gtest/gtest.h>
 
 #include <array>
-#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -32,19 +32,6 @@ using namespace jasperengine;
 using namespace jasperengine::test;
 
 namespace {
-
-    // a 4x4 image of one texel value
-    void registerPointsImage(const std::string& id, std::array<uint8_t, 4> texel){
-        TextureDataPool::setGenerator(id, [texel]() -> TextureData {
-            const int size = 4 * 4 * 4;
-            unsigned char* pixels = static_cast<unsigned char*>(std::malloc(size));
-            if (!pixels)
-                return TextureData();
-            for (int i = 0; i < 16; i++)
-                std::copy(texel.begin(), texel.end(), pixels + i * 4);
-            return TextureData(4, 4, (unsigned int)size, ColorFormat::RGBA, 4, pixels);
-        });
-    }
 
     std::array<int, 3> pointsCenterPixel(){
         Framebuffer& target = GpuEnvironment::target();
@@ -65,6 +52,7 @@ namespace {
         Camera camera{&scene};
         Points front{&scene};
         Points back{&scene};
+        TempDir dir;
 
         void SetUp() override{
             scene.setBackgroundColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -93,10 +81,17 @@ namespace {
             return pointsCenterPixel();
         }
 
-        // the generated image `id` (TextureDataPool), as an Inspector or script swap gives it
-        void useTexture(const std::string& id){
-            frontComponent().texture.setId(id);
-            frontComponent().needUpdateTexture = true;
+        // a 4x4 PNG of one texel value, as a project's image is (its alpha is read at load)
+        void registerPointsImage(const std::string& name, std::array<uint8_t, 4> texel){
+            std::vector<uint8_t> pixels(4 * 4 * 4);
+            for (int i = 0; i < 16; i++)
+                std::copy(texel.begin(), texel.end(), pixels.begin() + i * 4);
+            ASSERT_TRUE(stbi_write_png(dir.file(name + ".png").string().c_str(), 4, 4, 4, pixels.data(), 4 * 4));
+        }
+
+        // the image as the Inspector or a script gives it
+        void useTexture(const std::string& name){
+            front.setTexture(dir.file(name + ".png").string());
         }
 
         PointsComponent& frontComponent(){
