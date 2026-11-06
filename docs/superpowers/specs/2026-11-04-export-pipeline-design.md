@@ -818,3 +818,8 @@ Recorded during implementation (branch `dc/export-pipeline`).
       Xcode paths and a failing CMake configure in Play are not reachable in the suites); the
       Windows long paths cannot run on Linux.
 
+14. **Merge with build-toolchain.** build-toolchain gave `Exporter::copyTreeIfChanged` a
+    permission sync: an unchanged file takes the source's mode, so `./gradlew` stays executable
+    over an older export. `exportfiles::mirrorTree` replaces that function here, so the sync moved
+    into it (non-Windows), and `ExportCopy.UnchangedFileGetsTheSourcesPermissions` calls
+    `mirrorTree`. `Exporter::ensureExecutable` is unchanged.
