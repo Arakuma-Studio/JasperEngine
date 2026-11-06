@@ -661,8 +661,7 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
         addFluidPropertyDefinitions(args.defines, properties);
     }else if (shaderType == ShaderType::TITLE_ART){
         args.vert_file = "titleart.vert";
-        // the renderer's programs (18 on) are titleart_render.frag's, the effects' titleart.frag's
-        args.frag_file = (properties & 0x7Fu) >= 18 ? "titleart_render.frag" : "titleart.frag";
+        args.frag_file = "titleart.frag";
         addTitleArtPropertyDefinitions(args.defines, properties);
     }else if (shaderType == ShaderType::ATMOSPHERE_DEPTH){
         args.vert_file = "fullscreen.vert";
@@ -745,6 +744,10 @@ bool setupShaderArgs(shadercompiler::args_t& args, ShaderType shaderType, uint64
     }
     if (shaderType == ShaderType::SSR_BLUR){
         args.defines.push_back({"SSR_BLUR_TAPS", "6"});
+    }
+    if (shaderType == ShaderType::TITLE_ART && (properties & 0x7Fu) >= 18){
+        // the Title Art renderer's programs (render/TitlePrograms.h); 1-17 are titleart.frag's
+        args.frag_file = "titleart_render.frag";
     }
 
     return true;
