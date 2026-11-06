@@ -326,6 +326,11 @@ BatchBreak RenderSystem::uiBatchForm(UIComponent& ui, TextureRender* textureOver
         return BatchBreak::INELIGIBLE_NOT_READY;
     if (ui.customShaderId != 0 || !ui.libraryBindings.textures.empty())
         return BatchBreak::INELIGIBLE_CUSTOM_SHADER;
+    // the UI shader properties a batch reads as drawn alone (an allowlist, as the meshes': a
+    // property added later draws alone until it is checked here)
+    static const uint64_t uiAllowed = ShaderPool::getUIProperties(true, true, true, true, true);
+    if (ui.shaderProperties & ~uiAllowed)
+        return BatchBreak::INELIGIBLE_SHADER_PROPERTY;
     if (textureOverride || ui.texture.isFramebuffer())
         return BatchBreak::INELIGIBLE_RENDER_TARGET;
     if (ui.primitiveType != PrimitiveType::TRIANGLES || !ui.buffer.isRenderAttributes() || ui.buffer.getStride() == 0)

@@ -153,6 +153,9 @@ namespace jasperengine {
         // loads that left a vertex input of their shader without a buffer (diagnostics: zero
         // when every load binds what its shader reads)
         static int getUnfedVertexInputLoads();
+        // objects holding a load's working description, only kept from beginLoad to endLoad
+        // (diagnostics: zero once every object has loaded)
+        static int getLoadingDescCount();
     };
 }
 

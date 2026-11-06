@@ -703,6 +703,16 @@ S52 lands after this branch and builds on two hooks:
    `objectMatrices()`, so S41 rounds it where `objectMatrices` / `objectModel` take it, for both paths.
 4. S52's own instance format (D2), `@instanceable` and FX slots are superseded by 2 for sprites drawn
    by this batcher; S52's Sprite Batch component (bulk API) is a producer of its own.
+5. **S41 as it lands (`pixelSnapDraw`, `Pxs` MESH 42 / DEPTH 19 / UI 5).** Not on main when this
+   branch landed. Until it is wired here, a snapped draw is drawn alone: `Pxs` is not in the batch
+   variant allowlist (`BATCH_MESH_PROPERTIES`), so `meshBatchForm` answers `ineligible_shader_property`,
+   and the UI elements' allowlist (`uiBatchForm`: bits 0-4) leaves out its UI bit the same way.
+   Wiring it (whoever lands second, with a test): allow bit 42 and add each draw's `pixelSnapDraw`
+   to `fillMeshKey` (and the UI key) as a key section of its own (a new `BatchBreak::PIXEL_SNAP`), so
+   a run holds draws of one snap value; the run's draw then sets `pixelSnapDraw` from its head, and
+   `pixelSnapApply` snaps each batched vertex by the same rule as drawn alone (the clip position is
+   the same, decision 7 and point 3 above). A per-vertex value instead (point 2) would let runs mix
+   snap values; the key is the smaller change.
 
 ### Changes of plan
 

@@ -85,35 +85,14 @@
 #define MAX_POINT_SHADOW_LIGHTS (MAX_POINT_SHADOW_ATLAS_SLOTS / SHADOW_CUBE_FACES)
 #endif
 
-#ifndef MAX_SUBMESHES
-#define MAX_SUBMESHES 16
-#endif
-
 // detail levels per submesh, level 0 being the source geometry
 #ifndef MAX_MESH_LODS
 #define MAX_MESH_LODS 4
 #endif
 
-
-#ifndef MAX_TILEMAP_TILESRECT
-#define MAX_TILEMAP_TILESRECT 200
-#endif
-
-#ifndef MAX_TILEMAP_TILES
-#define MAX_TILEMAP_TILES 2048
-#endif
-
-#ifndef MAX_SPRITE_FRAMES
-#define MAX_SPRITE_FRAMES 128
-#endif
-
 // main font of a text plus its fallbacks
 #ifndef MAX_TEXT_FONTS
 #define MAX_TEXT_FONTS 4
-#endif
-
-#ifndef MAX_BONES
-#define MAX_BONES 128
 #endif
 
 #ifndef MAX_MORPHTARGETS
@@ -124,10 +103,6 @@
 // SSAO_KERNEL_SIZE define injected for the ssao.frag shader (ShaderBuilder)
 #ifndef SSAO_KERNEL_SIZE
 #define SSAO_KERNEL_SIZE 32
-#endif
-
-#ifndef MAX_EXTERNAL_BUFFERS
-#define MAX_EXTERNAL_BUFFERS 30
 #endif
 
 #ifndef MAX_BROADPHASELAYER_3D

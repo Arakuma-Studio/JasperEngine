@@ -1276,7 +1276,7 @@ void editor::Generator::writeSourceFiles(const fs::path& projectPath, const fs::
     cmakeContent += "    # library with editor-specific data layouts. The plugin must match both:\n";
     cmakeContent += "    #  - JASPERENGINE_SHARED makes JASPERENGINE_API resolve to __declspec(dllimport) so\n";
     cmakeContent += "    #    static members such as Engine::onUpdate link against the import lib on MSVC.\n";
-    cmakeContent += "    #  - JASPERENGINE_EDITOR keeps HybridArray (and other editor-only layouts)\n";
+    cmakeContent += "    #  - JASPERENGINE_EDITOR keeps the editor-only layouts\n";
     cmakeContent += "    #    ABI-compatible across the DLL boundary.\n";
     cmakeContent += "    add_compile_definitions(JASPERENGINE_SHARED JASPERENGINE_EDITOR)\n";
     cmakeContent += "endif()\n\n";
