@@ -24,6 +24,7 @@
 #include <cfloat>
 #include <cmath>
 #include <functional>
+#include <numeric>
 #include <unordered_set>
 
 using namespace jasperengine;
@@ -632,34 +633,44 @@ void ActionSystem::spriteActionStart(MeshComponent& mesh, SpriteComponent& sprit
 }
 
 void ActionSystem::spriteSeek(MeshComponent& mesh, SpriteComponent& sprite, SpriteAnimationComponent& spriteanim, double milliseconds){
-    if (spriteanim.framesSize == 0 || spriteanim.framesTimeSize == 0 || milliseconds <= 0){
+    const unsigned int frames = spriteanim.framesSize;
+    const unsigned int times = spriteanim.framesTimeSize;
+    if (frames == 0 || times == 0 || !(milliseconds > 0)){
         return;
     }
-    double total = 0;
-    for (unsigned int i = 0; i < spriteanim.framesTimeSize; i++){
-        total += std::max(0, (int)spriteanim.framesTime[i]);
+    auto frameTimeAt = [&spriteanim, times](unsigned int step){
+        return (double)std::max(0, (int)spriteanim.framesTime[step % times]);
+    };
+    // the frame and its time advance together (spriteActionUpdate), each list wrapping on its own:
+    // the pattern repeats after lcm(frames, times) steps, a looping one's cycle
+    const unsigned int steps = frames / std::gcd(frames, times) * times;
+    double cycle = 0;
+    for (unsigned int step = 0; step < (spriteanim.loop ? steps : frames); step++){
+        cycle += frameTimeAt(step);
     }
-    // a looping one wraps (whole cycles change nothing); one cycle = every frame once
-    if (spriteanim.loop && total > 0 && spriteanim.framesTimeSize == spriteanim.framesSize){
-        milliseconds = std::fmod(milliseconds, total);
+    if (spriteanim.loop){
+        if (cycle > 0) milliseconds = std::fmod(milliseconds, cycle);
+    }else{
+        // past the end of a one-shot is its end (and no huge count to step through)
+        milliseconds = std::min(milliseconds, cycle);
     }
-    unsigned int remaining = (unsigned int)milliseconds;
-    // at most one pass over the frames past the first (zero time frames cannot loop it forever)
-    for (unsigned int steps = 0; steps < spriteanim.framesSize + spriteanim.framesTimeSize; steps++){
-        const int frameTime = std::max(0, (int)spriteanim.framesTime[spriteanim.frameTimeIndex]);
-        if (remaining < (unsigned int)frameTime){
+    double remaining = milliseconds;
+    // at most one cycle of steps (zero time frames cannot keep it going)
+    for (unsigned int step = 0; step < steps; step++){
+        const double frameTime = frameTimeAt((unsigned int)spriteanim.frameTimeIndex);
+        if (remaining < frameTime){
             break;
         }
-        if (spriteanim.frameIndex >= (int)spriteanim.framesSize - 1 && !spriteanim.loop){
+        if (spriteanim.frameIndex >= (int)frames - 1 && !spriteanim.loop){
             // the end: the last frame shows, the first update stops it
-            remaining = (unsigned int)frameTime;
+            remaining = frameTime;
             break;
         }
         remaining -= frameTime;
-        spriteanim.frameIndex = (spriteanim.frameIndex + 1) % (int)spriteanim.framesSize;
-        spriteanim.frameTimeIndex = (spriteanim.frameTimeIndex + 1) % (int)spriteanim.framesTimeSize;
+        spriteanim.frameIndex = (spriteanim.frameIndex + 1) % (int)frames;
+        spriteanim.frameTimeIndex = (spriteanim.frameTimeIndex + 1) % (int)times;
     }
-    spriteanim.spriteFrameCount = remaining;
+    spriteanim.spriteFrameCount = (unsigned int)remaining;
     setSpriteTextureRect(mesh, sprite, spriteanim);
 }
 

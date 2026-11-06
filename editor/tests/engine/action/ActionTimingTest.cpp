@@ -341,6 +341,32 @@ TEST(ActionStartOffset, SpriteAnimationStartsOnTheOffsetFrame) {
     EXPECT_TRUE(once.isStopped());
 }
 
+// frames and frame times of different lengths wrap on their own: a looping cycle is lcm(3, 2) = 6 steps,
+// 100 200 100 200 100 200 ms; a huge offset of a one-shot is its end (no overflow)
+TEST(ActionStartOffset, SpriteOffsetWrapsMixedListsAndHugeOffsets) {
+    Scene scene;
+    SpriteAnimation anim(&scene);
+    anim.setAnimation({0, 1, 2}, {100, 200}, true);
+    anim.setTarget(createSpriteTarget(scene));
+    anim.setStartOffset(10 * 0.9f + 0.35f);   // ten cycles, then 350 ms: 100 + 200 in, 50 into the third frame
+    anim.start();
+    step(scene, 0.0, 1);
+    const SpriteAnimationComponent& spriteanim = scene.getComponent<SpriteAnimationComponent>(anim.getEntity());
+    EXPECT_EQ(spriteanim.frameIndex, 2);
+    EXPECT_EQ(spriteanim.frameTimeIndex, 0) << "the third step takes the first frame time again";
+    EXPECT_NEAR((double)spriteanim.spriteFrameCount, 50.0, 1.0);
+
+    SpriteAnimation once(&scene);
+    once.setAnimation({0, 1, 2}, {100, 100, 100}, false);
+    once.setTarget(createSpriteTarget(scene));
+    once.setStartOffset(1.0e7f);
+    once.start();
+    step(scene, 0.0, 1);
+    EXPECT_EQ(scene.getComponent<SpriteAnimationComponent>(once.getEntity()).frameIndex, 2) << "the last frame";
+    step(scene, 0.01, 1);
+    EXPECT_TRUE(once.isStopped());
+}
+
 TEST(ActionStartOffset, PreviewIgnoresOffsets) {
     Scene scene;
     Entity target = createTransformTarget(scene);
