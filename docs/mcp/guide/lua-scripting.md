@@ -8,9 +8,6 @@ are in `.jasperengine/engine-api/lua/`.
 ## A script
 
 A Lua script returns a module table; attach it to a GameObject through its Script component.
-In the editor: the Script component's Add Script lists the project's scripts (search, New
-Script..., Browse...), Add Component's Scripts category and search list them too, and a script file
-dropped on the Inspector or on a GameObject in the Hierarchy is attached (MCP: `attach_script`).
 self.scene is the Scene, self.entity the GameObject's numeric id (NOT an object: never call
 self.entity:...). Wrap it: GameObject(self.scene, self.entity), Sprite(...), Text(...),
 Rigidbody2D(...), AudioSource(...); a constructor given only self.scene CREATES a new

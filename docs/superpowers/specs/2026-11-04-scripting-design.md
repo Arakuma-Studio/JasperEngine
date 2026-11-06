@@ -658,8 +658,13 @@ Recorded while implementing on `dc/scripting` (2026-11-04).
    On `main` the guard finds exactly `ActionSystem.actionStart(newRun)` and `MeshSystem.loadGLTF(changeRootTransform)`.
 5. **Stubs mark trailing `std::optional` parameters optional** (`parser.py` `to_lua_sig`): the wrappers of 6.4
    show `newRun?`, `wake?`, `worldPositionStays?` with their documented defaults, instead of `boolean|nil`.
-6. **`search_engine_api` description unchanged** (lean MCP rules, `fe3e90b97`): the results carry
-   `cpp_callable: false` and `cpp_note` (`structuredContent`), no new tool or guide text, so no eval case.
+6. **MCP text and its eval cases.** `search_engine_api`'s description is unchanged; its results carry
+   `cpp_callable: false` and `cpp_note`, and `set_properties` warns on a model made of parts (both in
+   `structuredContent`). Each of those and the new `lua-api.md` sections (hierarchy, wake default, model
+   parts) has a case in `tools/mcp/eval/cases.py` (`guard_model_parts_mesh`, `guard_cpp_lua_only_static`,
+   `guard_lua_api_hierarchy_and_defaults`, `guard_lua_api_model_parts`); `test_grade.py` passes, the live
+   eval was not run (it needs Orquester-managed accounts). Lines without a case were cut: the Add Script
+   line of `lua-scripting.md` and the hierarchy and completion lines of `cpp-scripting.md`.
 7. **Add Component's script rows** come through `ComponentAddDialog::setScripts(scripts, onScript)` after
    `open()` rather than two more `open()` parameters (its other callers stay as they are).
 8. **Drops and picks report through `ScriptAttach::attachFile`** (Console warnings: outside the Lua directory,
@@ -671,3 +676,9 @@ Recorded while implementing on `dc/scripting` (2026-11-04).
     harness (the pen button's click registered no popup), so that row is verified by reading only.
 11. **Main's mesh LOD and GPU-instancing settings** (merged after the spec) follow the 5.8 rule: they write
     every part of a model made of parts and survive a ModelLoadCmd rebuild with the other part settings.
+12. **`editor-integration.md` is unchanged.** Its line naming "the Add Script dialog" stays true: the New Script
+    dialog is now reached from Add Script > New Script..., and it still writes the class line.
+13. **Winding order is not carried across a rebuild** (6.6 listed it): the loader derives it from the node's
+    transform, which a re-exported file may mirror; carrying the old one would draw the mirrored node inside out.
+14. **The refused-call log flag lives on `ModelComponent`** (`refusedPartsCallLogged`, runtime only, not saved):
+    once per model, and gone with the model or its scene, instead of a process-wide set.

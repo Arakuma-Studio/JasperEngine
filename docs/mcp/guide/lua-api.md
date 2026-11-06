@@ -3321,10 +3321,10 @@ Rigidbody wrappers by index.
    `Time.deltaTime` is the fixed step there). Impulses are one-off and can be
    applied anywhere. 2D forces/impulses are in Box2D units (kg, meters); positions and
    velocities read/written through Rigidbody2D are in points (`pointsToMeterScale`, default 64).
-10. **Pass every argument.** LuaBridge ignores C++ default arguments. A missing trailing
-    `bool` silently becomes `false` (e.g. `wake` in `applyForceToCenter(f)` -> body not woken);
-    a missing number/vector raises an error. Write `applyForceToCenter(f, true)`,
-    `tween:setAction(a, b, 1.0, false)`.
+10. **Pass every argument the reference does not mark optional.** A missing trailing `bool`
+    reads as `false` unless the reference gives it a default (`[, wake]` of the Rigidbody2D forces
+    and `[, newRun]` default to true: `applyForceToCenter(f)` wakes the body); a missing
+    number/vector raises an error. Write `tween:setAction(a, b, 1.0, false)`.
 11. **Teleporting physics bodies**: set the body (`rb2d.position = Vector2(...)`,
     `rb.position = Vector3(...)`) rather than the GameObject transform; also reset
     `linearVelocity` if needed.
@@ -3402,9 +3402,7 @@ Rigidbody wrappers by index.
 34. **Pass `owner = self` to `Timer.*`**: a timer without an owner outlives its script (until
     Play stops) and calls into a script that is gone. With `owner = self` it dies with the
     script, like the script's event subscriptions.
-35. **An omitted boolean is false** unless the reference gives a default (`[, wake]` defaults to true,
-    `[, newRun]` too): `go:setActive()` deactivates, `rb2d:applyForceToCenter(f)` wakes the body.
-36. **Inspector fields come from the saved file.** A script whose saved file no longer has a
+35. **Inspector fields come from the saved file.** A script whose saved file no longer has a
     `properties` table has no fields; while you edit it in the code editor, a missing table keeps
     them until you save (cutting and pasting the table loses no value).
 
