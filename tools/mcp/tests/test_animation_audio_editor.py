@@ -227,6 +227,8 @@ async def test_entity_mode_drop_and_align_peak_on_an_audio_block(ed: Editor):
     await ui.key("shift+a")
     await ui.frames(10)
     aligned = await frames_of(ed, "Sequencer")
-    # (the ruler click snaps to the frame grid: within a frame of 1.0 s)
-    ed.check(abs(aligned[index]["start_time"] - 0.8) < 0.035, f"the tick's peak on the playhead at 1.0 s: {aligned[index]}")
     await keep_shot(ed, "entity-audio-aligned")
+    # (the ruler click snaps to the frame grid: within a frame of 1.0 s)
+    ed.check(abs(aligned[index]["start_time"] - 0.8) < 0.035,
+             f"the tick's peak on the playhead at 1.0 s: {aligned[index]}; all: {[(a['index'], a['start_time']) for a in aligned]}; "
+             f"tracks {tracks} drop {target} -> {after[-1]['start_time']}")
