@@ -18,7 +18,9 @@ import asyncio
 import os
 import re
 import shutil
+import struct
 import subprocess
+import zlib
 from pathlib import Path
 
 import yaml
@@ -91,9 +93,10 @@ async def test_prepare(ed: Editor):
     scene = s["scenes_in_build"][0]
     await ed.call("edit_build_scenes", action="set_start", scene=scene["id"])
     await ed.call("set_project_settings", values={"graphics.runtime_shaders": False})
-    # an asset (binary: written on disk, as a user adds one), a Lua file and a header for the copy steps
+    # an asset (binary data, written on disk as a user adds one; not a texture, which ships cooked),
+    # a Lua file and a header for the copy steps
     (ed.project / "ui").mkdir(parents=True, exist_ok=True)
-    (ed.project / "ui" / "logo.png").write_bytes(b"not really a png")
+    (ed.project / "ui" / "level.bin").write_bytes(b"\x00\x01level data")
     await ed.call("write_file", path="Game.lua", content="return {}\n")
     await ed.call("write_file", path="inc/Util.h", content="#pragma once\n")
     ed.check((ed.project / "scenes" / "Main.scene").is_file(), f"the scene file: {sorted(p.name for p in ed.project.rglob('*.scene'))}")
@@ -102,13 +105,13 @@ async def test_prepare(ed: Editor):
 async def test_failed_copy_fails_the_export(ed: Editor):
     """A destination that exists as a folder where a file goes: the copy fails, and so does the
     export, naming the file (before: success, the file missing from the game)"""
-    for rel in ("project/assets/ui/logo.png", "project/lua/Game.lua", "project/main.cpp"):
+    for rel in ("project/assets/ui/level.bin", "project/lua/Game.lua", "project/main.cpp"):
         out = ed.scratch.root / ("blocked-" + rel.replace("/", "_"))
         (out / rel).mkdir(parents=True)
         (out / rel / "keep").write_text("a folder where the file goes")
-        job = await source_export(ed, out)
-        ed.check_eq(job["status"], "failed", f"{rel}: {job.get('message')}")
-        ed.check_in(Path(rel).name, job.get("message", ""), f"the failure names {rel}")
+        msg = await ed.call("build_project", mode="source", output_dir=str(out), platform="linux", backends=["opengl"],
+                            overwrite=True, timeout_seconds=900, expect_error=True)
+        ed.check_in(Path(rel).name, msg, f"the failure names {rel}")
 
 
 async def test_earlier_export_inside_project_is_left_out(ed: Editor):
@@ -154,6 +157,8 @@ async def test_dead_fork_keys_dropped(ed: Editor):
     await ed.call("write_file", path="shaders/split_b.frag", content=(ed.project / "shaders" / "Box.frag").read_text())
 
     path = scene_file(ed, "Main")
+    # the last open scene can't close: an untitled one stays open meanwhile
+    await ed.call("create_scene", name="Temp")
     await ed.call("close_scene", scene="Main")
     doc = yaml.safe_load(path.read_text())
     keys = doc.get("shaderKeys") or []
@@ -162,6 +167,7 @@ async def test_dead_fork_keys_dropped(ed: Editor):
                                 dict(mesh, customShader="shaders/split_a.vert|shaders/split_b.frag")]
     path.write_text(yaml.safe_dump(doc, sort_keys=False))
     await ed.call("open_scene", scene=path.relative_to(ed.project).as_posix())
+    await ed.call("close_scene", scene="Temp", unsaved="discard")
     await ed.call("set_transform", entity="Box", position=[0, 0.5, 0], scene="Main")
     await ed.call("save_scene", scene="Main")
 
@@ -217,6 +223,14 @@ async def test_never_saved_scene_ships(ed: Editor):
     await ed.call("close_scene", scene=draft_id, unsaved="discard")
 
 
+def tiny_png() -> bytes:
+    """A valid 1x1 RGBA PNG (the texture cook decodes the project's images)."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    header = struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(b"\x00\xff\x80\x00\xff")) + chunk(b"IEND", b"")
+
+
 def logo_bytes() -> bytes:
     header = (Path(__file__).resolve().parents[3] / "editor" / "resources" / "icons" / "jasperengine-logo_png.h").read_text()
     body = header[header.index("{") + 1:header.index("}")]
@@ -251,11 +265,11 @@ async def test_web_page_and_favicon(ed: Editor):
 
     # Web > Favicon wins
     (ed.project / "web").mkdir(parents=True, exist_ok=True)
-    (ed.project / "web" / "icon.png").write_bytes(b"icon bytes")
+    (ed.project / "web" / "icon.png").write_bytes(tiny_png())
     await ed.call("set_project_settings", values={"web.favicon": "web/icon.png"})
     job = await source_export(ed, out)
     ed.check_eq(job["status"], "succeeded", f"{job.get('message')}")
-    ed.check_eq((out / "project" / "export-settings" / "favicon.png").read_bytes(), b"icon bytes")
+    ed.check_eq((out / "project" / "export-settings" / "favicon.png").read_bytes(), tiny_png())
     await ed.call("set_project_settings", values={"web.favicon": ""})
 
 

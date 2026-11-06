@@ -28,11 +28,15 @@ namespace {
             });
             SceneManager::registerScene(2, "Loading", []() {}, [this]() { SceneManager::setScenePtr(2, loading); }, {2});
             SceneManager::setLoadingDelay(0.0f);
+            // these frames do not draw: with no timeout, readiness does not wait on what a drawn
+            // frame would load
+            SceneManager::setLoadingTimeout(0.0f);
         }
 
         // frames until the start scene is the main one (false after `frames`)
         bool runUntilStarted(int frames) {
-            for (int i = 0; i < frames && Engine::getMainScene() != start; i++) frame();
+            // (before its factory ran, start and the main scene are both null)
+            for (int i = 0; i < frames && (!start || Engine::getMainScene() != start); i++) frame();
             return start && Engine::getMainScene() == start;
         }
     };
