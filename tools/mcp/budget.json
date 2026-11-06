@@ -102,8 +102,8 @@
             "reason": "grandfathered by S31: 1879 chars when the limits were set, +5%"
         },
         "send_input": {
-            "limit": 1923,
-            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030)"
+            "limit": 1927,
+            "reason": "grandfathered by S31: 1832 chars when the limits were set, +5% (tighter than its HTML UI cap 2030); +4 measured for the app actions hide|show (platform-lifecycle, eval case bad_app_hide)"
         },
         "create_particles": {
             "limit": 1888,
