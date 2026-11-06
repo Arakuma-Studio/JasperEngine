@@ -94,6 +94,8 @@ TEST(MeshBounds, UiPolygonBoundsHugTheVertices){
     PolygonComponent& component = scene.getComponent<PolygonComponent>(polygon.getEntity());
     UIComponent& ui = scene.getComponent<UIComponent>(polygon.getEntity());
     RectTransformComponent& layout = scene.getComponent<RectTransformComponent>(polygon.getEntity());
+    // no camera to flip the polygon for
+    ui.automaticFlipY = false;
     scene.getSystem<UISystem>()->createOrUpdatePolygon(component, ui, layout);
 
     ASSERT_FALSE(ui.aabb.isNull());
@@ -115,6 +117,8 @@ TEST(MeshBounds, PolygonLeftOfItsOriginMeasuresItsOwnExtent){
     PolygonComponent& component = scene.getComponent<PolygonComponent>(polygon.getEntity());
     UIComponent& ui = scene.getComponent<UIComponent>(polygon.getEntity());
     RectTransformComponent& layout = scene.getComponent<RectTransformComponent>(polygon.getEntity());
+    // no camera to flip the polygon for
+    ui.automaticFlipY = false;
     scene.getSystem<UISystem>()->createOrUpdatePolygon(component, ui, layout);
     EXPECT_EQ(layout.width, 4u);
     EXPECT_EQ(layout.height, 4u);
@@ -126,7 +130,8 @@ TEST(MeshBounds, PolygonLeftOfItsOriginMeasuresItsOwnExtent){
     meshPolygon.addVertex(-5, -2);
     MeshPolygonComponent& meshComponent = scene.getComponent<MeshPolygonComponent>(meshPolygon.getEntity());
     MeshComponent& mesh = scene.getComponent<MeshComponent>(meshPolygon.getEntity());
-    scene.getSystem<MeshSystem>()->createMeshPolygon(meshComponent, mesh);
+    meshComponent.automaticFlipY = false;
+    ASSERT_TRUE(meshPolygon.createPolygon());
     EXPECT_EQ(meshComponent.width, 4u);
     EXPECT_EQ(meshComponent.height, 4u);
     expectBoundsVector(mesh.verticesAABB.getMaximum(), Vector3(-5, -2, 0), "mesh polygon maximum");
