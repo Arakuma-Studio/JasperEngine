@@ -16,6 +16,7 @@
 
 #include <atomic>
 #include <map>
+#include <memory>
 #include <random>
 #include <set>
 #include <stdexcept>
@@ -412,6 +413,15 @@ TEST(StatsRegistryTests, ConcurrentRegistrationNeverHidesALiveRecord){
     TrackedBytes keeper("Tests.Tracked.Keeper", Residency::Cpu);
     std::atomic<bool> stop{false};
     std::vector<std::thread> churn;
+    auto stopAndJoin = [&](std::atomic<bool>* flag){
+        *flag = true;
+        for (auto& thread : churn){
+            if (thread.joinable())
+                thread.join();
+        }
+    };
+    // A fatal assertion must join the writers before their thread objects die.
+    std::unique_ptr<std::atomic<bool>, decltype(stopAndJoin)> cleanup(&stop, stopAndJoin);
     for (int t = 0; t < 4; t++){
         churn.emplace_back([&, t]{
             while (!stop.load()){
@@ -448,6 +458,13 @@ TEST(MemoryStats, SnapshotConsistentUnderWriters){
         for (auto& allocation : live)
             ranges.free(allocation);
     });
+    auto stopAndJoin = [&](std::thread* thread){
+        stop = true;
+        if (thread->joinable())
+            thread->join();
+    };
+    // Install each guard before constructing the next writer or checking a record.
+    std::unique_ptr<std::thread, decltype(stopAndJoin)> writerCleanup(&writer, stopAndJoin);
     TrackedBytes tracked("Tests.Stats.Tracked", Residency::Cpu);
     std::thread trackedWriter([&]{
         while (!stop.load()){
@@ -455,6 +472,7 @@ TEST(MemoryStats, SnapshotConsistentUnderWriters){
             tracked.subtract(64);
         }
     });
+    std::unique_ptr<std::thread, decltype(stopAndJoin)> trackedCleanup(&trackedWriter, stopAndJoin);
     int checked = 0;
     for (int i = 0; i < testsupport::scaled(20000, 2000); i++){
         for (const StatsEntry& entry : snapshot()){

@@ -207,21 +207,3 @@ TEST(CharacterControllerBench, TenControllersWithoutInnerBodies){
         EXPECT_LE(ms, 1.0 * 1.5 * testsupport::perfSlack());
     }
 }
-
-TEST(CharacterControllerBench, StepOf1kStaticBodiesAlone){
-    // the reference for the one above: the physics step of the same scene with no controller
-    BenchScene s;
-    s.city();
-    for (int i = 0; i < 5; i++)
-        s.step();
-    constexpr int steps = 300;
-    double total = 0.0;
-    for (int i = 0; i < steps; i++){
-        const auto start = std::chrono::steady_clock::now();
-        Input::beginFixedStep();
-        s.scene->fixedUpdate(DT);
-        Input::endFixedStep();
-        total += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-    }
-    std::printf("[bench] the physics step of 1k static bodies alone %.4f ms (reference, no budget)\n", total / steps);
-}

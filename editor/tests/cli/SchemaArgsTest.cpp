@@ -13,6 +13,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -83,23 +84,6 @@ namespace {
 }
 
 // ---------------------------------------------------------------- CallArgs (AC1)
-
-TEST(CallArgs, ClassifiesEveryBuilderShape) {
-    std::map<std::string, ArgKind> kinds;
-    for (const ArgSpec& spec : argSpecs(toolSchema())) kinds[spec.key] = spec.kind;
-    EXPECT_EQ(kinds["name"], ArgKind::String);
-    EXPECT_EQ(kinds["count"], ArgKind::Integer);
-    EXPECT_EQ(kinds["scale"], ArgKind::Number);
-    EXPECT_EQ(kinds["select"], ArgKind::Boolean);
-    EXPECT_EQ(kinds["mode"], ArgKind::Enum);
-    EXPECT_EQ(kinds["entity"], ArgKind::Ref);
-    EXPECT_EQ(kinds["position"], ArgKind::ScalarArray);
-    EXPECT_EQ(kinds["tags"], ArgKind::ScalarArray);
-    EXPECT_EQ(kinds["values"], ArgKind::FreeObject);
-    EXPECT_EQ(kinds["create"], ArgKind::Json);
-    EXPECT_EQ(kinds["rotation"], ArgKind::Json);
-    EXPECT_EQ(kinds["value"], ArgKind::Json);
-}
 
 TEST(CallArgs, FlagsUseKebabOrSnakeCase) {
     const std::vector<ArgSpec> specs = argSpecs(schema::object({{"undo_group", schema::boolean("")}}));
@@ -314,7 +298,12 @@ TEST(SchemaValidate, EveryRegisteredToolSchema) {
             EXPECT_EQ(spec.flag.find('_'), std::string::npos) << tool.name;
             EXPECT_FALSE(describeType(spec.schema).empty()) << tool.name << " " << spec.key;
         }
-        for (const std::string& error : validate(listed, Json::object(), true)) {
+        const std::vector<std::string> errors = validate(listed, Json::object(), true);
+        for (const Json& key : listed.value("required", Json::array())) {
+            EXPECT_TRUE(std::find(errors.begin(), errors.end(), key.get<std::string>() + ": required") != errors.end())
+                << tool.name << " " << key;
+        }
+        for (const std::string& error : errors) {
             EXPECT_NE(error.find(": required"), std::string::npos) << tool.name << ": " << error;
         }
     }

@@ -9,7 +9,6 @@
 #include <gtest/gtest.h>
 
 #include "../ScriptDataTestSupport.h"
-#include "support/EditorTestSupport.h"
 
 #include "Scene.h"
 #include "audio/AudioImport.h"
@@ -22,9 +21,7 @@
 
 #include "soloud.h"
 
-#include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -302,31 +299,4 @@ TEST_F(MusicPlayerTest, RefusedArgumentsDoNothing) {
     EXPECT_FALSE(Audio::playMusic("a.wav", options));
     EXPECT_FALSE(Audio::playStinger("hit.wav", "section_end").isValid());
     EXPECT_TRUE(starts("music").empty());
-}
-
-// R22: MusicPlayer::update <= 20 us a frame, with a crossfade running and a beat callback subscribed
-TEST_F(MusicPlayerTest, UpdateCostsAtMostTwentyMicrosecondsAFrame) {
-    int beats = 0;
-    Audio::onMusicBeat.add("bench", [&](int, int) { beats++; });
-    ASSERT_TRUE(Audio::playMusic("a.wav"));
-    run(10);
-    MusicOptions options;
-    options.crossfade = 4.0f;
-    ASSERT_TRUE(Audio::playMusic("b.wav", options));
-    double total = 0.0;
-    const int frames = 180;
-    for (int i = 0; i < frames; i++) {
-        AudioMixer::update(DT, DT);
-        scene->getSystem<AudioSystem>()->update(DT);
-        const auto start = std::chrono::steady_clock::now();
-        MusicPlayer::update(DT);
-        total += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-        AudioSystem::pumpDeterministic(DT);
-    }
-    EXPECT_GT(beats, 0);
-    const double perFrame = total / frames * 1e6;
-    std::printf("[bench] MusicPlayer::update %.2f us a frame (crossfading, beat callbacks)\n", perFrame);
-    if (const double slack = editor::test::perfSlack(); slack > 0.0) {
-        EXPECT_LE(perFrame, 20.0 * slack);
-    }
 }

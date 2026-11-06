@@ -141,14 +141,19 @@ async def test_deterministic(ed: Editor):
 async def test_frame_interval(ed: Editor):
     await setup(ed)
     out = ed.scratch.root / "rec-interval"
-    r = await record(ed, frames=30, start_frame=30, fps=30, format="png", width=640, height=360,
-                     output=str(out), exit_play=True)
-    names = sorted(f.name for f in out.rglob("*.png"))
-    ed.check_eq(len(names), 30, f"{r}")
-    ed.check_eq((names[0], names[-1]), ("frame_0030.png", "frame_0059.png"))
-    ed.check_eq(r["startFrame"], 30)
-    state = await ed.call("get_play_state")
-    ed.check(state.get("state") in ("stopped", None) or state.get("playing") is False, f"Exit Play Mode stopped Play: {state}")
+    try:
+        r = await ed.call("record_game", frames=30, start_frame=30, fps=30, format="png", width=640, height=360,
+                          output=str(out), exit_play=True, timeout_seconds=900)
+        names = sorted(f.name for f in out.rglob("*.png"))
+        ed.check_eq(len(names), 30, f"{r}")
+        ed.check_eq((names[0], names[-1]), ("frame_0030.png", "frame_0059.png"))
+        ed.check_eq(r["startFrame"], 30)
+        state = await ed.call("get_play_state")
+        ed.check_eq(state["state"], "stopped", f"Exit Play Mode stopped Play: {state}")
+    finally:
+        state = await ed.call("get_play_state")
+        if state["state"] != "stopped":
+            await ed.call("play", action="stop")
 
 
 def ffprobe(path: Path) -> dict:

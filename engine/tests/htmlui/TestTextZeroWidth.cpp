@@ -168,8 +168,9 @@ TEST(TextZeroWidth, IgnorablesAreInvisibleAndZeroWidth){
         // four 10px Ahem squares, nothing for the ignorable
         EXPECT_FLOAT_EQ(total, 40.0f);
         for (const ShapedGlyph& glyph : glyphs){
-            if (glyph.cluster == 2)
+            if (glyph.cluster == 2){
                 EXPECT_FLOAT_EQ(glyph.xAdvance, 0.0f);
+            }
         }
     }
 
