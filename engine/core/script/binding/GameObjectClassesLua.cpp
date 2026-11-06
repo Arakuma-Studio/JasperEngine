@@ -6,6 +6,7 @@
 #include "object/spline/SplineAnimate.h"
 #include "object/spline/SplineExtrude.h"
 #include "object/spline/SplineInstantiate.h"
+#include "component/AudioSnapshotComponent.h"
 #include "component/ButtonComponent.h"
 #include "component/InputFieldComponent.h"
 #include "component/PanelComponent.h"
@@ -1265,6 +1266,10 @@ void LuaBinding::registerGameObjectClasses(lua_State *L){
         .addProperty("normalMatrix", &GameObject::getNormalMatrix)
         .addFunction("updateTransform", &GameObject::updateTransform)
 #ifdef JASPERENGINE_PHYSICS_2D
+        // the Mixer Snapshot action's component (S40 R24), nil without one
+        .addFunction("getAudioSnapshotComponent", [] (GameObject* self) -> AudioSnapshotComponent* {
+            return self->getScene()->findComponent<AudioSnapshotComponent>(self->getEntity());
+        })
         .addFunction("getRigidbody2D", &GameObject::getRigidbody2D)
         .addFunction("removeRigidbody2D", &GameObject::removeRigidbody2D)
         .addFunction("getCharacterController2D", &GameObject::getCharacterController2D)

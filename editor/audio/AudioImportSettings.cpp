@@ -44,6 +44,44 @@ bool readTrimKey(const YAML::Node& value, const char* key, AudioImportSettings::
     return false;
 }
 
+const char* const MUSIC_KEYS = "bpm, beats_per_bar, first_beat_ms";
+
+// The music block from either side (a YAML map or set_audio_import_settings' object), the same
+// rules: bpm is required, the others default; any other key is refused with the names
+template <typename Lookup>
+bool readMusic(const std::vector<std::string>& keys, Lookup number, AudioImportSettings::Music& out, std::string& error) {
+    out = AudioImportSettings::Music();
+    bool hasBpm = false;
+    for (const std::string& key : keys) {
+        double value = 0.0;
+        if (key != "bpm" && key != "beats_per_bar" && key != "first_beat_ms") {
+            error = "music." + key + " is not a key: music has " + MUSIC_KEYS;
+            return false;
+        }
+        if (!number(key, value)) {
+            error = "music." + key + " must be a number";
+            return false;
+        }
+        if (key == "bpm") {
+            out.bpm = value;
+            hasBpm = true;
+        } else if (key == "beats_per_bar") {
+            if (value != std::floor(value) || value < 1.0 || value > (double)AudioImportSettings::BEATS_PER_BAR_MAX) {
+                error = "music.beats_per_bar must be a whole number within 1 .. " + std::to_string(AudioImportSettings::BEATS_PER_BAR_MAX);
+                return false;
+            }
+            out.beatsPerBar = (int)value;
+        } else {
+            out.firstBeatMs = value;
+        }
+    }
+    if (!hasBpm) {
+        error = std::string("music needs bpm (") + MUSIC_KEYS + "; null removes the block)";
+        return false;
+    }
+    return true;
+}
+
 bool isKnownKey(const std::string& key) {
     if (key == "version") return true;
     const std::vector<std::string>& names = AudioImportSettings::keyNames();
@@ -64,8 +102,12 @@ int64_t framesOf(double ms, unsigned int rate) {
 
 const std::vector<std::string>& AudioImportSettings::keyNames() {
     static const std::vector<std::string> names = {"type", "gain_db", "trim_head_ms", "trim_tail_ms", "fade_in_ms", "fade_out_ms",
-                                                   "loop_start_ms", "loop_end_ms"};
+                                                   "loop_start_ms", "loop_end_ms", "music"};
     return names;
+}
+
+nlohmann::json AudioImportSettings::Music::toJson() const {
+    return {{"bpm", bpm}, {"beats_per_bar", beatsPerBar}, {"first_beat_ms", firstBeatMs}};
 }
 
 bool AudioImportSettings::sameSound(const AudioImportSettings& other) const {
@@ -74,11 +116,11 @@ bool AudioImportSettings::sameSound(const AudioImportSettings& other) const {
 }
 
 bool AudioImportSettings::operator==(const AudioImportSettings& other) const {
-    return type == other.type && sameSound(other) && YAML::Dump(unknown) == YAML::Dump(other.unknown);
+    return type == other.type && sameSound(other) && music == other.music && YAML::Dump(unknown) == YAML::Dump(other.unknown);
 }
 
 bool AudioImportSettings::isDefault() const {
-    return type.empty() && sameSound(AudioImportSettings()) && (!unknown.IsMap() || unknown.size() == 0);
+    return type.empty() && sameSound(AudioImportSettings()) && music.isDefault() && (!unknown.IsMap() || unknown.size() == 0);
 }
 
 bool AudioImportSettings::validate(std::string& error) const {
@@ -99,6 +141,15 @@ bool AudioImportSettings::validate(std::string& error) const {
     if (!std::isfinite(loopStartMs) || (loopStartMs < 0.0 && loopStartMs != -1.0)) return fail("loop_start_ms must be >= 0, or -1 for the trimmed start");
     if (!std::isfinite(loopEndMs) || (loopEndMs < 0.0 && loopEndMs != -1.0)) return fail("loop_end_ms must be >= 0, or -1 for the trimmed end");
     if (loopEndMs != -1.0 && loopEndMs <= std::max(loopStartMs, 0.0)) return fail("loop_end_ms must be after loop_start_ms");
+    if (!music.isDefault()) {
+        if (!std::isfinite(music.bpm) || music.bpm < BPM_MIN || music.bpm > BPM_MAX) {
+            return fail("music.bpm must be within " + numberText(BPM_MIN) + " .. " + numberText(BPM_MAX));
+        }
+        if (music.beatsPerBar < 1 || music.beatsPerBar > BEATS_PER_BAR_MAX) {
+            return fail("music.beats_per_bar must be a whole number within 1 .. " + std::to_string(BEATS_PER_BAR_MAX));
+        }
+        if (!std::isfinite(music.firstBeatMs) || music.firstBeatMs < 0.0) return fail("music.first_beat_ms must be >= 0 (from the file's start)");
+    }
     return true;
 }
 
@@ -135,6 +186,18 @@ bool AudioImportSettings::parse(const YAML::Node& section, AudioImportSettings& 
             ok = readNumberKey(value, "loop_start_ms", out.loopStartMs, error);
         } else if (key == "loop_end_ms") {
             ok = readNumberKey(value, "loop_end_ms", out.loopEndMs, error);
+        } else if (key == "music") {
+            if (!value.IsMap()) {
+                error = std::string("music must be a mapping of ") + MUSIC_KEYS;
+                return false;
+            }
+            std::vector<std::string> keys;
+            for (const auto& field : value) keys.push_back(field.first.as<std::string>(""));
+            ok = readMusic(keys, [&value](const std::string& name, double& number) { return numberOfNode(value[name], number); }, out.music, error);
+            if (ok && out.music.bpm == 0.0) {
+                error = "music.bpm must be within " + numberText(BPM_MIN) + " .. " + numberText(BPM_MAX);
+                return false;
+            }
         } else {
             if (!out.unknown.IsMap()) out.unknown = YAML::Node(YAML::NodeType::Map);
             out.unknown[key] = YAML::Clone(value);
@@ -171,6 +234,13 @@ YAML::Node AudioImportSettings::toYaml() const {
     if (fadeOutMs != 0.0) node["fade_out_ms"] = numberText(fadeOutMs);
     if (loopStartMs != -1.0) node["loop_start_ms"] = numberText(loopStartMs);
     if (loopEndMs != -1.0) node["loop_end_ms"] = numberText(loopEndMs);
+    if (!music.isDefault()) {
+        YAML::Node block(YAML::NodeType::Map);
+        block["bpm"] = numberText(music.bpm);
+        block["beats_per_bar"] = music.beatsPerBar;
+        block["first_beat_ms"] = numberText(music.firstBeatMs);
+        node["music"] = block;
+    }
     if (unknown.IsMap()) {
         for (const auto& entry : unknown) node[entry.first.as<std::string>("")] = YAML::Clone(entry.second);
     }
@@ -192,6 +262,7 @@ AudioImportSettings::Json AudioImportSettings::toJson() const {
     if (fadeOutMs != 0.0) out["fade_out_ms"] = fadeOutMs;
     if (loopStartMs != -1.0) out["loop_start_ms"] = loopStartMs;
     if (loopEndMs != -1.0) out["loop_end_ms"] = loopEndMs;
+    if (!music.isDefault()) out["music"] = music.toJson();
     return out;
 }
 
@@ -255,6 +326,27 @@ bool AudioImportSettings::apply(const Json& keys, std::string& error) {
             ok = numberKey(key, value, -1.0, next.loopStartMs);
         } else if (key == "loop_end_ms") {
             ok = numberKey(key, value, -1.0, next.loopEndMs);
+        } else if (key == "music") {
+            if (value.is_null()) {
+                next.music = Music();
+                continue;
+            }
+            if (!value.is_object()) {
+                error = std::string("music must be an object of ") + MUSIC_KEYS + " (null removes it)";
+                return false;
+            }
+            std::vector<std::string> names;
+            for (auto field = value.begin(); field != value.end(); ++field) names.push_back(field.key());
+            ok = readMusic(names, [&value](const std::string& name, double& number) {
+                const Json& field = value[name];
+                if (!field.is_number()) return false;
+                number = field.get<double>();
+                return true;
+            }, next.music, error);
+            if (ok && next.music.bpm == 0.0) {
+                error = "music.bpm must be within " + numberText(BPM_MIN) + " .. " + numberText(BPM_MAX) + " (null removes the block)";
+                return false;
+            }
         }
         if (!ok) return false;
     }
@@ -285,6 +377,11 @@ bool AudioImportSettings::resolve(uint64_t fileFrames, unsigned int sampleRate, 
     out.fadeOutFrames = (uint32_t)framesOf(fadeOutMs, sampleRate);
     out.loopStartFrame = loopStartMs < 0.0 ? -1 : framesOf(loopStartMs, sampleRate);
     out.loopEndFrame = loopEndMs < 0.0 ? -1 : framesOf(loopEndMs, sampleRate);
+    if (!music.isDefault()) {
+        out.bpm = (float)music.bpm;
+        out.beatsPerBar = music.beatsPerBar;
+        out.firstBeatFrame = framesOf(music.firstBeatMs, sampleRate);
+    }
     const int64_t regionEnd = total - tail;
     const int64_t loopFrom = out.loopStartFrame < 0 ? head : out.loopStartFrame;
     const int64_t loopTo = out.loopEndFrame < 0 ? regionEnd : out.loopEndFrame;
@@ -303,6 +400,11 @@ bool AudioImportSettings::resolve(uint64_t fileFrames, unsigned int sampleRate, 
                      {"loop_end_frame", out.loopEndFrame},
                      {"sample_rate", sampleRate},
                      {"frames", fileFrames}};
+        if (!music.isDefault()) {
+            (*resolved)["bpm"] = music.bpm;
+            (*resolved)["beats_per_bar"] = music.beatsPerBar;
+            (*resolved)["first_beat_frame"] = out.firstBeatFrame;
+        }
     }
     return true;
 }

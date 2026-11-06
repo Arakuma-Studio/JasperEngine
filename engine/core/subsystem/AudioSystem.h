@@ -53,6 +53,9 @@ namespace jasperengine{
 		// the Sound Event generator's seed in a deterministic run (Project Settings audio.seed);
 		// other runs draw one at each start
 		uint32_t seed = 1;
+		// the group music plays through when neither the call nor its event names one (Project
+		// Settings audio.music_group, docs/specs/S39-music.md R6); "" = Master
+		std::string musicGroup;
 	};
 
 	// One line of what happened to a voice, for AudioSystem::setVoiceObserver: every field is the
@@ -77,9 +80,9 @@ namespace jasperengine{
 		uint64_t instance = 0;
 		// the instance that stole it
 		uint64_t byInstance = 0;
-		// main, one_shot, point, free
+		// main, one_shot, point, free, cue (S40: a clip's sound cue)
 		const char* owner = "main";
-		// play, event, trigger, lua, cpp
+		// play, event, trigger, lua, cpp, animation (S40: a timeline started it)
 		const char* cause = "play";
 		const char* trigger = "";
 		float impactSpeed = -1.0f;
@@ -137,6 +140,10 @@ namespace jasperengine{
 		friend struct AudioSystemTestAccess;
 
     private:
+		// the music system: the one instance with no scene (musicSystem())
+		struct MusicSystemTag {};
+		explicit AudioSystem(MusicSystemTag);
+		static AudioSystem& musicSystem();
 		static bool inited;
 		// set when no backend opened at all: it is not tried again
 		static bool outputUnavailable;
@@ -221,6 +228,10 @@ namespace jasperengine{
 			// a free voice: its name in the lines, and its group when the play asked for one
 			const char* ownerName = nullptr;
 			const std::string* group = nullptr;
+			// output frames every voice waits before its own delay (a stinger's boundary, a timeline's
+			// place in the frame, S40 R5), and a timeline's speed scale
+			uint32_t delayFrames = 0;
+			float speedScale = 1.0f;
 		};
 		struct StartedPlay {
 			uint64_t instance = 0;
@@ -338,6 +349,11 @@ namespace jasperengine{
 		// ---- free voices: Audio::play and SoundHandle
 		enum class FreeValue { Volume, Pitch, Pan };
 		static SoundHandle playFree(const std::string& eventOrClip, const PlayOptions& options, const char* cause);
+		// A clip's sound cue (S40 R6): a free voice owned "cue", cause "animation", starting
+		// delayFrames output frames into this frame's mix
+		static SoundHandle playFreeFromTimeline(const std::string& eventOrClip, const PlayOptions& options, uint32_t delayFrames);
+		// stops it with a fade of `seconds`, its lines saying `reason` (a cue's state_exit: "cue_exit")
+		static void freeStopFaded(uint32_t id, uint32_t generation, float seconds, const char* reason);
 		// the voices of Audio.play, triggers and one-shots: all, or those on `group` or below it
 		static int stopFreeAndOneShots(const std::string& group);
 		static bool freeIsValid(uint32_t id, uint32_t generation);
@@ -363,6 +379,39 @@ namespace jasperengine{
 			PhysicsCallbackScope& operator=(const PhysicsCallbackScope&) = delete;
 		};
 		static bool isDeferringCalls();
+
+		// ---- the music system (docs/specs/S39-music.md): voices of no scene, which survive every
+		// load, under the voice budget, AudioSystem.stopAll and the pause rules like every voice
+		struct MusicVoiceRequest {
+			std::string groupId;
+			float volume = 1.0f;
+			float speed = 1.0f;
+			uint32_t delayFrames = 0;
+			bool ignoreListenerPause = false;
+			std::string clip;
+			std::string event;
+			std::string eventPath;
+		};
+		// a track's voice: owner and cause music, protected, priority 0. 0 when it did not start.
+		static unsigned int startMusicVoice(SoLoud::AudioSource& source, const MusicVoiceRequest& request);
+		// a stinger: a free voice of the music system; when it starts (at once, or at the frame's audio
+		// update inside a physics callback) resolve gives its delay in output frames and its group
+		// (a name; "" the event's output, else Master)
+		static SoundHandle playMusicStinger(const std::string& eventOrClip, std::function<uint32_t(std::string& group)> resolve);
+		// a voice the engine started and holds, still playing
+		static bool isVoicePlaying(unsigned int handle);
+		static void stopMusicVoice(unsigned int handle, const char* reason);
+		static void setMusicVoicePaused(unsigned int handle, bool paused);
+		// the music holds while the editor holds the game (its Play pause)
+		static bool isMusicHeld();
+		// once a frame, before the music's: its stingers' pause, fades and ends
+		static void updateMusicSystem(double unscaledSeconds);
+		// every voice of the music system stops: tracks and stingers
+		static void stopMusicSystem(const char* reason);
+		// the output frames this frame mixes: the deterministic driver's exactly, else the time's
+		static uint32_t getFrameMixFrames(double unscaledSeconds);
+		// runs `call` at the frame's audio update (a call made inside a physics callback, R13)
+		static void deferToAudioUpdate(std::function<void()> call);
 
 		static void stopAll();
 		// the game's pause of everything (Lua AudioSystem.pauseAll / resumeAll): the Master bus (every

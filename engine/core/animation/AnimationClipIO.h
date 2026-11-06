@@ -5,9 +5,10 @@
 // - Purpose: the one .anim parser and canonical writer, shared by the engine (AnimationClipPool),
 //   the editor document, MCP, the CLI checks and the tests.
 // - Thread-safety: pure functions of their arguments (no engine state): any thread.
-// - Format: UTF-8 JSON {"format": "jasperengine.anim", "version": 1 | 2, "guid", "frame_rate", "wrap",
+// - Format: UTF-8 JSON {"format": "jasperengine.anim", "version": 1 | 2 | 3, "guid", "frame_rate", "wrap",
 //   "length", "additive_reference" (only when not 0), "humanoid" (only when set), "tracks", "events",
-//   "preview", "source", unknown keys...}. Version 2 (anim-retarget 6.1) is written only for a clip
+//   "audio" (only when not empty), "preview", "source", unknown keys...}. Version 3 (S40) is written
+//   only for a clip with audio cues (ClipAudio.h); version 2 (anim-retarget 6.1) only for a clip
 //   with humanoid tracks ({"channel": "humanoid" | "humanoid_position", "bone", "keys"}: no path);
 //   every other clip is written as version 1, byte for byte as before. Humanoid keys accept
 //   {"angles": [dof1, dof2, twist]} degrees for the 22 slots (written back as quaternions).
@@ -50,9 +51,9 @@
 namespace jasperengine::anim{
 
     constexpr const char* ANIM_FORMAT = "jasperengine.anim";
-    // the newest version this engine reads and writes (humanoid clips); clips without humanoid
-    // tracks are written as version 1
-    constexpr int ANIM_VERSION = 2;
+    // the newest version this engine reads and writes (clips with audio cues); a humanoid clip
+    // without cues is written as version 2, any other clip as version 1
+    constexpr int ANIM_VERSION = 3;
     // humanoid track bones: the 22 slots, then the 33 extra bones (ClipTrackData::humanBone)
     constexpr int HUMANOID_TRACK_BONE_COUNT = 22 + 33;
     constexpr const char* ANIM_EXTENSION = ".anim";

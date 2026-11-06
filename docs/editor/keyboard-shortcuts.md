@@ -183,6 +183,7 @@ changes are kept in `shortcuts.yaml` in the editor's settings folder and apply t
 | Frame Selected Keys | F | Animation |
 | Frame All Keys | A | Animation |
 | Record | R | Animation |
+| Align Peak to Playhead | Shift+A | Animation |
 
 ## Pose Animation
 

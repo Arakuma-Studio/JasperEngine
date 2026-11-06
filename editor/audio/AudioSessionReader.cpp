@@ -76,7 +76,7 @@ bool AudioSessionReader::isVoiceKind(const std::string& kind) {
 
 bool AudioSessionReader::isMarkerKind(const std::string& kind) {
     static const std::set<std::string> kinds = {"marker", "input", "collision_2d", "collision_3d", "sensor_2d", "sensor_3d", "ui_press", "ui_click",
-                                                "ui_hover", "html_click", "animation_event", "spawn", "destroy", "scene_load"};
+                                                "ui_hover", "html_click", "animation_event", "cue", "spawn", "destroy", "scene_load"};
     return kinds.count(kind) > 0;
 }
 
@@ -237,7 +237,7 @@ AudioSessionReader::Json AudioSessionReader::report(const AudioSessionData& data
     out["groups"] = groups;
 
     // numbered over the whole session, so a moment keeps its number whatever the range
-    Json events = Json::array(), markers = Json::array(), mixer = Json::array();
+    Json events = Json::array(), markers = Json::array(), mixer = Json::array(), music = Json::array();
     int eventNumber = 0, markerNumber = 0;
     int eventsTotal = 0, markersTotal = 0;
     int started = 0, stopped = 0, stolen = 0, rejected = 0;
@@ -251,6 +251,8 @@ AudioSessionReader::Json AudioSessionReader::report(const AudioSessionData& data
         if (!data.inRange(line)) continue;
         if (kind == "mixer") {
             if ((int)mixer.size() < eventsLimit) mixer.push_back(line);
+        } else if (kind == "music") {
+            if ((int)music.size() < eventsLimit) music.push_back(line);
         } else if (voice) {
             eventsTotal++;
             if (kind == "voice_start") {
@@ -292,6 +294,8 @@ AudioSessionReader::Json AudioSessionReader::report(const AudioSessionData& data
     out["voices"] = {{"started", started}, {"stopped", stopped}, {"stolen", stolen}, {"rejected", rejected}, {"peak", voicesPeak(data, "")},
                      {"by_clip", clips}, {"by_event", eventStarts}};
     out["mixer"] = mixer;
+    // the music system's play, section, stinger ... lines (S39 R15), as written
+    if (!music.empty()) out["music"] = music;
     return out;
 }
 

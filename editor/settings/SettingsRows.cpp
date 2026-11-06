@@ -2429,6 +2429,29 @@ std::vector<Setting> mcpSettingsTable() {
 
         {
             Setting s;
+            s.key = "audio.music_group";
+            s.type = "string";
+            s.description = "The mixer group music plays through when neither Audio.playMusic nor its Sound Event names one (\"\" = Master).";
+            s.get = [](SettingsContext& ctx) { return Json(ctx.project()->getAudioSettings().musicGroup); };
+            s.set = [](SettingsContext& ctx, const Json& value, bool apply, std::string& error) {
+                std::string text;
+                if (!readString(value, text, error, 64)) return false;
+                if (!text.empty() && !AudioMixer::hasGroup(text)) {
+                    error = "no mixer group '" + text + "' (audio_mixer get lists them)";
+                    return false;
+                }
+                if (apply) {
+                    AudioSettings settings = ctx.project()->getAudioSettings();
+                    settings.musicGroup = text;
+                    ctx.project()->setAudioSettings(settings);
+                }
+                return true;
+            };
+            add(s);
+        }
+
+        {
+            Setting s;
             s.key = "audio.credits_file";
             s.type = "bool";
             s.description = "Exports write licenses/THIRD-PARTY-AUDIO.txt, the licences of the shipped clips with a provenance.";
@@ -3262,6 +3285,7 @@ const Placement placements[] = {
     // Project Settings > Audio
     {"audio.mixer", "Audio", "", "Audio Mixer", "mixer groups master bus sound music"},
     {"audio.default_output_group", "Audio", "", "Default Output Group", "mixer group master output audio source"},
+    {"audio.music_group", "Audio", "", "Music Group", "mixer group music track playlist playMusic stinger"},
     {"audio.max_real_voices", "Audio", "", "Max Real Voices", "voices virtual virtualised polyphony"},
     {"audio.max_voices", "Audio", "", "Max Voices", "voices polyphony priority"},
     {"audio.sample_rate", "Audio", "", "Sample Rate", "hz 22050 44100 48000 output frequency"},

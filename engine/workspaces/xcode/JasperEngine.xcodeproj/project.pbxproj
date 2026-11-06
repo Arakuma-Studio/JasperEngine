@@ -224,9 +224,7 @@
 		7105A56628B305B20092EA05 /* MathClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55E28B305B20092EA05 /* MathClassesLua.cpp */; };
 		7105A56728B305B20092EA05 /* MathClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55E28B305B20092EA05 /* MathClassesLua.cpp */; };
 		7105A56828B305B20092EA05 /* ECSClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55F28B305B20092EA05 /* ECSClassesLua.cpp */; };
-		0C2D79A4D21DA35E5D9265EE /* AudioClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 580859151FC722123AD7E27F /* AudioClassesLua.cpp */; };
 		7105A56928B305B20092EA05 /* ECSClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A55F28B305B20092EA05 /* ECSClassesLua.cpp */; };
-		77DF63EF5194D53B0D656C1E /* AudioClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 580859151FC722123AD7E27F /* AudioClassesLua.cpp */; };
 		7105A56A28B305B20092EA05 /* UtilClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A56028B305B20092EA05 /* UtilClassesLua.cpp */; };
 		7105A56B28B305B20092EA05 /* UtilClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A56028B305B20092EA05 /* UtilClassesLua.cpp */; };
 		7105A56C28B305B20092EA05 /* IOClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 7105A56128B305B20092EA05 /* IOClassesLua.cpp */; };
@@ -904,14 +902,8 @@
 		717AD962290B6521007D7DB5 /* soloud_coreaudio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 717AD960290B6521007D7DB5 /* soloud_coreaudio.cpp */; };
 		717AD964290B65E6007D7DB5 /* AudioSourceComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 717AD963290B65E6007D7DB5 /* AudioSourceComponent.h */; };
 		717AD968290B6602007D7DB5 /* AudioSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 717AD966290B6602007D7DB5 /* AudioSource.cpp */; };
-		49AAF30A0D031AD5B7F18D01 /* Audio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 91E2E91D60773F6DD8F58582 /* Audio.cpp */; };
-		77D0127BCAFB74043C71A5E2 /* SoundHandle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C7500E88C8BEDCA90F98E1CC /* SoundHandle.cpp */; };
 		717AD969290B6602007D7DB5 /* AudioSource.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 717AD966290B6602007D7DB5 /* AudioSource.cpp */; };
-		DDCC049D2840701EBC620052 /* Audio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 91E2E91D60773F6DD8F58582 /* Audio.cpp */; };
-		AF254C34FB5AD88B48EE5CFE /* SoundHandle.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C7500E88C8BEDCA90F98E1CC /* SoundHandle.cpp */; };
 		717AD96A290B6602007D7DB5 /* AudioSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 717AD967290B6602007D7DB5 /* AudioSource.h */; };
-		FAFA2B1F41C5D0E5DA6C2BFF /* Audio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4C95236AF5D7CCB196E9509E /* Audio.h */; };
-		02EE828AF84F2652897BE65C /* SoundHandle.h in Headers */ = {isa = PBXBuildFile; fileRef = 646AFEC1B46DF0693170D03A /* SoundHandle.h */; };
 		717AD96D290B661A007D7DB5 /* AudioSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 717AD96B290B661A007D7DB5 /* AudioSystem.cpp */; };
 		717AD96E290B661A007D7DB5 /* AudioSystem.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 717AD96B290B661A007D7DB5 /* AudioSystem.cpp */; };
 		717AD96F290B661A007D7DB5 /* AudioSystem.h in Headers */ = {isa = PBXBuildFile; fileRef = 717AD96C290B661A007D7DB5 /* AudioSystem.h */; };
@@ -4385,27 +4377,10 @@
 		4A534E47CB4A1456D094C81E /* VisibleList.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47261DED0CDC733CE1 /* VisibleList.cpp */; };
 		4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478899E2BB41CC207E /* VisibleList.h */; };
 		4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
-		6A7118106D6EA9E025FF56AE /* SoundEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DB7019B39AF614012054DA5E /* SoundEvent.cpp */; };
-		1F70A85CE4C2584660C21362 /* AudioCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C533043340598FFEB3E01C43 /* AudioCapture.cpp */; };
-		50707794903ED9F888E17A6F /* AudioClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03C39FEABD7E9AF5A6AD76D3 /* AudioClock.cpp */; };
-		BE1B94E8CA4AED6045DC5673 /* AudioMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB2E17149A21B4C3142E753D /* AudioMarkers.cpp */; };
-		9CBFA681B54EAF3E19D00277 /* AudioTap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AAA5319CF6C73D44C2B8BBF7 /* AudioTap.cpp */; };
-		72B4DC6AE5B548B1BC832EBA /* SoundEventIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 123AC69CFE92F176D0A568E6 /* SoundEventIO.cpp */; };
-		A78CF1042BA5D64E45268DC4 /* SoundEventLibrary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 37B5B65C45EB9F453D8FDC9C /* SoundEventLibrary.cpp */; };
 		4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47238F638B6921C9C5 /* AudioMeter.cpp */; };
-		11F1AE715F0A0614ECA469C6 /* SoundEvent.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DB7019B39AF614012054DA5E /* SoundEvent.cpp */; };
-		7248B386B6B3783E88E1C9C6 /* AudioCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = C533043340598FFEB3E01C43 /* AudioCapture.cpp */; };
-		88AE688C456E38145B2C4EEC /* AudioClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 03C39FEABD7E9AF5A6AD76D3 /* AudioClock.cpp */; };
-		BB00620E76B48D4DD8574053 /* AudioMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = BB2E17149A21B4C3142E753D /* AudioMarkers.cpp */; };
-		BEBD103A6D5839CCA2DDA6EE /* AudioTap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = AAA5319CF6C73D44C2B8BBF7 /* AudioTap.cpp */; };
-		B577E1E7BF70E31945BC7A4C /* SoundEventIO.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 123AC69CFE92F176D0A568E6 /* SoundEventIO.cpp */; };
-		D8FD68E66EE7FAEB0594B81D /* SoundEventLibrary.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 37B5B65C45EB9F453D8FDC9C /* SoundEventLibrary.cpp */; };
 		4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
 		4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B2A2155B16BB00CE /* TruePeak.cpp */; };
 		4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4799D5B065A0FD015C /* AudioMeter.h */; };
-		B94B258C4B9A7433CB78D2E2 /* SoundEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 50870FBC7CC44ECE5641FD42 /* SoundEvent.h */; };
-		0A650F336F02FBB563C21AB6 /* SoundEventIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 27BD88F4FE5A732EAC00E7DF /* SoundEventIO.h */; };
-		857488DF62383150A89428AA /* SoundEventLibrary.h in Headers */ = {isa = PBXBuildFile; fileRef = 2A1951E3B5802671A54EC462 /* SoundEventLibrary.h */; };
 		4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47EA336A0838677E68 /* TruePeak.h */; };
 		4A534E4752DDD45F48609CA1 /* GltfNormalize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478563EFBFE59A2620 /* GltfNormalize.cpp */; };
 		4A534E4753ECCC66C0BFD960 /* GltfNormalize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E478563EFBFE59A2620 /* GltfNormalize.cpp */; };
@@ -4462,6 +4437,32 @@
 		4A534E4714F124B7093B7DFD /* ModelCpuData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47297026DDD66F700A /* ModelCpuData.cpp */; };
 		4A534E47F347D8CAEA5F4E40 /* ModelCpuData.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47297026DDD66F700A /* ModelCpuData.cpp */; };
 		4A534E4727D811DBFC972943 /* ModelCpuData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479B0FAC56BA3B9CFB /* ModelCpuData.h */; };
+		4A534E47C51C368A5C99A423 /* AudioCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B73414AD69BCE3B9 /* AudioCapture.cpp */; };
+		4A534E47C7CF6DAC1F5BA41D /* AudioCapture.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B73414AD69BCE3B9 /* AudioCapture.cpp */; };
+		4A534E478FAA9EE506FB4F58 /* AudioClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6EB0BA248C991A /* AudioClock.cpp */; };
+		4A534E47FA249C28C2C699FA /* AudioClock.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E470F6EB0BA248C991A /* AudioClock.cpp */; };
+		4A534E47416CECF929590CD2 /* AudioMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9DD7119D41A8D75 /* AudioMarkers.cpp */; };
+		4A534E471A1F976B2770BB4D /* AudioMarkers.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C9DD7119D41A8D75 /* AudioMarkers.cpp */; };
+		4A534E47895A611EBD74FD14 /* AudioTap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B486A99BC6CE00DA /* AudioTap.cpp */; };
+		4A534E476F895032CF4A9482 /* AudioTap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47B486A99BC6CE00DA /* AudioTap.cpp */; };
+		4A534E471EB83A4ACAAE855A /* ClipAudio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C6982B721B359B07 /* ClipAudio.cpp */; };
+		4A534E47F32AF82FE60C3896 /* ClipAudio.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C6982B721B359B07 /* ClipAudio.cpp */; };
+		4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */; };
+		4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */; };
+		4A534E4752B4468DE06775EE /* ClipAudio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */; };
+		4A534E475ED7F8380EA7B62F /* AudioCapture.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4766910C7974E5EC6E /* AudioCapture.h */; };
+		4A534E472614E8DC45B9E9EB /* AudioClock.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479C42ED67E272320E /* AudioClock.h */; };
+		4A534E47375E7096D68E1B83 /* AudioImport.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478F87929ECAF99530 /* AudioImport.h */; };
+		4A534E47C7F6195C377CC47F /* AudioMarkers.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47CAAD46B70D970B81 /* AudioMarkers.h */; };
+		4A534E473E4A21B9332ED4EB /* AudioTap.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E472CE48F231AFCFA58 /* AudioTap.h */; };
+		4A534E47BEB5742F55E91E08 /* ClipSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476C6912F8BA64614A /* ClipSource.h */; };
+		4A534E47768AC542AC6CDFAD /* SoundEvent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E475196A86E3CE85658 /* SoundEvent.h */; };
+		4A534E47BAAAE79CEDF7C7B1 /* SoundEventIO.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E478989D5CF2F0ED94E /* SoundEventIO.h */; };
+		4A534E47E707C6CB4E1BB995 /* SoundEventLibrary.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4775A4EF3B53EE0135 /* SoundEventLibrary.h */; };
+		4A534E47B2EE32AF175D8A71 /* TimelineAudio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47636F8B5454FF632F /* TimelineAudio.h */; };
+		4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */; };
+		4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470C31E68F4C6398B1 /* Audio.h */; };
+		4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4779D650DFEE40600C /* SoundHandle.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -5055,7 +5056,6 @@
 		7105A55D28B305B20092EA05 /* CoreClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = CoreClassesLua.cpp; sourceTree = "<group>"; };
 		7105A55E28B305B20092EA05 /* MathClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = MathClassesLua.cpp; sourceTree = "<group>"; };
 		7105A55F28B305B20092EA05 /* ECSClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ECSClassesLua.cpp; sourceTree = "<group>"; };
-		580859151FC722123AD7E27F /* AudioClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioClassesLua.cpp; sourceTree = "<group>"; };
 		7105A56028B305B20092EA05 /* UtilClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UtilClassesLua.cpp; sourceTree = "<group>"; };
 		7105A56128B305B20092EA05 /* IOClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = IOClassesLua.cpp; sourceTree = "<group>"; };
 		7105CAA62AD61BD5007C91BA /* JoltPhysicsAux.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = JoltPhysicsAux.h; sourceTree = "<group>"; };
@@ -5852,11 +5852,7 @@
 		717AD960290B6521007D7DB5 /* soloud_coreaudio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = soloud_coreaudio.cpp; sourceTree = "<group>"; };
 		717AD963290B65E6007D7DB5 /* AudioSourceComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSourceComponent.h; sourceTree = "<group>"; };
 		717AD966290B6602007D7DB5 /* AudioSource.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSource.cpp; sourceTree = "<group>"; };
-		91E2E91D60773F6DD8F58582 /* Audio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = Audio.cpp; sourceTree = "<group>"; };
-		C7500E88C8BEDCA90F98E1CC /* SoundHandle.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundHandle.cpp; sourceTree = "<group>"; };
 		717AD967290B6602007D7DB5 /* AudioSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSource.h; sourceTree = "<group>"; };
-		4C95236AF5D7CCB196E9509E /* Audio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Audio.h; sourceTree = "<group>"; };
-		646AFEC1B46DF0693170D03A /* SoundHandle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundHandle.h; sourceTree = "<group>"; };
 		717AD96B290B661A007D7DB5 /* AudioSystem.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioSystem.cpp; sourceTree = "<group>"; };
 		717AD96C290B661A007D7DB5 /* AudioSystem.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSystem.h; sourceTree = "<group>"; };
 		717AD970290B67A5007D7DB5 /* AVFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVFoundation.framework; path = System/Library/Frameworks/AVFoundation.framework; sourceTree = SDKROOT; };
@@ -8671,18 +8667,8 @@
 		4A534E47261DED0CDC733CE1 /* VisibleList.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = VisibleList.cpp; sourceTree = "<group>"; };
 		4A534E478899E2BB41CC207E /* VisibleList.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = VisibleList.h; sourceTree = "<group>"; };
 		4A534E47238F638B6921C9C5 /* AudioMeter.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMeter.cpp; sourceTree = "<group>"; };
-		DB7019B39AF614012054DA5E /* SoundEvent.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEvent.cpp; sourceTree = "<group>"; };
-		C533043340598FFEB3E01C43 /* AudioCapture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioCapture.cpp; sourceTree = "<group>"; };
-		03C39FEABD7E9AF5A6AD76D3 /* AudioClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioClock.cpp; sourceTree = "<group>"; };
-		BB2E17149A21B4C3142E753D /* AudioMarkers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMarkers.cpp; sourceTree = "<group>"; };
-		AAA5319CF6C73D44C2B8BBF7 /* AudioTap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioTap.cpp; sourceTree = "<group>"; };
-		123AC69CFE92F176D0A568E6 /* SoundEventIO.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEventIO.cpp; sourceTree = "<group>"; };
-		37B5B65C45EB9F453D8FDC9C /* SoundEventLibrary.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = SoundEventLibrary.cpp; sourceTree = "<group>"; };
 		4A534E47B2A2155B16BB00CE /* TruePeak.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = TruePeak.cpp; sourceTree = "<group>"; };
 		4A534E4799D5B065A0FD015C /* AudioMeter.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioMeter.h; sourceTree = "<group>"; };
-		50870FBC7CC44ECE5641FD42 /* SoundEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEvent.h; sourceTree = "<group>"; };
-		27BD88F4FE5A732EAC00E7DF /* SoundEventIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEventIO.h; sourceTree = "<group>"; };
-		2A1951E3B5802671A54EC462 /* SoundEventLibrary.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEventLibrary.h; sourceTree = "<group>"; };
 		4A534E47EA336A0838677E68 /* TruePeak.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TruePeak.h; sourceTree = "<group>"; };
 		4A534E478563EFBFE59A2620 /* GltfNormalize.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = GltfNormalize.cpp; sourceTree = "<group>"; };
 		4A534E479D83C26E146CE8A0 /* GltfNormalize.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = GltfNormalize.h; sourceTree = "<group>"; };
@@ -8722,6 +8708,26 @@
 		4A534E4760EC6F30B7FC19D5 /* LinkedFolders.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = LinkedFolders.h; sourceTree = "<group>"; };
 		4A534E47297026DDD66F700A /* ModelCpuData.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ModelCpuData.cpp; sourceTree = "<group>"; };
 		4A534E479B0FAC56BA3B9CFB /* ModelCpuData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ModelCpuData.h; sourceTree = "<group>"; };
+		4A534E47B73414AD69BCE3B9 /* AudioCapture.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioCapture.cpp; sourceTree = "<group>"; };
+		4A534E470F6EB0BA248C991A /* AudioClock.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioClock.cpp; sourceTree = "<group>"; };
+		4A534E47C9DD7119D41A8D75 /* AudioMarkers.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioMarkers.cpp; sourceTree = "<group>"; };
+		4A534E47B486A99BC6CE00DA /* AudioTap.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioTap.cpp; sourceTree = "<group>"; };
+		4A534E47C6982B721B359B07 /* ClipAudio.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = ClipAudio.cpp; sourceTree = "<group>"; };
+		4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = AudioClassesLua.cpp; sourceTree = "<group>"; };
+		4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ClipAudio.h; sourceTree = "<group>"; };
+		4A534E4766910C7974E5EC6E /* AudioCapture.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioCapture.h; sourceTree = "<group>"; };
+		4A534E479C42ED67E272320E /* AudioClock.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioClock.h; sourceTree = "<group>"; };
+		4A534E478F87929ECAF99530 /* AudioImport.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioImport.h; sourceTree = "<group>"; };
+		4A534E47CAAD46B70D970B81 /* AudioMarkers.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioMarkers.h; sourceTree = "<group>"; };
+		4A534E472CE48F231AFCFA58 /* AudioTap.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioTap.h; sourceTree = "<group>"; };
+		4A534E476C6912F8BA64614A /* ClipSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ClipSource.h; sourceTree = "<group>"; };
+		4A534E475196A86E3CE85658 /* SoundEvent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEvent.h; sourceTree = "<group>"; };
+		4A534E478989D5CF2F0ED94E /* SoundEventIO.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEventIO.h; sourceTree = "<group>"; };
+		4A534E4775A4EF3B53EE0135 /* SoundEventLibrary.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundEventLibrary.h; sourceTree = "<group>"; };
+		4A534E47636F8B5454FF632F /* TimelineAudio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = TimelineAudio.h; sourceTree = "<group>"; };
+		4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSnapshotComponent.h; sourceTree = "<group>"; };
+		4A534E470C31E68F4C6398B1 /* Audio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Audio.h; sourceTree = "<group>"; };
+		4A534E4779D650DFEE40600C /* SoundHandle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundHandle.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -9260,7 +9266,6 @@
 				7185BF8F28BAFC2000B82865 /* ActionClassesLua.cpp */,
 				7105A55D28B305B20092EA05 /* CoreClassesLua.cpp */,
 				7105A55F28B305B20092EA05 /* ECSClassesLua.cpp */,
-				580859151FC722123AD7E27F /* AudioClassesLua.cpp */,
 				7105A56128B305B20092EA05 /* IOClassesLua.cpp */,
 				7105A55E28B305B20092EA05 /* MathClassesLua.cpp */,
 				7105A55C28B305B20092EA05 /* GameObjectClassesLua.cpp */,
@@ -9283,6 +9288,7 @@
 				4A534E47C4CB6F074423D782 /* NetClassesLua.h */,
 				4A534E47D19A753B7302BC7B /* ParticleClassesLua.cpp */,
 				4A534E477E5EE04810DE8E23 /* NativeClassesLua.cpp */,
+				4A534E47C0ABB79F12CDD142 /* AudioClassesLua.cpp */,
 			);
 			path = binding;
 			sourceTree = "<group>";
@@ -10189,6 +10195,8 @@
 				4A534E47D21FB37D2CD0BAC9 /* HumanoidClip.h */,
 				4A534E4716571C4B1C05C647 /* PropertyBindings.cpp */,
 				4A534E474F5A325E3E0B7DBB /* PropertyBindings.h */,
+				4A534E47C6982B721B359B07 /* ClipAudio.cpp */,
+				4A534E47C3FC7FC23123CAB8 /* ClipAudio.h */,
 			);
 			path = animation;
 			sourceTree = "<group>";
@@ -10208,19 +10216,23 @@
 				4A534E47E1B079449B612515 /* AudioFileCheck.cpp */,
 				4A534E478C2A964FA571E181 /* AudioFileCheck.h */,
 				4A534E47238F638B6921C9C5 /* AudioMeter.cpp */,
-				DB7019B39AF614012054DA5E /* SoundEvent.cpp */,
-				C533043340598FFEB3E01C43 /* AudioCapture.cpp */,
-				03C39FEABD7E9AF5A6AD76D3 /* AudioClock.cpp */,
-				BB2E17149A21B4C3142E753D /* AudioMarkers.cpp */,
-				AAA5319CF6C73D44C2B8BBF7 /* AudioTap.cpp */,
-				123AC69CFE92F176D0A568E6 /* SoundEventIO.cpp */,
-				37B5B65C45EB9F453D8FDC9C /* SoundEventLibrary.cpp */,
 				4A534E47B2A2155B16BB00CE /* TruePeak.cpp */,
 				4A534E4799D5B065A0FD015C /* AudioMeter.h */,
-				50870FBC7CC44ECE5641FD42 /* SoundEvent.h */,
-				27BD88F4FE5A732EAC00E7DF /* SoundEventIO.h */,
-				2A1951E3B5802671A54EC462 /* SoundEventLibrary.h */,
 				4A534E47EA336A0838677E68 /* TruePeak.h */,
+				4A534E47B73414AD69BCE3B9 /* AudioCapture.cpp */,
+				4A534E470F6EB0BA248C991A /* AudioClock.cpp */,
+				4A534E47C9DD7119D41A8D75 /* AudioMarkers.cpp */,
+				4A534E47B486A99BC6CE00DA /* AudioTap.cpp */,
+				4A534E4766910C7974E5EC6E /* AudioCapture.h */,
+				4A534E479C42ED67E272320E /* AudioClock.h */,
+				4A534E478F87929ECAF99530 /* AudioImport.h */,
+				4A534E47CAAD46B70D970B81 /* AudioMarkers.h */,
+				4A534E472CE48F231AFCFA58 /* AudioTap.h */,
+				4A534E476C6912F8BA64614A /* ClipSource.h */,
+				4A534E475196A86E3CE85658 /* SoundEvent.h */,
+				4A534E478989D5CF2F0ED94E /* SoundEventIO.h */,
+				4A534E4775A4EF3B53EE0135 /* SoundEventLibrary.h */,
+				4A534E47636F8B5454FF632F /* TimelineAudio.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -10901,6 +10913,7 @@
 				4A534E47C9EB4F5CD128ABB8 /* VideoPlayerComponent.h */,
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
+				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11623,11 +11636,9 @@
 			isa = PBXGroup;
 			children = (
 				717AD966290B6602007D7DB5 /* AudioSource.cpp */,
-				91E2E91D60773F6DD8F58582 /* Audio.cpp */,
-				C7500E88C8BEDCA90F98E1CC /* SoundHandle.cpp */,
 				717AD967290B6602007D7DB5 /* AudioSource.h */,
-				4C95236AF5D7CCB196E9509E /* Audio.h */,
-				646AFEC1B46DF0693170D03A /* SoundHandle.h */,
+				4A534E470C31E68F4C6398B1 /* Audio.h */,
+				4A534E4779D650DFEE40600C /* SoundHandle.h */,
 			);
 			path = sound;
 			sourceTree = "<group>";
@@ -14930,8 +14941,6 @@
 				175DCCC23022C5E9008C19EC /* Mirror.h in Headers */,
 				71E824962A9C242B00C8E6F2 /* PhysicsSystem.h in Headers */,
 				717AD96A290B6602007D7DB5 /* AudioSource.h in Headers */,
-				FAFA2B1F41C5D0E5DA6C2BFF /* Audio.h in Headers */,
-				02EE828AF84F2652897BE65C /* SoundHandle.h in Headers */,
 				71F2254D2C58740F006ED3CA /* Points.h in Headers */,
 				71ABBD382791167A001CE3AF /* UIComponent.h in Headers */,
 				71BE623E25B1DB9E006D6E02 /* LuaScript.h in Headers */,
@@ -15468,9 +15477,6 @@
 				4A534E47FECCE5A047F3569C /* UIDocumentSystemNone.h in Headers */,
 				4A534E47F01A7D2355E67B37 /* VisibleList.h in Headers */,
 				4A534E47A5B06992D7443434 /* AudioMeter.h in Headers */,
-				B94B258C4B9A7433CB78D2E2 /* SoundEvent.h in Headers */,
-				0A650F336F02FBB563C21AB6 /* SoundEventIO.h in Headers */,
-				857488DF62383150A89428AA /* SoundEventLibrary.h in Headers */,
 				4A534E4743D9DE5C59F781F2 /* TruePeak.h in Headers */,
 				4A534E47B1320D7F30111064 /* GltfNormalize.h in Headers */,
 				4A534E470088295FA52EEF59 /* Device.h in Headers */,
@@ -15493,6 +15499,20 @@
 				4A534E4798C6BB69B8F4CB9F /* CookedModels.h in Headers */,
 				4A534E473B73F5CF696B8061 /* LinkedFolders.h in Headers */,
 				4A534E4727D811DBFC972943 /* ModelCpuData.h in Headers */,
+				4A534E4752B4468DE06775EE /* ClipAudio.h in Headers */,
+				4A534E475ED7F8380EA7B62F /* AudioCapture.h in Headers */,
+				4A534E472614E8DC45B9E9EB /* AudioClock.h in Headers */,
+				4A534E47375E7096D68E1B83 /* AudioImport.h in Headers */,
+				4A534E47C7F6195C377CC47F /* AudioMarkers.h in Headers */,
+				4A534E473E4A21B9332ED4EB /* AudioTap.h in Headers */,
+				4A534E47BEB5742F55E91E08 /* ClipSource.h in Headers */,
+				4A534E47768AC542AC6CDFAD /* SoundEvent.h in Headers */,
+				4A534E47BAAAE79CEDF7C7B1 /* SoundEventIO.h in Headers */,
+				4A534E47E707C6CB4E1BB995 /* SoundEventLibrary.h in Headers */,
+				4A534E47B2EE32AF175D8A71 /* TimelineAudio.h in Headers */,
+				4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */,
+				4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */,
+				4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -17269,7 +17289,6 @@
 				713D8292259D307E00567F9F /* Log.cpp in Sources */,
 				7157344B2D9A23A40078952E /* OBB.cpp in Sources */,
 				7105A56928B305B20092EA05 /* ECSClassesLua.cpp in Sources */,
-				77DF63EF5194D53B0D656C1E /* AudioClassesLua.cpp in Sources */,
 				71451BDD270CA17F00712643 /* RotationTween.cpp in Sources */,
 				175DCCB8300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */,
 				4A9684AF768263DF37FE2640 /* VolumetricClouds.cpp in Sources */,
@@ -17388,8 +17407,6 @@
 				713D82A0259D307F00567F9F /* Matrix4.cpp in Sources */,
 				713D82A1259D307F00567F9F /* Matrix3.cpp in Sources */,
 				717AD969290B6602007D7DB5 /* AudioSource.cpp in Sources */,
-				DDCC049D2840701EBC620052 /* Audio.cpp in Sources */,
-				AF254C34FB5AD88B48EE5CFE /* SoundHandle.cpp in Sources */,
 				713D82A2259D307F00567F9F /* Rect.cpp in Sources */,
 				713D82A3259D307F00567F9F /* Quaternion.cpp in Sources */,
 				17235ADD2FD2F66D00AF8D04 /* Progressbar.cpp in Sources */,
@@ -17995,13 +18012,6 @@
 				4A534E4709F8387E7A04C6A8 /* PlayerModules.cpp in Sources */,
 				4A534E47D3FE7A3BDC14E1FD /* VisibleList.cpp in Sources */,
 				4A534E4723302010C286F771 /* AudioMeter.cpp in Sources */,
-				6A7118106D6EA9E025FF56AE /* SoundEvent.cpp in Sources */,
-				1F70A85CE4C2584660C21362 /* AudioCapture.cpp in Sources */,
-				50707794903ED9F888E17A6F /* AudioClock.cpp in Sources */,
-				BE1B94E8CA4AED6045DC5673 /* AudioMarkers.cpp in Sources */,
-				9CBFA681B54EAF3E19D00277 /* AudioTap.cpp in Sources */,
-				72B4DC6AE5B548B1BC832EBA /* SoundEventIO.cpp in Sources */,
-				A78CF1042BA5D64E45268DC4 /* SoundEventLibrary.cpp in Sources */,
 				4A534E477A594ED04CE4A83A /* TruePeak.cpp in Sources */,
 				4A534E4752DDD45F48609CA1 /* GltfNormalize.cpp in Sources */,
 				4A534E4747DC7ED994006F86 /* Device.cpp in Sources */,
@@ -18020,6 +18030,12 @@
 				4A534E474522911DC0F0BCB9 /* CookedModels.cpp in Sources */,
 				4A534E474B0005987EBB5BD7 /* LinkedFolders.cpp in Sources */,
 				4A534E4714F124B7093B7DFD /* ModelCpuData.cpp in Sources */,
+				4A534E47C51C368A5C99A423 /* AudioCapture.cpp in Sources */,
+				4A534E478FAA9EE506FB4F58 /* AudioClock.cpp in Sources */,
+				4A534E47416CECF929590CD2 /* AudioMarkers.cpp in Sources */,
+				4A534E47895A611EBD74FD14 /* AudioTap.cpp in Sources */,
+				4A534E471EB83A4ACAAE855A /* ClipAudio.cpp in Sources */,
+				4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18090,7 +18106,6 @@
 				7162FE0D2596A5BE0075B97D /* SokolBuffer.cpp in Sources */,
 				7157344D2D9A23A40078952E /* OBB.cpp in Sources */,
 				7105A56828B305B20092EA05 /* ECSClassesLua.cpp in Sources */,
-				0C2D79A4D21DA35E5D9265EE /* AudioClassesLua.cpp in Sources */,
 				71451BDC270CA17F00712643 /* RotationTween.cpp in Sources */,
 				175DCCB7300FA1F2008C19EC /* ReflectionProbe.cpp in Sources */,
 				15CFD6E14E8C4522FE74222E /* VolumetricClouds.cpp in Sources */,
@@ -18225,8 +18240,6 @@
 				7162FD2A25963AE00075B97D /* Vector4.cpp in Sources */,
 				7162FD2B25963AE00075B97D /* Vector3.cpp in Sources */,
 				717AD968290B6602007D7DB5 /* AudioSource.cpp in Sources */,
-				49AAF30A0D031AD5B7F18D01 /* Audio.cpp in Sources */,
-				77D0127BCAFB74043C71A5E2 /* SoundHandle.cpp in Sources */,
 				7162FD2D25963AE00075B97D /* Vector2.cpp in Sources */,
 				7162FD2E25963AE00075B97D /* Matrix4.cpp in Sources */,
 				17235ADF2FD2F66D00AF8D04 /* Progressbar.cpp in Sources */,
@@ -18816,13 +18829,6 @@
 				4A534E479566A601849C4718 /* PlayerModules.cpp in Sources */,
 				4A534E47CB4A1456D094C81E /* VisibleList.cpp in Sources */,
 				4A534E47E266DA1D78E79E92 /* AudioMeter.cpp in Sources */,
-				11F1AE715F0A0614ECA469C6 /* SoundEvent.cpp in Sources */,
-				7248B386B6B3783E88E1C9C6 /* AudioCapture.cpp in Sources */,
-				88AE688C456E38145B2C4EEC /* AudioClock.cpp in Sources */,
-				BB00620E76B48D4DD8574053 /* AudioMarkers.cpp in Sources */,
-				BEBD103A6D5839CCA2DDA6EE /* AudioTap.cpp in Sources */,
-				B577E1E7BF70E31945BC7A4C /* SoundEventIO.cpp in Sources */,
-				D8FD68E66EE7FAEB0594B81D /* SoundEventLibrary.cpp in Sources */,
 				4A534E47A5320CCA6F423974 /* TruePeak.cpp in Sources */,
 				4A534E4753ECCC66C0BFD960 /* GltfNormalize.cpp in Sources */,
 				4A534E470FBB2B1FE7122390 /* Device.cpp in Sources */,
@@ -18841,6 +18847,12 @@
 				4A534E47DD85AEB50F1EF42F /* CookedModels.cpp in Sources */,
 				4A534E47C0EB4F74C00457B3 /* LinkedFolders.cpp in Sources */,
 				4A534E47F347D8CAEA5F4E40 /* ModelCpuData.cpp in Sources */,
+				4A534E47C7CF6DAC1F5BA41D /* AudioCapture.cpp in Sources */,
+				4A534E47FA249C28C2C699FA /* AudioClock.cpp in Sources */,
+				4A534E471A1F976B2770BB4D /* AudioMarkers.cpp in Sources */,
+				4A534E476F895032CF4A9482 /* AudioTap.cpp in Sources */,
+				4A534E47F32AF82FE60C3896 /* ClipAudio.cpp in Sources */,
+				4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

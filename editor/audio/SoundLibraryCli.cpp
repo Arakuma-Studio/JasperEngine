@@ -6,6 +6,7 @@
 #include "AudioAnalysis.h"
 #include "AudioImages.h"
 #include "AudioImportSettings.h"
+#include "AudioMusicGrid.h"
 #include "SoundEssentials.h"
 #include "SoundLibrary.h"
 #include "SoundManifest.h"
@@ -290,6 +291,14 @@ void analyzeInput(const Input& input, const AnalyzeOptions& options, bool keepSi
     }
     out.item = AudioAnalysis::fileItem(item, 0, input.path, labels, options.full, SoundTypes::HEAD_SILENCE_MAX_MS);
     if (!applied.is_null()) out.item["import"] = std::move(applied);
+    // the tempo grid analyze_audio gives a loop or a music clip (S39 R17), detected from the file as the
+    // tool does; what depends on a clip's stored tempo (its .meta in a project) has no clip here
+    if (out.item.value("kind", std::string()) == SoundTypes::LOOP || out.item.value("type", std::string()) == "music") {
+        const Json silence = cached.value("silence", Json::object());
+        const double headMs = silence.value("head_ms", Json(0.0)).is_number() ? silence["head_ms"].get<double>() : 0.0;
+        const double tailMs = silence.value("tail_ms", Json(0.0)).is_number() ? silence["tail_ms"].get<double>() : 0.0;
+        out.item["music"] = AudioMusicGrid::item(AudioMusicGrid::detect(signal), nullptr, headMs, tailMs);
+    }
     if (keepSignal) out.signal = std::move(signal);
     out.ok = true;
 }

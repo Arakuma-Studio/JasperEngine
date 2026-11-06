@@ -5,6 +5,8 @@
 
 #include "Out.h"
 #include "Project.h"
+#include "audio/AudioFileCheck.h"
+#include "audio/AudioImportSettings.h"
 #include "audio/AudioMixer.h"
 #include "command/CommandHistory.h"
 #include "command/type/WriteFilesCmd.h"
@@ -12,6 +14,7 @@
 #include "util/ProjectChecks.h"
 #include "util/ProjectFileWrites.h"
 
+#include <algorithm>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -153,15 +156,20 @@ namespace {
         };
         if (item.is_string()) return ref(item);
         if (!item.is_object() || !item.contains("clip") || !item["clip"].is_string()) {
-            return fail(error, path + ": expected a path, a GUID or {clip, weight, volume_db, pitch_semitones, delay_ms}");
+            return fail(error, path + ": expected a path, a GUID or {clip, weight, volume_db, pitch_semitones, delay_ms, loops}");
         }
         if (!ref(item["clip"])) return false;
         for (auto it = item.begin(); it != item.end(); ++it) {
             const std::string key = path + "." + it.key();
             if (it.key() == "clip") continue;
+            if (it.key() == "loops") {
+                if (!it.value().is_number_integer()) return fail(error, key + ": expected a whole number (0 = until Audio.advanceMusic)");
+                clip.loops = (int)std::clamp<int64_t>(it.value().get<int64_t>(), -1, 1001);
+                continue;
+            }
             float* field = it.key() == "weight" ? &clip.weight : it.key() == "volume_db" ? &clip.volumeDb
                          : it.key() == "pitch_semitones" ? &clip.pitchSemitones : it.key() == "delay_ms" ? &clip.delayMs : nullptr;
-            if (!field) return fail(error, key + ": unknown (weight, volume_db, pitch_semitones, delay_ms)");
+            if (!field) return fail(error, key + ": unknown (weight, volume_db, pitch_semitones, delay_ms, loops)");
             if (!numberValue(it.value(), key, *field, error)) return false;
         }
         return true;
@@ -264,7 +272,7 @@ Json SoundEventDocument::describe(const SoundEventDef& def) {
     Json clips = Json::array();
     for (const SoundEventClip& clip : def.clips) {
         clips.push_back({{"clip", clip.clip.path}, {"guid", clip.clip.guid.str()}, {"weight", clip.weight}, {"volume_db", clip.volumeDb},
-                         {"pitch_semitones", clip.pitchSemitones}, {"delay_ms", clip.delayMs}});
+                         {"pitch_semitones", clip.pitchSemitones}, {"delay_ms", clip.delayMs}, {"loops", clip.loops}});
     }
     Json out = {{"mode", SoundEventDef::modeName(def.mode)},
                 {"clips", clips},
@@ -287,6 +295,48 @@ Json SoundEventDocument::describe(const SoundEventDef& def) {
     return out;
 }
 
+namespace {
+
+    // An event played as music (S39 R3): its sections play one after the other in one voice, so they
+    // share its rate and channels, and each is long enough to prepare the next one while it plays
+    void musicProblems(Project* project, const SoundEventDef& def, std::vector<std::string>& out) {
+        const AudioFileFormat* first = nullptr;
+        std::string firstPath;
+        std::vector<AudioFileFormat> formats(def.clips.size());
+        for (size_t i = 0; i < def.clips.size(); i++) {
+            const AssetRef& clip = def.clips[i].clip;
+            fs::path file = clip.guid.isNull() ? fs::path() : project->getAssetDatabase().getPath(clip.guid);
+            file = project->resolveAssetPath(file.empty() ? FileUtils::pathFromUtf8(clip.path) : file);
+            std::ifstream in(file, std::ios::binary);
+            if (!in) continue;
+            const std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            std::string error;
+            AudioFileFormat& format = formats[i];
+            if (bytes.empty() || !AudioFileCheck::check(bytes.data(), bytes.size(), AudioDecode::Stream, format, error) || format.sampleRate == 0) continue;
+            const std::string path = "clips[" + std::to_string(i) + "]: ";
+            if (!first) {
+                first = &format;
+                firstPath = clip.path;
+            } else if (format.sampleRate != first->sampleRate || format.channels != first->channels) {
+                out.push_back(path + "music sections differ in sample rate or channels: " + clip.path + " is " + std::to_string(format.sampleRate) + " Hz, " +
+                              std::to_string(format.channels) + " channels; " + firstPath + " is " + std::to_string(first->sampleRate) + " Hz, " +
+                              std::to_string(first->channels) + " channels");
+            }
+            // the trims a number gives (an `auto` trim is resolved by the analysis, not here)
+            AudioImportSettings settings;
+            std::string why;
+            uint64_t frames = format.frames;
+            if (AudioImportSettings::load(file, settings, why)) {
+                const double cutMs = (settings.trimHead.automatic ? 0.0 : settings.trimHead.ms) + (settings.trimTail.automatic ? 0.0 : settings.trimTail.ms);
+                const uint64_t cut = (uint64_t)std::llround(cutMs * format.sampleRate / 1000.0);
+                frames = frames > cut ? frames - cut : 0;
+            }
+            if (frames * 10 < format.sampleRate) out.push_back(path + "a music section is shorter than 100 ms: " + clip.path);
+        }
+    }
+
+}
+
 std::vector<std::string> SoundEventDocument::problems(Project* project, const SoundEventDef& def) {
     std::vector<std::string> out = SoundEventIO::validate(def);
     for (size_t i = 0; i < def.clips.size(); i++) {
@@ -296,6 +346,7 @@ std::vector<std::string> SoundEventDocument::problems(Project* project, const So
         const bool exists = !byGuid.empty() || fs::is_regular_file(project->resolveAssetPath(FileUtils::pathFromUtf8(clip.path)), ec);
         if (!exists) out.push_back("clips[" + std::to_string(i) + "]: missing clip " + clip.path);
     }
+    if (def.type == "music") musicProblems(project, def, out);
     const bool named = !def.outputGroupName.empty() || !def.outputGroupId.empty();
     if (named && AudioMixer::findGroupId(def.outputGroupId).empty() && AudioMixer::findGroupId(def.outputGroupName).empty()) {
         out.push_back("output_group: '" + (def.outputGroupName.empty() ? def.outputGroupId : def.outputGroupName) +

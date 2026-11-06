@@ -1177,6 +1177,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/window/HumanoidConvertDialog.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipSheet.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipEvents.cpp
+    ${EDITOR_DIR}/window/AnimationWindowClipAudio.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipCurves.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipRecord.cpp
     ${EDITOR_DIR}/window/AnimationWindowClipMode.cpp
@@ -1322,6 +1323,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/AudioCompare.cpp
     ${EDITOR_DIR}/audio/AudioCredits.cpp
     ${EDITOR_DIR}/audio/AudioWaveform.cpp
+    ${EDITOR_DIR}/audio/TimelineAudioPreview.cpp
     ${EDITOR_DIR}/audio/BuiltinSoundImport.cpp
     ${EDITOR_DIR}/audio/ClipDefects.cpp
     ${EDITOR_DIR}/audio/SoundEssentials.cpp
@@ -1342,6 +1344,7 @@ set(JASPERENGINE_EDITOR_SOURCES
     ${EDITOR_DIR}/audio/AudioImages.cpp
     ${EDITOR_DIR}/audio/AudioImportRegistry.cpp
     ${EDITOR_DIR}/audio/AudioImportSettings.cpp
+    ${EDITOR_DIR}/audio/AudioMusicGrid.cpp
     ${EDITOR_DIR}/audio/AudioProvenance.cpp
     ${EDITOR_DIR}/audio/LoudnessMonitor.cpp
     ${EDITOR_DIR}/command/type/ShaderGlobalsCmd.cpp

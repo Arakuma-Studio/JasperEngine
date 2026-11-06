@@ -18,6 +18,8 @@ namespace jasperengine {
         void reset(unsigned int rate);
         // the frames to mix now; a zero or negative time mixes none
         uint32_t advance(double seconds);
+        // what advance(seconds) would give now, the clock unchanged
+        uint32_t peek(double seconds) const;
         uint64_t cursor() const;
         double seconds() const;
 

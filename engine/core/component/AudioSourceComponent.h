@@ -203,6 +203,15 @@ namespace jasperengine{
         std::string preloadedEvent;            // the event whose clips were asked to load
         uint64_t startCount = 0;               // clip mode's starts: each one's generator index (R11)
         uint32_t boundPlayOn = 0;              // the UI triggers it is subscribed to
+        // the next start comes from a timeline (S40 R6, R19): placed this many output frames into the
+        // frame, cause "animation", its speed scaled; a resume ignores them
+        bool timelineStart = false;
+        uint32_t timelineDelayFrames = 0;
+        float timelineSpeedScale = 1.0f;
+        // the next stop fades its voices out over 10 ms (reason cue_exit)
+        bool timelineStopFade = false;
+        // an audio action without a Transform plays at its animation's target (3D settings only)
+        Entity timelineTarget = NULL_ENTITY;
     };
 
 }
