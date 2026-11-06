@@ -280,6 +280,9 @@ namespace jasperengine::editor::mcp {
         // interactable, blocks_raycasts, group: "<path>"}; null outside any group or without a
         // RectTransform; a FLATTEN group adds flatten {layered, layer_alpha, the scene's layer stats}
         static Json canvasGroupStateToJson(Scene* scene, Entity entity);
+        // a Button's Selectable (ui-components): whether navigation reaches it and where each way
+        // (and Tab) leads, from the current layout; live adds its state and whether it is selected
+        static Json selectableToJson(Scene* scene, Entity entity, bool live);
 
         static Json shaderParamsToJson(const ShaderUniformValues& values);
         // `out` replaced by `value` (null clears); `manifest` (may be null) types colour hex

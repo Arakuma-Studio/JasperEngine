@@ -277,7 +277,7 @@ RegisterEvent(self, self.scene:getPhysicsSystem().beginContact2D, "onBeginContac
 
 | Source (wrapper + getter) | Event field | Handler args |
 |---|---|---|
-| `Button(...):getButtonComponent()` | `onPress`, `onRelease` | none |
+| `Button(...):getButtonComponent()` | `onClick` (the click: released over it, or a Submit while selected), `onPress`, `onRelease` (every release, also off the button) | none |
 | `Image(...):getUIComponent()` (any UI element) | `onClick`, `onDoubleClick`, `onPointerDown`, `onPointerUp`, `onPointerMove`, `onPointerEnter`, `onPointerLeave`, `onDragStart`, `onDrag`, `onDragEnd` | `x, y` |
 | same | `onGetFocus`, `onLostFocus` | none |
 | `Scrollbar(...):getScrollbarComponent()` | `onChange` | `step` |
@@ -480,6 +480,14 @@ return Slot
   takes it, or a press there holds it; check it before world clicks (Unity's
   `EventSystem.IsPointerOverGameObject`).
 - C++ scripts override `onPointerDown(PointerEventData& e)` ... on `ScriptBase`.
+
+The selection messages (keyboard, gamepad and TV menus, jasper://docs/ui): `onSelect(e)`,
+`onDeselect(e)` (the GameObject selected or deselected), `onMove(e)` (`e.moveDir`
+`MoveDirection.UP`..., `e.moveVector`; `e:use()` skips the Button's navigation), `onSubmit(e)`
+(`e:use()` skips its click) go to the selected Button's GameObject; `onCancel(e)` goes up its
+parents to the first script that defines it (otherwise the game gets Escape or B). `e`:
+`BaseEventData` (`target`, `selectedObject`, `used`, `use()`); onMove's is an `AxisEventData`. C++:
+`onSelect(BaseEventData&)` ... `onMove(AxisEventData&)`.
 - Gestures (pinch, rotate) are two pointers: keep each finger's `position` by `pointerId`.
 
 ---
@@ -1335,6 +1343,9 @@ or `(r,g,b,a)`.
 `UI.canvasToUI(scene, Vector2)` / `UI.uiToCanvas(scene, Vector2)`: game canvas pixels (`Input`,
 touches) to a scene's UI units and back (they differ when its Canvas Scaler scales the UI);
 `UI.reducedMotion` (rw, default false): Text Effects skip their motion layers.
+`UI.getSelected(scene)` (a GameObject or nil) / `UI.setSelected(scene, obj)` (nil deselects; false
+when it cannot be selected): the scene's keyboard/gamepad selection, Unity's
+`EventSystem.currentSelectedGameObject` / `SetSelectedGameObject` (jasper://docs/ui).
 
 ### 2.13 Timer (static): delayed calls, repeats, coroutines
 
@@ -2369,7 +2380,7 @@ UI position: use `positionXOffset`/`positionYOffset` (as in the bundled example)
 | `Text` | `text`, `font`, `fontSize`, `color` (Vector4), `alpha`, `multiline`, `fixedWidth`, `fixedHeight`, `maxTextSize`, `flipY`, `pivotBaseline`, `pivotCentered`; outline/shadow (TMP underlay; UI units, colours sRGB): `outlineWidth`, `outlineColor`, `shadowEnabled`, `shadowColor`, `shadowOffset` (Vector2, right-down), `shadowSoftness`, `shadowDilate`; `visibleCharacters` (-1 all) | `setColor(r,g,b[,a])`, `setFont(path)`, `setFixedSize(w,h)`, `getNumChars()`, `getCharPosition(i)`, `getLineHeight()` |
 | `TextEffect(scene, entity)` (adds the component) | `enabled`, `autoPlay`, `loop`, `useUnscaledTime` (default true), `startIndex`, `length` (-1 to the end), `forWords`; events `onComplete`, `onCharacterRevealed(index)` | `getLayer(i)` (1..4, a `TextEffectLayerRef` whose fields write through: `type` (`TextEffectType.Wave`/`Bounce`/`Shake`/`Pulse`/`Typewriter`/`FadeIn`/`Grow`/`Unfold`/`Rainbow`/`Gradient`/`None`), `enabled`, `amplitude`, `duration`, `spread`, `phaseStep`, `frequency`, `charactersPerSecond`, `fadeTime`, `gradient` (list of `TextEffectGradientStop` {`color` sRGB Vector4, `position`}), `mix` (`TextEffectMix.Multiply`/`Add`/`Replace`), `saturation`, `lightness`), `setLayer(i, layerOrTable)`, `play()`, `stop()` (plain text), `finish()`, `restart()`, `isFinished()`, `isPlaying()` (`jasper://docs/ui`) |
 | `Image` | `color` (Vector4), `alpha`, `textureScaleFactor`, `flipY`, `patchMarginLeft/Right/Top/Bottom` | `setTexture(path)`, `setColor(r,g,b[,a])`, `setPatchMargin(m)` / `(l,r,t,b)`, `getUIComponent()` |
-| `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorDisabled`, `disabled` | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Disabled(path)`, `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Disabled), `setLabelColor(r,g,b,a)` |
+| `Button` (Image) | `label`, `labelColor`, `labelFont`, `labelFontSize`, `colorNormal`, `colorHovered`, `colorPressed`, `colorSelected`, `colorDisabled`, `disabled`, `interactable`, `color` (with a tinting transition: Normal's), `onClick`; `transition` (`ButtonTransition.*`), `fadeDuration`, `scaleHovered/Pressed/Selected`; `navigationMode` (`NavigationMode.*`), `wrapAround`, `selectOnUp/Down/Left/Right` (GameObject or nil), `selectOnEnable`; ro `selected`, `state` (`SelectionState.*`) | `getButtonComponent()`, `getLabelObject()`, `setTextureNormal/Hovered/Pressed/Selected/Disabled(path)`, `setTexture(path)` (with a swapping transition: Normal's), `setColorNormal(r,g,b[,a])` (and Hovered/Pressed/Selected/Disabled), `setLabelColor(r,g,b,a)`, `select()`, `findSelectableOnUp/Down/Left/Right()` (jasper://docs/ui) |
 | `Panel` (Image) | `title`, `titleColor`, `titleFont`, `titleFontSize`, `headerColor`, `minWidth`, `minHeight`, `canMove`, `canResize`, `canBringToFront` | `getPanelComponent()`, `setMinSize(w,h)` |
 | `Scrollbar` (Image) | `type` (`ScrollbarType.*`), `barSize`, `step`, `barColor`, `barAlpha` | `getScrollbarComponent()`, `setBarTexture(path)` |
 | `Progressbar` (Image) | `type`, `value` (0..1), `fillColor`, `fillAlpha` | `getProgressbarComponent()`, `setFillTexture(path)` |

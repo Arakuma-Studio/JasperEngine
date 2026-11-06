@@ -800,6 +800,7 @@ void Input::beginFrame(double unscaledDeltaTime){
     InputSuppression suppression;
     suppression.keyboard = Engine::isTextInputFocused();
     suppression.gamepadNavigation = Engine::wantsGamepadNavigation();
+    suppression.keyboardNavigation = Engine::wantsKeyboardNavigation();
     beginFrame(unscaledDeltaTime, suppression);
 }
 

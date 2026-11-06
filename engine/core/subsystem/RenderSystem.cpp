@@ -5,6 +5,7 @@
 #include "model/ModelCpuData.h"
 #include "device/QualityResolver.h"
 #include "component/UIDocumentComponent.h"
+#include "component/ButtonComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/BoneComponent.h"
 #include "component/MirrorComponent.h"
@@ -12308,6 +12309,8 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
 
     JE_GPU_ALLOC_SCOPE(UI, "UI");
     ui.buffer.getRender()->createBuffer(bufferSize, ui.buffer.getData(), ui.buffer.getType(), ui.buffer.getUsage());
+    ui.gpuBufferBytes = bufferSize;
+    ui.gpuIndicesBytes = 0;
     if (ui.buffer.isRenderAttributes()) {
         for (auto const &attr : ui.buffer.getAttributes()) {
             render.addAttribute(shaderData.getAttrIndex(attr.first), ui.buffer.getRender(), attr.second.getElements(), attr.second.getDataType(), ui.buffer.getStride(), attr.second.getOffset(), attr.second.getNormalized(), attr.second.getPerInstance());
@@ -12325,6 +12328,7 @@ bool RenderSystem::loadUI(Entity entity, UIComponent& ui, uint16_t pipelines, bo
     if (ui.indices.getCount() > 0){
         JE_GPU_ALLOC_SCOPE(UI, "UI");
         ui.indices.getRender()->createBuffer(bufferSize, ui.indices.getData(), ui.indices.getType(), ui.indices.getUsage());
+        ui.gpuIndicesBytes = bufferSize;
         ui.vertexCount = ui.indices.getCount();
         Attribute indexattr = ui.indices.getAttributes()[AttributeType::INDEX];
         render.setIndex(ui.indices.getRender(), indexattr.getDataType(), indexattr.getOffset());
@@ -12394,7 +12398,15 @@ bool RenderSystem::drawUI(UIComponent& ui, Transform& transform, PipelineType pi
             bindShaderTextures(ui.libraryBindings, ui.render, ui.shaderTextures);
         }
 
-        if (ui.needUpdateBuffer){
+        if (ui.needUpdateBuffer && (ui.buffer.getSize() > ui.gpuBufferBytes ||
+                                    (ui.indices.getCount() > 0 && ui.indices.getSize() > ui.gpuIndicesBytes))){
+            // the CPU geometry outgrew the GPU buffers made at load (sokol does not clamp an
+            // update): no upload past their end, a reload makes bigger ones; this frame keeps
+            // the previous geometry
+            if (!ui.needReload)
+                Log::warn("A UI element's geometry outgrew its GPU buffer (%zu > %zu bytes): reloading it", ui.buffer.getSize(), ui.gpuBufferBytes);
+            ui.needReload = true;
+        }else if (ui.needUpdateBuffer){
             ui.buffer.getRender()->updateBuffer(ui.buffer.getSize(), ui.buffer.getData());
 
             if (ui.indices.getCount() > 0){
@@ -12464,6 +12476,8 @@ void RenderSystem::destroyUI(Entity entity, UIComponent& ui){
     }
     ui.buffer.getRender()->destroyBuffer();
     ui.indices.getRender()->destroyBuffer();
+    ui.gpuBufferBytes = 0;
+    ui.gpuIndicesBytes = 0;
 
     if (text){
         text->needReloadAtlas = true;
@@ -13739,7 +13753,9 @@ bool RenderSystem::applyPassScissor(Entity entity, Signature signature, Transfor
         }
     }
 
-    if (signature.test(scene->getComponentId<ImageComponent>())){
+    // an Image clips its children to its patch margins, except a Button's: its label is clipped by
+    // the Button's ancestors only (a short 9-patch button would cut its glyphs, as Unity never does)
+    if (signature.test(scene->getComponentId<ImageComponent>()) && !signature.test(scene->getComponentId<ButtonComponent>())){
         ImageComponent& img = scene->getComponent<ImageComponent>(entity);
 
         *scissor.rect = getScissorRect(layout, img, transform, colorPassViewport);

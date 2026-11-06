@@ -148,8 +148,9 @@ InputActions.getMap("Menu"):enable()                               -- an exclusi
   `virtual/jump`; `InputActions.setVirtual(name, value)` does it from a script. (The on-screen
   controls below feed actions directly.)
 - **Typing and menus win.** In a map with `ignoreWhenUIConsumes`, a focused text field takes the
-  keyboard and a document with gamepad focus its d-pad, left stick and A (a key held when the field
-  took focus is released). `getKey` and `isGamepadButtonPressed` still read the device.
+  keyboard, a document with gamepad focus or a selected component Button the d-pad, left stick and
+  A, and a selected Button the arrows, Tab, Enter and Space (a key held when the field took focus is
+  released; jasper://docs/ui). `getKey` and `isGamepadButtonPressed` still read the device.
 - **Rebinding.** `InputActions.startRebind("Gameplay/Jump", bindingId, {groups = {"Gamepad"},
   exclude = {"mouse/delta*"}, cancel = "keyboard/escape", timeout = 5}, function(r) ... end)`
   takes the next key, button or axis past 0.5 (maps are suspended meanwhile) as an override;

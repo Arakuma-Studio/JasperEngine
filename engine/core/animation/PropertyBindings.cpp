@@ -509,6 +509,7 @@ namespace {
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorHovered, &buttonDirty>("button", "colorHovered", "Color Hovered", "m_Colors.m_HighlightedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorPressed, &buttonDirty>("button", "colorPressed", "Color Pressed", "m_Colors.m_PressedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorDisabled, &buttonDirty>("button", "colorDisabled", "Color Disabled", "m_Colors.m_DisabledColor", C4, SRGB));
+        rows.push_back(fieldRow<ButtonComponent, Vector4, &ButtonComponent::colorSelected, &buttonDirty>("button", "colorSelected", "Color Selected", "m_Colors.m_SelectedColor", C4, SRGB));
         rows.push_back(fieldRow<ButtonComponent, bool, &ButtonComponent::disabled, &buttonDirty>("button", "disabled", "Disabled", "m_Interactable", B));
 
         // Rect Transform (the RectTransform Lua setters)

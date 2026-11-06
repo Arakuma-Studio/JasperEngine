@@ -26,6 +26,8 @@ namespace jasperengine::editor{
     private:
         LineRenderer* lines;
         LineRenderer* gridLines;
+        // the component UI's navigation arrows (a Button's Navigation > Visualize)
+        LineRenderer* navigationLines;
         std::map<Entity, LineRenderer*> containerLines;
         std::map<Entity, LineRenderer*> bodyLines;
         std::map<Entity, LineRenderer*> jointLines;
@@ -51,6 +53,7 @@ namespace jasperengine::editor{
         void createLines(unsigned int width, unsigned int height);
         void applyZoomProjection();
         void updateGridLines();
+        void updateNavigationLines(const std::vector<Entity>& entities);
         void addPointHandle(LineRenderer* linesObj, const Vector3& worldPoint, float halfSize, const Vector4& color);
         void createOrUpdateBodyLines(Entity entity, const Transform& transform, Rigidbody2DComponent& body, bool visible, bool highlighted);
         void createOrUpdateJointLines(Entity entity, const Joint2DComponent& joint, bool visible, bool highlighted);

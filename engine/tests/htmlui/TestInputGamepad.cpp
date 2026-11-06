@@ -658,3 +658,53 @@ TEST_F(InputGamepadTest, BClosesAModalDialog){
     GpuEnvironment::drawFrames(1);
     EXPECT_FALSE(dialog.hasAttribute("open"));
 }
+
+// ui-components: a stick held while the menu lets go of the pad (the focus goes) reaches the game
+// in the next frame as it is, without being centred first (Doriax 71a87b533's case)
+TEST_F(InputGamepadTest, StickHeldWhenMenuLetsGoGoesBackToTheGame){
+    load(kGridCss, kGridBody);
+    focus("b1");
+    Engine::systemGamepadAxisMove(pad, D_GAMEPAD_AXIS_LEFT_X, 0.9f);
+    EXPECT_EQ(focusId(), "b2");
+    EXPECT_TRUE(gameAxes.empty()) << "the menu has the stick";
+
+    // the focus goes (a press on the empty page); the stick stays where it is
+    Engine::systemMouseDown(D_MOUSE_BUTTON_LEFT, 900, 600, 0);
+    Engine::systemMouseUp(D_MOUSE_BUTTON_LEFT, 900, 600, 0);
+    ASSERT_FALSE(Engine::wantsGamepadNavigation());
+    frameAt(100.05);
+    ASSERT_FALSE(gameAxes.empty()) << "the held stick goes back to the game";
+    EXPECT_EQ(gameAxes.back(), std::make_pair(D_GAMEPAD_AXIS_LEFT_X, 0.9f));
+}
+
+// ui-components: a text field typed in a lower scene keeps Enter; an upper document's focused
+// button does not take it (the typing guard)
+TEST_F(InputGamepadTest, TypingFieldKeepsEnterFromAnUpperDocument){
+    load(kGridCss, kGridBody);
+    ClickCounter clicks;
+    element("b1")->AddEventListener(Rml::EventId::Click, &clicks);
+    focus("b1");
+
+    // the lower scene: a text field (the fixture made last is the main scene, under the other)
+    std::unique_ptr<SceneFixture> lower(new SceneFixture());
+    Engine::addSceneLayer(&fixture->getScene());
+    page("field", "", "<input type=\"text\" id=\"name\" style=\"width: 200px;\"/>");
+    UIDocument field = lower->addDocument("ui/field.html");
+    ASSERT_TRUE(lower->waitUntilLoaded());
+    Rml::ElementDocument* rml = lower->getScene().getSystem<UIDocumentSystem>()->getDocument(field.getEntity());
+    ASSERT_NE(rml, nullptr);
+    Rml::Element* input = rml->GetElementById("name");
+    ASSERT_NE(input, nullptr);
+    ASSERT_TRUE(input->Focus());
+    ASSERT_TRUE(Engine::isTextInputFocused());
+
+    Engine::systemKeyDown(D_KEY_ENTER, false, 0);
+    Engine::systemKeyUp(D_KEY_ENTER, false, 0);
+    Engine::systemKeyDown(D_KEY_SPACE, false, 0);
+    Engine::systemKeyUp(D_KEY_SPACE, false, 0);
+    EXPECT_EQ(clicks.clicks, 0) << "the upper document's button does not take the typing keys";
+
+    Engine::removeScene(&fixture->getScene());
+    lower.reset();
+    Engine::setScene(&fixture->getScene());
+}

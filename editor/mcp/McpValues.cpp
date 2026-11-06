@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "component/ButtonComponent.h"
 #include "util/ProjectChecks.h"
 #include "component/CanvasGroupComponent.h"
 #include "camera/ShakePresets.h"
@@ -3648,6 +3649,26 @@ Json McpValues::canvasGroupStateToJson(Scene* scene, Entity entity) {
     return out;
 }
 
+Json McpValues::selectableToJson(Scene* scene, Entity entity, bool live) {
+    if (!scene || !scene->isEntityCreated(entity) || !scene->findComponent<ButtonComponent>(entity)) return nullptr;
+    UISystem& ui = *scene->getSystem<UISystem>();
+    auto target = [&](Entity other) -> Json {
+        return other == NULL_ENTITY ? Json(nullptr) : Json{{"id", other}, {"path", EntityPath::of(scene, other)}};
+    };
+    Json navigation = {{"up", target(ui.findSelectableOnDirection(entity, MoveDirection::UP))},
+                       {"down", target(ui.findSelectableOnDirection(entity, MoveDirection::DOWN))},
+                       {"left", target(ui.findSelectableOnDirection(entity, MoveDirection::LEFT))},
+                       {"right", target(ui.findSelectableOnDirection(entity, MoveDirection::RIGHT))},
+                       {"next", target(ui.findNextSelectable(entity, false))}};
+    Json out = {{"navigable", ui.isNavigable(entity)}, {"navigation", navigation}};
+    if (live) {
+        static const char* const states[] = {"normal", "highlighted", "pressed", "selected", "disabled"};
+        out["state"] = states[static_cast<int>(ui.getButtonState(entity))];
+        out["selected"] = ui.getSelected() == entity;
+    }
+    return out;
+}
+
 Json McpValues::fluidStatsToJson(Scene* scene, Entity entity) {
     if (!scene || !scene->isComponentRegistered<FluidSimulationComponent>()) return nullptr;
     FluidSimulationComponent* fluid = scene->findComponent<FluidSimulationComponent>(entity);
@@ -3851,6 +3872,19 @@ bool McpValues::checkReflectedChanges(std::vector<Change>& changes, std::vector<
     return true;
 }
 
+namespace {
+
+    const char* mcpButtonTransitionName(ButtonTransition transition) {
+        switch (transition) {
+            case ButtonTransition::NONE: return "none";
+            case ButtonTransition::COLOR_TINT: return "color_tint";
+            case ButtonTransition::SPRITE_SWAP: return "sprite_swap";
+            default: return "color_tint_and_sprite_swap";
+        }
+    }
+
+}
+
 bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, const std::vector<Entity>& entities,
                                      const std::vector<Change>& allChanges, MultiPropertyCmd& multi, std::string& error) {
     if (!scene || !scene->scene) {
@@ -3881,6 +3915,34 @@ bool McpValues::appendChangeCommands(Project* project, SceneProject* scene, cons
                             std::to_string(layers) + "); add the layer first (layers, e.g. [{\"name\": \"Base Layer\"}, {\"name\": \"Upper\"}]).";
                     return false;
                 }
+            }
+        }
+        // a Button overwrites what its transition owns: an edit of ui.color / ui.texture would be
+        // lost at its next state change (ui-components decision 13)
+        if (const ButtonComponent* button = scene->scene->findComponent<ButtonComponent>(entity)) {
+            ButtonTransition transition = button->transition;
+            for (const Change& change : changes) {
+                if (change.component != ComponentType::ButtonComponent || change.property != "transition" || change.op != "set") continue;
+                if (change.value.is_string()) {
+                    const std::string name = change.value.get<std::string>();
+                    if (name == "none") transition = ButtonTransition::NONE;
+                    else if (name == "color_tint") transition = ButtonTransition::COLOR_TINT;
+                    else if (name == "sprite_swap") transition = ButtonTransition::SPRITE_SWAP;
+                    else if (name == "color_tint_and_sprite_swap") transition = ButtonTransition::COLOR_TINT_AND_SPRITE_SWAP;
+                } else if (change.value.is_number_integer()) {
+                    transition = static_cast<ButtonTransition>(change.value.get<int>());
+                }
+            }
+            for (const Change& change : changes) {
+                if (change.component != ComponentType::UIComponent) continue;
+                const bool color = change.property == "color" && UISystem::transitionWritesColor(transition);
+                const bool texture = change.property == "texture" && UISystem::transitionWritesTexture(transition);
+                if (!color && !texture) continue;
+                error = "UIComponent." + change.property + " of " + label + " is set by its Button (transition " +
+                        mcpButtonTransitionName(transition) + "): set button." + (color ? "colorNormal (and colorHovered, colorPressed, colorSelected, colorDisabled)"
+                                                                                    : "textureNormal (and textureHovered, texturePressed, textureSelected, textureDisabled)") +
+                        ", or set button.transition to " + (color ? "sprite_swap or none" : "color_tint or none") + " first.";
+                return false;
             }
         }
         // components in order of first appearance

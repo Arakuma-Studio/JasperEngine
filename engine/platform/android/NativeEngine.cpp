@@ -106,6 +106,9 @@ constexpr int getJasperEngineKey(int32_t key, int32_t scanCode) {
         return D_KEY_DOWN;
     if (key == AKEYCODE_DPAD_UP)
         return D_KEY_UP;
+    // a TV remote's centre (select) key: Enter, which submits a selected Button
+    if (key == AKEYCODE_DPAD_CENTER)
+        return D_KEY_ENTER;
     if (key == AKEYCODE_PAGE_UP)
         return D_KEY_PAGE_UP;
     if (key == AKEYCODE_PAGE_DOWN)
@@ -239,6 +242,7 @@ static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_0, 0) == D_KEY_KP_0, "Android n
 static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_9, 0) == D_KEY_KP_9, "Android numpad key range is broken");
 static_assert(getJasperEngineKey(AKEYCODE_NUMPAD_COMMA, 0) == D_KEY_KP_DECIMAL, "Android localized decimal mapping is broken");
 static_assert(getJasperEngineKey(AKEYCODE_BACK, 0) == D_KEY_UNKNOWN, "Android Back must not masquerade as a keyboard key");
+static_assert(getJasperEngineKey(AKEYCODE_DPAD_CENTER, 0) == D_KEY_ENTER, "the TV remote's centre key must submit as Enter");
 static_assert(getJasperEngineKey(AKEYCODE_UNKNOWN, 0) == D_KEY_UNKNOWN, "Unknown Android keys must stay unknown");
 static_assert(getJasperEngineModifiers(0) == 0, "Empty Android modifiers must stay empty");
 static_assert(getJasperEngineModifiers(AMETA_CTRL_ON | AMETA_SHIFT_ON | AMETA_ALT_ON | AMETA_META_ON |

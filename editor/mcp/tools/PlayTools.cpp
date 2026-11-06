@@ -9,6 +9,8 @@
 //   eval_lua              run Lua in the game's Lua state, results as JSON
 //   list_runtime_entities / get_runtime_entity / set_runtime_property   live GameObjects
 //   send_input            keyboard / text / mouse / touch / gamepad sequences across frames
+#include "subsystem/UISystem.h"
+#include "component/ButtonComponent.h"
 #include "camera/ShakerRuntime.h"
 #include "component/CameraFollowComponent.h"
 #include "component/CameraShakerComponent.h"
@@ -613,7 +615,7 @@ Json heldInputJson() {
 // What the game's input reads now (get_play_state while playing): the Input Manager's view of
 // the actions that are not at rest (a value, or "pressed" for a button action), the touch count,
 // the keys held
-Json playInputJson() {
+Json playInputJson(Project* project) {
     Json actions = Json::object();
     for (const std::string& name : InputActions::getActionNames()) {
         InputActions::State st;
@@ -629,7 +631,16 @@ Json playInputJson() {
     for (int key = 0; key <= D_KEY_LAST && keys.size() < 16; key++) {
         if (Input::isKeyPressed(key)) keys.push_back(keyName(key));
     }
-    return {{"actions", actions}, {"touches", Input::getTouchCount()}, {"keys_held", keys}};
+    // the component UI's selection of each scene that has one (keyboard, gamepad and TV menus)
+    Json selected = Json::array();
+    for (SceneProject* sp : runningScenes(project)) {
+        if (!sp->scene) continue;
+        UISystem& ui = *sp->scene->getSystem<UISystem>();
+        if (!ui.hasSelection()) continue;
+        const Entity entity = ui.getSelected();
+        selected.push_back({{"scene", sp->name}, {"entity", {{"id", entity}, {"path", EntityPath::of(sp->scene, entity)}}}});
+    }
+    return {{"actions", actions}, {"touches", Input::getTouchCount()}, {"keys_held", keys}, {"ui_selected", selected}};
 }
 
 // What the game's audio does now (get_play_state while playing): the voices, and the mixer
@@ -762,7 +773,7 @@ Json playStateJson(McpContext& ctx) {
     if (!s.held.empty()) out["held_input"] = heldInputJson();
     // what the game's input reads (the Input Manager's actions, touches, keys)
     if (playId != NULL_PROJECT_SCENE && s.current.active) {
-        out["input"] = playInputJson();
+        out["input"] = playInputJson(project);
         // the on-device console and stats overlay (Project Settings > Debug, DebugOverlay)
         static const char* const statsModes[] = {"off", "fps", "full"};
         const int statsMode = static_cast<int>(DebugOverlay::getStatsMode());
@@ -2566,6 +2577,9 @@ void getRuntimeEntityTool(const CallPtr& call) {
     // the Canvas Groups over a UI element (inherited alpha, interactable, click-through)
     const Json groupState = McpValues::canvasGroupStateToJson(sp->scene, entity);
     if (!groupState.is_null()) data["canvas_group_state"] = groupState;
+    // a Button's state, selection and navigation
+    const Json selectable = McpValues::selectableToJson(sp->scene, entity, true);
+    if (!selectable.is_null()) data["selectable"] = selectable;
     // a Video Player's playback
     if (only.empty() || only.count(ComponentType::VideoPlayerComponent)) {
         const Json video = McpValues::videoStatusToJson(sp->scene, entity);
@@ -2597,6 +2611,7 @@ void getRuntimeEntityTool(const CallPtr& call) {
     if (data.contains("scripts") && !data["scripts"].empty()) text += "\nscripts: " + data["scripts"].dump();
     if (data.contains("fluid_stats")) text += "\nfluid_stats: " + data["fluid_stats"].dump();
     if (data.contains("canvas_group_state")) text += "\ncanvas_group_state: " + data["canvas_group_state"].dump();
+    if (data.contains("selectable")) text += "\nselectable: " + data["selectable"].dump();
     if (data.contains("video")) text += "\nvideo: " + data["video"].dump();
     if (data.contains("joint2d")) text += "\njoint2d: " + data["joint2d"].dump();
     if (data.contains("rigidbody2d")) text += "\nrigidbody2d: " + data["rigidbody2d"].dump();
@@ -2702,6 +2717,20 @@ void setRuntimePropertyTool(const CallPtr& call) {
             call->ok("Video Player of \"" + data.value("path", std::string()) + "\": " + video.dump() +
                      " (the next frames show it; get_runtime_entity reads it again).", data);
             return;
+        }
+    }
+
+    // a Button overwrites what its transition owns (ui-components decision 13)
+    if (component == ComponentType::UIComponent){
+        if (const ButtonComponent* button = sp->scene->findComponent<ButtonComponent>(entity)){
+            const bool color = values.contains("color") && UISystem::buttonOwnsUIColor(*button);
+            const bool texture = values.contains("texture") && UISystem::buttonOwnsUITexture(*button);
+            if (color || texture){
+                call->fail(std::string("ui.") + (color ? "color" : "texture") + " of this GameObject is set by its Button's transition: set button." +
+                           (color ? "colorNormal (or the state you want)" : "textureNormal (or the state you want)") +
+                           ", or set button.transition to none first.");
+                return;
+            }
         }
     }
 
@@ -4256,7 +4285,7 @@ void registerPlayTools(McpRegistry& registry) {
         tool.title = "Get Play State";
         tool.description =
             "Play state: played and running scenes (child scenes run as copies with own ids), the session (time, "
-            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys), debug_overlay, audio "
+            "frames, errors, crash), how the last one ended, held input, input (actions, touches, keys, UI selection), debug_overlay, audio "
             "(voices, mixer_meters dB), "
             "console_cursor, script coroutines and timers (counts), the clock (time_scale, fixed_fps, auto_pause, held), "
             "platform (lifecycle, orientation, opened_urls...), http (request counts, last failures), safe_area; stopped: play_would_start.";

@@ -100,7 +100,8 @@ const std::vector<ScriptEvent>& eventList() {
         {S::UI, "onLostFocus", "Focus", "The element loses the focus", {}},
 
         {S::Button, "onPress", nullptr, "The button is pressed", {}},
-        {S::Button, "onRelease", nullptr, "The button is released", {}},
+        {S::Button, "onRelease", nullptr, "The button is released (also off the button: the click is onClick)", {}},
+        {S::Button, "onClick", nullptr, "The button is clicked: released over it, or submitted (Enter, Space, gamepad A) while selected", {}},
 
         {S::Scrollbar, "onChange", nullptr, "The bar moves", {{"float", "step"}}},
 

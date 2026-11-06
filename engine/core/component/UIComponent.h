@@ -126,6 +126,10 @@ namespace jasperengine{
         // the pipeline types it was loaded with (a FLATTEN Canvas Group layer draws it with
         // PIP_RTT*; one loaded before needs a reload)
         uint16_t loadedPipelines = 0;
+        // the bytes of the GPU vertex and index buffers made at load: a CPU buffer that outgrew
+        // them reloads instead of being uploaded past their end (RenderSystem)
+        size_t gpuBufferBytes = 0;
+        size_t gpuIndicesBytes = 0;
     };
 
 }

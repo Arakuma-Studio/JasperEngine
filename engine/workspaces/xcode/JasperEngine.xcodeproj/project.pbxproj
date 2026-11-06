@@ -4463,6 +4463,12 @@
 		4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */; };
 		4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E470C31E68F4C6398B1 /* Audio.h */; };
 		4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E4779D650DFEE40600C /* SoundHandle.h */; };
+		4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */; };
+		4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E479455F5D4C55C2B3C /* MusicPlayer.h */; };
+		4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47858C3240395205D8 /* MusicSequenceSource.h */; };
+		4A534E4727874604BB05EB02 /* UISelectable.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47B4E493A883DC863A /* UISelectable.h */; };
+		4A534E47E123E026E8155148 /* UIEventData.h in Headers */ = {isa = PBXBuildFile; fileRef = 4A534E47F8386218660CC63D /* UIEventData.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -8728,6 +8734,11 @@
 		4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AudioSnapshotComponent.h; sourceTree = "<group>"; };
 		4A534E470C31E68F4C6398B1 /* Audio.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = Audio.h; sourceTree = "<group>"; };
 		4A534E4779D650DFEE40600C /* SoundHandle.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = SoundHandle.h; sourceTree = "<group>"; };
+		4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = UISystemNavigation.cpp; sourceTree = "<group>"; };
+		4A534E479455F5D4C55C2B3C /* MusicPlayer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicPlayer.h; sourceTree = "<group>"; };
+		4A534E47858C3240395205D8 /* MusicSequenceSource.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = MusicSequenceSource.h; sourceTree = "<group>"; };
+		4A534E47B4E493A883DC863A /* UISelectable.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UISelectable.h; sourceTree = "<group>"; };
+		4A534E47F8386218660CC63D /* UIEventData.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = UIEventData.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -10233,6 +10244,8 @@
 				4A534E478989D5CF2F0ED94E /* SoundEventIO.h */,
 				4A534E4775A4EF3B53EE0135 /* SoundEventLibrary.h */,
 				4A534E47636F8B5454FF632F /* TimelineAudio.h */,
+				4A534E479455F5D4C55C2B3C /* MusicPlayer.h */,
+				4A534E47858C3240395205D8 /* MusicSequenceSource.h */,
 			);
 			path = audio;
 			sourceTree = "<group>";
@@ -10914,6 +10927,7 @@
 				4A534E4758E5D66F14FC1ED7 /* SafeAreaComponent.h */,
 				4A534E47B67CC1427EC3B96B /* CapsuleShadowCasterComponent.h */,
 				4A534E476727793E47E79EA7 /* AudioSnapshotComponent.h */,
+				4A534E47B4E493A883DC863A /* UISelectable.h */,
 			);
 			path = component;
 			sourceTree = "<group>";
@@ -11191,6 +11205,7 @@
 				4A534E479D83C26E146CE8A0 /* GltfNormalize.h */,
 				4A534E47F7FB625C23466BAF /* RenderSystemLighting.cpp */,
 				4A534E472FCC66B498BDDE06 /* RenderSystemLighting.h */,
+				4A534E47D05E77931E2A11A1 /* UISystemNavigation.cpp */,
 			);
 			path = subsystem;
 			sourceTree = "<group>";
@@ -12331,6 +12346,7 @@
 				4A534E477B4AC05A80C847C3 /* OnScreenControls.cpp */,
 				4A534E477650920F4D670D0F /* OnScreenControls.h */,
 				4A534E47AD6F5BB381B88CCB /* PointerEventData.h */,
+				4A534E47F8386218660CC63D /* UIEventData.h */,
 			);
 			path = ui;
 			sourceTree = "<group>";
@@ -15513,6 +15529,10 @@
 				4A534E47B1B9F1BA5E9C483C /* AudioSnapshotComponent.h in Headers */,
 				4A534E476BF1BBC7A9F8C020 /* Audio.h in Headers */,
 				4A534E47C57075DDCE8A9E47 /* SoundHandle.h in Headers */,
+				4A534E47FF665C40A4E19502 /* MusicPlayer.h in Headers */,
+				4A534E476E40180C5F876B34 /* MusicSequenceSource.h in Headers */,
+				4A534E4727874604BB05EB02 /* UISelectable.h in Headers */,
+				4A534E47E123E026E8155148 /* UIEventData.h in Headers */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18036,6 +18056,7 @@
 				4A534E47895A611EBD74FD14 /* AudioTap.cpp in Sources */,
 				4A534E471EB83A4ACAAE855A /* ClipAudio.cpp in Sources */,
 				4A534E47670206F6BE79EF39 /* AudioClassesLua.cpp in Sources */,
+				4A534E4738A73EDC2D33FCDF /* UISystemNavigation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -18853,6 +18874,7 @@
 				4A534E476F895032CF4A9482 /* AudioTap.cpp in Sources */,
 				4A534E47F32AF82FE60C3896 /* ClipAudio.cpp in Sources */,
 				4A534E474DEE448FA99C20CF /* AudioClassesLua.cpp in Sources */,
+				4A534E4747C1004DC9A4C175 /* UISystemNavigation.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

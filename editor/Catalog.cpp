@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 #include "Catalog.h"
+#include "component/ButtonComponent.h"
 #include "component/AnimatorComponent.h"
 #include "component/AudioSourceComponent.h"
 #include "component/CanvasGroupComponent.h"
@@ -834,6 +835,11 @@ uint64_t editor::Catalog::getMaterialUpdateFlags(const Material& from, const Mat
 }
 
 void editor::Catalog::updateEntity(EntityRegistry* registry, Entity entity, uint64_t updateFlags){
+    if (updateFlags & UpdateFlags_Button){
+        if (ButtonComponent* button = registry->findComponent<ButtonComponent>(entity)){
+            button->needUpdateButton = true;
+        }
+    }
     if (updateFlags & UpdateFlags_CanvasGroup){
         // alpha in [0, 1] at once (a NaN keeps the value UISystem last saw)
         if (CanvasGroupComponent* group = registry->findComponent<CanvasGroupComponent>(entity)){

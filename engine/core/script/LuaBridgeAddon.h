@@ -34,6 +34,7 @@
 #include "render/LightingTiers.h"
 #include "render/OrderIndependentTransparency.h"
 #include "component/CapsuleShadowCasterComponent.h"
+#include "component/UISelectable.h"
 #include "texture/MaterialPbr.h"
 #include "device/DeviceTypes.h"
 #include "debug/DebugOverlay.h"
@@ -266,6 +267,11 @@ namespace luabridge
     template<> struct Stack<PivotPreset> : EnumWrapper<PivotPreset>{};
 
     template<> struct Stack<ScrollbarType> : EnumWrapper<ScrollbarType>{};
+    // ui-components: the Button's Selectable enums
+    template<> struct Stack<ButtonTransition> : EnumWrapper<ButtonTransition>{};
+    template<> struct Stack<NavigationMode> : EnumWrapper<NavigationMode>{};
+    template<> struct Stack<SelectionState> : EnumWrapper<SelectionState>{};
+    template<> struct Stack<MoveDirection> : EnumWrapper<MoveDirection>{};
     template<> struct Stack<ProgressbarType> : EnumWrapper<ProgressbarType>{};
 
     template<> struct Stack<Collider2DType> : EnumWrapper<Collider2DType>{};

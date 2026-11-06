@@ -1,6 +1,7 @@
 // (c) Eduardo Doria and contributors
 // SPDX-License-Identifier: MIT
 
+#include "object/GameObject.h"
 #include "LuaBinding.h"
 #include <optional>
 #include "log/Logger.h"
@@ -1458,6 +1459,31 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticFunction("canvasToUI", &UIStatics::canvasToUI)
         .addStaticFunction("uiToCanvas", &UIStatics::uiToCanvas)
         .addStaticProperty("reducedMotion", &UISystem::isReducedMotion, &UISystem::setReducedMotion)
+        // ui-components: the scene's selection (Unity's EventSystem.currentSelectedGameObject):
+        // a GameObject or nil
+        .addStaticFunction("getSelected", +[](Scene* scene) -> std::optional<GameObject> {
+            if (!scene) return std::nullopt;
+            const Entity entity = scene->getSystem<UISystem>()->getSelected();
+            if (entity == NULL_ENTITY || !scene->isEntityCreated(entity)) return std::nullopt;
+            return GameObject(scene, entity);
+        })
+        // Unity's SetSelectedGameObject: a Button (GameObject or entity), nil to deselect; false
+        // when it cannot be selected (not a Button, inactive, hidden, an on-screen control)
+        .addStaticFunction("setSelected", +[](Scene* scene, luabridge::LuaRef value) -> bool {
+            if (!scene) return false;
+            Entity entity = NULL_ENTITY;
+            if (value.isNumber()){
+                entity = (Entity)value.unsafe_cast<lua_Integer>();
+            }else if (!value.isNil()){
+                lua_State* Lv = value.state();
+                value.push(Lv);
+                auto handle = luabridge::get<EntityHandle*>(Lv, -1);
+                lua_pop(Lv, 1);
+                if (!handle || !handle.value()) return false;
+                entity = handle.value()->getEntity();
+            }
+            return scene->getSystem<UISystem>()->setSelected(entity);
+        })
         .endClass();
 
     luabridge::getGlobalNamespace(L)
@@ -2255,6 +2281,7 @@ void LuaBinding::registerCoreClasses(lua_State *L){
         .addStaticProperty("ignoreEventsHandledByUI", &Engine::isIgnoreEventsHandledByUI, &Engine::setIgnoreEventsHandledByUI)
         .addStaticFunction("isUIEventReceived", &Engine::isUIEventReceived)
         .addStaticFunction("wantsGamepadNavigation", &Engine::wantsGamepadNavigation)
+        .addStaticFunction("wantsKeyboardNavigation", &Engine::wantsKeyboardNavigation)
         .addStaticProperty("updateTime", &Engine::getUpdateTime, &Engine::setUpdateTime)
         .addStaticFunction("setUpdateTimeMS", &Engine::setUpdateTimeMS)
         .addStaticProperty("interpolationAlpha", &Engine::getInterpolationAlpha)
