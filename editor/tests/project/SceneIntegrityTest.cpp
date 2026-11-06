@@ -42,9 +42,9 @@ using namespace jasperengine::editor::test;
 
 namespace {
 
-    constexpr Entity GAME = 1001;   // a GameObject with a Transform
+    constexpr Entity PLAIN_OBJECT = 1001;   // a GameObject with a Transform
 
-    std::string readText(const fs::path& path) {
+    std::string fileText(const fs::path& path) {
         std::string text;
         assetio::readFile(path, text);
         return text;
@@ -53,14 +53,14 @@ namespace {
     uint32_t fileSceneId(const fs::path& path) {
         uint32_t id = 0;
         std::string name;
-        sceneid::readSceneHeader(readText(path), id, name);
+        sceneid::readSceneHeader(fileText(path), id, name);
         return id;
     }
 
     std::string fileSceneName(const fs::path& path) {
         uint32_t id = 0;
         std::string name;
-        sceneid::readSceneHeader(readText(path), id, name);
+        sceneid::readSceneHeader(fileText(path), id, name);
         return name;
     }
 
@@ -227,13 +227,13 @@ TEST(GeneratedScenes, ParentsAreCreatedBeforeChildren) {
 // ---- one file per scene --------------------------------------------------------------------------
 
 TEST_F(SceneIntegrityTest, SaveOverAnotherScenesFileIsRefused) {
-    const std::string before = readText(mainFile());
+    const std::string before = fileText(mainFile());
     const uint32_t other = project->createSceneNow("Other", SceneType::SCENE_3D);
     ASSERT_NE(other, NULL_PROJECT_SCENE);
 
     EXPECT_NE(project->sceneSavePathProblem(other, "Main Scene.scene"), "");
     EXPECT_FALSE(project->saveSceneToPath(other, "Main Scene.scene"));
-    EXPECT_EQ(readText(mainFile()), before) << "the other scene's file is untouched";
+    EXPECT_EQ(fileText(mainFile()), before) << "the other scene's file is untouched";
     ASSERT_NE(project->getScene(other), nullptr);
     EXPECT_TRUE(project->getScene(other)->filepath.empty()) << "a refused save gives no path";
 
@@ -324,12 +324,12 @@ TEST_F(SceneIntegrityTest, ATransformNextToATransformlessAnchorIsRefused) {
     const Entity skybox = sky->getEntity();
     const std::vector<Entity> before = scene->entities;
 
-    MoveEntityOrderCmd move(project.get(), sceneId, GAME, skybox, InsertionType::AFTER);
+    MoveEntityOrderCmd move(project.get(), sceneId, PLAIN_OBJECT, skybox, InsertionType::AFTER);
     EXPECT_FALSE(move.execute()) << "only the list would change";
     EXPECT_EQ(scene->entities, before);
-    EXPECT_NE(MoveEntityOrderCmd::transformAnchorProblem(scene->scene, GAME, skybox, InsertionType::BEFORE), "");
+    EXPECT_NE(MoveEntityOrderCmd::transformAnchorProblem(scene->scene, PLAIN_OBJECT, skybox, InsertionType::BEFORE), "");
     // the other way stays allowed (a Skybox keeps its place in the gaps)
-    EXPECT_EQ(MoveEntityOrderCmd::transformAnchorProblem(scene->scene, skybox, GAME, InsertionType::AFTER), "");
+    EXPECT_EQ(MoveEntityOrderCmd::transformAnchorProblem(scene->scene, skybox, PLAIN_OBJECT, InsertionType::AFTER), "");
 }
 
 TEST_F(SceneIntegrityTest, MultiDeleteUndoKeepsTheSky) {
@@ -344,7 +344,7 @@ TEST_F(SceneIntegrityTest, MultiDeleteUndoKeepsTheSky) {
     const std::vector<Entity> before = scene->entities;
 
     // deleted in the opposite order, so the undo restores Sky2 first
-    ASSERT_TRUE(history()->addCommand(new DeleteEntityCmd(project.get(), sceneId, std::vector<Entity>{sky2, sky1, GAME})));
+    ASSERT_TRUE(history()->addCommand(new DeleteEntityCmd(project.get(), sceneId, std::vector<Entity>{sky2, sky1, PLAIN_OBJECT})));
     ASSERT_TRUE(history()->undo());
     EXPECT_EQ(scene->entities, before);
     skies = scene->scene->getComponentArray<SkyboxComponent>();
@@ -353,8 +353,8 @@ TEST_F(SceneIntegrityTest, MultiDeleteUndoKeepsTheSky) {
 }
 
 TEST_F(SceneIntegrityTest, CreatedChildrenJoinTheirParentsBranch) {
-    // a child created under GAME is listed after GAME's branch, not at the end
-    CreateEntityCmd* child = new CreateEntityCmd(project.get(), sceneId, "Child", EntityCreationType::EMPTY, GAME);
+    // a child created under PLAIN_OBJECT is listed after PLAIN_OBJECT's branch, not at the end
+    CreateEntityCmd* child = new CreateEntityCmd(project.get(), sceneId, "Child", EntityCreationType::EMPTY, PLAIN_OBJECT);
     ASSERT_TRUE(history()->addCommand(child));
     std::vector<Entity> sorted = scene->entities;
     ProjectUtils::sortEntitiesByTransformOrder(scene->scene, sorted);
@@ -390,7 +390,7 @@ TEST_F(SceneIntegrityTest, RelatedScenesAndDropRules) {
 
     // a child scene's GameObject: a reference, never moved by a same-scene target
     EntityPayload payload{};
-    payload.entity = GAME;
+    payload.entity = PLAIN_OBJECT;
     payload.entitySceneId = child;
     payload.referenceOnly = true;
     EXPECT_NE(sameSceneDropProblem(*project, payload, sceneId), "");

@@ -14,27 +14,27 @@ using namespace jasperengine;
 
 namespace {
 
-    struct Line {
+    struct HeaderLine {
         size_t begin;
         size_t end;      // past the line's text, before its line break
         size_t next;     // the next line's begin
     };
 
-    std::vector<Line> splitLines(const std::string& text) {
-        std::vector<Line> lines;
+    std::vector<HeaderLine> headerLines(const std::string& text) {
+        std::vector<HeaderLine> lines;
         for (size_t begin = 0; begin < text.size();) {
             size_t brk = text.find('\n', begin);
             const size_t next = brk == std::string::npos ? text.size() : brk + 1;
             size_t end = brk == std::string::npos ? text.size() : brk;
             if (end > begin && text[end - 1] == '\r') end--;
-            lines.push_back({begin, end, next});
+            lines.push_back(HeaderLine{begin, end, next});
             begin = next;
         }
         return lines;
     }
 
     // A root (indent 0) "key:" line; the value's text after the colon in *value
-    bool rootKeyLine(const std::string& text, const Line& line, const char* key, std::string* value) {
+    bool rootKeyLine(const std::string& text, const HeaderLine& line, const char* key, std::string* value) {
         const std::string prefix = std::string(key) + ":";
         if (line.end - line.begin < prefix.size() || text.compare(line.begin, prefix.size(), prefix) != 0) {
             return false;
@@ -43,7 +43,7 @@ namespace {
         return true;
     }
 
-    std::string scalarText(const std::string& value) {
+    std::string headerScalarText(const std::string& value) {
         YAML::Emitter out;
         out << value;
         return out.c_str();
@@ -69,7 +69,7 @@ uint32_t editor::sceneid::replacementId(const std::string& guidText, const std::
 
 bool editor::sceneid::readSceneHeader(const std::string& text, uint32_t& id, std::string& name) {
     bool foundId = false;
-    for (const Line& line : splitLines(text)) {
+    for (const HeaderLine& line : headerLines(text)) {
         std::string value;
         try {
             if (!foundId && rootKeyLine(text, line, "id", &value)) {
@@ -90,7 +90,7 @@ bool editor::sceneid::rewriteSceneHeaderText(std::string& text, std::optional<ui
     bool namePlaced = !name.has_value();
     std::string updated;
     updated.reserve(text.size() + 32);
-    for (const Line& line : splitLines(text)) {
+    for (const HeaderLine& line : headerLines(text)) {
         if (!idPlaced && rootKeyLine(text, line, "id", nullptr)) {
             updated += "id: " + std::to_string(*id);
             updated.append(text, line.end, line.next - line.end);
@@ -98,7 +98,7 @@ bool editor::sceneid::rewriteSceneHeaderText(std::string& text, std::optional<ui
             continue;
         }
         if (!namePlaced && rootKeyLine(text, line, "name", nullptr)) {
-            updated += "name: " + scalarText(*name);
+            updated += "name: " + headerScalarText(*name);
             updated.append(text, line.end, line.next - line.end);
             namePlaced = true;
             continue;
